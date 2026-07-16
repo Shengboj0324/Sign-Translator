@@ -24,9 +24,15 @@ production-deployed product.** Concretely:
 | Component | Status in this repo |
 |---|---|
 | Skeleton graph + ST-GCN motion encoder | **Implemented & tested** |
+| Keypoint preprocessing + augmentation (invariance-tested) | **Implemented & tested** |
 | CLIP-style contrastive motion↔language alignment | **Implemented & tested** |
 | Gaussian diffusion (DDPM/DDIM) motion generator | **Implemented & tested** |
-| End-to-end joint training (contrastive + diffusion) | **Implemented & tested** |
+| Cross-modal attention denoiser + classifier-free guidance | **Implemented & tested** |
+| Continuous sign recognition (sign→gloss, CTC) | **Implemented & tested** |
+| Semantic planner (English→gloss seq2seq) | **Implemented & tested** |
+| Bidirectional pipeline (speech→gloss→motion, motion→gloss) | **Implemented & tested** |
+| Evaluation metrics (recall@k, MPJPE, WER, accuracy) | **Implemented & tested** |
+| End-to-end joint training | **Implemented & tested** |
 | Speech / text encoders | **Interface + lightweight Transformer stub** (swap in Whisper/wav2vec2/LLM) |
 | Real sign-language data (How2Sign, PHOENIX-2014T) | **Not included** — synthetic dataset only |
 | Avatar rendering (NeRF / Gaussian Splatting / SMPL-X) | **Not implemented** (out of scope for this core) |
@@ -106,6 +112,27 @@ tokens = torch.randint(1, 4096, (2, 6))         # (batch, gloss length)
 motion = model.generate(tokens, num_frames=64)  # (2, 3, 64, 27) = (N, xyz, T, joints)
 ```
 
+Run the **full bidirectional** system (speech→gloss→sign, and sign→gloss):
+
+```python
+import torch
+from signtranslator import ModelConfig, DiffusionConfig
+from signtranslator.models import BidirectionalSignTranslator
+
+model = BidirectionalSignTranslator(ModelConfig(), DiffusionConfig(),
+                                    src_vocab=256, gloss_vocab=128, num_glosses=64)
+
+# speech/text tokens -> gloss reordering -> 3D signing motion (with CFG)
+src = torch.randint(3, 256, (2, 8))
+out = model.translate_speech_to_sign(src, num_frames=64, guidance_scale=2.0)
+out["gloss"]    # decoded gloss id sequences
+out["motion"]   # (2, 3, 64, 27) generated motion
+
+# sign -> gloss recognition (CTC greedy decode)
+pose = torch.randn(2, 3, 64, 27)
+model.recognize(pose)
+```
+
 ## Testing
 
 ```bash
@@ -122,19 +149,25 @@ model **reduces its loss** when trained on structured synthetic data.
 
 ```
 signtranslator/
-  config.py            typed dataclass configs
-  skeleton/graph.py    skeleton graph + partitioned normalised adjacency
+  config.py             typed dataclass configs
+  skeleton/graph.py     skeleton graph + partitioned normalised adjacency
   models/
-    stgcn.py           ST-GCN motion encoder
-    encoders.py        text/speech encoder interfaces + stubs
-    alignment.py       projection heads + symmetric InfoNCE
-    denoiser.py        Transformer noise predictor
-    diffusion.py       Gaussian diffusion (DDPM/DDIM) math
-    pipeline.py        end-to-end SignTranslator
-  data/synthetic.py    paired (motion, gloss) synthetic dataset
-  train.py             training loop / CLI
-tests/                 pytest suite (math, shapes, gradients, learning)
-docs/                  architecture & math notes
+    stgcn.py            ST-GCN motion encoder (clip + per-frame outputs)
+    encoders.py         text/speech encoder interfaces + stubs
+    alignment.py        projection heads + symmetric InfoNCE
+    denoiser.py         Transformer noise predictor + cross-modal denoiser
+    diffusion.py        Gaussian diffusion (DDPM/DDIM) math
+    guided_diffusion.py classifier-free guidance (condition dropout + guided sampling)
+    recognition.py      CTC continuous sign recognition (sign→gloss)
+    planner.py          seq2seq semantic planner (English→gloss)
+    pipeline.py         SignTranslator + BidirectionalSignTranslator
+  data/
+    synthetic.py        paired (motion, gloss) synthetic dataset
+    preprocess.py       keypoint normalisation + augmentation
+  eval/metrics.py       recall@k, MPJPE, WER, top-1 accuracy
+  train.py              training loop / CLI
+tests/                  pytest suite (math, shapes, gradients, learning, invariances)
+docs/                   architecture & math notes
 ```
 
 ## References

@@ -85,3 +85,49 @@ Wires the above into one module, exposes the joint training `forward` and the
   improve naturalness and grammatical faithfulness.
 
 These are all additive: none require changing the manifold or diffusion core.
+
+## Bidirectional branches (added on top of the core)
+
+The system is now bidirectional and cross-modal. `BidirectionalSignTranslator`
+(`models/pipeline.py`) orchestrates:
+
+```
+speech/text tokens ─▶ GlossPlanner (seq2seq) ─▶ gloss tokens
+                                                     │
+                              StubTextEncoder.encode_sequence → per-token memory
+                                                     │  (cross-attention)
+                                                     ▼
+        noise ─▶ CrossModalDenoiser  ◀── GuidedMotionDiffusion (CFG) ─▶ 3D motion
+                                                     ▲
+                                            guidance_scale w
+
+        pose ─▶ STGCNEncoder(return_sequence) ─▶ CTC head ─▶ gloss  (recognition)
+```
+
+### `data/preprocess.py`
+Keypoint front-end with property-guaranteed transforms: `root_center`
+(translation invariance), `scale_normalize` (scale invariance), `rotate_y`
+(isometry), `mirror` (involution), `temporal_resample` (linear interpolation),
+`add_jitter`, and the `PoseNormalizer` / `RandomAugment` compositions.
+
+### `models/recognition.py` — `SignRecognizer`
+Per-frame ST-GCN features → linear head → CTC loss (blank = 0). Provides greedy
+best-path decoding and word-error-rate. This is the sign→text direction.
+
+### `models/denoiser.py` — `CrossModalDenoiser`
+Transformer *decoder* whose motion tokens cross-attend the full gloss memory. A
+learned `null_token` occupies memory slot 0 so that a per-sample `drop` produces
+a valid unconditional prediction — the mechanism classifier-free guidance needs.
+
+### `models/guided_diffusion.py` — `GuidedMotionDiffusion`
+Adds condition dropout during training and guided sampling
+`ε̂ = ε_uncond + w·(ε_cond − ε_uncond)`.
+
+### `models/planner.py` — `GlossPlanner`
+Encoder-decoder Transformer (`nn.Transformer`) with a causal decoder mask,
+teacher-forced training, and autoregressive greedy decoding. Stands in for the
+LLM semantic planner.
+
+### `eval/metrics.py`
+`retrieval_recall_at_k` (manifold quality), `mean_per_joint_position_error`
+(MPJPE), `top1_accuracy`, and `word_error_rate`.

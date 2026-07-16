@@ -14,11 +14,8 @@ Spatial configuration partitioning (K = 3):
     * subset 2 (centrifugal) : neighbours strictly farther from the centre.
 
 "Closer/farther" is measured by graph hop-distance to the centre joint. Each
-per-subset adjacency is symmetrically normalised
-
-    Â_k = D_k^{-1/2} (A_k) D_k^{-1/2},   D_k = diag(sum_j A_k[i, j]) + eps
-
-so that graph convolution ``sum_k Â_k X W_k`` is numerically stable.
+per-subset adjacency is normalised so that graph convolution
+``sum_k Â_k X W_k`` is numerically stable.
 
 We use **row (random-walk) normalisation** ``Â_k = D_k^{-1} A_k`` with
 ``D_k[i, i] = sum_j A_k[i, j]``. Unlike symmetric normalisation, this is valid

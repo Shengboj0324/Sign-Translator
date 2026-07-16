@@ -136,3 +136,39 @@ The diffusion generator is conditioned on the language latent `z^l` so that the
 same vector which contrastive learning aligns with motion also drives motion
 synthesis. `test_training_reduces_loss_on_synthetic_data` confirms the combined
 objective decreases under optimisation — the end-to-end correctness check.
+
+## 5. Continuous sign recognition (CTC)
+
+For the sign→gloss direction, per-frame class log-probabilities
+`y_t ∈ R^{V+1}` (V glosses + blank) are aligned to a gloss label sequence
+`ℓ` by summing over all frame-label alignments `π` that collapse (remove
+repeats, then blanks) to `ℓ`:
+
+```
+p(ℓ | x) = Σ_{π ∈ B^{-1}(ℓ)} Π_t y_{t, π_t},   L_CTC = −log p(ℓ | x).
+```
+
+Greedy decoding takes `argmax_t` per frame and applies the collapse `B`. Tests
+verify the collapse rule on hand-built paths and that `L_CTC` decreases when
+overfitting a fixed clip→gloss mapping.
+
+## 6. Classifier-free guidance
+
+Training randomly replaces the conditioning with a learned null context with
+probability `p_drop`, so one network learns both `ε_θ(x_t, t, c)` and
+`ε_θ(x_t, t, ∅)`. Sampling extrapolates
+
+```
+ε̂ = ε_θ(x_t, t, ∅) + w · ( ε_θ(x_t, t, c) − ε_θ(x_t, t, ∅) ).
+```
+
+`w = 1` recovers the conditional model (tested exactly); the null-token
+construction makes a fully-dropped sample's prediction equal the unconditional
+one (also tested exactly).
+
+## 7. Preprocessing invariances
+
+Each transform has a defining algebraic property, all asserted in tests:
+translation invariance of `root_center`, scale invariance of `scale_normalize`,
+distance-preservation (isometry) of `rotate_y`, involution of `mirror`, and
+linear-interpolation exactness of `temporal_resample`.

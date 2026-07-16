@@ -90,12 +90,22 @@ class StubTextEncoder(TextEncoder):
         self.norm = nn.LayerNorm(embed_dim)
 
     def forward(self, tokens: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
+        h, mask = self.encode_sequence(tokens, mask)
+        return self.norm(_masked_mean(h, mask))
+
+    def encode_sequence(self, tokens: torch.Tensor,
+                        mask: torch.Tensor | None = None):
+        """Return per-token features ``(N, L, D)`` and the validity ``mask``.
+
+        Used for cross-attention conditioning, where the generator attends to the
+        whole gloss sequence rather than a single pooled vector.
+        """
         if mask is None:
             mask = (tokens != self.padding_idx)
         key_padding = ~mask.bool()  # True where padded (nn convention)
         h = self.pos(self.token_emb(tokens))
         h = self.encoder(h, src_key_padding_mask=key_padding)
-        return self.norm(_masked_mean(h, mask))
+        return h, mask
 
 
 class StubSpeechEncoder(SpeechEncoder):

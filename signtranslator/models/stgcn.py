@@ -116,8 +116,16 @@ class STGCNEncoder(nn.Module):
         self.blocks = nn.ModuleList(blocks)
         self.out_dim = channels[-1]
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """x: (N, C_in, T, V) -> embedding (N, out_dim)."""
+    def forward(self, x: torch.Tensor, return_sequence: bool = False) -> torch.Tensor:
+        """Encode a pose clip.
+
+        Args:
+            x: ``(N, C_in, T, V)`` pose sequence.
+            return_sequence: if ``True`` return per-frame features
+                ``(N, T, out_dim)`` (pooled over joints only) for sequence
+                decoding (e.g. CTC recognition); otherwise return the clip
+                embedding ``(N, out_dim)`` (pooled over time and joints).
+        """
         if x.ndim != 4:
             raise ValueError("expected input of shape (N, C, T, V)")
         n, c, t, v = x.shape
@@ -127,8 +135,8 @@ class STGCNEncoder(nn.Module):
         x = x.view(n, v, c, t).permute(0, 2, 3, 1).contiguous()  # back to (N,C,T,V)
 
         for block in self.blocks:
-            x = block(x)
+            x = block(x)  # (N, out_dim, T, V) -- temporal length preserved (stride 1)
 
-        # Global average pool over time and joints.
-        x = x.mean(dim=(2, 3))  # (N, out_dim)
-        return x
+        if return_sequence:
+            return x.mean(dim=3).transpose(1, 2).contiguous()  # (N, T, out_dim)
+        return x.mean(dim=(2, 3))  # (N, out_dim)
