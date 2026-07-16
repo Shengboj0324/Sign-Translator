@@ -70,7 +70,12 @@ class GlossPlanner(nn.Module):
         self.loss_fn = nn.CrossEntropyLoss(ignore_index=PAD)
 
     def _embed(self, tokens: torch.Tensor, emb: nn.Embedding) -> torch.Tensor:
-        return self.pos(emb(tokens) * math.sqrt(self.d_model))
+        # NOTE: we deliberately do NOT scale embeddings by sqrt(d_model) here.
+        # With fixed sinusoidal position encodings (magnitude ~1), scaling the
+        # embeddings up by sqrt(d_model) drowns the positional signal, which
+        # crippled the monotonic-alignment (copy/substitution) the planner must
+        # learn. Keeping embeddings at unit-ish scale lets positions register.
+        return self.pos(emb(tokens))
 
     def forward(self, src: torch.Tensor, tgt_in: torch.Tensor) -> torch.Tensor:
         """src (N, S), tgt_in (N, U) -> logits (N, U, tgt_vocab)."""

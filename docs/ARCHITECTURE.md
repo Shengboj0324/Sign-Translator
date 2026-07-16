@@ -131,3 +131,41 @@ LLM semantic planner.
 ### `eval/metrics.py`
 `retrieval_recall_at_k` (manifold quality), `mean_per_joint_position_error`
 (MPJPE), `top1_accuracy`, and `word_error_rate`.
+
+## Data, training, and analysis pipeline
+
+### `data/corpus.py` — on-disk ingestion
+A corpus is `manifest.json` + `<split>.npz`. Each `.npz` stores `pose`,
+`concepts`, `src_concepts`, `lengths`. `collate_corpus` derives every branch's
+tensors from these so spoken tokens, gloss tokens, motion, and CTC targets stay
+consistent. The spoken→gloss map is a **fixed vocabulary bijection** (a cipher)
+shared across splits — a monotonic substitution the planner learns and
+generalises, rather than a positional permutation that memorises on small data.
+`validate_corpus` enforces the schema. Real corpora export into the same schema.
+
+### `training/trainer.py` — unified trainer
+Trains planner + generator + recogniser + manifold jointly on a weighted sum of
+losses, with AdamW, a linear-warmup→cosine LR schedule, gradient clipping,
+read-only per-epoch validation, and best-checkpoint tracking. To save one ST-GCN
+forward per step, `BidirectionalSignTranslator._encode_pose_shared` computes the
+per-frame features once and reuses them for CTC recognition and (via time-mean)
+the manifold embedding — these are provably the same clip embedding.
+
+### `analysis/report.py` — pass-gated evaluation
+Computes one metric per branch plus an integration diagnostic and checks each
+against a threshold. **Gated** (acceptance): `recognition_wer`,
+`planner_token_accuracy`, `recall_at_1`, `generation_val_loss`. **Diagnostic**
+(reported, non-gating): `cycle_consistency_wer`. Cycle-consistency is a full
+generative round-trip (gloss → generate → re-recognise); achieving low error
+requires high-fidelity conditional sampling that needs far more diffusion
+training/compute than a CPU smoke run, so it is tracked honestly but does not
+gate acceptance. The `run.py` CLI ties ingest → train → analyze and exits
+non-zero if the gated metrics do not pass.
+
+### Honest limitations of the trained demo
+The demo trains on a *synthetic* corpus sized for CPU. It proves each branch
+learns and generalises (val metrics on held-out data), the branches integrate
+(shared encoder, shared manifold), and the pipeline runs end-to-end. It does
+**not** claim production accuracy, real-corpus results, or high-fidelity avatar
+generation — those require real data, GPUs, and the foundation-model backends
+that sit behind the existing interfaces.

@@ -8,7 +8,7 @@ that shape mismatches surface early rather than deep inside a forward pass.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
 @dataclass
@@ -86,3 +86,28 @@ class TrainConfig:
     device: str = "cpu"
 
     extra: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class TrainerConfig:
+    """Configuration for the unified multi-branch :class:`Trainer`."""
+
+    epochs: int = 12
+    batch_size: int = 32
+    lr: float = 3e-4
+    weight_decay: float = 1e-4
+    warmup_frac: float = 0.1        # fraction of total steps for LR warmup
+    min_lr_frac: float = 0.05       # cosine floor as a fraction of peak lr
+    grad_clip: float = 1.0
+    loss_weights: Dict[str, float] = field(default_factory=lambda: {
+        "generation": 1.0, "alignment": 0.5, "planner": 1.0, "recognition": 1.0,
+    })
+    val_every: int = 1
+    seed: int = 0
+    device: str = "cpu"
+    ckpt_path: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        assert self.epochs > 0 and self.batch_size > 0
+        assert 0.0 <= self.warmup_frac < 1.0
+        assert 0.0 <= self.min_lr_frac <= 1.0

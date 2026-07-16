@@ -25,6 +25,7 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from ..config import ModelConfig, DiffusionConfig
 from ..skeleton.graph import SkeletonGraph
@@ -159,7 +160,7 @@ class BidirectionalSignTranslator(nn.Module):
 
     def __init__(self, model_cfg: ModelConfig, diff_cfg: DiffusionConfig,
                  src_vocab: int = 256, gloss_vocab: int = 128, num_glosses: int = 64,
-                 cond_drop_prob: float = 0.1,
+                 cond_drop_prob: float = 0.1, planner_layers: Optional[int] = None,
                  graph: Optional[SkeletonGraph] = None) -> None:
         super().__init__()
         self.model_cfg = model_cfg
@@ -169,11 +170,12 @@ class BidirectionalSignTranslator(nn.Module):
         self.graph = graph or SkeletonGraph(num_nodes=model_cfg.num_joints)
         adjacency = self.graph.adjacency()
 
-        # speech/text -> gloss
+        # speech/text -> gloss (the planner can be deepened independently since
+        # sequence reordering benefits from more decoder depth than pooling tasks)
         self.planner = GlossPlanner(src_vocab=src_vocab, tgt_vocab=gloss_vocab,
                                     d_model=model_cfg.text_embed_dim,
                                     nhead=model_cfg.text_heads,
-                                    num_layers=model_cfg.text_layers)
+                                    num_layers=planner_layers or model_cfg.text_layers)
 
         # gloss -> per-token memory for cross-attention conditioning
         self.gloss_encoder = StubTextEncoder(
@@ -203,6 +205,16 @@ class BidirectionalSignTranslator(nn.Module):
         )
         self.recognizer = SignRecognizer(recog_encoder, num_glosses=num_glosses)
 
+        # Shared contrastive manifold: the *same* ST-GCN encoder that feeds CTC
+        # recognition also produces a clip embedding aligned with the gloss
+        # encoder's pooled embedding. This ties the "novel core" manifold into
+        # the bidirectional system with full parameter sharing.
+        self.aligner = ContrastiveAligner(
+            motion_dim=recog_encoder.out_dim,
+            language_dim=model_cfg.text_embed_dim,
+            latent_dim=model_cfg.latent_dim,
+        )
+
     # -- conditioning helper ------------------------------------------------
     def gloss_memory(self, gloss_tokens: torch.Tensor):
         return self.gloss_encoder.encode_sequence(gloss_tokens)
@@ -219,22 +231,66 @@ class BidirectionalSignTranslator(nn.Module):
                          target_lengths: torch.Tensor) -> torch.Tensor:
         return self.recognizer.loss(pose, targets, target_lengths)
 
-    def training_step(self, batch: dict) -> dict:
+    def alignment_loss(self, pose: torch.Tensor, gloss_tokens: torch.Tensor) -> torch.Tensor:
+        motion_feat = self.recognizer.encoder(pose)                 # (N, D) pooled
+        lang_feat = self.gloss_encoder(gloss_tokens)                # (N, D) pooled
+        return self.aligner(motion_feat, lang_feat)["loss"]
+
+    def _encode_pose_shared(self, pose: torch.Tensor):
+        """Single ST-GCN pass reused by recognition (CTC) and alignment.
+
+        The clip embedding equals the time-mean of the per-frame features
+        (both are joint+time global averages), so recognition log-probs and the
+        pooled motion embedding are derived from one forward pass.
+        """
+        seq = self.recognizer.encoder(pose, return_sequence=True)   # (N, T, D)
+        pooled = seq.mean(dim=1)                                    # (N, D) clip embedding
+        logprobs = F.log_softmax(self.recognizer.classifier(seq), dim=-1)
+        return logprobs, pooled
+
+    @torch.no_grad()
+    def embed_motion(self, pose: torch.Tensor) -> torch.Tensor:
+        """Unit-norm motion embedding on the shared manifold (for retrieval)."""
+        return self.aligner.motion_head(self.recognizer.encoder(pose))
+
+    @torch.no_grad()
+    def embed_gloss(self, gloss_tokens: torch.Tensor) -> torch.Tensor:
+        """Unit-norm gloss embedding on the shared manifold (for retrieval)."""
+        return self.aligner.language_head(self.gloss_encoder(gloss_tokens))
+
+    def training_step(self, batch: dict, weights: Optional[dict] = None) -> dict:
         """Compute all applicable branch losses from a batch dict.
 
-        Expected keys (any subset): ``pose``, ``gloss_tokens`` (for generation),
-        ``src``+``gloss_seq`` (for planner), ``ctc_targets``+``ctc_lengths``
-        (for recognition).
+        Expected keys (any subset): ``pose``, ``gloss_tokens`` (generation +
+        alignment), ``src``+``gloss_seq`` (planner), ``ctc_targets``+
+        ``ctc_lengths`` (recognition). ``weights`` optionally scales each branch
+        in the returned ``total`` (default weight 1.0).
         """
+        w = weights or {}
         losses = {}
-        if "pose" in batch and "gloss_tokens" in batch:
-            losses["generation"] = self.generation_loss(batch["pose"], batch["gloss_tokens"])
+        pose = batch.get("pose")
+
+        # Share one ST-GCN pass across recognition + alignment when both apply.
+        need_align = pose is not None and "gloss_tokens" in batch
+        need_recog = pose is not None and "ctc_targets" in batch
+        logprobs = pooled = None
+        if need_align or need_recog:
+            logprobs, pooled = self._encode_pose_shared(pose)
+
+        if pose is not None and "gloss_tokens" in batch:
+            losses["generation"] = self.generation_loss(pose, batch["gloss_tokens"])
+            lang_feat = self.gloss_encoder(batch["gloss_tokens"])
+            losses["alignment"] = self.aligner(pooled, lang_feat)["loss"]
         if "src" in batch and "gloss_seq" in batch:
             losses["planner"] = self.planner_loss(batch["src"], batch["gloss_seq"])
-        if "pose" in batch and "ctc_targets" in batch:
-            losses["recognition"] = self.recognition_loss(
-                batch["pose"], batch["ctc_targets"], batch["ctc_lengths"])
-        losses["total"] = sum(losses.values())
+        if need_recog:
+            n, t, _ = logprobs.shape
+            input_lengths = torch.full((n,), t, dtype=torch.long, device=logprobs.device)
+            losses["recognition"] = self.recognizer.ctc(
+                logprobs.permute(1, 0, 2), batch["ctc_targets"],
+                input_lengths, batch["ctc_lengths"])
+
+        losses["total"] = sum(w.get(k, 1.0) * v for k, v in losses.items())
         return losses
 
     # -- inference ----------------------------------------------------------

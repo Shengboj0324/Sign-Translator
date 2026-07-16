@@ -15,7 +15,8 @@ are intentionally kept behind interfaces so the core builds, trains on synthetic
 data, and is fully unit-tested without large downloads or a GPU.
 """
 
-from .config import ModelConfig, DiffusionConfig, TrainConfig
+from .config import ModelConfig, DiffusionConfig, TrainConfig, TrainerConfig
 
-__all__ = ["ModelConfig", "DiffusionConfig", "TrainConfig", "__version__"]
+__all__ = ["ModelConfig", "DiffusionConfig", "TrainConfig", "TrainerConfig",
+           "__version__"]
 __version__ = "0.1.0"

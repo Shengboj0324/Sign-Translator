@@ -34,7 +34,10 @@ production-deployed product.** Concretely:
 | Evaluation metrics (recall@k, MPJPE, WER, accuracy) | **Implemented & tested** |
 | End-to-end joint training | **Implemented & tested** |
 | Speech / text encoders | **Interface + lightweight Transformer stub** (swap in Whisper/wav2vec2/LLM) |
-| Real sign-language data (How2Sign, PHOENIX-2014T) | **Not included** — synthetic dataset only |
+| On-disk data ingestion + corpus pipeline | **Implemented & tested** (synthetic corpus; real corpora plug into the same schema) |
+| Unified multi-branch trainer (epochs, LR schedule, checkpoints) | **Implemented & tested** |
+| Analysis/report stage with pass-gated metrics | **Implemented & tested** |
+| Real sign-language data (How2Sign, PHOENIX-2014T) | **Not included** — synthetic corpus only (same on-disk schema) |
 | Avatar rendering (NeRF / Gaussian Splatting / SMPL-X) | **Not implemented** (out of scope for this core) |
 
 The stubs are deliberate: every heavy foundation model sits behind a small
@@ -133,10 +136,55 @@ pose = torch.randn(2, 3, 64, 27)
 model.recognize(pose)
 ```
 
+## End-to-end pipeline: ingest → train → analyze
+
+A single command generates an on-disk corpus, trains all branches jointly, and
+prints a pass-gated analysis report:
+
+```bash
+python -m signtranslator.run --corpus-dir ./corpus --epochs 28 --lr 4e-3
+```
+
+Example output (CPU, ~37 s):
+
+```
+[ingest] corpus OK: K=12 L=4 joints=27 frames=32
+[model] params: 809,200
+epoch  28 | lr 2.00e-04 | train 0.5683 | val 0.5540
+Analysis report
+================================================
+  recognition_wer              0.0000  PASS
+  planner_token_accuracy       0.9805  PASS
+  recall_at_1                  0.9531  PASS
+  recall_at_5                  1.0000
+  generation_val_loss          0.3895  PASS
+  cycle_consistency_wer        0.9219  FAIL (diagnostic)
+------------------------------------------------
+  OVERALL (gated metrics): PASS
+```
+
+The four **gated** metrics each measure that one branch trained successfully:
+sign→gloss recognition (CTC WER), spoken→gloss translation (token accuracy),
+motion↔gloss manifold retrieval (recall@1), and conditional generation
+(diffusion denoising loss). **Cycle-consistency** (gloss→generate→re-recognize)
+is reported as a non-gating *diagnostic*: a high-fidelity generative round-trip
+needs substantially more diffusion training/compute than a CPU smoke run, so it
+is tracked but does not gate acceptance.
+
+### Data ingestion
+
+Corpora live on disk as `manifest.json` + `<split>.npz` (see
+`signtranslator/data/corpus.py`). `generate_corpus` writes a synthetic corpus
+whose spoken tokens, gloss tokens, 3D motion, and CTC targets are mutually
+consistent (a fixed vocabulary cipher for spoken→gloss, per-concept motion
+signatures for gloss→motion). `validate_corpus` checks the schema. Real corpora
+(How2Sign, PHOENIX-2014T) can be exported into the same `.npz` schema and read by
+`SignDataset` without code changes.
+
 ## Testing
 
 ```bash
-python -m pytest
+python -m pytest      # 97 tests
 ```
 
 The suite verifies (among other things): adjacency normalisation bounds the
@@ -162,11 +210,16 @@ signtranslator/
     planner.py          seq2seq semantic planner (English→gloss)
     pipeline.py         SignTranslator + BidirectionalSignTranslator
   data/
-    synthetic.py        paired (motion, gloss) synthetic dataset
+    synthetic.py        in-memory paired (motion, gloss) dataset
     preprocess.py       keypoint normalisation + augmentation
+    corpus.py           on-disk corpus: schema, generator, ingestion, collate
   eval/metrics.py       recall@k, MPJPE, WER, top-1 accuracy
-  train.py              training loop / CLI
-tests/                  pytest suite (math, shapes, gradients, learning, invariances)
+  training/trainer.py   unified multi-branch trainer (epochs, LR schedule, ckpt)
+  analysis/report.py    pass-gated evaluation report
+  train.py              single-branch training loop / CLI
+  run.py                end-to-end ingest -> train -> analyze CLI
+tests/                  pytest suite (math, shapes, gradients, learning, invariances,
+                        ingestion, training, analysis)
 docs/                   architecture & math notes
 ```
 
