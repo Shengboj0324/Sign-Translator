@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "signtranslator"
+version = "0.1.0"
+description = "Bidirectional neural sign-language translation with a shared motion-language manifold"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Sign-Translator project" }]
+dependencies = [
+    "torch>=2.0",
+    "numpy>=1.23",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+# Heavy foundation-model backends are optional and swapped in behind interfaces.
+# They are NOT required to build, train (on synthetic data), or test the core.
+foundation = [
+    "transformers>=4.40",
+    "soundfile>=0.12",
+]
+
+[tool.setuptools.packages.find]
+include = ["signtranslator*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
