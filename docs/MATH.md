@@ -166,7 +166,69 @@ probability `p_drop`, so one network learns both `ε_θ(x_t, t, c)` and
 construction makes a fully-dropped sample's prediction equal the unconditional
 one (also tested exactly).
 
-## 7. Preprocessing invariances
+## 7. Generation fidelity (what made the round-trip work)
+
+Cycle-consistency (gloss → generate → re-recognise) initially failed at 0.92 WER
+while ground-truth motion recognised at 0.00. Diagnosis, then four fixes:
+
+**Diagnosis.** Measuring x₀ error against noise level showed the model was
+excellent at low noise and useless at high noise:
+
+| t | ᾱ_t | x₀ MSE |
+|---|-----|--------|
+| 50 | 0.478 | 0.004 |
+| 80 | 0.085 | 0.123 |
+| 99 | ~0.000 | **0.712** |
+
+Conditional and unconditional predictions differed by only 0.11. The model had
+learned to *denoise* (read the signal out of `x_t`) but never to *synthesise
+from the condition* — and ancestral sampling begins at `t = T`, exactly where it
+was useless.
+
+**Fix 1 — standardisation.** Diffusion assumes ~unit-scale data;
+`z = (x - μ)/σ` with statistics from the train split only.
+
+**Fix 2 — x₀-parameterization.** The network predicts `x₀` rather than `ε`. For
+fixed `(x_t, t)` the two are affine in each other,
+
+```
+x₀ = (x_t − √(1−ᾱ_t) ε)/√ᾱ_t ,   ε = (x_t − √ᾱ_t x₀)/√(1−ᾱ_t),
+```
+
+so samplers and CFG are unchanged — but the loss now supervises the *signal*.
+A useful corollary: because the map is affine, guidance combined in x₀ space,
+`x₀_u + w(x₀_c − x₀_u)`, is *identical* to combining in ε space (tested).
+
+**Fix 3 — velocity loss.** `L = E‖x₀ − x̂₀‖² + λ E‖Δx₀ − Δx̂₀‖²` where `Δ` is the
+first temporal difference. The CTC recogniser reads temporal structure, so
+supervising it directly is what makes generated motion *legible*.
+
+**Fix 4 — high-noise timestep emphasis.** Uniform `t` spends nearly all gradient
+on easy low-noise denoising. Drawing `t` from the top of the schedule with
+probability `high_t_frac` forces the model to learn `cond → x₀`.
+
+Result: t=99 x₀ MSE **0.712 → 0.0038**, cycle-consistency WER **0.92 → 0.00**.
+
+A separate integration bug surfaced en route: fine-tuning the generator also
+updated the gloss encoder *shared* with the contrastive aligner, collapsing
+retrieval from 0.95 to 0.25. Freezing it starved the generator instead. The
+resolution is architectural — a generator-private `cond_encoder` distinct from
+the manifold's `gloss_encoder` — so the two objectives cannot interfere.
+
+## 8. Preference optimisation (Diffusion-DPO)
+
+With preferred `y_w` and rejected `y_l` under the same conditioning and a frozen
+reference `π_ref`:
+
+```
+L = −log σ( β [ (log π(y_w) − log π_ref(y_w)) − (log π(y_l) − log π_ref(y_l)) ] ).
+```
+
+Exact diffusion likelihoods are intractable, so the negative denoising error
+stands in for `log π`. At initialisation `π = π_ref`, the margin is exactly 0 and
+`L = log 2` — asserted in the tests as a closed-form check.
+
+## 9. Preprocessing invariances
 
 Each transform has a defining algebraic property, all asserted in tests:
 translation invariance of `root_center`, scale invariance of `scale_normalize`,

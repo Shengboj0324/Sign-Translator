@@ -32,7 +32,8 @@ class GraphConvolution(nn.Module):
     excluded from gradient updates.
     """
 
-    def __init__(self, in_channels: int, out_channels: int, adjacency: np.ndarray) -> None:
+    def __init__(self, in_channels: int, out_channels: int, adjacency: np.ndarray,
+                 adaptive: bool = False) -> None:
         super().__init__()
         if adjacency.ndim != 3 or adjacency.shape[1] != adjacency.shape[2]:
             raise ValueError("adjacency must have shape (K, V, V)")
@@ -41,6 +42,19 @@ class GraphConvolution(nn.Module):
         self.register_buffer("A", torch.as_tensor(adjacency, dtype=torch.float32))
         # One 1x1 conv emitting K*out_channels, reshaped to (N, K, C_out, T, V).
         self.theta = nn.Conv2d(in_channels, out_channels * self.num_partitions, kernel_size=1)
+
+        # Optional **learnable adjacency refinement** (CTR-GCN / 2s-AGCN idea):
+        # the anatomical skeleton is not the only useful topology -- signing
+        # couples joints that share no bone (e.g. the two hands during a
+        # two-handed sign). A residual, zero-initialised term lets the model
+        # learn such edges while starting exactly at the anatomical prior.
+        self.adaptive = adaptive
+        if adaptive:
+            self.A_refine = nn.Parameter(torch.zeros_like(self.A))
+
+    def effective_adjacency(self) -> torch.Tensor:
+        """Anatomical adjacency plus (if enabled) the learned refinement."""
+        return self.A + self.A_refine if self.adaptive else self.A
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: (N, C_in, T, V)
@@ -51,7 +65,7 @@ class GraphConvolution(nn.Module):
         feat = feat.view(n, self.num_partitions, self.out_channels, t, v)
         # Contract joints with each partition adjacency and sum over partitions.
         #   out[n,c,t,w] = sum_{k,v} feat[n,k,c,t,v] * A[k,v,w]
-        out = torch.einsum("nkctv,kvw->nctw", feat, self.A)
+        out = torch.einsum("nkctv,kvw->nctw", feat, self.effective_adjacency())
         return out.contiguous()
 
 
@@ -60,12 +74,12 @@ class STGCNBlock(nn.Module):
 
     def __init__(self, in_channels: int, out_channels: int, adjacency: np.ndarray,
                  temporal_kernel: int = 9, stride: int = 1, dropout: float = 0.0,
-                 residual: bool = True) -> None:
+                 residual: bool = True, adaptive: bool = False) -> None:
         super().__init__()
         assert temporal_kernel % 2 == 1, "temporal kernel must be odd for 'same' padding"
         pad = (temporal_kernel - 1) // 2
 
-        self.gcn = GraphConvolution(in_channels, out_channels, adjacency)
+        self.gcn = GraphConvolution(in_channels, out_channels, adjacency, adaptive=adaptive)
         self.gcn_bn = nn.BatchNorm2d(out_channels)
 
         self.tcn = nn.Sequential(
@@ -98,7 +112,8 @@ class STGCNEncoder(nn.Module):
 
     def __init__(self, in_channels: int, adjacency: np.ndarray,
                  channels: Sequence[int] = (64, 128, 256),
-                 temporal_kernel: int = 9, num_joints: int | None = None) -> None:
+                 temporal_kernel: int = 9, num_joints: int | None = None,
+                 adaptive: bool = False) -> None:
         super().__init__()
         self.in_channels = in_channels
         self.num_joints = num_joints if num_joints is not None else adjacency.shape[-1]
@@ -110,7 +125,7 @@ class STGCNEncoder(nn.Module):
         for i, ch in enumerate(channels):
             blocks.append(
                 STGCNBlock(prev, ch, adjacency, temporal_kernel=temporal_kernel,
-                           residual=(i > 0))
+                           residual=(i > 0), adaptive=adaptive)
             )
             prev = ch
         self.blocks = nn.ModuleList(blocks)

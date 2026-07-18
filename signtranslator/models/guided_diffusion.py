@@ -37,32 +37,42 @@ class GuidedMotionDiffusion(GaussianMotionDiffusion):
     # -- training with condition dropout -----------------------------------
     def p_losses(self, x_start: torch.Tensor, t: torch.Tensor, cond=None,
                  noise: Optional[torch.Tensor] = None) -> torch.Tensor:
-        if noise is None:
-            noise = torch.randn_like(x_start)
-        x_t = self.q_sample(x_start, t, noise=noise)
         drop = None
         if cond is not None and self.cond_drop_prob > 0:
             drop = torch.rand(x_start.shape[0], device=x_start.device) < self.cond_drop_prob
-        eps_hat = self.denoiser(x_t, t, cond, drop=drop)
-        return torch.nn.functional.mse_loss(eps_hat, noise)
+        # Delegate to the base loss so eps/x0 parameterization and the velocity
+        # term are handled in exactly one place.
+        return super().p_losses(x_start, t, cond=cond, noise=noise, drop=drop)
 
-    # -- guided noise prediction -------------------------------------------
+    # -- guided prediction --------------------------------------------------
+    def _guided_predictions(self, x: torch.Tensor, t: torch.Tensor, cond,
+                            guidance_scale: float):
+        """Return CFG-combined ``(eps, x_start)``.
+
+        Guidance may be applied in either space: for fixed ``(x_t, t)``, x_0 and
+        eps are affine functions of one another, so
+        ``x0_u + w (x0_c - x0_u)`` corresponds exactly to
+        ``eps_u + w (eps_c - eps_u)``. We combine x_0 and derive eps from it.
+        """
+        if cond is None or guidance_scale == 1.0:
+            return self.model_predictions(x, t, cond)
+        all_drop = torch.ones(x.shape[0], dtype=torch.bool, device=x.device)
+        _, x0_cond = self.model_predictions(x, t, cond, drop=None)
+        _, x0_uncond = self.model_predictions(x, t, cond, drop=all_drop)
+        x_start = x0_uncond + guidance_scale * (x0_cond - x0_uncond)
+        x_start = x_start.clamp(-10.0, 10.0)
+        return self.predict_noise_from_start(x, t, x_start), x_start
+
     def _guided_eps(self, x: torch.Tensor, t: torch.Tensor, cond,
                     guidance_scale: float) -> torch.Tensor:
-        if cond is None or guidance_scale == 1.0:
-            return self.denoiser(x, t, cond)
-        n = x.shape[0]
-        all_drop = torch.ones(n, dtype=torch.bool, device=x.device)
-        eps_cond = self.denoiser(x, t, cond, drop=None)
-        eps_uncond = self.denoiser(x, t, cond, drop=all_drop)
-        return eps_uncond + guidance_scale * (eps_cond - eps_uncond)
+        """Backwards-compatible accessor returning only the guided noise."""
+        return self._guided_predictions(x, t, cond, guidance_scale)[0]
 
     # -- guided sampling ----------------------------------------------------
     @torch.no_grad()
     def p_sample(self, x_t: torch.Tensor, t: torch.Tensor, cond=None,
                  guidance_scale: float = 1.0) -> torch.Tensor:
-        eps_hat = self._guided_eps(x_t, t, cond, guidance_scale)
-        x_start = self.predict_start_from_noise(x_t, t, eps_hat).clamp(-10.0, 10.0)
+        _, x_start = self._guided_predictions(x_t, t, cond, guidance_scale)
         mean, _, log_var = self.q_posterior_mean_variance(x_start, x_t, t)
         noise = torch.randn_like(x_t)
         nonzero = (t != 0).float().view(-1, *([1] * (x_t.ndim - 1)))
@@ -86,8 +96,7 @@ class GuidedMotionDiffusion(GaussianMotionDiffusion):
         x = torch.randn(shape, device=device)
         for k, i in enumerate(step_indices):
             t = torch.full((shape[0],), int(i), device=device, dtype=torch.long)
-            eps_hat = self._guided_eps(x, t, cond, guidance_scale)
-            x_start = self.predict_start_from_noise(x, t, eps_hat).clamp(-10.0, 10.0)
+            eps_hat, x_start = self._guided_predictions(x, t, cond, guidance_scale)
             abar_t = _extract(self.alphas_cumprod, t, x.shape)
             if k < len(step_indices) - 1:
                 t_next = torch.full((shape[0],), int(step_indices[k + 1]),

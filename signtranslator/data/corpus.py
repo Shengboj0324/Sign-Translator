@@ -52,15 +52,19 @@ class CorpusSpec:
     src_vocab: int             # spoken-language token vocabulary
     gloss_vocab: int           # gloss token vocabulary (planner target + conditioning)
     num_glosses: int           # CTC classes (== num_concepts)
+    speech_frames: int = 64    # frames of acoustic features per utterance
+    speech_dim: int = 40       # mel-filterbank channels
 
     @staticmethod
     def build(num_concepts: int, seq_len: int, num_joints: int,
-              in_channels: int, num_frames: int) -> "CorpusSpec":
+              in_channels: int, num_frames: int, speech_frames: int = 64,
+              speech_dim: int = 40) -> "CorpusSpec":
         vocab = num_concepts + CONTENT_OFFSET
         return CorpusSpec(
             num_concepts=num_concepts, seq_len=seq_len, num_joints=num_joints,
             in_channels=in_channels, num_frames=num_frames,
             src_vocab=vocab, gloss_vocab=vocab, num_glosses=num_concepts,
+            speech_frames=speech_frames, speech_dim=speech_dim,
         )
 
 
@@ -89,8 +93,13 @@ def generate_corpus(out_dir: str, spec: Optional[CorpusSpec] = None,
     freqs = rng.uniform(0.5, 3.0, size=(K, V, C))
     phases = rng.uniform(0, 2 * np.pi, size=(K, V, C))
     amps = rng.uniform(0.5, 1.5, size=(K, V, C))
+    # Per-concept acoustic signature: a mel-filterbank profile plus a temporal
+    # modulation, standing in for the spectrogram of the spoken word.
+    mel_profile = rng.normal(0.0, 1.0, size=(K, spec.speech_dim))
+    mel_mod = rng.uniform(1.0, 4.0, size=(K,))
 
     seg_bounds = np.linspace(0, T, spec.seq_len + 1).astype(int)
+    sp_bounds = np.linspace(0, spec.speech_frames, spec.seq_len + 1).astype(int)
     # Fixed spoken->gloss vocabulary bijection (shared across splits).
     perm = np.random.default_rng(seed + 999).permutation(K)
 
@@ -99,6 +108,7 @@ def generate_corpus(out_dir: str, spec: Optional[CorpusSpec] = None,
         concepts = r.integers(0, K, size=(n, spec.seq_len))  # 0..K-1
         src_concepts = perm[concepts]                        # ciphered spoken ids
         pose = np.zeros((n, C, T, V), dtype=np.float32)
+        speech = np.zeros((n, spec.speech_frames, spec.speech_dim), dtype=np.float32)
         for i in range(n):
             for s in range(spec.seq_len):
                 k = concepts[i, s]
@@ -106,19 +116,44 @@ def generate_corpus(out_dir: str, spec: Optional[CorpusSpec] = None,
                 seg = _concept_trajectory(freqs[k], phases[k], amps[k], hi - lo)
                 seg = seg + r.normal(0, noise, size=(C, 1, V))
                 pose[i, :, lo:hi, :] = seg
+
+                # Acoustic segment for the *spoken* word (indexed by the
+                # ciphered id, since speech carries spoken-language identity).
+                slo, shi = sp_bounds[s], sp_bounds[s + 1]
+                sk = src_concepts[i, s]
+                tt = np.linspace(0, 1, shi - slo)[:, None]
+                seg_sp = (mel_profile[sk][None, :]
+                          * (1.0 + 0.3 * np.sin(2 * np.pi * mel_mod[sk] * tt)))
+                speech[i, slo:shi] = seg_sp + r.normal(0, noise, size=seg_sp.shape)
         lengths = np.full(n, spec.seq_len, dtype=np.int64)
-        return pose, concepts.astype(np.int64), src_concepts.astype(np.int64), lengths
+        return (pose, concepts.astype(np.int64), src_concepts.astype(np.int64),
+                speech, lengths)
 
     split_counts = {}
+    train_pose = None
     for j, (split, n) in enumerate(counts.items()):
-        pose, concepts, src_concepts, lengths = make_split(n, seed + 1 + j)
+        pose, concepts, src_concepts, speech, lengths = make_split(n, seed + 1 + j)
         np.savez_compressed(os.path.join(out_dir, f"{split}.npz"),
                             pose=pose, concepts=concepts,
-                            src_concepts=src_concepts, lengths=lengths)
+                            src_concepts=src_concepts, speech=speech,
+                            lengths=lengths)
         split_counts[split] = int(n)
+        if split == "train":
+            train_pose = pose
+
+    # Normalisation statistics are computed from the TRAIN split only (never
+    # from val/test) and applied to every split -- standard practice that avoids
+    # leaking held-out statistics into evaluation. Shape (C, 1, V): per channel
+    # and joint, pooled over samples and time.
+    if train_pose is None:
+        train_pose = pose
+    mean = train_pose.mean(axis=(0, 2), keepdims=True)[0]      # (C, 1, V)
+    std = train_pose.std(axis=(0, 2), keepdims=True)[0]        # (C, 1, V)
+    std = np.maximum(std, 1e-3)
 
     manifest = {"spec": asdict(spec), "splits": split_counts, "seed": seed,
-                "perm": perm.tolist()}
+                "perm": perm.tolist(),
+                "pose_mean": mean.tolist(), "pose_std": std.tolist()}
     with open(os.path.join(out_dir, "manifest.json"), "w") as f:
         json.dump(manifest, f, indent=2)
     return spec
@@ -153,28 +188,78 @@ def validate_corpus(corpus_dir: str) -> CorpusSpec:
                 raise ValueError(f"{split}: {name} out of range [0, {spec.num_concepts})")
         if not np.isfinite(pose).all():
             raise ValueError(f"{split}: non-finite pose values")
+        with np.load(path) as z:
+            if "speech" in z.files:
+                speech = z["speech"]
+                if speech.shape != (n, spec.speech_frames, spec.speech_dim):
+                    raise ValueError(f"{split}: speech shape {speech.shape} != expected")
+                if not np.isfinite(speech).all():
+                    raise ValueError(f"{split}: non-finite speech values")
     return spec
 
 
-class SignDataset(Dataset):
-    """Reads one split of an on-disk corpus."""
+class PoseStandardizer:
+    """Applies corpus normalisation statistics: ``z = (x - mean) / std``.
 
-    def __init__(self, corpus_dir: str, split: str = "train") -> None:
-        self.spec = CorpusSpec(**load_manifest(corpus_dir)["spec"])
+    Diffusion models assume roughly unit-scale data; standardising the pose
+    channels materially improves generative fidelity. Statistics come from the
+    train split only.
+    """
+
+    def __init__(self, mean: torch.Tensor, std: torch.Tensor) -> None:
+        self.mean = mean          # (C, 1, V)
+        self.std = std            # (C, 1, V)
+
+    @staticmethod
+    def from_manifest(manifest: dict) -> "PoseStandardizer":
+        mean = torch.tensor(manifest["pose_mean"], dtype=torch.float32)
+        std = torch.tensor(manifest["pose_std"], dtype=torch.float32)
+        return PoseStandardizer(mean, std)
+
+    def _broadcast(self, x: torch.Tensor):
+        # Accept (C, T, V) or (N, C, T, V).
+        if x.dim() == 4:
+            return self.mean.unsqueeze(0).to(x.device), self.std.unsqueeze(0).to(x.device)
+        return self.mean.to(x.device), self.std.to(x.device)
+
+    def normalize(self, x: torch.Tensor) -> torch.Tensor:
+        m, s = self._broadcast(x)
+        return (x - m) / s
+
+    def denormalize(self, z: torch.Tensor) -> torch.Tensor:
+        m, s = self._broadcast(z)
+        return z * s + m
+
+
+class SignDataset(Dataset):
+    """Reads one split of an on-disk corpus (pose standardised by default)."""
+
+    def __init__(self, corpus_dir: str, split: str = "train",
+                 normalize: bool = True) -> None:
+        manifest = load_manifest(corpus_dir)
+        self.spec = CorpusSpec(**manifest["spec"])
+        self.standardizer = PoseStandardizer.from_manifest(manifest)
         with np.load(os.path.join(corpus_dir, f"{split}.npz")) as z:
             self.pose = torch.from_numpy(z["pose"])
             self.concepts = torch.from_numpy(z["concepts"])
             self.src_concepts = torch.from_numpy(z["src_concepts"])
             self.lengths = torch.from_numpy(z["lengths"])
+            self.speech = (torch.from_numpy(z["speech"]) if "speech" in z.files
+                           else None)
+        if normalize:
+            self.pose = self.standardizer.normalize(self.pose)
 
     def __len__(self) -> int:
         return self.pose.shape[0]
 
     def __getitem__(self, idx: int) -> dict:
         n = int(self.lengths[idx])
-        return {"pose": self.pose[idx],
+        item = {"pose": self.pose[idx],
                 "concepts": self.concepts[idx, :n],
                 "src_concepts": self.src_concepts[idx, :n]}
+        if self.speech is not None:
+            item["speech"] = self.speech[idx]
+        return item
 
 
 def collate_corpus(batch: List[dict]) -> dict:
@@ -209,7 +294,11 @@ def collate_corpus(batch: List[dict]) -> dict:
     ctc_targets = torch.cat(ctc_parts, dim=0)
     ctc_lengths = lengths.clone()
 
-    return {
+    out_speech = None
+    if "speech" in batch[0]:
+        out_speech = torch.stack([b["speech"] for b in batch], dim=0)
+
+    result = {
         "pose": pose,
         "concepts": concept_lists,
         "gloss_tokens": gloss_tokens,
@@ -218,3 +307,11 @@ def collate_corpus(batch: List[dict]) -> dict:
         "ctc_targets": ctc_targets,
         "ctc_lengths": ctc_lengths,
     }
+    if out_speech is not None:
+        result["speech"] = out_speech
+        # The speech branch predicts the *spoken* token sequence, so its CTC
+        # targets come from src_concepts (1..K), not the gloss order.
+        result["speech_ctc_targets"] = torch.cat(
+            [sc + 1 for sc in src_lists], dim=0)
+        result["speech_ctc_lengths"] = lengths.clone()
+    return result

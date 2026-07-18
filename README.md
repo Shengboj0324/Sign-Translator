@@ -34,7 +34,14 @@ production-deployed product.** Concretely:
 | Evaluation metrics (recall@k, MPJPE, WER, accuracy) | **Implemented & tested** |
 | End-to-end joint training | **Implemented & tested** |
 | Speech / text encoders | **Interface + lightweight Transformer stub** (swap in Whisper/wav2vec2/LLM) |
+| Speech front-end (audio features → spoken tokens, CTC) | **Implemented & tested** |
+| Full audio → spoken tokens → gloss → 3D motion path | **Implemented & tested** |
 | On-disk data ingestion + corpus pipeline | **Implemented & tested** (synthetic corpus; real corpora plug into the same schema) |
+| Data quality inspection + cleaning (NaN/dropped/outlier/frozen/duplicate) | **Implemented & tested** |
+| Training-readiness audit (coverage, balance, split leakage, CTC feasibility) | **Implemented & tested** |
+| Keypoint adapters (MediaPipe Holistic, OpenPose → skeleton) | **Implemented & tested** |
+| Adaptive graph refinement (CTR-GCN / 2s-AGCN style learnable adjacency) | **Implemented & tested** |
+| Preference optimisation (Diffusion-DPO + naturalness proxies) | **Implemented & tested** |
 | Unified multi-branch trainer (epochs, LR schedule, checkpoints) | **Implemented & tested** |
 | Analysis/report stage with pass-gated metrics | **Implemented & tested** |
 | Real sign-language data (How2Sign, PHOENIX-2014T) | **Not included** — synthetic corpus only (same on-disk schema) |
@@ -145,41 +152,98 @@ prints a pass-gated analysis report:
 python -m signtranslator.run --corpus-dir ./corpus --epochs 28 --lr 4e-3
 ```
 
-Example output (CPU, ~37 s):
+Measured result on a held-out validation split:
 
 ```
-[ingest] corpus OK: K=12 L=4 joints=27 frames=32
-[model] params: 809,200
-epoch  28 | lr 2.00e-04 | train 0.5683 | val 0.5540
 Analysis report
 ================================================
   recognition_wer              0.0000  PASS
-  planner_token_accuracy       0.9805  PASS
+  planner_token_accuracy       0.9727  PASS
   recall_at_1                  0.9531  PASS
   recall_at_5                  1.0000
-  generation_val_loss          0.3895  PASS
-  cycle_consistency_wer        0.9219  FAIL (diagnostic)
+  generation_val_loss          0.1778  PASS
+  cycle_consistency_wer        0.0000  PASS
+  speech_wer                   0.0000  PASS
 ------------------------------------------------
   OVERALL (gated metrics): PASS
 ```
 
-The four **gated** metrics each measure that one branch trained successfully:
-sign→gloss recognition (CTC WER), spoken→gloss translation (token accuracy),
-motion↔gloss manifold retrieval (recall@1), and conditional generation
-(diffusion denoising loss). **Cycle-consistency** (gloss→generate→re-recognize)
-is reported as a non-gating *diagnostic*: a high-fidelity generative round-trip
-needs substantially more diffusion training/compute than a CPU smoke run, so it
-is tracked but does not gate acceptance.
+Every metric is **gated** — each measures that one branch works end to end:
+audio→spoken tokens (speech WER), sign→gloss recognition (CTC WER),
+spoken→gloss translation (token accuracy), motion↔gloss manifold retrieval
+(recall@1), conditional generation (diffusion objective), and the strictest of
+all, **cycle-consistency**: generate 3D motion from gloss, feed it back to the
+recogniser, and require the gloss to come back. At 0.0000 WER, generated motion
+is recognised *as accurately as ground-truth motion*.
+
+### Training schedule (three phases)
+
+Getting cycle-consistency to pass required more than tuning; see
+[`docs/MATH.md`](docs/MATH.md) for the derivations.
+
+1. **Joint** — all branches together. Discriminative branches converge in a few
+   hundred steps.
+2. **Generator fine-tune** — the diffusion generator needs far more updates than
+   the rest, so it is trained alone (with its private conditioning encoder) for
+   many cheap steps.
+3. **Polish** — a short low-LR joint pass re-converges every branch together.
+
+The generator additionally uses **x₀-prediction**, a **velocity loss**, pose
+**standardisation**, and **high-noise timestep emphasis**. Without the last of
+these the model learns only to denoise and never to synthesise from the
+conditioning — which is precisely where sampling starts.
 
 ### Data ingestion
 
 Corpora live on disk as `manifest.json` + `<split>.npz` (see
-`signtranslator/data/corpus.py`). `generate_corpus` writes a synthetic corpus
-whose spoken tokens, gloss tokens, 3D motion, and CTC targets are mutually
-consistent (a fixed vocabulary cipher for spoken→gloss, per-concept motion
-signatures for gloss→motion). `validate_corpus` checks the schema. Real corpora
-(How2Sign, PHOENIX-2014T) can be exported into the same `.npz` schema and read by
-`SignDataset` without code changes.
+`signtranslator/data/corpus.py`), carrying pose, gloss/spoken concepts, and
+acoustic features. `generate_corpus` writes a synthetic corpus whose spoken
+tokens, gloss tokens, 3D motion, audio features, and CTC targets are mutually
+consistent. `validate_corpus` checks the schema. Real corpora (How2Sign,
+PHOENIX-2014T) export into the same schema and are read by `SignDataset`
+without code changes.
+
+### Data cleaning and readiness
+
+```python
+from signtranslator.data import inspect_pose, clean_pose, assess_corpus
+
+print(inspect_pose(pose).summary())      # NaN/Inf, dropped keypoints, outliers,
+                                         # dead joints, frozen frames, duplicates
+clean, kept, rep = clean_pose(pose)      # interpolate gaps, clip spikes, drop
+                                         # unrecoverable samples (auditable)
+print(assess_corpus("./corpus").summary())
+```
+
+`assess_corpus` gates training on structural fitness — sample counts, per-class
+coverage in **both** splits, class balance, **split leakage** (byte-identical
+samples across train/val), CTC length feasibility, and normalisation sanity. The
+`run.py` pipeline refuses to train on a corpus that fails these checks.
+
+### Ingesting real pose estimators
+
+```python
+from signtranslator.data import mediapipe_holistic_adapter, clean_pose
+
+adapter = mediapipe_holistic_adapter(conf_threshold=0.3)
+res = adapter(body, right_hand, left_hand, body_conf=conf)  # -> 27-joint skeleton
+pose = res.pose; pose[res.missing] = float("nan")           # low-confidence -> missing
+pose, _, _ = clean_pose(pose.unsqueeze(0))                  # interpolated
+```
+
+### Preference optimisation (RLHF-style)
+
+```python
+from signtranslator.training import DiffusionDPO, naturalness_score, build_preference_pairs
+
+pref, rej = build_preference_pairs(candidates, naturalness_score)  # or human ratings
+dpo = DiffusionDPO(model.diffusion, beta=0.1)
+dpo.step(optimizer, pref, rej, cond=model.gloss_memory(gloss))
+```
+
+Naturalness proxies are minimum-jerk smoothness and bone-length consistency;
+swap in human ratings for true RLHF. A frozen reference policy keeps the tuned
+model from drifting away from the supervised solution.
 
 ## Testing
 
@@ -207,14 +271,20 @@ signtranslator/
     diffusion.py        Gaussian diffusion (DDPM/DDIM) math
     guided_diffusion.py classifier-free guidance (condition dropout + guided sampling)
     recognition.py      CTC continuous sign recognition (sign→gloss)
+    speech.py           acoustic front-end (audio→spoken tokens, CTC)
     planner.py          seq2seq semantic planner (English→gloss)
     pipeline.py         SignTranslator + BidirectionalSignTranslator
   data/
     synthetic.py        in-memory paired (motion, gloss) dataset
     preprocess.py       keypoint normalisation + augmentation
     corpus.py           on-disk corpus: schema, generator, ingestion, collate
+    quality.py          defect inspection + cleaning pipeline
+    readiness.py        training-readiness audit (gated)
+    adapters.py         MediaPipe/OpenPose → skeleton keypoint adapters
   eval/metrics.py       recall@k, MPJPE, WER, top-1 accuracy
-  training/trainer.py   unified multi-branch trainer (epochs, LR schedule, ckpt)
+  training/
+    trainer.py          unified multi-branch trainer + generator fine-tune
+    preference.py       Diffusion-DPO + naturalness proxies
   analysis/report.py    pass-gated evaluation report
   train.py              single-branch training loop / CLI
   run.py                end-to-end ingest -> train -> analyze CLI

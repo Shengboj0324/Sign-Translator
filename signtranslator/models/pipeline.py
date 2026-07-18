@@ -36,7 +36,9 @@ from .denoiser import MotionDenoiser, CrossModalDenoiser
 from .diffusion import GaussianMotionDiffusion
 from .guided_diffusion import GuidedMotionDiffusion
 from .recognition import SignRecognizer
+from .speech import SpeechRecognizer
 from .planner import GlossPlanner, BOS, EOS
+from ..data.corpus import CONTENT_OFFSET
 
 
 class SignTranslator(nn.Module):
@@ -177,8 +179,19 @@ class BidirectionalSignTranslator(nn.Module):
                                     nhead=model_cfg.text_heads,
                                     num_layers=planner_layers or model_cfg.text_layers)
 
-        # gloss -> per-token memory for cross-attention conditioning
+        # Two task-specific gloss encoders.
+        #
+        # `gloss_encoder` feeds the contrastive manifold (pooled sentence-level
+        # semantics). `cond_encoder` feeds the generator's cross-attention
+        # (per-token features driving motion synthesis). Sharing one encoder for
+        # both causes destructive interference: fine-tuning it for generation
+        # collapses retrieval, while freezing it starves the generator. Keeping
+        # them separate lets each objective converge without harming the other.
         self.gloss_encoder = StubTextEncoder(
+            vocab_size=gloss_vocab, embed_dim=model_cfg.text_embed_dim,
+            num_layers=model_cfg.text_layers, num_heads=model_cfg.text_heads,
+        )
+        self.cond_encoder = StubTextEncoder(
             vocab_size=gloss_vocab, embed_dim=model_cfg.text_embed_dim,
             num_layers=model_cfg.text_layers, num_heads=model_cfg.text_heads,
         )
@@ -194,6 +207,10 @@ class BidirectionalSignTranslator(nn.Module):
             denoiser, num_timesteps=diff_cfg.num_timesteps, schedule=diff_cfg.schedule,
             beta_start=diff_cfg.beta_start, beta_end=diff_cfg.beta_end,
             cond_drop_prob=cond_drop_prob,
+            parameterization=diff_cfg.parameterization,
+            velocity_weight=diff_cfg.velocity_weight,
+            high_t_frac=diff_cfg.high_t_frac,
+            high_t_start=diff_cfg.high_t_start,
         )
 
         # sign -> gloss recognition
@@ -215,9 +232,21 @@ class BidirectionalSignTranslator(nn.Module):
             latent_dim=model_cfg.latent_dim,
         )
 
+        # Acoustic front-end: audio features -> spoken tokens (CTC). Stands in
+        # for a speech foundation model (Whisper / wav2vec 2.0); swap by feeding
+        # that model's hidden states as `speech` features of matching width.
+        self.speech_recognizer = SpeechRecognizer(
+            input_dim=model_cfg.speech_input_dim,
+            num_tokens=num_glosses,
+            hidden_dim=model_cfg.text_embed_dim,
+            num_layers=model_cfg.text_layers,
+            num_heads=model_cfg.text_heads,
+        )
+
     # -- conditioning helper ------------------------------------------------
     def gloss_memory(self, gloss_tokens: torch.Tensor):
-        return self.gloss_encoder.encode_sequence(gloss_tokens)
+        """Per-token conditioning memory for the generator's cross-attention."""
+        return self.cond_encoder.encode_sequence(gloss_tokens)
 
     # -- per-branch losses --------------------------------------------------
     def planner_loss(self, src: torch.Tensor, gloss: torch.Tensor) -> torch.Tensor:
@@ -230,6 +259,16 @@ class BidirectionalSignTranslator(nn.Module):
     def recognition_loss(self, pose: torch.Tensor, targets: torch.Tensor,
                          target_lengths: torch.Tensor) -> torch.Tensor:
         return self.recognizer.loss(pose, targets, target_lengths)
+
+    def speech_loss(self, speech: torch.Tensor, targets: torch.Tensor,
+                    target_lengths: torch.Tensor) -> torch.Tensor:
+        """CTC loss for the acoustic branch (audio -> spoken tokens)."""
+        return self.speech_recognizer.loss(speech, targets, target_lengths)
+
+    @torch.no_grad()
+    def recognize_speech(self, speech: torch.Tensor):
+        """Decode audio features to spoken token ids (1..K)."""
+        return self.speech_recognizer.decode(speech)
 
     def alignment_loss(self, pose: torch.Tensor, gloss_tokens: torch.Tensor) -> torch.Tensor:
         motion_feat = self.recognizer.encoder(pose)                 # (N, D) pooled
@@ -289,6 +328,10 @@ class BidirectionalSignTranslator(nn.Module):
             losses["recognition"] = self.recognizer.ctc(
                 logprobs.permute(1, 0, 2), batch["ctc_targets"],
                 input_lengths, batch["ctc_lengths"])
+        if "speech" in batch and "speech_ctc_targets" in batch:
+            losses["speech"] = self.speech_loss(
+                batch["speech"], batch["speech_ctc_targets"],
+                batch["speech_ctc_lengths"])
 
         losses["total"] = sum(w.get(k, 1.0) * v for k, v in losses.items())
         return losses
@@ -323,6 +366,30 @@ class BidirectionalSignTranslator(nn.Module):
         motion = self.generate_from_gloss(gloss, num_frames=num_frames,
                                           guidance_scale=guidance_scale, ddim_steps=ddim_steps)
         return {"gloss": gloss_lists, "motion": motion}
+
+    @torch.no_grad()
+    def translate_audio_to_sign(self, speech: torch.Tensor,
+                                num_frames: Optional[int] = None,
+                                guidance_scale: float = 1.0, ddim_steps: int = 20,
+                                max_gloss_len: int = 16) -> dict:
+        """Full acoustic path: audio features -> spoken tokens -> gloss -> motion."""
+        self.eval()
+        device = next(self.parameters()).device
+        spoken = self.recognize_speech(speech.to(device))     # ids in 1..K
+        # Spoken CTC ids (1..K) -> planner source tokens (concept + offset).
+        max_len = max((len(s) for s in spoken), default=1) or 1
+        src = torch.zeros(len(spoken), max_len, dtype=torch.long, device=device)
+        for i, s in enumerate(spoken):
+            if s:
+                ids = torch.tensor([tok - 1 + CONTENT_OFFSET for tok in s],
+                                   dtype=torch.long, device=device)
+                src[i, :len(s)] = ids
+        out = self.translate_speech_to_sign(src, num_frames=num_frames,
+                                            guidance_scale=guidance_scale,
+                                            ddim_steps=ddim_steps,
+                                            max_gloss_len=max_gloss_len)
+        out["spoken_tokens"] = spoken
+        return out
 
     @torch.no_grad()
     def recognize(self, pose: torch.Tensor):

@@ -17,7 +17,8 @@ def _model_and_loader(tmp_path):
                             in_channels=3, num_frames=16)
     generate_corpus(str(tmp_path), spec=spec, counts={"train": 24, "val": 16}, seed=0)
     mcfg = ModelConfig(num_joints=27, num_frames=16, stgcn_channels=(16, 32),
-                       text_embed_dim=32, text_layers=2, text_heads=2, latent_dim=32)
+                       text_embed_dim=32, text_layers=2, text_heads=2, latent_dim=32,
+                       speech_input_dim=spec.speech_dim)
     dcfg = DiffusionConfig(num_timesteps=30, denoiser_dim=32, denoiser_layers=2,
                            denoiser_heads=2)
     model = BidirectionalSignTranslator(mcfg, dcfg, src_vocab=spec.src_vocab,
@@ -36,8 +37,9 @@ def test_analyze_produces_full_report(tmp_path):
                 "generation_val_loss", "cycle_consistency_wer"):
         assert key in report.metrics
     assert isinstance(report.passed, bool)
-    # Cycle-consistency is a diagnostic, not a gate.
-    assert "cycle_consistency_wer" not in report.gating
+    # Cycle-consistency is now a full acceptance gate: generated motion must be
+    # faithful enough for the recogniser to read it back.
+    assert "cycle_consistency_wer" in report.gating
     assert set(DEFAULT_THRESHOLDS.keys()) == report.gating
     assert "OVERALL" in report.summary()
 

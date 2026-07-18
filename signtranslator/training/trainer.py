@@ -141,6 +141,65 @@ class Trainer:
                     "global_step": self.global_step,
                     "best_val": self.best_val}, path)
 
+    @staticmethod
+    def finetune_generation(model, train_loader, val_loader=None, epochs: int = 60,
+                            lr: float = 1e-3, device: str = "cpu",
+                            grad_clip: float = 1.0, verbose: bool = False) -> dict:
+        """Curriculum stage: train **only** the conditional generator.
+
+        The discriminative branches (recognition, planner, alignment) converge in
+        a few hundred steps, whereas a diffusion generator needs far more. Once
+        the former have converged, continuing to run them wastes most of the
+        per-step cost. This stage optimises just the diffusion module, so many
+        more generator updates fit in the same budget.
+
+        Optimises the diffusion module and the generator-private
+        ``cond_encoder``. The manifold's ``gloss_encoder`` is deliberately NOT
+        touched: it is a separate encoder precisely so that generator
+        fine-tuning cannot collapse motion<->language retrieval.
+        """
+        params = list(model.diffusion.parameters()) + list(model.cond_encoder.parameters())
+        seen, unique = set(), []
+        for p in params:                      # de-duplicate any shared tensors
+            if id(p) not in seen:
+                seen.add(id(p))
+                unique.append(p)
+        opt = torch.optim.AdamW(unique, lr=lr, weight_decay=1e-4)
+        total_steps = epochs * max(1, len(train_loader))
+        sched = torch.optim.lr_scheduler.LambdaLR(
+            opt, cosine_warmup_lambda(total_steps, max(1, total_steps // 20), 0.05))
+
+        history: Dict[str, List[float]] = {"train_generation": [], "val_generation": []}
+        for epoch in range(epochs):
+            model.train()
+            agg, count = 0.0, 0
+            for batch in train_loader:
+                pose = batch["pose"].to(device)
+                gloss = batch["gloss_tokens"].to(device)
+                loss = model.generation_loss(pose, gloss)
+                opt.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(unique, grad_clip)
+                opt.step()
+                sched.step()
+                agg += float(loss)
+                count += 1
+            history["train_generation"].append(agg / max(1, count))
+
+            if val_loader is not None:
+                model.eval()
+                with torch.no_grad():
+                    v = [float(model.generation_loss(b["pose"].to(device),
+                                                     b["gloss_tokens"].to(device)))
+                         for b in val_loader]
+                history["val_generation"].append(sum(v) / max(1, len(v)))
+            if verbose and (epoch + 1) % 10 == 0:
+                msg = f"  [gen-ft] epoch {epoch + 1:3d} train {history['train_generation'][-1]:.4f}"
+                if history["val_generation"]:
+                    msg += f" val {history['val_generation'][-1]:.4f}"
+                print(msg)
+        return history
+
     def load(self, path: str, load_optimizer: bool = True) -> None:
         # weights_only=False: we load our own trusted checkpoints (which contain
         # optimizer state and Python scalars, not just tensors).

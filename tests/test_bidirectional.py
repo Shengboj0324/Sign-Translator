@@ -69,7 +69,7 @@ def test_recognize_returns_gloss_lists():
     assert isinstance(decoded, list) and len(decoded) == 3
 
 
-def test_generation_gradients_reach_denoiser_and_gloss_encoder():
+def test_generation_gradients_reach_denoiser_and_cond_encoder():
     m, mcfg = _model()
     batch = _batch(mcfg)
     # Warm up the zero-init denoiser output so upstream grads are non-zero.
@@ -78,4 +78,18 @@ def test_generation_gradients_reach_denoiser_and_gloss_encoder():
     opt.step(); opt.zero_grad()
     m.generation_loss(batch["pose"], batch["gloss_tokens"]).backward()
     assert m.diffusion.denoiser.input_proj.weight.grad.abs().sum() > 0
+    # Generation conditions on the generator-private encoder ...
+    assert m.cond_encoder.token_emb.weight.grad.abs().sum() > 0
+    # ... and must NOT touch the manifold encoder, or retrieval would collapse
+    # during generator fine-tuning.
+    assert (m.gloss_encoder.token_emb.weight.grad is None
+            or m.gloss_encoder.token_emb.weight.grad.abs().sum() == 0)
+
+
+def test_alignment_gradients_reach_manifold_encoder_only():
+    m, mcfg = _model()
+    batch = _batch(mcfg)
+    m.alignment_loss(batch["pose"], batch["gloss_tokens"]).backward()
     assert m.gloss_encoder.token_emb.weight.grad.abs().sum() > 0
+    assert (m.cond_encoder.token_emb.weight.grad is None
+            or m.cond_encoder.token_emb.weight.grad.abs().sum() == 0)

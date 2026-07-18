@@ -24,21 +24,23 @@ from ..data.corpus import CONTENT_OFFSET
 
 
 # Gated acceptance thresholds. Each directly measures that one branch trained.
+#
+# ``cycle_consistency_wer`` is the strictest, fully end-to-end check: gloss ->
+# generate 3D motion -> re-recognise. It only passes when generated motion is
+# faithful enough that the recogniser reads it about as well as ground-truth
+# motion, which requires x0-parameterization, pose standardisation, a velocity
+# loss, and high-noise timestep emphasis (see docs/MATH.md).
 DEFAULT_THRESHOLDS = {
     "recognition_wer": 0.30,          # <=  sign -> gloss CTC
     "planner_token_accuracy": 0.80,   # >=  spoken -> gloss
     "recall_at_1": 0.60,              # >=  motion<->gloss manifold
-    "generation_val_loss": 0.70,      # <=  conditional diffusion denoising
+    "generation_val_loss": 0.70,      # <=  conditional diffusion objective
+    "cycle_consistency_wer": 0.25,    # <=  gloss -> generate -> recognise
+    "speech_wer": 0.30,               # <=  audio -> spoken tokens (CTC)
 }
 
-# Metrics that are *reported but not gated*. Cycle-consistency is a full
-# generative round-trip (gloss -> generate -> recognise); achieving low error
-# requires high-fidelity conditional sampling that needs substantially more
-# diffusion training/compute than a CPU smoke run. It is tracked as an
-# integration diagnostic, not an acceptance gate.
-DIAGNOSTIC_THRESHOLDS = {
-    "cycle_consistency_wer": 0.70,    # <=  (informational)
-}
+# Reserved for metrics that are reported but not gated (currently none).
+DIAGNOSTIC_THRESHOLDS: Dict[str, float] = {}
 
 
 @dataclass
@@ -70,22 +72,31 @@ class AnalysisReport:
 
 def _gather(val_loader):
     poses, gloss_tokens, srcs, concept_lists = [], [], [], []
+    speeches, src_concept_lists = [], []
     for batch in val_loader:
         poses.append(batch["pose"])
         gloss_tokens.append(batch["gloss_tokens"])
         srcs.append(batch["src"])
         concept_lists.extend(batch["concepts"])
-    return poses, gloss_tokens, srcs, concept_lists
+        if "speech" in batch:
+            speeches.append(batch["speech"])
+            # Recover spoken concept ids from the speech CTC targets.
+            off = 0
+            for L in batch["ctc_lengths"].tolist():
+                src_concept_lists.append(batch["speech_ctc_targets"][off:off + L])
+                off += L
+    return poses, gloss_tokens, srcs, concept_lists, speeches, src_concept_lists
 
 
 @torch.no_grad()
 def analyze(model, val_loader, thresholds: Dict[str, float] = None,
-            cycle_subset: int = 16, ddim_steps: int = 8,
-            guidance_scale: float = 2.0) -> AnalysisReport:
+            cycle_subset: int = 24, ddim_steps: int = 20,
+            guidance_scale: float = 1.0) -> AnalysisReport:
     thresholds = {**DEFAULT_THRESHOLDS, **DIAGNOSTIC_THRESHOLDS, **(thresholds or {})}
     model.eval()
     device = next(model.parameters()).device
-    poses, gloss_tokens, srcs, concept_lists = _gather(val_loader)
+    (poses, gloss_tokens, srcs, concept_lists,
+     speeches, src_concept_lists) = _gather(val_loader)
 
     # ---- recognition WER (sign -> gloss), CTC ids are concept+1 -----------
     rec_hyps: List[List[int]] = []
@@ -129,6 +140,15 @@ def analyze(model, val_loader, thresholds: Dict[str, float] = None,
     cyc_refs = [[int(x) + 1 for x in c] for c in c_all]
     cycle_consistency_wer = word_error_rate(cyc_hyps, cyc_refs)
 
+    # ---- speech branch: audio -> spoken tokens ----------------------------
+    speech_wer = 0.0
+    if speeches:
+        sp_hyps: List[List[int]] = []
+        for s_batch in speeches:
+            sp_hyps.extend(model.recognize_speech(s_batch.to(device)))
+        sp_refs = [[int(x) for x in ref] for ref in src_concept_lists]
+        speech_wer = word_error_rate(sp_hyps, sp_refs)
+
     metrics = {
         "recognition_wer": recognition_wer,
         "planner_token_accuracy": planner_token_accuracy,
@@ -136,8 +156,10 @@ def analyze(model, val_loader, thresholds: Dict[str, float] = None,
         "recall_at_5": recalls[5],
         "generation_val_loss": generation_val_loss,
         "cycle_consistency_wer": cycle_consistency_wer,
+        "speech_wer": speech_wer,
     }
     checks = {
+        "speech_wer": speech_wer <= thresholds["speech_wer"],
         "recognition_wer": recognition_wer <= thresholds["recognition_wer"],
         "planner_token_accuracy": planner_token_accuracy >= thresholds["planner_token_accuracy"],
         "recall_at_1": recalls[1] >= thresholds["recall_at_1"],

@@ -60,11 +60,22 @@ class DiffusionConfig:
     denoiser_dim: int = 256
     denoiser_layers: int = 4
     denoiser_heads: int = 4
+    # "x0" prediction + a velocity term is the higher-fidelity setting for
+    # motion (cf. MDM); "eps" is the classic DDPM objective.
+    parameterization: str = "x0"
+    velocity_weight: float = 1.0
+    # Emphasise high-noise timesteps during training so the model learns to
+    # synthesise from the conditioning (which is what sampling from t=T needs),
+    # not merely to denoise a partially-visible signal.
+    high_t_frac: float = 0.65
+    high_t_start: float = 0.85
 
     def __post_init__(self) -> None:
         assert self.num_timesteps > 0
         assert 0.0 < self.beta_start < self.beta_end < 1.0
         assert self.schedule in {"linear", "cosine"}
+        assert self.parameterization in {"eps", "x0"}
+        assert self.velocity_weight >= 0.0
 
 
 @dataclass
@@ -101,6 +112,7 @@ class TrainerConfig:
     grad_clip: float = 1.0
     loss_weights: Dict[str, float] = field(default_factory=lambda: {
         "generation": 1.0, "alignment": 0.5, "planner": 1.0, "recognition": 1.0,
+        "speech": 1.0,
     })
     val_every: int = 1
     seed: int = 0

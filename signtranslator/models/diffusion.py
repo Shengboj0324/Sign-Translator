@@ -53,10 +53,32 @@ class GaussianMotionDiffusion(nn.Module):
 
     def __init__(self, denoiser: nn.Module, num_timesteps: int = 1000,
                  schedule: str = "cosine", beta_start: float = 1e-4,
-                 beta_end: float = 2e-2) -> None:
+                 beta_end: float = 2e-2, parameterization: str = "eps",
+                 velocity_weight: float = 0.0, high_t_frac: float = 0.0,
+                 high_t_start: float = 0.7) -> None:
         super().__init__()
+        if parameterization not in {"eps", "x0"}:
+            raise ValueError("parameterization must be 'eps' or 'x0'")
         self.denoiser = denoiser
         self.num_timesteps = num_timesteps
+        # "eps": network predicts the noise (Ho et al.).
+        # "x0" : network predicts the clean signal directly. For *motion*
+        #        diffusion this is markedly higher-fidelity (cf. MDM), because
+        #        capacity is spent on the signal rather than on noise at high t.
+        self.parameterization = parameterization
+        self.velocity_weight = velocity_weight
+        # Uniform timestep sampling spends most gradient on *easy* low-noise
+        # denoising, where x_t already reveals the signal. Sampling, however,
+        # starts at t=T where the model must synthesise from the conditioning
+        # alone. ``high_t_frac`` re-balances training toward that high-noise
+        # regime (draw t from the top ``1-high_t_start`` fraction of the
+        # schedule with probability ``high_t_frac``).
+        if not 0.0 <= high_t_frac <= 1.0:
+            raise ValueError("high_t_frac must be in [0, 1]")
+        if not 0.0 <= high_t_start < 1.0:
+            raise ValueError("high_t_start must be in [0, 1)")
+        self.high_t_frac = high_t_frac
+        self.high_t_start = high_t_start
 
         betas = make_beta_schedule(schedule, num_timesteps, beta_start, beta_end)
         alphas = 1.0 - betas
@@ -98,6 +120,32 @@ class GaussianMotionDiffusion(nn.Module):
         return (_extract(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t
                 - _extract(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape) * noise)
 
+    def predict_noise_from_start(self, x_t: torch.Tensor, t: torch.Tensor,
+                                 x_start: torch.Tensor) -> torch.Tensor:
+        """Inverse of :meth:`predict_start_from_noise`:
+        eps = (x_t - sqrt(abar) x_0) / sqrt(1 - abar)."""
+        return ((x_t - _extract(self.sqrt_alphas_cumprod, t, x_t.shape) * x_start)
+                / _extract(self.sqrt_one_minus_alphas_cumprod, t, x_t.shape))
+
+    def model_predictions(self, x_t: torch.Tensor, t: torch.Tensor, cond=None,
+                          clip_x_start: bool = True, **denoiser_kwargs):
+        """Run the denoiser and return ``(eps, x_start)`` for either parameterization.
+
+        Centralising this conversion means every sampler and loss works
+        identically whichever quantity the network predicts.
+        """
+        out = self.denoiser(x_t, t, cond, **denoiser_kwargs)
+        if self.parameterization == "eps":
+            eps = out
+            x_start = self.predict_start_from_noise(x_t, t, eps)
+            if clip_x_start:
+                x_start = x_start.clamp(-10.0, 10.0)
+                eps = self.predict_noise_from_start(x_t, t, x_start)
+        else:  # "x0"
+            x_start = out.clamp(-10.0, 10.0) if clip_x_start else out
+            eps = self.predict_noise_from_start(x_t, t, x_start)
+        return eps, x_start
+
     def q_posterior_mean_variance(self, x_start: torch.Tensor, x_t: torch.Tensor,
                                   t: torch.Tensor):
         """Return (mean, variance, log_variance) of q(x_{t-1} | x_t, x_0)."""
@@ -108,21 +156,52 @@ class GaussianMotionDiffusion(nn.Module):
         return mean, var, log_var
 
     # -- training loss ------------------------------------------------------
+    @staticmethod
+    def _velocity(x: torch.Tensor) -> torch.Tensor:
+        """First temporal difference along the frame axis of (N, C, T, V)."""
+        return x[:, :, 1:] - x[:, :, :-1]
+
     def p_losses(self, x_start: torch.Tensor, t: torch.Tensor,
                  cond: Optional[torch.Tensor] = None,
-                 noise: Optional[torch.Tensor] = None) -> torch.Tensor:
-        """Simplified DDPM training loss E|| eps - eps_theta ||^2."""
+                 noise: Optional[torch.Tensor] = None,
+                 **denoiser_kwargs) -> torch.Tensor:
+        """Training loss.
+
+        ``eps``: the simplified DDPM objective E|| eps - eps_theta ||^2.
+        ``x0`` : E|| x_0 - x_theta ||^2 plus an optional **velocity** term
+        E|| dx_0 - dx_theta ||^2 on the first temporal difference. The velocity
+        term supervises temporal structure directly, which matters when a
+        downstream sequence model (here CTC recognition) reads the motion.
+        """
         if noise is None:
             noise = torch.randn_like(x_start)
         x_t = self.q_sample(x_start, t, noise=noise)
-        eps_hat = self.denoiser(x_t, t, cond)
-        return F.mse_loss(eps_hat, noise)
+        out = self.denoiser(x_t, t, cond, **denoiser_kwargs)
+
+        if self.parameterization == "eps":
+            return F.mse_loss(out, noise)
+
+        loss = F.mse_loss(out, x_start)
+        if self.velocity_weight > 0:
+            loss = loss + self.velocity_weight * F.mse_loss(
+                self._velocity(out), self._velocity(x_start))
+        return loss
+
+    def sample_timesteps(self, n: int, device) -> torch.Tensor:
+        """Draw training timesteps, optionally emphasising the high-noise regime."""
+        t = torch.randint(0, self.num_timesteps, (n,), device=device)
+        if self.high_t_frac > 0.0:
+            lo = int(self.num_timesteps * self.high_t_start)
+            lo = min(lo, self.num_timesteps - 1)
+            t_high = torch.randint(lo, self.num_timesteps, (n,), device=device)
+            take_high = torch.rand(n, device=device) < self.high_t_frac
+            t = torch.where(take_high, t_high, t)
+        return t
 
     def forward(self, x_start: torch.Tensor,
                 cond: Optional[torch.Tensor] = None) -> torch.Tensor:
         """Sample random timesteps and return the diffusion loss."""
-        n = x_start.shape[0]
-        t = torch.randint(0, self.num_timesteps, (n,), device=x_start.device)
+        t = self.sample_timesteps(x_start.shape[0], x_start.device)
         return self.p_losses(x_start, t, cond=cond)
 
     # -- reverse process / sampling ----------------------------------------
@@ -130,8 +209,7 @@ class GaussianMotionDiffusion(nn.Module):
     def p_sample(self, x_t: torch.Tensor, t: torch.Tensor,
                  cond: Optional[torch.Tensor] = None) -> torch.Tensor:
         """One ancestral DDPM reverse step x_t -> x_{t-1}."""
-        eps_hat = self.denoiser(x_t, t, cond)
-        x_start = self.predict_start_from_noise(x_t, t, eps_hat).clamp(-10.0, 10.0)
+        _, x_start = self.model_predictions(x_t, t, cond)
         mean, _, log_var = self.q_posterior_mean_variance(x_start, x_t, t)
         noise = torch.randn_like(x_t)
         # No noise is added at t == 0.
@@ -160,8 +238,7 @@ class GaussianMotionDiffusion(nn.Module):
         x = torch.randn(shape, device=device)
         for k, i in enumerate(step_indices):
             t = torch.full((shape[0],), int(i), device=device, dtype=torch.long)
-            eps_hat = self.denoiser(x, t, cond)
-            x_start = self.predict_start_from_noise(x, t, eps_hat).clamp(-10.0, 10.0)
+            eps_hat, x_start = self.model_predictions(x, t, cond)
             abar_t = _extract(self.alphas_cumprod, t, x.shape)
             if k < len(step_indices) - 1:
                 j = step_indices[k + 1]
