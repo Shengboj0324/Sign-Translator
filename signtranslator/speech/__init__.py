@@ -1,7 +1,12 @@
 """Speech foundation layer (see docs/SPEECH_FOUNDATION.md).
 
-Stage 1: waveform -> log-Mel features, prosody, streaming, and the
-resampler + gated projection into the planner width.
+Stage 1 (implemented): waveform -> log-Mel features, prosody, streaming with an
+explicit latency model, the resampler + gated projection into planner width, and
+LoRA adapters with the freeze-first protocol.
+
+Stages 2-5 (planned): CTC beam search / N-best lattice with revision, word
+timestamps, confidence calibration and the fail-closed policy, the full training
+objective, and the evaluation harness.
 """
 
 from .features import (
@@ -9,9 +14,39 @@ from .features import (
     triangular_response, num_frames,
     SAMPLE_RATE, N_FFT, HOP_LENGTH, N_MELS,
 )
+from .prosody import (
+    ProsodyExtractor, estimate_f0_yin, F0Result, rms_energy, detect_pauses,
+    frame_signal, difference_function, cumulative_mean_normalized,
+)
+from .streaming import (
+    StreamingFeatureExtractor, LatencyModel, LatencyMeasurement,
+    measure_emission_latency, percentile,
+)
+from .projection import (
+    TemporalResampler, GatedProjection, SpeechPathways, SpeechProjector,
+)
+from .lora import (
+    LoRALinear, inject_lora, merge_all_lora, iter_lora_modules,
+    mark_only_lora_trainable, unfreeze_upper_blocks, freeze_all,
+    trainable_parameter_summary,
+)
 
 __all__ = [
+    # features
     "LogMelSpectrogram", "mel_filterbank", "hz_to_mel", "mel_to_hz",
     "stft_power", "triangular_response", "num_frames",
     "SAMPLE_RATE", "N_FFT", "HOP_LENGTH", "N_MELS",
+    # prosody
+    "ProsodyExtractor", "estimate_f0_yin", "F0Result", "rms_energy",
+    "detect_pauses", "frame_signal", "difference_function",
+    "cumulative_mean_normalized",
+    # streaming
+    "StreamingFeatureExtractor", "LatencyModel", "LatencyMeasurement",
+    "measure_emission_latency", "percentile",
+    # projection
+    "TemporalResampler", "GatedProjection", "SpeechPathways", "SpeechProjector",
+    # adaptation
+    "LoRALinear", "inject_lora", "merge_all_lora", "iter_lora_modules",
+    "mark_only_lora_trainable", "unfreeze_upper_blocks", "freeze_all",
+    "trainable_parameter_summary",
 ]

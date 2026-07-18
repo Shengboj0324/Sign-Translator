@@ -102,8 +102,14 @@ def test_slaney_norm_gives_unit_area_not_unit_peak():
     kw = dict(n_mels=40, n_fft=512, sample_rate=16000, scale="slaney")
     plain = mel_filterbank(norm=None, **kw).double()
     slaney = mel_filterbank(norm="slaney", **kw).double()
-    # Unnormalised triangles reach 1 at their peak.
-    assert abs(float(plain.max()) - 1.0) < 1e-6
+    # Unnormalised triangles have unit PEAK, but the bank samples them at FFT
+    # bin frequencies and a filter centre generally falls between bins -- so the
+    # sampled maximum approaches 1 from below and never exceeds it. (The
+    # continuous response attains exactly 1; see the analytic check below.)
+    assert float(plain.max()) <= 1.0 + 1e-12
+    assert float(plain.max()) > 0.99
+    assert abs(float(triangular_response(torch.tensor(400.0, dtype=torch.float64),
+                                         300.0, 400.0, 520.0)) - 1.0) < 1e-12
     # Slaney-normalised ones do not, but integrate to ~1 in Hz.
     df = (16000 / 2) / (512 // 2)         # Hz per FFT bin
     areas = slaney.sum(dim=1) * df

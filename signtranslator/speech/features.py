@@ -189,7 +189,9 @@ class LogMelSpectrogram(nn.Module):
                  scale: MelScale = "htk",
                  norm: Optional[Literal["slaney"]] = None,
                  center: bool = False, dynamic_range_db: float = 8.0,
-                 normalize: bool = True) -> None:
+                 normalize: bool = True,
+                 floor_mode: Literal["global", "fixed", "none"] = "global",
+                 fixed_floor_log10: float = -10.0) -> None:
         super().__init__()
         self.sample_rate = sample_rate
         self.n_fft = n_fft
@@ -198,6 +200,16 @@ class LogMelSpectrogram(nn.Module):
         self.center = center
         self.dynamic_range_db = dynamic_range_db
         self.normalize = normalize
+        if floor_mode not in {"global", "fixed", "none"}:
+            raise ValueError("floor_mode must be 'global', 'fixed' or 'none'")
+        # "global" reproduces Whisper: floor at (peak - dynamic_range_db) where
+        # the peak is taken over the WHOLE utterance. That is **non-causal** --
+        # it cannot be computed from a prefix of the audio, so it is unusable
+        # for streaming (chunked extraction would floor against a different
+        # peak and silently disagree with offline features). "fixed" and "none"
+        # are causal and therefore streaming-safe.
+        self.floor_mode = floor_mode
+        self.fixed_floor_log10 = fixed_floor_log10
 
         fb = mel_filterbank(n_mels, n_fft, sample_rate, f_min, f_max, scale, norm)
         self.register_buffer("filterbank", fb)
@@ -223,10 +235,21 @@ class LogMelSpectrogram(nn.Module):
     def forward(self, waveform: torch.Tensor) -> torch.Tensor:
         mel = self.mel_energies(waveform)
         log_spec = torch.log10(torch.clamp(mel, min=1e-10))
-        if self.dynamic_range_db is not None:
-            # Floor at (peak - 80 dB); amax over the last two dims, per item.
+        if self.floor_mode == "global" and self.dynamic_range_db is not None:
+            # Non-causal: peak over the entire utterance (Whisper convention).
             peak = torch.amax(log_spec, dim=(-2, -1), keepdim=True)
             log_spec = torch.maximum(log_spec, peak - self.dynamic_range_db)
+        elif self.floor_mode == "fixed":
+            log_spec = torch.clamp(log_spec, min=self.fixed_floor_log10)
         if self.normalize:
             log_spec = (log_spec + 4.0) / 4.0
         return log_spec
+
+    @property
+    def is_causal(self) -> bool:
+        """Whether features for a prefix are independent of future audio.
+
+        False for the global dynamic-range floor, which needs the utterance
+        maximum. Streaming requires a causal front-end.
+        """
+        return not (self.floor_mode == "global" and self.dynamic_range_db is not None)
