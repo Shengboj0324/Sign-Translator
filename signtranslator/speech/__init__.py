@@ -42,6 +42,23 @@ from .revision import (
     StreamingDecoder, StreamingHypothesis, RevisionStats,
     longest_common_prefix, commitment_error_count,
 )
+from .calibration import (
+    brier_score, binary_brier_score, brier_decomposition, BrierDecomposition,
+    reliability_diagram, CalibrationBin, expected_calibration_error,
+    maximum_calibration_error, negative_log_likelihood,
+    TemperatureScaler, BrierLoss,
+)
+from .policy import (
+    Action, PolicyDecision, PolicyOutcome, FailClosedPolicy,
+    SelectivePoint, selective_metrics, risk_coverage_curve,
+    area_under_risk_coverage,
+)
+from .objective import (
+    BoundaryHead, boundary_loss, balanced_pos_weight,
+    boundary_targets_from_alignment, ObjectiveWeights, ObjectiveOutput,
+    SpeechTrainingObjective, speech_sign_retrieval,
+)
+from .schedule import FreezeFirstSchedule, FreezeFirstConfig, Phase
 
 __all__ = [
     # features
@@ -71,4 +88,19 @@ __all__ = [
     # streaming revision
     "StreamingDecoder", "StreamingHypothesis", "RevisionStats",
     "longest_common_prefix", "commitment_error_count",
+    # calibration
+    "brier_score", "binary_brier_score", "brier_decomposition",
+    "BrierDecomposition", "reliability_diagram", "CalibrationBin",
+    "expected_calibration_error", "maximum_calibration_error",
+    "negative_log_likelihood", "TemperatureScaler", "BrierLoss",
+    # fail-closed policy
+    "Action", "PolicyDecision", "PolicyOutcome", "FailClosedPolicy",
+    "SelectivePoint", "selective_metrics", "risk_coverage_curve",
+    "area_under_risk_coverage",
+    # training objective
+    "BoundaryHead", "boundary_loss", "balanced_pos_weight",
+    "boundary_targets_from_alignment", "ObjectiveWeights", "ObjectiveOutput",
+    "SpeechTrainingObjective", "speech_sign_retrieval",
+    # adaptation schedule
+    "FreezeFirstSchedule", "FreezeFirstConfig", "Phase",
 ]

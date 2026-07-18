@@ -138,16 +138,38 @@ def test_ctc_learns_from_real_logmel_features():
 
 
 def test_lora_adapts_the_recognizer_without_touching_base_weights():
-    """Freeze-first protocol applied to the real recogniser."""
+    """Freeze-first protocol applied to the real recogniser.
+
+    REGRESSION: this test previously injected into ``out_proj`` and never ran a
+    forward pass, so it passed on a model that was structurally adapted but
+    functionally broken. It now adapts the feed-forward layers and *executes*
+    the model.
+    """
     rec = SpeechRecognizer(input_dim=N_MELS, num_tokens=6, hidden_dim=64,
                            num_layers=2, num_heads=2)
-    adapted = inject_lora(rec, target_suffixes=("out_proj",), r=4)
-    assert len(adapted) > 0, "no attention projections were adapted"
+    adapted = inject_lora(rec, target_suffixes=("linear1", "linear2"), r=4)
+    assert len(adapted) > 0, "no layers were adapted"
     n_trainable = mark_only_lora_trainable(rec)
     assert n_trainable > 0
     for name, p in rec.named_parameters():
         if p.requires_grad:
             assert "lora_" in name
+    # The adapted model must still run.
+    out = rec(torch.randn(2, 40, N_MELS))
+    assert torch.isfinite(out).all()
+
+
+def test_lora_refuses_to_break_multihead_attention():
+    """REGRESSION: wrapping nn.MultiheadAttention.out_proj breaks the forward pass.
+
+    PyTorch reaches that submodule attribute-wise (``self.out_proj.weight``), so
+    a LoRA wrapper type-checks, passes structural tests, and then raises on the
+    first forward. Injection must skip it by default.
+    """
+    rec = SpeechRecognizer(input_dim=N_MELS, num_tokens=6, hidden_dim=64,
+                           num_layers=2, num_heads=2)
+    assert inject_lora(rec, target_suffixes=("out_proj",), r=4) == []
+    assert torch.isfinite(rec(torch.randn(2, 40, N_MELS))).all()
 
 
 # ---------------------------------------------------------------------------

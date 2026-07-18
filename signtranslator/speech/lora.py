@@ -117,21 +117,36 @@ class LoRALinear(nn.Module):
 # ---------------------------------------------------------------------------
 # Injection
 # ---------------------------------------------------------------------------
+# Modules whose Linear children are reached **attribute-wise** by their parent's
+# implementation (e.g. ``self.out_proj.weight`` inside
+# ``nn.MultiheadAttention``) rather than by calling them. Wrapping such a child
+# type-checks and passes a structural test, but breaks the forward pass with
+# "LoRALinear object has no attribute 'weight'". They are skipped by default.
+_ATTRIBUTE_ACCESSED_PARENTS = (nn.MultiheadAttention,)
+
+
 def inject_lora(model: nn.Module, target_suffixes: Sequence[str] = ("q_proj", "v_proj"),
-                r: int = 8, alpha: float = 16.0, dropout: float = 0.0
-                ) -> List[str]:
+                r: int = 8, alpha: float = 16.0, dropout: float = 0.0,
+                allow_unsafe_parents: bool = False) -> List[str]:
     """Replace matching ``nn.Linear`` submodules with :class:`LoRALinear`.
 
     Args:
         target_suffixes: a module is adapted when its dotted name ends with any
             of these. Defaults to query/value projections, following the paper's
             finding that adapting those two is usually sufficient.
+        allow_unsafe_parents: permit adapting children of modules that access
+            them attribute-wise (see ``_ATTRIBUTE_ACCESSED_PARENTS``). Doing so
+            produces a model that *constructs* fine and then fails on the first
+            forward pass, so it is refused unless explicitly requested.
 
     Returns the list of adapted module names, so a caller can assert that the
-    intended layers (and only those) were touched.
+    intended layers -- and only those -- were touched.
     """
     adapted: List[str] = []
     for name, module in list(model.named_modules()):
+        unsafe_parent = isinstance(module, _ATTRIBUTE_ACCESSED_PARENTS)
+        if unsafe_parent and not allow_unsafe_parents:
+            continue
         for child_name, child in list(module.named_children()):
             full = f"{name}.{child_name}" if name else child_name
             if isinstance(child, nn.Linear) and any(

@@ -337,14 +337,185 @@ Assertions like "posteriors sum to 1" cannot hold to 1e-9 when the *input*
 already sums to 1 ± 1e-7. Decoding tests use float64 inputs so a tight tolerance
 tests the algorithm rather than the input's precision.
 
-## 9. Staged roadmap
+## 9. Stage 3 — calibration and failing closed
+
+### 9.1 Why calibration is a safety requirement here
+
+A sign is a fluent, confident assertion. A viewer cannot tell a guessed sign
+from a correct one, so emitting a plausible sign for an uncertain word is
+*worse* than emitting nothing: it destroys the viewer's ability to detect the
+error. Silence and fingerspelling are both legible as "unsure"; a wrong sign is
+not. The fail-closed rule follows — and it is only as good as the confidence it
+thresholds, which is why calibration and policy are one stage.
+
+### 9.2 Brier score and why not accuracy
+
+The Brier score is **strictly proper**:
+
+```
+E_{y~q} BS(p, y) = Σ_k p_k² − 2 Σ_c q_c p_c + 1
+```
+
+is uniquely minimised at `p = q`. Optimising it therefore pushes the model to
+report its true uncertainty. Accuracy is *not* proper — it is invariant to any
+monotone distortion of the probabilities, so it cannot detect miscalibration at
+all. Propriety is verified numerically in the tests.
+
+**Murphy's decomposition** (exact when grouping by unique prediction value):
+
+```
+BS = REL − RES + UNC
+```
+
+This separates *being wrong* (reliability) from *being uninformative*
+(resolution). A model that always predicts the base rate is perfectly calibrated
+and completely useless — REL = 0, RES = 0. Reporting ECE alone would score it
+well, which is precisely the trap the decomposition avoids. The identity is
+asserted to 1e-12, and to 1e-9 on real model output.
+
+### 9.3 Temperature scaling
+
+`p = softmax(z / T)`, one parameter fitted on held-out data by minimising NLL.
+Because `T > 0` is strictly monotone it **cannot change the argmax**: accuracy
+is preserved exactly and only confidences move. That is what makes it safe to
+apply post-hoc. Tested by recovering a *known* 3× overconfidence factor
+(`T ≈ 3`) and by reducing ECE on both synthetic and real posteriors.
+
+### 9.4 The policy
+
+Two axes, not one: calibrated **confidence**, and **lexicon coverage**.
+
+```
+c ≥ emit_threshold        and token has a sign   → EMIT
+c ≥ fingerspell_threshold and token is verified  → FINGERSPELL
+otherwise                                        → PAUSE
+```
+
+Fingerspelling an *unverified* token is forbidden: it would merely move the
+hallucination from the sign channel to the spelling channel. A confidently
+recognised word with no sign (names, technical terms) is fingerspelled rather
+than approximated — standard practice, and the honest option. Actions are
+ordered `PAUSE < FINGERSPELL < EMIT` and the policy is proved monotone in
+confidence over an exhaustive grid, with `emit_threshold ≥
+fingerspell_threshold` enforced so the safer action never demands more evidence.
+
+Selective-prediction metrics (coverage, selective accuracy, AURC) report the
+quantity the system is really optimising: accuracy *on what it chose to assert*,
+traded against how often it asserts anything. Coverage is provably non-increasing
+in the threshold; the accuracy gain is demonstrated on real noisy output.
+
+### 9.5 Stage 3 findings
+
+**9.5.1 The policy crashed on valid input (real bug, fixed).** Lattice
+posteriors are sums of floats and legitimately land an ulp outside `[0,1]`
+(observed: `1.0000000000000002`). Strict range validation raised `ValueError` on
+genuine model output. Fixed by tolerating rounding (±1e-6) and clamping, while
+still rejecting real violations such as 1.001 — tolerate noise, catch bugs.
+
+**9.5.2 A calibration set must match the evaluation distribution (test bug,
+fixed).** Frame posteriors were stored grouped by noise level, so a sequential
+50/50 split fitted `T` on clean audio and evaluated it on noisy audio. Under
+that shift temperature scaling *worsened* ECE (0.066 → 0.080). Shuffling before
+splitting fixed it. Temperature scaling minimises NLL, not ECE, and offers no
+guarantee under distribution shift.
+
+**9.5.3 Degradation appears as deletions, not substitutions.** Adding noise did
+not make the recogniser produce *wrong* tokens so much as *no* tokens: the
+usable band was narrow (clean below ~0.05, collapsed above ~0.12), and levels
+chosen by intuition (0.3–1.5) yielded 18 tokens instead of 90. Statistics are
+now accumulated by repeating draws inside the informative band rather than by
+increasing severity — a reminder to characterise a perturbation empirically
+before building an evaluation on it.
+
+## 10. Stage 4 — the composite objective and freeze-first
+
+```
+L = L_ASR + λ_c·L_contrast + λ_b·L_boundary + λ_cal·L_Brier
+```
+
+The central risk in a multi-term loss is a term that is *summed in but inert* —
+mis-shaped, mis-wired, or gradient-blocked — while the total still falls because
+the other terms carry it. Every term is therefore judged by **its own metric**
+through ablation, never by the total.
+
+### 10.1 Boundary supervision
+
+Per-frame word-start targets come from a CTC forced alignment of the known
+transcript, computed under `no_grad`: the alignment is a *target*, not a
+differentiable path — letting gradients flow through it would let the model move
+the goalposts rather than fit them.
+
+Boundaries are rare (≈`L` positives among `T` frames, often under 5%), so an
+unweighted BCE is minimised almost perfectly by predicting "never a boundary":
+it looks converged while detecting nothing. The loss is class-balanced by
+`pos_weight = #neg/#pos` (capped), and a test asserts the degenerate all-negative
+predictor is properly penalised.
+
+### 10.2 Freeze-first
+
+Asymmetric risk motivates the schedule: a pretrained encoder is the most
+valuable, least replaceable component, and a large gradient through it while a
+randomly-initialised head still emits nonsense can destroy representations that
+cost enormous compute. Phase 1 trains only adapters and new heads; phase 2
+releases the top `k` blocks at `encoder_lr_scale ×` the base LR.
+
+The optimiser is **rebuilt** at the transition rather than extended with
+`add_param_group`: newly released parameters must start with clean moment
+estimates, not inherit phase-1 momentum. `encoder_lr_scale ≤ 1` is enforced —
+the pretrained encoder should never train faster than the adapters.
+
+### 10.3 Stage 4 findings
+
+**10.3.1 LoRA injection silently broke the model (real bug, fixed).**
+`inject_lora` replaced `out_proj` inside `nn.MultiheadAttention`, which PyTorch
+reaches **attribute-wise** (`self.out_proj.weight`). The wrapper type-checks,
+passes a structural test, and then raises `AttributeError` on the first forward
+pass. The Stage 1 test missed it because **it never ran a forward pass after
+injection** — it only asserted which modules were replaced and which parameters
+were trainable. Injection now skips such parents by default
+(`allow_unsafe_parents` to override), and the Stage 1 test executes the adapted
+model. Lesson: a structural assertion about a model is not a test of the model.
+
+**10.3.2 The boundary term works (positive result).**
+Ablation with identical seed and data, differing only in `λ_b`:
+
+| | seed 0 | seed 1 | seed 2 |
+|---|---|---|---|
+| with `λ_b = 0.5` | 0.533 | 1.000 | 0.525 |
+| without (`λ_b = 0`) | 0.034 | 0.068 | 0.042 |
+
+(train-fit boundary F1). Decisive on every seed. Held-out generalisation is much
+noisier at this scale (one seed collapsed to 0.0), so the test asserts the
+reproducible claim — the term fits its signal — not a generalisation claim.
+
+**10.3.3 The Brier term shows no measurable ECE benefit (negative result).**
+Mean frame ECE over three seeds: **0.0376 without** the term, **0.0395 with**
+the full objective — indistinguishable. A single-seed run was worse still
+(0.035 → 0.169). Two plausible causes: the Brier targets are derived from a
+forced alignment of the model's *own* posteriors, so the term partly trains
+toward its own beliefs; and blank-dominated frames leave it little to correct.
+
+This is recorded rather than tuned away. Stage 3's temperature scaling remains
+the mechanism that demonstrably improves calibration, and **no claim of ECE
+improvement from `λ_cal` is made anywhere in the codebase**. A test pins the
+observation so it cannot be quietly forgotten, and deliberately does *not*
+assert `ece_with < ece_without`, because that is not reproducible.
+
+**10.3.4 InfoNCE is computed, not believed.**
+Per the source document, a low contrastive loss is not evidence of semantic
+equivalence: batch-level retrieval can be solved by speaker, channel or duration
+cues. `speech_sign_retrieval` reports recall@k as the *necessary but
+insufficient* check the document asks for; the downstream ablation in Stage 5
+is what would actually decide the question.
+
+## 11. Staged roadmap
 
 | Stage | Content | Status |
 |---|---|---|
 | **1** | Front-end: log-Mel, prosody, streaming+latency, resampler+gated projection, LoRA | **done** |
 | **2** | CTC beam search → N-best/lattice, word timestamps, committed/uncommitted revision | **done** |
-| 3 | Confidence + calibration (Brier, temperature scaling, ECE) + fail-closed policy | planned |
-| 4 | Training objective: boundary + Brier + symmetric InfoNCE; freeze-first schedule | planned |
+| **3** | Confidence + calibration (Brier, temperature scaling, ECE) + fail-closed policy | **done** |
+| **4** | Training objective: boundary + Brier + symmetric InfoNCE; freeze-first schedule | **done** |
 | 5 | Evaluation harness: WER/CER, timestamp error, ECE, revision rate, latency percentiles, condition ablations | planned |
 
 Stage 1 is deliberately the signal-processing foundation: every later stage
