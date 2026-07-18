@@ -211,12 +211,138 @@ added inference latency. Both properties are tested.
 * **Fail closed**: on low confidence, pause or fingerspell a verified item —
   never hallucinate a sign.
 
-## 7. Staged roadmap
+## 7. Findings from Stage 1 (defects caught, and how)
+
+Recorded because each was found by a *property* test rather than a smoke test,
+and each would have been invisible to shape/finiteness checking.
+
+**7.1 Silence reported as confident 400 Hz pitch (real bug, fixed).**
+For digital silence every `d(τ) = 0`, so the CMND ratio is `0/0`. Clamping the
+denominator produced `d' = 0`, which is *below* every voicing threshold — so the
+estimator emitted a confident pitch at `f_max` for silent frames. The correct
+resolution is that `0/0` means *no evidence of periodicity*, i.e. `d' = 1`.
+A second safeguard (an RMS gate) now also forces quiet frames unvoiced, so the
+prosody path fails closed on absent evidence, as the specification demands.
+
+**7.2 Latency algebra wrong whenever `n_fft` is not a multiple of `hop`
+(real bug, fixed).** The buffering wait was assumed to be at most `(C−1)` frame
+periods. That holds only when `n_fft mod hop = 0`. Whisper's `400/160` gives
+`ρ = 80`, and the true wait set is `{C·hop−ρ, …, hop−ρ}` — up to a **full extra
+frame**. Measured min/max (0.0575 / 0.1275 s) disagreed with the predicted
+0.0525 / 0.1225 s, which is precisely why the analytic value is cross-checked
+against simulation rather than trusted.
+
+**7.3 Whisper's dynamic-range floor is non-causal (real constraint, surfaced).**
+`max(log S, max(log S) − 8 dB)` depends on the maximum over the *whole*
+utterance, so a prefix cannot compute it and chunked features cannot equal
+offline features. Rather than silently emitting mismatched features, the
+front-end now exposes `floor_mode ∈ {global, fixed, none}` and an `is_causal`
+flag, and `StreamingFeatureExtractor` **refuses** a non-causal front-end. This
+is a genuine tension between the Whisper convention and the streaming
+requirement, and it is better surfaced than hidden.
+
+**7.4 Two numerical-analysis traps in the tests (tests wrong, not code).**
+*(a)* Streaming vs. offline features differ by ~6e-4 in float32; repeating in
+float64 drops the error to 2e-13, proving frame alignment is exact and the
+residual is FFT accumulation order varying with buffer length.
+*(b)* LoRA `merge()` shifts outputs by ~1e-3 relative in float32 because it
+reassociates the matmul (rank-`r` bottleneck first vs. full matrix); in float64
+the deviation is ~1e-16. Relatedly, computing `matrix_rank` after upcasting a
+float32 product to float64 reports *full* rank, because upcasting preserves the
+~1e-8 float32 noise while tightening the tolerance. Rank must be evaluated in
+the tensor's own dtype. In both cases the honest resolution is to prove the
+mathematical identity in double precision and *bound* the float32 deviation,
+never to assert bitwise equality.
+
+## 8. Stage 2 — decoding, timestamps, revision
+
+### 8.1 Why a lattice, not a string
+
+CTC scores a *label sequence* as a sum over every alignment collapsing to it,
+
+```
+p(l | x) = Σ_{π ∈ B⁻¹(l)} Π_t y_t(π_t)
+```
+
+Greedy decoding reports one alignment, so its score is the probability of that
+**path**, not of the **label sequence**. The two disagree whenever a label's
+mass is spread over several alignments — a case the tests construct explicitly
+(`test_beam_can_beat_greedy_by_summing_alignments`).
+
+Prefix beam search tracks, per prefix, the mass ending in a blank (`p_b`)
+separately from that ending in a non-blank (`p_nb`). The split is what makes the
+repeat rule expressible: an extension by `c == l[-1]` may draw only on `p_b`,
+because two identical labels collapse into one unless a blank separates them.
+
+**Proved, not asserted.** `ctc_exact_posteriors` enumerates all `C^T` paths;
+the tests require the beam (with pruning disabled) to reproduce those
+probabilities to 1e-9 and the posteriors to sum to exactly 1.
+
+### 8.2 Forced alignment
+
+Timestamps come from Viterbi alignment over `l' = [blank, l₁, blank, …, blank]`:
+
+```
+α(t,s) = max_{p ∈ pred(s)} α(t-1,p) + log y_t(l'[s])
+```
+
+with `pred(s) = {s, s-1}` plus `s-2` only when `l'[s] ≠ blank` and
+`l'[s] ≠ l'[s-2]` — the same repeat rule, forbidding a jump over the blank that
+separates a doubled label. Minimum feasible length is `L + #repeats`.
+The Viterbi score is verified against the exhaustive maximum over collapsing
+paths.
+
+`FrameTimeMapper` converts frames to seconds through hop, window and encoder
+subsampling, so a timestamp refers to audio actually observed. This is validated
+against *physical* ground truth: tone bursts are synthesised at known times and
+each token's predicted interval must overlap the interval in which its tone
+genuinely sounded.
+
+### 8.3 Commitment and revision
+
+Commitment requires two independent forms of evidence — **beam agreement**
+(prefix common to the top-`k`) and **temporal stability** (that agreement
+persists for `stability` updates). Either alone commits too eagerly.
+
+Committed text is **immutable and monotone**: a rendered sign cannot be
+retracted for free. Later evidence can therefore contradict a commitment; that
+event increments `commitment_errors` rather than being silently absorbed, since
+it is the only signal that the policy is too aggressive. Tests confirm the
+conservative policy commits no more errors than the reckless one on identical
+audio.
+
+`revision_rate` is defined per *position emission* (each update emits
+`len(full)` positions; a position counts as revised when its token differs from
+the previous update's), which makes it comparable across streams of different
+length and update cadence.
+
+### 8.4 Stage 2 findings
+
+**8.4.1 Loss reduction is not evidence of a working decoder (weak test, fixed).**
+The first integration test asserted `loss < 0.2 × first` and *passed* on a model
+emitting blank at 100% of frames and decoding the empty string: CTC's all-blank
+local optimum cut the loss ~10× while learning nothing usable. Acceptance is now
+decoding accuracy against the known transcript. This is the single most
+important lesson of the stage — a metric that moves is not a system that works.
+
+**8.4.2 Appending confident audio cannot contradict a committed prefix.**
+An attempt to provoke a commitment error by appending frames favouring a
+different token failed, because appended evidence *extends* a CTC prefix rather
+than reinterpreting fixed earlier frames. Real contradictions arise when
+accumulating **ambiguous** frames reorder the beam; the test now uses such a
+stream. The mechanism was correct; the scenario was not.
+
+**8.4.3 Float32 log-softmax breaks exact probability identities.**
+Assertions like "posteriors sum to 1" cannot hold to 1e-9 when the *input*
+already sums to 1 ± 1e-7. Decoding tests use float64 inputs so a tight tolerance
+tests the algorithm rather than the input's precision.
+
+## 9. Staged roadmap
 
 | Stage | Content | Status |
 |---|---|---|
-| **1** | Front-end: log-Mel, prosody, streaming+latency, resampler+gated projection, LoRA | **this round** |
-| 2 | CTC beam search → N-best/lattice, word timestamps, committed/uncommitted revision | planned |
+| **1** | Front-end: log-Mel, prosody, streaming+latency, resampler+gated projection, LoRA | **done** |
+| **2** | CTC beam search → N-best/lattice, word timestamps, committed/uncommitted revision | **done** |
 | 3 | Confidence + calibration (Brier, temperature scaling, ECE) + fail-closed policy | planned |
 | 4 | Training objective: boundary + Brier + symmetric InfoNCE; freeze-first schedule | planned |
 | 5 | Evaluation harness: WER/CER, timestamp error, ECE, revision rate, latency percentiles, condition ablations | planned |

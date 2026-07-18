@@ -30,6 +30,18 @@ from .lora import (
     mark_only_lora_trainable, unfreeze_upper_blocks, freeze_all,
     trainable_parameter_summary,
 )
+from .decoding import (
+    ctc_prefix_beam_search, ctc_exact_posteriors, ctc_greedy_path, collapse,
+    Hypothesis, NBestList, Lattice,
+)
+from .alignment import (
+    ctc_forced_alignment, token_timings, align_and_time, Alignment,
+    TokenTiming, FrameTimeMapper, extended_targets, minimum_frames_required,
+)
+from .revision import (
+    StreamingDecoder, StreamingHypothesis, RevisionStats,
+    longest_common_prefix, commitment_error_count,
+)
 
 __all__ = [
     # features
@@ -49,4 +61,14 @@ __all__ = [
     "LoRALinear", "inject_lora", "merge_all_lora", "iter_lora_modules",
     "mark_only_lora_trainable", "unfreeze_upper_blocks", "freeze_all",
     "trainable_parameter_summary",
+    # decoding / lattice
+    "ctc_prefix_beam_search", "ctc_exact_posteriors", "ctc_greedy_path",
+    "collapse", "Hypothesis", "NBestList", "Lattice",
+    # alignment / timestamps
+    "ctc_forced_alignment", "token_timings", "align_and_time", "Alignment",
+    "TokenTiming", "FrameTimeMapper", "extended_targets",
+    "minimum_frames_required",
+    # streaming revision
+    "StreamingDecoder", "StreamingHypothesis", "RevisionStats",
+    "longest_common_prefix", "commitment_error_count",
 ]
