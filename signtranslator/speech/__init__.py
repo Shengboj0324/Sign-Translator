@@ -59,6 +59,12 @@ from .objective import (
     SpeechTrainingObjective, speech_sign_retrieval,
 )
 from .schedule import FreezeFirstSchedule, FreezeFirstConfig, Phase
+from .evaluation import (
+    EditOps, edit_ops, word_error_rate as corpus_word_error_rate,
+    character_error_rate, TimestampError, timestamp_error,
+    Condition, STANDARD_CONDITIONS, ConditionProfile, characterise_condition,
+    ArmResult, EvaluationReport,
+)
 
 __all__ = [
     # features
@@ -103,4 +109,9 @@ __all__ = [
     "SpeechTrainingObjective", "speech_sign_retrieval",
     # adaptation schedule
     "FreezeFirstSchedule", "FreezeFirstConfig", "Phase",
+    # evaluation harness
+    "EditOps", "edit_ops", "corpus_word_error_rate", "character_error_rate",
+    "TimestampError", "timestamp_error", "Condition", "STANDARD_CONDITIONS",
+    "ConditionProfile", "characterise_condition", "ArmResult",
+    "EvaluationReport",
 ]

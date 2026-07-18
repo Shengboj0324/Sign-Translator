@@ -508,7 +508,81 @@ cues. `speech_sign_retrieval` reports recall@k as the *necessary but
 insufficient* check the document asks for; the downstream ablation in Stage 5
 is what would actually decide the question.
 
-## 11. Staged roadmap
+## 11. Stage 5 — the evaluation harness
+
+### 11.1 Error rates carry their breakdown
+
+WER is reported with substitutions / deletions / insertions, not as a scalar.
+Stage 3 established that this recogniser degrades by *deleting* rather than
+substituting; two systems with identical WER can therefore need opposite fixes.
+The harness makes that visible, and the measured conditions confirm three
+distinct failure modes:
+
+| condition | ER | S | D | I | failure mode |
+|---|---|---|---|---|---|
+| clean | 0.000 | 0 | 0 | 0 | — |
+| noisy | 0.611 | 0 | 11 | 0 | tokens **dropped** |
+| accented | 0.167 | 0 | 0 | 3 | spurious **insertions** |
+| code_switched | 0.389 | 6 | 0 | 1 | **substitutions** (unseen vocabulary) |
+| long_form | 0.063 | 0 | 0 | 3 | mild insertions |
+
+A scalar WER would hide all of it.
+
+### 11.2 Conditions are measured, never guessed
+
+Severity levels were swept before use:
+
+* noise `0.005 → acc 0.79`, `0.010 → 0.43`, `0.015 → 0.25`, `≥0.020 → nothing
+  decoded at all`
+* pitch `1.08/1.15 → acc 1.00` (no effect at all), `1.25 → 0.81`, `1.4 → 0.33`
+
+Intuition-chosen levels (noise 0.06, pitch 1.12) produced a **vacuous**
+evaluation — zero tokens decoded, or zero degradation. `characterise_condition`
+now gates every condition, and the report warns loudly if any is degenerate.
+`clean` is marked `is_baseline`: it is *supposed* to sit at ceiling, and flagging
+that as a defect would be wrong.
+
+Streaming is reported explicitly as the document requires:
+`chunk=8 frames (80 ms), right_context=4 frames`, median **87.5 ms**, p95
+**127.5 ms**.
+
+### 11.3 Stage 5 findings
+
+**11.3.1 The ablation probe was measuring its own noise (test bug, fixed).**
+The downstream probe was trained on 6 samples for a 6-way task and scored
+**0.0 on clean** — below chance — making every ablation number meaningless. It
+also retrained per condition, which confounds "does this arm survive
+perturbation" with "can a fresh probe fit the perturbed data". It now trains
+once per arm on 48 utterances and is evaluated unchanged across conditions, with
+a guard test asserting the probe beats chance on clean *before* any ablation
+conclusion is drawn.
+
+**11.3.2 Streaming tests had a silence-shaped blind spot (coverage gap, fixed).**
+Every streaming test used *random noise*, in which no mel channel is ever near
+zero. Real speech has silence, which drives channels to the `1e-10` clamp floor
+where `log10` amplifies float32 rounding without bound — a `1.2e-10` vs
+`1.4e-10` difference moves the log by `0.014`, far above the `2e-3` tolerance.
+In float64 the same comparison agrees to **4.4e-16**, proving the streaming
+alignment is exact and the amplification is purely numerical. Tests now include
+tonal audio with silence, comparing float32 only where a channel carries signal
+and asserting exactness in float64.
+
+## 12. Cycle-level stress and integration
+
+`tests/test_speech_cycle_stress.py` runs the whole chain — waveform → log-Mel →
+prosody → streaming → projection → CTC → beam/N-best → forced alignment →
+timestamps → calibration → fail-closed policy → composite objective →
+freeze-first schedule — and then stresses four axes that unit tests miss:
+
+* **adversarial input**: silence, DC, ±10⁴ gain, single-sample, NaN
+  (verified *not* to be silently swallowed);
+* **determinism**: repeated cycles are bit-identical, and `reset()` on the
+  stateful streaming components provably restores a clean slate;
+* **dtype**: float32/float64 paths agree, and decoding is dtype-invariant;
+* **composition**: the beam-vs-exhaustive proof is re-run on *real model
+  posteriors* rather than synthetic ones.
+
+## 13. Staged roadmap
 
 | Stage | Content | Status |
 |---|---|---|
@@ -516,9 +590,18 @@ is what would actually decide the question.
 | **2** | CTC beam search → N-best/lattice, word timestamps, committed/uncommitted revision | **done** |
 | **3** | Confidence + calibration (Brier, temperature scaling, ECE) + fail-closed policy | **done** |
 | **4** | Training objective: boundary + Brier + symmetric InfoNCE; freeze-first schedule | **done** |
-| 5 | Evaluation harness: WER/CER, timestamp error, ECE, revision rate, latency percentiles, condition ablations | planned |
+| **5** | Evaluation harness: WER/CER, timestamp error, ECE, revision rate, latency percentiles, condition ablations | **done** |
 
-Stage 1 is deliberately the signal-processing foundation: every later stage
-consumes its output, and it is the layer whose correctness can be *proved*
-(Parseval, partition of unity, scale invertibility, streaming equivalence,
-analytic latency) rather than merely smoke-tested.
+All five stages of `01_speech_foundation_layer.md` are implemented, with a
+cycle-level stress test over the composed system (§12).
+
+**What remains out of scope, stated plainly.** The encoder is our own
+Transformer, not actual Whisper / wav2vec 2.0 / HuBERT / SeamlessM4T weights —
+the environment cannot fetch multi-GB checkpoints. The specification's "frozen or
+lightly adapted pretrained encoder" is honoured *architecturally* (frozen base +
+LoRA + freeze-first schedule) rather than by loading those weights. All audio is
+synthetic tone-burst speech, so every severity level, threshold and metric value
+here is calibrated to that setting and must be re-characterised against real
+speech before it means anything. The InfoNCE speech↔sign alignment is computed
+and its retrieval reported, but — per the source document — remains unvalidated
+as evidence of semantic equivalence until run against a real paired corpus.

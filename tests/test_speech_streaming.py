@@ -78,6 +78,50 @@ def test_streaming_matches_offline_ragged_chunks():
     assert torch.allclose(streamed, offline, atol=2e-3)
 
 
+def _tonal_with_silence(seconds=0.5, f0=200.0):
+    """Tone bursts separated by true silence -- unlike random noise, this drives
+    many mel channels to the clamp floor."""
+    parts = []
+    for _ in range(3):
+        n = int(0.12 * SR)
+        t = torch.arange(n, dtype=torch.float64) / SR
+        parts.append(torch.sin(2 * math.pi * f0 * t) * 0.5)
+        parts.append(torch.zeros(int(0.05 * SR), dtype=torch.float64))
+    return torch.cat(parts)
+
+
+def test_streaming_equals_offline_exactly_on_tonal_audio():
+    """REGRESSION: silence in the signal exposes log-amplified float32 error.
+
+    Every earlier streaming test used random noise, in which no mel channel is
+    ever near zero. Real speech has silence, which drives channels to the 1e-10
+    clamp floor where log10 amplifies rounding without bound (a 1.2e-10 vs
+    1.4e-10 difference moves the log by ~0.014). In float64 the streaming logic
+    is exact, proving the amplification -- not the alignment -- is responsible.
+    """
+    fe = _causal_front_end().double()
+    x = _tonal_with_silence()
+    offline = fe(x)
+    stream = StreamingFeatureExtractor(fe)
+    pieces = [stream.push(x[i:i + 1600]) for i in range(0, x.numel(), 1600)]
+    streamed = torch.cat([p for p in pieces if p.shape[1]], dim=1)
+    assert streamed.shape == offline.shape
+    assert torch.allclose(streamed, offline, atol=1e-9)
+
+
+def test_float32_streaming_on_tonal_audio_agrees_where_there_is_signal():
+    """In float32 the agreement holds wherever a channel carries energy."""
+    fe = _causal_front_end()
+    x = _tonal_with_silence().float()
+    offline = fe(x)
+    stream = StreamingFeatureExtractor(fe)
+    pieces = [stream.push(x[i:i + 1600]) for i in range(0, x.numel(), 1600)]
+    streamed = torch.cat([p for p in pieces if p.shape[1]], dim=1)
+    live = fe.mel_energies(x) > 1e-8
+    assert bool(live.any())
+    assert torch.allclose(streamed[live], offline[live], atol=2e-3)
+
+
 def test_streaming_equals_offline_exactly_in_float64():
     """The alignment logic is exact; only float32 rounding separates the two.
 
