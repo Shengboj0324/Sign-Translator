@@ -217,12 +217,49 @@ Transformer, not a pretrained AMR parser.
 
 | Stage | Content | Status |
 |---|---|---|
-| 3.0 | design + math spec | this round |
-| 3a | SIR temporal graph + validation + gloss projection | this round |
-| 3b | Allen interval algebra + differentiable temporal losses | this round |
-| 3c | relation-biased graph attention + SIR decoder | this round |
-| 3d | non-manual multilabel interval prediction | this round |
-| 3e | HamNoSys notation + dialect/register/provenance | this round |
-| 3f | SignBLEU + inter-rater kappa | this round |
-| 3g | minimal-pairs battery + locus persistence + OOV | this round |
-| 3h | integration + cycle stress + regression | this round |
+| 3.0 | design + math spec | done |
+| 3a | SIR temporal graph + validation + gloss projection | done (20 tests) |
+| 3b | Allen interval algebra + differentiable temporal losses | done (36 tests) |
+| 3c | relation-biased graph attention + SIR decoder | done (12 tests) |
+| 3d | non-manual multilabel interval prediction | done (13 tests) |
+| 3e | HamNoSys notation + dialect/register/provenance | done (12 tests) |
+| 3f | SignBLEU + inter-rater kappa | done (18 tests) |
+| 3g | minimal-pairs battery + locus persistence + OOV | done (15 tests) |
+| 3h | integration + cycle stress + regression | done (11 tests) |
+
+Grammar layer: 137 tests, green on two consecutive runs; whole project green.
+
+## 11. Findings (post-implementation)
+
+**Minimal-pairs decomposition forced a correction, not a tuning.** The first
+`_sir_fields` diff conflated (a) manual precedence structure with non-manual
+*scope* edges, and (b) event *sequencing* with lexical *label* identity. Flipping
+negation therefore appeared to "leak" into the `edges` field, and plural
+inflection leaked into `order`. Both were artefacts of the diff, not the builder:
+scope edges are a consequence of a marker (already captured by the `nonmanual`
+field), and sequencing is about the referent-slot order, not which lexeme fills a
+slot. Restricting `edges` to PRECEDENCE only and keying `order` on referent slots
+made every one of the eight feature flips change *exactly* its licensed fields —
+and a companion test guards against the vacuous pass (each flip must change ≥1
+field). Plural is modelled as morphological inflection (a plural-marked lexeme),
+not an appended sign, so it is genuinely "manual-label only".
+
+**The plan→SIR bridge is faithful by construction and measured, not asserted.**
+The manual gloss projected out of the SIR equals the plan's manual-unit order for
+all 200 randomised stress plans; every non-manual span survives as a scoped
+event; fingerspelled units become FINGERSPELL, never hallucinated signs. The
+bridge encodes only what the plan specifies — it does **not** invent a
+unit→referent map (loci/coref flow through only when a caller supplies that map).
+
+**A quantified, explained residual, not zero.** On a valid plan the temporal loss
+is not 0 but exactly `4·ε`: contiguous signs *meet* (each of 2 precedence edges
+pays the strict-precedence hinge margin ε), and the two boundary-aligned units of
+a full-width scope span each pay one containment margin ε. Validity loss is
+exactly 0. This is the honest reading — touching intervals cost the margin the
+hinge demands — rather than loosening a tolerance until it reads zero.
+
+**Smoothed SignBLEU vs. exact zero.** Additive smoothing makes a no-overlap score
+a tiny positive number; rather than weaken the test, the metric now follows the
+standard BLEU convention (no unigram overlap ⇒ nothing matched ⇒ exactly 0),
+keeping smoothing only to soften the higher-order "one missing n-gram zeroes all"
+harshness.
