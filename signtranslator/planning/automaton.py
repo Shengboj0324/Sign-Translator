@@ -36,10 +36,15 @@ class S(Enum):
     ARGS_REF = auto()         # expect REF (second half of an arg pair)
     REFS_REF_OR_END = auto()  # expect REF or TAM marker
     EXPECT_TAM_V = auto()     # expect TAM value
-    AFTER_TAM_V = auto()      # expect LOCI marker
+    AFTER_TAM_V = auto()      # expect TOPIC marker
+    TOPIC_REF_OR_SKIP = auto()  # expect REF (topic set) or FOCUS marker (topic none)
+    AFTER_TOPIC_REF = auto()  # expect FOCUS marker
+    FOCUS_REF_OR_SKIP = auto()  # expect REF (focus set) or LOCI marker (focus none)
+    AFTER_FOCUS_REF = auto()  # expect LOCI marker
     LOCI_REF_OR_END = auto()  # expect REF or UNITS marker
     LOCI_LOCUS = auto()       # expect LOCUS (second half of a locus pair)
-    UNITS_LEX_OR_END = auto()  # expect LEX or NMS marker
+    UNITS_LEX_OR_END = auto()  # expect LEX or CLS marker
+    CLS_LEX_OR_END = auto()   # expect LEX (classifier) or NMS marker
     NMS_NM_OR_END = auto()    # expect NM or FS marker
     NMS_I = auto()            # expect IDX (span start)
     NMS_J = auto()            # expect IDX (span end)
@@ -61,10 +66,15 @@ _TRANSITIONS: Dict[S, List[Tuple[str, S]]] = {
     S.ARGS_REF:         [("REF", S.ARGS_ROLE_OR_END)],
     S.REFS_REF_OR_END:  [("REF", S.REFS_REF_OR_END), ("TAM", S.EXPECT_TAM_V)],
     S.EXPECT_TAM_V:     [("TAM_V", S.AFTER_TAM_V)],
-    S.AFTER_TAM_V:      [("LOCI", S.LOCI_REF_OR_END)],
+    S.AFTER_TAM_V:      [("TOPIC", S.TOPIC_REF_OR_SKIP)],
+    S.TOPIC_REF_OR_SKIP: [("REF", S.AFTER_TOPIC_REF), ("FOCUS", S.FOCUS_REF_OR_SKIP)],
+    S.AFTER_TOPIC_REF:  [("FOCUS", S.FOCUS_REF_OR_SKIP)],
+    S.FOCUS_REF_OR_SKIP: [("REF", S.AFTER_FOCUS_REF), ("LOCI", S.LOCI_REF_OR_END)],
+    S.AFTER_FOCUS_REF:  [("LOCI", S.LOCI_REF_OR_END)],
     S.LOCI_REF_OR_END:  [("REF", S.LOCI_LOCUS), ("UNITS", S.UNITS_LEX_OR_END)],
     S.LOCI_LOCUS:       [("LOCUS", S.LOCI_REF_OR_END)],
-    S.UNITS_LEX_OR_END: [("LEX", S.UNITS_LEX_OR_END), ("NMS", S.NMS_NM_OR_END)],
+    S.UNITS_LEX_OR_END: [("LEX", S.UNITS_LEX_OR_END), ("CLS", S.CLS_LEX_OR_END)],
+    S.CLS_LEX_OR_END:   [("LEX", S.CLS_LEX_OR_END), ("NMS", S.NMS_NM_OR_END)],
     S.NMS_NM_OR_END:    [("NM", S.NMS_I), ("FS", S.FS_IDX_OR_END)],
     S.NMS_I:            [("IDX", S.NMS_J)],
     S.NMS_J:            [("IDX", S.NMS_NM_OR_END)],
@@ -86,6 +96,7 @@ _REPEAT_DECISION: Dict[S, Tuple[str, str]] = {
     S.REFS_REF_OR_END:  ("REF", "num_referents"),
     S.LOCI_REF_OR_END:  ("REF", "num_referents"),
     S.UNITS_LEX_OR_END: ("LEX", "max_units"),
+    S.CLS_LEX_OR_END:   ("LEX", "max_units"),
     S.NMS_NM_OR_END:    ("NM", "max_nonmanual"),
     S.FS_IDX_OR_END:    ("IDX", "max_units"),
 }
@@ -187,10 +198,14 @@ class SchemaAutomaton:
     def max_generated_length(self) -> int:
         """An upper bound on any bounded run's length -> a safe decode cap."""
         # fixed markers/values + capped repeats (pairs/triples counted).
-        fixed = 14
+        # ``fixed`` now includes the always-present TOPIC/FOCUS/CLS markers (17
+        # tokens for the empty plan); TOPIC/FOCUS each add an optional REF (+2),
+        # and CLS adds up to max_units classifier lexemes.
+        fixed = 17
         return (fixed + self.vocab.max_args * 2 + self.vocab.num_referents
                 + self.vocab.num_referents * 2 + self.vocab.max_units
-                + self.vocab.max_nonmanual * 3 + self.vocab.max_units)
+                + self.vocab.max_nonmanual * 3 + self.vocab.max_units
+                + 2 + self.vocab.max_units)
 
     def accepts(self, tokens) -> bool:
         """Whether the DFA accepts the full token sequence."""

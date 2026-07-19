@@ -175,13 +175,16 @@ class SpeechTrainingObjective(nn.Module):
     # -- frame targets ------------------------------------------------------
     @torch.no_grad()
     def _frame_targets(self, log_probs: torch.Tensor, targets: torch.Tensor,
-                       target_lengths: torch.Tensor
+                       target_lengths: torch.Tensor,
+                       input_lengths: torch.Tensor
                        ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Forced-alignment frame labels and boundary targets.
 
-        Returns ``(frame_labels, boundary_targets, valid_mask)``. Samples whose
-        transcript cannot fit in the available frames are marked invalid rather
-        than silently dropped or padded, so they cannot skew the loss.
+        Returns ``(frame_labels, boundary_targets, valid_mask)``. Alignment runs
+        over each sample's VALID frames only (``input_lengths[i]``), so padding
+        frames are never aligned or supervised. Samples whose transcript cannot
+        fit in the available frames are marked invalid rather than silently
+        dropped or padded, so they cannot skew the loss.
         """
         n, t, _ = log_probs.shape
         frame_labels = torch.zeros(n, t, dtype=torch.long, device=log_probs.device)
@@ -189,36 +192,47 @@ class SpeechTrainingObjective(nn.Module):
         valid = torch.zeros(n, dtype=torch.bool, device=log_probs.device)
 
         for i in range(n):
+            li = int(input_lengths[i])
             tokens = targets[i, :int(target_lengths[i])].tolist()
-            if not tokens or t < minimum_frames_required(tokens):
+            if not tokens or li < minimum_frames_required(tokens):
                 continue
             try:
-                al = ctc_forced_alignment(log_probs[i], tokens, blank=self.blank)
+                al = ctc_forced_alignment(log_probs[i, :li], tokens, blank=self.blank)
             except ValueError:
                 continue
-            frame_labels[i] = torch.tensor(al.state_tokens(), dtype=torch.long,
-                                           device=log_probs.device)
-            boundaries[i] = boundary_targets_from_alignment(al, t).to(log_probs.device)
+            frame_labels[i, :li] = torch.tensor(al.state_tokens(), dtype=torch.long,
+                                                device=log_probs.device)
+            boundaries[i, :li] = boundary_targets_from_alignment(al, li).to(log_probs.device)
             valid[i] = True
         return frame_labels, boundaries, valid
 
     # -- forward ------------------------------------------------------------
     def forward(self, features: torch.Tensor, targets: torch.Tensor,
                 target_lengths: torch.Tensor,
-                sign_embeddings: Optional[torch.Tensor] = None) -> ObjectiveOutput:
+                sign_embeddings: Optional[torch.Tensor] = None,
+                feature_lengths: Optional[torch.Tensor] = None) -> ObjectiveOutput:
         hidden = self.recognizer.encode(features)                  # (N, T, H)
         log_probs = F.log_softmax(self.recognizer.classifier(hidden), dim=-1)
 
         terms: Dict[str, torch.Tensor] = {}
 
         # --- L_ASR (CTC) ---------------------------------------------------
+        # ``feature_lengths`` are the real per-sample valid RAW frame counts;
+        # without them CTC would count padding frames as audio and mis-weight the
+        # loss on a variable-length batch. They are converted to ENCODED lengths
+        # (the recognizer subsamples), matching the log-prob time axis, and used
+        # for both CTC and forced alignment. Default recovers the full T.
         n, t, _ = log_probs.shape
-        input_lengths = torch.full((n,), t, dtype=torch.long, device=log_probs.device)
+        if feature_lengths is None:
+            input_lengths = torch.full((n,), t, dtype=torch.long, device=log_probs.device)
+        else:
+            feature_lengths = feature_lengths.to(dtype=torch.long, device=log_probs.device)
+            input_lengths = self.recognizer.output_lengths(feature_lengths).clamp(max=t)
         terms["asr"] = self.recognizer.ctc(
             log_probs.permute(1, 0, 2), targets, input_lengths, target_lengths)
 
         frame_labels, boundaries, valid = self._frame_targets(
-            log_probs.detach(), targets, target_lengths)
+            log_probs.detach(), targets, target_lengths, input_lengths)
 
         # --- L_boundary ----------------------------------------------------
         if self.boundary_head is not None and self.weights.boundary > 0:

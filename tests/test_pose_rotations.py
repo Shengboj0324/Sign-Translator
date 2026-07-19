@@ -200,6 +200,31 @@ def test_gradients_flow_through_6d_to_matrix():
     assert d6.grad.abs().sum() > 0
 
 
+def test_matrix_to_axis_angle_has_finite_gradients_at_singularities():
+    """The log map must not emit NaN gradients at phi = 0 or phi = pi (arccos has
+    an infinite derivative at cos = +/-1; the implementation uses atan2 + a floored
+    norm to stay finite). Stress across the singular set including axis-aligned pi
+    rotations (where individual axis components are exactly 0)."""
+    bad = 0
+    for s in range(100):
+        torch.manual_seed(s)
+        angles = torch.tensor([math.pi, math.pi - 1e-9, 1e-9, 0.5, 3.0],
+                              dtype=torch.float64)
+        axis = torch.nn.functional.normalize(
+            torch.randn(5, 3, generator=torch.Generator().manual_seed(s), dtype=torch.float64), dim=-1)
+        R = axis_angle_to_matrix(axis * angles[:, None]).detach().clone().requires_grad_(True)
+        matrix_to_axis_angle(R).pow(2).sum().backward()
+        if not torch.isfinite(R.grad).all():
+            bad += 1
+    assert bad == 0
+    # axis-aligned pi rotations: hardest case (two axis components exactly 0)
+    for av in ([1., 0, 0], [0, 1., 0], [0, 0, 1.]):
+        aa = torch.tensor(av, dtype=torch.float64) * (math.pi - 1e-9)
+        R = axis_angle_to_matrix(aa).detach().clone().requires_grad_(True)
+        matrix_to_axis_angle(R).pow(2).sum().backward()
+        assert torch.isfinite(R.grad).all()
+
+
 def test_input_validation():
     with pytest.raises(ValueError):
         rotation_6d_to_matrix(torch.zeros(5))

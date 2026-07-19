@@ -6,18 +6,22 @@ with a fixed slot order, so that (a) an autoregressive decoder can emit it, (b) 
 finite-state automaton can constrain that emission to well-formed skeletons
 (Stage 2b), and (c) serialize/deserialize is an exact round-trip.
 
-Serialization grammar (fixed slot order; ``*`` = zero or more):
+Serialization grammar (fixed slot order; ``*`` = zero or more, ``?`` = optional):
 
     BOP  PRED <pred>  ARGS (<role> <ref>)*  REFS (<ref>)*  TAM <tam>
-    LOCI (<ref> <locus>)*  UNITS (<lex>)*  NMS (<marker> <i> <j>)*
+    TOPIC <ref>?  FOCUS <ref>?  LOCI (<ref> <locus>)*
+    UNITS (<lex>)*  CLS (<lex>)*  NMS (<marker> <i> <j>)*
     FS (<i>)*  CONF <conf>  EOP
 
-Every slot marker is always present (even for empty variable-length slots), so
-the language is regular: the set of legal next tokens depends only on a finite
-"slot state", never on unbounded history. Cross-slot *consistency* constraints
-(a referent used must be declared, a locus must be unique, ...) are NOT part of
-the grammar; they are enforced by :func:`validate_plan`. The grammar guarantees
-a well-formed *skeleton*; the validator guarantees a well-formed *plan*.
+Every slot marker is always present (even for empty variable-length slots and for
+the optional TOPIC/FOCUS referents), so the language is regular: the set of legal
+next tokens depends only on a finite "slot state", never on unbounded history.
+TOPIC/FOCUS carry an *optional* single referent (the marker is emitted with a
+following REF iff the field is set), so information-structure marking round-trips
+exactly. Cross-slot *consistency* constraints (a referent used must be declared, a
+locus must be unique, ...) are NOT part of the grammar; they are enforced by
+:func:`validate_plan`. The grammar guarantees a well-formed *skeleton*; the
+validator guarantees a well-formed *plan*.
 """
 
 from __future__ import annotations
@@ -26,8 +30,8 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
 
 # Token "kinds" -- disjoint namespaces whose union is the vocabulary.
-STRUCTURAL = ("BOP", "PRED", "ARGS", "REFS", "TAM", "LOCI", "UNITS",
-              "NMS", "FS", "CONF", "EOP")
+STRUCTURAL = ("BOP", "PRED", "ARGS", "REFS", "TAM", "TOPIC", "FOCUS", "LOCI",
+              "UNITS", "CLS", "NMS", "FS", "CONF", "EOP")
 VALUE_KINDS = ("ROLE", "REF", "PRED_V", "TAM_V", "LOCUS", "LEX", "NM", "IDX", "CONF_V")
 
 
@@ -169,8 +173,10 @@ class SignPlan:
 def serialize_plan(plan: SignPlan, vocab: PlanVocabulary = DEFAULT_VOCAB) -> List[int]:
     """Linearize a plan to token ids following the fixed-order grammar.
 
-    Serialization covers the generatable core (everything except provenance,
-    which is not decoder-generated). ``deserialize_plan`` is its exact inverse.
+    Serialization covers every decoder-generatable field (all of the typed plan
+    except ``provenance``, which is system-attached bookkeeping). In particular
+    ``topic``/``focus`` (optional referents) and ``classifiers`` DO round-trip.
+    ``deserialize_plan`` is its exact inverse.
     """
     t = vocab.token
     out: List[int] = [t("BOP")]
@@ -183,11 +189,21 @@ def serialize_plan(plan: SignPlan, vocab: PlanVocabulary = DEFAULT_VOCAB) -> Lis
     for ref in plan.referents:
         out.append(t("REF", ref))
     out += [t("TAM"), t("TAM_V", plan.tam)]
+    # TOPIC / FOCUS: marker always present, followed by a single REF iff set.
+    out.append(t("TOPIC"))
+    if plan.topic is not None:
+        out.append(t("REF", plan.topic))
+    out.append(t("FOCUS"))
+    if plan.focus is not None:
+        out.append(t("REF", plan.focus))
     out.append(t("LOCI"))
     for ref, locus in plan.loci.items():
         out += [t("REF", ref), t("LOCUS", locus)]
     out.append(t("UNITS"))
     for lex in plan.manual_units:
+        out.append(t("LEX", lex))
+    out.append(t("CLS"))
+    for lex in plan.classifiers:
         out.append(t("LEX", lex))
     out.append(t("NMS"))
     for span in plan.nonmanual:
@@ -254,6 +270,12 @@ def deserialize_plan(tokens: Sequence[int],
     expect_struct("TAM")
     plan.tam = take_value("TAM_V")
 
+    # TOPIC / FOCUS carry an OPTIONAL single referent (zero-or-one REF).
+    expect_struct("TOPIC")
+    plan.topic = take_value("REF") if peek_kind() == "REF" else None
+    expect_struct("FOCUS")
+    plan.focus = take_value("REF") if peek_kind() == "REF" else None
+
     expect_struct("LOCI")
     while peek_kind() == "REF":
         ref = take_value("REF")
@@ -263,6 +285,10 @@ def deserialize_plan(tokens: Sequence[int],
     expect_struct("UNITS")
     while peek_kind() == "LEX":
         plan.manual_units.append(take_value("LEX"))
+
+    expect_struct("CLS")
+    while peek_kind() == "LEX":
+        plan.classifiers.append(take_value("LEX"))
 
     expect_struct("NMS")
     while peek_kind() == "NM":

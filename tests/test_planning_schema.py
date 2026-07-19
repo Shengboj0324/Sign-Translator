@@ -127,11 +127,28 @@ def test_serialize_deserialize_is_identity_on_canonical_plan():
     assert back.frame.args == plan.frame.args
     assert back.referents == plan.referents
     assert back.tam == plan.tam
+    assert back.topic == plan.topic            # information structure must survive
+    assert back.focus == plan.focus
+    assert back.classifiers == plan.classifiers
     assert back.loci == plan.loci
     assert back.manual_units == plan.manual_units
     assert back.nonmanual == plan.nonmanual
     assert back.fingerspelling == plan.fingerspelling
     assert back.conf_bucket == plan.conf_bucket
+
+
+def test_topic_focus_classifiers_round_trip_all_cases():
+    """Regression: these three fields were previously dropped by serialization.
+    Cover topic-set/focus-none, topic-none/focus-set, and non-empty classifiers."""
+    base = dict(frame=SemanticFrame(1, [(0, 1)]), referents=[1, 2],
+                manual_units=[3, 4])
+    for topic, focus, cls in [(1, None, [7, 9]), (None, 2, []),
+                              (1, 2, [5]), (None, None, [])]:
+        p = SignPlan(topic=topic, focus=focus, classifiers=cls, **base)
+        q = deserialize_plan(serialize_plan(p))
+        assert q.topic == topic and q.focus == focus and q.classifiers == cls
+        # and re-serialization is an exact fixpoint
+        assert serialize_plan(q) == serialize_plan(p)
 
 
 def test_round_trip_on_many_random_valid_plans():

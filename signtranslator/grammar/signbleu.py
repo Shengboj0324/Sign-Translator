@@ -110,13 +110,23 @@ def sign_bleu(hyp: MultiChannel, ref: MultiChannel, max_n: int = 3,
     if max_n < 1:
         raise ValueError("max_n must be >= 1")
     precisions: List[float] = []
+    effective: List[float] = []          # orders actually present in the hypothesis
     base_clipped = 0
     for n in range(1, max_n + 1):
         clipped, total = modified_precision(hyp, ref, n)
         if n == 1:
             base_clipped = clipped
-        precisions.append((clipped + smooth) / (total + smooth) if total
-                          else 0.0)
+        if total > 0:
+            p = (clipped + smooth) / (total + smooth)
+            precisions.append(p)
+            effective.append(p)
+        else:
+            # The hypothesis has NO n-grams of this order (it is shorter than n).
+            # Standard "effective order" handling: this order is not reachable, so
+            # it is excluded from the geometric mean rather than forced to 0 --
+            # otherwise an identical but short utterance would score 0 for any
+            # max_n above its length. Reported as 0.0 for transparency.
+            precisions.append(0.0)
 
     c, r = _total_tokens(hyp), _total_tokens(ref)
     bp = 1.0 if c > r else (math.exp(1 - r / c) if c > 0 else 0.0)
@@ -124,10 +134,10 @@ def sign_bleu(hyp: MultiChannel, ref: MultiChannel, max_n: int = 3,
     # BLEU convention: no unigram overlap means nothing matched -> exactly 0.
     # Smoothing only softens the higher-order "one missing n-gram zeroes all"
     # harshness; it must not turn a genuine no-match into a positive score.
-    if base_clipped == 0 or not all(p > 0 for p in precisions):
+    if base_clipped == 0 or not effective or not all(p > 0 for p in effective):
         score = 0.0
     else:
-        log_mean = sum(math.log(p) for p in precisions) / len(precisions)
+        log_mean = sum(math.log(p) for p in effective) / len(effective)
         score = bp * math.exp(log_mean)
     return SignBLEUResult(score=score, precisions=precisions,
                           brevity_penalty=bp, hyp_len=c, ref_len=r)

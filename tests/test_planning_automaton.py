@@ -87,10 +87,11 @@ def test_every_accepted_string_deserializes_soundly():
     """
     a = SchemaAutomaton(TINY)
     count = 0
-    # max_length 16 already yields 312 strings on the tiny vocab; larger bounds
-    # grow super-exponentially (5.6k at 18) without adding qualitatively new
+    # The minimal plan is now 17 tokens (TOPIC/FOCUS/CLS markers added), so the
+    # enumeration bound is raised to 19 to admit non-trivial (non-minimal) plans;
+    # larger bounds grow super-exponentially without adding qualitatively new
     # cases, so this is the exhaustive-enough bound.
-    for tokens in a.enumerate_accepted(max_length=16):
+    for tokens in a.enumerate_accepted(max_length=19):
         plan = deserialize_plan(tokens, TINY)              # must not raise
         canonical = serialize_plan(plan, TINY)
         assert a.accepts(canonical)                        # still in the language
@@ -113,10 +114,11 @@ def test_canonical_serializations_are_exact_fixpoints():
 
 
 def test_minimal_accepted_plan_has_the_expected_length():
-    """The shortest plan is all markers + 3 singleton values + BOP/EOP = 14."""
+    """The shortest plan is all 14 markers + 3 singleton values (PRED/TAM/CONF)
+    with every variable slot and both optional TOPIC/FOCUS referents empty = 17."""
     a = SchemaAutomaton(TINY)
-    lengths = [len(t) for t in a.enumerate_accepted(max_length=14)]
-    assert min(lengths) == 14
+    lengths = [len(t) for t in a.enumerate_accepted(max_length=17)]
+    assert min(lengths) == 17
 
 
 # ---------------------------------------------------------------------------

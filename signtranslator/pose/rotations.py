@@ -94,35 +94,39 @@ def axis_angle_to_matrix(aa: torch.Tensor) -> torch.Tensor:
 def matrix_to_axis_angle(R: torch.Tensor) -> torch.Tensor:
     """(..., 3, 3) -> (..., 3) axis-angle (the SO(3) log map).
 
-    phi = arccos((tr R - 1)/2). Away from phi in {0, pi} the axis comes from the
-    skew part (R - R^T)/2. Both singular cases are handled: phi ~ 0 -> zero
-    vector; phi ~ pi -> axis from the symmetric part (R + I)/2.
+    The angle is computed as ``phi = atan2(||v||/2, (tr R - 1)/2)`` with
+    ``v = (R - R^T)`` the skew part (= 2 sin(phi) * axis). ``atan2`` is used
+    instead of ``arccos`` because ``arccos`` has an INFINITE derivative at
+    cos(phi) = +/-1 (i.e. phi = 0 or pi), which back-propagates NaN gradients;
+    ``atan2`` is finite-gradient across the whole range. The norm carries a tiny
+    additive floor so ``d||v|| = v/||v||`` stays finite at v = 0. Away from
+    phi = pi the axis is ``v/||v||``; at phi ~ pi (where v -> 0 loses the axis
+    direction) the axis is recovered from the symmetric part (R + I)/2.
     """
     _check_matrix(R)
     trace = R[..., 0, 0] + R[..., 1, 1] + R[..., 2, 2]
     cos_phi = torch.clamp((trace - 1.0) * 0.5, -1.0, 1.0)
-    phi = torch.arccos(cos_phi)                                # (...,)
 
-    # generic axis from the skew-symmetric part
     vx = R[..., 2, 1] - R[..., 1, 2]
     vy = R[..., 0, 2] - R[..., 2, 0]
     vz = R[..., 1, 0] - R[..., 0, 1]
     v = torch.stack((vx, vy, vz), dim=-1)                      # 2 sin(phi) * axis
-    sin_phi = torch.sin(phi)
+    # floored norm: finite gradient at v = 0 (plain ||.|| has v/||v|| = 0/0 there)
+    vnorm = torch.sqrt((v * v).sum(-1) + 1e-24)                # (...,)
+    sin_phi = 0.5 * vnorm                                      # = |sin(phi)| >= 0
+    phi = torch.atan2(sin_phi, cos_phi)                        # in [0, pi], finite grad
 
-    out = torch.zeros_like(v)
-    # generic region: phi not near 0 or pi
-    generic = (phi > _ANGLE_EPS) & (torch.pi - phi > _ANGLE_EPS)
-    if generic.any():
-        scale = (phi / (2.0 * sin_phi))[..., None]
-        out = torch.where(generic[..., None], v * scale, out)
+    # generic + near-0: axis = v/||v||, so out = (v/||v||) * phi. At phi->0 this
+    # tends to v/2 (correct) with a finite gradient thanks to the floor.
+    out = v / vnorm[..., None] * phi[..., None]
 
-    # near-pi region: 2 sin(phi) ~ 0, use (R + I)/2 = axis axis^T
+    # near-pi region: v -> 0 loses direction; recover axis from (R + I)/2.
     near_pi = (torch.pi - phi) <= _ANGLE_EPS
     if near_pi.any():
         S = (R + torch.eye(3, dtype=R.dtype, device=R.device)) * 0.5
         diag = torch.stack((S[..., 0, 0], S[..., 1, 1], S[..., 2, 2]), dim=-1)
-        axis = torch.sqrt(torch.clamp(diag, min=0.0))
+        # clamp to a tiny positive floor so sqrt has a finite gradient at 0
+        axis = torch.sqrt(torch.clamp(diag, min=1e-12))
         # fix signs using the off-diagonal entries relative to the largest comp
         k = torch.argmax(axis, dim=-1)
         axis = _fix_pi_axis_signs(S, axis, k)

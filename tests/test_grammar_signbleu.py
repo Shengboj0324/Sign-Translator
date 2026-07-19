@@ -91,6 +91,14 @@ def test_no_overlap_scores_zero():
     assert sign_bleu(_utt([7, 8, 9]), _utt([1, 2, 3]), max_n=1).score == 0.0
 
 
+def test_identical_short_utterance_scores_one_effective_order():
+    """A short but IDENTICAL utterance must score ~1 even when max_n exceeds its
+    length: orders with no n-grams are excluded from the geometric mean (effective
+    order), not forced to 0."""
+    assert abs(sign_bleu(_utt([1, 2]), _utt([1, 2]), max_n=3).score - 1.0) < 1e-6
+    assert abs(sign_bleu(_utt([5]), _utt([5]), max_n=4).score - 1.0) < 1e-6
+
+
 def test_sign_bleu_rejects_bad_order():
     with pytest.raises(ValueError):
         sign_bleu(_utt([1]), _utt([1]), max_n=0)

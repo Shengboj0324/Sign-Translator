@@ -146,7 +146,11 @@ def generate_corpus(out_dir: str, spec: Optional[CorpusSpec] = None,
     # leaking held-out statistics into evaluation. Shape (C, 1, V): per channel
     # and joint, pooled over samples and time.
     if train_pose is None:
-        train_pose = pose
+        # Fail loudly rather than silently normalising with val/test statistics
+        # (a held-out leak). A corpus must have a 'train' split to fit stats.
+        raise ValueError(
+            "no 'train' split in `counts`; cannot compute normalisation "
+            f"statistics without leaking held-out data (got splits: {list(counts)})")
     mean = train_pose.mean(axis=(0, 2), keepdims=True)[0]      # (C, 1, V)
     std = train_pose.std(axis=(0, 2), keepdims=True)[0]        # (C, 1, V)
     std = np.maximum(std, 1e-3)

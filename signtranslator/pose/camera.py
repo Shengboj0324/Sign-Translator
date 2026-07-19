@@ -53,9 +53,13 @@ class PerspectiveCamera:
         up = torch.as_tensor(up, dtype=dtype)
         f = target - eye
         f = f / torch.linalg.norm(f)                          # forward = +Z cam
-        r = torch.cross(f, up, dim=-1)
+        # Right-handed camera frame: x = up x f, y = f x x, z = f, so that
+        # x x y = z and det([x;y;z]) = +1 (a proper rotation in SO(3)).
+        # (Using r = f x up here would give a LEFT-handed frame with det = -1,
+        # i.e. a reflection -- a mirror-imaged, invalid extrinsic.)
+        r = torch.cross(up, f, dim=-1)
         r = r / torch.linalg.norm(r)                          # +X cam (right)
-        u = torch.cross(r, f, dim=-1)                         # +Y cam (down-ish)
+        u = torch.cross(f, r, dim=-1)                         # +Y cam
         # world->camera rotation has rows [r; u; f]
         R = torch.stack((r, u, f), dim=0)
         t = -R @ eye

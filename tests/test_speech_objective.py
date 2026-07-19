@@ -159,6 +159,22 @@ def _batch(n=4, T=60, F_=20, n_tokens=4, L=3, seed=0):
     return feats, targets, lengths
 
 
+def test_feature_lengths_exclude_padding_from_ctc():
+    """Passing real per-sample feature lengths must change the CTC loss (padding
+    frames are no longer counted as audio) and stay finite. Converting raw ->
+    encoded length is handled inside the objective (the recognizer subsamples)."""
+    obj, rec, _, _ = _objective()
+    feats, targets, lengths = _batch(n=4, T=60, L=3, seed=1)
+    flen = torch.tensor([20, 60, 60, 60], dtype=torch.long)     # sample 0 padded
+    out_default = obj(feats, targets, lengths, sign_embeddings=torch.randn(4, 48))
+    out_len = obj(feats, targets, lengths, sign_embeddings=torch.randn(4, 48),
+                  feature_lengths=flen)
+    assert torch.isfinite(out_len.total)
+    assert abs(out_default.terms["asr"].item() - out_len.terms["asr"].item()) > 1e-6
+    # the CTC input length used is the ENCODED (subsampled) length, not the raw 20
+    assert int(rec.output_lengths(flen)[0]) < 20
+
+
 def test_all_four_terms_are_present_and_finite():
     obj, _, _, _ = _objective()
     feats, targets, lengths = _batch()
