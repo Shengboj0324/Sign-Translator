@@ -1,0 +1,63 @@
+"""Dataset and data-engineering layer (Document 10).
+
+Implements `10_dataset_and_data_engineering.md` (see docs/DATA_ENGINEERING.md): a
+canonical sample schema + dataset map, a license/consent-gated pipeline with a
+Merkle-style provenance chain, quality mathematics (multi-view DLT triangulation,
+confidence propagation, weighted robust reprojection), deduplication, per-tier
+inter-annotator agreement + stratified QC, a leakage-certified grouped split, data
+governance (consent/retention/policy + sensitive-trait non-inference), and
+datasheets. Reuses Doc-04 (camera/reprojection), Doc-03 (kappa), and the existing
+data-quality/readiness modules.
+"""
+
+from .schema import (
+    ConsentState, Sample, validate_sample, DatasetResource, DATASET_MAP,
+    dataset_map_is_complete, VALID_SPLITS,
+)
+from .provenance import (
+    sha256_hex, content_hash, GateDecision, gate_download, ProvenanceStep,
+    ProvenanceChain,
+)
+from .quality import (
+    projection_matrix, triangulate_dlt, triangulation_confidence,
+    weighted_reprojection_residual,
+)
+from .dedup import (
+    average_hash, difference_hash, hamming_distance, jaccard_similarity,
+    normalized_edit_distance, cluster_duplicates, near_threshold_pairs,
+)
+from .qc import (
+    per_tier_kappa, pooled_kappa, weakest_tier, stratify, stratified_qc_sample,
+)
+from .splitting import (
+    group_samples, grouped_split, certify_no_group_leakage, LeakageCertificate,
+    Window, windows_inherit_split, certify_window_split_consistency,
+)
+from .governance import (
+    transition_consent, ConsentError, apply_withdrawal, apply_retention,
+    UsagePolicy, gate_action, infer_sensitive_trait, SensitiveInferenceError,
+    SENSITIVE_TRAITS,
+)
+from .datasheet import (
+    Datasheet, DATASHEET_SECTIONS, PreprocessingManifest,
+)
+
+__all__ = [
+    "ConsentState", "Sample", "validate_sample", "DatasetResource", "DATASET_MAP",
+    "dataset_map_is_complete", "VALID_SPLITS",
+    "sha256_hex", "content_hash", "GateDecision", "gate_download",
+    "ProvenanceStep", "ProvenanceChain",
+    "projection_matrix", "triangulate_dlt", "triangulation_confidence",
+    "weighted_reprojection_residual",
+    "average_hash", "difference_hash", "hamming_distance", "jaccard_similarity",
+    "normalized_edit_distance", "cluster_duplicates", "near_threshold_pairs",
+    "per_tier_kappa", "pooled_kappa", "weakest_tier", "stratify",
+    "stratified_qc_sample",
+    "group_samples", "grouped_split", "certify_no_group_leakage",
+    "LeakageCertificate", "Window", "windows_inherit_split",
+    "certify_window_split_consistency",
+    "transition_consent", "ConsentError", "apply_withdrawal", "apply_retention",
+    "UsagePolicy", "gate_action", "infer_sensitive_trait",
+    "SensitiveInferenceError", "SENSITIVE_TRAITS",
+    "Datasheet", "DATASHEET_SECTIONS", "PreprocessingManifest",
+]
