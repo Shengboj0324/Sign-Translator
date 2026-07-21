@@ -1,0 +1,65 @@
+<svg viewBox="0 0 1040 430" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="a4" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#334155"/></marker>
+    <style>
+      .t{fill:#0f172a;font-size:13px;font-weight:700;}
+      .s{fill:#475569;font-size:11px;}
+      .cap{fill:#64748b;font-size:11.5px;}
+      .eq{fill:#1e293b;font-size:12.5px;}
+    </style>
+  </defs>
+
+  <text x="520" y="30" text-anchor="middle" style="fill:#0f172a;font-size:20px;font-weight:700;">Streaming Contract &amp; Latency Budget</text>
+  <text x="520" y="51" text-anchor="middle" class="cap">First-output latency is the serial critical path; steady-state throughput is capped by the slowest stage. Displayed signs are immutable.</text>
+
+  <!-- pipeline stages -->
+  <g>
+    <rect x="30"  y="80" width="150" height="56" rx="8" fill="#eef2ff" stroke="#6366f1"/>
+    <text x="105" y="103" text-anchor="middle" class="t">buffer</text>
+    <text x="105" y="122" text-anchor="middle" class="s">L_buffer</text>
+
+    <rect x="200" y="80" width="150" height="56" rx="8" fill="#eff6ff" stroke="#3b82f6"/>
+    <text x="275" y="103" text-anchor="middle" class="t">ASR / lattice</text>
+    <text x="275" y="122" text-anchor="middle" class="s">L_ASR</text>
+
+    <rect x="370" y="80" width="150" height="56" rx="8" fill="#eff6ff" stroke="#3b82f6"/>
+    <text x="445" y="103" text-anchor="middle" class="t">plan</text>
+    <text x="445" y="122" text-anchor="middle" class="s">L_plan</text>
+
+    <rect x="540" y="80" width="150" height="56" rx="8" fill="#f0fdf4" stroke="#22c55e"/>
+    <text x="615" y="103" text-anchor="middle" class="t">motion chunk</text>
+    <text x="615" y="122" text-anchor="middle" class="s">L_motion  ◀ bottleneck</text>
+
+    <rect x="710" y="80" width="150" height="56" rx="8" fill="#fdf2f8" stroke="#ec4899"/>
+    <text x="785" y="103" text-anchor="middle" class="t">render</text>
+    <text x="785" y="122" text-anchor="middle" class="s">L_render</text>
+
+    <line x1="180" y1="108" x2="198" y2="108" stroke="#334155" stroke-width="1.5" marker-end="url(#a4)"/>
+    <line x1="350" y1="108" x2="368" y2="108" stroke="#334155" stroke-width="1.5" marker-end="url(#a4)"/>
+    <line x1="520" y1="108" x2="538" y2="108" stroke="#334155" stroke-width="1.5" marker-end="url(#a4)"/>
+    <line x1="690" y1="108" x2="708" y2="108" stroke="#334155" stroke-width="1.5" marker-end="url(#a4)"/>
+  </g>
+
+  <text x="30" y="172" class="eq" font-weight="700">First-output latency</text>
+  <text x="30" y="193" class="eq">L_first ≈ L_buffer + L_ASR + L_plan + L_motion + L_render     (serial sum)</text>
+  <text x="30" y="214" class="eq" font-weight="700">Throughput</text>
+  <text x="30" y="235" class="eq">R = 1 / maxᵢ L_i     (bounded by the slowest stage)</text>
+
+  <!-- commit contract timeline -->
+  <g transform="translate(30,270)">
+    <text x="0" y="0" class="eq" font-weight="700">Commit contract — committed prefix is append-only</text>
+    <!-- committed -->
+    <rect x="0"   y="14" width="260" height="34" rx="6" fill="#dcfce7" stroke="#16a34a"/>
+    <text x="130" y="36" text-anchor="middle" class="s" fill="#166534">committed prefix Cₜ  (displayed · immutable)</text>
+    <!-- revisable -->
+    <rect x="270" y="14" width="230" height="34" rx="6" fill="#fef9c3" stroke="#eab308"/>
+    <text x="385" y="36" text-anchor="middle" class="s" fill="#854d0e">revisable suffix Uₜ  (may change)</text>
+    <text x="0" y="72" class="cap">Cₜ ⊑ Cₜ₊₁ for all t — a rewrite of a displayed sign is a certified commitment error.</text>
+
+    <!-- backpressure note -->
+    <rect x="560" y="8" width="420" height="66" rx="8" fill="#f8fafc" stroke="#cbd5e1"/>
+    <text x="770" y="30" text-anchor="middle" class="eq" font-weight="700">Backpressure bounds latency</text>
+    <text x="770" y="50" text-anchor="middle" class="s">λ &gt; μ &amp; no backpressure  ⇒  backlog ~ (λ−μ)·t  (unbounded)</text>
+    <text x="770" y="66" text-anchor="middle" class="s">with backpressure  ⇒  backlog ≤ B  ⇒  latency ≤ B/μ</text>
+  </g>
+</svg>

@@ -1,308 +1,316 @@
 # Sign-Translator
 
-A research codebase for **bidirectional neural sign-language translation** built
-around a single core idea: treat sign language as a **continuous 3D language
-space** rather than a sequence of isolated gestures. English/gloss meaning
-embeddings and 3D human-motion embeddings are mathematically aligned into one
-shared latent manifold, and continuous signing motion is produced by a
-conditional diffusion generator sampling from that manifold.
+**A neuro-symbolic framework for bidirectional translation between spoken/written language and grammatically-structured three-dimensional sign-language motion.**
 
-This repository implements and **verifies the mathematics of that core** in
-pure PyTorch. It builds, trains on synthetic data, and is fully unit-tested on
-CPU with no large downloads.
+Sign-Translator treats sign language not as a sequence of isolated gestures but as a
+*continuous, grammatically-organised 3D language*. Spoken or written meaning and 3D
+human motion are aligned into a single shared latent manifold; grammatical structure
+(negation, questions, topicalisation, spatial reference, non-manual markers) is carried
+explicitly as a symbolic intermediate representation; and continuous signing motion is
+produced by a conditional diffusion generator that respects both the linguistics and the
+biomechanics of the signing body.
 
----
+The repository implements — and *mathematically verifies* — the full research stack as
+thirteen composable layers, in pure PyTorch/NumPy, runnable and unit-tested on CPU with
+no large downloads. Each layer is specified in a companion design document under
+[`docs/`](docs/) that fixes the mathematics before the code, and every non-trivial
+mathematical claim is checked by an adversarial test rather than asserted.
 
-## Scope and honesty about maturity
-
-The long-term system envisioned is a multimodal neuro-symbolic framework
-(speech foundation models → LLM semantic planner → shared manifold → 3D motion
-diffusion → rendered avatar). That full system is a multi-year research and
-data effort. **This repository is the rigorously-implemented novel core, not a
-production-deployed product.** Concretely:
-
-| Component | Status in this repo |
-|---|---|
-| Skeleton graph + ST-GCN motion encoder | **Implemented & tested** |
-| Keypoint preprocessing + augmentation (invariance-tested) | **Implemented & tested** |
-| CLIP-style contrastive motion↔language alignment | **Implemented & tested** |
-| Gaussian diffusion (DDPM/DDIM) motion generator | **Implemented & tested** |
-| Cross-modal attention denoiser + classifier-free guidance | **Implemented & tested** |
-| Continuous sign recognition (sign→gloss, CTC) | **Implemented & tested** |
-| Semantic planner (English→gloss seq2seq) | **Implemented & tested** |
-| Bidirectional pipeline (speech→gloss→motion, motion→gloss) | **Implemented & tested** |
-| Evaluation metrics (recall@k, MPJPE, WER, accuracy) | **Implemented & tested** |
-| End-to-end joint training | **Implemented & tested** |
-| Speech / text encoders | **Interface + lightweight Transformer stub** (swap in Whisper/wav2vec2/LLM) |
-| Speech front-end (audio features → spoken tokens, CTC) | **Implemented & tested** |
-| Full audio → spoken tokens → gloss → 3D motion path | **Implemented & tested** |
-| On-disk data ingestion + corpus pipeline | **Implemented & tested** (synthetic corpus; real corpora plug into the same schema) |
-| Data quality inspection + cleaning (NaN/dropped/outlier/frozen/duplicate) | **Implemented & tested** |
-| Training-readiness audit (coverage, balance, split leakage, CTC feasibility) | **Implemented & tested** |
-| Keypoint adapters (MediaPipe Holistic, OpenPose → skeleton) | **Implemented & tested** |
-| Adaptive graph refinement (CTR-GCN / 2s-AGCN style learnable adjacency) | **Implemented & tested** |
-| Preference optimisation (Diffusion-DPO + naturalness proxies) | **Implemented & tested** |
-| Unified multi-branch trainer (epochs, LR schedule, checkpoints) | **Implemented & tested** |
-| Analysis/report stage with pass-gated metrics | **Implemented & tested** |
-| Real sign-language data (How2Sign, PHOENIX-2014T) | **Not included** — synthetic corpus only (same on-disk schema) |
-| Avatar rendering (NeRF / Gaussian Splatting / SMPL-X) | **Not implemented** (out of scope for this core) |
-
-The stubs are deliberate: every heavy foundation model sits behind a small
-interface (`TextEncoder`, `SpeechEncoder`) so it can be replaced without
-touching the manifold or generator.
+![System architecture](docs/figures/architecture.svg)
 
 ---
 
-## Architecture
+## 1. Design thesis
 
-```
-        speech ──▶ SpeechEncoder ┐                    (swappable: Whisper/wav2vec2)
-                                 ├─▶ language feature ─▶ language projection ┐
-        text/gloss ─▶ TextEncoder┘                                          │
-                                                                            ▼
-                                                        ┌────────── shared manifold ──────────┐
-                                                        │   InfoNCE contrastive alignment      │
-                                                        ▼                                      ▲
-        3D pose seq ─▶ ST-GCN encoder ─▶ motion feature ─▶ motion projection ─────────────────┘
-                                                        │
-                                              language latent c
-                                                        │
-                                                        ▼
-                                   Conditional diffusion (DDPM/DDIM) ─▶ generated 3D motion
-```
+Most sign-language pipelines optimise a single surface metric (BLEU, WER, or a
+pose-reconstruction error) end-to-end. Three commitments distinguish this project:
 
-- **Perception** (`signtranslator/skeleton`, `models/stgcn.py`): the upper body
-  and both hands are a graph of 27 keypoints. ST-GCN performs spatial graph
-  convolution using spatial-configuration partitioning (self / centripetal /
-  centrifugal) plus temporal convolution, mapping a pose clip to a motion
-  embedding.
-- **Alignment** (`models/alignment.py`): projection heads map motion and
-  language features onto a unit hypersphere; a symmetric InfoNCE loss with a
-  learnable temperature aligns paired examples.
-- **Generation** (`models/diffusion.py`, `models/denoiser.py`): a Gaussian
-  diffusion model with a Transformer denoiser generates continuous 3D motion
-  conditioned on the language latent.
+1. **Sign language is a language, not an animation.** Grammar is represented
+   *symbolically and temporally* — as a graph of typed events over time intervals —
+   so that meaning-changing structure (a head-shake that negates, a brow-raise that
+   marks a yes/no question, a spatial locus that binds a referent) is a first-class
+   object, not an emergent side-effect of a motion model.
 
-The mathematics of each stage is documented in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-and [`docs/MATH.md`](docs/MATH.md).
+2. **Meaning lives on a shared manifold.** Language and motion are projected to the
+   same unit hypersphere, so translation becomes *retrieval and generation in a common
+   geometry* rather than opaque sequence-to-sequence transduction. The same manifold
+   supports the forward direction (meaning → motion) and the reverse (motion → gloss),
+   giving a measurable cycle-consistency signal.
+
+3. **Claims must be falsifiable.** A lower loss is never accepted as evidence of
+   linguistic quality. The evaluation layer is a *chain of falsifiable contracts* with
+   mandatory caveats, and pervasive tests distinguish genuine mathematical properties
+   from floating-point artefacts.
+
+The system is deliberately built as swappable layers behind small interfaces: heavy
+foundation models (Whisper/wav2vec2-style ASR, an LLM planner, licensed body/hand/face
+bases such as SMPL-X and FLAME) sit behind contracts, so a controllable synthetic
+stand-in can be replaced by a production model without touching the surrounding
+mathematics.
 
 ---
 
-## Installation
+## 2. The thirteen-layer stack
 
-```bash
-python -m pip install -r requirements.txt
-# or, as a package (editable):
-python -m pip install -e .
-```
+Each layer has a design/math document in [`docs/`](docs/) and a Python package under
+[`signtranslator/`](signtranslator/).
 
-Only `torch` and `numpy` are required for the core. Optional real backends:
+| # | Layer | Package | Key techniques and mathematics |
+|---|---|---|---|
+| 01 | **Speech foundation** | `speech/` | STFT + HTK/Slaney/Whisper log-Mel front-end; YIN pitch; streaming chunker with an exact algorithmic-latency model; CTC prefix-beam search; Viterbi forced alignment; confidence **calibration** (Brier, ECE, temperature scaling); a monotone **fail-closed** policy `PAUSE < FINGERSPELL < EMIT`. |
+| 02 | **Semantic planner** | `planning/` | Typed sign-plan schema with an exact serialize/deserialize round-trip; a DFA over the serialization grammar for **constrained decoding** (provably terminating); versioned, content-hashed lexicon retrieval with hallucination detection; sequence-level DPO. |
+| 03 | **Grammar / SIR** | `grammar/` | A **Sign Intermediate Representation**: a temporal graph of typed events with **Allen interval-algebra** relations and differentiable hinge losses; relation-biased graph attention; multi-label non-manual scopes; SignBLEU + Cohen's/Fleiss' κ. |
+| 04 | **3D human representation** | `pose/` | SMPL-X forward kinematics via **linear blend skinning**; continuous **6D rotation** parameterisation (Gram–Schmidt); the **geodesic** rotation metric; robust re-projection (Geman–McClure); identity/motion disentanglement with a leakage probe. |
+| 05 | **Hand-motion graph** | `hand_graph/` | A heterogeneous temporal graph over body/hand/face; relational **R-GCN + graph attention** with basis decomposition; translation- and rotation-invariant **wrist-relative geometry**; a monotone contact field; Graphormer structural encodings. |
+| 06 | **Motion transformer** | `motion_transformer/` | **Residual VQ** motion tokenisation (SoundStream-style cascade, single straight-through estimator); a spectral anti-oversmoothing loss (Parseval-exact); streaming causal attention with geodesic **SLERP** chunk-blending. |
+| 07 | **Motion diffusion** | `diffusion_gen/` | A temporal **DiT** denoiser (adaLN-Zero); the ε/x₀/**v** parameterisation triangle on a variance-preserving schedule; **classifier-free guidance**; RePaint-style inpainting; consistency / rectified-flow **few-step distillation**. |
+| 08 | **Avatar rendering** | `avatar_render/` | **Dual-quaternion skinning** (volume-preserving vs. LBS candy-wrapper collapse); 3D Gaussian-splat and NeRF volume-rendering math (proved to reduce to the same α-compositing operator); handedness-certified retargeting via Kabsch; linguistically-aware level-of-detail. |
+| 09 | **Facial / non-manual** | `facial_nmm/` | Concurrent grammatical channels as scoped intervals; a scope-nesting algebra; independent per-channel Bernoulli decoding; certified linguistic ⟂ affect disentanglement; intensity-monotone articulation to FLAME/SMPL-X expression coefficients. |
+| 10 | **Data engineering** | `data_engineering/` | Canonical sample schema; a license/consent gate *before* download; a Merkle-style **provenance chain**; multi-view **DLT triangulation** with confidence propagation; leakage-certified grouped split; a sensitive-trait non-inference guard; datasheets. |
+| 11 | **Self-supervised pretraining** | `pretraining/` | Masked motion modelling (MAE asymmetry) with an **interpolation-defeating mask certificate**; symmetric InfoNCE with **linguistically-grounded hard negatives** and a shortcut-learning falsification; a loss-vs-usefulness dissociation harness. |
+| 12 | **Evaluation framework** | `eval_framework/` | A **chain of falsifiable contracts** across seven caveat-bound metric layers; exact paired permutation / sign tests + bootstrap CIs; a pre-registration + test-set firewall; reproducible **SacreBLEU** and **BERTScore**; blinded comprehension scoring. |
+| 13 | **Real-time deployment** | `deployment/` | A display-commit **monotonicity** contract; the latency-budget algebra; a **backpressure bounded-latency theorem**; provable **quantization** error bounds (FP16/INT8); a numerically-certified optimization gate with exact **online-softmax** (FlashAttention) equivalence. |
 
-```bash
-python -m pip install -e ".[foundation]"   # transformers, soundfile
-```
+The forward path — *audio/text → speech → plan → SIR → manifold → hand-graph +
+transformer + diffusion → 3D body/face → rendered avatar* — and the reverse path
+*motion → gloss* both traverse the shared manifold, so recognition, generation, and
+cycle-consistency are measured on the same geometry.
 
-## Quick start
+---
 
-Train the joint objective on the synthetic dataset (CPU-friendly):
+## 3. Key mathematical concepts
 
-```bash
-python -m signtranslator.train --steps 300 --batch-size 16
-```
+### 3.1 The shared motion–language manifold
 
-Generate a motion clip from gloss tokens in Python:
-
-```python
-import torch
-from signtranslator import ModelConfig, DiffusionConfig
-from signtranslator.models import SignTranslator
-
-model = SignTranslator(ModelConfig(), DiffusionConfig())
-tokens = torch.randint(1, 4096, (2, 6))         # (batch, gloss length)
-motion = model.generate(tokens, num_frames=64)  # (2, 3, 64, 27) = (N, xyz, T, joints)
-```
-
-Run the **full bidirectional** system (speech→gloss→sign, and sign→gloss):
-
-```python
-import torch
-from signtranslator import ModelConfig, DiffusionConfig
-from signtranslator.models import BidirectionalSignTranslator
-
-model = BidirectionalSignTranslator(ModelConfig(), DiffusionConfig(),
-                                    src_vocab=256, gloss_vocab=128, num_glosses=64)
-
-# speech/text tokens -> gloss reordering -> 3D signing motion (with CFG)
-src = torch.randint(3, 256, (2, 8))
-out = model.translate_speech_to_sign(src, num_frames=64, guidance_scale=2.0)
-out["gloss"]    # decoded gloss id sequences
-out["motion"]   # (2, 3, 64, 27) generated motion
-
-# sign -> gloss recognition (CTC greedy decode)
-pose = torch.randn(2, 3, 64, 27)
-model.recognize(pose)
-```
-
-## End-to-end pipeline: ingest → train → analyze
-
-A single command generates an on-disk corpus, trains all branches jointly, and
-prints a pass-gated analysis report:
-
-```bash
-python -m signtranslator.run --corpus-dir ./corpus --epochs 28 --lr 4e-3
-```
-
-Measured result on a held-out validation split:
+Language embeddings `vᵢ` and motion embeddings `uᵢ` are projected to unit vectors on a
+common hypersphere and aligned with a **symmetric InfoNCE** objective with a learnable,
+CLIP-clamped temperature `τ`:
 
 ```
-Analysis report
-================================================
-  recognition_wer              0.0000  PASS
-  planner_token_accuracy       0.9727  PASS
-  recall_at_1                  0.9531  PASS
-  recall_at_5                  1.0000
-  generation_val_loss          0.1778  PASS
-  cycle_consistency_wer        0.0000  PASS
-  speech_wer                   0.0000  PASS
-------------------------------------------------
-  OVERALL (gated metrics): PASS
+L_NCE = −(1/2B) Σᵢ [ log( e^(uᵢ·vᵢ/τ) / Σⱼ e^(uᵢ·vⱼ/τ) )  +  log( e^(vᵢ·uᵢ/τ) / Σⱼ e^(vᵢ·uⱼ/τ) ) ]
 ```
 
-Every metric is **gated** — each measures that one branch works end to end:
-audio→spoken tokens (speech WER), sign→gloss recognition (CTC WER),
-spoken→gloss translation (token accuracy), motion↔gloss manifold retrieval
-(recall@1), conditional generation (diffusion objective), and the strictest of
-all, **cycle-consistency**: generate 3D motion from gloss, feed it back to the
-recogniser, and require the gloss to come back. At 0.0000 WER, generated motion
-is recognised *as accurately as ground-truth motion*.
+![Shared manifold](docs/figures/manifold.svg)
 
-### Training schedule (three phases)
+The subtlety the project insists on: *random* negatives let a model "solve" the task
+with a shortcut (signer identity, clip length, background), which looks like a low loss
+but encodes no linguistics. Layer 11 therefore mines **hard negatives** that differ from
+the positive in exactly one *licensed grammatical feature* (negation, question type,
+entity, aspect, number, role-shift) using a controllable grammar oracle, and proves — as
+a theorem on constructed embeddings — that a signer/length shortcut drives the
+random-negative loss to ≈ 0 yet fails on hard negatives, while a genuine content
+representation succeeds on both. Evidence is reported as retrieval recall@k and linear
+probes for handshape / non-manual markers, never as the loss value.
 
-Getting cycle-consistency to pass required more than tuning; see
-[`docs/MATH.md`](docs/MATH.md) for the derivations.
+### 3.2 Rotations, geodesics, and the body model
 
-1. **Joint** — all branches together. Discriminative branches converge in a few
-   hundred steps.
-2. **Generator fine-tune** — the diffusion generator needs far more updates than
-   the rest, so it is trained alone (with its private conditioning encoder) for
-   many cheap steps.
-3. **Polish** — a short low-LR joint pass re-converges every branch together.
+3D pose is expressed in the **continuous 6D rotation** representation (the first two
+columns of a rotation matrix, re-orthonormalised by Gram–Schmidt), which avoids the
+discontinuities of quaternions and Euler angles at the antipode. Rotational error uses
+the **geodesic distance on SO(3)**, exactly the metric the evaluation document mandates:
 
-The generator additionally uses **x₀-prediction**, a **velocity loss**, pose
-**standardisation**, and **high-noise timestep emphasis**. Without the last of
-these the model learns only to denoise and never to synthesise from the
-conditioning — which is precisely where sampling starts.
-
-### Data ingestion
-
-Corpora live on disk as `manifest.json` + `<split>.npz` (see
-`signtranslator/data/corpus.py`), carrying pose, gloss/spoken concepts, and
-acoustic features. `generate_corpus` writes a synthetic corpus whose spoken
-tokens, gloss tokens, 3D motion, audio features, and CTC targets are mutually
-consistent. `validate_corpus` checks the schema. Real corpora (How2Sign,
-PHOENIX-2014T) export into the same schema and are read by `SignDataset`
-without code changes.
-
-### Data cleaning and readiness
-
-```python
-from signtranslator.data import inspect_pose, clean_pose, assess_corpus
-
-print(inspect_pose(pose).summary())      # NaN/Inf, dropped keypoints, outliers,
-                                         # dead joints, frozen frames, duplicates
-clean, kept, rep = clean_pose(pose)      # interpolate gaps, clip spikes, drop
-                                         # unrecoverable samples (auditable)
-print(assess_corpus("./corpus").summary())
+```
+d_geo(R, R̂) = arccos( (tr(Rᵀ R̂) − 1) / 2 ).
 ```
 
-`assess_corpus` gates training on structural fitness — sample counts, per-class
-coverage in **both** splits, class balance, **split leakage** (byte-identical
-samples across train/val), CTC length feasibility, and normalisation sanity. The
-`run.py` pipeline refuses to train on a corpus that fails these checks.
+The body is posed by SMPL-X **linear blend skinning** `M(θ,β) = LBS(T̄ + Bₛ + Bₑ + Bₚ, J, θ, W)`
+along a kinematic tree; a proven invariant is that global rigid motion is exactly
+equivariant *only because* the skinning weights form a partition of unity and the pose
+correctives exclude the root joint. Two recurring failure modes are caught and
+distinguished from real error: `arccos` near ±1 has an amplified `sqrt` sensitivity
+(identity rotations register ~3e-8 geodesic error in float32), and a `look_at` camera
+built from the wrong cross-product order silently produces a *reflection* (det = −1)
+rather than a rotation.
 
-### Ingesting real pose estimators
+### 3.3 Grammar as a temporal interval algebra
 
-```python
-from signtranslator.data import mediapipe_holistic_adapter, clean_pose
+The Sign Intermediate Representation is a graph `G = (V, E)` whose nodes are typed events
+(manual signs, classifiers, fingerspelling, non-manual markers) carrying `[t_start,
+t_end]` intervals, and whose edges are **Allen relations** (precedence, overlap, scope
+containment, coreference, spatial locus). Each relation has a differentiable hinge loss,
+so grammatical constraints are trainable — e.g. a non-manual negation *scope* must
+temporally *contain* the manual event it negates. A key discovered distinction: the
+structural validator checks that a scope edge has a non-manual source and manual target,
+but interval *containment* is enforced by the differentiable `scope_containment_loss` —
+structure and loss do different jobs and are tested separately.
 
-adapter = mediapipe_holistic_adapter(conf_threshold=0.3)
-res = adapter(body, right_hand, left_hand, body_conf=conf)  # -> 27-joint skeleton
-pose = res.pose; pose[res.missing] = float("nan")           # low-confidence -> missing
-pose, _, _ = clean_pose(pose.unsqueeze(0))                  # interpolated
+### 3.4 Motion synthesis: residual quantisation and diffusion
+
+Continuous motion is first tokenised by a **Residual Vector Quantiser** — a cascade
+`r_{i+1} = r_i − c_i`, `z_q = Σ c_i` — with a single straight-through estimator over the
+whole cascade (a per-stage estimator would detach later stages, a bug the tests pin).
+Generation is then a **conditional diffusion** process on a variance-preserving schedule:
+
+```
+xₜ = a·x₀ + b·ε ,     a = √ᾱₜ ,  b = √(1−ᾱₜ) ,     a² + b² = 1.
 ```
 
-### Preference optimisation (RLHF-style)
+![Diffusion schedule](docs/figures/diffusion.svg)
 
-```python
-from signtranslator.training import DiffusionDPO, naturalness_score, build_preference_pairs
+The `a² + b² = 1` identity places `(a, b)` on the unit circle and lets the ε-, x₀-, and
+**v**-prediction targets interconvert exactly (`v = a·ε − b·x₀`), which the code exploits
+and round-trips to 1e-9. A temporal DiT with **adaLN-Zero** initialises every residual
+block to the identity (so an untrained model is a well-defined no-op — a property, not a
+bug, and the reason multimodality tests use an *activated* denoiser). Classifier-free
+guidance `ε̂ = (1+w)·ε_c − w·ε_u` trades sample diversity for fidelity, and few-step
+consistency/rectified-flow distillation compresses sampling once a quality baseline is
+established.
 
-pref, rej = build_preference_pairs(candidates, naturalness_score)  # or human ratings
-dpo = DiffusionDPO(model.diffusion, beta=0.1)
-dpo.step(optimizer, pref, rej, cond=model.gloss_memory(gloss))
-```
+### 3.5 Non-manual grammar and the body-render boundary
 
-Naturalness proxies are minimum-jerk smoothness and bone-length consistency;
-swap in human ratings for true RLHF. A frozen reference policy keeps the tuned
-model from drifting away from the supervised solution.
+Non-manuals (brow, eye-aperture, gaze, head, torso, cheek, mouth) are modelled as
+*concurrent* grammatical channels — independent per-frame Bernoullis, never a softmax,
+because two markers can be active at once — with a scope-nesting algebra that proves
+concurrent scopes are either disjoint or properly nested. Articulation to expression
+coefficients is intensity-*monotone*: a stronger brow-raise yields a strictly larger
+coefficient. At the render boundary, appearance and linguistic quality are *structurally*
+separated — an `AppearanceReport` cannot express a signing verdict (it raises), so PSNR
+or SSIM can never be mistaken for grammatical correctness.
 
-## Testing
+### 3.6 Evaluation as falsifiable contracts
 
-```bash
-python -m pytest      # 97 tests
-```
+The evaluation layer encodes the principle that *no single metric can certify a signed
+message*. A `Contract` passes only if its metric meets a threshold in the required
+direction **and** carries its mandatory caveat; a chain is *adequate* only if every
+contract passes (a monotone conjunction), so an excellent speech score cannot mask a
+failing non-manual layer. Statistics are exact and self-contained: a paired sign-flip
+**permutation test** and an exact binomial **sign test** both reproduce a hand-computed
+p = 0.25 on `d = [1,2,3]`. A consequence made explicit: three random seeds can never
+reach p ≤ 0.05 by these tests (the p-value floor is `2/2³`), so the paired test runs over
+the many held-out test items while the seeds supply the confidence interval. Reproducible
+**SacreBLEU** (with a settings signature) and **BERTScore** (greedy P/R/F1, exact only in
+float64) are provided but always caveated as no substitute for signer evaluation.
 
-The suite verifies (among other things): adjacency normalisation bounds the
-graph-convolution spectral radius; the diffusion forward process matches its
-analytic mean/variance; `predict_start_from_noise` exactly inverts `q_sample`;
-InfoNCE matches a manual cross-entropy and rewards correct pairing; and the full
-model **reduces its loss** when trained on structured synthetic data.
+### 3.7 Real-time deployment
 
-## Repository layout
+The streaming contract holds a committed prefix `Cₜ`, a revisable suffix `Uₜ`, and avatar
+state `qₜ`; only `Uₜ` may change. **Display-commit monotonicity** makes "already-displayed
+signs cannot be silently changed" a checkable invariant: `Cₜ ⊑ Cₜ₊₁` for all `t`, and a
+rewrite is a certified commitment error.
+
+![Streaming and latency](docs/figures/streaming.svg)
+
+The latency algebra separates *throughput* (`1/maxᵢ Lᵢ`, capped by the slowest stage) from
+*first-output latency* (the serial sum `L_buffer + L_ASR + L_plan + L_motion + L_render`),
+and rejects any "<200 ms" claim that fails to disclose chunk size, lookahead, reordering,
+and quality loss. **Backpressure** is a bounded-latency *theorem*: with `λ > μ` and no
+backpressure the backlog grows as `(λ−μ)·t` without bound, whereas throttling the source
+keeps occupancy `≤ B` and hence latency `≤ B/μ`. Every optimisation must pass a numerical
+**equivalence** gate against eager execution *and* a quality non-regression contract:
+symmetric INT8 has a proven per-element error `≤ scale/2`, FP16 a relative error `≤ 2⁻¹¹`,
+and a FlashAttention-style **online softmax** is shown to equal full attention exactly
+(to 1e-12 in float64), so a fast kernel is *certified* rather than assumed.
+
+---
+
+## 4. Repository layout
 
 ```
 signtranslator/
-  config.py             typed dataclass configs
-  skeleton/graph.py     skeleton graph + partitioned normalised adjacency
-  models/
-    stgcn.py            ST-GCN motion encoder (clip + per-frame outputs)
-    encoders.py         text/speech encoder interfaces + stubs
-    alignment.py        projection heads + symmetric InfoNCE
-    denoiser.py         Transformer noise predictor + cross-modal denoiser
-    diffusion.py        Gaussian diffusion (DDPM/DDIM) math
-    guided_diffusion.py classifier-free guidance (condition dropout + guided sampling)
-    recognition.py      CTC continuous sign recognition (sign→gloss)
-    speech.py           acoustic front-end (audio→spoken tokens, CTC)
-    planner.py          seq2seq semantic planner (English→gloss)
-    pipeline.py         SignTranslator + BidirectionalSignTranslator
-  data/
-    synthetic.py        in-memory paired (motion, gloss) dataset
-    preprocess.py       keypoint normalisation + augmentation
-    corpus.py           on-disk corpus: schema, generator, ingestion, collate
-    quality.py          defect inspection + cleaning pipeline
-    readiness.py        training-readiness audit (gated)
-    adapters.py         MediaPipe/OpenPose → skeleton keypoint adapters
-  eval/metrics.py       recall@k, MPJPE, WER, top-1 accuracy
-  training/
-    trainer.py          unified multi-branch trainer + generator fine-tune
-    preference.py       Diffusion-DPO + naturalness proxies
-  analysis/report.py    pass-gated evaluation report
-  train.py              single-branch training loop / CLI
-  run.py                end-to-end ingest -> train -> analyze CLI
-tests/                  pytest suite (math, shapes, gradients, learning, invariances,
-                        ingestion, training, analysis)
-docs/                   architecture & math notes
+  speech/            01  audio front-end, CTC, calibration, fail-closed policy
+  planning/          02  typed sign-plan, constrained decoding, lexicon retrieval
+  grammar/           03  SIR graph, Allen algebra, SignBLEU, non-manual scopes
+  pose/              04  SMPL-X, 6D rotations, geodesics, robust reprojection
+  hand_graph/        05  heterogeneous graph, R-GCN + Graphormer, wrist geometry
+  motion_transformer/06  residual VQ, spectral loss, streaming attention + SLERP
+  diffusion_gen/     07  temporal DiT, CFG, inpainting, consistency distillation
+  avatar_render/     08  DQS skinning, Gaussian/NeRF math, LOD, appearance guard
+  facial_nmm/        09  concurrent non-manual channels, disentanglement, FLAME map
+  data_engineering/  10  schema, provenance, triangulation, splits, datasheets
+  pretraining/       11  masked modelling, hard negatives, evidence battery
+  eval_framework/    12  contract chain, statistics, SacreBLEU/BERTScore, model card
+  deployment/        13  streaming contract, latency, quantization, optimization gate
+  models/ data/ training/ analysis/ eval/     shared core (manifold, trainer, CLI)
+docs/                design + mathematics documents, one per layer  (+ figures/)
+tests/               adversarial unit tests, one suite per stage
 ```
 
-## References
+Roughly 20k lines of implementation across ~150 modules, with a companion mathematics
+document for every layer.
 
-- Yan et al., *Spatial Temporal Graph Convolutional Networks*, AAAI 2018.
-- Radford et al., *Learning Transferable Visual Models From Natural Language
-  Supervision* (CLIP), 2021.
-- Ho et al., *Denoising Diffusion Probabilistic Models*, NeurIPS 2020.
-- Nichol & Dhariwal, *Improved DDPM*, 2021.
-- Song et al., *Denoising Diffusion Implicit Models* (DDIM), 2021.
-- Tevet et al., *Human Motion Diffusion Model* (MDM), 2023.
+---
 
-## License
+## 5. Utilisation
 
-Apache-2.0.
+The layers are ordinary Python modules and compose directly. A few representative entry
+points:
+
+```python
+# Shared manifold: align language and motion embeddings, then retrieve.
+from signtranslator.models.alignment import info_nce_loss, ContrastiveAligner
+
+# 3D rotations and the geodesic metric (Doc 04).
+from signtranslator.pose.rotations import rotation_6d_to_matrix, geodesic_distance
+
+# Grammar: build a Sign Intermediate Representation and score temporal constraints.
+from signtranslator.grammar.sir import SIRGraph
+from signtranslator.grammar.temporal import precedence_loss
+
+# Generation: conditional motion diffusion with classifier-free guidance (Doc 07).
+from signtranslator.diffusion_gen.generator import DiffusionMotionGenerator
+
+# Evaluation: a falsifiable-contract chain over the metric stack (Doc 12).
+from signtranslator.eval_framework import EvaluationChain, Contract, Direction
+
+# Deployment: certify an optimisation is numerically equivalent + quality-preserving.
+from signtranslator.deployment import certify_optimization, online_softmax_attention
+```
+
+An end-to-end synthetic pipeline (ingest → train → analyse) is driven by
+[`signtranslator/run.py`](signtranslator/run.py); the shared architecture and the core
+mathematics are documented in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and
+[`docs/MATH.md`](docs/MATH.md).
+
+```bash
+pip install -r requirements.txt
+python -m signtranslator.run            # synthetic ingest → train → analysis report
+pytest -q                               # adversarial mathematics + integration tests
+```
+
+The CPU-only PyTorch constraint is documented in the design notes; the synthetic corpora
+correlate spoken ↔ gloss ↔ motion through a fixed vocabulary cipher so that every property
+can be checked deterministically without licensed data.
+
+---
+
+## 6. Verification philosophy
+
+Rather than reporting benchmark leaderboard numbers (which would require licensed corpora
+and trained foundation models the repository deliberately stubs), correctness is
+established by *adversarial mathematical tests*: exact identities in float64, invariance
+and equivariance checks, gradient-flow assertions, minimal-pair oracles, and explicit
+separation of floating-point artefacts from genuine errors. Each layer is verified twice
+consecutively under `-W error::UserWarning`, and the whole project is kept green as a
+regression suite. The design documents' *Findings* sections record every real defect that
+was found and fixed and every subtlety discovered — for example, that a per-stage
+straight-through estimator silently detaches residual-VQ stages, or that a three-seed
+permutation test is mathematically incapable of significance at α = 0.05.
+
+---
+
+## 7. Scope and honesty
+
+This is a rigorously-implemented **research core**, not a deployed product. No real
+signing corpora, human raters, licensed body/face bases, or GPU inference engines are
+included: those are gated, licensed, or hardware-bound, and each sits behind a small
+interface so a production component drops in behind the same contract and the same
+numerical gate. Human-panel instruments (comprehension, reliability) are *specified and
+scaffolded*, not performed. Every claim that would require real training or hardware is
+implemented as a harness and labelled as such. What *is* here is the complete,
+internally-consistent mathematics of a multimodal sign-language translation system, with
+every layer proved on controllable synthetic ground truth.
+
+---
+
+## 8. Primary references
+
+The design documents cite their sources in full; the load-bearing ones include:
+CLIP and InfoNCE (contrastive alignment); SMPL-X and the 6D rotation representation
+(3D body); Allen's interval algebra (grammar); VideoMAE / Masked Autoencoders and
+wav2vec 2.0 (pretraining); DDPM/DDIM, DiT, classifier-free guidance, and consistency
+models (diffusion); 3D Gaussian Splatting and NeRF (rendering); SignBLEU, SacreBLEU,
+BERTScore, Datasheets, and Model Cards (data and evaluation); FlashAttention-2, ONNX
+Runtime, TensorRT, and CUDA Graphs (deployment).
+
+*See [`docs/`](docs/) for the per-layer design-and-mathematics documents, each ending in a
+post-implementation Findings section.*

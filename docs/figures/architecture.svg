@@ -1,0 +1,112 @@
+<svg viewBox="0 0 1040 680" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arw" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#334155"/>
+    </marker>
+    <style>
+      .box{rx:10;ry:10;stroke-width:1.5;}
+      .t{fill:#0f172a;font-size:15px;font-weight:600;}
+      .s{fill:#475569;font-size:11.5px;}
+      .lbl{fill:#1e293b;font-size:13px;font-weight:700;}
+      .doc{fill:#94a3b8;font-size:10.5px;font-weight:700;}
+      .band{fill:#0f172a;font-size:13px;font-weight:700;}
+      .eq{fill:#334155;font-size:11px;font-style:italic;}
+    </style>
+  </defs>
+
+  <text x="520" y="34" text-anchor="middle" style="fill:#0f172a;font-size:22px;font-weight:700;">Sign-Translator — Neuro-Symbolic Translation Pipeline</text>
+  <text x="520" y="55" text-anchor="middle" class="s">English / speech  ⇄  grammatically-structured 3D signing motion, through a shared motion–language manifold</text>
+
+  <!-- forward flow input -->
+  <rect x="40" y="90" width="150" height="64" class="box" fill="#eef2ff" stroke="#6366f1"/>
+  <text x="115" y="118" text-anchor="middle" class="t">Audio / Text</text>
+  <text x="115" y="137" text-anchor="middle" class="s">ring buffer, tokens</text>
+
+  <!-- 01 speech -->
+  <rect x="230" y="90" width="170" height="64" class="box" fill="#eff6ff" stroke="#3b82f6"/>
+  <text x="315" y="114" text-anchor="middle" class="t">Speech Foundation</text>
+  <text x="315" y="132" text-anchor="middle" class="s">log-Mel · CTC · calibration</text>
+  <text x="388" y="149" text-anchor="end" class="doc">01</text>
+
+  <!-- 02 planner -->
+  <rect x="440" y="90" width="170" height="64" class="box" fill="#eff6ff" stroke="#3b82f6"/>
+  <text x="525" y="114" text-anchor="middle" class="t">Semantic Planner</text>
+  <text x="525" y="132" text-anchor="middle" class="s">typed plan · constrained decode</text>
+  <text x="598" y="149" text-anchor="end" class="doc">02</text>
+
+  <!-- 03 grammar -->
+  <rect x="650" y="90" width="170" height="64" class="box" fill="#eff6ff" stroke="#3b82f6"/>
+  <text x="735" y="114" text-anchor="middle" class="t">Grammar / SIR</text>
+  <text x="735" y="132" text-anchor="middle" class="s">Allen intervals · non-manuals</text>
+  <text x="808" y="149" text-anchor="end" class="doc">03</text>
+
+  <!-- manifold -->
+  <rect x="300" y="205" width="440" height="66" class="box" fill="#ecfeff" stroke="#06b6d4" stroke-width="2"/>
+  <text x="520" y="232" text-anchor="middle" class="t">Shared Motion–Language Manifold</text>
+  <text x="520" y="252" text-anchor="middle" class="eq">symmetric InfoNCE:  L = −½·mean[ log softmax(u·vᵀ/τ) + log softmax(v·uᵀ/τ) ]</text>
+
+  <!-- motion synthesis trio -->
+  <rect x="60" y="325" width="200" height="80" class="box" fill="#f0fdf4" stroke="#22c55e"/>
+  <text x="160" y="352" text-anchor="middle" class="t">Hand-Motion Graph</text>
+  <text x="160" y="371" text-anchor="middle" class="s">R-GCN + Graphormer</text>
+  <text x="160" y="388" text-anchor="middle" class="s">wrist-relative geometry</text>
+  <text x="248" y="400" text-anchor="end" class="doc">05</text>
+
+  <rect x="290" y="325" width="200" height="80" class="box" fill="#f0fdf4" stroke="#22c55e"/>
+  <text x="390" y="352" text-anchor="middle" class="t">Motion Transformer</text>
+  <text x="390" y="371" text-anchor="middle" class="s">Residual VQ tokens</text>
+  <text x="390" y="388" text-anchor="middle" class="s">streaming causal attn</text>
+  <text x="478" y="400" text-anchor="end" class="doc">06</text>
+
+  <rect x="520" y="325" width="200" height="80" class="box" fill="#f0fdf4" stroke="#22c55e"/>
+  <text x="620" y="352" text-anchor="middle" class="t">Motion Diffusion</text>
+  <text x="620" y="371" text-anchor="middle" class="s">temporal DiT · CFG</text>
+  <text x="620" y="388" text-anchor="middle" class="s">few-step distillation</text>
+  <text x="708" y="400" text-anchor="end" class="doc">07</text>
+
+  <!-- pose + facial -->
+  <rect x="750" y="325" width="230" height="80" class="box" fill="#fefce8" stroke="#eab308"/>
+  <text x="865" y="349" text-anchor="middle" class="t">3D Body + Face</text>
+  <text x="865" y="367" text-anchor="middle" class="s">SMPL-X · 6D rotations</text>
+  <text x="865" y="384" text-anchor="middle" class="s">non-manual channels (09)</text>
+  <text x="968" y="400" text-anchor="end" class="doc">04</text>
+
+  <!-- render -->
+  <rect x="360" y="452" width="320" height="64" class="box" fill="#fdf2f8" stroke="#ec4899"/>
+  <text x="520" y="479" text-anchor="middle" class="t">Avatar Rendering</text>
+  <text x="520" y="497" text-anchor="middle" class="s">DQS skinning · Gaussian / NeRF · linguistic LOD</text>
+  <text x="668" y="511" text-anchor="end" class="doc">08</text>
+
+  <!-- cross-cutting foundation band -->
+  <rect x="40" y="560" width="960" height="88" rx="12" fill="#f1f5f9" stroke="#cbd5e1"/>
+  <text x="60" y="584" class="band">Cross-cutting foundations</text>
+  <rect x="60" y="596" width="215" height="38" rx="8" fill="#fff" stroke="#64748b"/>
+  <text x="167" y="620" text-anchor="middle" class="lbl">Data Engineering · 10</text>
+  <rect x="288" y="596" width="215" height="38" rx="8" fill="#fff" stroke="#64748b"/>
+  <text x="395" y="620" text-anchor="middle" class="lbl">Self-Supervised Pretrain · 11</text>
+  <rect x="516" y="596" width="215" height="38" rx="8" fill="#fff" stroke="#64748b"/>
+  <text x="623" y="620" text-anchor="middle" class="lbl">Evaluation Framework · 12</text>
+  <rect x="744" y="596" width="215" height="38" rx="8" fill="#fff" stroke="#64748b"/>
+  <text x="851" y="620" text-anchor="middle" class="lbl">Real-Time Deployment · 13</text>
+
+  <!-- arrows forward -->
+  <line x1="190" y1="122" x2="228" y2="122" stroke="#334155" stroke-width="1.6" marker-end="url(#arw)"/>
+  <line x1="400" y1="122" x2="438" y2="122" stroke="#334155" stroke-width="1.6" marker-end="url(#arw)"/>
+  <line x1="610" y1="122" x2="648" y2="122" stroke="#334155" stroke-width="1.6" marker-end="url(#arw)"/>
+  <!-- down to manifold -->
+  <line x1="525" y1="154" x2="522" y2="203" stroke="#334155" stroke-width="1.6" marker-end="url(#arw)"/>
+  <line x1="735" y1="154" x2="620" y2="203" stroke="#334155" stroke-width="1.4" marker-end="url(#arw)"/>
+  <!-- manifold to trio -->
+  <line x1="430" y1="271" x2="200" y2="323" stroke="#334155" stroke-width="1.4" marker-end="url(#arw)"/>
+  <line x1="500" y1="271" x2="420" y2="323" stroke="#334155" stroke-width="1.4" marker-end="url(#arw)"/>
+  <line x1="600" y1="271" x2="630" y2="323" stroke="#334155" stroke-width="1.4" marker-end="url(#arw)"/>
+  <!-- trio to pose -->
+  <line x1="720" y1="368" x2="748" y2="368" stroke="#334155" stroke-width="1.6" marker-end="url(#arw)"/>
+  <!-- pose to render -->
+  <line x1="620" y1="405" x2="560" y2="450" stroke="#334155" stroke-width="1.4" marker-end="url(#arw)"/>
+  <line x1="865" y1="405" x2="640" y2="450" stroke="#334155" stroke-width="1.4" marker-end="url(#arw)"/>
+
+  <!-- reverse (recognition) arrow -->
+  <path d="M 360 484 C 150 484 150 250 300 240" fill="none" stroke="#ec4899" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arw)"/>
+  <text x="120" y="360" class="s" transform="rotate(-90 120 360)" fill="#be185d">reverse path: motion → gloss (recognition / cycle-consistency)</text>
+</svg>
