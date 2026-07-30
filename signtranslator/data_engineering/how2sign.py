@@ -19,13 +19,23 @@ from typing import Iterable, Tuple
 
 import numpy as np
 
-from .exporter import LandmarkTrack, decode_video_clock
+from .exporter import LandmarkTrack, decode_video_clock, sha256_file
+from .schema import (
+    AuthorizationBasis, DataAuthorization, PersonalityRightsStatus,
+)
 
 
 HOW2SIGN_FIELDS = (
     "VIDEO_ID", "VIDEO_NAME", "SENTENCE_ID", "SENTENCE_NAME",
     "START_REALIGNED", "END_REALIGNED", "SENTENCE",
 )
+HOW2SIGN_LICENSE_ID = "CC-BY-NC-4.0"
+HOW2SIGN_LICENSE_URL = "https://creativecommons.org/licenses/by-nc/4.0/"
+HOW2SIGN_PUBLISHER_EVIDENCE_URL = (
+    "https://github.com/how2sign/how2sign.github.io/blob/"
+    "f85816c184662406bd8e0f338863b7c243763129/index.html#L457-L464"
+)
+HOW2SIGN_CITATION_KEY = "Duarte_CVPR2021"
 HOW2SIGN_CLIP_PATTERN = re.compile(
     r"^(?P<sentence_id>.+)-(?P<filename_code>\d+)-rgb_front$"
 )
@@ -183,6 +193,40 @@ class How2SignClip:
     diagnostics: OpenPoseDiagnostics
     joint_names: Tuple[str, ...] = OPENPOSE_JOINT_NAMES
     coordinate_system: str = "image-normalized-xy-top-left"
+
+
+def how2sign_authorization(
+    evidence_path: str | os.PathLike[str],
+    *,
+    intended_use: str = "research",
+) -> DataAuthorization:
+    """Bind a local evidence record to How2Sign's published noncommercial license."""
+    path = Path(evidence_path).resolve()
+    if not path.is_file():
+        raise FileNotFoundError(f"How2Sign license evidence is absent: {path}")
+    if not intended_use.strip():
+        raise ValueError("intended_use must be non-empty")
+    return DataAuthorization(
+        basis=AuthorizationBasis.PUBLISHED_DATASET_LICENSE,
+        license_identifier=HOW2SIGN_LICENSE_ID,
+        license_url=HOW2SIGN_LICENSE_URL,
+        licensor="How2Sign dataset authors",
+        evidence_uri=os.fspath(path),
+        evidence_sha256=sha256_file(path),
+        permitted_uses=(intended_use,),
+        permitted_actions=("download", "create_derivatives", "model_training"),
+        personality_rights=PersonalityRightsStatus.NOT_VERIFIED,
+        attribution_notice=(
+            "Duarte et al., How2Sign: A Large-scale Multimodal Dataset for "
+            "Continuous American Sign Language, CVPR 2021; CC BY-NC 4.0."
+        ),
+        limitations=(
+            "Noncommercial use only.",
+            "No identity, privacy, publicity, personality-rights, or direct-consent "
+            "permission is asserted by this project.",
+            f"Publisher evidence: {HOW2SIGN_PUBLISHER_EVIDENCE_URL}",
+        ),
+    )
 
 
 def read_how2sign_metadata(path: str | os.PathLike[str]) -> Tuple[How2SignRow, ...]:

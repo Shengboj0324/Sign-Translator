@@ -53,11 +53,14 @@ from .readiness import (
     StageBCheck, StageBReadinessReport, assess_stage_b_corpus,
 )
 from .how2sign import (
-    HOW2SIGN_FIELDS, OPENPOSE_JOINT_NAMES, OPENPOSE_LANDMARK_PARTS,
+    HOW2SIGN_FIELDS, HOW2SIGN_LICENSE_ID, HOW2SIGN_LICENSE_URL,
+    HOW2SIGN_PUBLISHER_EVIDENCE_URL, HOW2SIGN_CITATION_KEY,
+    OPENPOSE_JOINT_NAMES, OPENPOSE_LANDMARK_PARTS,
     OPENPOSE_HOLISTIC_EDGES, OPENPOSE_HOLISTIC_CENTER, openpose_holistic_graph,
     How2SignRow, How2SignInventory,
     OpenPoseDiagnostics, How2SignClip, read_how2sign_metadata,
     inspect_how2sign_root, decode_how2sign_openpose, load_how2sign_clip,
+    how2sign_authorization,
 )
 
 __all__ = [
@@ -86,11 +89,14 @@ __all__ = [
     "ExportResult", "export_corpus",
     "sha256_file",
     "StageBCheck", "StageBReadinessReport", "assess_stage_b_corpus",
-    "HOW2SIGN_FIELDS", "OPENPOSE_JOINT_NAMES", "OPENPOSE_LANDMARK_PARTS",
+    "HOW2SIGN_FIELDS", "HOW2SIGN_LICENSE_ID", "HOW2SIGN_LICENSE_URL",
+    "HOW2SIGN_PUBLISHER_EVIDENCE_URL", "HOW2SIGN_CITATION_KEY",
+    "OPENPOSE_JOINT_NAMES", "OPENPOSE_LANDMARK_PARTS",
     "OPENPOSE_HOLISTIC_EDGES", "OPENPOSE_HOLISTIC_CENTER",
     "openpose_holistic_graph",
     "How2SignRow",
     "How2SignInventory", "OpenPoseDiagnostics", "How2SignClip",
     "read_how2sign_metadata", "inspect_how2sign_root",
     "decode_how2sign_openpose", "load_how2sign_clip",
+    "how2sign_authorization",
 ]

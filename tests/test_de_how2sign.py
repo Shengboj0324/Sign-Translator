@@ -9,7 +9,8 @@ import torch
 from signtranslator.config import DiffusionConfig, ModelConfig
 from signtranslator.data_engineering import (
     OPENPOSE_JOINT_NAMES, OPENPOSE_LANDMARK_PARTS, decode_how2sign_openpose,
-    inspect_how2sign_root, openpose_holistic_graph, read_how2sign_metadata,
+    how2sign_authorization, inspect_how2sign_root, openpose_holistic_graph,
+    read_how2sign_metadata, validate_authorization, ConsentState,
 )
 from signtranslator.data_engineering.how2sign import OPENPOSE_PARTS
 from signtranslator.models import SignTranslator
@@ -92,6 +93,19 @@ def test_metadata_is_tab_delimited_unique_and_interval_checked(tmp_path):
     with pytest.raises(ValueError, match="START_REALIGNED"):
         read_how2sign_metadata(path)
 
+
+def test_how2sign_authorization_hashes_local_evidence_and_limits_scope(tmp_path):
+    evidence = tmp_path / "LICENSE-HOW2SIGN-EVIDENCE.md"
+    evidence.write_text("publisher URL and locally retained evidence", encoding="utf-8")
+    authorization = how2sign_authorization(evidence)
+    assert authorization.evidence_uri == str(evidence.resolve())
+    assert authorization.license_identifier == "CC-BY-NC-4.0"
+    assert "commercial_use" not in authorization.permitted_actions
+    assert "redistribution" not in authorization.permitted_actions
+    assert validate_authorization(
+        authorization, ConsentState.NOT_DIRECTLY_VERIFIED, "research",
+        requested_actions=("download", "create_derivatives", "model_training"),
+    ) == []
 
 def test_inventory_uses_exact_names_and_keeps_gate_failures_visible(tmp_path):
     raw, _, keypoints = _layout(tmp_path)

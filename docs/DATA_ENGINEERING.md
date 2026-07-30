@@ -84,8 +84,12 @@ uses English translation tokens as ASL gloss.
 
 This is not yet a training-ready How2Sign corpus. The local download lacks 118
 metadata-listed clips, contains one unjoinable raw-video artifact, and does not
-contain independently identified gloss annotations or a local immutable license
-evidence file. The exporter therefore remains fail-closed. The schema, quality
+contain independently identified gloss annotations. License evidence and the
+required Duarte et al. CVPR 2021 BibTeX citation are retained in the parallel data
+root as `LICENSE-HOW2SIGN-EVIDENCE.md`; that record links an immutable revision of
+the publisher's website because the publisher does not distribute a separate
+license file. The exporter therefore remains fail-closed on the unresolved data and
+annotation requirements. The schema, quality
 mathematics, deduplication, splitting, governance, and datasheet contracts continue
 to be validated on controllable synthetic records, while the real-media adapter is
 tested separately against the downloaded source structure.
