@@ -69,7 +69,7 @@ class Trainer:
 
     def _record(self, prefix: str, losses: Dict[str, torch.Tensor]) -> None:
         for k, v in losses.items():
-            self.history.setdefault(f"{prefix}_{k}", []).append(float(v))
+            self.history.setdefault(f"{prefix}_{k}", []).append(v.detach().item())
 
     # -- loops --------------------------------------------------------------
     def train_epoch(self) -> Dict[str, float]:
@@ -89,7 +89,7 @@ class Trainer:
             self.global_step += 1
 
             for k, v in losses.items():
-                agg[k] = agg.get(k, 0.0) + float(v)
+                agg[k] = agg.get(k, 0.0) + v.detach().item()
             count += 1
         return {k: v / max(1, count) for k, v in agg.items()}
 
@@ -104,7 +104,7 @@ class Trainer:
             batch = self._to_device(batch)
             losses = self.model.training_step(batch, weights=self.cfg.loss_weights)
             for k, v in losses.items():
-                agg[k] = agg.get(k, 0.0) + float(v)
+                agg[k] = agg.get(k, 0.0) + v.detach().item()
             count += 1
         return {k: v / max(1, count) for k, v in agg.items()}
 
@@ -182,15 +182,15 @@ class Trainer:
                 torch.nn.utils.clip_grad_norm_(unique, grad_clip)
                 opt.step()
                 sched.step()
-                agg += float(loss)
+                agg += loss.detach().item()
                 count += 1
             history["train_generation"].append(agg / max(1, count))
 
             if val_loader is not None:
                 model.eval()
                 with torch.no_grad():
-                    v = [float(model.generation_loss(b["pose"].to(device),
-                                                     b["gloss_tokens"].to(device)))
+                    v = [model.generation_loss(b["pose"].to(device),
+                                               b["gloss_tokens"].to(device)).item()
                          for b in val_loader]
                 history["val_generation"].append(sum(v) / max(1, len(v)))
             if verbose and (epoch + 1) % 10 == 0:

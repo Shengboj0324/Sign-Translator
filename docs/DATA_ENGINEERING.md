@@ -1,5 +1,27 @@
 # 10 — Dataset and Data Engineering — Design and Mathematics
 
+## Active real-data bridge
+
+`signtranslator.data_engineering.exporter` is the canonical governed-record to
+training-shard boundary. It accepts timestamped holistic landmark tracks only after
+license, consent, provenance, media hash, language, extractor version, coordinate system,
+source tokens, gloss tokens, confidence, and validity masks are present. It then performs
+grouped splitting before batching, fits normalization on valid training observations
+only, verifies exact CTC feasibility (including adjacent repeated labels and acoustic
+subsampling), writes v2 shards plus SHA-256 hashes, and emits a human-review queue.
+
+The active `SignDataset` and `collate_corpus` retain variable motion/speech lengths,
+timestamps, frame masks, confidence, and validity. Missing observations are padded with
+zero only while their masks remain false and confidence remains zero; padding is never
+declared observed data.
+
+The bridge does not perform raw-video landmark estimation. `decode_landmark_npz` reads a
+strict output interchange from a separately licensed, versioned extractor, and
+`assemble_holistic_track` combines body, dense-hand, and face tracks only when their
+frame clocks match exactly. A raw-video extractor and a licensed real mini-corpus remain
+external Stage B gate requirements; their absence must not be represented as a passed
+real-data stage.
+
 This document fixes **all** mathematics and contracts of the dataset / data-
 engineering layer before any code, in the discipline of docs 01–09. It implements
 `10_dataset_and_data_engineering.md`: a canonical sample schema, a license/consent-

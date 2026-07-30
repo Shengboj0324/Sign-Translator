@@ -1,10 +1,8 @@
 # Core runtime dependencies (sufficient to build, train on synthetic data, and test).
-torch>=2.0
-numpy>=1.23
+torch>=2.13,<2.14
+numpy>=2.5,<2.6
 
 # Dev / test
-pytest>=7.0
+pytest>=9.1,<9.2
 
-# Optional foundation-model backends (install with: pip install -r requirements-foundation.txt)
-# transformers>=4.40
-# soundfile>=0.12
+# Optional foundation-model backends are listed in requirements-foundation.txt.

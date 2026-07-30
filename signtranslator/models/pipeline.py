@@ -41,6 +41,10 @@ from .planner import GlossPlanner, BOS, EOS
 from ..data.corpus import CONTENT_OFFSET
 
 
+class TranslationAbstainedError(RuntimeError):
+    """Raised when an upstream decoder produced no evidence to condition on."""
+
+
 class SignTranslator(nn.Module):
     def __init__(self, model_cfg: ModelConfig, diff_cfg: DiffusionConfig,
                  graph: Optional[SkeletonGraph] = None,
@@ -162,6 +166,7 @@ class BidirectionalSignTranslator(nn.Module):
 
     def __init__(self, model_cfg: ModelConfig, diff_cfg: DiffusionConfig,
                  src_vocab: int = 256, gloss_vocab: int = 128, num_glosses: int = 64,
+                 num_spoken_tokens: Optional[int] = None,
                  cond_drop_prob: float = 0.1, planner_layers: Optional[int] = None,
                  graph: Optional[SkeletonGraph] = None) -> None:
         super().__init__()
@@ -169,6 +174,7 @@ class BidirectionalSignTranslator(nn.Module):
         self.diff_cfg = diff_cfg
         self.gloss_vocab = gloss_vocab
         self.num_glosses = num_glosses
+        self.num_spoken_tokens = num_spoken_tokens or num_glosses
         self.graph = graph or SkeletonGraph(num_nodes=model_cfg.num_joints)
         adjacency = self.graph.adjacency()
 
@@ -237,7 +243,7 @@ class BidirectionalSignTranslator(nn.Module):
         # that model's hidden states as `speech` features of matching width.
         self.speech_recognizer = SpeechRecognizer(
             input_dim=model_cfg.speech_input_dim,
-            num_tokens=num_glosses,
+            num_tokens=self.num_spoken_tokens,
             hidden_dim=model_cfg.text_embed_dim,
             num_layers=model_cfg.text_layers,
             num_heads=model_cfg.text_heads,
@@ -246,6 +252,13 @@ class BidirectionalSignTranslator(nn.Module):
     # -- conditioning helper ------------------------------------------------
     def gloss_memory(self, gloss_tokens: torch.Tensor):
         """Per-token conditioning memory for the generator's cross-attention."""
+        if gloss_tokens.dim() != 2 or gloss_tokens.shape[1] == 0:
+            raise ValueError("gloss_tokens must be a non-empty (N, L) tensor")
+        empty_rows = (gloss_tokens == 0).all(dim=1)
+        if empty_rows.any():
+            rows = empty_rows.nonzero(as_tuple=False).flatten().tolist()
+            raise TranslationAbstainedError(
+                f"cannot generate motion without gloss evidence for rows {rows}")
         return self.cond_encoder.encode_sequence(gloss_tokens)
 
     # -- per-branch losses --------------------------------------------------
@@ -261,9 +274,11 @@ class BidirectionalSignTranslator(nn.Module):
         return self.recognizer.loss(pose, targets, target_lengths)
 
     def speech_loss(self, speech: torch.Tensor, targets: torch.Tensor,
-                    target_lengths: torch.Tensor) -> torch.Tensor:
+                    target_lengths: torch.Tensor,
+                    input_lengths: Optional[torch.Tensor] = None) -> torch.Tensor:
         """CTC loss for the acoustic branch (audio -> spoken tokens)."""
-        return self.speech_recognizer.loss(speech, targets, target_lengths)
+        return self.speech_recognizer.loss(
+            speech, targets, target_lengths, input_lengths=input_lengths)
 
     @torch.no_grad()
     def recognize_speech(self, speech: torch.Tensor):
@@ -324,14 +339,20 @@ class BidirectionalSignTranslator(nn.Module):
             losses["planner"] = self.planner_loss(batch["src"], batch["gloss_seq"])
         if need_recog:
             n, t, _ = logprobs.shape
-            input_lengths = torch.full((n,), t, dtype=torch.long, device=logprobs.device)
+            input_lengths = batch.get("ctc_input_lengths")
+            if input_lengths is None:
+                input_lengths = torch.full((n,), t, dtype=torch.long,
+                                           device=logprobs.device)
+            else:
+                input_lengths = input_lengths.to(logprobs.device).clamp(max=t)
             losses["recognition"] = self.recognizer.ctc(
                 logprobs.permute(1, 0, 2), batch["ctc_targets"],
                 input_lengths, batch["ctc_lengths"])
         if "speech" in batch and "speech_ctc_targets" in batch:
             losses["speech"] = self.speech_loss(
                 batch["speech"], batch["speech_ctc_targets"],
-                batch["speech_ctc_lengths"])
+                batch["speech_ctc_lengths"],
+                input_lengths=batch.get("speech_input_lengths"))
 
         losses["total"] = sum(w.get(k, 1.0) * v for k, v in losses.items())
         return losses
@@ -357,6 +378,10 @@ class BidirectionalSignTranslator(nn.Module):
         self.eval()
         device = next(self.parameters()).device
         gloss_lists = self.planner.greedy_decode(src_tokens, max_len=max_gloss_len)
+        empty = [index for index, gloss in enumerate(gloss_lists) if not gloss]
+        if empty:
+            raise TranslationAbstainedError(
+                f"planner produced no gloss evidence for rows {empty}")
         # Pad decoded gloss id lists into a batch tensor for the encoder.
         max_len = max((len(g) for g in gloss_lists), default=1) or 1
         gloss = torch.zeros(len(gloss_lists), max_len, dtype=torch.long, device=device)
@@ -376,6 +401,10 @@ class BidirectionalSignTranslator(nn.Module):
         self.eval()
         device = next(self.parameters()).device
         spoken = self.recognize_speech(speech.to(device))     # ids in 1..K
+        empty = [index for index, tokens in enumerate(spoken) if not tokens]
+        if empty:
+            raise TranslationAbstainedError(
+                f"speech recognizer produced no token evidence for rows {empty}")
         # Spoken CTC ids (1..K) -> planner source tokens (concept + offset).
         max_len = max((len(s) for s in spoken), default=1) or 1
         src = torch.zeros(len(spoken), max_len, dtype=torch.long, device=device)

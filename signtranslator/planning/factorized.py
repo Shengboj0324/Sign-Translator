@@ -200,7 +200,7 @@ def factorized_train(encoder: EvidenceEncoder, content_head: ContentHead,
             memory, _ = encoder(src)
         loss = decoder.nll(plan_tokens, memory)
         opt_b.zero_grad(); loss.backward(); opt_b.step()
-        final = float(loss)
+        final = loss.detach().item()
     return TrainingRegimeResult("factorized", encoder, decoder, final,
                                 encoder_frozen_in_stage_b=True)
 
@@ -217,7 +217,7 @@ def joint_train(encoder: EvidenceEncoder, decoder: HeavyDecoder,
         memory, _ = encoder(src)
         loss = decoder.nll(plan_tokens, memory)
         opt.zero_grad(); loss.backward(); opt.step()
-        final = float(loss)
+        final = loss.detach().item()
     return TrainingRegimeResult("joint", encoder, decoder, final)
 
 

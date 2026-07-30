@@ -37,7 +37,7 @@ def test_expression_is_intensity_monotone():
     norms = []
     for val in (0.0, 0.3, 0.6, 1.0):
         m = marker_one_hot(Marker.YN_Q, 6, val, dtype=torch.float64).unsqueeze(0)
-        norms.append(float(art.expression(m).norm()))
+        norms.append(art.expression(m).norm().detach().item())
     assert norms == sorted(norms)                           # non-decreasing
     assert norms[0] < 1e-12                                 # value 0 -> no expression
 

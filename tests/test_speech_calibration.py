@@ -295,7 +295,7 @@ def test_brier_loss_matches_the_metric():
     labels = torch.randint(0, 5, (10,))
     loss = BrierLoss(from_logits=True)(logits, labels)
     metric = brier_score(F.softmax(logits, dim=-1), labels)
-    assert abs(float(loss) - metric) < 1e-6
+    assert abs(loss.detach().item() - metric) < 1e-6
 
 
 def test_brier_loss_is_differentiable_and_pushes_toward_the_label():
@@ -313,7 +313,7 @@ def test_brier_loss_accepts_probabilities_directly():
     probs = torch.tensor([[0.2, 0.8]], dtype=torch.float64)
     labels = torch.tensor([1])
     loss = BrierLoss(from_logits=False)(probs, labels)
-    assert abs(float(loss) - (0.2 ** 2 + 0.2 ** 2)) < 1e-12
+    assert abs(loss.detach().item() - (0.2 ** 2 + 0.2 ** 2)) < 1e-12
 
 
 def test_brier_loss_validates_rank():

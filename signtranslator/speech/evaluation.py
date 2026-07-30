@@ -197,11 +197,11 @@ class Condition:
 # Severity levels below were **measured, not guessed**. A sweep against the
 # reference recogniser gave:
 #
-#   noise 0.005 -> acc 0.79 | 0.010 -> 0.43 | 0.015 -> 0.25 | >=0.020 -> total
-#                  collapse (nothing decoded at all)
+#   noise 0.010 -> acc 1.00 | 0.020 -> acc 0.85, WER 0.28 |
+#   0.030 -> insufficient coverage
 #   pitch 1.08/1.15 -> acc 1.00 (no effect) | 1.25 -> 0.81 | 1.4 -> 0.33
 #
-# So the usable noise band is roughly [0.005, 0.012] and an "accent" must shift
+# So the usable noise point is 0.020 under the locked environment and an "accent" must shift
 # pitch by >=25% before this model notices. Levels chosen by intuition (noise
 # 0.06, pitch 1.12) produced a *vacuous* evaluation: zero tokens decoded, or no
 # degradation at all.
@@ -211,10 +211,10 @@ class Condition:
 # results mean anything.
 STANDARD_CONDITIONS: Tuple[Condition, ...] = (
     Condition("clean", is_baseline=True),
-    Condition("noisy", noise=0.010),
+    Condition("noisy", noise=0.020),
     Condition("accented", pitch_scale=1.25),
     Condition("code_switched", vocabulary="mixed"),
-    Condition("long_form", words=8),
+    Condition("long_form", words=10),
 )
 
 

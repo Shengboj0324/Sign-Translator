@@ -93,9 +93,9 @@ class SequencePreferenceDPO:
 
         logits = self.beta * ((lp_w - ref_w) - (lp_l - ref_l))
         loss = -F.logsigmoid(logits).mean()
-        stats = DPOStats(loss=float(loss.detach()),
-                         accuracy=float((logits > 0).float().mean()),
-                         margin=float(logits.mean()))
+        stats = DPOStats(loss=loss.detach().item(),
+                         accuracy=(logits > 0).float().mean().detach().item(),
+                         margin=logits.mean().detach().item())
         return loss, stats
 
     def step(self, optimizer, preferred, rejected, acoustic=None, src_tokens=None,

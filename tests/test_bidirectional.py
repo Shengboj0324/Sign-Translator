@@ -46,11 +46,11 @@ def test_combined_training_step_reduces_loss():
     m, mcfg = _model()
     batch = _batch(mcfg)
     opt = torch.optim.Adam(m.parameters(), lr=2e-3)
-    first = float(m.training_step(batch)["total"])
+    first = m.training_step(batch)["total"].detach().item()
     for _ in range(20):
         loss = m.training_step(batch)["total"]
         opt.zero_grad(); loss.backward(); opt.step()
-    assert float(loss) < first
+    assert loss.detach().item() < first
 
 
 def test_speech_to_sign_end_to_end_shapes():

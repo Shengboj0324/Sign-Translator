@@ -11,6 +11,20 @@
 3. **Buildable and testable anywhere.** No GPU, no multi-GB downloads, and no
    external data are required to build, train (synthetic), and test the core.
 
+## Canonical executable implementations
+
+The canonical runtime is `signtranslator/run.py` with orchestration from
+`signtranslator/models/`, `signtranslator/data/`, `signtranslator/training/`, and
+`signtranslator/analysis/`. The similarly named packages `planning/`, `speech/`,
+`diffusion_gen/`, and `eval_framework/` are specialized research modules. They are
+not substitutes for the canonical runtime components and are not active merely because
+their unit tests pass. Integrations must import them explicitly and add an executable-path
+test before claiming them as runtime capability.
+
+The older `SignTranslator` class remains a small two-branch research API. New integrated
+pipeline work should target `BidirectionalSignTranslator`; removal of the former is
+deferred to a versioned breaking release.
+
 ## Data flow
 
 A training example is a pair `(pose, gloss tokens)`:
@@ -84,7 +98,9 @@ Wires the above into one module, exposes the joint training `forward` and the
 - **Preference optimisation:** add an RLHF / DPO stage on top of the generator to
   improve naturalness and grammatical faithfulness.
 
-These are all additive: none require changing the manifold or diffusion core.
+These extensions may require changing representations and objectives. In particular,
+dense hands, facial channels, rotations, variable duration, and real-data uncertainty
+cannot be added faithfully by treating the current fixed 27-joint tensor as sufficient.
 
 ## Bidirectional branches (added on top of the core)
 
@@ -142,6 +158,10 @@ consistent. The spoken→gloss map is a **fixed vocabulary bijection** (a cipher
 shared across splits — a monotonic substitution the planner learns and
 generalises, rather than a positional permutation that memorises on small data.
 `validate_corpus` enforces the schema. Real corpora export into the same schema.
+Version-2 corpora additionally carry independent source/gloss lengths, motion and speech
+lengths, frame timestamps, validity masks, confidence, readable vocabularies, coordinate
+metadata, provenance records, and per-shard SHA-256 hashes. `data_engineering/exporter.py`
+is the only canonical exporter for that format.
 
 ### `training/trainer.py` — unified trainer
 Trains planner + generator + recogniser + manifold jointly on a weighted sum of

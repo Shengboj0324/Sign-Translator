@@ -132,7 +132,7 @@ def test_gradient_descent_satisfies_the_relation(name):
     for _ in range(600):
         loss = fn(*params)
         opt.zero_grad(); loss.backward(); opt.step(); sched.step()
-    assert float(fn(*params)) < 1e-3, f"{name} did not converge"
+    assert fn(*params).detach().item() < 1e-3, f"{name} did not converge"
 
 
 # ---------------------------------------------------------------------------
@@ -197,11 +197,11 @@ def test_sir_temporal_loss_is_trainable_end_to_end():
     ends = torch.tensor([3.0, 1.0, 0.5], dtype=torch.float64, requires_grad=True)
     edges = [(0, 1, "precedence"), (1, 2, "precedence")]   # 0<1<2, all violated
     opt = torch.optim.Adam([starts, ends], lr=0.05)
-    first = float(sir_temporal_loss(starts, ends, edges))
+    first = sir_temporal_loss(starts, ends, edges).detach().item()
     for _ in range(600):
         loss = sir_temporal_loss(starts, ends, edges)
         opt.zero_grad(); loss.backward(); opt.step()
-    assert float(sir_temporal_loss(starts, ends, edges)) < 1e-2 < first
+    assert sir_temporal_loss(starts, ends, edges).detach().item() < 1e-2 < first
 
 
 def test_unknown_edge_type_contributes_zero_temporal_loss():

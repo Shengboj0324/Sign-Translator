@@ -63,4 +63,4 @@ def test_aligner_forward_and_gradients():
 def test_temperature_positive_by_construction():
     aligner = ContrastiveAligner(4, 4, 4, init_temperature=0.05)
     # log_scale = log(1/0.05) = log(20)
-    assert math.isclose(float(aligner.log_scale.exp()), 20.0, rel_tol=1e-5)
+    assert math.isclose(float(aligner.log_scale.detach().exp()), 20.0, rel_tol=1e-5)

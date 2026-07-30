@@ -10,9 +10,10 @@ explicitly as a symbolic intermediate representation; and continuous signing mot
 produced by a conditional diffusion generator that respects both the linguistics and the
 biomechanics of the signing body.
 
-The repository implements — and *mathematically verifies* — the full research stack as
-thirteen composable layers, in pure PyTorch/NumPy, runnable and unit-tested on CPU with
-no large downloads. Each layer is specified in a companion design document under
+The repository implements and unit-tests mathematical primitives for thirteen
+research layers in pure PyTorch/NumPy. The active executable path uses only the compact
+core under `signtranslator/models/`; most specialized layer packages remain independent
+research modules rather than an integrated translator. Each layer is specified in a companion design document under
 [`docs/`](docs/) that fixes the mathematics before the code, and every non-trivial
 mathematical claim is checked by an adversarial test rather than asserted.
 
@@ -71,10 +72,10 @@ Each layer has a design/math document in [`docs/`](docs/) and a Python package u
 | 12 | **Evaluation framework** | `eval_framework/` | A **chain of falsifiable contracts** across seven caveat-bound metric layers; exact paired permutation / sign tests + bootstrap CIs; a pre-registration + test-set firewall; reproducible **SacreBLEU** and **BERTScore**; blinded comprehension scoring. |
 | 13 | **Real-time deployment** | `deployment/` | A display-commit **monotonicity** contract; the latency-budget algebra; a **backpressure bounded-latency theorem**; provable **quantization** error bounds (FP16/INT8); a numerically-certified optimization gate with exact **online-softmax** (FlashAttention) equivalence. |
 
-The forward path — *audio/text → speech → plan → SIR → manifold → hand-graph +
-transformer + diffusion → 3D body/face → rendered avatar* — and the reverse path
-*motion → gloss* both traverse the shared manifold, so recognition, generation, and
-cycle-consistency are measured on the same geometry.
+The intended forward path is *audio/text → speech → plan → SIR → manifold →
+hand-graph + transformer + diffusion → 3D body/face → rendered avatar*. That full
+path is not currently wired. The active synthetic path is acoustic feature → compact
+CTC → gloss planner → 27-joint Cartesian diffusion, with an ST-GCN reverse branch.
 
 ---
 
@@ -262,9 +263,11 @@ mathematics are documented in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and
 [`docs/MATH.md`](docs/MATH.md).
 
 ```bash
-pip install -r requirements.txt
-python -m signtranslator.run            # synthetic ingest → train → analysis report
-pytest -q                               # adversarial mathematics + integration tests
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements.lock
+.venv/bin/python -m pip install --no-deps -e .
+.venv/bin/python -m signtranslator.run --generate-synthetic --corpus-dir ./corpus
+.venv/bin/python -W error -m pytest
 ```
 
 The CPU-only PyTorch constraint is documented in the design notes; the synthetic corpora
@@ -296,9 +299,10 @@ included: those are gated, licensed, or hardware-bound, and each sits behind a s
 interface so a production component drops in behind the same contract and the same
 numerical gate. Human-panel instruments (comprehension, reliability) are *specified and
 scaffolded*, not performed. Every claim that would require real training or hardware is
-implemented as a harness and labelled as such. What *is* here is the complete,
-internally-consistent mathematics of a multimodal sign-language translation system, with
-every layer proved on controllable synthetic ground truth.
+implemented as a harness and labelled as such. What *is* here is a broad set of
+independently tested mathematical components plus a smaller integrated synthetic core.
+Synthetic tests establish numerical and mechanical properties, not real linguistic
+validity or human comprehension.
 
 ---
 

@@ -121,6 +121,6 @@ def test_autoencoder_overfits_a_tiny_clip():
         loss = torch.nn.functional.mse_loss(recon, x) + q["loss"]
         loss.backward(); opt.step()
         if step == 0:
-            l0 = float(torch.nn.functional.mse_loss(recon, x))
-    final = float(torch.nn.functional.mse_loss(model(x)[0], x))
+            l0 = torch.nn.functional.mse_loss(recon, x).detach().item()
+    final = torch.nn.functional.mse_loss(model(x)[0], x).detach().item()
     assert final < 0.3 * l0                                  # reconstruction collapses

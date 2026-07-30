@@ -53,7 +53,7 @@ def test_masked_bce_is_per_label_independent():
     targets = torch.tensor([[1.0, 0.0]])
     mask = torch.tensor([[1.0, 0.0]])                        # only label 0 supervised
     loss = masked_bce_with_logits(logits, targets, mask)
-    assert abs(float(loss) - math.log(2)) < 1e-12           # -log(0.5) on the one entry
+    assert abs(loss.detach().item() - math.log(2)) < 1e-12  # -log(0.5) on the one entry
 
 
 # ---------------------------------------------------------------------------
@@ -83,7 +83,7 @@ def test_palm_orientation_geodesic_zero_at_target():
     h = torch.randn(4, 6, dtype=torch.float64)
     target_R = torch.eye(3, dtype=torch.float64).expand(4, 3, 3)
     loss = head.loss(h, target_R, torch.ones(4, dtype=torch.float64))
-    assert float(loss) < 1e-9
+    assert loss.detach().item() < 1e-9
 
 
 def test_selected_fingers_multilabel_masking():
@@ -92,7 +92,7 @@ def test_selected_fingers_multilabel_masking():
     targets = torch.tensor([[1.0, 0, 1, 0, 1], [0, 0, 0, 0, 0], [1, 1, 1, 1, 1]])
     mask = torch.tensor([1.0, 0.0, 1.0], dtype=torch.float64)  # sample 1 unlabelled
     loss = head.loss(h, targets, mask)
-    assert torch.isfinite(loss) and float(loss) > 0
+    assert torch.isfinite(loss) and loss.detach().item() > 0
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +109,7 @@ def test_symmetry_loss_zero_for_mirror_symmetric_hands():
     right = torch.randn(3, 21, 3, dtype=torch.float64)
     left = mirror_points(right, axis=0)                      # perfectly mirror-symmetric
     loss = symmetry_loss(left, right, torch.ones(3, dtype=torch.float64))
-    assert float(loss) < 1e-12
+    assert loss.detach().item() < 1e-12
     # break symmetry on one sample -> positive
     left2 = left.clone(); left2[0, 5] += 1.0
     assert symmetry_loss(left2, right, torch.ones(3, dtype=torch.float64)).item() > 0

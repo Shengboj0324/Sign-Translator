@@ -108,7 +108,7 @@ def test_produced_sir_intervals_are_temporally_consistent():
     #     interior unit pays 0.
     # Total = (2 + 2) * DEFAULT_EPS -- fully accounted for, no unexplained slack.
     from signtranslator.grammar.temporal import DEFAULT_EPS
-    assert float(loss) == pytest.approx(4 * DEFAULT_EPS, abs=1e-6)
+    assert loss.detach().item() == pytest.approx(4 * DEFAULT_EPS, abs=1e-6)
 
 
 def test_projection_is_a_topological_order_of_manual_dag():

@@ -53,6 +53,18 @@ def test_metrics_are_in_valid_ranges(tmp_path):
     assert report.metrics["generation_val_loss"] >= 0.0
 
 
+def test_missing_speech_is_unavailable_and_fails_its_gate(tmp_path):
+    model, val = _model_and_loader(tmp_path)
+    batch = next(iter(val))
+    for key in ("speech", "speech_ctc_targets", "speech_ctc_lengths"):
+        batch.pop(key)
+    report = analyze(model, [batch], ddim_steps=3, cycle_subset=8)
+    assert report.metrics["speech_wer"] is None
+    assert report.checks["speech_wer"] is False
+    assert "N/A" in report.summary()
+    assert not report.passed
+
+
 # ---- manifold integration into the bidirectional model --------------------
 def test_embeddings_are_unit_norm(tmp_path):
     model, val = _model_and_loader(tmp_path)

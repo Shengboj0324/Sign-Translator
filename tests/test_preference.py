@@ -1,5 +1,7 @@
 """Tests for adaptive graph refinement and preference optimisation (DPO)."""
 
+import math
+
 import torch
 
 from signtranslator.skeleton import SkeletonGraph, DEFAULT_EDGES
@@ -66,7 +68,7 @@ def test_bone_length_variance_zero_for_rigid_translation():
     shift = torch.linspace(0, 1, 12).view(1, 1, 12, 1)
     motion = base + shift                       # rigid translation over time
     v = bone_length_variance(motion, list(DEFAULT_EDGES))
-    assert float(v) < 1e-8
+    assert v.detach().item() < 1e-8
 
 
 def test_bone_length_variance_detects_stretching():
@@ -131,7 +133,7 @@ def test_dpo_at_initialisation_is_log2():
     pref = torch.randn(3, 3, 12, 6)
     rej = torch.randn(3, 3, 12, 6)
     loss, stats = dpo.loss(pref, rej, cond=None)
-    assert abs(float(loss) - torch.log(torch.tensor(2.0))) < 1e-4
+    assert abs(loss.detach().item() - math.log(2.0)) < 1e-4
     assert abs(stats.margin) < 1e-5
 
 

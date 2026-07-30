@@ -58,7 +58,7 @@ def test_multilabel_allows_co_occurring_markers():
     targets[0, 0, 1] = 1.0
     logits = torch.tensor([[[20.0, 20.0, -20.0]]])       # both active, third off
     loss = multilabel_scope_bce(logits, targets)
-    assert float(loss) < 1e-4                             # near-zero achievable
+    assert loss.detach().item() < 1e-4                    # near-zero achievable
 
 
 # ---------------------------------------------------------------------------
@@ -105,13 +105,13 @@ def test_spans_rejects_bad_rank():
 def test_scope_containing_the_unit_has_zero_loss():
     # marker [0, 3) contains unit [1, 2)
     loss = scope_containment_loss(_t(0.0), _t(3.0), _t(1.0), _t(2.0))
-    assert float(loss) <= 1e-6
+    assert loss.detach().item() <= 1e-6
 
 
 def test_scope_not_containing_the_unit_is_penalised():
     # marker [1, 2) does NOT contain unit [0, 3)
     loss = scope_containment_loss(_t(1.0), _t(2.0), _t(0.0), _t(3.0))
-    assert float(loss) > 0.0
+    assert loss.detach().item() > 0.0
 
 
 def test_scope_containment_is_trainable():
@@ -124,7 +124,8 @@ def test_scope_containment_is_trainable():
     for _ in range(500):
         loss = scope_containment_loss(ms, me, us, ue)
         opt.zero_grad(); loss.backward(); opt.step()
-    assert float(ms) < float(us) and float(me) > float(ue)   # now contains it
+    assert (ms.detach().item() < us.item()
+            and me.detach().item() > ue.item())              # now contains it
 
 
 # ---------------------------------------------------------------------------
@@ -139,11 +140,11 @@ def test_head_shapes_and_overfit():
     targets[0, 0, 0] = targets[0, 1, 0] = 1.0
     targets[0, 4, 2] = 1.0
     opt = torch.optim.Adam(head.parameters(), lr=0.05)
-    first = float(head.loss(x, targets))
+    first = head.loss(x, targets).detach().item()
     for _ in range(300):
         loss = head.loss(x, targets)
         opt.zero_grad(); loss.backward(); opt.step()
-    assert float(loss) < first * 0.1
+    assert loss.detach().item() < first * 0.1
     # decode and check the learned spans match the targets
     probs = torch.sigmoid(head(x))[0]
     spans = spans_from_activations(probs, list(range(5)), list(range(1, 6)))

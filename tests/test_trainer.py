@@ -27,7 +27,9 @@ def test_cosine_warmup_schedule_shape():
 def _tiny_setup(tmp_path):
     spec = CorpusSpec.build(num_concepts=8, seq_len=3, num_joints=27,
                             in_channels=3, num_frames=16)
-    generate_corpus(str(tmp_path), spec=spec, counts={"train": 48, "val": 16}, seed=0)
+    if not (tmp_path / "manifest.json").exists():
+        generate_corpus(str(tmp_path), spec=spec,
+                        counts={"train": 48, "val": 16}, seed=0)
     mcfg = ModelConfig(num_joints=27, num_frames=16, stgcn_channels=(16, 32),
                        text_embed_dim=32, text_layers=2, text_heads=2, latent_dim=32,
                        speech_input_dim=spec.speech_dim)
@@ -80,5 +82,5 @@ def test_loss_weights_applied_to_total(tmp_path):
     zeroed = model.training_step(batch, weights={"generation": 0.0, "alignment": 0.0,
                                                  "planner": 0.0, "recognition": 0.0,
                                                  "speech": 0.0})
-    assert float(zeroed["total"]) == 0.0
-    assert float(unweighted["total"]) > 0.0
+    assert zeroed["total"].detach().item() == 0.0
+    assert unweighted["total"].detach().item() > 0.0

@@ -41,6 +41,11 @@ from .governance import (
 from .datasheet import (
     Datasheet, DATASHEET_SECTIONS, PreprocessingManifest,
 )
+from .exporter import (
+    CORPUS_FORMAT_VERSION, DecodedAudio, decode_pcm_wav, LandmarkTrack,
+    assemble_holistic_track, decode_landmark_npz, ExtractedSample, ExportResult,
+    export_corpus, sha256_file,
+)
 
 __all__ = [
     "ConsentState", "Sample", "validate_sample", "DatasetResource", "DATASET_MAP",
@@ -60,4 +65,8 @@ __all__ = [
     "UsagePolicy", "gate_action", "infer_sensitive_trait",
     "SensitiveInferenceError", "SENSITIVE_TRAITS",
     "Datasheet", "DATASHEET_SECTIONS", "PreprocessingManifest",
+    "CORPUS_FORMAT_VERSION", "DecodedAudio", "decode_pcm_wav", "LandmarkTrack",
+    "assemble_holistic_track", "decode_landmark_npz", "ExtractedSample",
+    "ExportResult", "export_corpus",
+    "sha256_file",
 ]

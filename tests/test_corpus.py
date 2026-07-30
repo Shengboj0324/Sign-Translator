@@ -28,6 +28,20 @@ def test_generate_and_validate(corpus):
     assert len(manifest["perm"]) == spec.num_concepts
 
 
+def test_generation_refuses_non_empty_directory(tmp_path):
+    (tmp_path / "valuable.txt").write_text("real data")
+    with pytest.raises(FileExistsError, match="refusing"):
+        generate_corpus(str(tmp_path))
+    assert (tmp_path / "valuable.txt").read_text() == "real data"
+
+
+def test_generation_overwrite_requires_explicit_opt_in(tmp_path):
+    generate_corpus(str(tmp_path))
+    with pytest.raises(FileExistsError, match="overwrite=True"):
+        generate_corpus(str(tmp_path))
+    generate_corpus(str(tmp_path), overwrite=True)
+
+
 def test_dataset_shapes(corpus):
     path, spec = corpus
     ds = SignDataset(path, "train")

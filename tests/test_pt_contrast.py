@@ -16,7 +16,7 @@ torch.manual_seed(0)
 def test_symmetric_infonce_zero_for_aligned_at_low_temp():
     z = l2_normalize(torch.randn(8, 16))
     loss, _ = info_nce_loss(z, z.clone(), temperature=0.01)
-    assert float(loss) < 1e-3                     # identical -> perfectly aligned
+    assert loss.detach().item() < 1e-3            # identical -> perfectly aligned
 
 
 def test_recall_at_k_perfect_identity():
@@ -50,7 +50,7 @@ def test_infonce_negatives_zero_when_positive_dominates():
     negs = torch.eye(4, d, dtype=torch.float32)
     negs = torch.roll(negs, shifts=4, dims=1)      # disjoint dims from anchors
     loss = info_nce_against_negatives(a, a.clone(), negs, temperature=0.05)
-    assert float(loss) < 1e-3
+    assert loss.detach().item() < 1e-3
 
 
 def test_infonce_negatives_high_when_negative_equals_positive():
@@ -59,7 +59,7 @@ def test_infonce_negatives_high_when_negative_equals_positive():
     loss = info_nce_against_negatives(a, a.clone(), a.clone(), temperature=1.0)
     # denominator = exp(s)+sum_j exp(s_ij); with one neg == positive per row plus
     # cross terms, loss is strictly positive and bounded below by ~log2 behaviour.
-    assert float(loss) > 0.3
+    assert loss.detach().item() > 0.3
 
 
 def test_infonce_negatives_rejects_bad_temperature():

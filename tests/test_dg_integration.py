@@ -64,9 +64,10 @@ def test_generator_overfits_a_tiny_clip():
         loss = gen.training_loss(x0, generator=g)
         loss.backward(); opt.step()
         if step == 0:
-            l0 = float(loss)
+            l0 = loss.detach().item()
     # average recent loss well below the initial (denoiser learns the clip)
-    final = float(torch.stack([gen.training_loss(x0, generator=g) for _ in range(8)]).mean())
+    final = torch.stack([gen.training_loss(x0, generator=g)
+                         for _ in range(8)]).mean().detach().item()
     assert final < 0.6 * l0
 
 

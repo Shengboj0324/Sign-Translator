@@ -230,7 +230,7 @@ def test_dpo_loss_is_log2_at_initialisation():
     pref, rej = _pair(builder, _feats(), _feats(negated=True), planner)
     src = torch.tensor([[1]])
     loss, stats = dpo.loss(pref, rej, src_tokens=src)
-    assert abs(float(loss) - math.log(2)) < 1e-3
+    assert abs(loss.detach().item() - math.log(2)) < 1e-3
     assert abs(stats.margin) < 1e-3
 
 
@@ -243,7 +243,7 @@ def test_dpo_loss_is_exactly_log2_in_double_precision():
     pref, rej = _pair(builder, _feats(), _feats(negated=True), planner)
     src = torch.tensor([[1]])
     loss, stats = dpo.loss(pref, rej, src_tokens=src)
-    assert abs(float(loss) - math.log(2)) < 1e-9
+    assert abs(loss.detach().item() - math.log(2)) < 1e-9
     assert abs(stats.margin) < 1e-9
 
 

@@ -67,7 +67,7 @@ def test_attention_weights_sum_to_one_per_destination_relation():
     alpha = group_softmax(score, d * m.num_relations + et, 3 * m.num_relations)
     # destination 0 relation 0 has two incoming edges -> they must sum to 1
     mask = (d == 0) & (et == 0)
-    assert abs(float(alpha[mask].sum()) - 1.0) < 1e-12
+    assert abs(alpha[mask].sum().detach().item() - 1.0) < 1e-12
 
 
 # ---------------------------------------------------------------------------

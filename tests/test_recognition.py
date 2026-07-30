@@ -71,8 +71,8 @@ def test_ctc_loss_is_finite_and_decreases_on_overfit():
         loss = rec.loss(pose, targets, target_lengths)
         assert torch.isfinite(loss)
         if first is None:
-            first = float(loss)
+            first = loss.detach().item()
         opt.zero_grad()
         loss.backward()
         opt.step()
-    assert float(loss) < first * 0.7  # clearly learning the alignment
+    assert loss.detach().item() < first * 0.7  # clearly learning the alignment

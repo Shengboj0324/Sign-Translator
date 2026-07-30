@@ -70,7 +70,7 @@ def test_masked_loss_supervises_only_masked_positions():
     model = MaskedMotionModel(num_codes=8, dim=16, num_layers=1)
     tokens = torch.randint(0, 8, (2, 16))
     loss = model.loss(tokens, span_frac=0.25, generator=torch.Generator().manual_seed(3))
-    assert torch.isfinite(loss) and float(loss) > 0
+    assert torch.isfinite(loss) and loss.detach().item() > 0
 
 
 def test_masked_model_can_use_bidirectional_context():

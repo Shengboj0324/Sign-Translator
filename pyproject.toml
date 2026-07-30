@@ -7,21 +7,22 @@ name = "signtranslator"
 version = "0.1.0"
 description = "Bidirectional neural sign-language translation with a shared motion-language manifold"
 readme = "README.md"
-requires-python = ">=3.9"
-license = { text = "Apache-2.0" }
+requires-python = ">=3.12,<3.13"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [{ name = "Sign-Translator project" }]
 dependencies = [
-    "torch>=2.0",
-    "numpy>=1.23",
+    "torch>=2.13,<2.14",
+    "numpy>=2.5,<2.6",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0"]
+dev = ["pytest>=9.1,<9.2"]
 # Heavy foundation-model backends are optional and swapped in behind interfaces.
 # They are NOT required to build, train (on synthetic data), or test the core.
 foundation = [
-    "transformers>=4.40",
-    "soundfile>=0.12",
+    "transformers>=4.40,<5",
+    "soundfile>=0.12,<1",
 ]
 
 [tool.setuptools.packages.find]

@@ -61,9 +61,9 @@ def test_planner_overfits_reversal_mapping():
     for _ in range(120):
         loss = p.loss(src, tgt)
         if first is None:
-            first = float(loss)
+            first = loss.detach().item()
         opt.zero_grad(); loss.backward(); opt.step()
-    assert float(loss) < first * 0.2
+    assert loss.detach().item() < first * 0.2
 
     # Greedy decode should reproduce the reversal on the training input.
     decoded = p.greedy_decode(src, max_len=8)

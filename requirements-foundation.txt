@@ -1,0 +1,3 @@
+# Optional integrations only; the core runtime and tests do not require these.
+transformers>=4.40,<5
+soundfile>=0.12,<1

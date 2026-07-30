@@ -5,7 +5,9 @@ import torch
 from torch.utils.data import DataLoader
 
 from signtranslator import ModelConfig, DiffusionConfig
-from signtranslator.models import BidirectionalSignTranslator, SpeechRecognizer
+from signtranslator.models import (
+    BidirectionalSignTranslator, SpeechRecognizer, TranslationAbstainedError,
+)
 from signtranslator.data.corpus import (
     CorpusSpec, generate_corpus, SignDataset, collate_corpus, validate_corpus,
 )
@@ -47,9 +49,9 @@ def test_speech_ctc_overfits_a_fixed_batch():
     for _ in range(40):
         loss = rec.loss(x, targets, lengths)
         assert torch.isfinite(loss)
-        first = first if first is not None else float(loss)
+        first = first if first is not None else loss.detach().item()
         opt.zero_grad(); loss.backward(); opt.step()
-    assert float(loss) < first * 0.6
+    assert loss.detach().item() < first * 0.6
 
 
 # ---- corpus integration ----------------------------------------------------
@@ -125,6 +127,7 @@ def test_speech_gradients_reach_speech_recognizer_only(corpus):
 def test_full_audio_to_sign_path(corpus):
     """audio features -> spoken tokens -> gloss -> 3D motion."""
     path, spec = corpus
+    torch.manual_seed(0)
     model = _model(spec)
     loader = DataLoader(SignDataset(path, "val"), batch_size=4,
                         collate_fn=collate_corpus)
@@ -134,3 +137,12 @@ def test_full_audio_to_sign_path(corpus):
     assert torch.isfinite(out["motion"]).all()
     assert len(out["spoken_tokens"]) == 4
     assert len(out["gloss"]) == 4
+
+
+def test_empty_decoder_output_abstains_instead_of_generating_nan(corpus):
+    _, spec = corpus
+    model = _model(spec)
+    model.planner.greedy_decode = lambda src, max_len: [[] for _ in range(src.shape[0])]
+    src = torch.ones(2, 3, dtype=torch.long)
+    with pytest.raises(TranslationAbstainedError, match="no gloss evidence"):
+        model.translate_speech_to_sign(src, num_frames=8, ddim_steps=2)

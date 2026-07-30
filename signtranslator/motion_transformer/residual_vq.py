@@ -84,7 +84,7 @@ class ResidualVQ(nn.Module):
         commit = flat.new_zeros(())
         codebook_loss = flat.new_zeros(())
         indices: List[torch.Tensor] = []
-        residual_norms: List[float] = [float(residual.norm(dim=-1).mean())]
+        residual_norms: List[float] = [residual.norm(dim=-1).mean().detach().item()]
 
         for vq in self.quantizers:
             idx, c = vq.quantize(residual)
@@ -96,7 +96,7 @@ class ResidualVQ(nn.Module):
             z_q_hard = z_q_hard + c
             residual = residual - c
             indices.append(idx)
-            residual_norms.append(float(residual.norm(dim=-1).mean()))
+            residual_norms.append(residual.norm(dim=-1).mean().detach().item())
 
         z_q_ste = flat + (z_q_hard - flat).detach()          # ONE STE for the cascade
         loss = self.beta * commit + codebook_loss

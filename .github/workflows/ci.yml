@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  core:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install locked core environment
+        run: |
+          python -m pip install -r requirements.lock
+          python -m pip install --no-deps -e .
+      - name: Compile
+        run: python -m compileall -q signtranslator tests
+      - name: Warning-strict test suite
+        run: python -W error -m pytest
+      - name: Mechanical synthetic smoke run
+        run: |
+          python - <<'PY'
+          import os
+          from signtranslator.run import run_pipeline
+
+          out = os.path.join(os.environ["RUNNER_TEMP"], "signtranslator-smoke")
+          result = run_pipeline(
+              out,
+              epochs=1,
+              batch_size=32,
+              diff_timesteps=10,
+              regenerate=True,
+              do_analyze=False,
+              gen_finetune_epochs=0,
+              polish_epochs=0,
+              verbose=False,
+          )
+          assert result["history"] is not None
+          PY

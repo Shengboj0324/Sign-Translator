@@ -61,7 +61,7 @@ def test_self_consistency_loss_differentiable_and_zero_when_agree():
     t_low = torch.full((3,), 0.8, dtype=torch.float64)
     # same model, same input -> if x_low==x_high and t_low==t_high the loss is 0
     loss0 = self_consistency_loss(model, model, x_high, t_high, x_high, t_high)
-    assert float(loss0) < 1e-12
+    assert loss0.detach().item() < 1e-12
     loss = self_consistency_loss(model, model, x_high, t_high,
                                  torch.randn(3, 4, dtype=torch.float64), t_low)
     loss.backward()

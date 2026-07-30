@@ -132,9 +132,9 @@ def test_ctc_learns_from_real_logmel_features():
     for _ in range(60):
         loss = rec.loss(feats, targets, lengths)
         assert torch.isfinite(loss)
-        first = first if first is not None else float(loss)
+        first = first if first is not None else loss.detach().item()
         opt.zero_grad(); loss.backward(); opt.step()
-    assert float(loss) < first * 0.5, f"{first} -> {float(loss)}"
+    assert loss.detach().item() < first * 0.5, f"{first} -> {loss.detach().item()}"
 
 
 def test_lora_adapts_the_recognizer_without_touching_base_weights():

@@ -1,6 +1,7 @@
 """Build / forward / generation tests for the end-to-end SignTranslator."""
 
 import torch
+import pytest
 
 from signtranslator import ModelConfig, DiffusionConfig
 from signtranslator.models import SignTranslator
@@ -68,3 +69,29 @@ def test_generate_produces_motion_clip():
     clip = model.generate(tokens, num_frames=12, use_ddim=True, ddim_steps=5)
     assert clip.shape == (2, mcfg.in_channels, 12, mcfg.num_joints)
     assert torch.isfinite(clip).all()
+
+
+def test_configuration_roundtrip_is_versioned_and_typed():
+    model_cfg = ModelConfig(stgcn_channels=(16, 32), text_embed_dim=32,
+                            text_heads=4)
+    payload = model_cfg.to_dict()
+    assert payload["schema_version"] == 1
+    assert payload["config_type"] == "ModelConfig"
+    assert ModelConfig.from_dict(payload) == model_cfg
+
+
+def test_configuration_rejects_wrong_schema_and_unknown_fields():
+    payload = ModelConfig().to_dict()
+    payload["schema_version"] = 999
+    with pytest.raises(ValueError, match="unsupported"):
+        ModelConfig.from_dict(payload)
+
+    payload = ModelConfig().to_dict()
+    payload["values"]["silent_fallback"] = True
+    with pytest.raises(ValueError, match="unknown"):
+        ModelConfig.from_dict(payload)
+
+
+def test_configuration_validation_survives_python_optimized_mode():
+    with pytest.raises(ValueError, match="divisible"):
+        ModelConfig(text_embed_dim=30, text_heads=4)

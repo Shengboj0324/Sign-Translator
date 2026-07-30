@@ -3,6 +3,9 @@
 import numpy as np
 import pytest
 import torch
+import wave
+import json
+from torch.utils.data import DataLoader
 
 from signtranslator.data_engineering import (
     ConsentState, Sample, validate_sample, gate_download, ProvenanceChain,
@@ -11,6 +14,11 @@ from signtranslator.data_engineering import (
     certify_no_group_leakage, Window, certify_window_split_consistency,
     apply_withdrawal, UsagePolicy, gate_action, infer_sensitive_trait,
     SensitiveInferenceError, Datasheet, PreprocessingManifest,
+    LandmarkTrack, ExtractedSample, decode_landmark_npz, decode_pcm_wav,
+    assemble_holistic_track, export_corpus,
+)
+from signtranslator.data.corpus import (
+    SignDataset, collate_corpus, ctc_min_input_length, validate_corpus,
 )
 from signtranslator.pose.camera import PerspectiveCamera
 
@@ -124,3 +132,161 @@ def test_cycle_stress_repeated_pipeline_is_deterministic():
     b = grouped_split(samples, seed=11)
     assert a == b
     assert certify_no_group_leakage(samples, a).certified
+
+
+# ---- governed-record -> active-loader bridge -------------------------------
+def _extracted_records(count=8, *, with_speech=True):
+    records = []
+    for index in range(count):
+        frames = 8 + index % 4
+        generator = np.random.default_rng(100 + index)
+        values = generator.normal(size=(3, frames, 5)).astype(np.float32)
+        validity = np.ones((frames, 5), dtype=np.bool_)
+        if index % 3 == 0:
+            validity[2, 4] = False
+        confidence = generator.uniform(0.5, 1.0, size=(frames, 5)).astype(np.float32)
+        confidence[~validity] = 0.0
+        track = LandmarkTrack(
+            values=values,
+            confidence=confidence,
+            validity_mask=validity,
+            timestamps=np.arange(frames, dtype=np.float64) / 30.0,
+        )
+        sample = Sample(
+            sample_id=f"sample-{index}", source_id=f"source-{index}",
+            signer_id_hash=f"signer-{index}", target_language="TEST-SL",
+            license="test-license", consent=ConsentState.GRANTED,
+            intended_use="unit-test", smplx_version="not-applicable",
+            provenance=f"provenance-{index}", split="train",
+            video_uri=f"video://{index}",
+        )
+        gloss = ("HELLO", "HELLO") if index % 2 == 0 else ("HELLO", "WORLD")
+        source = ("hello", "there", "friend") if index % 2 == 0 else ("goodbye",)
+        if with_speech:
+            speech = generator.normal(size=(16, 7)).astype(np.float32)
+            speech_timestamps = np.arange(16, dtype=np.float64) * 0.01
+        else:
+            speech = speech_timestamps = None
+        records.append(ExtractedSample(
+            governance=sample, track=track, gloss_tokens=gloss,
+            source_tokens=source, media_sha256=f"{index:064x}",
+            extractor_id="test-extractor@sha256:abc", coordinate_system="camera-rh-m",
+            speech_features=speech, speech_timestamps=speech_timestamps,
+        ))
+    return records
+
+
+def test_exporter_preserves_masks_lengths_labels_and_traceability(tmp_path):
+    result = export_corpus(
+        _extracted_records(), tmp_path / "corpus",
+        joint_names=[f"joint-{index}" for index in range(5)],
+        split_ratios=(0.5, 0.25, 0.25), seed=4,
+    )
+    spec = validate_corpus(result.corpus_dir)
+    assert spec.num_concepts == 2
+    assert spec.source_token_count == 4
+    assert result.spec == spec
+
+    datasets = [SignDataset(result.corpus_dir, split)
+                for split in ("train", "val", "test")]
+    assert sum(map(len, datasets)) == 8
+    for dataset in datasets:
+        for item in dataset:
+            invalid = ~item["validity_mask"].unsqueeze(0).expand_as(item["pose"])
+            assert torch.all(item["pose"][invalid] == 0)
+    batch = next(iter(DataLoader(datasets[0], batch_size=len(datasets[0]),
+                                 collate_fn=collate_corpus)))
+    assert batch["frame_mask"].sum() == batch["motion_lengths"].sum()
+    assert batch["validity_mask"].shape == batch["confidence"].shape
+    assert torch.all(batch["confidence"][~batch["validity_mask"]] == 0)
+    assert batch["src"].shape[1] != batch["gloss_tokens"].shape[1]
+    assert batch["speech_input_lengths"].tolist() == [16] * len(datasets[0])
+    assert "sample-" in (tmp_path / "corpus" / "review.html").read_text()
+    manifest = json.loads((tmp_path / "corpus" / "manifest.json").read_text())
+    assert manifest["normalization_fit_split"] == "train"
+    assert manifest["leakage_certified"] is True
+    assert all(record["media_sha256"] for record in manifest["records"])
+
+
+def test_exporter_rejects_invalid_confidence_and_overwrite(tmp_path):
+    records = _extracted_records(with_speech=False)
+    bad = records[0]
+    confidence = bad.track.confidence.copy()
+    confidence[~bad.track.validity_mask] = 0.5
+    records[0] = ExtractedSample(
+        governance=bad.governance,
+        track=LandmarkTrack(bad.track.values, confidence,
+                            bad.track.validity_mask, bad.track.timestamps),
+        gloss_tokens=bad.gloss_tokens, source_tokens=bad.source_tokens,
+        media_sha256=bad.media_sha256, extractor_id=bad.extractor_id,
+        coordinate_system=bad.coordinate_system,
+    )
+    with pytest.raises(ValueError, match="invalid observations"):
+        export_corpus(records, tmp_path / "bad", joint_names=[f"j{i}" for i in range(5)],
+                      split_ratios=(0.5, 0.25, 0.25))
+
+    output = tmp_path / "nonempty"
+    output.mkdir()
+    (output / "valuable.txt").write_text("keep")
+    with pytest.raises(FileExistsError, match="non-empty"):
+        export_corpus(_extracted_records(with_speech=False), output,
+                      joint_names=[f"j{i}" for i in range(5)],
+                      split_ratios=(0.5, 0.25, 0.25))
+    assert (output / "valuable.txt").read_text() == "keep"
+
+
+def test_exact_ctc_feasibility_counts_repeated_labels():
+    assert ctc_min_input_length([1, 2, 3]) == 3
+    assert ctc_min_input_length([1, 1, 2, 2, 2]) == 8
+
+
+def test_v2_shard_tampering_is_detected_before_loading(tmp_path):
+    result = export_corpus(
+        _extracted_records(with_speech=False), tmp_path / "corpus",
+        joint_names=[f"joint-{index}" for index in range(5)],
+        split_ratios=(0.5, 0.25, 0.25), seed=2,
+    )
+    shard = tmp_path / "corpus" / "val.npz"
+    payload = bytearray(shard.read_bytes())
+    payload[len(payload) // 2] ^= 0x01
+    shard.write_bytes(payload)
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        validate_corpus(result.corpus_dir)
+
+
+def test_timestamped_media_decoders_are_strict(tmp_path):
+    wav_path = tmp_path / "tone.wav"
+    signal = np.array([0, 1000, -1000, 32767], dtype="<i2")
+    with wave.open(str(wav_path), "wb") as stream:
+        stream.setnchannels(1)
+        stream.setsampwidth(2)
+        stream.setframerate(8000)
+        stream.writeframes(signal.tobytes())
+    audio = decode_pcm_wav(wav_path)
+    assert audio.samples.shape == (4, 1)
+    assert np.allclose(audio.timestamps, np.arange(4) / 8000)
+
+    track_path = tmp_path / "track.npz"
+    np.savez(track_path, values=np.zeros((3, 2, 4), dtype=np.float32),
+             confidence=np.ones((2, 4), dtype=np.float32),
+             validity_mask=np.ones((2, 4), dtype=np.bool_),
+             timestamps=np.array([0.0, 0.04]))
+    assert decode_landmark_npz(track_path).values.shape == (3, 2, 4)
+
+
+def test_holistic_assembly_preserves_dense_parts_and_rejects_clock_drift():
+    timestamps = np.array([0.0, 0.04, 0.08])
+    def part(joints):
+        return LandmarkTrack(
+            np.zeros((3, 3, joints), dtype=np.float32),
+            np.ones((3, joints), dtype=np.float32),
+            np.ones((3, joints), dtype=np.bool_), timestamps.copy())
+    combined = assemble_holistic_track({
+        "body": part(25), "right_hand": part(21),
+        "left_hand": part(21), "face": part(68),
+    })
+    assert combined.values.shape == (3, 3, 135)
+    drifted = part(21)
+    drifted.timestamps[1] += 1e-4
+    with pytest.raises(ValueError, match="timestamps"):
+        assemble_holistic_track({"body": part(25), "right_hand": drifted})

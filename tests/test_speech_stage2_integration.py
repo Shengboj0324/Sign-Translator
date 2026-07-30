@@ -78,10 +78,10 @@ def trained():
     first = None
     for _ in range(260):
         loss = rec.loss(feats, targets, lengths)
-        first = first if first is not None else float(loss)
+        first = first if first is not None else loss.detach().item()
         opt.zero_grad(); loss.backward(); opt.step()
     rec.eval()
-    return rec, fe, feats, targets, spans, first, float(loss)
+    return rec, fe, feats, targets, spans, first, loss.detach().item()
 
 
 def test_recognizer_actually_decodes_not_merely_loses_less(trained):

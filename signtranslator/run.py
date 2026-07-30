@@ -40,7 +40,9 @@ def build_model(spec: CorpusSpec, diff_timesteps: int = 100) -> BidirectionalSig
                                denoiser_layers=3, denoiser_heads=4)
     return BidirectionalSignTranslator(
         model_cfg, diff_cfg, src_vocab=spec.src_vocab, gloss_vocab=spec.gloss_vocab,
-        num_glosses=spec.num_glosses, cond_drop_prob=0.1, planner_layers=3)
+        num_glosses=spec.num_glosses,
+        num_spoken_tokens=spec.source_token_count,
+        cond_drop_prob=0.1, planner_layers=3)
 
 
 # Loss weighting: up-weight the planner (a sequence-reordering task that needs
@@ -62,7 +64,8 @@ def make_loaders(corpus_dir: str, batch_size: int):
 
 def run_pipeline(corpus_dir: str, epochs: int = 30, batch_size: int = 32,
                  lr: float = 4e-3, diff_timesteps: int = 100, seed: int = 0,  # noqa: E501
-                 regenerate: bool = True, ckpt_path: Optional[str] = None,
+                 regenerate: bool = False, overwrite_corpus: bool = False,
+                 ckpt_path: Optional[str] = None,
                  do_train: bool = True, do_analyze: bool = True,
                  resume: bool = False, gen_finetune_epochs: int = 0,
                  gen_finetune_lr: float = 1e-3, polish_epochs: int = 0,
@@ -70,7 +73,7 @@ def run_pipeline(corpus_dir: str, epochs: int = 30, batch_size: int = 32,
                  verbose: bool = True) -> dict:
     # 1. Ingest -----------------------------------------------------------
     if regenerate:
-        generate_corpus(corpus_dir, seed=seed)
+        generate_corpus(corpus_dir, seed=seed, overwrite=overwrite_corpus)
     spec = validate_corpus(corpus_dir)
     if verbose:
         print(f"[ingest] corpus OK: K={spec.num_concepts} L={spec.seq_len} "
@@ -138,6 +141,10 @@ def run_pipeline(corpus_dir: str, epochs: int = 30, batch_size: int = 32,
 def main() -> None:
     parser = argparse.ArgumentParser(description="Ingest -> train -> analyze.")
     parser.add_argument("--corpus-dir", type=str, default="./corpus")
+    parser.add_argument("--generate-synthetic", action="store_true",
+                        help="explicitly create a synthetic corpus")
+    parser.add_argument("--overwrite-synthetic", action="store_true",
+                        help="allow synthetic generation in a non-empty corpus directory")
     parser.add_argument("--epochs", type=int, default=30,
                         help="joint multi-branch epochs")
     parser.add_argument("--gen-finetune-epochs", type=int, default=175,
@@ -156,8 +163,13 @@ def main() -> None:
     parser.add_argument("--ckpt", type=str, default=None)
     args = parser.parse_args()
 
+    if args.overwrite_synthetic and not args.generate_synthetic:
+        parser.error("--overwrite-synthetic requires --generate-synthetic")
+
     result = run_pipeline(args.corpus_dir, epochs=args.epochs, batch_size=args.batch_size,
                           lr=args.lr, diff_timesteps=args.timesteps, seed=args.seed,
+                          regenerate=args.generate_synthetic,
+                          overwrite_corpus=args.overwrite_synthetic,
                           ckpt_path=args.ckpt,
                           gen_finetune_epochs=args.gen_finetune_epochs,
                           gen_finetune_lr=args.gen_finetune_lr,

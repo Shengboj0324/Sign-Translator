@@ -377,7 +377,7 @@ def test_objective_and_schedule_compose_over_many_steps():
     for _ in range(20):
         out = obj(feats, targets, lengths, sign_embeddings=signs)
         assert torch.isfinite(out.total)
-        losses.append(float(out.total))
+        losses.append(out.total.detach().item())
         sched.step(out.total)
     assert sched.phase == Phase.REFINE
     assert losses[-1] < losses[0]

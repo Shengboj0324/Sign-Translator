@@ -172,9 +172,9 @@ def test_planner_overfits_a_controllable_evidence_to_plan_mapping():
     first = None
     for _ in range(300):
         loss = planner.plan_nll(tokens, src_tokens=src)
-        first = first if first is not None else float(loss)
+        first = first if first is not None else loss.detach().item()
         opt.zero_grad(); loss.backward(); opt.step()
-    assert float(loss) < first * 0.05
+    assert loss.detach().item() < first * 0.05
 
     for code, target_plan in codes:
         generated = planner.generate(src_tokens=torch.tensor([[code]]))

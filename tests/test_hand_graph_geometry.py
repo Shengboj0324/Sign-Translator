@@ -104,7 +104,7 @@ def test_contact_is_monotone_non_increasing_in_distance():
     ps = []
     for dd in dists:
         xj = torch.tensor([[float(dd), 0.0, 0.0]], dtype=torch.float64)
-        ps.append(float(cf(h, h, origin, xj)))
+        ps.append(cf(h, h, origin, xj).detach().item())
     ps = torch.tensor(ps)
     assert torch.all(ps[1:] - ps[:-1] <= 1e-12)             # non-increasing
 

@@ -130,9 +130,9 @@ def test_boundary_head_can_learn_a_pattern():
     first = None
     for _ in range(300):
         loss = boundary_loss(head(hidden), targets)
-        first = first if first is not None else float(loss)
+        first = first if first is not None else loss.detach().item()
         opt.zero_grad(); loss.backward(); opt.step()
-    assert float(loss) < first * 0.1
+    assert loss.detach().item() < first * 0.1
     assert torch.equal(head.predict_boundaries(hidden)[0].nonzero().flatten(),
                        torch.tensor([4, 17, 31]))
 

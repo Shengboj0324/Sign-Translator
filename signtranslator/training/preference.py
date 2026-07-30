@@ -150,9 +150,9 @@ class DiffusionDPO:
         # log pi ~= -error, so (log pi - log pi_ref) ~= (ref_err - err).
         logits = self.beta * ((ref_w - err_w) - (ref_l - err_l))
         loss = -F.logsigmoid(logits).mean()
-        stats = DPOStats(loss=float(loss.detach()),
-                         accuracy=float((logits > 0).float().mean()),
-                         margin=float(logits.mean()))
+        stats = DPOStats(loss=loss.detach().item(),
+                         accuracy=(logits > 0).float().mean().detach().item(),
+                         margin=logits.mean().detach().item())
         return loss, stats
 
     def step(self, optimizer, preferred: torch.Tensor, rejected: torch.Tensor,

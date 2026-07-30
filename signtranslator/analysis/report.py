@@ -15,7 +15,7 @@ Metrics
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import torch
 
@@ -45,7 +45,7 @@ DIAGNOSTIC_THRESHOLDS: Dict[str, float] = {}
 
 @dataclass
 class AnalysisReport:
-    metrics: Dict[str, float]
+    metrics: Dict[str, Optional[float]]
     thresholds: Dict[str, float]
     checks: Dict[str, bool] = field(default_factory=dict)
     gating: set = field(default_factory=set)
@@ -64,7 +64,8 @@ class AnalysisReport:
                     tag += " (diagnostic)"
             else:
                 tag = ""
-            lines.append(f"  {name:<26} {value:8.4f}  {tag}")
+            rendered = "     N/A" if value is None else f"{value:8.4f}"
+            lines.append(f"  {name:<26} {rendered}  {tag}")
         lines.append("-" * 48)
         lines.append(f"  OVERALL (gated metrics): {'PASS' if self.passed else 'FAIL'}")
         return "\n".join(lines)
@@ -141,7 +142,7 @@ def analyze(model, val_loader, thresholds: Dict[str, float] = None,
     cycle_consistency_wer = word_error_rate(cyc_hyps, cyc_refs)
 
     # ---- speech branch: audio -> spoken tokens ----------------------------
-    speech_wer = 0.0
+    speech_wer: Optional[float] = None
     if speeches:
         sp_hyps: List[List[int]] = []
         for s_batch in speeches:
@@ -159,7 +160,8 @@ def analyze(model, val_loader, thresholds: Dict[str, float] = None,
         "speech_wer": speech_wer,
     }
     checks = {
-        "speech_wer": speech_wer <= thresholds["speech_wer"],
+        "speech_wer": (speech_wer is not None
+                       and speech_wer <= thresholds["speech_wer"]),
         "recognition_wer": recognition_wer <= thresholds["recognition_wer"],
         "planner_token_accuracy": planner_token_accuracy >= thresholds["planner_token_accuracy"],
         "recall_at_1": recalls[1] >= thresholds["recall_at_1"],

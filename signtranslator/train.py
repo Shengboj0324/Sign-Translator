@@ -64,9 +64,9 @@ def train(model_cfg: ModelConfig, diff_cfg: DiffusionConfig,
             torch.nn.utils.clip_grad_norm_(model.parameters(), train_cfg.grad_clip)
             opt.step()
 
-            history["total"].append(float(loss))
-            history["contrastive"].append(float(out["contrastive_loss"]))
-            history["diffusion"].append(float(out["diffusion_loss"]))
+            history["total"].append(loss.detach().item())
+            history["contrastive"].append(out["contrastive_loss"].detach().item())
+            history["diffusion"].append(out["diffusion_loss"].detach().item())
 
             if verbose and step % log_every == 0:
                 print(f"step {step:4d} | total {loss:.4f} | "

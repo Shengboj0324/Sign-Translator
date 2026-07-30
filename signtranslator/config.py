@@ -7,12 +7,53 @@ that shape mismatches surface early rather than deep inside a forward pass.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
-from typing import Any, Dict, Optional
+from dataclasses import asdict, dataclass, field, fields
+from typing import Any, ClassVar, Dict, Optional, Type, TypeVar
+
+
+CONFIG_SCHEMA_VERSION = 1
+_ConfigT = TypeVar("_ConfigT", bound="SerializableConfig")
+
+
+class SerializableConfig:
+    """Strict, versioned serialization shared by every executable config."""
+
+    schema_version: ClassVar[int] = CONFIG_SCHEMA_VERSION
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "config_type": type(self).__name__,
+            "schema_version": self.schema_version,
+            "values": asdict(self),
+        }
+
+    @classmethod
+    def from_dict(cls: Type[_ConfigT], payload: Dict[str, Any]) -> _ConfigT:
+        if not isinstance(payload, dict):
+            raise TypeError("configuration payload must be a dictionary")
+        if payload.get("config_type") != cls.__name__:
+            raise ValueError(
+                f"expected config_type={cls.__name__!r}, got "
+                f"{payload.get('config_type')!r}")
+        if payload.get("schema_version") != cls.schema_version:
+            raise ValueError(
+                f"unsupported {cls.__name__} schema version "
+                f"{payload.get('schema_version')!r}; expected {cls.schema_version}")
+        values = payload.get("values")
+        if not isinstance(values, dict):
+            raise TypeError("configuration 'values' must be a dictionary")
+        allowed = {item.name for item in fields(cls)}
+        unknown = set(values) - allowed
+        if unknown:
+            raise ValueError(f"unknown {cls.__name__} fields: {sorted(unknown)}")
+        values = dict(values)
+        if cls is ModelConfig and "stgcn_channels" in values:
+            values["stgcn_channels"] = tuple(values["stgcn_channels"])
+        return cls(**values)
 
 
 @dataclass
-class ModelConfig:
+class ModelConfig(SerializableConfig):
     """Architecture hyper-parameters for the shared-manifold model."""
 
     # Skeleton / motion representation
@@ -35,22 +76,28 @@ class ModelConfig:
     latent_dim: int = 256
 
     def __post_init__(self) -> None:
-        assert self.in_channels >= 2, "need at least 2 spatial channels"
-        assert self.num_joints > 0 and self.num_frames > 0
-        assert self.stgcn_temporal_kernel % 2 == 1, "temporal kernel must be odd"
-        assert self.latent_dim > 0
+        if self.in_channels < 2:
+            raise ValueError("need at least 2 spatial channels")
+        if self.num_joints <= 0 or self.num_frames <= 0:
+            raise ValueError("num_joints and num_frames must be positive")
+        if not self.stgcn_channels or any(c <= 0 for c in self.stgcn_channels):
+            raise ValueError("stgcn_channels must contain positive widths")
+        if self.stgcn_temporal_kernel <= 0 or self.stgcn_temporal_kernel % 2 != 1:
+            raise ValueError("temporal kernel must be positive and odd")
+        if self.text_embed_dim <= 0 or self.text_layers <= 0 or self.text_heads <= 0:
+            raise ValueError("text dimensions and layer counts must be positive")
+        if self.text_embed_dim % self.text_heads != 0:
+            raise ValueError("text_embed_dim must be divisible by text_heads")
+        if self.latent_dim <= 0 or self.vocab_size <= 0 or self.speech_input_dim <= 0:
+            raise ValueError("latent, vocabulary, and speech dimensions must be positive")
 
     @property
     def motion_feature_dim(self) -> int:
         """Dimension of the ST-GCN encoder output before projection."""
         return self.stgcn_channels[-1]
 
-    def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
-
-
 @dataclass
-class DiffusionConfig:
+class DiffusionConfig(SerializableConfig):
     """Gaussian-diffusion schedule configuration for motion generation."""
 
     num_timesteps: int = 1000
@@ -71,15 +118,28 @@ class DiffusionConfig:
     high_t_start: float = 0.85
 
     def __post_init__(self) -> None:
-        assert self.num_timesteps > 0
-        assert 0.0 < self.beta_start < self.beta_end < 1.0
-        assert self.schedule in {"linear", "cosine"}
-        assert self.parameterization in {"eps", "x0"}
-        assert self.velocity_weight >= 0.0
+        if self.num_timesteps <= 0:
+            raise ValueError("num_timesteps must be positive")
+        if not 0.0 < self.beta_start < self.beta_end < 1.0:
+            raise ValueError("betas must satisfy 0 < beta_start < beta_end < 1")
+        if self.schedule not in {"linear", "cosine"}:
+            raise ValueError("schedule must be 'linear' or 'cosine'")
+        if self.parameterization not in {"eps", "x0"}:
+            raise ValueError("parameterization must be 'eps' or 'x0'")
+        if self.velocity_weight < 0.0:
+            raise ValueError("velocity_weight must be non-negative")
+        if self.denoiser_dim <= 0 or self.denoiser_layers <= 0 or self.denoiser_heads <= 0:
+            raise ValueError("denoiser dimensions and layer counts must be positive")
+        if self.denoiser_dim % self.denoiser_heads != 0:
+            raise ValueError("denoiser_dim must be divisible by denoiser_heads")
+        if not 0.0 <= self.high_t_frac <= 1.0:
+            raise ValueError("high_t_frac must be in [0, 1]")
+        if not 0.0 <= self.high_t_start <= 1.0:
+            raise ValueError("high_t_start must be in [0, 1]")
 
 
 @dataclass
-class TrainConfig:
+class TrainConfig(SerializableConfig):
     """Optimization / loss-weighting configuration."""
 
     lr: float = 2e-4
@@ -98,9 +158,17 @@ class TrainConfig:
 
     extra: Dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        if self.lr <= 0 or self.weight_decay < 0:
+            raise ValueError("lr must be positive and weight_decay non-negative")
+        if self.batch_size <= 0 or self.max_steps <= 0:
+            raise ValueError("batch_size and max_steps must be positive")
+        if self.grad_clip <= 0 or self.contrastive_temperature <= 0:
+            raise ValueError("grad_clip and contrastive_temperature must be positive")
+
 
 @dataclass
-class TrainerConfig:
+class TrainerConfig(SerializableConfig):
     """Configuration for the unified multi-branch :class:`Trainer`."""
 
     epochs: int = 12
@@ -120,6 +188,15 @@ class TrainerConfig:
     ckpt_path: Optional[str] = None
 
     def __post_init__(self) -> None:
-        assert self.epochs > 0 and self.batch_size > 0
-        assert 0.0 <= self.warmup_frac < 1.0
-        assert 0.0 <= self.min_lr_frac <= 1.0
+        if self.epochs <= 0 or self.batch_size <= 0:
+            raise ValueError("epochs and batch_size must be positive")
+        if self.lr <= 0 or self.weight_decay < 0 or self.grad_clip <= 0:
+            raise ValueError("lr and grad_clip must be positive; weight_decay non-negative")
+        if not 0.0 <= self.warmup_frac < 1.0:
+            raise ValueError("warmup_frac must be in [0, 1)")
+        if not 0.0 <= self.min_lr_frac <= 1.0:
+            raise ValueError("min_lr_frac must be in [0, 1]")
+        if self.val_every <= 0:
+            raise ValueError("val_every must be positive")
+        if not self.loss_weights or any(v < 0 for v in self.loss_weights.values()):
+            raise ValueError("loss_weights must be non-empty and non-negative")

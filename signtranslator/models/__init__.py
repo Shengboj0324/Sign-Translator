@@ -7,7 +7,7 @@ from .guided_diffusion import GuidedMotionDiffusion
 from .recognition import SignRecognizer, ctc_greedy_decode, word_error_rate
 from .speech import SpeechRecognizer
 from .planner import GlossPlanner
-from .pipeline import SignTranslator, BidirectionalSignTranslator
+from .pipeline import SignTranslator, BidirectionalSignTranslator, TranslationAbstainedError
 
 __all__ = [
     "STGCNEncoder", "GraphConvolution", "STGCNBlock",
@@ -19,5 +19,5 @@ __all__ = [
     "SignRecognizer", "ctc_greedy_decode", "word_error_rate",
     "SpeechRecognizer",
     "GlossPlanner",
-    "SignTranslator", "BidirectionalSignTranslator",
+    "SignTranslator", "BidirectionalSignTranslator", "TranslationAbstainedError",
 ]

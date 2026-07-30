@@ -118,7 +118,8 @@ def test_merge_deviation_in_float32_is_small_but_nonzero():
     x = torch.randn(4, 16)
     before = lora(x).clone()
     lora.merge()
-    rel = float((lora(x) - before).abs().max() / before.abs().max())
+    rel = ((lora(x) - before).abs().max()
+           / before.abs().max()).detach().item()
     assert rel < 1e-2, f"merge deviation {rel} too large to be rounding"
 
 
@@ -213,7 +214,8 @@ def test_merge_all_reports_count_and_preserves_output():
     before = enc(x).clone()
     assert merge_all_lora(enc) == 4
     # float32 reassociation (see test_merge_deviation_in_float32_is_small...)
-    rel = float((enc(x) - before).abs().max() / before.abs().max())
+    rel = ((enc(x) - before).abs().max()
+           / before.abs().max()).detach().item()
     assert rel < 1e-2
 
 

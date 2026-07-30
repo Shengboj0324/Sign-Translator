@@ -79,7 +79,9 @@ def test_commitment_loss_only_moves_encoder():
     out = vq(z_e)
     # commitment loss value == mean ||z_e - z_q||^2
     idx, zq = vq.quantize(z_e)
-    assert abs(float(out["commit_loss"]) - float(((z_e - zq) ** 2).mean())) < 1e-12
+    actual = out["commit_loss"].detach().item()
+    expected = ((z_e - zq) ** 2).mean().detach().item()
+    assert abs(actual - expected) < 1e-12
     # its gradient reaches the encoder (z_e), codebook is a buffer in EMA mode
     out["commit_loss"].backward()
     assert z_e.grad is not None and z_e.grad.abs().sum() > 0

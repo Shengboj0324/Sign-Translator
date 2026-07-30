@@ -159,6 +159,6 @@ def test_decoder_can_overfit_target_intervals():
     for _ in range(300):
         s, e, _ = dec(x, rel)
         loss = F.mse_loss(s, target_start) + F.mse_loss(e, target_end)
-        first = first if first is not None else float(loss)
+        first = first if first is not None else loss.detach().item()
         opt.zero_grad(); loss.backward(); opt.step()
-    assert float(loss) < first * 0.05
+    assert loss.detach().item() < first * 0.05

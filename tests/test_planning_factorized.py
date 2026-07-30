@@ -129,11 +129,11 @@ def test_stage_a_trains_the_content_head():
     src, y, plans = _dataset(64, 0)
 
     opt = torch.optim.Adam(list(enc.parameters()) + list(head.parameters()), lr=3e-3)
-    first = float(F.cross_entropy(head(enc(src)[1]), y))
+    first = F.cross_entropy(head(enc(src)[1]), y).detach().item()
     for _ in range(150):
         loss = F.cross_entropy(head(enc(src)[1]), y)
         opt.zero_grad(); loss.backward(); opt.step()
-    assert float(loss) < first            # the lightweight head learns
+    assert loss.detach().item() < first            # the lightweight head learns
 
 
 def test_joint_training_updates_the_encoder():
