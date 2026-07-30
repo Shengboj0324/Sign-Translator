@@ -80,8 +80,10 @@ def assess_corpus(corpus_dir: str, min_train_samples: int = 32,
     if not {"train", "val"}.issubset(set(splits)):
         return report
 
-    train = SignDataset(corpus_dir, "train", normalize=False)
-    val = SignDataset(corpus_dir, "val", normalize=False)
+    # This diagnostic intentionally opens possibly corrupt v1 corpora so it can
+    # report the defect instead of raising at the active-loader boundary.
+    train = SignDataset(corpus_dir, "train", normalize=False, validate=False)
+    val = SignDataset(corpus_dir, "val", normalize=False, validate=False)
     n_train, n_val = len(train), len(val)
     report.stats["train_samples"] = n_train
     report.stats["val_samples"] = n_val
@@ -126,7 +128,7 @@ def assess_corpus(corpus_dir: str, min_train_samples: int = 32,
                f"frames={frames} >= max target length={max_target}")
 
     # ---- normalisation sanity --------------------------------------------
-    norm_pose = SignDataset(corpus_dir, "train", normalize=True).pose
+    norm_pose = SignDataset(corpus_dir, "train", normalize=True, validate=False).pose
     mean_abs = float(norm_pose.mean().abs())
     var = float(norm_pose.var())
     report.stats["normalized_mean"] = mean_abs

@@ -42,6 +42,49 @@ class DecodedAudio:
     sample_rate: int
 
 
+@dataclass(frozen=True)
+class DecodedVideo:
+    frames: np.ndarray       # (T, H, W, 3), uint8 RGB
+    timestamps: np.ndarray   # (T,), seconds from the container time base
+
+
+def decode_video(path: str | os.PathLike[str], stream_index: int = 0) -> DecodedVideo:
+    """Decode RGB frames while preserving container presentation timestamps.
+
+    Frames without a presentation timestamp are rejected; nominal FPS is never
+    used to fabricate time.  This is essential for variable-frame-rate media
+    and audio/video alignment.
+    """
+    import av
+
+    if stream_index < 0:
+        raise ValueError("stream_index must be non-negative")
+    frames = []
+    timestamps = []
+    try:
+        with av.open(os.fspath(path), mode="r") as container:
+            video_streams = container.streams.video
+            if stream_index >= len(video_streams):
+                raise ValueError(f"video stream {stream_index} does not exist")
+            stream = video_streams[stream_index]
+            for frame in container.decode(stream):
+                if frame.pts is None or stream.time_base is None:
+                    raise ValueError("video frame lacks an exact presentation timestamp")
+                timestamps.append(float(frame.pts * stream.time_base))
+                frames.append(frame.to_ndarray(format="rgb24"))
+    except av.error.FFmpegError as error:
+        raise ValueError(f"video decode failed: {error}") from error
+    if not frames:
+        raise ValueError("video contains no decodable frames")
+    timestamp_array = np.asarray(timestamps, dtype=np.float64)
+    if not np.isfinite(timestamp_array).all() or np.any(np.diff(timestamp_array) <= 0):
+        raise ValueError("video presentation timestamps must be finite and strictly increasing")
+    shapes = {frame.shape for frame in frames}
+    if len(shapes) != 1:
+        raise ValueError("video resolution changes within the stream")
+    return DecodedVideo(np.stack(frames), timestamp_array)
+
+
 def decode_pcm_wav(path: str | os.PathLike[str]) -> DecodedAudio:
     """Decode uncompressed 16- or 32-bit PCM WAV without losing timestamps.
 
@@ -193,6 +236,9 @@ def _validate_record(record: ExtractedSample, speech_subsample: int) -> None:
         raise ValueError(f"{sample_id}: media_sha256 must be a 64-character hex digest")
     if not record.extractor_id or not record.coordinate_system:
         raise ValueError(f"{sample_id}: extractor_id and coordinate_system are required")
+    provenance = record.governance.provenance.lower()
+    if len(provenance) != 64 or any(char not in "0123456789abcdef" for char in provenance):
+        raise ValueError(f"{sample_id}: provenance must be a 64-character hash root")
     _validate_track(record.track, sample_id)
     motion_minimum = ctc_min_input_length(record.gloss_tokens)
     if record.track.values.shape[1] < motion_minimum:
@@ -222,10 +268,15 @@ def _validate_record(record: ExtractedSample, speech_subsample: int) -> None:
 
 def _weighted_normalization(records: Sequence[ExtractedSample],
                             train_indices: Sequence[int]) -> Tuple[np.ndarray, np.ndarray]:
+    """Confidence-weighted population moments using a stable two-pass algorithm.
+
+    The one-pass identity ``E[x²] - E[x]²`` catastrophically cancels for motion
+    represented in a large global coordinate frame.  The second pass accumulates
+    squared deviations from the fitted mean and is translation-stable.
+    """
     channels, _, joints = records[0].track.values.shape
     weight_sum = np.zeros((1, 1, joints), dtype=np.float64)
     weighted_sum = np.zeros((channels, 1, joints), dtype=np.float64)
-    weighted_square = np.zeros((channels, 1, joints), dtype=np.float64)
     for index in train_indices:
         record = records[index]
         values = np.asarray(record.track.values, dtype=np.float64)
@@ -235,13 +286,19 @@ def _weighted_normalization(records: Sequence[ExtractedSample],
                                values, 0.0)
         weight_sum += weights.sum(axis=1, keepdims=True)
         weighted_sum += (safe_values * weights).sum(axis=1, keepdims=True)
-        weighted_square += ((safe_values ** 2) * weights).sum(axis=1, keepdims=True)
     if np.any(weight_sum <= 0):
         missing_joints = np.flatnonzero(weight_sum.reshape(-1) <= 0).tolist()
         raise ValueError(f"training split has no valid support for joints {missing_joints}")
     mean = weighted_sum / weight_sum
-    variance = weighted_square / weight_sum - mean ** 2
-    variance = np.maximum(variance, 0.0)
+    squared_deviation_sum = np.zeros((channels, 1, joints), dtype=np.float64)
+    for index in train_indices:
+        record = records[index]
+        values = np.asarray(record.track.values, dtype=np.float64)
+        weights = (record.track.confidence * record.track.validity_mask).astype(np.float64)[None]
+        valid = np.broadcast_to(record.track.validity_mask[None], values.shape)
+        deviations = np.where(valid, values - mean, 0.0)
+        squared_deviation_sum += ((deviations ** 2) * weights).sum(axis=1, keepdims=True)
+    variance = squared_deviation_sum / weight_sum
     if np.any(variance <= 1e-12):
         locations = np.argwhere(variance <= 1e-12).tolist()
         raise ValueError(f"training normalization has zero variance at {locations}")
@@ -275,7 +332,9 @@ def _write_review(path: Path, records: Sequence[ExtractedSample],
 
 
 def export_corpus(records: Sequence[ExtractedSample], out_dir: str | os.PathLike[str],
-                  *, joint_names: Sequence[str], split_ratios=(0.7, 0.15, 0.15),
+                  *, joint_names: Sequence[str],
+                  landmark_parts: Dict[str, Sequence[int]],
+                  split_ratios=(0.7, 0.15, 0.15),
                   seed: int = 0, speech_subsample: int = 2) -> ExportResult:
     """Export validated records into versioned, active-loader-compatible shards."""
     if not records:
@@ -285,6 +344,17 @@ def export_corpus(records: Sequence[ExtractedSample], out_dir: str | os.PathLike
         raise FileExistsError(f"refusing to export into non-empty path {destination}")
     for record in records:
         _validate_record(record, speech_subsample)
+    sample_ids = [record.governance.sample_id for record in records]
+    if len(set(sample_ids)) != len(sample_ids):
+        raise ValueError("sample_id values must be globally unique")
+    source_fingerprints: Dict[str, Tuple[Optional[str], str]] = {}
+    for record in records:
+        source_id = record.governance.source_id
+        fingerprint = (record.governance.video_uri, record.media_sha256.lower())
+        previous = source_fingerprints.setdefault(source_id, fingerprint)
+        if previous != fingerprint:
+            raise ValueError(
+                f"source_id {source_id!r} maps to inconsistent media URI or SHA-256")
     languages = {record.governance.target_language for record in records}
     coordinates = {record.coordinate_system for record in records}
     extractors = {record.extractor_id for record in records}
@@ -297,6 +367,13 @@ def export_corpus(records: Sequence[ExtractedSample], out_dir: str | os.PathLike
     channels, joints = next(iter(shapes))
     if len(joint_names) != joints or len(set(joint_names)) != joints:
         raise ValueError("joint_names must be unique and match the motion joint count")
+    required_parts = {"body", "left_hand", "right_hand", "face"}
+    if set(landmark_parts) != required_parts:
+        raise ValueError(f"landmark_parts must contain exactly {sorted(required_parts)}")
+    part_indices = [int(index) for part in required_parts for index in landmark_parts[part]]
+    if (any(len(landmark_parts[part]) == 0 for part in required_parts)
+            or len(part_indices) != joints or set(part_indices) != set(range(joints))):
+        raise ValueError("landmark_parts must be non-empty and partition every joint exactly once")
     speech_presence = {record.speech_features is not None for record in records}
     if len(speech_presence) != 1:
         raise ValueError("speech modality must be present for every record or none")
@@ -402,6 +479,10 @@ def export_corpus(records: Sequence[ExtractedSample], out_dir: str | os.PathLike
         "coordinate_system": next(iter(coordinates)),
         "extractor_id": next(iter(extractors)),
         "joint_names": list(joint_names),
+        "landmark_parts": {
+            part: [joint_names[int(index)] for index in landmark_parts[part]]
+            for part in sorted(landmark_parts)
+        },
         "gloss_vocabulary": gloss_labels,
         "source_vocabulary": source_labels,
         "pose_mean": pose_mean.tolist(),
@@ -417,6 +498,11 @@ def export_corpus(records: Sequence[ExtractedSample], out_dir: str | os.PathLike
             "audio_uri": record.governance.audio_uri,
             "media_sha256": record.media_sha256,
             "provenance": record.governance.provenance,
+            "license": record.governance.license,
+            "consent": record.governance.consent.name,
+            "intended_use": record.governance.intended_use,
+            "target_language": record.governance.target_language,
+            "dialect": record.governance.dialect,
             "split": assignment[index],
         } for index, record in enumerate(records)],
     }

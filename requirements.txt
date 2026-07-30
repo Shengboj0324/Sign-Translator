@@ -1,4 +1,5 @@
 # Core runtime dependencies (sufficient to build, train on synthetic data, and test).
+av>=18,<19
 torch>=2.13,<2.14
 numpy>=2.5,<2.6
 

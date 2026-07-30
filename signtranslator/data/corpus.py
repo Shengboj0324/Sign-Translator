@@ -222,6 +222,57 @@ def validate_corpus(corpus_dir: str) -> CorpusSpec:
     format_version = int(manifest.get("format_version", 1))
     if format_version not in (1, 2):
         raise ValueError(f"unsupported corpus format_version {format_version}")
+    if format_version == 2:
+        required_manifest = {
+            "gloss_vocabulary", "source_vocabulary", "joint_names", "records",
+            "coordinate_system", "extractor_id", "language", "normalization_fit_split",
+            "landmark_parts",
+        }
+        missing_manifest = required_manifest - set(manifest)
+        if missing_manifest:
+            raise ValueError(f"manifest missing v2 fields {sorted(missing_manifest)}")
+        if manifest["normalization_fit_split"] != "train":
+            raise ValueError("v2 normalization must be fitted on the train split")
+        gloss_vocabulary = manifest["gloss_vocabulary"]
+        source_vocabulary = manifest["source_vocabulary"]
+        joint_names = manifest["joint_names"]
+        for name, values, expected in (
+                ("gloss_vocabulary", gloss_vocabulary, spec.num_concepts),
+                ("source_vocabulary", source_vocabulary, spec.source_token_count),
+                ("joint_names", joint_names, spec.num_joints)):
+            if (not isinstance(values, list) or len(values) != expected
+                    or len(set(values)) != expected
+                    or any(not isinstance(value, str) or not value for value in values)):
+                raise ValueError(f"{name} must contain {expected} unique non-empty strings")
+        landmark_parts = manifest["landmark_parts"]
+        required_parts = {"body", "left_hand", "right_hand", "face"}
+        if not isinstance(landmark_parts, dict) or set(landmark_parts) != required_parts:
+            raise ValueError(f"landmark_parts must contain exactly {sorted(required_parts)}")
+        flattened_parts = [name for part in required_parts for name in landmark_parts[part]]
+        if (any(not landmark_parts[part] for part in required_parts)
+                or len(flattened_parts) != spec.num_joints
+                or set(flattened_parts) != set(joint_names)):
+            raise ValueError("landmark_parts must partition joint_names exactly once")
+        records = manifest["records"]
+        if not isinstance(records, list) or len(records) != sum(manifest["splits"].values()):
+            raise ValueError("manifest records must contain one entry per sample")
+        record_ids = [record.get("sample_id") for record in records]
+        if any(not value for value in record_ids) or len(set(record_ids)) != len(record_ids):
+            raise ValueError("manifest sample_id values must be unique and non-empty")
+        for record in records:
+            digest = record.get("media_sha256", "")
+            if (record.get("split") not in manifest["splits"] or len(digest) != 64
+                    or any(char not in "0123456789abcdef" for char in digest.lower())):
+                raise ValueError("manifest record has invalid split or media SHA-256")
+            if (record.get("consent") != "GRANTED" or not record.get("license")
+                    or not record.get("intended_use") or not record.get("provenance")):
+                raise ValueError("manifest record lacks governed usage or provenance")
+        record_split_counts = {
+            split: sum(record["split"] == split for record in records)
+            for split in manifest["splits"]
+        }
+        if record_split_counts != manifest["splits"]:
+            raise ValueError("manifest record split counts disagree with splits")
     for split, n in manifest["splits"].items():
         path = os.path.join(corpus_dir, f"{split}.npz")
         if not os.path.exists(path):
@@ -280,6 +331,7 @@ def validate_corpus(corpus_dir: str) -> CorpusSpec:
                 validity = z["validity_mask"]
                 confidence = z["confidence"]
                 timestamps = z["frame_timestamps"]
+                sample_ids = z["sample_ids"]
                 if motion_lengths.shape != (n,):
                     raise ValueError(f"{split}: motion_lengths must be (N,)")
                 if validity.shape != (n, spec.num_frames, spec.num_joints):
@@ -288,6 +340,12 @@ def validate_corpus(corpus_dir: str) -> CorpusSpec:
                     raise ValueError(f"{split}: confidence/timestamp shape mismatch")
                 if validity.dtype != np.bool_:
                     raise TypeError(f"{split}: validity_mask must be boolean")
+                if sample_ids.shape != (n,) or len(set(sample_ids.tolist())) != n:
+                    raise ValueError(f"{split}: sample_ids must be unique with shape (N,)")
+                expected_ids = {record["sample_id"] for record in manifest["records"]
+                                if record["split"] == split}
+                if set(sample_ids.tolist()) != expected_ids:
+                    raise ValueError(f"{split}: shard sample_ids disagree with manifest records")
                 if not np.isfinite(confidence).all() or np.any(
                         (confidence < 0) | (confidence > 1)):
                     raise ValueError(f"{split}: confidence outside [0, 1]")
@@ -301,6 +359,50 @@ def validate_corpus(corpus_dir: str) -> CorpusSpec:
                         raise ValueError(f"{split}: invalid timestamps at row {row}")
                     if np.any(timestamps[row, frame_count:] != -1):
                         raise ValueError(f"{split}: timestamp padding must be -1")
+                    if (np.any(validity[row, frame_count:])
+                            or np.any(confidence[row, frame_count:] != 0)
+                            or np.any(pose[row, :, frame_count:, :] != 0)):
+                        raise ValueError(f"{split}: motion padding must be zero and invalid")
+                    gloss_length = int(lengths[row])
+                    source_length = int(source_lengths[row])
+                    if (np.any(concepts[row, gloss_length:] != 0)
+                            or np.any(src_concepts[row, source_length:] != 0)):
+                        raise ValueError(f"{split}: token padding must be zero")
+                    motion_minimum = ctc_min_input_length(
+                        concepts[row, :gloss_length].tolist())
+                    if frame_count < motion_minimum:
+                        raise ValueError(
+                            f"{split}: row {row} motion is not exactly CTC-feasible")
+                has_speech = "speech" in files
+                speech_aux = {"speech_lengths", "speech_timestamps"}
+                present_speech_aux = speech_aux & files
+                if ((has_speech and present_speech_aux != speech_aux)
+                        or (not has_speech and present_speech_aux)):
+                    raise ValueError(f"{split}: speech arrays must appear together")
+                if has_speech:
+                    speech = z["speech"]
+                    speech_lengths = z["speech_lengths"]
+                    speech_timestamps = z["speech_timestamps"]
+                    if speech_lengths.shape != (n,) or speech_timestamps.shape != (
+                            n, spec.speech_frames):
+                        raise ValueError(f"{split}: speech length/timestamp shape mismatch")
+                    for row, speech_length in enumerate(speech_lengths.tolist()):
+                        if not 1 <= speech_length <= spec.speech_frames:
+                            raise ValueError(f"{split}: invalid speech length at row {row}")
+                        speech_ts = speech_timestamps[row, :speech_length]
+                        if (not np.isfinite(speech_ts).all()
+                                or np.any(np.diff(speech_ts) <= 0)):
+                            raise ValueError(f"{split}: invalid speech timestamps at row {row}")
+                        if (np.any(speech_timestamps[row, speech_length:] != -1)
+                                or np.any(speech[row, speech_length:] != 0)):
+                            raise ValueError(f"{split}: speech padding must be zero/-1")
+                        speech_minimum = ctc_min_input_length(
+                            src_concepts[row, :int(source_lengths[row])].tolist())
+                        speech_usable = subsampled_length(
+                            speech_length, int(manifest.get("speech_subsample", 2)))
+                        if speech_usable < speech_minimum:
+                            raise ValueError(
+                                f"{split}: row {row} speech is not exactly CTC-feasible")
     mean = np.asarray(manifest.get("pose_mean"), dtype=np.float64)
     std = np.asarray(manifest.get("pose_std"), dtype=np.float64)
     expected_stats = (spec.in_channels, 1, spec.num_joints)
@@ -348,7 +450,9 @@ class SignDataset(Dataset):
     """Reads one split of an on-disk corpus (pose standardised by default)."""
 
     def __init__(self, corpus_dir: str, split: str = "train",
-                 normalize: bool = True) -> None:
+                 normalize: bool = True, validate: bool = True) -> None:
+        if validate:
+            validate_corpus(corpus_dir)
         manifest = load_manifest(corpus_dir)
         self.spec = CorpusSpec(**manifest["spec"])
         self.standardizer = PoseStandardizer.from_manifest(manifest)
@@ -369,10 +473,14 @@ class SignDataset(Dataset):
                                if "confidence" in z.files else None)
             self.frame_timestamps = (torch.from_numpy(z["frame_timestamps"])
                                      if "frame_timestamps" in z.files else None)
+            self.sample_ids = (np.array(z["sample_ids"], copy=True)
+                               if "sample_ids" in z.files else None)
             self.speech = (torch.from_numpy(z["speech"]) if "speech" in z.files
                            else None)
             self.speech_lengths = (torch.from_numpy(z["speech_lengths"])
                                    if "speech_lengths" in z.files else None)
+            self.speech_timestamps = (torch.from_numpy(z["speech_timestamps"])
+                                      if "speech_timestamps" in z.files else None)
         if normalize:
             self.pose = self.standardizer.normalize(self.pose)
             if self.validity_mask is not None:
@@ -399,11 +507,15 @@ class SignDataset(Dataset):
             item["confidence"] = self.confidence[idx, :motion_length]
         if self.frame_timestamps is not None:
             item["frame_timestamps"] = self.frame_timestamps[idx, :motion_length]
+        if self.sample_ids is not None:
+            item["sample_id"] = str(self.sample_ids[idx])
         if self.speech is not None:
             speech_length = (int(self.speech_lengths[idx])
                              if self.speech_lengths is not None else self.speech.shape[1])
             item["speech"] = self.speech[idx, :speech_length]
             item["speech_length"] = speech_length
+            if self.speech_timestamps is not None:
+                item["speech_timestamps"] = self.speech_timestamps[idx, :speech_length]
         return item
 
 
@@ -481,6 +593,8 @@ def collate_corpus(batch: List[dict], speech_subsample: int = 2) -> dict:
         result["frame_timestamps"] = pad_sequence(
             [b["frame_timestamps"] for b in batch], batch_first=True,
             padding_value=-1.0)
+    if all("sample_id" in b for b in batch):
+        result["sample_ids"] = [b["sample_id"] for b in batch]
     if has_speech:
         speech_lengths = torch.tensor([int(b["speech_length"]) for b in batch],
                                       dtype=torch.long)
@@ -491,6 +605,10 @@ def collate_corpus(batch: List[dict], speech_subsample: int = 2) -> dict:
         result["speech_ctc_targets"] = torch.cat(
             [sc + 1 for sc in src_lists], dim=0)
         result["speech_ctc_lengths"] = source_lengths.clone()
+        if all("speech_timestamps" in b for b in batch):
+            result["speech_timestamps"] = pad_sequence(
+                [b["speech_timestamps"] for b in batch], batch_first=True,
+                padding_value=-1.0)
         for i, sc in enumerate(src_lists):
             usable = subsampled_length(int(speech_lengths[i]), speech_subsample)
             minimum = ctc_min_input_length(sc.tolist())

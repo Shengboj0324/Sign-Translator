@@ -12,6 +12,7 @@ license = "Apache-2.0"
 license-files = ["LICENSE"]
 authors = [{ name = "Sign-Translator project" }]
 dependencies = [
+    "av>=18,<19",
     "torch>=2.13,<2.14",
     "numpy>=2.5,<2.6",
 ]

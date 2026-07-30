@@ -17,21 +17,33 @@ def _sample(sid, signer, source):
 
 
 def _corpus():
-    # 6 signers × 2 sources => 12 groups, several samples each.
+    # Each signer owns two recordings.  The two recordings are one connected
+    # component because they share a signer, so there are six indivisible groups.
     out = []
     k = 0
     for signer in [f"g{i}" for i in range(6)]:
-        for source in ["recA", "recB"]:
+        for source in [f"{signer}-recA", f"{signer}-recB"]:
             for _ in range(3):
                 out.append(_sample(f"s{k}", signer, source)); k += 1
     return out
 
 
-def test_group_key_partitions_by_signer_and_source():
+def test_components_join_every_recording_from_the_same_signer():
     samples = _corpus()
     groups = group_samples(samples)
-    assert len(groups) == 12
-    assert all(len(v) == 3 for v in groups.values())
+    assert len(groups) == 6
+    assert all(len(v) == 6 for v in groups.values())
+
+
+def test_components_close_transitively_over_shared_sources():
+    samples = [
+        _sample("s0", "alice", "session-a"),
+        _sample("s1", "alice", "session-b"),
+        _sample("s2", "bob", "session-b"),
+        _sample("s3", "carol", "session-c"),
+    ]
+    groups = list(group_samples(samples).values())
+    assert sorted(sorted(group) for group in groups) == [[0, 1, 2], [3]]
 
 
 def test_grouped_split_is_leakage_free():
@@ -55,12 +67,20 @@ def test_certificate_detects_a_hand_crafted_leak():
     samples = _corpus()
     assign = grouped_split(samples, seed=1)
     # force a leak: move ONE sample of a group to a different split.
-    victim_group = samples[0].group_key
-    members = [i for i, s in enumerate(samples) if s.group_key == victim_group]
+    victim_signer = samples[0].signer_id_hash
+    members = [i for i, s in enumerate(samples) if s.signer_id_hash == victim_signer]
     assign[members[0]] = "train"
     assign[members[1]] = "test"
     cert = certify_no_group_leakage(samples, assign)
-    assert not cert.certified and victim_group in cert.offending_groups
+    assert not cert.certified
+    assert victim_signer in cert.offending_signers
+
+
+def test_certificate_detects_source_leak_across_different_signers():
+    samples = [_sample("s0", "a", "shared"), _sample("s1", "b", "shared")]
+    cert = certify_no_group_leakage(samples, {0: "train", 1: "test"})
+    assert not cert.certified
+    assert cert.offending_sources == ("shared",)
 
 
 def test_windows_inherit_parent_split_no_leak():

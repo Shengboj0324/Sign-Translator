@@ -10,6 +10,12 @@ grouped splitting before batching, fits normalization on valid training observat
 only, verifies exact CTC feasibility (including adjacent repeated labels and acoustic
 subsampling), writes v2 shards plus SHA-256 hashes, and emits a human-review queue.
 
+Source video is decoded through pinned PyAV using each frame's container presentation
+timestamp (PTS); nominal FPS is never substituted for a missing clock. The executable
+`assess_stage_b_corpus` exit gate verifies that exported landmark timestamps occur on the
+decoded source clock, source bytes match their recorded SHA-256, governed usage fields and
+provenance roots are present, and batch sample IDs trace back to manifest records.
+
 The active `SignDataset` and `collate_corpus` retain variable motion/speech lengths,
 timestamps, frame masks, confidence, and validity. Missing observations are padded with
 zero only while their masks remain false and confidence remains zero; padding is never
@@ -21,6 +27,23 @@ strict output interchange from a separately licensed, versioned extractor, and
 frame clocks match exactly. A raw-video extractor and a licensed real mini-corpus remain
 external Stage B gate requirements; their absence must not be represented as a passed
 real-data stage.
+
+The splitter uses connected components of the signer/source bipartite graph. Grouping only
+the pair `(signer, source)` is insufficient because the same signer can occur in multiple
+recordings and a multi-signer source can connect several identities. Component assignment
+guarantees independently that neither signer nor source crosses a split.
+
+Weighted normalization uses a two-pass population-variance calculation. This avoids the
+catastrophic cancellation in `E[x²] - E[x]²` when a coordinate frame has a large offset.
+Weighted DLT rejects fewer than two positive-confidence views, invalid confidences,
+rank-deficient camera geometry, points at infinity, and failed cheirality rather than
+returning an unstable 3D point.
+
+`assess_stage_b_corpus` approves progression only when three external, versioned artifacts
+are colocated with the corpus: `dataset_charter.json`, `annotation_agreement.json`, and
+`review_attestation.json`. The review attestation must bind the exact manifest hash and
+record qualified target-language signer review of source video, extracted landmarks, and
+exported shards. `review.html` alone remains only a queue, never proof of review.
 
 This document fixes **all** mathematics and contracts of the dataset / data-
 engineering layer before any code, in the discipline of docs 01–09. It implements
@@ -126,11 +149,10 @@ every stratum is represented (coverage proved).
 
 ## 6. Leakage-certified grouped split (innovation)
 
-Samples are grouped by `(signer_id_hash, source_id)` and the **groups** — not the
-samples — are partitioned into train/val/test. **Certificate:** no group's samples
-span two splits (proved). Windows and augmentations **inherit** their sample's
-group, so windowing/augmentation after the split cannot leak (proved). This is the
-document's "split by signer **and source recording** before windowing/augmentation".
+Samples are partitioned by connected components of the signer/source bipartite graph,
+not by pair keys. **Certificate:** neither an individual signer nor an individual source
+spans two splits, including transitive connections. Windows and augmentations **inherit**
+their sample's component, so windowing/augmentation after the split cannot leak.
 
 ## 7. Governance
 
@@ -211,12 +233,11 @@ discourse tier are reported separately; the single pooled kappa sits between the
 and hides the weak tier (demonstrated). QC sampling is stratified so every populated
 stratum — including a signer with a single clip — is represented.
 
-**The split certifies leakage-freedom, not just detects it.** Grouping by
-`(signer, source)` and partitioning whole groups guarantees no signer/recording
-spans two splits; `certify_no_group_leakage` returns the offending groups when a
-sample is hand-moved across a split. Windows and augmentations inherit their
-sample's split, so windowing after the split cannot leak (proved). This is stronger
-than the post-hoc byte-identical detector in `data/readiness.py`, which it
+**The split certifies leakage-freedom, not just detects it.** Connected-component
+partitioning guarantees no signer or recording spans two splits;
+`certify_no_group_leakage` reports offending signers and sources independently when a
+sample is hand-moved. Windows and augmentations inherit their sample's split. This is
+stronger than the post-hoc byte-identical detector in `data/readiness.py`, which it
 complements.
 
 **Governance is enforced in code.** Consent is `GRANTED → WITHDRAWN` (terminal;

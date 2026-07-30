@@ -1,5 +1,6 @@
 """Adversarial tests for triangulation + weighted reprojection (Doc-10 10c)."""
 
+import pytest
 import torch
 
 from signtranslator.pose.camera import PerspectiveCamera
@@ -90,3 +91,35 @@ def test_weighted_residual_is_bounded_by_confidence():
     k = _project(cam, X) + torch.tensor([1e4, 1e4], dtype=torch.float64)
     e = weighted_reprojection_residual(cam, X, k, torch.tensor(1.0), sigma=100.0)
     assert 0.0 < float(e) < 1.0
+
+
+def test_dlt_rejects_one_effective_view_and_invalid_confidence():
+    cams = [_cam((0.0, 0.0, -3.0)), _cam((3.0, 0.0, 0.0))]
+    X = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float64)
+    obs = torch.stack([_project(camera, X) for camera in cams])
+    with pytest.raises(ValueError, match="positive-confidence"):
+        triangulate_dlt(cams, obs, torch.tensor([1.0, 0.0]))
+    with pytest.raises(ValueError, match=r"\[0, 1\]"):
+        triangulate_dlt(cams, obs, torch.tensor([1.0, 1.1]))
+
+
+def test_dlt_rejects_coincident_camera_geometry():
+    cams = [_cam((0.0, 0.0, -3.0)), _cam((0.0, 0.0, -3.0))]
+    X = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float64)
+    obs = torch.stack([_project(camera, X) for camera in cams])
+    with pytest.raises(ValueError, match="degenerate camera geometry"):
+        triangulate_dlt(cams, obs)
+
+
+def test_dlt_rejects_nonfinite_observations():
+    cams = [_cam((0.0, 0.0, -3.0)), _cam((3.0, 0.0, 0.0))]
+    obs = torch.tensor([[320.0, 240.0], [float("nan"), 240.0]])
+    with pytest.raises(ValueError, match="finite"):
+        triangulate_dlt(cams, obs)
+
+
+def test_triangulation_confidence_validates_its_mathematical_domain():
+    with pytest.raises(ValueError, match="tau"):
+        triangulation_confidence(torch.ones(2), torch.ones(2), tau=0.0)
+    with pytest.raises(ValueError, match="valid domains"):
+        triangulation_confidence(torch.tensor([-1.0, 0.0]), torch.ones(2))

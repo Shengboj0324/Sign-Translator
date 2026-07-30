@@ -1,5 +1,6 @@
 # Reproducible macOS ARM64 / CPython 3.12 test environment.
 # Install with: python -m pip install -r requirements.lock
+av==18.0.0
 filelock==3.32.2
 fsspec==2026.7.0
 iniconfig==2.3.0
