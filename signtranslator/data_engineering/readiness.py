@@ -18,7 +18,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 
 from ..data.corpus import SignDataset, collate_corpus, validate_corpus
-from .exporter import decode_video, sha256_file
+from .exporter import decode_video_clock, sha256_file
 from .schema import ConsentState, DataAuthorization, validate_authorization
 
 
@@ -125,8 +125,8 @@ def _validate_sources(corpus_dir: Path, manifest: dict) -> tuple[bool, str]:
             digest = sha256_file(path)
             if digest != record["media_sha256"].lower():
                 raise ValueError(f"{record['sample_id']}: source media SHA-256 mismatch")
-            decoded = decode_video(path)
-            if decoded.frames.shape[0] < 2:
+            decoded = decode_video_clock(path)
+            if decoded.timestamps.shape[0] < 2:
                 raise ValueError(f"{record['sample_id']}: source video has fewer than two frames")
             extracted_timestamps = track_timestamps[record["sample_id"]]
             matched = np.isclose(extracted_timestamps[:, None], decoded.timestamps[None, :],

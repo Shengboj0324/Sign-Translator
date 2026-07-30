@@ -43,13 +43,21 @@ from .datasheet import (
     Datasheet, DATASHEET_SECTIONS, PreprocessingManifest,
 )
 from .exporter import (
-    CORPUS_FORMAT_VERSION, DecodedAudio, DecodedVideo, decode_pcm_wav, decode_video,
+    CORPUS_FORMAT_VERSION, DecodedAudio, DecodedVideo, DecodedVideoClock,
+    decode_pcm_wav, decode_video, decode_video_clock,
     LandmarkTrack,
     assemble_holistic_track, decode_landmark_npz, ExtractedSample, ExportResult,
     export_corpus, sha256_file,
 )
 from .readiness import (
     StageBCheck, StageBReadinessReport, assess_stage_b_corpus,
+)
+from .how2sign import (
+    HOW2SIGN_FIELDS, OPENPOSE_JOINT_NAMES, OPENPOSE_LANDMARK_PARTS,
+    OPENPOSE_HOLISTIC_EDGES, OPENPOSE_HOLISTIC_CENTER, openpose_holistic_graph,
+    How2SignRow, How2SignInventory,
+    OpenPoseDiagnostics, How2SignClip, read_how2sign_metadata,
+    inspect_how2sign_root, decode_how2sign_openpose, load_how2sign_clip,
 )
 
 __all__ = [
@@ -72,10 +80,17 @@ __all__ = [
     "UsagePolicy", "gate_action", "infer_sensitive_trait",
     "SensitiveInferenceError", "SENSITIVE_TRAITS",
     "Datasheet", "DATASHEET_SECTIONS", "PreprocessingManifest",
-    "CORPUS_FORMAT_VERSION", "DecodedAudio", "DecodedVideo", "decode_pcm_wav",
-    "decode_video", "LandmarkTrack",
+    "CORPUS_FORMAT_VERSION", "DecodedAudio", "DecodedVideo", "DecodedVideoClock",
+    "decode_pcm_wav", "decode_video", "decode_video_clock", "LandmarkTrack",
     "assemble_holistic_track", "decode_landmark_npz", "ExtractedSample",
     "ExportResult", "export_corpus",
     "sha256_file",
     "StageBCheck", "StageBReadinessReport", "assess_stage_b_corpus",
+    "HOW2SIGN_FIELDS", "OPENPOSE_JOINT_NAMES", "OPENPOSE_LANDMARK_PARTS",
+    "OPENPOSE_HOLISTIC_EDGES", "OPENPOSE_HOLISTIC_CENTER",
+    "openpose_holistic_graph",
+    "How2SignRow",
+    "How2SignInventory", "OpenPoseDiagnostics", "How2SignClip",
+    "read_how2sign_metadata", "inspect_how2sign_root",
+    "decode_how2sign_openpose", "load_how2sign_clip",
 ]

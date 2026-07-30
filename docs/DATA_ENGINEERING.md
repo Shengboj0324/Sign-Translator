@@ -74,14 +74,21 @@ Primary sources studied:
 
 ## 0. Honest scope (read first)
 
-No real datasets are downloaded — the document's own first pipeline step is a
-**authorization gate before download**, and these corpora are licensed. We
-implement the **schema, pipeline logic, quality mathematics, deduplication,
-splitting, governance, and datasheets** and validate them on controllable synthetic
-records / observations. Every property (schema validation, the DLT triangulation
-algebra, the weighted reprojection residual, hash/similarity metrics, the grouped-
-split leakage certificate, the governance state machine, the datasheet
-completeness) is proved exactly. Real corpora drop in behind the same schema.
+The local development environment now contains 31,047 How2Sign frontal-view
+sentence clips, matching OpenPose JSON directories, rendered review videos, and a
+31,165-row realignment table. `data_engineering/how2sign.py` inventories those
+artifacts, joins only exact sentence names, preserves container presentation
+timestamps, and emits explicit 2D BODY_25 + hands + face tracks. It never promotes
+2D observations to fake 3D, clips invalid confidences, invents missing clips, or
+uses English translation tokens as ASL gloss.
+
+This is not yet a training-ready How2Sign corpus. The local download lacks 118
+metadata-listed clips, contains one unjoinable raw-video artifact, and does not
+contain independently identified gloss annotations or a local immutable license
+evidence file. The exporter therefore remains fail-closed. The schema, quality
+mathematics, deduplication, splitting, governance, and datasheet contracts continue
+to be validated on controllable synthetic records, while the real-media adapter is
+tested separately against the downloaded source structure.
 
 ## 1. Canonical sample schema
 

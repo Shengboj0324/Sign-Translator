@@ -238,6 +238,34 @@ def test_exporter_preserves_masks_lengths_labels_and_traceability(tmp_path):
     assert all(record["media_sha256"] for record in manifest["records"])
 
 
+def test_exporter_and_active_loader_preserve_explicit_2d_motion(tmp_path):
+    records = []
+    for record in _extracted_records(with_speech=False):
+        track = LandmarkTrack(
+            values=record.track.values[:2].copy(),
+            confidence=record.track.confidence.copy(),
+            validity_mask=record.track.validity_mask.copy(),
+            timestamps=record.track.timestamps.copy(),
+        )
+        records.append(ExtractedSample(
+            governance=record.governance, track=track,
+            gloss_tokens=record.gloss_tokens, source_tokens=record.source_tokens,
+            media_sha256=record.media_sha256, extractor_id=record.extractor_id,
+            coordinate_system="image-normalized-xy-top-left",
+        ))
+    result = export_corpus(
+        records, tmp_path / "corpus-2d",
+        joint_names=[f"joint-{index}" for index in range(5)],
+        landmark_parts=LANDMARK_PARTS,
+        split_ratios=(0.5, 0.25, 0.25), seed=4,
+    )
+    spec = validate_corpus(result.corpus_dir)
+    assert spec.in_channels == 2
+    for split in ("train", "val", "test"):
+        sample = SignDataset(result.corpus_dir, split)[0]
+        assert sample["pose"].shape[0] == 2
+
+
 def test_exporter_rejects_invalid_confidence_and_overwrite(tmp_path):
     records = _extracted_records(with_speech=False)
     bad = records[0]

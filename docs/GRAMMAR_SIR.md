@@ -207,11 +207,13 @@ only qualified signers can supply.
 
 ## 9. Honest scope
 
-No real How2Sign / ASL corpora (unfetchable, and their use is licensed); the SIR,
-grammar rules and notation are linguistically-motivated but synthetic, and every
-threshold must be re-characterised on real, signer-validated data. Human
-evaluation is instrumented, not performed. The model is our own graph-aware
-Transformer, not a pretrained AMR parser.
+The downloaded How2Sign frontal-view media has not been used to validate this
+grammar layer: the local artifacts contain English translations but no independently
+identified ASL gloss tier, and English tokens must not be relabelled as gloss. The
+SIR, grammar rules and notation therefore remain linguistically motivated but
+synthetic, and every threshold must be re-characterised on real, signer-validated
+annotations. Human evaluation is instrumented, not performed. The model is our own
+graph-aware Transformer, not a pretrained AMR parser.
 
 ## 10. Staged roadmap
 

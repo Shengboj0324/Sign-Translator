@@ -48,19 +48,24 @@ class DecodedVideo:
     timestamps: np.ndarray   # (T,), seconds from the container time base
 
 
-def decode_video(path: str | os.PathLike[str], stream_index: int = 0) -> DecodedVideo:
-    """Decode RGB frames while preserving container presentation timestamps.
+@dataclass(frozen=True)
+class DecodedVideoClock:
+    timestamps: np.ndarray   # (T,), seconds from the container time base
+    width: int
+    height: int
 
-    Frames without a presentation timestamp are rejected; nominal FPS is never
-    used to fabricate time.  This is essential for variable-frame-rate media
-    and audio/video alignment.
-    """
+
+def _decode_video_payload(path: str | os.PathLike[str], stream_index: int,
+                          materialize_rgb: bool) -> tuple[Optional[np.ndarray], np.ndarray,
+                                                          int, int]:
+    """Decode a video stream once, optionally retaining RGB pixels."""
     import av
 
     if stream_index < 0:
         raise ValueError("stream_index must be non-negative")
     frames = []
     timestamps = []
+    frame_shape: Optional[tuple[int, int]] = None
     try:
         with av.open(os.fspath(path), mode="r") as container:
             video_streams = container.streams.video
@@ -70,19 +75,43 @@ def decode_video(path: str | os.PathLike[str], stream_index: int = 0) -> Decoded
             for frame in container.decode(stream):
                 if frame.pts is None or stream.time_base is None:
                     raise ValueError("video frame lacks an exact presentation timestamp")
+                shape = (int(frame.height), int(frame.width))
+                if frame_shape is None:
+                    frame_shape = shape
+                elif shape != frame_shape:
+                    raise ValueError("video resolution changes within the stream")
                 timestamps.append(float(frame.pts * stream.time_base))
-                frames.append(frame.to_ndarray(format="rgb24"))
+                if materialize_rgb:
+                    frames.append(frame.to_ndarray(format="rgb24"))
     except av.error.FFmpegError as error:
         raise ValueError(f"video decode failed: {error}") from error
-    if not frames:
+    if frame_shape is None:
         raise ValueError("video contains no decodable frames")
     timestamp_array = np.asarray(timestamps, dtype=np.float64)
     if not np.isfinite(timestamp_array).all() or np.any(np.diff(timestamp_array) <= 0):
         raise ValueError("video presentation timestamps must be finite and strictly increasing")
-    shapes = {frame.shape for frame in frames}
-    if len(shapes) != 1:
-        raise ValueError("video resolution changes within the stream")
-    return DecodedVideo(np.stack(frames), timestamp_array)
+    rgb = np.stack(frames) if materialize_rgb else None
+    height, width = frame_shape
+    return rgb, timestamp_array, width, height
+
+
+def decode_video(path: str | os.PathLike[str], stream_index: int = 0) -> DecodedVideo:
+    """Decode RGB frames while preserving container presentation timestamps.
+
+    Frames without a presentation timestamp are rejected; nominal FPS is never
+    used to fabricate time.  This is essential for variable-frame-rate media
+    and audio/video alignment.
+    """
+    frames, timestamps, _, _ = _decode_video_payload(path, stream_index, True)
+    assert frames is not None  # materialize_rgb=True is an internal invariant
+    return DecodedVideo(frames, timestamps)
+
+
+def decode_video_clock(path: str | os.PathLike[str],
+                       stream_index: int = 0) -> DecodedVideoClock:
+    """Decode exact PTS and frame dimensions without retaining RGB frame arrays."""
+    _, timestamps, width, height = _decode_video_payload(path, stream_index, False)
+    return DecodedVideoClock(timestamps, width, height)
 
 
 def decode_pcm_wav(path: str | os.PathLike[str]) -> DecodedAudio:
@@ -201,8 +230,8 @@ def _validate_track(track: LandmarkTrack, sample_id: str) -> None:
     if values.ndim != 3:
         raise ValueError(f"{sample_id}: motion values must be (C, T, V)")
     channels, frames, joints = values.shape
-    if channels < 3 or frames < 1 or joints < 1:
-        raise ValueError(f"{sample_id}: motion dimensions must be C>=3, T>=1, V>=1")
+    if channels not in (2, 3) or frames < 1 or joints < 1:
+        raise ValueError(f"{sample_id}: motion dimensions must be C in {{2, 3}}, T>=1, V>=1")
     if confidence.shape != (frames, joints) or validity.shape != (frames, joints):
         raise ValueError(f"{sample_id}: confidence/validity must be (T, V)")
     if validity.dtype != np.bool_:
