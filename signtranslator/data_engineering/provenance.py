@@ -1,7 +1,7 @@
-"""License/consent gate + Merkle-style provenance chain (Doc-10 §2).
+"""Authorization gate + Merkle-style provenance chain (Doc-10 §2).
 
-The pipeline gates BEFORE download: no valid license + granted consent + allowed
-intended-use => no acquisition. Every preprocessing step is chained into a hash
+The pipeline gates BEFORE download: no evidence-backed authorization for the exact
+use and actions means no acquisition. Every preprocessing step is chained into a hash
 `h_i = H(h_{i-1} ‖ step_i ‖ output_i)`, so the final root certifies the exact
 sequence and any tampering changes the root (a reproduction certificate).
 """
@@ -13,7 +13,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, List, Sequence
 
-from .schema import ConsentState
+from .schema import ConsentState, DataAuthorization, validate_authorization
 
 _GENESIS = "0" * 64  # empty-chain root
 
@@ -42,18 +42,20 @@ class GateDecision:
     reasons: tuple  # violated preconditions when not allowed
 
 
-def gate_download(license: str, consent: ConsentState, intended_use: str,
-                  allowed_uses: Sequence[str]) -> GateDecision:
-    """Permit acquisition only with license AND granted consent AND allowed use."""
+def gate_download(authorization: DataAuthorization, consent: ConsentState,
+                  intended_use: str,
+                  requested_actions: Sequence[str] = ()) -> GateDecision:
+    """Permit acquisition only for an evidence-backed, action-scoped authorization."""
     reasons: List[str] = []
-    if not license:
-        reasons.append("no_license")
-    if consent != ConsentState.GRANTED:
-        reasons.append("consent_not_granted")
     if not intended_use:
         reasons.append("no_intended_use")
-    elif intended_use not in allowed_uses:
-        reasons.append("use_not_permitted")
+    if isinstance(requested_actions, (str, bytes)) or not isinstance(
+            requested_actions, Sequence):
+        reasons.append("invalid_requested_actions")
+        return GateDecision(allowed=False, reasons=tuple(reasons))
+    reasons.extend(validate_authorization(
+        authorization, consent, intended_use,
+        requested_actions=("download", *requested_actions)))
     return GateDecision(allowed=not reasons, reasons=tuple(reasons))
 
 

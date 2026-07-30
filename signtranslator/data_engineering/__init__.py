@@ -1,7 +1,7 @@
 """Dataset and data-engineering layer (Document 10).
 
 Implements `10_dataset_and_data_engineering.md` (see docs/DATA_ENGINEERING.md): a
-canonical sample schema + dataset map, a license/consent-gated pipeline with a
+canonical sample schema + dataset map, an evidence-backed authorization gate with a
 Merkle-style provenance chain, quality mathematics (multi-view DLT triangulation,
 confidence propagation, weighted robust reprojection), deduplication, per-tier
 inter-annotator agreement + stratified QC, a leakage-certified grouped split, data
@@ -11,8 +11,9 @@ data-quality/readiness modules.
 """
 
 from .schema import (
-    ConsentState, Sample, validate_sample, DatasetResource, DATASET_MAP,
-    dataset_map_is_complete, VALID_SPLITS,
+    ConsentState, AuthorizationBasis, PersonalityRightsStatus, DataAuthorization,
+    AUTHORIZATION_ACTIONS, validate_authorization, Sample, validate_sample,
+    DatasetResource, DATASET_MAP, dataset_map_is_complete, VALID_SPLITS,
 )
 from .provenance import (
     sha256_hex, content_hash, GateDecision, gate_download, ProvenanceStep,
@@ -52,7 +53,9 @@ from .readiness import (
 )
 
 __all__ = [
-    "ConsentState", "Sample", "validate_sample", "DatasetResource", "DATASET_MAP",
+    "ConsentState", "AuthorizationBasis", "PersonalityRightsStatus",
+    "DataAuthorization", "AUTHORIZATION_ACTIONS", "validate_authorization",
+    "Sample", "validate_sample", "DatasetResource", "DATASET_MAP",
     "dataset_map_is_complete", "VALID_SPLITS",
     "sha256_hex", "content_hash", "GateDecision", "gate_download",
     "ProvenanceStep", "ProvenanceChain",

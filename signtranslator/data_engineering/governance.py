@@ -1,6 +1,6 @@
 """Governance: consent, retention, policy gates, non-inference guard (Doc-10 §7).
 
-Consent is a state machine (GRANTED → WITHDRAWN); withdrawal removes every record
+Consent is a state machine (any non-withdrawn state → WITHDRAWN); withdrawal removes every record
 of a signer and retention removes expired records. Policy gates guard derivative
 use, identity, commercial use, and redistribution. The sensitive-trait
 non-inference guard makes "do not infer sensitive traits" unbreakable in code:
@@ -20,10 +20,10 @@ class ConsentError(RuntimeError):
 
 
 def transition_consent(current: ConsentState, to: ConsentState) -> ConsentState:
-    """Only GRANTED → WITHDRAWN is permitted; withdrawal is terminal."""
+    """Only transition to WITHDRAWN is permitted; withdrawal is terminal."""
     if current == to:
         return current
-    if current == ConsentState.GRANTED and to == ConsentState.WITHDRAWN:
+    if current != ConsentState.WITHDRAWN and to == ConsentState.WITHDRAWN:
         return ConsentState.WITHDRAWN
     raise ConsentError(f"illegal consent transition {current.name} -> {to.name}")
 

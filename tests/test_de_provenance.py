@@ -1,6 +1,8 @@
 """Adversarial tests for the gate + provenance chain (Doc-10, stage 10b)."""
 
-from signtranslator.data_engineering.schema import ConsentState
+from signtranslator.data_engineering.schema import (
+    AuthorizationBasis, ConsentState, DataAuthorization, PersonalityRightsStatus,
+)
 from signtranslator.data_engineering.provenance import (
     content_hash, gate_download, ProvenanceChain, ProvenanceStep,
 )
@@ -8,24 +10,78 @@ from signtranslator.data_engineering.provenance import (
 USES = ("research", "education")
 
 
+def _authorization(*, basis=AuthorizationBasis.DIRECT_PARTICIPANT_CONSENT,
+                   uses=USES, actions=("download",), rights=PersonalityRightsStatus.VERIFIED,
+                   attribution="", limitations=()):
+    return DataAuthorization(
+        basis=basis, license_identifier="CC-BY-NC-4.0",
+        license_url="https://creativecommons.org/licenses/by-nc/4.0/",
+        licensor="test licensor", evidence_uri="license-evidence.html",
+        evidence_sha256="a" * 64, permitted_uses=tuple(uses),
+        permitted_actions=tuple(actions), personality_rights=rights,
+        attribution_notice=attribution, limitations=tuple(limitations),
+    )
+
+
 def test_gate_allows_only_full_precondition():
-    d = gate_download("CC-BY-NC-4.0", ConsentState.GRANTED, "research", USES)
+    d = gate_download(_authorization(), ConsentState.GRANTED, "research")
     assert d.allowed and d.reasons == ()
 
 
-def test_gate_blocks_missing_license():
-    d = gate_download("", ConsentState.GRANTED, "research", USES)
-    assert not d.allowed and "no_license" in d.reasons
+def test_gate_blocks_missing_license_evidence():
+    authorization = DataAuthorization(
+        **{**_authorization().__dict__, "evidence_sha256": ""})
+    d = gate_download(authorization, ConsentState.GRANTED, "research")
+    assert not d.allowed and "invalid_authorization_evidence_sha256" in d.reasons
 
 
 def test_gate_blocks_withdrawn_consent():
-    d = gate_download("L", ConsentState.WITHDRAWN, "research", USES)
-    assert not d.allowed and "consent_not_granted" in d.reasons
+    d = gate_download(_authorization(), ConsentState.WITHDRAWN, "research")
+    assert not d.allowed and "direct_consent_not_granted" in d.reasons
 
 
 def test_gate_blocks_disallowed_use():
-    d = gate_download("L", ConsentState.GRANTED, "surveillance", USES)
+    d = gate_download(_authorization(), ConsentState.GRANTED, "surveillance")
     assert not d.allowed and "use_not_permitted" in d.reasons
+
+
+def test_published_noncommercial_license_allows_training_without_fake_consent():
+    authorization = _authorization(
+        basis=AuthorizationBasis.PUBLISHED_DATASET_LICENSE,
+        uses=("non-commercial research",),
+        actions=("download", "create_derivatives", "model_training"),
+        rights=PersonalityRightsStatus.NOT_VERIFIED,
+        attribution="Dataset authors; CC BY-NC 4.0",
+        limitations=("No identity, publicity, or privacy rights are asserted.",),
+    )
+    decision = gate_download(
+        authorization, ConsentState.NOT_DIRECTLY_VERIFIED,
+        "non-commercial research", ("create_derivatives", "model_training"))
+    assert decision.allowed
+    commercial = gate_download(
+        authorization, ConsentState.NOT_DIRECTLY_VERIFIED,
+        "non-commercial research", ("commercial_use",))
+    assert not commercial.allowed
+    assert "action_not_permitted:commercial_use" in commercial.reasons
+
+
+def test_published_license_cannot_be_mislabeled_as_direct_consent():
+    authorization = _authorization(
+        basis=AuthorizationBasis.PUBLISHED_DATASET_LICENSE,
+        rights=PersonalityRightsStatus.NOT_VERIFIED,
+        attribution="Dataset authors", limitations=("Personality rights unresolved.",))
+    decision = gate_download(authorization, ConsentState.GRANTED, "research")
+    assert not decision.allowed
+    assert "secondary_license_consent_state_mismatch" in decision.reasons
+
+
+def test_gate_rejects_malformed_authorization_inputs_without_crashing():
+    malformed_authorization = gate_download({}, ConsentState.GRANTED, "research")
+    assert malformed_authorization.reasons == ("invalid_authorization_type",)
+    malformed_actions = gate_download(
+        _authorization(), ConsentState.GRANTED, "research", "model_training")
+    assert not malformed_actions.allowed
+    assert "invalid_requested_actions" in malformed_actions.reasons
 
 
 def test_content_hash_is_order_insensitive_for_dicts():

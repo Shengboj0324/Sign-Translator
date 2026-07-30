@@ -8,7 +8,8 @@ import json
 from torch.utils.data import DataLoader
 
 from signtranslator.data_engineering import (
-    ConsentState, Sample, validate_sample, gate_download, ProvenanceChain,
+    AuthorizationBasis, ConsentState, DataAuthorization, PersonalityRightsStatus,
+    Sample, validate_sample, gate_download, ProvenanceChain,
     triangulate_dlt, triangulation_confidence, weighted_reprojection_residual,
     average_hash, hamming_distance, per_tier_kappa, grouped_split,
     certify_no_group_leakage, Window, certify_window_split_consistency,
@@ -22,8 +23,33 @@ from signtranslator.data.corpus import (
 )
 from signtranslator.pose.camera import PerspectiveCamera
 
-USES = ("research",)
 LANDMARK_PARTS = {"body": [0], "left_hand": [1], "right_hand": [2], "face": [3, 4]}
+
+
+def _direct_authorization(use="research"):
+    return DataAuthorization(
+        basis=AuthorizationBasis.DIRECT_PARTICIPANT_CONSENT,
+        license_identifier="L", license_url="https://example.test/direct-license",
+        licensor="test participant", evidence_uri="direct-consent.txt",
+        evidence_sha256="a" * 64, permitted_uses=(use,),
+        permitted_actions=("download", "create_derivatives", "model_training"),
+        personality_rights=PersonalityRightsStatus.VERIFIED,
+    )
+
+
+def _published_authorization(use="unit-test", evidence_uri="license-evidence.txt",
+                             evidence_sha256="b" * 64):
+    return DataAuthorization(
+        basis=AuthorizationBasis.PUBLISHED_DATASET_LICENSE,
+        license_identifier="CC-BY-NC-4.0",
+        license_url="https://creativecommons.org/licenses/by-nc/4.0/",
+        licensor="test dataset publisher", evidence_uri=evidence_uri,
+        evidence_sha256=evidence_sha256, permitted_uses=(use,),
+        permitted_actions=("download", "create_derivatives", "model_training"),
+        personality_rights=PersonalityRightsStatus.NOT_VERIFIED,
+        attribution_notice="Test dataset authors; CC BY-NC 4.0",
+        limitations=("No identity, publicity, or privacy permission is asserted.",),
+    )
 
 
 # ---- datasheet --------------------------------------------------------------
@@ -68,7 +94,7 @@ def _cam(eye):
 
 def test_full_pipeline_gate_to_datasheet():
     # 1) gate before download
-    assert gate_download("CC-BY-NC-4.0", ConsentState.GRANTED, "research", USES).allowed
+    assert gate_download(_direct_authorization(), ConsentState.GRANTED, "research").allowed
 
     # 2) provenance chain over steps
     chain = ProvenanceChain()
@@ -94,7 +120,7 @@ def test_full_pipeline_gate_to_datasheet():
             signer_id_hash=f"g{k % 4}", target_language="ASL", license="L",
             consent=ConsentState.GRANTED, intended_use="research",
             smplx_version="1.1", provenance=chain.root, split="train",
-            confidence_3d=float(conf3d),
+            confidence_3d=float(conf3d), authorization=_direct_authorization(),
         )
         assert validate_sample(s) == []
         samples.append(s)
@@ -156,10 +182,10 @@ def _extracted_records(count=8, *, with_speech=True):
         sample = Sample(
             sample_id=f"sample-{index}", source_id=f"source-{index}",
             signer_id_hash=f"signer-{index}", target_language="TEST-SL",
-            license="test-license", consent=ConsentState.GRANTED,
+            license="CC-BY-NC-4.0", consent=ConsentState.NOT_DIRECTLY_VERIFIED,
             intended_use="unit-test", smplx_version="not-applicable",
             provenance=f"{10_000 + index:064x}", split="train",
-            video_uri=f"video://{index}",
+            video_uri=f"video://{index}", authorization=_published_authorization(),
         )
         gloss = ("HELLO", "HELLO") if index % 2 == 0 else ("HELLO", "WORLD")
         source = ("hello", "there", "friend") if index % 2 == 0 else ("goodbye",)
@@ -321,11 +347,16 @@ def _records_with_verifiable_local_media(tmp_path):
     template = tmp_path / "template.mp4"
     _write_test_video(template)
     payload = template.read_bytes()
+    evidence = tmp_path / "license-evidence.txt"
+    evidence.write_text("Immutable test license evidence", encoding="utf-8")
+    evidence_digest = sha256_file(evidence)
     records = []
     for index, record in enumerate(_extracted_records(with_speech=False)):
         media = tmp_path / f"source-{index}.mp4"
         media.write_bytes(payload)
         record.governance.video_uri = str(media)
+        record.governance.authorization = _published_authorization(
+            evidence_uri=str(evidence), evidence_sha256=evidence_digest)
         frames = record.track.values.shape[1]
         track = LandmarkTrack(
             values=record.track.values,
@@ -390,6 +421,20 @@ def test_stage_b_gate_accepts_a_complete_machine_verifiable_fixture(tmp_path):
     report = assess_stage_b_corpus(result.corpus_dir)
     assert report.passed, report.summary()
     assert "APPROVED TO PROCEED: YES" in report.summary()
+
+
+def test_stage_b_gate_rejects_tampered_license_evidence(tmp_path):
+    result = export_corpus(
+        _records_with_verifiable_local_media(tmp_path), tmp_path / "corpus",
+        joint_names=[f"joint-{index}" for index in range(5)],
+        landmark_parts=LANDMARK_PARTS, split_ratios=(0.5, 0.25, 0.25), seed=2,
+    )
+    (tmp_path / "license-evidence.txt").write_text("tampered", encoding="utf-8")
+    report = assess_stage_b_corpus(result.corpus_dir)
+    source_check = next(check for check in report.checks
+                        if check.name == "immutable_source_trace")
+    assert not source_check.passed
+    assert "authorization evidence SHA-256 mismatch" in source_check.detail
 
 
 def test_timestamped_media_decoders_are_strict(tmp_path):

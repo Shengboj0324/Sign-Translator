@@ -19,6 +19,7 @@ from torch.utils.data import DataLoader
 
 from ..data.corpus import SignDataset, collate_corpus, validate_corpus
 from .exporter import decode_video, sha256_file
+from .schema import ConsentState, DataAuthorization, validate_authorization
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,12 @@ def _validate_charter(corpus_dir: Path, manifest: dict) -> tuple[bool, str]:
         if not isinstance(uses, list) or not uses or any(
                 not isinstance(use, str) or not use.strip() for use in uses):
             raise ValueError("allowed_uses must be a non-empty string list")
+        undeclared = sorted({
+            record["intended_use"] for record in manifest["records"]
+            if record.get("intended_use") not in uses
+        })
+        if undeclared:
+            raise ValueError(f"record intended uses are absent from charter: {undeclared}")
     except (OSError, ValueError, json.JSONDecodeError) as error:
         return False, str(error)
     return True, "target, task, output, use, population, and safety error are declared"
@@ -99,6 +106,7 @@ def _validate_charter(corpus_dir: Path, manifest: dict) -> tuple[bool, str]:
 
 def _validate_sources(corpus_dir: Path, manifest: dict) -> tuple[bool, str]:
     verified: dict[str, str] = {}
+    verified_authorizations: dict[str, str] = {}
     try:
         track_timestamps: dict[str, np.ndarray] = {}
         for split in manifest["splits"]:
@@ -130,17 +138,42 @@ def _validate_sources(corpus_dir: Path, manifest: dict) -> tuple[bool, str]:
             previous = verified.setdefault(source_id, digest)
             if previous != digest:
                 raise ValueError(f"{source_id}: inconsistent immutable source bytes")
-            if record.get("consent") != "GRANTED":
-                raise ValueError(f"{record['sample_id']}: consent is not granted")
             if not record.get("license") or not record.get("intended_use"):
                 raise ValueError(f"{record['sample_id']}: license/intended use is absent")
+            try:
+                consent = ConsentState[record.get("consent", "")]
+                authorization = DataAuthorization.from_manifest(record.get("authorization"))
+            except (KeyError, TypeError, ValueError) as error:
+                raise ValueError(f"{record['sample_id']}: invalid authorization") from error
+            violations = validate_authorization(
+                authorization, consent, record["intended_use"],
+                requested_actions=("download", "create_derivatives", "model_training"))
+            if authorization.license_identifier != record["license"] or violations:
+                raise ValueError(
+                    f"{record['sample_id']}: authorization is inconsistent: {violations}")
+            evidence_path = _local_media_path(authorization.evidence_uri)
+            if not evidence_path.is_absolute():
+                evidence_path = corpus_dir / evidence_path
+            if not evidence_path.is_file():
+                raise ValueError(
+                    f"{record['sample_id']}: authorization evidence is not a local file")
+            evidence_digest = sha256_file(evidence_path)
+            if evidence_digest != authorization.evidence_sha256.lower():
+                raise ValueError(
+                    f"{record['sample_id']}: authorization evidence SHA-256 mismatch")
+            previous_evidence = verified_authorizations.setdefault(
+                authorization.evidence_uri, evidence_digest)
+            if previous_evidence != evidence_digest:
+                raise ValueError("authorization evidence URI maps to inconsistent bytes")
             provenance = record.get("provenance", "")
             if len(provenance) != 64 or any(
                     char not in "0123456789abcdef" for char in provenance.lower()):
                 raise ValueError(f"{record['sample_id']}: invalid provenance root")
     except (OSError, ValueError) as error:
         return False, str(error)
-    return True, f"verified {len(verified)} immutable source file(s)"
+    return True, (
+        f"verified {len(verified)} immutable source file(s) and "
+        f"{len(verified_authorizations)} authorization evidence file(s)")
 
 
 def _validate_agreement(corpus_dir: Path) -> tuple[bool, str]:

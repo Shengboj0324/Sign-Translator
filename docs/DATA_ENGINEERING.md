@@ -4,7 +4,8 @@
 
 `signtranslator.data_engineering.exporter` is the canonical governed-record to
 training-shard boundary. It accepts timestamped holistic landmark tracks only after
-license, consent, provenance, media hash, language, extractor version, coordinate system,
+authorization basis and evidence, consent status, provenance, media hash, language,
+extractor version, coordinate system,
 source tokens, gloss tokens, confidence, and validity masks are present. It then performs
 grouped splitting before batching, fits normalization on valid training observations
 only, verifies exact CTC feasibility (including adjacent repeated labels and acoustic
@@ -13,8 +14,9 @@ subsampling), writes v2 shards plus SHA-256 hashes, and emits a human-review que
 Source video is decoded through pinned PyAV using each frame's container presentation
 timestamp (PTS); nominal FPS is never substituted for a missing clock. The executable
 `assess_stage_b_corpus` exit gate verifies that exported landmark timestamps occur on the
-decoded source clock, source bytes match their recorded SHA-256, governed usage fields and
-provenance roots are present, and batch sample IDs trace back to manifest records.
+decoded source clock, source and authorization-evidence bytes match their recorded
+SHA-256 values, action-scoped governed usage fields and provenance roots are present, and
+batch sample IDs trace back to manifest records.
 
 The active `SignDataset` and `collate_corpus` retain variable motion/speech lengths,
 timestamps, frame masks, confidence, and validity. Missing observations are padded with
@@ -47,8 +49,8 @@ exported shards. `review.html` alone remains only a queue, never proof of review
 
 This document fixes **all** mathematics and contracts of the dataset / data-
 engineering layer before any code, in the discipline of docs 01–09. It implements
-`10_dataset_and_data_engineering.md`: a canonical sample schema, a license/consent-
-gated pipeline, quality mathematics (weighted robust reprojection, multi-view
+`10_dataset_and_data_engineering.md`: a canonical sample schema, an evidence-backed
+authorization-gated pipeline, quality mathematics (weighted robust reprojection, multi-view
 triangulation, deduplication, per-tier agreement), leakage-free splitting, and
 governance. This is a **data-infrastructure** layer, not a neural model.
 
@@ -73,7 +75,7 @@ Primary sources studied:
 ## 0. Honest scope (read first)
 
 No real datasets are downloaded — the document's own first pipeline step is a
-**license/consent gate before download**, and these corpora are licensed. We
+**authorization gate before download**, and these corpora are licensed. We
 implement the **schema, pipeline logic, quality mathematics, deduplication,
 splitting, governance, and datasheets** and validate them on controllable synthetic
 records / observations. Every property (schema validation, the DLT triangulation
@@ -84,19 +86,24 @@ completeness) is proved exactly. Real corpora drop in behind the same schema.
 ## 1. Canonical sample schema
 
 A `Sample` is a typed record with the document's fields: `sample_id`, `source_id`,
-`signer_id_hash`, `target_language`, `dialect`, `license`/`consent`, video/audio
+`signer_id_hash`, `target_language`, `dialect`, `license`/`consent`, explicit
+`authorization`, video/audio
 URIs, `calibration`, `transcript_lattice`, `semantic_plan`, `annotation_tiers`,
 `2d`/`3d confidence`, `smplx_version`, `frame/time transforms`, `provenance`,
-`split`. `validate_sample` rejects a record missing a license/consent, a
+`split`. `validate_sample` rejects a record missing a license, explicit authorization, a
 signer-id hash, a split, or provenance — the governance-critical fields are never
 optional. A `DatasetMap` registry records each source corpus's best use and
 material limitation (How2Sign, WLASL, MS-ASL, ASLLVD, PHOENIX14T, SignAvatars,
 ASL3DWord).
 
-## 2. License/consent gate + provenance (innovation)
+## 2. Evidence-backed authorization gate + provenance (innovation)
 
-The pipeline **gates before download**: `gate_download(record)` returns False
-unless a valid license *and* consent *and* an allowed intended-use are present.
+The pipeline **gates before download**: `gate_download(authorization, consent,
+intended_use, requested_actions)` returns false unless immutable evidence supports
+the exact use and every requested action. Direct participant consent requires
+`GRANTED`; a published secondary-dataset license requires
+`NOT_DIRECTLY_VERIFIED`, attribution, and explicit limitations when personality
+rights are unverified. A license name alone grants nothing in code.
 Originals are content-hashed (SHA-256) and the hash is immutable. **Innovation —
 Merkle-style provenance chain:** each preprocessing step's output is hashed together
 with the previous step's hash, `h_i = H(h_{i-1} ‖ step_i ‖ output_i)`, so the final
@@ -188,7 +195,7 @@ triangulation, and the sensitive-trait non-inference guard.
 |---|---|---|
 | 10.0 | research + design/math spec (this doc) | done |
 | 10a | canonical sample schema + dataset map | done (12 tests) |
-| 10b | license/consent gate + provenance hashing | done (10 tests) |
+| 10b | action-scoped authorization gate + provenance hashing | done |
 | 10c | triangulation + weighted reprojection quality | done (8 tests) |
 | 10d | deduplication (perceptual hash + transcript) | done (9 tests) |
 | 10e | per-tier agreement + QC stratified sampling | done (5 tests) |
@@ -208,8 +215,10 @@ record deliberately has **no sensitive-trait field** — the non-inference guard
 begins structurally, at the type, not merely at a policy note.
 
 **The gate precedes acquisition and provenance is a hash chain.** `gate_download`
-permits acquisition only with a license AND granted consent AND an allowed
-intended-use. The Merkle-style chain `h_i = H(h_{i-1} ‖ step ‖ output)` advances a
+permits acquisition only when evidence supports the exact use and requested actions.
+Direct consent and a published dataset license are separate authorization bases; the
+latter cannot be mislabeled as consent granted to this project. The Merkle-style chain
+`h_i = H(h_{i-1} ‖ step ‖ output)` advances a
 root per preprocessing step; tampering with any step's output, or reordering steps,
 changes the root (both proved), so the manifest is a reproduction certificate.
 

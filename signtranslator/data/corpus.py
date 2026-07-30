@@ -264,9 +264,24 @@ def validate_corpus(corpus_dir: str) -> CorpusSpec:
             if (record.get("split") not in manifest["splits"] or len(digest) != 64
                     or any(char not in "0123456789abcdef" for char in digest.lower())):
                 raise ValueError("manifest record has invalid split or media SHA-256")
-            if (record.get("consent") != "GRANTED" or not record.get("license")
-                    or not record.get("intended_use") or not record.get("provenance")):
+            if (not record.get("license") or not record.get("intended_use")
+                    or not record.get("provenance")):
                 raise ValueError("manifest record lacks governed usage or provenance")
+            try:
+                # Local import avoids a data <-> data_engineering initialization cycle.
+                from ..data_engineering.schema import (
+                    ConsentState, DataAuthorization, validate_authorization,
+                )
+                consent = ConsentState[record.get("consent", "")]
+                authorization = DataAuthorization.from_manifest(record.get("authorization"))
+                violations = validate_authorization(
+                    authorization, consent, record["intended_use"],
+                    requested_actions=("download", "create_derivatives", "model_training"))
+            except (KeyError, TypeError, ValueError) as error:
+                raise ValueError("manifest record has invalid authorization") from error
+            if authorization.license_identifier != record["license"] or violations:
+                raise ValueError(
+                    f"manifest record authorization is inconsistent: {violations}")
         record_split_counts = {
             split: sum(record["split"] == split for record in records)
             for split in manifest["splits"]

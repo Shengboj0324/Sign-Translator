@@ -20,7 +20,7 @@ from typing import Dict, Optional, Sequence, Tuple
 import numpy as np
 
 from ..data.corpus import CorpusSpec, ctc_min_input_length, subsampled_length
-from .schema import ConsentState, Sample, validate_sample
+from .schema import Sample, validate_authorization, validate_sample
 from .splitting import certify_no_group_leakage, grouped_split
 
 
@@ -225,8 +225,15 @@ def _validate_record(record: ExtractedSample, speech_subsample: int) -> None:
     violations = validate_sample(record.governance)
     if violations:
         raise ValueError(f"{sample_id}: governed sample violations: {violations}")
-    if record.governance.consent is not ConsentState.GRANTED:
-        raise PermissionError(f"{sample_id}: consent is not granted")
+    authorization = record.governance.authorization
+    if authorization is None:
+        raise PermissionError(f"{sample_id}: explicit data authorization is absent")
+    authorization_violations = validate_authorization(
+        authorization, record.governance.consent, record.governance.intended_use,
+        requested_actions=("download", "create_derivatives", "model_training"))
+    if authorization_violations:
+        raise PermissionError(
+            f"{sample_id}: authorization violations: {authorization_violations}")
     if not record.gloss_tokens or not record.source_tokens:
         raise ValueError(f"{sample_id}: source and gloss token sequences are required")
     if any(not token for token in record.gloss_tokens + record.source_tokens):
@@ -500,6 +507,7 @@ def export_corpus(records: Sequence[ExtractedSample], out_dir: str | os.PathLike
             "provenance": record.governance.provenance,
             "license": record.governance.license,
             "consent": record.governance.consent.name,
+            "authorization": record.governance.authorization.to_manifest(),
             "intended_use": record.governance.intended_use,
             "target_language": record.governance.target_language,
             "dialect": record.governance.dialect,

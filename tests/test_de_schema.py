@@ -3,16 +3,26 @@
 import pytest
 
 from signtranslator.data_engineering.schema import (
-    ConsentState, Sample, validate_sample, DATASET_MAP, dataset_map_is_complete,
+    AuthorizationBasis, ConsentState, DataAuthorization, PersonalityRightsStatus,
+    Sample, validate_sample, DATASET_MAP, dataset_map_is_complete,
 )
 
 
 def _good(**kw):
+    authorization = DataAuthorization(
+        basis=AuthorizationBasis.DIRECT_PARTICIPANT_CONSENT,
+        license_identifier="CC-BY-NC-4.0",
+        license_url="https://example.test/license",
+        licensor="test participant", evidence_uri="consent.txt",
+        evidence_sha256="a" * 64, permitted_uses=("research",),
+        permitted_actions=("download",),
+        personality_rights=PersonalityRightsStatus.VERIFIED,
+    )
     base = dict(
         sample_id="s1", source_id="rec1", signer_id_hash="h_abc",
         target_language="ASL", license="CC-BY-NC-4.0", consent=ConsentState.GRANTED,
         intended_use="research", smplx_version="1.1", provenance="root_deadbeef",
-        split="train",
+        split="train", authorization=authorization,
     )
     base.update(kw)
     return Sample(**base)
@@ -33,6 +43,15 @@ def test_valid_sample_passes():
 ])
 def test_governance_critical_fields_required(field, val, code):
     assert code in validate_sample(_good(**{field: val}))
+
+
+def test_explicit_authorization_is_required_and_must_match_license():
+    assert "missing_authorization" in validate_sample(_good(authorization=None))
+    assert "invalid_authorization_type" in validate_sample(_good(authorization={}))
+    mismatched = DataAuthorization(
+        **{**_good().authorization.__dict__, "license_identifier": "different"})
+    assert "authorization_license_mismatch" in validate_sample(
+        _good(authorization=mismatched))
 
 
 def test_confidence_range_enforced():
