@@ -61,6 +61,26 @@ reloaded, and falsified.
 - the active loader consumes it without synthetic generation;
 - every tensor traces back to immutable source media.
 
+### Current gloss-free preparation result (2026-08-03)
+
+The canonical v1 full-corpus audit and the quarantined 2D masked-reconstruction
+experiment are complete and reproducible. The audit accounts for all 31,165 metadata
+rows plus one orphan artifact without fabricating the 118 missing clips or repairing
+the three structural failures. Review queues and `VIDEO_ID` source constraints are
+available, but they are not review attestations or signer identities. The 2D experiment
+is intentionally disconnected from the exporter, active runtime, 6D motion tokenizer,
+and Stage C; its held-out point/span model did not beat temporal interpolation.
+
+Detailed evidence is recorded in `docs/DATA_ENGINEERING.md`. Research and decision
+requirements for a possible future pseudo-gloss candidate system are consolidated in
+`09_PSEUDO_GLOSS_MODEL_RESEARCH.md`; that dossier explicitly does not authorize code or
+generated labels.
+
+**Stage B remains unapproved.** Authentic gloss, authoritative signer mapping, and
+qualified signer review are absent. English transcripts, pseudo-glosses, filename
+codes, review-queue generation, and source-disjoint partitions cannot substitute for
+those gates. Stage C therefore remains blocked.
+
 ## 4. Stage C — Establish the minimal vertical model
 
 ### Recommended first scope

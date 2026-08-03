@@ -94,6 +94,95 @@ mathematics, deduplication, splitting, governance, and datasheet contracts conti
 to be validated on controllable synthetic records, while the real-media adapter is
 tested separately against the downloaded source structure.
 
+### Label-free full-corpus audit
+
+`python -m signtranslator.data_engineering.how2sign_audit` is the canonical
+label-free audit command. It uses a transactionally resumable SQLite checkpoint,
+hashes every source video, rendered review video, and OpenPose frame, and binds the
+ordered frame hashes into one per-clip root. File identity is checked both during
+hashing and again after structural decoding, closing the race in which bytes could
+otherwise change between provenance capture and validation. Resume is rejected when
+the dataset root, scientific configuration, Git revision, or implementation bytes
+differ.
+
+The audit decodes at confidence threshold zero and evaluates the declared threshold
+grid from the retained raw confidences. Coverage sets must be nested and monotonically
+non-increasing. The output deliberately has no best-threshold field: OpenPose scores
+are not asserted to be calibrated probabilities, and this corpus contains no landmark
+ground truth from which an optimum could be estimated.
+
+Quality derivatives use the actual non-uniform presentation clock. For adjacent
+observations,
+
+`v_(t-1/2) = (x_t - x_(t-1)) / (time_t - time_(t-1))`;
+
+for three observed frames,
+
+`a_t = 2 (v_(t+1/2) - v_(t-1/2)) / (dt_previous + dt_next)`.
+
+Statistics are reported only on valid supports. Median and `1.4826 * MAD` remain
+explicitly zero for constant observations and absent when no finite observation
+exists. Two-dimensional edge changes and left/right discontinuity scores are review
+signals, never anatomical conclusions.
+
+The audit writes compact artifacts under the parallel data root: the SQLite evidence
+database, final manifest, threshold sweep, source-group constraints, and HTML/CSV/
+JSONL review queues. Review pages link existing media and never duplicate video.
+`VIDEO_ID` is retained as a source-recording constraint; filename codes are explicitly
+not signer identities, so no final split or signer-leakage certificate is produced.
+
+The completed v1 snapshot is
+`/Users/jiangshengbo/Volumes/how2sign_audit/v1/audit_manifest.json`. It accounts for
+all 31,165 metadata rows plus one unjoinable orphan artifact: 2,423 `valid`, 28,621
+`quality_warning`, 118 `missing_source`, three `structural_failure`, and one
+`unjoinable_artifact`. The structural failures are retained rather than repaired: one
+corrupt rendered MP4, one non-contiguous OpenPose sequence, and one multiple-person
+ambiguity. The 31,044 structurally usable clips produce exactly 372,528 threshold
+rows (12 declared thresholds each). Independent aggregate reconciliation, a seeded
+32-clip source re-hash, and verification of every manifest artifact hash passed. The
+snapshot database SHA-256 is
+`8f37f2611e646f2dcd51367ec4ded87cbba1b4b42298fdf234496984d06e285f`.
+
+The review queue contains 1,702 deterministic selections spanning declared failures,
+source groups, durations, filename-code categories, and quality deciles. It is a queue,
+not evidence that review occurred. The source-group artifact records `VIDEO_ID`
+constraints and explicitly refuses to infer signer identity or emit a final split.
+
+### Quarantined real-2D reconstruction experiment
+
+`signtranslator.pretraining.how2sign_motion` is a bounded masked-reconstruction
+experiment that can run only after a completed audit. It consumes normalized 2D
+coordinates, source confidence, validity, and an artificial-mask indicator over the
+actual 137-node graph. Loss is evaluated only where a source observation was valid and
+then deliberately hidden. Genuine missing points contribute exactly zero loss and
+gradient.
+
+This experiment is intentionally disconnected from `run.py`, the gloss exporter, the
+6D-rotation tokenizer, the generator, and Stage C. Its partitions are `VIDEO_ID`-
+disjoint but not signer-disjoint. Its interpolation, last-observation, and coordinate-
+mean baselines disclose unsupported predictions rather than filling them silently.
+The resulting metrics can establish only 2D representation learnability—not ASL
+recognition, translation, 3D motion, anatomical fidelity, or deployment readiness.
+
+The completed bounded v1 experiment is
+`/Users/jiangshengbo/Volumes/how2sign_motion_experiment/v1/experiment_manifest.json`.
+It uses 96
+audited clips in deterministic `VIDEO_ID`-disjoint partitions (76/10/10). A tiny subset
+overfit from coordinate loss 0.30369 to 0.01227, proving gradient and optimization
+connectivity. On the held-out set, however, the learned model was worse than temporal
+interpolation for both point masks (0.06314 versus 0.00494) and span masks (0.07148
+versus 0.01060). For deliberately interpolation-defeating whole-hand tubes, the model
+beat the coordinate-mean baseline, but interpolation and last-observation are correctly
+reported as unsupported rather than fabricated. An independent rerun reproduced the
+config, selection, curves, metrics, checkpoint, and manifest byte-for-byte. These
+results reject any claim that the experiment already supplies a strong production
+representation.
+
+Research on a possible future weak-label system is consolidated in
+`Sign Translator Stage Documentation/09_PSEUDO_GLOSS_MODEL_RESEARCH.md`. That document
+does not authorize implementation, generated labels, or promotion of pseudo output to
+`gloss_tokens`.
+
 ## 1. Canonical sample schema
 
 A `Sample` is a typed record with the document's fields: `sample_id`, `source_id`,
@@ -266,9 +355,11 @@ expired records. Policy gates default closed. `infer_sensitive_trait` **always
 raises** — there is no code path returning a sensitive-trait prediction, so the
 "do-not-infer" policy cannot be silently bypassed.
 
-**Honest scope holds.** No real corpora are downloaded — they are licensed and the
-pipeline gates before download — so every property is proved on controllable
-synthetic records/observations; real corpora drop in behind the same schema.
+**Honest scope holds.** The local How2Sign frontal subset is present and is used only
+through the separately gated label-free adapter/audit described above. Gloss-required
+export, linguistic training, and Stage B approval remain blocked. General schema,
+exporter, agreement, and 3D mathematics continue to be proved on controllable fixtures
+until their required real annotations, views, and human attestations exist.
 Innovations delivered: the Merkle provenance chain, the leakage-certified grouped
 split with window/augmentation inheritance, confidence-propagated triangulation, and
 the sensitive-trait non-inference structural guard.

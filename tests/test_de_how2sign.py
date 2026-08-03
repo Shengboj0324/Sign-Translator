@@ -41,6 +41,7 @@ def _person(score=0.9):
         "pose_keypoints_3d", "face_keypoints_3d",
         "hand_left_keypoints_3d", "hand_right_keypoints_3d",
     )}
+    person["person_id"] = [-1]
     for key, count in OPENPOSE_PARTS:
         person[key] = [coordinate for _ in range(count) for coordinate in (8, 8, score)]
     return person

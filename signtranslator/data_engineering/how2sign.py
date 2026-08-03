@@ -49,6 +49,9 @@ OPENPOSE_3D_KEYS = (
     "pose_keypoints_3d", "hand_left_keypoints_3d",
     "hand_right_keypoints_3d", "face_keypoints_3d",
 )
+OPENPOSE_PERSON_KEYS = frozenset(
+    {"person_id", *(key for key, _ in OPENPOSE_PARTS), *OPENPOSE_3D_KEYS}
+)
 OPENPOSE_JOINT_NAMES = tuple(
     f"{part.removesuffix('_keypoints_2d')}:{index}"
     for part, count in OPENPOSE_PARTS for index in range(count)
@@ -408,6 +411,8 @@ def decode_how2sign_openpose(
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as error:
             raise ValueError(f"{video.stem}: unreadable OpenPose JSON {path.name}") from error
+        if set(payload) != {"version", "people"}:
+            raise ValueError(f"{video.stem}: unexpected OpenPose top-level schema")
         if payload.get("version") != 1.3:
             raise ValueError(f"{video.stem}: unsupported OpenPose JSON version")
         people = payload.get("people")
@@ -421,6 +426,12 @@ def decode_how2sign_openpose(
         person = people[0]
         if not isinstance(person, dict):
             raise ValueError(f"{video.stem}: OpenPose person must be an object")
+        if set(person) != OPENPOSE_PERSON_KEYS:
+            raise ValueError(f"{video.stem}: unexpected OpenPose person schema")
+        person_id = person.get("person_id")
+        if not isinstance(person_id, list) or any(
+                isinstance(value, bool) or not isinstance(value, int) for value in person_id):
+            raise ValueError(f"{video.stem}: OpenPose person_id must be an integer list")
         if any(person.get(key) not in (None, []) for key in OPENPOSE_3D_KEYS):
             raise ValueError(f"{video.stem}: unexpected 3D keypoints in the 2D ingestion path")
 
