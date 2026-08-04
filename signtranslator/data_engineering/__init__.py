@@ -47,7 +47,7 @@ from .exporter import (
     decode_pcm_wav, decode_video, decode_video_clock,
     LandmarkTrack,
     assemble_holistic_track, decode_landmark_npz, ExtractedSample, ExportResult,
-    export_corpus, sha256_file,
+    promote_reviewed_weak_candidate, export_corpus, sha256_file,
 )
 from .readiness import (
     StageBCheck, StageBReadinessReport, assess_stage_b_corpus,
@@ -86,7 +86,7 @@ __all__ = [
     "CORPUS_FORMAT_VERSION", "DecodedAudio", "DecodedVideo", "DecodedVideoClock",
     "decode_pcm_wav", "decode_video", "decode_video_clock", "LandmarkTrack",
     "assemble_holistic_track", "decode_landmark_npz", "ExtractedSample",
-    "ExportResult", "export_corpus",
+    "ExportResult", "promote_reviewed_weak_candidate", "export_corpus",
     "sha256_file",
     "StageBCheck", "StageBReadinessReport", "assess_stage_b_corpus",
     "HOW2SIGN_FIELDS", "HOW2SIGN_LICENSE_ID", "HOW2SIGN_LICENSE_URL",

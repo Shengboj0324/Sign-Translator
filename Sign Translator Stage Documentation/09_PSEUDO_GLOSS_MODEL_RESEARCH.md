@@ -1,11 +1,12 @@
 # 09 — Pseudo-Gloss Model Research and Decision Dossier
 
-## 0. Status, scope, and non-authorization
+## 0. Status, scope, and activation boundary
 
-This document is research and decision preparation. It does **not** authorize or
-implement a pseudo-gloss model. No How2Sign transcript has been submitted to a
-language model, no pseudo label has been generated, no dependency or model weight
-has been added, and no pseudo token may enter `gloss_tokens`.
+Implementation authorization was granted on 2026-08-04. The local, tool-free hybrid
+candidate-lattice subsystem is now implemented under `signtranslator/pseudo_gloss`.
+That authorization does not waive the activation gates in this document. No How2Sign
+transcript has been submitted to the untrained implementation, no corpus pseudo label
+has been generated, and no unreviewed pseudo token may enter `gloss_tokens`.
 
 The gloss-free audit and the quarantined 2D reconstruction experiment are complete.
 They establish provenance, structural accounting, pose-quality evidence, and a
@@ -274,7 +275,7 @@ All randomization is seeded and persisted. Each test declares a null, effect mea
 uncertainty interval, and stopping rule before evaluation. A system that fails a
 video-dependence intervention is a text generator and must be labeled as such.
 
-## 10. Proposed provenance schema — unimplemented
+## 10. Implemented provenance schema
 
 The existing `gloss_tokens` field remains reserved for labels that pass the current
 governed exporter. A future, separate candidate record should minimally contain:
@@ -288,7 +289,8 @@ generator_model_id, model_weight_sha256, tokenizer_sha256,
 prompt_or_template_sha256, decoding_config_sha256,
 code_revision, random_seed, created_at,
 human_annotator_pseudonym, human_review_protocol,
-parent_annotation_ids, limitations
+review_attestation_sha256, reviewer_qualified_asl, source_video_reviewed,
+parent_annotation_ids, limitations, environment_sha256
 ```
 
 `label_type` is a closed enum:
@@ -300,8 +302,11 @@ parent_annotation_ids, limitations
 - `unreviewed_pseudo`: machine-only candidate, never represented as ground truth.
 
 Missing provenance is an error, not `unknown`. `human_corrected_pseudo` must preserve
-its machine parent rather than being relabeled `project_human`. The future exporter
-must use an explicit allowlist per task and must never silently promote a label type.
+its machine parent rather than being relabeled `project_human`. The governed exporter
+uses an explicit allowlist and never silently promotes a label type.
+Human-authored and human-corrected records require a bound review-attestation hash,
+qualified-ASL status, and an affirmative source-video-viewed record; a reviewer name
+and protocol string alone are insufficient.
 
 ## 11. Security and privacy threat model
 
@@ -349,7 +354,7 @@ Unicode UTS #39 defines confusable-detection mechanisms. SLSA provenance supplie
 useful supply-chain vocabulary, but an asserted SLSA level does not establish model
 quality, producer trust, or dependency safety.
 
-## 12. Architecture-preserving integration proposal — unimplemented
+## 12. Architecture-preserving integration
 
 The current active boundary remains unchanged:
 
@@ -359,7 +364,7 @@ authentic or independently reviewed gloss
     -> active training pipeline
 ```
 
-A future approved research branch would add a parallel boundary:
+The implemented research branch adds this parallel boundary:
 
 ```text
 English transcript -> constrained text lattice -------+
@@ -371,11 +376,12 @@ audited video -> independent visual/CTC evidence -----+       |
                                             human-corrected governed annotation
 ```
 
-The parallel record must be named `weak_gloss_candidates`, not `gloss_tokens`. Only a
-later, explicitly authorized exporter policy may admit `official_human`,
-`project_human`, or qualifying `human_corrected_pseudo` records. `unreviewed_pseudo`
-remains outside the production loader. No code path may convert English sentences into
-gloss by field assignment.
+The parallel record is named `weak_gloss_candidates`, not `gloss_tokens`.
+`promote_reviewed_weak_candidate` is the only promotion boundary: it requires a
+qualified-human-corrected record, exact sample/media binding, approved review status,
+and reviewer/protocol provenance. The exporter independently rechecks that binding.
+`unreviewed_pseudo` remains outside the production loader. No code path converts an
+English sentence into gloss by field assignment.
 
 The video encoder for candidate scoring must not reuse a model trained on the same
 pseudo labels without cross-fitting and explicit circularity analysis. The current 2D
@@ -414,7 +420,7 @@ or successful optimization do not satisfy L4.
 
 ## 14. Pre-registration and statistical requirements
 
-Before implementation, define the annotation convention, target phenomena, primary
+Before real-data activation, define the annotation convention, target phenomena, primary
 endpoint, equivalence/non-inferiority margin if used, error taxonomy, strata, and
 analysis plan. Reference-set size must follow a power or precision calculation tied to
 the primary endpoint and expected clustering by source/signer; choosing an attractive
@@ -425,13 +431,13 @@ selective risk, and downstream deltas. Resampling must preserve source groups. M
 thresholds or variants require a preregistered primary comparison or multiplicity
 control. The untouched test set is evaluated once after all design choices freeze.
 
-## 15. Decision
+## 15. Decision and current gate
 
-**Recommendation:** approve only a later, separately reviewed feasibility study of the
-hybrid constrained candidate-lattice design. Do not approve corpus-wide generation or
-training use yet.
+The implementation study was approved and the architecture has been built. Corpus-wide
+generation and training use remain unapproved until the external evidence below passes
+the executable activation gate.
 
-Before implementation authorization, obtain:
+Before real-data activation or training, obtain:
 
 1. a versioned ASL gloss convention and closed starting lexicon reviewed by qualified
    ASL expertise;
@@ -442,11 +448,64 @@ Before implementation authorization, obtain:
 5. an approved label-provenance policy and review workflow;
 6. predeclared falsification thresholds and stop rules.
 
+Calibration fitting and held-out evaluation require separate source-disjoint human
+reference artifacts and separate qualified-review attestations. The fit set may not be
+reused as evidence of calibration quality.
+
+`python -m signtranslator.pseudo_gloss assess-readiness <charter.json>` verifies exact
+artifact hashes and schemas, checkpoint and license-evidence bindings,
+action-scoped dataset authorization for derivative creation and model training,
+qualified-reference independence, source-disjoint calibration fit/evaluation sets,
+held-out ECE/Brier/log-loss evidence with source-cluster uncertainty, calibrator/reference
+binding, the exact frozen decoding policy, all nine hash-bound falsification results,
+review/provenance policy, dependency lock, SBOM, and optional authoritative signer
+mapping. The bundle's training-manifest hash is bound to an inspected `VIDEO_ID` source
+manifest, and its local training groups must be disjoint from both calibration-fit and
+held-out human-reference groups. Failure is explicit and returns a nonzero status.
+
 If these prerequisites cannot be met, continue pursuing authentic How2Sign annotations
 or commissioned human annotation. Do not create pseudo-ground-truth to make Stage B
 appear complete.
 
-## 16. Primary and standards references
+## 16. Implementation evidence
+
+- `contracts.py`: closed lexicon, separate human and pseudo provenance, immutable weak
+  candidate records, and exact label/review state restrictions.
+- `security.py`: strict UTF-8/NFC and English-script policy, size limits, duplicate-key
+  rejection, and non-finite JSON rejection.
+- `mathematics.py`: differentiable exact CTC forward probability, exact repeated-token
+  feasibility, path entropy from posterior occupancies, finite log-linear lattice
+  normalization, certificate-gated multi-candidate marginal loss, calibrated-confidence
+  weighting, and selective risk. CTC class IDs reject boolean or fractional coercion.
+- `model.py`: positional text Transformer with lexicon-constrained beam search and
+  explicit dropped probability mass; transcript-independent 137-node graph-temporal
+  video CTC evidence.
+- `training.py`: approved-human-only targets, prohibition of from-scratch text training,
+  exact loaded-state/pretrained-checkpoint binding, source-disjoint partitions,
+  cross-fit assignments, anti-self-training lineage checks, an exact multi-candidate CTC
+  optimization path, finite-gradient enforcement, and text/video optimization paths.
+- `calibration.py`: qualified-reference-gated ridge logistic calibration with damped
+  Newton optimization, reliability bins, ECE, Brier/log loss, source slices,
+  source-cluster bootstrap uncertainty, and fail-closed abstention.
+- `pipeline.py`: frozen hybrid inference, exact candidate fusion, provenance hashes,
+  explicit `UNKNOWN`/diffuse/uncalibrated/CTC/no-video abstention, and falsification
+  interventions.
+- `artifacts.py` and `cli.py`: transactional model/candidate bundles, checkpoint and
+  license-evidence hashes, hash-chained records, exact checkpoint reload verification,
+  exact runtime-environment provenance, before/after input mutation checks, no media
+  copying, exact dataset-authorization binding, and offline CLI.
+- `inference.py` and `corpus.py`: one-load stable-input inference plus resumable,
+  activation-gated corpus generation with exact manifest/checkpoint reconciliation and
+  no media duplication.
+- `evaluation.py` and `readiness.py`: source-clustered uncertainty, required
+  falsification specifications and result hashes, vocabulary-family holdout, deterministic
+  shuffled-source construction, token/order/omission/insertion and phenomenon-stratified
+  human-reference metrics, and external activation gates.
+
+Synthetic and adversarial tests prove the software contracts; they do not satisfy the
+missing qualified-ASL evidence or establish linguistic accuracy.
+
+## 17. Primary and standards references
 
 - Duarte et al., [How2Sign: A Large-Scale Multimodal Dataset for Continuous American
   Sign Language](https://openaccess.thecvf.com/content/CVPR2021/html/Duarte_How2Sign_A_Large-Scale_Multimodal_Dataset_for_Continuous_American_Sign_Language_CVPR_2021_paper.html), CVPR 2021.
@@ -471,4 +530,3 @@ appear complete.
 - OWASP, [LLM Prompt Injection Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html).
 - Unicode Consortium, [UTS #39: Unicode Security Mechanisms](https://www.unicode.org/reports/tr39/).
 - SLSA, [Provenance, specification v1.2](https://slsa.dev/spec/v1.2/provenance).
-

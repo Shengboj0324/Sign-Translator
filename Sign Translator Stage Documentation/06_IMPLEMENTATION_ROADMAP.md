@@ -71,10 +71,12 @@ available, but they are not review attestations or signer identities. The 2D exp
 is intentionally disconnected from the exporter, active runtime, 6D motion tokenizer,
 and Stage C; its held-out point/span model did not beat temporal interpolation.
 
-Detailed evidence is recorded in `docs/DATA_ENGINEERING.md`. Research and decision
-requirements for a possible future pseudo-gloss candidate system are consolidated in
-`09_PSEUDO_GLOSS_MODEL_RESEARCH.md`; that dossier explicitly does not authorize code or
-generated labels.
+Detailed evidence is recorded in `docs/DATA_ENGINEERING.md`. The pseudo-gloss
+candidate-lattice implementation and its activation requirements are consolidated in
+`09_PSEUDO_GLOSS_MODEL_RESEARCH.md`. The software path is implemented, but corpus-wide
+generation remains gated on a versioned ASL lexicon/convention, independent qualified
+human references, calibrated pretrained weights, frozen preregistration, and signer
+mapping when signer-generalization is claimed.
 
 **Stage B remains unapproved.** Authentic gloss, authoritative signer mapping, and
 qualified signer review are absent. English transcripts, pseudo-glosses, filename

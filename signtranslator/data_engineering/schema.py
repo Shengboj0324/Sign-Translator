@@ -10,8 +10,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum, IntEnum
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlparse
+
+if TYPE_CHECKING:
+    from ..pseudo_gloss.contracts import WeakGlossCandidateRecord
 
 
 class ConsentState(IntEnum):
@@ -231,6 +234,9 @@ class Sample:
     time_transform: Optional[Dict] = None
     retention_date: Optional[float] = None    # governance (§7)
     authorization: Optional[DataAuthorization] = None
+    # Machine-generated annotation hypotheses remain parallel to authentic
+    # annotation tiers. They are validated below but never promoted implicitly.
+    weak_gloss_candidates: Tuple["WeakGlossCandidateRecord", ...] = ()
     # DELIBERATELY absent: any sensitive-trait field (§7 non-inference guard).
 
     @property
@@ -268,6 +274,21 @@ def validate_sample(s: Sample) -> List[str]:
     for name, c in (("confidence_2d", s.confidence_2d), ("confidence_3d", s.confidence_3d)):
         if c is not None and not (0.0 <= c <= 1.0):
             v.append(f"{name}_out_of_range")
+    if not isinstance(s.weak_gloss_candidates, tuple):
+        v.append("weak_gloss_candidates_must_be_tuple")
+    elif s.weak_gloss_candidates:
+        from ..pseudo_gloss.contracts import WeakGlossCandidateRecord
+
+        annotation_ids = []
+        for candidate in s.weak_gloss_candidates:
+            if not isinstance(candidate, WeakGlossCandidateRecord):
+                v.append("invalid_weak_gloss_candidate_type")
+                continue
+            annotation_ids.append(candidate.annotation_id)
+            if candidate.provenance.source_sample_id != s.sample_id:
+                v.append("weak_gloss_candidate_sample_mismatch")
+        if len(annotation_ids) != len(set(annotation_ids)):
+            v.append("duplicate_weak_gloss_candidate_id")
     return v
 
 

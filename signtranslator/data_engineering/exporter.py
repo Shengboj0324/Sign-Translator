@@ -13,7 +13,7 @@ import html
 import json
 import os
 import wave
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Dict, Optional, Sequence, Tuple
 
@@ -211,6 +211,8 @@ class ExtractedSample:
     coordinate_system: str
     speech_features: Optional[np.ndarray] = None  # (T_speech, F)
     speech_timestamps: Optional[np.ndarray] = None
+    # Required only when a reviewed weak candidate was explicitly promoted.
+    gloss_annotation_id: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -220,6 +222,36 @@ class ExportResult:
     review_path: str
     spec: CorpusSpec
     split_assignment: Dict[int, str]
+
+
+def promote_reviewed_weak_candidate(record: ExtractedSample,
+                                    annotation_id: str) -> ExtractedSample:
+    """Explicitly copy one approved, human-backed candidate into ``gloss_tokens``.
+
+    This is the only pseudo-gloss integration boundary. It refuses unreviewed
+    candidates and retains the selected annotation ID for exporter verification.
+    """
+    from ..pseudo_gloss.contracts import LabelType, ReviewStatus
+
+    matches = [candidate for candidate in record.governance.weak_gloss_candidates
+               if candidate.annotation_id == annotation_id]
+    if len(matches) != 1:
+        raise ValueError("annotation_id must identify exactly one attached candidate")
+    candidate = matches[0]
+    if candidate.label_type is LabelType.UNREVIEWED_PSEUDO \
+            or candidate.review_status is not ReviewStatus.APPROVED:
+        raise PermissionError("only approved human-backed candidates may be promoted")
+    if not candidate.human_annotator_pseudonym or not candidate.human_review_protocol \
+            or not candidate.reviewer_qualified_asl \
+            or not candidate.source_video_reviewed \
+            or candidate.review_attestation_sha256 is None:
+        raise PermissionError(
+            "qualified reviewer, source-video review, protocol, and attestation are required")
+    if candidate.provenance.source_sample_id != record.governance.sample_id \
+            or candidate.provenance.source_video_sha256 != record.media_sha256.lower():
+        raise ValueError("candidate provenance does not bind the extracted sample media")
+    return replace(record, gloss_tokens=candidate.candidate_tokens,
+                   gloss_annotation_id=candidate.annotation_id)
 
 
 def _validate_track(track: LandmarkTrack, sample_id: str) -> None:
@@ -267,6 +299,33 @@ def _validate_record(record: ExtractedSample, speech_subsample: int) -> None:
         raise ValueError(f"{sample_id}: source and gloss token sequences are required")
     if any(not token for token in record.gloss_tokens + record.source_tokens):
         raise ValueError(f"{sample_id}: empty token labels are forbidden")
+    if record.governance.weak_gloss_candidates:
+        from ..pseudo_gloss.contracts import LabelType, ReviewStatus
+
+        if not record.gloss_annotation_id:
+            raise PermissionError(
+                f"{sample_id}: weak candidates are attached but no reviewed annotation "
+                "was explicitly selected")
+        matches = [candidate for candidate in record.governance.weak_gloss_candidates
+                   if candidate.annotation_id == record.gloss_annotation_id]
+        if len(matches) != 1:
+            raise PermissionError(f"{sample_id}: selected weak annotation is not unique")
+        selected = matches[0]
+        if selected.label_type is LabelType.UNREVIEWED_PSEUDO \
+                or selected.review_status is not ReviewStatus.APPROVED:
+            raise PermissionError(
+                f"{sample_id}: unreviewed pseudo labels cannot enter gloss_tokens")
+        if selected.label_type is LabelType.HUMAN_CORRECTED_PSEUDO \
+                and (not selected.human_annotator_pseudonym
+                     or not selected.human_review_protocol
+                     or not selected.reviewer_qualified_asl
+                     or not selected.source_video_reviewed
+                     or selected.review_attestation_sha256 is None):
+            raise PermissionError(f"{sample_id}: human correction provenance is absent")
+        if selected.candidate_tokens != record.gloss_tokens:
+            raise ValueError(f"{sample_id}: selected annotation does not match gloss_tokens")
+        if selected.provenance.source_video_sha256 != record.media_sha256.lower():
+            raise ValueError(f"{sample_id}: selected annotation source video hash mismatch")
     if len(record.media_sha256) != 64 or any(
             char not in "0123456789abcdef" for char in record.media_sha256.lower()):
         raise ValueError(f"{sample_id}: media_sha256 must be a 64-character hex digest")

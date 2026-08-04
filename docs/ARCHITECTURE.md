@@ -25,6 +25,20 @@ The older `SignTranslator` class remains a small two-branch research API. New in
 pipeline work should target `BidirectionalSignTranslator`; removal of the former is
 deferred to a versioned breaking release.
 
+### Pseudo-gloss candidate boundary
+
+`signtranslator/pseudo_gloss/` is a separate, offline weak-annotation subsystem. Its
+text Transformer proposes a finite closed-lexicon lattice; its transcript-independent
+137-node graph-temporal model supplies exact CTC video evidence; a calibrated log-linear
+fusion policy either releases a machine candidate for review or abstains. It is not an
+implicit stage of `run.py`.
+
+Machine output is stored only as hash-chained `weak_gloss_candidates`. The governed
+exporter accepts no unreviewed candidate. Its explicit promotion function requires an
+approved human-corrected annotation whose sample ID and source-video SHA-256 match the
+extracted record. This is the intentional integration point: runtime isolation prevents
+English-derived output from silently becoming authentic `gloss_tokens`.
+
 ## Data flow
 
 A training example is a pair `(pose, gloss tokens)`:

@@ -180,8 +180,11 @@ representation.
 
 Research on a possible future weak-label system is consolidated in
 `Sign Translator Stage Documentation/09_PSEUDO_GLOSS_MODEL_RESEARCH.md`. That document
-does not authorize implementation, generated labels, or promotion of pseudo output to
-`gloss_tokens`.
+now records the approved implementation and the still-closed activation gates.
+`Sample.weak_gloss_candidates` retains typed machine candidates separately. The only
+promotion boundary requires an approved, human-corrected pseudo annotation, preserves
+its machine parent and review provenance, and revalidates exact sample/media binding.
+Unreviewed output cannot populate `gloss_tokens`.
 
 ## 1. Canonical sample schema
 

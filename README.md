@@ -72,6 +72,13 @@ Each layer has a design/math document in [`docs/`](docs/) and a Python package u
 | 12 | **Evaluation framework** | `eval_framework/` | A **chain of falsifiable contracts** across seven caveat-bound metric layers; exact paired permutation / sign tests + bootstrap CIs; a pre-registration + test-set firewall; reproducible **SacreBLEU** and **BERTScore**; blinded comprehension scoring. |
 | 13 | **Real-time deployment** | `deployment/` | A display-commit **monotonicity** contract; the latency-budget algebra; a **backpressure bounded-latency theorem**; provable **quantization** error bounds (FP16/INT8); a numerically-certified optimization gate with exact **online-softmax** (FlashAttention) equivalence. |
 
+The parallel `pseudo_gloss/` research subsystem implements constrained weak-label
+candidate generation: an order-aware text Transformer, transcript-independent 137-node
+video CTC evidence, exact finite-lattice fusion, qualified-reference calibration,
+selective abstention, source cross-fitting, immutable provenance, and falsification
+tests. Its output is never treated as authentic gloss and is not implicitly connected
+to the production loader.
+
 The intended forward path is *audio/text → speech → plan → SIR → manifold →
 hand-graph + transformer + diffusion → 3D body/face → rendered avatar*. That full
 path is not currently wired. The active synthetic path is acoustic feature → compact
@@ -221,6 +228,7 @@ signtranslator/
   pretraining/       11  masked modelling, hard negatives, evidence battery
   eval_framework/    12  contract chain, statistics, SacreBLEU/BERTScore, model card
   deployment/        13  streaming contract, latency, quantization, optimization gate
+  pseudo_gloss/          offline weak-candidate lattice, CTC, calibration, provenance
   models/ data/ training/ analysis/ eval/     shared core (manifold, trainer, CLI)
 docs/                design + mathematics documents, one per layer  (+ figures/)
 tests/               adversarial unit tests, one suite per stage
@@ -256,6 +264,48 @@ from signtranslator.eval_framework import EvaluationChain, Contract, Direction
 # Deployment: certify an optimisation is numerically equivalent + quality-preserving.
 from signtranslator.deployment import certify_optimization, online_softmax_attention
 ```
+
+Pseudo-gloss artifacts are verified and generated only through the offline fail-closed
+CLI:
+
+```bash
+python -m signtranslator.pseudo_gloss verify-model MODEL_BUNDLE
+python -m signtranslator.pseudo_gloss assess-readiness ACTIVATION_CHARTER.json
+python -m signtranslator.pseudo_gloss infer-one \
+  --model-bundle MODEL_BUNDLE \
+  --dataset-authorization DATASET_AUTHORIZATION.json \
+  --transcript-file TRANSCRIPT.txt \
+  --source-video SOURCE.mp4 \
+  --landmark-track TRACK.npz \
+  --sample-id SAMPLE_ID \
+  --created-at 2026-08-04T00:00:00Z \
+  --output CANDIDATE_BATCH
+python -m signtranslator.pseudo_gloss verify-batch \
+  CANDIDATE_BATCH MODEL_BUNDLE DATASET_AUTHORIZATION.json
+python -m signtranslator.pseudo_gloss infer-corpus \
+  --input-manifest CORPUS_INPUTS.jsonl \
+  --output CORPUS_CANDIDATES \
+  --model-bundle MODEL_BUNDLE \
+  --dataset-authorization DATASET_AUTHORIZATION.json \
+  --activation-charter ACTIVATION_CHARTER.json
+```
+
+`infer-one` never copies media and emits only hash-bound `weak_gloss_candidates`. A
+missing qualified-reference calibrator causes abstention; it is not replaced by a
+default confidence. Activation additionally requires source-disjoint calibration fit
+and evaluation sets, held-out calibration metrics, every preregistered falsification
+result, review/provenance policies, a hash-bound training-source manifest, dependency
+lock, and SBOM. Model and input bytes are
+reverified around deterministic inference. The candidate manifest binds the exact
+dataset-authorization artifact, whose immutable evidence must permit derivative creation;
+the activation gate additionally requires permission for model training.
+`infer-corpus` refuses to begin without full activation approval, loads the verified model
+once, checkpoints every transactional per-sample batch, and accepts `--resume` only when
+the input, charter, model, authorization, completed-batch hashes, and output inventory all
+match exactly. Each UTF-8 JSONL input row has the exact fields `sample_id`, `source_id`,
+`transcript_file`, `source_video`, `landmark_track`, and timezone-qualified `created_at`;
+all three input paths must be absolute. `source_id` is the official source group
+(`VIDEO_ID` for How2Sign), not an inferred signer.
 
 An end-to-end synthetic pipeline (ingest → train → analyse) is driven by
 [`signtranslator/run.py`](signtranslator/run.py); the shared architecture and the core
