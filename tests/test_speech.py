@@ -54,6 +54,15 @@ def test_speech_ctc_overfits_a_fixed_batch():
     assert loss.detach().item() < first * 0.6
 
 
+def test_speech_ctc_uses_post_subsample_length_for_repeat_feasibility():
+    rec = SpeechRecognizer(input_dim=8, num_tokens=3, hidden_dim=16,
+                           num_layers=1, num_heads=2, subsample=2)
+    features = torch.randn(1, 4, 8)  # only two emitted frames after subsampling
+    targets = torch.tensor([[1, 1]], dtype=torch.long)
+    with pytest.raises(ValueError, match="requires at least 3"):
+        rec.loss(features, targets, torch.tensor([2]), input_lengths=torch.tensor([4]))
+
+
 # ---- corpus integration ----------------------------------------------------
 @pytest.fixture
 def corpus(tmp_path):

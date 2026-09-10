@@ -345,9 +345,9 @@ class BidirectionalSignTranslator(nn.Module):
                                            device=logprobs.device)
             else:
                 input_lengths = input_lengths.to(logprobs.device).clamp(max=t)
-            losses["recognition"] = self.recognizer.ctc(
-                logprobs.permute(1, 0, 2), batch["ctc_targets"],
-                input_lengths, batch["ctc_lengths"])
+            losses["recognition"] = self.recognizer.loss_from_log_probs(
+                logprobs, batch["ctc_targets"], batch["ctc_lengths"],
+                input_lengths)
         if "speech" in batch and "speech_ctc_targets" in batch:
             losses["speech"] = self.speech_loss(
                 batch["speech"], batch["speech_ctc_targets"],

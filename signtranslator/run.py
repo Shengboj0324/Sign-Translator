@@ -10,6 +10,7 @@ pass/fail checks.
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 from typing import Optional
 
 import torch
@@ -18,11 +19,13 @@ from torch.utils.data import DataLoader
 from .config import ModelConfig, DiffusionConfig, TrainerConfig
 from .data.corpus import (
     generate_corpus, validate_corpus, SignDataset, collate_corpus, CorpusSpec,
+    load_manifest,
 )
 from .data.readiness import assess_corpus
 from .models import BidirectionalSignTranslator
-from .training import Trainer
+from .training import Trainer, checkpoint_paths
 from .analysis import analyze
+from .reproducibility import sha256_file
 
 
 def build_model(spec: CorpusSpec, diff_timesteps: int = 100) -> BidirectionalSignTranslator:
@@ -71,6 +74,12 @@ def run_pipeline(corpus_dir: str, epochs: int = 30, batch_size: int = 32,
                  gen_finetune_lr: float = 1e-3, polish_epochs: int = 0,
                  polish_lr: float = 1.2e-3, require_ready: bool = True,
                  verbose: bool = True) -> dict:
+    if resume and not ckpt_path:
+        raise ValueError("resume requires a checkpoint path prefix")
+    if ckpt_path and (gen_finetune_epochs > 0 or polish_epochs > 0):
+        raise ValueError(
+            "checkpointed generator-finetune/polish stages are not state-complete; "
+            "refusing to create a misleading resumable artifact")
     # 1. Ingest -----------------------------------------------------------
     if regenerate:
         generate_corpus(corpus_dir, seed=seed, overwrite=overwrite_corpus)
@@ -91,6 +100,16 @@ def run_pipeline(corpus_dir: str, epochs: int = 30, batch_size: int = 32,
             "Fix the data or pass require_ready=False to override.")
 
     train_loader, val_loader = make_loaders(corpus_dir, batch_size)
+    manifest_path = Path(corpus_dir).resolve() / "manifest.json"
+    corpus_manifest = load_manifest(corpus_dir)
+    artifact_context = {
+        "corpus_manifest": corpus_manifest,
+        "corpus_manifest_sha256": sha256_file(manifest_path),
+        "corpus_shard_sha256": {
+            f"{split}.npz": sha256_file(manifest_path.parent / f"{split}.npz")
+            for split in sorted(corpus_manifest["splits"])
+        },
+    }
 
     torch.manual_seed(seed)
     model = build_model(spec, diff_timesteps=diff_timesteps)
@@ -98,11 +117,12 @@ def run_pipeline(corpus_dir: str, epochs: int = 30, batch_size: int = 32,
         print(f"[model] params: {model.num_parameters():,}")
     cfg = TrainerConfig(epochs=epochs, batch_size=batch_size, lr=lr, seed=seed,
                         ckpt_path=ckpt_path, loss_weights=dict(DEFAULT_LOSS_WEIGHTS))
-    trainer = Trainer(model, cfg, train_loader, val_loader)
+    trainer = Trainer(
+        model, cfg, train_loader, val_loader, artifact_context=artifact_context)
 
     history = None
     if resume and ckpt_path:
-        trainer.load(ckpt_path, load_optimizer=False)  # warm-restart from prior chunk
+        trainer.load(checkpoint_paths(ckpt_path)["last"], mode="resume")
     if do_train:
         history = trainer.fit(verbose=verbose)
         if gen_finetune_epochs > 0:
@@ -124,10 +144,8 @@ def run_pipeline(corpus_dir: str, epochs: int = 30, batch_size: int = 32,
                                        lr=polish_lr, seed=seed + 2,
                                        loss_weights=dict(DEFAULT_LOSS_WEIGHTS))
             Trainer(model, polish_cfg, train_loader, val_loader).fit(verbose=verbose)
-        if ckpt_path:
-            trainer.save(ckpt_path)  # persist final model for a later analyze pass
     elif ckpt_path:
-        trainer.load(ckpt_path, load_optimizer=False)
+        trainer.load(ckpt_path, mode="weights")
 
     report = None
     if do_analyze:
@@ -161,6 +179,8 @@ def main() -> None:
     parser.add_argument("--timesteps", type=int, default=100)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--ckpt", type=str, default=None)
+    parser.add_argument("--resume", action="store_true",
+                        help="resume exactly from the derived last checkpoint")
     args = parser.parse_args()
 
     if args.overwrite_synthetic and not args.generate_synthetic:
@@ -171,6 +191,7 @@ def main() -> None:
                           regenerate=args.generate_synthetic,
                           overwrite_corpus=args.overwrite_synthetic,
                           ckpt_path=args.ckpt,
+                          resume=args.resume,
                           gen_finetune_epochs=args.gen_finetune_epochs,
                           gen_finetune_lr=args.gen_finetune_lr,
                           polish_epochs=args.polish_epochs,

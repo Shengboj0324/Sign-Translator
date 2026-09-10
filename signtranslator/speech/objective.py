@@ -228,8 +228,8 @@ class SpeechTrainingObjective(nn.Module):
         else:
             feature_lengths = feature_lengths.to(dtype=torch.long, device=log_probs.device)
             input_lengths = self.recognizer.output_lengths(feature_lengths).clamp(max=t)
-        terms["asr"] = self.recognizer.ctc(
-            log_probs.permute(1, 0, 2), targets, input_lengths, target_lengths)
+        terms["asr"] = self.recognizer.loss_from_log_probs(
+            log_probs, targets, target_lengths, input_lengths)
 
         frame_labels, boundaries, valid = self._frame_targets(
             log_probs.detach(), targets, target_lengths, input_lengths)

@@ -6,6 +6,141 @@ The next phase should optimize for a **complete vertical slice**, not additional
 package count. Every milestone must produce an artifact that can be inspected,
 reloaded, and falsified.
 
+## 1.1 Research-to-deployment program without a required pseudo-gloss model
+
+The deployed product surface does not require gloss: it requires a governed input,
+an inspectable linguistic plan, comprehensible multi-channel signing motion, a renderer,
+and calibrated refusal. Pseudo-gloss remains one optional weak-supervision experiment;
+it is not placed on the critical path. Removing it does not justify a promise of equal
+performance. Capability is preserved architecturally, while performance equivalence must
+be established by the same held-out and qualified-signer gates as every other route.
+
+The replacement program is divided into the following consecutive phases.
+
+### Phase 1 — reproducible mathematical execution
+
+Implement before any new learned representation:
+
+1. content-addressed implementation identity that remains valid outside Git;
+2. distinct `best` and `last` checkpoints with atomic writes and verified sidecars;
+3. model/config/corpus/normalization/vocabulary/code bindings in each checkpoint;
+4. exact optimizer, scheduler, epoch, history, and Python/NumPy/Torch RNG restoration;
+5. deterministic, RNG-isolated validation;
+6. exact CTC feasibility, including mandatory blank frames between adjacent repeats;
+7. explicit failure instead of `zero_infinity=True` suppression;
+8. clean-source-archive CI, checkpoint reload, and deterministic-output comparison.
+
+Exit evidence is a bit-identical interrupted-versus-uninterrupted CPU training test,
+repeatable validation that does not advance the training RNG, adversarial checkpoint
+tamper/configuration tests, archive execution without `.git`, and the complete
+warning-strict suite. This phase is gloss-independent.
+
+**Phase-1 status (2026-09-10): complete within the boundary above.** The source
+checkout and a separate no-Git archive each pass all 1,575 tests under warnings-as-errors.
+The targeted changed modules pass static type analysis; compilation, YAML parsing, and
+diff validation pass. An installed wheel records content-only provenance without inventing
+a Git revision, and its trained checkpoint reloads to bit-identical seeded inference.
+The resume test proves bit-identical four-epoch CPU results after a two-epoch interruption,
+including parameters, optimizer moments, scheduler, history, and step count. These results
+certify the Phase-1 software contracts—not ASL validity, real-data model performance, or
+deployment readiness.
+
+### Phase 2 — canonical observable and generative sign state
+
+Freeze one typed, time-indexed multi-channel representation before training:
+
+\[
+Y_t=(R_t^{body},R_t^{left\ hand},R_t^{right\ hand},R_t^{head},
+     r_t,f_t,g_t^{left},g_t^{right},b_t,c_t),
+\]
+
+where articulated rotations use a continuous 6D parameterization during regression and
+SO(3) geodesic error during evaluation; `r` is root translation; `f` is a declared facial
+coefficient/action-unit vector; each gaze vector lies on the unit sphere; `b` carries
+blink/eyelid state; and `c` carries declared contact or classifier channels. Handshape is
+represented by articulated finger rotations/contact, palm orientation by wrist/palm
+frames, movement by nonuniform-time derivatives, posture by the body kinematic tree,
+and head movement by its own SE(3) channel. These quantities must not be collapsed into
+one undifferentiated Cartesian loss.
+
+Every channel carries `observed`, `valid`, `confidence`, `source`, coordinate-frame, and
+timestamp fields. A loss is evaluated only on its declared support:
+
+\[
+\mathcal L_k=\frac{\sum_{t,j}m^{(k)}_{t,j}w^{(k)}_{t,j}
+\ell_k(\hat Y^{(k)}_{t,j},Y^{(k)}_{t,j})}
+{\sum_{t,j}m^{(k)}_{t,j}w^{(k)}_{t,j}},
+\]
+
+and is unavailable—not zero—when the denominator is zero. Confidence may be used as a
+weight only under a declared interpretation; it is not called calibrated probability
+without calibration evidence. Phase 2 ends only after source→state→inverse-transform→
+render round-trips and left/right, gaze, palm, face, head, and temporal tests pass.
+
+The current frontal 2D OpenPose release cannot uniquely determine this state. Monocular
+depth, self-occluded fingers, palm twist, subtle facial action, and gaze are non-identifiable
+in many frames. Those channels require licensed multi-view/depth evidence, a validated
+fitting model, project-human correction, or an explicit unavailable mask—never synthesis
+presented as observation.
+
+### Phase 3 — direct governed language-to-SIR supervision
+
+Replace the pseudo-gloss dependency with three non-substituting evidence routes:
+
+1. qualified project-human text/video→SIR annotations under a frozen ASL convention;
+2. direct text/video contrastive and temporal learning on authorized paired media, with
+   transcript-only and blank/shuffled-video falsification tests;
+3. a versioned lexical motion library for forms that have human-approved meaning and
+   articulation, with `UNKNOWN` and abstention for uncovered forms.
+
+Authentic gloss may later enter as an auxiliary observation, but no phase depends on a
+full-corpus pseudo-gloss model. English words, uppercase lemmas, retrieval IDs, latent
+visual tokens, and SIR fields remain distinct types. Phase 3 ends only when plan fields
+are reference-backed, source-disjoint, intervention-sensitive, and independently reviewed.
+
+### Phase 4 — multi-channel motion representation learning
+
+Train retrieval/interpolation, continuous autoencoder, and residual-token baselines on the
+Phase-2 state. Evaluate hands, palms, body, face, gaze, head, contact, velocity, acceleration,
+and temporal scope separately. A learned representation must beat declared simple baselines
+on held-out source groups and preserve meaning-critical minimal pairs before a generator is
+authorized.
+
+### Phase 5 — constrained text/SIR-to-motion generation
+
+Train body, hand, face, gaze, and head branches in a staged curriculum, then integrate them
+through typed SIR conditioning, cross-channel constraints, uncertainty, and abstention.
+Require conditioning swaps, field interventions, ablations, multi-seed stability, exact
+reload, and deterministic rigged rendering. A low aggregate pose loss is not a pass.
+
+### Phase 6 — linguistic and human validation
+
+Use preregistered, blinded evaluation with qualified ASL signers. Primary endpoints are
+semantic proposition recovery and phenomenon-level accuracy; motion and rendering metrics
+remain diagnostics. Failures in handshape, orientation, movement, posture, facial grammar,
+gaze, head movement, reference, or timing are reported independently rather than averaged
+away.
+
+### Phase 7 — restricted product and industrialization
+
+Integrate raw text/audio, rendering, calibrated refusal, traceable model/data identity,
+privacy controls, observability, rollback, canaries, and target-hardware load tests. Release
+first as a restricted-domain research demonstrator. Commercial deployment additionally
+requires data/model/rig rights that do not depend on How2Sign's noncommercial permission.
+Medical, legal, emergency, and interpreter-replacement claims remain prohibited until
+separately validated and authorized.
+
+### Current implementability boundary
+
+| Can be implemented now | Requires external evidence or assets |
+|---|---|
+| Phase-1 reproducibility, CTC, checkpoint, and archive controls | Linguistically valid text/video→ASL plans |
+| Typed multi-channel schemas and observability rules | Qualified-ASL annotation and blinded review |
+| 2D source QC and source-disjoint experimentation | Authoritative signer-disjoint certification |
+| Direct paired text/video representation baselines | Identifiable 3D hands, palms, face, gaze, and head state |
+| Render/fitting interfaces and synthetic geometric proofs | Licensed production body/face/rig assets |
+| Security, provenance, abstention, and deployment contracts | Commercial data and derivative-model rights |
+
 ## 2. Stage A — Stabilize the repository
 
 ### Objectives

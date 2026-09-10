@@ -226,15 +226,15 @@ def test_contrastive_term_is_skipped_without_sign_embeddings():
     assert "asr" in out.terms
 
 
-def test_objective_handles_transcripts_too_long_for_the_frames():
-    """A sample that cannot be aligned must not corrupt the batch loss."""
+def test_objective_rejects_transcripts_too_long_for_the_frames():
+    """An impossible CTC sample must be rejected, never changed into zero loss."""
     obj, _, _, _ = _objective()
     # 8 frames after subsample=2 from T=16; ask for 12 tokens -> infeasible.
     feats = torch.randn(2, 16, 20)
     targets = torch.randint(1, 5, (2, 12))
     lengths = torch.full((2,), 12, dtype=torch.long)
-    out = obj(feats, targets, lengths)
-    assert torch.isfinite(out.total)
+    with pytest.raises(ValueError, match="requires at least"):
+        obj(feats, targets, lengths)
 
 
 def test_objective_weights_reject_negatives():

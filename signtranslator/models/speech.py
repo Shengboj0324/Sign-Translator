@@ -27,7 +27,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .encoders import _SinusoidalPositionalEncoding
-from .recognition import ctc_greedy_decode
+from .recognition import assert_ctc_feasible, ctc_greedy_decode
 
 
 class SpeechRecognizer(nn.Module):
@@ -64,7 +64,7 @@ class SpeechRecognizer(nn.Module):
                                              enable_nested_tensor=False)
         self.norm = nn.LayerNorm(hidden_dim)
         self.classifier = nn.Linear(hidden_dim, self.num_classes)
-        self.ctc = nn.CTCLoss(blank=0, zero_infinity=True)
+        self.ctc = nn.CTCLoss(blank=0, zero_infinity=False)
 
     def encode(self, features: torch.Tensor) -> torch.Tensor:
         """features (N, T, F) -> hidden (N, T', H) with T' = T / subsample."""
@@ -97,8 +97,27 @@ class SpeechRecognizer(nn.Module):
                                      device=log_probs.device)
         else:
             out_lengths = self.output_lengths(input_lengths).clamp(max=t_out)
-        return self.ctc(log_probs.permute(1, 0, 2), targets, out_lengths,
+        return self.loss_from_log_probs(
+            log_probs, targets, target_lengths, out_lengths)
+
+    def loss_from_log_probs(self, log_probs: torch.Tensor, targets: torch.Tensor,
+                            target_lengths: torch.Tensor,
+                            output_lengths: torch.Tensor) -> torch.Tensor:
+        if log_probs.ndim != 3 or log_probs.shape[2] != self.num_classes:
+            raise ValueError("speech CTC log-probabilities have an invalid shape")
+        if not torch.isfinite(log_probs).all():
+            raise FloatingPointError("speech CTC log-probabilities are non-finite")
+        assert_ctc_feasible(
+            targets, target_lengths, output_lengths,
+            num_classes=self.num_classes,
+            maximum_input_length=log_probs.shape[1],
+            expected_batch_size=log_probs.shape[0],
+        )
+        loss = self.ctc(log_probs.permute(1, 0, 2), targets, output_lengths,
                         target_lengths)
+        if not torch.isfinite(loss):
+            raise FloatingPointError("speech CTC loss is non-finite")
+        return loss
 
     @torch.no_grad()
     def decode(self, features: torch.Tensor) -> List[List[int]]:

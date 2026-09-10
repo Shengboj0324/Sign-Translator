@@ -19,7 +19,6 @@ import os
 import platform
 import random
 import sqlite3
-import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -27,6 +26,8 @@ from typing import Iterable, Iterator, Mapping, Sequence
 from urllib.parse import quote
 
 import numpy as np
+
+from ..reproducibility import implementation_identity
 
 from .exporter import LandmarkTrack, decode_video_clock
 from .how2sign import (
@@ -277,11 +278,12 @@ def _region_metrics(track: LandmarkTrack) -> dict[str, dict[str, float | int | N
     return result
 
 
-def _landmark_metrics(track: LandmarkTrack) -> dict[str, list[float | int | None]]:
-    coverage = []
-    confidence_median = []
-    confidence_scaled_mad = []
-    longest_missing = []
+def _landmark_metrics(
+        track: LandmarkTrack) -> dict[str, list[float] | list[float | None] | list[int]]:
+    coverage: list[float] = []
+    confidence_median: list[float | None] = []
+    confidence_scaled_mad: list[float | None] = []
+    longest_missing: list[int] = []
     for joint in range(track.validity_mask.shape[1]):
         validity = track.validity_mask[:, joint]
         confidences = track.confidence[:, joint][validity]
@@ -409,21 +411,13 @@ def pose_quality_metrics(track: LandmarkTrack) -> dict:
     }
 
 
-def _implementation_identity() -> dict[str, str]:
+def _implementation_identity() -> dict:
     repo = Path(__file__).resolve().parents[2]
-    try:
-        revision = subprocess.run(
-            ["git", "-C", os.fspath(repo), "rev-parse", "HEAD"],
-            check=True, capture_output=True, text=True,
-        ).stdout.strip()
-    except (OSError, subprocess.CalledProcessError) as error:
-        raise RuntimeError("audit requires a readable git revision") from error
-    digest = hashlib.sha256()
-    for source in (Path(__file__), Path(__file__).with_name("how2sign.py"),
-                   Path(__file__).with_name("exporter.py")):
-        digest.update(source.name.encode("utf-8"))
-        digest.update(source.read_bytes())
-    return {"git_revision": revision, "implementation_sha256": digest.hexdigest()}
+    return implementation_identity(
+        (Path(__file__), Path(__file__).with_name("how2sign.py"),
+         Path(__file__).with_name("exporter.py")),
+        repo_root=repo,
+    )
 
 
 def _meta_payload(root: Path, config: How2SignAuditConfig) -> dict:
@@ -636,22 +630,24 @@ def _record_orphans(connection: sqlite3.Connection, inventory, root: Path) -> No
         for name in names:
             sample_id = f"artifact:{category}:{name}"
             path = locate(name)
-            fields = {"raw_uri": None, "rendered_uri": None, "raw_sha256": None,
-                      "rendered_sha256": None, "openpose_sha256": None}
+            fields: dict[str, str | None] = {
+                "raw_uri": None, "rendered_uri": None, "raw_sha256": None,
+                "rendered_sha256": None, "openpose_sha256": None,
+            }
             error = category
             try:
                 if kind == "openpose":
                     if path.is_symlink() or not path.is_dir():
                         raise ValueError("orphan OpenPose artifact is not a real directory")
-                    digest, snapshots = _hash_openpose_tree(path, root, name)
+                    openpose_root, snapshots = _hash_openpose_tree(path, root, name)
                     for frame_path, frame_digest in snapshots:
                         assert_file_unchanged(frame_path, root, frame_digest)
-                    fields["openpose_sha256"] = digest
+                    fields["openpose_sha256"] = openpose_root
                 else:
-                    digest = stable_sha256(path, root)
-                    assert_file_unchanged(path, root, digest)
+                    file_digest = stable_sha256(path, root)
+                    assert_file_unchanged(path, root, file_digest)
                     fields[f"{kind}_uri"] = os.fspath(path.resolve())
-                    fields[f"{kind}_sha256"] = digest.sha256
+                    fields[f"{kind}_sha256"] = file_digest.sha256
             except (OSError, ValueError, RuntimeError) as exception:
                 error += f"; hash_error={type(exception).__name__}: {exception}"
             connection.execute("""
@@ -904,9 +900,12 @@ def _write_landmark_summary(connection: sqlite3.Connection, output: Path) -> Non
     clip_count = int(connection.execute(
         "SELECT COUNT(*) FROM clips WHERE quality_json IS NOT NULL").fetchone()[0])
     joint_count = len(OPENPOSE_JOINT_NAMES)
-    coverage_matrix = np.empty((clip_count, joint_count), dtype=np.float32)
-    confidence_matrix = np.full((clip_count, joint_count), np.nan, dtype=np.float32)
-    longest_matrix = np.empty((clip_count, joint_count), dtype=np.int32)
+    coverage_matrix: np.ndarray = np.empty(
+        (clip_count, joint_count), dtype=np.float32)
+    confidence_matrix: np.ndarray = np.full(
+        (clip_count, joint_count), np.nan, dtype=np.float32)
+    longest_matrix: np.ndarray = np.empty(
+        (clip_count, joint_count), dtype=np.int32)
     for row_index, (encoded,) in enumerate(connection.execute(
             "SELECT quality_json FROM clips WHERE quality_json IS NOT NULL ORDER BY sample_id")):
         landmarks = json.loads(encoded)["landmarks"]
@@ -923,8 +922,8 @@ def _write_landmark_summary(connection: sqlite3.Connection, output: Path) -> Non
         writer = csv.DictWriter(stream, fieldnames=columns)
         writer.writeheader()
         for index, joint_name in enumerate(OPENPOSE_JOINT_NAMES):
-            coverage = coverage_matrix[:, index].astype(np.float64)
-            confidences = confidence_matrix[:, index].astype(np.float64)
+            coverage: np.ndarray = coverage_matrix[:, index].astype(np.float64)
+            confidences: np.ndarray = confidence_matrix[:, index].astype(np.float64)
             confidences = confidences[np.isfinite(confidences)]
             writer.writerow({
                 "joint_index": index, "joint_name": joint_name,

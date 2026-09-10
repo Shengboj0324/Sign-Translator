@@ -79,6 +79,12 @@ selective abstention, source cross-fitting, immutable provenance, and falsificat
 tests. Its output is never treated as authentic gloss and is not implicitly connected
 to the production loader.
 
+Epoch-boundary joint CPU training with `num_workers=0` now supports exact resume:
+checkpoints separate `best` from `last`, bind model/data/code identities, verify a
+SHA-256 sidecar, and restore optimizer, scheduler, history, and Python/NumPy/Torch RNG
+state. Other training modes must not be described as exact-resume capable unless they
+independently serialize all state.
+
 The intended forward path is *audio/text → speech → plan → SIR → manifold →
 hand-graph + transformer + diffusion → 3D body/face → rendered avatar*. That full
 path is not currently wired. The active synthetic path is acoustic feature → compact
@@ -319,6 +325,16 @@ python3.12 -m venv .venv
 .venv/bin/python -m signtranslator.run --generate-synthetic --corpus-dir ./corpus
 .venv/bin/python -W error -m pytest
 ```
+
+Supplying `--ckpt artifacts/run.pt` writes separate `run.best.pt` and
+`run.last.pt` artifacts plus hash-verified JSON sidecars. `--resume` restores the
+last joint-training state exactly, including optimizer, scheduler, epoch, history,
+and Python/NumPy/Torch RNG state, and rejects configuration, corpus, runtime, code,
+or artifact drift. The legacy generator-only fine-tune and polish loops are not yet
+state-complete; combining either loop with checkpointing is therefore rejected rather
+than advertised as resumable. The gloss-independent research-to-deployment sequence
+and multi-channel sign-state contract are maintained in
+[`Sign Translator Stage Documentation/06_IMPLEMENTATION_ROADMAP.md`](Sign%20Translator%20Stage%20Documentation/06_IMPLEMENTATION_ROADMAP.md).
 
 The CPU-only PyTorch constraint is documented in the design notes; the synthetic corpora
 correlate spoken ↔ gloss ↔ motion through a fixed vocabulary cipher so that every property

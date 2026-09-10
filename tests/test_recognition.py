@@ -1,5 +1,6 @@
 """Tests for the CTC sign-recognition branch."""
 
+import pytest
 import torch
 
 from signtranslator.skeleton import SkeletonGraph
@@ -76,3 +77,36 @@ def test_ctc_loss_is_finite_and_decreases_on_overfit():
         loss.backward()
         opt.step()
     assert loss.detach().item() < first * 0.7  # clearly learning the alignment
+
+
+def test_ctc_rejects_adjacent_repeat_when_blank_frame_cannot_fit():
+    g, rec = _recognizer(num_glosses=3)
+    pose = torch.randn(1, 3, 2, g.num_nodes)
+    targets = torch.tensor([[1, 1]], dtype=torch.long)
+    lengths = torch.tensor([2], dtype=torch.long)
+    with pytest.raises(ValueError, match="requires at least 3"):
+        rec.loss(pose, targets, lengths)
+
+
+def test_ctc_rejects_blank_and_out_of_vocabulary_targets():
+    g, rec = _recognizer(num_glosses=3)
+    pose = torch.randn(1, 3, 4, g.num_nodes)
+    lengths = torch.tensor([1], dtype=torch.long)
+    for invalid in (0, 4):
+        with pytest.raises(ValueError, match="blank or out-of-range"):
+            rec.loss(pose, torch.tensor([[invalid]]), lengths)
+
+
+def test_ctc_rejects_fractional_lengths_and_nonfinite_evidence():
+    g, rec = _recognizer(num_glosses=3)
+    pose = torch.randn(1, 3, 4, g.num_nodes)
+    targets = torch.tensor([[1]], dtype=torch.long)
+    with pytest.raises(TypeError, match="input_lengths"):
+        rec.loss(pose, targets, torch.tensor([1]),
+                 input_lengths=torch.tensor([1.5]))
+
+    log_probs = rec(pose)
+    log_probs[0, 0, 0] = float("nan")
+    with pytest.raises(FloatingPointError, match="non-finite"):
+        rec.loss_from_log_probs(
+            log_probs, targets, torch.tensor([1]), torch.tensor([4]))

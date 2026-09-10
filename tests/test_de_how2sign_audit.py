@@ -29,6 +29,7 @@ from signtranslator.data_engineering.how2sign_audit import (
     stable_sha256,
     threshold_metrics,
 )
+from signtranslator.reproducibility import implementation_identity
 
 
 CLIP = "source_1-5-rgb_front"
@@ -184,6 +185,28 @@ def test_hierarchical_hash_requires_order_and_is_deterministic(tmp_path):
         [("a", a), ("b", b)])
     with pytest.raises(ValueError, match="strictly ordered"):
         hierarchical_digest([("b", b), ("a", a)])
+
+
+def test_implementation_identity_survives_archive_without_git(tmp_path):
+    first = tmp_path / "first.py"
+    second = tmp_path / "second.py"
+    first.write_text("value = 1\n", encoding="utf-8")
+    second.write_text("value = 2\n", encoding="utf-8")
+    forward = implementation_identity((first, second), repo_root=tmp_path)
+    reversed_order = implementation_identity((second, first), repo_root=tmp_path)
+    assert forward == reversed_order
+    assert forward["identity_kind"] == "content-only"
+    assert forward["git_revision"] is None
+    assert len(forward["implementation_sha256"]) == 64
+
+    second.write_text("value = 3\n", encoding="utf-8")
+    changed = implementation_identity((first, second), repo_root=tmp_path)
+    assert changed["implementation_sha256"] != forward["implementation_sha256"]
+
+    link = tmp_path / "link.py"
+    link.symlink_to(first)
+    with pytest.raises(ValueError, match="non-symlink"):
+        implementation_identity((link,), repo_root=tmp_path)
 
 
 def test_interrupted_audit_resumes_to_byte_stable_complete_manifest(tmp_path):

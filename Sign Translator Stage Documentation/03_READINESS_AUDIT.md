@@ -163,6 +163,33 @@ zero loss, silently removing bad examples from training.
 **Required correction:** compute exact per-sample minimum CTC length after
 subsampling and reject impossible samples before batching.
 
+### 2026-09-10 remediation status for R3–R7
+
+These findings describe the earlier audit baseline. The current Phase-1 implementation
+changes their status as follows:
+
+- **R3 resolved for the canonical joint trainer:** `best` and `last` are distinct;
+  explicit milestone saves are supported; the final state no longer overwrites best.
+- **R4 substantially resolved:** schema-v2 checkpoints and hash-verified JSON sidecars
+  bind model/diffusion/trainer configuration, corpus manifest and shard hashes,
+  vocabulary and normalization through that manifest, data-loader contract, numerical
+  runtime, source-byte identity, optimizer, scheduler, epoch/step, history, and RNG state.
+  Future architecture migrations remain fail-closed rather than implicit.
+- **R5 resolved for epoch-boundary joint CPU training with `num_workers=0`:** resume
+  restores the same optimization trajectory and is tested bit-for-bit. Worker-local RNG
+  and the legacy generator-only fine-tune/polish stages are not yet state-complete;
+  checkpointing those paths is explicitly rejected.
+- **R6 partially resolved:** validation now uses an isolated fixed RNG stream, produces
+  repeatable values, and cannot advance training RNG or leave the model in evaluation
+  mode. Per-branch confidence intervals and the preregistered primary selection criterion
+  still require real experimental design and remain open.
+- **R7 resolved in the active sign, speech, corpus, exporter, and speech-objective paths:**
+  the exact adjacent-repeat minimum is enforced after subsampling, blank/out-of-range
+  targets are rejected, and active CTC losses use `zero_infinity=False`.
+
+This remediation establishes execution integrity only. It does not change the real-data,
+linguistic, human-evaluation, or deployment gates below.
+
 ### R8 — Documentation and code have drifted
 
 Examples include:
@@ -203,4 +230,3 @@ They should not say:
 
 > Production-ready translator, complete speech-to-avatar system, validated
 > sign-language generator, or accessibility replacement.
-

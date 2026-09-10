@@ -17,7 +17,6 @@ import os
 import platform
 import random
 import sqlite3
-import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -34,6 +33,7 @@ from ..data_engineering.how2sign import (
 )
 from ..data_engineering.how2sign_audit import hierarchical_digest, stable_sha256
 from ..models.stgcn import STGCNBlock
+from ..reproducibility import implementation_identity
 from .masking import random_point_mask, span_mask, typical_masked_floor
 
 
@@ -291,24 +291,13 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _implementation_identity() -> dict[str, str]:
+def _implementation_identity() -> dict:
     repo = Path(__file__).resolve().parents[2]
-    try:
-        revision = subprocess.run(
-            ["git", "-C", os.fspath(repo), "rev-parse", "HEAD"], check=True,
-            capture_output=True, text=True,
-        ).stdout.strip()
-    except (OSError, subprocess.CalledProcessError) as error:
-        raise RuntimeError("experiment requires a readable Git revision") from error
-    digest = hashlib.sha256()
     sources = (
         Path(__file__), Path(__file__).parents[1] / "models" / "stgcn.py",
         Path(__file__).parents[1] / "data_engineering" / "how2sign.py",
     )
-    for source in sources:
-        digest.update(source.name.encode("utf-8"))
-        digest.update(source.read_bytes())
-    return {"git_revision": revision, "implementation_sha256": digest.hexdigest()}
+    return implementation_identity(sources, repo_root=repo)
 
 
 def _load_audit_candidates(audit_dir: Path) -> list[dict]:
@@ -352,7 +341,7 @@ def _select_candidates(candidates: Sequence[dict], count: int, seed: int,
     rng = random.Random(seed)
     for values in strata.values():
         rng.shuffle(values)
-    selected = []
+    selected: list[dict] = []
     keys = sorted(strata)
     while len(selected) < count:
         progressed = False
