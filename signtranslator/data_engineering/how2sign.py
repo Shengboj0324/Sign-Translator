@@ -36,8 +36,33 @@ HOW2SIGN_PUBLISHER_EVIDENCE_URL = (
     "f85816c184662406bd8e0f338863b7c243763129/index.html#L457-L464"
 )
 HOW2SIGN_CITATION_KEY = "Duarte_CVPR2021"
+HOW2SIGN_SIGNER_EVIDENCE_URL = (
+    "https://openaccess.thecvf.com/content/CVPR2021/supplemental/"
+    "Duarte_How2Sign_A_Large-Scale_CVPR_2021_supplemental.pdf"
+)
+HOW2SIGN_SIGNER_EVIDENCE_SHA256 = (
+    "d1cd94c84753a304965bf9f9c924c75345cd51ad971c60aef383e5037dd4aecc"
+)
+# Supplemental Table 2: Green Screen training utterances distributed by the
+# official pseudonymous signer ID encoded in each released video name.  A dash
+# in the table is represented by zero.  The nonzero counts sum to 31,047.
+HOW2SIGN_GREEN_SIGNER_IDS = ("1", "2", "3", "4", "5", "8", "9", "10", "11")
+HOW2SIGN_TRAIN_UTTERANCES_BY_SIGNER = {
+    "1": 892,
+    "2": 422,
+    "3": 1859,
+    "4": 398,
+    "5": 12102,
+    "8": 14596,
+    "9": 292,
+    "10": 0,
+    "11": 486,
+}
 HOW2SIGN_CLIP_PATTERN = re.compile(
     r"^(?P<sentence_id>.+)-(?P<filename_code>\d+)-rgb_front$"
+)
+HOW2SIGN_VIDEO_PATTERN = re.compile(
+    r"^(?P<video_id>.+)-(?P<filename_code>\d+)-rgb_front$"
 )
 OPENPOSE_PARTS = (
     ("pose_keypoints_2d", 25),
@@ -142,6 +167,14 @@ class How2SignRow:
     end_realigned: float
     sentence: str
     filename_code: str
+
+    @property
+    def signer_id(self) -> str:
+        """Official Green Screen pseudonymous signer ID from the release name."""
+        if self.filename_code not in HOW2SIGN_GREEN_SIGNER_IDS:
+            raise ValueError(
+                f"unsupported How2Sign Green Screen signer ID: {self.filename_code}")
+        return self.filename_code
 
 
 @dataclass(frozen=True)
@@ -256,6 +289,19 @@ def read_how2sign_metadata(path: str | os.PathLike[str]) -> Tuple[How2SignRow, .
                     f"metadata line {line_number}: SENTENCE_NAME does not encode "
                     "SENTENCE_ID and a numeric filename code"
                 )
+            video_name = raw["VIDEO_NAME"].strip()
+            video_match = HOW2SIGN_VIDEO_PATTERN.fullmatch(video_name)
+            if (video_match is None
+                    or video_match.group("video_id") != raw["VIDEO_ID"].strip()
+                    or video_match.group("filename_code") != match.group("filename_code")):
+                raise ValueError(
+                    f"metadata line {line_number}: VIDEO_NAME must encode VIDEO_ID "
+                    "and the same signer ID as SENTENCE_NAME"
+                )
+            if match.group("filename_code") not in HOW2SIGN_GREEN_SIGNER_IDS:
+                raise ValueError(
+                    f"metadata line {line_number}: unsupported Green Screen signer ID"
+                )
             if sentence_name in sentence_names:
                 raise ValueError(f"metadata line {line_number}: duplicate SENTENCE_NAME")
             sentence_names.add(sentence_name)
@@ -272,7 +318,7 @@ def read_how2sign_metadata(path: str | os.PathLike[str]) -> Tuple[How2SignRow, .
                 )
             rows.append(How2SignRow(
                 video_id=raw["VIDEO_ID"].strip(),
-                video_name=raw["VIDEO_NAME"].strip(),
+                video_name=video_name,
                 sentence_id=raw["SENTENCE_ID"].strip(),
                 sentence_name=sentence_name,
                 start_realigned=start,
@@ -286,7 +332,7 @@ def read_how2sign_metadata(path: str | os.PathLike[str]) -> Tuple[How2SignRow, .
 
 
 def _artifact_names(root: Path, patterns: Iterable[str]) -> Tuple[str, ...]:
-    names = set()
+    names: set[str] = set()
     for pattern in patterns:
         names.update(path.relative_to(root).as_posix() for path in root.glob(pattern))
     return tuple(sorted(names))

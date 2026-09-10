@@ -95,6 +95,27 @@ def test_metadata_is_tab_delimited_unique_and_interval_checked(tmp_path):
         read_how2sign_metadata(path)
 
 
+@pytest.mark.parametrize("row,error", [
+    (
+        "source\tsource-8-rgb_front\tsource_1\tsource_1-5-rgb_front\t1\t2\tBad",
+        "same signer ID",
+    ),
+    (
+        "source\tsource-7-rgb_front\tsource_1\tsource_1-7-rgb_front\t1\t2\tBad",
+        "unsupported Green Screen signer ID",
+    ),
+    (
+        "source\tother-5-rgb_front\tsource_1\tsource_1-5-rgb_front\t1\t2\tBad",
+        "must encode VIDEO_ID",
+    ),
+])
+def test_metadata_signer_id_requires_exact_official_name_encoding(tmp_path, row, error):
+    path = tmp_path / "metadata.csv"
+    _write_metadata(path, [row])
+    with pytest.raises(ValueError, match=error):
+        read_how2sign_metadata(path)
+
+
 def test_how2sign_authorization_hashes_local_evidence_and_limits_scope(tmp_path):
     evidence = tmp_path / "LICENSE-HOW2SIGN-EVIDENCE.md"
     evidence.write_text("publisher URL and locally retained evidence", encoding="utf-8")

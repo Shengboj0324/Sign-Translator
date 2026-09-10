@@ -55,12 +55,21 @@ from .readiness import (
 from .how2sign import (
     HOW2SIGN_FIELDS, HOW2SIGN_LICENSE_ID, HOW2SIGN_LICENSE_URL,
     HOW2SIGN_PUBLISHER_EVIDENCE_URL, HOW2SIGN_CITATION_KEY,
+    HOW2SIGN_SIGNER_EVIDENCE_URL, HOW2SIGN_SIGNER_EVIDENCE_SHA256,
+    HOW2SIGN_GREEN_SIGNER_IDS, HOW2SIGN_TRAIN_UTTERANCES_BY_SIGNER,
     OPENPOSE_JOINT_NAMES, OPENPOSE_LANDMARK_PARTS,
     OPENPOSE_HOLISTIC_EDGES, OPENPOSE_HOLISTIC_CENTER, openpose_holistic_graph,
     How2SignRow, How2SignInventory,
     OpenPoseDiagnostics, How2SignClip, read_how2sign_metadata,
     inspect_how2sign_root, decode_how2sign_openpose, load_how2sign_clip,
     how2sign_authorization,
+)
+from .source_portfolio import (
+    EvidenceLevel, RightsStatus, AccessStatus, IntendedUse,
+    CapabilityEvidence, SourceCandidate, RequirementBundle,
+    BundleDecision, PortfolioDecision, assess_source_portfolio,
+    PRE_PHASE_2_REQUIREMENTS, CURRENT_SOURCE_CANDIDATES,
+    CURRENT_PRE_PHASE_2_DECISION,
 )
 
 __all__ = [
@@ -91,6 +100,8 @@ __all__ = [
     "StageBCheck", "StageBReadinessReport", "assess_stage_b_corpus",
     "HOW2SIGN_FIELDS", "HOW2SIGN_LICENSE_ID", "HOW2SIGN_LICENSE_URL",
     "HOW2SIGN_PUBLISHER_EVIDENCE_URL", "HOW2SIGN_CITATION_KEY",
+    "HOW2SIGN_SIGNER_EVIDENCE_URL", "HOW2SIGN_SIGNER_EVIDENCE_SHA256",
+    "HOW2SIGN_GREEN_SIGNER_IDS", "HOW2SIGN_TRAIN_UTTERANCES_BY_SIGNER",
     "OPENPOSE_JOINT_NAMES", "OPENPOSE_LANDMARK_PARTS",
     "OPENPOSE_HOLISTIC_EDGES", "OPENPOSE_HOLISTIC_CENTER",
     "openpose_holistic_graph",
@@ -99,4 +110,9 @@ __all__ = [
     "read_how2sign_metadata", "inspect_how2sign_root",
     "decode_how2sign_openpose", "load_how2sign_clip",
     "how2sign_authorization",
+    "EvidenceLevel", "RightsStatus", "AccessStatus", "IntendedUse",
+    "CapabilityEvidence", "SourceCandidate", "RequirementBundle",
+    "BundleDecision", "PortfolioDecision", "assess_source_portfolio",
+    "PRE_PHASE_2_REQUIREMENTS", "CURRENT_SOURCE_CANDIDATES",
+    "CURRENT_PRE_PHASE_2_DECISION",
 ]

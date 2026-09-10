@@ -2,7 +2,7 @@
 
 This module is deliberately label-free.  It inventories immutable source bytes,
 validates the exact video/OpenPose structure, computes 2D observation diagnostics,
-and creates a review queue.  It never creates gloss, signer identity, depth, 3D
+and creates a review queue.  It never creates gloss, personal identity, depth, 3D
 motion, corrected landmarks, or train/validation/test assignments.
 """
 
@@ -31,6 +31,9 @@ from ..reproducibility import implementation_identity
 
 from .exporter import LandmarkTrack, decode_video_clock
 from .how2sign import (
+    HOW2SIGN_GREEN_SIGNER_IDS,
+    HOW2SIGN_SIGNER_EVIDENCE_URL,
+    HOW2SIGN_TRAIN_UTTERANCES_BY_SIGNER,
     OPENPOSE_JOINT_NAMES,
     OPENPOSE_LANDMARK_PARTS,
     How2SignRow,
@@ -865,15 +868,31 @@ def _write_threshold_summary(connection: sqlite3.Connection, output: Path,
             })
 
 
+def _signer_counts_match_published(connection: sqlite3.Connection) -> bool:
+    available_counts = {signer_id: 0 for signer_id in HOW2SIGN_GREEN_SIGNER_IDS}
+    rows = connection.execute("""
+        SELECT filename_code,COUNT(*) FROM clips
+        WHERE video_id IS NOT NULL AND status != 'missing_source'
+        GROUP BY filename_code ORDER BY filename_code
+    """)
+    for signer_id, count in rows:
+        if signer_id not in available_counts:
+            return False
+        available_counts[signer_id] = count
+    return available_counts == HOW2SIGN_TRAIN_UTTERANCES_BY_SIGNER
+
+
 def _write_source_groups(connection: sqlite3.Connection, output: Path) -> None:
     groups: dict[str, list[str]] = {}
+    signer_groups: dict[str, list[str]] = {}
     rows = connection.execute("""
-        SELECT video_id,sample_id FROM clips
+        SELECT video_id,filename_code,sample_id FROM clips
         WHERE video_id IS NOT NULL AND status IN ('valid','quality_warning')
-        ORDER BY video_id,sample_id
+        ORDER BY video_id,filename_code,sample_id
     """)
-    for video_id, sample_id in rows:
+    for video_id, signer_id, sample_id in rows:
         groups.setdefault(video_id, []).append(sample_id)
+        signer_groups.setdefault(signer_id, []).append(sample_id)
     duplicate_hashes: dict[str, list[str]] = {}
     rows = connection.execute("""
         SELECT raw_sha256,sample_id FROM clips WHERE raw_sha256 IS NOT NULL
@@ -883,14 +902,28 @@ def _write_source_groups(connection: sqlite3.Connection, output: Path) -> None:
         duplicate_hashes.setdefault(digest, []).append(sample_id)
     duplicate_hashes = {key: value for key, value in duplicate_hashes.items()
                         if len(value) > 1}
+    signer_mapping_recognized = _signer_counts_match_published(connection)
     payload = {
-        "grouping_key": "official VIDEO_ID",
+        "grouping_key": (
+            "official pseudonymous signer ID plus official VIDEO_ID"
+            if signer_mapping_recognized else "official VIDEO_ID"
+        ),
         "source_groups": groups,
+        "signer_groups": signer_groups if signer_mapping_recognized else {},
         "duplicate_media_constraints": duplicate_hashes,
-        "filename_code_is_signer_identity": False,
+        "filename_code_is_signer_identity": signer_mapping_recognized,
+        "signer_identity_scope": (
+            "official pseudonymous dataset ID; not personal identity"
+            if signer_mapping_recognized else None
+        ),
+        "signer_evidence_url": HOW2SIGN_SIGNER_EVIDENCE_URL,
         "final_split_created": False,
         "signer_leakage_certificate": None,
-        "blocker": "authoritative signer identity mapping is absent",
+        "blocker": (
+            "final signer-and-source-disjoint split has not been created"
+            if signer_mapping_recognized
+            else "published per-signer counts do not reconcile this audit"
+        ),
     }
     (output / "source_groups.json").write_text(
         json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
@@ -988,6 +1021,19 @@ def finalize_audit(connection: sqlite3.Connection, root: Path, output: Path,
         path.name: _content_digest_manifest(stable_sha256(path, output))
         for path in generated_paths
     }
+    signer_mapping_recognized = _signer_counts_match_published(connection)
+    known_blockers = [
+        "authentic gloss annotations are absent",
+        "qualified target-language signer review is absent",
+        "co-observed production 3D body, hands, face, head, and gaze are absent",
+        "commercial training and deployment authorization is absent",
+    ]
+    known_blockers.insert(
+        1,
+        "final signer-and-source-disjoint split has not been created"
+        if signer_mapping_recognized
+        else "authoritative pseudonymous signer mapping is not reconciled",
+    )
     manifest = {
         "schema_version": AUDIT_SCHEMA_VERSION,
         "audit_complete": True,
@@ -1000,11 +1046,7 @@ def finalize_audit(connection: sqlite3.Connection, root: Path, output: Path,
         "review_queue_records": review_count,
         "thresholds": list(config.thresholds),
         "threshold_selection_performed": False,
-        "known_blockers": [
-            "authentic gloss annotations are absent",
-            "authoritative signer identities are absent",
-            "qualified target-language signer review is absent",
-        ],
+        "known_blockers": known_blockers,
         "audit_database": _content_digest_manifest(db_digest),
         "generated_artifacts": generated_artifacts,
         "identity": identity,

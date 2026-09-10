@@ -6,6 +6,11 @@ from signtranslator.data_engineering.schema import (
     AuthorizationBasis, ConsentState, DataAuthorization, PersonalityRightsStatus,
     Sample, validate_sample, DATASET_MAP, dataset_map_is_complete,
 )
+from signtranslator.data_engineering.source_portfolio import (
+    AccessStatus, CapabilityEvidence, CURRENT_PRE_PHASE_2_DECISION,
+    EvidenceLevel, IntendedUse, RequirementBundle, RightsStatus,
+    SourceCandidate, assess_source_portfolio, evidence,
+)
 
 
 def _good(**kw):
@@ -80,3 +85,72 @@ def test_dataset_map_complete_and_non_redistributable():
     }
     # every source is licensed / not redistributable by us (honest scope).
     assert all(not r.redistributable for r in DATASET_MAP.values())
+
+
+def _source(source_id, capabilities, *, access=AccessStatus.LOCAL_VERIFIED,
+            rights=RightsStatus.PERMITTED):
+    return SourceCandidate(
+        source_id, source_id, "https://example.test/source", access,
+        evidence(*capabilities, level=EvidenceLevel.LOCAL_VERIFIED),
+        rights, rights, rights, "test-only source",
+    )
+
+
+def test_source_portfolio_forbids_cross_source_capability_stitching():
+    requirement = RequirementBundle(
+        "coobserved", frozenset({"body_3d", "eye_gaze"}),
+        EvidenceLevel.LOCAL_VERIFIED, IntendedUse.RESEARCH_TRAINING,
+    )
+    split = assess_source_portfolio(
+        (_source("body", ("body_3d",)), _source("gaze", ("eye_gaze",))),
+        (requirement,),
+    )
+    assert split.approved is False
+    assert split.bundle_decisions[0].satisfying_sources == ()
+
+    coobserved = assess_source_portfolio(
+        (_source("complete", ("body_3d", "eye_gaze")),), (requirement,))
+    assert coobserved.approved is True
+    assert coobserved.bundle_decisions[0].satisfying_sources == ("complete",)
+
+
+@pytest.mark.parametrize("access,rights,expected", [
+    (AccessStatus.REQUEST_REQUIRED, RightsStatus.PERMITTED,
+     "not_locally_verified:request_required"),
+    (AccessStatus.LOCAL_VERIFIED, RightsStatus.PERMISSION_REQUIRED,
+     "rights_not_permitted:permission_required"),
+    (AccessStatus.LOCAL_VERIFIED, RightsStatus.UNRESOLVED,
+     "rights_not_permitted:unresolved"),
+])
+def test_source_portfolio_fails_closed_on_access_and_rights(access, rights, expected):
+    requirement = RequirementBundle(
+        "required", frozenset({"continuous_asl"}),
+        EvidenceLevel.LOCAL_VERIFIED, IntendedUse.COMMERCIAL_TRAINING,
+    )
+    decision = assess_source_portfolio(
+        (_source("candidate", ("continuous_asl",), access=access, rights=rights),),
+        (requirement,),
+    )
+    assert decision.approved is False
+    assert expected in decision.bundle_decisions[0].source_failures[0][1]
+
+
+def test_source_portfolio_requires_real_evidence_and_strict_identifiers():
+    with pytest.raises(ValueError, match="positive evidence"):
+        CapabilityEvidence("body_3d", EvidenceLevel.NONE)
+    with pytest.raises(ValueError, match="lowercase ASCII identifier"):
+        CapabilityEvidence("body 3D", EvidenceLevel.LOCAL_VERIFIED)
+    with pytest.raises(ValueError, match="HTTPS"):
+        SourceCandidate(
+            "bad", "bad", "http://example.test", AccessStatus.LOCAL_VERIFIED,
+            evidence("body_3d"), RightsStatus.PERMITTED, RightsStatus.PERMITTED,
+            RightsStatus.PERMITTED, "test-only source",
+        )
+
+
+def test_current_pre_phase_2_gate_remains_closed_with_explicit_failures():
+    assert CURRENT_PRE_PHASE_2_DECISION.approved is False
+    payload = CURRENT_PRE_PHASE_2_DECISION.to_dict()
+    assert payload["cross_source_capability_stitching_allowed"] is False
+    assert len(payload["bundle_decisions"]) == 5
+    assert all(not item["passed"] for item in payload["bundle_decisions"])

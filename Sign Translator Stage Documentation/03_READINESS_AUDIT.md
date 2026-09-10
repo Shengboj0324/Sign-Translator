@@ -190,6 +190,21 @@ changes their status as follows:
 This remediation establishes execution integrity only. It does not change the real-data,
 linguistic, human-evaluation, or deployment gates below.
 
+### 2026-09-10 pre-Phase-2 data verdict
+
+One prior limitation is resolved: the How2Sign filename suffix is now certified as the
+official pseudonymous signer ID by exact reconciliation of the immutable local audit with
+the CVPR supplemental. All 31,047 available clips match published per-signer counts, and
+all 118 missing rows reconcile by signer. This is a grouping key, not personal identity.
+
+The new machine-enforced source-portfolio gate still fails every Phase-2 evidence bundle.
+There is no locally verified single source with co-observed continuous 3D body, hands,
+face, head, and gaze; no locally verified continuous qualified-ASL linguistic reference;
+no commercial training authorization; no locally qualified commercial render rig; and no
+confirmed qualified-ASL governance relationship. Capabilities from separate corpora are
+not composable as if they had been co-observed. Phase 2 therefore remains closed. See
+`04_DATA_ENGINEERING_AND_CORPUS.md` §§10–13 for evidence and acquisition treatment.
+
 ### R8 — Documentation and code have drifted
 
 Examples include:

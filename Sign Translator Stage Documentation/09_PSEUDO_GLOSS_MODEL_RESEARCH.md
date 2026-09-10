@@ -24,8 +24,12 @@ limited motion-learning baseline. They do not establish a linguistic label sourc
   point and span masks. It demonstrated optimization connectivity, not linguistic,
   anatomical, 3D, or production capability.
 
-Stage B therefore remains unapproved. Authentic gloss, authoritative signer identity,
-and qualified signer review are still absent. Stage C remains blocked.
+The official pseudonymous How2Sign signer code is now certified by exact agreement between
+the immutable local audit and the CVPR supplemental counts. This is not personal identity
+and no final signer-and-source-disjoint split has been created. Stage B therefore remains
+unapproved: authentic gloss, qualified signer review, the final leakage-certified split,
+co-observed production 3D channels, and commercial authorization are still absent. Stage C
+remains blocked.
 
 ## 1. Vocabulary and epistemic boundaries
 
@@ -263,8 +267,9 @@ These tests are mandatory before any weak label can be used for training:
    abstention rather than forced selection.
 6. **Vocabulary holdout:** reserve lexical families, fingerspelling patterns, and rare
    constructions; do not let aliases leak across folds.
-7. **Source holdout:** partition by official `VIDEO_ID`. This is source-disjoint, not
-   signer-disjoint until authoritative signer mapping exists.
+7. **Source and signer holdout:** use the certified pseudonymous signer ID together with
+   official `VIDEO_ID`; assign connected components before candidate generation. A
+   `VIDEO_ID`-only partition is source-disjoint but not signer-disjoint.
 8. **Counterfactual sentences:** pair minimally different transcripts with the same
    video and the same transcript with mismatched videos.
 9. **Human reference:** compare candidate recall, order, omissions, insertions,
@@ -443,7 +448,8 @@ Before real-data activation or training, obtain:
    ASL expertise;
 2. an independent human reference set whose size and strata follow the preregistered
    precision analysis;
-3. authoritative signer mapping if a signer-generalization claim is intended;
+3. a final connected-component split and leakage certificate using the certified
+   pseudonymous signer ID plus `VIDEO_ID` if a generalization claim is intended;
 4. a documented local model/weight/license choice and reproducible supply-chain record;
 5. an approved label-provenance policy and review workflow;
 6. predeclared falsification thresholds and stop rules.
@@ -458,8 +464,9 @@ action-scoped dataset authorization for derivative creation and model training,
 qualified-reference independence, source-disjoint calibration fit/evaluation sets,
 held-out ECE/Brier/log-loss evidence with source-cluster uncertainty, calibrator/reference
 binding, the exact frozen decoding policy, all nine hash-bound falsification results,
-review/provenance policy, dependency lock, SBOM, and optional authoritative signer
-mapping. The bundle's training-manifest hash is bound to an inspected `VIDEO_ID` source
+review/provenance policy, dependency lock, SBOM, and the required signer/source mapping
+when signer generalization is claimed. The bundle's training-manifest hash is bound to an
+inspected `VIDEO_ID` source
 manifest, and its local training groups must be disjoint from both calibration-fit and
 held-out human-reference groups. Failure is explicit and returns a nonzero status.
 

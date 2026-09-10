@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import builtins
+import hashlib
 import json
 import sqlite3
 import subprocess
@@ -13,6 +14,8 @@ import av
 import numpy as np
 import pytest
 
+import signtranslator.data_engineering.how2sign_audit as audit_module
+import signtranslator.data_engineering.how2sign_signers as signer_module
 from signtranslator.data_engineering.exporter import LandmarkTrack
 from signtranslator.data_engineering.how2sign import (
     OPENPOSE_PARTS, decode_how2sign_openpose,
@@ -228,7 +231,32 @@ def test_interrupted_audit_resumes_to_byte_stable_complete_manifest(tmp_path):
     assert len((output / "landmark_summary.csv").read_text().splitlines()) == 138
     source_groups = json.loads((output / "source_groups.json").read_text())
     assert source_groups["filename_code_is_signer_identity"] is False
+    assert source_groups["signer_groups"] == {}
     assert source_groups["final_split_created"] is False
+
+
+def test_audit_recognizes_signer_mapping_only_after_exact_count_reconciliation(
+        monkeypatch):
+    with sqlite3.connect(":memory:") as connection:
+        connection.execute(
+            "CREATE TABLE clips(video_id TEXT,filename_code TEXT,status TEXT)"
+        )
+        connection.executemany(
+            "INSERT INTO clips VALUES(?,?,?)",
+            (
+                ("a", "1", "valid"),
+                ("b", "1", "structural_failure"),
+                ("c", "2", "quality_warning"),
+                ("d", "2", "missing_source"),
+            ),
+        )
+        monkeypatch.setattr(audit_module, "HOW2SIGN_GREEN_SIGNER_IDS", ("1", "2"))
+        monkeypatch.setattr(
+            audit_module, "HOW2SIGN_TRAIN_UTTERANCES_BY_SIGNER", {"1": 2, "2": 1})
+        assert audit_module._signer_counts_match_published(connection) is True
+        connection.execute(
+            "UPDATE clips SET status='missing_source' WHERE video_id='b'")
+        assert audit_module._signer_counts_match_published(connection) is False
 
 
 def test_resume_refuses_configuration_drift_and_bad_output_scope(tmp_path):
@@ -343,3 +371,87 @@ def test_long_track_quality_is_linear_memory():
     summary = nonuniform_derivative_summary(track)
     assert summary.velocity_count == (frames - 1) * 2
     assert summary.acceleration_count == (frames - 2) * 2
+
+
+def _signer_audit_fixture(root: Path) -> tuple[Path, Path]:
+    audit = root / "audit"
+    audit.mkdir()
+    database = audit / "audit.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE clips(sample_id TEXT,video_id TEXT,filename_code TEXT,status TEXT)"
+        )
+        connection.executemany(
+            "INSERT INTO clips VALUES(?,?,?,?)",
+            (
+                ("a-1-rgb_front", "a", "1", "valid"),
+                ("b-2-rgb_front", "b", "2", "quality_warning"),
+                ("c-1-rgb_front", "c", "1", "missing_source"),
+            ),
+        )
+    database_bytes = database.read_bytes()
+    manifest = {
+        "schema_version": 1,
+        "audit_complete": True,
+        "metadata_rows": 3,
+        "audit_database": {
+            "sha256": hashlib.sha256(database_bytes).hexdigest(),
+            "size": len(database_bytes),
+        },
+        "identity": {"metadata_sha256": "a" * 64},
+        "status_counts": {"missing_source": 1, "quality_warning": 1, "valid": 1},
+    }
+    (audit / "audit_manifest.json").write_text(
+        json.dumps(manifest), encoding="utf-8")
+    evidence = root / "official.pdf"
+    evidence.write_bytes(b"%PDF-test evidence")
+    return audit, evidence
+
+
+def test_signer_certificate_requires_exact_counts_hashes_and_statuses(
+        tmp_path, monkeypatch):
+    audit, evidence = _signer_audit_fixture(tmp_path)
+    monkeypatch.setattr(signer_module, "HOW2SIGN_GREEN_SIGNER_IDS", ("1", "2"))
+    monkeypatch.setattr(
+        signer_module, "HOW2SIGN_TRAIN_UTTERANCES_BY_SIGNER", {"1": 1, "2": 1})
+    monkeypatch.setattr(
+        signer_module, "HOW2SIGN_SIGNER_EVIDENCE_SHA256",
+        hashlib.sha256(evidence.read_bytes()).hexdigest(),
+    )
+    output = tmp_path / "certificate"
+    certificate = signer_module.certify_how2sign_train_signers(
+        audit, evidence, output)
+    assert certificate["schema_version"] == 2
+    assert certificate["certified"] is True
+    assert certificate["personal_identity_inferred"] is False
+    assert certificate["published_available_utterances_by_signer"] == {"1": 1, "2": 1}
+    assert certificate["audited_missing_source_rows_by_signer"] == {"1": 1, "2": 0}
+    assert certificate["mapping"]["rows"] == 3
+    assert certificate["implementation"]["implementation_sha256"]
+    assert {item["path"] for item in certificate["implementation"]["sources"]} == {
+        "signtranslator/data_engineering/how2sign.py",
+        "signtranslator/data_engineering/how2sign_signers.py",
+    }
+    assert len((output / "how2sign_train_signers.csv").read_text().splitlines()) == 4
+    with pytest.raises(FileExistsError, match="non-empty"):
+        signer_module.certify_how2sign_train_signers(audit, evidence, output)
+
+
+def test_signer_certificate_rejects_manifest_drift_and_unpinned_evidence(
+        tmp_path, monkeypatch):
+    audit, evidence = _signer_audit_fixture(tmp_path)
+    monkeypatch.setattr(signer_module, "HOW2SIGN_GREEN_SIGNER_IDS", ("1", "2"))
+    monkeypatch.setattr(
+        signer_module, "HOW2SIGN_TRAIN_UTTERANCES_BY_SIGNER", {"1": 1, "2": 1})
+    monkeypatch.setattr(signer_module, "HOW2SIGN_SIGNER_EVIDENCE_SHA256", "f" * 64)
+    with pytest.raises(ValueError, match="pinned official artifact"):
+        signer_module.certify_how2sign_train_signers(
+            audit, evidence, tmp_path / "bad-evidence")
+
+    manifest_path = audit / "audit_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["status_counts"]["valid"] = 2
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match="do not account"):
+        signer_module.certify_how2sign_train_signers(
+            audit, evidence, tmp_path / "bad-status")

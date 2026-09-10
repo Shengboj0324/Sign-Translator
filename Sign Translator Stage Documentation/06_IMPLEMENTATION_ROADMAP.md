@@ -45,6 +45,25 @@ including parameters, optimizer moments, scheduler, history, and step count. The
 certify the Phase-1 software contracts—not ASL validity, real-data model performance, or
 deployment readiness.
 
+### Pre-Phase-2 data-evidence gate — 2026-09-10
+
+The official pseudonymous How2Sign signer code is now certified against the immutable
+31,165-row audit and the CVPR supplemental counts: all 31,047 available clips reconcile
+exactly, and the 118 missing rows reconcile by signer. This resolves the grouping-key
+ambiguity, but no final signer-and-`VIDEO_ID`-disjoint split has been created.
+
+The executable source-portfolio gate requires each modality bundle to be co-observed in
+one locally verified, authorized source. It currently rejects all five pre-Phase-2 bundles:
+continuous 3D research data, continuous linguistic reference, commercial training rights,
+a qualified commercial render rig, and qualified-ASL governance. Publisher claims and
+capabilities scattered across datasets cannot pass. The exact evidence, acquisition routes,
+secure source treatments, and correspondence register are in
+`04_DATA_ENGINEERING_AND_CORPUS.md` §§10–13.
+
+**Phase 2 has not begun.** Its schema can be designed only after these empirical source
+contracts are known; otherwise the project would risk freezing invented coordinate,
+confidence, gaze, or availability semantics into the architecture.
+
 ### Phase 2 — canonical observable and generative sign state
 
 Freeze one typed, time-indexed multi-channel representation before training:
@@ -136,7 +155,7 @@ separately validated and authorized.
 |---|---|
 | Phase-1 reproducibility, CTC, checkpoint, and archive controls | Linguistically valid text/video→ASL plans |
 | Typed multi-channel schemas and observability rules | Qualified-ASL annotation and blinded review |
-| 2D source QC and source-disjoint experimentation | Authoritative signer-disjoint certification |
+| 2D source QC and source-disjoint experimentation; certified pseudonymous signer key | Final signer-and-source-disjoint split and certificate |
 | Direct paired text/video representation baselines | Identifiable 3D hands, palms, face, gaze, and head state |
 | Render/fitting interfaces and synthetic geometric proofs | Licensed production body/face/rig assets |
 | Security, provenance, abstention, and deployment contracts | Commercial data and derivative-model rights |
@@ -196,13 +215,15 @@ separately validated and authorized.
 - the active loader consumes it without synthetic generation;
 - every tensor traces back to immutable source media.
 
-### Current gloss-free preparation result (2026-08-03)
+### Current gloss-free preparation result (updated 2026-09-10)
 
 The canonical v1 full-corpus audit and the quarantined 2D masked-reconstruction
 experiment are complete and reproducible. The audit accounts for all 31,165 metadata
 rows plus one orphan artifact without fabricating the 118 missing clips or repairing
 the three structural failures. Review queues and `VIDEO_ID` source constraints are
-available, but they are not review attestations or signer identities. The 2D experiment
+available, but they are not review attestations. The official pseudonymous signer code
+is now certified by exact reconciliation with the How2Sign supplemental; it is not a
+person's identity. The 2D experiment
 is intentionally disconnected from the exporter, active runtime, 6D motion tokenizer,
 and Stage C; its held-out point/span model did not beat temporal interpolation.
 
@@ -210,13 +231,14 @@ Detailed evidence is recorded in `docs/DATA_ENGINEERING.md`. The pseudo-gloss
 candidate-lattice implementation and its activation requirements are consolidated in
 `09_PSEUDO_GLOSS_MODEL_RESEARCH.md`. The software path is implemented, but corpus-wide
 generation remains gated on a versioned ASL lexicon/convention, independent qualified
-human references, calibrated pretrained weights, frozen preregistration, and signer
-mapping when signer-generalization is claimed.
+human references, calibrated pretrained weights, frozen preregistration, and partitions
+disjoint by both signer and source when generalization is claimed.
 
-**Stage B remains unapproved.** Authentic gloss, authoritative signer mapping, and
-qualified signer review are absent. English transcripts, pseudo-glosses, filename
-codes, review-queue generation, and source-disjoint partitions cannot substitute for
-those gates. Stage C therefore remains blocked.
+**Stage B remains unapproved.** Authentic gloss, a final signer-and-source-disjoint split,
+qualified signer review, co-observed production 3D channels, and commercial authorization
+are absent. English transcripts, pseudo-glosses, review-queue generation, 2D fits, and
+cross-corpus modality composition cannot substitute for those gates. Stage C therefore
+remains blocked.
 
 ## 4. Stage C — Establish the minimal vertical model
 

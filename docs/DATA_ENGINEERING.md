@@ -128,8 +128,10 @@ signals, never anatomical conclusions.
 The audit writes compact artifacts under the parallel data root: the SQLite evidence
 database, final manifest, threshold sweep, source-group constraints, and HTML/CSV/
 JSONL review queues. Review pages link existing media and never duplicate video.
-`VIDEO_ID` is retained as a source-recording constraint; filename codes are explicitly
-not signer identities, so no final split or signer-leakage certificate is produced.
+`VIDEO_ID` is retained as a source-recording constraint. A later evidence addendum now
+certifies the numeric filename code as the official pseudonymous signer ID for the Green
+Screen release by exact agreement with the CVPR supplemental counts. This does not infer
+personal identity and does not itself create a final split or leakage certificate.
 
 The completed v1 snapshot is
 `/Users/jiangshengbo/Volumes/how2sign_audit/v1/audit_manifest.json`. It accounts for
@@ -143,10 +145,26 @@ rows (12 declared thresholds each). Independent aggregate reconciliation, a seed
 snapshot database SHA-256 is
 `8f37f2611e646f2dcd51367ec4ded87cbba1b4b42298fdf234496984d06e285f`.
 
+The immutable addendum is
+`/Users/jiangshengbo/Volumes/how2sign_audit/signer-evidence-v2/certificate.json`.
+Its 31,165-row mapping has SHA-256
+`82337aef0d4324cd121fd3e0be7d7b7e03838892466fa1b85d9e8618ccdea9cd`.
+The 31,047 non-missing rows match every published per-signer count; the remaining 118
+rows reconcile exactly as missing sources. The historical v1 audit files were not edited.
+Certificate schema v2 also binds the exact generator source bytes and dependency lock; the
+earlier certificate v1 is superseded and retained only as historical evidence.
+
 The review queue contains 1,702 deterministic selections spanning declared failures,
 source groups, durations, filename-code categories, and quality deciles. It is a queue,
-not evidence that review occurred. The source-group artifact records `VIDEO_ID`
-constraints and explicitly refuses to infer signer identity or emit a final split.
+not evidence that review occurred. The historical source-group artifact records `VIDEO_ID`
+constraints. The addendum supplies the evidence-bound pseudonymous signer grouping, while
+still refusing personal-identity inference or a final split.
+
+The current pre-Phase-2 gate and external-source treatment are maintained in
+`Sign Translator Stage Documentation/04_DATA_ENGINEERING_AND_CORPUS.md` §§10–13. Its
+executable counterpart, `source_portfolio.py`, requires one locally verified and authorized
+source to satisfy each co-observation bundle; modalities cannot be stitched across corpora
+and presented as a single observed record.
 
 ### Quarantined real-2D reconstruction experiment
 
