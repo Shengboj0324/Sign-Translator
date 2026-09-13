@@ -242,3 +242,8 @@ unresolved signer/source leakage, hash drift, annotation/media misalignment, non
 rights conflict, absent qualified review, or a test failure. Phase 3A is complete only at
 the secure-ingestion and one-item Cokely source-compatibility boundary. It does not establish
 corpus-wide compatibility, project-label validity, ASL correctness, or readiness to train.
+
+The downstream label-empty review, explicit timebase, independent-submission,
+third-person-adjudication, and threshold-free agreement contracts are specified in
+`11_PHASE_3B_GOVERNED_MAPPING_AND_ADJUDICATION.md`. They do not change any Phase 3A source
+claim or authorize automatic ID-gloss-to-SIR conversion.

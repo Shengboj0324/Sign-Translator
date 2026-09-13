@@ -155,6 +155,15 @@ hashes, and qualified-human mapping protocol are in
 corpus-wide compatibility, project SIR validity, ASL correctness, commercial rights, or
 readiness for training.
 
+**Phase-3B governed-mapping software status (2026-09-13): implemented; qualified-human
+execution not started.** Exact EAF source annotations can now enter a label-empty,
+hash-indexed review queue governed by seven real artifacts and a machine-verifiable sampling
+plan. Primary and blind-review SIR submissions use an explicit EAF-millisecond timebase;
+disagreement requires third-person adjudication; per-field, temporal, event-coverage, and
+edge diagnostics retain exact support; and a deterministic batch audit cannot authorize
+training, commercial use, or linguistic validity. The complete contract and remaining human
+evidence gates are in `11_PHASE_3B_GOVERNED_MAPPING_AND_ADJUDICATION.md`.
+
 ### Phase 4 — multi-channel motion representation learning
 
 Train retrieval/interpolation, continuous autoencoder, and residual-token baselines on the

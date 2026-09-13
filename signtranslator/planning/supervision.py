@@ -92,6 +92,9 @@ class ArtifactKind(str, Enum):
     SIR_LEXICON = "sir_lexicon"
     ANNOTATION_PROTOCOL = "annotation_protocol"
     REVIEW_PROTOCOL = "review_protocol"
+    ADJUDICATION_PROTOCOL = "adjudication_protocol"
+    SAMPLING_PLAN = "sampling_plan"
+    METRICS_PREREGISTRATION = "metrics_preregistration"
 
 
 @dataclass(frozen=True)

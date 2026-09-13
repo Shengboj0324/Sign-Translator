@@ -367,6 +367,11 @@ governed synchronized corpus with explicit research and commercial model-derivat
 terms; and (6) qualify a commercially authorized rig. ASL-LEX, OpenASL, ASL Citizen,
 and NVIDIA are auxiliary evidence, not substitutes for the co-observed Phase-2/3 gates.
 
+The implemented Phase 3B software treatment for an accepted EAF source is documented in
+`11_PHASE_3B_GOVERNED_MAPPING_AND_ADJUDICATION.md`. It binds source annotations to a
+label-empty qualified-human workflow; it does not reinterpret any source ID-gloss as project
+SIR or training truth.
+
 ## 12. Secure source-specific data treatment
 
 Every acquired source enters quarantine before the canonical schema:
