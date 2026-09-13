@@ -21,8 +21,10 @@ motion generator. Its input `x` is the evidence bundle:
 | lexicon / retrieval result | versioned sign lexicon `D(x)` |
 
 Its output `s` is a **typed sign plan** with explicit uncertainty — never
-free-form gloss text as the sole interface. The plan then supplies the gloss /
-conditioning the existing motion generator consumes.
+free-form gloss text as the sole interface. In the present repository this is a
+schema and synthetic mechanism, not a linguistically validated ASL plan. A plan may
+become training evidence only through the governed human annotation boundary described
+in §7.1.
 
 ## 2. Typed plan schema
 
@@ -209,6 +211,22 @@ with parameter-efficient tuning" is honoured *architecturally* (encoder-decoder
 + LoRA + prefix/adapters + freeze-first), not by loading those weights. DPO is
 implemented but not runnable without real signer preferences. All evidence is
 synthetic; every threshold must be re-characterised on real data.
+
+### 7.1 Governed Phase-3 supervision boundary
+
+`planning/supervision.py` accepts only separately produced `official_human` or
+`project_human` SIR records. Each record binds canonical SIR bytes to exact hashes for
+the source video, transcript, sample provenance, authorization evidence, frozen ASL
+convention, frozen SIR lexicon, annotation protocol, review protocol, and independent
+qualified annotator/reviewer attestation. The attestation itself is bound to the exact
+annotation ID, SIR, video, transcript, convention, and lexicon hashes, and carries hashed
+qualification and independence evidence. Batch certification also checks the canonical
+sample schema, exact ASL target language, research-training authorization, and declared
+signer/source split isolation.
+
+This code does not generate SIR, translate English, approve a person as qualified, or
+establish linguistic correctness. The qualified annotations, lexical-motion evidence,
+human validation, and commercial rights needed for Phase 3 remain unsolved.
 
 ## 8. Findings from this round
 

@@ -117,6 +117,31 @@ full-corpus pseudo-gloss model. English words, uppercase lemmas, retrieval IDs, 
 visual tokens, and SIR fields remain distinct types. Phase 3 ends only when plan fields
 are reference-backed, source-disjoint, intervention-sensitive, and independently reviewed.
 
+**Phase-3 software-boundary status (2026-09-12): implemented; empirical exit not
+approved.** The repository now provides three fail-closed mechanisms that can accept
+future evidence without manufacturing it:
+
+1. a canonical, hash-bound human SIR annotation envelope restricted to
+   `official_human` and `project_human`, with a frozen ASL convention and lexicon,
+   exact video/transcript/provenance/authorization bindings, distinct qualified
+   annotator and reviewer attestations bound to the exact reviewed content plus hashed
+   qualification/independence evidence, and signer/source split-leakage checks;
+2. strict, versioned SIR parsing and content hashing that reject unknown fields,
+   malformed identifiers, non-finite or contradictory intervals, invalid edges,
+   duplicate graph elements, and noncanonical payload bytes; and
+3. a held-out paired-video dependence evaluator requiring aligned performance to
+   exceed blank-video, shuffled-video, order-corrupted-video, and text-only
+   interventions under a preregistered positive effect threshold, exact paired sign
+   tests, and four-comparison familywise correction.
+
+These mechanisms do not generate annotations, train a language model, produce motion,
+or establish ASL correctness. The following blockers are deliberately recorded as
+**unsolved**: governed qualified text/video→SIR supervision; a passed direct paired-
+learning falsification; a human-approved lexical motion library; the canonical Phase-2
+multi-channel state; independent qualified-ASL validation; and commercial training and
+deployment rights. No downstream Phase-3/4/5 implementation may treat the software
+boundary as evidence that any of those blockers has been resolved.
+
 ### Phase 4 — multi-channel motion representation learning
 
 Train retrieval/interpolation, continuous autoencoder, and residual-token baselines on the
@@ -156,7 +181,7 @@ separately validated and authorized.
 | Phase-1 reproducibility, CTC, checkpoint, and archive controls | Linguistically valid text/video→ASL plans |
 | Typed multi-channel schemas and observability rules | Qualified-ASL annotation and blinded review |
 | 2D source QC and source-disjoint experimentation; certified pseudonymous signer key | Final signer-and-source-disjoint split and certificate |
-| Direct paired text/video representation baselines | Identifiable 3D hands, palms, face, gaze, and head state |
+| Governed supervision envelopes and paired-video dependence evaluation | Actual qualified human SIR annotations and a trained model passing the intervention gate |
 | Render/fitting interfaces and synthetic geometric proofs | Licensed production body/face/rig assets |
 | Security, provenance, abstention, and deployment contracts | Commercial data and derivative-model rights |
 

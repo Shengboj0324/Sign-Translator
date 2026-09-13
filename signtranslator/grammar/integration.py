@@ -1,10 +1,11 @@
-"""Bridge: doc-02 typed SignPlan -> doc-03 SIR temporal graph -> gloss.
+"""Bridge: doc-02 typed SignPlan -> doc-03 SIR -> manual-label projection.
 
 The planning layer (doc 02) emits a **typed** ``SignPlan``: an ordered list of
 manual lexeme units, fingerspelling indices, non-manual scope spans over unit
 ranges, per-referent loci, and a semantic frame. The grammar layer (doc 03)
-consumes a **temporal graph** (SIR). This module is the faithful, information-
-preserving map between them.
+consumes a **temporal graph** (SIR). This module preserves the plan fields that
+the SIR schema can represent; it does not establish that either object is valid
+ASL.
 
 Design discipline (kept deliberately strict):
 
@@ -18,8 +19,9 @@ Design discipline (kept deliberately strict):
   range), so the multi-channel structure survives the round trip.
 * Fingerspelled units become FINGERSPELL events, not (hallucinated) lexical signs.
 
-Because the map is faithful, the manual gloss projection of the resulting SIR
-must equal the plan's manual-unit order -- a property we test, not assert.
+The resulting SIR's deterministic manual-label projection must equal the plan's
+manual-unit order -- a schema-consistency property we test, not linguistic
+evidence.
 """
 
 from __future__ import annotations
@@ -93,5 +95,5 @@ def plan_to_sir(plan, vocab=None, unit_time: float = 1.0,
 
 
 def plan_manual_units(plan) -> List[int]:
-    """The plan's manual lexeme stream (the gloss the SIR projection must match)."""
+    """Return the plan's declared manual-unit stream for consistency checks."""
     return list(plan.manual_units)

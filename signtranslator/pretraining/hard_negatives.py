@@ -1,10 +1,9 @@
-"""Linguistically-grounded hard negatives + shortcut falsification (Doc-11 §4).
+"""Synthetic single-field negatives + shortcut falsification (Doc-11 §4).
 
-Hard negatives flip exactly one licensed grammatical feature (negation, question
-type, entity, aspect, number, role-shift) via the Doc-03 oracle, so each is a
-MINIMAL linguistic contrast — not a random clip. The shortcut-falsification
-embeddings prove the document's claim: a signer/length shortcut solves the
-random-negative task but fails on hard negatives.
+Fixture negatives flip one declared input field. They prove that signer/length
+shortcuts can solve a random-negative toy task and fail on matched negatives.
+They are not mined from real ASL, are not qualified-human minimal pairs, and
+cannot serve as Phase 3 linguistic evidence.
 """
 
 from __future__ import annotations
@@ -46,7 +45,7 @@ def _flip_value(base: GrammarFeatures, dimension: str):
 
 
 def hard_negative(base: GrammarFeatures, dimension: str) -> GrammarFeatures:
-    """Return a minimal linguistic contrast of ``base`` along ``dimension``."""
+    """Return a synthetic one-field perturbation along ``dimension``."""
     field, value = _flip_value(base, dimension)
     return replace(base, **{field: value})
 
@@ -60,20 +59,17 @@ def contrast_changed_fields(builder: ControllableASLBuilder,
 
 def is_minimal_linguistic_contrast(builder: ControllableASLBuilder,
                                    base: GrammarFeatures, dimension: str) -> bool:
-    """True iff the flip is a GENUINE single-feature contrast (SIRs differ).
+    """Historical name: whether a one-field fixture flip changes the SIR.
 
-    This is the hard-negative mining guarantee: exactly one grammatical feature is
-    flipped (by construction of `hard_negative`) and the realised SIR actually
-    differs (non-vacuous). It does NOT require the change be a subset of the
-    pre-declared licensed set — e.g. an entity swap legitimately also reorders
-    naming signs; that stronger property is `is_licensed_contrast`.
+    This checks non-vacuity only. It does not establish a genuine linguistic
+    contrast, despite the retained compatibility name.
     """
     return bool(contrast_changed_fields(builder, base, dimension))
 
 
 def is_licensed_contrast(builder: ControllableASLBuilder,
                          base: GrammarFeatures, dimension: str) -> bool:
-    """Stronger: the flip changes ONLY the feature's licensed SIR fields."""
+    """Whether the flip changes only its implementation-declared fixture fields."""
     field, value = _flip_value(base, dimension)
     res = minimal_pair(builder, base, field, value)
     return bool(res.changed) and res.changed.issubset(res.licensed)
@@ -104,6 +100,6 @@ def length_shortcut_embedding(lengths: Sequence[int], bin_width: int = 10,
 
 
 def content_embedding(labels: Sequence[int], num_labels: int) -> torch.Tensor:
-    """A representation that encodes the linguistic label (genuine content)."""
+    """A fixture representation that encodes the supplied integer label."""
     idx = torch.as_tensor(list(labels), dtype=torch.long)
     return torch.nn.functional.one_hot(idx, num_labels).float()

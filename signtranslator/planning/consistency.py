@@ -1,16 +1,16 @@
-"""Semantic consistency checks and counterfactual licensing.
+"""Typed-plan consistency checks and synthetic counterfactual licensing.
 
 The specification's verification list includes semantic-role, negation,
 question-type, number, tense/aspect, referent-consistency and non-manual-scope
 tests, plus **counterfactual** tests: *change one semantic feature and verify
 only licensed plan fields change.*
 
-Two distinct notions live here:
+Two distinct software notions live here:
 
 * **Consistency** -- structural predicates over a *single* plan (does the
   non-manual scope actually cover the negated predicate? are all arguments
   placed in signing space?). These extend the hard validator of ``schema.py``
-  with semantically-motivated checks.
+  with schema-motivated checks.
 
 * **Counterfactual licensing** -- a property of a *controllable* mapping from
   semantic features to plans. If flipping one feature (say negation) changes
@@ -19,10 +19,10 @@ Two distinct notions live here:
   plan fields that feature is allowed to touch; ``counterfactual_diff`` then
   reports any change outside the licensed set.
 
-The reference planner used to *test* this is a deterministic, rule-based
-``ControllablePlanBuilder`` -- a controllable oracle, not a learned model. It
-lets the counterfactual property be checked exactly, which a stochastic model
-never could.
+The deterministic ``ControllablePlanBuilder`` is a synthetic fixture, not a
+linguistic oracle. It proves implementation-local field isolation only. Its
+feature mappings require governed, qualified-ASL validation before they can be
+used as linguistic supervision.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from .schema import (
     PlanVocabulary, SignPlan, SemanticFrame, NonmanualSpan, DEFAULT_VOCAB,
 )
 
-# Non-manual marker convention (indices into the NM value space).
+# Synthetic marker convention (indices into the NM fixture value space).
 NM_NEG = 0        # negation
 NM_WH = 1         # wh-question
 NM_YN = 2         # yes/no question
@@ -47,7 +47,7 @@ NM_COND = 4       # conditional
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class SemanticFeatures:
-    """The semantic content a plan must express, independent of surface form."""
+    """Synthetic fields used to exercise typed-plan transformations."""
 
     predicate: int
     agent: Optional[int] = None       # referent id
@@ -67,15 +67,15 @@ class SemanticFeatures:
 
 
 # ---------------------------------------------------------------------------
-# Controllable oracle: features -> plan (deterministic, rule-based)
+# Controllable synthetic fixture: features -> plan (deterministic, rule-based)
 # ---------------------------------------------------------------------------
 class ControllablePlanBuilder:
-    """A deterministic features->plan mapping used to test licensing.
+    """A deterministic fixture mapping used to test field isolation.
 
     Each semantic feature influences a *fixed, declared* set of plan fields.
     Because the mapping is a pure function, flipping one feature and diffing the
     plans reveals exactly which fields that feature controls -- which is what the
-    counterfactual test needs.
+    counterfactual software test needs. The mapping is not ASL evidence.
     """
 
     #: for each feature name, the plan fields it is licensed to change

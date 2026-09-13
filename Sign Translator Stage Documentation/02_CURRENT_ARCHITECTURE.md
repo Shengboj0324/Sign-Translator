@@ -46,8 +46,8 @@ flowchart LR
 | Research layer | Package | Implemented examples | Active in `run.py`? |
 |---|---|---|---|
 | Speech foundation | `speech/` | Features, calibration, revision, LoRA, policy | No |
-| Semantic planning | `planning/` | Typed plans, automaton, constrained decoding | No |
-| Grammar/SIR | `grammar/` | Event graph, interval losses, non-manual scope | No |
+| Semantic planning | `planning/` | Typed plans, automaton, constrained decoding, governed human-supervision envelope | No |
+| Grammar/SIR | `grammar/` | Event graph, strict canonical schema/hash, interval losses, non-manual scope | No |
 | Human representation | `pose/` | 6D rotations, toy body model, fitting | No |
 | Hand graph | `hand_graph/` | Heterogeneous relations and geometry | No |
 | Motion Transformer | `motion_transformer/` | RVQ, VQ-VAE, duration, streaming | No |
@@ -55,12 +55,18 @@ flowchart LR
 | Avatar rendering | `avatar_render/` | Skinning and per-ray/per-pixel primitives | No |
 | Facial/non-manual | `facial_nmm/` | Concurrent channels and scope losses | No |
 | Data engineering | `data_engineering/` | Schema, consent, provenance, grouping | No |
-| Pretraining | `pretraining/` | Masked modeling and hard negatives | No |
+| Pretraining | `pretraining/` | Masked modeling, synthetic field negatives, held-out video-dependence certificate | No |
 | Evaluation framework | `eval_framework/` | Contracts, statistics, protocols | No |
 | Deployment | `deployment/` | Latency and runtime-control primitives | No |
 
 Some specialized packages import mathematical helpers from one another, but
 this is not equivalent to participation in the train/inference graph.
+
+The Phase-3 governance additions are intentionally inactive. They define how future
+qualified human SIR records and held-out intervention scores must be certified; they do
+not create labels, run a pseudo-gloss model, or make the active `run.py` path
+linguistically valid. The current Phase-3 readiness report remains fail-closed with six
+explicit unsolved blockers.
 
 ## 4. Representation mismatch
 
@@ -156,4 +162,3 @@ vertical slice first:
 
 Add raw speech, streaming revision, advanced pretraining, and photorealistic
 rendering only after this slice is reproducible and understandable.
-

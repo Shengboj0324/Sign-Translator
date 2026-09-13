@@ -4,13 +4,15 @@ Implements `03_sign_language_grammar_translation.md` (see docs/GRAMMAR_SIR.md).
 
 We model one named language (ASL). The SIR is a temporal graph whose nodes are
 manual / non-manual events carrying time intervals and whose typed edges encode
-precedence, overlap, scope, co-reference, and spatial locus. A gloss sequence is
-one observed *projection* of this graph, never the whole of it.
+precedence, overlap, scope, co-reference, and spatial locus. A deterministic
+manual-label projection is available for inspection, but is not evidence of an
+authentic gloss annotation and never contains the whole graph.
 """
 
 from .sir import (
     EventKind, EdgeType, SIREvent, SIREdge, SIRGraph,
-    validate_sir, gloss_projection, is_topological_order,
+    SIR_SCHEMA_VERSION, validate_sir, manual_label_projection, gloss_projection,
+    is_topological_order, sir_to_dict, sir_from_dict, sir_sha256,
 )
 from .temporal import (
     AllenRelation, classify_relation, intervals_intersect,
@@ -44,7 +46,9 @@ from .integration import plan_to_sir, plan_manual_units
 
 __all__ = [
     "EventKind", "EdgeType", "SIREvent", "SIREdge", "SIRGraph",
-    "validate_sir", "gloss_projection", "is_topological_order",
+    "SIR_SCHEMA_VERSION", "validate_sir", "manual_label_projection",
+    "gloss_projection", "is_topological_order", "sir_to_dict", "sir_from_dict",
+    "sir_sha256",
     "AllenRelation", "classify_relation", "intervals_intersect",
     "validity_loss", "precedence_loss", "meets_loss", "contains_loss",
     "during_loss", "overlap_loss", "equals_loss", "edge_temporal_loss",

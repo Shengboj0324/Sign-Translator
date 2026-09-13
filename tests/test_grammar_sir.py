@@ -1,10 +1,11 @@
-"""Verification of the SIR temporal graph, validation, and gloss projection."""
+"""Verification of SIR structure and deterministic manual-label projection."""
 
 import pytest
 
 from signtranslator.grammar.sir import (
     EventKind, EdgeType, SIREvent, SIREdge, SIRGraph,
-    validate_sir, gloss_projection, is_topological_order,
+    validate_sir, gloss_projection, manual_label_projection, is_topological_order,
+    sir_to_dict, sir_from_dict, sir_sha256,
 )
 
 
@@ -115,6 +116,48 @@ def test_rule_duplicate_event_id():
     assert "duplicate_event_id" in validate_sir(g)
 
 
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
+def test_nonfinite_event_time_is_rejected(value):
+    g = _valid_graph()
+    g.events[0].t_start = value
+    assert "invalid_interval" in validate_sir(g)
+
+
+def test_boolean_and_negative_identifiers_are_rejected():
+    g = SIRGraph(events=[_event(True, EventKind.MANUAL, -1, 0.0, 1.0)])
+    violations = validate_sir(g)
+    assert "invalid_event_id" in violations
+    assert "invalid_event_label" in violations
+
+
+def test_duplicate_self_and_temporally_false_edges_are_rejected():
+    events = [
+        _event(0, EventKind.MANUAL, 1, 0.0, 2.0),
+        _event(1, EventKind.MANUAL, 2, 1.0, 3.0),
+        _event(2, EventKind.NONMANUAL, 3, 1.5, 1.8),
+    ]
+    g = SIRGraph(events=events, edges=[
+        SIREdge(0, 1, EdgeType.PRECEDENCE),
+        SIREdge(0, 1, EdgeType.PRECEDENCE),
+        SIREdge(0, 0, EdgeType.OVERLAP),
+        SIREdge(2, 1, EdgeType.SCOPE),
+    ])
+    violations = validate_sir(g)
+    assert "duplicate_edge" in violations
+    assert "self_edge" in violations
+    assert "precedence_time_contradiction" in violations
+    assert "scope_time_contradiction" in violations
+
+
+def test_nonoverlapping_overlap_edge_is_rejected():
+    g = SIRGraph(
+        events=[_event(0, EventKind.MANUAL, 1, 0.0, 1.0),
+                _event(1, EventKind.MANUAL, 2, 2.0, 3.0)],
+        edges=[SIREdge(0, 1, EdgeType.OVERLAP)],
+    )
+    assert "overlap_time_contradiction" in validate_sir(g)
+
+
 def test_hallucination_rule_with_lexicon():
     class _Lex:
         def __init__(self, entries): self.entries = set(entries)
@@ -134,12 +177,13 @@ def test_fingerspelled_event_is_not_hallucinated():
 
 
 # ---------------------------------------------------------------------------
-# Gloss projection = topological order
+# Manual-label projection = topological order (legacy alias retained)
 # ---------------------------------------------------------------------------
 def test_gloss_projection_respects_precedence():
     g = _valid_graph()
     gloss = gloss_projection(g)
     assert gloss == [5, 9]                                # event 0 before 1
+    assert manual_label_projection(g) == gloss
 
 
 def test_gloss_projection_is_a_valid_topological_order():
@@ -158,8 +202,18 @@ def test_gloss_projection_is_a_valid_topological_order():
     assert order[0] == 0 and order[-1] == 4              # source first, sink last
 
 
+def test_manual_projection_cannot_read_a_stale_graph_index():
+    graph = _valid_graph()
+    graph.events[0] = _event(0, EventKind.MANUAL, 77, 0.0, 1.0)
+    assert manual_label_projection(graph) == [77, 9]
+
+    graph.events.append(_event(0, EventKind.MANUAL, 88, 3.0, 4.0))
+    with pytest.raises(ValueError, match="cannot project invalid SIR"):
+        manual_label_projection(graph)
+
+
 def test_gloss_projection_excludes_nonmanual_events():
-    """The gloss contains exactly the manual events, never the non-manual ones."""
+    """The legacy projection returns manual labels, never non-manual labels."""
     # give the non-manual event a label that also appears manually would be
     # ambiguous, so use a label unique to the non-manual event and assert it
     # is absent from the gloss.
@@ -192,3 +246,23 @@ def test_is_topological_order_detects_violation():
     g = _valid_graph()
     assert is_topological_order([0, 1], g)
     assert not is_topological_order([1, 0], g)           # 0 must precede 1
+
+
+def test_canonical_sir_round_trip_and_hash_ignore_list_order():
+    graph = _valid_graph()
+    reordered = SIRGraph(
+        events=list(reversed(graph.events)), edges=list(reversed(graph.edges)))
+    assert sir_to_dict(graph) == sir_to_dict(reordered)
+    assert sir_sha256(graph) == sir_sha256(reordered)
+    assert sir_to_dict(sir_from_dict(sir_to_dict(graph))) == sir_to_dict(graph)
+
+
+def test_sir_parser_rejects_unknown_fields_and_noncanonical_types():
+    payload = sir_to_dict(_valid_graph())
+    payload["unexpected"] = True
+    with pytest.raises(ValueError, match="fields must be exactly"):
+        sir_from_dict(payload)
+    payload = sir_to_dict(_valid_graph())
+    payload["events"][0]["id"] = True
+    with pytest.raises(ValueError, match="invalid_event_id"):
+        sir_from_dict(payload)

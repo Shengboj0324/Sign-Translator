@@ -347,18 +347,25 @@ Official evidence:
 | [How2Sign](https://how2sign.github.io/) | Local continuous frontal RGB, 137-node 2D OpenPose, English alignment, certified pseudonymous signer grouping | Locally verified; CC BY-NC 4.0 research use; commercial use prohibited by current terms | Released local observations are 2D; English is not gloss; no qualified review; no commercial path |
 | [SignAvatars](https://github.com/ZhengdiYu/SignAvatars) | Requested SMPL-X body, articulated hands, jaw, expression, camera translation for continuous subsets | Request form; non-commercial research terms; commercial permission must be requested separately | Not acquired; source does not document explicit eye gaze; How2Sign text remains English translation, not gloss |
 | [ASLLRP / ASLLVD](https://www.bu.edu/asllrp/av/dai-asllvd.html) | Authentic gloss conventions, sign timing, start/end handshapes, native-signer tokens, four synchronized views; continuous corpora add non-manual tiers | Account/access process; research and education; commercial use requires explicit permission under [DAI terms](https://www.bu.edu/asllrp/dai-terms.html) | Linguistic reference rather than continuous metric 3D motion; not acquired or commercially authorized |
+| [Dennis Cokely Parallel Corpus](https://encompass.eku.edu/cokely_videos/) | Downloadable MP4/EAF examples with project-specific ID-gloss annotations and English–ASL idea-unit alignment | Publisher labels the collection CC BY-NC-SA 4.0 | Six formal-speech translations are a valuable annotation/reference pilot, not broad-domain supervision, canonical SIR, 3D motion, or commercial authorization |
+| [CARD / SLAASh](https://sites.google.com/gallaudet.edu/card/data) | Current ELAN templates and annotation-convention lineage, including ASL Signbank linkage | Public documentation/templates; exact rights must be preserved per downloaded artifact | Annotation infrastructure and conventions, not How2Sign glosses or a co-observed training corpus |
+| [ASL Signbank](https://aslsignbank.haskins.yale.edu/) | Controlled ID-gloss and lexical/phonological reference for future human annotation | Registration and manual approval; database is actively curated | Lexical reference does not provide sentence-level How2Sign timing, SIR supervision, or motion |
+| [ASL-LEX 2.0](https://asl-lex.org/download.html) | Downloadable lexical properties for 2,723 signs under the published database license | Database listed as CC BY-NC 4.0; its reference videos are expressly excluded from that license and may not be saved or reused without permission | English labels and lexical properties are not sentence annotations; video restrictions and noncommercial terms block deployment reuse |
+| [OpenASL](https://github.com/chevalierNoir/OpenASL) | Reproducible ASL→English research baseline and pointers to continuous online media | Repository states CC BY-NC-ND 4.0; third-party source-media rights and link stability require per-item verification | Wrong task direction and no authentic gloss/SIR, canonical 3D, or commercial path; cannot substitute for governed Phase-3 evidence |
 | [ASL Citizen](https://www.microsoft.com/en-us/research/project/asl-citizen/) | Community-sourced isolated-sign vocabulary and recognition challenge data | Downloadable; Microsoft asks prospective commercial users to contact `ASL_Citizen@microsoft.com` | Isolated recognition data cannot replace continuous language-to-motion co-observation |
 | [NVIDIA ASL dataset](https://www.nvidia.com/en-us/gated-resources/trustworthy-ai-american-sign-language/dataset/) | Raw videos, images, hand landmarks, body poses, and facial meshes after approval | Personal application requires acceptance of dataset and privacy terms; commercial scope unresolved | Gated and isolated-sign oriented; no locally verified schema or continuous linguistic annotations |
 | [SMPL-X](https://smpl-x.is.tue.mpg.de/modellicense.html) | Research body/hand/face parameterization and evaluation bridge | Standard license is non-commercial; commercial incorporation/training requires a separate license | A representation/rig is not observations or linguistic truth; standard terms do not permit the target deployment |
 | [MakeHuman core assets](https://static.makehumancommunity.org/about/license.html) | Candidate deployment rig assets published as CC0 | Publicly downloadable and potentially commercial, subject to exact asset/dependency inventory | Not locally qualified for ASL finger, face, eyelid, gaze, retargeting, or deterministic rendering fidelity |
 | [Gallaudet Motion Light Lab](https://gallaudet.edu/visual-language-visual-learning/ml2/) | Potential Deaf-centered co-design, qualified review, and 3D motion-capture expertise | Partnership inquiry required | No agreement, review protocol, capture protocol, or accessible-consent artifact exists yet |
 
-The preferred acquisition order is: (1) SignAvatars as a research-only 3D bridge;
-(2) ASLLRP continuous data as linguistic and multiview reference; (3) a qualified Deaf/ASL
-partnership; (4) an independently governed synchronized capture corpus with explicit
-research and commercial model-derivative terms; and (5) a commercially authorized rig.
-ASL Citizen and NVIDIA are auxiliary isolated-sign evidence, not substitutes for steps
-1–4.
+The preferred acquisition order is: (1) immediately pilot the Dennis Cokely EAF/MP4
+pair and CARD/SLAASh conventions in quarantine, without remapping labels; (2) pursue
+ASLLRP continuous data and ASL Signbank access as linguistic/multiview references;
+(3) obtain SignAvatars only as a research-only candidate 3D bridge after safe schema
+inspection; (4) establish a qualified Deaf/ASL partnership; (5) collect an independently
+governed synchronized corpus with explicit research and commercial model-derivative
+terms; and (6) qualify a commercially authorized rig. ASL-LEX, OpenASL, ASL Citizen,
+and NVIDIA are auxiliary evidence, not substitutes for the co-observed Phase-2/3 gates.
 
 ## 12. Secure source-specific data treatment
 
@@ -388,20 +395,32 @@ ASLLRP/SignStream tiers, preserve the source gloss labels and tier conventions v
 normalization must be a parallel, reversible layer. For all sources, a visually plausible
 fit remains an estimate with its own confidence and cannot overwrite the observations.
 
+For Cokely or ASLLRP EAF/XML, parse with DTD resolution, external entities, XInclude, and
+network access disabled; enforce byte, nesting-depth, tier-count, annotation-count, and
+text-length limits. Preserve `TIME_SLOT_ID`, millisecond values, tier names, participant/
+annotator metadata, controlled-vocabulary references, parent/ref-annotation chains, media
+descriptors, and source order before any derived normalization. Bind each EAF to the exact
+media hash rather than trusting a relative filename, reject dangling or cyclic references,
+and report overlapping, negative, reversed, or media-out-of-range intervals. A source ID-
+gloss remains an annotation under that source's convention; it must not be silently mapped
+to the project's SIR lexicon or treated as a How2Sign label.
+
 ## 13. Correspondence and access actions
 
 ### Sent and traceable
 
 - **How2Sign gloss request:** [issue #28](https://github.com/how2sign/how2sign.github.io/issues/28),
   opened from the project's authenticated GitHub account and still open as checked on
-  2026-09-10. It requests original EAF/lossless annotations, train/validation/test mapping,
-  tier conventions, timing, checksums/version, and license coverage.
+  2026-09-12, with zero replies/comments. It requests original EAF/lossless annotations,
+  train/validation/test mapping, tier conventions, timing, checksums/version, and license
+  coverage.
 - Existing upstream requests for [3D keypoints](https://github.com/how2sign/how2sign.github.io/issues/14),
   [RGB-D](https://github.com/how2sign/how2sign.github.io/issues/15), and
   [camera intrinsics](https://github.com/how2sign/how2sign.github.io/issues/26) remain open.
   Duplicate issues should not be created.
 - **SignAvatars schema request:** [issue #20](https://github.com/ZhengdiYu/SignAvatars/issues/20),
-  opened on 2026-09-10. It requests release/checksum identity, exact How2Sign mappings,
+  opened on 2026-09-10 and still open with zero replies/comments as checked on
+  2026-09-12. It requests release/checksum identity, exact How2Sign mappings,
   coordinate frames/units/camera conventions, validity masks, gaze/eyelid availability,
   and the supervision basis of facial parameters. It keeps license and commercial-use
   questions private, as directed by the project README.

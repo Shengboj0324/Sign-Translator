@@ -34,6 +34,13 @@ from .factorized import (
     representation_probe_accuracy, DominanceReport, run_dominance_experiment,
     TrainingRegimeResult,
 )
+from .supervision import (
+    PHASE3_ANNOTATION_SCHEMA_VERSION, SIRAnnotationOrigin, ArtifactKind,
+    GovernedArtifact, SourceEvidenceBinding, IndependentReviewAttestation,
+    GovernedSIRAnnotation, SupervisionBatchCertificate,
+    validate_annotation_against_sample, certify_supervision_batch,
+    PHASE3_UNSOLVED_BLOCKERS, Phase3ReadinessReport, current_phase3_readiness,
+)
 
 __all__ = [
     "PlanVocabulary", "SignPlan", "SemanticFrame", "NonmanualSpan",
@@ -51,4 +58,10 @@ __all__ = [
     "EvidenceEncoder", "ContentHead", "HeavyDecoder", "factorized_train",
     "joint_train", "representation_probe_accuracy", "DominanceReport",
     "run_dominance_experiment", "TrainingRegimeResult",
+    "PHASE3_ANNOTATION_SCHEMA_VERSION", "SIRAnnotationOrigin", "ArtifactKind",
+    "GovernedArtifact", "SourceEvidenceBinding", "IndependentReviewAttestation",
+    "GovernedSIRAnnotation", "SupervisionBatchCertificate",
+    "validate_annotation_against_sample", "certify_supervision_batch",
+    "PHASE3_UNSOLVED_BLOCKERS", "Phase3ReadinessReport",
+    "current_phase3_readiness",
 ]

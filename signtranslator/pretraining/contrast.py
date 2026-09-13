@@ -3,7 +3,7 @@
 The document's L_NCE is exactly the symmetric InfoNCE already in
 `models/alignment.py`; it is REUSED here, not reimplemented. This module adds
 retrieval recall@k and the explicit-negatives InfoNCE (wav2vec-2 form: one positive
-+ K distractors) that the linguistic hard negatives (stage 11d) plug into.
++ K distractors) that the synthetic matched negatives (stage 11d) plug into.
 """
 
 from __future__ import annotations

@@ -1,15 +1,14 @@
-"""Controllable ASL grammar builder for the required minimal-pair tests.
+"""Synthetic temporal-graph fixtures for implementation-level perturbation tests.
 
-The document requires minimal pairs for negation, yes/no vs WH questions,
-topicalization, conditionals, aspect, plural reference, and role shift; plus
-spatial-locus persistence across multi-sentence discourse and OOV coverage via
-fingerspelling.
+The historical specification names perturbation categories such as negation,
+question type, topicalization, aspect, reference, and role shift. Here they are
+only fixture fields used to exercise typed graph behavior.
 
-As in the doc-02 counterfactual work, the *reference* builder is a deterministic,
-rule-based oracle: a pure function from grammatical features to an SIR. Because it
-is a function, flipping exactly one feature and diffing the SIRs reveals precisely
-which SIR fields that feature licenses to change -- the minimal-pair property.
-A learned model can never establish this exactly; a controllable oracle can.
+The builder is a deterministic pure function, so flipping one input field and
+diffing the outputs reveals exactly which implementation fields changed. It is
+not a linguistic oracle, a reference ASL grammar, or human annotation evidence.
+Its hard-coded mappings are usable only for software invariants until qualified
+ASL reviewers validate or replace them under a governed convention.
 """
 
 from __future__ import annotations
@@ -21,7 +20,7 @@ from typing import Dict, List, Optional, Sequence, Set, Tuple
 from .sir import EventKind, EdgeType, SIREvent, SIREdge, SIRGraph
 from .nonmanual import MarkerSpan
 
-# Non-manual marker ids (ASL grammatical markers).
+# Fixture marker ids; qualified-ASL meaning has not been established.
 NM_NEG = 0
 NM_WH = 1
 NM_YN = 2
@@ -44,7 +43,7 @@ class QuestionType(Enum):
 
 @dataclass(frozen=True)
 class GrammarFeatures:
-    """Grammatical content to be realised as ASL, independent of surface form."""
+    """Synthetic input fields for deterministic graph construction."""
 
     predicate: int
     subject: Optional[int] = None      # referent id
@@ -65,8 +64,8 @@ class GrammarFeatures:
         return out
 
 
-#: for each feature, the SIR fields it is licensed to change (a minimal pair
-#: flipping this feature must change nothing outside this set).
+#: Implementation-local perturbation contract. This table is not evidence that
+#: the listed changes are linguistically complete or correct for ASL.
 LICENSED: Dict[str, Set[str]] = {
     "predicate": {"manual_labels"},
     "subject": {"referents", "loci", "manual_labels", "edges"},
@@ -75,19 +74,19 @@ LICENSED: Dict[str, Set[str]] = {
     "question": {"nonmanual"},
     "topicalized": {"order", "nonmanual"},       # fronting reorders + topic marker
     "conditional": {"nonmanual"},
-    "aspect": {"durations"},                     # aspect changes timing, not order
-    "plural_subject": {"manual_labels"},         # plural morphology on the sign
-    "role_shift": {"nonmanual", "loci"},         # body shift + spatial referencing
+    "aspect": {"durations"},                     # fixture duration perturbation
+    "plural_subject": {"manual_labels"},         # fixture label perturbation
+    "role_shift": {"nonmanual", "loci"},         # fixture marker/locus perturbation
 }
 
-# Lexeme id conventions for the toy ASL lexicon.
+# Arbitrary fixture identifiers; these are not entries in a validated ASL lexicon.
 _LEX_BASE = 10           # predicate signs start here
 _LEX_REF = 20            # referent-naming signs
 _LEX_PLURAL_INFLECT = 100  # offset selecting the plural-inflected lexeme
 
 
 class ControllableASLBuilder:
-    """Deterministic GrammarFeatures -> SIRGraph."""
+    """Historical API name for a deterministic synthetic SIR fixture builder."""
 
     def __init__(self, num_loci: int = 7, unit_dur: float = 1.0,
                  gap: float = 0.0) -> None:
@@ -106,7 +105,7 @@ class ControllableASLBuilder:
         else:
             loci = dict(locus_assignment)
 
-        # --- manual event order (ASL topic-comment; object fronts if topicalized)
+        # --- declared fixture order; this is not a validated ASL ordering rule
         order: List[Tuple[str, int]] = []      # (role, referent-or-None)
         if feats.topicalized and feats.object is not None:
             order.append(("object", feats.object))
@@ -131,10 +130,8 @@ class ControllableASLBuilder:
                 label = _LEX_BASE + feats.predicate
             else:
                 label = _LEX_REF + (ref if ref is not None else 0)
-                # Plural = morphological inflection of the subject sign
-                # (reduplication selects a plural-marked lexeme). Modelled as a
-                # distinct lexeme id, so it changes the LABEL only -- no extra
-                # event, no reorder, no timing change.
+                # A distinct fixture label exercises a label-only perturbation;
+                # it does not claim a valid ASL plural realization.
                 if (role == "subject" and feats.plural_subject
                         and ref is not None):
                     label += _LEX_PLURAL_INFLECT
@@ -249,11 +246,10 @@ def minimal_pair(builder: ControllableASLBuilder, base: GrammarFeatures,
 # ---------------------------------------------------------------------------
 def build_discourse(builder: ControllableASLBuilder,
                     sentences: Sequence[GrammarFeatures]) -> List[SIRGraph]:
-    """Realise a multi-sentence discourse with PERSISTENT referent loci.
+    """Exercise persistent referent-locus bookkeeping across fixture graphs.
 
-    A referent introduced in sentence 1 keeps its spatial locus in later
-    sentences -- a core ASL discourse property. Loci are assigned once, in order
-    of first mention, and reused.
+    Loci are assigned once, in order of first mention, and reused. This verifies
+    implementation state persistence, not linguistic adequacy.
     """
     assignment: Dict[int, int] = {}
     graphs: List[SIRGraph] = []
@@ -278,11 +274,10 @@ def locus_of_referent(graph: SIRGraph, referent: int) -> Optional[int]:
 def realise_with_fingerspelling(labels: Sequence[int], lexicon,
                                 start: float = 0.0, unit: float = 1.0
                                 ) -> SIRGraph:
-    """Realise a token sequence, fingerspelling any out-of-lexicon item.
+    """Build a fixture sequence, marking out-of-lexicon items as FINGERSPELL.
 
-    Every token becomes a manual event; a token absent from the lexicon is a
-    FINGERSPELL event rather than a (hallucinated) lexical sign, so names and OOV
-    terms are always covered.
+    This tests the explicit OOV branch. It does not prove that arbitrary integer
+    labels have a valid fingerspelled realization.
     """
     events: List[SIREvent] = []
     edges: List[SIREdge] = []

@@ -1,8 +1,8 @@
 """Integration + cycle stress for the facial/non-manual layer.
 
 Wires non-manual events into the Doc-03 SIR (validated), articulates them to a
-FLAME expression sequence, distinguishes a minimal pair through the whole chain,
-and runs a determinism/finiteness cycle-stress loop.
+FLAME expression sequence, distinguishes a synthetic marker-label fixture through
+the whole chain, and runs a determinism/finiteness cycle-stress loop.
 """
 
 import pytest
@@ -37,17 +37,15 @@ def test_nonmanual_events_land_in_valid_sir():
     assert scope.target == 0                                # scopes over the manual event
 
 
-def test_scope_containment_is_a_loss_not_a_structural_rule():
-    """validate_sir checks STRUCTURE (source non-manual, target manual); interval
-    containment is enforced by the differentiable scope loss (Doc-03), not the
-    structural validator. A non-containing scope is structurally valid but the scope
-    loss is positive."""
+def test_scope_containment_is_both_a_validity_rule_and_a_loss():
+    """A contradictory scope is rejected; the loss still supplies trainable signal."""
     import torch
     from signtranslator.facial_nmm.losses import scope_loss
     manual = _manual()                                       # manual [1, 2]
-    nm = [NonmanualEvent(Channel.HEAD, Marker.NEG, 1.0, t_s=1.2, t_e=1.5)]   # inside, not containing
+    # Marker lies inside the manual interval rather than containing it.
+    nm = [NonmanualEvent(Channel.HEAD, Marker.NEG, 1.0, t_s=1.2, t_e=1.5)]
     g = build_sir_with_nonmanual(manual, nm, scope_targets=[0])
-    assert validate_sir(g) == []                             # structurally valid
+    assert "scope_time_contradiction" in validate_sir(g)
     # but the marker [1.2,1.5] does NOT contain the manual [1,2] -> containment loss > 0
     loss = scope_loss(torch.tensor([1.2]), torch.tensor([1.5]),
                       torch.tensor([1.0]), torch.tensor([2.0]))
@@ -69,11 +67,10 @@ def test_events_rasterise_and_articulate():
 
 
 # ---------------------------------------------------------------------------
-# minimal pair through the chain
+# synthetic marker-label comparison through the chain
 # ---------------------------------------------------------------------------
-def test_minimal_pair_changes_sir_meaning():
-    """Identical manual event, different non-manual marker -> different SIR labels
-    (the meaning changes) while the manual channel is untouched."""
+def test_marker_fixture_changes_only_nonmanual_sir_labels():
+    """Different fixture markers change labels while leaving manual events intact."""
     manual = _manual()
     yn = build_sir_with_nonmanual(
         manual, [NonmanualEvent(Channel.BROW, Marker.YN_Q, 1.0, 0.5, 2.5)], [0])
@@ -81,7 +78,7 @@ def test_minimal_pair_changes_sir_meaning():
         manual, [NonmanualEvent(Channel.BROW, Marker.WH_Q, 1.0, 0.5, 2.5)], [0])
     nm_yn = [e.label for e in yn.events if e.kind == EventKind.NONMANUAL]
     nm_wh = [e.label for e in wh.events if e.kind == EventKind.NONMANUAL]
-    assert nm_yn != nm_wh                                    # different meaning
+    assert nm_yn != nm_wh                                    # different marker labels
     # the manual channel is identical (same hands)
     man_yn = [e.label for e in yn.events if e.kind == EventKind.MANUAL]
     man_wh = [e.label for e in wh.events if e.kind == EventKind.MANUAL]

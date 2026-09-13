@@ -102,9 +102,10 @@ Wires the above into one module, exposes the joint training `forward` and the
 
 - **Real perception:** feed MediaPipe Holistic / MMPose / SMPL-X keypoints into
   `STGCNEncoder` (adjust `num_joints` and the edge list in `skeleton/graph.py`).
-- **Real language/speech:** implement `TextEncoder` / `SpeechEncoder` wrapping
-  Whisper, wav2vec2, SeamlessM4T, or an LLM semantic planner (English → gloss
-  reordering) and pass it to `SignTranslator(text_encoder=...)`.
+- **Real language/speech:** implement `TextEncoder` / `SpeechEncoder` wrapping a
+  justified speech/language backend and connect it only through governed,
+  independently validated plan/SIR supervision. The current `GlossPlanner` is a
+  target-token mechanism, not evidence of English→ASL or English→gloss translation.
 - **Richer generation:** replace the pooled-latent conditioning with
   cross-attention to the full language token sequence; add a variational or
   latent-diffusion stage; attach an SMPL-X / Gaussian-splatting renderer to turn

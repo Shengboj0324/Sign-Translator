@@ -2,12 +2,13 @@
 
 Implements `11_self_supervised_pretraining.md` (see docs/PRETRAINING.md): masking
 strategies with an interpolation-defeating certificate, MAE-style masked motion
-modeling, cross-modal contrast with linguistically-grounded hard negatives and a
+modeling, cross-modal contrast with synthetic matched negatives and a
 shortcut falsification, temporal/part consistency with a handedness-preserving
 augmentation guard, an evidence battery (probes, scaling, cross-signer retrieval,
 leakage, loss-vs-usefulness dissociation), and the five-stage curriculum. Reuses
-Doc-04 (rotations/LinearProbe), Doc-03 (minimal-pair oracle), Doc-06 (VQ tokens),
-`models/alignment.py` (InfoNCE), and Doc-10 (leakage-free split).
+Doc-04 (rotations/LinearProbe), Doc-03 (synthetic perturbation fixtures), Doc-06 (VQ tokens),
+`models/alignment.py` (InfoNCE), and Doc-10 (leakage-free split). Synthetic
+fixture labels and perturbations are not qualified-ASL evidence.
 """
 
 from .masking import (
@@ -42,6 +43,11 @@ from .curriculum import (
     Stage, CurriculumStage, CURRICULUM, is_monotone_unlock, stage_objective,
     FrozenBaseline,
 )
+from .dependence import (
+    REQUIRED_VIDEO_INTERVENTIONS, DependenceTestConfig, InterventionAudit,
+    HeldOutInterventionScores, InterventionResult, VideoDependenceCertificate,
+    exact_one_sided_sign_pvalue, evaluate_video_dependence,
+)
 
 __all__ = [
     "random_point_mask", "span_mask", "part_mask", "semantic_boundary_mask",
@@ -62,4 +68,7 @@ __all__ = [
     "loss_usefulness_dissociation",
     "Stage", "CurriculumStage", "CURRICULUM", "is_monotone_unlock",
     "stage_objective", "FrozenBaseline",
+    "REQUIRED_VIDEO_INTERVENTIONS", "DependenceTestConfig", "InterventionAudit",
+    "HeldOutInterventionScores", "InterventionResult", "VideoDependenceCertificate",
+    "exact_one_sided_sign_pvalue", "evaluate_video_dependence",
 ]

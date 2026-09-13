@@ -2,7 +2,7 @@
 
 This document fixes **all** mathematics of the pretraining layer before any code, in
 the discipline of docs 01–10. It implements `11_self_supervised_pretraining.md`:
-masked motion modeling, cross-modal contrast with **linguistically-grounded hard
+masked motion modeling, cross-modal contrast with **controlled synthetic field
 negatives**, temporal/part consistency, and an evidence battery whose central rule
 is *a lower pretraining loss alone is not evidence of linguistic usefulness*.
 
@@ -12,17 +12,17 @@ is *a lower pretraining loss alone is not evidence of linguistic usefulness*.
   `L_NCE`), `ContrastiveAligner` (learnable clamped log-temperature, CLIP), and
   `ProjectionHead`.
 * `pose/leakage.py` — `LinearProbe` (closed-form ridge) and
-  `normalised_recovery_error` for the linguistic probes AND the signer/background
-  leakage tests.
+  `normalised_recovery_error` for controlled-label probes and signer/background
+  leakage-test harnesses.
 * `motion_transformer/quantizer.py` — `VectorQuantizer` supplies discrete latent
   **token targets** `z_i` for masked modeling (wav2vec-2 / MAE style).
 * `pose/rotations.py` — `rotation_6d_to_matrix`, `geodesic_distance` for masked
   **rotation** reconstruction.
 * `grammar/grammar_tests.py` — `GrammarFeatures`, `ControllableASLBuilder`,
-  `minimal_pair`, `LICENSED`: the oracle that flips exactly one licensed linguistic
-  feature — the hard-negative generator.
-* `data_engineering/splitting.py` — `grouped_split` for leakage-free **cross-signer**
-  retrieval.
+  `minimal_pair`, `LICENSED`: a synthetic field-isolation fixture. It is not an ASL
+  oracle, human reference, or proof of a linguistic minimal pair.
+* `data_engineering/splitting.py` — `grouped_split` for declared group isolation;
+  real cross-signer claims additionally require authoritative signer identifiers.
 
 Primary sources studied:
 
@@ -114,15 +114,15 @@ Reused, not reimplemented. Proved: perfectly aligned unit embeddings drive `L_NC
 as `τ→0`; the minimiser matches `i↔i`; the temperature clamp caps the logit scale
 (CLIP). Retrieval `recall@k` is the evaluation, not the loss value.
 
-## 4. Linguistically-grounded hard negatives + shortcut falsification (innovation)
+## 4. Synthetic field-controlled negatives + shortcut falsification
 
-The document requires negatives "differing in negation, question type, entity,
-handshape, direction, or number", warning that random negatives "permit shortcut
-learning from signer, background, or sentence length". We realise this with the
-Doc-03 oracle: `hard_negative(base, dimension)` flips exactly one `GrammarFeatures`
-field (`negated`, `question`, `object`/entity, `aspect`, `plural_subject`,
-`role_shift`) and, via `LICENSED`, changes **only** the SIR fields that feature
-licenses — so a hard negative is a *minimal linguistic contrast*, not a random clip.
+The document requests negatives that differ in declared fields while holding shortcuts
+constant. We implement only a controlled software fixture:
+`hard_negative(base, dimension)` flips exactly one declared `GrammarFeatures` field
+(`negated`, `question`, `object`/entity, `aspect`, `plural_subject`, `role_shift`) and
+checks the corresponding synthetic SIR-field differences. This proves field isolation
+inside the fixture; it does not prove that the pair is a grammatical ASL contrast or a
+valid training negative.
 
 **Shortcut falsification (proved).** Construct an embedding that encodes **only a
 shortcut** (signer id, or clip length). Then:
@@ -133,9 +133,9 @@ shortcut** (signer id, or clip length). Then:
   shortcut is identical for positive and negative → InfoNCE is large (the shortcut
   fails).
 
-So a low random-negative loss is **not** evidence of linguistic content, and hard
-negatives are what force it — the document's claim, made a theorem on controllable
-embeddings.
+So a low random-negative loss is **not** evidence of content dependence. Matched
+negatives defeat the constructed shortcut in this controlled example, but qualified
+human evidence is still required to call future real pairs linguistic contrasts.
 
 ## 5. Temporal and part consistency + augmentation guard (innovation)
 
@@ -145,10 +145,10 @@ embeddings.
   a monotone timestamp.
 * **Multi-view alignment** — RGB, 2D pose, 3D pose, and cropped-hand views of the
   **same** clip are positives; different clips are negatives (InfoNCE across views).
-* **Handedness/direction-preserving augmentation guard (innovation).** Appearance
-  augmentations (scale, translate, temporal jitter, additive noise) preserve
-  linguistic content and are allowed. A **horizontal flip** swaps handedness and
-  reverses spatial loci / agreement-verb direction — it changes meaning. `augment`
+* **Handedness/direction-preserving augmentation guard.** Appearance augmentations
+  (scale, translate, temporal jitter, additive noise) preserve selected declared
+  fields in the synthetic fixture. A **horizontal flip** swaps represented handedness
+  and reverses represented spatial loci / direction. `augment`
   **raises** on a flip unless a `direction_relabel` callback is supplied that
   transforms handedness, loci, and directional labels; a structural refusal
   (extends Doc-08's separation discipline), proved by construction.
@@ -157,13 +157,14 @@ embeddings.
 
 Per the document, evidence is probes and retrieval, never loss:
 
-* **Linear probes** — freeze features, fit `LinearProbe` for handshape / non-manual
-  markers, report accuracy vs a chance baseline.
+* **Linear probes** — freeze features, fit `LinearProbe` for declared controlled
+  labels, and report accuracy vs a chance baseline. Real handshape/non-manual claims
+  require governed annotations.
 * **Low-resource scaling curve** — probe accuracy vs number of labelled examples;
   the harness reports the curve (a *linearly decodable* feature set yields a higher
   curve than a scrambled one — proved on synthetic features).
-* **Cross-signer retrieval** — split by signer with the Doc-10 `grouped_split`
-  (no signer spans train/test), retrieve across signers, report recall@k.
+* **Cross-signer retrieval harness** — when authoritative signer keys exist, split by
+  signer with the Doc-10 `grouped_split`, retrieve across signers, and report recall@k.
 * **Leakage test** — fit a signer/background probe on frozen features; **high**
   signer-accuracy is leakage (bad). We report it and flag it; low is the goal.
 * **Loss-vs-usefulness dissociation (innovation).** Two feature sets are constructed
@@ -183,9 +184,9 @@ schedule is monotone in unlocked capacity and a frozen snapshot is bit-identical
 ## 8. Integration + innovations
 
 Masked targets come from the Doc-06 VQ; rotations from Doc-04; contrast from
-`models/alignment.py`; hard negatives from the Doc-03 oracle; probes/leakage from
-Doc-04; the cross-signer split from Doc-10. Innovations: the interpolation-defeating
-mask certificate, linguistically-grounded hard negatives with a shortcut
+`models/alignment.py`; controlled negatives from the Doc-03 synthetic fixture;
+probes/leakage from Doc-04; the grouped split from Doc-10. Mechanisms include the
+interpolation-defeating mask certificate, field-controlled negatives with a shortcut
 falsification, the handedness/direction-preserving augmentation guard, and the
 loss-vs-linguistic-usefulness dissociation harness.
 
@@ -197,7 +198,7 @@ loss-vs-linguistic-usefulness dissociation harness.
 | 11a | masking strategies + difficulty certificate | done (10 tests) |
 | 11b | masked motion modeling objective | done (9 tests) |
 | 11c | cross-modal symmetric InfoNCE alignment | done (8 tests) |
-| 11d | linguistic hard negatives + shortcut falsification | done (17 tests) |
+| 11d | synthetic field negatives + shortcut falsification | done (mechanism tests) |
 | 11e | temporal/part consistency + augmentation guard | done (8 tests) |
 | 11f | evidence battery + loss-vs-usefulness dissociation | done (7 tests) |
 | 11g | curriculum orchestration + frozen baselines | done (7 tests) |
@@ -227,14 +228,14 @@ separates prediction from copying. Latent-token targets come from the frozen Doc
 VQ; rotations from the Doc-04 geodesic; the wav2vec-2 diversity term is minimised at
 uniform codebook usage (`−log K`).
 
-**The hard-negative claim is a theorem here, and the oracle corrected two premises.**
+**The synthetic shortcut result is exact within its fixture, not a linguistic theorem.**
 (1) A signer (or length-binned) shortcut drives random-negative InfoNCE to `~0` but
 fails on signer/length-matched hard negatives (`log 3`), while a content
 representation succeeds on both — exactly the document's warning, made provable on
-controllable embeddings. (2) An **entity** swap is a genuine single-feature contrast
+controllable embeddings. (2) An **entity** swap is a declared single-field contrast
 but additionally reorders naming signs (`order` changes), so it is *not* a subset of
-the pre-declared licensed fields; the mining guarantee is "genuine single-feature
-contrast (SIRs differ)", with `is_licensed_contrast` the stronger property that holds
+the pre-declared licensed fields; the fixture guarantee is "declared one-field
+contrast (SIRs differ)", with `is_licensed_contrast` the stronger fixture property that holds
 for the other five dimensions. (3) A raw scalar length embedding is destroyed by the
 InfoNCE L2 normalisation, so the length shortcut is honestly implemented as a binned
 one-hot that survives it.
@@ -244,17 +245,19 @@ views do NOT retrieve to each other (that is what the learned projection heads a
 for); the honest test is that paired views in a shared space align (recall@1 = 1)
 while a shuffled pairing does not.
 
-**The augmentation guard is structural.** Appearance augmentations (scale, translate,
-noise) preserve content and never require relabelling; a horizontal flip **raises**
+**The augmentation guard is structural.** Declared appearance augmentations (scale,
+translate, noise) preserve the tested fixture fields; a horizontal flip **raises**
 unless a `LinguisticDirection` is supplied, and flipping mirrors the x-coordinate
 while swapping handedness, negating loci, and reversing agreement — a consistent
-involution (`flip∘flip = id`). Meaning-changing geometry cannot be applied silently.
+involution (`flip∘flip = id`). This proves relabeling mechanics, not which transforms
+preserve meaning in authentic ASL data.
 
 **Loss is dissociated from usefulness by construction.** Two feature sets share a
 block that reconstructs the input identically (equal reconstruction loss to `1e-9`)
 but differ in a second block — label-decodable vs noise — giving a `>0.5` probe-
-accuracy gap. Equal pretraining loss provably does not imply equal linguistic
-usefulness; probes and cross-signer retrieval decide, and the signer leakage probe
+accuracy gap. Equal pretraining loss provably does not imply equal downstream
+usefulness; governed probes and cross-signer retrieval would provide empirical evidence,
+and the signer leakage probe
 flags representations that beat chance on signer identity.
 
 **Honest scope holds.** No pretrained weights or real signing corpora are used
@@ -262,6 +265,22 @@ flags representations that beat chance on signer identity.
 motion/token/embedding streams. Claims requiring real training (that pretraining
 *raises* probe accuracy on real signing) are implemented as harnesses and stated as
 such. Innovations delivered: the interpolation-defeating mask certificate,
-linguistically-grounded hard negatives with a shortcut falsification, the
+synthetic field-controlled negatives with a shortcut falsification, the
 handedness/direction-preserving augmentation guard, and the loss-vs-usefulness
 dissociation harness.
+
+## 12. Phase-3 held-out video-dependence certificate
+
+`pretraining/dependence.py` is an evaluator only; it does not train a representation or
+create labels. It requires immutable hashes for the model, preregistration, split, and
+each intervention manifest, plus held-out per-example scores for aligned input versus
+blank video, source-deranged shuffled video, order-corrupted video, and text-only input.
+The decision rule requires a user-preregistered positive minimum median score drop, a
+minimum effective-pair count, and an exact one-sided paired sign test for every
+intervention under a four-test Bonferroni correction. Training and held-out source and
+signer identifiers must be disjoint.
+
+Passing this certificate would show sensitivity to the supplied video under the declared
+score and interventions. It would not establish causal understanding, ASL validity,
+translation quality, motion quality, or deployment readiness. No real model has yet
+passed this gate; that Phase-3 blocker remains unsolved.

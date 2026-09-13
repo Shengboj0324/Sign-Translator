@@ -1,13 +1,12 @@
-"""Semantic planner: English tokens -> sign-language gloss sequence.
+"""Historical ``GlossPlanner`` API: source tokens -> target token IDs.
 
-Sign languages have their own grammar and word order (e.g. topic-comment
-structure), so translation is not a word-for-word mapping. This module is a
-sequence-to-sequence Transformer that reorders/rewrites a spoken-language token
-sequence into a gloss sequence -- the role the spec assigns to an LLM semantic
-planner, implemented here as a compact, trainable encoder-decoder that can be
-swapped for a large model behind the same interface.
+This is a generic sequence-to-sequence Transformer mechanism. The historical
+class and parameter names call its outputs ``gloss``, but integer outputs are
+not authentic sign-language gloss without governed human target annotations,
+a frozen convention, and qualified validation. Synthetic training verifies only
+optimization and tensor behavior; it does not establish English-to-ASL translation.
 
-Token convention (gloss/target vocabulary): ``PAD=0``, ``BOS=1``, ``EOS=2``,
+Token convention (target vocabulary): ``PAD=0``, ``BOS=1``, ``EOS=2``,
 content tokens ``>= 3``.
 """
 

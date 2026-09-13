@@ -18,22 +18,25 @@ the hands carry manual signs while the face and body carry non-manual markers
 (negation, question, topic, conditional, role shift) that scope *over intervals
 of time*, co-occurring with the manual stream. A flat gloss string cannot express
 this. So the layer's central object is a **Structured Intermediate Representation
-(SIR)**: a temporal graph whose gloss is merely one observed *projection*.
+(SIR)**: a temporal graph from which code can derive a deterministic manual-label
+*projection*. That projection is not an observed or authentic gloss annotation.
 
 This sits between the doc-02 typed plan (semantic content) and the motion
-generator: plan → **SIR** (grammaticalised, timed, multi-channel) → gloss
-projection / motion conditioning.
+generator: plan → **SIR** (typed, timed, multi-channel) → manual-label
+projection / motion conditioning. Whether a particular plan or SIR is valid ASL
+requires governed qualified-human evidence that the current synthetic fixtures do not
+provide.
 
 ## 2. The SIR temporal graph
 
 `G = (V, E)`.
 
-* **Nodes** `V` are *events*, each either **manual** (a lexical sign, a
+* **Nodes** `V` are *events*, each either **manual** (a declared lexical label, a
   classifier/depicting construction, or a fingerspelled item) or **non-manual**
   (a facial/body marker). Every event carries a half-open time interval
   `[t^s, t^e)` with `t^s < t^e`.
 * **Edges** `E` are typed:
-  `PRECEDENCE` (i before j), `OVERLAP` (co-temporal), `SCOPE` (a non-manual
+  `PRECEDENCE` (i ends no later than j begins), `OVERLAP` (co-temporal), `SCOPE` (a non-manual
   contains a manual span — Allen *during*), `COREF` (two events refer to the same
   discourse referent), `LOCUS` (an event is placed at a spatial locus in signing
   space).
@@ -50,14 +53,14 @@ projection / motion conditioning.
 7. every manual event is a lexicon entry or fingerspelled (the hallucination
    rule, inherited).
 
-### 2.2 Gloss as a projection
+### 2.2 Manual labels as a projection
 
-A gloss sequence is the **manual events in a linear order consistent with the
+A manual-label sequence is the **manual events in a linear order consistent with the
 PRECEDENCE edges** — a topological sort of the manual sub-DAG. Because several
-topological orders can exist, the projection is *one* observed gloss, not the
-graph; the graph carries strictly more (timing, overlap, non-manual scope).
-Tested: the projection is a valid topological order and every gloss token is a
-manual event.
+topological orders can exist, the projection is one deterministic linearization, not
+an observed gloss; the graph carries more structure (timing, overlap, non-manual
+scope). Tested: the projection is a valid topological order and every returned ID
+belongs to a manual event. This establishes graph behavior only, not ASL validity.
 
 ## 3. Temporal mathematics — Allen's interval algebra
 
@@ -74,8 +77,9 @@ finishes(X,Y):   y^s < x^s, x^e = y^e    finished-by
 equals(X,Y):     x^s = y^s, x^e = y^e
 ```
 
-`SCOPE` is Allen **during/contains**: the non-manual interval *contains* the
-manual span. `PRECEDENCE` is **before**. `OVERLAP` is the disjunction
+`SCOPE` uses inclusive containment in the structural validator: the non-manual
+interval contains or shares a boundary with the manual span. `PRECEDENCE` accepts
+**before or meets** (`source.end <= target.start`). `OVERLAP` is the disjunction
 {overlaps, starts, during, finishes, equals, and their inverses} — i.e. the
 intervals intersect.
 
@@ -220,7 +224,7 @@ graph-aware Transformer, not a pretrained AMR parser.
 | Stage | Content | Status |
 |---|---|---|
 | 3.0 | design + math spec | done |
-| 3a | SIR temporal graph + validation + gloss projection | done (20 tests) |
+| 3a | SIR temporal graph + validation + manual-label projection | done (mechanism tests) |
 | 3b | Allen interval algebra + differentiable temporal losses | done (36 tests) |
 | 3c | relation-biased graph attention + SIR decoder | done (12 tests) |
 | 3d | non-manual multilabel interval prediction | done (13 tests) |
@@ -247,11 +251,13 @@ field). Plural is modelled as morphological inflection (a plural-marked lexeme),
 not an appended sign, so it is genuinely "manual-label only".
 
 **The plan→SIR bridge is faithful by construction and measured, not asserted.**
-The manual gloss projected out of the SIR equals the plan's manual-unit order for
+The manual-label projection of the SIR equals the plan's declared manual-unit order for
 all 200 randomised stress plans; every non-manual span survives as a scoped
 event; fingerspelled units become FINGERSPELL, never hallucinated signs. The
 bridge encodes only what the plan specifies — it does **not** invent a
 unit→referent map (loci/coref flow through only when a caller supplies that map).
+This is an implementation consistency result, not proof that the declared labels,
+order, or scopes are correct ASL.
 
 **A quantified, explained residual, not zero.** On a valid plan the temporal loss
 is not 0 but exactly `4·ε`: contiguous signs *meet* (each of 2 precedence edges

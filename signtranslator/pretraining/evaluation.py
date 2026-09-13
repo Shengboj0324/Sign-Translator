@@ -1,6 +1,6 @@
-"""Evidence battery — loss is not usefulness (Doc-11 §6).
+"""Evaluation harness — loss is not downstream usefulness (Doc-11 §6).
 
-Linear probes for linguistic attributes, low-resource scaling curves, cross-signer
+Linear probes for declared labels, low-resource scaling curves, cross-signer
 retrieval, signer/background leakage tests, and the loss-vs-usefulness dissociation:
 two feature sets with the SAME reconstruction loss but DIFFERENT probe accuracy.
 Reuses the Doc-04 `LinearProbe`. A lower pretraining loss alone is not evidence.
@@ -103,7 +103,7 @@ def loss_usefulness_dissociation(n: int = 200, num_classes: int = 4,
 
     Both feature sets share a block that perfectly reconstructs the input `x` (so a
     reconstruction decoder reading that block has identical loss on both). They
-    differ only in a second block: set A encodes the linguistic label (linearly
+    differ only in a second block: set A encodes the fixture label (linearly
     decodable), set B encodes noise. A linear probe recovers the label from A but
     not from B — so equal reconstruction loss does NOT imply equal usefulness.
     """
