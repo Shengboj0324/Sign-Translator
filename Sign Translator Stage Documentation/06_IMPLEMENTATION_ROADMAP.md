@@ -142,6 +142,19 @@ multi-channel state; independent qualified-ASL validation; and commercial traini
 deployment rights. No downstream Phase-3/4/5 implementation may treat the software
 boundary as evidence that any of those blockers has been resolved.
 
+**Phase-3A linguistic-reference ingestion status (2026-09-13): secure software and one-item
+Cokely source compatibility verified; linguistic approval not started.** The fail-closed EAF
+reader preserves publisher-native tiers, untimed slots, and reference graphs; binds the exact
+EAF, publisher page, primary HD media, and auxiliary SD media; and emits compact canonical
+inspection artifacts without creating SIR or training labels. Its 27 focused adversarial
+tests and the complete 1,640-test repository suite pass under warnings-as-errors. The
+authentic *I Have a Dream* pilot contains 751 source annotations, nine of which have at least
+one publisher-unspecified endpoint that remains uninterpolated. Its security contract,
+hashes, and qualified-human mapping protocol are in
+`10_PHASE_3A_LINGUISTIC_REFERENCE_INGESTION.md`. This bounded result does not establish
+corpus-wide compatibility, project SIR validity, ASL correctness, commercial rights, or
+readiness for training.
+
 ### Phase 4 — multi-channel motion representation learning
 
 Train retrieval/interpolation, continuous autoencoder, and residual-token baselines on the

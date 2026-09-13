@@ -347,7 +347,7 @@ Official evidence:
 | [How2Sign](https://how2sign.github.io/) | Local continuous frontal RGB, 137-node 2D OpenPose, English alignment, certified pseudonymous signer grouping | Locally verified; CC BY-NC 4.0 research use; commercial use prohibited by current terms | Released local observations are 2D; English is not gloss; no qualified review; no commercial path |
 | [SignAvatars](https://github.com/ZhengdiYu/SignAvatars) | Requested SMPL-X body, articulated hands, jaw, expression, camera translation for continuous subsets | Request form; non-commercial research terms; commercial permission must be requested separately | Not acquired; source does not document explicit eye gaze; How2Sign text remains English translation, not gloss |
 | [ASLLRP / ASLLVD](https://www.bu.edu/asllrp/av/dai-asllvd.html) | Authentic gloss conventions, sign timing, start/end handshapes, native-signer tokens, four synchronized views; continuous corpora add non-manual tiers | Account/access process; research and education; commercial use requires explicit permission under [DAI terms](https://www.bu.edu/asllrp/dai-terms.html) | Linguistic reference rather than continuous metric 3D motion; not acquired or commercially authorized |
-| [Dennis Cokely Parallel Corpus](https://encompass.eku.edu/cokely_videos/) | Downloadable MP4/EAF examples with project-specific ID-gloss annotations and English–ASL idea-unit alignment | Publisher labels the collection CC BY-NC-SA 4.0 | Six formal-speech translations are a valuable annotation/reference pilot, not broad-domain supervision, canonical SIR, 3D motion, or commercial authorization |
+| [Dennis Cokely Parallel Corpus](https://encompass.eku.edu/cokely_videos/) | Downloadable MP4/EAF examples with project-specific ID-gloss annotations and English–ASL idea-unit alignment | One *I Have a Dream* EAF/HD/SD item is locally hash-bound; publisher labels the collection CC BY-NC-SA 4.0 | Six formal-speech translations are a valuable annotation/reference pilot, not broad-domain supervision, canonical SIR, 3D motion, or commercial authorization |
 | [CARD / SLAASh](https://sites.google.com/gallaudet.edu/card/data) | Current ELAN templates and annotation-convention lineage, including ASL Signbank linkage | Public documentation/templates; exact rights must be preserved per downloaded artifact | Annotation infrastructure and conventions, not How2Sign glosses or a co-observed training corpus |
 | [ASL Signbank](https://aslsignbank.haskins.yale.edu/) | Controlled ID-gloss and lexical/phonological reference for future human annotation | Registration and manual approval; database is actively curated | Lexical reference does not provide sentence-level How2Sign timing, SIR supervision, or motion |
 | [ASL-LEX 2.0](https://asl-lex.org/download.html) | Downloadable lexical properties for 2,723 signs under the published database license | Database listed as CC BY-NC 4.0; its reference videos are expressly excluded from that license and may not be saved or reused without permission | English labels and lexical properties are not sentence annotations; video restrictions and noncommercial terms block deployment reuse |
@@ -358,9 +358,9 @@ Official evidence:
 | [MakeHuman core assets](https://static.makehumancommunity.org/about/license.html) | Candidate deployment rig assets published as CC0 | Publicly downloadable and potentially commercial, subject to exact asset/dependency inventory | Not locally qualified for ASL finger, face, eyelid, gaze, retargeting, or deterministic rendering fidelity |
 | [Gallaudet Motion Light Lab](https://gallaudet.edu/visual-language-visual-learning/ml2/) | Potential Deaf-centered co-design, qualified review, and 3D motion-capture expertise | Partnership inquiry required | No agreement, review protocol, capture protocol, or accessible-consent artifact exists yet |
 
-The preferred acquisition order is: (1) immediately pilot the Dennis Cokely EAF/MP4
-pair and CARD/SLAASh conventions in quarantine, without remapping labels; (2) pursue
-ASLLRP continuous data and ASL Signbank access as linguistic/multiview references;
+The preferred acquisition order is: (1) expand the passed one-item Dennis Cokely pilot to
+the remaining authorized items while preserving source-native labels; (2) pursue ASLLRP
+continuous data and ASL Signbank access as linguistic/multiview references;
 (3) obtain SignAvatars only as a research-only candidate 3D bridge after safe schema
 inspection; (4) establish a qualified Deaf/ASL partnership; (5) collect an independently
 governed synchronized corpus with explicit research and commercial model-derivative
@@ -404,6 +404,16 @@ media hash rather than trusting a relative filename, reject dangling or cyclic r
 and report overlapping, negative, reversed, or media-out-of-range intervals. A source ID-
 gloss remains an annotation under that source's convention; it must not be silently mapped
 to the project's SIR lexicon or treated as a How2Sign label.
+
+The implemented Phase-3A reader, immutable binding contract, qualified-human mapping
+protocol, and real-artifact stop rules are specified in
+`10_PHASE_3A_LINGUISTIC_REFERENCE_INGESTION.md`. As of 2026-09-13, one authentic Cokely
+EAF/HD-video/SD-video item and its publisher page are present under the read-only local
+data volume. They pass complete-inventory hashing, EAF 3.0 structural validation, exact
+descriptor binding, independent video inspection, deterministic ingestion, and warning-
+strict tests. This is a one-item source-compatibility result only: corpus-wide compatibility,
+qualified-ASL mapping, linguistic validity, commercial authorization, and How2Sign label
+transfer remain unpassed.
 
 ## 13. Correspondence and access actions
 
