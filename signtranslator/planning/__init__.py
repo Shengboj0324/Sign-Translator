@@ -73,6 +73,23 @@ from .adjudication import (
     load_phase3b_batch_report,
     verify_phase3b_batch_report,
 )
+from .phase3c import (
+    PHASE3C_SCHEMA_VERSION,
+    CANONICAL_PHASE2_REPRESENTATION,
+    EvidenceRole,
+    ExternalEvidenceAttestation,
+    load_external_evidence_attestation,
+    LexicalMotionReview,
+    LexicalMotionEntry,
+    MotionLookupStatus,
+    MotionLookupResult,
+    LexicalMotionLibrary,
+    load_lexical_motion_library,
+    Phase3CWorkState,
+    Phase3CWorkItem,
+    Phase3CReadinessReport,
+    assess_phase3c_readiness,
+)
 
 __all__ = [
     "PlanVocabulary", "SignPlan", "SemanticFrame", "NonmanualSpan",
@@ -111,4 +128,11 @@ __all__ = [
     "load_eaf_source_catalog", "temporal_iou", "compare_submissions",
     "load_phase3b_case", "audit_phase3b_batch",
     "load_phase3b_batch_report", "verify_phase3b_batch_report",
+    "PHASE3C_SCHEMA_VERSION", "CANONICAL_PHASE2_REPRESENTATION",
+    "EvidenceRole", "ExternalEvidenceAttestation",
+    "load_external_evidence_attestation", "LexicalMotionReview",
+    "LexicalMotionEntry", "MotionLookupStatus", "MotionLookupResult",
+    "LexicalMotionLibrary", "load_lexical_motion_library",
+    "Phase3CWorkState", "Phase3CWorkItem", "Phase3CReadinessReport",
+    "assess_phase3c_readiness",
 ]

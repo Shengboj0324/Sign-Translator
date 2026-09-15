@@ -164,6 +164,15 @@ edge diagnostics retain exact support; and a deterministic batch audit cannot au
 training, commercial use, or linguistic validity. The complete contract and remaining human
 evidence gates are in `11_PHASE_3B_GOVERNED_MAPPING_AND_ADJUDICATION.md`.
 
+**Phase-3C pre-artifact software status (2026-09-14): implemented; empirical Phase-3 exit
+not approved.** The project now has a distinct canonical lexical-motion registry, strict
+external-evidence identities, fail-closed unknown/ambiguous/unauthorized motion lookup, and
+a conjunctive readiness assessment over governed supervision, paired-video intervention
+evidence, the canonical Phase-2 state, independent qualified-ASL validation, and separate
+research/commercial rights. The runtime report also labels every implementation deferred
+because its real source contract is absent. See
+`12_PHASE_3C_EVIDENCE_INTEGRATION.md`. This does not authorize Phase 4.
+
 ### Phase 4 — multi-channel motion representation learning
 
 Train retrieval/interpolation, continuous autoencoder, and residual-token baselines on the

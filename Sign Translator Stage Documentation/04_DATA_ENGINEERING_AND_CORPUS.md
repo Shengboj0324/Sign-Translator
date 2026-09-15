@@ -372,6 +372,11 @@ The implemented Phase 3B software treatment for an accepted EAF source is docume
 label-empty qualified-human workflow; it does not reinterpret any source ID-gloss as project
 SIR or training truth.
 
+The subsequent evidence-integration, lexical-motion, abstention, and artifact-blocker
+contracts are documented in `12_PHASE_3C_EVIDENCE_INTEGRATION.md`. That pre-artifact
+software boundary does not convert any current source into training-authorized SIR or
+canonical 3D motion.
+
 ## 12. Secure source-specific data treatment
 
 Every acquired source enters quarantine before the canonical schema:
