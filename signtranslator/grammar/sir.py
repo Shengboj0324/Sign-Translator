@@ -210,8 +210,14 @@ def validate_sir(graph: SIRGraph, num_loci: Optional[int] = None,
         return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
     def finite_number(value: object) -> bool:
-        return (isinstance(value, (int, float)) and not isinstance(value, bool)
-                and math.isfinite(float(value)))
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            return False
+        try:
+            converted = float(value)
+        except (OverflowError, TypeError, ValueError):
+            return False
+        return (math.isfinite(converted)
+                and (not isinstance(value, int) or int(converted) == value))
 
     valid_events: Dict[int, SIREvent] = {}
     for event in graph.events:

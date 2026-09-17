@@ -320,6 +320,18 @@ def test_lookup_never_silently_selects_unknown_ambiguous_or_unauthorized_motion(
     assert ambiguous.status is MotionLookupStatus.AMBIGUOUS_FORM
     assert ambiguous.selected_entry_id is None and ambiguous.abstained
 
+    mixed_scope = _library(
+        _entry(0, lexeme_id=4, form_id="form-a",
+               actions=("research_training",)),
+        _entry(1, lexeme_id=4, form_id="form-b",
+               actions=("commercial_deployment",)),
+    )
+    for action in ("research_training", "commercial_deployment"):
+        lookup = mixed_scope.lookup(4, action)
+        assert lookup.status is MotionLookupStatus.AMBIGUOUS_FORM
+        assert lookup.candidate_entry_ids == ("entry-0", "entry-1")
+        assert lookup.selected_entry_id is None and lookup.abstained
+
 
 def test_loader_rejects_noncanonical_duplicate_key_nonfinite_and_oversize_bytes():
     payload = _library(_entry()).canonical_bytes()

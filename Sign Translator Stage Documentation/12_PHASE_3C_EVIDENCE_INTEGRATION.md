@@ -52,7 +52,10 @@ action_not_authorized
 
 Only `resolved` carries a selected entry. The other three states abstain. There is no
 spelling fallback, identity motion, nearest English word, first-candidate selection, or
-generated substitute.
+generated substitute. Form ambiguity is evaluated over **all registered forms before**
+action authorization. If two forms exist and only one is permitted for an action, permission
+does not become an implicit linguistic form selector; lookup still abstains with
+`ambiguous_form`. Only a single registered form can resolve, and then only when authorized.
 
 The library is non-empty and canonically ordered. Entry IDs, `(lexeme_id, form_id)` pairs,
 and motion payload digests are unique. All entries share the exact convention, lexicon, and
@@ -142,6 +145,41 @@ Final verification on 2026-09-14 produced:
 These results accept the pre-artifact software boundary against its declared contracts.
 They do not accept any absent external artifact, linguistic mapping, motion observation,
 trained model, empirical score, permission, or deployment claim.
+
+A 2026-09-16 regression round closed an authorization-filter ambiguity: when multiple
+forms are registered for a lexeme, lookup now abstains even if exactly one form permits the
+requested action. The focused Phase 3B/3C files passed **69/69** tests, and the full
+repository passed **1,709/1,709** tests under warnings-as-errors. Bytecode compilation,
+`git diff --check`, and a clean wheel build containing both governance modules also passed.
+These software checks do not change the blocked empirical and industrial verdicts above.
+
+The subsequent Phase 3B constructor hardening requires explicit human assertions; the
+combined focused and full regression suites were rerun at **70/70** and **1,710/1,710**
+respectively, still under warnings-as-errors. The Phase 3C readiness flags remain unchanged.
+
+The later Phase 3B finite-median correction was included in a further **72/72** focused
+and **1,712/1,712** full warnings-as-errors run, without changing those evidence gates.
+
+The later shared SIR/Phase 3B timing-boundary fix passed **107/107** integrated and
+**1,718/1,718** full warnings-as-errors tests; empirical Phase 3C remains blocked.
+
+The later temporal-IoU boundary-collapse correction passed **109/109** integrated and
+**1,720/1,720** full warnings-as-errors tests, without changing Phase 3C evidence status.
+
+The subsequent Phase 3B optional-field audit separates exact equality from presence and
+co-present equality for `referent` and `locus`. It rejects malformed pooled counts and
+separately flags absent/absent pairs, which still contribute to the original exact-field
+rate but not to the co-present rate. The final repository regression passed
+**1,722/1,722** tests under warnings-as-errors; bytecode compilation and
+`git diff --check` passed. The canonical Phase 3B batch-report
+schema is now version 2. Phase 3C readiness remains `true, false, false` for software,
+research exit, and industrial path respectively; these diagnostics do not supply any
+missing human, motion, validation, or rights artifact.
+
+A further Phase 3B batch-integrity round requires kind/label confusion diagonals to
+match their agreement numerators and reconciles review/adjudication counts against
+workflow states and available event support. These are fail-closed accounting constraints,
+not new linguistic findings or Phase 3C approval evidence.
 
 ## 8. Stop rule
 

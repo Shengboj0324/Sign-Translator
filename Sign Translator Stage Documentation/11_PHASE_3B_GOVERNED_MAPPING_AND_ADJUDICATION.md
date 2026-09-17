@@ -88,6 +88,16 @@ rehashes every source role. SHA-256 and byte size are the portable content gate.
 inode, and modification-time drift is reported separately because a mounted volume may
 change storage identity without changing content.
 
+After parsing the hashed EAF bytes, catalog loading requires the resulting source tree to
+equal the manifest's embedded tree exactly. Otherwise a forged but internally valid
+manifest could describe different annotations while retaining the real EAF file hash.
+It also rechecks every source file's identity metadata and the complete root inventory
+after EAF parsing, so ordinary mutation of media or license evidence and late-added
+unmanifested files during catalog construction fail closed. These checks are not a
+permanent filesystem snapshot: the source must still be reverified at
+queue publication and review, and a deliberate same-size, metadata-preserving rewrite
+requires fresh content hashing to detect.
+
 Each `EAFAnnotationBinding` commits to:
 
 - EAF manifest, EAF file, EAF 3.0 schema, and selected video SHA-256;
@@ -115,6 +125,11 @@ If either source endpoint is unavailable, the record cannot contain a timed SIR.
 path is abstention, normally with `source_misalignment` or
 `insufficient_visual_evidence`, followed by a separately governed realignment procedure.
 No timestamp interpolation, frame-index conversion, or guessed duration is permitted.
+
+SIR time values that cannot be represented as finite binary64 numbers, or whose integer
+value would change on binary64 conversion, fail structural validation before a submission
+obtains a content hash. This includes oversized integers and `2^53+1`; neither raw
+arithmetic exceptions nor silently rounded timestamps are treated as review outcomes.
 
 ## 5. Immutable review state machine
 
@@ -148,6 +163,17 @@ independence-evidence hash, attestation hash, and submission time. Primary and r
 identifiers and pseudonyms must be distinct. Both roles attest to qualified ASL competence,
 direct video review, and independent authorship. These attestations are necessary evidence,
 not proof that the human claims are true.
+
+Qualification, independence, and attestation must have distinct artifact hashes within each
+submission and across primary and reviewer roles. The adjudicator's three evidence roles
+must also be distinct from one another and from both earlier reviewers. This rejects
+artifact replay across governance roles; it cannot establish that a credential, assertion,
+or person is substantively authentic.
+
+Neither the submission nor adjudication constructor supplies positive qualification,
+video-review, or independence assertions by default. Callers must provide each assertion
+explicitly; a false or missing assertion cannot create a completed review record. This
+still requires independent verification of the person and underlying evidence.
 
 A SIR submission must contain at least one manual event and no abstention reason. An
 abstention contains no SIR and must use one or more declared reason codes. English text,
@@ -200,8 +226,22 @@ A_k=\sum_i \mathbf 1[x_{ik}=y_{ik}],\qquad
 r_k=\begin{cases}A_k/n_k,&n_k>0\\\text{unavailable},&n_k=0.\end{cases}
 \]
 
-Exact numerator, support, rate, and kind/label confusion counts are retained. Event-pair
-coverage is reported separately for primary and reviewer inventories:
+Exact numerator, support, rate, and kind/label confusion counts are retained.
+
+For each field, the report additionally separates primary-present, reviewer-present,
+both-present, and both-absent counts. The original exact-field rate includes
+\((\mathrm{None},\mathrm{None})\) matches; therefore it must not by itself be interpreted as
+evidence that optional `referent` or `locus` values were annotated consistently. A separate
+co-present rate counts exact value matches only among pairs in which both values exist; it
+is unavailable, not perfect, when that denominator is zero. Presence counts and the
+co-present rate are pooled from integer numerators and denominators across cases, not
+averaged from case-level rates. Referential and locus IDs are compared as raw identifiers
+only; an equality result does not establish semantic equivalence across annotators or cases.
+The additive fields change the canonical Phase 3B batch-report schema to version 2; old
+version-1 batch reports must be regenerated from the exact case snapshots, not silently
+coerced.
+
+Event-pair coverage is reported separately for primary and reviewer inventories:
 
 \[
 c_P=n_{pair}/|V_P|,\qquad c_R=n_{pair}/|V_R|,
@@ -209,6 +249,18 @@ c_P=n_{pair}/|V_P|,\qquad c_R=n_{pair}/|V_R|,
 
 and is unavailable when its denominator is zero. This prevents a high field agreement rate
 on a small matched subset from hiding many unpaired events.
+
+Each confusion cell is unique in canonical reports. Reload rejects split duplicate cells,
+unknown event kinds, negative label identifiers, and malformed triples even when their
+aggregate counts would otherwise match the paired-event support. Reverification against
+the exact case snapshots remains necessary to establish that the counts are authentic.
+The kind and label diagonal sums must also equal their respective exact-agreement
+numerators; checking only matrix support would permit contradictory canonical summaries.
+Batch reload further reconciles available plus unavailable comparisons with the number of
+cases at or beyond blind review, bounds adjudications by the reviewed cases and the
+states that require adjudication, and requires exact SIR matches to have paired-event
+support and at least one kind and label agreement each. These are structural identities,
+not empirical agreement thresholds.
 
 Only edges whose endpoints are paired are comparable. After mapping reviewer endpoints to
 primary identifiers, the diagnostic is
@@ -219,6 +271,31 @@ J_E=|E_P\cap E_R|/|E_P\cup E_R|.
 
 `J_E` is unavailable—not one—when the union is empty. Primary/reviewer total edge counts and
 the comparable intersection and union are reported alongside it.
+
+The temporal-IoU implementation also checks representability. When the union span of
+finite endpoints overflows binary64, it scales the enclosing endpoints before computing
+the denominator and scales the overlap difference after subtraction whenever that
+difference is finite. Disjoint intervals remain exactly zero. This prevents a very-wide
+pair from returning `NaN` or a spurious zero; subtracting already-scaled, nearly equal
+endpoints would lose valid tiny overlap. Targeted regressions compare the result with
+exact rational arithmetic on the original binary64 endpoints. Ordinary EAF timing is
+unchanged.
+
+The public IoU routine also rejects oversized or lossy integer endpoints before its
+arithmetic, and loaded batch medians must retain finite binary64 float types. This avoids
+turning a rounded timestamp or integer-valued report field into a valid-looking metric.
+
+With positive overlap, a computed `0.0` is rejected as underflow rather than reported as
+disjoint; for unequal intervals, a computed `1.0` is rejected as endpoint collapse rather
+than reported as exact agreement. Genuine disjointness remains zero and identical
+intervals remain one. Exact-rational adversarial cases establish both failure modes.
+
+Even-sized temporal medians use the exact rational midpoint of their two central finite
+binary64 values, followed by one correctly rounded conversion to binary64. A direct
+floating-point sum can overflow for two finite large timing differences; splitting each
+term in half can misround subnormal ties. The same median rule is applied to per-case and
+pooled batch diagnostics. Missing support remains `null`, and non-finite observations are
+rejected rather than imputed.
 
 ## 7. Batch accounting
 
@@ -314,6 +391,66 @@ The final software verification on 2026-09-13 produced:
   expected partial/untimed records. All four source files retain exact size and SHA-256 but
   report storage-identity drift after remount; this is disclosed rather than promoted to
   physical-file identity equality.
+
+A subsequent mathematical hardening check on 2026-09-16 found and corrected binary64
+overflow in extreme-but-finite interval IoU. The updated Phase 3A/3B/governance stack
+passes **95/95** tests, and the full repository passes **1,708/1,708** tests under
+warnings-as-errors. The real Cokely source was reloaded again: the same manifest hash and
+751 annotations were verified; its EAF has one primary media descriptor and the second
+video is preserved as auxiliary source evidence. Four storage-identity drift paths remain
+reported without a false content-drift claim. The later precision regression confirmed
+that subtract-before-scale is required for small overlaps inside an overflowing union.
+
+The 2026-09-16 governance hardening also rejects reuse of qualification, independence,
+or attestation artifact hashes within one reviewer or across primary, blind reviewer,
+and adjudicator roles. A dedicated replay regression is included in the **69/69** focused
+Phase 3B/3C tests. The final repository run passed **1,709/1,709** tests with warnings
+treated as errors. These checks establish distinct artifact identities, not verified
+human credentials or independent authorship.
+
+A subsequent constructor audit removed implicit `true` defaults for all six human
+qualification, video-review, and independence assertions across submission and
+adjudication creation. Focused regressions verify that the claims are required inputs and
+that false claims are rejected. This removes automatic claims, not the need for human
+verification of supplied assertions. After this change, **70/70** focused Phase 3B/3C
+tests and **1,710/1,710** repository tests passed under warnings-as-errors; bytecode
+compilation and a fresh wheel build also passed.
+
+The 2026-09-16 numerical audit then found that an even median of finite timing
+differences could become infinity through floating-point addition. The exact-midpoint
+implementation above passed regressions at large finite and subnormal binary64 values,
+including case-to-batch propagation. The updated focused Phase 3B/3C files passed
+**72/72** tests, and the full repository passed **1,712/1,712** tests under
+warnings-as-errors. Bytecode compilation, diff validation, and a new wheel build passed.
+
+A further canonical-report audit rejected split duplicate confusion cells and invalid
+kind/label domains at load time. Adversarial reload tests also cover an unhashable kind
+value, which now fails with a controlled validation error. This strengthens structural
+acceptance; exact case-snapshot reverification is still required for authenticity.
+
+A shared SIR/Phase 3B timing-boundary audit then reproduced both arithmetic overflow for
+oversized integer times and silent rounding of `2^53+1` during binary64 serialization.
+The validator and public temporal-IoU routine now reject both cases; loaded batch medians
+require finite float values. The integrated grammar/Phase 3B/3C stack passed **107/107**
+tests, and the complete repository passed **1,718/1,718** tests under warnings-as-errors.
+Compilation, diff validation, and a fresh wheel build passed on the same revision.
+
+An additional exact-rational stress check exposed boundary collapse in temporal IoU:
+positive overlap could round to zero, and unequal intervals could round to one. Both
+cases now fail closed while genuine disjointness and exact equality retain their values.
+The revised integrated grammar/Phase 3B/3C suite passed **109/109** tests and the full
+repository passed **1,720/1,720** tests under warnings-as-errors; compilation, diff
+validation, and a fresh wheel build passed.
+
+The next source-binding audit rejected a manifest tree that disagrees with its hashed EAF
+file and added end-of-load identity and complete-inventory rechecks. Synthetic mutation
+tests covered license evidence, video, and a late-added file. The updated catalog also
+reloaded the current Cokely reference successfully with 751 annotations, one primary
+media descriptor, and four explicitly reported storage-identity drift paths. The focused
+Phase 3B file passed **56/56** tests; the full repository passed **1,726/1,726** tests
+under warnings-as-errors. Bytecode compilation, diff validation, and wheel building
+passed. These checks establish source consistency at load time, not a permanent snapshot
+or human review.
 
 These results accept the Phase 3B software control plane against its declared contract. They
 do not accept the absent human evidence, the resulting linguistic mappings, training use,

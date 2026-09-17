@@ -13,12 +13,12 @@ import hashlib
 import json
 import math
 import re
-import statistics
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import Enum
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -33,6 +33,7 @@ from ..data_engineering.how2sign_audit import (
     stable_sha256,
 )
 from ..grammar.sir import (
+    EventKind,
     SIREvent,
     SIRGraph,
     sir_from_dict,
@@ -153,6 +154,20 @@ def _validate_source_interval(
             raise ValueError(f"{context} {name} must be a non-negative integer or null")
     if begin_ms is not None and end_ms is not None and begin_ms >= end_ms:
         raise ValueError(f"{context} source interval must have positive duration")
+
+
+def _finite_binary64(value: object) -> float:
+    """Reject non-finite or lossy integer conversion at a binary64 time boundary."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise ValueError("time value must be a finite binary64 number")
+    try:
+        converted = float(value)
+    except (OverflowError, TypeError, ValueError) as error:
+        raise ValueError("time value must be a finite binary64 number") from error
+    if (not math.isfinite(converted)
+            or isinstance(value, int) and int(converted) != value):
+        raise ValueError("time value is not exactly representable in binary64")
+    return converted
 
 
 def _require_graph_within_source_interval(
@@ -388,29 +403,37 @@ def load_eaf_source_catalog(
     expected_paths = {identity["relative_path"] for identity in identities}
     if len(expected_paths) != len(identities):
         raise ValueError("EAF manifest source roles must reference distinct files")
-    discovered: set[str] = set()
-    for path in resolved_root.rglob("*"):
-        if path.is_symlink():
-            raise ValueError(f"symlinked source entry is forbidden: {path}")
-        if path.is_dir():
-            continue
-        if not path.is_file():
-            raise ValueError(f"unsupported source entry: {path}")
-        discovered.add(path.relative_to(resolved_root).as_posix())
-        if len(discovered) > 128:
-            raise ValueError("source root exceeds the Phase 3B file-count limit")
-    if discovered != expected_paths:
-        raise ValueError("current source-root inventory differs from the EAF manifest")
+
+    def require_exact_inventory() -> None:
+        discovered: set[str] = set()
+        for path in resolved_root.rglob("*"):
+            if path.is_symlink():
+                raise ValueError(f"symlinked source entry is forbidden: {path}")
+            if path.is_dir():
+                continue
+            if not path.is_file():
+                raise ValueError(f"unsupported source entry: {path}")
+            discovered.add(path.relative_to(resolved_root).as_posix())
+            if len(discovered) > 128:
+                raise ValueError("source root exceeds the Phase 3B file-count limit")
+        if discovered != expected_paths:
+            raise ValueError("current source-root inventory differs from the EAF manifest")
+
+    require_exact_inventory()
 
     resolved_records = [
         _resolve_manifest_file(resolved_root, identity) for identity in identities
     ]
-    eaf_path, eaf_observed, _ = resolved_records[0]
+    eaf_path = resolved_records[0][0]
     eaf_payload = eaf_path.read_bytes()
     if hashlib.sha256(eaf_payload).hexdigest() != manifest["eaf_file"]["sha256"]:
         raise RuntimeError("EAF changed between catalog hashing and parsing")
     document = parse_eaf_bytes(eaf_payload)
-    assert_file_unchanged(eaf_path, resolved_root, eaf_observed)
+    if document.root.to_dict() != manifest["root"]:
+        raise ValueError("EAF manifest tree differs from the bound source file")
+    for path, observed, _ in resolved_records:
+        assert_file_unchanged(path, resolved_root, observed)
+    require_exact_inventory()
     media_sha256 = tuple(
         item["file"]["sha256"] for item in manifest["media_bindings"]
     )
@@ -499,6 +522,12 @@ class HumanSIRSubmission:
         _require_sha256("independence_evidence_sha256",
                         self.independence_evidence_sha256)
         _require_sha256("attestation_sha256", self.attestation_sha256)
+        if len({
+                self.qualification_evidence_sha256,
+                self.independence_evidence_sha256,
+                self.attestation_sha256,
+        }) != 3:
+            raise ValueError("submission evidence roles must use distinct artifacts")
         if not isinstance(self.role, SubmissionRole):
             raise ValueError("submission role is invalid")
         if not isinstance(self.decision, SubmissionDecision):
@@ -556,6 +585,9 @@ class HumanSIRSubmission:
         source: EAFAnnotationBinding,
         role: SubmissionRole,
         author_pseudonym: str,
+        author_qualified_asl: bool,
+        source_video_reviewed: bool,
+        independently_created: bool,
         qualification_evidence_sha256: str,
         independence_evidence_sha256: str,
         attestation_sha256: str,
@@ -583,9 +615,9 @@ class HumanSIRSubmission:
             sir_time_origin=PHASE3B_SIR_TIME_ORIGIN,
             role=role,
             author_pseudonym=author_pseudonym,
-            author_qualified_asl=True,
-            source_video_reviewed=True,
-            independently_created=True,
+            author_qualified_asl=author_qualified_asl,
+            source_video_reviewed=source_video_reviewed,
+            independently_created=independently_created,
             qualification_evidence_sha256=qualification_evidence_sha256,
             independence_evidence_sha256=independence_evidence_sha256,
             attestation_sha256=attestation_sha256,
@@ -741,9 +773,16 @@ class FieldAgreement:
     agreements: int
     support: int
     rate: float | None
+    primary_present: int
+    reviewer_present: int
+    both_present: int
+    both_absent: int
+    co_present_agreements: int
+    co_present_rate: float | None
 
     def __post_init__(self) -> None:
-        if self.field not in {"kind", "label", "referent", "locus"}:
+        if (not isinstance(self.field, str)
+                or self.field not in {"kind", "label", "referent", "locus"}):
             raise ValueError("unknown Phase 3B agreement field")
         if (not isinstance(self.agreements, int) or isinstance(self.agreements, bool)
                 or not isinstance(self.support, int) or isinstance(self.support, bool)
@@ -755,6 +794,34 @@ class FieldAgreement:
             raise ValueError("field agreement rate must be a finite float or null")
         if self.rate != expected:
             raise ValueError("field agreement rate does not match its counts")
+        counts = (
+            self.primary_present, self.reviewer_present, self.both_present,
+            self.both_absent, self.co_present_agreements,
+        )
+        if any(not isinstance(count, int) or isinstance(count, bool)
+               or not 0 <= count <= self.support for count in counts):
+            raise ValueError("field presence counts are invalid")
+        if (self.both_present > min(self.primary_present, self.reviewer_present)
+                or self.both_absent != self.support - self.primary_present
+                - self.reviewer_present + self.both_present
+                or self.co_present_agreements > self.both_present
+                or self.agreements != self.both_absent
+                + self.co_present_agreements):
+            raise ValueError("field presence counts contradict agreement counts")
+        if self.field in {"kind", "label"} and (
+                self.primary_present != self.support
+                or self.reviewer_present != self.support):
+            raise ValueError("mandatory agreement fields must be present")
+        expected_co_present = (
+            None if self.both_present == 0
+            else self.co_present_agreements / self.both_present
+        )
+        if self.co_present_rate is not None and (
+                not isinstance(self.co_present_rate, float)
+                or not math.isfinite(self.co_present_rate)):
+            raise ValueError("co-present field agreement rate must be finite or null")
+        if self.co_present_rate != expected_co_present:
+            raise ValueError("co-present field agreement rate does not match its counts")
 
 
 @dataclass(frozen=True)
@@ -806,6 +873,16 @@ def _validate_submission_pair(
         raise ValueError("primary annotator and reviewer must be distinct")
     if primary.submission_id == reviewer.submission_id:
         raise ValueError("primary and reviewer submission identifiers must be distinct")
+    if {
+            primary.qualification_evidence_sha256,
+            primary.independence_evidence_sha256,
+            primary.attestation_sha256,
+    } & {
+            reviewer.qualification_evidence_sha256,
+            reviewer.independence_evidence_sha256,
+            reviewer.attestation_sha256,
+    }:
+        raise ValueError("primary and reviewer evidence artifacts must be distinct")
     primary_time = _require_timestamp("primary submitted_at", primary.submitted_at)
     reviewer_time = _require_timestamp("reviewer submitted_at", reviewer.submitted_at)
     if reviewer_time <= primary_time:
@@ -817,25 +894,87 @@ def temporal_iou(
     second: tuple[float, float],
 ) -> float:
     """Intersection over union of two finite, positive-duration intervals."""
+    if len(first) != 2 or len(second) != 2:
+        raise ValueError("temporal intervals must contain two endpoints")
     values = (*first, *second)
-    if any(not isinstance(value, (int, float)) or isinstance(value, bool)
-           or not math.isfinite(value) for value in values):
-        raise ValueError("temporal intervals must be finite real numbers")
+    try:
+        first = (_finite_binary64(values[0]), _finite_binary64(values[1]))
+        second = (_finite_binary64(values[2]), _finite_binary64(values[3]))
+    except ValueError as error:
+        raise ValueError("temporal intervals require finite exact binary64 endpoints") \
+            from error
+    values = (*first, *second)
     if first[0] >= first[1] or second[0] >= second[1]:
         raise ValueError("temporal intervals must have positive duration")
-    intersection = max(0.0, min(first[1], second[1]) - max(first[0], second[0]))
-    union = max(first[1], second[1]) - min(first[0], second[0])
-    return intersection / union
+    # The enclosing span equals the set union whenever intersection is positive;
+    # for disjoint intervals the numerator is zero regardless of their gap.
+    left = max(first[0], second[0])
+    right = min(first[1], second[1])
+    if left >= right:
+        return 0.0
+    outer_left = min(first[0], second[0])
+    outer_right = max(first[1], second[1])
+    union = outer_right - outer_left
+    if math.isfinite(union):
+        intersection = right - left
+        if not math.isfinite(intersection):
+            raise ValueError("temporal intersection is not representable")
+        result = intersection / union
+    else:
+        # Finite endpoints can have an unrepresentable enclosing span. Preserve
+        # a representable overlap difference *before* scaling: subtracting two
+        # already-scaled, nearly equal endpoints can erase small valid overlap.
+        scale = max(abs(value) for value in values)
+        overlap = right - left
+        intersection = (
+            overlap / scale if math.isfinite(overlap)
+            else right / scale - left / scale
+        )
+        denominator = outer_right / scale - outer_left / scale
+        result = intersection / denominator
+    if not math.isfinite(result) or not 0.0 <= result <= 1.0:
+        raise ValueError("temporal IoU is not representable in [0, 1]")
+    if result == 0.0 or (result == 1.0 and first != second):
+        raise ValueError("temporal IoU is not representable without endpoint collapse")
+    return result
+
+
+def _finite_nonnegative_median(values: Sequence[float]) -> float:
+    """Median without overflowing the midpoint of two finite metrics."""
+    if not values or any(
+            not isinstance(value, float) or not math.isfinite(value)
+            or value < 0.0 for value in values):
+        raise ValueError("median requires nonempty finite non-negative floats")
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    lower, upper = ordered[middle - 1], ordered[middle]
+    return float((Fraction.from_float(lower) + Fraction.from_float(upper)) / 2)
 
 
 def _field_agreement(name: str, values: Sequence[tuple[object, object]]) -> FieldAgreement:
     support = len(values)
     agreements = sum(first == second for first, second in values)
+    primary_present = sum(first is not None for first, _ in values)
+    reviewer_present = sum(second is not None for _, second in values)
+    both_present = sum(first is not None and second is not None
+                       for first, second in values)
+    both_absent = sum(first is None and second is None
+                      for first, second in values)
+    co_present_agreements = agreements - both_absent
     return FieldAgreement(
         field=name,
         agreements=agreements,
         support=support,
         rate=None if support == 0 else agreements / support,
+        primary_present=primary_present,
+        reviewer_present=reviewer_present,
+        both_present=both_present,
+        both_absent=both_absent,
+        co_present_agreements=co_present_agreements,
+        co_present_rate=(None if both_present == 0
+                         else co_present_agreements / both_present),
     )
 
 
@@ -966,11 +1105,13 @@ def compare_submissions(
         ),
         temporal=tuple(temporal),
         median_temporal_iou=(
-            None if not temporal_ious else statistics.median(temporal_ious)),
+            None if not temporal_ious else _finite_nonnegative_median(temporal_ious)),
         median_absolute_onset_difference=(
-            None if not onset_differences else statistics.median(onset_differences)),
+            None if not onset_differences
+            else _finite_nonnegative_median(onset_differences)),
         median_absolute_offset_difference=(
-            None if not offset_differences else statistics.median(offset_differences)),
+            None if not offset_differences
+            else _finite_nonnegative_median(offset_differences)),
         primary_edge_count=len(first_graph.edges),
         reviewer_edge_count=len(second_graph.edges),
         comparable_edge_intersection=intersection,
@@ -982,7 +1123,7 @@ def compare_submissions(
 PHASE3B_ADJUDICATION_SCHEMA_VERSION = 1
 PHASE3B_CASE_SCHEMA_VERSION = 1
 PHASE3B_EVENT_SCHEMA_VERSION = 1
-PHASE3B_BATCH_REPORT_SCHEMA_VERSION = 1
+PHASE3B_BATCH_REPORT_SCHEMA_VERSION = 2
 
 
 class AdjudicationOutcome(str, Enum):
@@ -1067,6 +1208,12 @@ class HumanAdjudication:
             "independence_evidence_sha256", "attestation_sha256",
         ):
             _require_sha256(name, getattr(self, name))
+        if len({
+                self.qualification_evidence_sha256,
+                self.independence_evidence_sha256,
+                self.attestation_sha256,
+        }) != 3:
+            raise ValueError("adjudication evidence roles must use distinct artifacts")
         _validate_source_interval(
             self.source_interval_begin_ms,
             self.source_interval_end_ms,
@@ -1131,6 +1278,9 @@ class HumanAdjudication:
         primary: HumanSIRSubmission,
         reviewer: HumanSIRSubmission,
         adjudicator_pseudonym: str,
+        adjudicator_qualified_asl: bool,
+        source_video_reviewed: bool,
+        independent_of_submitters: bool,
         qualification_evidence_sha256: str,
         independence_evidence_sha256: str,
         attestation_sha256: str,
@@ -1170,6 +1320,19 @@ class HumanAdjudication:
         if adjudicator_pseudonym in {
                 primary.author_pseudonym, reviewer.author_pseudonym}:
             raise ValueError("adjudicator must be distinct from both submitters")
+        if {
+                qualification_evidence_sha256,
+                independence_evidence_sha256,
+                attestation_sha256,
+        } & {
+                primary.qualification_evidence_sha256,
+                primary.independence_evidence_sha256,
+                primary.attestation_sha256,
+                reviewer.qualification_evidence_sha256,
+                reviewer.independence_evidence_sha256,
+                reviewer.attestation_sha256,
+        }:
+            raise ValueError("adjudicator evidence artifacts must be role-distinct")
         payload = (
             None if final_graph is None
             else _canonical_json_bytes(sir_to_dict(final_graph))
@@ -1196,9 +1359,9 @@ class HumanAdjudication:
             primary_submission_sha256=primary.content_sha256(),
             reviewer_submission_sha256=reviewer.content_sha256(),
             adjudicator_pseudonym=adjudicator_pseudonym,
-            adjudicator_qualified_asl=True,
-            source_video_reviewed=True,
-            independent_of_submitters=True,
+            adjudicator_qualified_asl=adjudicator_qualified_asl,
+            source_video_reviewed=source_video_reviewed,
+            independent_of_submitters=independent_of_submitters,
             qualification_evidence_sha256=qualification_evidence_sha256,
             independence_evidence_sha256=independence_evidence_sha256,
             attestation_sha256=attestation_sha256,
@@ -1595,6 +1758,19 @@ class Phase3BReviewCase:
         if adjudication.adjudicator_pseudonym in {
                 self.primary.author_pseudonym, self.reviewer.author_pseudonym}:
             raise ValueError("adjudicator must be distinct from both submitters")
+        if {
+                adjudication.qualification_evidence_sha256,
+                adjudication.independence_evidence_sha256,
+                adjudication.attestation_sha256,
+        } & {
+                self.primary.qualification_evidence_sha256,
+                self.primary.independence_evidence_sha256,
+                self.primary.attestation_sha256,
+                self.reviewer.qualification_evidence_sha256,
+                self.reviewer.independence_evidence_sha256,
+                self.reviewer.attestation_sha256,
+        }:
+            raise ValueError("case adjudicator evidence artifacts must be role-distinct")
         if adjudication.adjudication_id in {
                 self.primary.submission_id, self.reviewer.submission_id}:
             raise ValueError("adjudication and submission identifiers must be distinct")
@@ -2151,8 +2327,31 @@ class Phase3BBatchReport:
         if (self.comparison_available_count + self.comparison_unavailable_count
                 > self.observed_case_count):
             raise ValueError("comparison count exceeds observed case count")
+        counts_by_state = dict(self.state_counts)
+        reviewed_count = sum(
+            counts_by_state[state.value] for state in (
+                WorkflowState.BLIND_REVIEWED,
+                WorkflowState.ADJUDICATED,
+                WorkflowState.ACCEPTED,
+                WorkflowState.REJECTED,
+                WorkflowState.ABSTAINED,
+            )
+        )
+        if (self.comparison_available_count
+                + self.comparison_unavailable_count != reviewed_count):
+            raise ValueError("comparison count contradicts reviewed state count")
+        if not (counts_by_state[WorkflowState.ADJUDICATED.value]
+                + counts_by_state[WorkflowState.REJECTED.value]
+                <= self.adjudicated_case_count <= reviewed_count):
+            raise ValueError("adjudication count contradicts workflow states")
         if self.exact_sir_match_count > self.comparison_available_count:
             raise ValueError("exact-match count exceeds available comparisons")
+        if self.exact_sir_match_count > self.paired_event_count:
+            raise ValueError("exact-match count exceeds paired-event support")
+        if self.comparison_available_count > min(
+                self.comparable_primary_event_count,
+                self.comparable_reviewer_event_count):
+            raise ValueError("available comparisons exceed comparable event support")
         if self.paired_event_count > min(
                 self.comparable_primary_event_count,
                 self.comparable_reviewer_event_count):
@@ -2194,10 +2393,9 @@ class Phase3BBatchReport:
             if any(value is not None for value in temporal_values):
                 raise ValueError("zero temporal support requires unavailable medians")
         else:
-            if any(not isinstance(value, (int, float))
-                   or isinstance(value, bool) or not math.isfinite(value)
+            if any(not isinstance(value, float) or not math.isfinite(value)
                    for value in temporal_values):
-                raise ValueError("temporal medians require finite real values")
+                raise ValueError("temporal medians require finite binary64 floats")
             if not 0.0 <= self.median_temporal_iou <= 1.0:
                 raise ValueError("median temporal IoU must be in [0, 1]")
             if (self.median_absolute_onset_difference < 0.0
@@ -2237,15 +2435,30 @@ class Phase3BBatchReport:
             raise ValueError(f"{name} does not match its numerator and denominator")
 
     def _validate_confusions(self) -> None:
-        if any(not isinstance(first, str) or not isinstance(second, str)
+        if (not isinstance(self.kind_confusion, tuple)
+                or any(not isinstance(item, tuple) or len(item) != 3
+                       for item in self.kind_confusion)
+                or not isinstance(self.label_confusion, tuple)
+                or any(not isinstance(item, tuple) or len(item) != 3
+                       for item in self.label_confusion)):
+            raise ValueError("confusion matrices require canonical triples")
+        allowed_kinds = {kind.value for kind in EventKind}
+        if any(not isinstance(first, str) or first not in allowed_kinds
+               or not isinstance(second, str) or second not in allowed_kinds
                or not isinstance(count, int) or isinstance(count, bool) or count < 1
                for first, second, count in self.kind_confusion):
             raise ValueError("kind confusion entries are invalid")
         if any(not isinstance(first, int) or isinstance(first, bool)
-               or not isinstance(second, int) or isinstance(second, bool)
+               or first < 0 or not isinstance(second, int)
+               or isinstance(second, bool) or second < 0
                or not isinstance(count, int) or isinstance(count, bool) or count < 1
                for first, second, count in self.label_confusion):
             raise ValueError("label confusion entries are invalid")
+        if (len({(first, second) for first, second, _ in self.kind_confusion})
+                != len(self.kind_confusion)
+                or len({(first, second) for first, second, _
+                        in self.label_confusion}) != len(self.label_confusion)):
+            raise ValueError("confusion matrix cells must be unique")
         if (tuple(sorted(self.kind_confusion)) != self.kind_confusion
                 or tuple(sorted(self.label_confusion)) != self.label_confusion
                 or sum(count for _, _, count in self.kind_confusion)
@@ -2253,6 +2466,21 @@ class Phase3BBatchReport:
                 or sum(count for _, _, count in self.label_confusion)
                 != self.paired_event_count):
             raise ValueError("confusion matrices do not match paired event support")
+        kind_matches = sum(
+            count for first, second, count in self.kind_confusion
+            if first == second
+        )
+        label_matches = sum(
+            count for first, second, count in self.label_confusion
+            if first == second
+        )
+        if (kind_matches != self.field_agreement[0].agreements
+                or label_matches != self.field_agreement[1].agreements):
+            raise ValueError(
+                "confusion matrix diagonals contradict field agreement")
+        if self.exact_sir_match_count > min(kind_matches, label_matches):
+            raise ValueError(
+                "exact SIR matches exceed kind or label agreement support")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -2290,6 +2518,12 @@ class Phase3BBatchReport:
                     "agreements": item.agreements,
                     "support": item.support,
                     "rate": item.rate,
+                    "primary_present": item.primary_present,
+                    "reviewer_present": item.reviewer_present,
+                    "both_present": item.both_present,
+                    "both_absent": item.both_absent,
+                    "co_present_agreements": item.co_present_agreements,
+                    "co_present_rate": item.co_present_rate,
                 }
                 for item in self.field_agreement
             ],
@@ -2367,7 +2601,11 @@ class Phase3BBatchReport:
         fields: list[FieldAgreement] = []
         for item in value["field_agreement"]:
             if (not isinstance(item, Mapping)
-                    or set(item) != {"field", "agreements", "support", "rate"}):
+                    or set(item) != {
+                        "field", "agreements", "support", "rate",
+                        "primary_present", "reviewer_present", "both_present",
+                        "both_absent", "co_present_agreements", "co_present_rate",
+                    }):
                 raise ValueError("Phase 3B field-agreement entry is invalid")
             fields.append(FieldAgreement(**dict(item)))
 
@@ -2489,8 +2727,13 @@ def audit_phase3b_batch(
         case.agreement_report() for case in cases if case.reviewer is not None
     ]
     available = [report for report in reports if report.comparison_available]
+    field_count_names = (
+        "agreements", "support", "primary_present", "reviewer_present",
+        "both_present", "both_absent", "co_present_agreements",
+    )
     field_counts = {
-        name: [0, 0] for name in ("kind", "label", "referent", "locus")
+        name: {count_name: 0 for count_name in field_count_names}
+        for name in ("kind", "label", "referent", "locus")
     }
     kind_confusion: Counter[tuple[str, str]] = Counter()
     label_confusion: Counter[tuple[int, int]] = Counter()
@@ -2499,8 +2742,8 @@ def audit_phase3b_batch(
     offset_differences: list[float] = []
     for report in available:
         for item in report.field_agreement:
-            field_counts[item.field][0] += item.agreements
-            field_counts[item.field][1] += item.support
+            for count_name in field_count_names:
+                field_counts[item.field][count_name] += getattr(item, count_name)
         for first, second, count in report.kind_confusion:
             kind_confusion[(first, second)] += count
         for first, second, count in report.label_confusion:
@@ -2551,10 +2794,21 @@ def audit_phase3b_batch(
         field_agreement=tuple(
             FieldAgreement(
                 field=name,
-                agreements=field_counts[name][0],
-                support=field_counts[name][1],
-                rate=(None if field_counts[name][1] == 0
-                      else field_counts[name][0] / field_counts[name][1]),
+                agreements=field_counts[name]["agreements"],
+                support=field_counts[name]["support"],
+                rate=(None if field_counts[name]["support"] == 0
+                      else field_counts[name]["agreements"]
+                      / field_counts[name]["support"]),
+                primary_present=field_counts[name]["primary_present"],
+                reviewer_present=field_counts[name]["reviewer_present"],
+                both_present=field_counts[name]["both_present"],
+                both_absent=field_counts[name]["both_absent"],
+                co_present_agreements=(
+                    field_counts[name]["co_present_agreements"]),
+                co_present_rate=(
+                    None if field_counts[name]["both_present"] == 0
+                    else field_counts[name]["co_present_agreements"]
+                    / field_counts[name]["both_present"]),
             )
             for name in ("kind", "label", "referent", "locus")
         ),
@@ -2566,13 +2820,13 @@ def audit_phase3b_batch(
             for (first, second), count in sorted(label_confusion.items())),
         temporal_pair_count=len(temporal_ious),
         median_temporal_iou=(
-            None if not temporal_ious else statistics.median(temporal_ious)),
+            None if not temporal_ious else _finite_nonnegative_median(temporal_ious)),
         median_absolute_onset_difference=(
             None if not onset_differences
-            else statistics.median(onset_differences)),
+            else _finite_nonnegative_median(onset_differences)),
         median_absolute_offset_difference=(
             None if not offset_differences
-            else statistics.median(offset_differences)),
+            else _finite_nonnegative_median(offset_differences)),
         comparable_edge_intersection=edge_intersection,
         comparable_edge_union=edge_union,
         comparable_edge_jaccard=(

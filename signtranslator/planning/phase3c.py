@@ -564,10 +564,16 @@ class LexicalMotionLibrary:
                 (),
                 None,
             )
-        authorized = tuple(
-            entry for entry in candidates if requested_action in entry.permitted_actions
-        )
-        if not authorized:
+        if len(candidates) != 1:
+            return MotionLookupResult(
+                MotionLookupStatus.AMBIGUOUS_FORM,
+                lexeme_id,
+                requested_action,
+                candidate_ids,
+                None,
+            )
+        entry = candidates[0]
+        if requested_action not in entry.permitted_actions:
             return MotionLookupResult(
                 MotionLookupStatus.ACTION_NOT_AUTHORIZED,
                 lexeme_id,
@@ -575,20 +581,12 @@ class LexicalMotionLibrary:
                 candidate_ids,
                 None,
             )
-        if len(authorized) != 1:
-            return MotionLookupResult(
-                MotionLookupStatus.AMBIGUOUS_FORM,
-                lexeme_id,
-                requested_action,
-                tuple(entry.entry_id for entry in authorized),
-                None,
-            )
         return MotionLookupResult(
             MotionLookupStatus.RESOLVED,
             lexeme_id,
             requested_action,
-            (authorized[0].entry_id,),
-            authorized[0].entry_id,
+            (entry.entry_id,),
+            entry.entry_id,
         )
 
     @classmethod

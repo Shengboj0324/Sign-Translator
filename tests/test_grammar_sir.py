@@ -123,6 +123,16 @@ def test_nonfinite_event_time_is_rejected(value):
     assert "invalid_interval" in validate_sir(g)
 
 
+@pytest.mark.parametrize("event_end", (2**53 + 1, 10**400))
+def test_unrepresentable_integer_time_is_a_validation_error(event_end):
+    graph = SIRGraph(events=[_event(
+        0, EventKind.MANUAL, 5, 0, event_end,
+    )])
+    assert "invalid_interval" in validate_sir(graph)
+    with pytest.raises(ValueError, match="invalid SIR"):
+        sir_to_dict(graph)
+
+
 def test_boolean_and_negative_identifiers_are_rejected():
     g = SIRGraph(events=[_event(True, EventKind.MANUAL, -1, 0.0, 1.0)])
     violations = validate_sir(g)

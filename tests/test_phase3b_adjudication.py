@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
+import math
 from dataclasses import replace
+from fractions import Fraction
 from pathlib import Path
 
 import av
 import numpy as np
 import pytest
 
+import signtranslator.planning.adjudication as adjudication_module
 from signtranslator.data_engineering.eaf import ingest_eaf_reference
 from signtranslator.data_engineering.phase3b_queue import (
     GovernanceFileSpec,
@@ -43,6 +47,7 @@ from signtranslator.planning.adjudication import (
     load_phase3b_case,
     temporal_iou,
     verify_phase3b_batch_report,
+    _finite_nonnegative_median,
 )
 from signtranslator.planning.supervision import ArtifactKind, GovernedArtifact
 from signtranslator.reproducibility import canonical_json_bytes
@@ -150,6 +155,9 @@ def _submission(
         source=case.source,
         role=role,
         author_pseudonym=author or ("annotator-a" if primary else "reviewer-b"),
+        author_qualified_asl=True,
+        source_video_reviewed=True,
+        independently_created=True,
         qualification_evidence_sha256=_digest(
             "annotator-qualification" if primary else "reviewer-qualification"),
         independence_evidence_sha256=_digest(
@@ -184,6 +192,9 @@ def _adjudication(
         primary=primary,
         reviewer=reviewer,
         adjudicator_pseudonym=adjudicator,
+        adjudicator_qualified_asl=True,
+        source_video_reviewed=True,
+        independent_of_submitters=True,
         qualification_evidence_sha256=_digest("adjudicator-qualification"),
         independence_evidence_sha256=_digest("adjudicator-independence"),
         attestation_sha256=_digest("adjudicator-attestation"),
@@ -307,6 +318,50 @@ def test_eaf_catalog_revalidates_inventory_content_and_source_binding(tmp_path):
         load_eaf_source_catalog(manifest, source)
 
 
+def test_eaf_catalog_rejects_manifest_tree_not_present_in_source_file(tmp_path):
+    source, manifest = _source_bundle(tmp_path)
+    assert manifest.count(b"HELLO") == 1
+    altered = manifest.replace(b"HELLO", b"GOODBYE")
+    with pytest.raises(ValueError, match="manifest tree differs"):
+        load_eaf_source_catalog(altered, source)
+
+
+@pytest.mark.parametrize("relative_path", ("license.html", "sample.mp4"))
+def test_eaf_catalog_rechecks_all_file_identities_after_parsing(
+    tmp_path, monkeypatch, relative_path,
+):
+    source, manifest = _source_bundle(tmp_path)
+    original_parse = adjudication_module.parse_eaf_bytes
+
+    def mutate_after_parse(payload):
+        document = original_parse(payload)
+        target = source / relative_path
+        target.write_bytes(target.read_bytes() + b"x")
+        return document
+
+    monkeypatch.setattr(
+        adjudication_module, "parse_eaf_bytes", mutate_after_parse)
+    with pytest.raises(RuntimeError, match="changed after hashing"):
+        load_eaf_source_catalog(manifest, source)
+
+
+def test_eaf_catalog_rechecks_exact_inventory_after_parsing(
+    tmp_path, monkeypatch,
+):
+    source, manifest = _source_bundle(tmp_path)
+    original_parse = adjudication_module.parse_eaf_bytes
+
+    def add_file_after_parse(payload):
+        document = original_parse(payload)
+        (source / "late-unexpected.txt").write_bytes(b"unmanifested")
+        return document
+
+    monkeypatch.setattr(
+        adjudication_module, "parse_eaf_bytes", add_file_after_parse)
+    with pytest.raises(ValueError, match="inventory differs"):
+        load_eaf_source_catalog(manifest, source)
+
+
 def test_eaf_catalog_reports_storage_identity_drift_without_weakening_content_gate(
     tmp_path,
 ):
@@ -375,6 +430,8 @@ def test_temporal_iou_exact_cases(first, second, expected):
         ((1.0, 0.0), (0.0, 1.0)),
         ((0.0, float("nan")), (0.0, 1.0)),
         ((0.0, 1.0), (0.0, float("inf"))),
+        ((0, 10**400), (0.0, 1.0)),
+        ((0, 2**53 + 1), (0.0, 1.0)),
     ],
 )
 def test_temporal_iou_rejects_invalid_intervals(first, second):
@@ -406,6 +463,48 @@ def test_temporal_iou_has_required_geometric_invariances():
             temporal_iou(scaled_first, scaled_second), abs=1e-12)
 
 
+def test_temporal_iou_remains_correct_when_finite_endpoint_span_overflows():
+    wide = (-1e308, 1e308)
+    half = (0.0, 1e308)
+    assert temporal_iou(wide, wide) == pytest.approx(1.0)
+    assert temporal_iou(wide, half) == pytest.approx(0.5)
+    assert temporal_iou(half, wide) == pytest.approx(0.5)
+    assert temporal_iou((-1e308, 0.0), (0.0, 1e308)) == 0.0
+    third = (-1e308, -1e308 / 3)
+    assert temporal_iou(wide, third) == pytest.approx(1.0 / 3.0, abs=1e-15)
+
+
+@pytest.mark.parametrize("overlap_exponent", (284, 285, 286, 290))
+def test_temporal_iou_preserves_tiny_overlap_in_overflowing_union(
+    overlap_exponent,
+):
+    outer = (-1e308, 1e308)
+    left = 1e300
+    right = left + 10.0 ** overlap_exponent
+    exact = (
+        (Fraction.from_float(right) - Fraction.from_float(left))
+        / (Fraction.from_float(outer[1]) - Fraction.from_float(outer[0]))
+    )
+    assert temporal_iou(outer, (left, right)) == pytest.approx(
+        float(exact), rel=1e-14, abs=0.0)
+
+
+@pytest.mark.parametrize("narrow", (
+    (0.0, math.ulp(0.0)),
+    (math.ulp(0.0), 1e308),
+))
+def test_temporal_iou_abstains_when_positive_ratio_rounds_to_endpoint(narrow):
+    outer = (0.0, 1e308)
+    exact = (
+        (Fraction.from_float(narrow[1]) - Fraction.from_float(narrow[0]))
+        / Fraction.from_float(outer[1])
+    )
+    assert 0 < exact < 1
+    assert float(exact) in {0.0, 1.0}
+    with pytest.raises(ValueError, match="not representable"):
+        temporal_iou(outer, narrow)
+
+
 def test_agreement_uses_declared_correspondence_and_reports_each_dimension():
     case = _case()
     primary = _submission(
@@ -426,6 +525,12 @@ def test_agreement_uses_declared_correspondence_and_reports_each_dimension():
     assert by_field["label"].rate == 0.5
     assert by_field["referent"].rate == 1.0
     assert by_field["locus"].rate == 0.5
+    assert (by_field["referent"].both_present,
+            by_field["referent"].both_absent,
+            by_field["referent"].co_present_rate) == (1, 1, 1.0)
+    assert (by_field["locus"].both_present,
+            by_field["locus"].both_absent,
+            by_field["locus"].co_present_rate) == (1, 1, 0.0)
     assert report.temporal[0].temporal_iou == pytest.approx(2.0 / 3.0)
     assert report.temporal[0].reviewer_minus_primary_onset == pytest.approx(0.2)
     assert report.temporal[0].reviewer_minus_primary_offset == pytest.approx(0.2)
@@ -434,6 +539,89 @@ def test_agreement_uses_declared_correspondence_and_reports_each_dimension():
     assert report.kind_confusion == (("manual", "manual", 1),
                                      ("nonmanual", "nonmanual", 1))
     assert report.label_confusion == ((10, 11, 1), (30, 30, 1))
+
+
+def test_all_absent_optional_fields_do_not_imply_populated_agreement():
+    case = _case()
+    primary_graph = SIRGraph(events=[
+        SIREvent(0, EventKind.MANUAL, 10, 0.0, 1.0),
+    ], edges=[])
+    reviewer_graph = SIRGraph(events=[
+        SIREvent(5, EventKind.MANUAL, 11, 0.0, 1.0),
+    ], edges=[])
+    primary = _submission(case, SubmissionRole.PRIMARY, graph=primary_graph)
+    reviewer = _submission(
+        case, SubmissionRole.INDEPENDENT_REVIEWER, graph=reviewer_graph)
+    report = compare_submissions(
+        primary, reviewer, EventCorrespondence(((0, 5),)))
+    fields = {item.field: item for item in report.field_agreement}
+    for name in ("referent", "locus"):
+        field = fields[name]
+        assert (field.agreements, field.support, field.rate) == (1, 1, 1.0)
+        assert (field.primary_present, field.reviewer_present,
+                field.both_present, field.both_absent) == (0, 0, 0, 1)
+        assert field.co_present_agreements == 0
+        assert field.co_present_rate is None
+    assert fields["kind"].both_present == 1
+    assert fields["kind"].co_present_rate == 1.0
+
+
+def test_one_sided_optional_presence_is_neither_agreement_nor_co_present():
+    case = _case()
+    primary_graph = SIRGraph(events=[
+        SIREvent(0, EventKind.MANUAL, 10, 0.0, 1.0, referent=1),
+    ], edges=[])
+    reviewer_graph = SIRGraph(events=[
+        SIREvent(5, EventKind.MANUAL, 10, 0.0, 1.0),
+    ], edges=[])
+    report = compare_submissions(
+        _submission(case, SubmissionRole.PRIMARY, graph=primary_graph),
+        _submission(case, SubmissionRole.INDEPENDENT_REVIEWER,
+                    graph=reviewer_graph),
+        EventCorrespondence(((0, 5),)),
+    )
+    field = next(item for item in report.field_agreement
+                 if item.field == "referent")
+    assert (field.agreements, field.rate, field.primary_present,
+            field.reviewer_present, field.both_present, field.both_absent,
+            field.co_present_agreements, field.co_present_rate) == (
+                0, 0.0, 1, 0, 0, 0, 0, None)
+
+
+def test_even_temporal_medians_preserve_finite_large_differences():
+    case = _case(source=replace(_source(), end_ms=10**309))
+    primary = _submission(
+        case, SubmissionRole.PRIMARY,
+        graph=_graph(manual_interval=(0.0, 1e307)),
+    )
+    reviewer = _submission(
+        case, SubmissionRole.INDEPENDENT_REVIEWER,
+        graph=_graph(manual_interval=(1e308, 1.1e308)),
+    )
+    correspondence = EventCorrespondence(((0, 0), (1, 1)))
+    comparison = compare_submissions(primary, reviewer, correspondence)
+    assert all(math.isfinite(item.reviewer_minus_primary_onset)
+               for item in comparison.temporal)
+    assert comparison.median_absolute_onset_difference == 1e308
+    assert comparison.median_absolute_offset_difference == 1e308
+
+    reviewed = case.with_primary(primary).with_reviewer(reviewer, correspondence)
+    batch = audit_phase3b_batch([reviewed], [case.case_id])
+    assert batch.median_absolute_onset_difference == 1e308
+    assert batch.median_absolute_offset_difference == 1e308
+
+
+def test_finite_median_midpoint_is_exactly_rounded_at_binary64_extremes():
+    least = math.ulp(0.0)
+    assert _finite_nonnegative_median([least, 2 * least]) == 2 * least
+    assert _finite_nonnegative_median([0.0, least]) == 0.0
+    assert _finite_nonnegative_median([1e308, 1e308]) == 1e308
+    assert _finite_nonnegative_median([0.2, 0.8]) == float(
+        (Fraction.from_float(0.2) + Fraction.from_float(0.8)) / 2
+    )
+    for invalid in ([], [float("nan")], [float("inf")], [-least]):
+        with pytest.raises(ValueError, match="finite non-negative"):
+            _finite_nonnegative_median(invalid)
 
 
 def test_zero_support_and_zero_edge_union_are_unavailable_not_fake_perfect():
@@ -450,6 +638,26 @@ def test_zero_support_and_zero_edge_union_are_unavailable_not_fake_perfect():
     assert all(item.rate is None for item in report.field_agreement)
     assert report.median_temporal_iou is None
     assert report.comparable_edge_jaccard is None
+
+    reviewed = case.with_primary(primary).with_reviewer(
+        reviewer, EventCorrespondence(()))
+    batch = audit_phase3b_batch([reviewed], [case.case_id])
+    assert batch.comparison_available_count == 1
+    assert batch.exact_sir_match_count == batch.paired_event_count == 0
+    forged_exact_match = batch.to_dict()
+    forged_exact_match["exact_sir_match_count"] = 1
+    with pytest.raises(ValueError, match="exact-match count exceeds paired"):
+        load_phase3b_batch_report(canonical_json_bytes(forged_exact_match))
+
+    paired_reviewed = case.with_primary(primary).with_reviewer(
+        reviewer, EventCorrespondence(((0, 0),)))
+    paired_batch = audit_phase3b_batch([paired_reviewed], [case.case_id])
+    assert paired_batch.paired_event_count == 1
+    assert paired_batch.field_agreement[1].agreements == 0
+    forged_label_agreement = paired_batch.to_dict()
+    forged_label_agreement["exact_sir_match_count"] = 1
+    with pytest.raises(ValueError, match="exact SIR matches exceed"):
+        load_phase3b_batch_report(canonical_json_bytes(forged_label_agreement))
 
 
 def test_abstention_is_not_scored_as_agreement():
@@ -625,6 +833,104 @@ def test_case_rejects_self_review_self_adjudication_replay_and_time_reversal():
         reviewed.with_adjudication(simultaneous_adjudication)
 
 
+def test_human_evidence_roles_cannot_alias_within_or_across_reviewers():
+    case = _case()
+    primary = _submission(case, SubmissionRole.PRIMARY, graph=_graph())
+    reviewer = _submission(
+        case, SubmissionRole.INDEPENDENT_REVIEWER,
+        graph=_graph(manual_label=11),
+    )
+    with pytest.raises(ValueError, match="submission evidence roles"):
+        replace(
+            primary,
+            attestation_sha256=primary.qualification_evidence_sha256,
+        )
+
+    reused_review = replace(
+        reviewer,
+        qualification_evidence_sha256=primary.qualification_evidence_sha256,
+    )
+    with pytest.raises(ValueError, match="reviewer evidence artifacts"):
+        compare_submissions(primary, reused_review, EventCorrespondence(((0, 0),)))
+
+    reviewed = case.with_primary(primary).with_reviewer(
+        reviewer, EventCorrespondence(((0, 0), (1, 1))),
+    )
+    adjudication = _adjudication(
+        case, primary, reviewer,
+        outcome=AdjudicationOutcome.ACCEPT_PRIMARY,
+        graph=primary.graph(),
+    )
+    with pytest.raises(ValueError, match="adjudication evidence roles"):
+        replace(
+            adjudication,
+            attestation_sha256=adjudication.independence_evidence_sha256,
+        )
+    reused_adjudication = replace(
+        adjudication,
+        qualification_evidence_sha256=primary.qualification_evidence_sha256,
+    )
+    with pytest.raises(ValueError, match="case adjudicator evidence artifacts"):
+        replace(reviewed.with_adjudication(adjudication),
+                adjudication=reused_adjudication)
+    with pytest.raises(ValueError, match="adjudicator evidence artifacts"):
+        HumanAdjudication.create(
+            adjudication_id="adjudication-replay",
+            case_id=case.case_id,
+            source=case.source,
+            primary=primary,
+            reviewer=reviewer,
+            adjudicator_pseudonym="adjudicator-c",
+            adjudicator_qualified_asl=True,
+            source_video_reviewed=True,
+            independent_of_submitters=True,
+            qualification_evidence_sha256=primary.qualification_evidence_sha256,
+            independence_evidence_sha256=_digest("fresh-independence"),
+            attestation_sha256=_digest("fresh-attestation"),
+            protocol=case.adjudication_protocol,
+            outcome=AdjudicationOutcome.ACCEPT_PRIMARY,
+            submitted_at="2026-09-13T12:00:00-07:00",
+            final_graph=primary.graph(),
+            reason_codes=("lexical_label_disagreement",),
+        )
+
+
+def test_human_assertions_are_explicit_required_inputs_not_constructor_defaults():
+    required = (
+        (HumanSIRSubmission.create, (
+            "author_qualified_asl", "source_video_reviewed",
+            "independently_created",
+        )),
+        (HumanAdjudication.create, (
+            "adjudicator_qualified_asl", "source_video_reviewed",
+            "independent_of_submitters",
+        )),
+    )
+    for constructor, fields in required:
+        parameters = inspect.signature(constructor).parameters
+        for field in fields:
+            assert parameters[field].default is inspect.Parameter.empty
+            assert parameters[field].kind is inspect.Parameter.KEYWORD_ONLY
+
+    case = _case()
+    primary = _submission(case, SubmissionRole.PRIMARY, graph=_graph())
+    reviewer = _submission(
+        case, SubmissionRole.INDEPENDENT_REVIEWER,
+        graph=_graph(manual_label=11),
+    )
+    adjudication = _adjudication(
+        case, primary, reviewer,
+        outcome=AdjudicationOutcome.ACCEPT_PRIMARY,
+        graph=primary.graph(),
+    )
+    for field in required[0][1]:
+        with pytest.raises(ValueError, match="qualified, video-based, independent"):
+            replace(primary, **{field: False})
+    for field in required[1][1]:
+        with pytest.raises(ValueError, match="qualified, video-based, independent"):
+            replace(adjudication, **{field: False})
+
+
 def test_hash_chain_and_terminal_claim_tampering_fail_closed():
     case = _case()
     with pytest.raises(ValueError, match="immutable case history"):
@@ -731,6 +1037,18 @@ def test_submission_payload_and_role_protocol_claims_fail_closed():
     manifest["gloss_tokens"] = ["ENGLISH", "IS", "NOT", "SIR"]
     with pytest.raises(ValueError, match="fields must be exactly"):
         HumanSIRSubmission.from_dict(manifest)
+
+
+@pytest.mark.parametrize("event_end", (2**53 + 1, 10**400))
+def test_submission_rejects_unrepresentable_integer_time_without_overflow(
+    event_end,
+):
+    case = _case(source=replace(_source(), end_ms=event_end))
+    graph = SIRGraph(events=[SIREvent(
+        0, EventKind.MANUAL, 10, 0, event_end,
+    )])
+    with pytest.raises(ValueError, match="invalid SIR"):
+        _submission(case, SubmissionRole.PRIMARY, graph=graph)
 
 
 def test_untimed_source_requires_abstention_instead_of_invented_sir_time():
@@ -907,6 +1225,9 @@ def test_public_workflow_boundaries_reject_untyped_and_cross_case_inputs():
             source=object(),
             role=SubmissionRole.PRIMARY,
             author_pseudonym="annotator-a",
+            author_qualified_asl=True,
+            source_video_reviewed=True,
+            independently_created=True,
             qualification_evidence_sha256=_digest("qualification"),
             independence_evidence_sha256=_digest("independence"),
             attestation_sha256=_digest("attestation"),
@@ -978,6 +1299,11 @@ def test_batch_audit_reconciles_states_and_pools_exact_support():
     assert (fields["label"].agreements, fields["label"].support,
             fields["label"].rate) == (3, 4, 0.75)
     assert fields["kind"].rate == 1.0
+    assert (fields["referent"].primary_present,
+            fields["referent"].reviewer_present,
+            fields["referent"].both_present,
+            fields["referent"].both_absent,
+            fields["referent"].co_present_rate) == (2, 2, 2, 2, 1.0)
     assert report.temporal_pair_count == 4
     assert report.median_temporal_iou == 1.0
     assert report.comparable_edge_intersection == 2
@@ -994,6 +1320,69 @@ def test_batch_audit_reconciles_states_and_pools_exact_support():
     tampered["field_agreement"][1]["rate"] = 0.99
     with pytest.raises(ValueError, match="does not match"):
         load_phase3b_batch_report(canonical_json_bytes(tampered))
+    for field_index, altered_agreements in ((0, 3), (1, 4)):
+        contradictory = report.to_dict()
+        field = contradictory["field_agreement"][field_index]
+        field["agreements"] = altered_agreements
+        field["rate"] = altered_agreements / field["support"]
+        field["co_present_agreements"] = altered_agreements
+        field["co_present_rate"] = altered_agreements / field["both_present"]
+        with pytest.raises(ValueError, match="diagonals contradict"):
+            load_phase3b_batch_report(canonical_json_bytes(contradictory))
+    missing_comparison = report.to_dict()
+    missing_comparison["comparison_available_count"] = 1
+    with pytest.raises(ValueError, match="reviewed state count"):
+        load_phase3b_batch_report(canonical_json_bytes(missing_comparison))
+    missing_adjudication = report.to_dict()
+    missing_adjudication["adjudicated_case_count"] = 0
+    with pytest.raises(ValueError, match="adjudication count contradicts"):
+        load_phase3b_batch_report(canonical_json_bytes(missing_adjudication))
+    missing_comparable_events = report.to_dict()
+    missing_comparable_events["comparable_primary_event_count"] = 0
+    with pytest.raises(ValueError, match="available comparisons exceed"):
+        load_phase3b_batch_report(canonical_json_bytes(missing_comparable_events))
+    tampered_presence = report.to_dict()
+    tampered_presence["field_agreement"][2]["both_absent"] = 1
+    with pytest.raises(ValueError, match="presence counts"):
+        load_phase3b_batch_report(canonical_json_bytes(tampered_presence))
+    tampered_co_present_rate = report.to_dict()
+    tampered_co_present_rate["field_agreement"][2]["co_present_rate"] = 0.0
+    with pytest.raises(ValueError, match="co-present.*does not match"):
+        load_phase3b_batch_report(canonical_json_bytes(tampered_co_present_rate))
+    invalid_field = report.to_dict()
+    invalid_field["field_agreement"][2]["field"] = []
+    with pytest.raises(ValueError, match="unknown Phase 3B agreement field"):
+        load_phase3b_batch_report(canonical_json_bytes(invalid_field))
+    split_kind = report.to_dict()
+    split_kind["kind_confusion"] = [
+        ["manual", "manual", 1],
+        ["manual", "manual", 1],
+        ["nonmanual", "nonmanual", 2],
+    ]
+    with pytest.raises(ValueError, match="unique"):
+        load_phase3b_batch_report(canonical_json_bytes(split_kind))
+    split_label = report.to_dict()
+    split_label["label_confusion"] = [
+        [10, 10, 1], [10, 11, 1], [30, 30, 1], [30, 30, 1],
+    ]
+    with pytest.raises(ValueError, match="unique"):
+        load_phase3b_batch_report(canonical_json_bytes(split_label))
+    invalid_kind = report.to_dict()
+    invalid_kind["kind_confusion"][0][0] = "invented_kind"
+    with pytest.raises(ValueError, match="kind confusion entries"):
+        load_phase3b_batch_report(canonical_json_bytes(invalid_kind))
+    unhashable_kind = report.to_dict()
+    unhashable_kind["kind_confusion"][0][0] = []
+    with pytest.raises(ValueError, match="kind confusion entries"):
+        load_phase3b_batch_report(canonical_json_bytes(unhashable_kind))
+    negative_label = report.to_dict()
+    negative_label["label_confusion"][0][0] = -1
+    with pytest.raises(ValueError, match="label confusion entries"):
+        load_phase3b_batch_report(canonical_json_bytes(negative_label))
+    integer_median = report.to_dict()
+    integer_median["median_absolute_onset_difference"] = 2**53 + 1
+    with pytest.raises(ValueError, match="finite binary64"):
+        load_phase3b_batch_report(canonical_json_bytes(integer_median))
 
 
 def test_batch_audit_exposes_incomplete_mixed_and_duplicate_inputs():
