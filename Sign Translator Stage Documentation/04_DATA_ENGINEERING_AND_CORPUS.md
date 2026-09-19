@@ -346,26 +346,69 @@ Official evidence:
 |---|---|---|---|
 | [How2Sign](https://how2sign.github.io/) | Local continuous frontal RGB, 137-node 2D OpenPose, English alignment, certified pseudonymous signer grouping | Locally verified; CC BY-NC 4.0 research use; commercial use prohibited by current terms | Released local observations are 2D; English is not gloss; no qualified review; no commercial path |
 | [SignAvatars](https://github.com/ZhengdiYu/SignAvatars) | Requested SMPL-X body, articulated hands, jaw, expression, camera translation for continuous subsets | Request form; non-commercial research terms; commercial permission must be requested separately | Not acquired; source does not document explicit eye gaze; How2Sign text remains English translation, not gloss |
+| [RIT/CUNY ASL Motion-Capture Corpus](https://latlab.ist.rit.edu/downloads.html) | Unscripted continuous multi-sentence ASL with dominant-hand gloss timing, some non-dominant-hand gloss, English translation, spatial referents, BVH/FBX motion, and front/side/face video | Access by inquiry to Matt Huenerfauth; the download page does not publish a dataset license, commercial grant, or model-derivative terms | Closest known legacy co-observed linguistic-motion source, but only 98 stories from 3 signers; rights, capture schema, calibration, facial channels, consent scope, and present availability must be verified |
+| [ASL STEM Dialogue Motion Capture (LREC 2026)](https://aclanthology.org/2026.lrec-1.669/) | Natural instructor-student ASL dialogue plus isolated vocabulary, synchronized Vicon 3D body/hand/finger trajectories, RGB video, sentence translation, and SLAASh-aligned STEM sign timing | Paper says data may be made available to researchers under proper agreements; no public dataset license or commercial grant is stated | Only 2 fluent Deaf signers and 8.52 minutes of dialogue; no co-observed facial-expression or gaze capture is reported; annotation authors explicitly report limitations |
+| [3D-LEX v1.0](https://github.com/OlineRanum/SAPA) | True high-resolution Vicon body pose, StretchSense hand data, ARKit facial blendshapes, raw markers/sensors, and retargeted FBX for 1,000 ASL lexical items | Dataset is CC BY 4.0; project repository says to contact the authors for access | Best identified permissively licensed 3D lexical source, but isolated and one example per sign; 5 total signers and only 1 primarily ASL signer make it unfit as standalone ASL supervision |
 | [ASLLRP / ASLLVD](https://www.bu.edu/asllrp/av/dai-asllvd.html) | Authentic gloss conventions, sign timing, start/end handshapes, native-signer tokens, four synchronized views; continuous corpora add non-manual tiers | Account/access process; research and education; commercial use requires explicit permission under [DAI terms](https://www.bu.edu/asllrp/dai-terms.html) | Linguistic reference rather than continuous metric 3D motion; not acquired or commercially authorized |
 | [Dennis Cokely Parallel Corpus](https://encompass.eku.edu/cokely_videos/) | Downloadable MP4/EAF examples with project-specific ID-gloss annotations and English–ASL idea-unit alignment | One *I Have a Dream* EAF/HD/SD item is locally hash-bound; publisher labels the collection CC BY-NC-SA 4.0 | Six formal-speech translations are a valuable annotation/reference pilot, not broad-domain supervision, canonical SIR, 3D motion, or commercial authorization |
 | [CARD / SLAASh](https://sites.google.com/gallaudet.edu/card/data) | Current ELAN templates and annotation-convention lineage, including ASL Signbank linkage | Public documentation/templates; exact rights must be preserved per downloaded artifact | Annotation infrastructure and conventions, not How2Sign glosses or a co-observed training corpus |
 | [ASL Signbank](https://aslsignbank.haskins.yale.edu/) | Controlled ID-gloss and lexical/phonological reference for future human annotation | Registration and manual approval; database is actively curated | Lexical reference does not provide sentence-level How2Sign timing, SIR supervision, or motion |
 | [ASL-LEX 2.0](https://asl-lex.org/download.html) | Downloadable lexical properties for 2,723 signs under the published database license | Database listed as CC BY-NC 4.0; its reference videos are expressly excluded from that license and may not be saved or reused without permission | English labels and lexical properties are not sentence annotations; video restrictions and noncommercial terms block deployment reuse |
+| [ASL STEM Wiki](https://www.microsoft.com/en-us/research/project/asl-stem-wiki/) | 315.84 hours/64,266 sentence-aligned videos from 37 certified interpreters, consented under IRB review; 5 shared control articles support signer-variation analysis | Public download; license permits only non-commercial, non-revenue-generating research and forbids redistribution; Microsoft invites separate commercial-use inquiries | High-value continuous English-ASL research corpus, but not natural ASL-first discourse, only a subset has fingerspelling timing, no full gloss/non-manual tiers, and no 3D ground truth |
+| [YouTube-ASL](https://github.com/google-research/google-research/blob/master/youtube_asl/README.md) | 11,093 video IDs, 984 hours, and 610,193 English-caption segments; native Deaf annotators removed low-quality or poorly aligned videos | Release provides YouTube identifiers rather than owned media; repository code licensing does not grant rights in the underlying videos | Useful broad-domain research index, but no authentic gloss, 3D, stable media availability, participant consent record, or dependable commercial media authorization |
 | [OpenASL](https://github.com/chevalierNoir/OpenASL) | Reproducible ASL→English research baseline and pointers to continuous online media | Repository states CC BY-NC-ND 4.0; third-party source-media rights and link stability require per-item verification | Wrong task direction and no authentic gloss/SIR, canonical 3D, or commercial path; cannot substitute for governed Phase-3 evidence |
 | [ASL Citizen](https://www.microsoft.com/en-us/research/project/asl-citizen/) | Community-sourced isolated-sign vocabulary and recognition challenge data | Downloadable; Microsoft asks prospective commercial users to contact `ASL_Citizen@microsoft.com` | Isolated recognition data cannot replace continuous language-to-motion co-observation |
-| [NVIDIA ASL dataset](https://www.nvidia.com/en-us/gated-resources/trustworthy-ai-american-sign-language/dataset/) | Raw videos, images, hand landmarks, body poses, and facial meshes after approval | Personal application requires acceptance of dataset and privacy terms; commercial scope unresolved | Gated and isolated-sign oriented; no locally verified schema or continuous linguistic annotations |
+| [PopSign v2.1](https://signdata.cc.gatech.edu/view/datasets/popsign_v2_1/index.html) | 200,686 mobile videos of 562 isolated signs from 47 signers; strong viewpoint/device variation for auxiliary visual robustness | Dataset page states CC BY 4.0; 1.1 TB full size, so subset and manifest access should be negotiated before download | Permissively licensed and large, but prompt labels are isolated vocabulary labels, not continuous gloss/SIR, non-manual grammar, or 3D motion |
+| [NVIDIA ASL 1000](https://registry.opendata.aws/asl_1000/) | Controlled-access high-fidelity videos with 2D hand, pose, and face landmarks; official description says automated labels were human-corrected | Purpose-limited, revocable NVIDIA data license allows derivatives only to advance technology access for the Deaf community; redistribution is prohibited and termination requires deletion | Sequence/label schema and exact scope are not locally verified; commercial product and trained-model distribution rights are not explicit enough for a deployment lineage without written clarification |
 | [SMPL-X](https://smpl-x.is.tue.mpg.de/modellicense.html) | Research body/hand/face parameterization and evaluation bridge | Standard license is non-commercial; commercial incorporation/training requires a separate license | A representation/rig is not observations or linguistic truth; standard terms do not permit the target deployment |
 | [MakeHuman core assets](https://static.makehumancommunity.org/about/license.html) | Candidate deployment rig assets published as CC0 | Publicly downloadable and potentially commercial, subject to exact asset/dependency inventory | Not locally qualified for ASL finger, face, eyelid, gaze, retargeting, or deterministic rendering fidelity |
 | [Gallaudet Motion Light Lab](https://gallaudet.edu/visual-language-visual-learning/ml2/) | Potential Deaf-centered co-design, qualified review, and 3D motion-capture expertise | Partnership inquiry required | No agreement, review protocol, capture protocol, or accessible-consent artifact exists yet |
 
-The preferred acquisition order is: (1) expand the passed one-item Dennis Cokely pilot to
-the remaining authorized items while preserving source-native labels; (2) pursue ASLLRP
-continuous data and ASL Signbank access as linguistic/multiview references;
-(3) obtain SignAvatars only as a research-only candidate 3D bridge after safe schema
-inspection; (4) establish a qualified Deaf/ASL partnership; (5) collect an independently
-governed synchronized corpus with explicit research and commercial model-derivative
-terms; and (6) qualify a commercially authorized rig. ASL-LEX, OpenASL, ASL Citizen,
-and NVIDIA are auxiliary evidence, not substitutes for the co-observed Phase-2/3 gates.
+### Acquisition verdict and priority order — 2026-09-19
+
+No identified source is sufficient by itself for the industrial target. A sufficient source
+would have to co-observe continuous ASL, authentic linguistic timing, body, both hands,
+face, head, eyes/gaze and eyelids; preserve signer/session grouping; cover enough signers
+and domains for held-out evaluation; and authorize commercial training, model derivatives,
+deployment, retention, and the intended identity treatment. Combining unpaired fields from
+different datasets cannot manufacture that co-observation.
+
+The evidence-backed acquisition order is:
+
+1. **Request the RIT/CUNY corpus and the 2026 ASL STEM dialogue corpus immediately.**
+   They are the two strongest co-observed continuous ASL-plus-motion candidates. Require
+   sample files, complete schemas, timing/calibration specifications, consent and license
+   documents, signer/session keys, and written model-training/derivative terms before use.
+2. **Acquire 3D-LEX as the first permissively licensed metric-3D lexical reference.** Its
+   CC BY 4.0 status, raw Vicon/hand-sensor data, facial blendshapes, and FBX exports make it
+   valuable for converters, retargeting, rotation validation, and hand/face unit tests. Its
+   signer and language-authenticity limitations prohibit treating it as continuous ASL truth.
+3. **Pursue ASLLRP continuous data and ASL Signbank access.** These remain the strongest
+   linguistic-convention and multiview references for authentic source-native gloss and
+   non-manual annotation, but require separate commercial permission.
+4. **Acquire ASL STEM Wiki for research-scale continuous diversity if storage permits.**
+   It provides consented, professional, sentence-aligned signing at far greater scale than
+   How2Sign, but its current license and interpretese limitations keep it outside the future
+   commercial lineage. Download only after recording size, checksum, version, and storage.
+5. **Use PopSign v2.1 as the leading commercial-compatible auxiliary visual corpus.** Its
+   CC BY 4.0 license and signer/device variation are useful for isolated-hand/body robustness,
+   never as sentence grammar, coarticulation, non-manual, or motion-generation supervision.
+6. **Evaluate NVIDIA ASL 1000 and ASL Citizen only after rights clarification.** Both are
+   potentially useful auxiliary resources, but the current terms do not yet establish a safe
+   industrial model-distribution path. YouTube-ASL and OpenASL are research indexes/baselines,
+   not an industrial media lineage.
+7. **Continue How2Sign, Cokely, and SignAvatars only inside their current research lineage.**
+   Preserve source-native labels and never convert English text into gloss or SIR.
+8. **Commission the missing production corpus with a qualified Deaf/ASL partner.** This is
+   not optional unless a newly acquired source passes every gate above. The capture contract
+   must include synchronized full-body/finger/face/eye data, direct consent, withdrawal and
+   retention policy, qualified annotation/adjudication, diverse signers/domains, stable groups,
+   and explicit commercial model-derivative and deployment rights.
+
+This ordering makes 3D-LEX the best immediately identified reusable 3D engineering source,
+RIT/CUNY and the 2026 STEM dialogue the best continuous motion inquiries, ASLLRP the best
+linguistic reference, ASL STEM Wiki the best consented continuous scale source, and PopSign
+the best permissively licensed large isolated auxiliary source. None is an industrial corpus.
 
 The implemented Phase 3B software treatment for an accepted EAF source is documented in
 `11_PHASE_3B_GOVERNED_MAPPING_AND_ADJUDICATION.md`. It binds source annotations to a
@@ -476,6 +519,45 @@ synchronization metadata; the current account/access procedure; and whether perm
 be discussed for future commercial model evaluation or derivatives? I will preserve source
 tier conventions, citations, access controls, and non-redistribution requirements.
 
+**To:** `matt.huenerfauth@rit.edu`
+
+**Subject:** RIT/CUNY ASL Motion-Capture Corpus access and rights inquiry
+
+**Body:** I am conducting a student-led research project toward reliable English-to-ASL 3D
+generation. Your ASL Motion-Capture Corpus appears uniquely relevant because it co-observes
+continuous discourse, gloss timing, English translation, spatial referents, motion capture,
+and multiple video views. Could I request access to the current release and a sample package?
+Before use, I need to document the exact license; permitted model training and derivative
+models; commercial/deployment path, if any; participant-consent and retention scope; signer
+and session keys; skeleton, units, coordinate frames, calibration and synchronization; face,
+eye and finger channels; annotation conventions; checksums; and any known defects. I will not
+infer permissions or absent channels from the publication description.
+
+**To:** `o.ranum@surrey.ac.uk`
+
+**Subject:** 3D-LEX v1.0 access, release identity, and schema inquiry
+
+**Body:** I am conducting a student-led research project on reliable English-to-ASL 3D
+generation and would like to acquire the CC BY 4.0 3D-LEX v1.0 release. Could you confirm the
+current access path, release/version and checksums, file inventory, signer/session mappings,
+timebases, coordinate systems and units, calibration records, validity/missing-data encoding,
+body-hand-face synchronization, FBX skeleton and blendshape definitions, and whether the
+published CC BY 4.0 grant applies to every distributed data component? I will treat 3D-LEX as
+an isolated lexical/engineering reference rather than continuous or signer-diverse ASL truth.
+
+**To:** `Lorna.quandt@gallaudet.edu`
+
+**Subject:** Access inquiry for 2026 STEM ASL dialogue motion-capture data
+
+**Body:** I am conducting a student-led research project toward reliable English-to-ASL 3D
+generation. I am interested in the motion-capture dataset described in *How Pragmatics Shape
+Articulation* (LREC 2026), which states that access may be possible under proper agreements.
+Could you advise the appropriate request process and whether sample 3D/RGB/ELAN artifacts,
+schema and calibration documentation, signer/session keys, checksums, and license/consent
+terms are available? I also need explicit clarification of research and commercial model-
+derivative rights, retention/withdrawal obligations, and which body, finger, face, eye and
+non-manual channels are genuinely recorded versus absent.
+
 **To:** `motionlightlab@gallaudet.edu`
 
 **Subject:** Deaf-centered review and 3D sign-avatar research partnership inquiry
@@ -488,10 +570,14 @@ be open to a preliminary conversation about appropriate partnership structure, s
 compensation, participant protection, and what evidence would be required before any
 deployment claim?
 
-Additional commercial-rights inquiries should go to `ASL_Citizen@microsoft.com` for ASL
-Citizen and the SMPL-X licensing contact identified on the official model-license page.
-The NVIDIA form must be completed by the user because it transmits identity/organization
-data and requires personal acceptance of dataset and privacy terms.
+Additional commercial-rights inquiries should go to `ASL_Citizen@microsoft.com` for both
+ASL Citizen and ASL STEM Wiki, and to the SMPL-X licensing contact identified on the official
+model-license page. NVIDIA access requires personal acceptance of dataset and privacy terms.
+Before acceptance, send `trustworthyaiprojects@nvidia.com` a written request confirming
+whether commercial products and distribution of trained weights are permitted, how deletion
+on termination applies to learned parameters, and whether any use would constitute prohibited
+biometric processing. Do not treat the public code repository's Apache license as the license
+for ASL 1000 media.
 
 Any new human capture must undergo the applicable institutional human-subjects review.
 [HHS informed-consent guidance](https://www.hhs.gov/ohrp/regulations-and-policy/guidance/faq/informed-consent/index.html)
