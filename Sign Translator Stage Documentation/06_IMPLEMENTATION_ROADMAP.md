@@ -1,5 +1,256 @@
 # 06 — Implementation Roadmap
 
+## Execution-plan revision — 2026-09-25
+
+This is the current proposed execution order and workload baseline. It supersedes old
+priority lists that still treat repaired Phase-1 issues as unfinished. It does not claim
+that an empirical phase passed, replace external authorizations, or change executable gate
+behavior. The corresponding current audit contains B01–B66 in `03_READINESS_AUDIT.md`.
+
+### Deliverable and scheduling assumptions
+
+1. First deliverable: a narrow-domain, text→governed SIR→multichannel motion→deterministic
+   avatar **research demonstrator**, with independently evaluated comprehension and explicit
+   refusal outside supported scope. Include the non-manual channels needed for the chosen
+   phenomena; do not defer grammar-critical face/gaze merely to make a manual-only demo.
+2. Second deliverable: raw-audio input, streaming and a restricted operational release.
+3. Third deliverable, if retaining the repository's full bidirectional goal: real-video
+   ASL→English with its own uncertainty, comprehension and release evidence.
+4. One dedicated engineer, **6 productive hours/day, 5 weekdays/week**. Code, debugging,
+   validation, documentation and coordination all consume these hours. Overnight compute
+   does not create additional engineering capacity. No unconfirmed GPU capacity is assumed.
+5. A qualified ASL annotator and a distinct qualified reviewer work alongside the engineer;
+   an adjudicator is available for disagreements. Their time is additional, not hidden in
+   engineering estimates. If the engineer must also do coordination/annotation beyond the
+   allowance, the schedule extends; engineering assistance cannot replace qualified review.
+6. Conditional calendar starts **Monday 2026-09-28**. Dates count weekdays only and exclude
+   no holidays, school commitments, leave or external delays. Add these explicitly before
+   treating the calendar as a personal availability commitment.
+7. Research source sample, exact permitted actions and usable rig evidence arrive by the
+   end of Day 20; accepted pilot labels arrive by Day 50. These are scheduling dependencies,
+   not predictions or assertions that access has been granted.
+8. All phase lengths below already include debugging/rework days. External wait or scope
+   expansion beyond the stated allowance is additional. A failed empirical experiment can
+   require redesign; a timetable cannot guarantee a scientifically successful outcome.
+
+### Resolve the phase logic before adding more modules
+
+Keep the existing Phase 1–7 names, but track three columns for every phase: software
+implemented, integrated on admissible inputs, and empirically accepted. They must never
+collapse into one completion percentage.
+
+- **Phase 1 refresh (W0):** retain achieved checkpoint/CTC/reproducibility work and repair
+  newly found support, topology, analysis and statistical defects.
+- **Phase 2 (W1–W2):** source contract → canonical multichannel state → validated round-trip.
+- **Phase 3 (W3):** actual annotation/adjudication → governed SIR and lexical motion → direct
+  training inputs and later intervention evidence. Existing 3A/B/C verifiers are reused.
+- **Phase 4 (W4):** real motion representation and simple-baseline comparisons.
+- **Phase 5 (W5):** conditioned generation integrated with deterministic rendering.
+- **Phase 6 (protocol in W1, execution W6):** preregistration, independent statistical and
+  qualified-human evaluation. Design it before training, not after observing results.
+- **Phase 7 (W7–W9):** raw audio, streaming, hardware profiling and restricted release.
+- **Reverse-direction extension (W10):** separately gated real-video ASL→English.
+
+The previous pre-Phase-2 gate combines research and commercial prerequisites. Proposed
+correction: define separate action-scoped research and commercial gates, consistent with
+Phase-3C's existing separation. Research still requires source authorization, observed-state
+contracts, qualified review and an authorized research rig. Commercial authorization stays
+mandatory for commercial training/distribution/deployment. W0–W1 must explicitly reconcile
+this policy in documentation and executable tests; until then, existing gates remain closed.
+Do not silently bypass the portfolio gate or invent approval artifacts.
+
+Authorized existing-2D QC, numerical repairs, split feasibility, statistical design and
+source-independent interface experiments can proceed while access is unresolved. Freezing
+source-dependent production semantics, populating approved libraries and claiming successful
+multichannel training cannot. Pseudo-gloss is optional and off the critical path; adding a
+pseudo-label generator does not supply missing independent references.
+
+### Work packages, effort, dates and exit artifacts
+
+“Build / debug” are engineer-days; debug includes regression, numerical investigation,
+integration repair and explicit reruns. Specialist time and external waiting are separate.
+
+| Package / legacy phase | Days | Conditional dates | Build / debug days | Hours | Required exit |
+|---|---:|---|---:|---:|---|
+| W0: baseline repair / Phase 1 refresh | 1–10 | Sep 28–Oct 9, 2026 | 7 / 3 | 60 | Reproduced defects fixed; warning-strict suite; honest empty-support/loader failures; canonical architecture and metric registry |
+| W1: source/QC/split/protocol / pre-Phase 2 | 11–20 | Oct 12–23 | 8 / 2 | 60 | Accepted source/rig action contracts, grouped split, QC dispositions, pilot annotation protocol, preregistered estimands |
+| W2: canonical state and round-trip / Phase 2 | 21–35 | Oct 26–Nov 13 | 11 / 4 | 90 | Typed real-state shards, units/frames/timestamps/masks, valid rotations/gaze, source→state→render round-trip |
+| W3: supervised bridge / Phase 3 | 36–50 | Nov 16–Dec 4 | 11 / 4 | 90 | Qualified accepted pilot SIR, lexical motion, direct SIR loader, evidence bindings, no fabricated gloss |
+| W4: representation learning / Phase 4 | 51–65 | Dec 7–25 | 11 / 4 | 90 | Tiny-real-subset fit, retrieval/interpolation/AE/RVQ comparison, held-out per-channel/minimal-pair report |
+| W5: conditioned generation / Phase 5 | 66–85 | Dec 28–Jan 22, 2027 | 14 / 6 | 120 | Reloadable SIR→motion→avatar run, conditioning interventions, constraint/temporal tests and seed experiments |
+| W6: independent validation / Phase 6 | 86–110 | Jan 25–Feb 26 | 18 / 7 | 150 | Blinded comprehension results, clustered uncertainty, baselines, coverage/refusal, failure taxonomy and research-demo go/no-go |
+| W7: speech and streaming / Phase 7 | 111–130 | Mar 1–26 | 15 / 5 | 120 | Actual waveform→avatar, calibrated real errors, committed-prefix and interruption tests, target-hardware profile |
+| W8: runtime/performance / Phase 7 | 131–140 | Mar 29–Apr 9 | 7 / 3 | 60 | Bounded service lifecycle, memory/load/queue profile, justified optimizations and parity evidence |
+| W9: release hardening / Phase 7 | 141–150 | Apr 12–23 | 6 / 4 | 60 | Independent bundle reload, archive/wheel checks, monitoring/rollback rehearsal, domain and action-specific release gate |
+| W10: reverse direction / extension | 151–175 | Apr 26–May 28 | 18 / 7 | 150 | Real-video ASL→English baseline, English decoding, scoped non-manual evidence, independent evaluation and separate acceptance |
+
+Totals: **110 days / 660 engineer-hours** to the evaluated text research-demonstrator
+candidate; **150 days / 900 hours** to the audio-enabled restricted-release candidate;
+**175 days / 1,050 hours** including the bidirectional extension. The 150-day plan includes
+42 debug days (252 hours); the 175-day plan includes 49 (294 hours). These are candidates
+for acceptance, not promised successful or commercially authorized releases.
+
+Planning ranges, not statistical confidence intervals: 120–210 engineer-days for the
+forward/audio restricted product; 145–245 for the bidirectional scope. The shorter case
+requires readily usable data/rigs, available reviewers and few redesigns. The longer case
+allows source mismatch, representation/generator rework and extra human-evaluation rounds.
+A new capture program is a separate project and can extend these ranges substantially.
+
+### First ten days: daily execution plan
+
+Each row budgets six productive hours. Source/reviewer preparation begins immediately;
+any external messages or purchases still require the user's actual instruction.
+
+| Day | Date | Work allocation | Deliverable |
+|---|---|---|---|
+| 1 | Sep 28 | 2h reproducible baseline; 2h scope/owners; 2h source and review requirements | Frozen audit, narrow scope, accountable owners and dependency ledger |
+| 2 | Sep 29 | 4h statistical-domain/tail repair; 2h oracle/adversarial cases | NaN/Inf rejection and stable small-p tests |
+| 3 | Sep 30 | 4h masked objectives and zero-support behavior; 2h gradient/support tests | Invalid targets cannot train motion objectives |
+| 4 | Oct 1 | 4h topology/joint-order contracts; 2h graph/reload tests | 27-joint and alternate-topology behavior explicit |
+| 5 | Oct 2 | 3h nonempty loader/nonfinite abort; 1h checkpointable CLI; 2h regression | No silent zero-step training or invalid optimizer update |
+| 6 | Oct 5 | 4h length-aware/ragged analysis; 2h insertion/long-sequence cases | Evaluation accepts real variable-duration batches correctly |
+| 7 | Oct 6 | 3h weighted estimands/selection; 1h analysis RNG; 2h unequal-batch tests | Reproducible named-checkpoint evaluation with correct support |
+| 8 | Oct 7 | 2h canonical package mapping; 2h split/vocabulary design; 2h integration checks | Architecture/evaluation ownership and leakage rules |
+| 9 | Oct 8 | 4h integration debugging; 2h complete strict regression | First repaired baseline candidate |
+| 10 | Oct 9 | 3h archive/reload/smoke; 2h remaining repair; 1h go/no-go report | W0 acceptance or explicit extension with remaining defects |
+
+This allocation is a target. If masked attention/pooling changes exceed W0, complete the
+minimal loss safety fix and carry full encoder masking into W2–W3; record the remaining
+integration gate rather than claiming all variable-length behavior solved.
+
+### Subsequent five-day execution blocks
+
+| Days | Concrete work and debugging focus |
+|---|---|
+| 11–15 | Inspect actual source/rig samples; reconcile research-vs-commercial gate; confirm reviewer workflow; disposition corruption; audit signer/source component balance. |
+| 16–20 | Freeze QC on development data; create split and train-only preprocessing; define primary outcomes/independent units; approve source and schema requirements. Stop source-dependent work if evidence is missing. |
+| 21–25 | Implement real canonical state, units/frames, availability/inferred provenance, rotation/gaze domains; validate numerical edge cases. |
+| 26–30 | Build source adapters, synchronization, confidence/validity support, timestamp-aware derivatives and inverse transforms. |
+| 31–35 | Round-trip real samples to authorized rig; inspect left/right, finger rotation, palm, face/gaze and timing; repair mismatches and freeze state v1. |
+| 36–40 | Calibrate annotation on a small independently reviewed pilot; refine convention before bulk labeling; implement direct SIR shard/loader adapter. |
+| 41–45 | Populate reviewed lexical segments and SIR records; measure disagreement/adjudication; bind rights/split/schema hashes to training manifests. |
+| 46–50 | Integrate ragged masked batches and evidence checks; audit final pilot population and unseen forms; regression and Phase-3 input acceptance. Paired-learning empirical exit remains pending. |
+| 51–55 | Profile data pipeline; fit simple retrieval/interpolation and tiny-subset continuous representation; debug observability and gradient flow. |
+| 56–60 | Compare continuous AE and optional RVQ; inspect dead codes, duration error and channel losses; common-support baseline evaluation. |
+| 61–65 | Repeat representation runs, test meaning-critical minimal pairs; freeze winning representation and abandon unnecessary complexity. |
+| 66–70 | Integrate one generator with typed SIR and duration conditioning; overfit a tiny accepted subset; verify condition swaps affect output appropriately. |
+| 71–75 | Add dense hands, required non-manuals, gaze/head/contact and projection; debug cross-channel timing and gradient imbalance. |
+| 76–80 | Add inverse transforms and deterministic render command; run blank/shuffled/order-corrupted/text-only and field intervention experiments. |
+| 81–85 | Multi-seed generation, ablations, reload parity, seams/collision/minimal-pair repair; freeze evaluation candidate and manifests. |
+| 86–90 | Complete blinded study setup and stimulus QA; pilot comprehension tasks and reviewer instructions without opening final test outcomes. |
+| 91–95 | Execute independent reviews and baselines; collect proposition/phenomenon scores, failure severity and disagreement. |
+| 96–100 | Cluster-aware analysis, calibrated refusal and subgroup diagnostics; debug study data/metric joins and report uncertainty. |
+| 101–105 | One budgeted remediation/retraining round on development data; add regression cases for observed failure classes. |
+| 106–110 | Evaluate remediated candidate on a fresh reserved evaluation set; publish research-demo acceptance or a concrete failed-gate report. Reusing the previous test to tune is not a clean confirmatory result. |
+| 111–115 | Integrate waveform preprocessing and a versioned real ASR/backend; sample-rate/timestamp/tokenizer contract checks. |
+| 116–120 | Gather/evaluate eligible real acoustic stress cases; calibrate semantic risk and refusal on a calibration split. |
+| 121–125 | Connect revisable output, commit boundary, interruptions, cancellation, stale-result disposal and queue policy to rendering. |
+| 126–130 | Profile end-to-end latency/memory under load; debug streaming seams and actual device failures; accept speech/streaming integration. |
+| 131–135 | Service lifecycle, request bounds, privacy/retention, trace identities and failure recovery; realistic load replay. |
+| 136–140 | Optimize measured bottlenecks only; numerical and signer-relevant parity checks; rehearse overload behavior. |
+| 141–145 | Package model/preprocessors/state/rig/rights and evaluation manifests; clean-machine/archive/wheel reproduction; target OS/device checks. |
+| 146–150 | Final regression, rollback rehearsal, domain/coverage documentation and separate research/commercial authorization review. No automatic deployment. |
+| 151–155 | Reverse-direction real-video perception and multichannel input contract; sentence/source grouping and English evaluation design. |
+| 156–160 | Train sign-state→English baseline; preserve non-manual temporal evidence and uncertainty. |
+| 161–165 | Held-out comparison, ablations and real-video degradation tests; diagnostic gloss remains optional. |
+| 166–170 | Independent English semantic recovery evaluation, calibrated refusal and failure-driven repair. |
+| 171–175 | Fresh reserved evaluation, bundle/reload parity, integration regression and bidirectional acceptance decision. |
+
+### Mathematical implementation acceptance
+
+| Contract | Implementation requirement | Falsification/exit evidence |
+|---|---|---|
+| Masked losses | `L_k = sum(m*w*ell)/sum(m*w)` over declared observed support. If denominator is zero, return unavailable or reject a required objective; never a successful zero loss. Specify whether normalization is per sample or per valid observation. | Invalid targets cannot affect loss/gradient; all-invalid and partially observed batches tested; confidence is not assumed calibrated. |
+| Time | Use `(x[t+1]-x[t])/(time[t+1]-time[t])`; both endpoints must be supported. Define acceleration on nonuniform intervals and reject nonpositive deltas. | Resampling-invariance/timestamp-jitter tests; no derivative crosses a missing interval without declared inference. |
+| Geometry | Continuous 6D regression mapped to SO(3); evaluate geodesic rotation error with stable near-zero/near-pi handling. Require orthogonality and determinant +1, unit gaze, declared local/global frames and physical units. | Degenerate axes, reflections, unit conversion, handedness and round-trip tests on synthetic edge cases AND real source samples. |
+| Kinematics | Preserve articulated finger/palm/head/face/contact structure. Joint limits and collision corrections are constraints whose linguistic effects must be checked. | Forward kinematics/retarget parity; handshape/orientation/contact minimal pairs survive projection and rendering. |
+| CTC | Retain `T_after_subsample >= U + adjacent_repeats`; blank/out-of-range labels fail. | Variable-length and repeated-token cases stay green across new backend adapters. |
+| Contrastive learning | Typed multi-positive relation and permitted negatives; no test-derived lexicon; measure repeated-meaning false negatives. | Duplicate-meaning batches, signer/source controls and text-only/video interventions. |
+| Representation | Retrieval/interpolation → continuous AE → optional RVQ; quantify per-part distortion, temporal/spectral error, code utilization and duration. | Common-support/coverage comparisons and held-out minimal pairs, not training loss alone. |
+| Generation | One chosen diffusion/flow parameterization with consistent schedules/targets/guidance; condition, padding and inpainting masks propagate end-to-end. | Tiny overfit, condition swaps, null/shuffle tests, per-channel constraints, seed/reload tests. No advanced sampler adopted solely because its module exists. |
+| Numerical optimization | Abort nonfinite loss/gradients before stepping; monitor branch gradients; introduce EMA/AMP/accumulation only with validated step/resume semantics. | Deliberate NaN/Inf injection, no-step loader, freeze/unfreeze and interrupted-run tests. |
+
+### Statistical implementation acceptance
+
+- Define population, experimental unit, primary endpoint, direction, minimum useful effect,
+  confidence level, exclusion rules and comparison family before held-out evaluation.
+- Split source and signer groups before windows; fit normalization/vocabulary/calibration
+  only on their assigned partitions. A fixed external lexicon is allowed if declared in advance.
+- Repair all general statistical input validation and small-tail numerics first. Maintain
+  exact/log-probability reference cases; `NaN` never becomes a passing p-value.
+- Repeated clips from one source/signer do not automatically create independent sign-test
+  trials. Aggregate at the preregistered independent unit or use a defensible hierarchical
+  resampling/model. Preserve pairing in interventions. For the existing four-comparison
+  Bonferroni family at alpha .05, each threshold is .0125; practical effect remains required.
+- Compute uncertainty at the correct source/signer/reviewer levels; separately report
+  training-seed variability. Plan at least three training seeds initially, but do not call
+  three seeds sufficient evidence for population generalization.
+- Compare reconstruction methods on common eligible targets and publish coverage. Zero
+  baseline support is unavailable. Report missingness and excluded-source sensitivity.
+- Measure inter-reviewer agreement plus confusion, field-level support, temporal tolerance
+  and adjudication rate; agreement alone cannot establish linguistic correctness.
+- Human semantic proposition recovery and phenomenon-level correctness are primary;
+  WER/SignBLEU, coordinate error, cycle score and appearance metrics are complementary.
+- Select rejection thresholds on calibration data; report selective risk and coverage
+  together on held-out data, including OOD/empty evidence and subgroup uncertainty.
+- Estimate sample size from a reviewed pilot, meaningful effect and cluster correlation.
+  For orientation only, an IID binary proportion near .5 needs about 384 independent
+  observations for an approximate 95% interval with ±.05 margin; clustered observations
+  need additional design analysis. This is not a prescription for 384 clips or reviewers.
+- Keep a reserved final evaluation set for the budgeted remediation round; do not tune
+  repeatedly on the same held-out result while still calling it confirmatory.
+
+### Logical and integration acceptance
+
+Use distinct states: implemented, artifact-blocked, empirically failed, accepted-for-research,
+and authorized-for-commercial-action. Missing evidence is not “pass with caveat.”
+
+The existing Phase-3 research gate remains the conjunction of accepted supervision,
+video-dependence evidence, reviewed lexical motion, canonical state, independent qualified
+validation and research rights. Full release additionally needs representation/generation,
+human validation, reliability and runtime evidence. Commercial release adds action-specific
+commercial permissions. Wire accepted identities into actual training and inference, not
+just a disconnected reporting function. Preserve unknown/ambiguous/unauthorized refusal;
+reject schema mismatch, stale evidence and unauthorized action. A digest is content identity,
+not proof of issuer authority. Streaming cannot revise the committed prefix; queue bounds
+must not be advertised as latency bounds without measured service/scheduling assumptions.
+
+### External work and workload budget
+
+| External lane | Target | Effort placeholder / measurement rule | Failure response |
+|---|---|---|---|
+| Source access and rig | Exact sample/schema/action evidence by D20 | Engineer preparation is budgeted in W0/W1; response/negotiation time is unknown | Continue independent repairs/QC; delay W2 rather than inventing state evidence |
+| Qualified ASL team | Available during W1, pilot convention before W3 bulk work | Two distinct reviewers plus adjudicator; confirm actual availability | Annotation and human exit dates slide |
+| Pilot annotation | Accepted pilot by D50 | Initial budgeting example: 300 short items × (12 min primary + 8 min review + .25×10 min adjudication) = 112.5 specialist hours | Calibrate these rates on 10 items, then resize; 300 is a workload example, not an adequate statistical sample claim |
+| Specialist total | Annotation, calibration, lexical articulation checks, study design/reviews and adjudication | Reserve roughly 200–350 specialist hours across forward phases; estimate is provisional until pilot timing | At 16 combined specialist hours/week this alone occupies 12.5–22 weeks, overlapping engineering |
+| New motion capture if required | Separate scoped acquisition project | Recruitment, consent, calibration, recording, synchronization and review need a new work breakdown | Rebaseline; do not bury capture in a 10-day ingestion estimate |
+| Compute | Profile accepted mini-corpus in W4 | `training_hours = epochs * ceil(N/B) * measured_step_seconds / 3600`, then add validation, preprocessing, runs/seeds and restart overhead | If scheduled experiment set exceeds allocated wall time, reduce scope or add explicitly authorized capacity |
+| Commercial evidence | Before any commercial action | Unbounded external dependency; research access is not commercial authorization | Restrict to authorized research; no promised commercial release date |
+
+Reforecast every five workdays using actual completed artifacts, defect counts, measured
+training time and annotation throughput. At D10, D20, D35, D50, D65, D85, D110, D130,
+D150 and D175 issue a gate decision. For an unmet dependency, recompute each successor's
+start as `max(predecessor completion, required artifact arrival, engineer availability)`.
+Do not simply add all parallel waiting periods or pretend waiting consumes no calendar.
+
+For personal scheduling: 900 productive hours at 15 hours/week is approximately 60 weeks
+for the forward/audio candidate; 1,050 hours at that rate is 70 weeks for bidirectional,
+before external delays. The six-hour-day calendar therefore requires dedicated capacity.
+
+### Deliberately deferred work
+
+Photorealistic NeRF/Gaussian appearance, large foundation pretraining, production pseudo-gloss,
+preference optimization and distributed training are not prerequisites for the first scoped
+research demonstrator. Reconsider only after a measured bottleneck and accepted evidence
+justify them. They are not secretly included in the 150/175-day totals. Open-domain fluency,
+interpreter replacement and unrestricted commercial deployment have no credible completion
+date from the present evidence.
+
+---
+
+## Earlier roadmap and design rationale (historical; current sequencing above)
+
+
 ## 1. Roadmap principle
 
 The next phase should optimize for a **complete vertical slice**, not additional
