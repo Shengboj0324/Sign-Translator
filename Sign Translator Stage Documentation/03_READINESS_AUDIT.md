@@ -1,5 +1,27 @@
 # 03 — Strict Readiness Audit
 
+## Full W0 engineering acceptance — 2026-09-25
+
+W0 Days 1–10 are complete against their engineering deliverables. The current
+[execution record and metric registry](06_IMPLEMENTATION_ROADMAP.md#w0-days-610-execution-record--2026-09-25)
+contains the exact scope and requirement mapping. **1,832 tests passed** with warnings as
+errors and no skips. The extracted-archive installed-wheel smoke passed training,
+selected-best analysis and seeded checkpoint reload; see
+[verification](evidence/w0-complete-2026-09-25-attempt1/verification.json).
+
+In addition to the Days 2–5 repairs below, B24 is repaired for canonical validation and
+generator validation using macro-observation support; B25 now freezes branch-based selection
+and identifies evaluated weights; B26 isolates analysis randomness; B27 crops ragged inputs
+before inference; B28's token-level insertion/cap defects are repaired. Authentic semantic
+field evaluation under B28 remains unavailable pending governed references, as documented
+for W3/W6. Full training encoder masking (B19), physical-time derivatives (B20), real split
+and vocabulary implementation (B11/B21), multi-positive contrast (B29), statistical study
+design (B37–B39), the W1 gate-policy dependency (B09), and external blockers retain their
+scheduled scope. W0 completion is not empirical or commercial approval. B67 remains open.
+
+Older findings and execution records below are historical; this section and the full W0
+record take precedence for the current engineering status.
+
 ## W0 Days 2–5 repair status — 2026-09-25
 
 The current repair record is in `06_IMPLEMENTATION_ROADMAP.md`, preceding the frozen Day-1

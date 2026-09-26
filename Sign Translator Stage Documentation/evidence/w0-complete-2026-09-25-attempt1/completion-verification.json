@@ -1,0 +1,246 @@
+{
+  "schema_version": 1,
+  "completed_at_utc": "2026-09-26T02:12:45.815104+00:00",
+  "goal": "Complete Phase W0",
+  "engineering_exit_accepted": true,
+  "days_verified": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+  ],
+  "verification": {
+    "sha256": "fddf7f166b7046b22adc3cc009207d9978e9da0756dfe66ed290bdab9a7f4b19",
+    "size": 83741
+  },
+  "tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 1832
+  },
+  "requirement_test_evidence": {
+    "day2_statistics": [
+      "tests.test_ef_statistics.test_paired_permutation_exact_hand_case",
+      "tests.test_ef_statistics.test_sign_test_exact_hand_case",
+      "tests.test_ef_statistics.test_permutation_pvalue_is_a_probability",
+      "tests.test_ef_statistics.test_large_consistent_effect_is_significant",
+      "tests.test_ef_statistics.test_no_effect_is_not_significant",
+      "tests.test_ef_statistics.test_t_statistic_sign_and_zero",
+      "tests.test_ef_statistics.test_bootstrap_ci_degenerate_constant",
+      "tests.test_ef_statistics.test_bootstrap_ci_brackets_mean",
+      "tests.test_ef_statistics.test_aggregate_seeds",
+      "tests.test_ef_statistics.test_significant_and_meaningful_requires_both",
+      "tests.test_ef_statistics.test_sign_tail_matches_independent_integer_oracle[60-60]",
+      "tests.test_ef_statistics.test_sign_tail_matches_independent_integer_oracle[0-60]",
+      "tests.test_ef_statistics.test_sign_tail_matches_independent_integer_oracle[83-100]",
+      "tests.test_ef_statistics.test_sign_tail_matches_independent_integer_oracle[500-1000]",
+      "tests.test_ef_statistics.test_permutation_scale_invariance[1e-100]",
+      "tests.test_ef_statistics.test_permutation_scale_invariance[1.0]",
+      "tests.test_ef_statistics.test_permutation_scale_invariance[1e+100]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[paired_differences-bad0]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[paired_differences-bad1]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[paired_differences-bad2]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[paired_differences-bad3]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[paired_differences-bad4]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[paired_differences-bad5]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[paired_differences-bad6]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[paired_t_statistic-bad0]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[paired_t_statistic-bad1]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[paired_t_statistic-bad2]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[paired_t_statistic-bad3]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[paired_t_statistic-bad4]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[paired_t_statistic-bad5]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[paired_t_statistic-bad6]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[paired_permutation_pvalue-bad0]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[paired_permutation_pvalue-bad1]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[paired_permutation_pvalue-bad2]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[paired_permutation_pvalue-bad3]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[paired_permutation_pvalue-bad4]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[paired_permutation_pvalue-bad5]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[paired_permutation_pvalue-bad6]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[sign_test_pvalue-bad0]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[sign_test_pvalue-bad1]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[sign_test_pvalue-bad2]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[sign_test_pvalue-bad3]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[sign_test_pvalue-bad4]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[sign_test_pvalue-bad5]",
+      "tests.test_ef_statistics.test_paired_helpers_reject_invalid_evidence[sign_test_pvalue-bad6]",
+      "tests.test_ef_statistics.test_permutation_rejects_invalid_controls_even_for_exact_case[kwargs0]",
+      "tests.test_ef_statistics.test_permutation_rejects_invalid_controls_even_for_exact_case[kwargs1]",
+      "tests.test_ef_statistics.test_permutation_rejects_invalid_controls_even_for_exact_case[kwargs2]",
+      "tests.test_ef_statistics.test_permutation_rejects_invalid_controls_even_for_exact_case[kwargs3]",
+      "tests.test_ef_statistics.test_permutation_rejects_invalid_controls_even_for_exact_case[kwargs4]",
+      "tests.test_ef_statistics.test_permutation_rejects_invalid_controls_even_for_exact_case[kwargs5]",
+      "tests.test_ef_statistics.test_permutation_rejects_invalid_controls_even_for_exact_case[kwargs6]",
+      "tests.test_ef_statistics.test_significance_gate_rejects_invalid_probability[nan]",
+      "tests.test_ef_statistics.test_significance_gate_rejects_invalid_probability[inf]",
+      "tests.test_ef_statistics.test_significance_gate_rejects_invalid_probability[-1.0]",
+      "tests.test_ef_statistics.test_significance_gate_rejects_invalid_probability[1.1]",
+      "tests.test_ef_statistics.test_significance_gate_rejects_invalid_probability[True]",
+      "tests.test_ef_statistics.test_bootstrap_rejects_invalid_controls_or_statistics[kwargs0]",
+      "tests.test_ef_statistics.test_bootstrap_rejects_invalid_controls_or_statistics[kwargs1]",
+      "tests.test_ef_statistics.test_bootstrap_rejects_invalid_controls_or_statistics[kwargs2]",
+      "tests.test_ef_statistics.test_bootstrap_rejects_invalid_controls_or_statistics[kwargs3]",
+      "tests.test_ef_statistics.test_bootstrap_rejects_invalid_controls_or_statistics[kwargs4]",
+      "tests.test_ef_statistics.test_bootstrap_rejects_invalid_controls_or_statistics[kwargs5]",
+      "tests.test_ef_statistics.test_overflowing_pairs_rejected_and_large_t_is_stable"
+    ],
+    "day3_supported_motion": [
+      "tests.test_w0_motion_support.test_invalid_values_cannot_change_loss_or_target_gradients[x0-GaussianMotionDiffusion]",
+      "tests.test_w0_motion_support.test_invalid_values_cannot_change_loss_or_target_gradients[x0-GuidedMotionDiffusion]",
+      "tests.test_w0_motion_support.test_invalid_values_cannot_change_loss_or_target_gradients[eps-GaussianMotionDiffusion]",
+      "tests.test_w0_motion_support.test_invalid_values_cannot_change_loss_or_target_gradients[eps-GuidedMotionDiffusion]",
+      "tests.test_w0_motion_support.test_weighted_mse_and_velocity_match_hand_computation",
+      "tests.test_w0_motion_support.test_all_missing_support_is_unavailable[validity_mask]",
+      "tests.test_w0_motion_support.test_all_missing_support_is_unavailable[frame_mask]",
+      "tests.test_w0_motion_support.test_all_missing_support_is_unavailable[confidence]",
+      "tests.test_w0_motion_support.test_velocity_cannot_bridge_missing_middle_frame",
+      "tests.test_w0_motion_support.test_one_empty_sample_cannot_hide_inside_supported_batch",
+      "tests.test_w0_motion_support.test_invalid_support_contract_rejected[support0]",
+      "tests.test_w0_motion_support.test_invalid_support_contract_rejected[support1]",
+      "tests.test_w0_motion_support.test_invalid_support_contract_rejected[support2]",
+      "tests.test_w0_motion_support.test_active_joint_training_rejects_empty_support",
+      "tests.test_w0_motion_support.test_generator_finetune_cannot_drop_support_masks"
+    ],
+    "day4_topology": [
+      "tests.test_w0_topology.test_137_joint_construction_uses_declared_graph",
+      "tests.test_w0_topology.test_malformed_topology_rejected[change0]",
+      "tests.test_w0_topology.test_malformed_topology_rejected[change1]",
+      "tests.test_w0_topology.test_malformed_topology_rejected[change2]",
+      "tests.test_w0_topology.test_malformed_topology_rejected[change3]",
+      "tests.test_w0_topology.test_malformed_topology_rejected[change4]",
+      "tests.test_w0_topology.test_malformed_topology_rejected[change5]",
+      "tests.test_w0_topology.test_joint_order_mismatch_rejected_before_checkpoint_weights_loaded",
+      "tests.test_w0_topology.test_alternate_manifest_reloads_through_runtime",
+      "tests.test_w0_topology.test_exported_topology_roundtrip_and_wrong_order_rejection"
+    ],
+    "day5_finite_training": [
+      "tests.test_w0_training_guards.test_invalid_loss_or_gradient_preserves_optimizer_and_checkpoint[loss]",
+      "tests.test_w0_training_guards.test_invalid_loss_or_gradient_preserves_optimizer_and_checkpoint[gradient]",
+      "tests.test_w0_training_guards.test_empty_training_loader_is_rejected",
+      "tests.test_w0_training_guards.test_oversized_batch_retains_tiny_corpus",
+      "tests.test_w0_training_guards.test_nonfinite_or_degenerate_training_configuration_rejected[kwargs0]",
+      "tests.test_w0_training_guards.test_nonfinite_or_degenerate_training_configuration_rejected[kwargs1]",
+      "tests.test_w0_training_guards.test_nonfinite_or_degenerate_training_configuration_rejected[kwargs2]",
+      "tests.test_w0_training_guards.test_nonfinite_or_degenerate_training_configuration_rejected[kwargs3]",
+      "tests.test_w0_training_guards.test_nonfinite_or_degenerate_training_configuration_rejected[kwargs4]",
+      "tests.test_w0_training_guards.test_api_defaults_are_bounded_and_checkpointable",
+      "tests.test_w0_training_guards.test_cli_defaults_match_api_and_allow_checkpoint"
+    ],
+    "day6_ragged_padding": [
+      "tests.test_w0_analysis.test_ragged_analysis_is_batch_partition_and_padding_invariant"
+    ],
+    "day6_insertions": [
+      "tests.test_w0_analysis.test_planner_insertions_and_unterminated_outputs_cannot_pass[True-True]",
+      "tests.test_w0_analysis.test_planner_insertions_and_unterminated_outputs_cannot_pass[False-False]",
+      "tests.test_w0_analysis.test_planner_insertions_and_unterminated_outputs_cannot_pass[False-True]"
+    ],
+    "day6_long_sequences": [
+      "tests.test_w0_analysis.test_long_reference_is_scored_and_capacity_is_explicit"
+    ],
+    "day7_rng": [
+      "tests.test_w0_analysis.test_analysis_restores_rng_and_individual_module_modes_on_success_and_failure"
+    ],
+    "day7_macro_estimand": [
+      "tests.test_w0_analysis.test_validation_macro_observations_are_partition_invariant"
+    ],
+    "day7_selection": [
+      "tests.test_w0_analysis.test_checkpoint_selection_uses_declared_branch_not_weighted_total"
+    ],
+    "day7_exact_checkpoint": [
+      "tests.test_w0_analysis.test_pipeline_analyzes_best_artifact_and_retains_final_weights"
+    ],
+    "exact_resume": [
+      "tests.test_trainer.test_exact_resume_matches_uninterrupted_training_bit_for_bit"
+    ]
+  },
+  "source_inventory_matches_current": true,
+  "log_hashes_verified": true,
+  "day1_evidence_preserved": true,
+  "days2_5_evidence_preserved": true,
+  "day8_artifacts": [
+    "canonical package and ownership map",
+    "split and train-only vocabulary design",
+    "engineering metric registry"
+  ],
+  "day9_10_artifacts": {
+    "source_archive": {
+      "sha256": "2091d0026cd7d285e52c879951b3c7a103df11821c92ed31877e8405c54d35b5",
+      "size": 726513
+    },
+    "wheel": {
+      "sha256": "5201ed1385f45bf4857e3aed6001166494951f9fd662e4d186bc8924e4eff988",
+      "size": 549677
+    },
+    "smoke": {
+      "best_last_distinct": true,
+      "empirical_readiness_approved": false,
+      "identity_kind": "content-only",
+      "optimizer_steps": 4,
+      "output_finite": true,
+      "output_shape": [
+        1,
+        3,
+        8,
+        5
+      ],
+      "reload_equal": true,
+      "selected_best_analysis": true,
+      "synthetic_custom_topology": {
+        "center": 0,
+        "edges": [
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            2
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            3,
+            4
+          ]
+        ],
+        "joint_names": [
+          "a",
+          "b",
+          "c",
+          "d",
+          "e"
+        ],
+        "num_nodes": 5,
+        "schema_version": 1
+      },
+      "wheel_import_verified": true
+    }
+  },
+  "documents": {
+    "README.md": {
+      "sha256": "b62b671f0a095d50de0c2689f97b2bed5d44b5c0d9320138cbee26fa0c3e6d65",
+      "size": 34382
+    },
+    "Sign Translator Stage Documentation/03_READINESS_AUDIT.md": {
+      "sha256": "4dc988b2e8d5d209f55573843cc586c279ba2febf8de123539b531d3f5fa520c",
+      "size": 38450
+    },
+    "Sign Translator Stage Documentation/06_IMPLEMENTATION_ROADMAP.md": {
+      "sha256": "28f455e81e305a03584f0bc56548a1426f0f2cdbd842af10a0e8017f9635ade9",
+      "size": 97208
+    }
+  },
+  "empirical_readiness_approved": false,
+  "missing_cokely_primary_media": true,
+  "remaining_scope": "B09 policy dependency and source/QC/split/vocabulary work in W1; B19/B20 in W2-W3; governed SIR/semantic-field evaluation in W3/W6; independent statistical/human validation and deployment gates remain open"
+}

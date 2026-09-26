@@ -204,3 +204,15 @@ Tests cover numerical identities, finite gradients, CTC feasibility, shape error
 Do not train the intended 3D ASL path by forcing English into gloss or 2D into rotations. First acquire source-native annotation, synchronized canonical motion, authoritative signer/source grouping, qualified-ASL adjudication, and permission for each research/commercial action. Then freeze leakage-safe evaluation, test video dependence and linguistic minimal pairs, measure comprehension and non-manual errors with qualified reviewers, compare strong published baselines, and only afterward integrate a licensed rig, renderer, latency budget, monitoring, and rollback. See [evaluation design](docs/EVALUATION_FRAMEWORK.md) and [deployment design](docs/DEPLOYMENT.md).
 
 Repository code is [Apache-2.0](LICENSE); that does **not** relicense datasets, human likenesses, trained derivatives, model weights, or third-party rig assets. Commercial deployment requires a separately documented and verified data/asset lineage.
+
+### W0 evaluation contract
+
+The canonical entry point is `signtranslator.run`; `signtranslator.train` remains a legacy
+synthetic experiment. Validation uses per-observation supported losses and a fixed full-cohort
+alignment candidate set. Best selection minimizes the configured branch loss (generation by
+default). Analysis evaluates the selected best checkpoint, records its identity and seed,
+and restores the final training weights. It crops ragged observations before inference,
+penalizes planner insertions, and reports missing-EOS truncation. Secondary-stage analysis
+is rejected until its selection contract is implemented. Synthetic branch gates do not
+approve real ASL quality. The complete ownership map, metric definitions and split/vocabulary
+rules are in [the W0 roadmap](Sign%20Translator%20Stage%20Documentation/06_IMPLEMENTATION_ROADMAP.md).

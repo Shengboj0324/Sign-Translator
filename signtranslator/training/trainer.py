@@ -199,6 +199,7 @@ class Trainer:
 
         self.history: Dict[str, List[float]] = {}
         self.best_val = math.inf
+        self.best_model_state = None
         self.global_step = 0
         self.completed_epochs = 0
         self.artifact_context = _json_domain(artifact_context or {})
@@ -257,6 +258,8 @@ class Trainer:
         # the training RNG afterward so validation is repeatable and observational.
         try:
             with isolated_deterministic_rng(self.cfg.seed + VALIDATION_SEED_OFFSET):
+                if hasattr(self.model, 'validation_metrics'):
+                    return self.model.validation_metrics(self.val_loader, self.cfg.loss_weights)
                 for batch in self.val_loader:
                     batch = self._to_device(batch)
                     losses = self.model.training_step(batch, weights=self.cfg.loss_weights)
@@ -290,8 +293,12 @@ class Trainer:
                 val_losses = self.validate()
                 for k, v in val_losses.items():
                     self.history.setdefault(f"val_{k}", []).append(v)
-                if val_losses.get("total", math.inf) < self.best_val:
-                    self.best_val = val_losses["total"]
+                metric = self.cfg.selection_metric
+                if metric not in val_losses or not math.isfinite(val_losses[metric]):
+                    raise ValueError(f"selection metric {metric!r} is unavailable or nonfinite")
+                if val_losses[metric] < self.best_val:
+                    self.best_val = val_losses[metric]
+                    self.best_model_state = {k: v.detach().cpu().clone() for k, v in self.model.state_dict().items()}
                     improved = True
                 else:
                     improved = False
@@ -432,13 +439,14 @@ class Trainer:
 
             if val_loader is not None:
                 model.eval()
-                with torch.no_grad():
+                from ..analysis.observations import observations
+                with torch.no_grad(), isolated_deterministic_rng(VALIDATION_SEED_OFFSET):
                     v = [model.generation_loss(b["pose"].to(device),
                                                b["gloss_tokens"].to(device),
                                                **{key: b[key].to(device) for key in
                                                   ("validity_mask", "confidence", "frame_mask")
                                                   if key in b}).item()
-                         for b in val_loader]
+                         for batch in val_loader for b in observations(batch)]
                 if not v or not all(math.isfinite(value) for value in v):
                     raise FloatingPointError("generator validation has empty/non-finite evidence")
                 history["val_generation"].append(sum(v) / len(v))

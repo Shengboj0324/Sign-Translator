@@ -49,11 +49,12 @@ class AnalysisReport:
     thresholds: Dict[str, float]
     checks: Dict[str, bool] = field(default_factory=dict)
     gating: set = field(default_factory=set)
+    protocol: dict = field(default_factory=dict)
 
     @property
     def passed(self) -> bool:
         """Overall pass depends only on the gated (branch-quality) metrics."""
-        return all(v for k, v in self.checks.items() if k in self.gating)
+        return bool(self.gating) and all(self.checks.get(k, False) for k in self.gating)
 
     def summary(self) -> str:
         lines = ["Analysis report", "=" * 48]
@@ -71,112 +72,111 @@ class AnalysisReport:
         return "\n".join(lines)
 
 
-def _gather(val_loader):
-    poses, gloss_tokens, srcs, concept_lists = [], [], [], []
-    speeches, src_concept_lists = [], []
-    for batch in val_loader:
-        poses.append(batch["pose"])
-        gloss_tokens.append(batch["gloss_tokens"])
-        srcs.append(batch["src"])
-        concept_lists.extend(batch["concepts"])
-        if "speech" in batch:
-            speeches.append(batch["speech"])
-            # Recover spoken concept ids from the speech CTC targets.
-            off = 0
-            for L in batch["ctc_lengths"].tolist():
-                src_concept_lists.append(batch["speech_ctc_targets"][off:off + L])
-                off += L
-    return poses, gloss_tokens, srcs, concept_lists, speeches, src_concept_lists
-
-
 @torch.no_grad()
 def analyze(model, val_loader, thresholds: Dict[str, float] = None,
             cycle_subset: int = 24, ddim_steps: int = 20,
-            guidance_scale: float = 1.0) -> AnalysisReport:
+            guidance_scale: float = 1.0, *, seed: int = 0,
+            planner_max_len: int = 32, checkpoint_identity: str = "in-memory") -> AnalysisReport:
+    """Macro-sample generation loss; corpus edit rates; fixed candidate retrieval.
+
+    Each observation is cropped before inference. Randomness is isolated and the
+    sequence cap is fixed before looking at reference lengths. A missing EOS is
+    reported as truncation and fails the planner gate, even for matching content.
+    These synthetic branch diagnostics do not establish ASL comprehension.
+    """
+    from ..reproducibility import isolated_deterministic_rng
+    from ..models.recognition import _levenshtein
+    from .observations import observations
+    import math
+    import hashlib
+
+    if isinstance(cycle_subset, bool) or not isinstance(cycle_subset, int) or cycle_subset < 1:
+        raise ValueError("cycle_subset must be a positive integer")
     thresholds = {**DEFAULT_THRESHOLDS, **DIAGNOSTIC_THRESHOLDS, **(thresholds or {})}
-    model.eval()
+    if any(not math.isfinite(v) for v in thresholds.values()):
+        raise ValueError("analysis thresholds must be finite")
+    digest = hashlib.sha256()
+    for name, tensor in sorted(model.state_dict().items()):
+        digest.update(f"{name}:{tensor.dtype}:{tuple(tensor.shape)}:".encode())
+        digest.update(tensor.detach().cpu().contiguous().reshape(-1).view(torch.uint8).numpy().tobytes())
+    modes = [(module, module.training) for module in model.modules()]
     device = next(model.parameters()).device
-    (poses, gloss_tokens, srcs, concept_lists,
-     speeches, src_concept_lists) = _gather(val_loader)
+    rec_hyps, rec_refs, plan_hyps, plan_refs = [], [], [], []
+    cyc_hyps, cyc_refs, sp_hyps, sp_refs = [], [], [], []
+    zm, zl, gen_losses = [], [], []
+    completed = []
+    model.eval()
+    try:
+        with isolated_deterministic_rng(seed):
+            for batch in val_loader:
+                for row in observations(batch):
+                    row = {k: v.to(device) if isinstance(v, torch.Tensor) else v
+                           for k, v in row.items()}
+                    p, g = row['pose'], row['gloss_tokens']
+                    support = {k: row[k] for k in ('validity_mask', 'confidence', 'frame_mask')
+                               if k in row}
+                    p, _ = model.diffusion.motion_support(p, **support)
+                    refs = [int(x) + 1 for x in row['concepts'][0]]
+                    rec_hyps.extend(model.recognize(p))
+                    rec_refs.append(refs)
+                    reference = [int(x) + CONTENT_OFFSET for x in row['concepts'][0]]
+                    if len(reference) >= planner_max_len:
+                        raise ValueError("reference plus EOS exceeds declared planner evaluation cap")
+                    hypotheses, ended = model.planner.greedy_decode(
+                        row['src'], max_len=planner_max_len, return_status=True)
+                    plan_hyps.extend(hypotheses)
+                    plan_refs.append(reference)
+                    completed.extend(ended)
+                    zm.append(model.embed_motion(p))
+                    zl.append(model.embed_gloss(g))
+                    gen_losses.append(float(model.generation_loss(p, g, **support)))
+                    if len(cyc_refs) < cycle_subset:
+                        motion = model.generate_from_gloss(
+                            g, num_frames=p.shape[2], guidance_scale=guidance_scale,
+                            ddim_steps=ddim_steps)
+                        cyc_hyps.extend(model.recognize(motion))
+                        cyc_refs.append(refs)
+                    if 'speech' in row:
+                        if 'speech_ctc_targets' not in row:
+                            raise ValueError("speech evaluation requires explicit source targets")
+                        sp_hyps.extend(model.recognize_speech(row['speech']))
+                        sp_refs.append(row['speech_ctc_targets'].tolist())
+            if not gen_losses:
+                raise ValueError("analysis requires nonempty evaluation observations")
+            sim = torch.cat(zm) @ torch.cat(zl).t()
+            recalls = retrieval_recall_at_k(sim, ks=(1, 5))
+    finally:
+        for module, training in modes:
+            module.training = training
 
-    # ---- recognition WER (sign -> gloss), CTC ids are concept+1 -----------
-    rec_hyps: List[List[int]] = []
-    rec_refs: List[List[int]] = []
-    for p_batch, c_offset in zip(poses, _batched(concept_lists, [p.shape[0] for p in poses])):
-        for hyp in model.recognize(p_batch.to(device)):
-            rec_hyps.append(hyp)
-        for c in c_offset:
-            rec_refs.append([int(x) + 1 for x in c])
-    recognition_wer = word_error_rate(rec_hyps, rec_refs)
-
-    # ---- planner token accuracy (spoken -> gloss) -------------------------
-    correct_tok, total_tok = 0, 0
-    for s_batch, c_group in zip(srcs, _batched(concept_lists, [s.shape[0] for s in srcs])):
-        preds = model.planner.greedy_decode(s_batch.to(device), max_len=8)
-        for pred, c in zip(preds, c_group):
-            ref = [int(x) + CONTENT_OFFSET for x in c]
-            for j in range(len(ref)):
-                total_tok += 1
-                if j < len(pred) and pred[j] == ref[j]:
-                    correct_tok += 1
-    planner_token_accuracy = correct_tok / max(1, total_tok)
-
-    # ---- manifold retrieval recall@k --------------------------------------
-    z_m = torch.cat([model.embed_motion(p.to(device)) for p in poses], dim=0)
-    z_l = torch.cat([model.embed_gloss(g.to(device)) for g in gloss_tokens], dim=0)
-    sim = z_m @ z_l.t()
-    recalls = retrieval_recall_at_k(sim, ks=(1, 5))
-
-    # ---- generation validation loss (denoising MSE) -----------------------
-    gen_losses = [float(model.generation_loss(p.to(device), g.to(device)))
-                  for p, g in zip(poses, gloss_tokens)]
-    generation_val_loss = sum(gen_losses) / max(1, len(gen_losses))
-
-    # ---- cycle consistency: gloss -> generate -> recognise ----------------
-    g_all = torch.cat(gloss_tokens, dim=0)[:cycle_subset].to(device)
-    c_all = concept_lists[:cycle_subset]
-    motion = model.generate_from_gloss(g_all, guidance_scale=guidance_scale,
-                                       ddim_steps=ddim_steps)
-    cyc_hyps = model.recognize(motion)
-    cyc_refs = [[int(x) + 1 for x in c] for c in c_all]
-    cycle_consistency_wer = word_error_rate(cyc_hyps, cyc_refs)
-
-    # ---- speech branch: audio -> spoken tokens ----------------------------
-    speech_wer: Optional[float] = None
-    if speeches:
-        sp_hyps: List[List[int]] = []
-        for s_batch in speeches:
-            sp_hyps.extend(model.recognize_speech(s_batch.to(device)))
-        sp_refs = [[int(x) for x in ref] for ref in src_concept_lists]
-        speech_wer = word_error_rate(sp_hyps, sp_refs)
-
+    edits = sum(_levenshtein(h, r) for h, r in zip(plan_hyps, plan_refs))
+    edit_support = sum(max(len(h), len(r)) for h, r in zip(plan_hyps, plan_refs))
     metrics = {
-        "recognition_wer": recognition_wer,
-        "planner_token_accuracy": planner_token_accuracy,
-        "recall_at_1": recalls[1],
-        "recall_at_5": recalls[5],
-        "generation_val_loss": generation_val_loss,
-        "cycle_consistency_wer": cycle_consistency_wer,
-        "speech_wer": speech_wer,
+        'recognition_wer': word_error_rate(rec_hyps, rec_refs),
+        'planner_token_accuracy': 1.0 - edits / edit_support,
+        'planner_wer': word_error_rate(plan_hyps, plan_refs),
+        'planner_exact_match': sum(h == r and end for h, r, end in
+                                   zip(plan_hyps, plan_refs, completed)) / len(plan_refs),
+        'planner_truncation_rate': 1.0 - sum(completed) / len(completed),
+        'planner_semantic_field_accuracy': None,
+        'recall_at_1': recalls[1], 'recall_at_5': recalls[5],
+        'generation_val_loss': sum(gen_losses) / len(gen_losses),
+        'cycle_consistency_wer': word_error_rate(cyc_hyps, cyc_refs),
+        'speech_wer': word_error_rate(sp_hyps, sp_refs) if sp_refs else None,
     }
-    checks = {
-        "speech_wer": (speech_wer is not None
-                       and speech_wer <= thresholds["speech_wer"]),
-        "recognition_wer": recognition_wer <= thresholds["recognition_wer"],
-        "planner_token_accuracy": planner_token_accuracy >= thresholds["planner_token_accuracy"],
-        "recall_at_1": recalls[1] >= thresholds["recall_at_1"],
-        "generation_val_loss": generation_val_loss <= thresholds["generation_val_loss"],
-        "cycle_consistency_wer": cycle_consistency_wer <= thresholds["cycle_consistency_wer"],
-    }
-    gating = set(DEFAULT_THRESHOLDS.keys())
-    return AnalysisReport(metrics=metrics, thresholds=thresholds, checks=checks,
-                          gating=gating)
-
-
-def _batched(flat_list, sizes):
-    """Split a flat list back into per-batch chunks of the given sizes."""
-    out, idx = [], 0
-    for s in sizes:
-        out.append(flat_list[idx:idx + s])
-        idx += s
-    return out
+    if any(v is not None and not math.isfinite(v) for v in metrics.values()):
+        raise ValueError("analysis produced nonfinite metrics")
+    checks = {k: metrics[k] is not None and
+              (metrics[k] >= thresholds[k] if k in ('planner_token_accuracy', 'recall_at_1')
+               else metrics[k] <= thresholds[k]) for k in DEFAULT_THRESHOLDS}
+    checks['planner_token_accuracy'] &= all(completed)
+    # Partial acoustic coverage cannot pass a whole-corpus speech gate.
+    checks['speech_wer'] &= len(sp_refs) == len(rec_refs)
+    return AnalysisReport(metrics, thresholds, checks, set(DEFAULT_THRESHOLDS),
+                          {'seed': seed, 'replicates': 1, 'checkpoint': checkpoint_identity,
+                           'model_state_sha256': digest.hexdigest(),
+                           'observations': len(rec_refs), 'speech_observations': len(sp_refs),
+                           'cycle_observations': len(cyc_refs), 'planner_max_len': planner_max_len,
+                           'generation_estimand': 'mean of per-observation supported losses',
+                           'planner_token_accuracy_definition': 'one minus edits / sum(max(hyp, ref) lengths)',
+                           'semantic_fields': 'unavailable: no governed SIR field references'})

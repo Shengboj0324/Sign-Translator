@@ -82,6 +82,8 @@ def run_pipeline(corpus_dir: str, epochs: int = 1, batch_size: int = 32,
                  gen_finetune_lr: float = 1e-3, polish_epochs: int = 0,
                  polish_lr: float = 1.2e-3, require_ready: bool = True,
                  verbose: bool = True) -> dict:
+    if do_analyze and (gen_finetune_epochs > 0 or polish_epochs > 0):
+        raise ValueError("selected-checkpoint analysis of secondary stages is not implemented")
     if resume and not ckpt_path:
         raise ValueError("resume requires a checkpoint path prefix")
     if ckpt_path and (gen_finetune_epochs > 0 or polish_epochs > 0):
@@ -165,7 +167,26 @@ def run_pipeline(corpus_dir: str, epochs: int = 1, batch_size: int = 32,
 
     report = None
     if do_analyze:
-        report = analyze(model, val_loader)
+        # Evaluation is observational: retain the final optimizer-associated weights.
+        original = {k: v.detach().clone() for k, v in model.state_dict().items()}
+        try:
+            if do_train and ckpt_path:
+                selected = checkpoint_paths(ckpt_path)["best"]
+                trainer.load(selected, mode="weights")
+                identity = f"best:{selected.resolve()}:sha256={sha256_file(selected)}"
+            elif do_train:
+                if trainer.best_model_state is None:
+                    raise ValueError("analysis requires a selected validation candidate")
+                model.load_state_dict(trainer.best_model_state)
+                identity = "best-in-memory"
+            elif ckpt_path:
+                identity = f"loaded:{Path(ckpt_path).resolve()}:sha256={sha256_file(Path(ckpt_path))}"
+            else:
+                identity = "untrained-in-memory"
+            report = analyze(model, val_loader, seed=seed, checkpoint_identity=identity)
+            report.protocol['selection_metric'] = cfg.selection_metric
+        finally:
+            model.load_state_dict(original)
         if verbose:
             print(report.summary())
     return {"model": model, "history": history, "report": report, "spec": spec,

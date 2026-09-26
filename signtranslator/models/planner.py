@@ -32,6 +32,8 @@ class _SinusoidalPositionalEncoding(nn.Module):
         self.register_buffer("pe", pe.unsqueeze(0))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.size(1) > self.pe.size(1):
+            raise ValueError("planner sequence exceeds positional capacity")
         return x + self.pe[:, : x.size(1)]
 
 
@@ -102,8 +104,11 @@ class GlossPlanner(nn.Module):
         return self.loss_fn(logits.reshape(-1, logits.size(-1)), gold.reshape(-1))
 
     @torch.no_grad()
-    def greedy_decode(self, src: torch.Tensor, max_len: int = 32) -> List[List[int]]:
+    def greedy_decode(self, src: torch.Tensor, max_len: int = 32, *,
+                      return_status: bool = False):
         """Autoregressive greedy decoding starting from BOS until EOS/max_len."""
+        if isinstance(max_len, bool) or not isinstance(max_len, int) or not 1 <= max_len <= self.pos.pe.size(1):
+            raise ValueError("max_len must fit the planner positional capacity")
         self.eval()
         n = src.size(0)
         device = src.device
@@ -127,4 +132,6 @@ class GlossPlanner(nn.Module):
                 if tok != PAD:
                     seq.append(tok)
             results.append(seq)
+        if return_status:
+            return results, finished.tolist()
         return results

@@ -184,12 +184,15 @@ class TrainerConfig(SerializableConfig):
         "generation": 1.0, "alignment": 0.5, "planner": 1.0, "recognition": 1.0,
         "speech": 1.0,
     })
+    selection_metric: str = "generation"  # minimize macro-observation supported loss
     val_every: int = 1
     seed: int = 0
     device: str = "cpu"
     ckpt_path: Optional[str] = None
 
     def __post_init__(self) -> None:
+        if self.selection_metric not in {"generation", "planner", "recognition", "speech", "alignment"}:
+            raise ValueError("selection_metric must name a branch loss to minimize")
         for name in ("epochs", "batch_size", "val_every"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value <= 0:

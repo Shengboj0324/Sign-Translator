@@ -364,6 +364,49 @@ class BidirectionalSignTranslator(nn.Module):
         losses["total"] = sum(w.get(k, 1.0) * v for k, v in losses.items())
         return losses
 
+    @torch.no_grad()
+    def validation_metrics(self, batches, weights=None):
+        """Macro-observation branch losses, with one fixed retrieval cohort.
+
+        Normalizing each observation first gives every sample equal weight despite
+        duration or missing joints. Alignment uses the entire validation cohort as
+        its candidate set, never loader-dependent mini-batch negatives.
+        """
+        import math
+        from ..analysis.observations import observations
+        from .alignment import info_nce_loss
+        device = next(self.parameters()).device
+        sums, counts, motion, language = {}, {}, [], []
+        for batch in batches:
+            for row in observations(batch):
+                row = {k: v.to(device) if torch.is_tensor(v) else v for k, v in row.items()}
+                losses = self.training_step(row, weights=weights)
+                for key, value in losses.items():
+                    if key in ('total', 'alignment'):
+                        continue
+                    if value.ndim != 0 or not bool(torch.isfinite(value)):
+                        raise FloatingPointError(f'nonfinite validation {key}')
+                    sums[key] = sums.get(key, 0.0) + float(value)
+                    counts[key] = counts.get(key, 0) + 1
+                support = {k: row[k] for k in ('validity_mask', 'confidence', 'frame_mask') if k in row}
+                pose, _ = self.diffusion.motion_support(row['pose'], **support)
+                if 'gloss_tokens' in row:
+                    motion.append(self.embed_motion(pose))
+                    language.append(self.embed_gloss(row['gloss_tokens']))
+        if not sums:
+            raise RuntimeError('validation iterator yielded zero observations')
+        result = {k: sums[k] / counts[k] for k in sums}
+        if motion:
+            temperature = float(self.aligner.log_scale.clamp(max=self.aligner.max_log_scale).neg().exp())
+            alignment, _ = info_nce_loss(torch.cat(motion), torch.cat(language), temperature)
+            if not bool(torch.isfinite(alignment)):
+                raise FloatingPointError('nonfinite validation alignment')
+            result['alignment'] = float(alignment)
+        result['total'] = sum((weights or {}).get(k, 1.0) * value for k, value in result.items())
+        if not all(math.isfinite(v) for v in result.values()):
+            raise FloatingPointError('nonfinite aggregated validation metric')
+        return result
+
     # -- inference ----------------------------------------------------------
     @torch.no_grad()
     def generate_from_gloss(self, gloss_tokens: torch.Tensor, num_frames: Optional[int] = None,

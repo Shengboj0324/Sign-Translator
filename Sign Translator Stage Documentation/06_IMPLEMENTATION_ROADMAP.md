@@ -8,6 +8,159 @@ that an empirical phase passed, replace external authorizations, or change execu
 behavior. The corresponding current audit contains B01–B66 plus the Day-1 B67 addendum
 in `03_READINESS_AUDIT.md`.
 
+## W0 Days 6–10 execution record — 2026-09-25
+
+**Status: complete and verified through Day 10. W0 engineering exit accepted.** The records below
+supersede the historical open W0 findings without changing any empirical gate.
+
+### Days 6–7: evaluation contract and selection
+
+Canonical analysis now unpads each observation before convolution, pooling, acoustic
+recognition, target encoding or generation. It preserves each motion/speech length and
+splits acoustic CTC references using their own target lengths. No concatenation of ragged
+token batches is required. Generation receives observation masks/confidence and cycle
+sampling uses the observation's declared duration. This is an evaluation boundary; full
+padding/occlusion invariance during joint batched training remains B19 in W2–W3.
+
+Planner decoding has a declared maximum of 32 steps in analysis (configurable up to the
+512-position implementation capacity). A reference requiring more than that cap including
+EOS is rejected explicitly. Missing EOS is reported as truncation and cannot pass the
+planner gate. Reports include corpus edit rate, exact sequence match and insertion-aware
+normalized edit accuracy. The historical `planner_token_accuracy` key is retained with its
+new definition recorded in the report; old numbers and thresholds are not calibrated to
+this new definition. Semantic-field accuracy is explicitly unavailable: the canonical
+synthetic token branch has no governed SIR field references. No token match is promoted to
+a semantic judgment. Governed field evaluation remains W3/W6 work under B28/B39.
+
+Validation and generation analysis use the **macro-observation estimand**: normalize each
+observation over its own valid coordinates and valid adjacent pairs, then give each eligible
+observation one vote. Planner loss averages within each sample, including EOS; CTC retains
+its target-length-normalized per-sample loss. Each branch has its own eligible sample count.
+Alignment uses the full fixed validation cohort as candidates, not the current loader batch.
+This fixes unequal final batches and support-dependent batching without claiming independent
+signer observations or fixing false negatives between equivalent meanings (B29).
+Training epoch loss logs remain optimizer-batch diagnostics, not evaluation estimands.
+
+`TrainerConfig.selection_metric` freezes a branch loss to minimize, defaulting to
+`generation`; weighted total loss cannot be selected as the primary checkpoint criterion.
+The config is bound into resumable artifacts. Analysis after joint training explicitly loads
+best weights, records the artifact path/hash, and restores final optimizer-associated weights.
+Without a saved artifact, the selected best in-memory weights are named and content-hashed.
+An explicitly loaded checkpoint is reported by its own identity. Secondary-stage analysis
+is rejected up front because those stages do not have an accepted selection/resume contract.
+
+Analysis records seed, one stochastic replicate, exact weight hash, support counts, cap and
+estimand. Python/NumPy/Torch RNG state and every module's prior train/eval mode are restored
+on success and failure. A single seeded replicate is a reproducible engineering diagnostic,
+not uncertainty estimation; clustered/multi-seed scientific reporting remains W6.
+
+### Day 8: canonical package and ownership map
+
+The engineering owner for the following mappings is Codex, with the project lead accountable
+for scope changes. Qualified ASL specialists own linguistic conventions and acceptance;
+software tests cannot take that role. Alternative modules stay available for isolated research
+but are not alternate sources of truth for the canonical runtime.
+
+| Responsibility | Canonical implementation now | Alternative / future boundary |
+|---|---|---|
+| Executable and optimization | `run.py`, `training/trainer.py`, `TrainerConfig` | `train.py` / `SignTranslator` is a legacy synthetic two-branch experiment; not the production or resume entry point |
+| Corpus and topology | `data/corpus.py`, governed `data_engineering/exporter.py`, `skeleton/graph.py` | No direct governed SIR shard adapter or accepted multichannel 3D state yet |
+| Source-token planning | `models/planner.py` | `planning/` and `grammar/` own governed SIR contracts; no automatic substitution of synthetic token outputs |
+| Active motion generation | `models/guided_diffusion.py` on `models/diffusion.py`, wired by `models/pipeline.py` | `diffusion_gen/` and `motion_transformer/` are separately tested candidates; replacement requires W4/W5 comparison and integration evidence |
+| Compact acoustic recognition | `models/speech.py` | `speech/` contains advanced contracts/components; raw-waveform service is not wired into the executable |
+| Sign recognition and alignment | `models/recognition.py`, `models/stgcn.py`, `models/alignment.py` | Gloss IDs are diagnostic outputs, not full ASL-to-English translation |
+| Canonical branch evaluation | `analysis/report.py`, `analysis/observations.py`, `eval/metrics.py` | `eval_framework/` owns scientific contracts, statistical primitives and human-study interfaces; it does not supply missing study results |
+| Geometry and rendering | `pose/`, `hand_graph/`, `facial_nmm/`, `avatar_render/` interfaces | Future canonical state and real source-to-rig round-trip remain externally gated |
+| Release controls | `deployment/` contracts | No live production service or hardware qualification inferred |
+
+**Leakage design frozen for W1 implementation:** construct a bipartite signer/source graph;
+assign whole connected components to partitions before extracting windows. All sessions,
+translations, annotation revisions, augmented views and derivative motion from a source stay
+with that source. Unknown signer/source identity is quarantined rather than assumed unique.
+Fit QC cutoffs, normalization, vocabularies and tokenization only on training/development
+partitions as preregistered. A truly external closed lexicon is permitted only when its
+version/hash and choice predate held-out inspection. Unseen test forms map to a declared
+unknown/refusal path and contribute coverage; never rebuild the vocabulary from all records.
+Calibration, model selection and final test are separate; do not tune on test failures and
+report the same test as confirmatory. Persist component assignments, seed, source/signer
+counts, hashes, overlap assertions and exclusions. B11/B21 implementation and real split
+certification remain W1/W3, not completed by this design document.
+
+The research/commercial policy discrepancy B09 remains a named W1 policy dependency:
+source-independent W0 repair does not invoke the pre-Phase-2 portfolio gate. Existing
+executable gates remain unchanged and closed. Any future action-scoped policy revision must
+version requirements and prove research acceptance cannot imply commercial acceptance;
+no present authorization is inferred from this mapping.
+
+### Canonical engineering metric registry
+
+| Metric / location | Unit, aggregation and direction | Availability / meaning |
+|---|---|---|
+| Generation validation / trainer and analysis | Per-observation supported coordinate loss plus supported adjacent-difference term; arithmetic mean; lower | Every required observation/temporal objective must have support; normalized coordinates, not physical-time error |
+| Planner validation / trainer | Per-sample teacher-forced CE including EOS, mean over eligible samples; lower | Synthetic token targets; not semantic or ASL accuracy |
+| Recognition and speech validation / trainer | Target-length-normalized CTC per sample, mean over branch-eligible samples; lower | Exact CTC feasibility remains required |
+| Alignment validation / trainer | Symmetric diagonal InfoNCE on the full validation cohort; lower | Candidate population must stay fixed; repeated meaning false negatives remain B29 |
+| Weighted total / trainer | Sum of named branch estimands with frozen config weights | Diagnostic only; excluded from primary selection |
+| Recognition, speech and planner WER / analysis | Sum of edit distances divided by reference token count; lower | Insertions count; acoustic coverage is reported and partial coverage fails whole-corpus acoustic gate |
+| Planner normalized edit accuracy / analysis | `1 - sum(edit_distance)/sum(max(hyp_length, ref_length))`; higher | Historical token-accuracy key; not comparable to old positional accuracy |
+| Planner exact match and truncation / analysis | Fraction of fully matching EOS-terminated sequences; fraction without EOS | Truncation always fails planner acceptance, independent of content match |
+| Retrieval R@1/R@5 / analysis | Mean diagonal retrieval success over fixed validation candidates; higher | Embedding diagnostic; no semantic equivalence or intelligibility claim |
+| Cycle WER / analysis | Corpus edit rate over first declared subset in loader order; lower | Seed, subset count and duration recorded; shared-recognizer agreement is not independent human validation |
+| Semantic-field accuracy / analysis | Unavailable until governed field references and predictions exist | Never filled with zero, token accuracy or fabricated labels |
+| Sign/permutation/bootstrap / `eval_framework/statistics.py` | Validated finite-score statistical primitives | W0 tests numerical contracts only; independent units, clustering, power and multiplicity remain W1/W6 |
+
+Current automatic thresholds remain synthetic engineering checks. They are not preregistered
+real-ASL endpoints. Registry changes require a versioned protocol and fresh comparisons;
+semantic, perceptual and scientific acceptance belongs to the later phase gates.
+
+### Days 9–10: integration and acceptance evidence
+
+**1,832 tests passed in 68.09 seconds**, with warnings treated as errors and zero failures,
+errors or skips. Compilation and dependency checks passed. The source/test/config inventory
+was unchanged during verification. A no-Git source archive was extracted and built into an
+installed wheel; its custom-topology smoke completed four optimizer steps, selected-best
+analysis, distinct best/last artifacts, finite output and bit-identical seeded last reload.
+
+Evidence: [full verification](evidence/w0-complete-2026-09-25-attempt1/verification.json),
+[warning-strict test log](evidence/w0-complete-2026-09-25-attempt1/pytest.log), and
+[completion audit](evidence/w0-complete-2026-09-25-attempt1/completion-verification.json).
+`tests/test_w0_analysis.py` adds 16 adversarial/integration cases. The full suite also retains
+all Days 2–5 numerical, masking, topology, finite-update and exact-resume regressions.
+An early focused invocation named a nonexistent test file; the corrected focused invocation
+then exposed a test fixture using a list instead of the trainer's required DataLoader. The
+fixture was repaired and all final checks were rerun; neither early attempt was acceptance.
+
+| Day / requirement | Current acceptance evidence |
+|---|---|
+| 1: baseline, scope, owners, dependencies | Preserved Day-1 baseline and dependency ledger below; historical hashes retained |
+| 2: statistical domain and tail repairs | Independent integer probability oracle, invalid-input tests and current full-suite results |
+| 3: support-safe objectives | Mask/confidence, zero-support, gradient and active-path tests remain green |
+| 4: topology and joint ordering | Alternate topology, manifest/export and mismatched-checkpoint tests; installed-wheel custom graph |
+| 5: finite/nonempty updates and CLI | Failure-injection and positive-step tests; checkpointable parser/API defaults |
+| 6: ragged and length-aware analysis | Unequal token/motion/speech lengths; padded NaNs; insertion/EOS and ten-token reference adversaries |
+| 7: estimands, selection and RNG | Unequal batch partition equality, independent macro-loss oracle, declared branch selection, exact best artifact inspection, RNG/mode restoration |
+| 8: package ownership and leakage design | Canonical package map, metric registry and signer/source/vocabulary rules above; implementation dependencies remain explicitly assigned |
+| 9: integrated baseline | Entire 1,832-test warning-strict suite, compile and dependency checks |
+| 10: archive, install, reload and decision | Extracted source archive → installed wheel → train → selected-best analysis → last reload; hashed evidence and completion audit |
+
+**Decision:** W0 engineering stabilization is accepted. W1 source/QC/split/protocol work is
+next; Phase-2 empirical acceptance and production deployment remain unapproved. Completing
+scheduled deliverables early does not claim 60 human hours elapsed or automatically advance
+external delivery dates.
+
+The existing Days 1–5 evidence remains immutable historical evidence of those exact bytes.
+The full-phase runner is `scripts/w0_verify.py`; reproduce into a new output directory.
+It checks the complete warning-strict suite, dependency consistency, compilation, source
+identity, an extracted no-Git source archive, wheel installation, custom-topology training,
+selected-best analysis and last-checkpoint reload. It reuses the pinned local numerical
+environment; Linux/GPU/production validation is not claimed.
+
+W0 acceptance does not accept Phase 2, resolve missing source media B67, grant rights,
+create human reviews, or close the remaining B19/B20/B29/B37–B39 research work. Those
+remain concrete dependencies in the existing ledger and schedule.
+
+---
+
 ## W0 Days 2–5 implementation record — 2026-09-25
 
 **Status: implementation and verification complete through W0 Day 5.** Day 1 remains preserved as

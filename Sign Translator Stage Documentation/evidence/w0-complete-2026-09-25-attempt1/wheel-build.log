@@ -1,0 +1,12 @@
+Processing /var/folders/y0/l9ns18ns5472mqrprmhhmsw00000gn/T/signtranslator-w0-wheel-jjt6ibp0/extracted
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Building wheels for collected packages: signtranslator
+  Building wheel for signtranslator (pyproject.toml): started
+  Building wheel for signtranslator (pyproject.toml): finished with status 'done'
+  Created wheel for signtranslator: filename=signtranslator-0.1.0-py3-none-any.whl size=549677 sha256=5201ed1385f45bf4857e3aed6001166494951f9fd662e4d186bc8924e4eff988
+  Stored in directory: /private/var/folders/y0/l9ns18ns5472mqrprmhhmsw00000gn/T/pip-ephem-wheel-cache-1jz0yv2p/wheels/83/18/f2/7a977d9ea23ec065d6d82d83bae0b609b85cc30fa546b0ef37
+Successfully built signtranslator
+
+[notice] A new release of pip is available: 26.2 -> 26.2.1
+[notice] To update, run: /Users/jiangshengbo/Desktop/Sign-Translator/.venv/bin/python -m pip install --upgrade pip
