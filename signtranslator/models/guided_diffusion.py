@@ -36,13 +36,13 @@ class GuidedMotionDiffusion(GaussianMotionDiffusion):
 
     # -- training with condition dropout -----------------------------------
     def p_losses(self, x_start: torch.Tensor, t: torch.Tensor, cond=None,
-                 noise: Optional[torch.Tensor] = None) -> torch.Tensor:
+                 noise: Optional[torch.Tensor] = None, **support) -> torch.Tensor:
         drop = None
         if cond is not None and self.cond_drop_prob > 0:
             drop = torch.rand(x_start.shape[0], device=x_start.device) < self.cond_drop_prob
         # Delegate to the base loss so eps/x0 parameterization and the velocity
         # term are handled in exactly one place.
-        return super().p_losses(x_start, t, cond=cond, noise=noise, drop=drop)
+        return super().p_losses(x_start, t, cond=cond, noise=noise, drop=drop, **support)
 
     # -- guided prediction --------------------------------------------------
     def _guided_predictions(self, x: torch.Tensor, t: torch.Tensor, cond,

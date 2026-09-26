@@ -62,6 +62,7 @@ def _model_contract(model: torch.nn.Module) -> dict[str, Any]:
             for name, tensor in state.items()
         ],
         "configs": configs,
+        "skeleton": model.graph.to_dict() if hasattr(model, "graph") else None,
     }
 
 
@@ -143,11 +144,46 @@ def cosine_warmup_lambda(total_steps: int, warmup_steps: int,
     return fn
 
 
+def _require_batches(loader, name: str) -> None:
+    if len(loader) == 0:
+        raise ValueError(f"{name} loader contains zero batches; adjust batch size/drop_last or data")
+
+
+def _finite_losses(losses: Mapping[str, torch.Tensor], context: str) -> None:
+    if "total" not in losses:
+        raise ValueError(f"missing total objective: {context}")
+    for name, value in losses.items():
+        if not torch.is_tensor(value) or value.numel() != 1 or not torch.isfinite(value).all():
+            raise FloatingPointError(f"invalid/non-finite {name} loss: {context}")
+
+
+def _checked_step(loss: torch.Tensor, optimizer, parameters, grad_clip: float,
+                  context: str) -> None:
+    parameters = list(parameters)
+    optimizer.zero_grad()
+    if not loss.requires_grad:
+        raise ValueError(f"objective has no gradient path: {context}")
+    loss.backward()
+    gradients = [parameter.grad for parameter in parameters if parameter.grad is not None]
+    if not gradients or any(not torch.isfinite(gradient).all() for gradient in gradients):
+        optimizer.zero_grad()
+        raise FloatingPointError(f"missing/non-finite gradients before optimizer step: {context}")
+    try:
+        torch.nn.utils.clip_grad_norm_(parameters, grad_clip, error_if_nonfinite=True)
+    except RuntimeError as error:
+        optimizer.zero_grad()
+        raise FloatingPointError(f"invalid gradient norm before optimizer step: {context}") from error
+    optimizer.step()
+
+
 class Trainer:
     def __init__(self, model: torch.nn.Module, cfg: TrainerConfig,
                  train_loader: DataLoader,
                  val_loader: Optional[DataLoader] = None,
                  *, artifact_context: Optional[Mapping[str, Any]] = None) -> None:
+        _require_batches(train_loader, "training")
+        if val_loader is not None:
+            _require_batches(val_loader, "validation")
         self.model = model.to(cfg.device)
         self.cfg = cfg
         self.train_loader = train_loader
@@ -187,25 +223,27 @@ class Trainer:
 
     # -- loops --------------------------------------------------------------
     def train_epoch(self) -> Dict[str, float]:
+        _require_batches(self.train_loader, "training")
         self.model.train()
         agg: Dict[str, float] = {}
         count = 0
         for batch in self.train_loader:
             batch = self._to_device(batch)
             losses = self.model.training_step(batch, weights=self.cfg.loss_weights)
+            context = (f"epoch={self.completed_epochs}, batch={count}, step={self.global_step}, "
+                       f"sample_ids={batch.get('sample_ids', 'unavailable')!r}")
+            _finite_losses(losses, context)
             loss = losses["total"]
-
-            self.opt.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.grad_clip)
-            self.opt.step()
+            _checked_step(loss, self.opt, self.model.parameters(), self.cfg.grad_clip, context)
             self.sched.step()
             self.global_step += 1
 
             for k, v in losses.items():
                 agg[k] = agg.get(k, 0.0) + v.detach().item()
             count += 1
-        return {k: v / max(1, count) for k, v in agg.items()}
+        if count == 0:
+            raise RuntimeError("training iterator yielded zero batches")
+        return {k: v / count for k, v in agg.items()}
 
     @torch.no_grad()
     def validate(self) -> Dict[str, float]:
@@ -222,12 +260,15 @@ class Trainer:
                 for batch in self.val_loader:
                     batch = self._to_device(batch)
                     losses = self.model.training_step(batch, weights=self.cfg.loss_weights)
+                    _finite_losses(losses, f"validation batch={count}, sample_ids={batch.get('sample_ids')!r}")
                     for k, v in losses.items():
                         agg[k] = agg.get(k, 0.0) + v.detach().item()
                     count += 1
         finally:
             self.model.train(was_training)
-        return {k: v / max(1, count) for k, v in agg.items()}
+        if count == 0:
+            raise RuntimeError("validation iterator yielded zero batches")
+        return {k: v / count for k, v in agg.items()}
 
     def fit(self, verbose: bool = False,
             max_epochs: Optional[int] = None) -> Dict[str, List[float]]:
@@ -355,6 +396,9 @@ class Trainer:
         touched: it is a separate encoder precisely so that generator
         fine-tuning cannot collapse motion<->language retrieval.
         """
+        _require_batches(train_loader, "generator training")
+        if val_loader is not None:
+            _require_batches(val_loader, "generator validation")
         params = list(model.diffusion.parameters()) + list(model.cond_encoder.parameters())
         seen, unique = set(), []
         for p in params:                      # de-duplicate any shared tensors
@@ -373,23 +417,31 @@ class Trainer:
             for batch in train_loader:
                 pose = batch["pose"].to(device)
                 gloss = batch["gloss_tokens"].to(device)
-                loss = model.generation_loss(pose, gloss)
-                opt.zero_grad()
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(unique, grad_clip)
-                opt.step()
+                support = {key: batch[key].to(device) for key in
+                           ("validity_mask", "confidence", "frame_mask") if key in batch}
+                loss = model.generation_loss(pose, gloss, **support)
+                context = f"generator epoch={epoch}, batch={count}, sample_ids={batch.get('sample_ids')!r}"
+                _finite_losses({"total": loss}, context)
+                _checked_step(loss, opt, unique, grad_clip, context)
                 sched.step()
                 agg += loss.detach().item()
                 count += 1
-            history["train_generation"].append(agg / max(1, count))
+            if count == 0:
+                raise RuntimeError("generator training iterator yielded zero batches")
+            history["train_generation"].append(agg / count)
 
             if val_loader is not None:
                 model.eval()
                 with torch.no_grad():
                     v = [model.generation_loss(b["pose"].to(device),
-                                               b["gloss_tokens"].to(device)).item()
+                                               b["gloss_tokens"].to(device),
+                                               **{key: b[key].to(device) for key in
+                                                  ("validity_mask", "confidence", "frame_mask")
+                                                  if key in b}).item()
                          for b in val_loader]
-                history["val_generation"].append(sum(v) / max(1, len(v)))
+                if not v or not all(math.isfinite(value) for value in v):
+                    raise FloatingPointError("generator validation has empty/non-finite evidence")
+                history["val_generation"].append(sum(v) / len(v))
             if verbose and (epoch + 1) % 10 == 0:
                 msg = f"  [gen-ft] epoch {epoch + 1:3d} train {history['train_generation'][-1]:.4f}"
                 if history["val_generation"]:

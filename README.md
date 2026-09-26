@@ -185,7 +185,7 @@ The mathematical ancestry is explicit rather than proprietary: [CTC](https://www
 
 ## 7. Reproducibility and bounded execution
 
-Python `>=3.12,<3.13` is required; [`pyproject.toml`](pyproject.toml) declares dependency ranges, while [`requirements.lock`](requirements.lock) is the lock snapshot. The CLI defaults to a long **30 joint + 175 generator-only + 16 polish epochs**. Override both secondary stages for a bounded integration run. Use an empty corpus directory; synthetic generation refuses a nonempty one unless deliberately overridden.
+Python `>=3.12,<3.13` is required; [`pyproject.toml`](pyproject.toml) declares dependency ranges, while [`requirements.lock`](requirements.lock) is the lock snapshot. The CLI and API now default to **one joint epoch, no generator-only fine-tuning, and no polish**, with learning rate `3e-4`. Longer experiments require explicit epoch arguments; the defaults support checkpointed smoke runs. Use an empty corpus directory; synthetic generation refuses a nonempty one unless deliberately overridden.
 
 ```bash
 python3.12 -m venv .venv
@@ -195,7 +195,7 @@ python3.12 -m venv .venv
 .venv/bin/python -W error -m pytest
 ```
 
-The one-epoch API smoke run intentionally skips the model's performance analysis; it checks data readiness and training integration, not translation quality. It must target a **new empty** `./corpus` directory. For the full CLI, run `python -m signtranslator.run --help` and set `--gen-finetune-epochs 0 --polish-epochs 0` explicitly for bounded work. For epoch-boundary joint-training checkpoint/resume, pass `--ckpt artifacts/run.pt` with those secondary stages at zero, then later use `--resume` with the same corpus/configuration/code identities. `--overwrite-synthetic` can overwrite a synthetic output directory and is not part of the example.
+The one-epoch API smoke run intentionally skips the model's performance analysis; it checks data readiness and training integration, not translation quality. It must target a **new empty** `./corpus` directory. For the full CLI, run `python -m signtranslator.run --help`; secondary stages default to zero. A one-epoch CLI run still evaluates quality and may exit nonzero because the model is untrained; the API example above intentionally checks mechanical execution only. For epoch-boundary joint-training checkpoint/resume, pass `--ckpt artifacts/run.pt` with those secondary stages at zero, then later use `--resume` with the same corpus/configuration/code identities. `--overwrite-synthetic` can overwrite a synthetic output directory and is not part of the example.
 
 Tests cover numerical identities, finite gradients, CTC feasibility, shape errors, provenance tampering, resume integrity, source grouping, strict parsing, and readiness gates. They establish behavior relative to encoded contracts, **not absolute flawlessness**. Historical test counts in stage documents are snapshots; rerun the suite for a current verdict. No documentation edit or green synthetic test approves Stage B, Phase 2, Phase 3 empirical exit, Stage C, or production use.
 

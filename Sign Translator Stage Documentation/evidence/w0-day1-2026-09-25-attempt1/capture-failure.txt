@@ -1,0 +1,1 @@
+First capture attempt: test suite passed 1726 tests, but runner exited 1 before baseline.json was written. The audit runner used source/ rather than the observed source/i_have_a_dream/ directory. This attempt is incomplete and must not serve as the Day-1 baseline. The corrected rerun also records the genuinely missing HD primary video, without substituting SD.

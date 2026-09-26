@@ -20,6 +20,7 @@ from typing import Dict, Optional, Sequence, Tuple
 import numpy as np
 
 from ..data.corpus import CorpusSpec, ctc_min_input_length, subsampled_length
+from ..skeleton.graph import SkeletonGraph
 from .schema import Sample, validate_authorization, validate_sample
 from .splitting import certify_no_group_leakage, grouped_split
 
@@ -430,7 +431,8 @@ def export_corpus(records: Sequence[ExtractedSample], out_dir: str | os.PathLike
                   *, joint_names: Sequence[str],
                   landmark_parts: Dict[str, Sequence[int]],
                   split_ratios=(0.7, 0.15, 0.15),
-                  seed: int = 0, speech_subsample: int = 2) -> ExportResult:
+                  seed: int = 0, speech_subsample: int = 2,
+                  skeleton: Optional[SkeletonGraph] = None) -> ExportResult:
     """Export validated records into versioned, active-loader-compatible shards."""
     if not records:
         raise ValueError("at least one extracted sample is required")
@@ -462,6 +464,10 @@ def export_corpus(records: Sequence[ExtractedSample], out_dir: str | os.PathLike
     channels, joints = next(iter(shapes))
     if len(joint_names) != joints or len(set(joint_names)) != joints:
         raise ValueError("joint_names must be unique and match the motion joint count")
+    if skeleton is not None:
+        if (not isinstance(skeleton, SkeletonGraph) or skeleton.num_nodes != joints
+                or tuple(joint_names) != skeleton.joint_names):
+            raise ValueError("export skeleton must match joint count and exact joint order")
     required_parts = {"body", "left_hand", "right_hand", "face"}
     if set(landmark_parts) != required_parts:
         raise ValueError(f"landmark_parts must contain exactly {sorted(required_parts)}")
@@ -563,6 +569,7 @@ def export_corpus(records: Sequence[ExtractedSample], out_dir: str | os.PathLike
     shard_hashes = {f"{name}.npz": sha256_file(destination / f"{name}.npz")
                     for name in ("train", "val", "test")}
     manifest = {
+        **({"skeleton": skeleton.to_dict()} if skeleton is not None else {}),
         "format_version": CORPUS_FORMAT_VERSION,
         "spec": asdict(spec),
         "splits": counts,

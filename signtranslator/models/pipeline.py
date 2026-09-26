@@ -176,6 +176,8 @@ class BidirectionalSignTranslator(nn.Module):
         self.num_glosses = num_glosses
         self.num_spoken_tokens = num_spoken_tokens or num_glosses
         self.graph = graph or SkeletonGraph(num_nodes=model_cfg.num_joints)
+        if self.graph.num_nodes != model_cfg.num_joints:
+            raise ValueError("graph joints != config joints")
         adjacency = self.graph.adjacency()
 
         # speech/text -> gloss (the planner can be deepened independently since
@@ -265,9 +267,10 @@ class BidirectionalSignTranslator(nn.Module):
     def planner_loss(self, src: torch.Tensor, gloss: torch.Tensor) -> torch.Tensor:
         return self.planner.loss(src, gloss)
 
-    def generation_loss(self, pose: torch.Tensor, gloss_tokens: torch.Tensor) -> torch.Tensor:
+    def generation_loss(self, pose: torch.Tensor, gloss_tokens: torch.Tensor,
+                        **support) -> torch.Tensor:
         cond = self.gloss_memory(gloss_tokens)
-        return self.diffusion(pose, cond=cond)
+        return self.diffusion(pose, cond=cond, **support)
 
     def recognition_loss(self, pose: torch.Tensor, targets: torch.Tensor,
                          target_lengths: torch.Tensor) -> torch.Tensor:
@@ -323,6 +326,10 @@ class BidirectionalSignTranslator(nn.Module):
         w = weights or {}
         losses = {}
         pose = batch.get("pose")
+        support = {key: batch[key] for key in ("validity_mask", "confidence", "frame_mask")
+                   if key in batch}
+        if pose is not None:
+            pose, _ = self.diffusion.motion_support(pose, **support)
 
         # Share one ST-GCN pass across recognition + alignment when both apply.
         need_align = pose is not None and "gloss_tokens" in batch
@@ -332,7 +339,7 @@ class BidirectionalSignTranslator(nn.Module):
             logprobs, pooled = self._encode_pose_shared(pose)
 
         if pose is not None and "gloss_tokens" in batch:
-            losses["generation"] = self.generation_loss(pose, batch["gloss_tokens"])
+            losses["generation"] = self.generation_loss(pose, batch["gloss_tokens"], **support)
             lang_feat = self.gloss_encoder(batch["gloss_tokens"])
             losses["alignment"] = self.aligner(pooled, lang_feat)["loss"]
         if "src" in batch and "gloss_seq" in batch:

@@ -161,9 +161,59 @@ class GaussianMotionDiffusion(nn.Module):
         """First temporal difference along the frame axis of (N, C, T, V)."""
         return x[:, :, 1:] - x[:, :, :-1]
 
+    @staticmethod
+    def motion_support(x: torch.Tensor, *, validity_mask=None, confidence=None,
+                       frame_mask=None) -> tuple[torch.Tensor, torch.Tensor]:
+        """Sanitize unobserved targets and return per-coordinate reliability weights.
+
+        Reduction is over supported coordinates, not a mean of padded samples.
+        Confidence is a declared reliability weight, not calibrated probability.
+        Every sample must have positive support; missing evidence is never zero loss.
+        """
+        if x.ndim != 4 or not x.is_floating_point() or any(size == 0 for size in x.shape):
+            raise ValueError("motion must be non-empty floating (N,C,T,V)")
+        n, _, t, v = x.shape
+        valid = torch.ones((n, t, v), dtype=torch.bool, device=x.device)
+        for name, mask, shape in (("validity_mask", validity_mask, (n,t,v)),
+                                  ("frame_mask", frame_mask, (n,t))):
+            if mask is not None:
+                if not torch.is_tensor(mask) or mask.dtype != torch.bool or tuple(mask.shape) != shape:
+                    raise ValueError(f"{name} must be boolean with shape {shape}")
+                mask = mask.to(x.device)
+                valid = valid & (mask.unsqueeze(-1) if name == "frame_mask" else mask)
+        weights = torch.ones((n,t,v), dtype=x.dtype, device=x.device)
+        if confidence is not None:
+            if (not torch.is_tensor(confidence) or not confidence.is_floating_point()
+                    or tuple(confidence.shape) != (n,t,v)
+                    or not torch.isfinite(confidence).all()
+                    or ((confidence < 0) | (confidence > 1)).any()):
+                raise ValueError("confidence must be finite floating (N,T,V) in [0,1]")
+            weights = confidence.detach().to(device=x.device, dtype=x.dtype)
+        weights = torch.where(valid, weights, 0).unsqueeze(1).expand_as(x)
+        supported = weights > 0
+        if not supported.flatten(1).any(dim=1).all():
+            raise ValueError("motion objective unavailable: sample has no observed support")
+        if not torch.isfinite(x[supported]).all():
+            raise ValueError("observed motion targets must be finite")
+        return torch.where(supported, x, 0), weights
+
+    @staticmethod
+    def _supported_mse(prediction, target, weights):
+        supported = weights > 0
+        if not supported.flatten(1).any(dim=1).all():
+            raise ValueError("motion objective unavailable: sample has no required support")
+        if not torch.isfinite(prediction[supported]).all():
+            raise ValueError("observed predictions must be finite")
+        residual = torch.where(supported, prediction, 0) - torch.where(supported, target, 0)
+        result = (weights * residual.square()).sum() / weights.sum()
+        if not torch.isfinite(result):
+            raise FloatingPointError("supported motion loss exceeds finite numerical range")
+        return result
+
     def p_losses(self, x_start: torch.Tensor, t: torch.Tensor,
                  cond: Optional[torch.Tensor] = None,
                  noise: Optional[torch.Tensor] = None,
+                 validity_mask=None, confidence=None, frame_mask=None,
                  **denoiser_kwargs) -> torch.Tensor:
         """Training loss.
 
@@ -173,18 +223,27 @@ class GaussianMotionDiffusion(nn.Module):
         term supervises temporal structure directly, which matters when a
         downstream sequence model (here CTC recognition) reads the motion.
         """
+        x_start, weights = self.motion_support(
+            x_start, validity_mask=validity_mask, confidence=confidence, frame_mask=frame_mask)
         if noise is None:
             noise = torch.randn_like(x_start)
+        if noise.shape != x_start.shape or not torch.isfinite(noise[weights > 0]).all():
+            raise ValueError("diffusion noise must match motion and be finite on support")
+        noise = torch.where(weights > 0, noise, 0)
         x_t = self.q_sample(x_start, t, noise=noise)
         out = self.denoiser(x_t, t, cond, **denoiser_kwargs)
-
+        if out.shape != x_start.shape:
+            raise ValueError("denoiser output must match motion shape")
         if self.parameterization == "eps":
-            return F.mse_loss(out, noise)
-
-        loss = F.mse_loss(out, x_start)
+            return self._supported_mse(out, noise, weights)
+        loss = self._supported_mse(out, x_start, weights)
         if self.velocity_weight > 0:
-            loss = loss + self.velocity_weight * F.mse_loss(
-                self._velocity(out), self._velocity(x_start))
+            # Both endpoints must be supported. The weaker reliability limits
+            # this pair; no independence/probability interpretation is assumed.
+            pair_weights = torch.minimum(weights[:, :, 1:], weights[:, :, :-1])
+            safe_out = torch.where(weights > 0, out, 0)
+            loss = loss + self.velocity_weight * self._supported_mse(
+                self._velocity(safe_out), self._velocity(x_start), pair_weights)
         return loss
 
     def sample_timesteps(self, n: int, device) -> torch.Tensor:
@@ -199,10 +258,10 @@ class GaussianMotionDiffusion(nn.Module):
         return t
 
     def forward(self, x_start: torch.Tensor,
-                cond: Optional[torch.Tensor] = None) -> torch.Tensor:
+                cond: Optional[torch.Tensor] = None, **support) -> torch.Tensor:
         """Sample random timesteps and return the diffusion loss."""
         t = self.sample_timesteps(x_start.shape[0], x_start.device)
-        return self.p_losses(x_start, t, cond=cond)
+        return self.p_losses(x_start, t, cond=cond, **support)
 
     # -- reverse process / sampling ----------------------------------------
     @torch.no_grad()

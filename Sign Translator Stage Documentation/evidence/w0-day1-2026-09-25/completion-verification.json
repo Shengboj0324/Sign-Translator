@@ -1,0 +1,347 @@
+{
+  "baseline_sha256": "a58a1bfb86873928d17af2867cd97ecd4890f52b5d242d5dce679aa7065a6d56",
+  "blockers_covered": [
+    "B01",
+    "B02",
+    "B03",
+    "B04",
+    "B05",
+    "B06",
+    "B07",
+    "B08",
+    "B09",
+    "B10",
+    "B11",
+    "B12",
+    "B13",
+    "B14",
+    "B15",
+    "B16",
+    "B17",
+    "B18",
+    "B19",
+    "B20",
+    "B21",
+    "B22",
+    "B23",
+    "B24",
+    "B25",
+    "B26",
+    "B27",
+    "B28",
+    "B29",
+    "B30",
+    "B31",
+    "B32",
+    "B33",
+    "B34",
+    "B35",
+    "B36",
+    "B37",
+    "B38",
+    "B39",
+    "B40",
+    "B41",
+    "B42",
+    "B43",
+    "B44",
+    "B45",
+    "B46",
+    "B47",
+    "B48",
+    "B49",
+    "B50",
+    "B51",
+    "B52",
+    "B53",
+    "B54",
+    "B55",
+    "B56",
+    "B57",
+    "B58",
+    "B59",
+    "B60",
+    "B61",
+    "B62",
+    "B63",
+    "B64",
+    "B65",
+    "B66",
+    "B67"
+  ],
+  "checked_at_utc": "2026-09-25T22:24:11.096901+00:00",
+  "checkpoint_rng_resume_test_cases_verified": [
+    "test_checkpoint_roundtrip",
+    "test_validation_is_repeatable_and_does_not_advance_training_rng",
+    "test_exact_resume_matches_uninterrupted_training_bit_for_bit",
+    "test_resume_rejects_configuration_drift_and_byte_tampering"
+  ],
+  "data_integrity_passed": false,
+  "day1_deliverables_complete": true,
+  "dependency_ids": [
+    "D01",
+    "D02",
+    "D03",
+    "D04",
+    "D05",
+    "D06",
+    "D07",
+    "D08",
+    "D09",
+    "D10",
+    "D11",
+    "D12",
+    "D13",
+    "D14",
+    "D15",
+    "D16",
+    "D17",
+    "D18",
+    "D19",
+    "D20",
+    "D21",
+    "D22",
+    "D23"
+  ],
+  "empirical_phase_approved": false,
+  "full_test_cases_verified": 1726,
+  "hardware": {
+    "cpu": "Apple M4 Max",
+    "memory_bytes": 38654705664,
+    "model": "Mac16,5"
+  },
+  "installed_distributions": [
+    {
+      "name": "av",
+      "version": "18.0.0"
+    },
+    {
+      "name": "filelock",
+      "version": "3.32.2"
+    },
+    {
+      "name": "fsspec",
+      "version": "2026.7.0"
+    },
+    {
+      "name": "iniconfig",
+      "version": "2.3.0"
+    },
+    {
+      "name": "Jinja2",
+      "version": "3.1.6"
+    },
+    {
+      "name": "MarkupSafe",
+      "version": "3.0.3"
+    },
+    {
+      "name": "mpmath",
+      "version": "1.3.0"
+    },
+    {
+      "name": "networkx",
+      "version": "3.6.1"
+    },
+    {
+      "name": "numpy",
+      "version": "2.5.1"
+    },
+    {
+      "name": "packaging",
+      "version": "26.2"
+    },
+    {
+      "name": "pip",
+      "version": "26.2"
+    },
+    {
+      "name": "pluggy",
+      "version": "1.6.0"
+    },
+    {
+      "name": "Pygments",
+      "version": "2.20.0"
+    },
+    {
+      "name": "pytest",
+      "version": "9.1.1"
+    },
+    {
+      "name": "setuptools",
+      "version": "83.0.0"
+    },
+    {
+      "name": "signtranslator",
+      "version": "0.1.0"
+    },
+    {
+      "name": "sympy",
+      "version": "1.14.0"
+    },
+    {
+      "name": "torch",
+      "version": "2.13.0"
+    },
+    {
+      "name": "typing_extensions",
+      "version": "4.16.0"
+    },
+    {
+      "name": "wheel",
+      "version": "0.47.0"
+    }
+  ],
+  "kind": "w0_day1_independent_completion_checks",
+  "locked_distributions": {
+    "Jinja2": {
+      "installed": "3.1.6",
+      "locked": "3.1.6",
+      "matches": true
+    },
+    "MarkupSafe": {
+      "installed": "3.0.3",
+      "locked": "3.0.3",
+      "matches": true
+    },
+    "Pygments": {
+      "installed": "2.20.0",
+      "locked": "2.20.0",
+      "matches": true
+    },
+    "av": {
+      "installed": "18.0.0",
+      "locked": "18.0.0",
+      "matches": true
+    },
+    "filelock": {
+      "installed": "3.32.2",
+      "locked": "3.32.2",
+      "matches": true
+    },
+    "fsspec": {
+      "installed": "2026.7.0",
+      "locked": "2026.7.0",
+      "matches": true
+    },
+    "iniconfig": {
+      "installed": "2.3.0",
+      "locked": "2.3.0",
+      "matches": true
+    },
+    "mpmath": {
+      "installed": "1.3.0",
+      "locked": "1.3.0",
+      "matches": true
+    },
+    "networkx": {
+      "installed": "3.6.1",
+      "locked": "3.6.1",
+      "matches": true
+    },
+    "numpy": {
+      "installed": "2.5.1",
+      "locked": "2.5.1",
+      "matches": true
+    },
+    "packaging": {
+      "installed": "26.2",
+      "locked": "26.2",
+      "matches": true
+    },
+    "pluggy": {
+      "installed": "1.6.0",
+      "locked": "1.6.0",
+      "matches": true
+    },
+    "pytest": {
+      "installed": "9.1.1",
+      "locked": "9.1.1",
+      "matches": true
+    },
+    "setuptools": {
+      "installed": "83.0.0",
+      "locked": "83.0.0",
+      "matches": true
+    },
+    "sympy": {
+      "installed": "1.14.0",
+      "locked": "1.14.0",
+      "matches": true
+    },
+    "torch": {
+      "installed": "2.13.0",
+      "locked": "2.13.0",
+      "matches": true
+    },
+    "typing_extensions": {
+      "installed": "4.16.0",
+      "locked": "4.16.0",
+      "matches": true
+    },
+    "wheel": {
+      "installed": "0.47.0",
+      "locked": "0.47.0",
+      "matches": true
+    }
+  },
+  "model_and_existing_test_code_changed": false,
+  "next_work": "W0 Day 2: B35/B36 numerical statistical repairs",
+  "numerical_defects_repaired": false,
+  "planning_documents": {
+    "03_READINESS_AUDIT.md": "6a28806c9e0802ffe5c3dabe1304a7b692013595230ecc118eb4f24a22687d2b",
+    "06_IMPLEMENTATION_ROADMAP.md": "b904ce87acbd24c7c1131ba9f7a998c91a57befcdd84f3981b8c6eebfab4c671"
+  },
+  "qualified_reviewers_appointed": false,
+  "source_evidence_rechecked": [
+    {
+      "path": "/Users/jiangshengbo/Volumes/how2sign_audit/signer-evidence-v2/how2sign_train_signers.csv",
+      "result": "hash_match"
+    },
+    {
+      "path": "/Users/jiangshengbo/Volumes/how2sign_audit/v1/audit_manifest.json",
+      "result": "hash_match"
+    },
+    {
+      "path": "/Users/jiangshengbo/Volumes/how2sign_audit/v1/audit.sqlite3",
+      "result": "hash_match"
+    },
+    {
+      "path": "/Users/jiangshengbo/Volumes/how2sign_realigned_train.csv",
+      "result": "hash_match"
+    },
+    {
+      "path": "/Users/jiangshengbo/Volumes/cokely_reference/v1/audit/i_have_a_dream_v2/annotation-inspection.csv",
+      "result": "hash_match"
+    },
+    {
+      "path": "/Users/jiangshengbo/Volumes/cokely_reference/v1/audit/i_have_a_dream_v2/annotation-inspection.html",
+      "result": "hash_match"
+    },
+    {
+      "path": "/Users/jiangshengbo/Volumes/cokely_reference/v1/audit/i_have_a_dream_v2/source-native-manifest.json",
+      "result": "hash_match"
+    },
+    {
+      "path": "/Users/jiangshengbo/Volumes/cokely_reference/v1/source/i_have_a_dream/2_I_Have_a_Dream_CokelyAFSParallelCorpus_v1-0.eaf",
+      "result": "hash_match"
+    },
+    {
+      "path": "/Users/jiangshengbo/Volumes/cokely_reference/v1/source/i_have_a_dream/publisher-item-page.html",
+      "result": "hash_match"
+    },
+    {
+      "path": "/Users/jiangshengbo/Volumes/cokely_reference/v1/source/i_have_a_dream/2_I_Have_a_Dream_480_CokelyAFSParallelCorpus_v1-0.mp4",
+      "result": "hash_match"
+    },
+    {
+      "path": "/Users/jiangshengbo/Volumes/cokely_reference/v1/source/i_have_a_dream/2_I_Have_a_Dream_720_CokelyAFSParallelCorpus_v1_0.mp4",
+      "result": "confirmed_missing"
+    },
+    {
+      "path": "/Users/jiangshengbo/Volumes/cokely_reference/v1/control/EAFv3.0.xsd",
+      "result": "hash_match"
+    }
+  ],
+  "source_test_config_files_verified": 333
+}

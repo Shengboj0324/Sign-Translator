@@ -26,9 +26,17 @@ from .models import BidirectionalSignTranslator
 from .training import Trainer, checkpoint_paths
 from .analysis import analyze
 from .reproducibility import sha256_file
+from .skeleton.graph import SkeletonGraph, NUM_DEFAULT_JOINTS
 
 
-def build_model(spec: CorpusSpec, diff_timesteps: int = 100) -> BidirectionalSignTranslator:
+def build_model(spec: CorpusSpec, diff_timesteps: int = 100,
+                graph: Optional[SkeletonGraph] = None) -> BidirectionalSignTranslator:
+    if graph is None:
+        if spec.num_joints != NUM_DEFAULT_JOINTS:
+            raise ValueError("non-default joint count requires an explicit skeleton topology")
+        graph = SkeletonGraph()
+    if not isinstance(graph, SkeletonGraph) or graph.num_nodes != spec.num_joints:
+        raise ValueError("skeleton topology must match corpus joint count")
     model_cfg = ModelConfig(
         num_joints=spec.num_joints, in_channels=spec.in_channels,
         num_frames=spec.num_frames, stgcn_channels=(32, 64),
@@ -45,7 +53,7 @@ def build_model(spec: CorpusSpec, diff_timesteps: int = 100) -> BidirectionalSig
         model_cfg, diff_cfg, src_vocab=spec.src_vocab, gloss_vocab=spec.gloss_vocab,
         num_glosses=spec.num_glosses,
         num_spoken_tokens=spec.source_token_count,
-        cond_drop_prob=0.1, planner_layers=3)
+        cond_drop_prob=0.1, planner_layers=3, graph=graph)
 
 
 # Loss weighting: up-weight the planner (a sequence-reordering task that needs
@@ -59,14 +67,14 @@ DEFAULT_LOSS_WEIGHTS = {
 
 def make_loaders(corpus_dir: str, batch_size: int):
     train_loader = DataLoader(SignDataset(corpus_dir, "train"), batch_size=batch_size,
-                              shuffle=True, collate_fn=collate_corpus, drop_last=True)
+                              shuffle=True, collate_fn=collate_corpus, drop_last=False)
     val_loader = DataLoader(SignDataset(corpus_dir, "val"), batch_size=batch_size,
                             shuffle=False, collate_fn=collate_corpus)
     return train_loader, val_loader
 
 
-def run_pipeline(corpus_dir: str, epochs: int = 30, batch_size: int = 32,
-                 lr: float = 4e-3, diff_timesteps: int = 100, seed: int = 0,  # noqa: E501
+def run_pipeline(corpus_dir: str, epochs: int = 1, batch_size: int = 32,
+                 lr: float = 3e-4, diff_timesteps: int = 100, seed: int = 0,  # noqa: E501
                  regenerate: bool = False, overwrite_corpus: bool = False,
                  ckpt_path: Optional[str] = None,
                  do_train: bool = True, do_analyze: bool = True,
@@ -112,7 +120,15 @@ def run_pipeline(corpus_dir: str, epochs: int = 30, batch_size: int = 32,
     }
 
     torch.manual_seed(seed)
-    model = build_model(spec, diff_timesteps=diff_timesteps)
+    if "skeleton" in corpus_manifest:
+        graph = SkeletonGraph.from_dict(corpus_manifest["skeleton"])
+        if "joint_names" in corpus_manifest and list(graph.joint_names) != corpus_manifest["joint_names"]:
+            raise ValueError("skeleton joint order differs from corpus joint_names")
+    elif corpus_manifest.get("format_version", 1) == 1 and spec.num_joints == NUM_DEFAULT_JOINTS:
+        graph = SkeletonGraph()  # Explicit legacy synthetic 27-joint contract only.
+    else:
+        raise ValueError("real or non-default corpus requires a declared skeleton manifest")
+    model = build_model(spec, diff_timesteps=diff_timesteps, graph=graph)
     if verbose:
         print(f"[model] params: {model.num_parameters():,}")
     cfg = TrainerConfig(epochs=epochs, batch_size=batch_size, lr=lr, seed=seed,
@@ -163,14 +179,14 @@ def main() -> None:
                         help="explicitly create a synthetic corpus")
     parser.add_argument("--overwrite-synthetic", action="store_true",
                         help="allow synthetic generation in a non-empty corpus directory")
-    parser.add_argument("--epochs", type=int, default=30,
+    parser.add_argument("--epochs", type=int, default=1,
                         help="joint multi-branch epochs")
-    parser.add_argument("--gen-finetune-epochs", type=int, default=175,
+    parser.add_argument("--gen-finetune-epochs", type=int, default=0,
                         help="generator-only epochs after joint training "
                              "(the generator needs far more steps than the "
                              "discriminative branches)")
     parser.add_argument("--gen-finetune-lr", type=float, default=1.2e-3)
-    parser.add_argument("--polish-epochs", type=int, default=16,
+    parser.add_argument("--polish-epochs", type=int, default=0,
                         help="low-LR joint epochs after generator fine-tuning, "
                              "re-converging every branch together")
     parser.add_argument("--polish-lr", type=float, default=1.2e-3)

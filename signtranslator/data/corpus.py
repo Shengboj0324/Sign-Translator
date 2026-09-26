@@ -222,6 +222,13 @@ def validate_corpus(corpus_dir: str) -> CorpusSpec:
     format_version = int(manifest.get("format_version", 1))
     if format_version not in (1, 2):
         raise ValueError(f"unsupported corpus format_version {format_version}")
+    if "skeleton" in manifest:
+        from ..skeleton.graph import SkeletonGraph
+        graph = SkeletonGraph.from_dict(manifest["skeleton"])
+        if graph.num_nodes != spec.num_joints:
+            raise ValueError("skeleton node count differs from corpus spec")
+        if "joint_names" in manifest and list(graph.joint_names) != manifest["joint_names"]:
+            raise ValueError("skeleton joint order differs from corpus joint_names")
     if format_version == 2:
         required_manifest = {
             "gloss_vocabulary", "source_vocabulary", "joint_names", "records",

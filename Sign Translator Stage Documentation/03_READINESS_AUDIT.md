@@ -1,8 +1,57 @@
 # 03 — Strict Readiness Audit
 
-## Current audit — 2026-09-25
+## W0 Days 2–5 repair status — 2026-09-25
 
-This section supersedes the historical verdicts below. Scope: checkout
+The current repair record is in `06_IMPLEMENTATION_ROADMAP.md`, preceding the frozen Day-1
+baseline. B35/B36 (statistical domains/tails), B18 (active masked motion objectives), B17
+(declared topology and checkpoint binding), B23/B31 (nonempty/finite training) and B33
+(checkpointable defaults) are implemented. **Final verification: 1,816 passed, zero failures/errors/skips; warnings treated as errors.**
+The installed-wheel custom-topology smoke completed four optimizer steps and finite,
+bit-identical seeded checkpoint reload. See
+[the final verification record](evidence/w0-days2-5-2026-09-25-final/verification.json).
+The original findings below remain historical evidence of the pre-repair state.
+
+The scope of B18 closure is the active training objective; length-aware analysis and complete
+feature masking remain B19/Day 6/W2–W3. B20 physical-time derivatives, B24–B28 evaluation and
+selection, and B37–B39 empirical statistical design are not closed by these repairs.
+**Empirical readiness remains unapproved.** B67 remains open: no missing Cokely source file was
+restored or replaced, and no historical source manifest was modified.
+
+## W0 Day-1 refresh — 2026-09-25
+
+The Day-1 task rechecked checkout `89e2238d371ae8e0af826282520f4c14416bd9c5`, which adds
+only the previous audit/roadmap documents over the package/test baseline named below.
+Fresh results and exact file identities are in
+[evidence/w0-day1-2026-09-25/baseline.json](evidence/w0-day1-2026-09-25/baseline.json).
+The [Day-1 execution record](06_IMPLEMENTATION_ROADMAP.md#w0-day-1-execution-record--2026-09-25)
+contains the frozen scope, owners, dependencies, and source/reviewer requirements.
+
+**New current blocker B67 — missing Cokely primary HD media (P0 for reuse of that source).**
+The historical source-native manifest and binding require
+`2_I_Have_a_Dream_720_CokelyAFSParallelCorpus_v1_0.mp4`, expected SHA-256
+`8eb18b6b2f01a5a179100b0acd84a639b5f2a0ee95fb0195d477b946217c6bb3`, 650,953,008 bytes.
+That file is absent under the recorded local source root
+`/Users/jiangshengbo/Volumes/cokely_reference/v1/source/i_have_a_dream/`.
+The SD alternate, EAF and publisher-page snapshot remain present. No reason for the absence
+is inferred. The original one-item ingestion result is historical, not a currently
+reproducible source-bundle guarantee. Source integrity fails even if other hashes match.
+
+Closure: restore the exact authorized, hash-matching HD file, or create a separately
+versioned and independently validated binding with explicit timing/source treatment.
+Do not silently substitute SD, fabricate the primary hash, modify the historical manifest,
+or use that broken binding for review/training. Ownership and due gate are D23 in the
+roadmap. This raises the blocker register from the prior B01–B66 to **B01–B67**.
+
+**Day-1 verification status: complete capture.** All 1,726 tests passed with zero
+failures/errors/skips; compile/dependency checks passed. Eight synthetic optimizer steps
+produced finite output and bit-identical seeded last-checkpoint reload. **Source integrity
+FAILS:** eleven recorded files match and the Cokely HD primary is missing. No model or
+statistical implementation was repaired; the five reproduced defects remain open.
+
+## Implementation audit snapshot — 2026-09-25
+
+This snapshot supersedes older historical verdicts below; the Day-1 refresh above takes
+precedence for current source availability. Scope: checkout
 `839acf3bc8d67fef10b0e777a181a086f83a66d8`, active runtime, specialized component
 interfaces, tests, and saved evidence under `/Users/jiangshengbo/Volumes`.
 This is a comprehensive implementation/readiness audit, not a proof that every line

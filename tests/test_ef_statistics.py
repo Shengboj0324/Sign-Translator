@@ -77,3 +77,48 @@ def test_significant_and_meaningful_requires_both():
     assert not significant_and_meaningful(effect=0.05, min_effect=0.02, pvalue=0.20)
     # both -> counts.
     assert significant_and_meaningful(effect=0.05, min_effect=0.02, pvalue=0.001)
+
+
+@pytest.mark.parametrize("wins,n", [(60, 60), (0, 60), (83, 100), (500, 1000)])
+def test_sign_tail_matches_independent_integer_oracle(wins, n):
+    # Closed binomial sum, independently evaluated with math.comb.
+    expected = min(1., 2 * sum(math.comb(n, i) for i in range(min(wins, n-wins)+1)) / 2**n)
+    actual = sign_test_pvalue([1.] * wins + [-1.] * (n-wins), [0.] * n)
+    assert actual == expected
+    assert actual > 0
+
+
+@pytest.mark.parametrize("factor", [1e-100, 1., 1e100])
+def test_permutation_scale_invariance(factor):
+    assert paired_permutation_pvalue(np.array([1., 2., 3.]) * factor, [0.]*3) == .25
+
+
+@pytest.mark.parametrize("bad", [[float('nan'), 1], [float('inf'), 1], [], [[1., 2.]], [True, False], ['1','2'], [1j,2j]])
+@pytest.mark.parametrize("fn", [paired_differences, paired_t_statistic, paired_permutation_pvalue, sign_test_pvalue])
+def test_paired_helpers_reject_invalid_evidence(fn, bad):
+    with pytest.raises(ValueError):
+        fn(bad, [0., 0.])
+
+
+@pytest.mark.parametrize("kwargs", [{'num_samples':0}, {'num_samples':1}, {'num_samples':2.5}, {'max_exact':True}, {'max_exact':-1}, {'max_exact':21}, {'seed':-1}])
+def test_permutation_rejects_invalid_controls_even_for_exact_case(kwargs):
+    with pytest.raises(ValueError):
+        paired_permutation_pvalue([1.,2.],[0.,0.],**kwargs)
+
+
+@pytest.mark.parametrize("bad", [float('nan'), float('inf'), -1., 1.1, True])
+def test_significance_gate_rejects_invalid_probability(bad):
+    with pytest.raises(ValueError):
+        significant_and_meaningful(1., .1, bad)
+
+
+@pytest.mark.parametrize("kwargs", [{'num_boot':0}, {'num_boot':True}, {'alpha':float('nan')}, {'seed':-1}, {'stat_fn':lambda x: float('nan')}, {'stat_fn':lambda x: [1.,2.]}])
+def test_bootstrap_rejects_invalid_controls_or_statistics(kwargs):
+    with pytest.raises(ValueError):
+        bootstrap_ci([1.,2.],**kwargs)
+
+
+def test_overflowing_pairs_rejected_and_large_t_is_stable():
+    with pytest.raises(ValueError):
+        paired_differences([1e308],[-1e308])
+    assert paired_t_statistic([1e300,2e300,3e300],[0.]*3) == pytest.approx(math.sqrt(12))

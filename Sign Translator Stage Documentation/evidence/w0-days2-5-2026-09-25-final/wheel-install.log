@@ -1,0 +1,6 @@
+Processing /var/folders/y0/l9ns18ns5472mqrprmhhmsw00000gn/T/signtranslator-w0-wheel-tnqxyuy6/wheels/signtranslator-0.1.0-py3-none-any.whl
+Installing collected packages: signtranslator
+Successfully installed signtranslator-0.1.0
+
+[notice] A new release of pip is available: 26.2 -> 26.2.1
+[notice] To update, run: /Users/jiangshengbo/Desktop/Sign-Translator/.venv/bin/python -m pip install --upgrade pip

@@ -1,0 +1,75 @@
+{
+  "completed_at_utc": "2026-09-26T01:17:05.274546+00:00",
+  "completion_verified": true,
+  "scope": "W0 through Day 5; Days 6-10 remain open",
+  "current_source_matches_tested_inventory": true,
+  "evidence_hashes_verified": true,
+  "resume_regression_present": true,
+  "tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 1816
+  },
+  "wheel_smoke": {
+    "best_last_distinct": true,
+    "empirical_readiness_approved": false,
+    "identity_kind": "content-only",
+    "optimizer_steps": 4,
+    "output_finite": true,
+    "output_shape": [
+      1,
+      3,
+      8,
+      5
+    ],
+    "reload_equal": true,
+    "synthetic_custom_topology": {
+      "center": 0,
+      "edges": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          3,
+          4
+        ]
+      ],
+      "joint_names": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e"
+      ],
+      "num_nodes": 5,
+      "schema_version": 1
+    },
+    "wheel_import_verified": true
+  },
+  "empirical_readiness_approved": false,
+  "B67_primary_media_still_missing": true,
+  "documents": {
+    "Sign Translator Stage Documentation/03_READINESS_AUDIT.md": {
+      "sha256": "b80ccb51ab2437473dfdf5b1de68e18cfa58f36e4f09363f3bf61ef25fefb8d3",
+      "size": 36935
+    },
+    "Sign Translator Stage Documentation/06_IMPLEMENTATION_ROADMAP.md": {
+      "sha256": "9efa85434e192690f7c255dee346d6267eddee77ef58212940da1b88be4b0dd1",
+      "size": 83780
+    }
+  },
+  "verification_record": {
+    "sha256": "afffad26979ce4e2a9af34ef5d16c3ece4944d6493451e4782b98183d221f3d3",
+    "size": 83388
+  }
+}

@@ -28,6 +28,7 @@ therefore prevents activation blow-up across stacked graph-conv layers.
 from __future__ import annotations
 
 from collections import deque
+from numbers import Integral
 from typing import List, Sequence, Tuple
 
 import numpy as np
@@ -96,17 +97,36 @@ class SkeletonGraph:
     def __init__(self,
                  num_nodes: int = NUM_DEFAULT_JOINTS,
                  edges: Sequence[Tuple[int, int]] = DEFAULT_EDGES,
-                 center: int = DEFAULT_CENTER) -> None:
-        self.num_nodes = num_nodes
-        self.edges = tuple(edges)
-        self.center = center
+                 center: int = DEFAULT_CENTER,
+                 joint_names: Sequence[str] | None = None) -> None:
+        if isinstance(num_nodes, bool) or not isinstance(num_nodes, Integral) or num_nodes < 1:
+            raise ValueError("num_nodes must be a positive integer")
+        if isinstance(center, bool) or not isinstance(center, Integral):
+            raise ValueError("center must be an integer")
+        self.num_nodes = int(num_nodes)
+        self.edges = tuple(tuple(edge) for edge in edges)
+        self.center = int(center)
+        self.joint_names = tuple(joint_names) if joint_names is not None else tuple(
+            f"joint_{index}" for index in range(self.num_nodes))
         self._validate()
         self.hop = _bfs_hop_distances(num_nodes, self.edges, center)
         self.A = self._build_partitioned_adjacency()  # (K, V, V) float32
 
     # -- construction -------------------------------------------------------
     def _validate(self) -> None:
-        for i, j in self.edges:
+        if (len(self.joint_names) != self.num_nodes
+                or any(not isinstance(name, str) or not name.strip() for name in self.joint_names)
+                or len(set(self.joint_names)) != self.num_nodes):
+            raise ValueError("joint_names must give one unique non-empty name per node")
+        seen = set()
+        for edge in self.edges:
+            if len(edge) != 2 or any(isinstance(i, bool) or not isinstance(i, Integral) for i in edge):
+                raise ValueError("edges must be pairs of integer node indices")
+            i, j = edge
+            key = tuple(sorted((i,j)))
+            if key in seen:
+                raise ValueError("duplicate undirected skeleton edge")
+            seen.add(key)
             if not (0 <= i < self.num_nodes and 0 <= j < self.num_nodes):
                 raise ValueError(f"edge ({i},{j}) out of range")
             if i == j:
@@ -146,6 +166,23 @@ class SkeletonGraph:
             _normalize_adjacency(a_centrifugal),
         ]
         return np.stack(partitions, axis=0).astype(np.float32)
+
+    def to_dict(self) -> dict:
+        """Bind topology AND column semantics, independent of tensor dimensions."""
+        return {"schema_version": 1, "num_nodes": self.num_nodes,
+                "edges": [[int(i), int(j)] for i,j in self.edges],
+                "center": self.center, "joint_names": list(self.joint_names)}
+
+    @classmethod
+    def from_dict(cls, value: dict) -> "SkeletonGraph":
+        fields = {"schema_version", "num_nodes", "edges", "center", "joint_names"}
+        if (not isinstance(value, dict) or set(value) != fields
+                or type(value["schema_version"]) is not int or value["schema_version"] != 1
+                or not isinstance(value["edges"], list)
+                or not isinstance(value["joint_names"], list)):
+            raise ValueError("invalid skeleton schema")
+        return cls(num_nodes=value["num_nodes"], edges=value["edges"],
+                   center=value["center"], joint_names=value["joint_names"])
 
     # -- accessors ----------------------------------------------------------
     @property

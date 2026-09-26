@@ -1,0 +1,2544 @@
+{
+  "baseline_capture_complete": true,
+  "commands": {
+    "compile": {
+      "argv": [
+        "/Users/jiangshengbo/Desktop/Sign-Translator/.venv/bin/python",
+        "-m",
+        "compileall",
+        "-q",
+        "signtranslator",
+        "tests"
+      ],
+      "log": "compile.log",
+      "returncode": 0,
+      "seconds": 0.033,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    "dependencies": {
+      "argv": [
+        "/Users/jiangshengbo/Desktop/Sign-Translator/.venv/bin/python",
+        "-m",
+        "pip",
+        "check"
+      ],
+      "log": "dependencies.log",
+      "returncode": 0,
+      "seconds": 0.106,
+      "sha256": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09",
+      "size": 30
+    },
+    "pytest": {
+      "argv": [
+        "/Users/jiangshengbo/Desktop/Sign-Translator/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-o",
+        "addopts=",
+        "-q",
+        "-W",
+        "error",
+        "-p",
+        "no:cacheprovider",
+        "--junitxml=/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w0-day1-2026-09-25/pytest.xml"
+      ],
+      "log": "pytest.log",
+      "returncode": 0,
+      "seconds": 61.469,
+      "sha256": "d39c34b9ff392e65aa64ca9e4a0b04af643049fe5c301ae71e570c0d4f1b16a7",
+      "size": 1952
+    }
+  },
+  "completed_at_utc": "2026-09-25T22:21:30.356863+00:00",
+  "data_integrity_passed": false,
+  "head": "89e2238d371ae8e0af826282520f4c14416bd9c5",
+  "initial_worktree_status": " M \"Sign Translator Stage Documentation/06_IMPLEMENTATION_ROADMAP.md\"\n?? \"Sign Translator Stage Documentation/evidence/\"\n?? scripts/\n",
+  "installed_distributions": {
+    "av": "18.0.0",
+    "numpy": "2.5.1",
+    "pytest": "9.1.1",
+    "torch": "2.13.0"
+  },
+  "known_defect_observations": {
+    "B17_137_joint_build": {
+      "accepted": false,
+      "error": "skeleton graph is not connected"
+    },
+    "B18_mask_support": {
+      "all_invalid_loss": 2.8414649963378906,
+      "equal": true,
+      "supported_loss": 2.8414649963378906
+    },
+    "B23_oversized_batch_count": 0,
+    "B35_sign_test": {
+      "actual": 0.0,
+      "exact_reference": 1.734723475976807e-18
+    },
+    "B36_nan_permutation_pvalue": 0.0
+  },
+  "local_evidence": {
+    "all_recorded_hashes_match": false,
+    "audit_counts": {
+      "missing_source": 118,
+      "quality_warning": 28621,
+      "structural_failure": 3,
+      "unjoinable_artifact": 1,
+      "valid": 2423
+    },
+    "cokely_project_linguistically_validated": false,
+    "cokely_training_target_authorized": false,
+    "final_split_created": false,
+    "limitations": [
+      "missing payloads remain missing; no substitute is accepted",
+      "How2Sign raw clips were not rehashed or decoded",
+      "saved 2D model was not retrained or benchmarked",
+      "hash agreement does not establish rights or ASL validity",
+      "Cokely payloads were hashed, not re-decoded or linguistically reviewed"
+    ],
+    "metadata_rows": 31165,
+    "quality_threshold_selected": false,
+    "review_queue_records": 1702,
+    "saved_motion_metrics": {
+      "environment": {
+        "numpy": "2.5.1",
+        "platform": "macOS-26.5.2-arm64-arm-64bit",
+        "python": "3.12.13 (main, Mar  3 2026, 15:35:03) [Clang 21.1.4 ]",
+        "torch": "2.13.0"
+      },
+      "experiment_complete": true,
+      "implementation": {
+        "git_revision": "a00957890175751ae233d9f0c1d265bf71de0087",
+        "implementation_sha256": "9873fc021dcae74833b4f5c3ba0cfab28cedaa4a46dcbf84a1c1ae092f4369e2"
+      },
+      "interpolation_certificate": {
+        "random_point_typical_floor": 0.5,
+        "span_typical_floor": 9.0
+      },
+      "linguistic_claim": false,
+      "metrics": {
+        "test": {
+          "left_hand_tube": {
+            "coordinate_mean": [
+              0.2815011441707611,
+              12664
+            ],
+            "interpolation": [
+              null,
+              0
+            ],
+            "last_observation": [
+              null,
+              0
+            ],
+            "masked_targets": 12664,
+            "model_coordinate_error": 0.12758363783359528,
+            "model_velocity_error": 0.3779107051805689,
+            "model_velocity_pairs": 12438
+          },
+          "point": {
+            "coordinate_mean": [
+              0.18014095723628998,
+              21940
+            ],
+            "interpolation": [
+              0.004936364013701677,
+              20989
+            ],
+            "last_observation": [
+              0.007887979038059711,
+              21460
+            ],
+            "masked_targets": 21940,
+            "model_coordinate_error": 0.06313937157392502,
+            "model_velocity_error": 0.9916514933390517,
+            "model_velocity_pairs": 5458
+          },
+          "right_hand_tube": {
+            "coordinate_mean": [
+              0.16151422262191772,
+              13438
+            ],
+            "interpolation": [
+              null,
+              0
+            ],
+            "last_observation": [
+              null,
+              0
+            ],
+            "masked_targets": 13438,
+            "model_coordinate_error": 0.10237063467502594,
+            "model_velocity_error": 0.4382824066239543,
+            "model_velocity_pairs": 13226
+          },
+          "span": {
+            "coordinate_mean": [
+              0.1790963113307953,
+              20351
+            ],
+            "interpolation": [
+              0.010596186853945255,
+              19591
+            ],
+            "last_observation": [
+              0.017508506774902344,
+              19962
+            ],
+            "masked_targets": 20351,
+            "model_coordinate_error": 0.07148382812738419,
+            "model_velocity_error": 0.6376664168371312,
+            "model_velocity_pairs": 17993
+          }
+        },
+        "val": {
+          "left_hand_tube": {
+            "coordinate_mean": [
+              0.27875185012817383,
+              12897
+            ],
+            "interpolation": [
+              null,
+              0
+            ],
+            "last_observation": [
+              null,
+              0
+            ],
+            "masked_targets": 12897,
+            "model_coordinate_error": 0.135770782828331,
+            "model_velocity_error": 0.39917140113669564,
+            "model_velocity_pairs": 12672
+          },
+          "point": {
+            "coordinate_mean": [
+              0.17403694987297058,
+              21987
+            ],
+            "interpolation": [
+              0.0062058717012405396,
+              21039
+            ],
+            "last_observation": [
+              0.008931384421885014,
+              21508
+            ],
+            "masked_targets": 21987,
+            "model_coordinate_error": 0.061486877501010895,
+            "model_velocity_error": 0.9797716403341767,
+            "model_velocity_pairs": 5460
+          },
+          "right_hand_tube": {
+            "coordinate_mean": [
+              0.13644465804100037,
+              13434
+            ],
+            "interpolation": [
+              null,
+              0
+            ],
+            "last_observation": [
+              null,
+              0
+            ],
+            "masked_targets": 13434,
+            "model_coordinate_error": 0.13736175000667572,
+            "model_velocity_error": 0.5954007417143095,
+            "model_velocity_pairs": 13221
+          },
+          "span": {
+            "coordinate_mean": [
+              0.17211739718914032,
+              20392
+            ],
+            "interpolation": [
+              0.012026423588395119,
+              19606
+            ],
+            "last_observation": [
+              0.02013104036450386,
+              19977
+            ],
+            "masked_targets": 20392,
+            "model_coordinate_error": 0.07336732745170593,
+            "model_velocity_error": 0.6546551614678102,
+            "model_velocity_pairs": 18026
+          }
+        }
+      },
+      "partition": "VIDEO_ID-disjoint; not signer-disjoint",
+      "production_integration": false,
+      "schema_version": 1,
+      "scope": "quarantined_2d_masked_reconstruction",
+      "split_counts": {
+        "test": 10,
+        "train": 76,
+        "val": 10
+      },
+      "three_dimensional_claim": false,
+      "tiny_overfit": {
+        "final_error": 0.012270047329366207,
+        "initial_error": 0.30369269847869873,
+        "maximum_accepted_ratio": 0.65,
+        "ratio": 0.040402839419028176
+      },
+      "translation_claim": false
+    },
+    "saved_motion_metrics_identity": {
+      "sha256": "c2b43f737cbe27fd323a14b830aa875a87b8e00f38e4f2ec36af98f7c949e273",
+      "size": 4683
+    },
+    "signer_certificate": {
+      "sha256": "74f18845b530d22a77d12586465067ab9c82dd6ecc6e542a2835bbe3e3fad14a",
+      "size": 2087
+    },
+    "signer_certified": true,
+    "verified_files": [
+      {
+        "expected_sha256": "82337aef0d4324cd121fd3e0be7d7b7e03838892466fa1b85d9e8618ccdea9cd",
+        "matches": true,
+        "path": "/Users/jiangshengbo/Volumes/how2sign_audit/signer-evidence-v2/how2sign_train_signers.csv",
+        "sha256": "82337aef0d4324cd121fd3e0be7d7b7e03838892466fa1b85d9e8618ccdea9cd",
+        "size": 1735229,
+        "status": "present"
+      },
+      {
+        "expected_sha256": "c2fbf5763c6fd7f05f8b9681da9e9b00c2f83ad9cdb3e1e73452d42852fc0d27",
+        "matches": true,
+        "path": "/Users/jiangshengbo/Volumes/how2sign_audit/v1/audit_manifest.json",
+        "sha256": "c2fbf5763c6fd7f05f8b9681da9e9b00c2f83ad9cdb3e1e73452d42852fc0d27",
+        "size": 7603,
+        "status": "present"
+      },
+      {
+        "expected_sha256": "8f37f2611e646f2dcd51367ec4ded87cbba1b4b42298fdf234496984d06e285f",
+        "matches": true,
+        "path": "/Users/jiangshengbo/Volumes/how2sign_audit/v1/audit.sqlite3",
+        "sha256": "8f37f2611e646f2dcd51367ec4ded87cbba1b4b42298fdf234496984d06e285f",
+        "size": 477302784,
+        "status": "present"
+      },
+      {
+        "expected_sha256": "67a8f4fb6dc066f38006b89ac84c27a4b05d7fa07d5e6952f997042724d7a847",
+        "matches": true,
+        "path": "/Users/jiangshengbo/Volumes/how2sign_realigned_train.csv",
+        "sha256": "67a8f4fb6dc066f38006b89ac84c27a4b05d7fa07d5e6952f997042724d7a847",
+        "size": 5607385,
+        "status": "present"
+      },
+      {
+        "expected_sha256": "31dc17301d31fb92e3e6e5de7e6dc8bd36e0e7e702f0fcf6cf4664abe8b5d518",
+        "matches": true,
+        "path": "/Users/jiangshengbo/Volumes/cokely_reference/v1/audit/i_have_a_dream_v2/annotation-inspection.csv",
+        "sha256": "31dc17301d31fb92e3e6e5de7e6dc8bd36e0e7e702f0fcf6cf4664abe8b5d518",
+        "size": 92190,
+        "status": "present"
+      },
+      {
+        "expected_sha256": "b77b90d03e83878a50c29c2fd13ccf7426f40421f74d21b5b42d2321499e65e4",
+        "matches": true,
+        "path": "/Users/jiangshengbo/Volumes/cokely_reference/v1/audit/i_have_a_dream_v2/annotation-inspection.html",
+        "sha256": "b77b90d03e83878a50c29c2fd13ccf7426f40421f74d21b5b42d2321499e65e4",
+        "size": 148367,
+        "status": "present"
+      },
+      {
+        "expected_sha256": "cd6f100c16befb8e3d0ba5c829c8c0f20fa074b58946099cf4e08b0dd9c3327a",
+        "matches": true,
+        "path": "/Users/jiangshengbo/Volumes/cokely_reference/v1/audit/i_have_a_dream_v2/source-native-manifest.json",
+        "sha256": "cd6f100c16befb8e3d0ba5c829c8c0f20fa074b58946099cf4e08b0dd9c3327a",
+        "size": 311690,
+        "status": "present"
+      },
+      {
+        "expected_sha256": "3c981ba4df1a2e590339a93dbf7aa2fb8163a87538d1e86be58f80e6a294285c",
+        "matches": true,
+        "path": "/Users/jiangshengbo/Volumes/cokely_reference/v1/source/i_have_a_dream/2_I_Have_a_Dream_CokelyAFSParallelCorpus_v1-0.eaf",
+        "sha256": "3c981ba4df1a2e590339a93dbf7aa2fb8163a87538d1e86be58f80e6a294285c",
+        "size": 253475,
+        "status": "present"
+      },
+      {
+        "expected_sha256": "2d232e16af21e8dc319f6908bdf23b29ba1fc7433136fafe0e3a6fbedc824e30",
+        "matches": true,
+        "path": "/Users/jiangshengbo/Volumes/cokely_reference/v1/source/i_have_a_dream/publisher-item-page.html",
+        "sha256": "2d232e16af21e8dc319f6908bdf23b29ba1fc7433136fafe0e3a6fbedc824e30",
+        "size": 40580,
+        "status": "present"
+      },
+      {
+        "expected_sha256": "9d3832ff7b4bac573b3e228f198bad1468c8b80206f7a7fe0c9b7d6bacc9a926",
+        "matches": true,
+        "path": "/Users/jiangshengbo/Volumes/cokely_reference/v1/source/i_have_a_dream/2_I_Have_a_Dream_480_CokelyAFSParallelCorpus_v1-0.mp4",
+        "sha256": "9d3832ff7b4bac573b3e228f198bad1468c8b80206f7a7fe0c9b7d6bacc9a926",
+        "size": 271251189,
+        "status": "present"
+      },
+      {
+        "expected_sha256": "8eb18b6b2f01a5a179100b0acd84a639b5f2a0ee95fb0195d477b946217c6bb3",
+        "expected_size": 650953008,
+        "matches": false,
+        "path": "/Users/jiangshengbo/Volumes/cokely_reference/v1/source/i_have_a_dream/2_I_Have_a_Dream_720_CokelyAFSParallelCorpus_v1_0.mp4",
+        "status": "missing"
+      },
+      {
+        "expected_sha256": "59e76f90d5840813314b1e635480d044287b811ebd63a40e25cb4e73c6ad72bb",
+        "matches": true,
+        "path": "/Users/jiangshengbo/Volumes/cokely_reference/v1/control/EAFv3.0.xsd",
+        "sha256": "59e76f90d5840813314b1e635480d044287b811ebd63a40e25cb4e73c6ad72bb",
+        "size": 34436,
+        "status": "present"
+      }
+    ]
+  },
+  "phase3c_without_external_evidence": {
+    "blockers": [
+      "qualified_text_video_to_sir_supervision_absent",
+      "direct_paired_learning_falsification_not_passed",
+      "human_approved_lexical_motion_library_absent",
+      "canonical_phase2_multichannel_state_absent",
+      "independent_qualified_asl_validation_absent",
+      "research_training_rights_absent",
+      "commercial_training_and_deployment_rights_absent"
+    ],
+    "industrial_path_approved": false,
+    "preartifact_software_boundary_complete": true,
+    "research_exit_approved": false,
+    "work_items": [
+      {
+        "component_id": "governed_corpus_population",
+        "reason": "The certification contract exists, but authentic accepted records do not.",
+        "required_artifacts": [
+          "accepted_phase3b_sir_records",
+          "qualified_asl_validation_attestation",
+          "research_training_rights_evidence"
+        ],
+        "software_contract_implemented": true,
+        "state": "external_artifact_blocked"
+      },
+      {
+        "component_id": "direct_paired_model_training",
+        "reason": "Selecting and training the final learner before these inputs exist would freeze invented data semantics.",
+        "required_artifacts": [
+          "governed_text_video_sir_corpus",
+          "frozen_phase2_state_schema",
+          "source_and_signer_disjoint_split"
+        ],
+        "software_contract_implemented": false,
+        "state": "external_artifact_blocked"
+      },
+      {
+        "component_id": "direct_paired_falsification_execution",
+        "reason": "The exact statistical evaluator exists, but no eligible model scores exist.",
+        "required_artifacts": [
+          "trained_direct_paired_model",
+          "heldout_intervention_score_artifacts",
+          "preregistered_effect_threshold"
+        ],
+        "software_contract_implemented": true,
+        "state": "empirical_execution_blocked"
+      },
+      {
+        "component_id": "lexical_motion_library_population",
+        "reason": "The registry and abstention path exist; no admissible reviewed motion entry exists.",
+        "required_artifacts": [
+          "canonical_phase2_motion_segments",
+          "human_meaning_reviews",
+          "human_articulation_reviews",
+          "motion_use_authorizations"
+        ],
+        "software_contract_implemented": true,
+        "state": "external_artifact_blocked"
+      },
+      {
+        "component_id": "canonical_phase2_motion_export",
+        "reason": "The current frontal 2D observations cannot identify the required production state.",
+        "required_artifacts": [
+          "authorized_multichannel_3d_source",
+          "frozen_phase2_observability_contract",
+          "validated_source_to_state_roundtrip"
+        ],
+        "software_contract_implemented": false,
+        "state": "predecessor_phase_blocked"
+      },
+      {
+        "component_id": "industrial_training_and_deployment",
+        "reason": "Noncommercial research permission and software tests cannot authorize industrial deployment.",
+        "required_artifacts": [
+          "commercial_training_rights",
+          "commercial_motion_and_rig_rights",
+          "independent_qualified_asl_product_validation"
+        ],
+        "software_contract_implemented": false,
+        "state": "external_artifact_blocked"
+      }
+    ]
+  },
+  "purpose": "W0 Day-1 baseline capture; not readiness approval",
+  "pytest_xml": {
+    "sha256": "8e2eeec0284acef6363fca3d5aaafa7f556a1056eb603f86f65bf431cb26ddac",
+    "size": 202917
+  },
+  "runtime": {
+    "numpy": "2.5.1",
+    "platform": "macOS-27.0-arm64-arm-64bit",
+    "python": "3.12.14",
+    "torch": "2.13.0"
+  },
+  "schema_version": 1,
+  "source_portfolio": {
+    "approved": false,
+    "bundle_decisions": [
+      {
+        "passed": false,
+        "requirement_id": "continuous_coobserved_3d_research",
+        "satisfying_sources": [],
+        "source_failures": {
+          "asl_citizen": [
+            "missing_capability:body_3d",
+            "missing_capability:continuous_asl",
+            "missing_capability:eye_gaze",
+            "missing_capability:eyelid_state",
+            "missing_capability:face_expression",
+            "missing_capability:head_pose",
+            "missing_capability:left_hand_3d",
+            "missing_capability:right_hand_3d",
+            "missing_capability:stable_signer_id",
+            "missing_capability:text_alignment",
+            "not_locally_verified:request_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "asllrp": [
+            "missing_capability:body_3d",
+            "missing_capability:eye_gaze",
+            "missing_capability:eyelid_state",
+            "missing_capability:face_expression",
+            "missing_capability:head_pose",
+            "missing_capability:left_hand_3d",
+            "missing_capability:right_hand_3d",
+            "missing_capability:stable_signer_id",
+            "missing_capability:text_alignment",
+            "insufficient_evidence:continuous_asl",
+            "not_locally_verified:account_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "gallaudet_mll": [
+            "missing_capability:body_3d",
+            "missing_capability:continuous_asl",
+            "missing_capability:eye_gaze",
+            "missing_capability:eyelid_state",
+            "missing_capability:face_expression",
+            "missing_capability:head_pose",
+            "missing_capability:left_hand_3d",
+            "missing_capability:right_hand_3d",
+            "missing_capability:stable_signer_id",
+            "missing_capability:text_alignment",
+            "not_locally_verified:request_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "how2sign_local": [
+            "missing_capability:body_3d",
+            "missing_capability:eye_gaze",
+            "missing_capability:eyelid_state",
+            "missing_capability:face_expression",
+            "missing_capability:head_pose",
+            "missing_capability:left_hand_3d",
+            "missing_capability:right_hand_3d"
+          ],
+          "makehuman": [
+            "missing_capability:body_3d",
+            "missing_capability:continuous_asl",
+            "missing_capability:eye_gaze",
+            "missing_capability:eyelid_state",
+            "missing_capability:face_expression",
+            "missing_capability:head_pose",
+            "missing_capability:left_hand_3d",
+            "missing_capability:right_hand_3d",
+            "missing_capability:stable_signer_id",
+            "missing_capability:text_alignment",
+            "not_locally_verified:public_download"
+          ],
+          "nvidia_asl": [
+            "missing_capability:body_3d",
+            "missing_capability:continuous_asl",
+            "missing_capability:eye_gaze",
+            "missing_capability:eyelid_state",
+            "missing_capability:face_expression",
+            "missing_capability:head_pose",
+            "missing_capability:left_hand_3d",
+            "missing_capability:right_hand_3d",
+            "missing_capability:stable_signer_id",
+            "missing_capability:text_alignment",
+            "not_locally_verified:account_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "signavatars": [
+            "missing_capability:eye_gaze",
+            "missing_capability:eyelid_state",
+            "insufficient_evidence:body_3d",
+            "insufficient_evidence:continuous_asl",
+            "insufficient_evidence:face_expression",
+            "insufficient_evidence:head_pose",
+            "insufficient_evidence:left_hand_3d",
+            "insufficient_evidence:right_hand_3d",
+            "insufficient_evidence:stable_signer_id",
+            "insufficient_evidence:text_alignment",
+            "not_locally_verified:request_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "smplx": [
+            "missing_capability:body_3d",
+            "missing_capability:continuous_asl",
+            "missing_capability:eye_gaze",
+            "missing_capability:eyelid_state",
+            "missing_capability:face_expression",
+            "missing_capability:head_pose",
+            "missing_capability:left_hand_3d",
+            "missing_capability:right_hand_3d",
+            "missing_capability:stable_signer_id",
+            "missing_capability:text_alignment",
+            "not_locally_verified:account_required",
+            "rights_not_permitted:permission_required"
+          ]
+        }
+      },
+      {
+        "passed": false,
+        "requirement_id": "continuous_linguistic_reference",
+        "satisfying_sources": [],
+        "source_failures": {
+          "asl_citizen": [
+            "missing_capability:authentic_gloss",
+            "missing_capability:continuous_asl",
+            "missing_capability:eye_gaze_annotation",
+            "missing_capability:handshape_annotation",
+            "missing_capability:head_movement_annotation",
+            "missing_capability:manual_timing",
+            "missing_capability:nonmanual_annotation",
+            "insufficient_evidence:qualified_asl_annotation",
+            "not_locally_verified:request_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "asllrp": [
+            "insufficient_evidence:authentic_gloss",
+            "insufficient_evidence:continuous_asl",
+            "insufficient_evidence:eye_gaze_annotation",
+            "insufficient_evidence:handshape_annotation",
+            "insufficient_evidence:head_movement_annotation",
+            "insufficient_evidence:manual_timing",
+            "insufficient_evidence:nonmanual_annotation",
+            "insufficient_evidence:qualified_asl_annotation",
+            "not_locally_verified:account_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "gallaudet_mll": [
+            "missing_capability:authentic_gloss",
+            "missing_capability:continuous_asl",
+            "missing_capability:eye_gaze_annotation",
+            "missing_capability:handshape_annotation",
+            "missing_capability:head_movement_annotation",
+            "missing_capability:manual_timing",
+            "missing_capability:nonmanual_annotation",
+            "missing_capability:qualified_asl_annotation",
+            "not_locally_verified:request_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "how2sign_local": [
+            "missing_capability:authentic_gloss",
+            "missing_capability:eye_gaze_annotation",
+            "missing_capability:handshape_annotation",
+            "missing_capability:head_movement_annotation",
+            "missing_capability:manual_timing",
+            "missing_capability:nonmanual_annotation",
+            "missing_capability:qualified_asl_annotation"
+          ],
+          "makehuman": [
+            "missing_capability:authentic_gloss",
+            "missing_capability:continuous_asl",
+            "missing_capability:eye_gaze_annotation",
+            "missing_capability:handshape_annotation",
+            "missing_capability:head_movement_annotation",
+            "missing_capability:manual_timing",
+            "missing_capability:nonmanual_annotation",
+            "missing_capability:qualified_asl_annotation",
+            "not_locally_verified:public_download"
+          ],
+          "nvidia_asl": [
+            "missing_capability:authentic_gloss",
+            "missing_capability:continuous_asl",
+            "missing_capability:eye_gaze_annotation",
+            "missing_capability:handshape_annotation",
+            "missing_capability:head_movement_annotation",
+            "missing_capability:manual_timing",
+            "missing_capability:nonmanual_annotation",
+            "missing_capability:qualified_asl_annotation",
+            "not_locally_verified:account_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "signavatars": [
+            "missing_capability:authentic_gloss",
+            "missing_capability:eye_gaze_annotation",
+            "missing_capability:handshape_annotation",
+            "missing_capability:head_movement_annotation",
+            "missing_capability:manual_timing",
+            "missing_capability:nonmanual_annotation",
+            "missing_capability:qualified_asl_annotation",
+            "insufficient_evidence:continuous_asl",
+            "not_locally_verified:request_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "smplx": [
+            "missing_capability:authentic_gloss",
+            "missing_capability:continuous_asl",
+            "missing_capability:eye_gaze_annotation",
+            "missing_capability:handshape_annotation",
+            "missing_capability:head_movement_annotation",
+            "missing_capability:manual_timing",
+            "missing_capability:nonmanual_annotation",
+            "missing_capability:qualified_asl_annotation",
+            "not_locally_verified:account_required",
+            "rights_not_permitted:permission_required"
+          ]
+        }
+      },
+      {
+        "passed": false,
+        "requirement_id": "commercial_training_authorization",
+        "satisfying_sources": [],
+        "source_failures": {
+          "asl_citizen": [
+            "missing_capability:body_3d",
+            "missing_capability:continuous_asl",
+            "missing_capability:eye_gaze",
+            "missing_capability:eyelid_state",
+            "missing_capability:face_expression",
+            "missing_capability:head_pose",
+            "missing_capability:left_hand_3d",
+            "missing_capability:right_hand_3d",
+            "missing_capability:stable_signer_id",
+            "missing_capability:text_alignment",
+            "not_locally_verified:request_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "asllrp": [
+            "missing_capability:body_3d",
+            "missing_capability:eye_gaze",
+            "missing_capability:eyelid_state",
+            "missing_capability:face_expression",
+            "missing_capability:head_pose",
+            "missing_capability:left_hand_3d",
+            "missing_capability:right_hand_3d",
+            "missing_capability:stable_signer_id",
+            "missing_capability:text_alignment",
+            "insufficient_evidence:continuous_asl",
+            "not_locally_verified:account_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "gallaudet_mll": [
+            "missing_capability:body_3d",
+            "missing_capability:continuous_asl",
+            "missing_capability:eye_gaze",
+            "missing_capability:eyelid_state",
+            "missing_capability:face_expression",
+            "missing_capability:head_pose",
+            "missing_capability:left_hand_3d",
+            "missing_capability:right_hand_3d",
+            "missing_capability:stable_signer_id",
+            "missing_capability:text_alignment",
+            "not_locally_verified:request_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "how2sign_local": [
+            "missing_capability:body_3d",
+            "missing_capability:eye_gaze",
+            "missing_capability:eyelid_state",
+            "missing_capability:face_expression",
+            "missing_capability:head_pose",
+            "missing_capability:left_hand_3d",
+            "missing_capability:right_hand_3d",
+            "rights_not_permitted:prohibited"
+          ],
+          "makehuman": [
+            "missing_capability:body_3d",
+            "missing_capability:continuous_asl",
+            "missing_capability:eye_gaze",
+            "missing_capability:eyelid_state",
+            "missing_capability:face_expression",
+            "missing_capability:head_pose",
+            "missing_capability:left_hand_3d",
+            "missing_capability:right_hand_3d",
+            "missing_capability:stable_signer_id",
+            "missing_capability:text_alignment",
+            "not_locally_verified:public_download"
+          ],
+          "nvidia_asl": [
+            "missing_capability:body_3d",
+            "missing_capability:continuous_asl",
+            "missing_capability:eye_gaze",
+            "missing_capability:eyelid_state",
+            "missing_capability:face_expression",
+            "missing_capability:head_pose",
+            "missing_capability:left_hand_3d",
+            "missing_capability:right_hand_3d",
+            "missing_capability:stable_signer_id",
+            "missing_capability:text_alignment",
+            "not_locally_verified:account_required",
+            "rights_not_permitted:unresolved"
+          ],
+          "signavatars": [
+            "missing_capability:eye_gaze",
+            "missing_capability:eyelid_state",
+            "insufficient_evidence:body_3d",
+            "insufficient_evidence:continuous_asl",
+            "insufficient_evidence:face_expression",
+            "insufficient_evidence:head_pose",
+            "insufficient_evidence:left_hand_3d",
+            "insufficient_evidence:right_hand_3d",
+            "insufficient_evidence:stable_signer_id",
+            "insufficient_evidence:text_alignment",
+            "not_locally_verified:request_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "smplx": [
+            "missing_capability:body_3d",
+            "missing_capability:continuous_asl",
+            "missing_capability:eye_gaze",
+            "missing_capability:eyelid_state",
+            "missing_capability:face_expression",
+            "missing_capability:head_pose",
+            "missing_capability:left_hand_3d",
+            "missing_capability:right_hand_3d",
+            "missing_capability:stable_signer_id",
+            "missing_capability:text_alignment",
+            "not_locally_verified:account_required",
+            "rights_not_permitted:permission_required"
+          ]
+        }
+      },
+      {
+        "passed": false,
+        "requirement_id": "commercial_render_rig",
+        "satisfying_sources": [],
+        "source_failures": {
+          "asl_citizen": [
+            "missing_capability:body_rig",
+            "missing_capability:eye_rig",
+            "missing_capability:face_rig",
+            "missing_capability:hand_rig",
+            "not_locally_verified:request_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "asllrp": [
+            "missing_capability:body_rig",
+            "missing_capability:eye_rig",
+            "missing_capability:face_rig",
+            "missing_capability:hand_rig",
+            "not_locally_verified:account_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "gallaudet_mll": [
+            "missing_capability:body_rig",
+            "missing_capability:eye_rig",
+            "missing_capability:face_rig",
+            "missing_capability:hand_rig",
+            "not_locally_verified:request_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "how2sign_local": [
+            "missing_capability:body_rig",
+            "missing_capability:eye_rig",
+            "missing_capability:face_rig",
+            "missing_capability:hand_rig",
+            "rights_not_permitted:prohibited"
+          ],
+          "makehuman": [
+            "insufficient_evidence:body_rig",
+            "insufficient_evidence:eye_rig",
+            "insufficient_evidence:face_rig",
+            "insufficient_evidence:hand_rig",
+            "not_locally_verified:public_download"
+          ],
+          "nvidia_asl": [
+            "missing_capability:body_rig",
+            "missing_capability:eye_rig",
+            "missing_capability:face_rig",
+            "missing_capability:hand_rig",
+            "not_locally_verified:account_required",
+            "rights_not_permitted:unresolved"
+          ],
+          "signavatars": [
+            "missing_capability:body_rig",
+            "missing_capability:eye_rig",
+            "missing_capability:face_rig",
+            "missing_capability:hand_rig",
+            "not_locally_verified:request_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "smplx": [
+            "insufficient_evidence:body_rig",
+            "insufficient_evidence:eye_rig",
+            "insufficient_evidence:face_rig",
+            "insufficient_evidence:hand_rig",
+            "not_locally_verified:account_required",
+            "rights_not_permitted:permission_required"
+          ]
+        }
+      },
+      {
+        "passed": false,
+        "requirement_id": "qualified_asl_governance",
+        "satisfying_sources": [],
+        "source_failures": {
+          "asl_citizen": [
+            "missing_capability:accessible_consent",
+            "missing_capability:deaf_co_design",
+            "missing_capability:qualified_asl_review",
+            "not_locally_verified:request_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "asllrp": [
+            "missing_capability:accessible_consent",
+            "missing_capability:deaf_co_design",
+            "missing_capability:qualified_asl_review",
+            "not_locally_verified:account_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "gallaudet_mll": [
+            "missing_capability:accessible_consent",
+            "insufficient_evidence:deaf_co_design",
+            "insufficient_evidence:qualified_asl_review",
+            "not_locally_verified:request_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "how2sign_local": [
+            "missing_capability:accessible_consent",
+            "missing_capability:deaf_co_design",
+            "missing_capability:qualified_asl_review",
+            "rights_not_permitted:prohibited"
+          ],
+          "makehuman": [
+            "missing_capability:accessible_consent",
+            "missing_capability:deaf_co_design",
+            "missing_capability:qualified_asl_review",
+            "not_locally_verified:public_download"
+          ],
+          "nvidia_asl": [
+            "missing_capability:accessible_consent",
+            "missing_capability:deaf_co_design",
+            "missing_capability:qualified_asl_review",
+            "not_locally_verified:account_required",
+            "rights_not_permitted:unresolved"
+          ],
+          "signavatars": [
+            "missing_capability:accessible_consent",
+            "missing_capability:deaf_co_design",
+            "missing_capability:qualified_asl_review",
+            "not_locally_verified:request_required",
+            "rights_not_permitted:permission_required"
+          ],
+          "smplx": [
+            "missing_capability:accessible_consent",
+            "missing_capability:deaf_co_design",
+            "missing_capability:qualified_asl_review",
+            "not_locally_verified:account_required",
+            "rights_not_permitted:permission_required"
+          ]
+        }
+      }
+    ],
+    "composition_rule": "each bundle must be satisfied by one locally verified and authorized source",
+    "cross_source_capability_stitching_allowed": false
+  },
+  "source_test_config_inventory": {
+    ".github/workflows/ci.yml": {
+      "sha256": "37a08f7559ede46ed1b469829cd14b3769df975990038c28f701ca6971a9da3f",
+      "size": 4238
+    },
+    "LICENSE": {
+      "sha256": "967ed238fcc3bfa23346b439edc26675575b58d9f9ca11a73f7d34cbd0e14dc5",
+      "size": 11042
+    },
+    "conftest.py": {
+      "sha256": "3098f36ab12c4b1934dd4c4e7ea5cb00225955bd12180fc7e35f079926b53de4",
+      "size": 192
+    },
+    "pyproject.toml": {
+      "sha256": "20a7d490c8daf8cb9d17fd930f4d77ebfb1370e8d658c5abe1d1ca0dbf897a46",
+      "size": 900
+    },
+    "requirements-foundation.txt": {
+      "sha256": "b53659f636d6e2babc9d8012b43b1b500183435632a8ec30e81330408e91bd0c",
+      "size": 120
+    },
+    "requirements.lock": {
+      "sha256": "1207cb0e62c104ff22ff06b259f8ca0f9145934f0bbf11e12268b9351833a88e",
+      "size": 404
+    },
+    "requirements.txt": {
+      "sha256": "c3fe6ce0ab4c4c6c6264eb9323283d7355c2cb47686105c88d8974241e5f0844",
+      "size": 243
+    },
+    "scripts/w0_day1_baseline.py": {
+      "sha256": "9e59d7902a2847678238c99b129ff2cc74bcb01ee4d897171c7914712122bd4b",
+      "size": 14257
+    },
+    "signtranslator/__init__.py": {
+      "sha256": "d9253d51c9986f6c8fb769b03760dc39735ee6ff585d125783201320eb9584ac",
+      "size": 1087
+    },
+    "signtranslator/analysis/__init__.py": {
+      "sha256": "a1060b85c5edf7ce4b9eaf57dbdec3d7a66963e945d9e9ed28653a5befdbb633",
+      "size": 127
+    },
+    "signtranslator/analysis/report.py": {
+      "sha256": "42e418e164fb623897e870b323aad20fdc21540b8064e2885572e306c9ed30f1",
+      "size": 8036
+    },
+    "signtranslator/avatar_render/__init__.py": {
+      "sha256": "b182fd1988b503c236980d28c60bf84ace7580570971938d4162912c7936c9d4",
+      "size": 2741
+    },
+    "signtranslator/avatar_render/dqs.py": {
+      "sha256": "05e0734e64042b8658ee8c402ca3b5bb8f04e0525aa5c062e371534af57ca91e",
+      "size": 3615
+    },
+    "signtranslator/avatar_render/evaluation.py": {
+      "sha256": "0974ad753935ba17192030c9f3cd46b91a45e51f02cc8a9eaec1a21f4312970c",
+      "size": 4949
+    },
+    "signtranslator/avatar_render/gaussian.py": {
+      "sha256": "74ce8d3540dbbf0a2c75b00cca5eb6cf87b49caa1424d90a5090acecc419259c",
+      "size": 4149
+    },
+    "signtranslator/avatar_render/lod.py": {
+      "sha256": "caeab87becc7fe029438d490382044eb59955e63eff48c9a28ef822159aaeeef",
+      "size": 3262
+    },
+    "signtranslator/avatar_render/nerf.py": {
+      "sha256": "611eab378a25f56464aeb63ce41f3cada7614455a52c081708378835fa849547",
+      "size": 2490
+    },
+    "signtranslator/avatar_render/pacing.py": {
+      "sha256": "9c3b5599a9f0621afab41bd237a7d8b6d98bfbce70463b0709d395b0c9c4da03",
+      "size": 2694
+    },
+    "signtranslator/avatar_render/rigged.py": {
+      "sha256": "275aef7e96cd45a979bd307e19a88e55d666aff6b7029ed895dde5b6138252e9",
+      "size": 4879
+    },
+    "signtranslator/avatar_render/stream.py": {
+      "sha256": "c2406d94166d32b2a8e75c716901260ff362253341f8719dc50f7a983d1ad412",
+      "size": 4448
+    },
+    "signtranslator/config.py": {
+      "sha256": "a03d70db269dfb339f5c413c98bc3eab9687b8af168918a46d7f239fb59c7aa8",
+      "size": 8552
+    },
+    "signtranslator/data/__init__.py": {
+      "sha256": "60d34a092183a05439b79d7a7c28f707229c3b14075ce00b3cd78b08d6d979a8",
+      "size": 963
+    },
+    "signtranslator/data/adapters.py": {
+      "sha256": "bc36ec96724930c8ef969f605f6ed25743c36952bad8972dcab92bf5527ff3fd",
+      "size": 7699
+    },
+    "signtranslator/data/corpus.py": {
+      "sha256": "dc9b6b9049f98ef5be04c98e839459249c40b3c0fa2f69510f8d25035ba2270a",
+      "size": 33864
+    },
+    "signtranslator/data/preprocess.py": {
+      "sha256": "99d19ec94e62eb59910aebe4ad3c684d08c767f74d7a8fa48813b9d00679e1d3",
+      "size": 5840
+    },
+    "signtranslator/data/quality.py": {
+      "sha256": "7bb1b63de7f754f96263e98943b659a188225a66cf9bf1785c4c966acf93a9f0",
+      "size": 11068
+    },
+    "signtranslator/data/readiness.py": {
+      "sha256": "a4343d2c2bb0ef2401cd80bfbceead287d3d5301a9a1f62cc978ae078224529a",
+      "size": 6355
+    },
+    "signtranslator/data/synthetic.py": {
+      "sha256": "d334eaca38a913774eae4038fb445ead2bb96bd4813c8e7e0098e0a65ba33c7d",
+      "size": 3247
+    },
+    "signtranslator/data_engineering/__init__.py": {
+      "sha256": "ac474baa0b5b51005cf3711118ac3a7686d54abcb4e8a6ea1fcacf65d9dc9e14",
+      "size": 5732
+    },
+    "signtranslator/data_engineering/datasheet.py": {
+      "sha256": "b208f7af92e8ee1443f2c7bc6a4b2c1de09a2b4f8faebcdc08ed54954612abf0",
+      "size": 1980
+    },
+    "signtranslator/data_engineering/dedup.py": {
+      "sha256": "f958743bf3c118d32ea3295efcd9dd74e36b317693505e471e5bb19d02686338",
+      "size": 4640
+    },
+    "signtranslator/data_engineering/eaf.py": {
+      "sha256": "5616a48c8a77db22189f33f73ca74052abdc0cc32d858aac4365445f0e467cbb",
+      "size": 73102
+    },
+    "signtranslator/data_engineering/exporter.py": {
+      "sha256": "295f810664c31932d66520d25989e8807fb5542e0c41a079f2555c2e949b2100",
+      "size": 31560
+    },
+    "signtranslator/data_engineering/governance.py": {
+      "sha256": "a90231a0918d564c37876ee4f2515e9f73d90766730220739ea32c48fc47d660",
+      "size": 3380
+    },
+    "signtranslator/data_engineering/how2sign.py": {
+      "sha256": "d9013fd548f06b8ccd3997153b0f15d73749c27940716c74d307907cb15c79e8",
+      "size": 22633
+    },
+    "signtranslator/data_engineering/how2sign_audit.py": {
+      "sha256": "42a1ecaa5651bb2cdce7083e7ce7f955171aa5e2b6434834d153ac5cb309c4c1",
+      "size": 54272
+    },
+    "signtranslator/data_engineering/how2sign_signers.py": {
+      "sha256": "d28f0d5363d28814587d0f9722de759558df075430ffd4971f72dd0bacab6ced",
+      "size": 12377
+    },
+    "signtranslator/data_engineering/phase3b_queue.py": {
+      "sha256": "6f0e3cd8e61d0e97e1d8c8c2aedeeff4428303ba939e36942fde91585532fc40",
+      "size": 35076
+    },
+    "signtranslator/data_engineering/provenance.py": {
+      "sha256": "264ce8faf85162cbd6c52c004a1c50b1388f7de99fe1a4e272fe202a5410dbf6",
+      "size": 3734
+    },
+    "signtranslator/data_engineering/qc.py": {
+      "sha256": "74b4bc655894e959657c8d655098cde772972e081f56bc59f1ff2893015f54ed",
+      "size": 2754
+    },
+    "signtranslator/data_engineering/quality.py": {
+      "sha256": "c92b53c88c8ee0bb6b3c7d45eea34d8848222958f24d27532d30212c5de76363",
+      "size": 6689
+    },
+    "signtranslator/data_engineering/readiness.py": {
+      "sha256": "c061f68b1ace3887e6f61fa083d861fcfc715364af42997aeac9f789338b5da8",
+      "size": 13941
+    },
+    "signtranslator/data_engineering/schema.py": {
+      "sha256": "d3ab03084f6bf6ff51bee423c873f0a19427066d8f5e9ce3be922b35817fac4f",
+      "size": 14948
+    },
+    "signtranslator/data_engineering/source_portfolio.py": {
+      "sha256": "4a7112c28c439077c3734fa2708bf8eaee33fd6ce54c2106c38f9ecdc6e6f682",
+      "size": 15383
+    },
+    "signtranslator/data_engineering/splitting.py": {
+      "sha256": "f8d52050d5478940c0cf2a25c1aa07b8463cfd8dda0eaa2e014cf2829a82cf6e",
+      "size": 7219
+    },
+    "signtranslator/deployment/__init__.py": {
+      "sha256": "dac6308d01c78cc6df2e6b0c1bc769f79027c1704280224e78af06bb56957d29",
+      "size": 3151
+    },
+    "signtranslator/deployment/backpressure.py": {
+      "sha256": "c27dbb35db40e2fcbcc590acf3c78395b623883ab0a3756e4fe2ae21ba4e15ba",
+      "size": 2525
+    },
+    "signtranslator/deployment/latency_budget.py": {
+      "sha256": "0e1da1f7570bd1f997bab75b05294e341368bc05ebacdc531fc62c0adab62738",
+      "size": 3731
+    },
+    "signtranslator/deployment/optimization_gate.py": {
+      "sha256": "5ae3a9658d3c467c74f880dd005e788d76824d0edefcce8d05113b784eb673c2",
+      "size": 4719
+    },
+    "signtranslator/deployment/quantization.py": {
+      "sha256": "166cc70756556ce5ea02612a0615656a96c95e12822229b80965ad417bfb0c2d",
+      "size": 3699
+    },
+    "signtranslator/deployment/replay.py": {
+      "sha256": "19fade5aa75eb50c3d5151343aded59295b3c77f86624e29832d15ead8463a01",
+      "size": 2191
+    },
+    "signtranslator/deployment/runtime_controls.py": {
+      "sha256": "4227958d6c92903ac61c114cea71da641e68d61ccbf286f278491da787b3116f",
+      "size": 4609
+    },
+    "signtranslator/deployment/static_execution.py": {
+      "sha256": "385a5863fbf55d0c21f9f12ceb6f181c786ab77a32d505d2883db925eff3510e",
+      "size": 3477
+    },
+    "signtranslator/deployment/streaming_contract.py": {
+      "sha256": "98751eb0b63164ec616b31ca61addc09ee9888520f6a584335a8fed0fd7e0b97",
+      "size": 3031
+    },
+    "signtranslator/diffusion_gen/__init__.py": {
+      "sha256": "8f9c8f7214f758d26dbb8addb15d64bd626f4c39e42419ddd9050013838aced6",
+      "size": 2275
+    },
+    "signtranslator/diffusion_gen/consistency.py": {
+      "sha256": "9aafcbd82832b0938c6453d9ec0b5d7e91abf4acb37eab5510f65703279a6287",
+      "size": 4516
+    },
+    "signtranslator/diffusion_gen/constraints.py": {
+      "sha256": "b1a47d0e1caeff3de39ffed4530e318d5be8d5af955d4ecd458fd78574eb7f4b",
+      "size": 3714
+    },
+    "signtranslator/diffusion_gen/dit.py": {
+      "sha256": "7e3e645516db028e0e4c9e98a298fc3f590b7896eb0f0329ace9894c8eb4cd22",
+      "size": 5863
+    },
+    "signtranslator/diffusion_gen/evaluation.py": {
+      "sha256": "fdc350953fcab3a9259e248af85db4d39c496518aac9ea2664917fcf16ce0437",
+      "size": 3150
+    },
+    "signtranslator/diffusion_gen/generator.py": {
+      "sha256": "ffaf00f28d74ccf10a535b90573e5e62bb06a37ef0f4fbb33c92d50fabd96316",
+      "size": 4209
+    },
+    "signtranslator/diffusion_gen/guidance.py": {
+      "sha256": "69d52aa5a2eaf0e3d8bd0c3846d7a914d86ff4bcf98476eabcd4bb2bd914bbde",
+      "size": 2475
+    },
+    "signtranslator/diffusion_gen/inpaint.py": {
+      "sha256": "0b11fae85878106fec1addfff32654aa23ec14b5dfc87b8123abaef5c6451d75",
+      "size": 3004
+    },
+    "signtranslator/diffusion_gen/part_aware.py": {
+      "sha256": "e11abbaa92eb578c42c4920c3fb99005032a37752d50a439d7ba0968a1f48e19",
+      "size": 2961
+    },
+    "signtranslator/diffusion_gen/schedule.py": {
+      "sha256": "3cac88037d5fdf34ecb455225b636084f1028e7fb2fe6271a4cd6d8822429379",
+      "size": 4764
+    },
+    "signtranslator/eval/__init__.py": {
+      "sha256": "3d5e02723f63c4602329e4bf4ab7c6f5b94326d5b01da9c529b02318b3ef8d5b",
+      "size": 252
+    },
+    "signtranslator/eval/metrics.py": {
+      "sha256": "9b30d8d4e77666e7c67567454ea806c46773ef8ee31b806da0cc8ec651155d3b",
+      "size": 2537
+    },
+    "signtranslator/eval_framework/__init__.py": {
+      "sha256": "10b97686119cfd4d7521b470a80fc7b590d176b824bcb915c0431e8dc77d45b3",
+      "size": 2392
+    },
+    "signtranslator/eval_framework/comprehension.py": {
+      "sha256": "555a7c46ef394742d64e237e9f075cc0e0b9773aa6bc600457554a4cb6c4058e",
+      "size": 3835
+    },
+    "signtranslator/eval_framework/contracts.py": {
+      "sha256": "6fef4e9397b0bf9567e70202df4c33801098f2d20b368acd275a38de619ef96a",
+      "size": 2361
+    },
+    "signtranslator/eval_framework/metric_stack.py": {
+      "sha256": "c46bbe6b6f5494098a38dc050eeee1dbf2c8cda3fe5737f7d77ec790b158afd1",
+      "size": 2804
+    },
+    "signtranslator/eval_framework/protocol.py": {
+      "sha256": "10b9a4b424f360388bb91acce180cacd5c03ae92fb793205fbef43e834dd2617",
+      "size": 3913
+    },
+    "signtranslator/eval_framework/reporting.py": {
+      "sha256": "35e6cf9968082843808c1cff29b91c4c329c24c55186c07421e8c5b8398978a4",
+      "size": 4015
+    },
+    "signtranslator/eval_framework/statistics.py": {
+      "sha256": "7e518c44418661e7a80ec5c1fe164648bef19e7d2146a031824d2a6e6bbcd50c",
+      "size": 4905
+    },
+    "signtranslator/eval_framework/text_metrics.py": {
+      "sha256": "3d429e00ea0e55df86c17093083d0e162dcd2f73c7a49f8c5db883f1581e938f",
+      "size": 5665
+    },
+    "signtranslator/facial_nmm/__init__.py": {
+      "sha256": "1256f6df56cac98445c07e135a3aaaedd2136c7717b264604fcdda83cf9a64cf",
+      "size": 2343
+    },
+    "signtranslator/facial_nmm/articulate.py": {
+      "sha256": "ed3e078db4f96ae85150de897afb463007b0529da1643ab53091f1a731910171",
+      "size": 2917
+    },
+    "signtranslator/facial_nmm/channels.py": {
+      "sha256": "f78a00c185b122932b786c7a96383964c33b3a6adb9a523547c87e7524fc1cc5",
+      "size": 4533
+    },
+    "signtranslator/facial_nmm/decoder.py": {
+      "sha256": "31f3075b853764ad796da6c0d5d49ef2df2a7a4421514fcd788c802091a8c2a1",
+      "size": 2049
+    },
+    "signtranslator/facial_nmm/disentangle.py": {
+      "sha256": "30611b316cb8b4c913ffda5610c01586c4e937adf75974dd48f05b5f07579c35",
+      "size": 2312
+    },
+    "signtranslator/facial_nmm/evaluation.py": {
+      "sha256": "21ad284d9c8c9d76cc1d02771abae9bb8022c1728ef1f5e876ea4eef25b49e6b",
+      "size": 4100
+    },
+    "signtranslator/facial_nmm/integration.py": {
+      "sha256": "f5392286f97f06cc752a06e6c9820ed2c7744eba7074741c139e12120e3a4200",
+      "size": 2500
+    },
+    "signtranslator/facial_nmm/losses.py": {
+      "sha256": "0b91297805c05a50c01148caa2f9f5f9779fb1bc8e1500a6611f7beff3c49b9b",
+      "size": 3252
+    },
+    "signtranslator/facial_nmm/uncertainty.py": {
+      "sha256": "005d9544fbc885583a5e2feca2847fa0d6652726a81addee3a34d2655a5eb053",
+      "size": 3501
+    },
+    "signtranslator/grammar/__init__.py": {
+      "sha256": "acdbdef947a5074ce3d96a50638fe68a1356a4d0655c76dbf0323a24934133bf",
+      "size": 3356
+    },
+    "signtranslator/grammar/grammar_tests.py": {
+      "sha256": "c28b9aba37f4ca65e84d32588885883d42d878b32c9836bb6770ee4d0c6b52ff",
+      "size": 12313
+    },
+    "signtranslator/grammar/graph_transformer.py": {
+      "sha256": "750aff0f0888a67669a8e91cbe7f9921dd33ad64ab5b70e2952ddb2340413e85",
+      "size": 6533
+    },
+    "signtranslator/grammar/integration.py": {
+      "sha256": "1e08fd38bab54ca8f88be126249a304ee262c6824972a8f36d0d50a02935dfe0",
+      "size": 4470
+    },
+    "signtranslator/grammar/nonmanual.py": {
+      "sha256": "f29f01b592fc7781b7a6ec453fc6d847756c78821631e032bbb7358f31b6287e",
+      "size": 5214
+    },
+    "signtranslator/grammar/notation.py": {
+      "sha256": "15a7141a819bab02485b619cc317d84742279ea3ba29571d620a1f288851f12a",
+      "size": 6887
+    },
+    "signtranslator/grammar/signbleu.py": {
+      "sha256": "1900fb01b86b86fe3e28ebd425119e8e37ccd833e623794d4d9c7fa2b5c84667",
+      "size": 8855
+    },
+    "signtranslator/grammar/sir.py": {
+      "sha256": "41e73dfd0a6550534e6cac388cebb7d74730f4b34bdcaa05776adba6c1139232",
+      "size": 17898
+    },
+    "signtranslator/grammar/temporal.py": {
+      "sha256": "1148eae18b0c23cff9fdca911dced6d47e0e614dace0a5ec8c46050aba150c63",
+      "size": 6567
+    },
+    "signtranslator/hand_graph/__init__.py": {
+      "sha256": "590564e08b20f2fdbee40c7479009b3878718e661609e78e58317c57bf5695b4",
+      "size": 2742
+    },
+    "signtranslator/hand_graph/geometry.py": {
+      "sha256": "d9685e133cb134630070118d0afd8f5af135dbbd5c2a24044ce472ed8fc40dff",
+      "size": 5329
+    },
+    "signtranslator/hand_graph/heads.py": {
+      "sha256": "ecb7e671d971e4f07b06664066a57504f945bb68748d31ca772a874d55a11234",
+      "size": 5099
+    },
+    "signtranslator/hand_graph/hetero_graph.py": {
+      "sha256": "8e6737925ef793ff1d9885faac68b12f41473ae1f1b7fa98583e43b4e714dbb3",
+      "size": 11743
+    },
+    "signtranslator/hand_graph/metrics.py": {
+      "sha256": "42c804a3e8f26b97f7a53d3df984d2cb14bb6ab83d837690be35477621607bf2",
+      "size": 3689
+    },
+    "signtranslator/hand_graph/model.py": {
+      "sha256": "01e86652a623946875c9cf2216c023006af354310efb594b3fce42891e16af4e",
+      "size": 4791
+    },
+    "signtranslator/hand_graph/relational.py": {
+      "sha256": "95f6bed3e4c8368b1bfe203dd779546aa166ca2f2b2c5b801b6bef2178d4393f",
+      "size": 5630
+    },
+    "signtranslator/hand_graph/structural.py": {
+      "sha256": "5dcf7e37b9726b08882a36d5161860d4656a5dc53a92242e7eeef2f7885b20f6",
+      "size": 4430
+    },
+    "signtranslator/hand_graph/temporal.py": {
+      "sha256": "03e83ca7ec395314ab4d44e03e822c835a455d4665883673513d4c6e691a0a52",
+      "size": 3979
+    },
+    "signtranslator/models/__init__.py": {
+      "sha256": "5ecd2b4678bfe3b1d1319f3172335425c4879f2cd558ac1a8738056737071a03",
+      "size": 1156
+    },
+    "signtranslator/models/alignment.py": {
+      "sha256": "8eb2e071bf8c44042a680fc9ce75304778dd922fcc61948d57842f3d22fac280",
+      "size": 4374
+    },
+    "signtranslator/models/denoiser.py": {
+      "sha256": "b97710f578c13efd09dd1be299b70f487fa520785070389686791127a4164789",
+      "size": 7723
+    },
+    "signtranslator/models/diffusion.py": {
+      "sha256": "d9df9b17d2efc6a52a8ebfa08a4a1e9e2f7dd158fc8fba34fde6c2854a45c670",
+      "size": 12841
+    },
+    "signtranslator/models/encoders.py": {
+      "sha256": "53fc6b920275dace1981ec91b7656934e205a154dceee63abbd8c26000868798",
+      "size": 5441
+    },
+    "signtranslator/models/guided_diffusion.py": {
+      "sha256": "e5d8afe795f3c9c9252fb0c93906dacb9ccbc8f1117db8ffd9d910d9c35e1be1",
+      "size": 5596
+    },
+    "signtranslator/models/pipeline.py": {
+      "sha256": "19a6dd0ae76e695df14b7ff545a61c4619ed2ca326a72a3b9297821e3e7f5792",
+      "size": 20945
+    },
+    "signtranslator/models/planner.py": {
+      "sha256": "ae3a6304af7644ead79367f3a4911d68976d4c692eed2a3bc54175013d3d2789",
+      "size": 5640
+    },
+    "signtranslator/models/recognition.py": {
+      "sha256": "2db11c796d025d9f7f2abe4ec9664462df36ef980436c9c656dc90a8513554dc",
+      "size": 8925
+    },
+    "signtranslator/models/speech.py": {
+      "sha256": "a34f3802951d6935230830d39d235fbb679cb886d429aecb53f207e5cc5eedd2",
+      "size": 5699
+    },
+    "signtranslator/models/stgcn.py": {
+      "sha256": "df0384a2fc5f0773d5f9f07be209f774e02475eb51bb02d3fd74b1d624c8d999",
+      "size": 6913
+    },
+    "signtranslator/motion_transformer/__init__.py": {
+      "sha256": "fe85ae02c276b22484add034b5f15d777e27645272cba965dda4d9f21926a72a",
+      "size": 1990
+    },
+    "signtranslator/motion_transformer/autoencoder.py": {
+      "sha256": "47a4db84bf22c919c44cfbf3de36ecaca5f2fe673851df8976ad8fcffe734a23",
+      "size": 6303
+    },
+    "signtranslator/motion_transformer/backbone.py": {
+      "sha256": "a4906318eaa08fe282fb9f03535dd6d590e725498e2033b6d8f655e61493053d",
+      "size": 4227
+    },
+    "signtranslator/motion_transformer/chain.py": {
+      "sha256": "4b05c245088f48f15facd49e49bf194b5387b6c4d9dbcded28f639e0f92ae8b0",
+      "size": 3895
+    },
+    "signtranslator/motion_transformer/decoding.py": {
+      "sha256": "9b9c84ebc75d0c109d332cbc20cf38d41e2c200d179214ae363dd985145377bb",
+      "size": 8017
+    },
+    "signtranslator/motion_transformer/quantizer.py": {
+      "sha256": "b28e266f162deac89c36647c2585ac5b159a6666ecd6c87c79d2f25cc7d1f0f2",
+      "size": 5378
+    },
+    "signtranslator/motion_transformer/residual_vq.py": {
+      "sha256": "df7d85956a9c56736271c4881820114df86336648c69d85536e129c7d82c6298",
+      "size": 6198
+    },
+    "signtranslator/motion_transformer/spectral.py": {
+      "sha256": "3c5ddb113c8cc281700a20adc4111208c42cd4ae4ff635e39eb2f3cc2fd2404c",
+      "size": 4766
+    },
+    "signtranslator/motion_transformer/streaming.py": {
+      "sha256": "e855b37495faeccb4ac987843acf271fb8cb32e329fe5f33956a4455a9c7455c",
+      "size": 4727
+    },
+    "signtranslator/planning/__init__.py": {
+      "sha256": "682bd09cbd0612562fe8373c7eee86d2d5e41914d3aca93a3a942617e4e7469a",
+      "size": 5597
+    },
+    "signtranslator/planning/adjudication.py": {
+      "sha256": "55bc6d113bc2789f0966d18ba3ea8a993f0b01bcd69c35e712d6157bd6e8cf08",
+      "size": 136965
+    },
+    "signtranslator/planning/automaton.py": {
+      "sha256": "8e8b23d8ff7c5a792727bcbd2cf20b98f8e716899f6a3966d4fb3318158adb35",
+      "size": 11581
+    },
+    "signtranslator/planning/consistency.py": {
+      "sha256": "823f8135be370f44d2932a0f3e62b31346989422fe57162a557168ece44fca4a",
+      "size": 10010
+    },
+    "signtranslator/planning/constrained.py": {
+      "sha256": "14491ad898d6919de48897ce2be120195962fa0210921c21a384a9f9bf97f35a",
+      "size": 6348
+    },
+    "signtranslator/planning/factorized.py": {
+      "sha256": "63826c9d5fb0b6e5bfd5b4f8b9bc03e00faf7c2a5859c8c8370e9eea9d7d6be4",
+      "size": 13235
+    },
+    "signtranslator/planning/lexicon.py": {
+      "sha256": "f99d8727e78bdbea8a71531fa449f3d06eacad1f9c5e7d205b5e587366f1f0ea",
+      "size": 7858
+    },
+    "signtranslator/planning/phase3c.py": {
+      "sha256": "6e6de7f32e87873bf203922155177924fcafcc8135b6728d55261e3dfe50ec1a",
+      "size": 37311
+    },
+    "signtranslator/planning/planner.py": {
+      "sha256": "575f9a3c4901d40e47ae0cc058d91a8165496cfac6ce246b7759ee7959663736",
+      "size": 9399
+    },
+    "signtranslator/planning/preference.py": {
+      "sha256": "775c61b23d2278bfe344f7070374fd44d3f3d1ed8bb346edc7f6e7d78120ccea",
+      "size": 4679
+    },
+    "signtranslator/planning/schema.py": {
+      "sha256": "f6cd356ee1ee5ea54c5b8ff2c0254634b6257a92a991eb9d9cf9b08d966a5ad3",
+      "size": 15771
+    },
+    "signtranslator/planning/supervision.py": {
+      "sha256": "7918e87582e1b0e0487f8567d398c74d60a8d9edac1e87e9c02b9bb7d4220d90",
+      "size": 27353
+    },
+    "signtranslator/pose/__init__.py": {
+      "sha256": "7f35631e4b10e8e702f7373f8a015fc06f488bb315827fba0191d900ee711c3e",
+      "size": 2478
+    },
+    "signtranslator/pose/body_model.py": {
+      "sha256": "8515c5d83462e7b43b0b27dfd3f45f696725d6577da7251af60b13d2878eb07b",
+      "size": 9721
+    },
+    "signtranslator/pose/camera.py": {
+      "sha256": "67689bff598a31b9df84131580e6b6e4cb5505cb72afc29cfb0a2b803e4161d0",
+      "size": 4502
+    },
+    "signtranslator/pose/fitting.py": {
+      "sha256": "6b165fe0ec8b71bb51820650cc9edf248fd4583be5b8d0a9ff1d691d7bc4861a",
+      "size": 6800
+    },
+    "signtranslator/pose/integration.py": {
+      "sha256": "d6bf344773b10e445dc55f888775b54788333531556a1af5b4c7331baa72bcf0",
+      "size": 2508
+    },
+    "signtranslator/pose/leakage.py": {
+      "sha256": "926b96c9e30dccf8f8b3d103fa33802d3b75215e1f9896da6514cd1c8d37a729",
+      "size": 2708
+    },
+    "signtranslator/pose/metrics.py": {
+      "sha256": "183bf8e18e6caddc935399b534190c5cfae2e4d6f60a33d3e2efaf5143a7902b",
+      "size": 4612
+    },
+    "signtranslator/pose/rotations.py": {
+      "sha256": "14c910e4d6f1ea22cb60a30e55c567fc2f70b3442c160a745c9c7070b2f5cf77",
+      "size": 12308
+    },
+    "signtranslator/pose/state.py": {
+      "sha256": "ba176158fc56379776d9ff3b3bc024c43bb387b81fa38087aad32863b786fbc3",
+      "size": 6179
+    },
+    "signtranslator/pretraining/__init__.py": {
+      "sha256": "d2d2253401a785ee477bd3170d1c7b9ca18856693a41c79c29f8e71098319a70",
+      "size": 3765
+    },
+    "signtranslator/pretraining/consistency.py": {
+      "sha256": "743f1448eef88bda785bee45a518e82efa2b3fca7df61973c143e55bd617e15f",
+      "size": 4915
+    },
+    "signtranslator/pretraining/contrast.py": {
+      "sha256": "a073f68f291ee0a466d66ba5f60224eb07621d5437c3233b92520fca150cbbef",
+      "size": 3018
+    },
+    "signtranslator/pretraining/curriculum.py": {
+      "sha256": "6d76fd92168f8c69ee39e6f9694079f2a55454ff57a9af3d991e082e7f513220",
+      "size": 3778
+    },
+    "signtranslator/pretraining/dependence.py": {
+      "sha256": "17b82e5c7ddc38fd2ba74ebc6712b5daf82e9ecc098e91d895b2027552127cd7",
+      "size": 11644
+    },
+    "signtranslator/pretraining/evaluation.py": {
+      "sha256": "de0dc16e7fe46bed417de7d62964093dbce44c3432bd301ecd5f430a128a2765",
+      "size": 5804
+    },
+    "signtranslator/pretraining/hard_negatives.py": {
+      "sha256": "45bacca47c62887846ad77b64b672986247a8a4863e1611d195d02c484a92a8a",
+      "size": 4583
+    },
+    "signtranslator/pretraining/how2sign_motion.py": {
+      "sha256": "72b04adda11ed6aad08e0430977ebf4f833d3f7debcbdd5223ea2fdf7f3b2e5e",
+      "size": 28513
+    },
+    "signtranslator/pretraining/masked_modeling.py": {
+      "sha256": "a34daff732ca3910ec404612e202b03ddc5aa47db72840e143368d9f4b98ce80",
+      "size": 5587
+    },
+    "signtranslator/pretraining/masking.py": {
+      "sha256": "fcd35b427387281268a3aa394fe4c3fe6b0f8a45b67d703afdfdc80c0064a14d",
+      "size": 6479
+    },
+    "signtranslator/pseudo_gloss/__init__.py": {
+      "sha256": "544546a0499241fd2541251df5977079c9af2a2f93c93fbfb85a994925e75d28",
+      "size": 5736
+    },
+    "signtranslator/pseudo_gloss/__main__.py": {
+      "sha256": "0f7d54f3fbb1f79a85eb8110f11793db99da6f3c61ee979de5abe9a1b5f3fdb3",
+      "size": 49
+    },
+    "signtranslator/pseudo_gloss/artifacts.py": {
+      "sha256": "c906573cca4c8fa031f443817afc79dd8277ea54ceac5f0233c7cfe98cbf3fcf",
+      "size": 28071
+    },
+    "signtranslator/pseudo_gloss/calibration.py": {
+      "sha256": "712ec8f3f78eee011e7b02317efdaab4ce74edc91f2093c29f9039b825f6f6eb",
+      "size": 18668
+    },
+    "signtranslator/pseudo_gloss/cli.py": {
+      "sha256": "278072cfb5efe8adb03280f4f5e7b437a151634bfc785e01eaa79fab943c62f9",
+      "size": 3907
+    },
+    "signtranslator/pseudo_gloss/contracts.py": {
+      "sha256": "c156008795c10ddf8c61a11123d5d4d843f9b32dc55fcb616a4e5c0bc57dd58d",
+      "size": 16721
+    },
+    "signtranslator/pseudo_gloss/corpus.py": {
+      "sha256": "c8f56996e8b3c067b1fd90bc4314fbf0b37409af73fb0fdc722af43d7603dcac",
+      "size": 11944
+    },
+    "signtranslator/pseudo_gloss/evaluation.py": {
+      "sha256": "4f4caa620c00b157d6c9fec6cdb3e2107849965ab478b228ffe56c1710a15bb7",
+      "size": 20570
+    },
+    "signtranslator/pseudo_gloss/inference.py": {
+      "sha256": "d103d6efe5cfcf3269a5da61d54db2a7553906b0a41e944463374ad2f5cf5a26",
+      "size": 7330
+    },
+    "signtranslator/pseudo_gloss/mathematics.py": {
+      "sha256": "d0b59df53417075dc9dcdf93e114da351fd5278156e467464aaad07a7346896d",
+      "size": 12911
+    },
+    "signtranslator/pseudo_gloss/model.py": {
+      "sha256": "faa02248ae4d71c55b4975b75cbc72af1a87d7eae7417f37d9f6b101b960d7d9",
+      "size": 19344
+    },
+    "signtranslator/pseudo_gloss/pipeline.py": {
+      "sha256": "79e852f80d4d7efb9670008be4eece54aeddcc5c5d0caf9c2a18cbb587d5d61e",
+      "size": 13759
+    },
+    "signtranslator/pseudo_gloss/readiness.py": {
+      "sha256": "d0874229dece98ac71d6078a46f30cce7fef1ebe9f14d277bbce3f442986ddbe",
+      "size": 42317
+    },
+    "signtranslator/pseudo_gloss/security.py": {
+      "sha256": "ddc53f2914f957960276e930418e96e551f522273f7fecd7ea6b847adead4638",
+      "size": 4412
+    },
+    "signtranslator/pseudo_gloss/training.py": {
+      "sha256": "5cadbdefec99f8fea73f169ba4acfb3885f544b39abbe97c3ec4728f52fa2470",
+      "size": 30446
+    },
+    "signtranslator/reproducibility.py": {
+      "sha256": "ab5c2f93a6ac2ab605128ff941c35665182f1d1127e40f7c78a2942593d5fbc0",
+      "size": 7963
+    },
+    "signtranslator/run.py": {
+      "sha256": "e89e9bf979094b3f6b25969b7f48f6d31b52892053f425eed3a49e110587116a",
+      "size": 9831
+    },
+    "signtranslator/skeleton/__init__.py": {
+      "sha256": "49b9c0417212bf4e595e56f5f0f2904e6230c84295656785af228e7bda330c1d",
+      "size": 170
+    },
+    "signtranslator/skeleton/graph.py": {
+      "sha256": "660b794fcaa2dd936cff16532016a4d9eaa5f72c385bd0ef5c1c9f5a7373eb99",
+      "size": 6506
+    },
+    "signtranslator/speech/__init__.py": {
+      "sha256": "12f859f399b5e66d72687332e11e08a4b530aa8205142a36db4fc8c41d699a4c",
+      "size": 4996
+    },
+    "signtranslator/speech/alignment.py": {
+      "sha256": "767988b6c5355b58718d754d78eec5667a0fbf8931360dd38de620f96be61f2d",
+      "size": 8458
+    },
+    "signtranslator/speech/calibration.py": {
+      "sha256": "00ced04f03274782568463cf5989730d97fbe764c53b6f37ff6c470515b17a5a",
+      "size": 11494
+    },
+    "signtranslator/speech/decoding.py": {
+      "sha256": "6a8b7e7183b9494ad49e8ee545d97b30572d84c7d8b81b6a6c8bb51af4b7b7e9",
+      "size": 10201
+    },
+    "signtranslator/speech/evaluation.py": {
+      "sha256": "77b098567cdd354fd6a02acb1e5d3649f965bf606dfb1287cb513a504a7aeec2",
+      "size": 13369
+    },
+    "signtranslator/speech/features.py": {
+      "sha256": "be1fe9d778a79986098e01f69ddfb749041e2a0cfc892e21e0513336debdd18e",
+      "size": 11311
+    },
+    "signtranslator/speech/lora.py": {
+      "sha256": "217f45a7148e2443fc58cbc95dfacc9f26365ea5cfe610c707231471cfae3cbc",
+      "size": 8938
+    },
+    "signtranslator/speech/objective.py": {
+      "sha256": "51b9894727a47bdf3202617cc6f42c7178685677d143013abe9929f44b8215b2",
+      "size": 13191
+    },
+    "signtranslator/speech/policy.py": {
+      "sha256": "35f1923a437858b73f9eb4199479380ec54ab04d83170ede346bfdd4afed9091",
+      "size": 8748
+    },
+    "signtranslator/speech/projection.py": {
+      "sha256": "385209586615ce9ce9160dca8c0b297fa2bed3a1ca166b05c6f85b57ce86a8ea",
+      "size": 7431
+    },
+    "signtranslator/speech/prosody.py": {
+      "sha256": "218b79ad3b4e06060c9cec64a298907d3ffee3dd4357a3c1822e37c23007c2bb",
+      "size": 12225
+    },
+    "signtranslator/speech/revision.py": {
+      "sha256": "5679af30bd9c55f6968404cf7fed0b00826cec4ea4a0f7665cd96e5f00a9bd73",
+      "size": 8950
+    },
+    "signtranslator/speech/schedule.py": {
+      "sha256": "cb84d8fd4bd23b58cd1324c8bc60d78f700620402173125944a8f16fda0d60cc",
+      "size": 6956
+    },
+    "signtranslator/speech/streaming.py": {
+      "sha256": "e4f91571125b62c1c2fa815532c7b67e193a0db7c1ad661d6ec7477b624214fd",
+      "size": 9542
+    },
+    "signtranslator/train.py": {
+      "sha256": "f0cf10ffef7d165f533c1c72458b792f790223f2d9492bf2d9ab82a12d1c653e",
+      "size": 3996
+    },
+    "signtranslator/training/__init__.py": {
+      "sha256": "757d2b3ab9f7472e5a515fe28213bcf6cddc26900ea5e95c8c95b8e9462da603",
+      "size": 389
+    },
+    "signtranslator/training/preference.py": {
+      "sha256": "a868f1e929ab7e7bfb2fae03e7a2f16a3f9286546a4853ff4c387ef82d299982",
+      "size": 7254
+    },
+    "signtranslator/training/trainer.py": {
+      "sha256": "be99e9605f018769c65f819a6b4793015bd427435b9ef3b2efb29219c92da517",
+      "size": 22852
+    },
+    "tests/test_alignment.py": {
+      "sha256": "30e00edcdb534a8e55472cfc1d5d2ecea0e57222bec29072b2d1707c00758105",
+      "size": 2352
+    },
+    "tests/test_analysis.py": {
+      "sha256": "ee5edf578fb5847e5a313f500a1ee5f112236e2fb93f836b0d70f6787252d04d",
+      "size": 4235
+    },
+    "tests/test_ar_dqs.py": {
+      "sha256": "eaac9a22e335f92bdbbd9d10af68c5b24fb2019a079a948c49d51e3b6464cdc8",
+      "size": 4916
+    },
+    "tests/test_ar_gaussian.py": {
+      "sha256": "fc82bae0af8b980da21b753b96c8290b45450299d796eac706e09ea4d1b413f2",
+      "size": 5616
+    },
+    "tests/test_ar_integration.py": {
+      "sha256": "a62a97e3935703d57169612c32fb21dd092b854044152d40372107a7511101b8",
+      "size": 6261
+    },
+    "tests/test_ar_lod.py": {
+      "sha256": "58617b5a68cb75932102bc9ab48317afe5b0267dd5a6a4f459e5f6ed52152627",
+      "size": 3518
+    },
+    "tests/test_ar_nerf.py": {
+      "sha256": "93e638b21966117c67d3ea3cd1417b518b942c7075a89647c9215c181afe0445",
+      "size": 4218
+    },
+    "tests/test_ar_pacing.py": {
+      "sha256": "c07c0ddce0a04a0cb9de9449f57371dd85cc38b3cb8f16667060a0e591f9cba3",
+      "size": 3791
+    },
+    "tests/test_ar_rigged.py": {
+      "sha256": "a9cec62604ad791bab8afaabebc09295e70548b741cb5069c836bec738196389",
+      "size": 4668
+    },
+    "tests/test_ar_stream.py": {
+      "sha256": "b82d7e3ad00529c191753aa37235108ef8ad68b284c928124d23ccd1ede34deb",
+      "size": 3296
+    },
+    "tests/test_bidirectional.py": {
+      "sha256": "108a8c1b1218e8c6a38fa03216286b9169f992987ee816f9773eba022fb40def",
+      "size": 3873
+    },
+    "tests/test_corpus.py": {
+      "sha256": "ffe27cdaf9a5c9d21007e6d7d638b050aa97d62234c4a683a099481aa175c4b3",
+      "size": 3915
+    },
+    "tests/test_cross_modal.py": {
+      "sha256": "9dc5014ec33dd7dcc0a9781f92721244d3071322027d9f62c4c661fbcec0585b",
+      "size": 4588
+    },
+    "tests/test_de_dedup.py": {
+      "sha256": "12a1298186025815215d82ae3972eb04ba7aad3ad365bb062620ab74aca988b5",
+      "size": 2749
+    },
+    "tests/test_de_eaf.py": {
+      "sha256": "31a18883310c9b4a7353264ba14749e744b32be986374d3273eea01ed035c0c1",
+      "size": 27554
+    },
+    "tests/test_de_governance.py": {
+      "sha256": "038dad3e84a483bf8c9258002bdeb9e518f3187ab41493fc9b08c19f9a4e9e97",
+      "size": 2476
+    },
+    "tests/test_de_how2sign.py": {
+      "sha256": "42e50e8ba195813cf7cbdcb5731379f79f7cab04c053c7f5226d8f0a5f8d56b0",
+      "size": 9113
+    },
+    "tests/test_de_how2sign_audit.py": {
+      "sha256": "1febaa23776e666ccaa5219d3f93818b82c493818d409e35ad8c9ba776dfa090",
+      "size": 19487
+    },
+    "tests/test_de_integration.py": {
+      "sha256": "19964febaf92ef4779ffe4d72dac08d8a4e5283c07a0e1ac374b4b6f4130afd0",
+      "size": 22911
+    },
+    "tests/test_de_provenance.py": {
+      "sha256": "35ce1b124f05113e76b5b7473d0be3387cd2db64b5fed696c57f834a4f6baa08",
+      "size": 5009
+    },
+    "tests/test_de_qc.py": {
+      "sha256": "2aeb8cea0c1309d590d60956f7e899cb276ae7c0ceba51f673bc72aca3ad38dc",
+      "size": 2224
+    },
+    "tests/test_de_quality.py": {
+      "sha256": "e5db57075c8cc18c9197173b6f4b5b46885a5ed533f5c834f418b3573b569434",
+      "size": 4942
+    },
+    "tests/test_de_schema.py": {
+      "sha256": "62275582cbc16a657209f258b6b01e08af2668c35d6b455535bfdc88c9d52813",
+      "size": 6455
+    },
+    "tests/test_de_splitting.py": {
+      "sha256": "6100c3e2e5a38e12c2582a622d643dfa235801bc43b99eac0f5f39db8a662a33",
+      "size": 3746
+    },
+    "tests/test_denoiser.py": {
+      "sha256": "6013d599a799844b6149c687b44241902f5705da9fa0961b77fb9c2c9f47a718",
+      "size": 1567
+    },
+    "tests/test_dep_backpressure.py": {
+      "sha256": "55300f8ac35dd3917ba3772322c17165729d32dca918eb3565be1708764a8081",
+      "size": 1984
+    },
+    "tests/test_dep_integration.py": {
+      "sha256": "caf648b933de568b0ef870c79506fd7586fc6d931f261b9a44fa07b3d1e85d29",
+      "size": 3930
+    },
+    "tests/test_dep_latency_budget.py": {
+      "sha256": "03c2af7737099e34291d1b703b04bd1b618c794a371d9ce59620607d9418fc31",
+      "size": 2498
+    },
+    "tests/test_dep_optimization_gate.py": {
+      "sha256": "b7a226f9ef1eb0b0bcc57bcc554aecee960d6e5e1c50b79b3ef56316614434b0",
+      "size": 3369
+    },
+    "tests/test_dep_quantization.py": {
+      "sha256": "77db51722b7039263db6bc702aaa7f0f3b097640b11f1f8f38b388d9ebf06d1c",
+      "size": 2770
+    },
+    "tests/test_dep_runtime_controls.py": {
+      "sha256": "fac8afe8f65ef538c9d14c879ab6e20b0481555bc32ba8af228a3ef251e94904",
+      "size": 2649
+    },
+    "tests/test_dep_static_execution.py": {
+      "sha256": "23707258ccc63ea182c4c232ec59958b5ac5979faad64eea70bdb5d1f54fe20d",
+      "size": 2115
+    },
+    "tests/test_dep_streaming_contract.py": {
+      "sha256": "3465ad77302a8d49d1c1ec53e95af5c4d332a0e96d5d5f25bd187c572edbdbe2",
+      "size": 1856
+    },
+    "tests/test_dg_consistency.py": {
+      "sha256": "7f1a949feac6de014eadcdfafbe79b2de4cc6f7c7d8549148a8b6b9a398908c0",
+      "size": 4660
+    },
+    "tests/test_dg_constraints.py": {
+      "sha256": "5933c519a1b3b2e9b844736688ae1b8b038be0975c1c4c0cdff317295563339d",
+      "size": 3922
+    },
+    "tests/test_dg_dit.py": {
+      "sha256": "98d9c0ac9d3d14daf71096e39922b08b0d8b1e162db1932bdc205b260b4c5500",
+      "size": 4018
+    },
+    "tests/test_dg_guidance.py": {
+      "sha256": "ae57a96233e8e6c355ea875b0e4c39e399e6ab1c00078a4eda6fcfe733aa0c07",
+      "size": 4686
+    },
+    "tests/test_dg_inpaint.py": {
+      "sha256": "ebb3d10456dd2d6ef65619f6458b2f6311dcecaf350fd782e64736e4d4131187",
+      "size": 4212
+    },
+    "tests/test_dg_integration.py": {
+      "sha256": "a3017fce98ec9d181a8383f1125e2e4ee1b0b1df6f3d7f8bbf6519eeaf8107d4",
+      "size": 6854
+    },
+    "tests/test_dg_part_aware.py": {
+      "sha256": "a0507c4cbc15fb7bb1acbf107393787fbaaafbaec479313f92f2e7f055d28682",
+      "size": 3564
+    },
+    "tests/test_dg_schedule.py": {
+      "sha256": "baad2141b1b43f060f00708f6e64bc39a17bafa7ae9ec1431f9f25fa80cf5420",
+      "size": 5147
+    },
+    "tests/test_diffusion.py": {
+      "sha256": "9b8e36e94decb6eee864ac4224846b89ec5d5bac881c3f55b829c71c65bd1993",
+      "size": 4645
+    },
+    "tests/test_ef_comprehension.py": {
+      "sha256": "71bc41e51c7ccbc628a7ea9c22ac1e67766f48b768102842246f9aa9b820c0d4",
+      "size": 2426
+    },
+    "tests/test_ef_contracts.py": {
+      "sha256": "2c69d4e626846e89e700981064ce6403d5ecb0c6f8b51849ee24855fefbd5e89",
+      "size": 2318
+    },
+    "tests/test_ef_integration.py": {
+      "sha256": "9c17c1ae15b4d6cd47bdcf925c97f23ed0dbfe9f694f6a448214639ac8c1e7a4",
+      "size": 3698
+    },
+    "tests/test_ef_metric_stack.py": {
+      "sha256": "75c3f757e5dbcda474d4ff9afb901f8985d370f6558e15d3c88fc55853cc83b0",
+      "size": 1731
+    },
+    "tests/test_ef_protocol.py": {
+      "sha256": "2ce7e154b2ec6257a81f1bc50c5392aeed793b2a26693959973cf2751ee061ee",
+      "size": 2703
+    },
+    "tests/test_ef_reporting.py": {
+      "sha256": "389356f00eff19e9d567cd291b14f157fad85b9f13b110d34abd13fa4507c54b",
+      "size": 2575
+    },
+    "tests/test_ef_statistics.py": {
+      "sha256": "1ed5f7ae4fa31144b1733c8667b038218172512a8a67bab7bd4cff69f372e0b5",
+      "size": 2650
+    },
+    "tests/test_ef_text_metrics.py": {
+      "sha256": "ae597129609635eb5a35a68fc5e8fdcf763a3aa493684f1ac4549b04416551e8",
+      "size": 3118
+    },
+    "tests/test_fidelity.py": {
+      "sha256": "6fa3eb5031890f0e9b4fb8e91e3ac08fed109a241fc92a9c8b84da00705b1dc4",
+      "size": 5886
+    },
+    "tests/test_fn_articulate.py": {
+      "sha256": "7e9608821f9da9e582bd569d98b1b037ff54b98dc5e927870ca46a4b7d772354",
+      "size": 4018
+    },
+    "tests/test_fn_channels.py": {
+      "sha256": "321255af335e9ccb632cf9f6dd048eb15d8fc4a379d22e6a4c8d3bd5b3b674b9",
+      "size": 3912
+    },
+    "tests/test_fn_decoder.py": {
+      "sha256": "8094c0b9226d7145fe9b59d01fcb830d4baddbdbea36dbc14d82a852bab3e548",
+      "size": 2344
+    },
+    "tests/test_fn_disentangle.py": {
+      "sha256": "d9a6f06029d542db58a8561f1c7f3d7ac8813c7838fe5ce1ff82de361310a220",
+      "size": 2601
+    },
+    "tests/test_fn_evaluation.py": {
+      "sha256": "3439f7432d1cd693152da11c37be7d7b7fa0f9c52418cb3b1be883ce104387e5",
+      "size": 3556
+    },
+    "tests/test_fn_integration.py": {
+      "sha256": "1aa724a8becca5f4f4157af8757fa397e4f122edbb72977894be04f1ece72890",
+      "size": 4948
+    },
+    "tests/test_fn_losses.py": {
+      "sha256": "c3b91384d07e922dcb6e7f2c4efbc6eee182b47412fec582cfb331ca0631eefd",
+      "size": 3312
+    },
+    "tests/test_fn_uncertainty.py": {
+      "sha256": "7109d8706fec1f4ccfa931c3e2192ffca731f7d9e6eca2817235beefbe906111",
+      "size": 3370
+    },
+    "tests/test_grammar_grammar_tests.py": {
+      "sha256": "628a40dabb41297e881b5d67cafc7ce1bc0adcbd13a59a9b2061d378ae5b0deb",
+      "size": 8205
+    },
+    "tests/test_grammar_graph_transformer.py": {
+      "sha256": "74062873df409137e22f67cd80164068a68bd7eb9c4aaea39728635db2504c57",
+      "size": 6813
+    },
+    "tests/test_grammar_integration.py": {
+      "sha256": "ebb356dbfb4b3f9c9b0fab155a69e552e197fd0035d5ce6f56b92a302c45cb8a",
+      "size": 7547
+    },
+    "tests/test_grammar_nonmanual.py": {
+      "sha256": "0f98a9b8afe752c8e8d69b44cd3b971127c93702607510dc9ca41f3949de13de",
+      "size": 6223
+    },
+    "tests/test_grammar_notation.py": {
+      "sha256": "05066512adafbc968475b987469e5aadfd8cfdda0b7894dd614ed30ca0279fa5",
+      "size": 4754
+    },
+    "tests/test_grammar_signbleu.py": {
+      "sha256": "a1f6fefe0325b0fc810df45700b999e7d50456c7e785922867b945f259c99779",
+      "size": 7462
+    },
+    "tests/test_grammar_sir.py": {
+      "sha256": "abbb0b3b199102d1ad4060436c5d992c15cbf8867aefae9813ab6b547d44111d",
+      "size": 10425
+    },
+    "tests/test_grammar_temporal.py": {
+      "sha256": "d769603dcb114cef18df4b78ea8a44ab51e6a1c2f58fcea5debd386895b4961f",
+      "size": 9040
+    },
+    "tests/test_hand_graph_geometry.py": {
+      "sha256": "936c152e85cdeef1d3dea87fab962081ad3ef46f87797ae60eb9c545946c2b19",
+      "size": 6024
+    },
+    "tests/test_hand_graph_heads.py": {
+      "sha256": "58764716677b186843fc9647160ace25193e12d7d5a4f122e97512ec292412a6",
+      "size": 6244
+    },
+    "tests/test_hand_graph_integration.py": {
+      "sha256": "3141abc2cf6692c0f68233018665bd10ceebff564c61aab703e5a32c751063fc",
+      "size": 6838
+    },
+    "tests/test_hand_graph_metrics.py": {
+      "sha256": "85a1f678407065c376609c073be198fca1b234e773740510ee1826dba11970a6",
+      "size": 4359
+    },
+    "tests/test_hand_graph_relational.py": {
+      "sha256": "91bdce50ec76e48467111afb2fb89e9c2b062df79c1084ab6f77c3ceceb6cb1c",
+      "size": 7640
+    },
+    "tests/test_hand_graph_structural.py": {
+      "sha256": "88104cad61753ec522c8b186c402f85f42e18c6b1589ddf621cc990ced1e85bf",
+      "size": 5191
+    },
+    "tests/test_hand_graph_structure.py": {
+      "sha256": "ee509e29b024502717207bfaf58b30e74755aebd1873ad5bd5a2eb9117d6bf95",
+      "size": 6718
+    },
+    "tests/test_hand_graph_temporal.py": {
+      "sha256": "bbadbe250b16e556e470a70f3d6337946f07816464c454aab7cd5f483942de6b",
+      "size": 4848
+    },
+    "tests/test_metrics.py": {
+      "sha256": "68fc7c72f7de4ef75a7e4922c4f95d132e93e0eb5b4db6c4dd7bd7759383f6e3",
+      "size": 1833
+    },
+    "tests/test_mt_autoencoder.py": {
+      "sha256": "4a5474dc8eb0474e8bf1f42734248f2e6622d9ecdf9c8e3d68be9b1873aacae6",
+      "size": 6019
+    },
+    "tests/test_mt_backbone.py": {
+      "sha256": "17770684f484adca4c4a9686542df8036025d12aa68922ea99a9985b6ddf22f1",
+      "size": 4585
+    },
+    "tests/test_mt_decoding.py": {
+      "sha256": "aa62771c1849d2ff325ae544f62540eccf7e15b9dc7487cdb44c780dfad3e944",
+      "size": 4645
+    },
+    "tests/test_mt_integration.py": {
+      "sha256": "74f02a9e0c14059e983aef3f286bc9b672450bcb07828fbadf65377077de1ca8",
+      "size": 5382
+    },
+    "tests/test_mt_quantizer.py": {
+      "sha256": "bdf157c61d1ecf26f181ffeb278f2419de5ae2b855d512f4c5d442ef918864b1",
+      "size": 6567
+    },
+    "tests/test_mt_residual_vq.py": {
+      "sha256": "4d86b76499a91821ec36778a3bde1a0fabd05ce03f440567767c83c56416ef48",
+      "size": 5849
+    },
+    "tests/test_mt_spectral.py": {
+      "sha256": "5bba7e4a682b7c5e58b1df38a5a3291476d63f795a0b423074668dc87c36e3e9",
+      "size": 4022
+    },
+    "tests/test_mt_streaming.py": {
+      "sha256": "b853bcf6f3d90df63acef5faf4dcf9990bc17f2220d13bf5939e2acf4dae36b2",
+      "size": 4643
+    },
+    "tests/test_parameterization.py": {
+      "sha256": "c949be276196b5a0c4470284264fe6d46ff07d55a34b3e4d51262e9f41056fb9",
+      "size": 5095
+    },
+    "tests/test_phase3_governance.py": {
+      "sha256": "65a832145cd0838acb28038272a001a66c91ab414d5b1a79d5df158f68893d28",
+      "size": 15445
+    },
+    "tests/test_phase3b_adjudication.py": {
+      "sha256": "54b0419db0a4136ea175c37f6fd2af8c0a4acdbce4e0ea0a893b0a03c4eeb1ca",
+      "size": 66431
+    },
+    "tests/test_phase3c_evidence.py": {
+      "sha256": "9a011354bd9b9e1beb6e7bb7826698508bcc97159b382b093fdd73f5ff35920d",
+      "size": 18599
+    },
+    "tests/test_pipeline.py": {
+      "sha256": "b8cc17d4d3e72387603fff3c07a9d1a4c058ecd8900f90f794ee6daeda525ddf",
+      "size": 3658
+    },
+    "tests/test_planner.py": {
+      "sha256": "74d12f892c3d6583fe2b1b43b65448be35e8d65485fcab2601240d88226f6220",
+      "size": 2672
+    },
+    "tests/test_planning_automaton.py": {
+      "sha256": "2c01c6cc4c98dbbf61b8165bfee63f69fec4bc54f673cfc66fc99e533abb2dba",
+      "size": 13781
+    },
+    "tests/test_planning_consistency.py": {
+      "sha256": "94106d059b3ed26c0f750838e16564b81f9531e21fc38e5b5cb55e3f20aba3cd",
+      "size": 11089
+    },
+    "tests/test_planning_cycle.py": {
+      "sha256": "bc2455c36d6c1e5e432e7efbac8060276ae9e8a3299a965e9af08a87dae96e02",
+      "size": 10010
+    },
+    "tests/test_planning_factorized.py": {
+      "sha256": "51702b8c23a57c262a907e72a38340269996e20b0383a72f2f38376c2897433e",
+      "size": 9376
+    },
+    "tests/test_planning_lexicon.py": {
+      "sha256": "635ffeb49cc1d1c207ecc3ea04e855739eb7b5d52bbe0ab46dfb18ec6da378fb",
+      "size": 7575
+    },
+    "tests/test_planning_planner.py": {
+      "sha256": "5d83fe39b169a79b566e92699b6525aaec901e086f235e92b88886a341e5d3f7",
+      "size": 8482
+    },
+    "tests/test_planning_schema.py": {
+      "sha256": "4d4c02f35fe851018b069495fce6fe0b0314e2f7083d9ad19b4a4036ed00008b",
+      "size": 11390
+    },
+    "tests/test_pose_body_model.py": {
+      "sha256": "b398bdc6ff51f9c94a16528a9c74149ec92578fcbf6236b8da0fcfb3d0c58961",
+      "size": 8297
+    },
+    "tests/test_pose_camera.py": {
+      "sha256": "ecab18893074b9017bc261f7b443a50858d21a23c265ab6b8fd5b3bc4961d2ff",
+      "size": 6086
+    },
+    "tests/test_pose_fitting.py": {
+      "sha256": "a1cb46807adeb7e7caff05d37e4b3fa234f0a7aa3ab515d35b81c5f1628cef17",
+      "size": 8389
+    },
+    "tests/test_pose_integration.py": {
+      "sha256": "3b59acf3e9c26a582437476962632b5e0c3686505ae1ca5c0734777265a229d8",
+      "size": 5630
+    },
+    "tests/test_pose_leakage.py": {
+      "sha256": "cee5c3e5ff6f1faa6571c44b24c5fab8b0fb9b6f2fc21dce5b436ffa2065faad",
+      "size": 4978
+    },
+    "tests/test_pose_metrics.py": {
+      "sha256": "e60c9b9c7b77189fc3f41661493312f4e6ff9a8cba2e42c9e36533d338f9e4dc",
+      "size": 5942
+    },
+    "tests/test_pose_rotations.py": {
+      "sha256": "aab1518404696828635575778695aa0848add68ac0b922c5a1fc84907dff12a1",
+      "size": 9768
+    },
+    "tests/test_pose_state.py": {
+      "sha256": "a11a9580d71e70a255c86ee12e665d09e332efcb7cc517195e8be0634ac5c0f0",
+      "size": 3543
+    },
+    "tests/test_preference.py": {
+      "sha256": "83712af6fa1020c996ccd8ea349252464dcfe794f5925d7254f195dc39780058",
+      "size": 5875
+    },
+    "tests/test_preprocess.py": {
+      "sha256": "4de5dc1113be1daa541249be017687322ec5aa95e551153dbab8af3be625407b",
+      "size": 4094
+    },
+    "tests/test_pseudo_gloss.py": {
+      "sha256": "07bd463ab2115f9f3465eb6318d5f18b4272e39a7a1fffb1d7ec10645b803e17",
+      "size": 15288
+    },
+    "tests/test_pseudo_gloss_integration.py": {
+      "sha256": "4471d86d6195b18df8bb87f7d844cb653cf765342fbe24cf057269a75e73e89b",
+      "size": 52930
+    },
+    "tests/test_pt_consistency.py": {
+      "sha256": "662dc1c03c93501443725c7cdd5b0aedf00e54ae86905de533852b3ca0c6b876",
+      "size": 3060
+    },
+    "tests/test_pt_contrast.py": {
+      "sha256": "08664a30c6c6d9bcb98405cac316cf3b16f5f1387798128724c15fc19cbf0970",
+      "size": 2308
+    },
+    "tests/test_pt_curriculum.py": {
+      "sha256": "26433046690067cba26b184c636cd87ed9c32f56e47417a4f520bf360d0533b3",
+      "size": 1924
+    },
+    "tests/test_pt_evaluation.py": {
+      "sha256": "3cb17f9100d9b99c8c47590635c6696526d9b7fb6c47474876638db01ee098cd",
+      "size": 3167
+    },
+    "tests/test_pt_hard_negatives.py": {
+      "sha256": "903d4a15fd72cf9045f039945c8b8bf581926573280ae00374008c003f7fbf6b",
+      "size": 4346
+    },
+    "tests/test_pt_how2sign_motion.py": {
+      "sha256": "5db5a63580bdb8f88db5c1aea70e58b02ae86dd8c05b1611feeb482829763020",
+      "size": 12064
+    },
+    "tests/test_pt_integration.py": {
+      "sha256": "a5af7e09c24e52773324c348338158cf543a2cfa25ed3c9c7b27bc65692fa895",
+      "size": 3604
+    },
+    "tests/test_pt_masked_modeling.py": {
+      "sha256": "7cb2c3082f619d5fee163543dc9d24e49cdce836288083ede7e8289e2972925b",
+      "size": 5068
+    },
+    "tests/test_pt_masking.py": {
+      "sha256": "a36002abbac979a28f758b5fc19fef547eed45cd1ac8286ad0dbab678ddb8802",
+      "size": 3862
+    },
+    "tests/test_quality.py": {
+      "sha256": "3042374d5e6cef56c1c13ecc50c0d9660f82f7a33b5de32fe4567acc476a7950",
+      "size": 4988
+    },
+    "tests/test_readiness.py": {
+      "sha256": "784dab06dad3e02ba11ee9f8dcd2ca5f5567b177fcabd558a815630a52539ead",
+      "size": 4319
+    },
+    "tests/test_recognition.py": {
+      "sha256": "27f9a0148af8689bdc686934b11b9f86af3f4a820b85000d097164659c48381b",
+      "size": 4122
+    },
+    "tests/test_skeleton.py": {
+      "sha256": "908aead61b1cb27a6c61534e725c631bedf1a196ee1ec04c334ff61d19665632",
+      "size": 2352
+    },
+    "tests/test_speech.py": {
+      "sha256": "f6c9ffe8e34a25f7b2c24c6547dcea2b0a80f5b9ec2e243975a9f9a7ad6b226c",
+      "size": 6651
+    },
+    "tests/test_speech_alignment.py": {
+      "sha256": "33e57e5138459555b42efdad7e4619d53e092d91c545d3176f3946c12dc43094",
+      "size": 8359
+    },
+    "tests/test_speech_calibration.py": {
+      "sha256": "e32a84f93308ee9e77f98aa3d33abc223ca72a5fec1e993b7f41aa5fe303f3f1",
+      "size": 13789
+    },
+    "tests/test_speech_cycle_stress.py": {
+      "sha256": "abde3ecb27170e17cbfd73f1dac4748865bd2044f69093e52c12b89581c3b9fa",
+      "size": 17047
+    },
+    "tests/test_speech_decoding.py": {
+      "sha256": "0c6a8d71b505075d46fdc3c794f7f8d35993e51d684cc79379ec5392aadc6882",
+      "size": 10261
+    },
+    "tests/test_speech_evaluation.py": {
+      "sha256": "f877370c9131ccd0822d2deba89fc8df8d951a883895c596bce082eb1ea8fd58",
+      "size": 9463
+    },
+    "tests/test_speech_features.py": {
+      "sha256": "2b3059235f76082d77dbfae63e25613ae4ebed488b91979c1b5e95240da49f88",
+      "size": 10927
+    },
+    "tests/test_speech_integration.py": {
+      "sha256": "0b13919973daa9630e3c4c708c3f5f93cfdbd5477f54e73a1b72380a3dd3504b",
+      "size": 9037
+    },
+    "tests/test_speech_lora.py": {
+      "sha256": "fad3a8df77c0324a7510eb290d3dd3f17c9998db7e2dd200d584344bdb69b259",
+      "size": 10677
+    },
+    "tests/test_speech_objective.py": {
+      "sha256": "54e08c36253ab939532d84572c65500d0a4cda95d8fbaf31b28bc1849330f3fd",
+      "size": 16567
+    },
+    "tests/test_speech_policy.py": {
+      "sha256": "2555cb2f3dce8662412b87cd2b0dd990e0879bade02a907b6b3538f95d341aba",
+      "size": 9996
+    },
+    "tests/test_speech_projection.py": {
+      "sha256": "de7b65b948e6a0272ff07e8d077989a0e8133224558e978786b0f5c617d2951d",
+      "size": 8064
+    },
+    "tests/test_speech_prosody.py": {
+      "sha256": "7fe989766711b8780ba06adffad166dd3f922badd85ec01d7d9a253f0e64cbe6",
+      "size": 10382
+    },
+    "tests/test_speech_revision.py": {
+      "sha256": "f4c1166932b466a5d384e1a9d7231da0693ce7509036a66cb7c17cb83dd98f79",
+      "size": 9514
+    },
+    "tests/test_speech_stage2_integration.py": {
+      "sha256": "cd6184f08f19ed948cefbfd081a2ddf45d8c79680b961eb53e028d9e4303bf6e",
+      "size": 8353
+    },
+    "tests/test_speech_stage3_integration.py": {
+      "sha256": "d2ae0236d0c5ff4022308559e346b8439fede58f1125efbb966d898a54f7ebbe",
+      "size": 11484
+    },
+    "tests/test_speech_stage4_integration.py": {
+      "sha256": "00ead0ceed818f39aa630239086d8a8380b76745ba8e0f08ef3b4c721f370ab6",
+      "size": 11268
+    },
+    "tests/test_speech_stage5_harness.py": {
+      "sha256": "77ddccd09ebaf3e45f0b4257fe53d91e4293c616128f108e2be2b59634b199e2",
+      "size": 14755
+    },
+    "tests/test_speech_streaming.py": {
+      "sha256": "b9316c72eb247e2406c77e97078c1a746a2ea9b34d52bd32fddae9c50b7d576f",
+      "size": 13820
+    },
+    "tests/test_stgcn.py": {
+      "sha256": "f1bda33f79ab9ccb119118164cee70471f2133ac6a49e5e03da152c238bbcbb0",
+      "size": 1452
+    },
+    "tests/test_trainer.py": {
+      "sha256": "3baa714fe80249141ab1c99a5313aff4e1c0beda95b41087721c6b0cc1355513",
+      "size": 7984
+    },
+    "tests/test_training.py": {
+      "sha256": "7ea5ef768115db123567435f4191f105961816f7c69927b610cde2d3943bbcbc",
+      "size": 1834
+    }
+  },
+  "source_test_config_unchanged": true,
+  "started_at_utc": "2026-09-25T22:20:25.729544+00:00",
+  "synthetic_smoke": {
+    "checkpoint_files": {
+      "best": {
+        "sha256": "9cbf095009144782f63ad10e902ce7f8bf5170e102e63b0280673cef4c61df9a",
+        "size": 21504589
+      },
+      "last": {
+        "sha256": "5353acc00e4584dfa2b8c40cd5de7c47f9bcdf8aa44929206ad775ab4a5b89a2",
+        "size": 21504589
+      }
+    },
+    "corpus_manifest": {
+      "format_version": 1,
+      "perm": [
+        9,
+        2,
+        7,
+        5,
+        10,
+        8,
+        4,
+        1,
+        0,
+        3,
+        6,
+        11
+      ],
+      "pose_mean": [
+        [
+          [
+            0.01455674972385168,
+            -0.036419130861759186,
+            0.0074142636731266975,
+            -0.05477263778448105,
+            0.00865994393825531,
+            -0.04346345365047455,
+            -0.00136187591124326,
+            -0.01279970072209835,
+            0.04655538126826286,
+            -0.018872249871492386,
+            -0.04050420969724655,
+            -0.044226255267858505,
+            0.030107133090496063,
+            0.014457282610237598,
+            0.020720915868878365,
+            -0.02588454820215702,
+            0.06827829778194427,
+            -0.03221700340509415,
+            0.0064103808254003525,
+            -0.0045101759023964405,
+            -0.003813674207776785,
+            0.03208902105689049,
+            0.0500611886382103,
+            -0.019366905093193054,
+            -0.032096561044454575,
+            -0.013468150980770588,
+            -0.01942240446805954
+          ]
+        ],
+        [
+          [
+            0.00841694325208664,
+            0.033114805817604065,
+            -0.02742382511496544,
+            0.019784264266490936,
+            0.008491112850606441,
+            -0.012384247034788132,
+            0.05362818017601967,
+            0.031532224267721176,
+            -0.023911070078611374,
+            0.016761772334575653,
+            -0.013306175358593464,
+            -0.03789832070469856,
+            0.004643893800675869,
+            0.044578760862350464,
+            0.005831803660839796,
+            -0.04084623605012894,
+            0.02050577476620674,
+            0.05668872222304344,
+            -0.016584502533078194,
+            -0.022321727126836777,
+            -0.019070560112595558,
+            0.04174994304776192,
+            0.014358111657202244,
+            -0.006204801611602306,
+            -0.05507039651274681,
+            0.02954929880797863,
+            -0.05545977130532265
+          ]
+        ],
+        [
+          [
+            0.001511906273663044,
+            0.021901771426200867,
+            0.0003234278119634837,
+            0.03462053835391998,
+            0.007202742155641317,
+            -0.006453157402575016,
+            -0.06843438744544983,
+            -0.0022481640335172415,
+            0.024880651384592056,
+            -0.008188521489501,
+            -0.01766403205692768,
+            0.032139554619789124,
+            0.026660582050681114,
+            0.006952425464987755,
+            0.028764529153704643,
+            0.0027350399177521467,
+            0.03294966369867325,
+            -0.005704392213374376,
+            0.03245624154806137,
+            -0.0294412262737751,
+            -0.04254239797592163,
+            -0.03001432865858078,
+            0.05400324985384941,
+            0.014434406533837318,
+            -0.011557084508240223,
+            -0.029756279662251472,
+            0.01650715060532093
+          ]
+        ]
+      ],
+      "pose_std": [
+        [
+          [
+            0.7254370450973511,
+            0.782423198223114,
+            0.6956030130386353,
+            0.807859480381012,
+            0.8135488629341125,
+            0.7769772410392761,
+            0.7005317807197571,
+            0.7618505954742432,
+            0.6393381357192993,
+            0.7328399419784546,
+            0.7321503162384033,
+            0.7222039699554443,
+            0.7670503854751587,
+            0.662670910358429,
+            0.7160572409629822,
+            0.6547166109085083,
+            0.7757799625396729,
+            0.5847119688987732,
+            0.6564452052116394,
+            0.6857181191444397,
+            0.6801431775093079,
+            0.7900806069374084,
+            0.6230009198188782,
+            0.7131587266921997,
+            0.7713063359260559,
+            0.6174095869064331,
+            0.7114349603652954
+          ]
+        ],
+        [
+          [
+            0.7582619786262512,
+            0.7371601462364197,
+            0.780863881111145,
+            0.6792927384376526,
+            0.7838743329048157,
+            0.6616433262825012,
+            0.7409161329269409,
+            0.8295964002609253,
+            0.6682078838348389,
+            0.7778531312942505,
+            0.6847789287567139,
+            0.7325975298881531,
+            0.7449893355369568,
+            0.6723565459251404,
+            0.7403942346572876,
+            0.7096309065818787,
+            0.7675309181213379,
+            0.7245905995368958,
+            0.6479032635688782,
+            0.7638393640518188,
+            0.6444322466850281,
+            0.6620995402336121,
+            0.6766551733016968,
+            0.7338884472846985,
+            0.8136240243911743,
+            0.7127923965454102,
+            0.7027512192726135
+          ]
+        ],
+        [
+          [
+            0.7969437837600708,
+            0.7185788750648499,
+            0.6804865002632141,
+            0.7227078676223755,
+            0.6731983423233032,
+            0.7724645733833313,
+            0.69094318151474,
+            0.6597242951393127,
+            0.8168509006500244,
+            0.7262263894081116,
+            0.7921566963195801,
+            0.6445519924163818,
+            0.6841917037963867,
+            0.70517897605896,
+            0.8946592211723328,
+            0.746195375919342,
+            0.771084189414978,
+            0.6842178106307983,
+            0.8787261843681335,
+            0.7461073398590088,
+            0.6477077603340149,
+            0.7843255400657654,
+            0.7536094188690186,
+            0.75339275598526,
+            0.6958684921264648,
+            0.8423500657081604,
+            0.6652747988700867
+          ]
+        ]
+      ],
+      "seed": 0,
+      "spec": {
+        "gloss_vocab": 15,
+        "in_channels": 3,
+        "num_concepts": 12,
+        "num_frames": 32,
+        "num_glosses": 12,
+        "num_joints": 27,
+        "num_source_tokens": 12,
+        "seq_len": 4,
+        "speech_dim": 40,
+        "speech_frames": 64,
+        "src_vocab": 15
+      },
+      "splits": {
+        "train": 256,
+        "val": 64
+      }
+    },
+    "corpus_readiness_passed": true,
+    "optimizer_steps": 8,
+    "output_finite": true,
+    "output_shape": [
+      1,
+      3,
+      32,
+      27
+    ],
+    "performance_or_asl_acceptance": false,
+    "seeded_last_checkpoint_reload_equal": true,
+    "temporary_payloads_retained": false,
+    "training_seconds": 2.188
+  },
+  "test_totals": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 1726
+  }
+}

@@ -7,6 +7,8 @@ that shape mismatches surface early rather than deep inside a forward pass.
 
 from __future__ import annotations
 
+import math
+
 from dataclasses import asdict, dataclass, field, fields
 from typing import Any, ClassVar, Dict, Optional, Type, TypeVar
 
@@ -188,6 +190,19 @@ class TrainerConfig(SerializableConfig):
     ckpt_path: Optional[str] = None
 
     def __post_init__(self) -> None:
+        for name in ("epochs", "batch_size", "val_every"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"{name} must be a positive integer")
+        for name in ("lr", "weight_decay", "grad_clip", "warmup_frac", "min_lr_frac"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError(f"{name} must be a finite real number")
+        if not isinstance(self.loss_weights, dict) or any(
+                not isinstance(key, str) or not key or isinstance(value, bool)
+                or not isinstance(value, (int, float)) or not math.isfinite(value)
+                for key, value in self.loss_weights.items()):
+            raise ValueError("loss weights must map names to finite real numbers")
         if self.epochs <= 0 or self.batch_size <= 0:
             raise ValueError("epochs and batch_size must be positive")
         if self.lr <= 0 or self.weight_decay < 0 or self.grad_clip <= 0:
@@ -198,5 +213,6 @@ class TrainerConfig(SerializableConfig):
             raise ValueError("min_lr_frac must be in [0, 1]")
         if self.val_every <= 0:
             raise ValueError("val_every must be positive")
-        if not self.loss_weights or any(v < 0 for v in self.loss_weights.values()):
+        if (not self.loss_weights or any(v < 0 for v in self.loss_weights.values())
+                or not any(v > 0 for v in self.loss_weights.values())):
             raise ValueError("loss_weights must be non-empty and non-negative")
