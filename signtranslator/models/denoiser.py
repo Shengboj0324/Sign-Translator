@@ -32,8 +32,34 @@ def timestep_embedding(timesteps: torch.Tensor, dim: int, max_period: int = 1000
     return emb
 
 
+def _motion_input(x, motion_mask, channels, joints, max_frames):
+    """Sanitize coordinates and derive frame-key availability without inventing joints."""
+    if (x.ndim != 4 or not x.is_floating_point() or any(d < 1 for d in x.shape)
+            or (x.shape[1], x.shape[3]) != (channels, joints)):
+        raise ValueError("motion must be nonempty floating (N,C,T,V) matching the denoiser")
+    if x.shape[2] > max_frames:
+        raise ValueError("motion exceeds denoiser positional capacity")
+    if motion_mask is None:
+        if not bool(torch.isfinite(x).all()):
+            raise ValueError("observed motion must be finite")
+        return x, None
+    if (not torch.is_tensor(motion_mask) or motion_mask.dtype != torch.bool
+            or motion_mask.shape != (x.shape[0], x.shape[2], x.shape[3])
+            or motion_mask.device != x.device):
+        raise ValueError("motion_mask must be boolean (N,T,V) on the motion device")
+    frames = motion_mask.any(dim=-1)
+    if not bool(frames.any(dim=1).all()):
+        raise ValueError("denoiser sample has no observed support")
+    support = motion_mask.unsqueeze(1).expand_as(x)
+    if not bool(torch.isfinite(x[support]).all()):
+        raise ValueError("observed motion must be finite")
+    return torch.where(support, x, 0), ~frames
+
+
 class MotionDenoiser(nn.Module):
     """Predicts noise for a motion clip of shape (N, C, T, V)."""
+
+    supports_motion_mask = True
 
     def __init__(self, num_joints: int, in_channels: int, cond_dim: int,
                  hidden_dim: int = 256, num_layers: int = 4, num_heads: int = 4,
@@ -56,7 +82,8 @@ class MotionDenoiser(nn.Module):
             d_model=hidden_dim, nhead=num_heads, dim_feedforward=hidden_dim * ff_mult,
             dropout=dropout, batch_first=True, activation="gelu",
         )
-        self.transformer = nn.TransformerEncoder(layer, num_layers=num_layers)
+        self.transformer = nn.TransformerEncoder(
+            layer, num_layers=num_layers, enable_nested_tensor=False)
         self.out_norm = nn.LayerNorm(hidden_dim)
         self.output_proj = nn.Linear(hidden_dim, self.frame_dim)
         # Zero-init the output so the model starts near an identity noise-predictor,
@@ -65,11 +92,11 @@ class MotionDenoiser(nn.Module):
         nn.init.zeros_(self.output_proj.bias)
 
     def forward(self, x: torch.Tensor, t: torch.Tensor,
-                cond: torch.Tensor | None = None) -> torch.Tensor:
+                cond: torch.Tensor | None = None, *, motion_mask=None) -> torch.Tensor:
         """x: (N, C, T, V), t: (N,), cond: (N, cond_dim) -> eps_hat (N, C, T, V)."""
+        x, motion_padding = _motion_input(
+            x, motion_mask, self.in_channels, self.num_joints, self.pos_emb.shape[1])
         n, c, T, v = x.shape
-        if (c, v) != (self.in_channels, self.num_joints):
-            raise ValueError("channel/joint mismatch with denoiser configuration")
 
         tokens = x.permute(0, 2, 3, 1).reshape(n, T, v * c)  # (N, T, V*C)
         h = self.input_proj(tokens) + self.pos_emb[:, :T]
@@ -79,9 +106,10 @@ class MotionDenoiser(nn.Module):
         if cond is not None:
             h = h + self.cond_proj(cond).unsqueeze(1)
 
-        h = self.transformer(h)
+        h = self.transformer(h, src_key_padding_mask=motion_padding)
         h = self.output_proj(self.out_norm(h))  # (N, T, V*C)
-        return h.reshape(n, T, v, c).permute(0, 3, 1, 2).contiguous()
+        out = h.reshape(n, T, v, c).permute(0, 3, 1, 2).contiguous()
+        return out if motion_mask is None else torch.where(motion_mask.unsqueeze(1), out, 0)
 
 
 class CrossModalDenoiser(nn.Module):
@@ -100,6 +128,8 @@ class CrossModalDenoiser(nn.Module):
     and ``mask`` of shape ``(N, L)`` (``True`` = valid token). ``drop`` is an
     optional ``(N,)`` boolean vector selecting per-sample unconditional context.
     """
+
+    supports_motion_mask = True
 
     def __init__(self, num_joints: int, in_channels: int, context_dim: int,
                  hidden_dim: int = 256, num_layers: int = 4, num_heads: int = 4,
@@ -132,33 +162,49 @@ class CrossModalDenoiser(nn.Module):
 
     def _build_memory(self, n: int, device, cond, drop):
         """Return (memory (N, 1+L, H), key_padding_mask (N, 1+L) True=ignore)."""
+        if drop is not None and (not torch.is_tensor(drop) or drop.dtype != torch.bool
+                                 or drop.shape != (n,) or drop.device != device):
+            raise ValueError("drop must be boolean (N,) on the motion device")
         null = self.null_token.expand(n, 1, self.hidden_dim)
         if cond is None:
             valid = torch.ones(n, 1, dtype=torch.bool, device=device)
             return null, ~valid
+        if not isinstance(cond, (tuple, list)) or len(cond) != 2:
+            raise ValueError("conditioning must be a (memory, mask) pair")
         memory, mask = cond
+        if (not torch.is_tensor(memory) or not memory.is_floating_point()
+                or memory.ndim != 3 or memory.shape[0] != n
+                or memory.shape[2] != self.context_proj.in_features
+                or memory.device != device):
+            raise ValueError("conditioning memory must have matching floating (N,L,D) layout")
         if mask is None:
             mask = torch.ones(memory.shape[:2], dtype=torch.bool, device=device)
-        mem = torch.cat([null, self.context_proj(memory)], dim=1)       # (N, 1+L, H)
-        valid = torch.cat([torch.ones(n, 1, dtype=torch.bool, device=device),
-                           mask.bool()], dim=1)                          # (N, 1+L)
+        if (not torch.is_tensor(mask) or mask.dtype != torch.bool
+                or mask.shape != memory.shape[:2] or mask.device != device):
+            raise ValueError("conditioning mask must be boolean (N,L) on the motion device")
         if drop is not None:
-            # Dropped samples keep only the null slot (index 0).
-            valid = valid.clone()
-            valid[drop, 1:] = False
+            mask = mask & ~drop[:, None]
+        if not bool(torch.isfinite(memory[mask]).all()):
+            raise ValueError("observed conditioning must be finite")
+        # Attention masking alone cannot neutralize NaNs projected into keys/values.
+        safe_memory = torch.where(mask.unsqueeze(-1), memory, 0)
+        mem = torch.cat([null, self.context_proj(safe_memory)], dim=1)
+        valid = torch.cat([torch.ones(n, 1, dtype=torch.bool, device=device), mask], dim=1)
         return mem, ~valid
 
     def forward(self, x: torch.Tensor, t: torch.Tensor, cond=None,
-                drop: torch.Tensor | None = None) -> torch.Tensor:
+                drop: torch.Tensor | None = None, *, motion_mask=None) -> torch.Tensor:
+        x, motion_padding = _motion_input(
+            x, motion_mask, self.in_channels, self.num_joints, self.pos_emb.shape[1])
         n, c, T, v = x.shape
-        if (c, v) != (self.in_channels, self.num_joints):
-            raise ValueError("channel/joint mismatch with denoiser configuration")
 
         tokens = x.permute(0, 2, 3, 1).reshape(n, T, v * c)
         h = self.input_proj(tokens) + self.pos_emb[:, :T]
         h = h + self.time_mlp(timestep_embedding(t, self.hidden_dim)).unsqueeze(1)
 
         mem, key_padding = self._build_memory(n, x.device, cond, drop)
-        h = self.decoder(h, mem, memory_key_padding_mask=key_padding)
+        h = self.decoder(h, mem, tgt_key_padding_mask=motion_padding,
+                         memory_key_padding_mask=key_padding)
         h = self.output_proj(self.out_norm(h))
-        return h.reshape(n, T, v, c).permute(0, 3, 1, 2).contiguous()
+        out = h.reshape(n, T, v, c).permute(0, 3, 1, 2).contiguous()
+        return out if motion_mask is None else torch.where(motion_mask.unsqueeze(1), out, 0)

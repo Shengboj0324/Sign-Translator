@@ -1,0 +1,14 @@
+{
+  "source_url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/shared/proxy.py",
+  "sha256": "a83091c0677eb714b04f32e0be5e870241f135ecaf27ab935629319a6204a5ff",
+  "sections": [
+    "getCoords:204-218",
+    "getVertexWeights:280-322",
+    "TMatrix.getMatrix:900-910"
+  ],
+  "inspection_only": true,
+  "code_vendored_or_executed": false,
+  "position_rule": "Signed affine combination of three rest vertices plus per-axis scaled offsets; coefficients not clipped or renormalized",
+  "bone_rule": "Individual coefficient times body bone weight must exceed 1e-4; merge, normalize, threshold again; this independent adapter explicitly renormalizes afterward",
+  "phase_exit_approved": false
+}

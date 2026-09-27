@@ -1,0 +1,103 @@
+{
+  "blender_version": "5.2.2 LTS",
+  "render_engine": "CYCLES",
+  "samples": 24,
+  "seed": 0,
+  "bundle_sha256": "33d812aaac85ed5039197c13e2764ba5c3785b42aae6c63dc01a38091c7045f9",
+  "views": [
+    {
+      "name": "body-rest",
+      "frame": 1,
+      "camera_location": [
+        0.0,
+        -30.0,
+        0.0
+      ],
+      "camera_rotation_euler": [
+        1.5707964897155762,
+        -0.0,
+        0.0
+      ],
+      "ortho_scale": 19,
+      "width": 640,
+      "height": 800,
+      "sha256": "b09232e29b31816700e5ae931f9aa4e520f9c0eeb71bbd04d485825fec213956"
+    },
+    {
+      "name": "hand-rest",
+      "frame": 1,
+      "camera_location": [
+        5.949999809265137,
+        -12.399999618530273,
+        2.5
+      ],
+      "camera_rotation_euler": [
+        1.531259536743164,
+        -8.639471360538664e-09,
+        0.1488899439573288
+      ],
+      "ortho_scale": 2.7,
+      "width": 800,
+      "height": 800,
+      "sha256": "f368e9db10e6ea4661db85af5bf5632573aaa05c32fc826f740c3a608e6facc4"
+    },
+    {
+      "name": "hand-articulated",
+      "frame": 2,
+      "camera_location": [
+        5.949999809265137,
+        -12.399999618530273,
+        2.5
+      ],
+      "camera_rotation_euler": [
+        1.531259536743164,
+        -8.639471360538664e-09,
+        0.1488899439573288
+      ],
+      "ortho_scale": 2.7,
+      "width": 800,
+      "height": 800,
+      "sha256": "35494af7c5299aa2a04faa00194e1ed2eb1ba5be0178f92746314a71af378663"
+    },
+    {
+      "name": "face-rest",
+      "frame": 1,
+      "camera_location": [
+        0.0,
+        -11.0,
+        7.199999809265137
+      ],
+      "camera_rotation_euler": [
+        1.5707964897155762,
+        -0.0,
+        0.0
+      ],
+      "ortho_scale": 3.1,
+      "width": 800,
+      "height": 800,
+      "sha256": "6aaf7650114a56db4cd3a00dd3617c3e1ca4bfab8400ec6dc84e11c073ee4d28"
+    },
+    {
+      "name": "face-articulated",
+      "frame": 2,
+      "camera_location": [
+        0.0,
+        -11.0,
+        7.199999809265137
+      ],
+      "camera_rotation_euler": [
+        1.5707964897155762,
+        -0.0,
+        0.0
+      ],
+      "ortho_scale": 3.1,
+      "width": 800,
+      "height": 800,
+      "sha256": "beaaf90a6d7be74ebc813e5022af3a08ebb057a47f17e2c9933bafe2892c6b18"
+    }
+  ],
+  "blend_sha256": "fa61867d497e99d293f5b1a49662b04a327723cf7e5c71b43f342074294c09ae",
+  "observed_motion": false,
+  "linguistic_acceptance": false,
+  "phase_exit_approved": false
+}

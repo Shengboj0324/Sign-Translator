@@ -1,0 +1,12 @@
+00:00.258  blend            | Read blend: "/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-rebuilt-framing/rig-diagnostic.blend"
+00:00.754  render           | Saved: '/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-rebuilt-framing/body-rest-reload.png'
+Traceback (most recent call last):
+  File "/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-rebuilt-framing/reload_audit.py", line 61, in <module>
+    assert 0 < projected.x < 1 and 0 < projected.y < 1 and projected.z > 0
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError
+
+Error: script failed, file: 'Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-rebuilt-framing/reload_audit.py', exiting.
+Blender 5.2.2 LTS (hash d13f752e3b9c built 2026-09-15 01:49:19)
+
+Blender quit

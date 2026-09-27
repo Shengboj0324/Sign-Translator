@@ -1,0 +1,32 @@
+[
+  {
+    "case": "dtype",
+    "returncode": 1,
+    "error": "ValueError: Rest mesh must be a float64 NPY array",
+    "output_created": false
+  },
+  {
+    "case": "shape",
+    "returncode": 1,
+    "error": "ValueError: explicit rest_vertices must have shape (19158, 3)",
+    "output_created": false
+  },
+  {
+    "case": "nonfinite",
+    "returncode": 1,
+    "error": "ValueError: explicit rest_vertices must be finite float32 or float64",
+    "output_created": false
+  },
+  {
+    "case": "unpaired",
+    "returncode": 1,
+    "error": "ValueError: --rest-mesh-npy and --rest-mesh-sha256 must be supplied together",
+    "output_created": false
+  },
+  {
+    "case": "wrong_hash",
+    "returncode": 1,
+    "error": "ValueError: Rest mesh identity mismatch",
+    "output_created": false
+  }
+]

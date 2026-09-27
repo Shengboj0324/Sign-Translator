@@ -1,0 +1,51 @@
+{
+  "retrieved_at": "2026-09-26T21:35:54.842333+00:00",
+  "commit": "a8bc2d54ff0ac92e78ff71431b1023eda42bf482",
+  "tree": "13dc8663461e51f4e8a90389829266b92846d16a",
+  "files": [
+    {
+      "upstream_path": "LICENSE.md",
+      "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/LICENSE.md",
+      "git_blob_sha1": "5d1a49d31ebdaa46b06c52eae2c005c678a63ffa",
+      "sha256": "edd99571ca62698f78c943fd4fffb159a413c315fa0d4819d3cec5cadaf8b4f1",
+      "size": 3598
+    },
+    {
+      "upstream_path": "LICENSE.ASSETS.md",
+      "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/LICENSE.ASSETS.md",
+      "git_blob_sha1": "f3ede1fc3318f8d794e2cb51924186c62f02f71a",
+      "sha256": "f6089cba01cb570a24712b41ab8a586ccd3cc5ef53dc266ca50b95c288956d2c",
+      "size": 6962
+    },
+    {
+      "upstream_path": "makehuman/data/eyes/high-poly/high-poly.mhclo",
+      "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/eyes/high-poly/high-poly.mhclo",
+      "git_blob_sha1": "22bc5f77f398c59088804f7f4c9bb0e39d38661d",
+      "sha256": "b183cfe37120ab726f9b3f2ea6cd3a64c44ce7b4bd91a77c841cf70c04f83a0d",
+      "size": 72490
+    },
+    {
+      "upstream_path": "makehuman/data/eyes/high-poly/high-poly.obj",
+      "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/eyes/high-poly/high-poly.obj",
+      "git_blob_sha1": "01562a9caf4dca9ebb1fd5c24db083c17e724330",
+      "sha256": "da2493215b708a344c33dc72f2a9a5b8fa985dcc5a70ad3b208995cf871da8e1",
+      "size": 100882
+    },
+    {
+      "upstream_path": "makehuman/data/eyes/materials/brown.mhmat",
+      "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/eyes/materials/brown.mhmat",
+      "git_blob_sha1": "4935d95e41a628307ed01278908c0fe48220b031",
+      "sha256": "4abad93ce50541c08127721e77bce035640c9f16bed16cd0f5524b1cd5908465",
+      "size": 1247
+    },
+    {
+      "upstream_path": "makehuman/data/eyes/materials/brown_eye.png",
+      "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/eyes/materials/brown_eye.png",
+      "git_blob_sha1": "bda1b4b0d94f4b7b34ca4f58063eab04f05cd2e7",
+      "sha256": "4659691c7295ad6206c78b003e5fd0e5f91dcd53032fa914a229bb48cabe424b",
+      "size": 610817
+    }
+  ],
+  "qualified_asset": false,
+  "phase_exit_approved": false
+}

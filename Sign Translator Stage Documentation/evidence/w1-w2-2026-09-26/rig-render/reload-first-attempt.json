@@ -1,0 +1,36 @@
+{
+  "blender_version": "5.2.2 LTS",
+  "max_rest_float32_storage_error_source_units": 4.760742182696731e-07,
+  "max_posed_float32_storage_error_source_units": 4.7607421649331627e-07,
+  "body_faces_preserved": 13378,
+  "views": [
+    {
+      "view": "body-rest",
+      "sha256": "f329461495c370e3737611465865bfcbda69472f2da2b9b3b244aaf62a8121da",
+      "byte_identical": false
+    },
+    {
+      "view": "hand-rest",
+      "sha256": "63deacf19f860407d444759a9bc9ba13ed970fb6e6eefc87bb51fad4a6617179",
+      "byte_identical": false
+    },
+    {
+      "view": "hand-articulated",
+      "sha256": "578e7da13deada89b78f17b6e2297e198ee73d0b346ce19d038b9920dc1914f7",
+      "byte_identical": false
+    },
+    {
+      "view": "face-rest",
+      "sha256": "1855b040ca3c955f1e2227be50b07a7b2f61b4d6170ad3ef193cfcd6a58b7aa0",
+      "byte_identical": false
+    },
+    {
+      "view": "face-articulated",
+      "sha256": "0f784042c67aae0ea7e5ec4b982cb190e71235ff15ccc43151a4ba634f33930d",
+      "byte_identical": false
+    }
+  ],
+  "all_byte_identical": false,
+  "scope": "Same-machine saved Blender reload; not cross-platform determinism or native rig runtime parity",
+  "phase_exit_approved": false
+}

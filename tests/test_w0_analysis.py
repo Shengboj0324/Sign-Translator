@@ -128,7 +128,8 @@ def test_validation_macro_observations_are_partition_invariant(tmp_path):
     with torch.no_grad(), isolated_deterministic_rng(VALIDATION_SEED_OFFSET):
         losses = [float(model.training_step(row)['generation'])
                   for row in observations(next(iter(one)))]
-    assert first['generation'] == sum(losses)/3
+    # Separate float64 evaluation paths may differ by a final rounding bit.
+    assert first['generation'] == pytest.approx(sum(losses)/3, rel=1e-12, abs=1e-12)
 
 
 def test_checkpoint_selection_uses_declared_branch_not_weighted_total(tmp_path, monkeypatch):

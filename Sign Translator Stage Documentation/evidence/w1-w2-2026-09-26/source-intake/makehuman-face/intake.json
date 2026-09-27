@@ -1,0 +1,37 @@
+{
+  "commit": "a8bc2d54ff0ac92e78ff71431b1023eda42bf482",
+  "tree": "13dc8663461e51f4e8a90389829266b92846d16a",
+  "files": [
+    {
+      "upstream_path": "LICENSE.md",
+      "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/LICENSE.md",
+      "sha256": "edd99571ca62698f78c943fd4fffb159a413c315fa0d4819d3cec5cadaf8b4f1",
+      "git_blob_sha1": "5d1a49d31ebdaa46b06c52eae2c005c678a63ffa",
+      "size": 3598
+    },
+    {
+      "upstream_path": "LICENSE.ASSETS.md",
+      "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/LICENSE.ASSETS.md",
+      "sha256": "f6089cba01cb570a24712b41ab8a586ccd3cc5ef53dc266ca50b95c288956d2c",
+      "git_blob_sha1": "f3ede1fc3318f8d794e2cb51924186c62f02f71a",
+      "size": 6962
+    },
+    {
+      "upstream_path": "makehuman/data/poseunits/face-poseunits.json",
+      "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/poseunits/face-poseunits.json",
+      "sha256": "e7224f76e9610049b79e5f9e8ac2985d1e9a367333395c07537919258cb42cc3",
+      "git_blob_sha1": "cf6cc27d9701a04ef72ef853a0a47a0ffcbb45be",
+      "size": 1590
+    },
+    {
+      "upstream_path": "makehuman/data/poseunits/face-poseunits.bvh",
+      "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/poseunits/face-poseunits.bvh",
+      "sha256": "42a8e69692e30010371ee6993a6e5d3b468d35065559ec0953c936e31b8d903f",
+      "git_blob_sha1": "2965c340428429da673f57ef923f883ccc1f5b7b",
+      "size": 310826
+    }
+  ],
+  "qualified_blink": false,
+  "qualified_expression": false,
+  "phase_exit_approved": false
+}

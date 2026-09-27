@@ -1,0 +1,217 @@
+{
+  "schema_version": 1,
+  "input_files": [
+    {
+      "path": "/Users/jiangshengbo/Volumes/how2sign_audit/signer-evidence-v2/certificate.json",
+      "size": 2087,
+      "sha256": "74f18845b530d22a77d12586465067ab9c82dd6ecc6e542a2835bbe3e3fad14a"
+    },
+    {
+      "path": "/Users/jiangshengbo/Volumes/how2sign_audit/signer-evidence-v2/how2sign_train_signers.csv",
+      "size": 1735229,
+      "sha256": "82337aef0d4324cd121fd3e0be7d7b7e03838892466fa1b85d9e8618ccdea9cd"
+    }
+  ],
+  "status_counts": {
+    "missing_source": 118,
+    "quality_warning": 28621,
+    "structural_failure": 3,
+    "valid": 2423
+  },
+  "all_recorded_rows": {
+    "rows": 31165,
+    "component_count": 6,
+    "components": [
+      {
+        "rows": 1315,
+        "signer_codes": [
+          "1",
+          "2"
+        ],
+        "sources": 71,
+        "membership_sha256": "39d1afbc2b1d1a720b962628195917744ca9472776596ca1a44ad22f4595c60a"
+      },
+      {
+        "rows": 493,
+        "signer_codes": [
+          "11"
+        ],
+        "sources": 43,
+        "membership_sha256": "fa399bc8e340af692df28a15059db2cec869a9c7c6883e0bf5488882923bfd57"
+      },
+      {
+        "rows": 1861,
+        "signer_codes": [
+          "3"
+        ],
+        "sources": 163,
+        "membership_sha256": "10765436c7860b4c915c42fcee7ec4fcd5d90d0c1be0888e251d4e5519137b09"
+      },
+      {
+        "rows": 398,
+        "signer_codes": [
+          "4"
+        ],
+        "sources": 24,
+        "membership_sha256": "f38f0d1c43210ad216c96ec7f39d092cf4c186502fd68c54da2898d85663ebc3"
+      },
+      {
+        "rows": 26806,
+        "signer_codes": [
+          "5",
+          "8"
+        ],
+        "sources": 1873,
+        "membership_sha256": "d7e1c7aff2e9e1335967863579c10cb81f4798ccc82cac631c77c4f7e476a9e8"
+      },
+      {
+        "rows": 292,
+        "signer_codes": [
+          "9"
+        ],
+        "sources": 18,
+        "membership_sha256": "07d060e83e5e777787c48f0afc509b4df6e86030c69eb2109c3ef2f4ac456c75"
+      }
+    ],
+    "requested_ratios": [
+      0.7,
+      0.15,
+      0.15
+    ],
+    "greedy_counts": {
+      "train": 26806,
+      "val": 2153,
+      "test": 2206
+    },
+    "nonempty_three_way_split_feasible": true,
+    "exact_minimax_counts": [
+      26806,
+      4067,
+      292
+    ],
+    "minimum_max_absolute_fraction_error": 0.1601315578373175,
+    "candidate_component_assignment": [
+      1,
+      1,
+      1,
+      1,
+      0,
+      2
+    ],
+    "assignment_order": [
+      "train",
+      "val",
+      "test"
+    ],
+    "candidate_only": true,
+    "qc_accepted": false,
+    "final_split_frozen": false
+  },
+  "structurally_eligible_candidates": {
+    "rows": 31044,
+    "component_count": 6,
+    "components": [
+      {
+        "rows": 1314,
+        "signer_codes": [
+          "1",
+          "2"
+        ],
+        "sources": 71,
+        "membership_sha256": "39d1afbc2b1d1a720b962628195917744ca9472776596ca1a44ad22f4595c60a"
+      },
+      {
+        "rows": 486,
+        "signer_codes": [
+          "11"
+        ],
+        "sources": 43,
+        "membership_sha256": "fa399bc8e340af692df28a15059db2cec869a9c7c6883e0bf5488882923bfd57"
+      },
+      {
+        "rows": 1859,
+        "signer_codes": [
+          "3"
+        ],
+        "sources": 163,
+        "membership_sha256": "10765436c7860b4c915c42fcee7ec4fcd5d90d0c1be0888e251d4e5519137b09"
+      },
+      {
+        "rows": 398,
+        "signer_codes": [
+          "4"
+        ],
+        "sources": 24,
+        "membership_sha256": "f38f0d1c43210ad216c96ec7f39d092cf4c186502fd68c54da2898d85663ebc3"
+      },
+      {
+        "rows": 26695,
+        "signer_codes": [
+          "5",
+          "8"
+        ],
+        "sources": 1873,
+        "membership_sha256": "d7e1c7aff2e9e1335967863579c10cb81f4798ccc82cac631c77c4f7e476a9e8"
+      },
+      {
+        "rows": 292,
+        "signer_codes": [
+          "9"
+        ],
+        "sources": 18,
+        "membership_sha256": "07d060e83e5e777787c48f0afc509b4df6e86030c69eb2109c3ef2f4ac456c75"
+      }
+    ],
+    "requested_ratios": [
+      0.7,
+      0.15,
+      0.15
+    ],
+    "greedy_counts": {
+      "train": 26695,
+      "val": 2151,
+      "test": 2198
+    },
+    "nonempty_three_way_split_feasible": true,
+    "exact_minimax_counts": [
+      26695,
+      4057,
+      292
+    ],
+    "minimum_max_absolute_fraction_error": 0.15990851694369282,
+    "candidate_component_assignment": [
+      1,
+      1,
+      1,
+      1,
+      0,
+      2
+    ],
+    "assignment_order": [
+      "train",
+      "val",
+      "test"
+    ],
+    "candidate_only": true,
+    "qc_accepted": false,
+    "final_split_frozen": false
+  },
+  "limitations": [
+    "quality warnings are not accepted QC",
+    "historical audit statuses were not refreshed by decoding media",
+    "published signer evidence is reused locally, not independently reauthenticated",
+    "2D source feasibility does not establish canonical multichannel 3D eligibility"
+  ],
+  "implementation_files": [
+    {
+      "path": "/Users/jiangshengbo/Desktop/Sign-Translator/scripts/w1_split_feasibility.py",
+      "size": 5136,
+      "sha256": "be9a46e29929b0bcae18fd765ab550ae505164c9c15a499a5518a3398fe636ea"
+    },
+    {
+      "path": "/Users/jiangshengbo/Desktop/Sign-Translator/signtranslator/data_engineering/splitting.py",
+      "size": 8459,
+      "sha256": "061939493259ce70dc64c3664d01a417e473bc4ad220883d9ed238d450aa0055"
+    }
+  ]
+}

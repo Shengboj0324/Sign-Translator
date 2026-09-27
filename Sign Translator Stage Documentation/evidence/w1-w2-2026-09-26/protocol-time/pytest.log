@@ -1,0 +1,58 @@
+........................................................................ [  3%]
+........................................................................ [  7%]
+........................................................................ [ 11%]
+........................................................................ [ 15%]
+........................................................................ [ 19%]
+........................................................................ [ 23%]
+........................................................................ [ 26%]
+........................................................................ [ 30%]
+........................................................................ [ 34%]
+........................................................................ [ 38%]
+........................................................................ [ 42%]
+........................................................................ [ 46%]
+........................................................................ [ 50%]
+........................................................................ [ 53%]
+........................................................................ [ 57%]
+........................................................................ [ 61%]
+........................................................................ [ 65%]
+........................................................................ [ 69%]
+........................................................................ [ 73%]
+........................................................................ [ 77%]
+........................................................................ [ 80%]
+........................................................................ [ 84%]
+........................................................................ [ 88%]
+........................................................................ [ 92%]
+........................................................................ [ 96%]
+..............................F.......................................   [100%]
+=================================== FAILURES ===================================
+__________ test_validation_macro_observations_are_partition_invariant __________
+
+tmp_path = PosixPath('/private/var/folders/y0/l9ns18ns5472mqrprmhhmsw00000gn/T/pytest-of-jiangshengbo/pytest-8/test_validation_macro_observat0')
+
+    def test_validation_macro_observations_are_partition_invariant(tmp_path):
+        from signtranslator.training import Trainer
+        from signtranslator import TrainerConfig
+        model, samples = _ragged(tmp_path)
+        from torch.utils.data import DataLoader
+        one = DataLoader(samples, batch_size=3, collate_fn=collate_corpus)
+        split = DataLoader(samples, batch_size=2, collate_fn=collate_corpus)
+        trainer = Trainer(model, TrainerConfig(epochs=1), one, one)
+        first = trainer.validate()
+        trainer.val_loader = split
+        second = trainer.validate()
+        assert first == second
+        # Independent per-observation oracle for the declared generation estimand.
+        from signtranslator.reproducibility import isolated_deterministic_rng
+        from signtranslator.training.trainer import VALIDATION_SEED_OFFSET
+        model.eval()
+        with torch.no_grad(), isolated_deterministic_rng(VALIDATION_SEED_OFFSET):
+            losses = [float(model.training_step(row)['generation'])
+                      for row in observations(next(iter(one)))]
+>       assert first['generation'] == sum(losses)/3
+E       assert 3.76224301837699 == (11.286729055130968 / 3)
+E        +  where 11.286729055130968 = sum([4.265675795848678, 3.558390535333974, 3.4626627239483154])
+
+tests/test_w0_analysis.py:131: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_w0_analysis.py::test_validation_macro_observations_are_partition_invariant
+1 failed, 1869 passed in 66.22s (0:01:06)

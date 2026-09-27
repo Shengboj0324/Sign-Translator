@@ -1,0 +1,58 @@
+{
+  "archive_path": "/Users/jiangshengbo/Volumes/makehuman_assets/system-2026-09-26/system-assets.zip",
+  "archive_sha256": "b542127a8e25547c7c29c19f2d1d2adb9a664c80396ecd694095dbc8028a0107",
+  "official_pack_page": "https://static.makehumancommunity.org/assets/assetpacks/makehuman_system_assets.html",
+  "files": [
+    {
+      "archive_path": "teeth/teeth_base/teeth_base.obj",
+      "size": 313110,
+      "crc32": 1512583142,
+      "sha256": "f55198069e55d360c4b4cc7ecb1cc292b2c7665753ab8b65eabf46a8783f2875"
+    },
+    {
+      "archive_path": "teeth/teeth_base/teeth_base.mhclo",
+      "size": 263220,
+      "crc32": 3551084828,
+      "sha256": "9edc3deff3bb97a95c791878064dd069a74a38f95ea6d9707a9ba68d888b3b5c"
+    },
+    {
+      "archive_path": "teeth/teeth_base/teeth.mhmat",
+      "size": 1086,
+      "crc32": 100449754,
+      "sha256": "3baeff72d9eb06ca16c3cff7ca2ab304216717dee247e0d88f1dc33037c8320e"
+    },
+    {
+      "archive_path": "teeth/teeth_base/teeth.png",
+      "size": 1799930,
+      "crc32": 3203849251,
+      "sha256": "d0afb57869c6fbb56b98f5efc4aec629ee7593e70d8dd2bfb9de923acfb65f43"
+    },
+    {
+      "archive_path": "tongue/tongue01/tongue01.obj",
+      "size": 17155,
+      "crc32": 1118128776,
+      "sha256": "12f4a6a9f85abae2ce3b4aa42d8119e1f679a437e0e89cb928ec68b29a7a1587"
+    },
+    {
+      "archive_path": "tongue/tongue01/tongue01.mhmat",
+      "size": 1261,
+      "crc32": 3616849708,
+      "sha256": "7769df66c69b8c09a0ec713d70d8381abbb08ac82207369f5413970495cd4340"
+    },
+    {
+      "archive_path": "tongue/tongue01/tongue01_diffuse.png",
+      "size": 625419,
+      "crc32": 2338159375,
+      "sha256": "3150be398e48e8ba1feac164c3143c16c0b2e959d9ffb6155f0171f59cfb4ea9"
+    },
+    {
+      "archive_path": "tongue/tongue01/tongue01.mhclo",
+      "size": 2113,
+      "crc32": 388477905,
+      "sha256": "61d825899cd78ff3146fa1324118060cb44b095fae1427d408c199ade74e3c9e"
+    }
+  ],
+  "member_crc_verified_on_read": true,
+  "qualified_asset": false,
+  "phase_exit_approved": false
+}

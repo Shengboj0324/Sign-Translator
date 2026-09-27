@@ -1,0 +1,47 @@
+{
+  "selected_static_cases": 5,
+  "pair_case_counts_reproduced": 20,
+  "png_views_created": 15,
+  "editable_scenes_created": 5,
+  "visually_inspected": [
+    "TargetBind-front.png",
+    "TargetBind-side.png",
+    "TongueOut-front.png",
+    "JawDropStretched-front.png"
+  ],
+  "visual_scope": "Isolated mouth diagnostics, not composed-avatar visibility; unseen views not claimed visually checked",
+  "geometry_changed": false,
+  "native_methods_executed": [
+    "Proxy.getCoords",
+    "TMatrix.getMatrix"
+  ],
+  "native_application_parity": false,
+  "phase_exit_approved": false,
+  "sha256": {
+    "scripts/w2_contact_localization.py": "2a2736d254b5ad8c35a5c6fb06fafa67b095d895413aa5b2c34b173da0e52499",
+    "scripts/w2_native_attachment_parity.py": "61d2a6190aeae11c9100761dafeb26bf6e5b301fe1990109f133e5e3003a9009",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/JawDropStretched-front.png": "dc9e0391d38a46ea470aef65860babbe56c263e0f5a8644108878b560f169584",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/JawDropStretched-side.png": "b603fe0484772564f3daab02245b32fdb624f30e092383adcbea70f2ad4d4b4c",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/JawDropStretched-top.png": "7085d4987f9b09d5c0d523c2357b13f1875f81e0aa0b34b3f965062494b74240",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/JawDropStretched.blend": "57ceccd1c6027e80fe71189c464debac9f8e8d2330787d872e0d3f15b34e7a0e",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/LeftUpperLidClosed-front.png": "0fe688a2b84c019011498b3f5231a5f2d63becfaa0319959f953bfc072a760be",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/LeftUpperLidClosed-side.png": "85f6198f2f20649d592c46e5237ab31c36303bf7d09bc2c8437ce522eda121db",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/LeftUpperLidClosed-top.png": "3cb23a6438793c23e9a4ec1b3d9bce1ab97bd3dc0e4fbfd4e78091ca23eb5c90",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/LeftUpperLidClosed.blend": "e0c0d89101a80d7cbdb56344915e85863105ff8e4b98957e3a66da3082545bfa",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/TargetBind-front.png": "0e2d8d71304bc2df0e55b4ac4024d98cd42543343e8206b8958ef170f669cc8d",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/TargetBind-side.png": "b5a2133ab311b1630b3d6e6f5cee1c74b11e412526d2d9964f9adc6546c0082f",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/TargetBind-top.png": "f015b145410dc0aa86da4103f74f1c0fc060693f586e4fc6bb329a29f9174971",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/TargetBind.blend": "776fd17e79cacde6abc5328f38c9d47524aa7461bf540178b51e65997eb2e47b",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/TongueOut-front.png": "bb8d619269c4e2e61c84513feee9de9490257cf71e016f862643a25b69c6dafa",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/TongueOut-side.png": "71fc2598335b7fbd0fa99d83eea5ef22ed1c965560f05bfef1a957ab81ace531",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/TongueOut-top.png": "6e85cc2a906b42dcced0e231ec05a7b4058cb5c53e53b69475e15d6d29b9b28e",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/TongueOut.blend": "ed572a97f159d9ad764462ae4487a048af12dc065c2c5da39b2f717e721cbd64",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/blender.log": "5a826bea484528a405da3a089ab2eea74cb0ae71a80df2090aab61da21b30d48",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/localization.json": "f727e70545c9be316ef1b235078b12c815767a6e59e7248aa17b6e4de464191d",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/lowerLipUp-front.png": "40aa23775eff264cec29cadfad00852aac15aaa6155df590d23921177ae81241",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/lowerLipUp-side.png": "320cc81f36e0258fa452adeca2165a36a5073558825f0466d63f589027a50868",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/lowerLipUp-top.png": "74be41c680b0877b00e1bae9695230dacaf7575ae8db7ff47430b8acc1b79a6e",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/lowerLipUp.blend": "b342a59a77c9d1b2241927af26d4938241c56288eb46e5adc62c76016eb9648d",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/contact-localization/native-fitting-parity.json": "e0e2155d64c3c512d0d43571343b1615193314c64d29da42c5c3f76a5ab03367"
+  }
+}

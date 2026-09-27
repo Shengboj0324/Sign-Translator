@@ -214,23 +214,43 @@ class GaussianMotionDiffusion(nn.Module):
                  cond: Optional[torch.Tensor] = None,
                  noise: Optional[torch.Tensor] = None,
                  validity_mask=None, confidence=None, frame_mask=None,
-                 **denoiser_kwargs) -> torch.Tensor:
+                 frame_timestamps=None, max_gap_seconds=None, **denoiser_kwargs) -> torch.Tensor:
         """Training loss.
 
         ``eps``: the simplified DDPM objective E|| eps - eps_theta ||^2.
         ``x0`` : E|| x_0 - x_theta ||^2 plus an optional **velocity** term
-        E|| dx_0 - dx_theta ||^2 on the first temporal difference. The velocity
-        term supervises temporal structure directly, which matters when a
+        E|| dx_0 - dx_theta ||^2. With frame_timestamps (seconds), differences
+        are divided by elapsed time; omitted clocks retain legacy per-frame units.
+        The velocity term supervises temporal structure directly, which matters when a
         downstream sequence model (here CTC recognition) reads the motion.
         """
         x_start, weights = self.motion_support(
             x_start, validity_mask=validity_mask, confidence=confidence, frame_mask=frame_mask)
+        from ..pose.temporal import supported_time_intervals, validate_max_gap_seconds
+        validate_max_gap_seconds(max_gap_seconds)
+        if max_gap_seconds is not None and frame_timestamps is None:
+            raise ValueError('max_gap_seconds requires frame_timestamps in seconds')
+        intervals = clock_pairs = None
+        if frame_timestamps is not None:
+            if (not torch.is_tensor(frame_timestamps)
+                    or frame_timestamps.shape != (x_start.shape[0], x_start.shape[2])):
+                raise ValueError('frame_timestamps must have motion shape (N,T)')
+            clock = frame_timestamps.to(x_start.device)
+            frames = (frame_mask.to(x_start.device) if frame_mask is not None else
+                      torch.ones((x_start.shape[0], x_start.shape[2]), dtype=torch.bool,
+                                 device=x_start.device))
+            intervals, clock_pairs = supported_time_intervals(
+                clock, frames, max_gap_seconds=max_gap_seconds)
         if noise is None:
             noise = torch.randn_like(x_start)
         if noise.shape != x_start.shape or not torch.isfinite(noise[weights > 0]).all():
             raise ValueError("diffusion noise must match motion and be finite on support")
         noise = torch.where(weights > 0, noise, 0)
         x_t = self.q_sample(x_start, t, noise=noise)
+        if "motion_mask" in denoiser_kwargs:
+            raise ValueError("motion_mask is derived from objective support, not caller overrides")
+        if getattr(self.denoiser, "supports_motion_mask", False):
+            denoiser_kwargs["motion_mask"] = weights[:, 0] > 0
         out = self.denoiser(x_t, t, cond, **denoiser_kwargs)
         if out.shape != x_start.shape:
             raise ValueError("denoiser output must match motion shape")
@@ -241,9 +261,18 @@ class GaussianMotionDiffusion(nn.Module):
             # Both endpoints must be supported. The weaker reliability limits
             # this pair; no independence/probability interpretation is assumed.
             pair_weights = torch.minimum(weights[:, :, 1:], weights[:, :, :-1])
-            safe_out = torch.where(weights > 0, out, 0)
+            if clock_pairs is not None:
+                pair_weights = torch.where(clock_pairs[:, None, :, None], pair_weights, 0)
+            pair_support = pair_weights > 0
+            predicted_velocity = (torch.where(pair_support, out[:, :, 1:], 0)
+                                  - torch.where(pair_support, out[:, :, :-1], 0))
+            target_velocity = (torch.where(pair_support, x_start[:, :, 1:], 0)
+                               - torch.where(pair_support, x_start[:, :, :-1], 0))
+            if intervals is not None:
+                predicted_velocity = predicted_velocity / intervals[:, None, :, None]
+                target_velocity = target_velocity / intervals[:, None, :, None]
             loss = loss + self.velocity_weight * self._supported_mse(
-                self._velocity(safe_out), self._velocity(x_start), pair_weights)
+                predicted_velocity, target_velocity, pair_weights)
         return loss
 
     def sample_timesteps(self, n: int, device) -> torch.Tensor:

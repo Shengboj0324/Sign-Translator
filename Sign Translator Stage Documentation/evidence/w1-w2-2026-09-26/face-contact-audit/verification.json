@@ -1,0 +1,59 @@
+{
+  "static_cases": 61,
+  "pair_case_comparisons": 244,
+  "analytical_checks": {
+    "analytical_cases": 5,
+    "metamorphic_crossing_cases": 9,
+    "passed": true
+  },
+  "independent_exact_positive_witnesses": 57,
+  "summary": {
+    "body__eyes": {
+      "bind_crossings": 868,
+      "cases_with_crossings": 61,
+      "maximum_crossings": 910,
+      "first_maximum_pose": "LeftUpperLidClosed"
+    },
+    "body__teeth": {
+      "bind_crossings": 202,
+      "cases_with_crossings": 61,
+      "maximum_crossings": 873,
+      "first_maximum_pose": "JawDropStretched"
+    },
+    "body__tongue": {
+      "bind_crossings": 13,
+      "cases_with_crossings": 58,
+      "maximum_crossings": 306,
+      "first_maximum_pose": "TongueOut"
+    },
+    "teeth__tongue": {
+      "bind_crossings": 1258,
+      "cases_with_crossings": 61,
+      "maximum_crossings": 1554,
+      "first_maximum_pose": "lowerLipUp"
+    }
+  },
+  "tolerance_exception": "JawDropStretched body/teeth: 872 crossings + 1 unresolved at 1e-8; 873 crossings at 1e-10 and 1e-12",
+  "limitations": [
+    "BVH candidate recall is not independently exhaustive",
+    "Float32 mesh coordinates; exact witnesses certify those stored coordinates only",
+    "No self-collision, enclosure, penetration volume/depth, continuous-time or visible/anatomical/linguistic acceptance",
+    "No native application parity or morphed character qualification"
+  ],
+  "phase_exit_approved": false,
+  "sha256": {
+    "scripts/w2_face_contact_audit.py": "a4875d0cd7ff472426cb470d0d295006adfe04b36ac58809869ac85eaf547f2d",
+    "signtranslator/avatar_render/makehuman.py": "003c86ad43d84d49a642f331038cc23797cecb24363b624e6db81876f2057e5e",
+    "signtranslator/avatar_render/makehuman_attachment.py": "44ab067acd12e0421c58607bcb392f44af0e6deadfc4ddc6447be009fec43797",
+    "signtranslator/avatar_render/makehuman_eyes.py": "b018f3c8948b26f8669a9a64912e76b56828fe9805a0e5287aa3823a91af1e42",
+    "signtranslator/avatar_render/makehuman_face.py": "afd4a8d4830c925ba5eb82c287ad58aadde6206e86b327ef1388730fef383ee1",
+    "signtranslator/avatar_render/makehuman_mouth.py": "1d2599cd7b3b28fde0304dbfbb99e9b429cb22a06f00aed6f8b15d6752960196",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/face-contact-audit/posed-meshes.npz": "0165c67b7344cd24b8d21dfe6ae6bcdd61082bc4ba09cd01db5414c3b8e93939",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/face-contact-audit/catalogue.json": "77aca83a8312ce943262bf05a520c26cb59292059cbd692471ccc2489034f5ea",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/face-contact-audit/contact-audit.json": "f6a202dc4f028b334b3e05b0740ff014ccba0a0c03c5c48ca92c588ad8793227",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/face-contact-audit/witness-triangles.json": "753ef1d6e1b1dfe01d8a7f82b8ac01c95a126d32a189cea15bd87bfe6b94d477",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/face-contact-audit/extract_witnesses.py": "5f2257ec99b97a9509544929eb53093ac1239dfada8eca0bd08759576a75c9aa",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/face-contact-audit/verify_witnesses.py": "bbcd235a9dec50cf8e697c142844747762a6f60adb9af971d145d3d87b94aca8",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/face-contact-audit/exact-witness-verification.json": "5f438f6834ac53c7cd4fbd2db3c786f170741c1c36c28d053b92fceffb1a2dd8"
+  }
+}

@@ -1,0 +1,22 @@
+[
+  ".venv/bin/python",
+  "scripts/w2_makehuman_render_probe.py",
+  "--asset-root",
+  "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/source-intake/makehuman",
+  "--eyes-root",
+  "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/source-intake/makehuman-eyes",
+  "--mouth-root",
+  "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/source-intake/makehuman-mouth",
+  "--face-units-root",
+  "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/source-intake/makehuman-face",
+  "--face-unit",
+  "JawDropStretched",
+  "--rest-mesh-npy",
+  "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/native-rest-probe/rest-vertices.npy",
+  "--rest-mesh-sha256",
+  "0d89e83a5b26a76753714e3ac20a1f31189121f1b2debfbec636863f45ad3285",
+  "--out-dir",
+  "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-rebuilt-rest",
+  "--blender",
+  "/Applications/Blender.app/Contents/MacOS/Blender"
+]

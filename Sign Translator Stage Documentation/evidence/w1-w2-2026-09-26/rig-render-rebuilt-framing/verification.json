@@ -1,0 +1,42 @@
+{
+  "independent_av_pixel_checks": [
+    {
+      "view": "body-rest",
+      "decoded_rgb_identical": true
+    },
+    {
+      "view": "hand-rest",
+      "decoded_rgb_identical": true
+    },
+    {
+      "view": "hand-articulated",
+      "decoded_rgb_identical": true
+    },
+    {
+      "view": "face-rest",
+      "decoded_rgb_identical": true
+    },
+    {
+      "view": "face-articulated",
+      "decoded_rgb_identical": true
+    },
+    {
+      "view": "mouth-articulated",
+      "decoded_rgb_identical": true
+    }
+  ],
+  "all_selected_hand_vertices_in_view": true,
+  "visually_inspected_final_hand": "hand-rest.png",
+  "other_views_visually_inspected_in_initial_bundle": "rig-render-rebuilt-rest; face/body geometry unchanged by hand-camera repair",
+  "negative_cli_cases": "/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-rebuilt-rest/cli-negative-checks.json",
+  "initial_reload_error": "Projection check used stale camera state; corrected to bpy.context.view_layer.update(); first log retained",
+  "phase_exit_approved": false,
+  "sha256": {
+    "scripts/w2_makehuman_render_probe.py": "0bd0b3d480179046610e6f3d4cbcfad55f61c762452981388beed25c8da6e2c3",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-rebuilt-framing/mesh-probe.json": "aef9296d276f94a64cb5c6d9bb908bc5f570acd1e4773aa1cea15e645892a136",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-rebuilt-framing/render-record.json": "2f84d650a5ef7414d279b2bab62fd90efa32b6c1c59f58914d34e0f9abee71a7",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-rebuilt-framing/reload_audit.py": "998d133d62ea674b6511fc6b28632ae06b8177920c069e7bd6e4a388e20f4bfb",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-rebuilt-framing/reload-verification.json": "81375fbe060baeca3e0dd020fb3ee51eda61afa29b96596c2fe3bcabec8b7986",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-rebuilt-framing/rig-diagnostic.blend": "366b0733265807f9f83e95f125516916cabed1092a9d05a19828420af8abdce1"
+  }
+}

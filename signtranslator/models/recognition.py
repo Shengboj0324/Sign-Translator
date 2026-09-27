@@ -126,15 +126,15 @@ class SignRecognizer(nn.Module):
         # Impossible alignments are rejected explicitly before this loss is called.
         self.ctc = nn.CTCLoss(blank=0, zero_infinity=False)
 
-    def forward(self, pose: torch.Tensor) -> torch.Tensor:
+    def forward(self, pose: torch.Tensor, **support) -> torch.Tensor:
         """pose (N, C, T, V) -> log-probs (N, T, num_classes)."""
-        feats = self.encoder(pose, return_sequence=True)  # (N, T, D)
+        feats = self.encoder(pose, return_sequence=True, **support)  # (N, T, D)
         logits = self.classifier(feats)
         return F.log_softmax(logits, dim=-1)
 
     def loss(self, pose: torch.Tensor, targets: torch.Tensor,
              target_lengths: torch.Tensor,
-             input_lengths: Optional[torch.Tensor] = None) -> torch.Tensor:
+             input_lengths: Optional[torch.Tensor] = None, **support) -> torch.Tensor:
         """CTC loss.
 
         Args:
@@ -143,11 +143,17 @@ class SignRecognizer(nn.Module):
             target_lengths: ``(N,)`` true length of each target.
             input_lengths: ``(N,)`` valid frame counts (defaults to full T).
         """
-        log_probs = self.forward(pose)          # (N, T, C)
+        log_probs = self.forward(pose, **support)          # (N, T, C)
         n, t, _ = log_probs.shape
+        if input_lengths is None and support.get("frame_mask") is not None:
+            input_lengths = support["frame_mask"].sum(dim=1)
         if input_lengths is None:
             input_lengths = torch.full((n,), t, dtype=torch.long,
                                        device=log_probs.device)
+        if support.get("frame_mask") is not None and not torch.equal(
+                input_lengths.to(log_probs.device),
+                support["frame_mask"].sum(dim=1).to(log_probs.device)):
+            raise ValueError("CTC input lengths must agree with frame_mask")
         return self.loss_from_log_probs(log_probs, targets, target_lengths,
                                         input_lengths)
 
@@ -171,9 +177,14 @@ class SignRecognizer(nn.Module):
         return loss
 
     @torch.no_grad()
-    def decode(self, pose: torch.Tensor) -> List[List[int]]:
+    def decode(self, pose: torch.Tensor, **support) -> List[List[int]]:
         self.eval()
-        return ctc_greedy_decode(self.forward(pose))
+        log_probs = self.forward(pose, **support)
+        if support.get("frame_mask") is None:
+            return ctc_greedy_decode(log_probs)
+        lengths = support["frame_mask"].sum(dim=1).tolist()
+        return [ctc_greedy_decode(log_probs[i:i + 1, :length])[0]
+                for i, length in enumerate(lengths)]
 
 
 def word_error_rate(hypotheses: List[List[int]],

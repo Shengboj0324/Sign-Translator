@@ -1,0 +1,64 @@
+{
+  "targets": [
+    {
+      "path": "makehuman/data/targets/macrodetails/african-female-young.target",
+      "git_blob": "a7d2b130667cc81ecd1ca0598da9be27bec1864a",
+      "sha256": "92d61eeb3c164b421fd5a7c3537ee45e7e1a51de4d49bf312e19c3df2be1d8fc",
+      "weight": 0.16666666666666666,
+      "changed_vertices": 19158
+    },
+    {
+      "path": "makehuman/data/targets/macrodetails/african-male-young.target",
+      "git_blob": "dd5743e48700267d76596f575bf17b4b5cc3b3e0",
+      "sha256": "894abc1fbb3d28543a51fef16f89d5d4bdf9aa2e1534413339811a3d47818b7d",
+      "weight": 0.16666666666666666,
+      "changed_vertices": 19150
+    },
+    {
+      "path": "makehuman/data/targets/macrodetails/asian-female-young.target",
+      "git_blob": "f862c96add11c31ab1ca75c69e1c67ae5e0e3d5f",
+      "sha256": "095fe79694fa19e1fe98d93009ec116199bd524e081c640351a10eccf2cca1eb",
+      "weight": 0.16666666666666666,
+      "changed_vertices": 19150
+    },
+    {
+      "path": "makehuman/data/targets/macrodetails/asian-male-young.target",
+      "git_blob": "8cd3ef3e9ddb06ee2d166f75f9ac10871251f938",
+      "sha256": "ed2e8c191cb6b87b4a2d97c80486acb2604fa549316c7aa2a738a5d5a14334dc",
+      "weight": 0.16666666666666666,
+      "changed_vertices": 19150
+    },
+    {
+      "path": "makehuman/data/targets/macrodetails/caucasian-female-young.target",
+      "git_blob": "9d1f0cbeedc9a6a51abe33f1ebb5fa7c5a7edbf1",
+      "sha256": "118379f6e8ba9266247fdb8788a20e1df40a239f97ced0b9905bcbcc74f6e820",
+      "weight": 0.16666666666666666,
+      "changed_vertices": 19150
+    },
+    {
+      "path": "makehuman/data/targets/macrodetails/caucasian-male-young.target",
+      "git_blob": "c3b82f92c5ced85599199cd184b0faf3b3fc6881",
+      "sha256": "70e228ba7164737dae664454394536fc5935fa48d333c1a97d77e2dc6eacc5f5",
+      "weight": 0.16666666666666666,
+      "changed_vertices": 19150
+    },
+    {
+      "path": "makehuman/data/targets/macrodetails/universal-female-young-averagemuscle-averageweight.target",
+      "git_blob": "3f92e2939e50403aa89607e4889639ab337bcead",
+      "sha256": "4ba5396ddabda448ece15650a566fbebfbb10239256ccb201e8f883429e12249",
+      "weight": 0.5,
+      "changed_vertices": 0
+    },
+    {
+      "path": "makehuman/data/targets/macrodetails/universal-male-young-averagemuscle-averageweight.target",
+      "git_blob": "3f92e2939e50403aa89607e4889639ab337bcead",
+      "sha256": "4ba5396ddabda448ece15650a566fbebfbb10239256ccb201e8f883429e12249",
+      "weight": 0.5,
+      "changed_vertices": 0
+    }
+  ],
+  "interpretation": "Diagnostic weighted rest-target reconstruction from inspected default macro factors; not full native application parity or adopted rig",
+  "old_skeleton_used_for_posing": false,
+  "maximum_vertex_shift_source_units": 0.9882746328829854,
+  "phase_exit_approved": false
+}

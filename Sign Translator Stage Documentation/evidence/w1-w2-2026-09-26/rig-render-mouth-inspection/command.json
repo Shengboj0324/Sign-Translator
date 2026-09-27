@@ -1,0 +1,12 @@
+[
+  "/Applications/Blender.app/Contents/MacOS/Blender",
+  "--background",
+  "--factory-startup",
+  "--python-exit-code",
+  "1",
+  "--python",
+  "/Users/jiangshengbo/Desktop/Sign-Translator/scripts/w2_makehuman_render_probe.py",
+  "--",
+  "--render-bundle",
+  "/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-mouth-inspection/mesh-probe.json"
+]

@@ -334,10 +334,16 @@ CURRENT_SOURCE_CANDIDATES = (
     SourceCandidate(
         "makehuman", "MakeHuman core assets",
         "https://static.makehumancommunity.org/about/license.html",
-        AccessStatus.PUBLIC_DOWNLOAD,
-        evidence("body_rig", "hand_rig", "face_rig", "eye_rig"),
+        AccessStatus.LOCAL_VERIFIED,
+        evidence("body_rig", "hand_rig", "face_rig", "eye_rig",
+                 level=EvidenceLevel.LOCAL_VERIFIED),
         RightsStatus.PERMITTED, RightsStatus.PERMITTED, RightsStatus.PERMITTED,
-        "Asset licensing is promising, but the exact rig has not been locally qualified.",
+        "Pinned core body/eye/mouth assets and static facial controls were locally "
+        "verified in the 2026-09-26 source-intake and rig evidence. This capability "
+        "snapshot is not live file verification, action authorization, native "
+        "application parity, contact or qualified linguistic acceptance. Rights "
+        "do not extend to arbitrary community assets; actual actions still require "
+        "their own bound evidence.",
     ),
     SourceCandidate(
         "gallaudet_mll", "Gallaudet Motion Light Lab",

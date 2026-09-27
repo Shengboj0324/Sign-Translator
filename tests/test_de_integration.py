@@ -5,6 +5,7 @@ import pytest
 import torch
 import wave
 import json
+from pathlib import Path
 from torch.utils.data import DataLoader
 
 from signtranslator.data_engineering import (
@@ -218,7 +219,12 @@ def test_exporter_preserves_masks_lengths_labels_and_traceability(tmp_path):
     datasets = [SignDataset(result.corpus_dir, split)
                 for split in ("train", "val", "test")]
     assert sum(map(len, datasets)) == 8
-    for dataset in datasets:
+    for split, dataset in zip(("train", "val", "test"), datasets):
+        raw = SignDataset(result.corpus_dir, split, normalize=False)
+        restored = dataset.standardizer.denormalize(dataset.pose, dataset.validity_mask)
+        support = dataset.validity_mask.unsqueeze(1).expand_as(dataset.pose)
+        torch.testing.assert_close(restored[support], raw.pose[support])
+        assert torch.count_nonzero(restored[~support]) == 0
         for item in dataset:
             invalid = ~item["validity_mask"].unsqueeze(0).expand_as(item["pose"])
             assert torch.all(item["pose"][invalid] == 0)
@@ -507,3 +513,28 @@ def test_holistic_assembly_preserves_dense_parts_and_rejects_clock_drift():
     drifted.timestamps[1] += 1e-4
     with pytest.raises(ValueError, match="timestamps"):
         assemble_holistic_track({"body": part(25), "right_hand": drifted})
+
+
+def test_export_vocabulary_is_training_only_and_unknown_holdout_refuses(tmp_path):
+    from dataclasses import replace
+    from signtranslator.data_engineering.splitting import grouped_split
+    records = _extracted_records()
+    assignment = grouped_split([r.governance for r in records], seed=0)
+    heldout = next(i for i, split in assignment.items() if split == 'test')
+    records[heldout] = replace(records[heldout], gloss_tokens=('UNSEEN-HELDOUT',))
+    out = tmp_path/'refused'
+    with pytest.raises(ValueError, match='absent from training vocabulary'):
+        export_corpus(records, out, joint_names=[f'j{i}' for i in range(5)],
+                      landmark_parts=LANDMARK_PARTS)
+    assert not out.exists()
+
+
+def test_export_records_exact_vocabulary_fit_population(tmp_path):
+    result = export_corpus(_extracted_records(), tmp_path/'fit',
+                           joint_names=[f'j{i}' for i in range(5)],
+                           landmark_parts=LANDMARK_PARTS)
+    manifest = json.loads(Path(result.manifest_path).read_text())
+    assert manifest['vocabulary_fit_split'] == 'train'
+    assert manifest['unknown_token_policy'] == 'reject_export'
+    assert manifest['vocabulary_fit_sample_ids'] == sorted(
+        r['sample_id'] for r in manifest['records'] if r['split']=='train')

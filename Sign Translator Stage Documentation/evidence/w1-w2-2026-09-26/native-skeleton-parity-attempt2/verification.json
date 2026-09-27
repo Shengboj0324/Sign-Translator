@@ -1,0 +1,518 @@
+{
+  "scope": "Extracted upstream float32 rest and Bone.update methods; same local rotations and adapter-normalized weights; independent numpy skin contraction",
+  "native_full_application": false,
+  "native_skin_weight_mapping": false,
+  "reference_rest_sha256": "84fdc1abc59d49ccd3d93af4cb3357239e388db4a9365b4e55f08ac08d2aa59b",
+  "results": [
+    {
+      "mesh": "raw_base",
+      "bone_count": 163,
+      "maximum_rest_matrix_entry_difference": 1.3303347906864441e-05,
+      "cases": [
+        {
+          "case": "TargetBind",
+          "max_coordinate_difference_source_units": 1.9925122529684813e-06
+        },
+        {
+          "case": "Rest",
+          "max_coordinate_difference_source_units": 2.09683975160857e-06
+        },
+        {
+          "case": "LeftBrowDown",
+          "max_coordinate_difference_source_units": 2.09683975160857e-06
+        },
+        {
+          "case": "RightBrowDown",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "LeftOuterBrowUp",
+          "max_coordinate_difference_source_units": 2.09683975160857e-06
+        },
+        {
+          "case": "RightOuterBrowUp",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "LeftInnerBrowUp",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "RightInnerBrowUp",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "NoseWrinkler",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "LeftUpperLidOpen",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "RightUpperLidOpen",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "LeftUpperLidClosed",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "RightUpperLidClosed",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "LeftLowerLidUp",
+          "max_coordinate_difference_source_units": 2.2761723030839676e-06
+        },
+        {
+          "case": "RightLowerLidUp",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "LeftEyeDown",
+          "max_coordinate_difference_source_units": 2.1110443597649464e-06
+        },
+        {
+          "case": "RightEyeDown",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "LeftEyeUp",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "RightEyeUp",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "LeftEyeturnRight",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "RightEyeturnRight",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "LeftEyeturnLeft",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "RightEyeturnLeft",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "LeftCheekUp",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "RightCheekUp",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "CheeksPump",
+          "max_coordinate_difference_source_units": 2.09683975160857e-06
+        },
+        {
+          "case": "CheeksSuck",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "NasolabialDeepener",
+          "max_coordinate_difference_source_units": 2.454424570252911e-06
+        },
+        {
+          "case": "ChinLeft",
+          "max_coordinate_difference_source_units": 2.454424570252911e-06
+        },
+        {
+          "case": "ChinRight",
+          "max_coordinate_difference_source_units": 2.454424570252911e-06
+        },
+        {
+          "case": "ChinDown",
+          "max_coordinate_difference_source_units": 2.454424570252911e-06
+        },
+        {
+          "case": "ChinForward",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "lowerLipUp",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "lowerLipDown",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "lowerLipBackward",
+          "max_coordinate_difference_source_units": 2.454424570252911e-06
+        },
+        {
+          "case": "lowerLipForward",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "UpperLipUp",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "UpperLipBackward",
+          "max_coordinate_difference_source_units": 2.09683975160857e-06
+        },
+        {
+          "case": "UpperLipForward",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "UpperLipStretched",
+          "max_coordinate_difference_source_units": 2.09683975160857e-06
+        },
+        {
+          "case": "JawDrop",
+          "max_coordinate_difference_source_units": 2.454424570252911e-06
+        },
+        {
+          "case": "JawDropStretched",
+          "max_coordinate_difference_source_units": 2.09683975160857e-06
+        },
+        {
+          "case": "LipsKiss",
+          "max_coordinate_difference_source_units": 2.09683975160857e-06
+        },
+        {
+          "case": "MouthMoveLeft",
+          "max_coordinate_difference_source_units": 1.9212094022336146e-06
+        },
+        {
+          "case": "MouthMoveRight",
+          "max_coordinate_difference_source_units": 1.9212094022336146e-06
+        },
+        {
+          "case": "MouthLeftPullUp",
+          "max_coordinate_difference_source_units": 2.09683975160857e-06
+        },
+        {
+          "case": "MouthRightPullUp",
+          "max_coordinate_difference_source_units": 2.09683975160857e-06
+        },
+        {
+          "case": "MouthLeftPullSide",
+          "max_coordinate_difference_source_units": 2.09683975160857e-06
+        },
+        {
+          "case": "MouthRightPullSide",
+          "max_coordinate_difference_source_units": 2.0811006553600464e-06
+        },
+        {
+          "case": "MouthLeftPullDown",
+          "max_coordinate_difference_source_units": 2.09683975160857e-06
+        },
+        {
+          "case": "MouthRightPullDown",
+          "max_coordinate_difference_source_units": 2.09683975160857e-06
+        },
+        {
+          "case": "MouthLeftPlatysma",
+          "max_coordinate_difference_source_units": 2.09683975160857e-06
+        },
+        {
+          "case": "MouthRightPlatysma",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "TongueOut",
+          "max_coordinate_difference_source_units": 2.396828032935616e-06
+        },
+        {
+          "case": "TongueUshape",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "TongueUp",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "TongueDown",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "TongueLeft",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "TongueRight",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "TonguePointUp",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        },
+        {
+          "case": "TonguePointDown",
+          "max_coordinate_difference_source_units": 2.0754420759772074e-06
+        }
+      ]
+    },
+    {
+      "mesh": "default_factor_probe",
+      "bone_count": 163,
+      "maximum_rest_matrix_entry_difference": 4.797098659019283e-06,
+      "cases": [
+        {
+          "case": "TargetBind",
+          "max_coordinate_difference_source_units": 2.255172491194557e-06
+        },
+        {
+          "case": "Rest",
+          "max_coordinate_difference_source_units": 2.2619280082292192e-06
+        },
+        {
+          "case": "LeftBrowDown",
+          "max_coordinate_difference_source_units": 2.2619280082292192e-06
+        },
+        {
+          "case": "RightBrowDown",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "LeftOuterBrowUp",
+          "max_coordinate_difference_source_units": 2.2619280082292192e-06
+        },
+        {
+          "case": "RightOuterBrowUp",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "LeftInnerBrowUp",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "RightInnerBrowUp",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "NoseWrinkler",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "LeftUpperLidOpen",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "RightUpperLidOpen",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "LeftUpperLidClosed",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "RightUpperLidClosed",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "LeftLowerLidUp",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "RightLowerLidUp",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "LeftEyeDown",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "RightEyeDown",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "LeftEyeUp",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "RightEyeUp",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "LeftEyeturnRight",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "RightEyeturnRight",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "LeftEyeturnLeft",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "RightEyeturnLeft",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "LeftCheekUp",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "RightCheekUp",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "CheeksPump",
+          "max_coordinate_difference_source_units": 2.2619280082292192e-06
+        },
+        {
+          "case": "CheeksSuck",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "NasolabialDeepener",
+          "max_coordinate_difference_source_units": 2.2619280082292192e-06
+        },
+        {
+          "case": "ChinLeft",
+          "max_coordinate_difference_source_units": 2.2619280082292192e-06
+        },
+        {
+          "case": "ChinRight",
+          "max_coordinate_difference_source_units": 2.2619280082292192e-06
+        },
+        {
+          "case": "ChinDown",
+          "max_coordinate_difference_source_units": 2.2619280082292192e-06
+        },
+        {
+          "case": "ChinForward",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "lowerLipUp",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "lowerLipDown",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "lowerLipBackward",
+          "max_coordinate_difference_source_units": 2.2619280082292192e-06
+        },
+        {
+          "case": "lowerLipForward",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "UpperLipUp",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "UpperLipBackward",
+          "max_coordinate_difference_source_units": 2.2619280082292192e-06
+        },
+        {
+          "case": "UpperLipForward",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "UpperLipStretched",
+          "max_coordinate_difference_source_units": 2.2619280082292192e-06
+        },
+        {
+          "case": "JawDrop",
+          "max_coordinate_difference_source_units": 2.2619280082292192e-06
+        },
+        {
+          "case": "JawDropStretched",
+          "max_coordinate_difference_source_units": 2.4746509970086095e-06
+        },
+        {
+          "case": "LipsKiss",
+          "max_coordinate_difference_source_units": 2.2619280082292192e-06
+        },
+        {
+          "case": "MouthMoveLeft",
+          "max_coordinate_difference_source_units": 2.2619280082292192e-06
+        },
+        {
+          "case": "MouthMoveRight",
+          "max_coordinate_difference_source_units": 2.2619280082292192e-06
+        },
+        {
+          "case": "MouthLeftPullUp",
+          "max_coordinate_difference_source_units": 2.2619280082292192e-06
+        },
+        {
+          "case": "MouthRightPullUp",
+          "max_coordinate_difference_source_units": 2.2619280082292192e-06
+        },
+        {
+          "case": "MouthLeftPullSide",
+          "max_coordinate_difference_source_units": 2.2619280082292192e-06
+        },
+        {
+          "case": "MouthRightPullSide",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "MouthLeftPullDown",
+          "max_coordinate_difference_source_units": 2.2619280082292192e-06
+        },
+        {
+          "case": "MouthRightPullDown",
+          "max_coordinate_difference_source_units": 2.2619280082292192e-06
+        },
+        {
+          "case": "MouthLeftPlatysma",
+          "max_coordinate_difference_source_units": 2.2619280082292192e-06
+        },
+        {
+          "case": "MouthRightPlatysma",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "TongueOut",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "TongueUshape",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "TongueUp",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "TongueDown",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "TongueLeft",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "TongueRight",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "TonguePointUp",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        },
+        {
+          "case": "TonguePointDown",
+          "max_coordinate_difference_source_units": 2.3988504478378303e-06
+        }
+      ]
+    }
+  ],
+  "phase_exit_approved": false,
+  "script_sha256": "ee1c0c835a60b383ecd17fef9751aeb81b47fa747ea415e2947c0afa61c75107",
+  "upstream_skeleton_sha256": "ef3a8564e6c55f85d045b45a5307c6cf8af03a7b8a50a9211b95edc3f5137a07",
+  "upstream_matrix_sha256": "7a31251b2f3873d4c33a3e939d00fcfb01d15edcab5ef3f49c2016707c5fa8ba",
+  "compile_passed": true,
+  "diff_check_passed": true,
+  "upstream_source_warning": "Unmodified upstream docstring contains invalid escape sequence at line 1351; emitted during AST parsing and preserved in run.log",
+  "initial_attempt": "../native-skeleton-parity/attempt-error.txt"
+}

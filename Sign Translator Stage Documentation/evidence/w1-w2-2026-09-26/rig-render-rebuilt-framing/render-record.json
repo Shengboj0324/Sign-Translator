@@ -1,0 +1,121 @@
+{
+  "blender_version": "5.2.2 LTS",
+  "render_engine": "CYCLES",
+  "samples": 24,
+  "seed": 0,
+  "bundle_sha256": "aef9296d276f94a64cb5c6d9bb908bc5f570acd1e4773aa1cea15e645892a136",
+  "views": [
+    {
+      "name": "body-rest",
+      "frame": 1,
+      "camera_location": [
+        0.0,
+        -30.0,
+        0.0
+      ],
+      "camera_rotation_euler": [
+        1.5707964897155762,
+        -0.0,
+        0.0
+      ],
+      "ortho_scale": 19,
+      "width": 640,
+      "height": 800,
+      "sha256": "26e6d617b85b22c4d5a63dcda32fd4a9fdd8707b52a2ad6503254d5d4cc2bc6a"
+    },
+    {
+      "name": "hand-rest",
+      "frame": 1,
+      "camera_location": [
+        6.1739501953125,
+        -12.347550392150879,
+        1.9381332397460938
+      ],
+      "camera_rotation_euler": [
+        1.5312596559524536,
+        -4.110741080864955e-09,
+        0.14888995885849
+      ],
+      "ortho_scale": 2.6031930739968705,
+      "width": 800,
+      "height": 800,
+      "sha256": "7402a384404a0c79fd80826aafeddcae2fbbe5848a9c099bdaeac37afef46450"
+    },
+    {
+      "name": "hand-articulated",
+      "frame": 2,
+      "camera_location": [
+        6.1739501953125,
+        -12.347550392150879,
+        1.9381332397460938
+      ],
+      "camera_rotation_euler": [
+        1.5312596559524536,
+        -4.110741080864955e-09,
+        0.14888995885849
+      ],
+      "ortho_scale": 2.6031930739968705,
+      "width": 800,
+      "height": 800,
+      "sha256": "20c7b02c8ad50e2ab0d54a9cac9cbade364eec531dc1737eca8f713e1bf86fb1"
+    },
+    {
+      "name": "face-rest",
+      "frame": 1,
+      "camera_location": [
+        0.0,
+        -11.0,
+        7.199999809265137
+      ],
+      "camera_rotation_euler": [
+        1.5707964897155762,
+        -0.0,
+        0.0
+      ],
+      "ortho_scale": 3.1,
+      "width": 800,
+      "height": 800,
+      "sha256": "bff93bc2304b5a8bc99b3aac69e5a8dec22c8bda243d8318d9a88a62046d4358"
+    },
+    {
+      "name": "face-articulated",
+      "frame": 2,
+      "camera_location": [
+        0.0,
+        -11.0,
+        7.199999809265137
+      ],
+      "camera_rotation_euler": [
+        1.5707964897155762,
+        -0.0,
+        0.0
+      ],
+      "ortho_scale": 3.1,
+      "width": 800,
+      "height": 800,
+      "sha256": "3497e20c062df392ea35c490f0dc4d1a59b0dff16b1a9e5558c91d41b336ecb0"
+    },
+    {
+      "name": "mouth-articulated",
+      "frame": 2,
+      "camera_location": [
+        0.0,
+        -11.25,
+        6.550000190734863
+      ],
+      "camera_rotation_euler": [
+        1.5707964897155762,
+        -0.0,
+        0.0
+      ],
+      "ortho_scale": 1.6,
+      "width": 800,
+      "height": 600,
+      "sha256": "a9785d5ec59f7d671e57d5685d56b11fcab273bb8f97ecea5e8feff2f5e6b22c"
+    }
+  ],
+  "blend_sha256": "366b0733265807f9f83e95f125516916cabed1092a9d05a19828420af8abdce1",
+  "observed_motion": false,
+  "linguistic_acceptance": false,
+  "phase_exit_approved": false
+}

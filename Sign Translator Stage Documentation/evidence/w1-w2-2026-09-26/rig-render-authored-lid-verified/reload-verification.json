@@ -1,0 +1,49 @@
+{
+  "blender_version": "5.2.2 LTS",
+  "max_rest_float32_storage_error_source_units": 4.760742182696731e-07,
+  "max_posed_float32_storage_error_source_units": 4.765609773471624e-07,
+  "body_faces_preserved": 13378,
+  "views": [
+    {
+      "view": "body-rest",
+      "sha256": "2af71c9d8d894e785c27ec854e26b6db667ef7ec170984e9686ac6244326f406",
+      "byte_identical": false,
+      "decoded_pixels_identical": true
+    },
+    {
+      "view": "hand-rest",
+      "sha256": "5781c56212f8a3a5a3c2610a3ef91cb337c806e477366f38264a340061a0bf08",
+      "byte_identical": false,
+      "decoded_pixels_identical": true
+    },
+    {
+      "view": "hand-articulated",
+      "sha256": "86b5ee8927da9b05ee40d0ca5e5787b0d366c33e873c571be35fcb17687ecd25",
+      "byte_identical": false,
+      "decoded_pixels_identical": true
+    },
+    {
+      "view": "face-rest",
+      "sha256": "7fd2538f42226f12332723a6a8b1b03f143c735a7fe598e6e322db464f117022",
+      "byte_identical": false,
+      "decoded_pixels_identical": true
+    },
+    {
+      "view": "face-articulated",
+      "sha256": "66f269a9fefdc6c2b77de817a0eb4cae17ab9d3271bf1b4c089782b074a8b700",
+      "byte_identical": false,
+      "decoded_pixels_identical": true
+    },
+    {
+      "view": "mouth-articulated",
+      "sha256": "755be47c152521c417861d3c860ac438bc5f53740f917bb2dc6338477e2efac8",
+      "byte_identical": false,
+      "decoded_pixels_identical": true
+    }
+  ],
+  "all_byte_identical": false,
+  "all_decoded_pixels_identical": true,
+  "png_metadata_note": "File path, timestamps and render timings differ; file hashes are not pixel hashes",
+  "scope": "Same-machine saved Blender reload; not cross-platform determinism or native rig runtime parity",
+  "phase_exit_approved": false
+}

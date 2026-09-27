@@ -97,3 +97,40 @@ def test_invalid_ratios_rejected():
     import pytest
     with pytest.raises(ValueError):
         grouped_split(_corpus(), (0.5, 0.4, 0.3))
+
+
+def test_assignment_is_invariant_to_input_permutation():
+    import random
+    samples = _corpus()
+    original = grouped_split(samples, seed=12)
+    by_id = {s.sample_id: original[i] for i, s in enumerate(samples)}
+    for seed in range(10):
+        reordered = samples.copy()
+        random.Random(seed).shuffle(reordered)
+        assigned = grouped_split(reordered, seed=12)
+        assert {s.sample_id: assigned[i] for i, s in enumerate(reordered)} == by_id
+
+
+def test_nonfinite_and_malformed_split_controls_rejected():
+    import pytest
+    for ratios in [(float('nan'), .5, .5), (float('inf'), 0., 0.),
+                   (1.,), (.7, .1, .1, .1), (True, 0., 0.), (-.1, .5, .6)]:
+        with pytest.raises(ValueError):
+            grouped_split(_corpus(), ratios)
+    for seed in [-1, True, 1.5]:
+        with pytest.raises(ValueError):
+            grouped_split(_corpus(), seed=seed)
+
+
+def test_unknown_duplicate_and_empty_populations_cannot_be_certified():
+    import pytest
+    from dataclasses import replace
+    original = _sample('s', 'signer', 'source')
+    for samples in [[], [original, original], [replace(original, signer_id_hash=' ')],
+                    [replace(original, source_id='')]]:
+        with pytest.raises(ValueError):
+            grouped_split(samples)
+        with pytest.raises(ValueError):
+            certify_no_group_leakage(samples, {i:'train' for i in range(len(samples))})
+    with pytest.raises(ValueError):
+        certify_no_group_leakage([original], {False:'train'})

@@ -15,7 +15,7 @@ Design points (see docs/HUMAN_REPRESENTATION.md §1):
 * Geodesic distance d(R1,R2) = arccos((tr(R1^T R2) - 1)/2) is a bi-invariant
   metric, used for rotation-error evaluation and as a proper SO(3) loss.
 
-Correctness (proved in tests, not asserted): produced matrices are special
+Contract checked by numerical tests on supported inputs: produced matrices are special
 orthogonal (R^T R = I, det = +1); every conversion round-trips; the 6D encoding
 is continuous where Euler/quaternion jump; gradients flow.
 """
@@ -39,12 +39,14 @@ def rotation_6d_to_matrix(d6: torch.Tensor) -> torch.Tensor:
     d6 = [a; b]; r1 = a/|a|, r2 = normalize(b - (r1.b) r1), r3 = r1 x r2.
     The three become the *columns* of R.
     """
-    if d6.shape[-1] != 6:
-        raise ValueError(f"expected last dim 6, got {d6.shape[-1]}")
+    _check_vector(d6, 6)
     a, b = d6[..., :3], d6[..., 3:]
     r1 = _normalize(a)
+    b = _normalize(b)
     # remove the r1 component of b, then normalise
     b_proj = b - (r1 * b).sum(-1, keepdim=True) * r1
+    if bool((torch.linalg.vector_norm(b_proj, dim=-1) <= 32 * torch.finfo(d6.dtype).eps).any()):
+        raise ValueError("6D rotation axes are collinear or numerically unresolved")
     r2 = _normalize(b_proj)
     r3 = torch.cross(r1, r2, dim=-1)
     # stack as columns: R[..., :, k] = r_{k+1}
@@ -58,7 +60,7 @@ def matrix_to_rotation_6d(R: torch.Tensor) -> torch.Tensor:
     ``rotation_6d_to_matrix`` returns R exactly (the two columns are already
     orthonormal, so Gram-Schmidt is the identity on them).
     """
-    _check_matrix(R)
+    _check_rotation(R)
     col0 = R[..., :, 0]
     col1 = R[..., :, 1]
     return torch.cat((col0, col1), dim=-1)
@@ -74,8 +76,7 @@ def axis_angle_to_matrix(aa: torch.Tensor) -> torch.Tensor:
     Near phi = 0: sin(phi)/phi -> 1 and (1 - cos phi)/phi^2 -> 1/2 (Taylor), so
     R(0) = I with a finite gradient.
     """
-    if aa.shape[-1] != 3:
-        raise ValueError(f"expected last dim 3, got {aa.shape[-1]}")
+    _check_vector(aa, 3)
     phi = torch.linalg.norm(aa, dim=-1, keepdim=True)          # (..., 1)
     small = phi < _ANGLE_EPS
     # coefficients A = sin(phi)/phi, B = (1 - cos phi)/phi^2, Taylor near 0
@@ -103,7 +104,7 @@ def matrix_to_axis_angle(R: torch.Tensor) -> torch.Tensor:
     phi = pi the axis is ``v/||v||``; at phi ~ pi (where v -> 0 loses the axis
     direction) the axis is recovered from the symmetric part (R + I)/2.
     """
-    _check_matrix(R)
+    _check_rotation(R)
     trace = R[..., 0, 0] + R[..., 1, 1] + R[..., 2, 2]
     cos_phi = torch.clamp((trace - 1.0) * 0.5, -1.0, 1.0)
 
@@ -140,8 +141,7 @@ def matrix_to_axis_angle(R: torch.Tensor) -> torch.Tensor:
 # ---------------------------------------------------------------------------
 def quaternion_to_matrix(q: torch.Tensor) -> torch.Tensor:
     """(..., 4) unit quaternion (w, x, y, z) -> (..., 3, 3)."""
-    if q.shape[-1] != 4:
-        raise ValueError(f"expected last dim 4, got {q.shape[-1]}")
+    _check_vector(q, 4)
     q = _normalize(q)
     w, x, y, z = q[..., 0], q[..., 1], q[..., 2], q[..., 3]
     tx, ty, tz = 2 * x, 2 * y, 2 * z
@@ -161,7 +161,7 @@ def matrix_to_quaternion(R: torch.Tensor) -> torch.Tensor:
 
     Uses the numerically stable branch on the largest of {1+tr, diagonal terms}.
     """
-    _check_matrix(R)
+    _check_rotation(R)
     m = R
     m00, m11, m22 = m[..., 0, 0], m[..., 1, 1], m[..., 2, 2]
     # four candidate "squared component times 4" quantities
@@ -226,12 +226,20 @@ def axis_angle_to_rotation_6d(aa: torch.Tensor) -> torch.Tensor:
 
 def geodesic_distance(R1: torch.Tensor, R2: torch.Tensor) -> torch.Tensor:
     """(..., 3, 3) x (..., 3, 3) -> (...,) angle of R1^T R2 in [0, pi]."""
-    _check_matrix(R1)
-    _check_matrix(R2)
+    _check_rotation(R1)
+    _check_rotation(R2)
     rel = R1.transpose(-1, -2) @ R2
     trace = rel[..., 0, 0] + rel[..., 1, 1] + rel[..., 2, 2]
     cos = torch.clamp((trace - 1.0) * 0.5, -1.0, 1.0)
-    return torch.arccos(cos)
+    # ||vee(R-R^T)|| / 2 = |sin(theta)| on SO(3). Unlike acos,
+    # atan2 does not divide by sqrt(1-cos^2) at identity/pi. The metric is
+    # intrinsically nondifferentiable there; autograd's norm convention gives
+    # a finite selected subgradient, not a unique classical derivative.
+    skew = torch.stack((rel[..., 2, 1] - rel[..., 1, 2],
+                        rel[..., 0, 2] - rel[..., 2, 0],
+                        rel[..., 1, 0] - rel[..., 0, 1]), dim=-1)
+    sine = 0.5 * torch.linalg.vector_norm(skew, dim=-1)
+    return torch.atan2(sine, cos)
 
 
 def is_rotation_matrix(R: torch.Tensor, atol: float = 1e-5) -> torch.Tensor:
@@ -247,8 +255,11 @@ def is_rotation_matrix(R: torch.Tensor, atol: float = 1e-5) -> torch.Tensor:
 # helpers
 # ---------------------------------------------------------------------------
 def _normalize(v: torch.Tensor) -> torch.Tensor:
-    return v / torch.clamp(torch.linalg.norm(v, dim=-1, keepdim=True),
-                           min=_NORM_EPS)
+    scale = v.abs().amax(dim=-1, keepdim=True)
+    if not bool(torch.isfinite(v).all()) or bool((scale == 0).any()):
+        raise ValueError("cannot normalize a zero or nonfinite rotation vector")
+    scaled = v / scale
+    return scaled / torch.linalg.vector_norm(scaled, dim=-1, keepdim=True)
 
 
 def _skew(v: torch.Tensor) -> torch.Tensor:
@@ -278,3 +289,18 @@ def _fix_pi_axis_signs(S: torch.Tensor, axis: torch.Tensor,
 def _check_matrix(R: torch.Tensor) -> None:
     if R.shape[-2:] != (3, 3):
         raise ValueError(f"expected trailing shape (3, 3), got {tuple(R.shape[-2:])}")
+
+
+def _check_vector(value: torch.Tensor, width: int) -> None:
+    if value.ndim < 1 or value.shape[-1] != width:
+        raise ValueError(f"expected trailing vector dimension {width}")
+    if value.dtype not in (torch.float32, torch.float64) or not bool(torch.isfinite(value).all()):
+        raise ValueError("rotation inputs must be finite float32 or float64 tensors")
+
+
+def _check_rotation(value: torch.Tensor) -> None:
+    _check_matrix(value)
+    if value.dtype not in (torch.float32, torch.float64) or not bool(torch.isfinite(value).all()):
+        raise ValueError("rotation matrix must be finite float32 or float64")
+    if not bool(is_rotation_matrix(value).all()):
+        raise ValueError("matrix must belong to SO(3), not a reflection or scaled transform")

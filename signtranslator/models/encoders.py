@@ -34,20 +34,35 @@ class _SinusoidalPositionalEncoding(nn.Module):
         self.register_buffer("pe", pe.unsqueeze(0))  # (1, max_len, dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if (x.ndim != 3 or x.shape[1] < 1 or x.shape[1] > self.pe.shape[1]
+                or x.shape[2] != self.pe.shape[2]):
+            raise ValueError("sequence shape exceeds positional layout/capacity")
         return x + self.pe[:, : x.size(1)]
 
 
-def _masked_mean(x: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
-    """Mean over the sequence axis, ignoring padded positions.
-
-    x: (N, L, D); mask: (N, L) with 1 for valid tokens, 0 for padding.
-    """
+def _sequence_mask(shape, device, mask):
+    """Require at least one available position in each nonempty sequence."""
+    if len(shape) != 2 or any(d < 1 for d in shape):
+        raise ValueError("sequence must have nonempty (N,L) support")
     if mask is None:
-        return x.mean(dim=1)
-    mask = mask.to(x.dtype).unsqueeze(-1)  # (N, L, 1)
-    summed = (x * mask).sum(dim=1)
-    denom = mask.sum(dim=1).clamp_min(1.0)
-    return summed / denom
+        mask = torch.ones(shape, dtype=torch.bool, device=device)
+    if (not torch.is_tensor(mask) or mask.dtype != torch.bool
+            or mask.shape != shape or mask.device != device):
+        raise ValueError("sequence mask must be boolean (N,L) on the input device")
+    if not bool(mask.any(dim=1).all()):
+        raise ValueError("sequence has no available evidence")
+    return mask
+
+
+def _masked_mean(x: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
+    """Average available sequence entries; unavailable NaNs contribute nothing."""
+    if x.ndim != 3 or not x.is_floating_point():
+        raise ValueError("sequence features must be floating (N,L,D)")
+    mask = _sequence_mask(x.shape[:2], x.device, mask)
+    if not bool(torch.isfinite(x[mask]).all()):
+        raise ValueError("available sequence features must be finite")
+    safe = torch.where(mask.unsqueeze(-1), x, 0)
+    return safe.sum(dim=1) / mask.sum(dim=1, keepdim=True)
 
 
 class TextEncoder(nn.Module, abc.ABC):
@@ -100,12 +115,19 @@ class StubTextEncoder(TextEncoder):
         Used for cross-attention conditioning, where the generator attends to the
         whole gloss sequence rather than a single pooled vector.
         """
+        if tokens.ndim != 2 or tokens.dtype not in (torch.int32, torch.int64):
+            raise ValueError("tokens must be an integer (N,L) tensor")
         if mask is None:
-            mask = (tokens != self.padding_idx)
-        key_padding = ~mask.bool()  # True where padded (nn convention)
-        h = self.pos(self.token_emb(tokens))
-        h = self.encoder(h, src_key_padding_mask=key_padding)
-        return h, mask
+            mask = tokens != self.padding_idx
+        mask = _sequence_mask(tokens.shape, tokens.device, mask)
+        available = tokens[mask]
+        if bool(((available < 0) | (available >= self.token_emb.num_embeddings)
+                 | (available == self.padding_idx)).any()):
+            raise ValueError("available tokens must be nonpadding vocabulary IDs")
+        safe_tokens = torch.where(mask, tokens, self.padding_idx)
+        h = self.pos(self.token_emb(safe_tokens))
+        h = self.encoder(h, src_key_padding_mask=~mask)
+        return torch.where(mask.unsqueeze(-1), h, 0), mask
 
 
 class StubSpeechEncoder(SpeechEncoder):
@@ -126,7 +148,13 @@ class StubSpeechEncoder(SpeechEncoder):
         self.norm = nn.LayerNorm(embed_dim)
 
     def forward(self, features: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
-        key_padding = None if mask is None else ~mask.bool()
-        h = self.pos(self.proj_in(features))
-        h = self.encoder(h, src_key_padding_mask=key_padding)
+        if (features.ndim != 3 or not features.is_floating_point()
+                or features.shape[-1] != self.proj_in.in_features):
+            raise ValueError("speech features must be floating (N,T,F) matching input_dim")
+        mask = _sequence_mask(features.shape[:2], features.device, mask)
+        if not bool(torch.isfinite(features[mask]).all()):
+            raise ValueError("available speech features must be finite")
+        safe = torch.where(mask.unsqueeze(-1), features, 0)
+        h = self.pos(self.proj_in(safe))
+        h = self.encoder(h, src_key_padding_mask=~mask)
         return self.norm(_masked_mean(h, mask))

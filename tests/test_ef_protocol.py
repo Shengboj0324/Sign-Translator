@@ -64,3 +64,44 @@ def test_signer_held_out_split_is_certified_leakage_free():
     for i, s in enumerate(samples):
         groups[s.group_key].add(assignment[i])
     assert all(len(v) == 1 for v in groups.values())
+
+
+@pytest.mark.parametrize('effects', [{'x':float('nan')},{'x':float('inf')},{'x':-.1},{'x':True},{'x':'0.1'},{'x':.1,'y':.2}])
+def test_registration_rejects_invalid_effect_domains(effects):
+    with pytest.raises(ValueError):PreRegistration.create(['x'],effects)
+
+
+def test_direct_registration_cannot_bypass_validation():
+    for endpoints,effects in [((),()),(('x','x'),(('x',.1),)),
+                              (('x',),(('x',.1),('x',.2))),
+                              ((' ',),((' ',.1),))]:
+        with pytest.raises(ValueError):PreRegistration(endpoints,effects)
+
+
+def test_test_access_blocks_subsequent_tuning_on_any_partition():
+    fw=EvaluationFirewall(_prereg())
+    fw.access_test()
+    for split in ('train','val','test'):
+        with pytest.raises(ProtocolError):fw.select_hyperparameters(split)
+
+
+def test_endpoint_family_correction_and_alpha_are_frozen():
+    fw=EvaluationFirewall(_prereg())
+    assert not fw.endpoint_confirmed('comprehension_f1',.1,.03)
+    assert fw.endpoint_confirmed('comprehension_f1',.1,.02)
+    with pytest.raises(ProtocolError):fw.endpoint_confirmed('comprehension_f1',.1,.03,alpha=.1)
+    assert _prereg().registration_hash != PreRegistration.create(
+        ['comprehension_f1','grammaticality'],{'comprehension_f1':.05,'grammaticality':.1},
+        family_alpha=.1).registration_hash
+
+
+def test_registration_cannot_be_replaced_after_test_access():
+    fw=EvaluationFirewall(_prereg());fw.access_test()
+    fw.prereg=PreRegistration.create(['new'],{'new':0.})
+    with pytest.raises(ProtocolError):fw.report_primary('new')
+
+
+@pytest.mark.parametrize('effect',[-.2,-.1,0.])
+def test_positive_improvement_protocol_cannot_confirm_harm(effect):
+    fw=EvaluationFirewall(PreRegistration.create(['quality'],{'quality':0.}))
+    assert not fw.endpoint_confirmed('quality',effect=effect,pvalue=.001)

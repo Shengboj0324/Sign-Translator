@@ -1,0 +1,81 @@
+{
+  "scope": "Current source-state to MakeHuman integration audit, not a mapping profile",
+  "channels": [
+    {
+      "name": "root_translation",
+      "canonical_representation_or_units": "m",
+      "current_boundary": "World transform translation exists; explicit meter/source-unit and coordinate-frame conversion required",
+      "accepted_source_mapping": false
+    },
+    {
+      "name": "body",
+      "canonical_representation_or_units": "rotation_6d_columns",
+      "current_boundary": "Bone-local rotations exist; source labels, hierarchy, root rotation and rest-basis mapping required",
+      "accepted_source_mapping": false
+    },
+    {
+      "name": "left_hand",
+      "canonical_representation_or_units": "rotation_6d_columns",
+      "current_boundary": "Finger rotations exist; actual joint correspondence, palm convention and calibration required",
+      "accepted_source_mapping": false
+    },
+    {
+      "name": "right_hand",
+      "canonical_representation_or_units": "rotation_6d_columns",
+      "current_boundary": "Finger rotations exist; actual joint correspondence, palm convention and calibration required",
+      "accepted_source_mapping": false
+    },
+    {
+      "name": "head_rotation",
+      "canonical_representation_or_units": "rotation_6d_columns",
+      "current_boundary": "Head bone rotation exists; source local/global/rest convention required",
+      "accepted_source_mapping": false
+    },
+    {
+      "name": "head_translation",
+      "canonical_representation_or_units": "m",
+      "current_boundary": "New rest-local translations exist; source head position versus displacement, origin, axes, unit and parent convention required",
+      "accepted_source_mapping": false
+    },
+    {
+      "name": "face",
+      "canonical_representation_or_units": "coefficient",
+      "current_boundary": "Authored static controls exist; source coefficient basis, ranges and combination semantics are unbound",
+      "accepted_source_mapping": false
+    },
+    {
+      "name": "left_gaze",
+      "canonical_representation_or_units": "unit_vector",
+      "current_boundary": "Eye rotation primitive exists; optical axes, vergence/torsion and source gaze frame are uncalibrated",
+      "accepted_source_mapping": false
+    },
+    {
+      "name": "right_gaze",
+      "canonical_representation_or_units": "unit_vector",
+      "current_boundary": "Eye rotation primitive exists; optical axes, vergence/torsion and source gaze frame are uncalibrated",
+      "accepted_source_mapping": false
+    },
+    {
+      "name": "blink",
+      "canonical_representation_or_units": "bounded_scalar",
+      "current_boundary": "Static lid controls exist; scalar meaning, bilateral mapping, timing and geometry coupling are unaccepted",
+      "accepted_source_mapping": false
+    },
+    {
+      "name": "contact",
+      "canonical_representation_or_units": "bounded_scalar",
+      "current_boundary": "Crossing diagnostics exist; contact labels, surface pairs, offsets and observation/inference semantics are unbound",
+      "accepted_source_mapping": false
+    }
+  ],
+  "required_rules": [
+    "Bind exact source/rig/rest/profile identities",
+    "Convert physical translations and coordinate frames explicitly",
+    "Resolve observed, inferred and unavailable support before rendering",
+    "Do not silently replace required unavailable channels with static bind controls",
+    "Do not interpret arbitrary source convention strings as a transformation",
+    "Do not infer gaze/blink/contact from head or body rotations without declared accepted inference"
+  ],
+  "complete_adapter_present": false,
+  "phase_exit_approved": false
+}

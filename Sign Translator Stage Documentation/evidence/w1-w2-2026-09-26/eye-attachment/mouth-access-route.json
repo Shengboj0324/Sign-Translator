@@ -1,0 +1,13 @@
+{
+  "old_official_downloader_repository": "https://github.com/makehumancommunity/makehuman-assets",
+  "api_result": "HTTP 404 during this turn",
+  "current_official_pack_page": "https://static.makehumancommunity.org/assets/assetpacks/makehuman_system_assets.html",
+  "page_lists": [
+    "teeth_base",
+    "teeth_shape01 through teeth_shape05",
+    "tongue01"
+  ],
+  "page_download_size_mb": 267,
+  "pack_downloaded": false,
+  "assets_qualified": false
+}

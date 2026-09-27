@@ -153,4 +153,8 @@ def test_current_pre_phase_2_gate_remains_closed_with_explicit_failures():
     payload = CURRENT_PRE_PHASE_2_DECISION.to_dict()
     assert payload["cross_source_capability_stitching_allowed"] is False
     assert len(payload["bundle_decisions"]) == 5
-    assert all(not item["passed"] for item in payload["bundle_decisions"])
+    # The pinned rig is now locally exercised. This legacy capability/rights
+    # snapshot advances one subcheck; it is not action-bound authorization.
+    # The scoped policy separately requires actual local authorization evidence.
+    assert {item["requirement_id"] for item in payload["bundle_decisions"]
+            if item["passed"]} == {"commercial_render_rig"}

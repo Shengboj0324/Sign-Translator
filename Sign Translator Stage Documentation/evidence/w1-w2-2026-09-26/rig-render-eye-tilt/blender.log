@@ -1,0 +1,13 @@
+/Users/jiangshengbo/Desktop/Sign-Translator/scripts/w2_makehuman_render_probe.py:58: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0
+  material.use_nodes = True
+/Users/jiangshengbo/Desktop/Sign-Translator/scripts/w2_makehuman_render_probe.py:97: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0
+  eye_material.use_nodes = True
+00:00.816  render           | Saved: '/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-eye-tilt/body-rest.png'
+00:01.250  render           | Saved: '/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-eye-tilt/hand-rest.png'
+00:01.714  render           | Saved: '/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-eye-tilt/hand-articulated.png'
+00:02.510  render           | Saved: '/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-eye-tilt/face-rest.png'
+00:03.292  render           | Saved: '/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-eye-tilt/face-articulated.png'
+Info: Saved as "rig-diagnostic.blend"
+Blender 5.2.2 LTS (hash d13f752e3b9c built 2026-09-15 01:49:19)
+
+Blender quit

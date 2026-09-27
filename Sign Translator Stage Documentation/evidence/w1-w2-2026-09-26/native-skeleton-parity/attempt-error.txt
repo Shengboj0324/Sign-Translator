@@ -1,0 +1,1 @@
+Initial harness failed before comparisons: AST walk selected both class and module get_normal definitions. Repaired selection to module definitions. Original upstream invalid-escape docstring warning preserved in next run log. No parity result from this attempt.

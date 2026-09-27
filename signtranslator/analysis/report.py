@@ -117,7 +117,7 @@ def analyze(model, val_loader, thresholds: Dict[str, float] = None,
                                if k in row}
                     p, _ = model.diffusion.motion_support(p, **support)
                     refs = [int(x) + 1 for x in row['concepts'][0]]
-                    rec_hyps.extend(model.recognize(p))
+                    rec_hyps.extend(model.recognize(p, **support))
                     rec_refs.append(refs)
                     reference = [int(x) + CONTENT_OFFSET for x in row['concepts'][0]]
                     if len(reference) >= planner_max_len:
@@ -127,9 +127,10 @@ def analyze(model, val_loader, thresholds: Dict[str, float] = None,
                     plan_hyps.extend(hypotheses)
                     plan_refs.append(reference)
                     completed.extend(ended)
-                    zm.append(model.embed_motion(p))
+                    zm.append(model.embed_motion(p, **support))
                     zl.append(model.embed_gloss(g))
-                    gen_losses.append(float(model.generation_loss(p, g, **support)))
+                    gen_losses.append(float(model.generation_loss(
+                        p, g, **support, **{key: row[key] for key in ('frame_timestamps', 'max_gap_seconds') if key in row})))
                     if len(cyc_refs) < cycle_subset:
                         motion = model.generate_from_gloss(
                             g, num_frames=p.shape[2], guidance_scale=guidance_scale,
@@ -139,7 +140,7 @@ def analyze(model, val_loader, thresholds: Dict[str, float] = None,
                     if 'speech' in row:
                         if 'speech_ctc_targets' not in row:
                             raise ValueError("speech evaluation requires explicit source targets")
-                        sp_hyps.extend(model.recognize_speech(row['speech']))
+                        sp_hyps.extend(model.recognize_speech(row['speech'], input_lengths=row.get('speech_input_lengths')))
                         sp_refs.append(row['speech_ctc_targets'].tolist())
             if not gen_losses:
                 raise ValueError("analysis requires nonempty evaluation observations")

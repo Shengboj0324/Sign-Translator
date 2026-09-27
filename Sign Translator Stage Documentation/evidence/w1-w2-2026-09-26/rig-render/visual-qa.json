@@ -1,0 +1,87 @@
+{
+  "visual_inspection": [
+    "Body, rest hand, articulated hand, rest face and articulated face PNGs inspected directly",
+    "Helper polygons excluded from body surface; anatomical left hand appears on viewer right in frontal view",
+    "Finger and jaw changes visibly present; no interpretation as ASL or accepted biomechanics",
+    "Eye sockets contain no visible eyeballs/pupils; mouth opening has no visible teeth or tongue",
+    "24-sample un-denoised clay render is a geometry diagnostic, not final avatar appearance"
+  ],
+  "measured_eye_support": {
+    "eye.L": {
+      "all_vertices": 141,
+      "body_vertices": 40
+    },
+    "eye.R": {
+      "all_vertices": 141,
+      "body_vertices": 40
+    }
+  },
+  "body_faces_rendered": 13378,
+  "nonbody_faces_excluded": 5108,
+  "roundtrip": {
+    "decoded_pixel_checks_independent_av": [
+      {
+        "view": "body-rest",
+        "decoded_rgb_sha256": "eb1f205a9aeb38783b8ab4f3dedf227e1985fe644a74dcabe7c12b8d2ba5f08d",
+        "shape": [
+          800,
+          640,
+          3
+        ],
+        "max_channel_difference": 0
+      },
+      {
+        "view": "hand-rest",
+        "decoded_rgb_sha256": "2e281a87bc6c281eae08b5dba64b1595d46c45b9aaeb86dd5d6b80acb578d8c6",
+        "shape": [
+          800,
+          800,
+          3
+        ],
+        "max_channel_difference": 0
+      },
+      {
+        "view": "hand-articulated",
+        "decoded_rgb_sha256": "2044c9db9f4c3d9cfc5ef1da46d589c3afe892a6d06d8cb9bd73ba519561864e",
+        "shape": [
+          800,
+          800,
+          3
+        ],
+        "max_channel_difference": 0
+      },
+      {
+        "view": "face-rest",
+        "decoded_rgb_sha256": "e4cce8347fcc01b104afa27d793a3ce25d954cd1a689aaf7a1f89e0d5d82e54b",
+        "shape": [
+          800,
+          800,
+          3
+        ],
+        "max_channel_difference": 0
+      },
+      {
+        "view": "face-articulated",
+        "decoded_rgb_sha256": "942f574a8c1391b122c4e2a0657d7b31d659947d7435c9380180c1024c3da3b0",
+        "shape": [
+          800,
+          800,
+          3
+        ],
+        "max_channel_difference": 0
+      }
+    ],
+    "same_machine_only": true,
+    "file_bytes_identical": false
+  },
+  "next_required": [
+    "Acquire and inspect separate renderable eye and mouth-interior assets and their bindings",
+    "Verify physical and anatomical conventions and native/rest-mesh parity",
+    "Bind actual admissible multichannel motion to the rig and clocks",
+    "Qualified review of handshape, palm orientation, face/gaze/blink/contact and meaning"
+  ],
+  "geometry_render_executed": true,
+  "observed_motion": false,
+  "qualified_rig": false,
+  "phase_exit_approved": false
+}

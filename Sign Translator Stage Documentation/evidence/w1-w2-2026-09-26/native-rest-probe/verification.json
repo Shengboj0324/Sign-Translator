@@ -1,0 +1,32 @@
+{
+  "upstream_commit": "a8bc2d54ff0ac92e78ff71431b1023eda42bf482",
+  "source_inspection_sha256": {
+    "human.py": "600812f08b0741c7e38bd68c8cf793d34b0c41870880fc6ea3234bc5e7b41623",
+    "humanmodifier.py": "f98d23312c80824829dce367da5f2d31b4a26aec8e193a6669d39c89e6cfe765",
+    "algos3d.py": "7c07f455bcaf1552210ecc9db7eebe29f7e49d939756dcfe369907fb1279683e",
+    "mhmain.py": "4f84591070643773c881f6c65dbefe8c182ffa3783a256281f6a31adb1f22514",
+    "modeling_modifiers.json": "c96aaca3f7a6d838d4946a02a1510247acbd75678cfdb0d99e4daf53bb036a11"
+  },
+  "source_git_blobs_verified": true,
+  "target_blobs_verified": 8,
+  "native_application_executed": false,
+  "skeleton_rebuilt_for_probe": false,
+  "pose_validation": false,
+  "acceptance": false,
+  "files_sha256": {
+    "african-female-young.target": "92d61eeb3c164b421fd5a7c3537ee45e7e1a51de4d49bf312e19c3df2be1d8fc",
+    "african-male-young.target": "894abc1fbb3d28543a51fef16f89d5d4bdf9aa2e1534413339811a3d47818b7d",
+    "asian-female-young.target": "095fe79694fa19e1fe98d93009ec116199bd524e081c640351a10eccf2cca1eb",
+    "asian-male-young.target": "ed2e8c191cb6b87b4a2d97c80486acb2604fa549316c7aa2a738a5d5a14334dc",
+    "blender.log": "cdf86ff6c18f75b6e23b50e5b33d2f215bce7b026e936b250f211d5e2cb3766b",
+    "catalogue.json": "a415416636ecdafdddc9556eface0fbbed76cb0258b3fd5d9bddac358e299cb6",
+    "caucasian-female-young.target": "118379f6e8ba9266247fdb8788a20e1df40a239f97ced0b9905bcbcc74f6e820",
+    "caucasian-male-young.target": "70e228ba7164737dae664454394536fc5935fa48d333c1a97d77e2dc6eacc5f5",
+    "contact-audit.json": "e4c13f0139801b20ba67fc0c59c11f3697956c323c2ccd1885d5f0f2401b5730",
+    "posed-meshes.npz": "84fdc1abc59d49ccd3d93af4cb3357239e388db4a9365b4e55f08ac08d2aa59b",
+    "provenance.json": "06aa4384070f6a2dbe340263814980fcc80ecd7d1de0616d3e381e9795422afb",
+    "reconstruct_probe.py": "8d060260246230878c216aa9e8c740ffbf628e49ad74d7f8789455ba589c4a4d",
+    "universal-female-young-averagemuscle-averageweight.target": "4ba5396ddabda448ece15650a566fbebfbb10239256ccb201e8f883429e12249",
+    "universal-male-young-averagemuscle-averageweight.target": "4ba5396ddabda448ece15650a566fbebfbb10239256ccb201e8f883429e12249"
+  }
+}

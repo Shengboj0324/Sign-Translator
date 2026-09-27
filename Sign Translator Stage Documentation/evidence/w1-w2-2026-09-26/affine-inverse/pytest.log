@@ -1,0 +1,99 @@
+........................................................................ [  3%]
+........................................................................ [  7%]
+........................................................................ [ 11%]
+........................................................................ [ 15%]
+........................................................................ [ 18%]
+........................................................................ [ 22%]
+........................................................................ [ 26%]
+........................................................................ [ 30%]
+........................................................................ [ 33%]
+........................................................................ [ 37%]
+........................................................................ [ 41%]
+........................................................................ [ 45%]
+........................................................................ [ 48%]
+........................................................................ [ 52%]
+........................................................................ [ 56%]
+........................................................................ [ 60%]
+........................................................................ [ 63%]
+........................................................................ [ 67%]
+........................................................................ [ 71%]
+....................................................................F... [ 75%]
+........................................................................ [ 78%]
+........................................................................ [ 82%]
+........................................................................ [ 86%]
+........................................................................ [ 90%]
+........................................................................ [ 94%]
+........................................................................ [ 97%]
+..........................................                               [100%]
+=================================== FAILURES ===================================
+______________________ test_detects_corrupt_pose_quality _______________________
+
+tmp_path = PosixPath('/private/var/folders/y0/l9ns18ns5472mqrprmhhmsw00000gn/T/pytest-of-jiangshengbo/pytest-18/test_detects_corrupt_pose_qual0')
+
+    def test_detects_corrupt_pose_quality(tmp_path):
+        _make(tmp_path, train=64, val=24)
+        with np.load(tmp_path / "train.npz") as z:
+            pose = z["pose"].copy()
+        pose[0, 0, 3, 5] = np.nan
+        _rewrite(tmp_path, "train", pose=pose)
+>       rep = assess_corpus(str(tmp_path))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_readiness.py:107: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+signtranslator/data/readiness.py:131: in assess_corpus
+    norm_pose = SignDataset(corpus_dir, "train", normalize=True, validate=False).pose
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+signtranslator/data/corpus.py:554: in __init__
+    self.pose = self.standardizer.normalize(self.pose, self.validity_mask)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+signtranslator/data/corpus.py:511: in normalize
+    return self._transform(x, validity_mask, inverse=False)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <signtranslator.data.corpus.PoseStandardizer object at 0x11eb2c080>
+x = tensor([[[[ 1.2416,  0.1000, -0.4285,  ...,  0.9192,  0.5174, -0.9474],
+          [-1.4514, -0.5809, -0.0905,  ...,  1...,  1.1623,  ...,  0.2140,  1.0699, -0.0228],
+          [-0.4804, -1.2669,  0.5385,  ...,  0.5450, -1.3598,  0.1032]]]])
+validity_mask = tensor([[[True, True, True,  ..., True, True, True],
+         [True, True, True,  ..., True, True, True],
+         [Tr...rue, True],
+         [True, True, True,  ..., True, True, True],
+         [True, True, True,  ..., True, True, True]]])
+inverse = False
+
+    def _transform(self, x: torch.Tensor, validity_mask: torch.Tensor | None,
+                   *, inverse: bool) -> torch.Tensor:
+        # Recheck because tensor contents can change after construction.
+        self._validate_statistics()
+        if not isinstance(x, torch.Tensor) or x.dtype not in (
+                torch.float32, torch.float64):
+            raise TypeError("pose must be a float32 or float64 tensor")
+        if x.ndim not in (3, 4) or any(d < 1 for d in x.shape):
+            raise ValueError("pose must be nonempty (C, T, V) or (N, C, T, V)")
+        if (x.shape[-3], x.shape[-1]) != (self.mean.shape[0], self.mean.shape[2]):
+            raise ValueError("pose channels and joints must match statistics")
+        m = self.mean.to(device=x.device, dtype=x.dtype)
+        s = self.std.to(device=x.device, dtype=x.dtype)
+        if not bool(torch.isfinite(m).all() and torch.isfinite(s).all()
+                    and (s > 0).all()):
+            raise ValueError("statistics are not representable in pose dtype")
+        if validity_mask is None:
+            valid = torch.ones_like(x, dtype=torch.bool)
+        else:
+            expected = x.shape[:-3] + x.shape[-2:]
+            if (not isinstance(validity_mask, torch.Tensor)
+                    or validity_mask.dtype != torch.bool):
+                raise TypeError("validity_mask must be a boolean tensor")
+            if validity_mask.shape != expected or validity_mask.device != x.device:
+                raise ValueError("validity_mask must match pose support shape and device")
+            valid = validity_mask.unsqueeze(-3).expand_as(x)
+        if not bool(torch.isfinite(x[valid]).all()):
+>           raise ValueError("valid pose values must be finite")
+E           ValueError: valid pose values must be finite
+
+signtranslator/data/corpus.py:500: ValueError
+=========================== short test summary info ============================
+FAILED tests/test_readiness.py::test_detects_corrupt_pose_quality - ValueErro...
+1 failed, 1913 passed in 66.06s (0:01:06)

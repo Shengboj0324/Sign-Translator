@@ -1,0 +1,16 @@
+00:00.271  blend            | Read blend: "/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render/rig-diagnostic.blend"
+00:00.681  render           | Saved: '/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render/body-rest-reload.png'
+00:01.084  render           | Saved: '/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render/hand-rest-reload.png'
+00:01.526  render           | Saved: '/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render/hand-articulated-reload.png'
+00:02.201  render           | Saved: '/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render/face-rest-reload.png'
+00:02.905  render           | Saved: '/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render/face-articulated-reload.png'
+Traceback (most recent call last):
+  File "/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render/reload_audit.py", line 47, in <module>
+    assert report['all_byte_identical'], 'Saved-state rendering differs; see report'
+           ~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Saved-state rendering differs; see report
+
+Error: script failed, file: 'Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render/reload_audit.py', exiting.
+Blender 5.2.2 LTS (hash d13f752e3b9c built 2026-09-15 01:49:19)
+
+Blender quit

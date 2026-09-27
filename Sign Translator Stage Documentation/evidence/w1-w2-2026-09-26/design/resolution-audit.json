@@ -1,0 +1,56 @@
+{
+  "source_feasibility_sha256": "60e6e7cf20c121a36172d810e0b818618c62b2b348f60437205af482eed202e4",
+  "component_count": 6,
+  "candidate_test_component_upper_bound": 4,
+  "assumptions": [
+    "connected signer/source components are the provisional inference units",
+    "at least one component is reserved for training and one for validation",
+    "this sign-test resolution bound assumes non-tied independent units; independence itself is not proved"
+  ],
+  "scenarios": {
+    "all_components_one_endpoint": {
+      "independent_units": 6,
+      "primary_endpoints": 1,
+      "family_alpha": 0.05,
+      "minimum_p_numerator": 1,
+      "minimum_p_denominator": 32,
+      "minimum_units_for_resolution": 6,
+      "resolution_possible": true,
+      "power_established": false
+    },
+    "all_components_two_endpoints": {
+      "independent_units": 6,
+      "primary_endpoints": 2,
+      "family_alpha": 0.05,
+      "minimum_p_numerator": 1,
+      "minimum_p_denominator": 32,
+      "minimum_units_for_resolution": 7,
+      "resolution_possible": false,
+      "power_established": false
+    },
+    "heldout_upper_bound_one_endpoint": {
+      "independent_units": 4,
+      "primary_endpoints": 1,
+      "family_alpha": 0.05,
+      "minimum_p_numerator": 1,
+      "minimum_p_denominator": 8,
+      "minimum_units_for_resolution": 6,
+      "resolution_possible": false,
+      "power_established": false
+    },
+    "heldout_upper_bound_two_endpoints": {
+      "independent_units": 4,
+      "primary_endpoints": 2,
+      "family_alpha": 0.05,
+      "minimum_p_numerator": 1,
+      "minimum_p_denominator": 8,
+      "minimum_units_for_resolution": 7,
+      "resolution_possible": false,
+      "power_established": false
+    }
+  },
+  "power_established": false,
+  "final_split_frozen": false,
+  "study_preregistered": false,
+  "limitation": "This rules out this exact paired sign-test design at alpha .05 on the current component split; it is not a claim that every statistical method is impossible."
+}

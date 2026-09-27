@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "asset_commit": "a8bc2d54ff0ac92e78ff71431b1023eda42bf482",
+  "intake_sha256": "1c1a547b7e850333363e15a3c0a921430c823ac7bd3f5dda3c7addcedfbe8f44",
+  "method": "Independent float64 mathematics on pinned base mesh; upstream loader not executed; source units only",
+  "vertices": 19158,
+  "bones": 163,
+  "min_bone_length_source_units": 0.03920816241549634,
+  "min_plane_cross_norm": 0.022367070713034676,
+  "min_normal_perpendicular_component": 0.34358877143181227,
+  "max_orthogonality_error": 4.440892098500626e-16,
+  "max_determinant_error": 4.440892098500626e-16,
+  "max_rest_hierarchy_error": 4.440892098500626e-15,
+  "max_rest_removed_identity_error": 4.440892098500626e-15,
+  "positive_influences_removed_at_native_threshold": 0,
+  "post_threshold_sum_min": 0.9999999999999996,
+  "post_threshold_sum_max": 1.0000000000000002,
+  "max_positive_influences": 12,
+  "vertices_exceeding_four_influences": 3665,
+  "max_rest_lbs_coordinate_error_source_units": 5.329070518200751e-15,
+  "max_common_rigid_lbs_coordinate_error_source_units": 5.329070518200751e-15,
+  "weight_policy": "Retain all influences above native threshold; explicitly renormalize to unity for oracle; raw asset unchanged",
+  "eye_weight_group_present": {
+    "eye.L": true,
+    "eye.R": true
+  },
+  "qualification": {
+    "native_float32_parity": false,
+    "metric_units_verified": false,
+    "morphed_rest_mesh_verified": false,
+    "render_verified": false,
+    "signer_review_accepted": false,
+    "phase_exit_approved": false
+  },
+  "reproduction": {
+    "command": "PYTHONPATH=. .venv/bin/python \"Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/source-intake/makehuman/audit_geometry.py\"",
+    "script_sha256": "84903a3d893420b7b5996d58968a1d2fc878102d618a02ed8254fa017570e5d8",
+    "lbs_module_sha256": "275aef7e96cd45a979bd307e19a88e55d666aff6b7029ed895dde5b6138252e9",
+    "numpy": "2.5.1",
+    "torch": "2.13.0",
+    "python": "3.12.14 (main, Aug 25 2026, 13:50:33) [Clang 22.1.3 ]"
+  }
+}

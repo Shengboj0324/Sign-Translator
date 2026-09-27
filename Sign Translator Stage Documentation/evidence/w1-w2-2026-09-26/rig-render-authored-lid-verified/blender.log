@@ -1,0 +1,14 @@
+/Users/jiangshengbo/Desktop/Sign-Translator/scripts/w2_makehuman_render_probe.py:60: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0
+  material.use_nodes = True
+/Users/jiangshengbo/Desktop/Sign-Translator/scripts/w2_makehuman_render_probe.py:101: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0
+  eye_material.use_nodes = True
+00:00.693  render           | Saved: '/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-authored-lid-verified/body-rest.png'
+00:01.163  render           | Saved: '/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-authored-lid-verified/hand-rest.png'
+00:01.636  render           | Saved: '/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-authored-lid-verified/hand-articulated.png'
+00:02.409  render           | Saved: '/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-authored-lid-verified/face-rest.png'
+00:03.172  render           | Saved: '/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-authored-lid-verified/face-articulated.png'
+00:04.134  render           | Saved: '/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rig-render-authored-lid-verified/mouth-articulated.png'
+Info: Saved as "rig-diagnostic.blend"
+Blender 5.2.2 LTS (hash d13f752e3b9c built 2026-09-15 01:49:19)
+
+Blender quit

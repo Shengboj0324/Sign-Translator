@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "input_files": [
+    {
+      "path": "/Users/jiangshengbo/Volumes/how2sign_audit/v1/audit_manifest.json",
+      "sha256": "c2fbf5763c6fd7f05f8b9681da9e9b00c2f83ad9cdb3e1e73452d42852fc0d27",
+      "size": 7603
+    },
+    {
+      "path": "/Users/jiangshengbo/Volumes/how2sign_audit/v1/audit.sqlite3",
+      "sha256": "8f37f2611e646f2dcd51367ec4ded87cbba1b4b42298fdf234496984d06e285f",
+      "size": 477302784
+    },
+    {
+      "path": "/Users/jiangshengbo/Volumes/how2sign_audit/signer-evidence-v2/certificate.json",
+      "sha256": "74f18845b530d22a77d12586465067ab9c82dd6ecc6e542a2835bbe3e3fad14a",
+      "size": 2087
+    },
+    {
+      "path": "/Users/jiangshengbo/Volumes/how2sign_audit/signer-evidence-v2/how2sign_train_signers.csv",
+      "sha256": "82337aef0d4324cd121fd3e0be7d7b7e03838892466fa1b85d9e8618ccdea9cd",
+      "size": 1735229
+    },
+    {
+      "path": "/Users/jiangshengbo/Volumes/how2sign_realigned_train.csv",
+      "sha256": "67a8f4fb6dc066f38006b89ac84c27a4b05d7fa07d5e6952f997042724d7a847",
+      "size": 5607385
+    }
+  ],
+  "historical_status_counts": {
+    "quality_warning": 28621,
+    "valid": 2423,
+    "missing_source": 118,
+    "structural_failure": 3,
+    "unjoinable_artifact": 1
+  },
+  "disposition_counts": {
+    "pending_qualified_qc": 28621,
+    "pending_acceptance": 2423,
+    "technical_quarantine": 122
+  },
+  "ledger_rows": 31166,
+  "metadata_rows": 31165,
+  "refreshed_rows": 121,
+  "refreshed_status_changes": 0,
+  "source_files_modified": false,
+  "physical_quarantine_performed": false,
+  "qualified_acceptance": false,
+  "training_eligible_rows": 0,
+  "w1_complete": false,
+  "w2_complete": false,
+  "limitations": [
+    "Warnings and historically valid rows were not re-decoded or human-approved.",
+    "Unjoinable artifact status is historical, not a new semantic classification.",
+    "Logical quarantine only; no source artifact was moved or deleted.",
+    "No final split, QC threshold, rights approval or 3D eligibility is inferred."
+  ]
+}

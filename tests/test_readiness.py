@@ -107,6 +107,8 @@ def test_detects_corrupt_pose_quality(tmp_path):
     rep = assess_corpus(str(tmp_path))
     q = [c for c in rep.checks if c.name == "pose_quality"][0]
     assert not q.passed and "NaN" in q.detail
+    assert any(c.name == "normalization_sane" and not c.passed for c in rep.checks)
+    assert "normalized_mean" not in rep.stats  # no invented summary of rejected data
 
 
 def test_report_records_useful_stats(tmp_path):
@@ -116,3 +118,17 @@ def test_report_records_useful_stats(tmp_path):
                 "normalized_mean", "normalized_var"):
         assert key in rep.stats
     assert rep.stats["train_samples"] == 64
+
+
+@pytest.mark.parametrize("bad_std", [0.0, -1.0, float("inf")])
+def test_readiness_reports_invalid_affine_statistics(tmp_path, bad_std):
+    from signtranslator.data.corpus import SignDataset
+    _make(tmp_path)
+    manifest = load_manifest(str(tmp_path))
+    manifest["pose_std"][0][0][0] = bad_std
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest))
+    rep = assess_corpus(str(tmp_path))
+    assert not rep.passed
+    assert any(c.name == "corpus_loadable" and not c.passed for c in rep.checks)
+    with pytest.raises(ValueError):
+        SignDataset(str(tmp_path), validate=False)

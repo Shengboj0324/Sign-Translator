@@ -66,39 +66,76 @@ class SpeechRecognizer(nn.Module):
         self.classifier = nn.Linear(hidden_dim, self.num_classes)
         self.ctc = nn.CTCLoss(blank=0, zero_infinity=False)
 
-    def encode(self, features: torch.Tensor) -> torch.Tensor:
-        """features (N, T, F) -> hidden (N, T', H) with T' = T / subsample."""
-        if features.dim() != 3:
-            raise ValueError("features must be (N, T, F)")
-        h = self.subsampler(features.transpose(1, 2)).transpose(1, 2)
-        h = self.encoder(self.pos(h))
-        return self.norm(h)
+    def _input_lengths(self, features: torch.Tensor,
+                       input_lengths: Optional[torch.Tensor]) -> torch.Tensor:
+        if (features.ndim != 3 or not features.is_floating_point()
+                or any(d < 1 for d in features.shape)
+                or features.shape[2] != self.subsampler[0].in_channels):
+            raise ValueError("features must be nonempty floating (N,T,F) matching input_dim")
+        n, frames, _ = features.shape
+        if input_lengths is None:
+            return torch.full((n,), frames, dtype=torch.long, device=features.device)
+        if (not torch.is_tensor(input_lengths)
+                or input_lengths.dtype not in (torch.int32, torch.int64)
+                or input_lengths.shape != (n,)):
+            raise ValueError("speech input_lengths must be an integer (N,) tensor")
+        lengths = input_lengths.to(features.device)
+        if bool(((lengths < 1) | (lengths > frames)).any()):
+            raise ValueError("speech input_lengths must be within the supplied frame range")
+        return lengths
 
-    def forward(self, features: torch.Tensor) -> torch.Tensor:
-        """features (N, T, F) -> per-frame log-probs (N, T', num_classes)."""
-        return F.log_softmax(self.classifier(self.encode(features)), dim=-1)
+    def encode(self, features: torch.Tensor,
+               input_lengths: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Encode valid acoustic prefixes; output length is ceil(T/subsample).
+
+        Exclude padded inputs before convolution and padded hidden values after
+        every strided convolution, before they can enter another receptive field.
+        """
+        lengths = self._input_lengths(features, input_lengths)
+        valid = torch.arange(features.shape[1], device=features.device)[None] < lengths[:, None]
+        if not bool(torch.isfinite(features[valid]).all()):
+            raise ValueError("valid acoustic features must be finite")
+        h = torch.where(valid.unsqueeze(-1), features, 0).transpose(1, 2)
+        for layer in self.subsampler:
+            h = layer(h)
+            if isinstance(layer, nn.Conv1d):
+                stride = layer.stride[0]
+                lengths = torch.div(lengths - 1, stride, rounding_mode="floor") + 1
+                valid = torch.arange(h.shape[2], device=h.device)[None] < lengths[:, None]
+            h = torch.where(valid.unsqueeze(1), h, 0)
+        h = h.transpose(1, 2)
+        if h.shape[1] > self.pos.pe.shape[1]:
+            raise ValueError("speech exceeds encoder positional capacity")
+        h = self.encoder(self.pos(h), src_key_padding_mask=~valid)
+        return torch.where(valid.unsqueeze(-1), self.norm(h), 0)
+
+    def forward(self, features: torch.Tensor,
+                input_lengths: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Return log-probabilities; consumers must respect output_lengths."""
+        return F.log_softmax(self.classifier(self.encode(features, input_lengths)), dim=-1)
 
     def output_lengths(self, input_lengths: torch.Tensor) -> torch.Tensor:
-        """Frame counts after convolutional subsampling (stride-2, padding-1)."""
+        """Positive frame counts after same-padded convolutional subsampling."""
+        if (not torch.is_tensor(input_lengths)
+                or input_lengths.dtype not in (torch.int32, torch.int64)
+                or input_lengths.ndim != 1 or input_lengths.numel() < 1
+                or bool((input_lengths < 1).any())):
+            raise ValueError("speech lengths must be a nonempty positive integer vector")
         lengths = input_lengths
         stride_left = self.subsample
         while stride_left > 1:
-            lengths = torch.div(lengths + 1, 2, rounding_mode="floor")
+            # Equivalent to ceil(L/2), without overflowing L+1 at integer max.
+            lengths = torch.div(lengths - 1, 2, rounding_mode="floor") + 1
             stride_left //= 2
         return lengths
 
     def loss(self, features: torch.Tensor, targets: torch.Tensor,
              target_lengths: torch.Tensor,
              input_lengths: Optional[torch.Tensor] = None) -> torch.Tensor:
-        log_probs = self.forward(features)
-        n, t_out, _ = log_probs.shape
-        if input_lengths is None:
-            out_lengths = torch.full((n,), t_out, dtype=torch.long,
-                                     device=log_probs.device)
-        else:
-            out_lengths = self.output_lengths(input_lengths).clamp(max=t_out)
+        lengths = self._input_lengths(features, input_lengths)
+        log_probs = self.forward(features, lengths)
         return self.loss_from_log_probs(
-            log_probs, targets, target_lengths, out_lengths)
+            log_probs, targets, target_lengths, self.output_lengths(lengths))
 
     def loss_from_log_probs(self, log_probs: torch.Tensor, targets: torch.Tensor,
                             target_lengths: torch.Tensor,
@@ -120,6 +157,10 @@ class SpeechRecognizer(nn.Module):
         return loss
 
     @torch.no_grad()
-    def decode(self, features: torch.Tensor) -> List[List[int]]:
+    def decode(self, features: torch.Tensor,
+               input_lengths: Optional[torch.Tensor] = None) -> List[List[int]]:
         self.eval()
-        return ctc_greedy_decode(self.forward(features))
+        lengths = self._input_lengths(features, input_lengths)
+        log_probs = self.forward(features, lengths)
+        return [ctc_greedy_decode(log_probs[i:i + 1, :length])[0]
+                for i, length in enumerate(self.output_lengths(lengths).tolist())]

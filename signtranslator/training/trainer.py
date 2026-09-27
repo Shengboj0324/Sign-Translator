@@ -424,8 +424,8 @@ class Trainer:
             for batch in train_loader:
                 pose = batch["pose"].to(device)
                 gloss = batch["gloss_tokens"].to(device)
-                support = {key: batch[key].to(device) for key in
-                           ("validity_mask", "confidence", "frame_mask") if key in batch}
+                support = {key: (batch[key].to(device) if torch.is_tensor(batch[key]) else batch[key]) for key in
+                           ("validity_mask", "confidence", "frame_mask", "frame_timestamps", "max_gap_seconds") if key in batch}
                 loss = model.generation_loss(pose, gloss, **support)
                 context = f"generator epoch={epoch}, batch={count}, sample_ids={batch.get('sample_ids')!r}"
                 _finite_losses({"total": loss}, context)
@@ -443,8 +443,8 @@ class Trainer:
                 with torch.no_grad(), isolated_deterministic_rng(VALIDATION_SEED_OFFSET):
                     v = [model.generation_loss(b["pose"].to(device),
                                                b["gloss_tokens"].to(device),
-                                               **{key: b[key].to(device) for key in
-                                                  ("validity_mask", "confidence", "frame_mask")
+                                               **{key: (b[key].to(device) if torch.is_tensor(b[key]) else b[key]) for key in
+                                                  ("validity_mask", "confidence", "frame_mask", "frame_timestamps", "max_gap_seconds")
                                                   if key in b}).item()
                          for batch in val_loader for b in observations(batch)]
                 if not v or not all(math.isfinite(value) for value in v):

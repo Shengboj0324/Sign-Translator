@@ -1,0 +1,68 @@
+{
+  "upstream_sha256": "a83091c0677eb714b04f32e0be5e870241f135ecaf27ab935629319a6204a5ff",
+  "executed_methods": [
+    "Proxy.getCoords",
+    "TMatrix.getMatrix"
+  ],
+  "whole_upstream_module_imported": false,
+  "whole_native_application_executed": false,
+  "input": "Same pinned unmorphed base mesh; no character modifiers or native scene state",
+  "float32_scope": "Coordinates, proxy coefficients and offsets cast to native-style float32; output matrix arithmetic follows inspected upstream methods",
+  "results": [
+    {
+      "attachment": "eyes",
+      "input_precision": "float64",
+      "vertices": 1064,
+      "max_coordinate_error_source_units": 0.0,
+      "max_vertex_distance_meters": 0.0,
+      "diagnostic_absolute_limit_source_units": 1e-12
+    },
+    {
+      "attachment": "eyes",
+      "input_precision": "float32",
+      "vertices": 1064,
+      "max_coordinate_error_source_units": 9.79280634361146e-07,
+      "max_vertex_distance_meters": 9.802031232744516e-08,
+      "diagnostic_absolute_limit_source_units": 5e-06
+    },
+    {
+      "attachment": "teeth",
+      "input_precision": "float64",
+      "vertices": 3868,
+      "max_coordinate_error_source_units": 0.0,
+      "max_vertex_distance_meters": 0.0,
+      "diagnostic_absolute_limit_source_units": 1e-12
+    },
+    {
+      "attachment": "teeth",
+      "input_precision": "float32",
+      "vertices": 3868,
+      "max_coordinate_error_source_units": 1.3659242075192424e-06,
+      "max_vertex_distance_meters": 1.3689587118773074e-07,
+      "diagnostic_absolute_limit_source_units": 5e-06
+    },
+    {
+      "attachment": "tongue",
+      "input_precision": "float64",
+      "vertices": 226,
+      "max_coordinate_error_source_units": 0.0,
+      "max_vertex_distance_meters": 0.0,
+      "diagnostic_absolute_limit_source_units": 1e-12
+    },
+    {
+      "attachment": "tongue",
+      "input_precision": "float32",
+      "vertices": 226,
+      "max_coordinate_error_source_units": 2.3727417008956309e-07,
+      "max_vertex_distance_meters": 2.394728443884613e-08,
+      "diagnostic_absolute_limit_source_units": 5e-06
+    }
+  ],
+  "inference": "Large rest-fit intersections are not explained by disagreement with these upstream geometry methods on the same input",
+  "limitations": [
+    "No native skin-weight or pose parity",
+    "No native default/morphed character qualification",
+    "No anatomical or linguistic acceptance"
+  ],
+  "phase_exit_approved": false
+}

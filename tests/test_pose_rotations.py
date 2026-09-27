@@ -232,3 +232,44 @@ def test_input_validation():
         axis_angle_to_matrix(torch.zeros(4))
     with pytest.raises(ValueError):
         quaternion_to_matrix(torch.zeros(3))
+
+
+@pytest.mark.parametrize('d6', [[0,0,0,0,0,0], [1,0,0,2,0,0], [1,0,0,0,0,0]])
+def test_degenerate_6d_axes_are_rejected(d6):
+    with pytest.raises(ValueError):
+        rotation_6d_to_matrix(torch.tensor(d6,dtype=torch.float64))
+
+
+def test_extreme_vector_scales_do_not_change_rotation():
+    d6=torch.tensor([1.,2.,3.,-2.,1.,0.],dtype=torch.float64)
+    q=torch.tensor([1.,2.,3.,4.],dtype=torch.float64)
+    for scale in (1e-300,1e300):
+        assert torch.allclose(rotation_6d_to_matrix(d6*scale),rotation_6d_to_matrix(d6),atol=1e-14)
+        assert torch.allclose(quaternion_to_matrix(q*scale),quaternion_to_matrix(q),atol=1e-14)
+
+
+def test_undefined_quaternion_and_invalid_matrix_are_rejected():
+    with pytest.raises(ValueError):
+        quaternion_to_matrix(torch.zeros(4,dtype=torch.float64))
+    for matrix in [torch.eye(3)*2, torch.diag(torch.tensor([1.,1.,-1.])),torch.full((3,3),float('nan'))]:
+        for convert in [matrix_to_rotation_6d,matrix_to_axis_angle,matrix_to_quaternion]:
+            with pytest.raises(ValueError):convert(matrix)
+        with pytest.raises(ValueError):geodesic_distance(torch.eye(3),matrix)
+
+
+@pytest.mark.parametrize('angle',[0.,1e-10,1.,math.pi-1e-10,math.pi])
+def test_geodesic_endpoints_are_exact_and_have_finite_autograd(angle):
+    aa=torch.tensor([0.,0.,angle],dtype=torch.float64,requires_grad=True)
+    distance=geodesic_distance(torch.eye(3,dtype=torch.float64),axis_angle_to_matrix(aa))
+    assert abs(float(distance.detach())-angle)<1e-14
+    distance.backward()
+    assert torch.isfinite(aa.grad).all()
+    if 1e-8<angle<math.pi-1e-8:
+        assert abs(float(aa.grad[2])-1.)<1e-12
+
+
+def test_rotation_composition_gradcheck_away_from_singularities():
+    d6=torch.tensor([1.,.2,.3,-.2,1.,.4],dtype=torch.float64,requires_grad=True)
+    target=axis_angle_to_matrix(torch.tensor([.2,.4,-.1],dtype=torch.float64))
+    assert torch.autograd.gradcheck(lambda x:geodesic_distance(rotation_6d_to_matrix(x),target),
+                                   (d6,),eps=1e-6,atol=1e-5)

@@ -11,6 +11,8 @@ signer nor a source can cross a split, including transitive cases.
 from __future__ import annotations
 
 import random
+import math
+from numbers import Integral, Real
 from dataclasses import dataclass
 from typing import Dict, List, Sequence, Tuple
 
@@ -30,6 +32,15 @@ def group_samples(samples: Sequence[Sample]) -> Dict[ComponentKey, List[int]]:
     source leakage rather than merely keeping identical signer/source pairs
     together.
     """
+    ids = []
+    for sample in samples:
+        for field in ('sample_id', 'signer_id_hash', 'source_id'):
+            value = getattr(sample, field)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f'{field} must be a nonempty identity')
+        ids.append(sample.sample_id)
+    if len(set(ids)) != len(ids):
+        raise ValueError('sample_id values must be unique before splitting')
     parent = list(range(len(samples)))
 
     def find(index: int) -> int:
@@ -72,12 +83,18 @@ def grouped_split(samples: Sequence[Sample],
     (greedy) toward the split furthest below its target share, so the split
     sizes track the requested ratios without ever splitting a group.
     """
-    if abs(sum(ratios) - 1.0) > 1e-9 or any(r < 0 for r in ratios):
-        raise ValueError("ratios must be non-negative and sum to 1")
+    if (len(ratios) != 3 or any(isinstance(r, bool) or not isinstance(r, Real)
+                              or not math.isfinite(r) or r < 0 for r in ratios)
+            or not math.isclose(sum(ratios), 1.0, rel_tol=0.0, abs_tol=1e-9)):
+        raise ValueError("ratios must be three finite non-negative numbers summing to 1")
+    if isinstance(seed, bool) or not isinstance(seed, Integral) or seed < 0:
+        raise ValueError('seed must be a non-negative integer')
+    if not samples:
+        raise ValueError('cannot split an empty population')
     groups = group_samples(samples)
     n = len(samples)
-    rng = random.Random(seed)
-    keys = list(groups)
+    rng = random.Random(int(seed))
+    keys = sorted(groups)
     rng.shuffle(keys)
     # Greedy: place the largest groups first for a tight ratio fit.
     keys.sort(key=lambda k: len(groups[k]), reverse=True)
@@ -119,6 +136,11 @@ class LeakageCertificate:
 def certify_no_group_leakage(samples: Sequence[Sample],
                              assignment: Dict[int, str]) -> LeakageCertificate:
     """Certify total assignment plus independent signer/source separation."""
+    if not samples:
+        raise ValueError('cannot certify an empty population')
+    group_samples(samples)  # Validate identities independently of assignment provenance.
+    if any(isinstance(key, bool) or not isinstance(key, Integral) for key in assignment):
+        raise ValueError('assignment keys must be integer sample indices')
     expected = set(range(len(samples)))
     if set(assignment) != expected:
         missing = sorted(expected - set(assignment))

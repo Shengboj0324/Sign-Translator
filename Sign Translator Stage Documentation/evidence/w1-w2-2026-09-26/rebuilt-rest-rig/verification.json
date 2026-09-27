@@ -1,0 +1,28 @@
+{
+  "pytest": {
+    "name": "pytest",
+    "errors": "0",
+    "failures": "0",
+    "skipped": "0",
+    "tests": "2029",
+    "time": "73.391",
+    "timestamp": "2026-09-26T15:25:21.773804-07:00",
+    "hostname": "Micheals-MacBook-Pro.local"
+  },
+  "warnings_as_errors": true,
+  "targeted_passes": 39,
+  "compile_passed": true,
+  "diff_check_passed": true,
+  "phase_exit_approved": false,
+  "sha256": {
+    "signtranslator/avatar_render/makehuman.py": "19a3a7e13fab5412b4069742dbabccc11689a9cb78bfa4dd92221af6ff8d2a91",
+    "tests/test_ar_makehuman.py": "89589f2964996c397b7b607677a914bb76cb07455a19f817c8d415c8f35c1298",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rebuilt-rest-rig/probe.py": "39c33e8dc87b1374b4b9b25f2a5bd82650a79be0a2589b48caba791c0afe7cb5",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rebuilt-rest-rig/rig-measurements.json": "70f1d61501f88b1474f0c5e0d75486088c214d9c4699fd721afe10f4a9e0f3c5",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rebuilt-rest-rig/posed-meshes.npz": "113e01d3275a8d3a21f9db789dc77ceddad82d51af1350cb6f2b85be53262524",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rebuilt-rest-rig/catalogue.json": "b18b646364be0b745c13fef323180860a0959bfee8f75270406d8c4447693f12",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rebuilt-rest-rig/contact-audit.json": "9d59ca6c6811419d85f03516077aeccef13c33443191204ba3f4f10d35051a62",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rebuilt-rest-rig/pytest.xml": "8efeb55243e05d839a2506b246d1899c803275d5b810726ffd4e292bc5724b54",
+    "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/rebuilt-rest-rig/pytest.log": "1da369f8fbb236cd0dc33c564974d28c5a4e5125540bf77b1ff2c3bd18134916"
+  }
+}

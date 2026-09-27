@@ -1,0 +1,6 @@
+{
+  "original_manual_only_pose_rotation_count": 0,
+  "correct_matrix_rotation_count": 129,
+  "matrix_threshold": 1e-12,
+  "explanation": "Original count used manual axis-angle entries, which are absent for authored poses; geometry and actual matrices were correct. Current exporter uses matrix count. Original bundle preserved."
+}

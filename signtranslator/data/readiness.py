@@ -82,8 +82,12 @@ def assess_corpus(corpus_dir: str, min_train_samples: int = 32,
 
     # This diagnostic intentionally opens possibly corrupt v1 corpora so it can
     # report the defect instead of raising at the active-loader boundary.
-    train = SignDataset(corpus_dir, "train", normalize=False, validate=False)
-    val = SignDataset(corpus_dir, "val", normalize=False, validate=False)
+    try:
+        train = SignDataset(corpus_dir, "train", normalize=False, validate=False)
+        val = SignDataset(corpus_dir, "val", normalize=False, validate=False)
+    except (TypeError, ValueError) as exc:
+        report.add("corpus_loadable", False, str(exc))
+        return report
     n_train, n_val = len(train), len(val)
     report.stats["train_samples"] = n_train
     report.stats["val_samples"] = n_val
@@ -128,13 +132,18 @@ def assess_corpus(corpus_dir: str, min_train_samples: int = 32,
                f"frames={frames} >= max target length={max_target}")
 
     # ---- normalisation sanity --------------------------------------------
-    norm_pose = SignDataset(corpus_dir, "train", normalize=True, validate=False).pose
-    mean_abs = float(norm_pose.mean().abs())
-    var = float(norm_pose.var())
-    report.stats["normalized_mean"] = mean_abs
-    report.stats["normalized_var"] = var
-    report.add("normalization_sane", mean_abs < 0.1 and 0.5 < var < 2.0,
-               f"standardised mean|{mean_abs:.4f}| var={var:.3f} (want ~0 / ~1)")
+    try:
+        norm_pose = train.standardizer.normalize(train.pose, train.validity_mask)
+    except (TypeError, ValueError) as exc:
+        # A diagnostic reports corrupt input; the training transform still rejects it.
+        report.add("normalization_sane", False, str(exc))
+    else:
+        mean_abs = float(norm_pose.mean().abs())
+        var = float(norm_pose.var())
+        report.stats["normalized_mean"] = mean_abs
+        report.stats["normalized_var"] = var
+        report.add("normalization_sane", mean_abs < 0.1 and 0.5 < var < 2.0,
+                   f"standardised mean|{mean_abs:.4f}| var={var:.3f} (want ~0 / ~1)")
 
     # ---- pose quality -----------------------------------------------------
     if run_quality:

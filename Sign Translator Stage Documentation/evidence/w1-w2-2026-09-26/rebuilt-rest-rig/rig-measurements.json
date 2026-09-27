@@ -1,0 +1,10 @@
+{
+  "input_rest_archive_sha256": "84fdc1abc59d49ccd3d93af4cb3357239e388db4a9365b4e55f08ac08d2aa59b",
+  "bones": 163,
+  "static_cases": 61,
+  "bind_max_coordinate_error": 7.105427357601002e-15,
+  "maximum_bone_head_shift_source_units": 0.6119575496182084,
+  "weights_unchanged": true,
+  "native_application_parity": false,
+  "phase_exit_approved": false
+}

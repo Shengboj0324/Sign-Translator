@@ -95,8 +95,8 @@ class SignTranslator(nn.Module):
         )
 
     # -- feature extraction -------------------------------------------------
-    def encode_motion(self, pose: torch.Tensor) -> torch.Tensor:
-        return self.motion_encoder(pose)
+    def encode_motion(self, pose: torch.Tensor, **support) -> torch.Tensor:
+        return self.motion_encoder(pose, **support)
 
     def encode_text(self, tokens: torch.Tensor,
                     mask: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -105,21 +105,26 @@ class SignTranslator(nn.Module):
     # -- training -----------------------------------------------------------
     def forward(self, pose: torch.Tensor, tokens: torch.Tensor,
                 text_mask: Optional[torch.Tensor] = None,
-                w_contrastive: float = 1.0, w_diffusion: float = 1.0) -> dict:
+                w_contrastive: float = 1.0, w_diffusion: float = 1.0, *,
+                validity_mask=None, frame_mask=None, confidence=None,
+                frame_timestamps=None, max_gap_seconds=None) -> dict:
         """Joint contrastive + diffusion objective on a paired batch.
 
         Args:
             pose:   (N, C, T, V) ground-truth motion clips.
             tokens: (N, L) gloss/word token ids paired with ``pose``.
         """
-        motion_feat = self.encode_motion(pose)
+        support = {"validity_mask": validity_mask, "frame_mask": frame_mask,
+                   "confidence": confidence}
+        motion_feat = self.encode_motion(pose, **support)
         language_feat = self.encode_text(tokens, text_mask)
 
         align = self.aligner(motion_feat, language_feat)
         # Condition generation on the (detached-graph-free) language latent so the
         # decoder learns to realise language semantics as motion.
         cond = align["z_language"]
-        diff_loss = self.diffusion(pose, cond=cond)
+        diff_loss = self.diffusion(pose, cond=cond, **support,
+                                   frame_timestamps=frame_timestamps, max_gap_seconds=max_gap_seconds)
 
         total = w_contrastive * align["loss"] + w_diffusion * diff_loss
         return {
@@ -273,8 +278,8 @@ class BidirectionalSignTranslator(nn.Module):
         return self.diffusion(pose, cond=cond, **support)
 
     def recognition_loss(self, pose: torch.Tensor, targets: torch.Tensor,
-                         target_lengths: torch.Tensor) -> torch.Tensor:
-        return self.recognizer.loss(pose, targets, target_lengths)
+                         target_lengths: torch.Tensor, **support) -> torch.Tensor:
+        return self.recognizer.loss(pose, targets, target_lengths, **support)
 
     def speech_loss(self, speech: torch.Tensor, targets: torch.Tensor,
                     target_lengths: torch.Tensor,
@@ -284,31 +289,37 @@ class BidirectionalSignTranslator(nn.Module):
             speech, targets, target_lengths, input_lengths=input_lengths)
 
     @torch.no_grad()
-    def recognize_speech(self, speech: torch.Tensor):
+    def recognize_speech(self, speech: torch.Tensor,
+                         input_lengths: Optional[torch.Tensor] = None):
         """Decode audio features to spoken token ids (1..K)."""
-        return self.speech_recognizer.decode(speech)
+        return self.speech_recognizer.decode(speech, input_lengths=input_lengths)
 
-    def alignment_loss(self, pose: torch.Tensor, gloss_tokens: torch.Tensor) -> torch.Tensor:
-        motion_feat = self.recognizer.encoder(pose)                 # (N, D) pooled
+    def alignment_loss(self, pose: torch.Tensor, gloss_tokens: torch.Tensor,
+                       **support) -> torch.Tensor:
+        motion_feat = self.recognizer.encoder(pose, **support)                 # (N, D) pooled
         lang_feat = self.gloss_encoder(gloss_tokens)                # (N, D) pooled
         return self.aligner(motion_feat, lang_feat)["loss"]
 
-    def _encode_pose_shared(self, pose: torch.Tensor):
+    def _encode_pose_shared(self, pose: torch.Tensor, **support):
         """Single ST-GCN pass reused by recognition (CTC) and alignment.
 
-        The clip embedding equals the time-mean of the per-frame features
-        (both are joint+time global averages), so recognition log-probs and the
-        pooled motion embedding are derived from one forward pass.
+        Per-frame features average available joints; the clip embedding averages
+        frames with support. Recognition and alignment reuse one forward pass.
         """
-        seq = self.recognizer.encoder(pose, return_sequence=True)   # (N, T, D)
-        pooled = seq.mean(dim=1)                                    # (N, D) clip embedding
+        seq = self.recognizer.encoder(pose, return_sequence=True, **support)
+        if support:
+            _, weights = self.diffusion.motion_support(pose, **support)
+            frames = (weights[:, 0] > 0).any(dim=-1)
+            pooled = seq.sum(dim=1) / frames.sum(dim=1).unsqueeze(-1)
+        else:
+            pooled = seq.mean(dim=1)                                    # (N, D) clip embedding
         logprobs = F.log_softmax(self.recognizer.classifier(seq), dim=-1)
         return logprobs, pooled
 
     @torch.no_grad()
-    def embed_motion(self, pose: torch.Tensor) -> torch.Tensor:
+    def embed_motion(self, pose: torch.Tensor, **support) -> torch.Tensor:
         """Unit-norm motion embedding on the shared manifold (for retrieval)."""
-        return self.aligner.motion_head(self.recognizer.encoder(pose))
+        return self.aligner.motion_head(self.recognizer.encoder(pose, **support))
 
     @torch.no_grad()
     def embed_gloss(self, gloss_tokens: torch.Tensor) -> torch.Tensor:
@@ -336,10 +347,12 @@ class BidirectionalSignTranslator(nn.Module):
         need_recog = pose is not None and "ctc_targets" in batch
         logprobs = pooled = None
         if need_align or need_recog:
-            logprobs, pooled = self._encode_pose_shared(pose)
+            logprobs, pooled = self._encode_pose_shared(pose, **support)
 
         if pose is not None and "gloss_tokens" in batch:
-            losses["generation"] = self.generation_loss(pose, batch["gloss_tokens"], **support)
+            losses["generation"] = self.generation_loss(
+                pose, batch["gloss_tokens"], **support,
+                **{key: batch[key] for key in ('frame_timestamps', 'max_gap_seconds') if key in batch})
             lang_feat = self.gloss_encoder(batch["gloss_tokens"])
             losses["alignment"] = self.aligner(pooled, lang_feat)["loss"]
         if "src" in batch and "gloss_seq" in batch:
@@ -347,11 +360,16 @@ class BidirectionalSignTranslator(nn.Module):
         if need_recog:
             n, t, _ = logprobs.shape
             input_lengths = batch.get("ctc_input_lengths")
+            if input_lengths is None and batch.get("frame_mask") is not None:
+                input_lengths = batch["frame_mask"].sum(dim=1)
             if input_lengths is None:
                 input_lengths = torch.full((n,), t, dtype=torch.long,
                                            device=logprobs.device)
             else:
-                input_lengths = input_lengths.to(logprobs.device).clamp(max=t)
+                input_lengths = input_lengths.to(logprobs.device)
+            if batch.get("frame_mask") is not None and not torch.equal(
+                    input_lengths, batch["frame_mask"].sum(dim=1).to(logprobs.device)):
+                raise ValueError("CTC input lengths must agree with frame_mask")
             losses["recognition"] = self.recognizer.loss_from_log_probs(
                 logprobs, batch["ctc_targets"], batch["ctc_lengths"],
                 input_lengths)
@@ -391,7 +409,7 @@ class BidirectionalSignTranslator(nn.Module):
                 support = {k: row[k] for k in ('validity_mask', 'confidence', 'frame_mask') if k in row}
                 pose, _ = self.diffusion.motion_support(row['pose'], **support)
                 if 'gloss_tokens' in row:
-                    motion.append(self.embed_motion(pose))
+                    motion.append(self.embed_motion(pose, **support))
                     language.append(self.embed_gloss(row['gloss_tokens']))
         if not sums:
             raise RuntimeError('validation iterator yielded zero observations')
@@ -446,11 +464,13 @@ class BidirectionalSignTranslator(nn.Module):
     def translate_audio_to_sign(self, speech: torch.Tensor,
                                 num_frames: Optional[int] = None,
                                 guidance_scale: float = 1.0, ddim_steps: int = 20,
-                                max_gloss_len: int = 16) -> dict:
+                                max_gloss_len: int = 16, *,
+                                speech_input_lengths: Optional[torch.Tensor] = None) -> dict:
         """Full acoustic path: audio features -> spoken tokens -> gloss -> motion."""
         self.eval()
         device = next(self.parameters()).device
-        spoken = self.recognize_speech(speech.to(device))     # ids in 1..K
+        spoken = self.recognize_speech(
+            speech.to(device), input_lengths=speech_input_lengths)  # ids in 1..K
         empty = [index for index, tokens in enumerate(spoken) if not tokens]
         if empty:
             raise TranslationAbstainedError(
@@ -471,8 +491,8 @@ class BidirectionalSignTranslator(nn.Module):
         return out
 
     @torch.no_grad()
-    def recognize(self, pose: torch.Tensor):
-        return self.recognizer.decode(pose)
+    def recognize(self, pose: torch.Tensor, **support):
+        return self.recognizer.decode(pose, **support)
 
     def num_parameters(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)

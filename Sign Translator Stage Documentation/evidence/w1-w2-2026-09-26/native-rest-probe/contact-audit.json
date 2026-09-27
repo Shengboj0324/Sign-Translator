@@ -1,0 +1,270 @@
+{
+  "blender_version": "5.2.2 LTS",
+  "analytical_checks": {
+    "analytical_cases": 5,
+    "metamorphic_crossing_cases": 9,
+    "passed": true
+  },
+  "coordinate_precision": "Blender float32 vertices, float64 narrow-phase arithmetic",
+  "scope": "Specified inter-mesh triangle pairs only; no self-intersection, enclosed-volume, swept-motion or clearance certification",
+  "candidate_backend": "Blender BVHTree overlap at zero epsilon",
+  "rows": [
+    {
+      "pose": "DefaultFactorRestProbe",
+      "pairs": {
+        "body__eyes": {
+          "candidate_pairs": 1050,
+          "proper_crossings": 1050,
+          "unresolved_candidates": 0,
+          "numerical_tolerance_sensitivity": {
+            "1e-08": {
+              "proper_crossings": 1050,
+              "unresolved_candidates": 0
+            },
+            "1e-10": {
+              "proper_crossings": 1050,
+              "unresolved_candidates": 0
+            },
+            "1e-12": {
+              "proper_crossings": 1050,
+              "unresolved_candidates": 0
+            }
+          },
+          "first_crossing_triangle_pairs": [
+            [
+              26671,
+              151
+            ],
+            [
+              26671,
+              997
+            ],
+            [
+              26671,
+              173
+            ],
+            [
+              26671,
+              172
+            ],
+            [
+              26671,
+              998
+            ],
+            [
+              26700,
+              151
+            ],
+            [
+              26700,
+              150
+            ],
+            [
+              26700,
+              997
+            ],
+            [
+              26700,
+              996
+            ],
+            [
+              26700,
+              641
+            ],
+            [
+              26700,
+              633
+            ],
+            [
+              26700,
+              640
+            ],
+            [
+              14898,
+              953
+            ],
+            [
+              14898,
+              952
+            ],
+            [
+              14898,
+              951
+            ],
+            [
+              14898,
+              950
+            ],
+            [
+              14898,
+              954
+            ],
+            [
+              14898,
+              949
+            ],
+            [
+              14898,
+              948
+            ],
+            [
+              26701,
+              143
+            ]
+          ],
+          "left_degenerate_triangles": 0,
+          "right_degenerate_triangles": 0
+        },
+        "body__teeth": {
+          "candidate_pairs": 0,
+          "proper_crossings": 0,
+          "unresolved_candidates": 0,
+          "numerical_tolerance_sensitivity": {
+            "1e-08": {
+              "proper_crossings": 0,
+              "unresolved_candidates": 0
+            },
+            "1e-10": {
+              "proper_crossings": 0,
+              "unresolved_candidates": 0
+            },
+            "1e-12": {
+              "proper_crossings": 0,
+              "unresolved_candidates": 0
+            }
+          },
+          "first_crossing_triangle_pairs": [],
+          "left_degenerate_triangles": 0,
+          "right_degenerate_triangles": 0
+        },
+        "body__tongue": {
+          "candidate_pairs": 0,
+          "proper_crossings": 0,
+          "unresolved_candidates": 0,
+          "numerical_tolerance_sensitivity": {
+            "1e-08": {
+              "proper_crossings": 0,
+              "unresolved_candidates": 0
+            },
+            "1e-10": {
+              "proper_crossings": 0,
+              "unresolved_candidates": 0
+            },
+            "1e-12": {
+              "proper_crossings": 0,
+              "unresolved_candidates": 0
+            }
+          },
+          "first_crossing_triangle_pairs": [],
+          "left_degenerate_triangles": 0,
+          "right_degenerate_triangles": 0
+        },
+        "teeth__tongue": {
+          "candidate_pairs": 832,
+          "proper_crossings": 832,
+          "unresolved_candidates": 0,
+          "numerical_tolerance_sensitivity": {
+            "1e-08": {
+              "proper_crossings": 832,
+              "unresolved_candidates": 0
+            },
+            "1e-10": {
+              "proper_crossings": 832,
+              "unresolved_candidates": 0
+            },
+            "1e-12": {
+              "proper_crossings": 832,
+              "unresolved_candidates": 0
+            }
+          },
+          "first_crossing_triangle_pairs": [
+            [
+              609,
+              248
+            ],
+            [
+              581,
+              248
+            ],
+            [
+              580,
+              248
+            ],
+            [
+              588,
+              223
+            ],
+            [
+              632,
+              223
+            ],
+            [
+              623,
+              218
+            ],
+            [
+              633,
+              223
+            ],
+            [
+              622,
+              218
+            ],
+            [
+              622,
+              223
+            ],
+            [
+              592,
+              218
+            ],
+            [
+              589,
+              223
+            ],
+            [
+              608,
+              248
+            ],
+            [
+              608,
+              219
+            ],
+            [
+              4409,
+              223
+            ],
+            [
+              4409,
+              222
+            ],
+            [
+              4408,
+              222
+            ],
+            [
+              656,
+              222
+            ],
+            [
+              656,
+              375
+            ],
+            [
+              3544,
+              375
+            ],
+            [
+              3545,
+              375
+            ]
+          ],
+          "left_degenerate_triangles": 0,
+          "right_degenerate_triangles": 0
+        }
+      }
+    }
+  ],
+  "anatomical_acceptance": false,
+  "phase_exit_approved": false
+}

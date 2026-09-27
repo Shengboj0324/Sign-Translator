@@ -1,0 +1,25 @@
+{
+  "checked_at": "2026-09-26T21:13:49.560907+00:00",
+  "sources": [
+    {
+      "name": "SignAvatars",
+      "url": "https://github.com/ZhengdiYu/SignAvatars",
+      "finding": "Publisher requests an access form for non-commercial research annotations; original RGB is obtained separately. Published SMPL-X layout does not establish explicit gaze channels or real root translation.",
+      "request_submitted": false,
+      "data_acquired": false
+    },
+    {
+      "name": "MakeHuman",
+      "url": "https://github.com/makehumancommunity/makehuman/blob/master/LICENSE.md",
+      "finding": "Official licensing separates bundled CC0 assets from application source. Pinned base mesh, default skeleton and weights plus two license files acquired and structurally inspected.",
+      "intake_manifest": "makehuman/intake.json",
+      "qualification_passed": false
+    },
+    {
+      "name": "ASLLRP",
+      "url": "https://www.bu.edu/asllrp/",
+      "finding": "Landing page did not provide usable text in this lookup; current access terms not established by this fetch."
+    }
+  ],
+  "phase_exit_approved": false
+}

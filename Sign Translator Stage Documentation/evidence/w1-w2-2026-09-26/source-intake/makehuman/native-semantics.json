@@ -1,0 +1,43 @@
+{
+  "commit": "a8bc2d54ff0ac92e78ff71431b1023eda42bf482",
+  "source_files": [
+    {
+      "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/shared/skeleton.py",
+      "sha256": "ef3a8564e6c55f85d045b45a5307c6cf8af03a7b8a50a9211b95edc3f5137a07"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/shared/animation.py",
+      "sha256": "3841d8b5c10738b16e600b2cc7ea506ddd2dcb41f42bcb2a8b0cbdfb16e44cc5"
+    }
+  ],
+  "inspection_only": true,
+  "upstream_code_executed": false,
+  "upstream_code_vendored": false,
+  "findings": [
+    {
+      "source": "animation.py:628-723",
+      "finding": "Loader totals raw weights by vertex, normalizes, merges duplicate entries, then retains weights strictly greater than 1e-4. No general renormalization after thresholding in this routine; initially zero-total vertices receive root support. Audit asset has no positive influences removed by the threshold."
+    },
+    {
+      "source": "animation.py:725-815",
+      "finding": "Compiled paths select a requested influence count, truncate largest-first and renormalize on truncation. The independent oracle retains all 12 maximum influences; no four-influence fidelity claim."
+    },
+    {
+      "source": "skeleton.py:419-435",
+      "finding": "Explicit joint locations are arithmetic means of specified current rest-mesh vertices. Base OBJ audit does not establish morphed-character parity."
+    },
+    {
+      "source": "skeleton.py:823-923,1157-1201,1266-1289",
+      "finding": "Bone Y points head to tail. Plane cross order is (third-second) cross (second-first); X is its perpendicular component relative to Y and Z completes right-handed basis. Parent-relative rest is inverse(parent global rest) times own global rest. Posed globals compose parent posed global, relative rest, local pose; skin transform removes own global rest."
+    }
+  ],
+  "next_required": [
+    "Verify native float32 and actual rest-mesh parity",
+    "Establish physical units and world-axis interpretation from authoritative asset/runtime evidence",
+    "Implement explicit asset adapter preserving full influences and provenance",
+    "Inspect mesh groups, eye geometry, facial controls and deterministic render",
+    "Qualify source-to-rig mappings with actual motion and qualified reviewers"
+  ],
+  "qualified_rig": false,
+  "phase_exit_approved": false
+}

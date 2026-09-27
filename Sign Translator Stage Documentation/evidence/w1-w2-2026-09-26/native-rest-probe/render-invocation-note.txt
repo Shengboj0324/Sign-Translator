@@ -1,0 +1,1 @@
+Initial launch omitted PYTHONPATH=. and failed importing signtranslator before producing a render directory. Repeated the same saved command with PYTHONPATH=. supplied; no code fallback or source changes.

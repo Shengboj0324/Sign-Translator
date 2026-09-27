@@ -489,8 +489,22 @@ def export_corpus(records: Sequence[ExtractedSample], out_dir: str | os.PathLike
     if any(count == 0 for count in counts.values()):
         raise ValueError(f"every split must be non-empty; got {counts}")
 
-    gloss_labels = sorted({token for record in records for token in record.gloss_tokens})
-    source_labels = sorted({token for record in records for token in record.source_tokens})
+    train_indices = sorted(index for index, split in assignment.items() if split == "train")
+    gloss_labels = sorted({token for index in train_indices for token in records[index].gloss_tokens})
+    source_labels = sorted({token for index in train_indices for token in records[index].source_tokens})
+    # Vocabulary is fitted before examining held-out labels. Unknown forms refuse
+    # this closed-vocabulary export; they are never silently mapped to a known sign.
+    gloss_set, source_set = set(gloss_labels), set(source_labels)
+    unknown = []
+    for index, record in enumerate(records):
+        unseen_gloss = sorted(set(record.gloss_tokens) - gloss_set)
+        unseen_source = sorted(set(record.source_tokens) - source_set)
+        if unseen_gloss or unseen_source:
+            unknown.append({'sample_id': record.governance.sample_id,
+                            'split': assignment[index], 'gloss': unseen_gloss,
+                            'source': unseen_source})
+    if unknown:
+        raise ValueError(f'held-out tokens absent from training vocabulary; export refused: {unknown}')
     gloss_to_id = {token: index for index, token in enumerate(gloss_labels)}
     source_to_id = {token: index for index, token in enumerate(source_labels)}
     max_gloss = max(len(record.gloss_tokens) for record in records)
@@ -590,6 +604,9 @@ def export_corpus(records: Sequence[ExtractedSample], out_dir: str | os.PathLike
         "pose_mean": pose_mean.tolist(),
         "pose_std": pose_std.tolist(),
         "normalization_fit_split": "train",
+        "vocabulary_fit_split": "train",
+        "unknown_token_policy": "reject_export",
+        "vocabulary_fit_sample_ids": sorted(records[i].governance.sample_id for i in train_indices),
         "speech_subsample": speech_subsample,
         "shard_sha256": shard_hashes,
         "records": [{

@@ -21,6 +21,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from .masked_normalization import masked_batch_norm
+
 
 class GraphConvolution(nn.Module):
     r"""Partitioned spatial graph convolution.
@@ -56,16 +58,23 @@ class GraphConvolution(nn.Module):
         """Anatomical adjacency plus (if enabled) the learned refinement."""
         return self.A + self.A_refine if self.adaptive else self.A
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, validity_mask=None) -> torch.Tensor:
         # x: (N, C_in, T, V)
         n, _, t, v = x.shape
         if v != self.A.shape[-1]:
             raise ValueError(f"joint dim {v} != adjacency V {self.A.shape[-1]}")
+        if validity_mask is not None:
+            x = torch.where(validity_mask.unsqueeze(1), x, 0)
         feat = self.theta(x)  # (N, K*C_out, T, V)
+        if validity_mask is not None:
+            # Exclude learned bias at unavailable source joints as well as values.
+            feat = torch.where(validity_mask.unsqueeze(1), feat, 0)
         feat = feat.view(n, self.num_partitions, self.out_channels, t, v)
         # Contract joints with each partition adjacency and sum over partitions.
         #   out[n,c,t,w] = sum_{k,v} feat[n,k,c,t,v] * A[k,v,w]
         out = torch.einsum("nkctv,kvw->nctw", feat, self.effective_adjacency())
+        if validity_mask is not None:
+            out = torch.where(validity_mask.unsqueeze(1), out, 0)
         return out.contiguous()
 
 
@@ -100,11 +109,28 @@ class STGCNBlock(nn.Module):
                 nn.BatchNorm2d(out_channels),
             )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        res = 0.0 if self.residual is None else self.residual(x)
-        y = self.act(self.gcn_bn(self.gcn(x)))
-        y = self.tcn(y)
-        return self.act(y + res)
+    def forward(self, x: torch.Tensor, validity_mask=None) -> torch.Tensor:
+        if validity_mask is None:
+            res = 0.0 if self.residual is None else self.residual(x)
+            y = self.act(self.gcn_bn(self.gcn(x)))
+            return self.act(self.tcn(y) + res)
+        if self.tcn[0].stride != (1, 1):
+            raise ValueError("masked ST-GCN currently requires stride one")
+        support = validity_mask.unsqueeze(1)
+        x = torch.where(support, x, 0)
+        if self.residual is None:
+            res = 0.0
+        elif isinstance(self.residual, nn.Identity):
+            res = x
+        else:
+            res = self.residual[0](x)
+            res = masked_batch_norm(res, support.expand_as(res), self.residual[1])
+        y = self.gcn(x, validity_mask)
+        y = self.act(masked_batch_norm(y, support.expand_as(y), self.gcn_bn))
+        y = self.tcn[0](y)
+        y = masked_batch_norm(y, support.expand_as(y), self.tcn[1])
+        y = self.tcn[2](y)
+        return torch.where(support, self.act(y + res), 0)
 
 
 class STGCNEncoder(nn.Module):
@@ -131,7 +157,8 @@ class STGCNEncoder(nn.Module):
         self.blocks = nn.ModuleList(blocks)
         self.out_dim = channels[-1]
 
-    def forward(self, x: torch.Tensor, return_sequence: bool = False) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, return_sequence: bool = False, *,
+                validity_mask=None, frame_mask=None, confidence=None) -> torch.Tensor:
         """Encode a pose clip.
 
         Args:
@@ -144,14 +171,35 @@ class STGCNEncoder(nn.Module):
         if x.ndim != 4:
             raise ValueError("expected input of shape (N, C, T, V)")
         n, c, t, v = x.shape
+        if c != self.in_channels or v != self.num_joints:
+            raise ValueError("pose channels/joints differ from encoder layout")
+        valid = None
+        if any(mask is not None for mask in (validity_mask, frame_mask, confidence)):
+            from .diffusion import GaussianMotionDiffusion
+            x, weights = GaussianMotionDiffusion.motion_support(
+                x, validity_mask=validity_mask, frame_mask=frame_mask, confidence=confidence)
+            valid = weights[:, 0] > 0
+            if frame_mask is not None and bool((frame_mask[:, 1:] & ~frame_mask[:, :-1]).any()):
+                raise ValueError("frame_mask must be a contiguous valid prefix")
         # Data batch-norm over joint-channels (standard ST-GCN preprocessing).
         x = x.permute(0, 3, 1, 2).contiguous().view(n, v * c, t)
-        x = self.data_bn(x)
+        if valid is None:
+            x = self.data_bn(x)
+        else:
+            bn_support = valid.permute(0, 2, 1).unsqueeze(2).expand(n, v, c, t)
+            x = masked_batch_norm(x, bn_support.reshape(n, v * c, t), self.data_bn)
         x = x.view(n, v, c, t).permute(0, 2, 3, 1).contiguous()  # back to (N,C,T,V)
 
         for block in self.blocks:
-            x = block(x)  # (N, out_dim, T, V) -- temporal length preserved (stride 1)
+            x = block(x, valid)  # temporal length preserved (stride 1)
 
+        if valid is not None:
+            counts = valid.sum(dim=-1)
+            seq = (x.sum(dim=-1) / counts.clamp_min(1).unsqueeze(1)).transpose(1, 2)
+            if return_sequence:
+                return seq.contiguous()
+            frames = counts > 0
+            return seq.sum(dim=1) / frames.sum(dim=1).unsqueeze(-1)
         if return_sequence:
             return x.mean(dim=3).transpose(1, 2).contiguous()  # (N, T, out_dim)
         return x.mean(dim=(2, 3))  # (N, out_dim)

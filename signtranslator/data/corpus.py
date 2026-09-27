@@ -436,16 +436,33 @@ def validate_corpus(corpus_dir: str) -> CorpusSpec:
 
 
 class PoseStandardizer:
-    """Applies corpus normalisation statistics: ``z = (x - mean) / std``.
+    """Invertible affine coordinates on declared valid support.
 
-    Diffusion models assume roughly unit-scale data; standardising the pose
-    channels materially improves generative fidelity. Statistics come from the
-    train split only.
+    ``z = (x - mean) / std`` uses training statistics of shape ``(C, 1, V)``.
+    Inversion restores the input coordinate system, not physical calibration.
+    An optional boolean ``(..., T, V)`` mask preserves unavailable entries as
+    zero in both directions. Omitting it declares every entry available.
     """
 
     def __init__(self, mean: torch.Tensor, std: torch.Tensor) -> None:
-        self.mean = mean          # (C, 1, V)
-        self.std = std            # (C, 1, V)
+        self.mean = mean
+        self.std = std
+        self._validate_statistics()
+
+    def _validate_statistics(self) -> None:
+        for name, value in (("mean", self.mean), ("std", self.std)):
+            if not isinstance(value, torch.Tensor) or value.dtype not in (
+                    torch.float32, torch.float64):
+                raise TypeError(f"{name} must be a float32 or float64 tensor")
+            if (value.ndim != 3 or value.shape[1] != 1
+                    or value.shape[0] < 1 or value.shape[2] < 1):
+                raise ValueError(f"{name} must have nonempty shape (C, 1, V)")
+            if not bool(torch.isfinite(value).all()):
+                raise ValueError(f"{name} must be finite")
+        if self.mean.shape != self.std.shape:
+            raise ValueError("mean and std must have identical shapes")
+        if not bool((self.std > 0).all()):
+            raise ValueError("std must be strictly positive")
 
     @staticmethod
     def from_manifest(manifest: dict) -> "PoseStandardizer":
@@ -453,19 +470,49 @@ class PoseStandardizer:
         std = torch.tensor(manifest["pose_std"], dtype=torch.float32)
         return PoseStandardizer(mean, std)
 
-    def _broadcast(self, x: torch.Tensor):
-        # Accept (C, T, V) or (N, C, T, V).
-        if x.dim() == 4:
-            return self.mean.unsqueeze(0).to(x.device), self.std.unsqueeze(0).to(x.device)
-        return self.mean.to(x.device), self.std.to(x.device)
+    def _transform(self, x: torch.Tensor, validity_mask: torch.Tensor | None,
+                   *, inverse: bool) -> torch.Tensor:
+        # Recheck because tensor contents can change after construction.
+        self._validate_statistics()
+        if not isinstance(x, torch.Tensor) or x.dtype not in (
+                torch.float32, torch.float64):
+            raise TypeError("pose must be a float32 or float64 tensor")
+        if x.ndim not in (3, 4) or any(d < 1 for d in x.shape):
+            raise ValueError("pose must be nonempty (C, T, V) or (N, C, T, V)")
+        if (x.shape[-3], x.shape[-1]) != (self.mean.shape[0], self.mean.shape[2]):
+            raise ValueError("pose channels and joints must match statistics")
+        m = self.mean.to(device=x.device, dtype=x.dtype)
+        s = self.std.to(device=x.device, dtype=x.dtype)
+        if not bool(torch.isfinite(m).all() and torch.isfinite(s).all()
+                    and (s > 0).all()):
+            raise ValueError("statistics are not representable in pose dtype")
+        if validity_mask is None:
+            valid = torch.ones_like(x, dtype=torch.bool)
+        else:
+            expected = x.shape[:-3] + x.shape[-2:]
+            if (not isinstance(validity_mask, torch.Tensor)
+                    or validity_mask.dtype != torch.bool):
+                raise TypeError("validity_mask must be a boolean tensor")
+            if validity_mask.shape != expected or validity_mask.device != x.device:
+                raise ValueError("validity_mask must match pose support shape and device")
+            valid = validity_mask.unsqueeze(-3).expand_as(x)
+        if not bool(torch.isfinite(x[valid]).all()):
+            raise ValueError("valid pose values must be finite")
+        # Sanitize before arithmetic, so invalid NaNs cannot poison gradients.
+        safe = torch.where(valid, x, torch.zeros_like(x) if inverse else m)
+        result = safe * s + m if inverse else (safe - m) / s
+        result = torch.where(valid, result, torch.zeros_like(result))
+        if not bool(torch.isfinite(result).all()):
+            raise ValueError("affine pose transform overflowed")
+        return result
 
-    def normalize(self, x: torch.Tensor) -> torch.Tensor:
-        m, s = self._broadcast(x)
-        return (x - m) / s
+    def normalize(self, x: torch.Tensor,
+                  validity_mask: torch.Tensor | None = None) -> torch.Tensor:
+        return self._transform(x, validity_mask, inverse=False)
 
-    def denormalize(self, z: torch.Tensor) -> torch.Tensor:
-        m, s = self._broadcast(z)
-        return z * s + m
+    def denormalize(self, z: torch.Tensor,
+                    validity_mask: torch.Tensor | None = None) -> torch.Tensor:
+        return self._transform(z, validity_mask, inverse=True)
 
 
 class SignDataset(Dataset):
@@ -504,12 +551,7 @@ class SignDataset(Dataset):
             self.speech_timestamps = (torch.from_numpy(z["speech_timestamps"])
                                       if "speech_timestamps" in z.files else None)
         if normalize:
-            self.pose = self.standardizer.normalize(self.pose)
-            if self.validity_mask is not None:
-                # Invalid/padded observations must remain a neutral numeric value after
-                # normalization; their false mask and zero confidence retain missingness.
-                valid = self.validity_mask.unsqueeze(1).expand_as(self.pose)
-                self.pose = torch.where(valid, self.pose, torch.zeros_like(self.pose))
+            self.pose = self.standardizer.normalize(self.pose, self.validity_mask)
 
     def __len__(self) -> int:
         return self.pose.shape[0]
@@ -615,6 +657,14 @@ def collate_corpus(batch: List[dict], speech_subsample: int = 2) -> dict:
         result["frame_timestamps"] = pad_sequence(
             [b["frame_timestamps"] for b in batch], batch_first=True,
             padding_value=-1.0)
+    if any("max_gap_seconds" in b for b in batch):
+        from ..pose.temporal import validate_max_gap_seconds
+        if not all("max_gap_seconds" in b and "frame_timestamps" in b for b in batch):
+            raise ValueError("every sample needs timestamps and the declared gap policy")
+        limits = [validate_max_gap_seconds(b["max_gap_seconds"]) for b in batch]
+        if any(value is None for value in limits) or any(value != limits[0] for value in limits):
+            raise ValueError("batch samples must share one explicit max_gap_seconds policy")
+        result["max_gap_seconds"] = limits[0]
     if all("sample_id" in b for b in batch):
         result["sample_ids"] = [b["sample_id"] for b in batch]
     if has_speech:

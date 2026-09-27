@@ -1,0 +1,72 @@
+{
+  "recorded_at": "2026-09-26T21:06:17.126435+00:00",
+  "tests": {
+    "command": ".venv/bin/python -m pytest -o addopts= -q -W error tests/test_w1_qc_dispositions.py tests/test_de_how2sign_audit.py",
+    "passed": 32,
+    "elapsed_seconds_reported": 1.81,
+    "exit_code": 0,
+    "full_suite_rerun": false
+  },
+  "checks": {
+    "compile": {
+      "exit_code": 0,
+      "output": ""
+    },
+    "diff_check": {
+      "exit_code": 0,
+      "output": ""
+    }
+  },
+  "existing_output_overwrite_refused": true,
+  "independent_readback": {
+    "unique_rows": 31166,
+    "metadata_rows": 31165,
+    "all_acceptance_flags_false": true,
+    "refreshed_rows": 121,
+    "refreshed_status_changes": 0
+  },
+  "source_inventory": {
+    "scripts/w1_qc_dispositions.py": {
+      "sha256": "6088d536a93f2e927e6da7dd6c2ceaf63d794d49d9b89820d54fb202d7aefc6f",
+      "size": 8097
+    },
+    "tests/test_w1_qc_dispositions.py": {
+      "sha256": "43ef6ea3b143e8a9474d6314e1b10b60db8372e9a836c688851488f866e3ccd4",
+      "size": 2332
+    },
+    "signtranslator/data_engineering/how2sign.py": {
+      "sha256": "d9013fd548f06b8ccd3997153b0f15d73749c27940716c74d307907cb15c79e8",
+      "size": 22633
+    },
+    "signtranslator/data_engineering/how2sign_audit.py": {
+      "sha256": "42a1ecaa5651bb2cdce7083e7ce7f955171aa5e2b6434834d153ac5cb309c4c1",
+      "size": 54272
+    },
+    "signtranslator/data_engineering/exporter.py": {
+      "sha256": "6d3ed09b6d91c4a5cce9bd5dcf9c7e4be13e6d3344e4b4c29a91aa4e09303737",
+      "size": 33120
+    }
+  },
+  "evidence_files": {
+    "summary.json": {
+      "sha256": "fb3951f76d5077699fe06d3f6021a8fa621aeb685c6ae913bbdb227e5df910ed",
+      "size": 2020
+    },
+    "technical-refresh.json": {
+      "sha256": "81a84333638dcc933e39a4cf252281b6adae8ae2dfff1762097411cf83c339ce",
+      "size": 66447
+    },
+    "dispositions.csv": {
+      "sha256": "063e40795c45a4a03b76a9b892d450998d49e368f04376e1485926718b720979",
+      "size": 8906749
+    }
+  },
+  "disposition_counts": {
+    "pending_qualified_qc": 28621,
+    "pending_acceptance": 2423,
+    "technical_quarantine": 122
+  },
+  "w1_complete": false,
+  "w2_complete": false,
+  "empirical_readiness_approved": false
+}
