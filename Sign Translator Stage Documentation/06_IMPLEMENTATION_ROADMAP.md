@@ -1894,6 +1894,100 @@ assertions.
 Verification: **2,562 passed in 100.66 seconds**, warnings as errors; **48 focused
 checks passed in 8.47 seconds**.
 
+### Nonfinite updated state cannot be committed — 2026-10-06
+
+A real AdamW probe on a fictional governed scalar task used a finite float32
+parameter of 100, finite loss/gradient, gradient clipping and a finite configured
+learning rate of 1e37 with weight decay 1. The optimizer returned an infinite
+parameter. Previously, the one-epoch run committed and saved successfully because
+only pre-update losses and gradients were checked.
+
+Governed training now scans model state and optimizer numeric leaves after returned
+updates, at validation boundaries and before epoch commitment. Save checks model,
+optimizer and retained-best state before creating the destination directory. Resume
+preflights current/best checkpoint weights and optimizer state for nonfinite values;
+weights-only loading ignores unused optimizer/best state but still checks the
+imported model. Post-load checks catch a hook that introduces nonfinite values.
+
+Returned optimizer calls remain counted even when the postcondition fails. The
+run stays uncommitted and cannot be saved as an exact checkpoint. Historical
+exposure reports remain available with their uncommitted flag. Full resume from a
+finite committed checkpoint can recover; it does not make an unsafe hyperparameter
+configuration safe or silently change that configuration.
+
+These checks detect nonfiniteness, not every mathematically invalid finite state
+(such as a negative second moment), arbitrary hook behavior or learned competence.
+No rollback or universal numerical-stability claim is made. Tensor scans add
+runtime overhead proportional to checked state and may synchronize accelerators;
+there is no throughput claim. All nine manual handoffs remain absent with null
+evidence, and empirical W1–W3 acceptance remains unapproved. Phase workload
+estimates are not shortened. Evidence is retained in October 6 `finite-state-*` files.
+Verification: **2,572 passed in 104.82 seconds**, warnings as errors; **24 focused
+checks passed in 6.62 seconds**.
+
+### Support-aware checkpoint history reconciles with exposure — 2026-10-06
+
+A probe erased the sole training-total row from a one-epoch run. Previously the
+checkpoint could be saved and resumed with one completed epoch and no recorded
+training-total value. Finite numeric fields alone did not establish a coherent
+committed history.
+
+Save and exact-resume preflight now reconcile support-aware history with admitted
+sample identities, ordered optimizer records, actual batch sizes, completed epochs
+and the configured validation/scheduler policy. Training support totals must equal
+the sums of recorded per-batch declarations; an epoch cannot duplicate a sample
+across batches or claim an incorrect population. Branch metric values/epoch tags
+exist exactly where declared support is positive. Zero-support metrics remain
+absent, not fabricated zeros. Validation population/support ranges and validation
+epoch tags follow the configured cadence; the selected best value must equal the
+minimum recorded selection metric. Learning-rate rows match scheduled epoch ends.
+Missing/unexpected fields, negative metrics and mistyped counts/tags are rejected.
+
+The loader contract now records the actual BatchSampler size/drop settings. An
+explicit BatchSampler can drop its last batch while DataLoader.drop_last is false;
+validation now checks the sampler itself and rejects this incomplete population.
+Valid explicit samplers, partial final training batches, deliberate training drop-last,
+sparse validation schedules, no-validation runs and zero-support branches round-trip.
+
+These are internal-consistency checks, not independent remeasurement of losses,
+proof of reviewer correctness, historical gradient application, selected tensor
+optimality or statistical independence. Declared support remains declared; absent
+historical membership is not reconstructed. Checks traverse historical exposure
+when saving/resuming and add overhead. All nine manual handoffs remain absent,
+with null evidence; empirical W1–W3 acceptance remains unapproved. Evidence is in
+the October 6 `history-*` records; phase workload allocations remain estimates.
+Verification: **2,590 passed in 106.69 seconds**, warnings as errors; **37 focused
+checks passed in 7.46 seconds**.
+
+### AdamW state domains at governed continuation boundaries — 2026-10-06
+
+A finite optimizer state is not necessarily mathematically admissible. A local
+fictional-corpus probe reproduced saving and resuming a negative `exp_avg_sq`.
+The new `training/adam_state.py` validator checks serialized parameter ownership,
+unique identifiers, required per-parameter fields, moment shapes/dtypes, finite
+values, nonnegative second moments and AMSGrad maximum dominance. A present step
+must be a floating scalar tensor with an integral value from one through the
+recorded global update count. Complex moments are checked componentwise, matching
+AdamW's independent real/imaginary updates.
+
+Checks run at existing governed state boundaries and during exact-resume preflight
+before receiver mutation. Parameters without state and unequal per-parameter step
+counts remain admissible: missing gradients and partial supervision can cause
+both. Explicit weights-only loading ignores optimizer state. A returned update
+that leaves invalid state retains its exposure record but cannot commit the epoch;
+a complete valid checkpoint can recover the trainer.
+
+These are necessary state-domain checks, not a reconstruction of optimizer history:
+missing state cannot by itself distinguish a never-updated parameter from deliberate
+state removal, and valid moments do not prove their historical gradients. No state
+repair or rollback is performed. Additional tensor scans add overhead; no new
+accelerator, real-data or linguistic qualification is claimed. All nine manual
+handoffs remain absent and empirical W1/W2/W3 acceptance remains unapproved.
+
+Validation: **2,603 tests passed in 106.86 seconds**, warnings as errors;
+41 focused checks passed in 7.25 seconds. Results and source hashes are retained in
+the October 6 `adam-state-verification.json`, focused/full logs and replayable fictional probe.
+
 ## Refreshed W1/W2 acceptance audit and source inventory — 2026-09-26
 
 All 15 full W1/W2 requirement rows were reassessed after the rig, rest-shape, native-method,

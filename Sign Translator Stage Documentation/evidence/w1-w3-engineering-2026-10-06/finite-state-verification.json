@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2572 passed in 104.82s",
+  "focused": "24 passed in 6.62s",
+  "code_sha256": {
+    "signtranslator/training/trainer.py": "642a256cc2b6476c3961724c5d7ce2a8490cfe8f911e9deea3d3f0dd31f857ca",
+    "tests/test_post_step_finiteness.py": "9367f7283db37aa8f738b25cb5a3a93d2f005795885fd50fa7bc8d452073f448",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/finite-state-probe.py": "28724cff54973280972ab944af52cc186436af5007a9ddf2b119111a14a75904"
+  },
+  "observed_before_fix": {
+    "parameter_finite": false,
+    "committed": true,
+    "completed_epochs": 1,
+    "checkpoint_saved": true
+  },
+  "scope": "Governed post-update/validation/commit finite state, checkpoint save and load preflight, retained returned-call exposure and recovery from finite checkpoints.",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Nonfinite detection is not a proof that all finite states are mathematically valid.",
+    "No rollback or silent hyperparameter repair.",
+    "Full tensor scans add overhead and may synchronize accelerators; no performance claim.",
+    "No empirical acceptance or new accelerator/distributed qualification."
+  ]
+}

@@ -24,6 +24,8 @@ from ..inference_context import preserving_eval_mode
 from ..config import TrainerConfig
 from .objectives import ObjectiveAccumulator, SupportedObjective
 from .exposure import exposure_records, validate_exposure, summarize_exposure
+from .history import validate_supported_history
+from .adam_state import validate_adam_state
 from ..data.governed_corpus import (
     GovernedMotionBatch, GovernedMotionDataset, collate_governed_motion,
     move_governed_batch,
@@ -136,6 +138,24 @@ def _check_optimizer_rates(groups, rates):
         raise ValueError('governed optimizer learning rates disagree with scheduler')
 
 
+def _require_finite_state(value, context):
+    """Check numeric leaves without copying model/optimizer tensor storage."""
+    if torch.is_tensor(value):
+        if not bool(torch.isfinite(value).all()):
+            raise FloatingPointError(f'nonfinite governed state: {context}')
+    elif isinstance(value, Mapping):
+        for key, item in value.items():
+            # Optimizer state keys may be Parameter objects; do not stringify
+            # their contents into diagnostics.
+            name = key if isinstance(key, (str, int)) else '<parameter>'
+            _require_finite_state(item, f'{context}.{name}')
+    elif isinstance(value, (list, tuple)):
+        for index, item in enumerate(value):
+            _require_finite_state(item, f'{context}[{index}]')
+    elif isinstance(value, float) and not math.isfinite(value):
+        raise FloatingPointError(f'nonfinite governed state: {context}')
+
+
 def _loader_contract(loader: Optional[DataLoader]) -> Optional[dict[str, Any]]:
     if loader is None:
         return None
@@ -153,6 +173,8 @@ def _loader_contract(loader: Optional[DataLoader]) -> Optional[dict[str, Any]]:
     }
     if isinstance(loader.dataset, GovernedMotionDataset):
         contract["governed"] = loader.dataset.training_contract
+        contract['batch_sampler_batch_size'] = loader.batch_sampler.batch_size
+        contract['batch_sampler_drop_last'] = loader.batch_sampler.drop_last
     return contract
 
 
@@ -190,7 +212,7 @@ def _governed_loaders(model, train_loader, val_loader) -> bool:
         if (loader.dataset.training_contract["corpus_sha256"] !=
                 train_loader.dataset.training_contract["corpus_sha256"]):
             raise ValueError("governed loaders must share the complete admitted corpus")
-    if val_loader is not None and val_loader.drop_last:
+    if val_loader is not None and val_loader.batch_sampler.drop_last:
         raise ValueError("governed validation must not drop the final batch")
     return True
 
@@ -380,6 +402,41 @@ class Trainer:
             model_contract=self.model_contract)
 
     # -- helpers ------------------------------------------------------------
+    def _check_supported_history(self, state, records):
+        if not self.supported_objectives:
+            return
+        state = _validated_training_state(state, epoch_limit=self.cfg.epochs)
+        for name, loader in (('train', self.train_loader), ('validation', self.val_loader)):
+            if _loader_contract(loader) != self.data_contract[name]:
+                raise ValueError('support-aware history loader contract changed')
+        validate_exposure(records, supported=True, global_step=state['global_step'],
+                          weights=self.cfg.loss_weights,
+                          identities=self.train_loader.dataset.supervision_identities)
+        epochs = state['completed_epochs']
+        batches = [self.train_loader.batch_sampler.batch_size] * len(self.train_loader)
+        if not self.train_loader.batch_sampler.drop_last:
+            batches[-1] = len(self.train_loader.dataset) - sum(batches[:-1])
+        validation_epochs = (list(range(self.cfg.val_every, epochs + 1, self.cfg.val_every))
+                             if self.val_loader is not None else [])
+        validate_supported_history(
+            state['history'], epochs=epochs, records=records,
+            sample_ids=self.train_loader.dataset.supervision_identities,
+            batch_sizes=batches, validation_epochs=validation_epochs,
+            validation_population=len(self.val_loader.dataset) if self.val_loader is not None else 0,
+            weights=self.cfg.loss_weights,
+            expected_lrs=[self._expected_scheduler_state(epoch * len(batches))['_last_lr'][0]
+                          for epoch in range(1, epochs + 1)])
+        selected = state['history'].get(f'val_{self.cfg.selection_metric}', [])
+        if len(selected) != len(validation_epochs) or state['best_val'] != (min(selected) if selected else math.inf):
+            raise ValueError('support-aware history best metric disagrees with validation selection')
+
+    def _check_finite_training_state(self):
+        if self.governed:
+            _require_finite_state(self.model.state_dict(), 'model')
+            _require_finite_state(self.opt.state, 'optimizer')
+            validate_adam_state(self.opt.state_dict(), self._bound_parameter_groups,
+                                global_step=self.global_step)
+
     def _expected_scheduler_state(self, step):
         if type(step) is not int or step < 0:
             raise ValueError('governed scheduler step must be a nonnegative integer')
@@ -501,9 +558,11 @@ class Trainer:
                         # Record once optimizer.step returns, even if scheduler.step fails.
                         self.global_step += 1
                         self._optimizer_exposure.append(encoded)
+                        self._check_finite_training_state()
                         self._check_optimizer_binding(schedule_step=self.global_step - 1)
                         self.sched.step()
                         self._check_optimizer_binding()
+        self._check_finite_training_state()
         result = accumulator.result()
         support = {**accumulator.support, 'total': accumulator.population}
         if training:
@@ -514,6 +573,7 @@ class Trainer:
 
     def train_epoch(self) -> Dict[str, float]:
         self._check_optimizer_binding()
+        self._check_finite_training_state()
         # Only fit() can commit metrics, selection and the epoch cursor together.
         # Exceptions may leave model/optimizer/RNG changes that cannot be undone.
         self._epoch_committed = False
@@ -537,6 +597,7 @@ class Trainer:
                           pre_step=self._check_optimizer_binding)
             self.sched.step()
             self.global_step += 1
+            self._check_finite_training_state()
             self._check_optimizer_binding()
 
             for k, v in losses.items():
@@ -550,6 +611,7 @@ class Trainer:
     @torch.no_grad()
     def validate(self) -> Dict[str, float]:
         self._check_optimizer_binding()
+        self._check_finite_training_state()
         if self.val_loader is None:
             return {}
         if self.supported_objectives:
@@ -575,6 +637,7 @@ class Trainer:
                     weight += batch_weight
         if count == 0:
             raise RuntimeError("validation iterator yielded zero batches")
+        self._check_finite_training_state()
         return {k: v / weight for k, v in agg.items()}
 
     def fit(self, verbose: bool = False,
@@ -622,6 +685,7 @@ class Trainer:
             else:
                 improved = False
 
+            self._check_finite_training_state()
             self.completed_epochs = epoch + 1
             self._epoch_committed = True
             if self.cfg.ckpt_path:
@@ -650,6 +714,12 @@ class Trainer:
             raise RuntimeError(
                 "exact checkpoint continuation currently requires num_workers=0; "
                 "worker-local RNG state is not serializable by this trainer")
+        self._check_finite_training_state()
+        if self.governed:
+            _require_finite_state(self.best_model_state, 'best_model')
+        self._check_supported_history(
+            dict(completed_epochs=self.completed_epochs, global_step=self.global_step,
+                 best_val=self.best_val, history=self.history), self.optimizer_exposure)
         destination = Path(path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         state = {
@@ -887,12 +957,18 @@ class Trainer:
             current_contract.pop('parameter_trainability', None)
         if canonical_json_bytes(recorded_contract) != canonical_json_bytes(current_contract):
             raise ValueError("checkpoint model contract does not match this model")
+        if self.governed:
+            _require_finite_state(checkpoint['model'], 'checkpoint.model')
+            if mode == 'resume':
+                _require_finite_state(checkpoint['optimizer'], 'checkpoint.optimizer')
+                _require_finite_state(checkpoint.get('best_model_state'), 'checkpoint.best_model')
 
         if mode == "weights":
             # Loading can partially copy tensors before a custom hook raises.
             self._epoch_committed = False
             self.model.load_state_dict(checkpoint["model"], strict=True)
             self._check_optimizer_binding()
+            self._check_finite_training_state()
             self._epoch_committed = True
             return
 
@@ -918,8 +994,11 @@ class Trainer:
             raise ValueError("resume numerical runtime does not match checkpoint")
         if checkpoint["data_contract"] != self.data_contract:
             raise ValueError("resume data-loader contract does not match checkpoint")
+        self._check_supported_history(training_state, checkpoint.get('optimizer_exposure', []))
         if self.governed:
             groups = checkpoint['optimizer']['param_groups']
+            validate_adam_state(checkpoint['optimizer'], self._bound_parameter_groups,
+                                global_step=training_state['global_step'])
             if _optimizer_options_bytes(groups) != self._bound_optimizer_options:
                 raise ValueError('checkpoint optimizer options do not match governed configuration')
             _check_optimizer_rates(groups, checkpoint['scheduler'].get('_last_lr'))
@@ -959,4 +1038,5 @@ class Trainer:
         self.best_model_state = best_state
         self._optimizer_exposure = exposure
         self._check_optimizer_binding()
+        self._check_finite_training_state()
         self._epoch_committed = True

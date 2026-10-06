@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2603 passed in 106.86s",
+  "focused": "41 passed in 7.25s",
+  "code_sha256": {
+    "signtranslator/training/adam_state.py": "d6860b82eb2ea946f5cc0342d356ee14d0378f5f3721304ce5bb15c8e370d588",
+    "signtranslator/training/trainer.py": "fad33519e23d5f3ce5d0e6c35d54016e795b8a72cc9f87c851ab30f82149c9c7",
+    "tests/test_adam_state.py": "a93f823ed84dd451339f519ebfe45c6382d745447241975f3541fa7521aa5137",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/adam-state-probe.py": "255cb9848b3699be7b14f35f465d6d2c5967b5479a7e1a667bd2e3c88f3fe274"
+  },
+  "observed_before_fix": {
+    "negative_second_moment_save_and_resume_accepted": true
+  },
+  "scope": "Governed AdamW moment, counter, serialized ownership and AMSGrad domains; pre-mutation exact-resume refusal and post-update noncommit with exposure retention.",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Necessary state domains do not prove historical gradients or reconstruct removed state.",
+    "No rollback or state repair.",
+    "Additional tensor scans add overhead; no new accelerator or empirical qualification."
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2590 passed in 106.69s",
+  "focused": "37 passed in 7.46s",
+  "code_sha256": {
+    "signtranslator/training/trainer.py": "6680e979f1eb6f03e17b87796d7f92342d4793cab08ff49518f9499cc6b9f5be",
+    "signtranslator/training/history.py": "5d13237d92f695a0703731bfca9b96c0dab4e56eced42e8183826452d1eaf2ad",
+    "tests/test_history_contract.py": "d50f34b88feb01f7e2bb4b1f1475eb5c9477146e2c3b23ba6a34dd069f61e926",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/history-probe.py": "64916798952389044d1fc21b7fcf3584aa6abcd7616a9634f00b6bbb17afa04c"
+  },
+  "observed_before_fix": {
+    "completed_epochs": 1,
+    "train_total_rows": 0,
+    "resume_accepted": true
+  },
+  "scope": "Support-aware history reconciled with declared epoch exposure, actual batch populations, validation schedule, nonzero support, scheduled epoch-end rates and minimum selected metric; actual BatchSampler settings bound.",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Internal consistency does not independently remeasure metric values or certify declared support.",
+    "No historical membership reconstruction, gradient proof or selected-tensor optimality proof.",
+    "History traversal adds save/resume overhead.",
+    "No empirical acceptance or new accelerator/distributed qualification."
+  ]
+}

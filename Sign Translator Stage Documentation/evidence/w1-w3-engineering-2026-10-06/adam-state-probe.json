@@ -1,0 +1,1 @@
+{"fixture": "fictional", "refused": true, "error": "invalid governed AdamW state: exp_avg_sq must be nonnegative", "checkpoint_written": false}

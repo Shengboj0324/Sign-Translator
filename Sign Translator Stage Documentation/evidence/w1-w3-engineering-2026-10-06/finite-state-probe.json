@@ -1,0 +1,8 @@
+{
+  "parameter_finite": false,
+  "returned_optimizer_steps": 1,
+  "committed": false,
+  "completed_epochs": 0,
+  "refusal": "nonfinite governed state: model.offset",
+  "phase_exit_approved": false
+}

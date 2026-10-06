@@ -1,0 +1,7 @@
+{
+  "completed_epochs": 1,
+  "train_total_rows": 0,
+  "refusal": "support-aware history mismatch: train_total",
+  "checkpoint_saved": false,
+  "phase_exit_approved": false
+}
