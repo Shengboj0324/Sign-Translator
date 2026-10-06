@@ -177,3 +177,6 @@ def test_pipeline_analyzes_best_artifact_and_retains_final_weights(tmp_path, mon
         assert torch.equal(result['model'].state_dict()[key], last['model'][key])
     assert sha256_file(paths['best']) in captured['checkpoint_identity']
     assert result['report'].protocol['selection_metric'] == 'generation'
+    assert result['trainer'].global_step == last['training_state']['global_step']
+    assert result['trainer'].history == last['training_state']['history']
+    result['trainer'].save(tmp_path / 'after-analysis.pt')

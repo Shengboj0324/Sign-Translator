@@ -66,7 +66,8 @@ class ReferentTextSIRModel(RelationalTextSIRModel):
             ReferentLogits(scores, target.annotation_sha256, target.vocabulary_sha256),
             batch.annotations, self.vocabulary)
         terms = dict(parent.terms)
-        terms['referent_equality'] = SupportedTerm(values.sum(), int(support.sum()))
+        terms['referent_equality'] = SupportedTerm(values.sum(), int(support.sum()),
+                                                tuple(support.detach().cpu().tolist()))
         return SupportedObjective(terms, weights, parent.population_size)
 
     @torch.no_grad()

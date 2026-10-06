@@ -1,0 +1,1173 @@
+{
+  "schema_version": 1,
+  "scope": "fictional-joint-search-workload-matrix",
+  "records": [
+    {
+      "events": 8,
+      "pattern": "positive",
+      "placement": "all",
+      "budget": 1000,
+      "input_sha256": "52449802bb8a5a5e4b9abd7a39a9e222fa65a4c1928656bdb04a687e11fa15ba",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 23,
+      "seconds": [
+        0.0009729999947012402,
+        0.0007767919960315339
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 8,
+      "pattern": "positive",
+      "placement": "all",
+      "budget": 10000,
+      "input_sha256": "52449802bb8a5a5e4b9abd7a39a9e222fa65a4c1928656bdb04a687e11fa15ba",
+      "status": "unique_optimum_candidate",
+      "work": 5458,
+      "evaluated_partitions": 121,
+      "seconds": [
+        0.004567665993818082,
+        0.004444791004061699
+      ],
+      "best_gain": "200/3",
+      "runner_up_gain": "56"
+    },
+    {
+      "events": 8,
+      "pattern": "positive",
+      "placement": "alternating",
+      "budget": 1000,
+      "input_sha256": "793f0fb2dcadb4d2feb4b1103736e18020366d2c8ac7581355579610874988d6",
+      "status": "unique_optimum_candidate",
+      "work": 31,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.0001344580014119856,
+        0.00012620800407603383
+      ],
+      "best_gain": "128/3",
+      "runner_up_gain": "38"
+    },
+    {
+      "events": 8,
+      "pattern": "positive",
+      "placement": "alternating",
+      "budget": 10000,
+      "input_sha256": "793f0fb2dcadb4d2feb4b1103736e18020366d2c8ac7581355579610874988d6",
+      "status": "unique_optimum_candidate",
+      "work": 31,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.00014000000373926014,
+        0.00010845799988601357
+      ],
+      "best_gain": "128/3",
+      "runner_up_gain": "38"
+    },
+    {
+      "events": 8,
+      "pattern": "positive",
+      "placement": "none",
+      "budget": 1000,
+      "input_sha256": "b63421846b9f3fd79f21e2dcc324330fb97a898374eb3d0421492c53dd943985",
+      "status": "unique_optimum_candidate",
+      "work": 15,
+      "evaluated_partitions": 2,
+      "seconds": [
+        9.379100083606318e-05,
+        9.337500523542985e-05
+      ],
+      "best_gain": "56/3",
+      "runner_up_gain": "14"
+    },
+    {
+      "events": 8,
+      "pattern": "positive",
+      "placement": "none",
+      "budget": 10000,
+      "input_sha256": "b63421846b9f3fd79f21e2dcc324330fb97a898374eb3d0421492c53dd943985",
+      "status": "unique_optimum_candidate",
+      "work": 15,
+      "evaluated_partitions": 2,
+      "seconds": [
+        8.683300256961957e-05,
+        0.00011329200060572475
+      ],
+      "best_gain": "56/3",
+      "runner_up_gain": "14"
+    },
+    {
+      "events": 8,
+      "pattern": "negative",
+      "placement": "all",
+      "budget": 1000,
+      "input_sha256": "2c3e35d6ed08a4948dd2fc7b4284a2b4e3bf2a186ce4848d0389b5bc050615a5",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 9,
+      "seconds": [
+        0.0005111659993417561,
+        0.0004909580020466819
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 8,
+      "pattern": "negative",
+      "placement": "all",
+      "budget": 10000,
+      "input_sha256": "2c3e35d6ed08a4948dd2fc7b4284a2b4e3bf2a186ce4848d0389b5bc050615a5",
+      "status": "search_exhausted",
+      "work": 10000,
+      "evaluated_partitions": 86,
+      "seconds": [
+        0.0045678329988732,
+        0.004548459000943694
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 8,
+      "pattern": "negative",
+      "placement": "alternating",
+      "budget": 1000,
+      "input_sha256": "49825ac96d51b503a13687155e0273b4b1a30ee3bee9667389893e1df4a35b4b",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 10,
+      "seconds": [
+        0.00043616600305540487,
+        0.0004151249959249981
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 8,
+      "pattern": "negative",
+      "placement": "alternating",
+      "budget": 10000,
+      "input_sha256": "49825ac96d51b503a13687155e0273b4b1a30ee3bee9667389893e1df4a35b4b",
+      "status": "unique_optimum_candidate",
+      "work": 4285,
+      "evaluated_partitions": 40,
+      "seconds": [
+        0.0022023339988663793,
+        0.0023438339994754642
+      ],
+      "best_gain": "113/6",
+      "runner_up_gain": "109/6"
+    },
+    {
+      "events": 8,
+      "pattern": "negative",
+      "placement": "none",
+      "budget": 1000,
+      "input_sha256": "b4d50ce0b51a13ce6742c0f5bfde1130c679f9091b6a8577a04b3726996e3444",
+      "status": "unique_optimum_candidate",
+      "work": 36,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.00014620900037698448,
+        0.00011950000043725595
+      ],
+      "best_gain": "0",
+      "runner_up_gain": "-2/3"
+    },
+    {
+      "events": 8,
+      "pattern": "negative",
+      "placement": "none",
+      "budget": 10000,
+      "input_sha256": "b4d50ce0b51a13ce6742c0f5bfde1130c679f9091b6a8577a04b3726996e3444",
+      "status": "unique_optimum_candidate",
+      "work": 36,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.00011829200229840353,
+        0.00011574999371077865
+      ],
+      "best_gain": "0",
+      "runner_up_gain": "-2/3"
+    },
+    {
+      "events": 8,
+      "pattern": "mixed",
+      "placement": "all",
+      "budget": 1000,
+      "input_sha256": "52c0cd6314336df8cfc8a619cc8d4de114b5593e721194055a8b5ff6797c7f97",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 11,
+      "seconds": [
+        0.0007039580013952218,
+        0.0006526669967570342
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 8,
+      "pattern": "mixed",
+      "placement": "all",
+      "budget": 10000,
+      "input_sha256": "52c0cd6314336df8cfc8a619cc8d4de114b5593e721194055a8b5ff6797c7f97",
+      "status": "unique_optimum_candidate",
+      "work": 3927,
+      "evaluated_partitions": 34,
+      "seconds": [
+        0.0027900830027647316,
+        0.0028361250006128103
+      ],
+      "best_gain": "39",
+      "runner_up_gain": "77/2"
+    },
+    {
+      "events": 8,
+      "pattern": "mixed",
+      "placement": "alternating",
+      "budget": 1000,
+      "input_sha256": "5d4e6d1882c5c0c0e8501a64871a4416378194db2c33479e08951ed3136f72b0",
+      "status": "ambiguous",
+      "work": 626,
+      "evaluated_partitions": 10,
+      "seconds": [
+        0.0008350419957423583,
+        0.0008949580005719326
+      ],
+      "best_gain": "85/3",
+      "runner_up_gain": "85/3"
+    },
+    {
+      "events": 8,
+      "pattern": "mixed",
+      "placement": "alternating",
+      "budget": 10000,
+      "input_sha256": "5d4e6d1882c5c0c0e8501a64871a4416378194db2c33479e08951ed3136f72b0",
+      "status": "ambiguous",
+      "work": 626,
+      "evaluated_partitions": 10,
+      "seconds": [
+        0.0008313330035889521,
+        0.0008337920007761568
+      ],
+      "best_gain": "85/3",
+      "runner_up_gain": "85/3"
+    },
+    {
+      "events": 8,
+      "pattern": "mixed",
+      "placement": "none",
+      "budget": 1000,
+      "input_sha256": "faac9f4b0f871db7f3e716444c6f40e1ff4f8bf09a57c8281a8bcb937bc9d05f",
+      "status": "unique_optimum_candidate",
+      "work": 143,
+      "evaluated_partitions": 7,
+      "seconds": [
+        0.00037658300425391644,
+        0.0003536249932949431
+      ],
+      "best_gain": "40/3",
+      "runner_up_gain": "38/3"
+    },
+    {
+      "events": 8,
+      "pattern": "mixed",
+      "placement": "none",
+      "budget": 10000,
+      "input_sha256": "faac9f4b0f871db7f3e716444c6f40e1ff4f8bf09a57c8281a8bcb937bc9d05f",
+      "status": "unique_optimum_candidate",
+      "work": 143,
+      "evaluated_partitions": 7,
+      "seconds": [
+        0.0003762920023291372,
+        0.0003445840047788806
+      ],
+      "best_gain": "40/3",
+      "runner_up_gain": "38/3"
+    },
+    {
+      "events": 16,
+      "pattern": "positive",
+      "placement": "all",
+      "budget": 1000,
+      "input_sha256": "31458fafb173873cb03acc523cabcea6d37036f5a014a129ba0d11bd06e71ec9",
+      "status": "unique_optimum_candidate",
+      "work": 873,
+      "evaluated_partitions": 17,
+      "seconds": [
+        0.0026375419984105974,
+        0.002541458001360297
+      ],
+      "best_gain": "176",
+      "runner_up_gain": "160"
+    },
+    {
+      "events": 16,
+      "pattern": "positive",
+      "placement": "all",
+      "budget": 10000,
+      "input_sha256": "31458fafb173873cb03acc523cabcea6d37036f5a014a129ba0d11bd06e71ec9",
+      "status": "unique_optimum_candidate",
+      "work": 873,
+      "evaluated_partitions": 17,
+      "seconds": [
+        0.0024861249985406175,
+        0.0025727920001372695
+      ],
+      "best_gain": "176",
+      "runner_up_gain": "160"
+    },
+    {
+      "events": 16,
+      "pattern": "positive",
+      "placement": "alternating",
+      "budget": 1000,
+      "input_sha256": "7131cf17048c0c1476a194fde02e47c92cadb94c7487f89710baa7906f78e1bf",
+      "status": "unique_optimum_candidate",
+      "work": 47,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.00026154200168093666,
+        0.00027054199745180085
+      ],
+      "best_gain": "128",
+      "runner_up_gain": "118"
+    },
+    {
+      "events": 16,
+      "pattern": "positive",
+      "placement": "alternating",
+      "budget": 10000,
+      "input_sha256": "7131cf17048c0c1476a194fde02e47c92cadb94c7487f89710baa7906f78e1bf",
+      "status": "unique_optimum_candidate",
+      "work": 47,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.0002783329982776195,
+        0.0002643330008140765
+      ],
+      "best_gain": "128",
+      "runner_up_gain": "118"
+    },
+    {
+      "events": 16,
+      "pattern": "positive",
+      "placement": "none",
+      "budget": 1000,
+      "input_sha256": "c4ad459b9a42b2319c5eb37ea30db2053bab705e136c384885a3d5cfab7df9c8",
+      "status": "unique_optimum_candidate",
+      "work": 31,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.0004560000015771948,
+        0.0002161250013159588
+      ],
+      "best_gain": "80",
+      "runner_up_gain": "70"
+    },
+    {
+      "events": 16,
+      "pattern": "positive",
+      "placement": "none",
+      "budget": 10000,
+      "input_sha256": "c4ad459b9a42b2319c5eb37ea30db2053bab705e136c384885a3d5cfab7df9c8",
+      "status": "unique_optimum_candidate",
+      "work": 31,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.0002092079957947135,
+        0.00022687500313622877
+      ],
+      "best_gain": "80",
+      "runner_up_gain": "70"
+    },
+    {
+      "events": 16,
+      "pattern": "negative",
+      "placement": "all",
+      "budget": 1000,
+      "input_sha256": "47b62c4b45d3d93203f5437b52598b0e85964dde8bec15da907346bad3478c0c",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 8,
+      "seconds": [
+        0.0006222919982974418,
+        0.0005773340017185546
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 16,
+      "pattern": "negative",
+      "placement": "all",
+      "budget": 10000,
+      "input_sha256": "47b62c4b45d3d93203f5437b52598b0e85964dde8bec15da907346bad3478c0c",
+      "status": "search_exhausted",
+      "work": 10000,
+      "evaluated_partitions": 79,
+      "seconds": [
+        0.004479999995965045,
+        0.004557749998639338
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 16,
+      "pattern": "negative",
+      "placement": "alternating",
+      "budget": 1000,
+      "input_sha256": "22ec4949e13d9af2d93a446514209823849689a401f6e2ae95205c89ecd5580c",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 8,
+      "seconds": [
+        0.0005523750005522743,
+        0.0005512499992619269
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 16,
+      "pattern": "negative",
+      "placement": "alternating",
+      "budget": 10000,
+      "input_sha256": "22ec4949e13d9af2d93a446514209823849689a401f6e2ae95205c89ecd5580c",
+      "status": "search_exhausted",
+      "work": 10000,
+      "evaluated_partitions": 77,
+      "seconds": [
+        0.003878916999383364,
+        0.003642707997641992
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 16,
+      "pattern": "negative",
+      "placement": "none",
+      "budget": 1000,
+      "input_sha256": "9f94a2e8ad91497219cc27e208878537b41293c995498313dc6100160db62fc7",
+      "status": "unique_optimum_candidate",
+      "work": 136,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.0005467919982038438,
+        0.0005574579990934581
+      ],
+      "best_gain": "0",
+      "runner_up_gain": "-2/3"
+    },
+    {
+      "events": 16,
+      "pattern": "negative",
+      "placement": "none",
+      "budget": 10000,
+      "input_sha256": "9f94a2e8ad91497219cc27e208878537b41293c995498313dc6100160db62fc7",
+      "status": "unique_optimum_candidate",
+      "work": 136,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.0005553749942919239,
+        0.0005560409990721382
+      ],
+      "best_gain": "0",
+      "runner_up_gain": "-2/3"
+    },
+    {
+      "events": 16,
+      "pattern": "mixed",
+      "placement": "all",
+      "budget": 1000,
+      "input_sha256": "6d38179034084f0a6972b6650165da9bdaff5bee14a9b78487ea5f7d9cd369aa",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 8,
+      "seconds": [
+        0.0008618330030003563,
+        0.000949125002080109
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 16,
+      "pattern": "mixed",
+      "placement": "all",
+      "budget": 10000,
+      "input_sha256": "6d38179034084f0a6972b6650165da9bdaff5bee14a9b78487ea5f7d9cd369aa",
+      "status": "search_exhausted",
+      "work": 10000,
+      "evaluated_partitions": 70,
+      "seconds": [
+        0.013668916995811742,
+        0.014113249999354593
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 16,
+      "pattern": "mixed",
+      "placement": "alternating",
+      "budget": 1000,
+      "input_sha256": "8a58d62d837939e868b24b606002a927228703289f57232421b150fdfd30b245",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 10,
+      "seconds": [
+        0.0018585420039016753,
+        0.0018259159987792373
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 16,
+      "pattern": "mixed",
+      "placement": "alternating",
+      "budget": 10000,
+      "input_sha256": "8a58d62d837939e868b24b606002a927228703289f57232421b150fdfd30b245",
+      "status": "search_exhausted",
+      "work": 10000,
+      "evaluated_partitions": 18,
+      "seconds": [
+        0.04812029199820245,
+        0.04844570799468784
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 16,
+      "pattern": "mixed",
+      "placement": "none",
+      "budget": 1000,
+      "input_sha256": "dede91023b241148d9665805a46f9fb1f31989f1b6c26c0e79337eb1fecbbbf6",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 15,
+      "seconds": [
+        0.004077999998116866,
+        0.004177916998742148
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 16,
+      "pattern": "mixed",
+      "placement": "none",
+      "budget": 10000,
+      "input_sha256": "dede91023b241148d9665805a46f9fb1f31989f1b6c26c0e79337eb1fecbbbf6",
+      "status": "unique_optimum_candidate",
+      "work": 5067,
+      "evaluated_partitions": 23,
+      "seconds": [
+        0.023546457996417303,
+        0.023282125002879184
+      ],
+      "best_gain": "54",
+      "runner_up_gain": "158/3"
+    },
+    {
+      "events": 32,
+      "pattern": "positive",
+      "placement": "all",
+      "budget": 1000,
+      "input_sha256": "bd4fe50d4d36c48b55c6cf038025ffa92577fc13cdc1a5c04a4a2f7880cba3bd",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 19,
+      "seconds": [
+        0.006816459004767239,
+        0.006705667001369875
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 32,
+      "pattern": "positive",
+      "placement": "all",
+      "budget": 10000,
+      "input_sha256": "bd4fe50d4d36c48b55c6cf038025ffa92577fc13cdc1a5c04a4a2f7880cba3bd",
+      "status": "unique_optimum_candidate",
+      "work": 2513,
+      "evaluated_partitions": 33,
+      "seconds": [
+        0.0223895419985638,
+        0.022327874998154584
+      ],
+      "best_gain": "1568/3",
+      "runner_up_gain": "496"
+    },
+    {
+      "events": 32,
+      "pattern": "positive",
+      "placement": "alternating",
+      "budget": 1000,
+      "input_sha256": "57bc60ec1ef9788ee4e4b6299eacb8a9a951798cdafc51c672cb34ff663c3960",
+      "status": "unique_optimum_candidate",
+      "work": 79,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.016188292000151705,
+        0.0009229589995811693
+      ],
+      "best_gain": "1280/3",
+      "runner_up_gain": "406"
+    },
+    {
+      "events": 32,
+      "pattern": "positive",
+      "placement": "alternating",
+      "budget": 10000,
+      "input_sha256": "57bc60ec1ef9788ee4e4b6299eacb8a9a951798cdafc51c672cb34ff663c3960",
+      "status": "unique_optimum_candidate",
+      "work": 79,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.0009075830021174625,
+        0.0009153339997283183
+      ],
+      "best_gain": "1280/3",
+      "runner_up_gain": "406"
+    },
+    {
+      "events": 32,
+      "pattern": "positive",
+      "placement": "none",
+      "budget": 1000,
+      "input_sha256": "d9c81956f3b1c4f1fdff5362858b0a2251cd08e0b946fc021aaf2b874541d1a1",
+      "status": "unique_optimum_candidate",
+      "work": 63,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.0008164169994415715,
+        0.0008331249991897494
+      ],
+      "best_gain": "992/3",
+      "runner_up_gain": "310"
+    },
+    {
+      "events": 32,
+      "pattern": "positive",
+      "placement": "none",
+      "budget": 10000,
+      "input_sha256": "d9c81956f3b1c4f1fdff5362858b0a2251cd08e0b946fc021aaf2b874541d1a1",
+      "status": "unique_optimum_candidate",
+      "work": 63,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.0008382500018342398,
+        0.0008475829963572323
+      ],
+      "best_gain": "992/3",
+      "runner_up_gain": "310"
+    },
+    {
+      "events": 32,
+      "pattern": "negative",
+      "placement": "all",
+      "budget": 1000,
+      "input_sha256": "49c53d14528766cdb2e6d46785ee45f07480acdf7fbdb0514c857df9970cc2fe",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 9,
+      "seconds": [
+        0.0017921660037245601,
+        0.0016924579977057874
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 32,
+      "pattern": "negative",
+      "placement": "all",
+      "budget": 10000,
+      "input_sha256": "49c53d14528766cdb2e6d46785ee45f07480acdf7fbdb0514c857df9970cc2fe",
+      "status": "search_exhausted",
+      "work": 10000,
+      "evaluated_partitions": 42,
+      "seconds": [
+        0.04511637499672361,
+        0.0451770830040914
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 32,
+      "pattern": "negative",
+      "placement": "alternating",
+      "budget": 1000,
+      "input_sha256": "adf98c7bf60829f8080a606b7876ec748ee54fd56f4d2336f4e10686b785af30",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 7,
+      "seconds": [
+        0.0010675410012481734,
+        0.001025624995236285
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 32,
+      "pattern": "negative",
+      "placement": "alternating",
+      "budget": 10000,
+      "input_sha256": "adf98c7bf60829f8080a606b7876ec748ee54fd56f4d2336f4e10686b785af30",
+      "status": "search_exhausted",
+      "work": 10000,
+      "evaluated_partitions": 75,
+      "seconds": [
+        0.0047015829986776225,
+        0.004785417004313786
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 32,
+      "pattern": "negative",
+      "placement": "none",
+      "budget": 1000,
+      "input_sha256": "0b1f3605ec3c2efa761ef0e7a23f11cc02b37bce1f0e0f95c9a110ec11c8f249",
+      "status": "unique_optimum_candidate",
+      "work": 528,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.005602207995252684,
+        0.0055542919944855385
+      ],
+      "best_gain": "0",
+      "runner_up_gain": "-2/3"
+    },
+    {
+      "events": 32,
+      "pattern": "negative",
+      "placement": "none",
+      "budget": 10000,
+      "input_sha256": "0b1f3605ec3c2efa761ef0e7a23f11cc02b37bce1f0e0f95c9a110ec11c8f249",
+      "status": "unique_optimum_candidate",
+      "work": 528,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.005553834002057556,
+        0.005608792002021801
+      ],
+      "best_gain": "0",
+      "runner_up_gain": "-2/3"
+    },
+    {
+      "events": 32,
+      "pattern": "mixed",
+      "placement": "all",
+      "budget": 1000,
+      "input_sha256": "99dff7b249d0df477b51267336d33b23bb21488832fc28bc01f88e72c59e0000",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 8,
+      "seconds": [
+        0.001930832993821241,
+        0.0019856250000884756
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 32,
+      "pattern": "mixed",
+      "placement": "all",
+      "budget": 10000,
+      "input_sha256": "99dff7b249d0df477b51267336d33b23bb21488832fc28bc01f88e72c59e0000",
+      "status": "search_exhausted",
+      "work": 10000,
+      "evaluated_partitions": 71,
+      "seconds": [
+        0.017456583998864517,
+        0.01726562499970896
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 32,
+      "pattern": "mixed",
+      "placement": "alternating",
+      "budget": 1000,
+      "input_sha256": "c3a5cd09e7e4564114ebdb72ffd874a25d949377a080f9ad9505f0c1710a2b83",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 8,
+      "seconds": [
+        0.0024637079986860044,
+        0.0023450420048902743
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 32,
+      "pattern": "mixed",
+      "placement": "alternating",
+      "budget": 10000,
+      "input_sha256": "c3a5cd09e7e4564114ebdb72ffd874a25d949377a080f9ad9505f0c1710a2b83",
+      "status": "search_exhausted",
+      "work": 10000,
+      "evaluated_partitions": 22,
+      "seconds": [
+        0.05975041700003203,
+        0.060404290998121724
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 32,
+      "pattern": "mixed",
+      "placement": "none",
+      "budget": 1000,
+      "input_sha256": "8a3ec0b3c71a7a8529c9be862f993aa1b8d156bc17da3ece600577c1ea9f5412",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 9,
+      "seconds": [
+        0.008459750002657529,
+        0.008451708003121894
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 32,
+      "pattern": "mixed",
+      "placement": "none",
+      "budget": 10000,
+      "input_sha256": "8a3ec0b3c71a7a8529c9be862f993aa1b8d156bc17da3ece600577c1ea9f5412",
+      "status": "search_exhausted",
+      "work": 10000,
+      "evaluated_partitions": 14,
+      "seconds": [
+        0.09266020899667637,
+        0.09065833299973747
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 64,
+      "pattern": "positive",
+      "placement": "all",
+      "budget": 1000,
+      "input_sha256": "294ad1eb89f44ed354361a7a44aa982db86eed4b4429d2168b5a199b9d8b3885",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 18,
+      "seconds": [
+        0.013385083002503961,
+        0.013048875000094995
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 64,
+      "pattern": "positive",
+      "placement": "all",
+      "budget": 10000,
+      "input_sha256": "294ad1eb89f44ed354361a7a44aa982db86eed4b4429d2168b5a199b9d8b3885",
+      "status": "unique_optimum_candidate",
+      "work": 8097,
+      "evaluated_partitions": 65,
+      "seconds": [
+        0.2411822919966653,
+        0.2340711659999215
+      ],
+      "best_gain": "1728",
+      "runner_up_gain": "1680"
+    },
+    {
+      "events": 64,
+      "pattern": "positive",
+      "placement": "alternating",
+      "budget": 1000,
+      "input_sha256": "a595ff8c08c6a99fe101f67b0e8d84554f87dcf0bf120d86da71b23a044b6103",
+      "status": "unique_optimum_candidate",
+      "work": 143,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.004031959004350938,
+        0.003999791995738633
+      ],
+      "best_gain": "1536",
+      "runner_up_gain": "1494"
+    },
+    {
+      "events": 64,
+      "pattern": "positive",
+      "placement": "alternating",
+      "budget": 10000,
+      "input_sha256": "a595ff8c08c6a99fe101f67b0e8d84554f87dcf0bf120d86da71b23a044b6103",
+      "status": "unique_optimum_candidate",
+      "work": 143,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.003993500002252404,
+        0.004051750001963228
+      ],
+      "best_gain": "1536",
+      "runner_up_gain": "1494"
+    },
+    {
+      "events": 64,
+      "pattern": "positive",
+      "placement": "none",
+      "budget": 1000,
+      "input_sha256": "3fa9fe06a72457927ec8c4659158e162c6e80e9d9c6813f1fb8eac85cbe7245a",
+      "status": "unique_optimum_candidate",
+      "work": 127,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.0037365410025813617,
+        0.0038252500016824342
+      ],
+      "best_gain": "1344",
+      "runner_up_gain": "1302"
+    },
+    {
+      "events": 64,
+      "pattern": "positive",
+      "placement": "none",
+      "budget": 10000,
+      "input_sha256": "3fa9fe06a72457927ec8c4659158e162c6e80e9d9c6813f1fb8eac85cbe7245a",
+      "status": "unique_optimum_candidate",
+      "work": 127,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.0037784169981023297,
+        0.003730208001798019
+      ],
+      "best_gain": "1344",
+      "runner_up_gain": "1302"
+    },
+    {
+      "events": 64,
+      "pattern": "negative",
+      "placement": "all",
+      "budget": 1000,
+      "input_sha256": "e6d513bd8b3fd1cbb307ea51333948e7f82dfa5bc8f6cdf61328e9da2ce4364d",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 8,
+      "seconds": [
+        0.0028077919996576384,
+        0.002704209000512492
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 64,
+      "pattern": "negative",
+      "placement": "all",
+      "budget": 10000,
+      "input_sha256": "e6d513bd8b3fd1cbb307ea51333948e7f82dfa5bc8f6cdf61328e9da2ce4364d",
+      "status": "search_exhausted",
+      "work": 10000,
+      "evaluated_partitions": 80,
+      "seconds": [
+        0.010549042002821807,
+        0.009791000004042871
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 64,
+      "pattern": "negative",
+      "placement": "alternating",
+      "budget": 1000,
+      "input_sha256": "0a755759a9feb6eab561ca866024eb1aa6e35b310fb3ff03bcfe13cf2999776f",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 4,
+      "seconds": [
+        0.0030760000008740462,
+        0.0030403340060729533
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 64,
+      "pattern": "negative",
+      "placement": "alternating",
+      "budget": 10000,
+      "input_sha256": "0a755759a9feb6eab561ca866024eb1aa6e35b310fb3ff03bcfe13cf2999776f",
+      "status": "search_exhausted",
+      "work": 10000,
+      "evaluated_partitions": 75,
+      "seconds": [
+        0.008158541000739206,
+        0.008113083000353072
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 64,
+      "pattern": "negative",
+      "placement": "none",
+      "budget": 1000,
+      "input_sha256": "2a56d5bfc932ed8a7167110c418fe013828245d35d1a6ed1cebc4daa7e4c9027",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.02175379200343741,
+        0.02166350000334205
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 64,
+      "pattern": "negative",
+      "placement": "none",
+      "budget": 10000,
+      "input_sha256": "2a56d5bfc932ed8a7167110c418fe013828245d35d1a6ed1cebc4daa7e4c9027",
+      "status": "unique_optimum_candidate",
+      "work": 2080,
+      "evaluated_partitions": 2,
+      "seconds": [
+        0.0679847499995958,
+        0.06759833300020546
+      ],
+      "best_gain": "0",
+      "runner_up_gain": "-2/3"
+    },
+    {
+      "events": 64,
+      "pattern": "mixed",
+      "placement": "all",
+      "budget": 1000,
+      "input_sha256": "5ffcd80d98341918941b2811466dc9f7f5554910e8947e717e7163faa5df9c93",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 7,
+      "seconds": [
+        0.007401167000352871,
+        0.0069632500017178245
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 64,
+      "pattern": "mixed",
+      "placement": "all",
+      "budget": 10000,
+      "input_sha256": "5ffcd80d98341918941b2811466dc9f7f5554910e8947e717e7163faa5df9c93",
+      "status": "search_exhausted",
+      "work": 10000,
+      "evaluated_partitions": 61,
+      "seconds": [
+        0.04253833300026599,
+        0.042235042004904244
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 64,
+      "pattern": "mixed",
+      "placement": "alternating",
+      "budget": 1000,
+      "input_sha256": "13f203f2cde91e48f49d6e302380ffced5852cb38fe99bdadde2b6a9b14c53f5",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 5,
+      "seconds": [
+        0.013518833002308384,
+        0.013092250002955552
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 64,
+      "pattern": "mixed",
+      "placement": "alternating",
+      "budget": 10000,
+      "input_sha256": "13f203f2cde91e48f49d6e302380ffced5852cb38fe99bdadde2b6a9b14c53f5",
+      "status": "search_exhausted",
+      "work": 10000,
+      "evaluated_partitions": 25,
+      "seconds": [
+        0.14904687499802094,
+        0.14896358400437748
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 64,
+      "pattern": "mixed",
+      "placement": "none",
+      "budget": 1000,
+      "input_sha256": "932efde390a69dafd98e760f8e99c626c077ae4927f0f847fd119c520e8e588b",
+      "status": "search_exhausted",
+      "work": 1000,
+      "evaluated_partitions": 5,
+      "seconds": [
+        0.027276166998490226,
+        0.026502583001274616
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    },
+    {
+      "events": 64,
+      "pattern": "mixed",
+      "placement": "none",
+      "budget": 10000,
+      "input_sha256": "932efde390a69dafd98e760f8e99c626c077ae4927f0f847fd119c520e8e588b",
+      "status": "search_exhausted",
+      "work": 10000,
+      "evaluated_partitions": 5,
+      "seconds": [
+        0.274673250001797,
+        0.2751260410004761
+      ],
+      "best_gain": null,
+      "runner_up_gain": null
+    }
+  ],
+  "weights": {
+    "referent": "2/3",
+    "locus": "3/2"
+  },
+  "alphabet_size": 4,
+  "implementation_sha256": "e0f5801ee0a36f9f56ad0426cd8b0a50e3012381f9b15f049120fc95829c485e",
+  "partition_bounds_sha256": "3a8e5c4a8acb391c11511c3c722cd086ed68f802316f3adca29fcff1636df676",
+  "script_sha256": "ca8ed62a0ee2b6c6b7a656e327964880556d4d7a877e9a367bf60d22550f1112",
+  "phase_exit_approved": false,
+  "limitations": [
+    "Fixed synthetic systems, not independent draws from a real model distribution.",
+    "Two runs per configuration are descriptive timings, not latency percentiles.",
+    "Work budgets bound node/probe counts, not elapsed time; target hardware remains absent.",
+    "Score reconstruction and budget monotonicity are consistency checks, not independent exhaustive optimality proofs."
+  ]
+}

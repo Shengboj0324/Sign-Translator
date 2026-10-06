@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2459 passed in 92.29s",
+  "focused_tests": "20 passed in 2.79s",
+  "code_sha256": {
+    "signtranslator/planning/exposure_audit.py": "9b5bef8fe6f05cf40e4597886047f20664e865023097c20119bdaae776d62236",
+    "tests/test_exposure_audit.py": "69dabb42af5063e07430fe70e064092615a9ee273098bf04e53778f3c8ffd724"
+  },
+  "scope": "Declaration audit schema2 embeds per-example available target counts and hashes; relation/reference audits do not require locus alphabet; locus audit requires bound alphabet; directed/upper-triangle domains and unknown polarity preserved.",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "limits": [
+    "available target counts not optimizer target-cell exposure",
+    "current target definitions not historical gradient proof",
+    "canonical planner classes only",
+    "no empirical competence claim"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "result": "72 configurations, two identical-result repetitions each; 144 decoder calls completed",
+  "command": ".venv/bin/python 'Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-05/joint-workload-profile.py'",
+  "profile_sha256": "6958e129b11ffe1baf1d3d2f2682829ab5c10e9f3327c0914fcc312e9aaed526",
+  "verified_scope": "Repeatability, score reconstruction, bounded work, fail-closed exhaustion, and unchanged completed results at larger budget",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "not_proven": [
+    "representative real-model workload",
+    "latency percentiles or production SLA",
+    "independent optimality proof for large cases",
+    "empirical W1-W3 acceptance"
+  ]
+}

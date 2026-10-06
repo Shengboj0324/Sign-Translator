@@ -25,7 +25,7 @@ from .data.readiness import assess_corpus
 from .models import BidirectionalSignTranslator
 from .training import Trainer, checkpoint_paths
 from .analysis import analyze
-from .reproducibility import sha256_file
+from .reproducibility import sha256_file, isolated_deterministic_rng
 from .skeleton.graph import SkeletonGraph, NUM_DEFAULT_JOINTS
 
 
@@ -172,7 +172,12 @@ def run_pipeline(corpus_dir: str, epochs: int = 1, batch_size: int = 32,
         try:
             if do_train and ckpt_path:
                 selected = checkpoint_paths(ckpt_path)["best"]
-                trainer.load(selected, mode="weights")
+                # Use a fresh loader so analysis does not attach replacement
+                # weights to an already trained optimizer/history. The outer
+                # finally restores model tensors; preserve surrounding RNG too.
+                with isolated_deterministic_rng(seed):
+                    selection_loader = Trainer(model, cfg, train_loader, val_loader)
+                    selection_loader.load(selected, mode="weights")
                 identity = f"best:{selected.resolve()}:sha256={sha256_file(selected)}"
             elif do_train:
                 if trainer.best_model_state is None:

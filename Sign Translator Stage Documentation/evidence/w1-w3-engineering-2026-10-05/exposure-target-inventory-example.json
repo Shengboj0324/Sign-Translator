@@ -1,0 +1,264 @@
+{
+  "evidence_kind": "fictional engineering fixture only",
+  "report_sha256": "ed457fbeeecc9196e1390123cda4ce83e629ac5fb2e75d66dcdab479803f739e",
+  "report": {
+    "branch_presentations": {
+      "event_timing": {
+        "contradictory": 0,
+        "unverified_membership": 0,
+        "verified_supported": 3,
+        "verified_unsupported": 0
+      },
+      "sir_relations": {
+        "contradictory": 0,
+        "unverified_membership": 0,
+        "verified_supported": 1,
+        "verified_unsupported": 2
+      },
+      "sir_sequence": {
+        "contradictory": 0,
+        "unverified_membership": 0,
+        "verified_supported": 3,
+        "verified_unsupported": 0
+      }
+    },
+    "committed_epoch_boundary": true,
+    "contradictions": [],
+    "convention_sha256": "be099194bbf480a6f66e23e8c516709c53b3f2ed9f047bf09dc97c21045b358f",
+    "data_contract": {
+      "corpus_sha256": "9d724524552ed705e720d2d457ca3fb94310399757ad57b6d7f113634ee5e1c8",
+      "record_indices": [
+        0,
+        1,
+        2
+      ],
+      "schema_version": 1,
+      "split": "train"
+    },
+    "exposure_report_sha256": "234cbb45e5817507f5d607ed5599a971a1c57bd1ea1afe9539e32ecf084b86af",
+    "lexicon_sha256": "35e721971a9bd370207ffa7f634b7bb66900941d93d5e6f764a6c00a3c7add34",
+    "limitations": [
+      "Checks declared example support against current admitted target definitions.",
+      "Does not prove historical gradient application, target-cell exposure or competence.",
+      "Available target counts are unweighted per-example counts, not optimizer exposure.",
+      "Unknown historical membership is not reconstructed.",
+      "Byte revalidation is not new human authorization or empirical acceptance."
+    ],
+    "phase_exit_approved": false,
+    "samples": [
+      {
+        "annotation_sha256": "2875861ca0cea18cef56c1cca652d59e45c5f9b7c1cce1dd4f7ffcd9ac59f476",
+        "available_targets": {
+          "event_timing": {
+            "endpoint_targets": 2,
+            "event_intervals": 1
+          },
+          "sir_relations": {
+            "coref": {
+              "negative": 0,
+              "positive": 0,
+              "unknown": 0
+            },
+            "locus": {
+              "negative": 0,
+              "positive": 0,
+              "unknown": 0
+            },
+            "overlap": {
+              "negative": 0,
+              "positive": 0,
+              "unknown": 0
+            },
+            "precedence": {
+              "negative": 0,
+              "positive": 0,
+              "unknown": 0
+            },
+            "scope": {
+              "negative": 0,
+              "positive": 0,
+              "unknown": 0
+            }
+          },
+          "sir_sequence": {
+            "event_labels": 1,
+            "labels": [
+              {
+                "class_index": 0,
+                "identity": "fictional-a",
+                "kind": "manual",
+                "label_id": 10,
+                "target_events": 1
+              },
+              {
+                "class_index": 1,
+                "identity": "fictional-marker",
+                "kind": "nonmanual",
+                "label_id": 11,
+                "target_events": 0
+              },
+              {
+                "class_index": 2,
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12,
+                "target_events": 0
+              }
+            ],
+            "stop_targets": 1
+          }
+        },
+        "expected_support": {
+          "event_timing": true,
+          "sir_relations": false,
+          "sir_sequence": true
+        },
+        "sample_id": "sample-0",
+        "target_inventory_sha256": "43a95a0e7ccdaf4af073ad727c1008523894e0d69209ecdf61aeaff045af2db3"
+      },
+      {
+        "annotation_sha256": "f1fc5833a45e3123382af2991a8f024c306e1e928cf2f57435db3bf91989699a",
+        "available_targets": {
+          "event_timing": {
+            "endpoint_targets": 6,
+            "event_intervals": 3
+          },
+          "sir_relations": {
+            "coref": {
+              "negative": 0,
+              "positive": 0,
+              "unknown": 6
+            },
+            "locus": {
+              "negative": 0,
+              "positive": 0,
+              "unknown": 6
+            },
+            "overlap": {
+              "negative": 0,
+              "positive": 0,
+              "unknown": 6
+            },
+            "precedence": {
+              "negative": 6,
+              "positive": 0,
+              "unknown": 0
+            },
+            "scope": {
+              "negative": 4,
+              "positive": 1,
+              "unknown": 1
+            }
+          },
+          "sir_sequence": {
+            "event_labels": 3,
+            "labels": [
+              {
+                "class_index": 0,
+                "identity": "fictional-a",
+                "kind": "manual",
+                "label_id": 10,
+                "target_events": 1
+              },
+              {
+                "class_index": 1,
+                "identity": "fictional-marker",
+                "kind": "nonmanual",
+                "label_id": 11,
+                "target_events": 1
+              },
+              {
+                "class_index": 2,
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12,
+                "target_events": 1
+              }
+            ],
+            "stop_targets": 1
+          }
+        },
+        "expected_support": {
+          "event_timing": true,
+          "sir_relations": true,
+          "sir_sequence": true
+        },
+        "sample_id": "sample-1",
+        "target_inventory_sha256": "caa50b0ddd836b29de40d1d922ab5ac8a0df7369c9ee123b41ca803ae10f5633"
+      },
+      {
+        "annotation_sha256": "66f80dd11df03333a930cdad83c1511dd2f9abadd045fbcdd20a540fef90c314",
+        "available_targets": {
+          "event_timing": {
+            "endpoint_targets": 2,
+            "event_intervals": 1
+          },
+          "sir_relations": {
+            "coref": {
+              "negative": 0,
+              "positive": 0,
+              "unknown": 0
+            },
+            "locus": {
+              "negative": 0,
+              "positive": 0,
+              "unknown": 0
+            },
+            "overlap": {
+              "negative": 0,
+              "positive": 0,
+              "unknown": 0
+            },
+            "precedence": {
+              "negative": 0,
+              "positive": 0,
+              "unknown": 0
+            },
+            "scope": {
+              "negative": 0,
+              "positive": 0,
+              "unknown": 0
+            }
+          },
+          "sir_sequence": {
+            "event_labels": 1,
+            "labels": [
+              {
+                "class_index": 0,
+                "identity": "fictional-a",
+                "kind": "manual",
+                "label_id": 10,
+                "target_events": 1
+              },
+              {
+                "class_index": 1,
+                "identity": "fictional-marker",
+                "kind": "nonmanual",
+                "label_id": 11,
+                "target_events": 0
+              },
+              {
+                "class_index": 2,
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12,
+                "target_events": 0
+              }
+            ],
+            "stop_targets": 1
+          }
+        },
+        "expected_support": {
+          "event_timing": true,
+          "sir_relations": false,
+          "sir_sequence": true
+        },
+        "sample_id": "sample-2",
+        "target_inventory_sha256": "43a95a0e7ccdaf4af073ad727c1008523894e0d69209ecdf61aeaff045af2db3"
+      }
+    ],
+    "schema_version": 2,
+    "status": "consistent_declared_support"
+  },
+  "phase_exit_approved": false
+}

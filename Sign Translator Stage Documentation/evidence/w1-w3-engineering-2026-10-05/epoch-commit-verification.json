@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2428 passed in 90.48s",
+  "focused_tests": "39 passed in 6.82s",
+  "code_sha256": {
+    "signtranslator/training/trainer.py": "a3c2cf8a9a18cfdcdadc73ae7a25347f4b574c9e743a0ee7fee48eb37c96e358",
+    "tests/test_epoch_commit.py": "df6556c601437e3deabe118d7a85a2ef23fcb65fe7ad699e41ff8eebbb0cd943"
+  },
+  "scope": "Unfinished epoch refuses checkpoint save and fit retry; successful committed resume restores continuation; governed epoch/step consistency preflight. Optimizer, scheduler, validation and selection failure recovery tested.",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "limits": [
+    "no rollback of arbitrary failing side effects",
+    "no mid-epoch exact resume",
+    "standalone train_epoch does not commit fit-level state",
+    "no empirical acceptance"
+  ]
+}

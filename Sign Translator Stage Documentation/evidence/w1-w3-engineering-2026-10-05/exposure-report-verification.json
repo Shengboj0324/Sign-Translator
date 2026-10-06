@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2439 passed in 90.70s",
+  "focused_tests": "18 passed in 3.78s",
+  "code_sha256": {
+    "signtranslator/training/trainer.py": "737cf8d09927ea9fc9bd8b488212dc2907d99ef32787df232deeeeb0f25529b0",
+    "signtranslator/training/exposure.py": "1ea695f635224cc80573d1a85ddb0f1de6b96ed293663ae3cb478266171dcbca",
+    "tests/test_exposure_report.py": "eb5cb921ff93ee63521f80bb632dda6ca6f0df7a1cb2c6161165658b35c4fc24"
+  },
+  "scope": "Immutable historical report, exact sample/presentation/branch counts, zero/unvisited coverage, validation invariance, resume identity, interrupted boundary visibility and changed-view refusal.",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "limits": [
+    "declared batch support only",
+    "no individual branch support attribution",
+    "no model tensor or checkpoint hash",
+    "no renewed source-byte/permission audit",
+    "no empirical competence or independence claim"
+  ]
+}

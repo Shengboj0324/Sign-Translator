@@ -75,7 +75,7 @@ def test_checkpoint_roundtrip(tmp_path):
     b = model2.recognizer.classifier.weight
     assert torch.allclose(a, b, atol=1e-6)
     manifest = json.loads((tmp_path / "m.pt.json").read_text())
-    assert manifest["schema_version"] == 3
+    assert manifest["schema_version"] == 4
     assert manifest["kind"] == "last"
     assert manifest["model_contract"]["configs"]
 

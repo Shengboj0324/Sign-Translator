@@ -87,3 +87,46 @@ def test_mixed_support_resume_preserves_parameters_and_denominator_history(tmp_p
     assert resumed.history['val_sir_relations_epoch'] == [1, 2, 3]
     for name, value in full.model.state_dict().items():
         assert torch.equal(value, resumed.model.state_dict()[name])
+
+
+def test_exposure_records_order_support_and_survive_resume(tmp_path):
+    vocab, corpus = mixed(tmp_path)
+    initial = model(vocab)
+    def build():
+        return Trainer(deepcopy(initial), config(epochs=2), loader(corpus, 'train'))
+    full = build(); full.fit()
+    partial = build(); partial.fit(max_epochs=1)
+    records = partial.optimizer_exposure
+    batches = list(loader(corpus, 'train'))
+    assert [r['sample_ids'] for r in records] == [list(b.motion.sample_ids) for b in batches]
+    assert [r['annotation_sha256'] for r in records] == [
+        [a.content_sha256() for a in b.annotations] for b in batches]
+    assert [r['support']['sir_relations'] for r in records] == [1, 0]
+    records[0]['support']['sir_relations'] = 999
+    assert partial.optimizer_exposure[0]['support']['sir_relations'] == 1
+    path = partial.save(tmp_path / 'exposure.pt')
+    resumed = build(); resumed.load(path); resumed.fit()
+    assert resumed.optimizer_exposure == full.optimizer_exposure
+    assert [r['step'] for r in resumed.optimizer_exposure] == [1, 2, 3, 4]
+
+
+def test_failed_optimizer_call_is_not_recorded(tmp_path, monkeypatch):
+    vocab, corpus = mixed(tmp_path)
+    trainer = Trainer(model(vocab), config(), loader(corpus, 'train'))
+    def fail(*args, **kwargs):
+        raise RuntimeError('before optimizer mutation')
+    monkeypatch.setattr(trainer.opt, 'step', fail)
+    with pytest.raises(RuntimeError, match='before optimizer mutation'):
+        trainer.train_epoch()
+    assert trainer.global_step == 0 and trainer.optimizer_exposure == []
+
+
+def test_returned_optimizer_step_recorded_when_scheduler_fails(tmp_path, monkeypatch):
+    vocab, corpus = mixed(tmp_path)
+    trainer = Trainer(model(vocab), config(), loader(corpus, 'train'))
+    def fail():
+        raise RuntimeError('scheduler failure')
+    monkeypatch.setattr(trainer.sched, 'step', fail)
+    with pytest.raises(RuntimeError, match='scheduler failure'):
+        trainer.train_epoch()
+    assert trainer.global_step == 1 and len(trainer.optimizer_exposure) == 1

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2449 passed in 91.50s",
+  "focused_tests": "43 passed in 5.97s",
+  "code_sha256": {
+    "signtranslator/training/objectives.py": "f53f3ebc30e6fb92e772723ac5a7e52cc9de79b8bf3bc0bcd303f76eb75f8b71",
+    "signtranslator/training/exposure.py": "d61d067841f89ad4d75816ddf55e59d1eee0d56b7fe7d75c1d4f4fd279028b72",
+    "signtranslator/training/trainer.py": "42b6c20a3266461a0082899f18453f5d5d1fed4d5176308dbb87560fe8d7045b",
+    "signtranslator/planning/text_relations.py": "87f48e73f6adca747197af981cd41df1af80f6897ea1e0b748cdb70b2fd2d6fa",
+    "signtranslator/planning/text_referents.py": "12201f67b3032b232c508c0c1acedbf96812c31ffe343d516dfd17a1a094339c",
+    "signtranslator/planning/text_loci.py": "632e4f6f378a83ee737e1da3e842441ceb259c8db293bdb7749439877b90a006",
+    "tests/test_supported_objectives.py": "7329096fd6c906dada61b762fe21b10abf340c27e4b98e469cd732e06b6aaa7e",
+    "tests/test_exposure_report.py": "2c012f6139b5fc06d1b7375742a6edd2d518ae82cc1427aa5e6b5f02ae247578",
+    "tests/test_optimizer_exposure.py": "ec20fa19e6f19e3732acb248381c1613f57bad755ebcc59b7f674cdbad18efd9",
+    "tests/test_text_loci.py": "da141480b8bd1360954a5efd967404aa982f425d1b49f460b2a938dfb4f432b6",
+    "tests/test_text_referents.py": "699bdf290696330fe683adf7f817ce32af1ecb0d86a1760086ac1afe2af9748b"
+  },
+  "scope": "Optional immutable exact-boolean per-example support; planner propagates all five branch masks; ledger persistence/preflight; report schema2 supported/unsupported/unattributed presentations; historical missing membership not inferred; numerical objective unchanged.",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "limits": [
+    "model-declared support not nonzero gradient proof",
+    "no target-cell polarity exposure",
+    "historical missing masks remain unattributed",
+    "no independent sample or competence claim"
+  ]
+}

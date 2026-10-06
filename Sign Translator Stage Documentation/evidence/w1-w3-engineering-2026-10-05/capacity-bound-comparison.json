@@ -1,0 +1,42 @@
+{
+  "before_work": 183642,
+  "after_work": 182097,
+  "changed_configurations": [
+    {
+      "before": {
+        "events": 8,
+        "pattern": "negative",
+        "placement": "all",
+        "budget": 10000,
+        "input_sha256": "2c3e35d6ed08a4948dd2fc7b4284a2b4e3bf2a186ce4848d0389b5bc050615a5",
+        "status": "ambiguous",
+        "work": 7940,
+        "evaluated_partitions": 67,
+        "seconds": [
+          0.004732417000923306,
+          0.0046656249978696
+        ],
+        "best_gain": "143/6",
+        "runner_up_gain": "143/6"
+      },
+      "after": {
+        "events": 8,
+        "pattern": "negative",
+        "placement": "all",
+        "budget": 10000,
+        "input_sha256": "2c3e35d6ed08a4948dd2fc7b4284a2b4e3bf2a186ce4848d0389b5bc050615a5",
+        "status": "ambiguous",
+        "work": 6395,
+        "evaluated_partitions": 55,
+        "seconds": [
+          0.003928291996999178,
+          0.003924625001673121
+        ],
+        "best_gain": "143/6",
+        "runner_up_gain": "143/6"
+      }
+    }
+  ],
+  "scope": "work summed once across 72 configurations",
+  "phase_exit_approved": false
+}

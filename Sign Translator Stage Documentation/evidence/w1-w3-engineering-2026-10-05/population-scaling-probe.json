@@ -1,0 +1,44 @@
+{
+  "scope": "scalar arithmetic regression, not empirical ASL evidence",
+  "rows": [
+    {
+      "dtype": "torch.float32",
+      "numerator": 1.401298464324817e-45,
+      "before": 0.0,
+      "after": 1.401298464324817e-45,
+      "before_gradient": 1.0,
+      "after_gradient": 1.0
+    },
+    {
+      "dtype": "torch.float64",
+      "numerator": 5e-324,
+      "before": 0.0,
+      "after": 5e-324,
+      "before_gradient": 1.0,
+      "after_gradient": 1.0
+    }
+  ],
+  "phase_exit_approved": false,
+  "joint_rows": [
+    {
+      "dtype": "torch.float32",
+      "per_branch_numerator": 1.401298464324817e-45,
+      "before": 0.0,
+      "after": 1.401298464324817e-45,
+      "gradients": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "dtype": "torch.float64",
+      "per_branch_numerator": 5e-324,
+      "before": 0.0,
+      "after": 5e-324,
+      "gradients": [
+        0.5,
+        0.5
+      ]
+    }
+  ]
+}

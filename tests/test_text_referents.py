@@ -27,7 +27,9 @@ def test_joint_referent_learning_symmetry_inference_and_checkpoint(tmp_path):
     trainer.fit()
     assert trainer.validate()['referent_equality'] < initial * .15
     batch = next(iter(loader(corpus, 'train')))
-    expected = net.training_step(batch, weights=WEIGHTS)['referent_equality']
+    objective = net.training_step(batch, weights=WEIGHTS)
+    assert objective.terms['referent_equality'].support_mask == (True,)
+    expected = objective['referent_equality']
     batch.sir_targets.referent_ids.fill_(888)
     assert torch.equal(expected, net.training_step(batch, weights=WEIGHTS)['referent_equality'])
     text = encode_plaintext_transcripts(batch.transcript_payloads, batch.annotations,

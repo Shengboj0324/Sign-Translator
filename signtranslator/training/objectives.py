@@ -6,6 +6,7 @@ count is unavailable, never a measured zero loss or a reason to drop the sample.
 """
 from __future__ import annotations
 
+from fractions import Fraction
 from dataclasses import dataclass
 import math
 from types import MappingProxyType
@@ -13,11 +14,14 @@ from typing import Mapping
 
 import torch
 
+from .scaling import weighted_population_sum
+
 
 @dataclass(frozen=True)
 class SupportedTerm:
     example_loss_sum: torch.Tensor
     supported_examples: int
+    support_mask: tuple[bool, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -46,6 +50,12 @@ class SupportedObjective:
             count, value = term.supported_examples, term.example_loss_sum
             if type(count) is not int or not 0 <= count <= self.population_size:
                 raise ValueError('branch support must be an integer within the population')
+            if term.support_mask is not None and (
+                    type(term.support_mask) is not tuple
+                    or len(term.support_mask) != self.population_size
+                    or any(type(flag) is not bool for flag in term.support_mask)
+                    or sum(term.support_mask) != count):
+                raise ValueError('support mask must bind every example and match support count')
             if (not isinstance(value, torch.Tensor) or value.dtype not in (torch.float32, torch.float64)
                     or value.ndim != 0 or not bool(torch.isfinite(value)) or bool(value < 0)):
                 raise ValueError('branch loss sum must be a finite nonnegative float scalar')
@@ -60,15 +70,14 @@ class SupportedObjective:
 
     def total(self) -> torch.Tensor:
         self.validate()  # tensor storage remains mutable even in a frozen dataclass
-        active = [self.weights[name] * (term.example_loss_sum / self.population_size)
+        active = [(term.example_loss_sum, self.weights[name])
                   for name, term in self.terms.items() if term.supported_examples > 0]
         if not active:
             raise ValueError('joint objective unavailable: no supported branches')
         # Do not connect an entirely unsupported branch to the autograd graph.
         # Otherwise zero gradients can still trigger Adam momentum/weight decay.
-        result = active[0]
-        for contribution in active[1:]:
-            result = result + contribution
+        result = weighted_population_sum(tuple(value for value, _ in active),
+                                         tuple(weight for _, weight in active), self.population_size)
         if not bool(torch.isfinite(result)):
             raise ValueError('joint objective overflow')
         return result
@@ -111,11 +120,15 @@ class ObjectiveAccumulator:
         if not any(self.support.values()):
             raise ValueError('joint objective unavailable: no supported branches')
         try:
-            sums = {name: math.fsum(parts) for name, parts in self.sums.items()}
-            means = {name: value / self.support[name] for name, value in sums.items()
+            # Reporting is outside autograd. Exact binary-rational accumulation
+            # avoids overflowing a numerator whose normalized mean is finite,
+            # and avoids rounding away tiny contributions before weighting.
+            sums = {name: sum(map(Fraction, parts), Fraction())
+                    for name, parts in self.sums.items()}
+            means = {name: float(value / self.support[name]) for name, value in sums.items()
                      if self.support[name] > 0}
-            means['total'] = math.fsum(self.weights[name] * (value / self.population)
-                                       for name, value in sums.items())
+            means['total'] = float(sum((Fraction(self.weights[name]) * value / self.population
+                                        for name, value in sums.items()), Fraction()))
         except OverflowError as error:
             raise FloatingPointError('epoch objective aggregation overflow') from error
         if any(not math.isfinite(value) for value in means.values()):

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2422 passed in 88.18s",
+  "focused_tests": "39 passed in 11.18s before additional schema-3 warm-start parameter case; full suite covers final files",
+  "code_sha256": {
+    "signtranslator/training/exposure.py": "c136bad007027b2d68984e098d4a116cdfeec41e9d98406baf6f3748c463e5f2",
+    "signtranslator/training/trainer.py": "ab01aeb85c40efd67484b0960b9eb2af4b2b44bb173b1b2c70be94a237867c10",
+    "signtranslator/data/governed_corpus.py": "bbc4b69632d9d850495f4a5509afe6f2e27c51e575a15358a853e626e487d8fa",
+    "tests/test_optimizer_exposure.py": "65f17c578169eeadcb708a304d9a5b1c2689d6d3d8fb0d78b2e1eb3f6abf031b",
+    "tests/test_supported_trainer.py": "15b6047bd5407b1f2b1ada73ecd80717f7eb0aa721483416ff97f0be1dc16d22",
+    "tests/test_best_checkpoint.py": "4b4eec2f7c536fa5cf30e543dde72ce68b30bbf4d689e52b34c2a47cf2862420",
+    "tests/test_trainer.py": "f8a8bc29deb3eeeea2374c80e2fbb68fa307c033e18753856ae8234242997f7e"
+  },
+  "verified_scope": "Returned optimizer steps bind ordered sample IDs, admitted annotation hashes, branch support counts and weights; copied public records; schema-4 checkpoint continuity; seven consistently rehashed malformed ledgers rejected before model mutation; optimizer/scheduler failure boundaries; schema-2/3 weights warm starts.",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "limitations": [
+    "batch support does not identify per-example branch support",
+    "no proof of nonzero gradients or competence",
+    "no rollback of partial failing optimizer mutations",
+    "linear ledger storage growth",
+    "exact accelerator resume unverified"
+  ]
+}

@@ -1,0 +1,173 @@
+{
+  "evidence_kind": "fictional engineering fixtures; second case deliberately swaps two support flags",
+  "consistent": {
+    "branch_presentations": {
+      "event_timing": {
+        "contradictory": 0,
+        "unverified_membership": 0,
+        "verified_supported": 3,
+        "verified_unsupported": 0
+      },
+      "sir_relations": {
+        "contradictory": 0,
+        "unverified_membership": 0,
+        "verified_supported": 1,
+        "verified_unsupported": 2
+      },
+      "sir_sequence": {
+        "contradictory": 0,
+        "unverified_membership": 0,
+        "verified_supported": 3,
+        "verified_unsupported": 0
+      }
+    },
+    "committed_epoch_boundary": true,
+    "contradictions": [],
+    "convention_sha256": "96923b2a77b2ecc7a2a2c344b7eda9f7ef57380f2d497867d85648f7a7d7a625",
+    "data_contract": {
+      "corpus_sha256": "b6c504d794c501f78666965e8fe4b27e09fc5665dfb7a16e4be610aff17efdd5",
+      "record_indices": [
+        0,
+        1,
+        2
+      ],
+      "schema_version": 1,
+      "split": "train"
+    },
+    "exposure_report_sha256": "effdbe4581c17d775cb0cb25c059896213809acfda7c12a233da21b5c808c3fa",
+    "lexicon_sha256": "d5c386c70f39ee0ea37f121a33d22a96c4149d88a5cfb7781c8840c397b6872a",
+    "limitations": [
+      "Checks declared example support against current admitted target definitions.",
+      "Does not prove historical gradient application, target-cell exposure or competence.",
+      "Unknown historical membership is not reconstructed.",
+      "Byte revalidation is not new human authorization or empirical acceptance."
+    ],
+    "phase_exit_approved": false,
+    "samples": [
+      {
+        "annotation_sha256": "f8e20b807fc2a73d58f6071b29f04ae5a38732e071c2fc200fe5ec11c27483a5",
+        "availability_report_sha256": "3c30d5060e412e69d67fdb4bdd4ba6bd5b1ac7c51043c46e469cbe9fe760336b",
+        "expected_support": {
+          "event_timing": true,
+          "sir_relations": false,
+          "sir_sequence": true
+        },
+        "sample_id": "sample-0"
+      },
+      {
+        "annotation_sha256": "7863f84cc030d7af436355000b168ed2f1b2b9495422f983f46889676c1d38e9",
+        "availability_report_sha256": "8813041282934018ff76c7a57759eff06b374602486540b8f56ea1cf9acaa256",
+        "expected_support": {
+          "event_timing": true,
+          "sir_relations": true,
+          "sir_sequence": true
+        },
+        "sample_id": "sample-1"
+      },
+      {
+        "annotation_sha256": "3be78dfbdaace56ba04d8abffec734edea304eff613bf76ca1258dd007c4dbd1",
+        "availability_report_sha256": "2e5d43601b4429f64290212b0e0b3295267297a49e0fad2c36bf2685094ab363",
+        "expected_support": {
+          "event_timing": true,
+          "sir_relations": false,
+          "sir_sequence": true
+        },
+        "sample_id": "sample-2"
+      }
+    ],
+    "schema_version": 1,
+    "status": "consistent_declared_support"
+  },
+  "tampered": {
+    "branch_presentations": {
+      "event_timing": {
+        "contradictory": 0,
+        "unverified_membership": 0,
+        "verified_supported": 3,
+        "verified_unsupported": 0
+      },
+      "sir_relations": {
+        "contradictory": 2,
+        "unverified_membership": 0,
+        "verified_supported": 0,
+        "verified_unsupported": 1
+      },
+      "sir_sequence": {
+        "contradictory": 0,
+        "unverified_membership": 0,
+        "verified_supported": 3,
+        "verified_unsupported": 0
+      }
+    },
+    "committed_epoch_boundary": true,
+    "contradictions": [
+      {
+        "branch": "sir_relations",
+        "contradictory_presentations": 1,
+        "expected_supported": false,
+        "sample_id": "sample-0"
+      },
+      {
+        "branch": "sir_relations",
+        "contradictory_presentations": 1,
+        "expected_supported": true,
+        "sample_id": "sample-1"
+      }
+    ],
+    "convention_sha256": "96923b2a77b2ecc7a2a2c344b7eda9f7ef57380f2d497867d85648f7a7d7a625",
+    "data_contract": {
+      "corpus_sha256": "b6c504d794c501f78666965e8fe4b27e09fc5665dfb7a16e4be610aff17efdd5",
+      "record_indices": [
+        0,
+        1,
+        2
+      ],
+      "schema_version": 1,
+      "split": "train"
+    },
+    "exposure_report_sha256": "2f4cd1002648f698c73286b71875a7b14e99db0f3f900ba7cff9784acb23ef83",
+    "lexicon_sha256": "d5c386c70f39ee0ea37f121a33d22a96c4149d88a5cfb7781c8840c397b6872a",
+    "limitations": [
+      "Checks declared example support against current admitted target definitions.",
+      "Does not prove historical gradient application, target-cell exposure or competence.",
+      "Unknown historical membership is not reconstructed.",
+      "Byte revalidation is not new human authorization or empirical acceptance."
+    ],
+    "phase_exit_approved": false,
+    "samples": [
+      {
+        "annotation_sha256": "f8e20b807fc2a73d58f6071b29f04ae5a38732e071c2fc200fe5ec11c27483a5",
+        "availability_report_sha256": "3c30d5060e412e69d67fdb4bdd4ba6bd5b1ac7c51043c46e469cbe9fe760336b",
+        "expected_support": {
+          "event_timing": true,
+          "sir_relations": false,
+          "sir_sequence": true
+        },
+        "sample_id": "sample-0"
+      },
+      {
+        "annotation_sha256": "7863f84cc030d7af436355000b168ed2f1b2b9495422f983f46889676c1d38e9",
+        "availability_report_sha256": "8813041282934018ff76c7a57759eff06b374602486540b8f56ea1cf9acaa256",
+        "expected_support": {
+          "event_timing": true,
+          "sir_relations": true,
+          "sir_sequence": true
+        },
+        "sample_id": "sample-1"
+      },
+      {
+        "annotation_sha256": "3be78dfbdaace56ba04d8abffec734edea304eff613bf76ca1258dd007c4dbd1",
+        "availability_report_sha256": "2e5d43601b4429f64290212b0e0b3295267297a49e0fad2c36bf2685094ab363",
+        "expected_support": {
+          "event_timing": true,
+          "sir_relations": false,
+          "sir_sequence": true
+        },
+        "sample_id": "sample-2"
+      }
+    ],
+    "schema_version": 1,
+    "status": "inconsistent_declared_support"
+  },
+  "phase_exit_approved": false
+}

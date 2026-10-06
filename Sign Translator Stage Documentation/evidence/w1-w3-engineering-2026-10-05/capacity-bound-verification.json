@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2464 passed in 92.54s",
+  "focused_tests": "23 passed in 0.76s",
+  "code_sha256": {
+    "signtranslator/planning/partition_bounds.py": "5f537a076248fb371302986b7848f20ad61e65d551f6850bdaec8b7ebf911411",
+    "signtranslator/planning/joint_spatial.py": "895e25a96e4c9b05a9fadb300400a2ada02bffe27eca9da48e88b397961d0483",
+    "tests/test_capacity_bound.py": "a94479617d07a333d76add6dfc1d4f9df996164d64e1fc364128aff46deadb27"
+  },
+  "profile_sha256": "44ba55a6a22b8fb14302236cb8f49fb279def32e297f047c82a215f37b6d28fa",
+  "scope": "Capacity-forced negative placed-pair bound; 160 exhaustive allocation systems, weighted negative joint assignments and partial-placement oracle; 72 configurations repeated twice preserve exact results; 65536-vector oracle reconfirms ambiguity.",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "limits": [
+    "only one matrix configuration reduces work; no additional completions",
+    "14/36 cases still exhaust 10000 units",
+    "extra bound arithmetic outside node/probe budgets",
+    "no universal runtime or calibrated acceptance claim"
+  ]
+}

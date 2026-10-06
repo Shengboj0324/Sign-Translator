@@ -11,6 +11,8 @@ from math import lcm
 
 import torch
 
+from .partition_bounds import partition_suffix_upper_bounds, minimum_added_pairs
+from .assignment_bounds import injective_assignment_upper_bound
 from .loci import LocusAlphabet
 from .locus_assignment import decode_locus_assignment
 from .text_loci import LocusSequenceCandidate
@@ -98,10 +100,18 @@ def decode_joint_spatial(candidate: LocusSequenceCandidate, alphabet: LocusAlpha
             for key, value in rational_pair.items()}
     locus_values = [[value.numerator * (denominator // value.denominator) for value in row]
                     for row in rational_loci]
-    future_positive = [0] * (n + 1)
+    future_positive = partition_suffix_upper_bounds(n, pair)
+    placed_pair_gains = [value for (i, j), value in pair.items() if place[i] and place[j]]
+    forced_pair_cost = (min(-value for value in placed_pair_gains)
+                        if sum(place) > len(alphabet.identities) and placed_pair_gains
+                        and all(value < 0 for value in placed_pair_gains) else 0)
+    positive_remaining = [0] * (n + 1)
+    remaining_placed = [0] * (n + 1)
+    for j in range(n - 1, -1, -1):
+        positive_remaining[j] = positive_remaining[j + 1] + sum(max(0, pair[i, j]) for i in range(j))
+        remaining_placed[j] = remaining_placed[j + 1] + int(place[j])
     future_locus = [0] * (n + 1)
     for i in range(n - 1, -1, -1):
-        future_positive[i] = future_positive[i + 1] + sum(max(0, pair[(i, j)]) for j in range(i + 1, n))
         future_locus[i] = future_locus[i + 1] + (max(locus_values[i]) if place[i] else 0)
 
     def upper_bound(prefix, maximum, ref_gain):
@@ -112,15 +122,26 @@ def decode_joint_spatial(candidate: LocusSequenceCandidate, alphabet: LocusAlpha
             for past, label in enumerate(prefix):
                 cluster_gains[label] += pair[(past, future)]
             reference_bound += max(0, max(cluster_gains))
-        # Retain prefix persistence but relax inter-cluster injectivity and all
-        # future attachment constraints. These relaxations can only increase gain.
+        # Retain prefix persistence and bound injective column competition,
+        # while relaxing future attachment constraints. Both terms are optimistic.
         placed_clusters = {}
+        placed_sizes = {}
         for event, label in enumerate(prefix):
             if place[event]:
+                placed_sizes[label] = placed_sizes.get(label, 0) + 1
                 aggregate = placed_clusters.setdefault(label, [0] * len(alphabet.identities))
                 for locus, value in enumerate(locus_values[event]):
                     aggregate[locus] += value
-        locus_bound = future_locus[index] + sum(max(row) for row in placed_clusters.values())
+        if forced_pair_cost:
+            added_pairs = minimum_added_pairs(tuple(placed_sizes.values()), remaining_placed[index],
+                                              len(alphabet.identities))
+            # An alternative reference bound: exact prefix gain, all positive
+            # remaining edges, minus unavoidable negative placed-pair costs.
+            # Take the minimum; adding deductions to the other bound could
+            # charge the same negative contribution twice.
+            capacity_bound = ref_gain + positive_remaining[index] - forced_pair_cost * added_pairs
+            reference_bound = min(reference_bound, capacity_bound)
+        locus_bound = future_locus[index] + injective_assignment_upper_bound(list(placed_clusters.values()))
         return reference_bound + locus_bound
 
     best = second = None

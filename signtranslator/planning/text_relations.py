@@ -83,9 +83,10 @@ class RelationalTextSIRModel(TemporalTextSIRModel):
         per_example, supported = relation_loss_per_example(SIRRelationLogits(
             scores, target.annotation_sha256, target.vocabulary_sha256), batch.annotations, self.vocabulary)
         count = len(batch.annotations)
-        terms = {name: SupportedTerm(losses[name] * count, count)
+        terms = {name: SupportedTerm(losses[name] * count, count, (True,) * count)
                  for name in ('sir_sequence', 'event_timing')}
-        terms['sir_relations'] = SupportedTerm(per_example.sum(), int(supported.sum()))
+        terms['sir_relations'] = SupportedTerm(per_example.sum(), int(supported.sum()),
+                                               tuple(supported.detach().cpu().tolist()))
         return SupportedObjective(terms, weights, count)
 
     @torch.no_grad()

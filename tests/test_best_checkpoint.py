@@ -21,6 +21,8 @@ def rewrite(path, change):
     manifest_path = path.with_suffix(path.suffix + '.json')
     manifest = json.loads(manifest_path.read_text())
     manifest['schema_version'] = data['schema_version']
+    if data['schema_version'] < 4:
+        manifest.pop('optimizer_exposure', None)
     manifest['checkpoint_sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
     manifest['checkpoint_size'] = path.stat().st_size
     manifest_path.write_text(json.dumps(manifest))
@@ -48,7 +50,8 @@ def test_resume_preserves_earlier_best_when_future_validation_worsens(tmp_path):
     assert all(torch.equal(v, best[k]) for k, v in resumed.best_model_state.items())
 
 
-def test_prevalidation_checkpoint_and_old_schema_warm_start(tmp_path):
+@pytest.mark.parametrize('old_schema', [2, 3])
+def test_prevalidation_checkpoint_and_old_schema_warm_start(tmp_path, old_schema):
     corpus, _, _ = setup(tmp_path)
     trainer = build(corpus)
     path = trainer.save(tmp_path / 'initial.pt')
@@ -56,8 +59,10 @@ def test_prevalidation_checkpoint_and_old_schema_warm_start(tmp_path):
     restored.load(path)
     assert restored.best_model_state is None
     def downgrade(data):
-        data['schema_version'] = 2
-        del data['best_model_state']
+        data['schema_version'] = old_schema
+        if old_schema == 2:
+            del data['best_model_state']
+        del data['optimizer_exposure']
     rewrite(path, downgrade)
     with pytest.raises(ValueError, match='schema 2 lacks'):
         restored.load(path)

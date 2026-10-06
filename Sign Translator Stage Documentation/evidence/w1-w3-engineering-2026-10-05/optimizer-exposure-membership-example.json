@@ -1,0 +1,1581 @@
+{
+  "evidence_kind": "fictional engineering fixture only",
+  "report_sha256": "c9f9c48a58a4fbf697f0aaf64da143c5a2b4c0781213ac36deec7bacb110e037",
+  "report": {
+    "admitted_view_samples": 3,
+    "branches": {
+      "event_timing": {
+        "steps_with_support": 4,
+        "steps_without_support": 0,
+        "supported_example_presentations": 6
+      },
+      "sir_relations": {
+        "steps_with_support": 2,
+        "steps_without_support": 2,
+        "supported_example_presentations": 2
+      },
+      "sir_sequence": {
+        "steps_with_support": 4,
+        "steps_without_support": 0,
+        "supported_example_presentations": 6
+      }
+    },
+    "committed_epoch_boundary": true,
+    "completed_epochs": 2,
+    "data_contract": {
+      "batch_size": 2,
+      "class": "torch.utils.data.dataloader.DataLoader",
+      "dataset_class": "signtranslator.data.governed_corpus.GovernedMotionDataset",
+      "dataset_length": 3,
+      "drop_last": false,
+      "governed": {
+        "corpus_sha256": "9106190eb32cca9a6ac86caca6855e0fe31d9b7e1007d876775090cea00b7b87",
+        "record_indices": [
+          0,
+          1,
+          2
+        ],
+        "schema_version": 1,
+        "split": "train"
+      },
+      "num_workers": 0,
+      "persistent_workers": false,
+      "sampler_class": "torch.utils.data.sampler.SequentialSampler"
+    },
+    "distinct_presented_samples": 3,
+    "evidence_kind": "historical_returned_optimizer_calls",
+    "implementation_identity": {
+      "dependency_lock_sha256": "1207cb0e62c104ff22ff06b259f8ca0f9145934f0bbf11e12268b9351833a88e",
+      "git_revision": "ccfb5974a01c7630b02bc03d3cc2c9ed87219303",
+      "git_worktree_clean": false,
+      "identity_kind": "git-dirty+content",
+      "implementation_sha256": "ab79adbd3a27919aca3499de90873847fb11ea2cecb901949f761f88ad6bb0d1",
+      "package_version": "0.1.0",
+      "schema_version": 1,
+      "sources": [
+        {
+          "path": "signtranslator/__init__.py",
+          "sha256": "d9253d51c9986f6c8fb769b03760dc39735ee6ff585d125783201320eb9584ac",
+          "size": 1087
+        },
+        {
+          "path": "signtranslator/analysis/__init__.py",
+          "sha256": "a1060b85c5edf7ce4b9eaf57dbdec3d7a66963e945d9e9ed28653a5befdbb633",
+          "size": 127
+        },
+        {
+          "path": "signtranslator/analysis/observations.py",
+          "sha256": "02ec52b3ba20b8d86c1b13597ecd70465c2a9f871b9abb236efb0943a6ee8b5d",
+          "size": 2947
+        },
+        {
+          "path": "signtranslator/analysis/report.py",
+          "sha256": "b2657d89f4d56daa53c4dfd6c804f5d5aae1404bab83495ac03f73d0f8621793",
+          "size": 9783
+        },
+        {
+          "path": "signtranslator/avatar_render/__init__.py",
+          "sha256": "b182fd1988b503c236980d28c60bf84ace7580570971938d4162912c7936c9d4",
+          "size": 2741
+        },
+        {
+          "path": "signtranslator/avatar_render/dqs.py",
+          "sha256": "05e0734e64042b8658ee8c402ca3b5bb8f04e0525aa5c062e371534af57ca91e",
+          "size": 3615
+        },
+        {
+          "path": "signtranslator/avatar_render/evaluation.py",
+          "sha256": "0974ad753935ba17192030c9f3cd46b91a45e51f02cc8a9eaec1a21f4312970c",
+          "size": 4949
+        },
+        {
+          "path": "signtranslator/avatar_render/gaussian.py",
+          "sha256": "74ce8d3540dbbf0a2c75b00cca5eb6cf87b49caa1424d90a5090acecc419259c",
+          "size": 4149
+        },
+        {
+          "path": "signtranslator/avatar_render/lod.py",
+          "sha256": "caeab87becc7fe029438d490382044eb59955e63eff48c9a28ef822159aaeeef",
+          "size": 3262
+        },
+        {
+          "path": "signtranslator/avatar_render/makehuman.py",
+          "sha256": "60e50959ba90ec51d665f4d27ec7436f6540f7f6a2d7bd29a2ea635c57d6bc74",
+          "size": 12445
+        },
+        {
+          "path": "signtranslator/avatar_render/makehuman_attachment.py",
+          "sha256": "44d0c4efd40a8c565c3e7bbd8b7eab0d8a47a81f2db7e3d5008681d86580a9a1",
+          "size": 6584
+        },
+        {
+          "path": "signtranslator/avatar_render/makehuman_eyes.py",
+          "sha256": "b018f3c8948b26f8669a9a64912e76b56828fe9805a0e5287aa3823a91af1e42",
+          "size": 1537
+        },
+        {
+          "path": "signtranslator/avatar_render/makehuman_face.py",
+          "sha256": "afd4a8d4830c925ba5eb82c287ad58aadde6206e86b327ef1388730fef383ee1",
+          "size": 6843
+        },
+        {
+          "path": "signtranslator/avatar_render/makehuman_mouth.py",
+          "sha256": "1d2599cd7b3b28fde0304dbfbb99e9b429cb22a06f00aed6f8b15d6752960196",
+          "size": 2097
+        },
+        {
+          "path": "signtranslator/avatar_render/nerf.py",
+          "sha256": "611eab378a25f56464aeb63ce41f3cada7614455a52c081708378835fa849547",
+          "size": 2490
+        },
+        {
+          "path": "signtranslator/avatar_render/pacing.py",
+          "sha256": "9c3b5599a9f0621afab41bd237a7d8b6d98bfbce70463b0709d395b0c9c4da03",
+          "size": 2694
+        },
+        {
+          "path": "signtranslator/avatar_render/rigged.py",
+          "sha256": "275aef7e96cd45a979bd307e19a88e55d666aff6b7029ed895dde5b6138252e9",
+          "size": 4879
+        },
+        {
+          "path": "signtranslator/avatar_render/stream.py",
+          "sha256": "4889eba9794cb9a260228d10f8cfbb054834888c356387fcf4ef488acb626749",
+          "size": 6036
+        },
+        {
+          "path": "signtranslator/config.py",
+          "sha256": "1d7c7f117723c2a7b32b8f8a62a658ea6c5dab85948f9186c4a0d2efb3701c0c",
+          "size": 9970
+        },
+        {
+          "path": "signtranslator/data/__init__.py",
+          "sha256": "f2942b0b849aeffedd95faa4dc63f6443328190f50e81f1d8140378a3f30f492",
+          "size": 1096
+        },
+        {
+          "path": "signtranslator/data/adapters.py",
+          "sha256": "bc36ec96724930c8ef969f605f6ed25743c36952bad8972dcab92bf5527ff3fd",
+          "size": 7699
+        },
+        {
+          "path": "signtranslator/data/corpus.py",
+          "sha256": "c0f7536d6597c9d65374b69d2c19e4c67d22daabb4ea884697a33b89f8828aa9",
+          "size": 37542
+        },
+        {
+          "path": "signtranslator/data/governed_corpus.py",
+          "sha256": "bbc4b69632d9d850495f4a5509afe6f2e27c51e575a15358a853e626e487d8fa",
+          "size": 12765
+        },
+        {
+          "path": "signtranslator/data/governed_motion.py",
+          "sha256": "076368e02dba4b7c229db2e741ac5bc230040ced355b85f4d75d9eb517b42f04",
+          "size": 7800
+        },
+        {
+          "path": "signtranslator/data/governed_text.py",
+          "sha256": "94762cbc856ce6b371318ff0549b9e5917a1584d1a726452178994b3f4829a35",
+          "size": 3517
+        },
+        {
+          "path": "signtranslator/data/multichannel.py",
+          "sha256": "a85cc9d2f840bcd50c2e320d9e4bb5d5bcb6be1a49f3a33b43880807daef7ce2",
+          "size": 5206
+        },
+        {
+          "path": "signtranslator/data/preprocess.py",
+          "sha256": "99d19ec94e62eb59910aebe4ad3c684d08c767f74d7a8fa48813b9d00679e1d3",
+          "size": 5840
+        },
+        {
+          "path": "signtranslator/data/quality.py",
+          "sha256": "7bb1b63de7f754f96263e98943b659a188225a66cf9bf1785c4c966acf93a9f0",
+          "size": 11068
+        },
+        {
+          "path": "signtranslator/data/readiness.py",
+          "sha256": "fcebe05dcecd24bdb410593550f075d4cd8d2715606ef2b9a1b94c1de403ce7b",
+          "size": 6719
+        },
+        {
+          "path": "signtranslator/data/synthetic.py",
+          "sha256": "d334eaca38a913774eae4038fb445ead2bb96bd4813c8e7e0098e0a65ba33c7d",
+          "size": 3247
+        },
+        {
+          "path": "signtranslator/data_engineering/__init__.py",
+          "sha256": "ac474baa0b5b51005cf3711118ac3a7686d54abcb4e8a6ea1fcacf65d9dc9e14",
+          "size": 5732
+        },
+        {
+          "path": "signtranslator/data_engineering/datasheet.py",
+          "sha256": "b208f7af92e8ee1443f2c7bc6a4b2c1de09a2b4f8faebcdc08ed54954612abf0",
+          "size": 1980
+        },
+        {
+          "path": "signtranslator/data_engineering/dedup.py",
+          "sha256": "f958743bf3c118d32ea3295efcd9dd74e36b317693505e471e5bb19d02686338",
+          "size": 4640
+        },
+        {
+          "path": "signtranslator/data_engineering/eaf.py",
+          "sha256": "5616a48c8a77db22189f33f73ca74052abdc0cc32d858aac4365445f0e467cbb",
+          "size": 73102
+        },
+        {
+          "path": "signtranslator/data_engineering/exporter.py",
+          "sha256": "6d3ed09b6d91c4a5cce9bd5dcf9c7e4be13e6d3344e4b4c29a91aa4e09303737",
+          "size": 33120
+        },
+        {
+          "path": "signtranslator/data_engineering/governance.py",
+          "sha256": "a90231a0918d564c37876ee4f2515e9f73d90766730220739ea32c48fc47d660",
+          "size": 3380
+        },
+        {
+          "path": "signtranslator/data_engineering/how2sign.py",
+          "sha256": "d9013fd548f06b8ccd3997153b0f15d73749c27940716c74d307907cb15c79e8",
+          "size": 22633
+        },
+        {
+          "path": "signtranslator/data_engineering/how2sign_audit.py",
+          "sha256": "42a1ecaa5651bb2cdce7083e7ce7f955171aa5e2b6434834d153ac5cb309c4c1",
+          "size": 54272
+        },
+        {
+          "path": "signtranslator/data_engineering/how2sign_signers.py",
+          "sha256": "d28f0d5363d28814587d0f9722de759558df075430ffd4971f72dd0bacab6ced",
+          "size": 12377
+        },
+        {
+          "path": "signtranslator/data_engineering/phase2_policy.py",
+          "sha256": "3a79da6148715a1c1a48977c785a973c70cdb199946d6cbeee6cbc333c3a70f5",
+          "size": 5673
+        },
+        {
+          "path": "signtranslator/data_engineering/phase3b_queue.py",
+          "sha256": "6f0e3cd8e61d0e97e1d8c8c2aedeeff4428303ba939e36942fde91585532fc40",
+          "size": 35076
+        },
+        {
+          "path": "signtranslator/data_engineering/provenance.py",
+          "sha256": "264ce8faf85162cbd6c52c004a1c50b1388f7de99fe1a4e272fe202a5410dbf6",
+          "size": 3734
+        },
+        {
+          "path": "signtranslator/data_engineering/qc.py",
+          "sha256": "74b4bc655894e959657c8d655098cde772972e081f56bc59f1ff2893015f54ed",
+          "size": 2754
+        },
+        {
+          "path": "signtranslator/data_engineering/quality.py",
+          "sha256": "c92b53c88c8ee0bb6b3c7d45eea34d8848222958f24d27532d30212c5de76363",
+          "size": 6689
+        },
+        {
+          "path": "signtranslator/data_engineering/readiness.py",
+          "sha256": "c061f68b1ace3887e6f61fa083d861fcfc715364af42997aeac9f789338b5da8",
+          "size": 13941
+        },
+        {
+          "path": "signtranslator/data_engineering/schema.py",
+          "sha256": "d3ab03084f6bf6ff51bee423c873f0a19427066d8f5e9ce3be922b35817fac4f",
+          "size": 14948
+        },
+        {
+          "path": "signtranslator/data_engineering/source_portfolio.py",
+          "sha256": "053b1c1a1c8779b0375a6c2dd03690df542840f10825617861880ec44fea1c51",
+          "size": 15799
+        },
+        {
+          "path": "signtranslator/data_engineering/splitting.py",
+          "sha256": "061939493259ce70dc64c3664d01a417e473bc4ad220883d9ed238d450aa0055",
+          "size": 8459
+        },
+        {
+          "path": "signtranslator/data_engineering/state_ingestion.py",
+          "sha256": "a4a2a7f07c5e16046047b7cd902c69f2026039f880c1a0f15836ac1981d008fa",
+          "size": 3764
+        },
+        {
+          "path": "signtranslator/deployment/__init__.py",
+          "sha256": "dac6308d01c78cc6df2e6b0c1bc769f79027c1704280224e78af06bb56957d29",
+          "size": 3151
+        },
+        {
+          "path": "signtranslator/deployment/backpressure.py",
+          "sha256": "c27dbb35db40e2fcbcc590acf3c78395b623883ab0a3756e4fe2ae21ba4e15ba",
+          "size": 2525
+        },
+        {
+          "path": "signtranslator/deployment/latency_budget.py",
+          "sha256": "0e1da1f7570bd1f997bab75b05294e341368bc05ebacdc531fc62c0adab62738",
+          "size": 3731
+        },
+        {
+          "path": "signtranslator/deployment/optimization_gate.py",
+          "sha256": "5ae3a9658d3c467c74f880dd005e788d76824d0edefcce8d05113b784eb673c2",
+          "size": 4719
+        },
+        {
+          "path": "signtranslator/deployment/quantization.py",
+          "sha256": "166cc70756556ce5ea02612a0615656a96c95e12822229b80965ad417bfb0c2d",
+          "size": 3699
+        },
+        {
+          "path": "signtranslator/deployment/replay.py",
+          "sha256": "19fade5aa75eb50c3d5151343aded59295b3c77f86624e29832d15ead8463a01",
+          "size": 2191
+        },
+        {
+          "path": "signtranslator/deployment/runtime_controls.py",
+          "sha256": "4227958d6c92903ac61c114cea71da641e68d61ccbf286f278491da787b3116f",
+          "size": 4609
+        },
+        {
+          "path": "signtranslator/deployment/static_execution.py",
+          "sha256": "385a5863fbf55d0c21f9f12ceb6f181c786ab77a32d505d2883db925eff3510e",
+          "size": 3477
+        },
+        {
+          "path": "signtranslator/deployment/streaming_contract.py",
+          "sha256": "98751eb0b63164ec616b31ca61addc09ee9888520f6a584335a8fed0fd7e0b97",
+          "size": 3031
+        },
+        {
+          "path": "signtranslator/diffusion_gen/__init__.py",
+          "sha256": "8f9c8f7214f758d26dbb8addb15d64bd626f4c39e42419ddd9050013838aced6",
+          "size": 2275
+        },
+        {
+          "path": "signtranslator/diffusion_gen/consistency.py",
+          "sha256": "9aafcbd82832b0938c6453d9ec0b5d7e91abf4acb37eab5510f65703279a6287",
+          "size": 4516
+        },
+        {
+          "path": "signtranslator/diffusion_gen/constraints.py",
+          "sha256": "b1a47d0e1caeff3de39ffed4530e318d5be8d5af955d4ecd458fd78574eb7f4b",
+          "size": 3714
+        },
+        {
+          "path": "signtranslator/diffusion_gen/dit.py",
+          "sha256": "7e3e645516db028e0e4c9e98a298fc3f590b7896eb0f0329ace9894c8eb4cd22",
+          "size": 5863
+        },
+        {
+          "path": "signtranslator/diffusion_gen/evaluation.py",
+          "sha256": "fdc350953fcab3a9259e248af85db4d39c496518aac9ea2664917fcf16ce0437",
+          "size": 3150
+        },
+        {
+          "path": "signtranslator/diffusion_gen/generator.py",
+          "sha256": "ffaf00f28d74ccf10a535b90573e5e62bb06a37ef0f4fbb33c92d50fabd96316",
+          "size": 4209
+        },
+        {
+          "path": "signtranslator/diffusion_gen/guidance.py",
+          "sha256": "69d52aa5a2eaf0e3d8bd0c3846d7a914d86ff4bcf98476eabcd4bb2bd914bbde",
+          "size": 2475
+        },
+        {
+          "path": "signtranslator/diffusion_gen/inpaint.py",
+          "sha256": "0b11fae85878106fec1addfff32654aa23ec14b5dfc87b8123abaef5c6451d75",
+          "size": 3004
+        },
+        {
+          "path": "signtranslator/diffusion_gen/part_aware.py",
+          "sha256": "e11abbaa92eb578c42c4920c3fb99005032a37752d50a439d7ba0968a1f48e19",
+          "size": 2961
+        },
+        {
+          "path": "signtranslator/diffusion_gen/schedule.py",
+          "sha256": "3cac88037d5fdf34ecb455225b636084f1028e7fb2fe6271a4cd6d8822429379",
+          "size": 4764
+        },
+        {
+          "path": "signtranslator/eval/__init__.py",
+          "sha256": "3d5e02723f63c4602329e4bf4ab7c6f5b94326d5b01da9c529b02318b3ef8d5b",
+          "size": 252
+        },
+        {
+          "path": "signtranslator/eval/metrics.py",
+          "sha256": "9b30d8d4e77666e7c67567454ea806c46773ef8ee31b806da0cc8ec651155d3b",
+          "size": 2537
+        },
+        {
+          "path": "signtranslator/eval_framework/__init__.py",
+          "sha256": "10b97686119cfd4d7521b470a80fc7b590d176b824bcb915c0431e8dc77d45b3",
+          "size": 2392
+        },
+        {
+          "path": "signtranslator/eval_framework/comprehension.py",
+          "sha256": "555a7c46ef394742d64e237e9f075cc0e0b9773aa6bc600457554a4cb6c4058e",
+          "size": 3835
+        },
+        {
+          "path": "signtranslator/eval_framework/contracts.py",
+          "sha256": "6fef4e9397b0bf9567e70202df4c33801098f2d20b368acd275a38de619ef96a",
+          "size": 2361
+        },
+        {
+          "path": "signtranslator/eval_framework/design.py",
+          "sha256": "cfb5b676e59a08f507b74e0fd85c15fb037f86a7af3abb3cf37860234d35a156",
+          "size": 2178
+        },
+        {
+          "path": "signtranslator/eval_framework/metric_stack.py",
+          "sha256": "c46bbe6b6f5494098a38dc050eeee1dbf2c8cda3fe5737f7d77ec790b158afd1",
+          "size": 2804
+        },
+        {
+          "path": "signtranslator/eval_framework/protocol.py",
+          "sha256": "54b2bdc2b6a87e273ac86ce5bb0c8569f42614679e735500fa176ee6425d9683",
+          "size": 6959
+        },
+        {
+          "path": "signtranslator/eval_framework/reporting.py",
+          "sha256": "35e6cf9968082843808c1cff29b91c4c329c24c55186c07421e8c5b8398978a4",
+          "size": 4015
+        },
+        {
+          "path": "signtranslator/eval_framework/statistics.py",
+          "sha256": "131372efc3a079f43dea2afce0f6e8d847ab7efa5bff71ba8f0fae2c3c2d4a29",
+          "size": 7909
+        },
+        {
+          "path": "signtranslator/eval_framework/text_metrics.py",
+          "sha256": "3d429e00ea0e55df86c17093083d0e162dcd2f73c7a49f8c5db883f1581e938f",
+          "size": 5665
+        },
+        {
+          "path": "signtranslator/facial_nmm/__init__.py",
+          "sha256": "1256f6df56cac98445c07e135a3aaaedd2136c7717b264604fcdda83cf9a64cf",
+          "size": 2343
+        },
+        {
+          "path": "signtranslator/facial_nmm/articulate.py",
+          "sha256": "ed3e078db4f96ae85150de897afb463007b0529da1643ab53091f1a731910171",
+          "size": 2917
+        },
+        {
+          "path": "signtranslator/facial_nmm/channels.py",
+          "sha256": "f78a00c185b122932b786c7a96383964c33b3a6adb9a523547c87e7524fc1cc5",
+          "size": 4533
+        },
+        {
+          "path": "signtranslator/facial_nmm/decoder.py",
+          "sha256": "31f3075b853764ad796da6c0d5d49ef2df2a7a4421514fcd788c802091a8c2a1",
+          "size": 2049
+        },
+        {
+          "path": "signtranslator/facial_nmm/disentangle.py",
+          "sha256": "30611b316cb8b4c913ffda5610c01586c4e937adf75974dd48f05b5f07579c35",
+          "size": 2312
+        },
+        {
+          "path": "signtranslator/facial_nmm/evaluation.py",
+          "sha256": "21ad284d9c8c9d76cc1d02771abae9bb8022c1728ef1f5e876ea4eef25b49e6b",
+          "size": 4100
+        },
+        {
+          "path": "signtranslator/facial_nmm/integration.py",
+          "sha256": "f5392286f97f06cc752a06e6c9820ed2c7744eba7074741c139e12120e3a4200",
+          "size": 2500
+        },
+        {
+          "path": "signtranslator/facial_nmm/losses.py",
+          "sha256": "0b91297805c05a50c01148caa2f9f5f9779fb1bc8e1500a6611f7beff3c49b9b",
+          "size": 3252
+        },
+        {
+          "path": "signtranslator/facial_nmm/uncertainty.py",
+          "sha256": "005d9544fbc885583a5e2feca2847fa0d6652726a81addee3a34d2655a5eb053",
+          "size": 3501
+        },
+        {
+          "path": "signtranslator/grammar/__init__.py",
+          "sha256": "acdbdef947a5074ce3d96a50638fe68a1356a4d0655c76dbf0323a24934133bf",
+          "size": 3356
+        },
+        {
+          "path": "signtranslator/grammar/grammar_tests.py",
+          "sha256": "c28b9aba37f4ca65e84d32588885883d42d878b32c9836bb6770ee4d0c6b52ff",
+          "size": 12313
+        },
+        {
+          "path": "signtranslator/grammar/graph_transformer.py",
+          "sha256": "750aff0f0888a67669a8e91cbe7f9921dd33ad64ab5b70e2952ddb2340413e85",
+          "size": 6533
+        },
+        {
+          "path": "signtranslator/grammar/integration.py",
+          "sha256": "1e08fd38bab54ca8f88be126249a304ee262c6824972a8f36d0d50a02935dfe0",
+          "size": 4470
+        },
+        {
+          "path": "signtranslator/grammar/nonmanual.py",
+          "sha256": "f29f01b592fc7781b7a6ec453fc6d847756c78821631e032bbb7358f31b6287e",
+          "size": 5214
+        },
+        {
+          "path": "signtranslator/grammar/notation.py",
+          "sha256": "15a7141a819bab02485b619cc317d84742279ea3ba29571d620a1f288851f12a",
+          "size": 6887
+        },
+        {
+          "path": "signtranslator/grammar/signbleu.py",
+          "sha256": "1900fb01b86b86fe3e28ebd425119e8e37ccd833e623794d4d9c7fa2b5c84667",
+          "size": 8855
+        },
+        {
+          "path": "signtranslator/grammar/sir.py",
+          "sha256": "f4b3daaa7f958b11cd9e11d12ee0df011d3d08a870bb461719707e11811fec5b",
+          "size": 18493
+        },
+        {
+          "path": "signtranslator/grammar/temporal.py",
+          "sha256": "1148eae18b0c23cff9fdca911dced6d47e0e614dace0a5ec8c46050aba150c63",
+          "size": 6567
+        },
+        {
+          "path": "signtranslator/hand_graph/__init__.py",
+          "sha256": "590564e08b20f2fdbee40c7479009b3878718e661609e78e58317c57bf5695b4",
+          "size": 2742
+        },
+        {
+          "path": "signtranslator/hand_graph/geometry.py",
+          "sha256": "d9685e133cb134630070118d0afd8f5af135dbbd5c2a24044ce472ed8fc40dff",
+          "size": 5329
+        },
+        {
+          "path": "signtranslator/hand_graph/heads.py",
+          "sha256": "ecb7e671d971e4f07b06664066a57504f945bb68748d31ca772a874d55a11234",
+          "size": 5099
+        },
+        {
+          "path": "signtranslator/hand_graph/hetero_graph.py",
+          "sha256": "8e6737925ef793ff1d9885faac68b12f41473ae1f1b7fa98583e43b4e714dbb3",
+          "size": 11743
+        },
+        {
+          "path": "signtranslator/hand_graph/metrics.py",
+          "sha256": "42c804a3e8f26b97f7a53d3df984d2cb14bb6ab83d837690be35477621607bf2",
+          "size": 3689
+        },
+        {
+          "path": "signtranslator/hand_graph/model.py",
+          "sha256": "01e86652a623946875c9cf2216c023006af354310efb594b3fce42891e16af4e",
+          "size": 4791
+        },
+        {
+          "path": "signtranslator/hand_graph/relational.py",
+          "sha256": "95f6bed3e4c8368b1bfe203dd779546aa166ca2f2b2c5b801b6bef2178d4393f",
+          "size": 5630
+        },
+        {
+          "path": "signtranslator/hand_graph/structural.py",
+          "sha256": "5dcf7e37b9726b08882a36d5161860d4656a5dc53a92242e7eeef2f7885b20f6",
+          "size": 4430
+        },
+        {
+          "path": "signtranslator/hand_graph/temporal.py",
+          "sha256": "03e83ca7ec395314ab4d44e03e822c835a455d4665883673513d4c6e691a0a52",
+          "size": 3979
+        },
+        {
+          "path": "signtranslator/inference_context.py",
+          "sha256": "5a0299ede86a548657d85cc86d17205c10aaf088f58799ccf86f30ed4716c3bd",
+          "size": 782
+        },
+        {
+          "path": "signtranslator/models/__init__.py",
+          "sha256": "5ecd2b4678bfe3b1d1319f3172335425c4879f2cd558ac1a8738056737071a03",
+          "size": 1156
+        },
+        {
+          "path": "signtranslator/models/alignment.py",
+          "sha256": "8eb2e071bf8c44042a680fc9ce75304778dd922fcc61948d57842f3d22fac280",
+          "size": 4374
+        },
+        {
+          "path": "signtranslator/models/denoiser.py",
+          "sha256": "af37c37f818b22e7b98f06232d3940891ae6fae5f8658d16435e5dd23badef48",
+          "size": 10492
+        },
+        {
+          "path": "signtranslator/models/diffusion.py",
+          "sha256": "1b50d8c0286364e69f20fc4e6f43179a1d5dc01e469c06c6de69bc7f48cc02b2",
+          "size": 18781
+        },
+        {
+          "path": "signtranslator/models/encoders.py",
+          "sha256": "3f2f5414b52790455a94cead919f2ebfb5f33bd49864b72185d1ce8263a9ca68",
+          "size": 7359
+        },
+        {
+          "path": "signtranslator/models/guided_diffusion.py",
+          "sha256": "b5828fc6b4156b3a15480b708f4560372d10a28861ca042e2fe9e1ebe8028582",
+          "size": 5618
+        },
+        {
+          "path": "signtranslator/models/masked_normalization.py",
+          "sha256": "45fb82538c51fe39173937e17b1265734ffc1b9f694154556f5c8853c9a29d59",
+          "size": 2904
+        },
+        {
+          "path": "signtranslator/models/pipeline.py",
+          "sha256": "a0045e4f807f061846012082e2b1f4a6f05e662817ecaa52c12c84de4bcd76a1",
+          "size": 25245
+        },
+        {
+          "path": "signtranslator/models/planner.py",
+          "sha256": "3a46c318cc0907c8bff8082815e7a24ef157bb251ff31ed0da4046a5c46545a3",
+          "size": 6058
+        },
+        {
+          "path": "signtranslator/models/recognition.py",
+          "sha256": "ea7ce616c7094e7ec6b664f92758919e04dce89301c6cc431090e5c274cb6f29",
+          "size": 9658
+        },
+        {
+          "path": "signtranslator/models/speech.py",
+          "sha256": "0bdec926da6a78ef2004a46fe90e2f7b05fb25bf213a25100bf660486d428f2d",
+          "size": 8353
+        },
+        {
+          "path": "signtranslator/models/stgcn.py",
+          "sha256": "c62a39ef3cd9c6e7b99c5531be39e2da7a988335ea76b3eaa198383eaf27db38",
+          "size": 9464
+        },
+        {
+          "path": "signtranslator/motion_transformer/__init__.py",
+          "sha256": "fe85ae02c276b22484add034b5f15d777e27645272cba965dda4d9f21926a72a",
+          "size": 1990
+        },
+        {
+          "path": "signtranslator/motion_transformer/autoencoder.py",
+          "sha256": "47a4db84bf22c919c44cfbf3de36ecaca5f2fe673851df8976ad8fcffe734a23",
+          "size": 6303
+        },
+        {
+          "path": "signtranslator/motion_transformer/backbone.py",
+          "sha256": "a4906318eaa08fe282fb9f03535dd6d590e725498e2033b6d8f655e61493053d",
+          "size": 4227
+        },
+        {
+          "path": "signtranslator/motion_transformer/chain.py",
+          "sha256": "4b05c245088f48f15facd49e49bf194b5387b6c4d9dbcded28f639e0f92ae8b0",
+          "size": 3895
+        },
+        {
+          "path": "signtranslator/motion_transformer/decoding.py",
+          "sha256": "9b9c84ebc75d0c109d332cbc20cf38d41e2c200d179214ae363dd985145377bb",
+          "size": 8017
+        },
+        {
+          "path": "signtranslator/motion_transformer/quantizer.py",
+          "sha256": "b28e266f162deac89c36647c2585ac5b159a6666ecd6c87c79d2f25cc7d1f0f2",
+          "size": 5378
+        },
+        {
+          "path": "signtranslator/motion_transformer/residual_vq.py",
+          "sha256": "df7d85956a9c56736271c4881820114df86336648c69d85536e129c7d82c6298",
+          "size": 6198
+        },
+        {
+          "path": "signtranslator/motion_transformer/spectral.py",
+          "sha256": "3c5ddb113c8cc281700a20adc4111208c42cd4ae4ff635e39eb2f3cc2fd2404c",
+          "size": 4766
+        },
+        {
+          "path": "signtranslator/motion_transformer/streaming.py",
+          "sha256": "e855b37495faeccb4ac987843acf271fb8cb32e329fe5f33956a4455a9c7455c",
+          "size": 4727
+        },
+        {
+          "path": "signtranslator/planning/__init__.py",
+          "sha256": "682bd09cbd0612562fe8373c7eee86d2d5e41914d3aca93a3a942617e4e7469a",
+          "size": 5597
+        },
+        {
+          "path": "signtranslator/planning/adjudication.py",
+          "sha256": "55bc6d113bc2789f0966d18ba3ea8a993f0b01bcd69c35e712d6157bd6e8cf08",
+          "size": 136965
+        },
+        {
+          "path": "signtranslator/planning/automaton.py",
+          "sha256": "8e8b23d8ff7c5a792727bcbd2cf20b98f8e716899f6a3966d4fb3318158adb35",
+          "size": 11581
+        },
+        {
+          "path": "signtranslator/planning/candidate_graph.py",
+          "sha256": "d7f04582533db39a643c4e607db0ba0c943d536ee54aff5c720ea7f8e7e76852",
+          "size": 5450
+        },
+        {
+          "path": "signtranslator/planning/consistency.py",
+          "sha256": "823f8135be370f44d2932a0f3e62b31346989422fe57162a557168ece44fca4a",
+          "size": 10010
+        },
+        {
+          "path": "signtranslator/planning/constrained.py",
+          "sha256": "14491ad898d6919de48897ce2be120195962fa0210921c21a384a9f9bf97f35a",
+          "size": 6348
+        },
+        {
+          "path": "signtranslator/planning/event_timing.py",
+          "sha256": "a92a5d52fa6d1d78d92dfc3d1bf87f9c2d2c326a27e36e36037b74899f964838",
+          "size": 5275
+        },
+        {
+          "path": "signtranslator/planning/factorized.py",
+          "sha256": "63826c9d5fb0b6e5bfd5b4f8b9bc03e00faf7c2a5859c8c8370e9eea9d7d6be4",
+          "size": 13235
+        },
+        {
+          "path": "signtranslator/planning/graph_decode.py",
+          "sha256": "44740ed8aec7bbd5a7f5ad95dd6491704d885adaf37924222c9367df0531f66d",
+          "size": 6374
+        },
+        {
+          "path": "signtranslator/planning/joint_spatial.py",
+          "sha256": "e0f5801ee0a36f9f56ad0426cd8b0a50e3012381f9b15f049120fc95829c485e",
+          "size": 9678
+        },
+        {
+          "path": "signtranslator/planning/label_sequence.py",
+          "sha256": "551a9a683350d880e0c71864d4b92a8465f69cf9d5d26d4cdfa580beda56d36a",
+          "size": 3643
+        },
+        {
+          "path": "signtranslator/planning/label_vocabulary.py",
+          "sha256": "08ee0355adc84577ea32f34eae501ab7dec9bcd683c874254975d81b815d3b0a",
+          "size": 7964
+        },
+        {
+          "path": "signtranslator/planning/lexicon.py",
+          "sha256": "f99d8727e78bdbea8a71531fa449f3d06eacad1f9c5e7d205b5e587366f1f0ea",
+          "size": 7858
+        },
+        {
+          "path": "signtranslator/planning/loci.py",
+          "sha256": "1bbb36a3ae1efbd2990879ab6990445a3ec3827745d5a7c2f0e5f36b00c047b6",
+          "size": 5523
+        },
+        {
+          "path": "signtranslator/planning/locus_assignment.py",
+          "sha256": "6484d7f39eeb48133d794133ab7430a11a747122bcb9f21775fd8bc793965323",
+          "size": 7019
+        },
+        {
+          "path": "signtranslator/planning/locus_evaluation.py",
+          "sha256": "9bba4b1a410a1d70c50c616830efc1b98e4d10172d1646b10d30da315acc98b6",
+          "size": 6860
+        },
+        {
+          "path": "signtranslator/planning/partition_bounds.py",
+          "sha256": "3a8e5c4a8acb391c11511c3c722cd086ed68f802316f3adca29fcff1636df676",
+          "size": 2066
+        },
+        {
+          "path": "signtranslator/planning/phase3c.py",
+          "sha256": "6e6de7f32e87873bf203922155177924fcafcc8135b6728d55261e3dfe50ec1a",
+          "size": 37311
+        },
+        {
+          "path": "signtranslator/planning/planner.py",
+          "sha256": "575f9a3c4901d40e47ae0cc058d91a8165496cfac6ce246b7759ee7959663736",
+          "size": 9399
+        },
+        {
+          "path": "signtranslator/planning/preference.py",
+          "sha256": "775c61b23d2278bfe344f7070374fd44d3f3d1ed8bb346edc7f6e7d78120ccea",
+          "size": 4679
+        },
+        {
+          "path": "signtranslator/planning/referent_evaluation.py",
+          "sha256": "823b0ec97c54da554c0ad71242596f2fcbca0ab86d47399d7ba91a89e955b7b8",
+          "size": 5783
+        },
+        {
+          "path": "signtranslator/planning/referent_partition.py",
+          "sha256": "74f33d5539c97abea99de0242f4bd8d8b3194fab7b22972674131d279b16e972",
+          "size": 6335
+        },
+        {
+          "path": "signtranslator/planning/referents.py",
+          "sha256": "f055cf436dcf665b386a6ca447cfbb651a77fa98b231e332f7dbafb428d15e92",
+          "size": 3336
+        },
+        {
+          "path": "signtranslator/planning/relation_evaluation.py",
+          "sha256": "35ae1179cb7cc2324fc5237dec2df239ff064d13e71dfa08568be437f1562d21",
+          "size": 6970
+        },
+        {
+          "path": "signtranslator/planning/relations.py",
+          "sha256": "ff6ab70d600da9077f3465746290fb71a5e9c0f619c6915fcfee533d7b714060",
+          "size": 5953
+        },
+        {
+          "path": "signtranslator/planning/schema.py",
+          "sha256": "f6cd356ee1ee5ea54c5b8ff2c0254634b6257a92a991eb9d9cf9b08d966a5ad3",
+          "size": 15771
+        },
+        {
+          "path": "signtranslator/planning/score_metrics.py",
+          "sha256": "2c1f490b18394830dcb59c7e75f65f000414188e035b1bd1721e8f594d0363d3",
+          "size": 708
+        },
+        {
+          "path": "signtranslator/planning/sequence_evaluation.py",
+          "sha256": "200dfe8ba077573c793dc92c89a93b21a0a4ace36e65c564bdbc87992319acbb",
+          "size": 6221
+        },
+        {
+          "path": "signtranslator/planning/source_intervention.py",
+          "sha256": "6318fce5e6f8198c044515cf619951d458526a93fdc384f1e4b28a9ef6707488",
+          "size": 10828
+        },
+        {
+          "path": "signtranslator/planning/supervision.py",
+          "sha256": "7918e87582e1b0e0487f8567d398c74d60a8d9edac1e87e9c02b9bb7d4220d90",
+          "size": 27353
+        },
+        {
+          "path": "signtranslator/planning/support_audit.py",
+          "sha256": "ba698fd58142773bda14a81ad3a1d177374c65e565226760c8e675bfb3c07bd2",
+          "size": 7005
+        },
+        {
+          "path": "signtranslator/planning/temporal_evaluation.py",
+          "sha256": "c99a7a7db23e09aa23924afbc25cad03f72126edf83091bcbcdd9bf43caaf746",
+          "size": 5791
+        },
+        {
+          "path": "signtranslator/planning/tensors.py",
+          "sha256": "dbde210fb6c293a1ead3c2c302b18fb5aa454c0729818ce52f0c664a03530ad3",
+          "size": 5591
+        },
+        {
+          "path": "signtranslator/planning/text_labels.py",
+          "sha256": "d818e6ef525e477aaa262756d68154e0ced96f595c8ac66c306f3fb6f5388ddf",
+          "size": 7714
+        },
+        {
+          "path": "signtranslator/planning/text_loci.py",
+          "sha256": "632e4f6f378a83ee737e1da3e842441ceb259c8db293bdb7749439877b90a006",
+          "size": 5469
+        },
+        {
+          "path": "signtranslator/planning/text_referents.py",
+          "sha256": "12201f67b3032b232c508c0c1acedbf96812c31ffe343d516dfd17a1a094339c",
+          "size": 5247
+        },
+        {
+          "path": "signtranslator/planning/text_relations.py",
+          "sha256": "87f48e73f6adca747197af981cd41df1af80f6897ea1e0b748cdb70b2fd2d6fa",
+          "size": 6440
+        },
+        {
+          "path": "signtranslator/planning/text_sequence.py",
+          "sha256": "9525beac18243b38141e10e51b1db581f8bcb5785be5de644cf9d52eb23e2f1b",
+          "size": 9466
+        },
+        {
+          "path": "signtranslator/planning/text_timing.py",
+          "sha256": "7ab082f4f74adcc769d455ee2f213b741e4a215755951a0c50bd3c917854077c",
+          "size": 7141
+        },
+        {
+          "path": "signtranslator/pose/__init__.py",
+          "sha256": "7f35631e4b10e8e702f7373f8a015fc06f488bb315827fba0191d900ee711c3e",
+          "size": 2478
+        },
+        {
+          "path": "signtranslator/pose/body_model.py",
+          "sha256": "8515c5d83462e7b43b0b27dfd3f45f696725d6577da7251af60b13d2878eb07b",
+          "size": 9721
+        },
+        {
+          "path": "signtranslator/pose/camera.py",
+          "sha256": "67689bff598a31b9df84131580e6b6e4cb5505cb72afc29cfb0a2b803e4161d0",
+          "size": 4502
+        },
+        {
+          "path": "signtranslator/pose/fitting.py",
+          "sha256": "6b165fe0ec8b71bb51820650cc9edf248fd4583be5b8d0a9ff1d691d7bc4861a",
+          "size": 6800
+        },
+        {
+          "path": "signtranslator/pose/integration.py",
+          "sha256": "d6bf344773b10e445dc55f888775b54788333531556a1af5b4c7331baa72bcf0",
+          "size": 2508
+        },
+        {
+          "path": "signtranslator/pose/leakage.py",
+          "sha256": "926b96c9e30dccf8f8b3d103fa33802d3b75215e1f9896da6514cd1c8d37a729",
+          "size": 2708
+        },
+        {
+          "path": "signtranslator/pose/metrics.py",
+          "sha256": "183bf8e18e6caddc935399b534190c5cfae2e4d6f60a33d3e2efaf5143a7902b",
+          "size": 4612
+        },
+        {
+          "path": "signtranslator/pose/multichannel.py",
+          "sha256": "f903daa55b876b1213b6f6d147f6b5c9bf38311da799f3d1309dee8aff08b34f",
+          "size": 11141
+        },
+        {
+          "path": "signtranslator/pose/rotations.py",
+          "sha256": "b70976607a15c4e71502a5dc5867c8817fb391f96873ed9a4072cd3f5e51593d",
+          "size": 13805
+        },
+        {
+          "path": "signtranslator/pose/state.py",
+          "sha256": "ba176158fc56379776d9ff3b3bc024c43bb387b81fa38087aad32863b786fbc3",
+          "size": 6179
+        },
+        {
+          "path": "signtranslator/pose/temporal.py",
+          "sha256": "2f8d17fa678a3e0a2928655e10f9a34e9c97188899b0a2d7a360d736338f20b3",
+          "size": 5743
+        },
+        {
+          "path": "signtranslator/pretraining/__init__.py",
+          "sha256": "d2d2253401a785ee477bd3170d1c7b9ca18856693a41c79c29f8e71098319a70",
+          "size": 3765
+        },
+        {
+          "path": "signtranslator/pretraining/consistency.py",
+          "sha256": "743f1448eef88bda785bee45a518e82efa2b3fca7df61973c143e55bd617e15f",
+          "size": 4915
+        },
+        {
+          "path": "signtranslator/pretraining/contrast.py",
+          "sha256": "a073f68f291ee0a466d66ba5f60224eb07621d5437c3233b92520fca150cbbef",
+          "size": 3018
+        },
+        {
+          "path": "signtranslator/pretraining/curriculum.py",
+          "sha256": "6d76fd92168f8c69ee39e6f9694079f2a55454ff57a9af3d991e082e7f513220",
+          "size": 3778
+        },
+        {
+          "path": "signtranslator/pretraining/dependence.py",
+          "sha256": "17b82e5c7ddc38fd2ba74ebc6712b5daf82e9ecc098e91d895b2027552127cd7",
+          "size": 11644
+        },
+        {
+          "path": "signtranslator/pretraining/evaluation.py",
+          "sha256": "de0dc16e7fe46bed417de7d62964093dbce44c3432bd301ecd5f430a128a2765",
+          "size": 5804
+        },
+        {
+          "path": "signtranslator/pretraining/hard_negatives.py",
+          "sha256": "45bacca47c62887846ad77b64b672986247a8a4863e1611d195d02c484a92a8a",
+          "size": 4583
+        },
+        {
+          "path": "signtranslator/pretraining/how2sign_motion.py",
+          "sha256": "72b04adda11ed6aad08e0430977ebf4f833d3f7debcbdd5223ea2fdf7f3b2e5e",
+          "size": 28513
+        },
+        {
+          "path": "signtranslator/pretraining/masked_modeling.py",
+          "sha256": "a34daff732ca3910ec404612e202b03ddc5aa47db72840e143368d9f4b98ce80",
+          "size": 5587
+        },
+        {
+          "path": "signtranslator/pretraining/masking.py",
+          "sha256": "fcd35b427387281268a3aa394fe4c3fe6b0f8a45b67d703afdfdc80c0064a14d",
+          "size": 6479
+        },
+        {
+          "path": "signtranslator/pseudo_gloss/__init__.py",
+          "sha256": "544546a0499241fd2541251df5977079c9af2a2f93c93fbfb85a994925e75d28",
+          "size": 5736
+        },
+        {
+          "path": "signtranslator/pseudo_gloss/__main__.py",
+          "sha256": "0f7d54f3fbb1f79a85eb8110f11793db99da6f3c61ee979de5abe9a1b5f3fdb3",
+          "size": 49
+        },
+        {
+          "path": "signtranslator/pseudo_gloss/artifacts.py",
+          "sha256": "c906573cca4c8fa031f443817afc79dd8277ea54ceac5f0233c7cfe98cbf3fcf",
+          "size": 28071
+        },
+        {
+          "path": "signtranslator/pseudo_gloss/calibration.py",
+          "sha256": "712ec8f3f78eee011e7b02317efdaab4ce74edc91f2093c29f9039b825f6f6eb",
+          "size": 18668
+        },
+        {
+          "path": "signtranslator/pseudo_gloss/cli.py",
+          "sha256": "278072cfb5efe8adb03280f4f5e7b437a151634bfc785e01eaa79fab943c62f9",
+          "size": 3907
+        },
+        {
+          "path": "signtranslator/pseudo_gloss/contracts.py",
+          "sha256": "c156008795c10ddf8c61a11123d5d4d843f9b32dc55fcb616a4e5c0bc57dd58d",
+          "size": 16721
+        },
+        {
+          "path": "signtranslator/pseudo_gloss/corpus.py",
+          "sha256": "c8f56996e8b3c067b1fd90bc4314fbf0b37409af73fb0fdc722af43d7603dcac",
+          "size": 11944
+        },
+        {
+          "path": "signtranslator/pseudo_gloss/evaluation.py",
+          "sha256": "4f4caa620c00b157d6c9fec6cdb3e2107849965ab478b228ffe56c1710a15bb7",
+          "size": 20570
+        },
+        {
+          "path": "signtranslator/pseudo_gloss/inference.py",
+          "sha256": "d103d6efe5cfcf3269a5da61d54db2a7553906b0a41e944463374ad2f5cf5a26",
+          "size": 7330
+        },
+        {
+          "path": "signtranslator/pseudo_gloss/mathematics.py",
+          "sha256": "d0b59df53417075dc9dcdf93e114da351fd5278156e467464aaad07a7346896d",
+          "size": 12911
+        },
+        {
+          "path": "signtranslator/pseudo_gloss/model.py",
+          "sha256": "faa02248ae4d71c55b4975b75cbc72af1a87d7eae7417f37d9f6b101b960d7d9",
+          "size": 19344
+        },
+        {
+          "path": "signtranslator/pseudo_gloss/pipeline.py",
+          "sha256": "79e852f80d4d7efb9670008be4eece54aeddcc5c5d0caf9c2a18cbb587d5d61e",
+          "size": 13759
+        },
+        {
+          "path": "signtranslator/pseudo_gloss/readiness.py",
+          "sha256": "d0874229dece98ac71d6078a46f30cce7fef1ebe9f14d277bbce3f442986ddbe",
+          "size": 42317
+        },
+        {
+          "path": "signtranslator/pseudo_gloss/security.py",
+          "sha256": "ddc53f2914f957960276e930418e96e551f522273f7fecd7ea6b847adead4638",
+          "size": 4412
+        },
+        {
+          "path": "signtranslator/pseudo_gloss/training.py",
+          "sha256": "5cadbdefec99f8fea73f169ba4acfb3885f544b39abbe97c3ec4728f52fa2470",
+          "size": 30446
+        },
+        {
+          "path": "signtranslator/reproducibility.py",
+          "sha256": "4caa7c258411959cf539ea115b8d5aef0dfc543a5bf1de4b13dba6eb67381566",
+          "size": 8346
+        },
+        {
+          "path": "signtranslator/run.py",
+          "sha256": "2835227379d0d92140b34d664805db40734d513045b2c031e488b6ed3788f1af",
+          "size": 12572
+        },
+        {
+          "path": "signtranslator/skeleton/__init__.py",
+          "sha256": "49b9c0417212bf4e595e56f5f0f2904e6230c84295656785af228e7bda330c1d",
+          "size": 170
+        },
+        {
+          "path": "signtranslator/skeleton/graph.py",
+          "sha256": "cdcfbb42d1c5cd4767ec6dc111c0f018540aaeaaab951618104183333a90f96a",
+          "size": 8737
+        },
+        {
+          "path": "signtranslator/speech/__init__.py",
+          "sha256": "12f859f399b5e66d72687332e11e08a4b530aa8205142a36db4fc8c41d699a4c",
+          "size": 4996
+        },
+        {
+          "path": "signtranslator/speech/alignment.py",
+          "sha256": "767988b6c5355b58718d754d78eec5667a0fbf8931360dd38de620f96be61f2d",
+          "size": 8458
+        },
+        {
+          "path": "signtranslator/speech/calibration.py",
+          "sha256": "00ced04f03274782568463cf5989730d97fbe764c53b6f37ff6c470515b17a5a",
+          "size": 11494
+        },
+        {
+          "path": "signtranslator/speech/decoding.py",
+          "sha256": "6a8b7e7183b9494ad49e8ee545d97b30572d84c7d8b81b6a6c8bb51af4b7b7e9",
+          "size": 10201
+        },
+        {
+          "path": "signtranslator/speech/evaluation.py",
+          "sha256": "77b098567cdd354fd6a02acb1e5d3649f965bf606dfb1287cb513a504a7aeec2",
+          "size": 13369
+        },
+        {
+          "path": "signtranslator/speech/features.py",
+          "sha256": "be1fe9d778a79986098e01f69ddfb749041e2a0cfc892e21e0513336debdd18e",
+          "size": 11311
+        },
+        {
+          "path": "signtranslator/speech/lora.py",
+          "sha256": "217f45a7148e2443fc58cbc95dfacc9f26365ea5cfe610c707231471cfae3cbc",
+          "size": 8938
+        },
+        {
+          "path": "signtranslator/speech/objective.py",
+          "sha256": "51b9894727a47bdf3202617cc6f42c7178685677d143013abe9929f44b8215b2",
+          "size": 13191
+        },
+        {
+          "path": "signtranslator/speech/policy.py",
+          "sha256": "35f1923a437858b73f9eb4199479380ec54ab04d83170ede346bfdd4afed9091",
+          "size": 8748
+        },
+        {
+          "path": "signtranslator/speech/projection.py",
+          "sha256": "385209586615ce9ce9160dca8c0b297fa2bed3a1ca166b05c6f85b57ce86a8ea",
+          "size": 7431
+        },
+        {
+          "path": "signtranslator/speech/prosody.py",
+          "sha256": "218b79ad3b4e06060c9cec64a298907d3ffee3dd4357a3c1822e37c23007c2bb",
+          "size": 12225
+        },
+        {
+          "path": "signtranslator/speech/revision.py",
+          "sha256": "5679af30bd9c55f6968404cf7fed0b00826cec4ea4a0f7665cd96e5f00a9bd73",
+          "size": 8950
+        },
+        {
+          "path": "signtranslator/speech/schedule.py",
+          "sha256": "cb84d8fd4bd23b58cd1324c8bc60d78f700620402173125944a8f16fda0d60cc",
+          "size": 6956
+        },
+        {
+          "path": "signtranslator/speech/streaming.py",
+          "sha256": "e4f91571125b62c1c2fa815532c7b67e193a0db7c1ad661d6ec7477b624214fd",
+          "size": 9542
+        },
+        {
+          "path": "signtranslator/train.py",
+          "sha256": "f0cf10ffef7d165f533c1c72458b792f790223f2d9492bf2d9ab82a12d1c653e",
+          "size": 3996
+        },
+        {
+          "path": "signtranslator/training/__init__.py",
+          "sha256": "757d2b3ab9f7472e5a515fe28213bcf6cddc26900ea5e95c8c95b8e9462da603",
+          "size": 389
+        },
+        {
+          "path": "signtranslator/training/exposure.py",
+          "sha256": "d61d067841f89ad4d75816ddf55e59d1eee0d56b7fe7d75c1d4f4fd279028b72",
+          "size": 7067
+        },
+        {
+          "path": "signtranslator/training/objectives.py",
+          "sha256": "f53f3ebc30e6fb92e772723ac5a7e52cc9de79b8bf3bc0bcd303f76eb75f8b71",
+          "size": 6704
+        },
+        {
+          "path": "signtranslator/training/preference.py",
+          "sha256": "a868f1e929ab7e7bfb2fae03e7a2f16a3f9286546a4853ff4c387ef82d299982",
+          "size": 7254
+        },
+        {
+          "path": "signtranslator/training/trainer.py",
+          "sha256": "42b6c20a3266461a0082899f18453f5d5d1fed4d5176308dbb87560fe8d7045b",
+          "size": 43738
+        }
+      ]
+    },
+    "ledger_sha256": "8a698f3ac722c187c403cd58936e30555a46b9145cbe92df1fb12c7e1c8e167f",
+    "limitations": [
+      "Example membership is model-declared; absent historical masks remain unattributed.",
+      "Repeated presentations are not independent statistical units.",
+      "Returned calls do not prove nonzero gradients or learned competence.",
+      "Failed calls and arbitrary partial mutations are not certified.",
+      "Historical bindings do not revalidate current source permission or bytes.",
+      "The ledger hash identifies records, not model tensors or a checkpoint file."
+    ],
+    "model_contract": {
+      "class": "signtranslator.planning.text_relations.RelationalTextSIRModel",
+      "configs": {
+        "model_cfg": {
+          "config_type": "RelationalTextConfig",
+          "schema_version": 1,
+          "values": {
+            "convention_sha256": "be099194bbf480a6f66e23e8c516709c53b3f2ed9f047bf09dc97c21045b358f",
+            "declared_encoding": "utf-8-plain-bytes-v1",
+            "embedding_dim": 8,
+            "hidden_dim": 16,
+            "lexicon_sha256": "35e721971a9bd370207ffa7f634b7bb66900941d93d5e6f764a6c00a3c7add34",
+            "max_bytes": 64,
+            "max_events": 4,
+            "objective_normalization": "full-population-contribution-v1",
+            "relation_supervision": "recorded-positive-structural-negative-v1",
+            "timing_scale_seconds": 0.5
+          }
+        }
+      },
+      "governed_batch_schema_version": 1,
+      "governed_objective_schema_version": 1,
+      "parameter_count": 5563,
+      "skeleton": null,
+      "state_signature": [
+        {
+          "dtype": "torch.float32",
+          "name": "byte_embedding.weight",
+          "shape": [
+            257,
+            8
+          ]
+        },
+        {
+          "dtype": "torch.float32",
+          "name": "encoder.weight_ih_l0",
+          "shape": [
+            48,
+            8
+          ]
+        },
+        {
+          "dtype": "torch.float32",
+          "name": "encoder.weight_hh_l0",
+          "shape": [
+            48,
+            16
+          ]
+        },
+        {
+          "dtype": "torch.float32",
+          "name": "encoder.bias_ih_l0",
+          "shape": [
+            48
+          ]
+        },
+        {
+          "dtype": "torch.float32",
+          "name": "encoder.bias_hh_l0",
+          "shape": [
+            48
+          ]
+        },
+        {
+          "dtype": "torch.float32",
+          "name": "label_embedding.weight",
+          "shape": [
+            5,
+            8
+          ]
+        },
+        {
+          "dtype": "torch.float32",
+          "name": "decoder.weight_ih_l0",
+          "shape": [
+            48,
+            8
+          ]
+        },
+        {
+          "dtype": "torch.float32",
+          "name": "decoder.weight_hh_l0",
+          "shape": [
+            48,
+            16
+          ]
+        },
+        {
+          "dtype": "torch.float32",
+          "name": "decoder.bias_ih_l0",
+          "shape": [
+            48
+          ]
+        },
+        {
+          "dtype": "torch.float32",
+          "name": "decoder.bias_hh_l0",
+          "shape": [
+            48
+          ]
+        },
+        {
+          "dtype": "torch.float32",
+          "name": "classifier.weight",
+          "shape": [
+            4,
+            16
+          ]
+        },
+        {
+          "dtype": "torch.float32",
+          "name": "classifier.bias",
+          "shape": [
+            4
+          ]
+        },
+        {
+          "dtype": "torch.float32",
+          "name": "timing_head.weight",
+          "shape": [
+            2,
+            16
+          ]
+        },
+        {
+          "dtype": "torch.float32",
+          "name": "timing_head.bias",
+          "shape": [
+            2
+          ]
+        },
+        {
+          "dtype": "torch.float32",
+          "name": "relation_head.0.weight",
+          "shape": [
+            16,
+            48
+          ]
+        },
+        {
+          "dtype": "torch.float32",
+          "name": "relation_head.0.bias",
+          "shape": [
+            16
+          ]
+        },
+        {
+          "dtype": "torch.float32",
+          "name": "relation_head.2.weight",
+          "shape": [
+            5,
+            16
+          ]
+        },
+        {
+          "dtype": "torch.float32",
+          "name": "relation_head.2.bias",
+          "shape": [
+            5
+          ]
+        }
+      ]
+    },
+    "phase_exit_approved": false,
+    "recorded_optimizer_steps": 4,
+    "sample_presentations": 6,
+    "samples": [
+      {
+        "annotation_sha256": "2875861ca0cea18cef56c1cca652d59e45c5f9b7c1cce1dd4f7ffcd9ac59f476",
+        "branch_presentations": {
+          "event_timing": {
+            "supported": 2,
+            "unattributed": 0,
+            "unsupported": 0
+          },
+          "sir_relations": {
+            "supported": 0,
+            "unattributed": 0,
+            "unsupported": 2
+          },
+          "sir_sequence": {
+            "supported": 2,
+            "unattributed": 0,
+            "unsupported": 0
+          }
+        },
+        "presentations": 2,
+        "sample_id": "sample-0"
+      },
+      {
+        "annotation_sha256": "f1fc5833a45e3123382af2991a8f024c306e1e928cf2f57435db3bf91989699a",
+        "branch_presentations": {
+          "event_timing": {
+            "supported": 2,
+            "unattributed": 0,
+            "unsupported": 0
+          },
+          "sir_relations": {
+            "supported": 2,
+            "unattributed": 0,
+            "unsupported": 0
+          },
+          "sir_sequence": {
+            "supported": 2,
+            "unattributed": 0,
+            "unsupported": 0
+          }
+        },
+        "presentations": 2,
+        "sample_id": "sample-1"
+      },
+      {
+        "annotation_sha256": "66f80dd11df03333a930cdad83c1511dd2f9abadd045fbcdd20a540fef90c314",
+        "branch_presentations": {
+          "event_timing": {
+            "supported": 2,
+            "unattributed": 0,
+            "unsupported": 0
+          },
+          "sir_relations": {
+            "supported": 0,
+            "unattributed": 0,
+            "unsupported": 2
+          },
+          "sir_sequence": {
+            "supported": 2,
+            "unattributed": 0,
+            "unsupported": 0
+          }
+        },
+        "presentations": 2,
+        "sample_id": "sample-2"
+      }
+    ],
+    "schema_version": 2,
+    "unattributed_supported_example_presentations": {
+      "event_timing": 0,
+      "sir_relations": 0,
+      "sir_sequence": 0
+    },
+    "weights": {
+      "event_timing": 1.0,
+      "sir_relations": 1.0,
+      "sir_sequence": 1.0
+    }
+  },
+  "optimizer_exposure": [
+    {
+      "annotation_sha256": [
+        "2875861ca0cea18cef56c1cca652d59e45c5f9b7c1cce1dd4f7ffcd9ac59f476",
+        "f1fc5833a45e3123382af2991a8f024c306e1e928cf2f57435db3bf91989699a"
+      ],
+      "sample_ids": [
+        "sample-0",
+        "sample-1"
+      ],
+      "step": 1,
+      "support": {
+        "event_timing": 2,
+        "sir_relations": 1,
+        "sir_sequence": 2
+      },
+      "support_membership": {
+        "event_timing": [
+          true,
+          true
+        ],
+        "sir_relations": [
+          false,
+          true
+        ],
+        "sir_sequence": [
+          true,
+          true
+        ]
+      },
+      "weights": {
+        "event_timing": 1.0,
+        "sir_relations": 1.0,
+        "sir_sequence": 1.0
+      }
+    },
+    {
+      "annotation_sha256": [
+        "66f80dd11df03333a930cdad83c1511dd2f9abadd045fbcdd20a540fef90c314"
+      ],
+      "sample_ids": [
+        "sample-2"
+      ],
+      "step": 2,
+      "support": {
+        "event_timing": 1,
+        "sir_relations": 0,
+        "sir_sequence": 1
+      },
+      "support_membership": {
+        "event_timing": [
+          true
+        ],
+        "sir_relations": [
+          false
+        ],
+        "sir_sequence": [
+          true
+        ]
+      },
+      "weights": {
+        "event_timing": 1.0,
+        "sir_relations": 1.0,
+        "sir_sequence": 1.0
+      }
+    },
+    {
+      "annotation_sha256": [
+        "2875861ca0cea18cef56c1cca652d59e45c5f9b7c1cce1dd4f7ffcd9ac59f476",
+        "f1fc5833a45e3123382af2991a8f024c306e1e928cf2f57435db3bf91989699a"
+      ],
+      "sample_ids": [
+        "sample-0",
+        "sample-1"
+      ],
+      "step": 3,
+      "support": {
+        "event_timing": 2,
+        "sir_relations": 1,
+        "sir_sequence": 2
+      },
+      "support_membership": {
+        "event_timing": [
+          true,
+          true
+        ],
+        "sir_relations": [
+          false,
+          true
+        ],
+        "sir_sequence": [
+          true,
+          true
+        ]
+      },
+      "weights": {
+        "event_timing": 1.0,
+        "sir_relations": 1.0,
+        "sir_sequence": 1.0
+      }
+    },
+    {
+      "annotation_sha256": [
+        "66f80dd11df03333a930cdad83c1511dd2f9abadd045fbcdd20a540fef90c314"
+      ],
+      "sample_ids": [
+        "sample-2"
+      ],
+      "step": 4,
+      "support": {
+        "event_timing": 1,
+        "sir_relations": 0,
+        "sir_sequence": 1
+      },
+      "support_membership": {
+        "event_timing": [
+          true
+        ],
+        "sir_relations": [
+          false
+        ],
+        "sir_sequence": [
+          true
+        ]
+      },
+      "weights": {
+        "event_timing": 1.0,
+        "sir_relations": 1.0,
+        "sir_sequence": 1.0
+      }
+    }
+  ],
+  "phase_exit_approved": false
+}

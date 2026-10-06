@@ -10,6 +10,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import asdict, dataclass, fields, replace
 import hashlib
+import json
 from numbers import Integral
 from pathlib import Path
 from typing import Sequence
@@ -164,6 +165,13 @@ class GovernedMotionDataset(Dataset):
         """Fresh JSON metadata binding this exact ordered view, not just its size."""
         return {"schema_version": 1, "corpus_sha256": self._corpus.content_sha256,
                 "split": self._split, "record_indices": list(self._indices)}
+
+    @property
+    def supervision_identities(self) -> dict[str, str]:
+        """Fresh sample-to-annotation binding for this admitted view."""
+        records = json.loads(self._corpus.manifest_bytes)['records']
+        return {records[i]['sample_id']: records[i]['annotation_sha256']
+                for i in self._indices}
 
     def __len__(self) -> int:
         return len(self._indices)

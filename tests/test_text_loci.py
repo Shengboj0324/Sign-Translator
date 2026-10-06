@@ -27,7 +27,11 @@ def test_joint_locus_learning_source_inference_and_checkpoint(tmp_path):
     trainer.fit()
     assert trainer.validate()['locus_assignment'] < initial * .1
     batch = next(iter(loader(corpus, 'train')))
-    expected = net.training_step(batch, weights=WEIGHTS)['locus_assignment']
+    objective = net.training_step(batch, weights=WEIGHTS)
+    assert {name: term.support_mask for name, term in objective.terms.items()} == {
+        'sir_sequence': (True,), 'event_timing': (True,), 'sir_relations': (True,),
+        'referent_equality': (False,), 'locus_assignment': (True,)}
+    expected = objective['locus_assignment']
     batch.sir_targets.locus_ids.fill_(999)
     assert torch.equal(expected, net.training_step(batch, weights=WEIGHTS)['locus_assignment'])
     text = encode_plaintext_transcripts(batch.transcript_payloads, batch.annotations,
@@ -60,5 +64,6 @@ def test_absent_loci_leave_exclusive_head_unchanged(tmp_path):
     trainer.fit()
     assert 'locus_assignment' not in trainer.validate()
     assert trainer.last_validation_support['locus_assignment'] == 0
+    assert trainer.optimizer_exposure[0]['support_membership']['locus_assignment'] == [False]
     for old, p in zip(before, net.locus_head.parameters()):
         assert torch.equal(old, p) and p.grad is None

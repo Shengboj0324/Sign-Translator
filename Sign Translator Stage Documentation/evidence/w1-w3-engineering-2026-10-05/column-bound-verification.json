@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2461 passed in 92.17s",
+  "focused_tests": "19 passed in 0.75s",
+  "code_sha256": {
+    "signtranslator/planning/assignment_bounds.py": "f56aefad096e879897296ed7238cc8b3fe537124c8313230f77176bdd587341b",
+    "signtranslator/planning/joint_spatial.py": "f72ba2b879310b24941c7a34e86176dd200a44c8a724ebe6656b5102e59bc5ea",
+    "tests/test_assignment_bounds.py": "b0360ac05c9935b37c7863129874eb7f98724eebe67bfea15d643d4e918f964d"
+  },
+  "profile_sha256": "6c9fed124004cfee884df0aa10b9644a99a6c35cc6a370712e15daf6304286ab",
+  "scope": "Injective prefix-locus column upper bound; 420 exhaustive random rectangular assignment oracles and extreme integers; 72 configurations repeated twice; previous exact results preserved; new eight-event ambiguity independently verified by 65536 locus vectors.",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "limits": [
+    "14/36 designed cases still exhaust 10000 units",
+    "bound computation not charged as nodes/probes",
+    "no universal runtime speedup or real-model coverage guarantee",
+    "no calibrated or empirical acceptance"
+  ]
+}

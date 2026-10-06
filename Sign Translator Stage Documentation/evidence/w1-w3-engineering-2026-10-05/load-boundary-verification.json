@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2435 passed in 90.46s",
+  "focused_tests": "48 passed in 8.06s",
+  "code_sha256": {
+    "signtranslator/training/trainer.py": "d94c87180aef3e14ea58d8fd8bc4ecab1e2eb6e84b4df7d0ae2b22adde33ad71",
+    "signtranslator/run.py": "2835227379d0d92140b34d664805db40734d513045b2c031e488b6ed3788f1af",
+    "tests/test_checkpoint_load_boundary.py": "d8ccddb6d33b6249c19f9ca977fd40ac4ff853d256ddee6bb5459b058970e374",
+    "tests/test_w0_analysis.py": "72262995f9b162063e95868ea34a1282a44d09770c95725d2e548144b46d3f79"
+  },
+  "scope": "Fresh-trainer-only weights warm starts; partial model/optimizer/scheduler/RNG loads invalidate exact save/fit until full resume; legacy best-checkpoint analysis uses fresh loader and RNG isolation, retaining final weights and committed training state.",
+  "initial_failure": "1 failed, 2434 passed: analysis used weights warm start on trained trainer; repaired and full suite rerun",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "limits": [
+    "no transactional rollback of custom side effects",
+    "no mid-epoch resume",
+    "no empirical acceptance"
+  ]
+}

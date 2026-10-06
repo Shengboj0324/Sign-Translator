@@ -1,0 +1,9 @@
+{
+  "configurations_enumerated": 65536,
+  "input_sha256": "2c3e35d6ed08a4948dd2fc7b4284a2b4e3bf2a186ce4848d0389b5bc050615a5",
+  "best_gain": "143/6",
+  "runner_up_gain": "143/6",
+  "status": "ambiguous",
+  "observed_work": 7940,
+  "phase_exit_approved": false
+}

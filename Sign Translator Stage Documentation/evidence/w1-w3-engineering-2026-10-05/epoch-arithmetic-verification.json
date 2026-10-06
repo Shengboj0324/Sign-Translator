@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2411 passed in 86.32s",
+  "focused_tests": "44 passed in 2.98s",
+  "code_sha256": {
+    "signtranslator/training/objectives.py": "c337917d323c4452d546d41309dae14e5d1fb49077b367a8e05e571d38f457e9",
+    "tests/test_supported_objectives.py": "5cdc99ae0f46bb4e22b7e995d835ce7e183476f297f779b9d7fa6094fdfbd5b1"
+  },
+  "scope": "Exact binary-rational epoch numerator aggregation, support/population normalization and weighting before final float conversion. Finite final means survive intermediate overflow; representable weighted subnormals survive; final overflow refused.",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "limits": [
+    "Batch/autograd arithmetic unchanged",
+    "No optimizer-exposure provenance",
+    "No empirical phase acceptance",
+    "No performance claim"
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "evidence_kind": "fictional engineering fixture only",
+  "data_contract": {
+    "train": {
+      "class": "torch.utils.data.dataloader.DataLoader",
+      "dataset_class": "signtranslator.data.governed_corpus.GovernedMotionDataset",
+      "dataset_length": 3,
+      "sampler_class": "torch.utils.data.sampler.SequentialSampler",
+      "batch_size": 2,
+      "drop_last": false,
+      "num_workers": 0,
+      "persistent_workers": false,
+      "governed": {
+        "schema_version": 1,
+        "corpus_sha256": "b957621429ac79533bab892eee404eac15c32410b7c78012fdc8593063fc3bc1",
+        "split": "train",
+        "record_indices": [
+          0,
+          1,
+          2
+        ]
+      }
+    },
+    "validation": null
+  },
+  "optimizer_exposure": [
+    {
+      "annotation_sha256": [
+        "2875861ca0cea18cef56c1cca652d59e45c5f9b7c1cce1dd4f7ffcd9ac59f476",
+        "f1fc5833a45e3123382af2991a8f024c306e1e928cf2f57435db3bf91989699a"
+      ],
+      "sample_ids": [
+        "sample-0",
+        "sample-1"
+      ],
+      "step": 1,
+      "support": {
+        "event_timing": 2,
+        "sir_relations": 1,
+        "sir_sequence": 2
+      },
+      "weights": {
+        "event_timing": 1.0,
+        "sir_relations": 1.0,
+        "sir_sequence": 1.0
+      }
+    },
+    {
+      "annotation_sha256": [
+        "66f80dd11df03333a930cdad83c1511dd2f9abadd045fbcdd20a540fef90c314"
+      ],
+      "sample_ids": [
+        "sample-2"
+      ],
+      "step": 2,
+      "support": {
+        "event_timing": 1,
+        "sir_relations": 0,
+        "sir_sequence": 1
+      },
+      "weights": {
+        "event_timing": 1.0,
+        "sir_relations": 1.0,
+        "sir_sequence": 1.0
+      }
+    }
+  ],
+  "global_step": 2,
+  "phase_exit_approved": false
+}

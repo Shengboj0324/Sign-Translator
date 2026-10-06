@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2408 passed in 84.86s",
+  "focused_tests": "27 passed in 0.85s",
+  "code_sha256": {
+    "signtranslator/planning/partition_bounds.py": "3a8e5c4a8acb391c11511c3c722cd086ed68f802316f3adca29fcff1636df676",
+    "signtranslator/planning/joint_spatial.py": "e0f5801ee0a36f9f56ad0426cd8b0a50e3012381f9b15f049120fc95829c485e",
+    "signtranslator/planning/referent_partition.py": "74f33d5539c97abea99de0242f4bd8d8b3194fab7b22972674131d279b16e972",
+    "tests/test_partition_bounds.py": "dbc413b29d7b5d4672d4303b403a65880955e16eb987f77c71ba7d1337da76b2"
+  },
+  "profile_sha256": "2c633006096ae7a19cdb5ae4ac43d7a682d63dca9728f4538ba91f8ab0f217cd",
+  "verified_scope": "Edge-disjoint conflicting triangles tighten suffix partition bounds without double charging. Exhaustive suffix oracles on 150 random systems; existing joint and referent oracles; repeatable 72-configuration workload matrix. Previously completed exact results preserved; 16-event mixed/no-placement case now unique in 5067 work units.",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "not_proven": [
+    "universal speedup or real-model latency",
+    "calibrated graph decisions",
+    "empirical W1-W3 acceptance"
+  ]
+}

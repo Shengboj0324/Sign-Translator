@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2456 passed in 91.65s",
+  "focused_tests": "17 passed in 2.82s",
+  "code_sha256": {
+    "signtranslator/planning/exposure_audit.py": "53689905a20d493d3ff4fabd6faa7869801914d8be2986b6a557badc833c2090",
+    "tests/test_exposure_audit.py": "caa17b4e60b6b9e9d1f4e6b4b34bf09908cb4bbf95732208eddc10f015e9c215"
+  },
+  "scope": "Fresh canonical target-mask audit of historical declared support; verified/contradictory/unverified/no-recorded states; same-count swapped masks detected; source-byte and model-contract refusal; five-branch reference/locus support distinction.",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "limits": [
+    "current target definitions not historical gradient proof",
+    "explicit valid locus alphabet required by shared availability audit",
+    "canonical planner classes only",
+    "missing historical membership not reconstructed",
+    "no target-cell exposure or empirical competence claim"
+  ]
+}

@@ -71,7 +71,8 @@ class LocusTextSIRModel(ReferentTextSIRModel):
             self.model_cfg.convention_sha256, target.vocabulary_sha256),
             batch.annotations, self.vocabulary, self.locus_alphabet)
         terms = dict(parent.terms)
-        terms['locus_assignment'] = SupportedTerm(values.sum(), int(support.sum()))
+        terms['locus_assignment'] = SupportedTerm(values.sum(), int(support.sum()),
+                                                tuple(support.detach().cpu().tolist()))
         return SupportedObjective(terms, weights, parent.population_size)
 
     @torch.no_grad()

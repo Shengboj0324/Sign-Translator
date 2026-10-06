@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2480 passed in 91.90s",
+  "focused_tests": "41 passed in 2.51s",
+  "code_sha256": {
+    "signtranslator/training/scaling.py": "9bbaf0d685241985b4799f947273ed3a3ceb0a9901af389ead2a9f240e4b3658",
+    "signtranslator/training/objectives.py": "24503fbfc4680f02f3952862b3a9853b8a0fb1f045425529d6fc0f3278e3e758",
+    "tests/test_population_scaling.py": "8c00df7fc7f92aeec7354b4b0177e3add5a152c40d43a603b56e816e93ca0eec"
+  },
+  "scope": "Range-safe coefficient normalization and common-exponent sum of active branch losses; stable custom linear backward; first/second derivative checks; 160 Fraction-reference cases, signed gradients, mixed dtypes/zero branches and three local float32 MPS checks with explicit CPU scalar path.",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "limits": [
+    "ordinary floating rounding remains; no universally correctly rounded result claim",
+    "range loss elsewhere in model/autograd and already overflowed input numerators not repaired",
+    "CPU scalar transfers on MPS add overhead",
+    "no full-model accelerator qualification or exact accelerator resume",
+    "no empirical ASL acceptance"
+  ]
+}

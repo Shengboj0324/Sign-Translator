@@ -23,6 +23,7 @@ from torch.utils.data import BatchSampler, DataLoader, RandomSampler, Sequential
 from ..inference_context import preserving_eval_mode
 from ..config import TrainerConfig
 from .objectives import ObjectiveAccumulator, SupportedObjective
+from .exposure import exposure_records, validate_exposure, summarize_exposure
 from ..data.governed_corpus import (
     GovernedMotionBatch, GovernedMotionDataset, collate_governed_motion,
     move_governed_batch,
@@ -64,7 +65,7 @@ def _validated_training_state(state, *, epoch_limit):
     return {**state, "history": {name: list(values) for name, values in history.items()}}
 
 
-CHECKPOINT_SCHEMA_VERSION = 3
+CHECKPOINT_SCHEMA_VERSION = 4
 VALIDATION_SEED_OFFSET = 1_000_003
 
 
@@ -293,7 +294,9 @@ class Trainer:
         self.best_val = math.inf
         self.best_model_state = None
         self.global_step = 0
+        self._optimizer_exposure = []
         self.completed_epochs = 0
+        self._epoch_committed = True
         self.artifact_context = _json_domain(artifact_context or {})
         self.model_contract = _model_contract(model)
         if self.governed:
@@ -306,6 +309,26 @@ class Trainer:
             "train": _loader_contract(train_loader),
             "validation": _loader_contract(val_loader),
         }
+
+    @property
+    def optimizer_exposure(self):
+        """Fresh batch records; corpus/view identity is in data_contract."""
+        return exposure_records(self._optimizer_exposure)
+
+    def exposure_report(self):
+        """Historical returned-call summary, not renewed corpus authorization."""
+        if not self.supported_objectives:
+            raise ValueError('exposure report requires support-aware governed training')
+        if _loader_contract(self.train_loader) != self.data_contract['train']:
+            raise ValueError('training view changed since exposure was recorded')
+        return summarize_exposure(
+            self.optimizer_exposure, global_step=self.global_step,
+            completed_epochs=self.completed_epochs, committed=self._epoch_committed,
+            weights=self.cfg.loss_weights,
+            identities=self.train_loader.dataset.supervision_identities,
+            data_contract=self.data_contract['train'],
+            implementation_identity=self.implementation_identity,
+            model_contract=self.model_contract)
 
     # -- helpers ------------------------------------------------------------
     def _to_device(self, batch: dict) -> dict:
@@ -367,9 +390,25 @@ class Trainer:
                     accumulator.add(objective)
                     if training:
                         context = f'epoch={self.completed_epochs}, batch={index}, sample_ids={sample_ids!r}'
+                        record = {
+                            'step': self.global_step + 1,
+                            'sample_ids': list(sample_ids),
+                            'annotation_sha256': [a.content_sha256() for a in batch.annotations],
+                            'support': {name: term.supported_examples for name, term in objective.terms.items()},
+                            'support_membership': {name: list(term.support_mask)
+                                                   if term.support_mask is not None else None
+                                                   for name, term in objective.terms.items()},
+                            'weights': dict(objective.weights),
+                        }
+                        validate_exposure([dict(record, step=1)], supported=True,
+                                          global_step=1, weights=self.cfg.loss_weights,
+                                          identities=loader.dataset.supervision_identities)
+                        encoded = canonical_json_bytes(record).decode('utf-8')
                         _checked_step(total, self.opt, self.model.parameters(), self.cfg.grad_clip, context)
-                        self.sched.step()
+                        # Record once optimizer.step returns, even if scheduler.step fails.
                         self.global_step += 1
+                        self._optimizer_exposure.append(encoded)
+                        self.sched.step()
         result = accumulator.result()
         support = {**accumulator.support, 'total': accumulator.population}
         if training:
@@ -379,6 +418,9 @@ class Trainer:
         return result
 
     def train_epoch(self) -> Dict[str, float]:
+        # Only fit() can commit metrics, selection and the epoch cursor together.
+        # Exceptions may leave model/optimizer/RNG changes that cannot be undone.
+        self._epoch_committed = False
         if self.supported_objectives:
             return self._supported_epoch(self.train_loader, training=True)
         _require_batches(self.train_loader, "training")
@@ -436,6 +478,8 @@ class Trainer:
 
     def fit(self, verbose: bool = False,
             max_epochs: Optional[int] = None) -> Dict[str, List[float]]:
+        if not self._epoch_committed:
+            raise RuntimeError('unfinished epoch: restore a committed checkpoint before fit')
         if max_epochs is not None and max_epochs <= 0:
             raise ValueError("max_epochs must be positive when supplied")
         if self.completed_epochs > self.cfg.epochs:
@@ -477,6 +521,7 @@ class Trainer:
                 improved = False
 
             self.completed_epochs = epoch + 1
+            self._epoch_committed = True
             if self.cfg.ckpt_path:
                 paths = checkpoint_paths(self.cfg.ckpt_path)
                 if improved:
@@ -494,6 +539,8 @@ class Trainer:
     # -- checkpointing ------------------------------------------------------
     def save(self, path: str | os.PathLike[str], *, kind: str = "last") -> Path:
         """Atomically persist a hash-verified, self-describing checkpoint."""
+        if not self._epoch_committed:
+            raise RuntimeError('unfinished epoch cannot be saved as an exact checkpoint')
         if kind not in {"best", "last", "milestone"}:
             raise ValueError("checkpoint kind must be best, last, or milestone")
         if self.train_loader.num_workers != 0:
@@ -511,6 +558,7 @@ class Trainer:
             "data_contract": self.data_contract,
             "trainer_config": self.cfg.to_dict(),
             "artifact_context": self.artifact_context,
+            "optimizer_exposure": self.optimizer_exposure,
             "model": self.model.state_dict(),
             "optimizer": self.opt.state_dict(),
             "scheduler": self.sched.state_dict(),
@@ -548,6 +596,7 @@ class Trainer:
             "data_contract": self.data_contract,
             "trainer_config": self.cfg.to_dict(),
             "artifact_context": self.artifact_context,
+            "optimizer_exposure": self.optimizer_exposure,
             "training_state": {
                 "completed_epochs": self.completed_epochs,
                 "global_step": self.global_step,
@@ -633,10 +682,16 @@ class Trainer:
         """Load either an exact training continuation or model weights only.
 
         ``resume`` validates and restores optimizer, scheduler, epoch, history, and all
-        RNG state.  ``weights`` is an explicit warm start and restores no training state.
+        RNG state.  ``weights`` requires a fresh trainer and restores no training state.
         """
         if mode not in {"resume", "weights"}:
             raise ValueError("checkpoint load mode must be 'resume' or 'weights'")
+        if mode == "weights" and (
+                not self._epoch_committed or self.completed_epochs != 0
+                or self.global_step != 0 or self.history or self.opt.state
+                or self.best_model_state is not None or self.best_val != math.inf
+                or self._optimizer_exposure):
+            raise ValueError('weights warm start requires a fresh trainer without training state')
         source = Path(path)
         manifest_path = Path(f"{source}.json")
         if source.is_symlink() or not source.is_file():
@@ -649,9 +704,11 @@ class Trainer:
             "model_contract", "implementation_identity", "trainer_config",
             "runtime_environment", "data_contract", "artifact_context", "training_state",
         }
+        if manifest.get("schema_version") == 4:
+            manifest_fields.add("optimizer_exposure")
         if set(manifest) != manifest_fields:
             raise ValueError("checkpoint manifest fields do not match the checkpoint schema")
-        if type(manifest.get("schema_version")) is not int or manifest["schema_version"] not in (2, 3):
+        if type(manifest.get("schema_version")) is not int or manifest["schema_version"] not in (2, 3, 4):
             raise ValueError("unsupported checkpoint manifest schema")
         if manifest.get("checkpoint_size") != source.stat().st_size:
             raise ValueError("checkpoint size does not match its manifest")
@@ -679,8 +736,10 @@ class Trainer:
             "runtime_environment", "data_contract", "trainer_config", "artifact_context",
             "model", "optimizer", "scheduler", "training_state", "rng_state",
         }
-        if manifest["schema_version"] == 3:
+        if manifest["schema_version"] >= 3:
             required.add("best_model_state")
+        if manifest["schema_version"] == 4:
+            required.add("optimizer_exposure")
         if set(checkpoint) != required:
             raise ValueError("checkpoint fields do not match the checkpoint schema")
         if (type(checkpoint["schema_version"]) is not int
@@ -689,6 +748,9 @@ class Trainer:
         if mode == "resume":
             training_state = _validated_training_state(
                 checkpoint["training_state"], epoch_limit=self.cfg.epochs)
+            if (self.governed and training_state['global_step'] !=
+                    training_state['completed_epochs'] * len(self.train_loader)):
+                raise ValueError('checkpoint steps do not describe a committed governed epoch')
         for field in ("kind", "model_contract", "implementation_identity",
                       "runtime_environment", "data_contract", "trainer_config",
                       "artifact_context", "training_state"):
@@ -699,15 +761,28 @@ class Trainer:
                 expected = _json_domain(expected)
             if manifest.get(field) != expected:
                 raise ValueError(f"checkpoint manifest disagrees on {field}")
+        if checkpoint['schema_version'] == 4:
+            if manifest['optimizer_exposure'] != checkpoint['optimizer_exposure']:
+                raise ValueError('checkpoint manifest disagrees on optimizer exposure')
+            if mode == 'resume':
+                exposure = validate_exposure(
+                    checkpoint['optimizer_exposure'], supported=self.supported_objectives,
+                    global_step=training_state['global_step'],
+                    weights=self.cfg.loss_weights,
+                    identities=self.train_loader.dataset.supervision_identities
+                    if self.supported_objectives else {})
         if checkpoint["model_contract"] != self.model_contract:
             raise ValueError("checkpoint model contract does not match this model")
 
         if mode == "weights":
+            # Loading can partially copy tensors before a custom hook raises.
+            self._epoch_committed = False
             self.model.load_state_dict(checkpoint["model"], strict=True)
+            self._epoch_committed = True
             return
 
         if checkpoint["schema_version"] != CHECKPOINT_SCHEMA_VERSION:
-            raise ValueError("schema 2 lacks best-model state; use explicit weights warm start")
+            raise ValueError("schema 2 lacks best-model state; schemas 2/3 lack optimizer exposure; use explicit weights warm start")
 
         loaded_config = checkpoint["trainer_config"]
         current_config = self.cfg.to_dict()
@@ -746,6 +821,9 @@ class Trainer:
                     raise ValueError("best-model tensor contract mismatch")
             best_state = {name: value.detach().cpu().clone() for name, value in best_state.items()}
 
+        # Preflight has completed. A later load failure can leave partial state;
+        # prohibit exact continuation until a complete resume succeeds.
+        self._epoch_committed = False
         self.model.load_state_dict(checkpoint["model"], strict=True)
         self.opt.load_state_dict(checkpoint["optimizer"])
         self.sched.load_state_dict(checkpoint["scheduler"])
@@ -755,3 +833,5 @@ class Trainer:
         self.history = training_state["history"]
         restore_rng_state(checkpoint["rng_state"])
         self.best_model_state = best_state
+        self._optimizer_exposure = exposure
+        self._epoch_committed = True

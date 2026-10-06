@@ -26,10 +26,10 @@ governed ASL model or empirical training corpus is implied.
 
 Next implementation order:
 
-1. W3: extend search profiling beyond the three fixed mixed-sign probes and
-   implement calibrated complete graph decisions, including evidence-backed
-   placement/unknown decisions. Exact integer-scaled joint search is now profiled;
-   complete accepted graph decoding remains open.
+1. W3: improve search behavior on the exhausted mixed/negative score cases
+   identified by the 72-configuration workload matrix before increasing budgets.
+   Implement calibrated complete graph decisions and evidence-backed placement/
+   unknown decisions when the required evidence is supplied; acceptance remains open.
 2. W3: use the completed source-intervention and five-head diagnostic paths to
    characterize errors when an admitted real pilot becomes available; implement
    calibrated ambiguity/unknown refusal without inferring acceptance from synthetic
@@ -1211,6 +1211,421 @@ Full regression: **2,405 passed in 85.65 seconds**, warnings as errors. Evidence
 `joint-integer-regression.txt`, `joint-integer-verification.json`,
 `joint-bound-profile.json` and `joint-bound-replay.py` in the October 5 evidence
 directory. The retained replay passed for all three cases.
+
+### Broader joint-search workload matrix
+
+Added a reproducible engineering probe covering 8/16/32/64 events, positive/
+negative/mixed reference scores, all/alternating/no placement, four locus classes
+and 1,000/10,000-unit budgets: **72 configurations, two runs each (144 calls)**.
+Each repeat produced identical result fields. Checks cover exact reconstructed
+scores for returned candidates, no usable outputs on exhaustion, bounded work,
+and unchanged results when an already-completed case receives a larger budget.
+These are consistency checks, not independent exhaustive optimality proofs.
+
+| Work budget | Unique candidates | Proven ambiguity | Exhausted | Largest observed runtime |
+|---|---:|---:|---:|---:|
+| 1,000 | 13 | 1 | 22 | 22.68 ms |
+| 10,000 | 19 | 1 | 16 | 256.45 ms |
+
+The tenfold budget increase resolved six additional cases; sixteen remained
+unresolved. The slowest run was a 64-event mixed-score case with no placement.
+The next performance priority is improving search on these cases, not treating a
+larger budget as sufficient readiness. Work units do not impose a wall-clock
+limit. This matrix is designed synthetic coverage, not a real-model sample or a
+statistical success rate; two timings are not latency-percentile evidence.
+
+Evidence: `joint-workload-profile.py`, `joint-workload-profile.json`,
+`joint-workload-run.txt`, and `joint-workload-verification.json` in the October 5
+evidence directory. Production solver code is unchanged by this profiling step;
+the recorded 2,405-test full regression still covers that implementation. All
+nine manual handoffs remain absent, including target-hardware requirements.
+Empirical W1–W3 acceptance remains open.
+
+### Transitivity-conflict upper bounds
+
+Both reference-only and joint spatial search now tighten suffix bounds using
+edge-disjoint conflicting triangles. Two positive equality preferences and one
+negative preference cannot all be satisfied by an equivalence partition. Each
+such triangle loses at least the minimum absolute edge gain relative to the
+all-positive-edge bound. Charging only edge-disjoint triangles avoids counting
+one objective term more than once. Backward suffix construction retains a valid
+packing at each suffix. Integer arithmetic preserves exact admissibility.
+
+The greedy packing need not be optimal. Preprocessing is cubic in event count,
+with a quadratic fast path when there are fewer than two positive edges or no
+negative edges. A first measured version added needless cost on homogeneous-sign
+controls; the retained final version skips that work. This changes the bound,
+not the objective or the requirement to prove both best and runner-up states.
+
+Twenty-seven focused checks passed. A separate exhaustive oracle checked every
+suffix for 150 small random systems (sizes 2–6), asserting true optimum ≤ tightened
+bound ≤ original positive-edge bound. Specific checks cover each negative-edge
+position, overlapping triangles that must not be double-charged, empty/singleton
+inputs, existing joint/referent oracles and extreme rational scores.
+
+The 72-configuration matrix was rerun twice per configuration. Every previously
+completed case retained identical status, best and runner-up gains. One previously
+exhausted 16-event mixed/no-placement case completed uniquely in 5,067 work units.
+At budget 10,000, counts became 20 unique, one ambiguous and 15 exhausted (formerly
+19/1/16). Budget-1,000 counts were unchanged. Mixed-case total work fell from
+105,465 to 100,532 across the matrix; aggregate measured mixed-case runtime was
+1.59 seconds versus 1.54 previously. These two-run timings are descriptive, not
+statistical evidence of universal speedup. This is a proof-completion improvement
+with preprocessing overhead, and hard cases remain unresolved.
+
+Evidence includes `joint-workload-triangle-profile.py`, its JSON report and run
+log, plus the retained initial profile and before-change solver source. Earlier
+`joint-bound-replay.py` asserts work counts from the integer-only version and is
+historical; changed pruning may legitimately change those counts. All nine manual
+handoffs remain absent; calibrated graph decisions and empirical acceptance stay
+open.
+
+Final full regression: **2,408 passed in 84.86 seconds**, warnings treated as errors.
+Recorded in `triangle-bound-regression.txt` and `triangle-bound-verification.json`;
+all nine manual handoffs remain absent and no empirical phase exit is approved.
+
+### Exact epoch objective reporting
+
+`ObjectiveAccumulator.result()` now sums the stored finite binary loss numerators
+as exact rational values, divides by the existing support/population denominators,
+and applies declared weights before converting each final metric to float. This
+avoids intermediate numerator overflow and premature underflow of weighted totals.
+Unrepresentable final metrics still fail explicitly. The optimization/autograd
+path is unchanged; exact reporting does not recover precision already lost while
+computing batch losses, establish optimizer exposure, or certify model competence.
+Three numerical regression cases cover a finite maximum-value mean, a smallest
+subnormal weighted total, and genuine final overflow. The focused objective and
+trainer checks passed (44 tests in 2.98 seconds). This adds epoch-end rational
+arithmetic overhead; no runtime improvement is claimed. All nine manual handoffs
+remain absent. Training-exposure provenance remains an open implementation item.
+
+Full regression after the epoch reporting change: **2,411 passed in 86.32 seconds**,
+warnings as errors; evidence: `epoch-arithmetic-regression.txt` and
+`epoch-arithmetic-verification.json`.
+
+### Checkpointed optimizer objective exposure
+
+The support-aware governed trainer now retains one immutable encoded batch record
+per returned optimizer step, exposed through a copied `optimizer_exposure` view.
+Each record binds its contiguous global step, ordered sample IDs, exact reviewed
+annotation hashes, declared branch support counts and objective weights. Sample
+and annotation pairs are checked against the admitted training view before the
+step and on resume. Corpus identity and ordered view remain bound by the existing
+checkpoint data contract. Validation calls do not create optimizer records.
+
+Checkpoint schema **4** stores the ledger in both checkpoint and manifest; resume
+requires matching contents and validates coverage, step sequence, identities,
+hashes, support bounds and weights before loading model state. Schemas 2/3 remain
+available for explicit weights-only warm starts; exact resume is rejected because
+they lack these records. Successful CPU resume preserves the complete ledger.
+A returned optimizer call is recorded before the scheduler call, so scheduler
+failure does not erase the already executed step. An optimizer call that raises
+is not certified; arbitrary partial mutations within a failing custom optimizer
+are not rolled back. Such failures do not establish resumability.
+
+These records measure declared objective exposure at batch granularity. They do
+not attribute each branch count to particular examples, certify nonzero gradients,
+track individual target cells or prove competence. Shared parameters may change
+through other supported branches. Ledger storage and checkpoint size grow with
+steps and batch population; no bounded-memory or throughput claim is made.
+All nine manual handoffs remain absent and empirical phase acceptance is unchanged.
+
+Exposure verification: **2,422 passed in 88.18 seconds**, warnings as errors.
+Evidence: `optimizer-exposure-regression.txt`, `optimizer-exposure-verification.json`,
+and the explicitly fictional `optimizer-exposure-example.json`.
+
+### Committed epoch boundaries for exact continuation
+
+Training marks the in-memory epoch unfinished before entering any model or optimizer
+work. Only `fit()` commits it after training, history, validation and checkpoint
+selection succeed and the completed-epoch cursor advances. Until then, `save()`
+refuses to create an exact checkpoint and `fit()` refuses to repeat work. A successful
+load of an existing committed checkpoint restores the ability to continue. Standalone
+`train_epoch()` remains usable for diagnostics but does not commit fit-level history,
+selection or the cursor, and consequently cannot be saved as an exact checkpoint.
+
+Governed resume also requires `global_step == completed_epochs * len(train_loader)`
+before state mutation. This matches the supported full-view, fixed-loader route;
+mid-epoch sampler/RNG reconstruction is not implemented. Tests exercise optimizer,
+scheduler, validation and unavailable-selection failures, no-write/no-retry behavior,
+recovery, standalone epochs and a consistently rehashed inconsistent cursor. The
+focused checks passed (39 tests in 6.82 seconds). This is refusal of unsupported
+continuation, not rollback of failed model/optimizer/custom side effects. Existing
+checkpoints and their retained exposure ledgers provide the recovery boundary.
+All nine manual handoffs remain absent; empirical W1-W3 acceptance stays unapproved.
+
+Committed-epoch full regression: **2,428 passed in 90.48 seconds**, warnings as
+errors. Evidence: `epoch-commit-regression.txt` and `epoch-commit-verification.json`.
+
+### Checkpoint load failure and warm-start boundaries
+
+Weights-only loading now requires a fresh trainer: no unfinished work, completed
+epochs, optimizer steps/state, metric history, selected model or objective exposure
+records. This prevents attaching old optimizer moments, selection history and
+exposure evidence to replacement weights. A rejected warm-start request leaves a
+previously committed receiver unchanged; create a fresh trainer for the new run.
+
+After read/contract preflight, both weights and full resume paths mark the receiver
+uncommitted before loading model tensors. Only successful completion restores the
+committed flag. Failures in model, optimizer, scheduler or RNG loading may leave
+partial mutations; they now prevent fit/save and cannot be bypassed with a weights
+warm start on that receiver. A complete valid resume restores continuation, or a
+new trainer can be constructed. This is explicit invalidation, not transactional
+rollback of custom hooks or external side effects.
+
+Tests cover trained-receiver refusal without mutation, fresh warm-start training,
+and injected partial failures at all five load entry points including weights-only
+model loading, followed by complete resume and continued training. The focused
+run passed 32 tests in 6.10 seconds before a test-only scheduler mock cleanup;
+the full regression verifies the final test version.
+
+The first full run found the best-checkpoint analysis pipeline using weights-only
+loading on a trained trainer. It now uses a fresh loader trainer within isolated
+RNG state, with the existing finally block restoring final model tensors. The
+pipeline regression additionally verifies the returned training cursor/history
+and that the returned trainer can still save its committed state.
+
+All nine manual handoffs
+remain absent; these engineering guarantees do not approve empirical W1-W3 exits.
+
+Load-boundary final verification: **48 focused checks passed in 8.06 seconds**;
+**2,435 passed in 90.46 seconds** in the full suite, warnings as errors. Evidence:
+`load-boundary-regression.txt`, `load-boundary-verification.json`, and the retained
+`load-boundary-initial-failure.txt` documenting the repaired pipeline conflict.
+
+### Immutable historical optimizer-exposure summary
+
+`Trainer.exposure_report()` now exports an immutable canonical JSON report of
+validated returned-call records. It includes corpus/view and model contracts,
+implementation identity, the ordered ledger hash, completed epoch and step counts,
+and an explicit committed-boundary flag. Each admitted sample retains its exact
+annotation binding and presentation count, including zero for unvisited samples.
+Total presentations and distinct presented samples are separate. For each branch,
+the report counts supported example presentations and steps with/without support.
+Unknown per-example branch membership is not inferred from batch-level totals.
+
+The report is available for an interrupted supported run, but explicitly marks it
+uncommitted and includes only optimizer calls that returned. Validation does not
+add exposure. Resuming the same checkpoint reproduces the report bytes. A changed
+training-view contract is rejected. Returned dictionaries are copies; caller edits
+do not mutate the report or internal ledger. Historical reporting does not re-read
+source media, renew permission, certify nonzero gradients or prove competence.
+The ledger hash identifies records, not a model tensor state or checkpoint file;
+repeated presentations are not independent units. Empirical acceptance stays false.
+
+Focused exposure/report/trainer checks: 18 passed in 3.78 seconds. The fictional
+two-epoch example records four steps, six presentations of three distinct samples,
+and two supported relation-example presentations. Its report is saved as
+`optimizer-exposure-summary-example.json`. All nine manual handoffs remain absent.
+
+Exposure-report full regression: **2,439 passed in 90.70 seconds**, warnings as
+errors. Evidence: `exposure-report-regression.txt` and
+`exposure-report-verification.json`.
+
+### Per-example declared branch support
+
+`SupportedTerm` now accepts an optional immutable tuple of booleans, in batch order.
+`SupportedObjective` validates its exact boolean type, population length and agreement
+with the integer support count. The five-branch planner supplies masks from the same
+loss support calculations: sequence/timing support every admitted example; relation,
+referent and locus branches preserve their actual known-target support masks. The
+optimization formula and gradients are unchanged.
+
+Returned optimizer records retain these masks under `support_membership`, aligned
+with ordered sample/annotation identities. Resume rejects malformed masks before
+model state is loaded. Historical records without this optional field remain valid
+unattributed records; absent masks do not imply unsupported examples. Checkpoint schema
+4 retains the optional record extension; implementation-byte matching still governs
+exact resume. No old target support is reconstructed or fabricated.
+
+Exposure report schema 2 adds each sample's supported, unsupported and unattributed
+presentation counts for every branch, plus aggregate supported presentations whose
+individual membership is unavailable. Counts conserve presentations and the declared
+branch totals. They remain model declarations, not evidence of nonzero gradients,
+independent samples, target-cell polarity coverage or competence. The earlier report
+schema-1 example remains historical; `optimizer-exposure-membership-example.json`
+shows the new fictional report and underlying records. In its two epochs, the middle
+sample supplies both relation-supported presentations; the other two remain unsupported.
+
+Focused checks: 43 passed in 5.97 seconds. They include strict masks, unchanged analytic
+gradients, mixed support attribution, missing historical masks and rehashed malformed
+checkpoint rejection. The full suite additionally covers positive referent membership.
+All nine manual handoffs remain absent and empirical phase acceptance stays false.
+
+Per-example membership full regression: **2,449 passed in 91.50 seconds**, warnings
+as errors. Evidence: `support-membership-regression.txt` and
+`support-membership-verification.json`.
+
+### Fresh target audit of declared optimizer support
+
+`audit_exposure_declarations()` now compares historical per-example declarations
+against freshly rebuilt supervision masks for the canonical relation, referent and
+locus planner classes. It reuses governed source-byte admission and target-availability
+audit logic per sample, binds each sample and annotation, checks the recorded model
+contract/vocabulary/alphabet, and refuses view or exposure changes during the audit.
+
+The immutable report separates verified supported, verified unsupported, unverified
+membership and contradictory presentations for every branch. It names conflicting
+sample/branch declarations, retains exact exposure/availability report hashes, and
+uses explicit statuses: `consistent_declared_support`, `inconsistent_declared_support`,
+`partially_attributed`, or `no_recorded_exposure`. Zero recorded steps are never positive
+training evidence. Missing historical masks remain unverified even when present-day
+targets would suggest a membership. A two-example support swap can pass ledger count
+validation while failing this fresh semantic check; the tests cover this distinction.
+
+This verifies declaration consistency with current admitted target definitions. It
+does not prove historical gradient application, individual target-cell exposure,
+independent statistical units or competence. Revalidating bytes does not grant new
+human permission. Other/custom model classes are outside this audit's defined scope. This route
+requires an explicit valid locus alphabet for the shared availability audit, even
+when the selected planner has only relation or referent heads.
+All nine manual handoffs remain absent and empirical phase exit remains false.
+
+Focused checks: 17 passed in 2.82 seconds, covering mixed and five-branch support,
+reference/locus distinctions, no-step and unknown-history states, same-count swapped
+masks, changed source bytes and model-contract refusal. Fictional consistent and
+deliberately corrupted examples are retained in `exposure-declaration-audit-example.json`.
+
+Fresh declaration-audit full regression: **2,456 passed in 91.65 seconds**, warnings
+as errors. Evidence: `exposure-audit-regression.txt` and
+`exposure-audit-verification.json`.
+
+### Branch-specific target inventory in declaration audits
+
+Declaration audit schema 2 now embeds each sample's available target inventory and
+its canonical hash. It collates/revalidates the admitted sample and constructs only
+the required planner targets. Relation-only and referent planners no longer require
+a locus alphabet. Locus planners still require their exact bound alphabet. This
+supersedes the initial shared-audit alphabet requirement described above.
+
+Inventories preserve label class index/kind/identity and event counts, one STOP
+target per example, event-interval/endpoint counts, per-type directed relation
+positive/negative/unknown counts, unordered referent equality counts, and locus
+known/unknown counts with explicit class identities when that head is present.
+Unknowns are not relabeled negative. Relation domains exclude self pairs; reference
+domains count each unordered pair once. Counts are unweighted available targets
+for the individual example, never multiplied into claimed optimizer exposure.
+The existing support-consistency, identity, changed-source and unknown-history
+checks continue to apply. No missing mask is reconstructed.
+
+Focused checks: 20 passed in 2.79 seconds, including alphabet-free relation/reference
+audits, exact polarity counts and locus-alphabet refusal. The fictional
+`exposure-target-inventory-example.json` makes the support decision and its current
+target inventory reviewable together. This is not a target-cell gradient record or
+competence certificate. All nine manual handoffs remain absent; empirical acceptance
+is still unapproved.
+
+Embedded inventory full regression: **2,459 passed in 92.29 seconds**, warnings as
+errors. Evidence: `exposure-inventory-regression.txt` and
+`exposure-inventory-verification.json`.
+
+### Injective locus-column upper bound
+
+Joint search now bounds placed prefix clusters using the minimum of independent
+row maxima and the sum of the largest r column maxima, where r is the number of
+placed prefix clusters. Every injective assignment selects r distinct columns,
+and its contribution in each column is at most that column's maximum. The bound
+therefore remains optimistic for positive, zero and negative exact integer gains.
+Future event contributions retain their independent upper bounds. Capacity checks,
+exact objective weights, runner-up proof and budget refusal remain unchanged.
+
+Independent exhaustive assignment tests cover 420 random rectangular matrices,
+plus collisions, all-negative gains and 2,001-bit integers. Nineteen focused checks
+passed in 0.75 seconds. The repeated 72-configuration synthetic matrix retains all
+previously completed exact best/runner-up results and never increases recorded work.
+Exhausted cases decrease from 22 to 19 at 1,000 units and from 15 to 14 at 10,000.
+Work summed once across all 72 configurations decreases from 209,183 to 183,642.
+Three additional positive/all-placed controls complete at the lower budget; an
+eight-event negative/all-placed case now proves ambiguity in 7,940 units. An independent
+oracle enumerates all 65,536 locus vectors for that case and confirms both best and
+runner-up gains are 143/6. Ambiguity still returns no assignment.
+
+These are designed fictional workloads, not model-distribution coverage or a latency
+SLA. Column maxima add bound-computation work that is not charged as a search node
+or Hungarian probe; no universal runtime speedup is claimed. Fourteen of 36 cases
+still exhaust at 10,000 units. The next search priority remains difficult mixed/
+negative cases, alongside externally blocked calibration and placement policies.
+Evidence: `joint-workload-column-profile.py`/`.json`, `column-bound-comparison.json`,
+`column-bound-oracle.py`/`.json` and retained `joint-before-column.py`.
+All nine manual handoffs remain absent; empirical W1-W3 acceptance stays unapproved.
+
+Column-bound full regression: **2,461 passed in 92.17 seconds**, warnings as errors.
+Evidence: `column-bound-regression.txt` and `column-bound-verification.json`.
+
+### Capacity-forced negative reference-pair bound
+
+When every placed-event pair has a negative reference gain and placement count
+exceeds locus capacity, some negative pair gains are unavoidable. Fixed prefix
+referent groups cannot merge. With their current placed-event sizes and empty bins
+up to locus capacity, adding an event to a size-k group creates k new equal pairs.
+Greedily choosing the smallest current group minimizes the sum of increasing
+marginal pair costs. This relaxes future identity constraints and supplies a lower
+bound on newly forced equal pairs.
+
+The alternative reference upper bound is exact prefix gain plus all positive
+remaining pair gains minus that forced-pair count times the smallest absolute
+negative placed-pair gain. Prefix costs are already included exactly. Taking the
+minimum with the previous reference relaxation avoids double charging penalties.
+Mixed-sign placed pairs disable this deduction; unplaced-event interactions may
+still have either sign. Locus bounds and exact optimum/runner-up refusal are unchanged.
+
+Twenty-three focused checks passed in 0.76 seconds, including 160 exhaustive small
+allocation systems, negative weighted joint assignments and an independent partial-
+placement oracle with mixed unplaced interactions. The repeated 72-configuration
+matrix preserves all completed exact results and never increases recorded work.
+Only one configuration improves: the eight-event negative/all-placed case drops
+from 7,940 to 6,395 work units. Exhaustion remains 19/36 at 1,000 and 14/36 at 10,000;
+no additional completion is claimed. Work summed once across 72 configurations is
+182,097, down from 183,642. The independent 65,536-vector oracle reconfirms best and
+runner-up 143/6 and ambiguity without an assignment.
+
+Extra bound/preprocessing arithmetic is outside node/probe budgets; no universal
+runtime improvement follows. Evidence includes `joint-workload-capacity-profile.py`/
+`.json`, `capacity-bound-comparison.json`, `capacity-bound-oracle.py`/`.json` and
+`joint-before-capacity.py`. These remain fictional engineering cases. All nine
+manual handoffs remain absent; empirical W1-W3 acceptance is unapproved.
+
+Capacity-bound full regression: **2,464 passed in 92.54 seconds**, warnings as errors.
+Evidence: `capacity-bound-regression.txt` and `capacity-bound-verification.json`.
+
+### Range-safe weighted population losses and gradients
+
+A reproduced numeric defect showed that `weight * (numerator / population)` could
+return zero after intermediate underflow even when the final weighted result is
+representable: the smallest positive float64 numerator, weight 2 and population 2
+reported zero while its gradient was 1. `weighted_population_scalar()` now normalizes
+the exact binary-rational weight/population coefficient into a bounded mantissa and
+binary exponent, then combines this with the tensor's mantissa/exponent before final
+scaling. Active branch contributions are aligned to a common exponent before
+summation, so individually subnormal contributions can combine into a representable
+total. Zero branches cannot select that common exponent. Custom linear autograd
+operations apply stable scales to incoming gradients and preserve higher-order
+differentiation, including mixed-dtype inputs.
+
+This prevents avoidable range loss within the scalar scaling operation. Mantissa
+conversion/products still round in the tensor dtype; there is no universally correctly
+rounded result claim. Truly unrepresentable final objectives still fail. Gradients
+below the destination dtype's range, or range loss elsewhere in the model/autograd
+graph, are not repaired. Entirely unsupported branches remain disconnected.
+
+The local PyTorch build lacks MPS `frexp`; an explicit scalar-only CPU path returns
+values/gradients to MPS without environment-variable fallback. Local float32 MPS
+checks passed for an ordinary value and the smallest subnormal. This adds transfer
+and scalar arithmetic overhead, not a speed improvement, and does not qualify full
+model accelerator training or exact accelerator checkpoint resume.
+
+Focused checks: 41 passed in 2.51 seconds. They cover float32/64 subnormals, large
+weights, zeros, signed incoming gradients, Fraction references across 160 dtype/
+value/weight/population cases, true final overflow, first- and second-order gradient
+checks, mixed-dtype/zero branches, combined subnormal contributions, trainer
+integration and three actual local MPS cases. The initial CPU full run
+passed 2,474 tests before adding the MPS path; a second 2,476-test run covered
+scalar MPS support. The final run below also covers stable cross-branch summation.
+All nine manual handoffs remain absent; empirical W1-W3 acceptance is unapproved.
+
+Final weighted-sum regression: **2,480 passed in 91.90 seconds**, warnings as errors.
+Evidence: `population-scaling-regression.txt`, `population-scaling-verification.json`
+and `population-scaling-probe.json`; earlier CPU/scalar-MPS runs are retained separately.
 
 ## Refreshed W1/W2 acceptance audit and source inventory — 2026-09-26
 

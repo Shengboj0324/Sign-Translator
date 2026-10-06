@@ -59,3 +59,47 @@ def test_no_observed_objective_and_mutated_tensors_do_not_report_success():
     good.terms['a'].example_loss_sum.fill_(float('nan'))
     with pytest.raises(ValueError):
         good.total()
+
+
+def test_epoch_reporting_normalizes_before_float_range_check():
+    maximum = float.fromhex('0x1.fffffffffffffp+1023')
+    accumulator = ObjectiveAccumulator()
+    for _ in range(2):
+        accumulator.add(SupportedObjective(
+            {'a': SupportedTerm(torch.tensor(maximum, dtype=torch.float64), 1)},
+            {'a': 1.}, 1))
+    assert accumulator.result() == {'a': maximum, 'total': maximum}
+
+
+def test_epoch_reporting_preserves_subnormal_weighted_contributions():
+    tiny = float.fromhex('0x0.0000000000001p-1022')
+    accumulator = ObjectiveAccumulator()
+    accumulator.add(SupportedObjective(
+        {'a': SupportedTerm(torch.tensor(tiny, dtype=torch.float64), 1)},
+        {'a': 2.}, 2))
+    assert accumulator.result() == {'a': tiny, 'total': tiny}
+
+
+def test_epoch_reporting_refuses_genuinely_unrepresentable_total():
+    maximum = float.fromhex('0x1.fffffffffffffp+1023')
+    accumulator = ObjectiveAccumulator()
+    accumulator.add(SupportedObjective(
+        {'a': SupportedTerm(torch.tensor(maximum, dtype=torch.float64), 1)},
+        {'a': 2.}, 1))
+    with pytest.raises(FloatingPointError, match='aggregation overflow'):
+        accumulator.result()
+
+
+@pytest.mark.parametrize('mask', [(True,), (True, True), (1, False), [True, False]])
+def test_support_membership_requires_exact_immutable_population_mask(mask):
+    with pytest.raises(ValueError, match='support mask'):
+        SupportedObjective({'a': SupportedTerm(torch.tensor(1.), 1, mask)}, {'a': 1.}, 2)
+
+
+def test_support_membership_preserves_loss_and_gradients():
+    parameter = torch.nn.Parameter(torch.tensor(3., dtype=torch.float64))
+    term = SupportedTerm(parameter.square(), 1, (False, True))
+    objective = SupportedObjective({'a': term}, {'a': 2.}, 2)
+    assert objective.total().item() == 9.
+    objective.total().backward()
+    assert parameter.grad.item() == 6.

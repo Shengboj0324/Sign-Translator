@@ -13,6 +13,7 @@ from fractions import Fraction
 
 import torch
 
+from .partition_bounds import partition_suffix_upper_bounds
 from .text_referents import ReferentSequenceCandidate
 
 
@@ -75,12 +76,7 @@ def decode_referent_partition(candidate: ReferentSequenceCandidate, *,
     denominator = max((d for _, d in rational.values()), default=1)
     gains = {(i, j): numerator * (denominator // d)
              for (i, j), (numerator, d) in rational.items()}
-    # Optimistic future/future contribution: omit every negative pair. This
-    # ignores consistency constraints and therefore cannot underestimate a maximum.
-    future_positive = [0] * (count + 1)
-    for i in range(count - 1, -1, -1):
-        future_positive[i] = future_positive[i + 1] + sum(
-            max(0, gains[(i, j)]) for j in range(i + 1, count))
+    future_positive = partition_suffix_upper_bounds(count, gains)
 
     def upper_bound(prefix, maximum, score):
         index = len(prefix)
