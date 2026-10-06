@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2638 passed in 111.77s",
+  "focused": "43 passed in 4.98s",
+  "verified_head": "3cf9fc019cf3342f2f93989b2eda07cd2bc18bbb",
+  "code_sha256": {
+    "signtranslator/governed_run.py": "45bec8df74d22043b6095288786a010a1154e13e69d7c0b3d2a6ccd294346bb4",
+    "tests/test_governed_run.py": "73eb545cff45eacb0626b6cfc9a2631fd2cc008fd9c3de3fab52d8ea15a37f83",
+    "README.md": "69e48f6f58dce1515b1b60c769bb9b98a1875e0e117460cd51e33a2a511bd246",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/governed-run-probe.py": "414d397445b34fa37ce8764481fb4bd265a77df90137929138af91279af5e7cd"
+  },
+  "scope": "Explicit admitted-corpus five-head runner integrates source/target/capacity preflight, seeded initialization, zero-worker train/validation loaders, exact CPU resume and final declaration audit.",
+  "debugging": "Initial missing-file test expected FileNotFoundError; corrected to the existing Trainer ValueError contract, with initial log retained.",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Requires already admitted corpus, vocabulary and locus alphabet; no raw source importer or CLI.",
+    "Synthetic integration evidence does not establish real ASL competence or source authorization.",
+    "CPU exact continuation verified; accelerator continuation unqualified.",
+    "Completed checkpoint writes are retained on later failure; mutable returned trainer is not an isolation transaction."
+  ]
+}

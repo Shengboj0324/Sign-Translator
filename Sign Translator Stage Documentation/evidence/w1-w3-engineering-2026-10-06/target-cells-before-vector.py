@@ -93,10 +93,8 @@ def selected_continuous_target_cells(known, values, *, axes, unit):
     mask, targets = known.detach().cpu(), values.detach().cpu()
     rows = []
     for row, target in zip(mask, targets, strict=True):
-        coordinates = row.nonzero(as_tuple=False).tolist()
-        selected = target[row].tolist()
-        rows.append(tuple(tuple(index) + (value,) for index, value in
-                          zip(coordinates, selected, strict=True)))
+        rows.append(tuple(tuple(index) + (float(target[tuple(index)]),)
+                          for index in row.nonzero(as_tuple=False).tolist()))
     return ContinuousTargetCells(axes, unit, tuple(rows))
 
 
@@ -110,7 +108,5 @@ def selected_target_cells(known, labels, *, axes, class_count):
     rows = []
     for row, targets in zip(mask, values, strict=True):
         coordinates = row.nonzero(as_tuple=False).tolist()
-        selected = targets[row].tolist()
-        rows.append(tuple(tuple(index) + (int(value),) for index, value in
-                          zip(coordinates, selected, strict=True)))
+        rows.append(tuple(tuple(index) + (int(targets[tuple(index)]),) for index in coordinates))
     return TargetCells(axes, class_count, tuple(rows))

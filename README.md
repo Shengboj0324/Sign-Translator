@@ -254,6 +254,30 @@ Checkpoint files written before a later failure are retained. Reports are immuta
 snapshots; the returned trainer remains mutable. No complete CLI/source-manifest
 importer or real-data pilot is supplied by this API.
 
+`diagnose_governed_planner` evaluates an explicit copy of current in-memory or
+retained best-validation weights. For a validation view with at least two admitted
+samples, a deliberately selected two-row development diagnostic is:
+
+```python
+from signtranslator.governed_run import diagnose_governed_planner
+
+diagnostic = diagnose_governed_planner(
+    result, view="validation", model_state="best_validation",
+    sample_indices=(0, 1), permutation=(1, 0), seed=9, max_samples=2,
+)
+report = diagnostic.to_dict()
+```
+
+Indices are local to the chosen train/validation view; the permutation indexes that
+ordered subset. The immutable report retains the full and selected view contracts,
+the actual evaluated model-state hash, model-selection metadata, exposure-report
+identity, raw paired candidates and all five reference diagnostics. It does not
+infer a checkpoint filename or provide independent test evidence. Unknown/missing
+selection and replaced view contracts fail explicitly; there is no automatic
+sampling or test-partition option. Training tensors remain on the original model;
+copying and hashing add memory/CPU cost. Neither sensitivity nor reference metrics
+establish calibrated ASL meaning or phase acceptance.
+
 ## 8. Stop rules and rights
 
 Do not train the intended 3D ASL path by forcing English into gloss or 2D into rotations. First acquire source-native annotation, synchronized canonical motion, authoritative signer/source grouping, qualified-ASL adjudication, and permission for each research/commercial action. Then freeze leakage-safe evaluation, test video dependence and linguistic minimal pairs, measure comprehension and non-manual errors with qualified reviewers, compare strong published baselines, and only afterward integrate a licensed rig, renderer, latency budget, monitoring, and rollback. See [evaluation design](docs/EVALUATION_FRAMEWORK.md) and [deployment design](docs/DEPLOYMENT.md).

@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2651 passed in 116.75s",
+  "focused": "23 passed in 5.74s",
+  "code_sha256": {
+    "signtranslator/governed_run.py": "a38b1a9a68611342ad8097dcf17d1c47e2110b7d65cd64aec569470576001f03",
+    "tests/test_governed_diagnostics.py": "0f7299c39ff97e51abb6754e93b9cc65698841662827b4ccc003be46c09fa0fd",
+    "README.md": "5d16c03976abf27f740c0c97bc48c013e4b0551dcbb7e777bc646accd1f37021",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/governed-diagnostics-probe.py": "7110fe2ca5185b3b7ad7fbb7cef06ae4362a23c0e71d64186ef757db56decf1d"
+  },
+  "scope": "Explicit model-copy development diagnostics bound to current/best weights, admitted train/validation views, ordered subsets, intervention and exposure hashes.",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Development selection is not independent test evidence or calibration.",
+    "Model hash is not checkpoint-file identity or proof of full training history.",
+    "Copying/hashing adds memory and CPU work; no accelerator performance qualification.",
+    "Concurrent arbitrary mutation is detected only by stated postchecks, not transactionally rolled back."
+  ]
+}

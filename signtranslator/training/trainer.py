@@ -26,6 +26,7 @@ from .objectives import ObjectiveAccumulator, SupportedObjective
 from .exposure import exposure_records, validate_exposure, summarize_exposure
 from .history import validate_supported_history
 from .adam_state import validate_adam_state
+from .exposure_codec import pack_exposure, unpack_exposure
 from ..data.governed_corpus import (
     GovernedMotionBatch, GovernedMotionDataset, collate_governed_motion,
     move_governed_batch,
@@ -67,7 +68,7 @@ def _validated_training_state(state, *, epoch_limit):
     return {**state, "history": {name: list(values) for name, values in history.items()}}
 
 
-CHECKPOINT_SCHEMA_VERSION = 4
+CHECKPOINT_SCHEMA_VERSION = 5
 VALIDATION_SEED_OFFSET = 1_000_003
 
 
@@ -720,9 +721,11 @@ class Trainer:
         self._check_finite_training_state()
         if self.governed:
             _require_finite_state(self.best_model_state, 'best_model')
+        logical_exposure = self.optimizer_exposure
         self._check_supported_history(
             dict(completed_epochs=self.completed_epochs, global_step=self.global_step,
-                 best_val=self.best_val, history=self.history), self.optimizer_exposure)
+                 best_val=self.best_val, history=self.history), logical_exposure)
+        stored_exposure = pack_exposure(logical_exposure)
         destination = Path(path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         state = {
@@ -734,7 +737,7 @@ class Trainer:
             "data_contract": self.data_contract,
             "trainer_config": self.cfg.to_dict(),
             "artifact_context": self.artifact_context,
-            "optimizer_exposure": self.optimizer_exposure,
+            "optimizer_exposure": stored_exposure,
             "model": self.model.state_dict(),
             "optimizer": self.opt.state_dict(),
             "scheduler": self.sched.state_dict(),
@@ -772,7 +775,7 @@ class Trainer:
             "data_contract": self.data_contract,
             "trainer_config": self.cfg.to_dict(),
             "artifact_context": self.artifact_context,
-            "optimizer_exposure": self.optimizer_exposure,
+            "optimizer_exposure": stored_exposure,
             "training_state": {
                 "completed_epochs": self.completed_epochs,
                 "global_step": self.global_step,
@@ -884,11 +887,11 @@ class Trainer:
             "model_contract", "implementation_identity", "trainer_config",
             "runtime_environment", "data_contract", "artifact_context", "training_state",
         }
-        if manifest.get("schema_version") == 4:
+        if manifest.get("schema_version") in (4, 5):
             manifest_fields.add("optimizer_exposure")
         if set(manifest) != manifest_fields:
             raise ValueError("checkpoint manifest fields do not match the checkpoint schema")
-        if type(manifest.get("schema_version")) is not int or manifest["schema_version"] not in (2, 3, 4):
+        if type(manifest.get("schema_version")) is not int or manifest["schema_version"] not in (2, 3, 4, 5):
             raise ValueError("unsupported checkpoint manifest schema")
         if manifest.get("checkpoint_size") != source.stat().st_size:
             raise ValueError("checkpoint size does not match its manifest")
@@ -918,7 +921,7 @@ class Trainer:
         }
         if manifest["schema_version"] >= 3:
             required.add("best_model_state")
-        if manifest["schema_version"] == 4:
+        if manifest["schema_version"] in (4, 5):
             required.add("optimizer_exposure")
         if set(checkpoint) != required:
             raise ValueError("checkpoint fields do not match the checkpoint schema")
@@ -941,12 +944,15 @@ class Trainer:
                 expected = _json_domain(expected)
             if manifest.get(field) != expected:
                 raise ValueError(f"checkpoint manifest disagrees on {field}")
-        if checkpoint['schema_version'] == 4:
-            if manifest['optimizer_exposure'] != checkpoint['optimizer_exposure']:
+        logical_exposure = []
+        if checkpoint['schema_version'] in (4, 5):
+            if canonical_json_bytes(manifest['optimizer_exposure']) != canonical_json_bytes(checkpoint['optimizer_exposure']):
                 raise ValueError('checkpoint manifest disagrees on optimizer exposure')
             if mode == 'resume':
+                logical_exposure = (unpack_exposure(checkpoint['optimizer_exposure'])
+                                    if checkpoint['schema_version'] == 5 else checkpoint['optimizer_exposure'])
                 exposure = validate_exposure(
-                    checkpoint['optimizer_exposure'], supported=self.supported_objectives,
+                    logical_exposure, supported=self.supported_objectives,
                     global_step=training_state['global_step'],
                     weights=self.cfg.loss_weights,
                     identities=self.train_loader.dataset.supervision_identities
@@ -975,7 +981,7 @@ class Trainer:
             self._epoch_committed = True
             return
 
-        if checkpoint["schema_version"] != CHECKPOINT_SCHEMA_VERSION:
+        if checkpoint["schema_version"] not in (4, 5):
             raise ValueError("schema 2 lacks best-model state; schemas 2/3 lack optimizer exposure; use explicit weights warm start")
 
         loaded_config = checkpoint["trainer_config"]
@@ -997,7 +1003,7 @@ class Trainer:
             raise ValueError("resume numerical runtime does not match checkpoint")
         if checkpoint["data_contract"] != self.data_contract:
             raise ValueError("resume data-loader contract does not match checkpoint")
-        self._check_supported_history(training_state, checkpoint.get('optimizer_exposure', []))
+        self._check_supported_history(training_state, logical_exposure)
         if self.governed:
             groups = checkpoint['optimizer']['param_groups']
             validate_adam_state(checkpoint['optimizer'], self._bound_parameter_groups,

@@ -1,0 +1,950 @@
+{
+  "fixture": "fictional admitted records",
+  "current_subset": {
+    "best_validation_value": 1.4605191946029663,
+    "completed_epochs": 2,
+    "full_view_contract": {
+      "corpus_sha256": "441aeb06b799df1a595764efbf6a659058c5a1894a9abd0a6773b26fcf79217b",
+      "record_indices": [
+        0,
+        1,
+        2
+      ],
+      "schema_version": 1,
+      "split": "train"
+    },
+    "global_step": 4,
+    "intervention": {
+      "clock_policy": "hold-anchor-origin-fixed",
+      "data_contract": {
+        "corpus_sha256": "441aeb06b799df1a595764efbf6a659058c5a1894a9abd0a6773b26fcf79217b",
+        "record_indices": [
+          2,
+          0
+        ],
+        "schema_version": 1,
+        "split": "train"
+      },
+      "limitations": [
+        "Raw output sensitivity is not semantic accuracy or causal ASL competence.",
+        "Permuted source bytes retain their own reviewed identities; no new annotation is created.",
+        "Failed generations have no label-accuracy comparison; no graph or phase acceptance is certified."
+      ],
+      "model_config": {
+        "convention_sha256": "96923b2a77b2ecc7a2a2c344b7eda9f7ef57380f2d497867d85648f7a7d7a625",
+        "declared_encoding": "utf-8-plain-bytes-v1",
+        "embedding_dim": 8,
+        "hidden_dim": 16,
+        "lexicon_sha256": "d5c386c70f39ee0ea37f121a33d22a96c4149d88a5cfb7781c8840c397b6872a",
+        "locus_count": 2,
+        "locus_supervision": "known-convention-alphabet-v1",
+        "max_bytes": 64,
+        "max_events": 4,
+        "objective_normalization": "full-population-contribution-v1",
+        "referent_supervision": "known-unordered-equality-v1",
+        "relation_supervision": "recorded-positive-structural-negative-v1",
+        "timing_scale_seconds": 0.5
+      },
+      "model_state_sha256": "cb87eaa8f94d83d260146a608412aaf62510e7a1a325f3a0f23a95f9d514a6a1",
+      "original_locus_evaluation": {
+        "conditional_event_weighted": {
+          "brier": null,
+          "known": 0,
+          "nll": null,
+          "unknown": 0
+        },
+        "convention_sha256": "96923b2a77b2ecc7a2a2c344b7eda9f7ef57380f2d497867d85648f7a7d7a625",
+        "label_coverage": {
+          "denominator": 2,
+          "numerator": 0
+        },
+        "limitations": [
+          "Scores condition on exact serialized labels and known loci; missing loci are unknown.",
+          "Multiclass Brier sums squared class errors without dividing by alphabet size.",
+          "No placement/absence decision, spatial consistency, calibration or ASL accuracy is certified."
+        ],
+        "locus_identities": [
+          "fictional-left",
+          "fictional-right"
+        ],
+        "per_target_class": [
+          {
+            "brier": null,
+            "identity": "fictional-left",
+            "known": 0,
+            "nll": null
+          },
+          {
+            "brier": null,
+            "identity": "fictional-right",
+            "known": 0,
+            "nll": null
+          }
+        ],
+        "phase_exit_approved": false,
+        "rows": [
+          {
+            "annotation_sha256": "7d52f2adaf70fe14f0c2a1ebc9b8e9f3eec542c785b0a91d7a8a682dbf75bc1c",
+            "exact_label_sequence": false,
+            "loci": null
+          },
+          {
+            "annotation_sha256": "24917c4b7babc5cc1f956b9de497381efa1df1f01271d646e5dfda649dd3e3ef",
+            "exact_label_sequence": false,
+            "loci": null
+          }
+        ],
+        "schema_version": 1,
+        "scope": "exact-label-known-locus-diagnostic",
+        "supported_example_coverage": {
+          "denominator": 2,
+          "numerator": 0
+        },
+        "vocabulary_sha256": "d5c386c70f39ee0ea37f121a33d22a96c4149d88a5cfb7781c8840c397b6872a"
+      },
+      "original_reference_evaluation": {
+        "conditional_edit_rate": null,
+        "convention_sha256": "96923b2a77b2ecc7a2a2c344b7eda9f7ef57380f2d497867d85648f7a7d7a625",
+        "edit_cells": 0,
+        "limitations": [
+          "Serialization agreement is not temporal, graph or linguistic accuracy.",
+          "Conditional edit rate excludes failed generations and can exceed one.",
+          "Caller-supplied row binding does not certify source-only or held-out generation."
+        ],
+        "overall_exact_match": {
+          "denominator": 2,
+          "numerator": 0
+        },
+        "phase_exit_approved": false,
+        "rows": [
+          {
+            "annotation_sha256": "7d52f2adaf70fe14f0c2a1ebc9b8e9f3eec542c785b0a91d7a8a682dbf75bc1c",
+            "edit_distance": null,
+            "exact_match": false,
+            "predicted_events": null,
+            "reference_events": 3,
+            "status": "capacity_exceeded"
+          },
+          {
+            "annotation_sha256": "24917c4b7babc5cc1f956b9de497381efa1df1f01271d646e5dfda649dd3e3ef",
+            "edit_distance": null,
+            "exact_match": false,
+            "predicted_events": null,
+            "reference_events": 3,
+            "status": "capacity_exceeded"
+          }
+        ],
+        "schema_version": 1,
+        "scope": "canonical-serialization-label-diagnostic",
+        "termination": {
+          "denominator": 2,
+          "numerator": 0
+        },
+        "vocabulary_sha256": "d5c386c70f39ee0ea37f121a33d22a96c4149d88a5cfb7781c8840c397b6872a"
+      },
+      "original_referent_evaluation": {
+        "conditional_pair_weighted": {
+          "brier": null,
+          "known": 0,
+          "negative": 0,
+          "negative_brier": null,
+          "negative_nll": null,
+          "nll": null,
+          "positive": 0,
+          "positive_brier": null,
+          "positive_nll": null,
+          "unknown": 0
+        },
+        "convention_sha256": "96923b2a77b2ecc7a2a2c344b7eda9f7ef57380f2d497867d85648f7a7d7a625",
+        "label_coverage": {
+          "denominator": 2,
+          "numerator": 0
+        },
+        "limitations": [
+          "Positive/negative referent pairs mean known equal/unequal IDs, not COREF edges.",
+          "Each unordered pair is counted once; missing IDs stay unknown.",
+          "Conditional pair scores do not certify a transitive partition, calibration, independence or ASL accuracy."
+        ],
+        "phase_exit_approved": false,
+        "rows": [
+          {
+            "annotation_sha256": "7d52f2adaf70fe14f0c2a1ebc9b8e9f3eec542c785b0a91d7a8a682dbf75bc1c",
+            "exact_label_sequence": false,
+            "referent_equality": null
+          },
+          {
+            "annotation_sha256": "24917c4b7babc5cc1f956b9de497381efa1df1f01271d646e5dfda649dd3e3ef",
+            "exact_label_sequence": false,
+            "referent_equality": null
+          }
+        ],
+        "schema_version": 1,
+        "scope": "exact-label-known-referent-equality-diagnostic",
+        "supported_example_coverage": {
+          "denominator": 2,
+          "numerator": 0
+        },
+        "vocabulary_sha256": "d5c386c70f39ee0ea37f121a33d22a96c4149d88a5cfb7781c8840c397b6872a"
+      },
+      "original_relation_evaluation": {
+        "conditional_cell_weighted": {
+          "coref": {
+            "brier": null,
+            "known": 0,
+            "negative": 0,
+            "negative_brier": null,
+            "negative_nll": null,
+            "nll": null,
+            "positive": 0,
+            "positive_brier": null,
+            "positive_nll": null,
+            "unknown": 0
+          },
+          "locus": {
+            "brier": null,
+            "known": 0,
+            "negative": 0,
+            "negative_brier": null,
+            "negative_nll": null,
+            "nll": null,
+            "positive": 0,
+            "positive_brier": null,
+            "positive_nll": null,
+            "unknown": 0
+          },
+          "overlap": {
+            "brier": null,
+            "known": 0,
+            "negative": 0,
+            "negative_brier": null,
+            "negative_nll": null,
+            "nll": null,
+            "positive": 0,
+            "positive_brier": null,
+            "positive_nll": null,
+            "unknown": 0
+          },
+          "precedence": {
+            "brier": null,
+            "known": 0,
+            "negative": 0,
+            "negative_brier": null,
+            "negative_nll": null,
+            "nll": null,
+            "positive": 0,
+            "positive_brier": null,
+            "positive_nll": null,
+            "unknown": 0
+          },
+          "scope": {
+            "brier": null,
+            "known": 0,
+            "negative": 0,
+            "negative_brier": null,
+            "negative_nll": null,
+            "nll": null,
+            "positive": 0,
+            "positive_brier": null,
+            "positive_nll": null,
+            "unknown": 0
+          }
+        },
+        "convention_sha256": "96923b2a77b2ecc7a2a2c344b7eda9f7ef57380f2d497867d85648f7a7d7a625",
+        "coverage": {
+          "denominator": 2,
+          "numerator": 0
+        },
+        "limitations": [
+          "Scores condition on exact serialized labels and known relation targets.",
+          "Unknown cells are excluded, never counted as negative; self edges are outside the domain.",
+          "No decision threshold, calibrated graph, statistical independence or ASL accuracy is certified."
+        ],
+        "phase_exit_approved": false,
+        "rows": [
+          {
+            "annotation_sha256": "7d52f2adaf70fe14f0c2a1ebc9b8e9f3eec542c785b0a91d7a8a682dbf75bc1c",
+            "exact_label_sequence": false,
+            "relations": null
+          },
+          {
+            "annotation_sha256": "24917c4b7babc5cc1f956b9de497381efa1df1f01271d646e5dfda649dd3e3ef",
+            "exact_label_sequence": false,
+            "relations": null
+          }
+        ],
+        "schema_version": 1,
+        "scope": "exact-label-known-support-relation-diagnostic",
+        "vocabulary_sha256": "d5c386c70f39ee0ea37f121a33d22a96c4149d88a5cfb7781c8840c397b6872a"
+      },
+      "original_temporal_evaluation": {
+        "conditional_event_weighted": null,
+        "convention_sha256": "96923b2a77b2ecc7a2a2c344b7eda9f7ef57380f2d497867d85648f7a7d7a625",
+        "coverage": {
+          "denominator": 2,
+          "numerator": 0
+        },
+        "limitations": [
+          "Timing is conditional on exact label serialization; mismatches and failures are unavailable.",
+          "Positional agreement does not establish semantic correspondence, physical calibration or ASL accuracy.",
+          "Rational values are exact for supplied coordinates, not evidence of physical precision."
+        ],
+        "phase_exit_approved": false,
+        "rows": [
+          {
+            "annotation_sha256": "7d52f2adaf70fe14f0c2a1ebc9b8e9f3eec542c785b0a91d7a8a682dbf75bc1c",
+            "exact_label_sequence": false,
+            "status": "capacity_exceeded",
+            "timing": null
+          },
+          {
+            "annotation_sha256": "24917c4b7babc5cc1f956b9de497381efa1df1f01271d646e5dfda649dd3e3ef",
+            "exact_label_sequence": false,
+            "status": "capacity_exceeded",
+            "timing": null
+          }
+        ],
+        "schema_version": 1,
+        "scope": "exact-label-conditional-timing-diagnostic",
+        "vocabulary_sha256": "d5c386c70f39ee0ea37f121a33d22a96c4149d88a5cfb7781c8840c397b6872a"
+      },
+      "permutation": [
+        1,
+        0
+      ],
+      "phase_exit_approved": false,
+      "rows": [
+        {
+          "anchor_annotation_sha256": "7d52f2adaf70fe14f0c2a1ebc9b8e9f3eec542c785b0a91d7a8a682dbf75bc1c",
+          "anchor_sample_id": "sample-2",
+          "both_terminated": false,
+          "intervened": {
+            "convention_sha256": "96923b2a77b2ecc7a2a2c344b7eda9f7ef57380f2d497867d85648f7a7d7a625",
+            "diagnostic_prefix": [
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              },
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              },
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              },
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              }
+            ],
+            "events": [],
+            "locus_identities": [
+              "fictional-left",
+              "fictional-right"
+            ],
+            "locus_logits": null,
+            "origin_seconds": 0.0,
+            "referent_logits": null,
+            "referent_valid": null,
+            "relation_logits": null,
+            "relation_types": [
+              "precedence",
+              "overlap",
+              "scope",
+              "coref",
+              "locus"
+            ],
+            "relation_valid": null,
+            "status": "capacity_exceeded",
+            "vocabulary_sha256": "d5c386c70f39ee0ea37f121a33d22a96c4149d88a5cfb7781c8840c397b6872a"
+          },
+          "intervened_transcript_sha256": "682c9c8f80578f0d7af86b849fefb23af5b3085f6a2e550860585f61f34b6bf9",
+          "original": {
+            "convention_sha256": "96923b2a77b2ecc7a2a2c344b7eda9f7ef57380f2d497867d85648f7a7d7a625",
+            "diagnostic_prefix": [
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              },
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              },
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              },
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              }
+            ],
+            "events": [],
+            "locus_identities": [
+              "fictional-left",
+              "fictional-right"
+            ],
+            "locus_logits": null,
+            "origin_seconds": 0.0,
+            "referent_logits": null,
+            "referent_valid": null,
+            "relation_logits": null,
+            "relation_types": [
+              "precedence",
+              "overlap",
+              "scope",
+              "coref",
+              "locus"
+            ],
+            "relation_valid": null,
+            "status": "capacity_exceeded",
+            "vocabulary_sha256": "d5c386c70f39ee0ea37f121a33d22a96c4149d88a5cfb7781c8840c397b6872a"
+          },
+          "original_transcript_sha256": "5b5616460d187216b3f0f94132b6ab4794cc2396bdf022c6d6cc36460c35b2e3",
+          "raw_candidate_changed": false,
+          "same_label_sequence": null,
+          "source_annotation_sha256": "24917c4b7babc5cc1f956b9de497381efa1df1f01271d646e5dfda649dd3e3ef",
+          "source_bytes_changed": true,
+          "source_sample_id": "sample-0"
+        },
+        {
+          "anchor_annotation_sha256": "24917c4b7babc5cc1f956b9de497381efa1df1f01271d646e5dfda649dd3e3ef",
+          "anchor_sample_id": "sample-0",
+          "both_terminated": false,
+          "intervened": {
+            "convention_sha256": "96923b2a77b2ecc7a2a2c344b7eda9f7ef57380f2d497867d85648f7a7d7a625",
+            "diagnostic_prefix": [
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              },
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              },
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              },
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              }
+            ],
+            "events": [],
+            "locus_identities": [
+              "fictional-left",
+              "fictional-right"
+            ],
+            "locus_logits": null,
+            "origin_seconds": 0.0,
+            "referent_logits": null,
+            "referent_valid": null,
+            "relation_logits": null,
+            "relation_types": [
+              "precedence",
+              "overlap",
+              "scope",
+              "coref",
+              "locus"
+            ],
+            "relation_valid": null,
+            "status": "capacity_exceeded",
+            "vocabulary_sha256": "d5c386c70f39ee0ea37f121a33d22a96c4149d88a5cfb7781c8840c397b6872a"
+          },
+          "intervened_transcript_sha256": "5b5616460d187216b3f0f94132b6ab4794cc2396bdf022c6d6cc36460c35b2e3",
+          "original": {
+            "convention_sha256": "96923b2a77b2ecc7a2a2c344b7eda9f7ef57380f2d497867d85648f7a7d7a625",
+            "diagnostic_prefix": [
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              },
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              },
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              },
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              }
+            ],
+            "events": [],
+            "locus_identities": [
+              "fictional-left",
+              "fictional-right"
+            ],
+            "locus_logits": null,
+            "origin_seconds": 0.0,
+            "referent_logits": null,
+            "referent_valid": null,
+            "relation_logits": null,
+            "relation_types": [
+              "precedence",
+              "overlap",
+              "scope",
+              "coref",
+              "locus"
+            ],
+            "relation_valid": null,
+            "status": "capacity_exceeded",
+            "vocabulary_sha256": "d5c386c70f39ee0ea37f121a33d22a96c4149d88a5cfb7781c8840c397b6872a"
+          },
+          "original_transcript_sha256": "682c9c8f80578f0d7af86b849fefb23af5b3085f6a2e550860585f61f34b6bf9",
+          "raw_candidate_changed": false,
+          "same_label_sequence": null,
+          "source_annotation_sha256": "7d52f2adaf70fe14f0c2a1ebc9b8e9f3eec542c785b0a91d7a8a682dbf75bc1c",
+          "source_bytes_changed": true,
+          "source_sample_id": "sample-2"
+        }
+      ],
+      "schema_version": 1,
+      "scope": "source-permutation-diagnostic",
+      "seed": 9
+    },
+    "intervention_sha256": "68cc9361bd5b2e76e625560619e39c6b5ba899aed4599fc21f5862284f639417",
+    "limitations": [
+      "Explicit development subset; not an independent final evaluation.",
+      "State hash binds evaluated model tensors, not a checkpoint file or full training history.",
+      "Retained best means validation-selected, not calibrated or linguistically accepted.",
+      "The model copy adds memory cost; no accelerator or latency qualification."
+    ],
+    "model_state": "current",
+    "phase_exit_approved": false,
+    "sample_indices": [
+      2,
+      0
+    ],
+    "schema_version": 1,
+    "scope": "governed-run-development-diagnostics",
+    "selection_metric": "sir_sequence",
+    "training_exposure_sha256": "12e05732a9839e379ac8b7e33492727f9526e02990643d33cebedc2e7b66f0ec",
+    "view": "train"
+  },
+  "best_validation": {
+    "best_validation_value": 1.4605191946029663,
+    "completed_epochs": 2,
+    "full_view_contract": {
+      "corpus_sha256": "441aeb06b799df1a595764efbf6a659058c5a1894a9abd0a6773b26fcf79217b",
+      "record_indices": [
+        3
+      ],
+      "schema_version": 1,
+      "split": "val"
+    },
+    "global_step": 4,
+    "intervention": {
+      "clock_policy": "hold-anchor-origin-fixed",
+      "data_contract": {
+        "corpus_sha256": "441aeb06b799df1a595764efbf6a659058c5a1894a9abd0a6773b26fcf79217b",
+        "record_indices": [
+          3
+        ],
+        "schema_version": 1,
+        "split": "val"
+      },
+      "limitations": [
+        "Raw output sensitivity is not semantic accuracy or causal ASL competence.",
+        "Permuted source bytes retain their own reviewed identities; no new annotation is created.",
+        "Failed generations have no label-accuracy comparison; no graph or phase acceptance is certified."
+      ],
+      "model_config": {
+        "convention_sha256": "96923b2a77b2ecc7a2a2c344b7eda9f7ef57380f2d497867d85648f7a7d7a625",
+        "declared_encoding": "utf-8-plain-bytes-v1",
+        "embedding_dim": 8,
+        "hidden_dim": 16,
+        "lexicon_sha256": "d5c386c70f39ee0ea37f121a33d22a96c4149d88a5cfb7781c8840c397b6872a",
+        "locus_count": 2,
+        "locus_supervision": "known-convention-alphabet-v1",
+        "max_bytes": 64,
+        "max_events": 4,
+        "objective_normalization": "full-population-contribution-v1",
+        "referent_supervision": "known-unordered-equality-v1",
+        "relation_supervision": "recorded-positive-structural-negative-v1",
+        "timing_scale_seconds": 0.5
+      },
+      "model_state_sha256": "cb87eaa8f94d83d260146a608412aaf62510e7a1a325f3a0f23a95f9d514a6a1",
+      "original_locus_evaluation": {
+        "conditional_event_weighted": {
+          "brier": null,
+          "known": 0,
+          "nll": null,
+          "unknown": 0
+        },
+        "convention_sha256": "96923b2a77b2ecc7a2a2c344b7eda9f7ef57380f2d497867d85648f7a7d7a625",
+        "label_coverage": {
+          "denominator": 1,
+          "numerator": 0
+        },
+        "limitations": [
+          "Scores condition on exact serialized labels and known loci; missing loci are unknown.",
+          "Multiclass Brier sums squared class errors without dividing by alphabet size.",
+          "No placement/absence decision, spatial consistency, calibration or ASL accuracy is certified."
+        ],
+        "locus_identities": [
+          "fictional-left",
+          "fictional-right"
+        ],
+        "per_target_class": [
+          {
+            "brier": null,
+            "identity": "fictional-left",
+            "known": 0,
+            "nll": null
+          },
+          {
+            "brier": null,
+            "identity": "fictional-right",
+            "known": 0,
+            "nll": null
+          }
+        ],
+        "phase_exit_approved": false,
+        "rows": [
+          {
+            "annotation_sha256": "2413cf937d8d4d45e50454aa6d93322d6ff2f7366dc5398f8e363b3419adb679",
+            "exact_label_sequence": false,
+            "loci": null
+          }
+        ],
+        "schema_version": 1,
+        "scope": "exact-label-known-locus-diagnostic",
+        "supported_example_coverage": {
+          "denominator": 1,
+          "numerator": 0
+        },
+        "vocabulary_sha256": "d5c386c70f39ee0ea37f121a33d22a96c4149d88a5cfb7781c8840c397b6872a"
+      },
+      "original_reference_evaluation": {
+        "conditional_edit_rate": null,
+        "convention_sha256": "96923b2a77b2ecc7a2a2c344b7eda9f7ef57380f2d497867d85648f7a7d7a625",
+        "edit_cells": 0,
+        "limitations": [
+          "Serialization agreement is not temporal, graph or linguistic accuracy.",
+          "Conditional edit rate excludes failed generations and can exceed one.",
+          "Caller-supplied row binding does not certify source-only or held-out generation."
+        ],
+        "overall_exact_match": {
+          "denominator": 1,
+          "numerator": 0
+        },
+        "phase_exit_approved": false,
+        "rows": [
+          {
+            "annotation_sha256": "2413cf937d8d4d45e50454aa6d93322d6ff2f7366dc5398f8e363b3419adb679",
+            "edit_distance": null,
+            "exact_match": false,
+            "predicted_events": null,
+            "reference_events": 3,
+            "status": "capacity_exceeded"
+          }
+        ],
+        "schema_version": 1,
+        "scope": "canonical-serialization-label-diagnostic",
+        "termination": {
+          "denominator": 1,
+          "numerator": 0
+        },
+        "vocabulary_sha256": "d5c386c70f39ee0ea37f121a33d22a96c4149d88a5cfb7781c8840c397b6872a"
+      },
+      "original_referent_evaluation": {
+        "conditional_pair_weighted": {
+          "brier": null,
+          "known": 0,
+          "negative": 0,
+          "negative_brier": null,
+          "negative_nll": null,
+          "nll": null,
+          "positive": 0,
+          "positive_brier": null,
+          "positive_nll": null,
+          "unknown": 0
+        },
+        "convention_sha256": "96923b2a77b2ecc7a2a2c344b7eda9f7ef57380f2d497867d85648f7a7d7a625",
+        "label_coverage": {
+          "denominator": 1,
+          "numerator": 0
+        },
+        "limitations": [
+          "Positive/negative referent pairs mean known equal/unequal IDs, not COREF edges.",
+          "Each unordered pair is counted once; missing IDs stay unknown.",
+          "Conditional pair scores do not certify a transitive partition, calibration, independence or ASL accuracy."
+        ],
+        "phase_exit_approved": false,
+        "rows": [
+          {
+            "annotation_sha256": "2413cf937d8d4d45e50454aa6d93322d6ff2f7366dc5398f8e363b3419adb679",
+            "exact_label_sequence": false,
+            "referent_equality": null
+          }
+        ],
+        "schema_version": 1,
+        "scope": "exact-label-known-referent-equality-diagnostic",
+        "supported_example_coverage": {
+          "denominator": 1,
+          "numerator": 0
+        },
+        "vocabulary_sha256": "d5c386c70f39ee0ea37f121a33d22a96c4149d88a5cfb7781c8840c397b6872a"
+      },
+      "original_relation_evaluation": {
+        "conditional_cell_weighted": {
+          "coref": {
+            "brier": null,
+            "known": 0,
+            "negative": 0,
+            "negative_brier": null,
+            "negative_nll": null,
+            "nll": null,
+            "positive": 0,
+            "positive_brier": null,
+            "positive_nll": null,
+            "unknown": 0
+          },
+          "locus": {
+            "brier": null,
+            "known": 0,
+            "negative": 0,
+            "negative_brier": null,
+            "negative_nll": null,
+            "nll": null,
+            "positive": 0,
+            "positive_brier": null,
+            "positive_nll": null,
+            "unknown": 0
+          },
+          "overlap": {
+            "brier": null,
+            "known": 0,
+            "negative": 0,
+            "negative_brier": null,
+            "negative_nll": null,
+            "nll": null,
+            "positive": 0,
+            "positive_brier": null,
+            "positive_nll": null,
+            "unknown": 0
+          },
+          "precedence": {
+            "brier": null,
+            "known": 0,
+            "negative": 0,
+            "negative_brier": null,
+            "negative_nll": null,
+            "nll": null,
+            "positive": 0,
+            "positive_brier": null,
+            "positive_nll": null,
+            "unknown": 0
+          },
+          "scope": {
+            "brier": null,
+            "known": 0,
+            "negative": 0,
+            "negative_brier": null,
+            "negative_nll": null,
+            "nll": null,
+            "positive": 0,
+            "positive_brier": null,
+            "positive_nll": null,
+            "unknown": 0
+          }
+        },
+        "convention_sha256": "96923b2a77b2ecc7a2a2c344b7eda9f7ef57380f2d497867d85648f7a7d7a625",
+        "coverage": {
+          "denominator": 1,
+          "numerator": 0
+        },
+        "limitations": [
+          "Scores condition on exact serialized labels and known relation targets.",
+          "Unknown cells are excluded, never counted as negative; self edges are outside the domain.",
+          "No decision threshold, calibrated graph, statistical independence or ASL accuracy is certified."
+        ],
+        "phase_exit_approved": false,
+        "rows": [
+          {
+            "annotation_sha256": "2413cf937d8d4d45e50454aa6d93322d6ff2f7366dc5398f8e363b3419adb679",
+            "exact_label_sequence": false,
+            "relations": null
+          }
+        ],
+        "schema_version": 1,
+        "scope": "exact-label-known-support-relation-diagnostic",
+        "vocabulary_sha256": "d5c386c70f39ee0ea37f121a33d22a96c4149d88a5cfb7781c8840c397b6872a"
+      },
+      "original_temporal_evaluation": {
+        "conditional_event_weighted": null,
+        "convention_sha256": "96923b2a77b2ecc7a2a2c344b7eda9f7ef57380f2d497867d85648f7a7d7a625",
+        "coverage": {
+          "denominator": 1,
+          "numerator": 0
+        },
+        "limitations": [
+          "Timing is conditional on exact label serialization; mismatches and failures are unavailable.",
+          "Positional agreement does not establish semantic correspondence, physical calibration or ASL accuracy.",
+          "Rational values are exact for supplied coordinates, not evidence of physical precision."
+        ],
+        "phase_exit_approved": false,
+        "rows": [
+          {
+            "annotation_sha256": "2413cf937d8d4d45e50454aa6d93322d6ff2f7366dc5398f8e363b3419adb679",
+            "exact_label_sequence": false,
+            "status": "capacity_exceeded",
+            "timing": null
+          }
+        ],
+        "schema_version": 1,
+        "scope": "exact-label-conditional-timing-diagnostic",
+        "vocabulary_sha256": "d5c386c70f39ee0ea37f121a33d22a96c4149d88a5cfb7781c8840c397b6872a"
+      },
+      "permutation": [
+        0
+      ],
+      "phase_exit_approved": false,
+      "rows": [
+        {
+          "anchor_annotation_sha256": "2413cf937d8d4d45e50454aa6d93322d6ff2f7366dc5398f8e363b3419adb679",
+          "anchor_sample_id": "sample-3",
+          "both_terminated": false,
+          "intervened": {
+            "convention_sha256": "96923b2a77b2ecc7a2a2c344b7eda9f7ef57380f2d497867d85648f7a7d7a625",
+            "diagnostic_prefix": [
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              },
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              },
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              },
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              }
+            ],
+            "events": [],
+            "locus_identities": [
+              "fictional-left",
+              "fictional-right"
+            ],
+            "locus_logits": null,
+            "origin_seconds": 0.0,
+            "referent_logits": null,
+            "referent_valid": null,
+            "relation_logits": null,
+            "relation_types": [
+              "precedence",
+              "overlap",
+              "scope",
+              "coref",
+              "locus"
+            ],
+            "relation_valid": null,
+            "status": "capacity_exceeded",
+            "vocabulary_sha256": "d5c386c70f39ee0ea37f121a33d22a96c4149d88a5cfb7781c8840c397b6872a"
+          },
+          "intervened_transcript_sha256": "39b3b306a4d4571a637a43251fe7b98a88af009a1b133934db5bd361fb472e2f",
+          "original": {
+            "convention_sha256": "96923b2a77b2ecc7a2a2c344b7eda9f7ef57380f2d497867d85648f7a7d7a625",
+            "diagnostic_prefix": [
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              },
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              },
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              },
+              {
+                "identity": "fictional-b",
+                "kind": "manual",
+                "label_id": 12
+              }
+            ],
+            "events": [],
+            "locus_identities": [
+              "fictional-left",
+              "fictional-right"
+            ],
+            "locus_logits": null,
+            "origin_seconds": 0.0,
+            "referent_logits": null,
+            "referent_valid": null,
+            "relation_logits": null,
+            "relation_types": [
+              "precedence",
+              "overlap",
+              "scope",
+              "coref",
+              "locus"
+            ],
+            "relation_valid": null,
+            "status": "capacity_exceeded",
+            "vocabulary_sha256": "d5c386c70f39ee0ea37f121a33d22a96c4149d88a5cfb7781c8840c397b6872a"
+          },
+          "original_transcript_sha256": "39b3b306a4d4571a637a43251fe7b98a88af009a1b133934db5bd361fb472e2f",
+          "raw_candidate_changed": false,
+          "same_label_sequence": null,
+          "source_annotation_sha256": "2413cf937d8d4d45e50454aa6d93322d6ff2f7366dc5398f8e363b3419adb679",
+          "source_bytes_changed": false,
+          "source_sample_id": "sample-3"
+        }
+      ],
+      "schema_version": 1,
+      "scope": "source-permutation-diagnostic",
+      "seed": 9
+    },
+    "intervention_sha256": "956cffacb82aa2e73a8802f319beca76f91db0bb2af49339df5dd2f49fbbeac6",
+    "limitations": [
+      "Explicit development subset; not an independent final evaluation.",
+      "State hash binds evaluated model tensors, not a checkpoint file or full training history.",
+      "Retained best means validation-selected, not calibrated or linguistically accepted.",
+      "The model copy adds memory cost; no accelerator or latency qualification."
+    ],
+    "model_state": "best_validation",
+    "phase_exit_approved": false,
+    "sample_indices": [
+      0
+    ],
+    "schema_version": 1,
+    "scope": "governed-run-development-diagnostics",
+    "selection_metric": "sir_sequence",
+    "training_exposure_sha256": "12e05732a9839e379ac8b7e33492727f9526e02990643d33cebedc2e7b66f0ec",
+    "view": "validation"
+  },
+  "phase_exit_approved": false
+}

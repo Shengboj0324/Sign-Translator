@@ -17,7 +17,7 @@ def test_invalid_exposure_rejected_before_model_mutation(tmp_path, mutation):
     trainer = build(); trainer.fit(max_epochs=1)
     path = trainer.save(tmp_path / 'exposure.pt')
     data = torch.load(path, weights_only=False)
-    records = data['optimizer_exposure']
+    records = data['optimizer_exposure']['records']
     if mutation == 'missing':
         records.pop()
     elif mutation == 'step':
@@ -41,7 +41,7 @@ def test_invalid_exposure_rejected_before_model_mutation(tmp_path, mutation):
     torch.save(data, path)
     sidecar = path.with_suffix('.pt.json')
     manifest = json.loads(sidecar.read_text())
-    manifest.update(optimizer_exposure=records,
+    manifest.update(optimizer_exposure=data['optimizer_exposure'],
                     checkpoint_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
                     checkpoint_size=path.stat().st_size)
     sidecar.write_text(json.dumps(manifest))

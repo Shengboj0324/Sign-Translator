@@ -1,0 +1,7 @@
+1 16 done
+1 64 done
+1 128 done
+4 16 done
+4 64 done
+4 128 done
+saved 36 cases

@@ -1,19 +1,23 @@
 """Explicit admitted-corpus W3 training; no synthetic fallback or phase approval."""
 from copy import deepcopy
 from dataclasses import dataclass, replace
+import hashlib
+import json
+import math
 from pathlib import Path
 
 from torch.utils.data import DataLoader
 
 from .config import TrainerConfig
-from .data.governed_corpus import GovernedMotionCorpus, collate_governed_motion
+from .data.governed_corpus import GovernedMotionCorpus, GovernedMotionDataset, collate_governed_motion
 from .data.governed_text import encode_plaintext_transcripts
 from .planning.exposure_audit import ExposureDeclarationAudit, audit_exposure_declarations
 from .planning.label_vocabulary import GovernedLabelVocabulary
 from .planning.loci import LocusAlphabet
 from .planning.support_audit import SupervisionSupportReport, audit_supervision_support
+from .planning.source_intervention import compare_source_intervention, _state_sha256
 from .planning.text_loci import LocusTextConfig, LocusTextSIRModel
-from .reproducibility import isolated_deterministic_rng
+from .reproducibility import canonical_json_bytes, isolated_deterministic_rng
 from .training.trainer import Trainer
 
 
@@ -114,3 +118,91 @@ def run_governed_planner(corpus: GovernedMotionCorpus, vocabulary: GovernedLabel
         if data['contradictions'] or data['target_cell_audit']['contradictions']:
             raise ValueError('completed run has contradictory exposure declarations')
     return GovernedPlannerRun(trainer, reports[0], reports[1], audit)
+
+
+@dataclass(frozen=True)
+class GovernedPlannerDiagnostics:
+    payload: bytes
+
+    @property
+    def sha256(self):
+        return hashlib.sha256(self.payload).hexdigest()
+
+    def to_dict(self):
+        return json.loads(self.payload)
+
+
+def diagnose_governed_planner(run: GovernedPlannerRun, *, view: str, model_state: str,
+                              permutation: tuple[int, ...], seed: int, max_samples: int,
+                              sample_indices: tuple[int, ...] | None = None) -> GovernedPlannerDiagnostics:
+    """Run paired five-head diagnostics on an explicitly selected model copy.
+
+    Current means in-memory weights, not an inferred checkpoint file. Best means
+    the trainer's retained validation selection. Neither is independent test
+    evidence. Optional indices are local to the chosen admitted view; their order
+    defines the intervention permutation. No automatic sampling or test access.
+    """
+    if not isinstance(run, GovernedPlannerRun) or type(run.trainer.model) is not LocusTextSIRModel:
+        raise ValueError('canonical governed planner run required')
+    if view not in ('train', 'validation') or model_state not in ('current', 'best_validation'):
+        raise ValueError('explicit train/validation view and current/best_validation state required')
+    trainer = run.trainer
+    if not trainer._epoch_committed:
+        raise ValueError('diagnostics require a committed training boundary')
+    trainer._check_optimizer_binding()
+    trainer._check_finite_training_state()
+    exposure = trainer.exposure_report()
+    loader = trainer.train_loader if view == 'train' else trainer.val_loader
+    if loader is None:
+        raise ValueError('requested validation view is unavailable')
+    dataset = loader.dataset
+    if not isinstance(dataset, GovernedMotionDataset):
+        raise ValueError('diagnostic loader no longer has an admitted dataset')
+    full_contract = dataset.training_contract
+    recorded_loader = trainer.data_contract[view]
+    expected_split = 'train' if view == 'train' else 'val'
+    if (recorded_loader is None or full_contract != recorded_loader['governed']
+            or full_contract['split'] != expected_split):
+        raise ValueError('diagnostic view differs from recorded train/validation contract')
+    if sample_indices is None:
+        sample_indices = tuple(range(len(dataset)))
+    if (type(sample_indices) is not tuple or not sample_indices
+            or any(type(index) is not int or not 0 <= index < len(dataset) for index in sample_indices)
+            or len(set(sample_indices)) != len(sample_indices)):
+        raise ValueError('unique in-range local sample indices required')
+    # Fail before copying tensors for malformed or oversized diagnostic requests.
+    if (type(max_samples) is not int or not 1 <= max_samples <= 64
+            or len(sample_indices) > max_samples
+            or type(seed) is not int or not 0 <= seed < 2**32
+            or type(permutation) is not tuple or len(permutation) != len(sample_indices)
+            or any(type(index) is not int for index in permutation)
+            or set(permutation) != set(range(len(sample_indices)))):
+        raise ValueError('bounded sample count, uint32 seed and complete local permutation required')
+    if model_state == 'best_validation' and (
+            trainer.best_model_state is None or not math.isfinite(trainer.best_val)):
+        raise ValueError('no retained best-validation model is available')
+    indices = tuple(full_contract['record_indices'][index] for index in sample_indices)
+    selected = GovernedMotionDataset(dataset[0].corpus, indices, full_contract['split'])
+    original_state = _state_sha256(trainer.model)
+    model = deepcopy(trainer.model)
+    if model_state == 'best_validation':
+        model.load_state_dict(trainer.best_model_state, strict=True)
+    report = compare_source_intervention(model, selected, permutation=permutation,
+                                         seed=seed, max_samples=max_samples)
+    if (dataset.training_contract != full_contract or trainer.exposure_report().payload != exposure.payload
+            or _state_sha256(trainer.model) != original_state):
+        raise ValueError('training model, view or exposure changed during diagnostics')
+    payload = dict(schema_version=1, scope='governed-run-development-diagnostics',
+                   model_state=model_state, view=view, full_view_contract=full_contract,
+                   sample_indices=list(sample_indices),
+                   completed_epochs=trainer.completed_epochs, global_step=trainer.global_step,
+                   selection_metric=trainer.cfg.selection_metric,
+                   best_validation_value=trainer.best_val if math.isfinite(trainer.best_val) else None,
+                   training_exposure_sha256=exposure.sha256,
+                   intervention_sha256=report.sha256, intervention=report.to_dict(),
+                   phase_exit_approved=False,
+                   limitations=['Explicit development subset; not an independent final evaluation.',
+                                'State hash binds evaluated model tensors, not a checkpoint file or full training history.',
+                                'Retained best means validation-selected, not calibrated or linguistically accepted.',
+                                'The model copy adds memory cost; no accelerator or latency qualification.'])
+    return GovernedPlannerDiagnostics(canonical_json_bytes(payload))

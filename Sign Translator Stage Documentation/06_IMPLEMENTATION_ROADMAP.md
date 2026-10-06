@@ -2118,6 +2118,10 @@ writes follow the existing best/last semantics and remain if a later operation f
 Returned availability and exposure audit reports are immutable snapshots and retain
 phase_exit_approved=false. A README example documents the explicit public API.
 
+Validation: **2,638 tests passed in 111.77 seconds**, warnings as errors;
+43 focused checks passed in 4.98 seconds. Evidence and source hashes are retained
+in the October 6 `governed-run-verification.json` and associated logs/probe.
+
 The scope is an executable library integration, not a new CLI, universal serialized
 source importer, qualified accelerator continuation or accepted real-data pilot.
 Those boundaries remain visible. The fictional replay uses three training examples,
@@ -2127,6 +2131,74 @@ RNG, exact shuffled CPU resume, RNG restoration, inactive test bytes, and prefli
 refusal before model construction. The first focused run's missing-file expectation
 was corrected to the existing Trainer ValueError contract; its log is retained.
 All nine manual handoffs remain absent and empirical W1/W2/W3 acceptance unapproved.
+
+### Runner-bound five-head development diagnostics — 2026-10-06
+
+`diagnose_governed_planner` connects a completed governed run to existing paired
+source-intervention and five-head reference diagnostics. It requires explicit
+train/validation and current/best-validation choices. Current means in-memory
+weights, not an inferred checkpoint file; best means retained validation-selected
+weights. The helper uses a model copy and preserves the trained model. Reports bind
+the evaluated tensor hash, model configuration, full/selected view contracts, ordered
+local sample indices, permutation, seed, declared training cursor and exposure-report
+hash. The report and raw nested candidates are immutable serialized snapshots.
+
+The selected loader must match the recorded admitted train/validation contract;
+replacing a validation loader with test data is refused before copying or reading
+that test view. No final-test option or automatic sampling is provided. Optional
+indices must be unique and in range, and the permutation must cover the exact
+ordered subset. Samples are bounded explicitly at 64 or fewer. Missing validation,
+unavailable best weights and uncommitted training boundaries are refused. Fresh
+source revalidation and existing candidate/metric contracts remain active. Postchecks
+refuse changes to original model tensors, view or exposure; arbitrary concurrent
+mutation is not a transactional rollback guarantee.
+
+Validation: **2,651 tests passed in 116.75 seconds**, warnings as errors;
+23 focused checks passed in 5.74 seconds. Synthetic evidence tests reordered subset
+identities, deterministic reports, original
+weights/mixed modes/RNG preservation, retained best versus changed current weights,
+selection refusal, stale source handling and validation-loader substitution. The
+README documents usage. Copying/hashing adds memory and CPU work. Validation-selected
+performance, output sensitivity and conditional reference metrics do not establish
+calibration, independent final evaluation, historical gradient proof or accepted ASL
+meaning. All nine manual handoffs remain absent; empirical W1/W2/W3 stays unapproved.
+Verification and a fictional current/best diagnostic replay are retained under the
+October 6 `governed-diagnostics-*` evidence prefix.
+
+### Target-cell capture cost and exact vector extraction — 2026-10-06
+
+Target declaration capture previously indexed each selected tensor scalar from
+Python. Both categorical and continuous capture now extract selected values in one
+masked operation per example, then pair them with lexicographically ordered nonzero
+coordinates. Record schema, integer labels, float64 values, loss arithmetic and
+unknown/padding exclusions are unchanged. Independent logical-index tests cover
+contiguous/transposed/strided/expanded layouts, empty/dense/mixed masks, signed zero,
+subnormal times and 64-bit integer labels without a float conversion.
+
+Validation: **2,689 tests passed in 119.98 seconds**, warnings as errors;
+61 focused checks passed in 2.12 seconds. The replayable CPU profile compares the
+retained implementation against the new
+implementation on 36 synthetic shape/density/type controls, with three alternating
+order repetitions and identical resulting declarations. Median speed ratios range
+from 1.12x to 5.89x (median across cases 3.30x). For a dense binary declaration with
+four samples and 128 events (325,120 selected cells), median capture time falls
+from 0.5164 s to 0.1628 s. JSON serialization is measured separately at 0.1090 s;
+the resulting canonical declaration is 3,992,952 bytes. These are representation
+stress controls, not an empirically admitted corpus or full training throughput.
+
+There is a memory tradeoff: Python capture allocation peak in that large binary
+control rises from 33,814,456 to 34,464,768 bytes (about 1.9%). tracemalloc excludes
+tensor/native allocations and is not process RSS. No accelerator or latency-percentile
+claim is made. Storage is unchanged: repeating that declaration for 1,000 updates
+would alone contribute 3,992,952,000 bytes before other ledger/checkpoint overhead.
+That is an explicit arithmetic scenario, not a measured training run. Exact repeated
+cell deduplication and bounded serialization remain implementation priorities before
+long governed runs; truncating records or inventing absent historical cells would
+not satisfy the evidence contract.
+
+The retained baseline, profile, focused/full logs and verification manifest are
+under October 6 `target-cells-before-vector.py` and `vector-cells-*`. All nine manual
+handoffs remain absent; empirical W1/W2/W3 acceptance remains unapproved.
 
 ## Refreshed W1/W2 acceptance audit and source inventory — 2026-09-26
 

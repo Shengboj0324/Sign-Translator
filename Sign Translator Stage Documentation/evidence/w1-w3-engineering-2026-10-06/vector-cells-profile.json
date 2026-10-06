@@ -1,0 +1,775 @@
+{
+  "schema_version": 1,
+  "scope": "synthetic CPU target-cell extraction",
+  "cases": [
+    {
+      "batch": 1,
+      "events": 16,
+      "domain": "binary",
+      "density": "dense",
+      "selected_cells": 1200,
+      "old_seconds": [
+        0.0016619999951217324,
+        0.0015761249960632995,
+        0.0015899999998509884
+      ],
+      "new_seconds": [
+        0.00047033400187501684,
+        0.0004143330006627366,
+        0.0004235840024193749
+      ],
+      "median_speed_ratio": 3.753682836862163,
+      "canonical_payload_bytes": 12966,
+      "serialization_seconds": 0.00021816699882037938,
+      "payload_sha256": "90bf7d1656a04a8ac57da7e030c384855b9cbe299af96f8a9f71da8083b5a113"
+    },
+    {
+      "batch": 1,
+      "events": 16,
+      "domain": "binary",
+      "density": "sparse",
+      "selected_cells": 172,
+      "old_seconds": [
+        0.00023599999985890463,
+        0.0002609170041978359,
+        0.0002688749955268577
+      ],
+      "new_seconds": [
+        7.229199400171638e-05,
+        6.849999772384763e-05,
+        6.358300015563145e-05
+      ],
+      "median_speed_ratio": 3.8090074871199615,
+      "canonical_payload_bytes": 1912,
+      "serialization_seconds": 3.395899693714455e-05,
+      "payload_sha256": "525969abe0cdd0eccc5566c1c268c109c2a9bf98ec518c5d097c4afd5d95d39e"
+    },
+    {
+      "batch": 1,
+      "events": 16,
+      "domain": "integer",
+      "density": "dense",
+      "selected_cells": 1200,
+      "old_seconds": [
+        0.0016648750024614856,
+        0.0016270830019493587,
+        0.001594290995853953
+      ],
+      "new_seconds": [
+        0.00041945800330722705,
+        0.0004249579942552373,
+        0.00042541700531728566
+      ],
+      "median_speed_ratio": 3.8288090209972703,
+      "canonical_payload_bytes": 12966,
+      "serialization_seconds": 0.00020650000078603625,
+      "payload_sha256": "2ddb25bff6a71f68f7d860b356b08c60c74dc41270950dba9ddc4b3b2e89bf83"
+    },
+    {
+      "batch": 1,
+      "events": 16,
+      "domain": "integer",
+      "density": "sparse",
+      "selected_cells": 172,
+      "old_seconds": [
+        0.0002410000015515834,
+        0.0002211659957538359,
+        0.00024174999998649582
+      ],
+      "new_seconds": [
+        7.045800157357007e-05,
+        7.012500282144174e-05,
+        6.508400110760704e-05
+      ],
+      "median_speed_ratio": 3.436720026453876,
+      "canonical_payload_bytes": 1912,
+      "serialization_seconds": 3.0417002562899143e-05,
+      "payload_sha256": "24eb12909528ed450c8101340853c64eed306b059cbd0dc7a0d582091270b577"
+    },
+    {
+      "batch": 1,
+      "events": 16,
+      "domain": "continuous",
+      "density": "dense",
+      "selected_cells": 32,
+      "old_seconds": [
+        4.354099655756727e-05,
+        4.025000089313835e-05,
+        4.3499996536411345e-05
+      ],
+      "new_seconds": [
+        2.4291999579872936e-05,
+        2.1124993509147316e-05,
+        2.116700488841161e-05
+      ],
+      "median_speed_ratio": 2.0550851084381083,
+      "canonical_payload_bytes": 820,
+      "serialization_seconds": 1.7708000086713582e-05,
+      "payload_sha256": "0e92b7d61bd6e313672d86ca5d3088771131a7a0035be265b2dd81088ffe5d0c"
+    },
+    {
+      "batch": 1,
+      "events": 16,
+      "domain": "continuous",
+      "density": "sparse",
+      "selected_cells": 5,
+      "old_seconds": [
+        1.2665994290728122e-05,
+        1.2167001841589808e-05,
+        1.2084004993084818e-05
+      ],
+      "new_seconds": [
+        1.091699959943071e-05,
+        1.0832998668774962e-05,
+        1.0249998013023287e-05
+      ],
+      "median_speed_ratio": 1.1231425585475217,
+      "canonical_payload_bytes": 117,
+      "serialization_seconds": 3.9590013329871e-06,
+      "payload_sha256": "d17457cd178871a867f0eda3ae5acb680b8abe5e31c39daf282de77805133725"
+    },
+    {
+      "batch": 1,
+      "events": 64,
+      "domain": "binary",
+      "density": "dense",
+      "selected_cells": 20160,
+      "old_seconds": [
+        0.028070415995898657,
+        0.02824329199938802,
+        0.039178708000690676
+      ],
+      "new_seconds": [
+        0.0076612920020124875,
+        0.008059375002630986,
+        0.008071875003224704
+      ],
+      "median_speed_ratio": 3.5044022632236356,
+      "canonical_payload_bytes": 235686,
+      "serialization_seconds": 0.01512758299941197,
+      "payload_sha256": "0b211ef785309b06e2b6cc418c5f78c3af452c66d0fe1b609af5ab885b8f1e87"
+    },
+    {
+      "batch": 1,
+      "events": 64,
+      "domain": "binary",
+      "density": "sparse",
+      "selected_cells": 2880,
+      "old_seconds": [
+        0.004055249999510124,
+        0.003906917001586407,
+        0.0038894999961485155
+      ],
+      "new_seconds": [
+        0.0011296249940642156,
+        0.0010962090018438175,
+        0.0010965830006171018
+      ],
+      "median_speed_ratio": 3.562810110486658,
+      "canonical_payload_bytes": 33726,
+      "serialization_seconds": 0.0005737920000683516,
+      "payload_sha256": "2e01cbcc9209c1346d6cfe017a176d090a4d6069c562487c30a5f4120a0dfbbe"
+    },
+    {
+      "batch": 1,
+      "events": 64,
+      "domain": "integer",
+      "density": "dense",
+      "selected_cells": 20160,
+      "old_seconds": [
+        0.027760790995671414,
+        0.02829883399681421,
+        0.028129708996857516
+      ],
+      "new_seconds": [
+        0.00818295800127089,
+        0.008134582996717654,
+        0.019386500003747642
+      ],
+      "median_speed_ratio": 3.4375966481177964,
+      "canonical_payload_bytes": 235686,
+      "serialization_seconds": 0.003494791999401059,
+      "payload_sha256": "db07777778d4b8699bbebf7dba58cea2770c3341686e8e4b1f4ea18ac6678621"
+    },
+    {
+      "batch": 1,
+      "events": 64,
+      "domain": "integer",
+      "density": "sparse",
+      "selected_cells": 2880,
+      "old_seconds": [
+        0.003902208001818508,
+        0.0038461670046672225,
+        0.003910042003553826
+      ],
+      "new_seconds": [
+        0.0010854170031961985,
+        0.0010918749976553954,
+        0.0010750000001280569
+      ],
+      "median_speed_ratio": 3.5951233399953937,
+      "canonical_payload_bytes": 33726,
+      "serialization_seconds": 0.0005420000015874393,
+      "payload_sha256": "a06a1adee8c15682472e8d599b6dddbd0556a8884fa9ee2961542586055044f7"
+    },
+    {
+      "batch": 1,
+      "events": 64,
+      "domain": "continuous",
+      "density": "dense",
+      "selected_cells": 128,
+      "old_seconds": [
+        0.0001680000059423037,
+        0.0001492910014349036,
+        0.0001373330014757812
+      ],
+      "new_seconds": [
+        6.46659973426722e-05,
+        6.041599408490583e-05,
+        5.5665994295850396e-05
+      ],
+      "median_speed_ratio": 2.4710509807236964,
+      "canonical_payload_bytes": 3079,
+      "serialization_seconds": 5.9207995946053416e-05,
+      "payload_sha256": "c1e33d3a0442d9d25169c871d2e6316ca3c8eddd0bd9c4d35ae91aba78972af3"
+    },
+    {
+      "batch": 1,
+      "events": 64,
+      "domain": "continuous",
+      "density": "sparse",
+      "selected_cells": 19,
+      "old_seconds": [
+        3.0333001632243395e-05,
+        2.8875001589767635e-05,
+        2.8250004106666893e-05
+      ],
+      "new_seconds": [
+        1.7250000382773578e-05,
+        1.654199877521023e-05,
+        1.7042002582456917e-05
+      ],
+      "median_speed_ratio": 1.6943432234596443,
+      "canonical_payload_bytes": 276,
+      "serialization_seconds": 8.625000191386789e-06,
+      "payload_sha256": "09781750b5b83e9598b64e2c272754defeca63b73dc445ea97091d5d46544114"
+    },
+    {
+      "batch": 1,
+      "events": 128,
+      "domain": "binary",
+      "density": "dense",
+      "selected_cells": 81280,
+      "old_seconds": [
+        0.11397899999428773,
+        0.1364586670024437,
+        0.13181799999438226
+      ],
+      "new_seconds": [
+        0.048674792000383604,
+        0.050668916999711655,
+        0.04988404199684737
+      ],
+      "median_speed_ratio": 2.6424883533438015,
+      "canonical_payload_bytes": 998286,
+      "serialization_seconds": 0.027360625004803296,
+      "payload_sha256": "7f80098633008f98d8fb82b335bca39a987f372fcbfa4eac1a0d54dec438489e"
+    },
+    {
+      "batch": 1,
+      "events": 128,
+      "domain": "binary",
+      "density": "sparse",
+      "selected_cells": 11612,
+      "old_seconds": [
+        0.01657362500554882,
+        0.01594541599479271,
+        0.028254125005332753
+      ],
+      "new_seconds": [
+        0.004697125004895497,
+        0.004762165997817647,
+        0.0044682920051855035
+      ],
+      "median_speed_ratio": 3.5284615564361705,
+      "canonical_payload_bytes": 142672,
+      "serialization_seconds": 0.0019894159995601512,
+      "payload_sha256": "649733d9aa015d25d4486e071d5cc8571e21e9234b32dedc507840f777175765"
+    },
+    {
+      "batch": 1,
+      "events": 128,
+      "domain": "integer",
+      "density": "dense",
+      "selected_cells": 81280,
+      "old_seconds": [
+        0.11355666700546863,
+        0.13156733300274936,
+        0.1318798330030404
+      ],
+      "new_seconds": [
+        0.04828291699959664,
+        0.050165250002464745,
+        0.051350459005334415
+      ],
+      "median_speed_ratio": 2.6226787067997295,
+      "canonical_payload_bytes": 998286,
+      "serialization_seconds": 0.030268832997535355,
+      "payload_sha256": "6fd4fbe4ade789f2d31d9e48927f2a8d0e111333a373c6ed4dd8929094bdc4f5"
+    },
+    {
+      "batch": 1,
+      "events": 128,
+      "domain": "integer",
+      "density": "sparse",
+      "selected_cells": 11612,
+      "old_seconds": [
+        0.029859124995709863,
+        0.016096416999062058,
+        0.016244333004578948
+      ],
+      "new_seconds": [
+        0.004589374999341089,
+        0.004645166001864709,
+        0.004673999996157363
+      ],
+      "median_speed_ratio": 3.497040363693781,
+      "canonical_payload_bytes": 142672,
+      "serialization_seconds": 0.002110749999701511,
+      "payload_sha256": "5e6b00b082ad2d24353bf62a18e658771c326618bc7242875397bd4b27606372"
+    },
+    {
+      "batch": 1,
+      "events": 128,
+      "domain": "continuous",
+      "density": "dense",
+      "selected_cells": 256,
+      "old_seconds": [
+        0.0004512080049607903,
+        0.0002895840007113293,
+        0.0002980409990414046
+      ],
+      "new_seconds": [
+        0.0001123750043916516,
+        0.00010916699829977006,
+        0.00010783399920910597
+      ],
+      "median_speed_ratio": 2.7301382623253128,
+      "canonical_payload_bytes": 6202,
+      "serialization_seconds": 9.616599709261209e-05,
+      "payload_sha256": "668f4c001f84cbe4a36ca4e035e17c095e0d8e7a910d913de73517c0fcc8fd54"
+    },
+    {
+      "batch": 1,
+      "events": 128,
+      "domain": "continuous",
+      "density": "sparse",
+      "selected_cells": 37,
+      "old_seconds": [
+        5.104199954075739e-05,
+        4.4625005102716386e-05,
+        4.358300066087395e-05
+      ],
+      "new_seconds": [
+        2.5040993932634592e-05,
+        2.208300429629162e-05,
+        2.083300205413252e-05
+      ],
+      "median_speed_ratio": 2.020785057321672,
+      "canonical_payload_bytes": 500,
+      "serialization_seconds": 1.1415999324526638e-05,
+      "payload_sha256": "74bf466c49db08524a2ea32b07cc7de020f8d4278fd218e403a9641811d089ba"
+    },
+    {
+      "batch": 4,
+      "events": 16,
+      "domain": "binary",
+      "density": "dense",
+      "selected_cells": 4800,
+      "old_seconds": [
+        0.006587625000975095,
+        0.006642332999035716,
+        0.006627499999012798
+      ],
+      "new_seconds": [
+        0.0018487919951439835,
+        0.0018428749972372316,
+        0.0018373330021859147
+      ],
+      "median_speed_ratio": 3.5962829866097783,
+      "canonical_payload_bytes": 51672,
+      "serialization_seconds": 0.000880750005308073,
+      "payload_sha256": "0ba0814b45f854643551903c927ccd402832314076ae5d321092781d6f93bc9b"
+    },
+    {
+      "batch": 4,
+      "events": 16,
+      "domain": "binary",
+      "density": "sparse",
+      "selected_cells": 685,
+      "old_seconds": [
+        0.0009670409999671392,
+        0.0009327919979114085,
+        0.0009319579985458404
+      ],
+      "new_seconds": [
+        0.0002599159997771494,
+        0.0002547920012148097,
+        0.00025800000003073364
+      ],
+      "median_speed_ratio": 3.615472859691054,
+      "canonical_payload_bytes": 7434,
+      "serialization_seconds": 0.00012029099889332429,
+      "payload_sha256": "fcdc6306093fed212d0f33c57edc1bd756b84dda36f4e5ab13b657067a53fc24"
+    },
+    {
+      "batch": 4,
+      "events": 16,
+      "domain": "integer",
+      "density": "dense",
+      "selected_cells": 4800,
+      "old_seconds": [
+        0.006629791998420842,
+        0.0066611249931156635,
+        0.006649499999184627
+      ],
+      "new_seconds": [
+        0.001817583994125016,
+        0.0017757910027285106,
+        0.0019073750008828938
+      ],
+      "median_speed_ratio": 3.658427902467139,
+      "canonical_payload_bytes": 51672,
+      "serialization_seconds": 0.0009089160012081265,
+      "payload_sha256": "b1d55e320ecac1ac4fc83f67452455d44c8caf24ee799e4ee8b0a66106590876"
+    },
+    {
+      "batch": 4,
+      "events": 16,
+      "domain": "integer",
+      "density": "sparse",
+      "selected_cells": 685,
+      "old_seconds": [
+        0.0010217919989372604,
+        0.0009629579944885336,
+        0.0009476249979343265
+      ],
+      "new_seconds": [
+        0.00027837499510496855,
+        0.0002537500040489249,
+        0.0002702919955481775
+      ],
+      "median_speed_ratio": 3.5626582005714393,
+      "canonical_payload_bytes": 7434,
+      "serialization_seconds": 0.0001217500030179508,
+      "payload_sha256": "40c94599e45c77bee30e3f84afd6a7984c6385aaad44660b79ca25663db4d74b"
+    },
+    {
+      "batch": 4,
+      "events": 16,
+      "domain": "continuous",
+      "density": "dense",
+      "selected_cells": 128,
+      "old_seconds": [
+        0.00016545900143682957,
+        0.00015566699585178867,
+        0.00017208400095114484
+      ],
+      "new_seconds": [
+        7.033399742795154e-05,
+        6.52919989079237e-05,
+        8.054199861362576e-05
+      ],
+      "median_speed_ratio": 2.352475438443859,
+      "canonical_payload_bytes": 3025,
+      "serialization_seconds": 5.383300594985485e-05,
+      "payload_sha256": "6dc6a72bee870d8841f057a77b0c70c93b173dc7d78c3da5f39b389fb557ee48"
+    },
+    {
+      "batch": 4,
+      "events": 16,
+      "domain": "continuous",
+      "density": "sparse",
+      "selected_cells": 19,
+      "old_seconds": [
+        3.35000004270114e-05,
+        3.3166994398925453e-05,
+        3.504200140014291e-05
+      ],
+      "new_seconds": [
+        2.7209003746975213e-05,
+        2.5957997422665358e-05,
+        2.8458998713176697e-05
+      ],
+      "median_speed_ratio": 1.2312101074533297,
+      "canonical_payload_bytes": 274,
+      "serialization_seconds": 9.000003046821803e-06,
+      "payload_sha256": "bc640c49e0bae49b076fc1110c417576fea42670b0f86b0e8dbbb1fc31b38e95"
+    },
+    {
+      "batch": 4,
+      "events": 64,
+      "domain": "binary",
+      "density": "dense",
+      "selected_cells": 80640,
+      "old_seconds": [
+        0.12816700000257697,
+        0.12786425000376767,
+        0.12659699999494478
+      ],
+      "new_seconds": [
+        0.03327787499438273,
+        0.04626162500062492,
+        0.03276795800047694
+      ],
+      "median_speed_ratio": 3.842320160928275,
+      "canonical_payload_bytes": 942552,
+      "serialization_seconds": 0.027646292001008987,
+      "payload_sha256": "d072e2ea570b399f488179343f4e926a801c9df1477106dd1449544bd41e1224"
+    },
+    {
+      "batch": 4,
+      "events": 64,
+      "domain": "binary",
+      "density": "sparse",
+      "selected_cells": 11520,
+      "old_seconds": [
+        0.029597041000670288,
+        0.01609062499483116,
+        0.027502208002260886
+      ],
+      "new_seconds": [
+        0.004669875001127366,
+        0.0046758750031585805,
+        0.004648499998438638
+      ],
+      "median_speed_ratio": 5.889281403810918,
+      "canonical_payload_bytes": 134712,
+      "serialization_seconds": 0.00216145900049014,
+      "payload_sha256": "137108b70b9b4262322a971af844b89de3add371ea6b25aace500f381e0aa21c"
+    },
+    {
+      "batch": 4,
+      "events": 64,
+      "domain": "integer",
+      "density": "dense",
+      "selected_cells": 80640,
+      "old_seconds": [
+        0.12614833399857162,
+        0.125285583002551,
+        0.1253875410038745
+      ],
+      "new_seconds": [
+        0.045535208002547733,
+        0.045615791001182515,
+        0.04621337499702349
+      ],
+      "median_speed_ratio": 2.748774892462657,
+      "canonical_payload_bytes": 942552,
+      "serialization_seconds": 0.02711066699703224,
+      "payload_sha256": "2ba7f62186329877f75610548283d01634da75249550a23303faf7a59374a1ef"
+    },
+    {
+      "batch": 4,
+      "events": 64,
+      "domain": "integer",
+      "density": "sparse",
+      "selected_cells": 11520,
+      "old_seconds": [
+        0.016928833996644244,
+        0.016383166999730747,
+        0.016129374998854473
+      ],
+      "new_seconds": [
+        0.004569874996377621,
+        0.004555291001452133,
+        0.004668791996664368
+      ],
+      "median_speed_ratio": 3.585036136156264,
+      "canonical_payload_bytes": 134712,
+      "serialization_seconds": 0.0020936669970978983,
+      "payload_sha256": "ced1afdf668124cc85310a0346d837ccce2ce516a385dbb4d0b036c4c1fa2120"
+    },
+    {
+      "batch": 4,
+      "events": 64,
+      "domain": "continuous",
+      "density": "dense",
+      "selected_cells": 512,
+      "old_seconds": [
+        0.0008703749990672804,
+        0.0006272079990594648,
+        0.0005783329979749396
+      ],
+      "new_seconds": [
+        0.00024883399601094425,
+        0.0002779159985948354,
+        0.0002220840033260174
+      ],
+      "median_speed_ratio": 2.520588059164869,
+      "canonical_payload_bytes": 12121,
+      "serialization_seconds": 0.00017583299631951377,
+      "payload_sha256": "aaa1095bb167d1467e072c9d9809bc25fe1d5ee4f38ee1d4e98db9544dfe898e"
+    },
+    {
+      "batch": 4,
+      "events": 64,
+      "domain": "continuous",
+      "density": "sparse",
+      "selected_cells": 74,
+      "old_seconds": [
+        9.220899664796889e-05,
+        8.812500163912773e-05,
+        8.70000003487803e-05
+      ],
+      "new_seconds": [
+        4.983300459571183e-05,
+        4.924999666400254e-05,
+        4.570800228975713e-05
+      ],
+      "median_speed_ratio": 1.7893402560073561,
+      "canonical_payload_bytes": 933,
+      "serialization_seconds": 1.9874998542945832e-05,
+      "payload_sha256": "4a0e02e24194ed69c91b94ac12507c2aa58192e43f34aa6e5d04c94a39ff384f"
+    },
+    {
+      "batch": 4,
+      "events": 128,
+      "domain": "binary",
+      "density": "dense",
+      "selected_cells": 325120,
+      "old_seconds": [
+        0.5235515410022344,
+        0.5163887500020792,
+        0.5145617910020519
+      ],
+      "new_seconds": [
+        0.1628411670026253,
+        0.18189499999425607,
+        0.15932862499903422
+      ],
+      "median_speed_ratio": 3.1711191924444635,
+      "canonical_payload_bytes": 3992952,
+      "serialization_seconds": 0.10903341700031888,
+      "payload_sha256": "8668759c14f42dd26210ad701d1e2474a23605affc60f0953a581647d438d990",
+      "python_capture_peak_bytes_old_new": [
+        33814456,
+        34464768
+      ]
+    },
+    {
+      "batch": 4,
+      "events": 128,
+      "domain": "binary",
+      "density": "sparse",
+      "selected_cells": 46445,
+      "old_seconds": [
+        0.06941083400306525,
+        0.0659835410042433,
+        0.06667045799986226
+      ],
+      "new_seconds": [
+        0.019415499999013264,
+        0.01909108299878426,
+        0.019479708003927954
+      ],
+      "median_speed_ratio": 3.4338779842523035,
+      "canonical_payload_bytes": 570474,
+      "serialization_seconds": 0.008717250006156974,
+      "payload_sha256": "48bd468ef1bbb8456906e8abb57b3c48cd9b0022c3bafad833c983485ce14088"
+    },
+    {
+      "batch": 4,
+      "events": 128,
+      "domain": "integer",
+      "density": "dense",
+      "selected_cells": 325120,
+      "old_seconds": [
+        0.5043359159972169,
+        0.5086132500000531,
+        0.5060955000008107
+      ],
+      "new_seconds": [
+        0.18264195899973856,
+        0.1841727909995825,
+        0.17913387499720557
+      ],
+      "median_speed_ratio": 2.770970607041809,
+      "canonical_payload_bytes": 3992952,
+      "serialization_seconds": 0.10504387500259327,
+      "payload_sha256": "dd24ea21f7a84980f1126e25b576dfc366ffbfcaa82c582a3a8612212bd9956a"
+    },
+    {
+      "batch": 4,
+      "events": 128,
+      "domain": "integer",
+      "density": "sparse",
+      "selected_cells": 46445,
+      "old_seconds": [
+        0.08395891699910862,
+        0.08286345799569972,
+        0.0793632919958327
+      ],
+      "new_seconds": [
+        0.032111833003000356,
+        0.033855250003398396,
+        0.03493954200530425
+      ],
+      "median_speed_ratio": 2.447580744120391,
+      "canonical_payload_bytes": 570474,
+      "serialization_seconds": 0.022533791001478676,
+      "payload_sha256": "09308a2998f68950a7329f841ca0a8cf8fb8593f0fc987313c628a3c627513f5"
+    },
+    {
+      "batch": 4,
+      "events": 128,
+      "domain": "continuous",
+      "density": "dense",
+      "selected_cells": 1024,
+      "old_seconds": [
+        0.0016016669978853315,
+        0.001127916999394074,
+        0.0011286669978289865
+      ],
+      "new_seconds": [
+        0.00045691699779126793,
+        0.0004152920009801164,
+        0.000428999999712687
+      ],
+      "median_speed_ratio": 2.630925404626773,
+      "canonical_payload_bytes": 24492,
+      "serialization_seconds": 0.00039391699829138815,
+      "payload_sha256": "96769e9447feb43cf5d5a3a8c060be8f7b6a8bbd12904a50fbda0a07886bf0bf"
+    },
+    {
+      "batch": 4,
+      "events": 128,
+      "domain": "continuous",
+      "density": "sparse",
+      "selected_cells": 147,
+      "old_seconds": [
+        0.0001892910004244186,
+        0.00017837500490713865,
+        0.00017612499505048618
+      ],
+      "new_seconds": [
+        7.929099956527352e-05,
+        7.095799810485914e-05,
+        7.249999907799065e-05
+      ],
+      "median_speed_ratio": 2.4603449265599955,
+      "canonical_payload_bytes": 1885,
+      "serialization_seconds": 3.120800101896748e-05,
+      "payload_sha256": "1dea7ec479ae0a445a92e88d2ba692d55f0f64b0a93ebc1dae58373174dc22f6"
+    }
+  ],
+  "torch_threads": 1,
+  "repeats": 3,
+  "phase_exit_approved": false,
+  "limitations": [
+    "Timings cover extraction/validation only; JSON serialization is reported separately.",
+    "Descriptive local controls, not latency percentiles or full-model throughput.",
+    "tracemalloc excludes tensor/native allocations and is not process RSS.",
+    "Exact record format is unchanged; storage still grows with declared cells per step."
+  ]
+}

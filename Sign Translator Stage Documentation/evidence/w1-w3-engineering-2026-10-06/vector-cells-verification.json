@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2689 passed in 119.98s",
+  "focused": "61 passed in 2.12s",
+  "code_sha256": {
+    "signtranslator/training/target_cells.py": "9b22d7d7dd9370e09a425c16864978453d44bad73f770f0ba968cc52f2b3db52",
+    "tests/test_target_cell_vectorization.py": "18935378379a25c3abad8a155fe03a66f15ebc1ff0d93006a2e8c7c0aa69da06",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/vector-cells-profile.py": "c38682cb5eb6b70afcc75ffceb67095ca77b2ef44730fb8fa67b671fdcbe7b9a",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/target-cells-before-vector.py": "3b7be02306e1257ac1774d968f19262336f309e4f8d494bee83e76df5d5e59cc"
+  },
+  "profile_cases": 36,
+  "median_speed_ratio": 3.3024985883483833,
+  "scope": "Vectorized loss-target capture preserves exact declaration values/order; independent logical-index and bit-pattern tests; scoped synthetic CPU extraction/serialization profile.",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Storage format/size unchanged; repeated declarations remain a long-run bottleneck.",
+    "Largest binary control Python capture peak rises about 1.9 percent.",
+    "Capture timings exclude JSON serialization, full model training and accelerator transfers.",
+    "Three repetitions are descriptive timings, not latency percentiles or a real-corpus distribution."
+  ]
+}
