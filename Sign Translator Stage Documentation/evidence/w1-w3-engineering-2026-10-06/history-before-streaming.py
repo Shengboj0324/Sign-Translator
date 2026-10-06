@@ -10,27 +10,21 @@ def validate_supported_history(history, *, epochs, records, sample_ids, batch_si
         if not condition:
             raise ValueError(f'support-aware history mismatch: {detail}')
 
-    records = iter(records)
-    missing = object()
+    require(len(records) == epochs * len(batch_sizes), 'optimizer steps')
     fields = {'lr'} if epochs else set()
     require(history.get('lr', []) == expected_lrs, 'learning-rate rows')
     train_support = {name: [] for name in (*weights, 'total')}
     admitted = set(sample_ids)
     for epoch in range(epochs):
+        rows = records[epoch * len(batch_sizes):(epoch + 1) * len(batch_sizes)]
         seen = []
-        support = dict.fromkeys(weights, 0)
-        for size in batch_sizes:
-            row = next(records, missing)
-            require(row is not missing, 'optimizer steps')
+        for row, size in zip(rows, batch_sizes, strict=True):
             require(len(row['sample_ids']) == size, 'batch population')
             seen.extend(row['sample_ids'])
-            for name in weights:
-                support[name] += row['support'][name]
         require(len(seen) == len(set(seen)) and set(seen) <= admitted, 'epoch sample membership')
         for name in weights:
-            train_support[name].append(support[name])
+            train_support[name].append(sum(row['support'][name] for row in rows))
         train_support['total'].append(len(seen))
-    require(next(records, missing) is missing, 'optimizer steps')
 
     for partition, schedule in (('train', list(range(1, epochs + 1))), ('val', validation_epochs)):
         if not schedule:

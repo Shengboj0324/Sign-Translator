@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2722 passed in 118.86s",
+  "focused": "49 passed in 8.04s",
+  "code_sha256": {
+    "signtranslator/training/trainer.py": "91e301d90a01666d6eeef41d7c3a81fa396fb437ae81327db2900ae35ab87afc",
+    "signtranslator/training/history.py": "58a96572809fb1a14f6154bf4b522be09ffd9d5bf3cc9210cb2d43dbff698dba",
+    "signtranslator/training/exposure_ledger.py": "db15236c4a64078db6105524c9b05a9a2b5ea1b672154c53e2bf25eec8450c12",
+    "tests/test_streaming_checkpoint_save.py": "32c9eae43a3670e1de290125fafc58f38feb44c64e5ffbc1ffce337ae69455ee",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/stream-save-profile.py": "1b8fc9317f7f18e073b7aa4d506e1df846cbdf3267c81c5765c9c615f019c3bb",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/history-before-streaming.py": "5d13237d92f695a0703731bfca9b96c0dab4e56eced42e8183826452d1eaf2ad"
+  },
+  "scope": "Record-streamed committed history validation and direct schema-5 resident pool export; exact canonical pool and save/resume report identity preserved",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Save still materializes pooled artifact and JSON manifest bytes; memory scales with distinct cells and record metadata.",
+    "Full-ledger access and checkpoint/resume decoding still expand history.",
+    "Export-only allocation controls exclude resident input, validation, model/optimizer state, I/O, native memory and RSS.",
+    "No empirical ASL acceptance or source permission established."
+  ]
+}

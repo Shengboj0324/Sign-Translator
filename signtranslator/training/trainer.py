@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import tempfile
 from contextlib import nullcontext
+from itertools import chain
 from typing import Any, Callable, Dict, List, Mapping, Optional
 
 import torch
@@ -23,15 +24,17 @@ from torch.utils.data import BatchSampler, DataLoader, RandomSampler, Sequential
 from ..inference_context import preserving_eval_mode
 from ..config import TrainerConfig
 from .objectives import ObjectiveAccumulator, SupportedObjective
-from .exposure import exposure_records, validate_exposure, summarize_exposure
+from .exposure import exposure_records, validate_exposure, summarize_exposure, iter_validated_exposure
 from .history import validate_supported_history
 from .adam_state import validate_adam_state
-from .exposure_codec import pack_exposure, unpack_exposure
+from .exposure_codec import iter_unpack_exposure
+from .exposure_ledger import ExposureLedger
 from ..data.governed_corpus import (
     GovernedMotionBatch, GovernedMotionDataset, collate_governed_motion,
     move_governed_batch,
 )
 from ..reproducibility import (
+    iter_canonical_json_chunks, canonical_json_equal,
     canonical_json_bytes,
     capture_rng_state,
     isolated_deterministic_rng,
@@ -242,14 +245,15 @@ def _strict_json_loads(data: bytes) -> dict[str, Any]:
     return result
 
 
-def _atomic_write(path: Path, data: bytes) -> None:
+def _atomic_write_chunks(path: Path, chunks) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     temporary = Path(temporary_name)
     try:
         with os.fdopen(descriptor, "wb") as stream:
-            stream.write(data)
+            for chunk in chunks:
+                stream.write(chunk)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
@@ -365,7 +369,7 @@ class Trainer:
         self.best_val = math.inf
         self.best_model_state = None
         self.global_step = 0
-        self._optimizer_exposure = []
+        self._optimizer_exposure = ExposureLedger()
         self.completed_epochs = 0
         self._epoch_committed = True
         self.artifact_context = _json_domain(artifact_context or {})
@@ -394,7 +398,7 @@ class Trainer:
         if _loader_contract(self.train_loader) != self.data_contract['train']:
             raise ValueError('training view changed since exposure was recorded')
         return summarize_exposure(
-            self.optimizer_exposure, global_step=self.global_step,
+            (json.loads(record) for record in self._optimizer_exposure), global_step=self.global_step,
             completed_epochs=self.completed_epochs, committed=self._epoch_committed,
             weights=self.cfg.loss_weights,
             identities=self.train_loader.dataset.supervision_identities,
@@ -410,9 +414,9 @@ class Trainer:
         for name, loader in (('train', self.train_loader), ('validation', self.val_loader)):
             if _loader_contract(loader) != self.data_contract[name]:
                 raise ValueError('support-aware history loader contract changed')
-        validate_exposure(records, supported=True, global_step=state['global_step'],
-                          weights=self.cfg.loss_weights,
-                          identities=self.train_loader.dataset.supervision_identities)
+        validated = iter_validated_exposure(
+            records, supported=True, global_step=state['global_step'],
+            weights=self.cfg.loss_weights, identities=self.train_loader.dataset.supervision_identities)
         epochs = state['completed_epochs']
         batches = [self.train_loader.batch_sampler.batch_size] * len(self.train_loader)
         if not self.train_loader.batch_sampler.drop_last:
@@ -420,7 +424,7 @@ class Trainer:
         validation_epochs = (list(range(self.cfg.val_every, epochs + 1, self.cfg.val_every))
                              if self.val_loader is not None else [])
         validate_supported_history(
-            state['history'], epochs=epochs, records=records,
+            state['history'], epochs=epochs, records=(json.loads(record) for record in validated),
             sample_ids=self.train_loader.dataset.supervision_identities,
             batch_sizes=batches, validation_epochs=validation_epochs,
             validation_population=len(self.val_loader.dataset) if self.val_loader is not None else 0,
@@ -557,11 +561,12 @@ class Trainer:
                                           global_step=1, weights=self.cfg.loss_weights,
                                           identities=loader.dataset.supervision_identities)
                         encoded = canonical_json_bytes(record).decode('utf-8')
+                        prepared_exposure = self._optimizer_exposure.prepare(encoded)
                         _checked_step(total, self.opt, self.model.parameters(), self.cfg.grad_clip, context,
                                       pre_step=self._check_optimizer_binding)
                         # Record once optimizer.step returns, even if scheduler.step fails.
                         self.global_step += 1
-                        self._optimizer_exposure.append(encoded)
+                        self._optimizer_exposure.append_prepared(prepared_exposure)
                         self._check_finite_training_state()
                         self._check_optimizer_binding(schedule_step=self.global_step - 1)
                         self.sched.step()
@@ -721,11 +726,14 @@ class Trainer:
         self._check_finite_training_state()
         if self.governed:
             _require_finite_state(self.best_model_state, 'best_model')
-        logical_exposure = self.optimizer_exposure
+        resident_exposure = self._optimizer_exposure
+        if not isinstance(resident_exposure, ExposureLedger):
+            resident_exposure = ExposureLedger(resident_exposure)
         self._check_supported_history(
             dict(completed_epochs=self.completed_epochs, global_step=self.global_step,
-                 best_val=self.best_val, history=self.history), logical_exposure)
-        stored_exposure = pack_exposure(logical_exposure)
+                 best_val=self.best_val, history=self.history),
+            (json.loads(record) for record in resident_exposure))
+        stored_exposure = resident_exposure.storage_envelope()
         destination = Path(path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         state = {
@@ -783,7 +791,8 @@ class Trainer:
                 "history": self.history,
             },
         }
-        _atomic_write(Path(f"{destination}.json"), canonical_json_bytes(manifest) + b"\n")
+        _atomic_write_chunks(Path(f"{destination}.json"),
+                             chain(iter_canonical_json_chunks(manifest), (b"\n",)))
         return destination
 
     @staticmethod
@@ -944,19 +953,24 @@ class Trainer:
                 expected = _json_domain(expected)
             if manifest.get(field) != expected:
                 raise ValueError(f"checkpoint manifest disagrees on {field}")
-        logical_exposure = []
         if checkpoint['schema_version'] in (4, 5):
-            if canonical_json_bytes(manifest['optimizer_exposure']) != canonical_json_bytes(checkpoint['optimizer_exposure']):
+            if not canonical_json_equal(manifest['optimizer_exposure'], checkpoint['optimizer_exposure']):
                 raise ValueError('checkpoint manifest disagrees on optimizer exposure')
             if mode == 'resume':
-                logical_exposure = (unpack_exposure(checkpoint['optimizer_exposure'])
-                                    if checkpoint['schema_version'] == 5 else checkpoint['optimizer_exposure'])
-                exposure = validate_exposure(
+                if checkpoint['schema_version'] == 5:
+                    logical_exposure = iter_unpack_exposure(checkpoint['optimizer_exposure'])
+                else:
+                    logical_exposure = checkpoint['optimizer_exposure']
+                    if not isinstance(logical_exposure, list):
+                        raise ValueError('optimizer exposure must be a list')
+                validated_exposure = iter_validated_exposure(
                     logical_exposure, supported=self.supported_objectives,
                     global_step=training_state['global_step'],
                     weights=self.cfg.loss_weights,
                     identities=self.train_loader.dataset.supervision_identities
                     if self.supported_objectives else {})
+                # Exhaust both validators before any receiver state can be imported.
+                resident_exposure = ExposureLedger(validated_exposure)
         recorded_contract = dict(checkpoint['model_contract'])
         current_contract = dict(self.model_contract)
         if mode == 'weights' and self.governed:
@@ -1003,7 +1017,8 @@ class Trainer:
             raise ValueError("resume numerical runtime does not match checkpoint")
         if checkpoint["data_contract"] != self.data_contract:
             raise ValueError("resume data-loader contract does not match checkpoint")
-        self._check_supported_history(training_state, logical_exposure)
+        self._check_supported_history(
+            training_state, (json.loads(record) for record in resident_exposure))
         if self.governed:
             groups = checkpoint['optimizer']['param_groups']
             validate_adam_state(checkpoint['optimizer'], self._bound_parameter_groups,
@@ -1045,7 +1060,7 @@ class Trainer:
         self.history = training_state["history"]
         restore_rng_state(checkpoint["rng_state"])
         self.best_model_state = best_state
-        self._optimizer_exposure = exposure
+        self._optimizer_exposure = resident_exposure
         self._check_optimizer_binding()
         self._check_finite_training_state()
         self._epoch_committed = True

@@ -2200,6 +2200,221 @@ The retained baseline, profile, focused/full logs and verification manifest are
 under October 6 `target-cells-before-vector.py` and `vector-cells-*`. All nine manual
 handoffs remain absent; empirical W1/W2/W3 acceptance remains unapproved.
 
+## Exact checkpoint exposure deduplication — 2026-10-06
+
+Checkpoint schema 5 stores each distinct single-example target declaration in a
+SHA-256 addressed pool. Ordered branch references preserve batch order, coordinates,
+classes, continuous float values, null branches and absent historical fields. The
+loader checks definition hashes, single-example shape, reference existence, matching
+branch contracts and unused definitions, then applies existing logical-ledger and
+history validation before importing training state. Public expanded records and
+report identities retain their previous meaning. Schema 4 expanded ledgers remain
+format-compatible under all existing implementation/runtime/data/configuration
+bindings; this does not grant arbitrary historical checkpoints exact continuation.
+Schemas 2/3 still require an explicit fresh weights-only start.
+
+Final verification: **2,698 passed in 119.93 seconds**, warnings as errors;
+51 focused checks passed in 10.18 seconds.
+
+The initial full regression found one stale schema-4 expectation in the legacy
+checkpoint round-trip test (2,697 other tests passed). The assertion now expects
+schema 5; the original failure log is retained for the debugging record.
+
+Six bounded fictional controls round-trip exactly. With 100 repeated 200-cell
+declarations, canonical JSON shrinks 160,493→15,048 bytes and isolated torch payloads
+248,045→14,637 bytes. With 100 distinct declarations, JSON grows 160,793→174,441 bytes
+and torch payloads 248,109→262,573 bytes. These measure ledger serialization, not
+whole-checkpoint size, training throughput, or real-corpus distributions. Pooling
+has overhead and is not a universal compression guarantee.
+
+Replay, focused/full regression logs and source hashes are retained under
+`evidence/w1-w3-engineering-2026-10-06/compact-exposure-*`. Remaining work: bounded
+in-memory/history reporting and resume expansion, streaming serialization, and
+profiling on an admitted workload when available. Every save still traverses the
+logical ledger. All nine manual handoffs remain absent with null evidence; empirical
+W1/W2/W3 acceptance remains unapproved.
+
+## Resident optimizer-exposure interning — 2026-10-06
+
+Verified: **2,702 passed in 115.93 seconds**, warnings as errors; 39 focused checks
+passed in 6.34 seconds.
+
+`ExposureLedger` now retains immutable compact record bytes plus distinct
+single-example declaration bytes, using the verified schema-5 storage codec.
+Iteration reconstructs one exact canonical record at a time. The trainer prepares
+encoding before calling the optimizer and appends the prepared record only after
+the call returns. Resume reconstructs the interned ledger during preflight, before
+model/optimizer mutation. Existing public expanded records, report identities,
+missing historical declarations and returned-call semantics remain unchanged.
+
+A bounded fictional 100-record/200-cell control reduces retained Python object
+size from 162,712 to 16,721 bytes when all declarations repeat. With 100 distinct
+declarations, retained size increases from 163,012 to 186,188 bytes. Recursive
+`sys.getsizeof` counts unique reachable owned objects; it is not process RSS,
+transient peak allocation, training throughput or an admitted-corpus distribution.
+The replayable `resident-exposure-profile.py`/`.json`, focused/full logs and
+verification manifest are in the October 6 W1–W3 engineering evidence directory.
+
+Remaining memory work: public property/report/audit consumers still collect expanded
+history; save and checkpoint decode also materialize it, and resume has a transient
+expanded preflight. Persistent pooling does not bound these peaks. Storage still
+grows with distinct declarations and per-step metadata/references. All nine manual
+handoffs remain absent with null evidence; W1/W2/W3 empirical acceptance is unapproved.
+
+## Streaming historical exposure summaries — 2026-10-06
+
+Verified: **2,711 passed in 115.55 seconds**, warnings as errors; 51 focused checks
+passed in 5.94 seconds.
+
+The trainer's historical exposure report no longer requests the expanded public
+ledger. It decodes one resident record at a time, shares per-record semantic
+validation with checkpoint validation, maintains immutable cross-record target
+contracts, and checks the complete expected step count before returning a report.
+An incremental SHA-256 hashes exactly the canonical JSON array bytes (including
+commas, Unicode encoding and empty `[]`). Report schema, payload and identity remain
+unchanged for valid histories. Late corruption, missing/extra steps and changed
+contracts prevent any report from being returned; no partial summary is published.
+
+Three fictional 200-cell controls reproduce the retained implementation's complete
+report payload exactly. At 100 records, report-only peak Python allocation measured
+by `tracemalloc` falls from 4,430,162 to 99,802 bytes. Inputs are prepared before
+tracing; native allocation, process RSS, trainer decoding overhead and real-data
+throughput are not measured by this comparison. Memory still includes one expanded
+record and aggregate tables over admitted samples, branches and observed classes;
+processing still traverses all historical records. It is not a fixed total-memory
+bound independent of record size or admitted-view size.
+
+Replay, retained baseline, focused/full regression and source hashes are under
+`evidence/w1-w3-engineering-2026-10-06/streaming-exposure-*` and
+`exposure-before-streaming.py`. Fresh annotation audits, full-ledger property,
+save/history preflight and checkpoint/resume decoding still need expansion work.
+All nine manual handoffs remain absent/null; empirical W1/W2/W3 exits remain unapproved.
+
+## Compact fresh-annotation audit index — 2026-10-06
+
+Verified: **2,714 passed in 120.05 seconds**, warnings as errors; 46 focused checks
+passed in 5.58 seconds.
+
+Fresh annotation audits now iterate resident records into an index of shared exact
+immutable target-cell signatures and ordered presentation references. They no
+longer request or retain the full expanded public ledger. Signatures contain axes,
+class/unit contracts and exact cell tuples; equality is value-based, not digest-only,
+and preserves the previous signed-zero comparison. Existing sample/step/branch
+contradiction order, missing-history behavior and fresh source/annotation checks
+remain intact. The final exposure/view consistency recheck remains in place.
+
+Three complete audit controls match the retained implementation byte-for-byte:
+current declarations, absent historical declarations/masks, and a deliberately
+contradictory clock target. Two 100-record/200-cell index controls preserve content
+exactly. With repeated declarations, index-only peak Python allocation falls
+2,046,424→91,276 bytes; with distinct declarations, 2,037,114→1,225,986 bytes.
+These `tracemalloc` measurements exclude resident input, trainer record decoding,
+full source revalidation/audit output, native memory and RSS. They are not a
+whole-audit memory or throughput qualification.
+
+Remaining audit memory scales with distinct declarations, presentation references,
+admitted sample inventories and contradiction output. This is deduplicated indexing,
+not constant-memory auditing. Public full-ledger access, checkpoint save/history
+preflight and checkpoint/resume decoding still expand records. The replayable
+`audit-index-*` evidence and retained `exposure-audit-before-interning.py` are in the
+October 6 engineering directory. All nine manual handoffs remain absent/null;
+empirical W1/W2/W3 phase exits remain unapproved.
+
+## Checkpoint save without full exposure expansion — 2026-10-06
+
+Verified: **2,722 passed in 118.86 seconds**, warnings as errors; 49 focused checks
+passed in 8.04 seconds.
+
+Checkpoint saving now consumes a validated record iterator for committed history
+checks, accumulating support and sample membership per epoch without retaining target
+cells across steps. It then copies the resident declaration pool and compact record
+references directly. Schema 5, canonical envelope contents, public report identity,
+and exact-resume requirements are unchanged. Validation still finishes before
+creating the destination directory or checkpoint. An explicit test forbids the
+full-ledger property during save and verifies subsequent resume/report equality.
+Late invalid annotation identity, short/extra histories, duplicate epoch membership
+and mismatched support counts are rejected. The list-based checkpoint validator
+remains available; resume still decodes the full checkpoint history.
+
+Two fictional 100-record/200-cell export controls produce the same canonical pool
+as expansion followed by packing. Export-only peak Python allocation falls
+2,155,528→94,170 bytes for repeated declarations and 4,132,108→2,061,229 bytes for
+distinct declarations. These traced allocations exclude resident inputs, semantic
+validation, model/optimizer state, filesystem I/O, native allocation and process RSS.
+They do not establish a whole-save memory bound or throughput guarantee.
+
+Save still materializes the pooled artifact and canonical JSON manifest bytes;
+history checks retain per-epoch membership and metric/support arrays. Distinct
+pool content and compact per-step metadata still grow. Next storage work is
+checkpoint/resume decoding and incremental artifact serialization, while preserving
+all identity and preflight checks. Replay and verification are under October 6
+`stream-save-*`, with `history-before-streaming.py` retained. All nine manual
+handoffs remain absent/null; empirical W1/W2/W3 phase acceptance remains unapproved.
+
+## Streamed exposure reconstruction during resume — 2026-10-06
+
+Verified: **2,728 passed in 119.75 seconds**, warnings as errors; 55 focused checks
+passed in 8.78 seconds.
+
+Schema-5 resume now decodes one logical record at a time, streams semantic exposure
+validation into resident interning, and uses streamed history checks. It no longer
+retains full expanded and canonical-string histories during reconstruction. Both
+iterators must be exhausted before any model/optimizer/RNG import, including the
+final unused-pool-definition check. The eager public codec remains a wrapper for
+callers explicitly requesting full records. Schema 4 retains its exact list-type
+requirement and all prior runtime/implementation/data/configuration bindings.
+
+Focused checks cover independent reconstructed values, unused definitions at end
+of stream, a late missing reference, short histories and a malformed schema-4 tuple.
+Each corrupt-checkpoint test verifies unchanged receiver tensors, RNG, optimizer,
+history and commit status. Existing exact CPU continuation and weights-only rules
+remain in the regression scope.
+
+Two fictional 100-record/200-cell controls reproduce identical resident contents.
+Exposure decode/validate/rebuild peak Python allocation falls 2,369,973→124,503
+bytes for repeated declarations and 2,520,050→305,251 bytes for distinct declarations.
+These traced controls exclude checkpoint/manifest parsing, history validation,
+model state, I/O, native allocations and RSS. They are not whole-resume memory or
+latency measurements. Pool parsing and checkpoint tensors are still materialized;
+manifest comparison/serialization also creates full canonical buffers, and explicit
+public full-ledger access expands history. Next serialization work must preserve
+canonical byte identity and fail-before-import boundaries.
+
+October 6 `stream-resume-*` evidence retains replay, focused/full logs and source
+hashes; `exposure-codec-before-streaming.py` retains the previous codec. All nine
+manual handoffs remain absent/null and empirical W1/W2/W3 exits remain unapproved.
+
+## Incremental manifest encoding and exact comparison — 2026-10-06
+
+Verified: **2,743 passed in 122.06 seconds**, warnings as errors; 42 focused checks
+passed in 4.90 seconds.
+
+Canonical JSON now has a fixed-size UTF-8 chunk iterator using the same key ordering,
+separators, Unicode and finite-number rules as the existing byte encoder. Tests
+compare exact bytes across chunk boundaries, including multibyte Unicode, escaped
+strings, large integers, subnormals and signed zero. Exposure manifest/checkpoint
+comparison uses exact chunks rather than two whole-document byte buffers or digest
+equality. Both encoders are exhausted after a mismatch so invalid trailing values
+are still rejected. Manifest writes consume chunks plus the original final newline,
+flush/fsync the temporary file and replace the destination only after success;
+failed iteration retains an existing manifest and removes the temporary file.
+This remains per-file replacement, not a transaction covering checkpoint and sidecar.
+
+A fictional 1,512,903-byte cell-heavy JSON control reduces encoding peak Python
+allocation 3,026,104→210,943 bytes and comparison peak 4,539,088→421,822 bytes.
+The 750,011-byte large-Unicode-scalar control instead increases encoding peak
+1,250,146→1,450,804 and comparison peak 2,000,286→2,901,368 bytes. The encoder still
+materializes individual tokens and sorted object keys; chunking is not a universal
+memory improvement or a hard bound independent of scalar/object size. Measurements
+exclude prebuilt inputs, I/O, native allocations and RSS; exact hash/length and
+comparison parity are checked, with direct byte parity covered by tests.
+
+The pooled artifact, parsed checkpoint/manifest, model tensors and explicit public
+full-ledger access still have their own costs. Large-token handling, artifact parsing
+and representative admitted-workload profiling remain open. October 6 `stream-json-*`
+evidence retains replay, focused/full logs and source hashes. All nine manual handoffs
+remain absent/null; empirical W1/W2/W3 phase acceptance remains unapproved.
+
 ## Refreshed W1/W2 acceptance audit and source inventory — 2026-09-26
 
 All 15 full W1/W2 requirement rows were reassessed after the rig, rest-shape, native-method,

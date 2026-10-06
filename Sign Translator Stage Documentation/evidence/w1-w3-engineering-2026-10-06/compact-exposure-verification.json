@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2698 passed in 119.93s",
+  "focused": "51 passed in 10.18s",
+  "initial_result": "1 failed, 2697 passed in 118.78s; stale schema-4 expectation repaired",
+  "code_sha256": {
+    "signtranslator/training/exposure_codec.py": "3f038214e2cea8f0c285b53fa30f87441f5c793b0f373012ff9fe85b9a219c92",
+    "signtranslator/training/trainer.py": "73a25ebbbb905be038c94b33e9eda4803a322257ce3c4d80ce3d0daa2c6be57d",
+    "tests/test_exposure_codec.py": "8048d0cfb7e89f249e9df89c9130ef37d869496a4a7ed39b5d1ffd0bb5785ec3",
+    "tests/test_optimizer_exposure.py": "ea18bd9081b52e4095517883cd836adf6ff8e2e87cc5ab742fb812c3f25ee1b2",
+    "tests/test_trainer.py": "8f416a7ce9085d8b6311e26e08eb2458b14f436dafc9e2877cf44eea5722f52a",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/compact-exposure-profile.py": "2ff1ec19298d01123bb1458bfb869b597fc52be3252e5a84b6f3040cebf1bfdc"
+  },
+  "scope": "Schema-5 exact single-example checkpoint declaration pooling; strict decode, schema-4 format compatibility under existing identity checks, unchanged logical report and CPU continuation",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "In-memory history, public reports and resume still expand declarations.",
+    "Saving still traverses the full logical ledger.",
+    "Unique declarations can enlarge storage; six fictional controls do not establish corpus-wide compression or training throughput.",
+    "Hash integrity is not source authorization or historical gradient proof."
+  ]
+}

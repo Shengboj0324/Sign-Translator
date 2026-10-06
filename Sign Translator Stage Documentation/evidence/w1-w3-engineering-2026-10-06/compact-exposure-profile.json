@@ -1,0 +1,65 @@
+{
+  "scope": "Fictional bounded ledger storage only; no training, RSS or throughput claim",
+  "cases": [
+    {
+      "steps": 1,
+      "unique": false,
+      "definitions": 1,
+      "expanded_json_bytes": 1605,
+      "compact_json_bytes": 1789,
+      "expanded_torch_bytes": 3181,
+      "compact_torch_bytes": 3309,
+      "exact_roundtrip": true
+    },
+    {
+      "steps": 1,
+      "unique": true,
+      "definitions": 1,
+      "expanded_json_bytes": 1608,
+      "compact_json_bytes": 1792,
+      "expanded_torch_bytes": 3181,
+      "compact_torch_bytes": 3309,
+      "exact_roundtrip": true
+    },
+    {
+      "steps": 20,
+      "unique": false,
+      "definitions": 1,
+      "expanded_json_bytes": 32092,
+      "compact_json_bytes": 4327,
+      "expanded_torch_bytes": 50093,
+      "compact_torch_bytes": 5421,
+      "exact_roundtrip": true
+    },
+    {
+      "steps": 20,
+      "unique": true,
+      "definitions": 20,
+      "expanded_json_bytes": 32152,
+      "compact_json_bytes": 34920,
+      "expanded_torch_bytes": 50093,
+      "compact_torch_bytes": 52973,
+      "exact_roundtrip": true
+    },
+    {
+      "steps": 100,
+      "unique": false,
+      "definitions": 1,
+      "expanded_json_bytes": 160493,
+      "compact_json_bytes": 15048,
+      "expanded_torch_bytes": 248045,
+      "compact_torch_bytes": 14637,
+      "exact_roundtrip": true
+    },
+    {
+      "steps": 100,
+      "unique": true,
+      "definitions": 100,
+      "expanded_json_bytes": 160793,
+      "compact_json_bytes": 174441,
+      "expanded_torch_bytes": 248109,
+      "compact_torch_bytes": 262573,
+      "exact_roundtrip": true
+    }
+  ]
+}

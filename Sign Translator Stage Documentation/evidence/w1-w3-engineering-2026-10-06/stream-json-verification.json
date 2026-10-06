@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2743 passed in 122.06s",
+  "focused": "42 passed in 4.90s",
+  "code_sha256": {
+    "signtranslator/reproducibility.py": "b4a841292402fc182ce17e33229e470a6d0548479c903f75015906e8e3be98a6",
+    "signtranslator/training/trainer.py": "459fb3b84f9aa5af94ee877d5d211ac41ddf1ea18f34525ee438a82f539508c3",
+    "tests/test_canonical_json_stream.py": "b23c58e3474b866e7b6138945f69eb9edbb796377d0818fe62579ddfa6512570",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/stream-json-profile.py": "3cff9ccc38bff6e0d7ba82037ff21a0c3fcf7e677eb33e2c47699169df0ac95b"
+  },
+  "scope": "Canonical UTF-8 chunk encoding, exact non-hash exposure comparison with exhaustive invalid-tail checks, atomic per-file manifest replacement and byte/resume parity",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Individual tokens and sorted keys still materialize; large-Unicode-scalar control increases peak allocation.",
+    "Parsed artifacts, pooled data, model state and explicit full-ledger access still have memory costs.",
+    "Encoding/comparison allocation controls exclude prebuilt input, I/O, native memory and RSS.",
+    "Checkpoint and sidecar replacements are per file, not one transaction.",
+    "No source authorization or empirical ASL acceptance."
+  ]
+}

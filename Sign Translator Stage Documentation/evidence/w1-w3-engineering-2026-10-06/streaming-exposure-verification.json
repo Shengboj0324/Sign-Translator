@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2711 passed in 115.55s",
+  "focused": "51 passed in 5.94s",
+  "code_sha256": {
+    "signtranslator/training/exposure.py": "c7bdadfa606c41a72364627574bff5bb51decf4900b605f742345e64f3dd0baf",
+    "signtranslator/training/trainer.py": "a10fc0a785f91972e4c02abf51c5da94813fa04241383b1f35fb3b48d69c37f1",
+    "tests/test_streaming_exposure.py": "0b3289bcbabd7afcb3df5f20089ada6540e250bc5422638a5c11c55cd0c73932",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/streaming-exposure-profile.py": "41ea8e7fde0104cdde5478f6d6ca8cc7ecdf8d5000e4ac0ed16d493391d27d6c",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/exposure-before-streaming.py": "c1523cfb6008b658087249e2696b61aa2e94624dc6fe311b464e797da887bc4e"
+  },
+  "scope": "One-pass historical exposure summary with exact canonical-array hash and complete-count validation; unchanged complete report payload against retained implementation",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Fresh annotation audits, public full-ledger access, save/history preflight and checkpoint/resume decoding still expand history.",
+    "Memory includes one record and aggregate tables over admitted samples, branches and classes; traversal remains linear.",
+    "Scoped Python allocation measurements exclude resident input, trainer decoding overhead, native allocation and RSS.",
+    "No real corpus or empirical ASL acceptance."
+  ]
+}

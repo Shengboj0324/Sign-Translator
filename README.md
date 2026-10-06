@@ -278,6 +278,28 @@ sampling or test-partition option. Training tensors remain on the original model
 copying and hashing add memory/CPU cost. Neither sensitivity nor reference metrics
 establish calibrated ASL meaning or phase acceptance.
 
+Governed checkpoints now use schema 5: exact per-example target declarations are
+stored once per content hash in both the checkpoint and its JSON manifest. Loading
+verifies the pool and reconstructs the original logical ledger before its existing
+semantic checks. Missing historical declarations remain missing. Schema 4 expanded
+ledgers retain format compatibility, subject to the same implementation, runtime,
+configuration and data identity checks; schemas 2/3 require a fresh weights-only
+start. The resident trainer history also interns declarations and expands one record per
+iteration. Encoding is prepared before the optimizer call and recorded after it
+returns; resume rebuilds resident storage during preflight. Historical exposure summaries validate, count and hash one record at a time, retaining
+the same canonical ledger identity. Fresh annotation audits now index shared immutable target-cell content and
+presentation references without requesting full records. They still retain distinct
+cells and per-presentation metadata. Checkpoint saves validate exposure/history one record at a time and copy the
+resident pool directly. They still materialize the pooled artifact and JSON bytes.
+Resume streams pooled records through semantic validation into resident storage,
+exhausting integrity and count checks before importing training state. Checkpoint
+and manifest parsing still materialize the stored artifacts; explicit full-ledger
+access still expands history. Manifest writing and exposure comparison now stream
+exact canonical UTF-8 chunks. Large individual JSON tokens and sorted object keys
+still allocate proportionally; a large-string control increases peak allocation.
+Distinct declarations can enlarge both disk and resident representations. Hashes
+provide integrity, not source approval.
+
 ## 8. Stop rules and rights
 
 Do not train the intended 3D ASL path by forcing English into gloss or 2D into rotations. First acquire source-native annotation, synchronized canonical motion, authoritative signer/source grouping, qualified-ASL adjudication, and permission for each research/commercial action. Then freeze leakage-safe evaluation, test video dependence and linguistic minimal pairs, measure comprehension and non-manual errors with qualified reviewers, compare strong published baselines, and only afterward integrate a licensed rig, renderer, latency budget, monitoring, and rollback. See [evaluation design](docs/EVALUATION_FRAMEWORK.md) and [deployment design](docs/DEPLOYMENT.md).

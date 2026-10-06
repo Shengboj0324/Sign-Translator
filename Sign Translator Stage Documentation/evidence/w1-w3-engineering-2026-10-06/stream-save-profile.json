@@ -1,0 +1,21 @@
+{
+  "scope": "Synthetic export-only traced Python allocation; excludes resident input, validation, I/O, native memory and RSS",
+  "cases": [
+    {
+      "unique": false,
+      "records": 100,
+      "cells_per_record": 200,
+      "identical_canonical_envelope": true,
+      "old_peak_python_bytes": 2155528,
+      "new_peak_python_bytes": 94170
+    },
+    {
+      "unique": true,
+      "records": 100,
+      "cells_per_record": 200,
+      "identical_canonical_envelope": true,
+      "old_peak_python_bytes": 4132108,
+      "new_peak_python_bytes": 2061229
+    }
+  ]
+}

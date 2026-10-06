@@ -53,6 +53,46 @@ def canonical_json_bytes(value: Any) -> bytes:
     ).encode("utf-8")
 
 
+def iter_canonical_json_chunks(value: Any, chunk_size: int = 65536):
+    """Yield the canonical UTF-8 bytes in fixed-size chunks, except the last.
+
+    Buffering is bounded by chunk size plus the encoder's current token and sorted
+    object keys. A single large string/token can still allocate proportionally.
+    """
+    if type(chunk_size) is not int or chunk_size <= 0:
+        raise ValueError('canonical JSON chunk size must be a positive integer')
+    encoder = json.JSONEncoder(sort_keys=True, separators=(",", ":"),
+                               ensure_ascii=False, allow_nan=False)
+    buffer = bytearray()
+    for token in encoder.iterencode(value):
+        encoded = token.encode('utf-8')
+        offset = 0
+        while offset < len(encoded):
+            count = min(chunk_size - len(buffer), len(encoded) - offset)
+            buffer.extend(encoded[offset:offset + count])
+            offset += count
+            if len(buffer) == chunk_size:
+                yield bytes(buffer)
+                buffer.clear()
+    if buffer:
+        yield bytes(buffer)
+
+
+def canonical_json_equal(left: Any, right: Any) -> bool:
+    """Compare exact canonical bytes without whole-document buffers or hash trust.
+
+    Exhaust both encoders even after a mismatch, so invalid trailing data is refused.
+    """
+    from itertools import zip_longest
+    missing = object()
+    equal = True
+    for a, b in zip_longest(iter_canonical_json_chunks(left),
+                           iter_canonical_json_chunks(right), fillvalue=missing):
+        if a != b:
+            equal = False
+    return equal
+
+
 def canonical_json_sha256(value: Any) -> str:
     return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
 

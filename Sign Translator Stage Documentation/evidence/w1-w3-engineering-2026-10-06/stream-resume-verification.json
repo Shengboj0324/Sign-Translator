@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2728 passed in 119.75s",
+  "focused": "55 passed in 8.78s",
+  "code_sha256": {
+    "signtranslator/training/trainer.py": "fc09a1e97b1f69aa3f4442c1a934bbdbcaf4458ff28bfb0692ac3978d65db053",
+    "signtranslator/training/exposure_codec.py": "d2d2565fde16c0677e6186ce39b301b4859856f087fe3e8330cbdeb2227dfe3d",
+    "tests/test_streaming_resume.py": "dec420abae9b03310342d2d992a203d934e975555f821c78b6510833c0e6b01c",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/stream-resume-profile.py": "b95e202c3ac4e437ea487eba6a7d1a234221355941d2f2c7ddd254614481c6a5",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/exposure-codec-before-streaming.py": "3f038214e2cea8f0c285b53fa30f87441f5c793b0f373012ff9fe85b9a219c92"
+  },
+  "scope": "Streamed exposure decoding and semantic validation into resident storage; complete decoder/count exhaustion before import and preserved schema-4 list contract",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Stored checkpoint and manifest parsing still materialize artifacts; comparison/serialization creates canonical buffers.",
+    "Explicit public full-ledger access still expands history; pooled storage grows with distinct cells and per-step metadata.",
+    "Reconstruction-only traced allocation excludes parsing, history checks, model state, I/O, native allocation and RSS.",
+    "No real-data ASL acceptance or new source authorization."
+  ]
+}

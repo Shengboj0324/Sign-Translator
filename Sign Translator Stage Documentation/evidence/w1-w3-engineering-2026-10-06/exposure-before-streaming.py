@@ -16,20 +16,9 @@ def validate_exposure(records, *, supported, global_step, weights, identities):
         raise ValueError('optimizer exposure must be a list')
     if len(records) != (global_step if supported else 0):
         raise ValueError('optimizer exposure does not cover the recorded steps')
-    return list(iter_validated_exposure(records, supported=supported, global_step=global_step,
-                                        weights=weights, identities=identities))
-
-
-def iter_validated_exposure(records, *, supported, global_step, weights, identities):
-    """Yield immutable canonical records; count validity requires exhausting iteration."""
-    expected = global_step if supported else 0
-    count = 0
     fields = {'step', 'sample_ids', 'annotation_sha256', 'support', 'weights'}
     cell_contracts = {}
     for step, record in enumerate(records, 1):
-        count = step
-        if step > expected:
-            raise ValueError('optimizer exposure does not cover the recorded steps')
         if (not isinstance(record, dict) or not fields <= set(record)
                 or set(record) - fields - {'support_membership', 'target_cells'}):
             raise ValueError('invalid optimizer exposure fields')
@@ -69,8 +58,7 @@ def iter_validated_exposure(records, *, supported, global_step, weights, identit
                 if declaration is None:
                     continue
                 cells = parse_target_cells(declaration)
-                contract = canonical_json_bytes({key: value for key, value in declaration.items()
-                                                 if key != 'examples'})
+                contract = {key: value for key, value in declaration.items() if key != 'examples'}
                 if name in cell_contracts and cell_contracts[name] != contract:
                     raise ValueError('target-cell codebook changed within exposure history')
                 cell_contracts[name] = contract
@@ -79,9 +67,8 @@ def iter_validated_exposure(records, *, supported, global_step, weights, identit
                 if (len(mask) != len(ids) or sum(mask) != support[name]
                         or (recorded_mask is not None and tuple(recorded_mask) != mask)):
                     raise ValueError('optimizer target cells disagree with example support')
-        yield canonical_json_bytes(record).decode('utf-8')
-    if count != expected:
-        raise ValueError('optimizer exposure does not cover the recorded steps')
+    # Store immutable strings; callers receive independent decoded copies.
+    return [canonical_json_bytes(record).decode('utf-8') for record in records]
 
 
 def exposure_records(encoded):
@@ -107,10 +94,10 @@ def summarize_exposure(records, *, global_step, completed_epochs, committed,
             or type(completed_epochs) is not int or completed_epochs < 0
             or type(committed) is not bool):
         raise ValueError('exposure summary requires exact nonnegative counters and boolean status')
-    encoded = iter_validated_exposure(records, supported=True, global_step=global_step,
-                                      weights=weights, identities=identities)
-    # Hash the exact canonical JSON array incrementally, including empty history.
-    ledger_digest = hashlib.sha256(b'[')
+    encoded = validate_exposure(records, supported=True, global_step=global_step,
+                                weights=weights, identities=identities)
+    # Work from the validated copy rather than caller-owned dictionaries.
+    records = exposure_records(encoded)
     presentations = dict.fromkeys(identities, 0)
     branches = {name: {'supported_example_presentations': 0,
                        'steps_with_support': 0, 'steps_without_support': 0}
@@ -121,11 +108,7 @@ def summarize_exposure(records, *, global_step, completed_epochs, committed,
     cell_summaries = {name: dict(axes=None, class_count=None, unit=None, value_kind=None, class_presentations={},
                                  target_presentations=0, recorded_example_presentations=0,
                                  unrecorded_example_presentations=0) for name in weights}
-    for index, payload in enumerate(encoded):
-        if index:
-            ledger_digest.update(b',')
-        ledger_digest.update(payload.encode('utf-8'))
-        record = json.loads(payload)
+    for record in records:
         for sample in record['sample_ids']:
             presentations[sample] += 1
         for name, support in record['support'].items():
@@ -158,7 +141,6 @@ def summarize_exposure(records, *, global_step, completed_epochs, committed,
             for index, sample in enumerate(record['sample_ids']):
                 status = 'unattributed' if mask is None else ('supported' if mask[index] else 'unsupported')
                 sample_branches[sample][name][status] += 1
-    ledger_digest.update(b']')
     result = {
         'schema_version': 2,
         'evidence_kind': 'historical_returned_optimizer_calls',
@@ -168,7 +150,7 @@ def summarize_exposure(records, *, global_step, completed_epochs, committed,
         'data_contract': data_contract,
         'implementation_identity': implementation_identity,
         'model_contract': model_contract,
-        'ledger_sha256': ledger_digest.hexdigest(),
+        'ledger_sha256': hashlib.sha256(canonical_json_bytes(records)).hexdigest(),
         'weights': dict(weights),
         'sample_presentations': sum(presentations.values()),
         'distinct_presented_samples': sum(n > 0 for n in presentations.values()),

@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2702 passed in 115.93s",
+  "focused": "39 passed in 6.34s",
+  "code_sha256": {
+    "signtranslator/training/exposure_ledger.py": "b5c8421b70c37b92ed2274c6af0537aae1f6ae49d5e3c4026c95800f9f92a3c3",
+    "signtranslator/training/trainer.py": "880b2379562ef92b12f72f2ecca437d4bbc8d4627b3dc7d94fafa5f96a0d242b",
+    "tests/test_exposure_ledger.py": "6ea491449ccd034ad941716afc2016a2097175502e49afd0ea96754d45006265",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/resident-exposure-profile.py": "39e75d18338777ad90533e46cf08ccd8223ec95889c74052f3004da864f27d87"
+  },
+  "scope": "Resident exact declaration pooling, one-record lazy iteration, pre-optimizer encoding and post-return record commitment, preflight resume reconstruction",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Public report/audit/save/checkpoint decode and resume preflight still materialize expanded history.",
+    "Resident storage grows with distinct declarations and record metadata/references.",
+    "Distinct-declaration controls have greater overhead; object size measurements exclude transient peaks and RSS.",
+    "No admitted corpus, source approval, historical gradient proof or empirical ASL acceptance."
+  ]
+}

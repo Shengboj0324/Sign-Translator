@@ -1,0 +1,21 @@
+{
+  "scope": "Fictional resident history only; no transient peak, RSS, throughput or corpus claim",
+  "cases": [
+    {
+      "unique": false,
+      "records": 100,
+      "exact_roundtrip": true,
+      "expanded_retained_python_bytes": 162712,
+      "pooled_retained_python_bytes": 16721,
+      "pooled_encoded_payload_bytes": 12195
+    },
+    {
+      "unique": true,
+      "records": 100,
+      "exact_roundtrip": true,
+      "expanded_retained_python_bytes": 163012,
+      "pooled_retained_python_bytes": 186188,
+      "pooled_encoded_payload_bytes": 171192
+    }
+  ]
+}

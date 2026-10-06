@@ -1,0 +1,35 @@
+{
+  "scope": "Synthetic index-only traced Python allocation; not full-audit peak, native memory or RSS",
+  "profiles": [
+    {
+      "unique": false,
+      "records": 100,
+      "cells_per_record": 200,
+      "old_peak_python_bytes": 2046424,
+      "new_peak_python_bytes": 91276,
+      "equal_index_content": true
+    },
+    {
+      "unique": true,
+      "records": 100,
+      "cells_per_record": 200,
+      "old_peak_python_bytes": 2037114,
+      "new_peak_python_bytes": 1225986,
+      "equal_index_content": true
+    }
+  ],
+  "audit_parity": [
+    {
+      "mode": "current",
+      "identical_payload": true
+    },
+    {
+      "mode": "historical",
+      "identical_payload": true
+    },
+    {
+      "mode": "contradictory_clock",
+      "identical_payload": true
+    }
+  ]
+}

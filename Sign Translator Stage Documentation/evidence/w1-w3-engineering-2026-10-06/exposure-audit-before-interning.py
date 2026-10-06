@@ -65,33 +65,6 @@ def _target_inventory(annotations, vocabulary, alphabet, branches):
     return {name: inventory[name] for name in branches}, expected
 
 
-def _cell_signature(declaration, row):
-    """Exact comparable cell content after the exposure report validates its schema.
-
-    Tuple equality preserves the existing numeric comparison, including signed zero.
-    This is not a digest: unequal values cannot match through a hash collision.
-    """
-    if declaration is None:
-        return None
-    return (tuple(declaration['axes']), declaration.get('class_count'), declaration.get('unit'),
-            tuple(tuple(cell) for cell in declaration['examples'][row]))
-
-
-def _index_declarations(encoded, sample_ids, branches):
-    """Retain unique immutable cell content and presentation references, not full records."""
-    declarations = {sample: [] for sample in sample_ids}
-    pool = {}
-    for payload in encoded:
-        record = json.loads(payload)
-        for row, sample in enumerate(record['sample_ids']):
-            cells = []
-            for name in branches:
-                signature = _cell_signature(record.get('target_cells', {}).get(name), row)
-                cells.append(pool.setdefault(signature, signature))
-            declarations[sample].append((record['step'], tuple(cells)))
-    return declarations
-
-
 def audit_exposure_declarations(trainer, vocabulary, alphabet=None):
     """Compare canonical planner declarations with freshly revalidated targets.
 
@@ -130,8 +103,10 @@ def audit_exposure_declarations(trainer, vocabulary, alphabet=None):
     samples, contradictions = [], []
     cell_totals = {name: dict(verified=0, unrecorded=0, contradictory=0) for name in branches}
     cell_contradictions = []
-    declarations = _index_declarations(
-        trainer._optimizer_exposure, (sample['sample_id'] for sample in data['samples']), branches)
+    declarations = {sample['sample_id']: [] for sample in data['samples']}
+    for record in trainer.optimizer_exposure:
+        for row, sample in enumerate(record['sample_ids']):
+            declarations[sample].append((record, row))
     for index, exposure in zip(contract['record_indices'], data['samples'], strict=True):
         view = GovernedMotionDataset(first.corpus, (index,), contract['split'])
         batch = collate_governed_motion([view[0]])
@@ -166,16 +141,21 @@ def audit_exposure_declarations(trainer, vocabulary, alphabet=None):
             expected_cells['locus_assignment'] = selected_target_cells(
                 loci.known, loci.classes, axes=('event',),
                 class_count=len(alphabet.identities)).to_dict()
-        expected_signatures = {name: _cell_signature(expected_cells.get(name), 0) for name in branches}
-        for step, declared_cells in declarations[identity['sample_id']]:
-            for name, declared in zip(branches, declared_cells, strict=True):
+        for record, row in declarations[identity['sample_id']]:
+            for name in branches:
+                declared = record.get('target_cells', {}).get(name)
                 if declared is None:
                     cell_totals[name]['unrecorded'] += 1
                     continue
-                matches = declared == expected_signatures[name]
+                expected_cell = expected_cells.get(name)
+                matches = (expected_cell is not None
+                           and declared['axes'] == expected_cell['axes']
+                           and declared.get('class_count') == expected_cell.get('class_count')
+                           and declared.get('unit') == expected_cell.get('unit')
+                           and declared['examples'][row] == expected_cell['examples'][0])
                 cell_totals[name]['verified' if matches else 'contradictory'] += 1
                 if not matches:
-                    cell_contradictions.append(dict(step=step, sample_id=identity['sample_id'],
+                    cell_contradictions.append(dict(step=record['step'], sample_id=identity['sample_id'],
                                                     branch=name))
         for name in branches:
             counts = exposure['branch_presentations'][name]

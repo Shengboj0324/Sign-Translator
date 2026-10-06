@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2714 passed in 120.05s",
+  "focused": "46 passed in 5.58s",
+  "code_sha256": {
+    "signtranslator/planning/exposure_audit.py": "b544da0fe5a2b49eda1a7bd536617ded08ec44086396ba395139fc0ac240d6c1",
+    "tests/test_audit_index.py": "c637a4c356c2e43ad5f003f530ca45ac7769e84161cc466ed5b83e74dcb68708",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/audit-index-profile.py": "ab41488510fb1b4fbdf6b352c3625f41e01e40a5686dad7aca41c4b2bb6f4045",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/exposure-audit-before-interning.py": "418650aaac8fd0c0ce62b9828397b7f73b58bd11c1d51a9a6329f33ab40afa13"
+  },
+  "scope": "Compact fresh-audit declaration index with exact tuple comparisons, stable contradiction order and unchanged full audit payload against retained implementation",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Memory retains distinct cell content, per-presentation references, inventories and contradiction output.",
+    "Index-only traced Python allocation excludes resident input, trainer decoding, full audit/source processing, native allocation and RSS.",
+    "Save/history preflight, public full-ledger access and checkpoint/resume decoding still expand records.",
+    "No source authorization or empirical ASL acceptance established."
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "scope": "Synthetic report-only Python allocation; excludes resident input, native memory and RSS",
+  "cases": [
+    {
+      "records": 1,
+      "cells_per_record": 200,
+      "identical_payload": true,
+      "old_peak_python_bytes": 45097,
+      "new_peak_python_bytes": 44244
+    },
+    {
+      "records": 20,
+      "cells_per_record": 200,
+      "identical_payload": true,
+      "old_peak_python_bytes": 888609,
+      "new_peak_python_bytes": 71193
+    },
+    {
+      "records": 100,
+      "cells_per_record": 200,
+      "identical_payload": true,
+      "old_peak_python_bytes": 4430162,
+      "new_peak_python_bytes": 99802
+    }
+  ]
+}

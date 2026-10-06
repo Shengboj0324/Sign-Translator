@@ -47,14 +47,6 @@ def pack_exposure(records):
 
 def unpack_exposure(envelope):
     """Verify the pool and reconstruct independent logical records before load."""
-    return list(iter_unpack_exposure(envelope))
-
-
-def iter_unpack_exposure(envelope):
-    """Yield independent records; exhaust to verify unused definitions as well.
-
-    A consumer must not commit state on partially consumed checkpoint evidence.
-    """
     if (not isinstance(envelope, dict) or set(envelope) != {'schema_version', 'records', 'target_cells'}
             or type(envelope['schema_version']) is not int or envelope['schema_version'] != 1
             or not isinstance(envelope['records'], list) or not isinstance(envelope['target_cells'], dict)):
@@ -66,7 +58,7 @@ def iter_unpack_exposure(envelope):
             raise ValueError('exposure declaration digest mismatch')
         if len(parse_target_cells(declaration).examples) != 1:
             raise ValueError('exposure pool must contain single-example declarations')
-    used = set()
+    used, records = set(), []
     for record in envelope['records']:
         if not isinstance(record, dict):
             raise ValueError('invalid exposure stored record')
@@ -93,6 +85,7 @@ def iter_unpack_exposure(envelope):
                     used.add(digest)
                 branches[name] = base
             item['target_cells'] = branches
-        yield item
+        records.append(item)
     if used != definitions.keys():
         raise ValueError('unused exposure declaration definitions')
+    return records

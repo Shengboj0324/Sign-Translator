@@ -1,0 +1,23 @@
+{
+  "scope": "Synthetic encoding/comparison peak Python allocation; inputs, I/O, native memory and RSS excluded; large tokens remain materialized",
+  "cases": [
+    {
+      "name": "many_small_cells",
+      "bytes": 1512903,
+      "identical_sha256_and_length": true,
+      "encoding_old_peak": 3026104,
+      "encoding_new_peak": 210943,
+      "comparison_old_peak": 4539088,
+      "comparison_new_peak": 421822
+    },
+    {
+      "name": "large_unicode_scalar",
+      "bytes": 750011,
+      "identical_sha256_and_length": true,
+      "encoding_old_peak": 1250146,
+      "encoding_new_peak": 1450804,
+      "comparison_old_peak": 2000286,
+      "comparison_new_peak": 2901368
+    }
+  ]
+}

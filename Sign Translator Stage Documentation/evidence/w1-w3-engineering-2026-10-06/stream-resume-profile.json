@@ -1,0 +1,21 @@
+{
+  "scope": "Synthetic exposure decode/validate/rebuild only; excludes checkpoint/manifest parsing, history validation, model state, I/O, native allocation and RSS",
+  "cases": [
+    {
+      "unique": false,
+      "records": 100,
+      "cells_per_record": 200,
+      "identical_resident_content": true,
+      "old_peak_python_bytes": 2369973,
+      "new_peak_python_bytes": 124503
+    },
+    {
+      "unique": true,
+      "records": 100,
+      "cells_per_record": 200,
+      "identical_resident_content": true,
+      "old_peak_python_bytes": 2520050,
+      "new_peak_python_bytes": 305251
+    }
+  ]
+}
