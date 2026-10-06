@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2615 passed in 115.30s",
+  "focused": "45 passed in 7.92s",
+  "code_sha256": {
+    "signtranslator/training/target_cells.py": "8d0e51eed86fe23d6c50df5fabbc5e4476017e2c0de36eeedd7b851b8d661cb9",
+    "signtranslator/training/objectives.py": "3b2f96bec48ce3a21da2507af3aedaa8e66963bee4b30e90a7b730face504da0",
+    "signtranslator/training/exposure.py": "c20e7e82659f60e407b0eea11c1ef8a64a62bd07c1cab8772b266c835c06e3e5",
+    "signtranslator/training/trainer.py": "0dd3712ec7ee36e0299df8c0bc1fb3ba10b07e55669aac1f9e8ff928c5f6f022",
+    "signtranslator/planning/exposure_audit.py": "de6b33c7c14b831e61189122ee3d852410e84a055bc1f28cfe57f7b421451aa7",
+    "tests/test_target_cell_exposure.py": "7b975bed932fa95b5caf2fb6eb1c64ff88959f15e0832b2d968e72a09815e5cb",
+    "tests/test_exposure_audit.py": "e08b4031a2ca33d67d5a380fe28f666c8edd3ee24f10e9879fd0f6f5a013d7db",
+    "signtranslator/planning/relations.py": "9a7735550c2babae22944e16aa37affa7a9f835e430e9f324df7428f886fbce6",
+    "signtranslator/planning/referents.py": "4d0920d66a5e26b6e9c416286464629e1a6b4514a122c0bc8dea8f4185dcda5c",
+    "signtranslator/planning/loci.py": "c898b0ccdefbf917cf04f1b6e2d18ad2fd1e8191fed45188d0b214e01021018b",
+    "signtranslator/planning/text_relations.py": "8127483abea3bb5cdc98e90c78624722ee6c7c90c08331c75d84795e0b390ad9",
+    "signtranslator/planning/text_referents.py": "4d161597e636e875470e8217be59c74e10ee6fbca6c267a127a544698c26cc0c",
+    "signtranslator/planning/text_loci.py": "454d85fe4e330d8be55a1919da94d5911498e5d2019268f5d0434cd63a1f7c25"
+  },
+  "scope": "Loss-local immutable graph target-cell declarations carried through returned-call ledger, checkpoint validation, class-count report and fresh annotation comparison.",
+  "debugging": "Existing membership-swap test now uses explicit historical cell-free records; new test checks early refusal when cell declarations are present.",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Sequence and timing cell declarations remain absent; historical missing cells are not reconstructed.",
+    "Declarations do not prove historical gradients, competence or authorization.",
+    "Per-example loss normalization unchanged; report counts are unweighted repeated presentations.",
+    "Storage and audit work grow with selected cells; no runtime speed or accelerator qualification."
+  ]
+}

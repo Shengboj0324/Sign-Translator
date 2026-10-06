@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2626 passed in 107.87s",
+  "focused": "55 passed in 3.93s",
+  "code_sha256": {
+    "signtranslator/training/target_cells.py": "3b7be02306e1257ac1774d968f19262336f309e4f8d494bee83e76df5d5e59cc",
+    "signtranslator/training/objectives.py": "13b25d04f4d678a2404480cc48a1d919fb2fc907d9f71a3551441113bec2a55c",
+    "signtranslator/training/exposure.py": "c1523cfb6008b658087249e2696b61aa2e94624dc6fe311b464e797da887bc4e",
+    "signtranslator/planning/exposure_audit.py": "418650aaac8fd0c0ce62b9828397b7f73b58bd11c1d51a9a6329f33ab40afa13",
+    "signtranslator/planning/label_sequence.py": "e06f2acfb9eb15989ae6e4a88dd54174a18fae943170123608d0d3ee9031fa85",
+    "signtranslator/planning/event_timing.py": "0ee5752710c2e800635bfe272ac9294b55b2b7bcf0659e1fce6f2a85919078a1",
+    "signtranslator/planning/text_timing.py": "e4284ab7cc926526fb329bc823ba806172e13246ac76c391e69e00b462271bbe",
+    "signtranslator/planning/text_relations.py": "c9de96e66fe21645d4c60c76665525ce6220fc719624a6143b14cf7a9aefeb54",
+    "tests/test_sequence_timing_cells.py": "1d5823dfb75c1dfac3a1f1c728eed026cef8d1e7f5f53bbdac3c8bd8815c2b37",
+    "tests/test_target_cell_exposure.py": "08c3f5776792983c21c4345ae167a17da137a0777cf030284b9516fa38f5a140",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/sequence-timing-cells-probe.py": "e89994411e2433978911ca938283421c98904019c7f3cd111c6803cc39126dd6"
+  },
+  "scope": "Canonical support-aware planners retain categorical event/STOP and continuous annotation-clock endpoint declarations from actual losses; report and fresh audit distinguish domains.",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Historical missing cells remain unrecorded.",
+    "Standalone dictionary-objective trainers do not gain a support-aware ledger.",
+    "Declarations and fresh target consistency do not prove historical gradients, calibration or competence.",
+    "CPU/storage/audit overhead is not performance-qualified."
+  ]
+}

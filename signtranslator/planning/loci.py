@@ -12,6 +12,8 @@ import json
 import torch
 from torch.nn import functional as F
 
+from ..training.target_cells import selected_target_cells
+
 from .label_vocabulary import GovernedLabelVocabulary
 from .supervision import ArtifactKind, GovernedArtifact
 from .tensors import tensorize_sir_annotations
@@ -96,7 +98,7 @@ class LocusLogits:
     vocabulary_sha256: str
 
 
-def locus_loss_per_example(prediction: LocusLogits, annotations, vocabulary, alphabet):
+def locus_loss_per_example(prediction: LocusLogits, annotations, vocabulary, alphabet, *, with_target_cells=False):
     if not isinstance(prediction, LocusLogits):
         raise ValueError('typed locus logits required')
     target = locus_targets(annotations, vocabulary, alphabet)
@@ -116,4 +118,8 @@ def locus_loss_per_example(prediction: LocusLogits, annotations, vocabulary, alp
     means = losses.sum(1) / counts.clamp_min(1).to(scores.dtype)
     if not bool(torch.isfinite(means).all()):
         raise ValueError('locus objective overflow')
+    if with_target_cells:
+        cells = selected_target_cells(target.known, target.classes,
+                                      axes=('event',), class_count=len(alphabet.identities))
+        return means, counts > 0, cells
     return means, counts > 0

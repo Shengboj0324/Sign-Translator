@@ -10,6 +10,8 @@ from typing import Sequence
 import torch
 from torch.nn import functional as F
 
+from ..training.target_cells import selected_target_cells
+
 from .label_vocabulary import GovernedLabelVocabulary
 from .supervision import GovernedSIRAnnotation
 from .tensors import tensorize_sir_annotations
@@ -46,7 +48,7 @@ class ReferentLogits:
 
 def referent_loss_per_example(prediction: ReferentLogits,
                               annotations: Sequence[GovernedSIRAnnotation],
-                              vocabulary: GovernedLabelVocabulary) -> tuple[torch.Tensor, torch.Tensor]:
+                              vocabulary: GovernedLabelVocabulary, *, with_target_cells=False):
     """Return mean known-pair NLL and support; unsupported zero is bookkeeping."""
     if not isinstance(prediction, ReferentLogits):
         raise ValueError('typed referent logits required')
@@ -66,4 +68,8 @@ def referent_loss_per_example(prediction: ReferentLogits,
     means = masked.flatten(1).sum(1) / counts.clamp_min(1).to(scores.dtype)
     if not bool(torch.isfinite(means).all()):
         raise ValueError('referent objective overflow')
+    if with_target_cells:
+        cells = selected_target_cells(target.known, target.equal,
+                                      axes=('first_event', 'second_event'), class_count=2)
+        return means, counts > 0, cells
     return means, counts > 0

@@ -15,6 +15,7 @@ from typing import Mapping
 import torch
 
 from .scaling import weighted_population_scalar, weighted_population_sum
+from .target_cells import TargetCells, ContinuousTargetCells
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,7 @@ class SupportedTerm:
     example_loss_sum: torch.Tensor
     supported_examples: int
     support_mask: tuple[bool, ...] | None = None
+    target_cells: TargetCells | ContinuousTargetCells | None = None
 
 
 @dataclass(frozen=True)
@@ -56,6 +58,14 @@ class SupportedObjective:
                     or any(type(flag) is not bool for flag in term.support_mask)
                     or sum(term.support_mask) != count):
                 raise ValueError('support mask must bind every example and match support count')
+            if term.target_cells is not None:
+                cells = term.target_cells
+                if (not isinstance(cells, (TargetCells, ContinuousTargetCells))
+                        or len(cells.examples) != self.population_size
+                        or sum(bool(row) for row in cells.examples) != count
+                        or (term.support_mask is not None and
+                            tuple(bool(row) for row in cells.examples) != term.support_mask)):
+                    raise ValueError('target cells must match objective population and support')
             if (not isinstance(value, torch.Tensor) or value.dtype not in (torch.float32, torch.float64)
                     or value.ndim != 0 or not bool(torch.isfinite(value)) or bool(value < 0)):
                 raise ValueError('branch loss sum must be a finite nonnegative float scalar')

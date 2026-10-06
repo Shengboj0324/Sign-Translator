@@ -7,6 +7,7 @@ import json
 import re
 
 from ..reproducibility import canonical_json_bytes
+from .target_cells import parse_target_cells
 
 
 def validate_exposure(records, *, supported, global_step, weights, identities):
@@ -16,8 +17,10 @@ def validate_exposure(records, *, supported, global_step, weights, identities):
     if len(records) != (global_step if supported else 0):
         raise ValueError('optimizer exposure does not cover the recorded steps')
     fields = {'step', 'sample_ids', 'annotation_sha256', 'support', 'weights'}
+    cell_contracts = {}
     for step, record in enumerate(records, 1):
-        if not isinstance(record, dict) or set(record) not in (fields, fields | {'support_membership'}):
+        if (not isinstance(record, dict) or not fields <= set(record)
+                or set(record) - fields - {'support_membership', 'target_cells'}):
             raise ValueError('invalid optimizer exposure fields')
         ids, hashes = record['sample_ids'], record['annotation_sha256']
         if (type(record['step']) is not int or record['step'] != step
@@ -47,6 +50,23 @@ def validate_exposure(records, *, supported, global_step, weights, identities):
                         or any(type(flag) is not bool for flag in mask)
                         or sum(mask) != support[name]):
                     raise ValueError('invalid optimizer exposure membership mask')
+        if 'target_cells' in record:
+            declarations = record['target_cells']
+            if not isinstance(declarations, dict) or declarations.keys() != weights.keys():
+                raise ValueError('invalid optimizer exposure target-cell branches')
+            for name, declaration in declarations.items():
+                if declaration is None:
+                    continue
+                cells = parse_target_cells(declaration)
+                contract = {key: value for key, value in declaration.items() if key != 'examples'}
+                if name in cell_contracts and cell_contracts[name] != contract:
+                    raise ValueError('target-cell codebook changed within exposure history')
+                cell_contracts[name] = contract
+                mask = tuple(bool(row) for row in cells.examples)
+                recorded_mask = record.get('support_membership', {}).get(name)
+                if (len(mask) != len(ids) or sum(mask) != support[name]
+                        or (recorded_mask is not None and tuple(recorded_mask) != mask)):
+                    raise ValueError('optimizer target cells disagree with example support')
     # Store immutable strings; callers receive independent decoded copies.
     return [canonical_json_bytes(record).decode('utf-8') for record in records]
 
@@ -85,10 +105,33 @@ def summarize_exposure(records, *, global_step, completed_epochs, committed,
     sample_branches = {sample: {name: dict(supported=0, unsupported=0, unattributed=0)
                                 for name in weights} for sample in identities}
     unattributed_support = dict.fromkeys(weights, 0)
+    cell_summaries = {name: dict(axes=None, class_count=None, unit=None, value_kind=None, class_presentations={},
+                                 target_presentations=0, recorded_example_presentations=0,
+                                 unrecorded_example_presentations=0) for name in weights}
     for record in records:
         for sample in record['sample_ids']:
             presentations[sample] += 1
         for name, support in record['support'].items():
+            summary = cell_summaries[name]
+            declaration = record.get('target_cells', {}).get(name)
+            if declaration is None:
+                summary['unrecorded_example_presentations'] += len(record['sample_ids'])
+            else:
+                axes, classes = declaration['axes'], declaration.get('class_count')
+                unit = declaration.get('unit')
+                kind = 'categorical' if classes is not None else 'continuous'
+                if summary['axes'] is None:
+                    summary.update(axes=axes, class_count=classes, unit=unit, value_kind=kind)
+                elif (summary['axes'] != axes or summary['class_count'] != classes
+                      or summary['unit'] != unit or summary['value_kind'] != kind):
+                    raise ValueError('target-cell codebook changed within exposure history')
+                summary['recorded_example_presentations'] += len(declaration['examples'])
+                for cells in declaration['examples']:
+                    for cell in cells:
+                        if classes is not None:
+                            key = str(cell[-1])
+                            summary['class_presentations'][key] = summary['class_presentations'].get(key, 0) + 1
+                        summary['target_presentations'] += 1
             branches[name]['supported_example_presentations'] += support
             branches[name]['steps_with_support'] += int(support > 0)
             branches[name]['steps_without_support'] += int(support == 0)
@@ -117,9 +160,12 @@ def summarize_exposure(records, *, global_step, completed_epochs, committed,
                     for sample, count in presentations.items()],
         'unattributed_supported_example_presentations': unattributed_support,
         'branches': branches,
+        'target_cell_exposure': {'schema_version': 2, 'branches': cell_summaries},
         'phase_exit_approved': False,
         'limitations': [
             'Example membership is model-declared; absent historical masks remain unattributed.',
+            'Target cells are loss-declared unweighted presentations, not gradient magnitude or independent units.',
+            'Absent historical target cells remain unrecorded; no target cells are inferred from available annotations.',
             'Repeated presentations are not independent statistical units.',
             'Returned calls do not prove nonzero gradients or learned competence.',
             'Failed calls and arbitrary partial mutations are not certified.',

@@ -13,6 +13,8 @@ from typing import Sequence
 import torch
 from torch.nn import functional as F
 
+from ..training.target_cells import selected_target_cells
+
 from ..grammar.sir import EdgeType
 from .label_vocabulary import GovernedLabelVocabulary
 from .supervision import GovernedSIRAnnotation
@@ -89,7 +91,7 @@ def relation_loss(prediction: SIRRelationLogits, annotations: Sequence[GovernedS
 
 def relation_loss_per_example(prediction: SIRRelationLogits,
                                annotations: Sequence[GovernedSIRAnnotation],
-                               vocabulary: GovernedLabelVocabulary) -> tuple[torch.Tensor, torch.Tensor]:
+                               vocabulary: GovernedLabelVocabulary, *, with_target_cells=False):
     """Return B mean losses and explicit availability; unsupported zeros are bookkeeping."""
     if not isinstance(prediction, SIRRelationLogits):
         raise ValueError('typed relation logits required')
@@ -110,4 +112,8 @@ def relation_loss_per_example(prediction: SIRRelationLogits,
     result = supported.flatten(1).sum(dim=1) / counts.clamp_min(1).to(scores.dtype)
     if not bool(torch.isfinite(supported).all()) or not bool(torch.isfinite(result).all()):
         raise ValueError('relation objective overflow')
+    if with_target_cells:
+        cells = selected_target_cells(target.known, target.positive,
+                                      axes=('source_event', 'target_event', 'relation_type'), class_count=2)
+        return result, counts > 0, cells
     return result, counts > 0

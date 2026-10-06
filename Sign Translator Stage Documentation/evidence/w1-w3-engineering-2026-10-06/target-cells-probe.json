@@ -1,0 +1,88 @@
+{
+  "fixture": "fictional",
+  "summary": {
+    "branches": {
+      "event_timing": {
+        "axes": null,
+        "class_count": null,
+        "class_presentations": {},
+        "recorded_example_presentations": 0,
+        "target_presentations": 0,
+        "unrecorded_example_presentations": 3
+      },
+      "sir_relations": {
+        "axes": [
+          "source_event",
+          "target_event",
+          "relation_type"
+        ],
+        "class_count": 2,
+        "class_presentations": {
+          "0": 10,
+          "1": 1
+        },
+        "recorded_example_presentations": 3,
+        "target_presentations": 11,
+        "unrecorded_example_presentations": 0
+      },
+      "sir_sequence": {
+        "axes": null,
+        "class_count": null,
+        "class_presentations": {},
+        "recorded_example_presentations": 0,
+        "target_presentations": 0,
+        "unrecorded_example_presentations": 3
+      }
+    },
+    "schema_version": 1
+  },
+  "consistent_audit": {
+    "contradictions": [],
+    "example_presentations": {
+      "event_timing": {
+        "contradictory": 0,
+        "unrecorded": 3,
+        "verified": 0
+      },
+      "sir_relations": {
+        "contradictory": 0,
+        "unrecorded": 0,
+        "verified": 3
+      },
+      "sir_sequence": {
+        "contradictory": 0,
+        "unrecorded": 3,
+        "verified": 0
+      }
+    },
+    "schema_version": 1
+  },
+  "flipped_polarity_audit": {
+    "contradictions": [
+      {
+        "branch": "sir_relations",
+        "sample_id": "sample-1",
+        "step": 1
+      }
+    ],
+    "example_presentations": {
+      "event_timing": {
+        "contradictory": 0,
+        "unrecorded": 3,
+        "verified": 0
+      },
+      "sir_relations": {
+        "contradictory": 1,
+        "unrecorded": 0,
+        "verified": 2
+      },
+      "sir_sequence": {
+        "contradictory": 0,
+        "unrecorded": 3,
+        "verified": 0
+      }
+    },
+    "schema_version": 1
+  },
+  "phase_exit_approved": false
+}

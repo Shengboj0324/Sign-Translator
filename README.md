@@ -199,6 +199,61 @@ The one-epoch API smoke run intentionally skips the model's performance analysis
 
 Tests cover numerical identities, finite gradients, CTC feasibility, shape errors, provenance tampering, resume integrity, source grouping, strict parsing, and readiness gates. They establish behavior relative to encoded contracts, **not absolute flawlessness**. Historical test counts in stage documents are snapshots; rerun the suite for a current verdict. No documentation edit or green synthetic test approves Stage B, Phase 2, Phase 3 empirical exit, Stage C, or production use.
 
+### Explicit governed W3 training API
+
+`signtranslator.governed_run.run_governed_planner` connects an **already admitted**
+`GovernedMotionCorpus`, `GovernedLabelVocabulary` and `LocusAlphabet` to the canonical
+five-head planner. It does not acquire data, manufacture review/permission evidence,
+or fall back to synthetic data. The default `signtranslator.run` remains the synthetic
+experiment. This API is a separate engineering integration, not empirical acceptance.
+
+After constructing those three inputs through their governed admission APIs:
+
+```python
+from signtranslator.config import TrainerConfig
+from signtranslator.data.governed_text import PLAINTEXT_ENCODING
+from signtranslator.governed_run import run_governed_planner
+from signtranslator.planning.text_loci import LocusTextConfig
+
+model_config = LocusTextConfig(
+    embedding_dim=64, hidden_dim=64, max_bytes=4096, max_events=128,
+    lexicon_sha256=vocabulary.lexicon.sha256,
+    convention_sha256=vocabulary.convention.sha256,
+    declared_encoding=PLAINTEXT_ENCODING,
+    timing_scale_seconds=0.5,  # explicit model scale, not a reviewer tolerance
+    locus_count=len(alphabet.identities),
+)
+trainer_config = TrainerConfig(
+    epochs=1, batch_size=2, seed=41, device="cpu",
+    loss_weights=dict(sir_sequence=1., event_timing=1., sir_relations=1.,
+                      referent_equality=1., locus_assignment=1.),
+    selection_metric="sir_sequence", ckpt_path="artifacts/governed.pt",
+)
+result = run_governed_planner(
+    corpus, vocabulary, alphabet, model_config=model_config,
+    trainer_config=trainer_config, validation=True, shuffle=True,
+)
+history = result.trainer.history
+exposure = result.trainer.exposure_report().to_dict()
+audit = result.exposure_audit.to_dict()
+assert result.phase_exit_approved is False
+```
+
+The numbers above are explicit example settings, not calibrated recommendations.
+Preflight revalidates train/validation source bytes, target availability, text/event
+capacity and the selected validation branch before model allocation. Initialization
+and execution are seeded in an isolated RNG context, including failure recovery of
+caller RNG. Loaders retain partial batches and use zero workers; the test view is
+not opened. Setting `validation=False` explicitly omits validation and best selection.
+For continuation, keep the original total epoch horizon/configuration and pass
+`resume_from=checkpoint_paths(trainer_config.ckpt_path)["last"]` (import
+`checkpoint_paths` from `signtranslator.training`); use `max_epochs` to stop an initial
+run at a committed boundary. Use this runner again for isolated continuation.
+CPU exact continuation is verified; accelerator continuation is not qualified.
+Checkpoint files written before a later failure are retained. Reports are immutable
+snapshots; the returned trainer remains mutable. No complete CLI/source-manifest
+importer or real-data pilot is supplied by this API.
+
 ## 8. Stop rules and rights
 
 Do not train the intended 3D ASL path by forcing English into gloss or 2D into rotations. First acquire source-native annotation, synchronized canonical motion, authoritative signer/source grouping, qualified-ASL adjudication, and permission for each research/commercial action. Then freeze leakage-safe evaluation, test video dependence and linguistic minimal pairs, measure comprehension and non-manual errors with qualified reviewers, compare strong published baselines, and only afterward integrate a licensed rig, renderer, latency budget, monitoring, and rollback. See [evaluation design](docs/EVALUATION_FRAMEWORK.md) and [deployment design](docs/DEPLOYMENT.md).

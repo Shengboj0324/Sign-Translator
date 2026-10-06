@@ -71,7 +71,8 @@ class RelationalTextSIRModel(TemporalTextSIRModel):
             raise ValueError('declare sequence, timing and relation objective weights')
         if any(type(w) not in (int, float) or not math.isfinite(w) or w <= 0 for w in weights.values()):
             raise ValueError('all relation-model weights must be finite and positive')
-        losses = super().training_step(batch, weights={k: weights[k] for k in ('sir_sequence', 'event_timing')})
+        losses, parent_cells = super().training_step(
+            batch, weights={k: weights[k] for k in ('sir_sequence', 'event_timing')}, with_target_cells=True)
         text = encode_plaintext_transcripts(
             batch.transcript_payloads, batch.annotations,
             declared_encoding=self.model_cfg.declared_encoding, max_bytes=self.model_cfg.max_bytes)
@@ -80,13 +81,13 @@ class RelationalTextSIRModel(TemporalTextSIRModel):
         inputs = target.inputs.to(device)
         features, _ = self.teacher_features(text.token_ids.to(device), text.lengths, inputs, target.lengths)
         scores = self._relations(features[:, :-1, :], inputs[:, 1:])
-        per_example, supported = relation_loss_per_example(SIRRelationLogits(
-            scores, target.annotation_sha256, target.vocabulary_sha256), batch.annotations, self.vocabulary)
+        per_example, supported, cells = relation_loss_per_example(SIRRelationLogits(
+            scores, target.annotation_sha256, target.vocabulary_sha256), batch.annotations, self.vocabulary, with_target_cells=True)
         count = len(batch.annotations)
-        terms = {name: SupportedTerm(losses[name] * count, count, (True,) * count)
+        terms = {name: SupportedTerm(losses[name] * count, count, (True,) * count, parent_cells[name])
                  for name in ('sir_sequence', 'event_timing')}
         terms['sir_relations'] = SupportedTerm(per_example.sum(), int(supported.sum()),
-                                               tuple(supported.detach().cpu().tolist()))
+                                               tuple(supported.detach().cpu().tolist()), cells)
         return SupportedObjective(terms, weights, count)
 
     @torch.no_grad()

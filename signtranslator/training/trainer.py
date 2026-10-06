@@ -547,6 +547,9 @@ class Trainer:
                             'support_membership': {name: list(term.support_mask)
                                                    if term.support_mask is not None else None
                                                    for name, term in objective.terms.items()},
+                            'target_cells': {name: term.target_cells.to_dict()
+                                             if term.target_cells is not None else None
+                                             for name, term in objective.terms.items()},
                             'weights': dict(objective.weights),
                         }
                         validate_exposure([dict(record, step=1)], supported=True,

@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2628 passed in 108.43s",
+  "focused": "11 passed in 0.55s",
+  "code_sha256": {
+    "signtranslator/planning/joint_spatial.py": "34584fd77040fe88b9ac0ea1d7509e57e29c8556d40d0b8a016a0ea7218b0039",
+    "signtranslator/planning/partition_bounds.py": "c862083bb8f20b83221bbd7d0bbc3c17f2b6d2c41058a881ee8d212ff479edcc",
+    "tests/test_prefix_attachment_bound.py": "688cc1f73f67ae598799c55bd3da35ee6e84c627c29ee5b288060ce53dbc5082",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/forced-attachment-oracle.py": "1ccc7e8789b63289b5da255fad1f4def3acecbdb1f3bee409f447e309e647e54",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/joint-workload-forced-attachment-profile.py": "9556df90cc85f1f64836bc4e555aacae30df745c90a6d695406810327330b6a0",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/joint-before-forced-attachment.py": "0b558cd42868e31ae4d06c59091c930e5985622f8cb2d45c51669c82d17832ad"
+  },
+  "scope": "Exact capacity-full prefix attachment bound; exhaustive feasible-prefix checks and independent two-locus best/runner-up enumeration.",
+  "targeted_oracle": {
+    "cases": 20,
+    "assignments_per_case": 256,
+    "improved_cases": 20,
+    "old_work": 5884,
+    "new_work": 4553
+  },
+  "retained_matrix": {
+    "configurations": 72,
+    "calls": 144,
+    "work": 182097,
+    "changed_results": 0,
+    "exhausted_1000": 19,
+    "exhausted_10000": 14
+  },
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Targeted synthetic improvement; retained matrix unchanged.",
+    "Bound computation remains outside node/probe budget.",
+    "No elapsed-time percentile, real-model throughput or general tractability claim."
+  ]
+}

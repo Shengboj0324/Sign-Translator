@@ -2,6 +2,29 @@
 from dataclasses import dataclass
 
 
+def prefix_attachment_upper_bound(prefix, count, pair, place, capacity):
+    """Relax undecided prefix-to-suffix reference gains independently.
+
+    If placed prefix groups already occupy every locus, any later placed event
+    must join one of those groups: fixed groups cannot merge, and activating a
+    new placed group would violate injectivity. Its best prefix gain can then
+    be negative. Otherwise a fresh group with zero prefix gain remains allowed.
+    Future pair relations and mutual attachment constraints are relaxed here.
+    Inputs are validated integer gains and a capacity-feasible canonical prefix.
+    """
+    groups = max(prefix) + 1
+    placed = {label for event, label in enumerate(prefix) if place[event]}
+    full = len(placed) == capacity
+    bound = 0
+    for future in range(len(prefix), count):
+        gains = [0] * groups
+        for past, label in enumerate(prefix):
+            gains[label] += pair[past, future]
+        bound += (max(gains[label] for label in placed) if full and place[future]
+                  else max(0, max(gains)))
+    return bound
+
+
 def partition_suffix_upper_bounds(count, pair):
     """Bound each suffix using positive gains minus disjoint triangle conflicts.
 

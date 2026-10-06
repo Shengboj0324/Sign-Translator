@@ -11,6 +11,7 @@ from typing import Sequence
 
 import torch
 from torch.nn import functional as F
+from ..training.target_cells import selected_continuous_target_cells
 
 from .label_vocabulary import GovernedLabelVocabulary
 from .supervision import GovernedSIRAnnotation
@@ -57,7 +58,7 @@ class AlignedEventIntervals:
 def aligned_timing_loss(prediction: AlignedEventIntervals,
                         annotations: Sequence[GovernedSIRAnnotation],
                         vocabulary: GovernedLabelVocabulary, *,
-                        scale_seconds: float) -> torch.Tensor:
+                        scale_seconds: float, with_target_cells=False):
     """Mean per-example, per-event, per-endpoint dimensionless Huber loss.
 
     Residual r=(prediction-target)/scale_seconds; rho(r)=r²/2 for |r|<=1,
@@ -96,4 +97,8 @@ def aligned_timing_loss(prediction: AlignedEventIntervals,
     loss = per_example.mean()
     if not bool(torch.isfinite(loss)):
         raise ValueError('timing objective overflow')
+    if with_target_cells:
+        return loss, selected_continuous_target_cells(
+            target.event_valid[..., None].expand_as(target.intervals), target.intervals,
+            axes=('event', 'endpoint'), unit='annotation_clock_seconds')
     return loss

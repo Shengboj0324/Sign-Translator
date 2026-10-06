@@ -1988,6 +1988,146 @@ Validation: **2,603 tests passed in 106.86 seconds**, warnings as errors;
 41 focused checks passed in 7.25 seconds. Results and source hashes are retained in
 the October 6 `adam-state-verification.json`, focused/full logs and replayable fictional probe.
 
+### Loss-selected target-cell exposure — 2026-10-06
+
+The three partially observed graph losses can now return immutable target-cell
+declarations from the same masks and labels used in their reductions. Canonical
+relation/referent/locus model training requests these declarations and carries them
+in `SupportedTerm`. Relation cells record zero-based source/destination event and
+relation-type indices plus binary labels; referent cells record the selected upper
+triangle pair and equality label; locus cells record the event index and class.
+Indices refer to canonical tensorization order, `EDGE_TYPES` and the bound locus
+alphabet respectively. Unknown cells and padding are excluded. Positive and negative
+binary labels remain distinct, and absent loci are not a negative class.
+
+The returned-optimizer-call ledger stores the declarations alongside example IDs,
+annotation hashes, weights and support. It validates exact integer coordinates,
+class ranges, sorted unique cells, population/support agreement and stable axis/class
+contracts. The exposure report retains its existing schema-2 fields and adds a
+separately versioned `target_cell_exposure` section with unweighted class/cell counts
+and recorded/unrecorded example presentations. The exact coordinates remain in the
+checkpointed ledger. The fresh declaration audit adds a separately versioned cell
+audit, comparing each recorded row against current revalidated canonical targets;
+a same-count polarity change is detected independently of example support.
+
+Missing historical declarations remain unrecorded. Sequence/STOP and continuous
+timing branches currently have no cell declarations; their example-level exposure
+and available-target inventory remain separate evidence. These declarations describe
+loss selection, not proof of nonzero gradients, gradient magnitudes, independent
+units, learned competence or authorization. Loss normalization is unchanged: cells
+are averaged within each supported example before full-population optimization.
+Repeated presentations are counted repeatedly. Exact coordinates grow with selected
+cells per returned update; CPU snapshots, checkpoint size and fresh audits incur
+additional cost. No throughput or full-accelerator qualification is claimed.
+
+Validation: **2,615 tests passed in 115.30 seconds**, warnings as errors;
+45 focused checks passed in 7.92 seconds. Evidence is in the October 6
+`target-cells-*` logs, verification manifest and fictional
+replayable example. All nine manual handoffs remain absent; empirical W1/W2/W3
+acceptance remains unapproved.
+
+### Sequence and continuous timing target-cell declarations — 2026-10-06
+
+The canonical support-aware three/four/five-head planner paths now record sequence
+and timing targets as well as graph targets. Sequence loss captures zero-based
+sequence positions and categorical output IDs (STOP=0, vocabulary index+1 for real
+labels); each example includes exactly one supervised STOP and excludes padding.
+Timing loss captures canonical event/endpoint coordinates and float64 target
+seconds in the annotation clock; endpoint 0 is start and endpoint 1 is end. STOP
+has no timing target. Time is not coerced into a class, frame index, duration or
+rounded display value. Unit and exact annotation identity remain explicit.
+
+The optional loss-return paths preserve existing scalar-return APIs and loss
+arithmetic. The temporal model returns declarations only when requested by its
+support-aware descendants; standalone legacy/dictionary-objective trainers do not
+gain the support-aware exposure ledger from this change. `ContinuousTargetCells`
+requires immutable sorted unique coordinates and finite Python floats originating
+from float64 targets; negative and subnormal finite coordinates remain valid.
+Categorical `TargetCells` continues to require exact nonnegative integer class IDs.
+
+The nested `target_cell_exposure` report section is now schema 2, distinguishing
+categorical and continuous targets. Continuous targets contribute presentation
+counts but no class histogram. Existing outer exposure/audit formats remain intact.
+Fresh audits compare sequence IDs and exact timing values/units to revalidated
+annotations. Old cell-free records remain unrecorded, without reconstruction;
+current canonical support-aware losses now declare targets for all enabled heads.
+
+Validation: **2,626 tests passed in 107.87 seconds**, warnings as errors;
+55 focused checks passed in 3.93 seconds. Synthetic verification checks unchanged
+sequence/timing losses and gradients,
+one STOP per example, padding exclusion, finite float64 round trips, negative and
+subnormal times, checkpoint preservation and fresh detection of altered clock/label
+declarations. Results, source hashes and a fictional replayable clock-target audit
+are retained in the October 6 `sequence-timing-cells-*` evidence files. Necessary
+declaration consistency is not proof of historical gradients, calibration, linguistic
+correctness or independent sample size. Storage/CPU serialization costs remain;
+all nine manual handoffs remain absent and empirical W1/W2/W3 acceptance unapproved.
+
+### Capacity-full prefix attachment bound — 2026-10-06
+
+The exact joint spatial decoder now accounts for forced prefix attachment. Once
+placed prefix groups fill the locus alphabet, every later placed event must join
+one of those fixed groups; fixed groups cannot merge, and activating a previously
+unplaced or new group would exceed injective locus capacity. Its optimistic
+prefix-reference gain is therefore the maximum over those placed groups, even
+when negative. Future unplaced events and prefixes with free locus capacity retain
+the zero/new-group relaxation. Future-future constraints remain separately relaxed;
+no negative contribution is charged twice. The existing alternative capacity-cost
+bound is still combined by taking the minimum.
+
+Validation: **2,628 tests passed in 108.43 seconds**, warnings as errors;
+11 focused checks passed in 0.55 seconds. Exhaustive small-prefix tests check more
+than 1,000 feasible prefixes across mixed
+signs, partial placement, capacities and large exact integer gains. The new bound
+never exceeds the previous attachment bound and never falls below the best feasible
+completion's prefix-crossing contribution. A separate all-placed two-locus oracle
+enumerates 256 assignments for each of 20 heterogeneous negative-score controls:
+all best/runner-up gains and statuses match both decoders, while work falls in all
+20 controls, from 5,884 to 4,553 total node/probe units. This is a targeted synthetic
+improvement, not a measured real-model distribution.
+
+The retained 72-configuration/144-call matrix has identical decisions, gains and
+182,097 total work units: 19/36 cases still exhaust 1,000 units, and 14/36 still
+exhaust 10,000. No improved completion rate or universal speedup is claimed. Bound
+computation remains outside node/probe work accounting; CPU time is not bounded by
+that counter. No budgets were increased, no approximate winner is returned on
+exhaustion, and optimum/runner-up proof remains required. Full evidence, the retained
+pre-change decoder and replayable profiles/oracles are in October 6
+`forced-attachment-*` and `joint-workload-forced-attachment-profile.*` artifacts.
+All nine manual handoffs remain absent and empirical W1/W2/W3 acceptance unapproved.
+
+### Explicit governed W3 runner integration — 2026-10-06
+
+`signtranslator.governed_run.run_governed_planner` now connects admitted corpus,
+vocabulary/alphabet and exact typed five-head model/trainer configurations to one
+preflight → seeded initialization → training/exact resume → fresh exposure-audit
+API. This route accepts no raw unreviewed replacement, infers no permission and has
+no synthetic fallback. Train/validation source bytes and target availability are
+revalidated before allocating the model; event/text capacity and validation metric
+support are checked. The test partition is not opened. Validation/shuffling are
+explicit choices; loaders use the configured batch size, zero workers and no dropped
+partial batches. Configuration is copied; support-report hashes bind runner context.
+
+Seed isolation covers model initialization and the entire invocation, restoring
+caller Python/NumPy/Torch RNG on success or failure. Exact resume restores checkpoint
+RNG after fresh construction. CPU tests compare uninterrupted and shuffled partial/
+resumed trajectories, including identical weights, history and cell-exposure records.
+A fresh runner invocation is the supported isolated continuation path; a returned
+mutable Trainer is not an ongoing transaction or isolation guarantee. Checkpoint
+writes follow the existing best/last semantics and remain if a later operation fails.
+Returned availability and exposure audit reports are immutable snapshots and retain
+phase_exit_approved=false. A README example documents the explicit public API.
+
+The scope is an executable library integration, not a new CLI, universal serialized
+source importer, qualified accelerator continuation or accepted real-data pilot.
+Those boundaries remain visible. The fictional replay uses three training examples,
+one validation example and an unopened test example, with batch populations 2,1 per
+epoch. Test evidence includes deterministic initialization independent of ambient
+RNG, exact shuffled CPU resume, RNG restoration, inactive test bytes, and preflight
+refusal before model construction. The first focused run's missing-file expectation
+was corrected to the existing Trainer ValueError contract; its log is retained.
+All nine manual handoffs remain absent and empirical W1/W2/W3 acceptance unapproved.
+
 ## Refreshed W1/W2 acceptance audit and source inventory — 2026-09-26
 
 All 15 full W1/W2 requirement rows were reassessed after the rig, rest-shape, native-method,

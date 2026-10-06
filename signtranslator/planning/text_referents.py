@@ -62,12 +62,12 @@ class ReferentTextSIRModel(RelationalTextSIRModel):
         inputs = target.inputs.to(device)
         features, _ = self.teacher_features(text.token_ids.to(device), text.lengths, inputs, target.lengths)
         scores = self._referents(features[:, :-1], inputs[:, 1:])
-        values, support = referent_loss_per_example(
+        values, support, cells = referent_loss_per_example(
             ReferentLogits(scores, target.annotation_sha256, target.vocabulary_sha256),
-            batch.annotations, self.vocabulary)
+            batch.annotations, self.vocabulary, with_target_cells=True)
         terms = dict(parent.terms)
         terms['referent_equality'] = SupportedTerm(values.sum(), int(support.sum()),
-                                                tuple(support.detach().cpu().tolist()))
+                                                tuple(support.detach().cpu().tolist()), cells)
         return SupportedObjective(terms, weights, parent.population_size)
 
     @torch.no_grad()

@@ -11,8 +11,7 @@ from math import lcm
 
 import torch
 
-from .partition_bounds import (partition_suffix_upper_bounds, minimum_added_pairs,
-                               placed_pair_penalty_tables, prefix_attachment_upper_bound)
+from .partition_bounds import partition_suffix_upper_bounds, minimum_added_pairs, placed_pair_penalty_tables
 from .assignment_bounds import injective_assignment_upper_bound
 from .loci import LocusAlphabet
 from .locus_assignment import decode_locus_assignment
@@ -118,8 +117,11 @@ def decode_joint_spatial(candidate: LocusSequenceCandidate, alphabet: LocusAlpha
     def upper_bound(prefix, maximum, ref_gain):
         index = len(prefix)
         reference_bound = ref_gain + future_positive[index]
-        reference_bound += prefix_attachment_upper_bound(
-            prefix, n, pair, place, len(alphabet.identities))
+        for future in range(index, n):
+            cluster_gains = [0] * (maximum + 1)
+            for past, label in enumerate(prefix):
+                cluster_gains[label] += pair[(past, future)]
+            reference_bound += max(0, max(cluster_gains))
         # Retain prefix persistence and bound injective column competition,
         # while relaxing future attachment constraints. Both terms are optimistic.
         placed_clusters = {}

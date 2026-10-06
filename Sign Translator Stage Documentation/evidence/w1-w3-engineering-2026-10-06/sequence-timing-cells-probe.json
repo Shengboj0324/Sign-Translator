@@ -1,0 +1,116 @@
+{
+  "fixture": "fictional",
+  "summary": {
+    "branches": {
+      "event_timing": {
+        "axes": [
+          "event",
+          "endpoint"
+        ],
+        "class_count": null,
+        "class_presentations": {},
+        "recorded_example_presentations": 3,
+        "target_presentations": 10,
+        "unit": "annotation_clock_seconds",
+        "unrecorded_example_presentations": 0,
+        "value_kind": "continuous"
+      },
+      "sir_relations": {
+        "axes": [
+          "source_event",
+          "target_event",
+          "relation_type"
+        ],
+        "class_count": 2,
+        "class_presentations": {
+          "0": 10,
+          "1": 1
+        },
+        "recorded_example_presentations": 3,
+        "target_presentations": 11,
+        "unit": null,
+        "unrecorded_example_presentations": 0,
+        "value_kind": "categorical"
+      },
+      "sir_sequence": {
+        "axes": [
+          "sequence_position"
+        ],
+        "class_count": 4,
+        "class_presentations": {
+          "0": 3,
+          "1": 3,
+          "2": 1,
+          "3": 1
+        },
+        "recorded_example_presentations": 3,
+        "target_presentations": 8,
+        "unit": null,
+        "unrecorded_example_presentations": 0,
+        "value_kind": "categorical"
+      }
+    },
+    "schema_version": 2
+  },
+  "consistent_audit": {
+    "contradictions": [],
+    "example_presentations": {
+      "event_timing": {
+        "contradictory": 0,
+        "unrecorded": 0,
+        "verified": 3
+      },
+      "sir_relations": {
+        "contradictory": 0,
+        "unrecorded": 0,
+        "verified": 3
+      },
+      "sir_sequence": {
+        "contradictory": 0,
+        "unrecorded": 0,
+        "verified": 3
+      }
+    },
+    "schema_version": 1
+  },
+  "original_timing_cells": [
+    [
+      0,
+      0,
+      0.0
+    ],
+    [
+      0,
+      1,
+      1.0
+    ]
+  ],
+  "altered_clock_target_audit": {
+    "contradictions": [
+      {
+        "branch": "event_timing",
+        "sample_id": "sample-0",
+        "step": 1
+      }
+    ],
+    "example_presentations": {
+      "event_timing": {
+        "contradictory": 1,
+        "unrecorded": 0,
+        "verified": 2
+      },
+      "sir_relations": {
+        "contradictory": 0,
+        "unrecorded": 0,
+        "verified": 3
+      },
+      "sir_sequence": {
+        "contradictory": 0,
+        "unrecorded": 0,
+        "verified": 3
+      }
+    },
+    "schema_version": 1
+  },
+  "phase_exit_approved": false
+}

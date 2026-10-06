@@ -62,7 +62,7 @@ class TemporalTextSIRModel(AutoregressiveTextSIRLabelModel):
                                             timing_scale_seconds=timing_scale_seconds)
         self.timing_head = nn.Linear(self.model_cfg.hidden_dim, 2)
 
-    def training_step(self, batch: GovernedMotionBatch, *, weights: dict) -> dict:
+    def training_step(self, batch: GovernedMotionBatch, *, weights: dict, with_target_cells=False):
         if not isinstance(batch, GovernedMotionBatch):
             raise ValueError('typed governed training batch required')
         self._check_binding()
@@ -83,15 +83,23 @@ class TemporalTextSIRModel(AutoregressiveTextSIRLabelModel):
         scores = self.classifier(features)
         scores = torch.where(valid[:, :, None], scores, torch.zeros_like(scores))
         sequence_loss = label_sequence_loss(SIRLabelSequenceLogits(
-            scores, target.vocabulary_sha256, target.annotation_sha256), batch.annotations, self.vocabulary)
+            scores, target.vocabulary_sha256, target.annotation_sha256), batch.annotations, self.vocabulary,
+            with_target_cells=with_target_cells)
         raw = self.timing_head(features[:, :-1, :])
         active = torch.arange(raw.shape[1])[None, :] < (target.lengths - 1)[:, None]
         intervals = event_intervals(raw, origins, active)
         timing_loss = aligned_timing_loss(AlignedEventIntervals(
             intervals, target.vocabulary_sha256, target.annotation_sha256),
-            batch.annotations, self.vocabulary, scale_seconds=self.model_cfg.timing_scale_seconds)
-        return {'sir_sequence': sequence_loss, 'event_timing': timing_loss,
+            batch.annotations, self.vocabulary, scale_seconds=self.model_cfg.timing_scale_seconds,
+            with_target_cells=with_target_cells)
+        if with_target_cells:
+            sequence_loss, sequence_cells = sequence_loss
+            timing_loss, timing_cells = timing_loss
+        losses = {'sir_sequence': sequence_loss, 'event_timing': timing_loss,
                 'total': weights['sir_sequence'] * sequence_loss + weights['event_timing'] * timing_loss}
+        if with_target_cells:
+            return losses, {'sir_sequence': sequence_cells, 'event_timing': timing_cells}
+        return losses
 
     @torch.no_grad()
     def generate_temporal(self, token_ids: torch.Tensor, lengths: torch.Tensor, *,

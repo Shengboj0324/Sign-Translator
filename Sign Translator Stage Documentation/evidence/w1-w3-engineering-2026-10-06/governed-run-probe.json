@@ -1,0 +1,125 @@
+{
+  "fixture": "fictional admitted test records",
+  "completed_epochs": 2,
+  "global_step": 4,
+  "batch_populations": [
+    2,
+    1,
+    2,
+    1
+  ],
+  "training_samples": 3,
+  "validation_samples": 1,
+  "target_cells": {
+    "branches": {
+      "event_timing": {
+        "axes": [
+          "event",
+          "endpoint"
+        ],
+        "class_count": null,
+        "class_presentations": {},
+        "recorded_example_presentations": 6,
+        "target_presentations": 36,
+        "unit": "annotation_clock_seconds",
+        "unrecorded_example_presentations": 0,
+        "value_kind": "continuous"
+      },
+      "locus_assignment": {
+        "axes": [
+          "event"
+        ],
+        "class_count": 2,
+        "class_presentations": {
+          "0": 6,
+          "1": 6
+        },
+        "recorded_example_presentations": 6,
+        "target_presentations": 12,
+        "unit": null,
+        "unrecorded_example_presentations": 0,
+        "value_kind": "categorical"
+      },
+      "referent_equality": {
+        "axes": [
+          "first_event",
+          "second_event"
+        ],
+        "class_count": 2,
+        "class_presentations": {},
+        "recorded_example_presentations": 6,
+        "target_presentations": 0,
+        "unit": null,
+        "unrecorded_example_presentations": 0,
+        "value_kind": "categorical"
+      },
+      "sir_relations": {
+        "axes": [
+          "source_event",
+          "target_event",
+          "relation_type"
+        ],
+        "class_count": 2,
+        "class_presentations": {
+          "0": 60,
+          "1": 6
+        },
+        "recorded_example_presentations": 6,
+        "target_presentations": 66,
+        "unit": null,
+        "unrecorded_example_presentations": 0,
+        "value_kind": "categorical"
+      },
+      "sir_sequence": {
+        "axes": [
+          "sequence_position"
+        ],
+        "class_count": 4,
+        "class_presentations": {
+          "0": 6,
+          "1": 6,
+          "2": 6,
+          "3": 6
+        },
+        "recorded_example_presentations": 6,
+        "target_presentations": 24,
+        "unit": null,
+        "unrecorded_example_presentations": 0,
+        "value_kind": "categorical"
+      }
+    },
+    "schema_version": 2
+  },
+  "declaration_audit": {
+    "contradictions": [],
+    "example_presentations": {
+      "event_timing": {
+        "contradictory": 0,
+        "unrecorded": 0,
+        "verified": 6
+      },
+      "locus_assignment": {
+        "contradictory": 0,
+        "unrecorded": 0,
+        "verified": 6
+      },
+      "referent_equality": {
+        "contradictory": 0,
+        "unrecorded": 0,
+        "verified": 6
+      },
+      "sir_relations": {
+        "contradictory": 0,
+        "unrecorded": 0,
+        "verified": 6
+      },
+      "sir_sequence": {
+        "contradictory": 0,
+        "unrecorded": 0,
+        "verified": 6
+      }
+    },
+    "schema_version": 1
+  },
+  "phase_exit_approved": false
+}

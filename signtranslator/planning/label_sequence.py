@@ -10,6 +10,7 @@ from typing import Sequence
 
 import torch
 from torch.nn import functional as F
+from ..training.target_cells import selected_target_cells
 
 from .label_vocabulary import GovernedLabelVocabulary, encode_governed_labels
 from .supervision import GovernedSIRAnnotation
@@ -50,7 +51,7 @@ class SIRLabelSequenceLogits:
 
 def label_sequence_loss(prediction: SIRLabelSequenceLogits,
                         annotations: Sequence[GovernedSIRAnnotation],
-                        vocabulary: GovernedLabelVocabulary) -> torch.Tensor:
+                        vocabulary: GovernedLabelVocabulary, *, with_target_cells=False):
     """Mean of per-example mean NLL over all labels AND the single STOP.
 
     Padding is excluded. Including STOP gives length decisions their own observed
@@ -73,4 +74,8 @@ def label_sequence_loss(prediction: SIRLabelSequenceLogits,
     result = (losses.sum(dim=1) / target.lengths.to(device=scores.device, dtype=scores.dtype)).mean()
     if not bool(torch.isfinite(losses).all()) or not bool(torch.isfinite(result)):
         raise ValueError('sequence objective overflowed its numeric dtype')
+    if with_target_cells:
+        return result, selected_target_cells(
+            target.outputs != -1, target.outputs, axes=('sequence_position',),
+            class_count=len(vocabulary.entries) + 1)
     return result

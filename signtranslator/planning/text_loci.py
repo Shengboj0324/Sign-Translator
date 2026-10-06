@@ -66,13 +66,13 @@ class LocusTextSIRModel(ReferentTextSIRModel):
         device = self.byte_embedding.weight.device
         inputs = target.inputs.to(device)
         features, _ = self.teacher_features(text.token_ids.to(device), text.lengths, inputs, target.lengths)
-        values, support = locus_loss_per_example(LocusLogits(
+        values, support, cells = locus_loss_per_example(LocusLogits(
             self._loci(features[:, :-1], inputs[:, 1:]), target.annotation_sha256,
             self.model_cfg.convention_sha256, target.vocabulary_sha256),
-            batch.annotations, self.vocabulary, self.locus_alphabet)
+            batch.annotations, self.vocabulary, self.locus_alphabet, with_target_cells=True)
         terms = dict(parent.terms)
         terms['locus_assignment'] = SupportedTerm(values.sum(), int(support.sum()),
-                                                tuple(support.detach().cpu().tolist()))
+                                                tuple(support.detach().cpu().tolist()), cells)
         return SupportedObjective(terms, weights, parent.population_size)
 
     @torch.no_grad()

@@ -1,0 +1,52 @@
+.........F                                                               [100%]
+=================================== FAILURES ===================================
+____________________ test_failed_resume_restores_caller_rng ____________________
+
+tmp_path = PosixPath('/private/var/folders/y0/l9ns18ns5472mqrprmhhmsw00000gn/T/pytest-of-jiangshengbo/pytest-36/test_failed_resume_restores_ca0')
+
+    def test_failed_resume_restores_caller_rng(tmp_path):
+        values = fixture(tmp_path)
+        before = torch.get_rng_state().clone()
+        with pytest.raises(FileNotFoundError):
+>           invoke(values, resume_from=tmp_path / 'missing.pt')
+
+tests/test_governed_run.py:115: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_governed_run.py:34: in invoke
+    return run_governed_planner(corpus, vocab, alphabet, model_config=model, trainer_config=config,
+signtranslator/governed_run.py:110: in run_governed_planner
+    trainer.load(resume_from, mode='resume')
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <signtranslator.training.trainer.Trainer object at 0x11a85b1a0>
+path = PosixPath('/private/var/folders/y0/l9ns18ns5472mqrprmhhmsw00000gn/T/pytest-of-jiangshengbo/pytest-36/test_failed_resume_restores_ca0/missing.pt')
+mode = 'resume'
+
+    def load(self, path: str | os.PathLike[str], *, mode: str = "resume") -> None:
+        """Load either an exact training continuation or model weights only.
+    
+        ``resume`` validates and restores optimizer, scheduler, epoch, history, and all
+        RNG state.  ``weights`` requires a fresh trainer and restores no training state.
+        """
+        if mode not in {"resume", "weights"}:
+            raise ValueError("checkpoint load mode must be 'resume' or 'weights'")
+        if mode == "weights" and (
+                not self._epoch_committed or self.completed_epochs != 0
+                or self.global_step != 0 or self.history or self.opt.state
+                or self.best_model_state is not None or self.best_val != math.inf
+                or self._optimizer_exposure):
+            raise ValueError('weights warm start requires a fresh trainer without training state')
+        # A failed scheduler load may leave the optimizer at the checkpoint rate
+        # and the scheduler at its prior rate. Full resume can restore both;
+        # checkpoint rates are preflighted below and rechecked before commitment.
+        self._check_optimizer_binding(check_rates=mode != 'resume')
+        source = Path(path)
+        manifest_path = Path(f"{source}.json")
+        if source.is_symlink() or not source.is_file():
+>           raise ValueError("checkpoint must be a non-symlink regular file")
+E           ValueError: checkpoint must be a non-symlink regular file
+
+signtranslator/training/trainer.py:878: ValueError
+=========================== short test summary info ============================
+FAILED tests/test_governed_run.py::test_failed_resume_restores_caller_rng - V...
+1 failed, 9 passed in 2.24s

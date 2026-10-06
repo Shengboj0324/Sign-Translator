@@ -1,0 +1,18 @@
+{
+  "old_work": 182097,
+  "new_work": 182097,
+  "status_by_budget": {
+    "1000": {
+      "unique_optimum_candidate": 16,
+      "search_exhausted": 19,
+      "ambiguous": 1
+    },
+    "10000": {
+      "unique_optimum_candidate": 20,
+      "ambiguous": 2,
+      "search_exhausted": 14
+    }
+  },
+  "changes": [],
+  "scope": "Identical synthetic inputs; old resolved gains preserved; no elapsed-time claim."
+}

@@ -38,6 +38,10 @@ def test_same_count_swapped_membership_is_inconsistent(tmp_path):
     trainer = make(corpus, v); trainer.fit(max_epochs=1)
     records = trainer.optimizer_exposure
     records[0]['support_membership']['sir_relations'] = [True, False]
+    # Exercise the historical membership-only schema. New cell declarations
+    # would detect this disagreement already at ledger validation.
+    for record in records:
+        record.pop('target_cells')
     trainer._optimizer_exposure = [json.dumps(r) for r in records]
     # Ledger shape/count validation accepts it; target semantics must not.
     trainer.exposure_report()
