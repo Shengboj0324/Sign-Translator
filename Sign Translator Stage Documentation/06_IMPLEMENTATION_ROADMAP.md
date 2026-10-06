@@ -1627,6 +1627,273 @@ Final weighted-sum regression: **2,480 passed in 91.90 seconds**, warnings as er
 Evidence: `population-scaling-regression.txt`, `population-scaling-verification.json`
 and `population-scaling-probe.json`; earlier CPU/scalar-MPS runs are retained separately.
 
+### Branch support means use the same stable scaling — 2026-10-06
+
+`SupportedObjective[name]` previously divided its tensor directly by the Python
+support count. Valid positive integer counts such as 2**64 raised `OverflowError`
+in PyTorch scalar conversion, despite a representable mean and an accepted objective.
+The accessor now uses the same normalized scalar scaling as joint optimization;
+its denominator remains branch support, with no branch weight or full-population
+normalization. Zero-support branches remain unavailable under the existing guard.
+
+New checks cover both float32 and float64 at support counts 2**64, 2**128, 2**1024
+and 2**8192, independent Fraction references, agreement with epoch reporting and
+single-branch joint loss, scaled incoming gradients, support/population separation,
+and first-/second-order differentiation. These enormous populations are numerical
+contract boundary probes, not measured corpus sizes. Ordinary floating rounding
+and loss of range outside this scalar operation remain possible.
+
+Evidence is under `evidence/w1-w3-engineering-2026-10-06/`:
+`branch-mean-probe.json`, `branch-mean-regression.txt`, and
+`branch-mean-verification.json`. All nine manual handoffs remain absent, with null
+evidence; empirical W1–W3 acceptance is still unapproved. This repairs an existing
+training/reporting contract and does not change phase allocation or external gates.
+Verification: **2,490 passed in 91.07 seconds**, warnings as errors; the focused
+scaling suite passed **26 tests in 0.65 seconds**.
+
+### Governed optimizer parameter ownership — 2026-10-06
+
+An executable fictional-corpus probe replaced `byte_embedding.weight` with an
+identical-shaped Parameter after Trainer construction. Before this repair, two
+optimizer steps were recorded and the replacement received gradients, but its
+values stayed unchanged: AdamW still owned the original Parameter object. Shape
+and dtype contracts alone do not establish optimizer ownership.
+
+The governed trainer now retains the original named Parameter objects and ordered
+optimizer groups. It rejects parameter replacement/removal/reordering, optimizer
+replacement, changed group membership/order, and scheduler/optimizer mismatch.
+Checks run before training, validation, batch use, checkpoint save/load, after the
+model forward, and immediately before the optimizer step after backward/clipping.
+Load-time replacements are checked before committing loaded state. Standard load
+and exact continuation preserve Parameter objects and remain supported.
+
+A returned optimizer call is still recorded before a post-call ownership failure;
+that failure prevents epoch commitment. Forward/backward mutations cannot reach
+the optimizer. Rejection is not transactional rollback of arbitrary hooks: hooks
+may already have changed tensors or topology, and restoration of the original
+bindings followed by committed-checkpoint resume, or a fresh trainer, may be required. These checks cover ownership and ordering,
+not arbitrary model behavior, gradient magnitude, buffer mutation, frozen-parameter
+policy, or learned competence. Legacy training semantics are unchanged. Runtime
+checks traverse parameter lists; no throughput improvement is claimed.
+
+Evidence: `evidence/w1-w3-engineering-2026-10-06/optimizer-binding-probe.py`, its
+JSON output, `optimizer-binding-regression.txt` and
+`optimizer-binding-verification.json`. All nine manual handoffs remain absent,
+with null evidence. W1–W3 empirical acceptance is still unapproved; phase workload
+allocations remain estimates and have not been shortened by this engineering fix.
+Verification: **2,509 passed in 92.98 seconds**, warnings as errors; **32 focused
+checks passed in 5.10 seconds**.
+
+### Governed configuration drift is rejected — 2026-10-06
+
+A fictional-corpus probe changed `timing_scale_seconds` from 0.5 to 1.0 after
+Trainer construction. Previously, training completed two optimizer steps and saved
+a checkpoint whose recorded model contract still described the old scale. This
+changed the executed objective without changing its recorded provenance.
+
+The trainer now snapshots canonical JSON bytes for the original model contract
+and trainer configuration. Governed boundary checks compare the live model contract
+and public recorded contract with that immutable snapshot; mutable loss-weight
+dictionaries and other trainer settings must also remain identical. Schema booleans
+are distinguished from integer versions by canonical serialization. The sole trainer
+configuration exemption is `ckpt_path`, which controls storage rather than training
+mathematics. Existing parameter-ownership checks invoke these checks before training,
+validation, checkpoint save/load, after forward/backward, and around returned steps.
+Exposure reports also refuse drift instead of attaching stale configuration claims.
+
+These comparisons bind declared configuration, state names/shapes/dtypes, schema
+versions and optimizer ownership. They do not establish arbitrary Python behavioral
+equivalence, freeze policy, unchanged buffer contents, or external authorization.
+Weights and ordinary optimizer state remain free to evolve during valid training.
+Runtime contract traversal and serialization add overhead; no speed claim is made.
+Intentional changes require a fresh trainer and an appropriate warm start. If an
+interrupted hook mutated configuration, restoring it alone does not commit the run;
+the existing committed-checkpoint recovery rules still apply.
+
+Evidence is in `evidence/w1-w3-engineering-2026-10-06/contract-drift-*`.
+All nine manual handoffs remain absent with null evidence. Empirical W1–W3 acceptance
+and the existing external dependencies remain unresolved. Phase time allocations
+have not been shortened based on these synthetic checks.
+Verification: **2,526 passed in 98.28 seconds**, warnings as errors; **42 focused
+checks passed in 5.20 seconds**.
+
+### Exact governed continuation binds parameter trainability — 2026-10-06
+
+A checkpoint probe demonstrated that a source model with frozen byte embeddings
+could resume into a receiver with trainable embeddings. Both tensor signatures and
+weights matched, but `requires_grad` is not restored by a PyTorch state dictionary.
+That changes the optimization procedure and invalidates an exact-resume claim.
+
+The governed model contract now contains an ordered name/boolean trainability list.
+It is retained in checkpoint metadata and exposure reports; the existing immutable
+contract check also rejects mid-run freezing/unfreezing. Exact resume compares
+canonical contracts, distinguishing boolean flags from integer lookalikes. Source
+and receiver must declare the same policy. Exposure declaration audits reuse the
+same governed model-contract builder to avoid divergent metadata definitions.
+
+Explicit weights-only loading into a fresh trainer ignores source trainability and
+keeps the receiver's policy, since this starts a new optimization procedure. Older
+governed contracts lacking trainability cannot prove exact continuation; explicit
+weights-only loading remains possible when the remaining model contract matches.
+Checkpoint schema remains 4; the governed model contract carries the additional
+field. This does not relax source identity, architecture, configuration or existing
+fresh-receiver restrictions on warm starts.
+
+Trainability is not nonzero-gradient evidence, competence, module evaluation mode,
+or a guarantee against arbitrary hook mutation. Stable frozen-policy continuation
+and differing-policy warm starts are tested with fictional data. All nine manual
+handoffs remain absent with null evidence, and empirical W1–W3 acceptance remains
+unapproved. This correctness fix does not shorten the phase workload estimates.
+Evidence: `evidence/w1-w3-engineering-2026-10-06/trainability-*`.
+Verification: **2,536 passed in 97.58 seconds**, warnings as errors; **27 focused
+checks passed in 5.39 seconds**.
+
+### Mixed-sign weighted capacity penalties — 2026-10-06
+
+The W3 exact joint decoder's earlier capacity penalty required every placed-pair
+reference gain to be negative, and charged the smallest magnitude for each forced
+pair. It now permits mixed signs and uses distinct sorted remaining negative costs.
+For a fixed prefix, let m be the minimum additional within-group placed pairs under
+locus capacity, and u the number of remaining nonnegative placed pairs. At least
+max(0, m-u) distinct negative pairs must be selected. The sum of that many cheapest
+remaining negative costs is therefore a lower bound on unavoidable penalty, even
+if those cheapest pairs cannot jointly form an equivalence relation.
+
+Subtracting this penalty from exact prefix gain plus all remaining positive gains
+provides an alternative optimistic reference bound. It is combined with the other
+reference bound by minimum, never by adding deductions that could double charge.
+Pairs wholly inside the prefix are excluded from the cost tables; zero-gain pairs
+count as nonnegative opportunities. Unplaced interactions remain relaxed. All
+arithmetic uses the existing exact integer scale; optimum/runner-up acceptance,
+tie handling and no-winner-on-exhaustion behavior are unchanged.
+
+Independent exhaustive prefix-completion checks cover 60 mixed integer score and
+placement systems with 2–6 events. Three all-placed two-locus controls independently
+enumerate 256, 1,024 and 4,096 complete locus vectors: both optimum and runner-up
+match, with work reductions 324→228, 1,383→1,191 and 3,096→1,947. The retained
+72-case matrix (two repeats each) preserves every status/gain/work count: total work
+remains 182,097; 19/36 cases exhaust 1,000 units and 14/36 exhaust 10,000 units.
+This is a targeted improvement, not evidence that the general bottleneck is solved.
+
+Suffix cost tables require O(n³) space and O(n³ log n) worst-case preprocessing,
+outside the node/probe budget, bounded by the existing 128-event cap. There is no
+universal latency claim. The matrix ran concurrently with regression tests, so its
+timings cannot establish speedup. All fixtures remain fictional; all nine manual
+handoffs remain absent and empirical W1–W3 acceptance remains unapproved.
+
+Evidence in `evidence/w1-w3-engineering-2026-10-06/`: the retained pre-change solver,
+`joint-workload-mixed-capacity-profile.py/.json`, `mixed-capacity-oracle.py/.json`,
+`mixed-capacity-comparison.json`, and full regression/verification records. Continue
+prioritizing difficult mixed/negative cases and real admitted-pilot evaluation once
+evidence arrives; no phase allocation is shortened by these controls.
+Verification: **2,538 passed in 99.73 seconds**, warnings as errors; **17 focused
+checks passed in 0.59 seconds**.
+
+### Persistent exact capacity-cost tables — 2026-10-06
+
+The mixed-sign penalty's original per-prefix sorted cumulative-cost arrays retained
+O(n³) entries. The replacement uses immutable versions of a counted order-statistic
+tree: each prefix root shares unchanged cost ranges with later prefixes. Nodes store
+exact integer multiplicities and sums; a query takes complete cheaper subtrees and,
+if necessary, a partial multiplicity at its terminal cost. Duplicate costs are
+aggregated per inserted event. Nonnegative opportunity counts are unchanged.
+
+With E placed pairs and D distinct negative costs, construction takes
+O(n² + E log(D+1)) integer operations and O(n + E log(D+1)) stored nodes/scalars;
+queries take O(1 + log(D+1)) operations. These are operation/object-count bounds,
+not fixed-bit arithmetic or wall-clock guarantees. The mathematical deduction,
+optimum/runner-up search and budget semantics do not change.
+
+Sorted-cost oracle checks cover every valid forced-pair query at every prefix on
+110 generated systems with 0–10 events, repeated/zero costs, partial placement and
+2002-bit magnitudes. Invalid/impossible query counts are refused, and source
+mutation after construction cannot alter the immutable table. Earlier exhaustive
+partition-completion and full joint optimum/runner-up checks remain applicable.
+
+At 128 events, tracemalloc construction peaks (excluding the prebuilt input) change
+from 27,006,360 to 25,072 bytes for uniform negative costs, 28,280,568 to 18,987,652
+for distinct negative costs, and 24,239,528 to 16,047,592 for mixed costs. Each case
+checks 513 retained-prefix queries against the original arrays. Distinct/mixed tree
+construction was slower in these single local probes; queries now traverse a tree.
+These are Python allocation measurements, not process RSS, full-decoder memory,
+latency percentiles or a universal speed claim.
+
+Evidence under `evidence/w1-w3-engineering-2026-10-06/` retains the old table builder,
+`persistent-capacity-profile.py/.json`, the repeated workload matrix and regression
+records. All nine manual handoffs remain absent; empirical W1–W3 acceptance remains
+unapproved and phase workload allocations remain estimates.
+The repeated 72-case matrix preserves all statuses, gains, evaluated partitions
+and work counts: 182,097 total units, with 14/36 high-budget cases still exhausted.
+Verification: **2,540 passed in 99.57 seconds**, warnings as errors; **19 focused
+checks passed in 0.96 seconds**.
+
+### Governed optimizer settings match recorded configuration — 2026-10-06
+
+A fictional-corpus probe changed live AdamW weight decay from 0.1 to 0.9 after
+construction. Previously, training returned two optimizer steps and saved a
+checkpoint while TrainerConfig still recorded 0.1. Configuration snapshots alone
+could not detect drift inside optimizer parameter groups.
+
+The trainer now snapshots all fixed group options, excluding owned parameters and
+the scheduler-controlled learning rate. Canonical comparisons reject changed decay,
+betas, epsilon, maximize/AMSGrad flags, initial rates and other fixed options.
+Live group learning rates must be finite, nonnegative and agree with the scheduler's
+reported rates. These checks reuse governed forward/backward, training, validation,
+exposure and save boundaries. Resume preflights checkpoint group options and
+optimizer/scheduler rate agreement before loading model tensors; weights-only
+starts deliberately retain the fresh receiver's optimizer settings.
+
+A failed scheduler load can leave optimizer and scheduler rates temporarily unequal.
+Full resume therefore defers live rate agreement while restoring both validated
+checkpoint states and checks it again before commitment. Unfinished save/fit and
+weights-only requests retain their existing refusal rules. This is recovery through
+a complete checkpoint, not transactional rollback of arbitrary partial mutations.
+
+These checks bind fixed options and rate agreement; they do not independently
+rederive arbitrary scheduler callables, prove optimizer moment values, or establish
+nonzero updates or competence. All nine manual handoffs remain absent, with null
+evidence; empirical W1–W3 acceptance remains unapproved. No phase workload estimate
+is shortened by the fix. Evidence is in the October 6 `optimizer-options-*` files,
+including the initial focused failure that exposed the recovery ordering issue.
+Verification: **2,554 passed in 96.86 seconds**, warnings as errors; **40 focused
+checks passed in 6.15 seconds**.
+
+### Configured scheduler trajectory and cursor checks — 2026-10-06
+
+A probe set both optimizer and scheduler-reported rates to 0.9 after two steps,
+when the configured rate was 0.022875. Their mutual agreement passed the previous
+check and allowed checkpoint saving. Agreement alone did not bind the trajectory
+to the configured warmup/cosine schedule or optimizer cursor.
+
+The governed trainer now retains the original scheduler object, schedule callable
+and initial serialized state. It reconstructs expected rates, base rates, step
+cursor and scheduler call count at each recorded optimizer step. Runtime and
+checkpoint preflight compare canonical state, rejecting cursor/type changes,
+consistent-but-wrong rates, base-rate edits and callable replacement. Warmup/cosine
+values are also checked against an analytic test through repeated save/resume.
+The schedule documentation now distinguishes the warmup range from the cosine
+floor: early warmup may be below `min_lr_frac`.
+
+Between a returned optimizer call and scheduler advancement, the internal check
+uses the previous schedule step; after advancement it requires the new step.
+Full resume can repair partial dynamic state and only commits after final checks.
+An uncommitted exposure report preserves historical returned calls without
+certifying scheduler completion or resumability. This exception is restricted to
+reporting; unfinished training/save rules remain in force.
+
+This contract covers the trainer's fixed LambdaLR warmup/cosine procedure, not
+arbitrary custom schedulers, modified Python internals, optimizer-moment correctness
+or learned competence. Runtime identity checks require a fresh trainer for an
+intentional replacement scheduler. All nine manual handoffs remain absent with
+null evidence; empirical W1–W3 acceptance remains unapproved and no workload
+estimate is shortened. October 6 `scheduler-*` evidence retains the initial
+focused reporting failure and its corrected verification. The initial full run also
+exposed an instance-method fault injection adding a function to serialized state;
+the same failure is now injected at the class method while preserving returned-call
+assertions.
+Verification: **2,562 passed in 100.66 seconds**, warnings as errors; **48 focused
+checks passed in 8.47 seconds**.
+
 ## Refreshed W1/W2 acceptance audit and source inventory — 2026-09-26
 
 All 15 full W1/W2 requirement rows were reassessed after the rig, rest-shape, native-method,

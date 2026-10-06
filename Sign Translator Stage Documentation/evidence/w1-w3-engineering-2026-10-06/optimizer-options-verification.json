@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2554 passed in 96.86s",
+  "focused": "40 passed in 6.15s",
+  "code_sha256": {
+    "signtranslator/training/trainer.py": "d9e2c1c462e7e57f27140cd2949da94cae962955ba2dd2f9293c4784a8686384",
+    "tests/test_optimizer_options.py": "d2c4d6932a157125f404765435f513efc56fc3ed73de384bd10a4a03ec1383aa",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/optimizer-options-probe.py": "0a1814e9012cf20a6292145478533330163b6b9a3709184b0467d8c16947665a"
+  },
+  "observed_before_fix": {
+    "recorded_weight_decay": 0.1,
+    "actual_weight_decay": 0.9,
+    "optimizer_steps": 2,
+    "checkpoint_saved": true
+  },
+  "scope": "Governed fixed optimizer option snapshots and scheduler-rate agreement, preflight before tensor load, normal continuation and partial-load recovery.",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Rate agreement does not independently rederive arbitrary scheduler callables.",
+    "Optimizer moment values, arbitrary hooks and nonzero updates are not certified.",
+    "No empirical acceptance or additional accelerator/distributed qualification."
+  ],
+  "debugging": "Initial focused run: 1 failed, 38 passed. Scheduler partial-load recovery required deferring live rate checks until both validated states were restored, while retaining unfinished-state refusal."
+}

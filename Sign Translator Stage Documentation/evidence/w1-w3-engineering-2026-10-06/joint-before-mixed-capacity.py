@@ -11,7 +11,7 @@ from math import lcm
 
 import torch
 
-from .partition_bounds import partition_suffix_upper_bounds, minimum_added_pairs, placed_pair_penalty_tables
+from .partition_bounds import partition_suffix_upper_bounds, minimum_added_pairs
 from .assignment_bounds import injective_assignment_upper_bound
 from .loci import LocusAlphabet
 from .locus_assignment import decode_locus_assignment
@@ -102,9 +102,9 @@ def decode_joint_spatial(candidate: LocusSequenceCandidate, alphabet: LocusAlpha
                     for row in rational_loci]
     future_positive = partition_suffix_upper_bounds(n, pair)
     placed_pair_gains = [value for (i, j), value in pair.items() if place[i] and place[j]]
-    penalty_tables = (placed_pair_penalty_tables(n, pair, place)
-                      if sum(place) > len(alphabet.identities)
-                      and any(value < 0 for value in placed_pair_gains) else None)
+    forced_pair_cost = (min(-value for value in placed_pair_gains)
+                        if sum(place) > len(alphabet.identities) and placed_pair_gains
+                        and all(value < 0 for value in placed_pair_gains) else 0)
     positive_remaining = [0] * (n + 1)
     remaining_placed = [0] * (n + 1)
     for j in range(n - 1, -1, -1):
@@ -132,14 +132,14 @@ def decode_joint_spatial(candidate: LocusSequenceCandidate, alphabet: LocusAlpha
                 aggregate = placed_clusters.setdefault(label, [0] * len(alphabet.identities))
                 for locus, value in enumerate(locus_values[event]):
                     aggregate[locus] += value
-        if penalty_tables is not None:
+        if forced_pair_cost:
             added_pairs = minimum_added_pairs(tuple(placed_sizes.values()), remaining_placed[index],
                                               len(alphabet.identities))
             # An alternative reference bound: exact prefix gain, all positive
             # remaining edges, minus unavoidable negative placed-pair costs.
             # Take the minimum; adding deductions to the other bound could
             # charge the same negative contribution twice.
-            capacity_bound = ref_gain + positive_remaining[index] - penalty_tables.penalty(index, added_pairs)
+            capacity_bound = ref_gain + positive_remaining[index] - forced_pair_cost * added_pairs
             reference_bound = min(reference_bound, capacity_bound)
         locus_bound = future_locus[index] + injective_assignment_upper_bound(list(placed_clusters.values()))
         return reference_bound + locus_bound

@@ -1,0 +1,65 @@
+.....................................F...                                [100%]
+=================================== FAILURES ===================================
+________ test_interrupted_report_identifies_uncommitted_returned_calls _________
+
+tmp_path = PosixPath('/private/var/folders/y0/l9ns18ns5472mqrprmhhmsw00000gn/T/pytest-of-jiangshengbo/pytest-14/test_interrupted_report_identi0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x112b93740>
+
+    def test_interrupted_report_identifies_uncommitted_returned_calls(tmp_path, monkeypatch):
+        vocab, corpus = mixed(tmp_path)
+        trainer = make(corpus, vocab)
+        def fail(*args):
+            raise RuntimeError('scheduler failed')
+        monkeypatch.setattr(type(trainer.sched), 'step', fail)
+        with pytest.raises(RuntimeError, match='scheduler failed'):
+            trainer.fit()
+>       result = trainer.exposure_report().to_dict()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_exposure_report.py:54: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+signtranslator/training/trainer.py:367: in exposure_report
+    self._check_optimizer_binding()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <signtranslator.training.trainer.Trainer object at 0x112b968d0>
+check_rates = True, schedule_step = None
+
+    def _check_optimizer_binding(self, *, check_rates=True, schedule_step=None):
+        """Refuse changed governed parameter ownership before optimizer effects."""
+        if not self.governed:
+            return
+        if (canonical_json_bytes(_governed_model_contract(self.model)) != self._bound_model_contract_bytes
+                or canonical_json_bytes(self.model_contract) != self._bound_model_contract_bytes):
+            raise ValueError('governed model contract changed; construct a fresh trainer')
+        if _training_config_bytes(self.cfg) != self._bound_training_config_bytes:
+            raise ValueError('governed trainer configuration changed; construct a fresh trainer')
+        current = tuple(self.model.named_parameters())
+        if (len(current) != len(self._bound_parameters)
+                or any(name != old_name or parameter is not old_parameter
+                       for (name, parameter), (old_name, old_parameter)
+                       in zip(current, self._bound_parameters))):
+            raise ValueError('governed model parameter binding changed; construct a fresh trainer')
+        groups = tuple(tuple(group['params']) for group in self.opt.param_groups)
+        if (self.opt is not self._bound_optimizer or self.sched is not self._bound_scheduler
+                or self.sched.optimizer is not self.opt
+                or len(groups) != len(self._bound_parameter_groups)
+                or any(len(group) != len(bound)
+                       or any(parameter is not original for parameter, original in zip(group, bound))
+                       for group, bound in zip(groups, self._bound_parameter_groups))):
+            raise ValueError('governed optimizer parameter binding changed; construct a fresh trainer')
+        if _optimizer_options_bytes(self.opt.param_groups) != self._bound_optimizer_options:
+            raise ValueError('governed optimizer options changed; construct a fresh trainer')
+        if (len(self.sched.lr_lambdas) != 1 or self.sched.lr_lambdas[0] is not self._bound_lr_lambda):
+            raise ValueError('governed scheduler callable changed; construct a fresh trainer')
+        if check_rates:
+            _check_optimizer_rates(self.opt.param_groups, self.sched.get_last_lr())
+            step = self.global_step if schedule_step is None else schedule_step
+            if canonical_json_bytes(self.sched.state_dict()) != canonical_json_bytes(self._expected_scheduler_state(step)):
+>               raise ValueError('governed scheduler state does not match configured schedule and step')
+E               ValueError: governed scheduler state does not match configured schedule and step
+
+signtranslator/training/trainer.py:419: ValueError
+=========================== short test summary info ============================
+FAILED tests/test_exposure_report.py::test_interrupted_report_identifies_uncommitted_returned_calls
+1 failed, 40 passed in 8.01s

@@ -1,0 +1,19 @@
+{
+  "old_work": 182097,
+  "new_work": 182097,
+  "changes": [],
+  "status_counts": {
+    "1000": {
+      "unique_optimum_candidate": 16,
+      "search_exhausted": 19,
+      "ambiguous": 1
+    },
+    "10000": {
+      "unique_optimum_candidate": 20,
+      "ambiguous": 2,
+      "search_exhausted": 14
+    }
+  },
+  "timing_note": "Matrix ran concurrently with the regression suite; timings are descriptive under shared load and cannot establish speedup.",
+  "phase_exit_approved": false
+}

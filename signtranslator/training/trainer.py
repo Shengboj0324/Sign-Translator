@@ -99,6 +99,43 @@ def _model_contract(model: torch.nn.Module) -> dict[str, Any]:
     }
 
 
+def _governed_model_contract(model):
+    contract = _model_contract(model)
+    contract['parameter_trainability'] = [
+        {'name': name, 'requires_grad': parameter.requires_grad}
+        for name, parameter in model.named_parameters()
+    ]
+    for field in ('governed_batch_schema_version', 'governed_objective_schema_version'):
+        value = getattr(model, field, None)
+        if value is not None:
+            contract[field] = value
+    return contract
+
+
+def _training_config_bytes(cfg):
+    config = _json_domain(cfg.to_dict())
+    config['values']['ckpt_path'] = None
+    return canonical_json_bytes(config)
+
+
+def _optimizer_options_bytes(groups):
+    if (not isinstance(groups, list) or not groups
+            or any(not isinstance(group, dict) or not {'params', 'lr'} <= group.keys()
+                   for group in groups)):
+        raise ValueError('optimizer parameter groups require parameters and learning rates')
+    return canonical_json_bytes([{key: value for key, value in group.items()
+                                  if key not in {'params', 'lr'}} for group in groups])
+
+
+def _check_optimizer_rates(groups, rates):
+    actual = [group['lr'] for group in groups]
+    if (not isinstance(rates, list) or len(rates) != len(actual)
+            or any(type(value) not in (int, float) or not math.isfinite(value) or value < 0
+                   for value in actual + rates)
+            or canonical_json_bytes(actual) != canonical_json_bytes(rates)):
+        raise ValueError('governed optimizer learning rates disagree with scheduler')
+
+
 def _loader_contract(loader: Optional[DataLoader]) -> Optional[dict[str, Any]]:
     if loader is None:
         return None
@@ -202,8 +239,9 @@ def cosine_warmup_lambda(total_steps: int, warmup_steps: int,
                          min_lr_frac: float = 0.05) -> Callable[[int], float]:
     """LR multiplier: linear warmup then cosine decay to ``min_lr_frac``.
 
-    Returns a function ``step -> multiplier`` in ``[min_lr_frac, 1]`` suitable
-    for ``torch.optim.lr_scheduler.LambdaLR``.
+    For nonnegative steps, warmup rises from ``1 / warmup_steps`` to one;
+    the following cosine phase stays in ``[min_lr_frac, 1]``. Warmup may lie
+    below that minimum. Suitable for ``torch.optim.lr_scheduler.LambdaLR``.
     """
     warmup_steps = max(1, warmup_steps)
     total_steps = max(total_steps, warmup_steps + 1)
@@ -233,7 +271,7 @@ def _finite_losses(losses: Mapping[str, torch.Tensor], context: str) -> None:
 
 
 def _checked_step(loss: torch.Tensor, optimizer, parameters, grad_clip: float,
-                  context: str) -> None:
+                  context: str, pre_step=None) -> None:
     parameters = list(parameters)
     optimizer.zero_grad(set_to_none=True)
     if not loss.requires_grad:
@@ -248,6 +286,8 @@ def _checked_step(loss: torch.Tensor, optimizer, parameters, grad_clip: float,
     except RuntimeError as error:
         optimizer.zero_grad()
         raise FloatingPointError(f"invalid gradient norm before optimizer step: {context}") from error
+    if pre_step is not None:
+        pre_step()
     optimizer.step()
 
 
@@ -287,8 +327,16 @@ class Trainer:
                                      weight_decay=cfg.weight_decay)
         total_steps = cfg.epochs * max(1, len(train_loader))
         warmup_steps = int(cfg.warmup_frac * total_steps)
-        self.sched = torch.optim.lr_scheduler.LambdaLR(
-            self.opt, cosine_warmup_lambda(total_steps, warmup_steps, cfg.min_lr_frac))
+        self._bound_lr_lambda = cosine_warmup_lambda(total_steps, warmup_steps, cfg.min_lr_frac)
+        self.sched = torch.optim.lr_scheduler.LambdaLR(self.opt, self._bound_lr_lambda)
+        self._bound_scheduler = self.sched
+        self._bound_scheduler_state = canonical_json_bytes(self.sched.state_dict())
+        # Optimizer state is positional and owns Parameter objects, not names.
+        # Shape equality cannot detect a replaced head or reordered group.
+        self._bound_parameters = tuple(self.model.named_parameters())
+        self._bound_optimizer = self.opt
+        self._bound_parameter_groups = tuple(tuple(group['params']) for group in self.opt.param_groups)
+        self._bound_optimizer_options = _optimizer_options_bytes(self.opt.param_groups)
 
         self.history: Dict[str, List[float]] = {}
         self.best_val = math.inf
@@ -298,11 +346,9 @@ class Trainer:
         self.completed_epochs = 0
         self._epoch_committed = True
         self.artifact_context = _json_domain(artifact_context or {})
-        self.model_contract = _model_contract(model)
-        if self.governed:
-            self.model_contract["governed_batch_schema_version"] = 1
-        if self.supported_objectives:
-            self.model_contract['governed_objective_schema_version'] = 1
+        self.model_contract = _governed_model_contract(model) if self.governed else _model_contract(model)
+        self._bound_model_contract_bytes = canonical_json_bytes(self.model_contract)
+        self._bound_training_config_bytes = _training_config_bytes(cfg)
         self.implementation_identity = package_implementation_identity()
         self.runtime_environment = runtime_environment()
         self.data_contract = {
@@ -319,6 +365,9 @@ class Trainer:
         """Historical returned-call summary, not renewed corpus authorization."""
         if not self.supported_objectives:
             raise ValueError('exposure report requires support-aware governed training')
+        # Returned optimizer calls remain historical evidence when a subsequent
+        # scheduler call fails. The report's uncommitted flag is not resumability.
+        self._check_optimizer_binding(check_rates=self._epoch_committed)
         if _loader_contract(self.train_loader) != self.data_contract['train']:
             raise ValueError('training view changed since exposure was recorded')
         return summarize_exposure(
@@ -331,6 +380,47 @@ class Trainer:
             model_contract=self.model_contract)
 
     # -- helpers ------------------------------------------------------------
+    def _expected_scheduler_state(self, step):
+        if type(step) is not int or step < 0:
+            raise ValueError('governed scheduler step must be a nonnegative integer')
+        expected = json.loads(self._bound_scheduler_state)
+        expected.update(last_epoch=step, _step_count=step + 1,
+                        _last_lr=[base * self._bound_lr_lambda(step) for base in expected['base_lrs']])
+        return expected
+
+    def _check_optimizer_binding(self, *, check_rates=True, schedule_step=None):
+        """Refuse changed governed parameter ownership before optimizer effects."""
+        if not self.governed:
+            return
+        if (canonical_json_bytes(_governed_model_contract(self.model)) != self._bound_model_contract_bytes
+                or canonical_json_bytes(self.model_contract) != self._bound_model_contract_bytes):
+            raise ValueError('governed model contract changed; construct a fresh trainer')
+        if _training_config_bytes(self.cfg) != self._bound_training_config_bytes:
+            raise ValueError('governed trainer configuration changed; construct a fresh trainer')
+        current = tuple(self.model.named_parameters())
+        if (len(current) != len(self._bound_parameters)
+                or any(name != old_name or parameter is not old_parameter
+                       for (name, parameter), (old_name, old_parameter)
+                       in zip(current, self._bound_parameters))):
+            raise ValueError('governed model parameter binding changed; construct a fresh trainer')
+        groups = tuple(tuple(group['params']) for group in self.opt.param_groups)
+        if (self.opt is not self._bound_optimizer or self.sched is not self._bound_scheduler
+                or self.sched.optimizer is not self.opt
+                or len(groups) != len(self._bound_parameter_groups)
+                or any(len(group) != len(bound)
+                       or any(parameter is not original for parameter, original in zip(group, bound))
+                       for group, bound in zip(groups, self._bound_parameter_groups))):
+            raise ValueError('governed optimizer parameter binding changed; construct a fresh trainer')
+        if _optimizer_options_bytes(self.opt.param_groups) != self._bound_optimizer_options:
+            raise ValueError('governed optimizer options changed; construct a fresh trainer')
+        if (len(self.sched.lr_lambdas) != 1 or self.sched.lr_lambdas[0] is not self._bound_lr_lambda):
+            raise ValueError('governed scheduler callable changed; construct a fresh trainer')
+        if check_rates:
+            _check_optimizer_rates(self.opt.param_groups, self.sched.get_last_lr())
+            step = self.global_step if schedule_step is None else schedule_step
+            if canonical_json_bytes(self.sched.state_dict()) != canonical_json_bytes(self._expected_scheduler_state(step)):
+                raise ValueError('governed scheduler state does not match configured schedule and step')
+
     def _to_device(self, batch: dict) -> dict:
         out = {}
         for k, v in batch.items():
@@ -343,6 +433,7 @@ class Trainer:
                 raise TypeError("legacy trainer requires dictionary batches")
             return self._to_device(batch), 1, batch.get('sample_ids', 'unavailable')
         # Recheck configuration before any model or optimizer side effects.
+        self._check_optimizer_binding()
         _governed_loaders(self.model, self.train_loader, self.val_loader)
         if _loader_contract(loader) != self.data_contract[partition]:
             raise ValueError("governed loader contract changed after trainer construction")
@@ -379,6 +470,7 @@ class Trainer:
                     partition = 'train' if training else 'validation'
                     batch, size, sample_ids = self._prepare_batch(batch, loader, partition)
                     objective = self.model.training_step(batch, weights=self.cfg.loss_weights)
+                    self._check_optimizer_binding()
                     if (not isinstance(objective, SupportedObjective)
                             or objective.population_size != size
                             or objective.weights != self.cfg.loss_weights):
@@ -404,11 +496,14 @@ class Trainer:
                                           global_step=1, weights=self.cfg.loss_weights,
                                           identities=loader.dataset.supervision_identities)
                         encoded = canonical_json_bytes(record).decode('utf-8')
-                        _checked_step(total, self.opt, self.model.parameters(), self.cfg.grad_clip, context)
+                        _checked_step(total, self.opt, self.model.parameters(), self.cfg.grad_clip, context,
+                                      pre_step=self._check_optimizer_binding)
                         # Record once optimizer.step returns, even if scheduler.step fails.
                         self.global_step += 1
                         self._optimizer_exposure.append(encoded)
+                        self._check_optimizer_binding(schedule_step=self.global_step - 1)
                         self.sched.step()
+                        self._check_optimizer_binding()
         result = accumulator.result()
         support = {**accumulator.support, 'total': accumulator.population}
         if training:
@@ -418,6 +513,7 @@ class Trainer:
         return result
 
     def train_epoch(self) -> Dict[str, float]:
+        self._check_optimizer_binding()
         # Only fit() can commit metrics, selection and the epoch cursor together.
         # Exceptions may leave model/optimizer/RNG changes that cannot be undone.
         self._epoch_committed = False
@@ -431,14 +527,17 @@ class Trainer:
         for batch in self.train_loader:
             batch, batch_weight, sample_ids = self._prepare_batch(batch, self.train_loader, "train")
             losses = self.model.training_step(batch, weights=self.cfg.loss_weights)
+            self._check_optimizer_binding()
             context = (f"epoch={self.completed_epochs}, batch={count}, step={self.global_step}, "
                        f"sample_ids={sample_ids!r}")
             _finite_losses(losses, context)
             self._check_loss_keys(losses, agg)
             loss = losses["total"]
-            _checked_step(loss, self.opt, self.model.parameters(), self.cfg.grad_clip, context)
+            _checked_step(loss, self.opt, self.model.parameters(), self.cfg.grad_clip, context,
+                          pre_step=self._check_optimizer_binding)
             self.sched.step()
             self.global_step += 1
+            self._check_optimizer_binding()
 
             for k, v in losses.items():
                 agg[k] = agg.get(k, 0.0) + v.detach().item() * batch_weight
@@ -450,6 +549,7 @@ class Trainer:
 
     @torch.no_grad()
     def validate(self) -> Dict[str, float]:
+        self._check_optimizer_binding()
         if self.val_loader is None:
             return {}
         if self.supported_objectives:
@@ -466,6 +566,7 @@ class Trainer:
                 for batch in self.val_loader:
                     batch, batch_weight, sample_ids = self._prepare_batch(batch, self.val_loader, "validation")
                     losses = self.model.training_step(batch, weights=self.cfg.loss_weights)
+                    self._check_optimizer_binding()
                     _finite_losses(losses, f"validation batch={count}, sample_ids={sample_ids!r}")
                     self._check_loss_keys(losses, agg)
                     for k, v in losses.items():
@@ -480,6 +581,7 @@ class Trainer:
             max_epochs: Optional[int] = None) -> Dict[str, List[float]]:
         if not self._epoch_committed:
             raise RuntimeError('unfinished epoch: restore a committed checkpoint before fit')
+        self._check_optimizer_binding()
         if max_epochs is not None and max_epochs <= 0:
             raise ValueError("max_epochs must be positive when supplied")
         if self.completed_epochs > self.cfg.epochs:
@@ -541,6 +643,7 @@ class Trainer:
         """Atomically persist a hash-verified, self-describing checkpoint."""
         if not self._epoch_committed:
             raise RuntimeError('unfinished epoch cannot be saved as an exact checkpoint')
+        self._check_optimizer_binding()
         if kind not in {"best", "last", "milestone"}:
             raise ValueError("checkpoint kind must be best, last, or milestone")
         if self.train_loader.num_workers != 0:
@@ -692,6 +795,10 @@ class Trainer:
                 or self.best_model_state is not None or self.best_val != math.inf
                 or self._optimizer_exposure):
             raise ValueError('weights warm start requires a fresh trainer without training state')
+        # A failed scheduler load may leave the optimizer at the checkpoint rate
+        # and the scheduler at its prior rate. Full resume can restore both;
+        # checkpoint rates are preflighted below and rechecked before commitment.
+        self._check_optimizer_binding(check_rates=mode != 'resume')
         source = Path(path)
         manifest_path = Path(f"{source}.json")
         if source.is_symlink() or not source.is_file():
@@ -771,13 +878,21 @@ class Trainer:
                     weights=self.cfg.loss_weights,
                     identities=self.train_loader.dataset.supervision_identities
                     if self.supported_objectives else {})
-        if checkpoint["model_contract"] != self.model_contract:
+        recorded_contract = dict(checkpoint['model_contract'])
+        current_contract = dict(self.model_contract)
+        if mode == 'weights' and self.governed:
+            # A fresh warm start explicitly starts a new training procedure.
+            # Keep the receiver's freeze policy; older contracts may omit it.
+            recorded_contract.pop('parameter_trainability', None)
+            current_contract.pop('parameter_trainability', None)
+        if canonical_json_bytes(recorded_contract) != canonical_json_bytes(current_contract):
             raise ValueError("checkpoint model contract does not match this model")
 
         if mode == "weights":
             # Loading can partially copy tensors before a custom hook raises.
             self._epoch_committed = False
             self.model.load_state_dict(checkpoint["model"], strict=True)
+            self._check_optimizer_binding()
             self._epoch_committed = True
             return
 
@@ -803,6 +918,14 @@ class Trainer:
             raise ValueError("resume numerical runtime does not match checkpoint")
         if checkpoint["data_contract"] != self.data_contract:
             raise ValueError("resume data-loader contract does not match checkpoint")
+        if self.governed:
+            groups = checkpoint['optimizer']['param_groups']
+            if _optimizer_options_bytes(groups) != self._bound_optimizer_options:
+                raise ValueError('checkpoint optimizer options do not match governed configuration')
+            _check_optimizer_rates(groups, checkpoint['scheduler'].get('_last_lr'))
+            if canonical_json_bytes(checkpoint['scheduler']) != canonical_json_bytes(
+                    self._expected_scheduler_state(training_state['global_step'])):
+                raise ValueError('checkpoint scheduler state does not match governed schedule and step')
 
         best_state = checkpoint["best_model_state"]
         best_value = training_state["best_val"]
@@ -825,6 +948,7 @@ class Trainer:
         # prohibit exact continuation until a complete resume succeeds.
         self._epoch_committed = False
         self.model.load_state_dict(checkpoint["model"], strict=True)
+        self._check_optimizer_binding(check_rates=False)
         self.opt.load_state_dict(checkpoint["optimizer"])
         self.sched.load_state_dict(checkpoint["scheduler"])
         self.completed_epochs = training_state["completed_epochs"]
@@ -834,4 +958,5 @@ class Trainer:
         restore_rng_state(checkpoint["rng_state"])
         self.best_model_state = best_state
         self._optimizer_exposure = exposure
+        self._check_optimizer_binding()
         self._epoch_committed = True

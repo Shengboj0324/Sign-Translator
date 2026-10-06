@@ -1,0 +1,63 @@
+{
+  "records": [
+    {
+      "events": 128,
+      "pattern": "uniform_negative",
+      "checked_queries": 513,
+      "old_prefix_sum_entries": 699137,
+      "persistent_nodes": 128,
+      "before": {
+        "retained_bytes": 26924704,
+        "peak_bytes": 27006360,
+        "seconds": 0.19095104200096102
+      },
+      "after": {
+        "retained_bytes": 22792,
+        "peak_bytes": 25072,
+        "seconds": 0.005695874999219086
+      }
+    },
+    {
+      "events": 128,
+      "pattern": "distinct_negative",
+      "checked_queries": 513,
+      "old_prefix_sum_entries": 699137,
+      "persistent_nodes": 113729,
+      "before": {
+        "retained_bytes": 27946888,
+        "peak_bytes": 28280568,
+        "seconds": 0.2011203750007553
+      },
+      "after": {
+        "retained_bytes": 18470216,
+        "peak_bytes": 18987652,
+        "seconds": 0.24204912500135833
+      }
+    },
+    {
+      "events": 128,
+      "pattern": "mixed",
+      "checked_queries": 513,
+      "old_prefix_sum_entries": 599261,
+      "persistent_nodes": 96314,
+      "before": {
+        "retained_bytes": 23956008,
+        "peak_bytes": 24239528,
+        "seconds": 0.17241487499995856
+      },
+      "after": {
+        "retained_bytes": 15562664,
+        "peak_bytes": 16047592,
+        "seconds": 0.20604858399747172
+      }
+    }
+  ],
+  "scope": "Python tracemalloc construction allocations, input pair dictionary excluded.",
+  "implementation_sha256": "bcacb80731473b9a55fa7242ab00473fbaf1f04fd210c182555cc8c48161a460",
+  "script_sha256": "406cf18934d7c0f08fca20df175868092514896b45eeb7b42da4fc9cc064cf5d",
+  "phase_exit_approved": false,
+  "limitations": [
+    "Single constructions on local runtime; not RSS, end-to-end decoder memory or latency percentiles.",
+    "Queries now traverse a logarithmic tree rather than constant-time array lookup."
+  ]
+}

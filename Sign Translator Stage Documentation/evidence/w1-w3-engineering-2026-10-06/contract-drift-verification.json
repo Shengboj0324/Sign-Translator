@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2526 passed in 98.28s",
+  "focused": "42 passed in 5.20s",
+  "code_sha256": {
+    "signtranslator/training/trainer.py": "f3abe881120c91c581b60b299f22551482dc13b6942f4c6a517866c1f9440e91",
+    "tests/test_training_contract_drift.py": "f45aae0af5dee37f1e205833a21ec50754cb93c975d70181af8f0e479816f8a0",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/contract-drift-probe.py": "9ac44322fe03ba7809b700d60d83cd4fd9e4097493d4c2fa252f02193ad5e46d"
+  },
+  "observed_before_fix": {
+    "recorded_scale": 0.5,
+    "actual_scale": 1.0,
+    "optimizer_steps": 2,
+    "checkpoint_saved": true
+  },
+  "scope": "Immutable canonical snapshots of governed model contract and trainer configuration; current/public contract comparisons and mutable loss weights; strict schema types; checkpoint path exempt.",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "No arbitrary behavioral equivalence or freeze-policy certification.",
+    "No rollback of arbitrary hooks or proof of competence.",
+    "Contract traversal/serialization adds overhead; no performance claim.",
+    "No additional accelerator or distributed qualification."
+  ]
+}

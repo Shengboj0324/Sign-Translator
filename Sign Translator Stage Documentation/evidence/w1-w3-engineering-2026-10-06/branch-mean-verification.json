@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -W error -o addopts='' -q",
+  "result": "2490 passed in 91.07s",
+  "focused": "26 passed in 0.65s",
+  "code_sha256": {
+    "signtranslator/training/objectives.py": "38c13cf448a590d8df069e2af3a7c27bef51c5d58a851a6588753e51784b3017",
+    "signtranslator/training/scaling.py": "9bbaf0d685241985b4799f947273ed3a3ceb0a9901af389ead2a9f240e4b3658",
+    "tests/test_population_scaling.py": "71554cfbd18e85b930448140a094f4ac2c9de93e3e321cf2e6b246cff3b8fa52"
+  },
+  "scope": "Stable branch-support mean scaling, large validated integer denominators, exact rational references, large incoming derivatives and higher-order autograd.",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Boundary populations are synthetic numerical probes, not real corpus sizes.",
+    "Ordinary floating rounding remains; upstream range loss is not repaired.",
+    "No empirical acceptance or additional accelerator qualification."
+  ]
+}

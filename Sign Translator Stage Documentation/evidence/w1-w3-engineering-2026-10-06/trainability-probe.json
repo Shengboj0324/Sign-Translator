@@ -1,0 +1,7 @@
+{
+  "source_requires_grad": false,
+  "receiver_requires_grad": true,
+  "resume_refusal": "checkpoint model contract does not match this model",
+  "receiver_steps": 0,
+  "phase_exit_approved": false
+}

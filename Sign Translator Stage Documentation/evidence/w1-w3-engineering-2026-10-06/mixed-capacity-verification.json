@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2538 passed in 99.73s",
+  "focused": "17 passed in 0.59s",
+  "code_sha256": {
+    "signtranslator/planning/joint_spatial.py": "5d73e6c29d4fedb38ed005f00b998b44293ea2cc421d01e75f6ed0c514b5e56b",
+    "signtranslator/planning/partition_bounds.py": "4f938115c64f1592126ee2503a12adbe73d13a01c74546e5f3efeedd6906deea",
+    "tests/test_partition_bounds.py": "21891da8d323788ad968ba112328c600877d6fcba72a727120cef187c7a6e293",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/mixed-capacity-oracle.py": "c3bfd43318134076281e444731a06c1c6fe6d3e035788aad6ae08be67a2904b0"
+  },
+  "scope": "Mixed-sign capacity penalty with distinct remaining negative costs, exact integer bounds, exhaustive prefix completions on 60 systems, three independent full locus-vector oracles and repeated 72-case workload matrix.",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Old workload matrix unchanged: 14/36 configurations still exhaust 10000 units.",
+    "New controls demonstrate work reductions, not general latency or real model coverage.",
+    "O(n^3) space and O(n^3 log n) preprocessing outside the work budget.",
+    "Matrix timings collected concurrently with regression; no speedup conclusion."
+  ]
+}

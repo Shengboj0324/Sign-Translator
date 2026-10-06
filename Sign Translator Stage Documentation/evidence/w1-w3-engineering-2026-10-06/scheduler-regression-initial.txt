@@ -1,0 +1,101 @@
+........................................................................ [  2%]
+........................................................................ [  5%]
+........................................................................ [  8%]
+........................................................................ [ 11%]
+........................................................................ [ 14%]
+........................................................................ [ 16%]
+........................................................................ [ 19%]
+........................................................................ [ 22%]
+........................................................................ [ 25%]
+........................................................................ [ 28%]
+........................................................................ [ 30%]
+........................................................................ [ 33%]
+........................................................................ [ 36%]
+........................................................................ [ 39%]
+........................................................................ [ 42%]
+........................................................................ [ 44%]
+........................................................................ [ 47%]
+........................................................................ [ 50%]
+........................................................................ [ 53%]
+........................................................................ [ 56%]
+........................................................................ [ 59%]
+........................................................................ [ 61%]
+........................................................................ [ 64%]
+........................................................................ [ 67%]
+........................................................................ [ 70%]
+........................................................................ [ 73%]
+........................................................................ [ 75%]
+........................................................................ [ 78%]
+........................................................................ [ 81%]
+........................................................................ [ 84%]
+........................................................................ [ 87%]
+........................................................................ [ 89%]
+........................................................................ [ 92%]
+...........................F............................................ [ 95%]
+........................................................................ [ 98%]
+..........................................                               [100%]
+=================================== FAILURES ===================================
+__________ test_returned_optimizer_step_recorded_when_scheduler_fails __________
+
+tmp_path = PosixPath('/private/var/folders/y0/l9ns18ns5472mqrprmhhmsw00000gn/T/pytest-of-jiangshengbo/pytest-16/test_returned_optimizer_step_r0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1208b1be0>
+
+    def test_returned_optimizer_step_recorded_when_scheduler_fails(tmp_path, monkeypatch):
+        vocab, corpus = mixed(tmp_path)
+        trainer = Trainer(model(vocab), config(), loader(corpus, 'train'))
+        def fail():
+            raise RuntimeError('scheduler failure')
+        monkeypatch.setattr(trainer.sched, 'step', fail)
+        with pytest.raises(RuntimeError, match='scheduler failure'):
+>           trainer.train_epoch()
+
+tests/test_supported_trainer.py:131: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+signtranslator/training/trainer.py:516: in train_epoch
+    self._check_optimizer_binding()
+signtranslator/training/trainer.py:421: in _check_optimizer_binding
+    if canonical_json_bytes(self.sched.state_dict()) != canonical_json_bytes(self._expected_scheduler_state(step)):
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+signtranslator/reproducibility.py:50: in canonical_json_bytes
+    return json.dumps(
+../../.cache/codex-runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/json/__init__.py:238: in dumps
+    **kw).encode(obj)
+          ^^^^^^^^^^^
+../../.cache/codex-runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/json/encoder.py:200: in encode
+    chunks = self.iterencode(o, _one_shot=True)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../.cache/codex-runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/json/encoder.py:258: in iterencode
+    return _iterencode(o, 0)
+           ^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <json.encoder.JSONEncoder object at 0x121b760f0>
+o = <function test_returned_optimizer_step_recorded_when_scheduler_fails.<locals>.fail at 0x12258ca40>
+
+    def default(self, o):
+        """Implement this method in a subclass such that it returns
+        a serializable object for ``o``, or calls the base implementation
+        (to raise a ``TypeError``).
+    
+        For example, to support arbitrary iterators, you could
+        implement default like this::
+    
+            def default(self, o):
+                try:
+                    iterable = iter(o)
+                except TypeError:
+                    pass
+                else:
+                    return list(iterable)
+                # Let the base class default method raise the TypeError
+                return super().default(o)
+    
+        """
+>       raise TypeError(f'Object of type {o.__class__.__name__} '
+                        f'is not JSON serializable')
+E       TypeError: Object of type function is not JSON serializable
+
+../../.cache/codex-runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/json/encoder.py:180: TypeError
+=========================== short test summary info ============================
+FAILED tests/test_supported_trainer.py::test_returned_optimizer_step_recorded_when_scheduler_fails
+1 failed, 2561 passed in 102.72s (0:01:42)

@@ -124,9 +124,11 @@ def test_failed_optimizer_call_is_not_recorded(tmp_path, monkeypatch):
 def test_returned_optimizer_step_recorded_when_scheduler_fails(tmp_path, monkeypatch):
     vocab, corpus = mixed(tmp_path)
     trainer = Trainer(model(vocab), config(), loader(corpus, 'train'))
-    def fail():
+    def fail(self):
         raise RuntimeError('scheduler failure')
-    monkeypatch.setattr(trainer.sched, 'step', fail)
+    # Inject the call failure without adding a function to the scheduler's
+    # serialized instance state, which is now checked before optimization.
+    monkeypatch.setattr(type(trainer.sched), 'step', fail)
     with pytest.raises(RuntimeError, match='scheduler failure'):
         trainer.train_epoch()
     assert trainer.global_step == 1 and len(trainer.optimizer_exposure) == 1

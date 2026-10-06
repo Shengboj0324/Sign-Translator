@@ -14,7 +14,7 @@ from typing import Mapping
 
 import torch
 
-from .scaling import weighted_population_sum
+from .scaling import weighted_population_scalar, weighted_population_sum
 
 
 @dataclass(frozen=True)
@@ -89,7 +89,7 @@ class SupportedObjective:
         term = self.terms[name]
         if term.supported_examples == 0:
             raise KeyError(f'{name} is unavailable: zero supported examples')
-        return term.example_loss_sum / term.supported_examples
+        return weighted_population_scalar(term.example_loss_sum, 1, term.supported_examples)
 
 
 class ObjectiveAccumulator:

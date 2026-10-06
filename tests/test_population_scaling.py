@@ -132,3 +132,44 @@ def test_mps_joint_sum_preserves_combined_subnormal():
                               {'a':1.,'b':1.},2).total()
     loss.backward()
     assert loss.item() == 2.**-149 and a.grad.item() == b.grad.item() == .5
+
+
+@pytest.mark.parametrize('dtype', [torch.float32, torch.float64])
+@pytest.mark.parametrize('support', [2**64, 2**128, 2**1024, 2**8192])
+def test_branch_mean_large_support_matches_exact_reporting_and_gradient(dtype, support):
+    from signtranslator.training.objectives import ObjectiveAccumulator
+
+    maximum = torch.finfo(dtype).max
+    value = torch.tensor(maximum, dtype=dtype, requires_grad=True)
+    objective = SupportedObjective({'a': SupportedTerm(value, support)}, {'a': 1}, support)
+    mean = objective['a']
+    exact = Fraction(maximum) / support
+    expected = torch.tensor(float(exact), dtype=dtype)
+    assert mean.dtype == dtype and mean.item() == expected.item()
+    assert objective.total().item() == mean.item()
+    # A large incoming derivative makes some otherwise unrepresentable inverse
+    # counts produce representable gradients; do not materialize 1/support first.
+    mean.backward(torch.tensor(maximum, dtype=dtype))
+    assert value.grad.item() == expected.item()
+    accumulator = ObjectiveAccumulator()
+    accumulator.add(objective)
+    assert accumulator.result()['a'] == float(exact)
+
+
+def test_branch_mean_uses_support_not_full_population_or_branch_weight():
+    value = torch.tensor(18., dtype=torch.float64, requires_grad=True)
+    objective = SupportedObjective({'a': SupportedTerm(value, 3)}, {'a': 7}, 10)
+    assert objective['a'].item() == 6.
+    assert objective.total().item() == pytest.approx(12.6)
+    objective['a'].backward()
+    assert value.grad.item() == pytest.approx(1 / 3)
+
+
+def test_branch_mean_preserves_higher_order_derivatives():
+    value = torch.tensor(1.25, dtype=torch.float64, requires_grad=True)
+
+    def branch_mean(x):
+        return SupportedObjective({'a': SupportedTerm(x.square(), 3)}, {'a': 7}, 10)['a']
+
+    assert torch.autograd.gradcheck(branch_mean, (value,))
+    assert torch.autograd.gradgradcheck(branch_mean, (value,))

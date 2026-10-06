@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2562 passed in 100.66s",
+  "focused": "48 passed in 8.47s",
+  "code_sha256": {
+    "signtranslator/training/trainer.py": "968dee478ea36fefb1b7fdab93416f5edc00c8f4e42f0042feb5f0e501020930",
+    "tests/test_scheduler_contract.py": "331c2fe9409220244ec2296ab8a770543b12435bee45e119cd3d3c3c1c45c0ee",
+    "tests/test_supported_trainer.py": "c9e0a721dc6836e767d83e0fd3f24669a7ba06e097be33b780fdccecf54d6fc6",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/scheduler-probe.py": "ef4dd9d0156b8b8943bb18dfa61cc92bd9ba9b4c64c9a7e814137c45ce350d1d"
+  },
+  "observed_before_fix": {
+    "step": 2,
+    "configured_rate": 0.022875,
+    "optimizer_rate": 0.9,
+    "scheduler_rate": 0.9,
+    "checkpoint_saved": true
+  },
+  "scope": "Configured LambdaLR state/cursor/rate reconstruction, original scheduler/callable identity, checkpoint preflight and uncommitted returned-call reporting.",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Fixed trainer warmup/cosine procedure only; not arbitrary custom scheduler certification.",
+    "Uncommitted exposure does not certify scheduler completion or resumability.",
+    "No optimizer-moment, arbitrary Python-internal or competence proof."
+  ],
+  "debugging": [
+    "Initial focused: 1 failed, 40 passed; historical uncommitted exposure reporting must not require completed scheduler advancement.",
+    "Initial full: 1 failed, 2561 passed; instance-method fault injection appeared as extra serialized function state. Existing test now injects the same exception through the class method, retaining returned-call assertions."
+  ]
+}

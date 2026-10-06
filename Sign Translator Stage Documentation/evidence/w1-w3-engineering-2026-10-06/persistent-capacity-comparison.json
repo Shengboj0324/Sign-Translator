@@ -1,0 +1,10 @@
+{
+  "configurations": 72,
+  "repeats_per_configuration": 2,
+  "all_decisions_gains_partitions_work_identical": true,
+  "total_work": 182097,
+  "exhausted_high_budget": 14,
+  "scope": "Behavior/work equivalence to sorted-array capacity penalty; no additional search completion.",
+  "timing_note": "Matrix ran concurrently with regression; no latency comparison claim.",
+  "phase_exit_approved": false
+}

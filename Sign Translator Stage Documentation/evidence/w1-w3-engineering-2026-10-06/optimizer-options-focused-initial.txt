@@ -1,0 +1,57 @@
+.....................................F.                                  [100%]
+=================================== FAILURES ===================================
+___ test_partial_load_refuses_save_and_fit_until_complete_resume[scheduler] ____
+
+tmp_path = PosixPath('/private/var/folders/y0/l9ns18ns5472mqrprmhhmsw00000gn/T/pytest-of-jiangshengbo/pytest-11/test_partial_load_refuses_save3')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1128ce210>
+stage = 'scheduler'
+
+    @pytest.mark.parametrize('stage', ['weights', 'model', 'optimizer', 'scheduler', 'rng'])
+    def test_partial_load_refuses_save_and_fit_until_complete_resume(tmp_path, monkeypatch, stage):
+        vocab, corpus = mixed(tmp_path)
+        source = make(corpus, vocab); source.fit(max_epochs=1)
+        path = source.save(tmp_path / 'valid.pt')
+        receiver = make(corpus, vocab)
+        def fail(*args, **kwargs):
+            # Simulates a custom loader that changes state and then raises.
+            with torch.no_grad():
+                next(receiver.model.parameters()).fill_(123.)
+            raise RuntimeError('partial load')
+        with monkeypatch.context() as patch:
+            if stage in ('weights', 'model'):
+                patch.setattr(receiver.model, 'load_state_dict', fail)
+            elif stage == 'optimizer':
+                patch.setattr(receiver.opt, 'load_state_dict', fail)
+            elif stage == 'scheduler':
+                patch.setattr(type(receiver.sched), 'load_state_dict', fail)
+            else:
+                patch.setattr('signtranslator.training.trainer.restore_rng_state', fail)
+            with pytest.raises(RuntimeError, match='partial load'):
+                receiver.load(path, mode='weights' if stage == 'weights' else 'resume')
+        with pytest.raises(RuntimeError, match='unfinished epoch'):
+>           receiver.save(tmp_path / 'invalid.pt')
+
+tests/test_checkpoint_load_boundary.py:64: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+signtranslator/training/trainer.py:624: in save
+    self._check_optimizer_binding()
+signtranslator/training/trainer.py:402: in _check_optimizer_binding
+    _check_optimizer_rates(self.opt.param_groups, self.sched.get_last_lr())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+groups = [{'lr': 0.022875, 'betas': (0.9, 0.999), 'eps': 1e-08, 'weight_decay': 0.1, ...}]
+rates = [0.03]
+
+    def _check_optimizer_rates(groups, rates):
+        actual = [group['lr'] for group in groups]
+        if (not isinstance(rates, list) or len(rates) != len(actual)
+                or any(type(value) not in (int, float) or not math.isfinite(value) or value < 0
+                       for value in actual + rates)
+                or canonical_json_bytes(actual) != canonical_json_bytes(rates)):
+>           raise ValueError('governed optimizer learning rates disagree with scheduler')
+E           ValueError: governed optimizer learning rates disagree with scheduler
+
+signtranslator/training/trainer.py:136: ValueError
+=========================== short test summary info ============================
+FAILED tests/test_checkpoint_load_boundary.py::test_partial_load_refuses_save_and_fit_until_complete_resume[scheduler]
+1 failed, 38 passed in 6.04s

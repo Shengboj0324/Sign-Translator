@@ -1,5 +1,4 @@
 """Exact optimistic bounds for weighted equivalence-partition objectives."""
-from dataclasses import dataclass
 
 
 def partition_suffix_upper_bounds(count, pair):
@@ -64,40 +63,6 @@ def minimum_added_pairs(sizes, remaining, capacity):
     return pairs
 
 
-@dataclass(frozen=True)
-class PlacedPairPenalties:
-    """Immutable suffix versions of a counted negative-cost order-statistic tree."""
-
-    free: tuple[int, ...]
-    roots: tuple[int, ...]
-    values: tuple[int, ...]
-    # Node fields are left index, right index, multiplicity, exact weighted sum.
-    nodes: tuple[tuple[int, int, int, int], ...]
-
-    def penalty(self, prefix, added_pairs):
-        if (type(prefix) is not int or not 0 <= prefix < len(self.roots)
-                or type(added_pairs) is not int or added_pairs < 0):
-            raise ValueError('valid prefix and nonnegative integer forced-pair count required')
-        needed = max(0, added_pairs - self.free[prefix])
-        root = self.roots[prefix]
-        if needed > self.nodes[root][2]:
-            raise ValueError('forced-pair count exceeds remaining placed pairs')
-        if needed == 0:
-            return 0
-        lower, upper, total = 0, len(self.values), 0
-        while upper - lower > 1:
-            left, right, _, _ = self.nodes[root]
-            middle = (lower + upper) // 2
-            left_count = self.nodes[left][2]
-            if needed <= left_count:
-                root, upper = left, middle
-            else:
-                total += self.nodes[left][3]
-                needed -= left_count
-                root, lower = right, middle
-        return total + needed * self.values[lower]
-
-
 def placed_pair_penalty_tables(count, pair, place):
     """Relax remaining placed-pair costs, including mixed signs and zero gains.
 
@@ -107,45 +72,25 @@ def placed_pair_penalty_tables(count, pair, place):
     use distinct negative pairs. The sum of that many cheapest remaining costs
     is a lower bound, even when those pairs cannot jointly form a partition.
 
-    Inputs have the decoder's validated integer gain/placement domains. Persistent
-    counted trees share unchanged cost ranges across suffixes. With E placed
-    pairs and D distinct negative costs, construction uses O(count**2 + E log(D+1))
-    time and O(count + E log(D+1)) space. Queries use O(1 + log(D+1)) time.
+    Inputs have the decoder's validated integer gain/placement domains. Tables
+    use O(count**3) space and O(count**3 log(count)) worst-case preprocessing;
+    each deduction query is constant-time after its forced-pair count is known.
     """
-    from collections import Counter
+    from itertools import accumulate
 
     free = [0] * (count + 1)
-    roots = [0] * (count + 1)
-    values = tuple(sorted({-value for (i, j), value in pair.items()
-                           if place[i] and place[j] and value < 0}))
-    ranks = {value: rank for rank, value in enumerate(values)}
-    nodes = [(0, 0, 0, 0)]
-
-    def insert(root, lower, upper, rank, multiplicity):
-        left, right, old_count, old_sum = nodes[root]
-        if upper - lower > 1:
-            middle = (lower + upper) // 2
-            if rank < middle:
-                left = insert(left, lower, middle, rank, multiplicity)
-            else:
-                right = insert(right, middle, upper, rank, multiplicity)
-        nodes.append((left, right, old_count + multiplicity,
-                      old_sum + multiplicity * values[rank]))
-        return len(nodes) - 1
-
+    costs = [(0,)] * (count + 1)
+    negative = []
     for j in range(count - 1, -1, -1):
         free[j] = free[j + 1]
-        root = roots[j + 1]
-        negative = Counter()
         if place[j]:
             for i in range(j):
                 if place[i]:
                     value = pair[i, j]
                     if value < 0:
-                        negative[-value] += 1
+                        negative.append(-value)
                     else:
                         free[j] += 1
-        for value, multiplicity in negative.items():
-            root = insert(root, 0, len(values), ranks[value], multiplicity)
-        roots[j] = root
-    return PlacedPairPenalties(tuple(free), tuple(roots), values, tuple(nodes))
+        negative.sort()
+        costs[j] = tuple(accumulate(negative, initial=0))
+    return free, costs

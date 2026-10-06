@@ -1,0 +1,9 @@
+{
+  "step": 2,
+  "configured_rate": 0.022875,
+  "optimizer_rate": 0.9,
+  "scheduler_rate": 0.9,
+  "refusal": "governed scheduler state does not match configured schedule and step",
+  "checkpoint_saved": false,
+  "phase_exit_approved": false
+}

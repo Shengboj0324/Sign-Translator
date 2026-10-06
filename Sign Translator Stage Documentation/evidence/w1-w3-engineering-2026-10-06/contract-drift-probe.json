@@ -1,0 +1,8 @@
+{
+  "original_scale": 0.5,
+  "changed_scale": 1.0,
+  "refusal": "governed model contract changed; construct a fresh trainer",
+  "optimizer_steps": 0,
+  "exposure_records": 0,
+  "phase_exit_approved": false
+}

@@ -1,0 +1,10 @@
+{
+  "error": "ValueError",
+  "message": "governed model parameter binding changed; construct a fresh trainer",
+  "optimizer_steps": 0,
+  "exposure_records": 0,
+  "replacement_has_gradient": false,
+  "replacement_unchanged": true,
+  "optimizer_still_owns_original": true,
+  "phase_exit_approved": false
+}

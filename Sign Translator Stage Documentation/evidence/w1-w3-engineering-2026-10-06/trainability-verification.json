@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2536 passed in 97.58s",
+  "focused": "27 passed in 5.39s",
+  "code_sha256": {
+    "signtranslator/training/trainer.py": "25c6f7e62e402a35b0da0e032f94203897a98fc6c0504284c1fa01868d0e0781",
+    "signtranslator/planning/exposure_audit.py": "3594862960f419d33ac2f3e1dfa7664956ecc0457a86c6cb56664cfe5b33d45b",
+    "tests/test_trainability_contract.py": "e1d2f432cc19e87ef231ec1f7711cba534d46ca2a5a9eb76afcd422c05d1e3fe",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/trainability-probe.py": "d7c29595b99a6ceffc84c1d9fdb76ed277c5cd82037aaa8c7cb34731dec2d1cd"
+  },
+  "observed_before_fix": {
+    "source_requires_grad": false,
+    "resumed_requires_grad": true,
+    "resume_accepted": true
+  },
+  "scope": "Governed named parameter trainability recorded and checked for exact resume and runtime drift; fresh weights-only warm starts keep receiver policy; missing historical policy refuses exact resume.",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Trainability is not nonzero-gradient evidence, competence or module evaluation mode.",
+    "No arbitrary hook rollback or additional accelerator/distributed qualification.",
+    "Historical missing trainability is not reconstructed."
+  ]
+}

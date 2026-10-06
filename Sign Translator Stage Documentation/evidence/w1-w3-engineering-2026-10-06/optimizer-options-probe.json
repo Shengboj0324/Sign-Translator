@@ -1,0 +1,11 @@
+{
+  "recorded_weight_decay": 0.1,
+  "live_weight_decay": 0.9,
+  "errors": {
+    "train": "governed optimizer options changed; construct a fresh trainer",
+    "save": "governed optimizer options changed; construct a fresh trainer"
+  },
+  "optimizer_steps": 0,
+  "checkpoint_saved": false,
+  "phase_exit_approved": false
+}

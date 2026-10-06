@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2540 passed in 99.57s",
+  "focused": "19 passed in 0.96s",
+  "code_sha256": {
+    "signtranslator/planning/joint_spatial.py": "0b558cd42868e31ae4d06c59091c930e5985622f8cb2d45c51669c82d17832ad",
+    "signtranslator/planning/partition_bounds.py": "bcacb80731473b9a55fa7242ab00473fbaf1f04fd210c182555cc8c48161a460",
+    "tests/test_partition_bounds.py": "97de01fbb1a9b7b7d46eb43847dfb2d873ceafb32133681c9ededbea17b787f9",
+    "Sign Translator Stage Documentation/evidence/w1-w3-engineering-2026-10-06/persistent-capacity-profile.py": "406cf18934d7c0f08fca20df175868092514896b45eeb7b42da4fc9cc064cf5d"
+  },
+  "scope": "Persistent exact cost multiplicity/sum trees; exhaustive query comparison on 110 systems, 1539 large-cap retained-prefix checks, identical outcomes/work in repeated 72-case decoder matrix.",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Memory profile is Python traced construction allocations, not RSS or full-decoder memory.",
+    "Queries logarithmic instead of constant-time; distinct/mixed construction slower in local probes.",
+    "No new search completions; 14/36 high-budget cases still exhaust.",
+    "No general speedup, accelerator qualification or empirical acceptance."
+  ]
+}

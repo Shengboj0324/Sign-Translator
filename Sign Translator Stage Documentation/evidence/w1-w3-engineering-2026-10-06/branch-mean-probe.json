@@ -1,0 +1,98 @@
+[
+  {
+    "dtype": "torch.float32",
+    "support_power_of_two": 64,
+    "old": {
+      "error": "OverflowError",
+      "message": "int too big to convert"
+    },
+    "new": 1.8446742974197924e+19,
+    "incoming_gradient": 3.4028234663852886e+38,
+    "gradient": 1.8446742974197924e+19,
+    "rational_reference_as_float": 1.8446742974197924e+19
+  },
+  {
+    "dtype": "torch.float32",
+    "support_power_of_two": 128,
+    "old": {
+      "error": "OverflowError",
+      "message": "int too big to convert"
+    },
+    "new": 0.9999999403953552,
+    "incoming_gradient": 3.4028234663852886e+38,
+    "gradient": 0.9999999403953552,
+    "rational_reference_as_float": 0.9999999403953552
+  },
+  {
+    "dtype": "torch.float32",
+    "support_power_of_two": 1024,
+    "old": {
+      "error": "OverflowError",
+      "message": "int too big to convert"
+    },
+    "new": 0.0,
+    "incoming_gradient": 3.4028234663852886e+38,
+    "gradient": 0.0,
+    "rational_reference_as_float": 1.892883385042191e-270
+  },
+  {
+    "dtype": "torch.float32",
+    "support_power_of_two": 8192,
+    "old": {
+      "error": "OverflowError",
+      "message": "int too big to convert"
+    },
+    "new": 0.0,
+    "incoming_gradient": 3.4028234663852886e+38,
+    "gradient": 0.0,
+    "rational_reference_as_float": 0.0
+  },
+  {
+    "dtype": "torch.float64",
+    "support_power_of_two": 64,
+    "old": {
+      "error": "OverflowError",
+      "message": "int too big to convert"
+    },
+    "new": 9.745314011399998e+288,
+    "incoming_gradient": 1.7976931348623157e+308,
+    "gradient": 9.745314011399998e+288,
+    "rational_reference_as_float": 9.745314011399998e+288
+  },
+  {
+    "dtype": "torch.float64",
+    "support_power_of_two": 128,
+    "old": {
+      "error": "OverflowError",
+      "message": "int too big to convert"
+    },
+    "new": 5.282945311356652e+269,
+    "incoming_gradient": 1.7976931348623157e+308,
+    "gradient": 5.282945311356652e+269,
+    "rational_reference_as_float": 5.282945311356652e+269
+  },
+  {
+    "dtype": "torch.float64",
+    "support_power_of_two": 1024,
+    "old": {
+      "error": "OverflowError",
+      "message": "int too big to convert"
+    },
+    "new": 0.9999999999999999,
+    "incoming_gradient": 1.7976931348623157e+308,
+    "gradient": 0.9999999999999999,
+    "rational_reference_as_float": 0.9999999999999999
+  },
+  {
+    "dtype": "torch.float64",
+    "support_power_of_two": 8192,
+    "old": {
+      "error": "OverflowError",
+      "message": "int too big to convert"
+    },
+    "new": 0.0,
+    "incoming_gradient": 1.7976931348623157e+308,
+    "gradient": 0.0,
+    "rational_reference_as_float": 0.0
+  }
+]

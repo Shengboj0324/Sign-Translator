@@ -69,7 +69,7 @@ def audit_exposure_declarations(trainer, vocabulary, alphabet=None):
     Unknown historical memberships are retained as unverified. This does not
     reconstruct missing masks or prove which gradients an optimizer applied.
     """
-    from ..training.trainer import Trainer, _model_contract
+    from ..training.trainer import Trainer, _governed_model_contract
     from .text_relations import RelationalTextSIRModel
     from .text_referents import ReferentTextSIRModel
     from .text_loci import LocusTextSIRModel
@@ -77,9 +77,7 @@ def audit_exposure_declarations(trainer, vocabulary, alphabet=None):
     if (not isinstance(trainer, Trainer) or type(trainer.model) not in
             (RelationalTextSIRModel, ReferentTextSIRModel, LocusTextSIRModel)):
         raise ValueError('canonical support-aware planner trainer required')
-    current_contract = _model_contract(trainer.model)
-    for field in ('governed_batch_schema_version', 'governed_objective_schema_version'):
-        current_contract[field] = getattr(trainer.model, field, None)
+    current_contract = _governed_model_contract(trainer.model)
     if current_contract != trainer.model_contract:
         raise ValueError('model contract changed since exposure was recorded')
     if vocabulary != trainer.model.vocabulary:
