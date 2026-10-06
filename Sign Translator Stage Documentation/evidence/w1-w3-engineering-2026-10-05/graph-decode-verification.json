@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2299 passed in 80.57s (0:01:20)",
+  "code_sha256": {
+    "signtranslator/planning/graph_decode.py": "44740ed8aec7bbd5a7f5ad95dd6491704d885adaf37924222c9367df0531f66d",
+    "tests/test_graph_decode.py": "8694a27873c21c1744dd59bb7d4413284a63dee967447b794dcf5f001240f530"
+  },
+  "verified_scope": "Diagnostic graph path; explicit threshold boundaries and dtype precision; spatial failures and ambiguous relation refusal; structural contradiction rejection without repair; immutable successful graph",
+  "phase_exit_approved": false,
+  "manual_handoffs": "all nine absent",
+  "not_proven": [
+    "automatic placement and absence decisions",
+    "larger-sequence decoding",
+    "training-support certification",
+    "calibrated inference or ASL meaning",
+    "real source and reviewer acceptance"
+  ]
+}

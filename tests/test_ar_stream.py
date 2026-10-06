@@ -88,3 +88,46 @@ def test_deterministic_replay():
     out2 = replay(s, render)
     assert torch.equal(out1, out2)                           # byte-identical
     assert out1.shape == (s.num_frames,)
+
+
+@pytest.mark.parametrize('field', ['scale_m_per_unit', 'frame_rate'])
+@pytest.mark.parametrize('value', [float('nan'), float('inf'), -float('inf'), True, '30'])
+def test_contract_rejects_invalid_numeric_metadata(field, value):
+    with pytest.raises(ValueError, match='finite positive'):
+        AvatarContract(**{field: value})
+
+
+@pytest.mark.parametrize('kwargs', [
+    {'handedness': 0}, {'handedness': 'left'},
+    {'skeleton_id': ''}, {'blendshape_basis_id': '   '},
+])
+def test_contract_requires_typed_handedness_and_named_bases(kwargs):
+    with pytest.raises(ValueError):
+        AvatarContract(**kwargs)
+
+
+@pytest.mark.parametrize('failure', ['empty', 'nan_clock', 'infinite_clock',
+                                      'duplicate_clock', 'nonfinite_pose', 'mutated_shape'])
+def test_replay_rejects_invalid_stream_before_callback(failure):
+    frames = {'empty': 0, 'nan_clock': 1, 'infinite_clock': 1}.get(failure, 4)
+    stream = _stream(T=frames)
+    if failure == 'nan_clock': stream.timestamps[0] = float('nan')
+    elif failure == 'infinite_clock': stream.timestamps[0] = float('inf')
+    elif failure == 'duplicate_clock': stream.timestamps[1] = stream.timestamps[0]
+    elif failure == 'nonfinite_pose': stream.gamma[0, 0] = float('nan')
+    elif failure == 'mutated_shape': stream.timestamps = torch.tensor(0.)
+    calls = []
+
+    def render(i):
+        calls.append(i)
+        return torch.tensor(i)
+
+    with pytest.raises(ValueError):
+        replay(stream, render)
+    assert calls == []
+
+
+def test_scalar_clock_is_a_shape_error():
+    with pytest.raises(ValueError, match=r'timestamps must be \(T,\)'):
+        ParameterStream(AvatarContract(), torch.tensor(0.), torch.zeros(1, 3, 6),
+                        torch.zeros(1, 3), torch.zeros(1, 2))

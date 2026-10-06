@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2405 passed in 85.65s",
+  "focused_tests": "29 passed in 0.86s",
+  "code_sha256": {
+    "signtranslator/planning/joint_spatial.py": "7e2b9635a0ad8725c62ccdad827dbc63dfa038295b85a29a4f33dff2666afc0e",
+    "tests/test_joint_spatial.py": "ed581faad13889c4fdc97fb089eded5b05d3eea6734f18d82e0afbc83c111242"
+  },
+  "profile_sha256": "d1fd35e48562172cdad587af146365ab77b286ebfdaf9ad79f5250dd94e1ad16",
+  "verified_scope": "Common integer scale preserves exact joint objectives, runner-up/ties and budget behavior; three retained probes replay identically; extreme rational exhaustive oracles",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "not_proven": [
+    "general or real-model latency guarantee",
+    "calibrated graph decisions",
+    "empirical W1-W3 acceptance"
+  ]
+}

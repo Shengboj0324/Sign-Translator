@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2393 passed in 85.48s",
+  "focused_tests": "38 passed in 1.28s",
+  "code_sha256": {
+    "signtranslator/planning/referent_evaluation.py": "823b0ec97c54da554c0ad71242596f2fcbca0ab86d47399d7ba91a89e955b7b8",
+    "signtranslator/planning/relation_evaluation.py": "45e8727a85428caf8e92f57c1b779fec0de113bd4e588bbe3c33afb50dd1c5d5",
+    "signtranslator/planning/source_intervention.py": "66ec4ffa7845e60530ae58e9f12e99d03f956fb72719a69db29b89523529e9b0",
+    "tests/test_referent_evaluation.py": "870e27f0ef055df7d2ceb29a594121e7d57e0bee0239f0a668f07ec028aa557e",
+    "tests/test_source_intervention.py": "edf0051e4503e0fe96c20a8db4a484397d0423d5571ce14ba26eea7478e843d7"
+  },
+  "fictional_report_sha256": "b071f087ac362c6bf031d33657690d34dbf05ddb923674f8d0272d98ef027ece",
+  "verified_scope": "Conditional known unordered referent pairs, renaming invariance, unknown support, stable scores and baseline snapshot protection; full regression includes preceding precision fix",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "not_proven": [
+    "transitive partition accuracy",
+    "calibration or independent statistical units",
+    "empirical W1-W3 acceptance"
+  ]
+}

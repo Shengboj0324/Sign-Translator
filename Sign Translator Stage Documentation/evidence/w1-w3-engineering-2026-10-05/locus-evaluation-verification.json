@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2402 passed in 85.80s",
+  "focused_tests": "45 passed in 1.05s",
+  "code_sha256": {
+    "signtranslator/planning/locus_evaluation.py": "9bba4b1a410a1d70c50c616830efc1b98e4d10172d1646b10d30da315acc98b6",
+    "signtranslator/planning/score_metrics.py": "2c1f490b18394830dcb59c7e75f65f000414188e035b1bd1721e8f594d0363d3",
+    "signtranslator/planning/relation_evaluation.py": "35ae1179cb7cc2324fc5237dec2df239ff064d13e71dfa08568be437f1562d21",
+    "signtranslator/planning/source_intervention.py": "6318fce5e6f8198c044515cf619951d458526a93fdc384f1e4b28a9ef6707488",
+    "tests/test_locus_evaluation.py": "8e6fd0300434aa5f2d5b28d8c24e389dd8b0ff60f091b1f18ac7262c97bddee8",
+    "tests/test_source_intervention.py": "d9459663567ef293ae066f4049908e8281bf9d53c653cbd2efcf53fea859539d"
+  },
+  "fictional_report_sha256": "150f2cdc742ed8ad8bd7e18b143ebc4061c749fcff25071a8310bf143ec968f3",
+  "verified_scope": "Known categorical loci, class support, stable NLL/multiclass Brier, unknown and failed-generation coverage, alphabet binding and baseline snapshot protection",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "not_proven": [
+    "placement/absence policy",
+    "physical locus geometry",
+    "spatial consistency or empirical W1-W3 acceptance"
+  ]
+}

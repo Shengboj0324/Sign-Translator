@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -o addopts='' -q -W error --tb=short",
+  "result": "2088 passed in 71.76s (0:01:11)",
+  "code_sha256": {
+    "signtranslator/data/multichannel.py": "a85cc9d2f840bcd50c2e320d9e4bb5d5bcb6be1a49f3a33b43880807daef7ce2",
+    "signtranslator/data/governed_motion.py": "a171b9d73d90dfb160b1beee557f5a6737d5c3778295fdf9028f380b7517ae71",
+    "signtranslator/data_engineering/state_ingestion.py": "a4a2a7f07c5e16046047b7cd902c69f2026039f880c1a0f15836ac1981d008fa",
+    "tests/test_data_multichannel.py": "cf20ea5bd20a654f4215a415b8d839bfd5bc6679978d514631a0189b33810d8b",
+    "tests/test_governed_motion.py": "a4f5cdb8b119b3ce761ac0a90edfecf09a34b9a91c698cdd9fb25b17346bd4a6"
+  },
+  "manual_handoffs": "all nine absent as explicitly instructed",
+  "phase_exit_approved": false,
+  "validated_scope": "Synthetic structural, identity, permission-binding, temporal and regression checks",
+  "remaining": [
+    "corpus-wide admission and split checks",
+    "typed model training integration",
+    "actual source, calibration and human acceptance"
+  ]
+}

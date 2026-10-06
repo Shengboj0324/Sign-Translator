@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2346 passed in 83.20s",
+  "focused_tests": "41 passed in 8.49s",
+  "code_sha256": {
+    "signtranslator/training/trainer.py": "d2cc6a48cfb86a959956865a50505f6e5128dcb3e33808f5cad682dc48af097c",
+    "tests/test_best_checkpoint.py": "fb1eda6d2480512173652f7f08ce2096dbc3ae7e594087033185298b3bb80f39",
+    "tests/test_trainer.py": "f62f140748bb5dc94fd6f98560a58da192b88f2c5357fab3262eb230f203c122"
+  },
+  "verified_scope": "Schema 3 preserves independent best weights through resume with later worsening validation; prevalidation absence and explicit schema-2 weights warm starts",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "not_proven": [
+    "exact MPS checkpoint resume",
+    "empirical W1-W3 acceptance"
+  ]
+}

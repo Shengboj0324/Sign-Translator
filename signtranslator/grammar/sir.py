@@ -313,21 +313,32 @@ def validate_sir(graph: SIRGraph, num_loci: Optional[int] = None,
             a, b = valid_events[edge.source], valid_events[edge.target]
             if a.referent is None or b.referent is None or a.referent != b.referent:
                 violations.append("coref_referent_mismatch")
+        if isinstance(edge, SIREdge) and edge.type is EdgeType.LOCUS \
+                and edge.target in valid_events:
+            if not exact_nonnegative_int(valid_events[edge.target].locus):
+                violations.append("locus_target_missing")
 
-    # 6. loci in range and distinct per referent
-    if isinstance(num_loci, int) and not isinstance(num_loci, bool) and num_loci >= 1:
-        placed: Dict[int, int] = {}          # locus -> referent
-        for e in graph.events:
-            if isinstance(e, SIREvent) and exact_nonnegative_int(e.locus):
-                locus = cast(int, e.locus)
-                if not 0 <= locus < num_loci:
-                    violations.append("locus_out_of_range")
-                ref = cast(int, e.referent) \
-                    if exact_nonnegative_int(e.referent) else None
-                if locus in placed and ref is not None and placed[locus] != ref:
-                    violations.append("locus_collision")
-                elif ref is not None:
-                    placed[locus] = ref
+    # 6. A graph has one persistent, injective referent-to-locus mapping.
+    # Its schema has no reset/rebinding operation. Missing fields are unknown,
+    # not a license to erase earlier known placements. Only range needs capacity.
+    placed: Dict[int, int] = {}          # locus -> referent
+    referent_loci: Dict[int, int] = {}  # referent -> locus
+    bounded_loci = isinstance(num_loci, int) and not isinstance(num_loci, bool) and num_loci >= 1
+    for e in graph.events:
+        if not isinstance(e, SIREvent) or not exact_nonnegative_int(e.locus):
+            continue
+        locus = cast(int, e.locus)
+        if bounded_loci and locus >= num_loci:
+            violations.append("locus_out_of_range")
+        if not exact_nonnegative_int(e.referent):
+            continue
+        ref = cast(int, e.referent)
+        if locus in placed and placed[locus] != ref:
+            violations.append("locus_collision")
+        if ref in referent_loci and referent_loci[ref] != locus:
+            violations.append("referent_locus_changed")
+        placed.setdefault(locus, ref)
+        referent_loci.setdefault(ref, locus)
 
     # 7. hallucination rule (manual events in the lexicon or fingerspelled)
     if lexicon is not None:

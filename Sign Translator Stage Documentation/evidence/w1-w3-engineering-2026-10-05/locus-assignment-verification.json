@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2283 passed in 79.82s (0:01:19)",
+  "code_sha256": {
+    "signtranslator/planning/locus_assignment.py": "6484d7f39eeb48133d794133ab7430a11a747122bcb9f21775fd8bc793965323",
+    "tests/test_locus_assignment.py": "6851783f3646cd9fb786ec3899424249c0985394c329f8df21e8b77e39237d43",
+    "tests/test_text_loci.py": "0a5d2ebbc5291771277987dc47263663bebafa2c4e00c2edfe8c706fa0de717d"
+  },
+  "verified_scope": "Exact rectangular optimum and runner-up against permutation oracle; same-reference aggregation; injectivity; unknown/unplaced mask handling; exact numerical extremes; budget exhaustion; trained-score integration",
+  "phase_exit_approved": false,
+  "manual_handoffs": "all nine absent",
+  "not_proven": [
+    "automatic placement and absence decisions",
+    "joint reference/locus optimization",
+    "physical calibration",
+    "calibrated ASL meaning",
+    "real source and reviewer acceptance"
+  ]
+}

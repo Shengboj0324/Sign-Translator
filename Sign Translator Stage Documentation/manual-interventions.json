@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "recorded_on": "2026-10-05",
+  "basis": "User explicitly states the manual interventions are not present; fill only when the user supplies or identifies them.",
+  "phase_exit_approved": false,
+  "items": [
+    {
+      "id": "M01",
+      "requirement": "continuous_coobserved_source",
+      "status": "absent",
+      "evidence": null
+    },
+    {
+      "id": "M02",
+      "requirement": "action_bound_research_permission",
+      "status": "absent",
+      "evidence": null
+    },
+    {
+      "id": "M03",
+      "requirement": "qualified_creation_review_adjudication",
+      "status": "absent",
+      "evidence": null
+    },
+    {
+      "id": "M04",
+      "requirement": "accepted_pilot_scope_qc",
+      "status": "absent",
+      "evidence": null
+    },
+    {
+      "id": "M05",
+      "requirement": "independent_units_study_design",
+      "status": "absent",
+      "evidence": null
+    },
+    {
+      "id": "M06",
+      "requirement": "real_signing_rig_qualification",
+      "status": "absent",
+      "evidence": null
+    },
+    {
+      "id": "M07",
+      "requirement": "cokely_primary_hd_recovery",
+      "status": "absent",
+      "evidence": null
+    },
+    {
+      "id": "M08",
+      "requirement": "commercial_lineage",
+      "status": "absent",
+      "evidence": null
+    },
+    {
+      "id": "M09",
+      "requirement": "capacity_and_target_hardware",
+      "status": "absent",
+      "evidence": null
+    }
+  ],
+  "interpretation": "Absent means the requested handoff is not supplied. Existing source candidates, partial assets, code and synthetic tests remain available but do not fill these handoffs. Cokely is source-specific; commercial lineage is separate from research. This register is documentation, not an authorization bypass."
+}

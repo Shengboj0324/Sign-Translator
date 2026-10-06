@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -o addopts='' -q -W error --tb=short",
+  "result": "2253 passed in 78.41s (0:01:18)",
+  "code_sha256": {
+    "signtranslator/training/objectives.py": "bc48385629aa5200b2afea0ec5d906b2d69c10655f3ed0d6b1c6181010dfed8f",
+    "signtranslator/training/trainer.py": "ffb9b434cfb858facc33fd04bc743dd607eb43a2b1d9f216ea85c89ddc345fee",
+    "signtranslator/planning/relations.py": "ff6ab70d600da9077f3465746290fb71a5e9c0f619c6915fcfee533d7b714060",
+    "signtranslator/planning/text_relations.py": "736dcd754d1375fb0f4c75cd405e8be8f0f50e87010d9b67cf52f886e29690d1",
+    "tests/test_supported_objectives.py": "2200e9ff21728095173de8fc690ec7f33939babf5a074a976b6e8b98a903c56b",
+    "tests/test_supported_trainer.py": "9aacf10773adcd9fe04f74bc3c337987384a72205a103761982c5cf0d520079a",
+    "tests/test_text_sir_labels.py": "901674e89ce3b1b5836267ba3c22c3aff369435c499b470ec71cdeb67b8ea392"
+  },
+  "verified_scope": "Support-aware full-population joint objectives; conditional branch reports and support counts; unavailable metric rejection; unsupported exclusive-head Adam state preservation; exact mixed-support CPU resume",
+  "phase_exit_approved": false,
+  "manual_handoffs": "all nine absent",
+  "not_proven": [
+    "complete SIR graph generation",
+    "referent/locus prediction or calibrated edge threshold",
+    "relation-time candidate acceptance",
+    "held-out ASL meaning or generalization",
+    "real-source or reviewer acceptance",
+    "accelerator or distributed-training parity"
+  ]
+}

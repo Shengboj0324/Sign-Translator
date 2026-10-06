@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2370 passed in 85.43s",
+  "focused_tests": "14 passed in 0.96s",
+  "code_sha256": {
+    "signtranslator/planning/temporal_evaluation.py": "c99a7a7db23e09aa23924afbc25cad03f72126edf83091bcbcdd9bf43caaf746",
+    "signtranslator/planning/source_intervention.py": "87b9877cb9052a5ca1acc966d606dc29b9ca45f5bbbedb51b1dca04b95cafe5c",
+    "tests/test_temporal_evaluation.py": "d666f3a331670154eb863dbf5a56a3783821a67fa246beb0af9ace0008ab9e38",
+    "tests/test_source_intervention.py": "62100e2e607aa6b37a162930fcc4b6ef00fe6a688acb0260785a784430907b54"
+  },
+  "fictional_report_sha256": "b2efa1292af463b550dde57a499f19f7337204c8cbb7d72c747357f818c347d8",
+  "verified_scope": "Conditional exact-label timing coverage; rational endpoint MAE and interval IoU; extreme coordinates and original-source integration",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "not_proven": [
+    "semantic event correspondence",
+    "physical clock calibration",
+    "ASL accuracy or empirical W1-W3 acceptance"
+  ]
+}

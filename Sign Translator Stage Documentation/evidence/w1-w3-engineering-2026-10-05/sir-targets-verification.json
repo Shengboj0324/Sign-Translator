@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "result": "2115 passed in 71.91s (0:01:11)",
+  "command": ".venv/bin/python -m pytest -o addopts='' -q -W error --tb=short",
+  "code_sha256": {
+    "signtranslator/planning/tensors.py": "dbde210fb6c293a1ead3c2c302b18fb5aa454c0729818ce52f0c664a03530ad3",
+    "signtranslator/data/governed_corpus.py": "ea12585b11890909c5706b66f30ad0305739c3b78d6f1ed56d2de2b6414b1987",
+    "tests/test_sir_tensors.py": "306d65a2a18250d490a52946f13fdd5886b0d5cac98abef44d3201ea3e7f2801",
+    "tests/test_governed_corpus.py": "079516ea80b59d1385ea1e7bd406b19fd8e4b3ebd4ae36348ebd64fc328c2dbc"
+  },
+  "verified": "Exact canonical SIR graph hash round-trip through typed targets; all event/edge types; numeric rejection and integration regression",
+  "manual_handoffs": "nine absent",
+  "phase_exit_approved": false,
+  "remaining": [
+    "explicit lexical coverage",
+    "typed objectives and model",
+    "typed training route",
+    "real source/calibration/human validation"
+  ]
+}

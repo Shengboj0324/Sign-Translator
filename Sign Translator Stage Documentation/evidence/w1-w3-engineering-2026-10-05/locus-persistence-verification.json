@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2288 passed in 81.72s (0:01:21)",
+  "code_sha256": {
+    "signtranslator/grammar/sir.py": "f4b3daaa7f958b11cd9e11d12ee0df011d3d08a870bb461719707e11811fec5b",
+    "tests/test_sir_locus_persistence.py": "d8f22bf40e0d15ff0f9455e54d75286dbf9ccd75fc76d5a5b16714cb6011bcb0",
+    "docs/GRAMMAR_SIR.md": "84e1b6a8f521b7d03c942b847fbb9ba19edece16502dfce50bfd9d570c0bec76"
+  },
+  "verified_scope": "Persistent and injective known locus mapping with and without alphabet capacity; order invariance; unknown preservation; canonical serialization and direct candidate refusal",
+  "phase_exit_approved": false,
+  "manual_handoffs": "all nine absent",
+  "not_proven": [
+    "explicit locus reset/rebinding semantics",
+    "automatic placement and absence decisions",
+    "joint reference/locus optimization",
+    "physical calibration",
+    "calibrated ASL meaning",
+    "real source and reviewer acceptance"
+  ]
+}

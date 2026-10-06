@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2329 passed in 81.79s",
+  "focused_tests": "18 passed in 0.81s",
+  "code_sha256": {
+    "signtranslator/planning/inference_context.py": "5a0299ede86a548657d85cc86d17205c10aaf088f58799ccf86f30ed4716c3bd",
+    "signtranslator/planning/text_sequence.py": "25cf376f65b96328a089c1bfb7144e5d1d1d1e3a54806140cfc0663e27d833ef",
+    "signtranslator/planning/text_timing.py": "d071b591cd45fe2223ef31d9f73ad26bd310dc41273f84ed1850ca420515ae64",
+    "signtranslator/planning/text_relations.py": "5fd6aca9b59292f348d76ffc80288900991440eb377de162e1ebfc416fbe5915",
+    "signtranslator/planning/text_referents.py": "278f28becdb09ba4600125983b5bf02cfc1f283cb8b5e38ab8e739d4cc56185b",
+    "signtranslator/planning/text_loci.py": "96cddb64f45e11f264709b2a8da2cfeb3d8daba7908fe66ea39592d9722cfc55",
+    "signtranslator/planning/source_intervention.py": "1ee23ef157092782a55c8261f219067359acc3026406d7d6869e8fd7dd7912d7",
+    "tests/test_inference_context.py": "05be7278238dae2a906bba08c7299367c11f87b9d6f71ecea0ffc15a73a5faed"
+  },
+  "verified_scope": "Mixed module mode restoration across five generation layers and intervention runner on success, nested failure and evaluation-entry failure",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "not_proven": [
+    "arbitrary custom train/eval side effect rollback",
+    "parameter mutation rollback",
+    "empirical W1-W3 acceptance"
+  ]
+}

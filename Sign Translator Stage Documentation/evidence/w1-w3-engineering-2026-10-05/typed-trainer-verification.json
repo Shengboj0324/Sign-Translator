@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -o addopts='' -q -W error --tb=short",
+  "result": "2161 passed in 72.43s (0:01:12)",
+  "code_sha256": {
+    "signtranslator/config.py": "1d7c7f117723c2a7b32b8f8a62a658ea6c5dab85948f9186c4a0d2efb3701c0c",
+    "signtranslator/training/trainer.py": "970411bb81867453b6f6c7d2f201fed174e52e4fee3d18a8dfa5aef4f2227642",
+    "signtranslator/data/governed_corpus.py": "577249250eaf44bfc835f340c40735833dc81625770a1bcdd430609ebe197e0c",
+    "tests/test_governed_trainer.py": "3f1e4dc74edd178e35fafe3155003cb9bd0de9314aff75f6acead42ee8fd76d0"
+  },
+  "verified_scope": "Typed trainer transport and canonical collation; admitted split/corpus checkpoint binding; scalar mechanical optimizer test; analytical unequal-batch aggregation; exact CPU epoch-boundary resume and legacy regression",
+  "phase_exit_approved": false,
+  "manual_handoffs": "all nine absent",
+  "not_proven": [
+    "trained ASL model",
+    "real source/reviewer acceptance",
+    "GPU or MPS numerical parity",
+    "custom or distributed sampling",
+    "free-generation event timing graph or motion prediction"
+  ]
+}

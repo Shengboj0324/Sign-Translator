@@ -191,8 +191,11 @@ class TrainerConfig(SerializableConfig):
     ckpt_path: Optional[str] = None
 
     def __post_init__(self) -> None:
-        if self.selection_metric not in {"generation", "planner", "recognition", "speech", "alignment"}:
-            raise ValueError("selection_metric must name a branch loss to minimize")
+        if (not isinstance(self.selection_metric, str)
+                or not self.selection_metric.isascii()
+                or not self.selection_metric.isidentifier()
+                or self.selection_metric == "total"):
+            raise ValueError("selection_metric must name a branch loss to minimize, not total")
         for name in ("epochs", "batch_size", "val_every"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value <= 0:

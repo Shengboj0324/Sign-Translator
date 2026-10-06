@@ -53,6 +53,16 @@ provide.
 7. every manual event is a lexicon entry or fingerspelled (the hallucination
    rule, inherited).
 
+In the stored edge representation, `LOCUS.target` is an event ID; that event
+must carry an explicit nonnegative `locus` field. A missing target locus is a
+structural violation, including when no alphabet size is supplied. When
+`num_loci` is supplied, range is also checked. Distinct known referents cannot
+share a locus, and one known referent cannot change its known locus within a
+graph, regardless of whether capacity is supplied. The current schema has no
+explicit reset/rebinding operation. Missing fields remain unknown and do not
+erase other events' known assignments. These are this representation's
+constraints, not a claim that all ASL discourse prohibits spatial reassignment.
+
 ### 2.2 Manual labels as a projection
 
 A manual-label sequence is the **manual events in a linear order consistent with the

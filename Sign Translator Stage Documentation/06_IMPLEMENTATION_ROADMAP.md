@@ -1,5 +1,1217 @@
 # 06 — Implementation Roadmap
 
+## W1–W3 engineering continuation — 2026-10-05
+
+The user has explicitly declared all nine manual handoffs absent. Their current
+machine-readable inventory is `manual-interventions.json`; evidence fields are
+null. Update them only when the user supplies or identifies the corresponding
+handoff, then validate it through the existing evidence gates. Absence does not
+erase existing partial assets, nor does this inventory authorize training.
+
+Implemented the canonical motion tensor collator in
+`signtranslator/data/multichannel.py`, exported through `signtranslator.data`.
+It supports a real PyTorch DataLoader interface and variable-length samples while
+retaining all 11 channels, original float64 clocks, channel-specific numeric
+dtypes, labels, coordinate frames, conventions and per-sample source provenance.
+Padding is explicit, zero-filled and excluded from supervision. Rejected observed
+measurements remain distinct from valid inference; default weights use only valid
+observed values. Layout or dtype mismatches require explicit upstream adaptation.
+Every mutable source state is revalidated, and tensor storage does not alias it.
+
+Validation: 34 focused tests passed across canonical batching, canonical state and
+action-scope policy. These are synthetic contract tests, not ASL or source approval.
+The collator now connects to the explicit typed Trainer route described below.
+The default executable model remains the legacy synthetic path; no accepted
+governed ASL model or empirical training corpus is implied.
+
+Next implementation order:
+
+1. W3: extend search profiling beyond the three fixed mixed-sign probes and
+   implement calibrated complete graph decisions, including evidence-backed
+   placement/unknown decisions. Exact integer-scaled joint search is now profiled;
+   complete accepted graph decoding remains open.
+2. W3: use the completed source-intervention and five-head diagnostic paths to
+   characterize errors when an admitted real pilot becomes available; implement
+   calibrated ambiguity/unknown refusal without inferring acceptance from synthetic
+   tests. Full canonical-motion generation objectives belong to W4/W5.
+3. W1: bind supplied evidence to the admission path when available. Keep all
+   current manual entries absent and empirical W1/W2/W3 acceptance unapproved.
+
+### Governed temporal SIR and motion pairing
+
+`signtranslator/data/governed_motion.py` now loads canonical motion alongside an
+existing `GovernedSIRAnnotation`. It reconstructs the annotation to validate its
+review/content bindings, checks actual video/transcript/authorization bytes, and
+uses the same Phase-2 state eligibility validator as export. No gloss projection,
+Cartesian conversion, interpolated label or fabricated clock is introduced.
+
+An explicit, hash-bound alignment JSON document is required with exactly these
+fields: `schema_version` (integer 1), `sample_id`, `source_recording_id`,
+`motion_sha256`, `annotation_sha256` (the complete annotation manifest identity),
+`video_sha256`, `clock_id`, `scale`, `offset_seconds`,
+`interval_start_seconds`, and `interval_end_seconds`.
+The recorded transformation is `annotation_time = scale * motion_time + offset`.
+Scale must be finite and positive; the mapped float64 clock must remain finite
+and strictly increasing even after floating-point rounding. The explicit interval
+must contain all source timestamps and complete SIR event intervals. It is not
+estimated from the final frame or an assumed frame rate.
+
+The returned pair retains the complete governed SIR, including graph edges,
+nonmanual events and original lexical identities. Event/frame membership uses
+the exact half-open rule `start <= time < end`. Events shorter than a sampling
+interval remain present even when their membership row has no frames. Membership
+is point sampling, not frame exposure or a duration-weighted loss.
+
+Validation: 170 focused tests passed across pairing, canonical batching/state,
+action-scope policy and Phase-3 governance/adjudication/evidence. New tests use
+explicitly fictional permission and review fixtures. Hash consistency does not
+establish physical clock calibration, qualified human review or phase acceptance.
+The returned in-memory pair is an integration component, not a full admitted
+training corpus; corpus-wide split checks and a model consuming these typed
+targets remain required. All nine manual handoffs remain absent.
+
+Full regression after this integration: **2,088 passed in 71.76 seconds**, warnings
+treated as errors. The log and code hashes are recorded under
+`evidence/w1-w3-engineering-2026-10-05/`.
+
+### Corpus admission and governed DataLoader path
+
+`signtranslator/data/governed_corpus.py` adds `GovernedMotionRecord`,
+`GovernedMotionCorpus`, split dataset views and `collate_governed_motion`.
+Submit the complete intended train/validation/test population to one corpus
+before requesting split views. Admission snapshots the supplied records and
+checks all pairs against real file bytes and the scoped policy. It rejects
+duplicate sample identities, mixed annotation lexicons/conventions, signer or
+recording split leakage, and incompatible motion layouts/dtypes anywhere in the
+submitted population, including between separately loaded splits.
+
+Identical video, motion archive or valid native-motion source bytes cannot cross
+splits under renamed identifiers. Grouping native archives is conservative: if
+one file contains multiple independent recordings, a reviewed recording-level
+source map is needed before finer separation is justified. Admission does not
+establish independence of unsubmitted data or prove statistical power.
+
+The corpus has a content identity binding ordered samples, splits, annotations,
+motion, alignment, recorded consent, action authorizations and source policy
+claims. The manifest explicitly keeps `phase_exit_approved` false. Constructor
+inputs are copied, so later caller mutation cannot silently alter the admitted
+split. Changed consent decisions require a newly admitted snapshot.
+
+Dataset items are references rather than cached mutable target tensors. The
+collator re-reads and checks their source/evidence files, rejects mixed admissions
+or splits, and returns the complete governed annotations, canonical motion batch,
+annotation clocks and event/frame membership. Temporal padding is explicit and
+excluded from membership and supervision; events themselves are never padded
+into fabricated lexical labels. Repeated reads cannot inherit mutations to a
+previous batch's tensors. The intended use is:
+
+```python
+from torch.utils.data import DataLoader
+from signtranslator.data.governed_corpus import (
+    GovernedMotionCorpus, collate_governed_motion,
+)
+
+# records, sources and authorizations must be supplied and validated;
+# the nine manual handoffs are currently absent, so no real corpus is admitted.
+corpus = GovernedMotionCorpus(records, sources=sources, authorizations=authorizations)
+train_loader = DataLoader(corpus.split("train"), batch_size=4,
+                          collate_fn=collate_governed_motion)
+```
+
+Focused verification: 83 tests passed across corpus/pair loading, canonical
+batching and source/supervision policy. Fixtures remain explicitly fictional.
+The typed model objectives and active training route are still
+required; the new dataset is not an assertion that the legacy model consumes SIR
+or complete canonical motion.
+
+Full regression after corpus integration: **2,105 passed in 71.89 seconds**,
+with warnings treated as errors. Evidence: `corpus-regression.txt` and
+`corpus-verification.json` under `evidence/w1-w3-engineering-2026-10-05/`.
+
+### Lossless model-facing SIR graph targets
+
+`signtranslator/planning/tensors.py` provides `tensorize_sir_annotations` and
+versioned `SIRTargets`, now included as `sir_targets` in each governed motion
+batch. It validates annotation/review bindings and exact expected lexicon and ASL
+convention identity. The representation retains event IDs, raw lexical/marker
+IDs, all four event kinds, float64 interval endpoints, optional referents/loci,
+and all five edge relations. Edge endpoints are explicitly mapped to dense event
+rows; original event IDs remain separately available. Codebook ordering is part
+of tensor schema version 1.
+
+Event/edge padding uses -1 integer sentinels and boolean validity masks. Referent
+and locus presence have their own masks so ID zero cannot be mistaken for absent
+information. Empty edge sets are supported without invented graph structure.
+Integers exceeding int64 and intervals with overflowing float64 durations fail
+explicitly. Labels are never assumed to be contiguous embedding indices; there
+is no automatic vocabulary construction or unknown-label substitution.
+
+Tests reconstruct the exact canonical SIR content hash from the tensors for all
+event/edge types, including non-contiguous IDs, zero references, mixed lengths and
+empty edge axes. Additional cases reject vocabulary mismatches and numeric
+overflow. Fifty-one focused graph/corpus/pair tests passed. These remain fictional
+governance fixtures, not accepted human annotations. The nine manual handoffs
+remain absent. Learned prediction heads, declared coverage and losses are the
+next integration work; graph tensorization alone is not a trained ASL planner.
+
+Full regression after SIR target integration: **2,115 passed in 71.91 seconds**,
+warnings treated as errors. The log and code hashes are in
+`sir-targets-regression.txt` and `sir-targets-verification.json` under the October 5
+W1–W3 evidence directory. The existing trainer still takes dictionary batches
+with legacy gloss/Cartesian targets, so active training requires an explicit
+typed interface rather than an implicit conversion into those legacy fields.
+
+### Explicit lexical coverage and aligned categorical objective
+
+`signtranslator/planning/label_vocabulary.py` implements a governed vocabulary
+whose exact immutable bytes must match the annotation's lexicon artifact hash.
+The JSON schema requires exactly `schema_version` (integer 1), `artifact_id`,
+`version`, `convention_sha256`, and a nonempty `entries` list. Each entry has
+`kind`, nonnegative int64 `label_id`, and an explicit nonblank `identity`.
+Entry order fixes classifier columns. The pair `(kind, label_id)` and each
+kind-scoped identity must be unique. This is a versioned project lexicon format;
+external dictionaries must be governed and mapped explicitly, not treated as
+already compatible just because they contain sign labels.
+
+Encoding reconstructs targets from the immutable reviewed SIR payload. It checks
+the exact lexicon/convention binding and refuses every uncovered active label,
+including nonmanual markers. The same numeric ID in different event kinds is
+not interchangeable. Padding alone maps to -1; there is no unknown fallback or
+data-derived vocabulary expansion.
+
+`aligned_sir_label_loss` consumes typed logits bound to the vocabulary hash and
+ordered annotation hashes. Its objective is the arithmetic mean over examples
+of each example's mean categorical negative log likelihood over real events:
+`L = (1/B) sum_b [(1/n_b) sum_e -log p_b,e(target_b,e)]`.
+Padding contributes neither loss nor gradient. This weighting gives each example
+equal weight rather than weighting longer annotations more heavily. Scores must
+be finite float32/float64 of exact shape; objective overflow is also rejected.
+
+The event scaffold is supplied. This objective does not predict missing events,
+edges, timing, references, motion or full ASL meaning and must not be reported as
+a free-generation planner metric. It is a component for subsequent typed model
+integration. The existing full graph and motion targets remain intact.
+
+Focused verification: 46 tests passed across lexical coverage, typed graph
+targets and corpus admission. Checks include namespace-specific refusal,
+duplicate JSON keys, byte/schema binding, a hand-calculated unequal-length loss,
+zero padding gradients, float64 numerical gradient agreement, a decreasing
+optimization objective, and explicit overflow rejection. All evidence is
+fictional test material; the nine manual handoffs remain absent.
+
+Full regression after lexical coverage/objective work: **2,134 passed in 70.71
+seconds**, with warnings treated as errors. Logs and exact code identities are
+saved as `lexical-objective-regression.txt` and
+`lexical-objective-verification.json` in the October 5 W1–W3 evidence directory.
+
+### Typed trainer and checkpoint integration
+
+`Trainer` now accepts governed dataset views through the canonical revalidating
+collator when the model explicitly declares `governed_batch_schema_version = 1`.
+The model receives the full `GovernedMotionBatch`, including motion, graph,
+annotations, clocks, masks and provenance. `move_governed_batch` transports all
+tensor fields without casting. Devices that cannot retain float64 must fail
+rather than silently narrow the clocks or intervals. Transport itself is not
+admission or a claim that arbitrary mutable tensors are trustworthy.
+
+Training and validation must use their named partitions of the same complete
+admitted corpus. Dataset views validate unique in-range indices and partition
+membership. Their ordered indices and corpus hash enter the checkpoint data
+contract. Noncanonical collators, mixed legacy/governed loaders, wrong partitions
+and post-construction loader-contract drift are rejected. The initial interface
+supports standard full-view sampling with global RNG, without replacement;
+validation is sequential and cannot drop the last batch. Custom weighted or
+distributed designs require a separately declared estimand and resumable state.
+
+Typed models return scalar per-example-mean branch losses plus `total`. Epoch
+reports weight each batch mean by its actual sample count, preserving a short
+last batch. Loss fields must remain constant across batches. Validation uses the
+typed path rather than a model's legacy loader hook, with isolated RNG and restored
+model mode. Checkpoint selection accepts explicit ASCII identifier branch names;
+the weighted `total` remains excluded and unavailable metrics still fail.
+Existing finite-loss/gradient and optimizer guards remain active.
+
+Resume binds the exact corpus/view in addition to the existing model, runtime,
+implementation, configuration and artifact contracts. Compatibility checks now
+precede model-weight loading, so a corpus mismatch cannot modify weights before
+rejection. Weight-only loading remains a distinct explicit operation. The existing
+checkpoint restriction requiring zero training loader workers remains applicable.
+
+Fifty-one focused tests passed across governed training, corpus admission and
+legacy trainer regression. The new optimizer probe is a scalar mechanical test,
+not a shipped ASL model. It establishes actual optimizer execution, analytical
+unequal-batch aggregation, exact CPU epoch-boundary resume, preserved tensor
+dtypes/bindings and rejection before optimization when evidence changes. All nine
+manual interventions remain absent. Model heads, accepted human evidence and
+empirical phase acceptance remain open.
+
+Full regression after typed trainer integration: **2,161 passed in 72.43 seconds**,
+with warnings treated as errors. Code hashes and the complete log are retained in
+`typed-trainer-verification.json` and `typed-trainer-regression.txt` under the
+October 5 W1–W3 evidence directory.
+
+### Bound source text and scaffolded text-conditioned label model
+
+The governed pair loader previously verified a transcript digest but discarded
+its bytes, leaving no source-language input for a direct model. It now reads a
+bounded, regular non-symlink transcript once, hashes that same read and retains
+the immutable payload through the pair and collated batch. The per-sample limit
+is one MiB. The corpus annotation identity already binds the transcript digest;
+changing a file after admission is rejected on subsequent collation. Payload
+retention does not infer the transcript format or relabel English as gloss.
+
+`signtranslator/data/governed_text.py` adds an explicitly declared
+`utf-8-plain-bytes-v1` adapter. It reconstructs reviewed annotation bindings,
+checks the actual payload hash, decodes strictly and rejects blank or oversized
+input. The configured model limit is a positive integer of at most 65,536 bytes;
+there is no truncation. Byte b maps to integer b+1, with zero reserved for padding.
+Case, whitespace and multibyte Unicode spelling are retained exactly. This fixed
+alphabet is neither a learned word vocabulary nor a source-to-ASL mapping.
+Structured transcript formats need a separate explicit extraction contract and
+corresponding source/review evidence. A caller declaration alone does not prove
+that arbitrary bytes have the claimed source semantics.
+
+`signtranslator/planning/text_labels.py` adds `ScaffoldedTextSIRLabelModel`:
+a byte embedding, length-aware GRU, learned event-position queries and a classifier
+over the explicit governed kind/label entries. Its forward inputs are source byte
+IDs, source lengths and supplied event counts. No target label, event kind, graph
+edge, interval or motion tensor enters that encoder. Event count and canonical
+event order are supplied scaffolding, so this model does not recover missing
+events, timing, references, scopes, graph edges or motion. It emits raw scores;
+no calibrated refusal policy or accepted inference decoder is asserted.
+
+The model uses the existing aligned per-example categorical objective and the
+typed Trainer path. Set `loss_weights={"sir_labels": 1.0}` and
+`selection_metric="sir_labels"` explicitly; legacy branch weights are rejected.
+Its serializable model configuration binds architecture, source encoding,
+capacity and lexicon/convention hashes into the checkpoint model contract.
+Reordering same-sized vocabulary classes changes the contract and cannot silently
+reuse a checkpoint. Runtime vocabulary replacement is also rejected.
+
+Eighty-two focused checks passed across the text model, source adapter, governed
+trainer and lexical objective. A real Trainer optimization on fictional fixtures
+reduces this model's label objective, and checkpoint restoration reproduces its
+validation result. Source-order changes affect raw scores; source padding leaves
+them unchanged; padding receives no embedding gradient. Corrupting cached target
+and motion tensors does not change this text-only loss because its targets are
+reconstructed from immutable annotations. These tests show engineering behavior,
+not learned linguistic meaning, video dependence or generalization. A text-only
+baseline must remain visibly distinct from any later multimodal result.
+
+All nine manual handoffs remain absent. No real governed corpus, permission,
+qualified review, calibrated inference decision or empirical phase acceptance
+was created by this implementation.
+
+Full regression after source-text and label-head integration: **2,197 passed in
+72.47 seconds**, warnings treated as errors. The exact log and code hashes are
+in `text-labels-regression.txt` and `text-labels-verification.json` under the
+October 5 W1–W3 evidence directory.
+
+### Variable-length kind and label prediction with an explicit stop
+
+`signtranslator/planning/label_sequence.py` constructs shifted teacher inputs and
+sequence targets from the immutable governed
+annotations and fixed vocabulary. Decoder input IDs use padding=0, start=1 and
+lexical class i mapped to i+2. Output classes use stop=0 and lexical class i
+mapped to i+1; output padding alone is -1. Every annotation contributes all of
+its kind/label entries and exactly one stop target. Kind namespaces remain
+distinct. Canonical event-row order is serialization order, not temporal
+precedence; a nonmanual entry must not be flattened into a manual gloss token.
+
+The objective is the mean across examples of each example's mean negative log
+likelihood over its labels **and stop**. Formally, with n_b labels,
+`L = (1/B) sum_b [(1/(n_b+1)) sum_(s=0..n_b) -log p(y_b,s | text_b, y_b,<s)]`.
+Padding has neither a loss nor a gradient. Logits are bound to vocabulary and
+ordered annotation identities; shape/dtype, finite-value and overflow checks
+remain explicit. The stop target trains length decisions; teacher-forced NLL
+is not free-running sequence accuracy or comprehension evidence.
+
+`signtranslator/planning/text_sequence.py` adds
+`AutoregressiveTextSIRLabelModel`: a byte GRU encoder and causal label GRU decoder
+with an explicit stop output. It consumes the existing source-text adapter,
+governed corpus and typed Trainer. Configure only
+`loss_weights={"sir_sequence": 1.0}` and
+`selection_metric="sir_sequence"`. Architecture, capacity, source encoding and
+vocabulary/convention identities remain bound in the checkpoint model contract.
+The shared source encoder retains strict byte/padding checks for both this model
+and the previous scaffolded diagnostic baseline.
+
+Greedy `generate(source_ids, source_lengths)` takes no reference annotation,
+target label sequence or event count. It returns uncalibrated kind/label
+candidates. A stop at the first step returns `empty_prediction` with no usable
+labels. Failure to stop within the configured event capacity returns
+`capacity_exceeded`, also with no usable labels; a diagnostic prefix is retained
+separately. An extra decoding step permits a stop after exactly max_events labels.
+No missing stop is manufactured. Nonfinite scores raise an error, and generation
+restores the caller's model mode. `terminated` means only that a nonempty label
+sequence ended with an actual model stop prediction.
+
+The model does **not** yet predict event IDs, intervals, graph relations,
+referents/loci or motion, and its output is not a `SIRGraph`. It has no calibrated
+semantic/OOD rejection rule. Unknown supervised vocabulary entries are refused
+by target encoding; that training coverage check must not be reported as inference
+abstention. The text-only route remains a comparison baseline for later
+multimodal evidence rather than a claim of video-dependent learning.
+
+Thirty-one focused sequence and text-model checks passed. They include an
+analytical unequal-length NLL with a stop gradient, numerical gradient agreement,
+zero padding gradient, causal isolation from future teacher labels, exact source
+padding invariance, valid stopping at capacity, empty/missing-stop outcomes,
+overflow/nonfinite refusal, capacity rejection without training truncation and
+mode restoration. A real Trainer run learns and freely decodes a fictional
+three-entry fixture and stop; checkpoint reload reproduces scores/candidates.
+This is a deterministic engineering memorization check, not held-out ASL meaning
+or empirical phase acceptance. All nine manual handoffs remain absent.
+
+Full regression after autoregressive kind/label integration: **2,212 passed in
+74.00 seconds**, warnings treated as errors. The exact log and code hashes are
+in `label-sequence-regression.txt` and `label-sequence-verification.json` in the
+October 5 W1–W3 evidence directory.
+
+### Source-clock event timing and joint temporal baseline
+
+The governed pair and batch now retain the immutable declared annotation-clock
+extent from the hash-bound alignment document. Its start is a source interval
+origin, not an origin estimated from target event minima. This distinction is
+tested with a source extent starting at -7 seconds and an earliest event at zero.
+The extent remains separate from sampled frame clocks and event/frame membership.
+
+`signtranslator/planning/event_timing.py` adds continuous interval decoding and
+aligned timing supervision. The head emits unconstrained onset/duration values;
+in float64, `start = origin + softplus(onset)` and
+`end = start + softplus(duration)`. Starts may coincide and events may overlap;
+serialization order does not impose a chronological order. Padding endpoints
+are exactly zero and have no gradient. Nonfinite values, vanished durations and
+duration lost through endpoint rounding are rejected, without a minimum-duration
+clamp, epsilon repair, frame quantization or sorting of predictions.
+
+The timing objective compares immutable annotation endpoints with float64
+predictions bound to the same vocabulary and annotation order. Define
+`r = (predicted_seconds - target_seconds) / scale_seconds`, with an explicitly
+configured finite positive scale. The dimensionless Huber penalty is `r²/2` for
+`abs(r) <= 1` and `abs(r) - 1/2` otherwise. Average the two endpoints, then real
+events within each example, then examples. Neither stop tokens nor padding gain
+timing supervision. The scale is a modelling choice saved in the checkpoint
+configuration, not an inferred frame rate or qualified human timing tolerance.
+
+`signtranslator/planning/text_timing.py` adds `TemporalTextSIRModel`, which shares
+the causal byte/label decoder and adds the timing head. Declare both
+`sir_sequence` and `event_timing` weights explicitly and supply
+`timing_scale_seconds` at construction. Training origins come from the retained
+source extents. Its typed Trainer step reports the two branch losses separately;
+the weighted total is an optimization objective, not a combined acceptance gate.
+
+`generate_temporal` requires source IDs/lengths and explicit float64 clock origins.
+It first decodes its own kind/label sequence and stop, then computes timing using
+that predicted prefix. No reference count, label or interval enters inference.
+Empty or capacity-exceeded label outputs remain empty timed outputs. The two-pass
+implementation preserves labels and applies no temporal repair. Caller-supplied
+origins are coordinates, not proof of physical calibration. Predicted endpoints
+are not clamped to a source end time; later candidate validation must apply the
+actual application's temporal and relation constraints.
+
+The resulting timed-label candidates still lack complete event identities,
+relations, referents/loci and qualified semantic validation. They are not admitted
+SIR graphs or ASL acceptance evidence. The text-only route remains distinct from
+any future source-video intervention result. All nine manual handoffs remain absent.
+
+Seventy focused tests passed across timing, the joint model, sequence decoding and
+governed ingestion. Evidence includes analytical unequal-length Huber averaging,
+numerical gradients, zero padding gradients, clock-shift behavior, overlapping
+unsorted events, underflow/rounding/overflow refusal, actual joint fixture fitting,
+source-only timed generation and exact CPU checkpoint reproduction. Fixture
+memorization does not establish held-out linguistic accuracy or statistical power.
+
+Full regression after source-clock timing integration: **2,230 passed in 75.08
+seconds**, warnings treated as errors. The full log and exact code hashes are
+in `event-timing-regression.txt` and `event-timing-verification.json` under the
+October 5 W1–W3 evidence directory.
+
+### Partially observed directed relation supervision and prediction
+
+The governed annotation schema records approved edges but does not declare that
+every absent edge was reviewed as false. `signtranslator/planning/relations.py`
+therefore retains a separate known mask and positive target for every ordered
+event pair and each of the five relation types. Recorded edges are positive.
+Unrecorded edges remain unknown unless the supplied annotation fields establish
+a contradiction: precedence inconsistent with endpoints, nonoverlapping intervals
+for an overlap claim, incompatible scope kinds/containment, or two explicitly
+different referents for co-reference. Missing referents and missing loci remain
+unknown. No symmetric/transitive closure or closed-world negative assumption is
+introduced. Self edges and padded events are outside the candidate domain.
+
+Relations are independent Bernoulli targets, allowing multiple simultaneous
+relations on one pair. The loss averages binary negative log likelihood across
+known pair/type cells within each example, then averages examples. Unknown,
+self-edge and padding cells have zero gradient. The standalone strict relation
+loss rejects examples without support. The support-aware joint protocol below
+now retains these examples for other branches without claiming a zero relation
+metric or changing the evaluation population.
+
+`signtranslator/planning/text_relations.py` adds `RelationalTextSIRModel`, a directed
+pair head over each event's causal decoder features and current kind/label
+embedding. Training uses reviewed labels; inference uses its own generated labels.
+No reference edge, referent, locus or event interval is an input to this head.
+Configure `sir_sequence`, `event_timing` and `sir_relations` weights explicitly.
+The checkpoint configuration names the partial-supervision semantics. The initial
+implementation recomputes shared features for the relation branch; no optimized
+throughput or target-device latency claim is made.
+
+`generate_relational` returns timed candidates, raw directed relation logits and
+a self-edge exclusion mask. It does not invent a threshold, treat unsupported
+relation types as trained, or silently drop inconsistent edges to make a graph
+valid. Empty/capacity-failed label decoding has no relation scores. Full graph
+construction, referent/locus prediction, temporal/relation consistency and
+calibrated refusal are still required before claiming a complete SIR output.
+
+The existing SIR validator also had a concrete locus gap: a `LOCUS` edge could
+target an event with no locus field. It now rejects that case as
+`locus_target_missing`; locus ID zero remains valid. This enforces the documented
+target-event placement rule without inventing a locus or changing source rights.
+
+Twenty-three focused checks passed across relation contracts, the joint relation
+model, timing and graph tensors. Evidence includes known-versus-unknown handling,
+simultaneous relation classes, analytical unequal-support NLL, numerical gradients,
+zero unknown gradients, explicit unsupported-objective failure, vocabulary/codebook
+binding, recorded scope-edge learning, target-tensor input isolation and exact CPU
+checkpoint reproduction. The full joint fixture reduces sequence, timing and
+relation losses; this is fictional engineering evidence, not real ASL validation.
+All nine manual handoffs remain absent and empirical W1/W2/W3 acceptance remains
+unapproved.
+
+Full regression after partial relation supervision and locus validation: **2,239
+passed in 82.43 seconds**, warnings treated as errors. The full log and exact code
+hashes are in `relations-regression.txt` and `relations-verification.json` under
+the October 5 W1–W3 evidence directory.
+
+### Support-aware joint objectives
+
+`training/objectives.py` defines an explicit opt-in protocol for partially
+observed branches. For branch k and example b, let m[b,k] indicate support and
+ell[b,k] be the mean loss over that example's known cells. Optimization uses
+`sum_k w[k] * sum_b(m[b,k] * ell[b,k]) / B`, with full batch population B.
+Reported branch means instead divide by `sum_b m[b,k]`. This deliberately does
+not upweight sparsely observed branches according to each minibatch's coverage.
+Weights and the normalization version are explicit checkpoint configuration.
+
+The relational text model now uses this protocol. A single-event example can
+train label/stop and timing even when it has no relation supervision. Epoch
+aggregation retains branch numerators, example-support counts and full population,
+so reports do not average unequal minibatch means. Counts measure examples, not
+independent statistical units. Zero-support branch metrics are absent; support
+counts and metric epoch indices are retained in history and checkpoints. Selecting
+an unavailable validation metric fails instead of creating a best checkpoint.
+
+An entirely unsupported branch is omitted from the step's autograd graph. Its
+exclusive parameters retain grad=None, preventing Adam momentum and weight decay
+from updating them on that step. Shared parameters may still learn from supported
+branches. All-unsupported objectives, invalid counts, changing weights, nonfinite
+or negative sums and numerical overflow fail explicitly.
+
+Focused checks: 57 passed, including analytical unequal-support normalization,
+partition-invariant validation, missing-metric selection, Adam state preservation
+after an earlier supported step, and exact mixed-support CPU resume. These are
+fictional engineering fixtures. All nine manual handoffs remain absent; empirical
+W1/W2/W3 acceptance, referent/locus prediction and complete graph decoding remain
+open.
+
+Full regression after support-aware objectives: **2,253 passed in 78.41 seconds**,
+warnings treated as errors. See `support-objectives-regression.txt` and
+`support-objectives-verification.json` in the October 5 W1–W3 evidence directory.
+
+### Explicit candidate graph assembly and structural refusal
+
+`planning/candidate_graph.py` now assembles generated timed labels with explicit
+boolean edge decisions and explicit per-event referents/loci. No threshold or
+identity is inferred. Event IDs are local decoded positions; unknown fields remain
+None. Vocabulary identity and membership, score finiteness/codebook/domain,
+source-clock origin, source extent and locus capacity are checked on every call.
+
+The assembler applies the full existing SIR structural validator, requires a
+manual event, and rejects events outside the declared source extent. Contradictory
+precedence/overlap/scope claims, invalid co-reference, missing target loci,
+collisions, out-of-range loci and self edges cannot yield a graph. No edge deletion,
+time repair or reference substitution is performed. Successful results contain
+immutable canonical JSON; later tensor mutation cannot change that result.
+
+This is a structural proposal interface, not automatic calibrated graph decoding.
+The caller still supplies discrete decisions and reference fields. Structural
+consistency does not establish completeness, observed meaning, permission or ASL
+acceptance. All nine manual handoffs remain absent. Fourteen focused tests passed,
+including relation-model integration regression and direct boundary/mutation checks.
+
+Full regression: **2,263 passed in 77.63 seconds**, warnings as errors. Evidence:
+`candidate-graph-regression.txt` and `candidate-graph-verification.json` in the
+October 5 W1–W3 evidence directory.
+
+### Referent equality supervision and source-conditioned prediction
+
+`planning/referents.py` supervises equality of two explicitly recorded referent
+IDs, independent of whether a directed COREF edge was recorded. Targets are
+invariant to any injective renaming of IDs within an annotation. Missing IDs are
+unknown, not a learned absent/new class. Only the strict upper triangle is used:
+each unordered pair contributes once, with self/padding/unknown pairs excluded.
+Known-pair Bernoulli NLL is averaged within each example and routed through the
+support-aware joint protocol. The bound annotation identities are revalidated.
+
+`planning/text_referents.py` adds a symmetric equality head to the relational text
+model. It uses sums/products of event features and label embeddings, so exchanging
+pair endpoints leaves scores unchanged. It receives no reference IDs, loci or
+reference edges as input. Training uses reviewed labels; free inference uses its
+own generated labels, returning raw equality scores and a self-excluding domain.
+The four branch weights and supervision semantics are checkpoint-bound. Examples
+without reference support still train other branches; the exclusive reference
+head has no optimizer update and no measured reference metric is fabricated.
+
+Five focused tests passed: ID-renaming invariance, unequal-support analytical NLL,
+numerical gradients, zero unknown gradients, malformed identity/asymmetry refusal,
+fixture learning, input isolation, inference symmetry, checkpoint reproduction,
+and completely absent-reference training. Fixture learning is not held-out ASL
+validation. Pairwise scores need not be transitive; referent partition decoding,
+calibration and fixed-alphabet locus prediction remain open. No arbitrary raw-ID
+classifier or threshold-based connected-component partition was introduced.
+All nine manual handoffs remain absent and empirical W1/W2/W3 acceptance is open.
+
+Full regression: **2,268 passed in 78.40 seconds**, warnings as errors. Evidence:
+`referents-regression.txt` and `referents-verification.json` in the October 5
+W1–W3 evidence directory.
+
+### Exact bounded referent partition decoding
+
+`planning/referent_partition.py` now decodes symmetric referent logits into a
+transitive equivalence partition. For unordered pair logit z and equality y,
+Bernoulli log likelihood is y*z-softplus(z); the second term is constant across
+partitions. The decoder therefore maximizes the sum of logits within clusters.
+This is a pairwise composite objective, not a calibrated partition probability.
+
+Restricted-growth enumeration visits each partition once, using first-occurrence
+cluster IDs. Best and runner-up objectives are compared exactly: IEEE float32/64
+inputs become integer gains with a shared power-of-two denominator, avoiding
+cancellation, overflow and underflow in ranking. Returned gains/gaps are Fractions,
+not probabilities or calibrated margins. A unique optimum yields candidate IDs;
+an exact tie returns ambiguity and no usable assignment.
+
+Callers must declare event and search-node caps. This implementation supports at
+most ten events, never truncates, and never switches to greedy connected components.
+An incomplete search returns no assignment or purported optimum, even if it has
+already seen a plausible partition. Single-event output has no runner-up gap.
+Locus placement and learned absent-reference decisions remain outside its space.
+
+Seven focused checks passed, including Bell partition counts, an independent
+all-assignment oracle through five events, transitivity conflicting with positive
+pair scores, exact ties/subnormal gaps/huge sums, every pre-completion budget
+boundary on a small example, malformed inputs and decoding an actually learned
+fictional fixture. These establish bounded algorithmic correctness, not calibrated
+ASL meaning. Larger-sequence decoding, locus prediction and empirical acceptance
+remain open. All nine manual handoffs remain absent.
+
+Full regression: **2,273 passed in 78.43 seconds**, warnings as errors. Evidence:
+`referent-partition-regression.txt` and `referent-partition-verification.json`
+in the October 5 W1–W3 directory. A separate ten-event zero-logit probe completed
+115,975 partitions in 142,417 nodes and correctly returned ambiguity.
+
+### Convention-bound locus supervision and source-conditioned scores
+
+`planning/loci.py` extracts an explicit alphabet from the exact reviewed ASL
+convention bytes, verified against its governed SHA-256. The document exposes
+`locus_schema_version: 1` and `loci: [{id, identity}, ...]`; other convention content
+remains covered by the same byte identity. IDs must be contiguous from zero in
+classifier order and symbolic identities must be unique. Duplicate JSON fields,
+nonfinite constants, malformed schemas and byte mismatches fail. No independent,
+unbound alphabet can reinterpret annotation IDs under an unchanged convention.
+
+Known locus annotations supply categorical targets; missing loci and padding
+remain unknown, never an absent-locus class. Out-of-alphabet annotations fail.
+Per-example mean known-event NLL connects to the support-aware joint objective;
+zero-support examples retain their other branches, with no fabricated locus
+metric or exclusive-head optimizer update. Prediction identity binds annotations,
+lexicon and convention. Symbolic identities do not establish physical geometry.
+
+`planning/text_loci.py` adds the fifth joint branch using causal event features and
+current label embeddings. The alphabet count, convention identity and supervision
+semantics are checkpoint-bound. Inference uses generated labels, returning raw
+locus logits with convention identity and ordered locus identities; it does not
+assign a locus, infer absence, enforce referent persistence or calibrate confidence.
+Those final decisions require a constrained decoder and appropriate evidence.
+
+Seven focused checks passed across alphabet/target validation, analytical and
+numerical gradients, missing-supervision behavior, fictional joint learning,
+source-only generated scores, cached-target isolation and CPU checkpoint
+reproduction, including the existing referent model checks. All nine manual
+handoffs remain absent. No real convention, source, physical calibration or human
+approval was created by these engineering fixtures.
+
+Full regression: **2,278 passed in 79.69 seconds**, warnings as errors. Evidence:
+`loci-regression.txt` and `loci-verification.json` in the October 5 W1–W3 directory.
+
+### Exact constrained locus assignment
+
+`planning/locus_assignment.py` now assigns loci conditional on explicit referent
+IDs and an explicit per-event placement mask. Placed events require known
+referents; unplaced events retain None without a learned absence claim. Scores
+are aggregated over the placed events of each referent. One referent gets one
+locus, and distinct placed referents receive distinct loci. Insufficient alphabet
+capacity returns infeasible, never modulo reuse or a silently dropped referent.
+
+For fixed placement decisions, per-event categorical log normalizers are constant
+across assignments. Maximizing the sum of selected logits therefore maximizes the
+conditional categorical objective. Scores are converted to exact integer gains
+with a common binary denominator. A rectangular Hungarian solver obtains the
+optimum without floating-point ranking error. To obtain the best distinct
+alternative, it forbids each edge of one optimum and resolves; every alternative
+must differ on at least one such edge. Exact ties yield no usable assignment.
+
+An explicit work budget counts examined row/column pairs across all solves. If
+it expires during either optimum or runner-up search, no partial assignment or
+purported optimum is returned. No-placement requests produce explicit all-None
+output. Successful gains/gaps are exact Fractions, not probabilities or confidence.
+The decoder verifies convention/alphabet identity, finite exact-shape scores and
+placement/reference types on every call.
+
+Seven focused checks passed: independent rectangular permutation oracle, repeated
+referent evidence aggregation, collision avoidance, ID-renaming invariance,
+subnormal gaps/overflow-sized sums/ties, every small-example work-budget boundary,
+unknown/unplaced handling and integration with generated scores from a trained
+fictional locus fixture. Physical locus calibration, automatic placement/unknown
+policy, joint reference/locus decisions and empirical ASL acceptance remain open.
+All nine manual handoffs remain absent.
+
+Full regression: **2,283 passed in 79.82 seconds**, warnings as errors. Evidence:
+`locus-assignment-regression.txt` and `locus-assignment-verification.json` in the
+October 5 W1–W3 directory.
+
+### Graph-level persistent and injective locus validation
+
+A cross-path audit found that the assignment solver enforced persistent loci,
+but `validate_sir` did not reject a known referent changing its known locus.
+It also checked collisions only when `num_loci` was supplied, allowing canonical
+serialization and annotation construction without capacity to miss that invariant.
+The validator now checks both directions of the known referent/locus mapping on
+every call. Capacity controls only the separate upper-bound check.
+
+Known same-referent/different-locus assignments yield `referent_locus_changed`;
+known different-referent/same-locus assignments yield `locus_collision`. Unknown
+fields neither invent constraints nor erase other events' known assignments.
+Canonical serialization and direct candidate graph assembly reject these graphs,
+so bypassing the assignment solver cannot bypass the structural rule. The schema
+has no reset/rebinding operation; this is not a universal linguistic prohibition
+on spatial reassignment. A future reset feature needs an explicit scoped contract.
+
+Fifty-one focused checks passed across SIR validation, candidate assembly and
+assignment. New checks include both capacity modes, all 120 event orderings of a
+mixed known/unknown conflict, valid partial assignments, boolean/invalid ID
+boundaries, simultaneous range/persistence failures and direct assembly rejection.
+All nine manual handoffs remain absent; empirical W1/W2/W3 acceptance is unapproved.
+
+Full regression: **2,288 passed in 81.72 seconds**, warnings as errors. Evidence:
+`locus-persistence-regression.txt` and `locus-persistence-verification.json` in the
+October 5 W1–W3 directory.
+
+### Exact bounded joint reference/locus decoding
+
+`planning/joint_spatial.py` now searches referent partitions and locus placements
+jointly, instead of fixing the reference-only optimum first. The caller supplies
+positive exact Fraction weights and an explicit placement mask. The objective is
+a weighted sum of within-cluster equality logits and assigned event locus logits.
+For fixed placement decisions, omitted Bernoulli/categorical log normalizers are
+constant across this search. This remains a composite score, not a calibrated
+joint probability or a validated choice of objective weights.
+
+Each restricted-growth partition is paired with its best and second-best feasible
+injective locus assignments. The global best two among these suffice for the best
+and runner-up full state. Locus evidence can change the optimal partition;
+partitions with too many placed referents for the alphabet are infeasible. Ties
+within or across partitions return ambiguity and no usable references or loci.
+Scores are snapshotted and compared with exact rational arithmetic.
+
+One global work budget covers partition prefix visits and all Hungarian probes,
+including runner-up verification. Incomplete search returns no partial winner.
+The implementation currently supports at most ten events, without truncation or
+greedy fallback. Unknown/unplaced events retain no locus; this stage does not
+learn reference absence or placement eligibility. It does not yet choose directed
+relations or establish a complete calibrated graph decision.
+
+Fourteen focused checks passed across joint and constituent decoders. The joint
+oracle independently enumerates all event-ID assignments and locus permutations
+through four events, including partial/no placement and nontrivial rational
+weights. Additional checks exercise locus-driven partition changes, alphabet
+capacity, exact ambiguity, every small-case budget boundary and malformed inputs.
+All nine manual handoffs remain absent and empirical W1/W2/W3 acceptance is open.
+
+Full regression: **2,292 passed in 80.29 seconds**, warnings as errors. Evidence:
+`joint-spatial-regression.txt` and `joint-spatial-verification.json` in the
+October 5 W1–W3 directory.
+
+### End-to-end diagnostic graph decoding
+
+`planning/graph_decode.py` connects the five-branch candidate, bound lexical/locus
+vocabularies, exact joint spatial decoder, directed relation decisions and full
+structural assembler. Callers explicitly supply placement decisions, rational
+spatial weights, resource caps, source extent and one pair of relation-logit
+thresholds per edge type. No production/default calibration is invented.
+
+For each non-self directed pair/type, scores strictly above the positive threshold
+select an edge; scores strictly below the negative threshold reject it. The closed
+interval between thresholds, including both boundaries, is undecided. Any undecided
+cell prevents a complete graph. Float32 scores embed exactly into float64 before
+comparison, preserving supplied float64 thresholds rather than rounding them to
+model dtype. Nonfinite scores, codebook/domain mismatches and incompatible lexical
+and spatial conventions fail.
+
+After unique completed spatial decoding and determinate relation decisions, the
+assembler checks time, source extent, reference consistency, locus persistence,
+collision/range rules and the manual-event requirement. Positive edges are never
+silently deleted to repair contradictions. Tensor inputs are snapshotted; successful
+output is immutable canonical graph JSON with status
+`uncalibrated_structural_candidate`. Distinct refusal statuses retain spatial
+search failures, relation ambiguity counts and structural violations.
+
+Twenty-one focused checks passed across the integration, joint search and assembler.
+The complete fictional fixture reaches graph JSON; other cases verify threshold
+boundaries, a float32/float64 rounding trap, contradictory positive-edge rejection,
+source-extent rejection, work exhaustion, identity checks and output independence
+from later tensor mutation. No training-support certification, semantic acceptance,
+calibration, real source or human approval follows from this diagnostic interface.
+All nine manual handoffs remain absent; default run.py still uses its legacy path.
+
+Full regression: **2,299 passed in 80.57 seconds**, warnings as errors. Evidence:
+`graph-decode-regression.txt` and `graph-decode-verification.json` in the
+October 5 W1–W3 directory.
+
+### Available-supervision audit bound to admitted data
+
+`planning/support_audit.py` inventories every example of an exact admitted dataset
+view, re-reading source/evidence bytes through the canonical collator. It validates
+view indices/uniqueness/split, checks admission identity during the scan, and binds
+the immutable report to the ordered record indices, corpus SHA, annotation SHAs,
+lexicon and convention. Subset and validation/test reports cannot masquerade as
+full training-population reports. Later changes require fresh admission/audit.
+
+The report counts lexical target events/examples, stop targets, timing intervals
+and endpoints, relation positive/negative/unknown cells per type, examples with
+support, unordered referent-equality targets and known/unknown locus targets with
+per-class counts. Self pairs and padding are excluded. Binary target polarities
+are explicitly none, positive-only, negative-only or both. Equality of known
+referent IDs is counted separately from recorded directed COREF edges.
+
+These are available target counts, not optimizer exposure, learned competence,
+independent sampling units, class-level calibration or phase acceptance. Missing
+locus/reference/edge annotation is never converted into a negative observation.
+A class with no target occurrences is not described as having no gradients under
+a categorical loss; the report records target counts precisely.
+
+Fifteen focused checks passed across the audit and underlying target semantics:
+analytical fixture counts, polarity/unknown distinctions, class event versus
+example denominators, split/subset identities, deterministic immutable output,
+changed-source rejection and mutated duplicate-view rejection. A reproducible
+fictional example is retained as `fictional-support-report.json` in the October 5
+evidence directory. It is not a real-corpus support certificate. All nine manual
+handoffs remain absent and empirical W1/W2/W3 acceptance remains unapproved.
+
+Full regression: **2,303 passed in 79.76 seconds**, warnings as errors. Evidence:
+`support-audit-regression.txt` and `support-audit-verification.json` in the
+October 5 W1–W3 directory.
+
+### Exact branch-and-bound reference search through 128 events
+
+The reference-only decoder in `planning/referent_partition.py` now supports up to
+128 events using exact branch-and-bound. This supersedes its initial ten-event
+exhaustive implementation; the separate joint spatial/diagnostic path retains its
+ten-event limit. Larger accepted input capacity is not a worst-case runtime claim.
+
+For a fixed prefix partition, the upper bound adds the current score, all positive
+future/future pair gains, and each future event's best independent attachment to
+an existing prefix cluster (or zero for a new cluster). Independent choices relax
+consistency, so the bound cannot underestimate any feasible completion. It is
+computed in exact integers. Branches are pruned only when this bound cannot improve
+the observed runner-up, preserving both optimum and ambiguity correctness. Child
+ordering prefers higher immediate gain, but never replaces proof with a heuristic.
+
+Search remains budgeted and fails without an assignment if proof cannot finish.
+Counts distinguish visited prefixes and actually evaluated complete partitions;
+pruned states are not reported as evaluated. Existing exact rational gains, tiny
+gap handling and no-partial-winner semantics remain intact.
+
+Thirteen focused checks passed across reference search, the reference model and
+joint spatial integration. Independent exhaustive oracles cover mixed-sign random
+five-event problems and Bell counts; structural checks cover positive 128-event,
+negative 32-event and zero-score ambiguous cases. The positive 128-event probe
+proved best gain 8128, runner-up 8001 and gap 127 after 255 prefix visits and two
+complete partitions. This is structured synthetic evidence, not general latency
+or ASL accuracy. All nine manual handoffs remain absent.
+
+Full regression: **2,305 passed in 79.86 seconds**, warnings as errors. Evidence:
+`reference-search-regression.txt` and `reference-search-verification.json` in the
+October 5 W1–W3 directory.
+
+### Exact joint spatial and graph search through 128 events
+
+`planning/joint_spatial.py` now applies exact branch-and-bound and accepts up to
+128 events. The diagnostic graph path inherits this capacity. This supersedes the
+prior ten-event joint-search limit; explicit caller caps can still be smaller.
+
+The reference upper bound retains the positive-future-pair and best independent
+prefix-attachment relaxation. The locus bound retains each prefix cluster's
+persistence, but independently maximizes that cluster's aggregate locus score and
+each future placed event's score. Relaxing injectivity and future cluster attachment
+can only raise the bound. Positive rational objective weights preserve this
+inequality. A prefix already containing more placed clusters than available loci
+is infeasible because distinct fixed prefix clusters cannot later merge.
+
+Pruning occurs only when the exact bound cannot improve the observed global
+runner-up. Both complete-state ambiguity and no-partial-winner behavior remain.
+The shared work budget continues counting prefix visits and all Hungarian probes;
+it is not a wall-clock or general runtime guarantee.
+
+Fourteen focused checks passed across joint search and full graph decoding.
+Additional mixed-sign exhaustive oracles cover rational weights and partial
+placement. A 128-event single-locus probe completed with 257 work units and one
+feasible partition (gain 8384, no distinct feasible runner-up); a no-placement
+probe used 255 work units and two complete partitions (gains 8128 and 8001).
+The diagnostic path produced a structurally valid 128-event fictional graph.
+These structured fixtures do not establish real-source accuracy or general-case
+latency. Automatic placement/unknown policies, calibration and empirical acceptance
+remain open. All nine manual handoffs remain absent.
+
+Full regression: **2,308 passed in 80.27 seconds**, warnings as errors. Evidence:
+`joint-search-regression.txt` and `joint-search-verification.json` in the
+October 5 W1–W3 directory.
+
+### Paired source-input intervention diagnostics
+
+`planning/source_intervention.py` now compares free generation on an admitted
+ordered dataset view with generation on an explicit permutation of those source
+transcripts. Original bytes are re-read and checked against each source's own
+reviewed annotation identity; no anchor annotation is rewritten to legitimize the
+intervention. Model and admitted lexical/convention identities must agree. Only
+source IDs/lengths and declared clock origins enter generation, not target event
+labels, counts, references, edges or endpoints.
+
+Clock origins remain at the anchor row's values in both passes. Each pass uses the
+same explicit seed while restoring surrounding RNG state and model mode. MPS RNG
+is preserved separately because the older core checkpoint RNG schema omits it.
+Parameters/buffers are hashed before and after, and mutation fails. Outputs are
+snapshotted immediately and serialized into an immutable report bound to exact
+corpus/view, source/annotation hashes, model configuration and parameter-state hash.
+
+Per-row outputs retain generation statuses, event candidates and raw relation,
+reference and locus scores. The report distinguishes changed source bytes from
+changed raw output, and reports label-sequence equality only when both generations
+terminated. Failed generations are not treated as matching empty successful labels.
+Raw sensitivity is neither semantic accuracy nor causal ASL competence; no phase
+or graph acceptance is inferred.
+
+Twenty-six focused checks passed across interventions, the locus model and text
+admission: identity controls, deterministic reports, actual input permutation,
+source-hash binding, CPU/Python/NumPy RNG restoration, mode restoration on failure,
+source-change refusal and mocked MPS-state restoration. A separate readmitted
+fictional probe used distinct origins -3 and -7 seconds; the swapped sources kept
+those anchor origins exactly. Its immutable report is retained as
+`fictional-source-intervention.json`. No MPS numerical-parity claim is made.
+All nine manual handoffs remain absent.
+
+Full regression: **2,312 passed in 80.46 seconds**, warnings as errors. Evidence:
+`source-intervention-regression.txt` and `source-intervention-verification.json`
+in the October 5 W1–W3 directory.
+
+### Reviewed-reference free-generation label evaluation
+
+`planning/sequence_evaluation.py` now evaluates typed free-generation candidates
+against exact reviewed annotation hashes and the governed vocabulary. The source
+intervention runner includes this evaluation for its original-source outputs;
+reference labels enter evaluation only after generation. Duplicate references,
+row-binding mismatches, malformed status/prefix combinations and uncovered labels
+are rejected. An explicit aggregate edit-cell budget bounds dynamic programming.
+
+Reports retain integer numerators and denominators for termination coverage,
+overall exact match (including failed generations), and conditional unit-cost
+Levenshtein edit rate over terminated sequences. Failed outputs have unavailable
+edit distances. Conditional error can exceed one due to insertions; it is not
+reported as accuracy. All-failed evaluation has no conditional edit rate.
+Canonical event-ID serialization agreement is not temporal, graph or linguistic
+accuracy. Caller-supplied row binding cannot prove held-out/source-only generation;
+the integrated source-only path and explicit provenance remain necessary.
+
+Eight focused checks passed, including an independent recursive oracle over all
+961 pairs of binary sequences of length zero through four, unequal-length
+aggregation, all-failed output, strict budget boundaries, immutable reports and
+actual diagnostic-runner integration. All nine manual handoffs remain absent;
+no empirical phase acceptance or statistical independence is inferred.
+
+Full regression: **2,316 passed in 81.63 seconds**, warnings as errors. Evidence:
+`sequence-evaluation-regression.txt`, `sequence-evaluation-verification.json` and
+`fictional-sequence-evaluation.json` in the October 5 evidence directory.
+
+### Preserve mixed module modes during inference
+
+All five text-generation layers and the paired source-intervention runner now
+use a shared temporary evaluation context. Previously they saved only the root
+training flag and recursively restored it, overwriting intentionally different
+child-module flags. The context snapshots every existing module's flag, runs
+in evaluation mode and restores individual flags on success, nested generation
+failure or partial failure while entering evaluation mode. It does not promise
+to reverse arbitrary custom train/eval side effects, parameter mutations or
+module-hierarchy changes.
+
+Eighteen focused checks passed: all six entrypoints preserve mixed hierarchies
+with either parent mode on normal and exceptional exits; model computations run
+in evaluation mode; partial entry failure also restores the original flags.
+Manual handoffs remain absent and empirical W1–W3 acceptance remains open.
+
+Full regression: **2,329 passed in 81.79 seconds**, warnings as errors. Evidence:
+`inference-mode-regression.txt` and `inference-mode-verification.json` in the
+October 5 evidence directory.
+
+### Observational validation mode restoration
+
+The shared mode context now lives at `signtranslator/inference_context.py` and
+is used by Trainer validation as well as all previously covered generation
+layers. Both the standard and support-aware validation paths previously restored
+only the root flag, recursively overwriting intentionally mixed child modes.
+Standard legacy validation, the legacy metrics hook, governed validation and
+support-aware validation now restore every existing module's original flag on
+success and exceptions. Training still explicitly enters training mode.
+
+Fifty-two focused checks passed across mode restoration, governed training and
+support-aware training. The new tests cover all four validation paths with both
+parent modes, no-gradient evaluation, exceptional exits and CPU RNG restoration.
+This does not establish accelerator RNG/numerical parity, arbitrary custom mode
+side-effect rollback, or empirical acceptance. Nine manual handoffs remain absent.
+
+Full regression: **2,337 passed in 82.57 seconds**, warnings as errors. Evidence:
+`validation-mode-regression.txt` and `validation-mode-verification.json` in the
+October 5 evidence directory.
+
+### Shared RNG isolation, including real MPS verification
+
+`isolated_deterministic_rng` now captures/restores MPS RNG state separately from
+the historical checkpoint schema. Seeding is inside the protected block, so
+partial seed failures restore the prior Python, NumPy, CPU, CUDA (when available)
+and MPS streams. MPS restoration is attempted even if restoring another stream
+raises. Source intervention now uses this shared helper instead of duplicating
+MPS preservation. The checkpoint RNG schema is unchanged; exact MPS resume is
+not implied.
+
+Nineteen focused checks passed. Tests cover mocked partial seed/body failures,
+a real oversized-seed exception, nested stream isolation, validation integration
+and source interventions. A real MPS-device test on this machine reproduced
+seeded draws and verified byte-identical RNG-state restoration after both success
+and an exception. This establishes local MPS RNG isolation only, not cross-device
+numerical parity, full-model MPS compatibility or exact MPS checkpoint resume.
+All nine manual handoffs remain absent; empirical W1–W3 acceptance stays open.
+
+Full regression: **2,343 passed in 82.48 seconds**, warnings as errors. Evidence:
+`rng-isolation-regression.txt` and `rng-isolation-verification.json` in the
+October 5 evidence directory.
+
+### Preserve validation-selected weights across checkpoint resume
+
+Trainer checkpoint schema 3 now stores `best_model_state` alongside the latest
+model/optimizer/scheduler state and historical best validation metric. Previously
+resume restored the metric but lost its selected model, so later non-improving
+validation left no recoverable in-memory best model. Resume validates the saved
+best-state keys, tensor shapes/dtypes and metric availability before loading
+current weights, then retains independent CPU clones. A checkpoint saved before
+validation correctly retains no selected model.
+
+Schema 2 remains supported for an explicit `mode="weights"` warm start. Exact
+resume from schema 2 is rejected because best-model state is absent. No old best
+weights are reconstructed or fabricated. Schema 3 artifacts contain additional
+model weights when a validation-selected model exists, increasing file size.
+
+Forty-one focused checks passed, including a governed run whose best model
+precedes the last checkpoint and whose validation worsens after resume, alias
+independence, a pre-validation checkpoint, schema-2 warm-start behavior and
+rejection of missing selected weights before current model mutation. All nine
+manual handoffs remain absent; empirical W1–W3 acceptance remains open.
+
+Full regression: **2,346 passed in 83.20 seconds**, warnings as errors. Evidence:
+`best-checkpoint-regression.txt` and `best-checkpoint-verification.json` in the
+October 5 evidence directory.
+
+### Strict checkpoint progress preflight
+
+Resume now validates the training-state structure before loading model, optimizer
+or scheduler state. Epoch and step counts must be exact nonnegative integers
+(excluding booleans); completed epochs cannot exceed the configured horizon.
+History requires nonempty string names and lists of finite numeric values,
+excluding booleans. The best metric must be finite or positive infinity for an
+unselected model. Progress and history are no longer silently coerced; integer
+support counts and metric epoch indices remain integers after resume.
+
+Twenty-nine focused checks passed. Fourteen deliberately malformed, consistently
+rehashed checkpoint/manifest pairs were refused before model weights, optimizer,
+scheduler, CPU RNG or trainer progress changed. A real supported-objective resume
+preserved integer support and epoch histories. This preflight is not a claim of
+transactional recovery from every possible optimizer/RNG deserialization error.
+All nine manual handoffs remain absent; empirical W1–W3 acceptance remains open.
+
+Full regression: **2,361 passed in 85.08 seconds**, warnings as errors. Evidence:
+`checkpoint-progress-regression.txt` and `checkpoint-progress-verification.json`
+in the October 5 evidence directory.
+
+### Free-generation conditional timing evaluation
+
+`planning/temporal_evaluation.py` now evaluates timed candidates against reviewed
+annotation hashes and caller-declared clock origins. The original-source report
+integrates it after generation. Only exact serialized label sequences receive
+positional timing diagnostics; failed or mismatched sequences remain unavailable.
+Coverage counts include the entire submitted population, so conditional timing
+cannot silently stand in for overall generation quality.
+
+Outputs retain exact rational endpoint MAE in seconds and mean interval IoU per
+example and event-weighted across supported examples. Arithmetic is exact for
+supplied binary coordinates and avoids overflow when finite endpoint errors sum
+beyond floating-point range. This does not add physical precision. Invalid
+intervals, origin mismatches and row-binding mismatches fail. Positional agreement
+is not proof of semantic correspondence, clock calibration or ASL correctness.
+
+Fourteen focused checks passed: exact matches, all-unavailable output, unequal
+sequence lengths/event weighting, overlap, containment, touching/disjoint
+intervals, extreme finite coordinates, strict origin/binding validation,
+immutable reports and integration with source-only generation diagnostics.
+All nine manual handoffs remain absent; empirical W1–W3 acceptance stays open.
+
+Full regression: **2,370 passed in 85.43 seconds**, warnings as errors. Evidence:
+`temporal-evaluation-regression.txt`, `temporal-evaluation-verification.json` and
+`fictional-temporal-evaluation.json` in the October 5 evidence directory.
+
+### Conditional relation-score evaluation
+
+`planning/relation_evaluation.py` now scores raw directed relation logits against
+the existing reviewed positive/structurally supported negative masks. Exact
+serialized generated labels are required for positional comparison. Unknown
+cells remain excluded and counted separately; self edges are outside the domain.
+Failed/mismatched outputs remain in the coverage denominator. The evaluator
+requires a complete directed nonself mask, finite float32/64 scores, the exact
+relation codebook, annotation row bindings and explicit score-cell budget.
+
+Per-example and cell-weighted aggregate reports separate positive, negative and
+unknown counts, Bernoulli NLL and Brier scores, including scores by polarity.
+Zero-support fields are unavailable. Stable formulas handle extreme finite logits
+without subtracting huge terms. No threshold or calibrated graph is inferred.
+Source intervention snapshots these diagnostics before running the intervened
+pass, preventing aliased mutable score buffers from changing baseline evidence.
+
+Nine focused checks passed: analytical zero/nonzero and extreme scores, unknown
+mask isolation, failure coverage, budget and codebook/mask refusals, report
+immutability and a real diagnostic-runner test mutating previous score buffers.
+Counts are directed cells, not independent statistical units. Conditional scores
+do not prove full-graph or ASL accuracy. All nine manual handoffs remain absent;
+empirical W1–W3 acceptance remains open.
+
+Full regression: **2,374 passed in 85.21 seconds**, warnings as errors. Evidence:
+`relation-evaluation-regression.txt`, `relation-evaluation-verification.json` and
+`fictional-relation-evaluation.json` in the October 5 evidence directory.
+
+### Numerically stable relation scoring at high confidence
+
+Brier error now uses the sigmoid tail directly rather than subtracting a rounded
+near-one probability from one. The previous formula reported zero for a correct
+logit-40 prediction despite a representable error around 1.8e-35, and broke
+sign/complement symmetry. Nonnegative score means now normalize by their maximum
+before summation, preserving tiny means that underflowed when each contribution
+was divided by the population size first, while avoiding sum overflow.
+
+**36 focused checks passed in 0.86 seconds**, warnings as errors, covering all
+four diagnostic modules. New checks use a 400-digit Decimal oracle and cover
+sign/complement symmetry, smallest positive float means and maximum finite float
+means. Floating-point underflow below representable range remains possible; no
+arbitrary-precision score claim is made. The earlier full suite remains recorded
+as **2,374 passed in 85.21 seconds before this fix**; it was not rerun for this
+focused change. Evidence: `score-precision-tests.txt` and
+`score-precision-verification.json` in the October 5 evidence directory.
+All nine manual handoffs remain absent; empirical W1–W3 acceptance stays open.
+
+### Conditional referent-equality evaluation
+
+`planning/referent_evaluation.py` now evaluates the source-generated referent
+head on known unordered equality pairs after exact serialized label agreement.
+Reports distinguish label eligibility from examples with actual pair support,
+retain unknown pairs, count each unordered pair once and report stable NLL/Brier
+scores by equal/unequal polarity. Annotation-local IDs can be renamed injectively
+without changing scores. Equality is not directed COREF edge presence.
+
+Typed candidate hierarchy, finite symmetric score matrices, complete nonself
+masks, row/vocabulary identities and explicit pair-cell budgets are required.
+Failed generation cannot supply usable scores. Source intervention snapshots the
+original referent metrics before the permuted pass, retaining immutable evidence
+even if a later call changes an earlier prediction buffer.
+
+Thirty-eight focused checks passed across referent evaluation, source diagnostics,
+relation scoring, referent objectives and partition decoding. They cover
+analytical scores, high-confidence tails, unknown support, renaming invariance,
+mask/symmetry/budget refusals and baseline-buffer mutation. Conditional pair
+scores do not prove a transitive partition, calibration, independent samples or
+ASL accuracy. All nine manual handoffs remain absent; empirical acceptance stays
+open.
+
+Full regression: **2,393 passed in 85.48 seconds**, warnings as errors. This run
+also covers the preceding score-precision fix. Evidence:
+`referent-evaluation-regression.txt`, `referent-evaluation-verification.json` and
+`fictional-referent-evaluation.json` in the October 5 evidence directory.
+
+### Conditional categorical locus evaluation
+
+`planning/locus_evaluation.py` now evaluates known locus classes after exact
+serialized label agreement. The source-only intervention report snapshots these
+metrics before the intervened pass. It binds the declared alphabet's exact
+convention and class identities, rejects malformed/nonfinite scores, and enforces
+an explicit cell budget. Missing loci remain unknown; label coverage and actual
+supported-example coverage remain distinct. Reports include overall/per-class
+known support, unknown counts, categorical NLL and multiclass Brier scores.
+
+Multiclass Brier is the sum of squared class errors, not divided by alphabet size
+(range zero to two). The target residual is computed from other-class mass to
+avoid subtraction from rounded one; log1p retains high-confidence NLL tails.
+A categorical NLL beyond representable range fails explicitly. The stable
+nonnegative mean is shared with relation and referent metrics.
+
+Forty-five focused checks passed: 400-digit Decimal scoring oracles, class-order
+symmetry of the mathematical score, ties, high confidence, one-class alphabet,
+unknown support, failure/mismatch coverage, alphabet/shape/budget checks, baseline
+buffer mutation and existing locus supervision/assignment tests. This does not
+infer a placement/absence policy, physical geometry, spatial consistency,
+calibration or ASL accuracy. All nine manual handoffs remain absent; empirical
+W1–W3 acceptance remains open.
+
+Full regression: **2,402 passed in 85.80 seconds**, warnings as errors. Evidence:
+`locus-evaluation-regression.txt`, `locus-evaluation-verification.json` and
+`fictional-locus-evaluation.json` in the October 5 evidence directory.
+
+### Profiled exact joint-search bound optimization
+
+Bounded mixed-sign, partially placed probes at 8, 12 and 16 events identified
+upper-bound Fraction arithmetic as the dominant cost (about 89% of the combined
+profiled runtime). Joint search now converts positively weighted rational scores
+to a common exact integer scale once before traversal. Bounds, child ordering,
+optima and runner-up comparisons use integers. Leaf assignment gains are checked
+for exact representability in this scale; public gains remain Fractions. No
+floating-point approximation, altered pruning or changed work budget is used.
+
+Across seven alternating before/after timing runs, median times were:
+
+| Events / seed | Before | After | Result / work |
+|---|---:|---:|---|
+| 8 / 7 | 2.26 ms | 0.61 ms | ambiguous / 481 |
+| 12 / 11 | 19.38 ms | 3.97 ms | ambiguous / 1,155 |
+| 16 / 13 | 100.40 ms | 20.37 ms | search exhausted / 5,000 |
+
+Every probe retained exactly the same result fields and work counts. The
+exhausted case still yields no candidate. These are three fixed fictional score
+systems on one machine, not a general latency guarantee or real-model workload.
+Twenty-nine focused checks passed, including independent exhaustive oracles with
+smallest positive subnormal scores, 1e308 scores, mixed placement and rational
+weights 2/7 and 3/11. Stored profile evidence includes raw timing samples, source
+hashes and the before-optimization source snapshot.
+All nine manual handoffs remain absent; calibrated graph decisions and empirical
+W1–W3 acceptance remain open.
+
+Full regression: **2,405 passed in 85.65 seconds**, warnings as errors. Evidence:
+`joint-integer-regression.txt`, `joint-integer-verification.json`,
+`joint-bound-profile.json` and `joint-bound-replay.py` in the October 5 evidence
+directory. The retained replay passed for all three cases.
+
 ## Refreshed W1/W2 acceptance audit and source inventory — 2026-09-26
 
 All 15 full W1/W2 requirement rows were reassessed after the rig, rest-shape, native-method,

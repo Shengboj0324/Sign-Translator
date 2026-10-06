@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2278 passed in 79.69s (0:01:19)",
+  "code_sha256": {
+    "signtranslator/planning/loci.py": "1bbb36a3ae1efbd2990879ab6990445a3ec3827745d5a7c2f0e5f36b00c047b6",
+    "signtranslator/planning/text_loci.py": "6986eaa87e7c91009128a1e55ffbad93ee6b9d3ad8a3e6c55af96b1eafc6135d",
+    "tests/test_loci.py": "ff8d7c875736d23499283370c893e01e7d294c49ff8af7f4b0f5c533fdb36a1e",
+    "tests/test_text_loci.py": "455129f0ea5f94d3d02833dbde74bf2f42a30cdbc0c53807b9a6122f74ce6e4f",
+    "tests/test_text_sir_labels.py": "d5e5aa5063c2b0069b35a825650a7f1cc9d61d90465b38d120fa853380c854e2"
+  },
+  "verified_scope": "Convention-byte-bound alphabet; known locus NLL and gradients; support-aware joint learning; generated-label locus scores; CPU checkpoint reproduction",
+  "phase_exit_approved": false,
+  "manual_handoffs": "all nine absent",
+  "not_proven": [
+    "constrained locus assignment",
+    "referent persistence and collision-free placements",
+    "physical calibration",
+    "calibrated ASL meaning",
+    "real source and reviewer acceptance"
+  ]
+}

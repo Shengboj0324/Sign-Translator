@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2303 passed in 79.76s (0:01:19)",
+  "code_sha256": {
+    "signtranslator/planning/support_audit.py": "ba698fd58142773bda14a81ad3a1d177374c65e565226760c8e675bfb3c07bd2",
+    "tests/test_support_audit.py": "235cadc5f8e366828cc19b79338e0d906c782bd1b326cb1ace206cce5fae4c9a"
+  },
+  "fictional_report_sha256": "512a70ae70eab309617858321ab160330977ea7311c1cd74d454c5544e12c982",
+  "verified_scope": "Available-supervision target counts, per-relation polarities and unknowns; exact admitted-view identity; immutable deterministic output; changed-source and duplicate-view rejection",
+  "phase_exit_approved": false,
+  "manual_handoffs": "all nine absent",
+  "not_proven": [
+    "real admitted corpus support",
+    "optimizer exposure or learned competence",
+    "independent statistical units",
+    "calibrated inference or ASL meaning",
+    "real source and reviewer acceptance"
+  ]
+}

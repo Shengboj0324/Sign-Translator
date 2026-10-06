@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2374 passed in 85.21s",
+  "focused_tests": "9 passed in 0.68s",
+  "code_sha256": {
+    "signtranslator/planning/relation_evaluation.py": "9cc9962fd2218f6fbfdeae090cf0eac1f88b316d387e607b20b10f54021114ff",
+    "signtranslator/planning/source_intervention.py": "c1c5f7ade65ad7c70334b873f4515cf6d4c71d5d3daec227a5d21452bee2a785",
+    "tests/test_relation_evaluation.py": "8b93bafddfdbbb17a3a91f66c7b53760e8597403b2d10bdad31bd6293035050e",
+    "tests/test_source_intervention.py": "71cce6472f96dab0217ebc5643e4093f18032558ede3dd3f2503d714776e9bf1"
+  },
+  "fictional_report_sha256": "07d01cb2c125a9a31c0df69389687eac7ffe6ec35722b6e6cbb0ded5aaac3cb3",
+  "verified_scope": "Conditional known-support relation NLL/Brier with polarity counts, unknown exclusion, stable extremes, strict mask/budget and original-score snapshot protection",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "not_proven": [
+    "independent statistical units",
+    "calibrated decision thresholds",
+    "full-graph or ASL accuracy",
+    "empirical W1-W3 acceptance"
+  ]
+}

@@ -1,0 +1,20 @@
+         177864 function calls (173829 primitive calls) in 0.038 seconds
+
+   Ordered by: cumulative time
+   List reduced from 62 to 12 due to restriction <12>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.038    0.038 joint_spatial.py:36(decode_joint_spatial)
+   4036/1    0.005    0.000    0.037    0.037 joint_spatial.py:138(visit)
+     3885    0.019    0.000    0.027    0.000 joint_spatial.py:107(upper_bound)
+     8044    0.002    0.000    0.006    0.000 {built-in method builtins.sum}
+    41673    0.003    0.000    0.003    0.000 {built-in method builtins.max}
+    16414    0.001    0.000    0.002    0.000 joint_spatial.py:123(<genexpr>)
+    25896    0.002    0.000    0.002    0.000 {method 'setdefault' of 'dict' objects}
+    41989    0.001    0.000    0.001    0.000 {built-in method builtins.len}
+    14693    0.001    0.000    0.001    0.000 joint_spatial.py:176(<genexpr>)
+       20    0.000    0.000    0.001    0.000 locus_assignment.py:37(decode_locus_assignment)
+      908    0.000    0.000    0.001    0.000 {built-in method builtins.sorted}
+     4068    0.000    0.000    0.000    0.000 {method 'append' of 'list' objects}
+
+

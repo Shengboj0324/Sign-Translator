@@ -14,11 +14,11 @@ from .phase2_policy import Phase2Scope,AuthorizationEvidence,assess_phase2_scope
 from .source_portfolio import SourceCandidate
 
 
-def export_phase2_state(state: MultichannelMotion, destination: Path, *,
+def validate_phase2_state(state: MultichannelMotion, *,
                         sources: tuple[SourceCandidate,...], scope: Phase2Scope,
                         authorizations: dict[str,AuthorizationEvidence],
                         source_files: dict[str,Path]) -> dict:
-    """Validate supplied evidence before creating any output; never infer approval."""
+    """Validate source eligibility and bytes without writing or approving a phase."""
     if not isinstance(state,MultichannelMotion):
         raise ValueError('a typed multichannel state is required')
     state.validate()
@@ -46,10 +46,19 @@ def export_phase2_state(state: MultichannelMotion, destination: Path, *,
             hashes[channel.source_id] = hashlib.sha256(source.read_bytes()).hexdigest()
         if hashes[channel.source_id] != channel.source_sha256:
             raise ValueError(f'{name}: source hash does not match motion provenance')
+    return {'source_sha256': hashes, 'eligibility': decision, 'phase_exit_approved': False}
+
+
+def export_phase2_state(state: MultichannelMotion, destination: Path, *,
+                        sources: tuple[SourceCandidate,...], scope: Phase2Scope,
+                        authorizations: dict[str,AuthorizationEvidence],
+                        source_files: dict[str,Path]) -> dict:
+    """Validate supplied evidence before creating any output; never infer approval."""
+    validation = validate_phase2_state(state, sources=sources, scope=scope,
+                                      authorizations=authorizations, source_files=source_files)
     digest = state.save(destination)
     return {'schema_version':1,'motion_path':str(Path(destination).resolve()),
-            'motion_sha256':digest,'source_sha256':hashes,
-            'eligibility':decision,'phase_exit_approved':False,
+            'motion_sha256':digest, **validation,
             'required_next_evidence':['source-specific channel mapping and synchronization',
                                      'authorized rig inverse-transform/render round-trip',
                                      'qualified review of semantic and geometric fidelity']}

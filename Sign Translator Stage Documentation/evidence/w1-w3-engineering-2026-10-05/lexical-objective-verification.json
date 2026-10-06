@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -o addopts='' -q -W error --tb=short",
+  "result": "2134 passed in 70.71s (0:01:10)",
+  "code_sha256": {
+    "signtranslator/planning/label_vocabulary.py": "08ee0355adc84577ea32f34eae501ab7dec9bcd683c874254975d81b815d3b0a",
+    "tests/test_sir_label_vocabulary.py": "261745239f89c11593637f75ad018f7b078cb8e1c6f114cb2dc6b6db1a2f3180"
+  },
+  "verified_scope": "Byte-bound typed lexical coverage; aligned label NLL with per-example averaging, analytical and numerical gradient tests, optimizer improvement, overflow rejection",
+  "phase_exit_approved": false,
+  "manual_handoffs": "all nine absent",
+  "not_proven": [
+    "free-generation event recovery",
+    "timing/edge/motion prediction",
+    "real ASL acceptance",
+    "integrated typed trainer"
+  ]
+}

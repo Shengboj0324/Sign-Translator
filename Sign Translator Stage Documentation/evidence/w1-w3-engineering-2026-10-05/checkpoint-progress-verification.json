@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2361 passed in 85.08s",
+  "focused_tests": "29 passed in 9.56s",
+  "code_sha256": {
+    "signtranslator/training/trainer.py": "8149a3bbe5da57c25158cd3e69890ce5ec18bd622a532878bae904d55cc65342",
+    "tests/test_checkpoint_progress.py": "e129b628f2e6fd252264b7e0cedf067ddb7db1b7e6c02e5650990388fa8dc31c"
+  },
+  "verified_scope": "Fourteen malformed progress states refused before model/optimizer/scheduler/CPU RNG/trainer mutation; supported resume preserves integer histories",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "not_proven": [
+    "transactional rollback for every optimizer or RNG load error",
+    "empirical W1-W3 acceptance"
+  ]
+}

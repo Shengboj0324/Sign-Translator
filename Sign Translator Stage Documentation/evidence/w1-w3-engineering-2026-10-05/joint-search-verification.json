@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2308 passed in 80.27s (0:01:20)",
+  "code_sha256": {
+    "signtranslator/planning/joint_spatial.py": "36aa4c20c2e2bb4c877c2ef74f224f971fc25d7b0283f7f00d29125d9ca90979",
+    "tests/test_joint_spatial.py": "85aa1413992651e4eaa11aa790fdafe126cbb0ad7cc93f743ed7684f8aa88ab2",
+    "tests/test_graph_decode.py": "ef379800e2b14966e06649e0d3fd6d276b359aefcdd6235bc2eee057005852a4"
+  },
+  "verified_scope": "Exact joint branch-and-bound; reference and locus optimistic bounds; prefix capacity pruning; mixed-sign partial-placement exhaustive oracles; structured 128-event joint and graph paths",
+  "structured_128_event_probes": [
+    {
+      "all_placed": true,
+      "work": 257,
+      "evaluated_partitions": 1,
+      "best_gain": 8384,
+      "runner_up_gain": null
+    },
+    {
+      "all_placed": false,
+      "work": 255,
+      "evaluated_partitions": 2,
+      "best_gain": 8128,
+      "runner_up_gain": 8001
+    }
+  ],
+  "phase_exit_approved": false,
+  "manual_handoffs": "all nine absent",
+  "not_proven": [
+    "general large-sequence runtime guarantee",
+    "automatic placement or reference absence",
+    "calibrated inference or ASL meaning",
+    "real source and reviewer acceptance"
+  ]
+}

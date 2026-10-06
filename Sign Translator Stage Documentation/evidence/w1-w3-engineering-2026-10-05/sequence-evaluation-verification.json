@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2316 passed in 81.63s",
+  "code_sha256": {
+    "signtranslator/planning/sequence_evaluation.py": "200dfe8ba077573c793dc92c89a93b21a0a4ace36e65c564bdbc87992319acbb",
+    "signtranslator/planning/source_intervention.py": "6c1b9e0a4f77e134019933244318aceb1f61b1710a95322abfe407c92930c516",
+    "tests/test_sequence_evaluation.py": "d1232aba5f9c45cd3803b1cc6730052a8ca5c57a09db282dc4c00fc2bcbf66e0",
+    "tests/test_source_intervention.py": "8a471f425625d1c8172699adaca20b520048edf70792ae634a8d85856a08f924"
+  },
+  "fictional_report_sha256": "523af636f4e5ed32e03adebd8185973d1b586b95bb3acbf6ee83ce017892f341",
+  "focused_tests": "8 passed in 0.65s",
+  "verified_scope": "Reference-bound canonical label serialization, exact-count denominators, failures and unit-cost edit distance with independent exhaustive oracle; integrated original-source diagnostic evaluation",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "not_proven": [
+    "linguistic ASL accuracy",
+    "held-out study validity",
+    "independent statistical units",
+    "empirical W1-W3 acceptance"
+  ]
+}

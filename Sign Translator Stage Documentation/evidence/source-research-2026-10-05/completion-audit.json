@@ -1,0 +1,44 @@
+{
+  "recorded_at_utc": "2026-10-05T21:34:16.287141+00:00",
+  "goal_complete": false,
+  "requirements": [
+    {
+      "requirement": "Broad scholarly and official-source research matched to code requirements",
+      "status": "delivered_with_explicit_coverage_limits",
+      "evidence": "Source Acquisition and Acceptance Guide; 61 distinct links; four policy bundles and 11 state channels mapped"
+    },
+    {
+      "requirement": "Direct access links and all nine step-by-step manual workflows",
+      "status": "delivered",
+      "evidence": "Nine numbered workflows with owners, handoffs, acceptance conditions and request outlines"
+    },
+    {
+      "requirement": "Proof the actual implementation executes after manual inputs are supplied",
+      "status": "not_proven",
+      "evidence": "2056 software tests pass; synthetic export succeeds, but no accepted complete real source, authorization portfolio or qualified review is registered; remaining adapter/trainer/rig integrations are identified"
+    },
+    {
+      "requirement": "Set financial constraints aside",
+      "status": "satisfied_for_research_and_plan",
+      "evidence": "Prioritization excludes price while retaining technical capacity and source/review requirements"
+    }
+  ],
+  "page_url": "https://chatgpt.com/space/page_830a45cea61c8191b72ceecfa4192b4e",
+  "scope_of_latest_check": "Registered source portfolio, current policy implementation and named local source/evidence locations; no claim to discover arbitrary files elsewhere",
+  "next_required_handoff": [
+    "One continuous source packet with the required observed channels, calibration, clocks and native documentation",
+    "Source-bound action authorization evidence for the intended use",
+    "Qualified ASL/Deaf review roles and completed pilot review evidence"
+  ],
+  "engineering_after_handoff": [
+    "Source-specific adapter and synchronization",
+    "Canonical-state and governed-reference training integration",
+    "Real source-to-rig round-trip and empirical acceptance"
+  ],
+  "not_substitutes": [
+    "Additional synthetic tests",
+    "Bulk isolated RGB data",
+    "Researcher contact details without an agreement",
+    "Self-issued authorization or reviewer approval"
+  ]
+}

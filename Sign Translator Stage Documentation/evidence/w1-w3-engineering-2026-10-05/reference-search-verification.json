@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2305 passed in 79.86s (0:01:19)",
+  "code_sha256": {
+    "signtranslator/planning/referent_partition.py": "8861bc0679f45cd69a5b4960e38d8ec69ffa67851bd6ae7298d1af63a16b2db6",
+    "tests/test_referent_partition.py": "0ef06d389adcabb0d93350a863f219f021747b46a5510e45e6481ffe71097c3d"
+  },
+  "verified_scope": "Exact branch-and-bound reference-only decoding; optimistic runner-up pruning; exhaustive small-case oracles; 128-event positive and 32-event negative/ambiguous structured cases",
+  "structured_128_event_probe": {
+    "visited_nodes": 255,
+    "evaluated_partitions": 2,
+    "best_gain": 8128,
+    "runner_up_gain": 8001,
+    "gap": 127
+  },
+  "phase_exit_approved": false,
+  "manual_handoffs": "all nine absent",
+  "not_proven": [
+    "general large-sequence runtime guarantee",
+    "joint spatial/graph decoding above ten events",
+    "calibrated inference or ASL meaning",
+    "real source and reviewer acceptance"
+  ]
+}

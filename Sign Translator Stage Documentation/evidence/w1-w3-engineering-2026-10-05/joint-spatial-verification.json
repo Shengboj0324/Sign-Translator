@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2292 passed in 80.29s (0:01:20)",
+  "code_sha256": {
+    "signtranslator/planning/joint_spatial.py": "968f54e57b00e10fbb7834cecc148047ded4866ebcba5d9aa7e87cdfa2e4599a",
+    "tests/test_joint_spatial.py": "68c232c9222a9ab82419df5bfefe4825fe49b084c708c3ae43d27699e6cb67f0"
+  },
+  "verified_scope": "Joint reference partition and injective locus optimum/runner-up; independent full-state oracle through four events; weighted rational objectives; global work exhaustion; locus-driven partition change",
+  "phase_exit_approved": false,
+  "manual_handoffs": "all nine absent",
+  "not_proven": [
+    "automatic placement and absence decisions",
+    "larger-sequence decoding",
+    "complete directed graph decisions",
+    "physical calibration",
+    "calibrated ASL meaning",
+    "real source and reviewer acceptance"
+  ]
+}

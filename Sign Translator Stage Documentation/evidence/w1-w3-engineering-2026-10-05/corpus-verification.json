@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -o addopts='' -q -W error --tb=short",
+  "result": "2105 passed in 71.89s (0:01:11)",
+  "code_sha256": {
+    "signtranslator/data/governed_corpus.py": "cb7472ffcced9e281fea486e4ccd1873023e62e27d3a6ac75492b77e76ba86c7",
+    "signtranslator/data/governed_motion.py": "a171b9d73d90dfb160b1beee557f5a6737d5c3778295fdf9028f380b7517ae71",
+    "signtranslator/data/multichannel.py": "a85cc9d2f840bcd50c2e320d9e4bb5d5bcb6be1a49f3a33b43880807daef7ce2",
+    "tests/test_governed_corpus.py": "f7e3392532d5e7a72db999aaa1273228e5138a986d0f2717f7f9a68d848c4cbb",
+    "tests/test_governed_motion.py": "e75b7febfd8e68d479a898d959a6701dbd5563bb05b3f2a97c96ff339f25b5df"
+  },
+  "manual_handoffs": "nine absent; unchanged",
+  "phase_exit_approved": false,
+  "verified_scope": "Fictional-evidence corpus admission, source/signer/content split isolation, evidence revalidation, variable-length governed batching and full regression",
+  "remaining": [
+    "model-facing typed targets and objectives",
+    "active training integration",
+    "real source/rights/reviewer/calibration evidence"
+  ]
+}

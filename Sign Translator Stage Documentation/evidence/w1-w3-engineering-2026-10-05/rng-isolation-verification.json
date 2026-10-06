@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2343 passed in 82.48s",
+  "focused_tests": "19 passed in 1.98s",
+  "code_sha256": {
+    "signtranslator/reproducibility.py": "4caa7c258411959cf539ea115b8d5aef0dfc543a5bf1de4b13dba6eb67381566",
+    "signtranslator/planning/source_intervention.py": "79f7c81ee6b72e60f73c3473e386d8f14569ae0cde82e1d80ade555556a5caca",
+    "tests/test_rng_isolation.py": "27615c26699873d385d2339dfc65ad1a115a2574464690e9bb729a9d5221fb9e"
+  },
+  "verified_scope": "Shared RNG isolation restores streams after partial seeding/body failures; real local MPS draw reproducibility and RNG restoration verified",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "not_proven": [
+    "cross-device numerical parity",
+    "exact MPS checkpoint resume",
+    "empirical W1-W3 acceptance"
+  ]
+}

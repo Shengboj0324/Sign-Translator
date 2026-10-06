@@ -9,8 +9,10 @@ pure function of the stream (deterministic replay).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import IntEnum
+import math
+from numbers import Real
 from typing import Callable, List
 
 import torch
@@ -40,10 +42,21 @@ class AvatarContract:
             raise ValueError("axes must be x/y/z")
         if self.up_axis == self.forward_axis:
             raise ValueError("up and forward axes must differ")
-        if self.scale_m_per_unit <= 0:
-            raise ValueError("scale must be > 0")
-        if self.frame_rate <= 0:
-            raise ValueError("frame_rate must be > 0")
+        if not isinstance(self.handedness, Handedness):
+            raise ValueError("handedness must be a Handedness enum")
+        for name in ("scale_m_per_unit", "frame_rate"):
+            value = getattr(self, name)
+            try:
+                valid = (isinstance(value, Real) and not isinstance(value, bool)
+                         and math.isfinite(value) and value > 0)
+            except OverflowError:
+                valid = False
+            if not valid:
+                raise ValueError(f"{name} must be a finite positive number")
+        for name in ("skeleton_id", "blendshape_basis_id"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} must be explicitly named")
 
 
 def contract_basis(contract: AvatarContract) -> torch.Tensor:
@@ -77,9 +90,14 @@ class ParameterStream:
     expr: torch.Tensor                # (T, E)
 
     def __post_init__(self) -> None:
-        T = self.timestamps.shape[0]
+        if not isinstance(self.contract, AvatarContract):
+            raise ValueError("contract must be an AvatarContract")
+        if not all(isinstance(value, torch.Tensor) for value in
+                   (self.timestamps, self.rot6d, self.gamma, self.expr)):
+            raise ValueError("stream arrays must be tensors")
         if self.timestamps.dim() != 1:
             raise ValueError("timestamps must be (T,)")
+        T = self.timestamps.shape[0]
         if self.rot6d.dim() != 3 or self.rot6d.shape[0] != T or self.rot6d.shape[-1] != 6:
             raise ValueError("rot6d must be (T, J, 6)")
         if self.gamma.shape != (T, 3):
@@ -97,11 +115,22 @@ class ParameterStream:
 
 
 def validate_stream(stream: ParameterStream) -> List[str]:
-    """Return the list of violated contract/stream rules (empty == valid)."""
+    """Return value-rule violations; raise ValueError for malformed structure.
+
+    Structural checks are repeated because stream tensors can be replaced after
+    construction. An empty list certifies only the rules checked here, not
+    source provenance, anatomical validity or linguistic correctness.
+    """
     v: List[str] = []
+    # Streams are mutable: repeat structural checks at the execution boundary.
+    stream.__post_init__()
     if not contract_is_self_consistent(stream.contract):
         v.append("handedness_contract_inconsistent")
     ts = stream.timestamps
+    if ts.numel() == 0:
+        v.append("empty_stream")
+    if not bool(torch.isfinite(ts).all()):
+        v.append("non_finite_timestamps")
     if ts.numel() >= 2 and not bool(torch.all(ts[1:] > ts[:-1])):
         v.append("timestamps_not_strictly_increasing")
     if not (torch.isfinite(stream.rot6d).all() and torch.isfinite(stream.gamma).all()
@@ -114,4 +143,7 @@ def replay(stream: ParameterStream, render_fn: Callable[[int], torch.Tensor]
            ) -> torch.Tensor:
     """Deterministic replay: apply ``render_fn(frame_index)`` for every frame and
     stack. A pure ``render_fn`` + a fixed stream yield byte-identical output."""
+    violations = validate_stream(stream)
+    if violations:
+        raise ValueError("Cannot replay invalid stream: " + ", ".join(violations))
     return torch.stack([render_fn(i) for i in range(stream.num_frames)], dim=0)

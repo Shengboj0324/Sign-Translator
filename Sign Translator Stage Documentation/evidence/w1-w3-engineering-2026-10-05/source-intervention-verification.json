@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2312 passed in 80.46s (0:01:20)",
+  "code_sha256": {
+    "signtranslator/planning/source_intervention.py": "83cb70e3860529e6d6e94a472ac95466d423c7be96ba64fcaf0707cef52d948e",
+    "tests/test_source_intervention.py": "de89a9da9e7641d37d03b021fc047259941121a4c727914033a1889014f1d311"
+  },
+  "fictional_report_sha256": "d5fa7f56260a2e1e143226ef319e4ec18dcccb6fb7f02fe80f1f22addccbb6ac",
+  "verified_scope": "Source permutation without annotation rewriting; identity controls, immutable reports, actual input mapping, fixed anchor origins, RNG/model-mode restoration and source-change refusal",
+  "distinct_origin_probe": {
+    "anchor_origins": [
+      -3.0,
+      -7.0
+    ],
+    "source_permutation": [
+      1,
+      0
+    ],
+    "origins_preserved": true,
+    "fictional_only": true
+  },
+  "phase_exit_approved": false,
+  "manual_handoffs": "all nine absent",
+  "not_proven": [
+    "semantic accuracy or causal ASL competence",
+    "MPS numerical parity",
+    "real source and reviewer acceptance",
+    "calibrated inference"
+  ]
+}

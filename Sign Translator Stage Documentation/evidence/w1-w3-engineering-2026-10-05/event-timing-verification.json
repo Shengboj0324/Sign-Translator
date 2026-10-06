@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -o addopts='' -q -W error --tb=short",
+  "result": "2230 passed in 75.08s (0:01:15)",
+  "code_sha256": {
+    "signtranslator/data/governed_motion.py": "076368e02dba4b7c229db2e741ac5bc230040ced355b85f4d75d9eb517b42f04",
+    "signtranslator/data/governed_corpus.py": "37fd577c1d9a8d93a4ff9c95343930b43a132aab771009cdee95a8330883a2aa",
+    "signtranslator/planning/text_sequence.py": "bf2fac3e8fa8f614634f248d08524c5cb118d599cc44dad38da0c297154652f8",
+    "signtranslator/planning/event_timing.py": "a92a5d52fa6d1d78d92dfc3d1bf87f9c2d2c326a27e36e36037b74899f964838",
+    "signtranslator/planning/text_timing.py": "4f2c9d48b0ddfdb0f0a0887a586b3c3c2966c180035702b28711d8d792bc03f6",
+    "tests/test_event_timing.py": "6c6d7d2646f043946aa80aceb8cd120ed7ad4de196f624b24fc785715bf621c2",
+    "tests/test_text_sir_timing.py": "1fdb5ec660c930cfb9e54cb04ddf639ee7bef37f82c559dda8264cc9418799f8"
+  },
+  "verified_scope": "Bound source clock extents; float64 continuous interval decoder; analytical and numerical Huber gradients; overlapping unsorted intervals; numerical refusal; joint label/timing fixture fitting and CPU checkpoint reproduction",
+  "phase_exit_approved": false,
+  "manual_handoffs": "all nine absent",
+  "not_proven": [
+    "complete SIR graph generation",
+    "graph/reference predictions or relation-time consistency",
+    "held-out ASL meaning or generalization",
+    "video dependence",
+    "calibrated semantic refusal",
+    "real-source or reviewer acceptance"
+  ]
+}

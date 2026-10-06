@@ -1,0 +1,797 @@
+{
+  "schema_version": 1,
+  "recorded_at_utc": "2026-10-05T21:28:06.932979+00:00",
+  "head": "eb84234a056ca20ba6c106ba59c208638d061640",
+  "working_tree": " M signtranslator/avatar_render/stream.py\n M tests/test_ar_stream.py\n?? \"Sign Translator Stage Documentation/evidence/source-research-2026-10-05/\"\n",
+  "python": "3.12.14",
+  "code_sha256": {
+    "signtranslator/data_engineering/phase2_policy.py": "3a79da6148715a1c1a48977c785a973c70cdb199946d6cbeee6cbc333c3a70f5",
+    "signtranslator/data_engineering/state_ingestion.py": "63ba4b84704e27a7c10ef8fdc62beb82edfcf16a391f4cacd1cb74df32a7cd04",
+    "signtranslator/pose/multichannel.py": "f903daa55b876b1213b6f6d147f6b5c9bf38311da799f3d1309dee8aff08b34f",
+    "signtranslator/eval_framework/design.py": "cfb5b676e59a08f507b74e0fd85c15fb037f86a7af3abb3cf37860234d35a156",
+    "signtranslator/run.py": "89532ce6c707703436890ac2c4f02ffaef544bd302d934f2fc980b66f0c33add",
+    "tests/test_de_phase2_policy.py": "74bba1fe7cccfedbbecb8152f10f736b5c23069a2c01d458244bf53500c730e5",
+    "tests/test_pose_multichannel.py": "3f8e550dd3f2115653833141a2e7c1a62a6781cf5442a3668ac6e8e8d5889786",
+    "signtranslator/avatar_render/stream.py": "4889eba9794cb9a260228d10f8cfbb054834888c356387fcf4ef488acb626749",
+    "tests/test_ar_stream.py": "4702e327f1986a027fdb063ae1d384be4080585b3f4e59fb911c4d48db71e774"
+  },
+  "regression": {
+    "command": ".venv/bin/python -m pytest -o addopts='' -q -W error",
+    "log": "/Users/jiangshengbo/Desktop/Sign-Translator/Sign Translator Stage Documentation/evidence/source-research-2026-10-05/full-regression.txt",
+    "sha256": "85846ff6250c17d1841cc867f8c9076f034bd08d1088bdc410d18220fec6dee2",
+    "last_line": "2056 passed in 72.14s (0:01:12)"
+  },
+  "current_portfolio": {
+    "research": {
+      "policy_version": "phase2-action-scope-v1",
+      "scope": "research",
+      "portfolio_eligible": false,
+      "phase_exit_approved": false,
+      "decisions": [
+        {
+          "requirement": "coobserved_motion",
+          "eligible_sources": [],
+          "requested_actions": [
+            "create_derivatives",
+            "model_training"
+          ],
+          "failures": {
+            "asl_citizen": [
+              "missing_capability:body_3d",
+              "missing_capability:continuous_asl",
+              "missing_capability:eye_gaze",
+              "missing_capability:eyelid_state",
+              "missing_capability:face_expression",
+              "missing_capability:head_pose",
+              "missing_capability:left_hand_3d",
+              "missing_capability:right_hand_3d",
+              "missing_capability:stable_signer_id",
+              "missing_capability:text_alignment",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "asllrp": [
+              "missing_capability:body_3d",
+              "missing_capability:eye_gaze",
+              "missing_capability:eyelid_state",
+              "missing_capability:face_expression",
+              "missing_capability:head_pose",
+              "missing_capability:left_hand_3d",
+              "missing_capability:right_hand_3d",
+              "missing_capability:stable_signer_id",
+              "missing_capability:text_alignment",
+              "insufficient_evidence:continuous_asl",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "gallaudet_mll": [
+              "missing_capability:body_3d",
+              "missing_capability:continuous_asl",
+              "missing_capability:eye_gaze",
+              "missing_capability:eyelid_state",
+              "missing_capability:face_expression",
+              "missing_capability:head_pose",
+              "missing_capability:left_hand_3d",
+              "missing_capability:right_hand_3d",
+              "missing_capability:stable_signer_id",
+              "missing_capability:text_alignment",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "how2sign_local": [
+              "missing_capability:body_3d",
+              "missing_capability:eye_gaze",
+              "missing_capability:eyelid_state",
+              "missing_capability:face_expression",
+              "missing_capability:head_pose",
+              "missing_capability:left_hand_3d",
+              "missing_capability:right_hand_3d"
+            ],
+            "makehuman": [
+              "missing_capability:body_3d",
+              "missing_capability:continuous_asl",
+              "missing_capability:eye_gaze",
+              "missing_capability:eyelid_state",
+              "missing_capability:face_expression",
+              "missing_capability:head_pose",
+              "missing_capability:left_hand_3d",
+              "missing_capability:right_hand_3d",
+              "missing_capability:stable_signer_id",
+              "missing_capability:text_alignment"
+            ],
+            "nvidia_asl": [
+              "missing_capability:body_3d",
+              "missing_capability:continuous_asl",
+              "missing_capability:eye_gaze",
+              "missing_capability:eyelid_state",
+              "missing_capability:face_expression",
+              "missing_capability:head_pose",
+              "missing_capability:left_hand_3d",
+              "missing_capability:right_hand_3d",
+              "missing_capability:stable_signer_id",
+              "missing_capability:text_alignment",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "signavatars": [
+              "missing_capability:eye_gaze",
+              "missing_capability:eyelid_state",
+              "insufficient_evidence:body_3d",
+              "insufficient_evidence:continuous_asl",
+              "insufficient_evidence:face_expression",
+              "insufficient_evidence:head_pose",
+              "insufficient_evidence:left_hand_3d",
+              "insufficient_evidence:right_hand_3d",
+              "insufficient_evidence:stable_signer_id",
+              "insufficient_evidence:text_alignment",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "smplx": [
+              "missing_capability:body_3d",
+              "missing_capability:continuous_asl",
+              "missing_capability:eye_gaze",
+              "missing_capability:eyelid_state",
+              "missing_capability:face_expression",
+              "missing_capability:head_pose",
+              "missing_capability:left_hand_3d",
+              "missing_capability:right_hand_3d",
+              "missing_capability:stable_signer_id",
+              "missing_capability:text_alignment",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:permission_required"
+            ]
+          },
+          "evidence_sha256": {}
+        },
+        {
+          "requirement": "linguistic_reference",
+          "eligible_sources": [],
+          "requested_actions": [
+            "create_derivatives",
+            "model_training"
+          ],
+          "failures": {
+            "asl_citizen": [
+              "missing_capability:continuous_asl",
+              "missing_capability:eye_gaze_annotation",
+              "missing_capability:governed_linguistic_reference",
+              "missing_capability:handshape_annotation",
+              "missing_capability:head_movement_annotation",
+              "missing_capability:manual_timing",
+              "missing_capability:nonmanual_annotation",
+              "insufficient_evidence:qualified_asl_annotation",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "asllrp": [
+              "missing_capability:governed_linguistic_reference",
+              "insufficient_evidence:continuous_asl",
+              "insufficient_evidence:eye_gaze_annotation",
+              "insufficient_evidence:handshape_annotation",
+              "insufficient_evidence:head_movement_annotation",
+              "insufficient_evidence:manual_timing",
+              "insufficient_evidence:nonmanual_annotation",
+              "insufficient_evidence:qualified_asl_annotation",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "gallaudet_mll": [
+              "missing_capability:continuous_asl",
+              "missing_capability:eye_gaze_annotation",
+              "missing_capability:governed_linguistic_reference",
+              "missing_capability:handshape_annotation",
+              "missing_capability:head_movement_annotation",
+              "missing_capability:manual_timing",
+              "missing_capability:nonmanual_annotation",
+              "missing_capability:qualified_asl_annotation",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "how2sign_local": [
+              "missing_capability:eye_gaze_annotation",
+              "missing_capability:governed_linguistic_reference",
+              "missing_capability:handshape_annotation",
+              "missing_capability:head_movement_annotation",
+              "missing_capability:manual_timing",
+              "missing_capability:nonmanual_annotation",
+              "missing_capability:qualified_asl_annotation",
+              "insufficient_evidence:continuous_asl"
+            ],
+            "makehuman": [
+              "missing_capability:continuous_asl",
+              "missing_capability:eye_gaze_annotation",
+              "missing_capability:governed_linguistic_reference",
+              "missing_capability:handshape_annotation",
+              "missing_capability:head_movement_annotation",
+              "missing_capability:manual_timing",
+              "missing_capability:nonmanual_annotation",
+              "missing_capability:qualified_asl_annotation"
+            ],
+            "nvidia_asl": [
+              "missing_capability:continuous_asl",
+              "missing_capability:eye_gaze_annotation",
+              "missing_capability:governed_linguistic_reference",
+              "missing_capability:handshape_annotation",
+              "missing_capability:head_movement_annotation",
+              "missing_capability:manual_timing",
+              "missing_capability:nonmanual_annotation",
+              "missing_capability:qualified_asl_annotation",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "signavatars": [
+              "missing_capability:eye_gaze_annotation",
+              "missing_capability:governed_linguistic_reference",
+              "missing_capability:handshape_annotation",
+              "missing_capability:head_movement_annotation",
+              "missing_capability:manual_timing",
+              "missing_capability:nonmanual_annotation",
+              "missing_capability:qualified_asl_annotation",
+              "insufficient_evidence:continuous_asl",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "smplx": [
+              "missing_capability:continuous_asl",
+              "missing_capability:eye_gaze_annotation",
+              "missing_capability:governed_linguistic_reference",
+              "missing_capability:handshape_annotation",
+              "missing_capability:head_movement_annotation",
+              "missing_capability:manual_timing",
+              "missing_capability:nonmanual_annotation",
+              "missing_capability:qualified_asl_annotation",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:permission_required"
+            ]
+          },
+          "evidence_sha256": {}
+        },
+        {
+          "requirement": "render_rig",
+          "eligible_sources": [],
+          "requested_actions": [
+            "create_derivatives"
+          ],
+          "failures": {
+            "asl_citizen": [
+              "missing_capability:body_rig",
+              "missing_capability:eye_rig",
+              "missing_capability:face_rig",
+              "missing_capability:hand_rig",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "asllrp": [
+              "missing_capability:body_rig",
+              "missing_capability:eye_rig",
+              "missing_capability:face_rig",
+              "missing_capability:hand_rig",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "gallaudet_mll": [
+              "missing_capability:body_rig",
+              "missing_capability:eye_rig",
+              "missing_capability:face_rig",
+              "missing_capability:hand_rig",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "how2sign_local": [
+              "missing_capability:body_rig",
+              "missing_capability:eye_rig",
+              "missing_capability:face_rig",
+              "missing_capability:hand_rig"
+            ],
+            "makehuman": [
+              "action_authorization_evidence_missing"
+            ],
+            "nvidia_asl": [
+              "missing_capability:body_rig",
+              "missing_capability:eye_rig",
+              "missing_capability:face_rig",
+              "missing_capability:hand_rig",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "signavatars": [
+              "missing_capability:body_rig",
+              "missing_capability:eye_rig",
+              "missing_capability:face_rig",
+              "missing_capability:hand_rig",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "smplx": [
+              "insufficient_evidence:body_rig",
+              "insufficient_evidence:eye_rig",
+              "insufficient_evidence:face_rig",
+              "insufficient_evidence:hand_rig",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:permission_required"
+            ]
+          },
+          "evidence_sha256": {}
+        },
+        {
+          "requirement": "review_governance",
+          "eligible_sources": [],
+          "requested_actions": [
+            "create_derivatives"
+          ],
+          "failures": {
+            "asl_citizen": [
+              "missing_capability:accessible_consent",
+              "missing_capability:deaf_co_design",
+              "missing_capability:qualified_asl_review",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "asllrp": [
+              "missing_capability:accessible_consent",
+              "missing_capability:deaf_co_design",
+              "missing_capability:qualified_asl_review",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "gallaudet_mll": [
+              "missing_capability:accessible_consent",
+              "insufficient_evidence:deaf_co_design",
+              "insufficient_evidence:qualified_asl_review",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "how2sign_local": [
+              "missing_capability:accessible_consent",
+              "missing_capability:deaf_co_design",
+              "missing_capability:qualified_asl_review"
+            ],
+            "makehuman": [
+              "missing_capability:accessible_consent",
+              "missing_capability:deaf_co_design",
+              "missing_capability:qualified_asl_review"
+            ],
+            "nvidia_asl": [
+              "missing_capability:accessible_consent",
+              "missing_capability:deaf_co_design",
+              "missing_capability:qualified_asl_review",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "signavatars": [
+              "missing_capability:accessible_consent",
+              "missing_capability:deaf_co_design",
+              "missing_capability:qualified_asl_review",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "smplx": [
+              "missing_capability:accessible_consent",
+              "missing_capability:deaf_co_design",
+              "missing_capability:qualified_asl_review",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:permission_required"
+            ]
+          },
+          "evidence_sha256": {}
+        }
+      ],
+      "cross_source_capability_stitching_allowed": false,
+      "limitations": [
+        "checks recorded claims and file integrity, not legal interpretation",
+        "real state, synchronization, rig round-trip and qualified review remain required",
+        "redistribution, public deployment and identity use require separate action evidence"
+      ]
+    },
+    "commercial": {
+      "policy_version": "phase2-action-scope-v1",
+      "scope": "commercial",
+      "portfolio_eligible": false,
+      "phase_exit_approved": false,
+      "decisions": [
+        {
+          "requirement": "coobserved_motion",
+          "eligible_sources": [],
+          "requested_actions": [
+            "create_derivatives",
+            "model_training",
+            "commercial_use"
+          ],
+          "failures": {
+            "asl_citizen": [
+              "missing_capability:body_3d",
+              "missing_capability:continuous_asl",
+              "missing_capability:eye_gaze",
+              "missing_capability:eyelid_state",
+              "missing_capability:face_expression",
+              "missing_capability:head_pose",
+              "missing_capability:left_hand_3d",
+              "missing_capability:right_hand_3d",
+              "missing_capability:stable_signer_id",
+              "missing_capability:text_alignment",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "asllrp": [
+              "missing_capability:body_3d",
+              "missing_capability:eye_gaze",
+              "missing_capability:eyelid_state",
+              "missing_capability:face_expression",
+              "missing_capability:head_pose",
+              "missing_capability:left_hand_3d",
+              "missing_capability:right_hand_3d",
+              "missing_capability:stable_signer_id",
+              "missing_capability:text_alignment",
+              "insufficient_evidence:continuous_asl",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "gallaudet_mll": [
+              "missing_capability:body_3d",
+              "missing_capability:continuous_asl",
+              "missing_capability:eye_gaze",
+              "missing_capability:eyelid_state",
+              "missing_capability:face_expression",
+              "missing_capability:head_pose",
+              "missing_capability:left_hand_3d",
+              "missing_capability:right_hand_3d",
+              "missing_capability:stable_signer_id",
+              "missing_capability:text_alignment",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "how2sign_local": [
+              "missing_capability:body_3d",
+              "missing_capability:eye_gaze",
+              "missing_capability:eyelid_state",
+              "missing_capability:face_expression",
+              "missing_capability:head_pose",
+              "missing_capability:left_hand_3d",
+              "missing_capability:right_hand_3d",
+              "rights_not_permitted:prohibited"
+            ],
+            "makehuman": [
+              "missing_capability:body_3d",
+              "missing_capability:continuous_asl",
+              "missing_capability:eye_gaze",
+              "missing_capability:eyelid_state",
+              "missing_capability:face_expression",
+              "missing_capability:head_pose",
+              "missing_capability:left_hand_3d",
+              "missing_capability:right_hand_3d",
+              "missing_capability:stable_signer_id",
+              "missing_capability:text_alignment"
+            ],
+            "nvidia_asl": [
+              "missing_capability:body_3d",
+              "missing_capability:continuous_asl",
+              "missing_capability:eye_gaze",
+              "missing_capability:eyelid_state",
+              "missing_capability:face_expression",
+              "missing_capability:head_pose",
+              "missing_capability:left_hand_3d",
+              "missing_capability:right_hand_3d",
+              "missing_capability:stable_signer_id",
+              "missing_capability:text_alignment",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:unresolved"
+            ],
+            "signavatars": [
+              "missing_capability:eye_gaze",
+              "missing_capability:eyelid_state",
+              "insufficient_evidence:body_3d",
+              "insufficient_evidence:continuous_asl",
+              "insufficient_evidence:face_expression",
+              "insufficient_evidence:head_pose",
+              "insufficient_evidence:left_hand_3d",
+              "insufficient_evidence:right_hand_3d",
+              "insufficient_evidence:stable_signer_id",
+              "insufficient_evidence:text_alignment",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "smplx": [
+              "missing_capability:body_3d",
+              "missing_capability:continuous_asl",
+              "missing_capability:eye_gaze",
+              "missing_capability:eyelid_state",
+              "missing_capability:face_expression",
+              "missing_capability:head_pose",
+              "missing_capability:left_hand_3d",
+              "missing_capability:right_hand_3d",
+              "missing_capability:stable_signer_id",
+              "missing_capability:text_alignment",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:permission_required"
+            ]
+          },
+          "evidence_sha256": {}
+        },
+        {
+          "requirement": "linguistic_reference",
+          "eligible_sources": [],
+          "requested_actions": [
+            "create_derivatives",
+            "model_training",
+            "commercial_use"
+          ],
+          "failures": {
+            "asl_citizen": [
+              "missing_capability:continuous_asl",
+              "missing_capability:eye_gaze_annotation",
+              "missing_capability:governed_linguistic_reference",
+              "missing_capability:handshape_annotation",
+              "missing_capability:head_movement_annotation",
+              "missing_capability:manual_timing",
+              "missing_capability:nonmanual_annotation",
+              "insufficient_evidence:qualified_asl_annotation",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "asllrp": [
+              "missing_capability:governed_linguistic_reference",
+              "insufficient_evidence:continuous_asl",
+              "insufficient_evidence:eye_gaze_annotation",
+              "insufficient_evidence:handshape_annotation",
+              "insufficient_evidence:head_movement_annotation",
+              "insufficient_evidence:manual_timing",
+              "insufficient_evidence:nonmanual_annotation",
+              "insufficient_evidence:qualified_asl_annotation",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "gallaudet_mll": [
+              "missing_capability:continuous_asl",
+              "missing_capability:eye_gaze_annotation",
+              "missing_capability:governed_linguistic_reference",
+              "missing_capability:handshape_annotation",
+              "missing_capability:head_movement_annotation",
+              "missing_capability:manual_timing",
+              "missing_capability:nonmanual_annotation",
+              "missing_capability:qualified_asl_annotation",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "how2sign_local": [
+              "missing_capability:eye_gaze_annotation",
+              "missing_capability:governed_linguistic_reference",
+              "missing_capability:handshape_annotation",
+              "missing_capability:head_movement_annotation",
+              "missing_capability:manual_timing",
+              "missing_capability:nonmanual_annotation",
+              "missing_capability:qualified_asl_annotation",
+              "insufficient_evidence:continuous_asl",
+              "rights_not_permitted:prohibited"
+            ],
+            "makehuman": [
+              "missing_capability:continuous_asl",
+              "missing_capability:eye_gaze_annotation",
+              "missing_capability:governed_linguistic_reference",
+              "missing_capability:handshape_annotation",
+              "missing_capability:head_movement_annotation",
+              "missing_capability:manual_timing",
+              "missing_capability:nonmanual_annotation",
+              "missing_capability:qualified_asl_annotation"
+            ],
+            "nvidia_asl": [
+              "missing_capability:continuous_asl",
+              "missing_capability:eye_gaze_annotation",
+              "missing_capability:governed_linguistic_reference",
+              "missing_capability:handshape_annotation",
+              "missing_capability:head_movement_annotation",
+              "missing_capability:manual_timing",
+              "missing_capability:nonmanual_annotation",
+              "missing_capability:qualified_asl_annotation",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:unresolved"
+            ],
+            "signavatars": [
+              "missing_capability:eye_gaze_annotation",
+              "missing_capability:governed_linguistic_reference",
+              "missing_capability:handshape_annotation",
+              "missing_capability:head_movement_annotation",
+              "missing_capability:manual_timing",
+              "missing_capability:nonmanual_annotation",
+              "missing_capability:qualified_asl_annotation",
+              "insufficient_evidence:continuous_asl",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "smplx": [
+              "missing_capability:continuous_asl",
+              "missing_capability:eye_gaze_annotation",
+              "missing_capability:governed_linguistic_reference",
+              "missing_capability:handshape_annotation",
+              "missing_capability:head_movement_annotation",
+              "missing_capability:manual_timing",
+              "missing_capability:nonmanual_annotation",
+              "missing_capability:qualified_asl_annotation",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:permission_required"
+            ]
+          },
+          "evidence_sha256": {}
+        },
+        {
+          "requirement": "render_rig",
+          "eligible_sources": [],
+          "requested_actions": [
+            "create_derivatives",
+            "commercial_use"
+          ],
+          "failures": {
+            "asl_citizen": [
+              "missing_capability:body_rig",
+              "missing_capability:eye_rig",
+              "missing_capability:face_rig",
+              "missing_capability:hand_rig",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "asllrp": [
+              "missing_capability:body_rig",
+              "missing_capability:eye_rig",
+              "missing_capability:face_rig",
+              "missing_capability:hand_rig",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "gallaudet_mll": [
+              "missing_capability:body_rig",
+              "missing_capability:eye_rig",
+              "missing_capability:face_rig",
+              "missing_capability:hand_rig",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "how2sign_local": [
+              "missing_capability:body_rig",
+              "missing_capability:eye_rig",
+              "missing_capability:face_rig",
+              "missing_capability:hand_rig",
+              "rights_not_permitted:prohibited"
+            ],
+            "makehuman": [
+              "action_authorization_evidence_missing"
+            ],
+            "nvidia_asl": [
+              "missing_capability:body_rig",
+              "missing_capability:eye_rig",
+              "missing_capability:face_rig",
+              "missing_capability:hand_rig",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:unresolved"
+            ],
+            "signavatars": [
+              "missing_capability:body_rig",
+              "missing_capability:eye_rig",
+              "missing_capability:face_rig",
+              "missing_capability:hand_rig",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "smplx": [
+              "insufficient_evidence:body_rig",
+              "insufficient_evidence:eye_rig",
+              "insufficient_evidence:face_rig",
+              "insufficient_evidence:hand_rig",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:permission_required"
+            ]
+          },
+          "evidence_sha256": {}
+        },
+        {
+          "requirement": "review_governance",
+          "eligible_sources": [],
+          "requested_actions": [
+            "create_derivatives",
+            "commercial_use"
+          ],
+          "failures": {
+            "asl_citizen": [
+              "missing_capability:accessible_consent",
+              "missing_capability:deaf_co_design",
+              "missing_capability:qualified_asl_review",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "asllrp": [
+              "missing_capability:accessible_consent",
+              "missing_capability:deaf_co_design",
+              "missing_capability:qualified_asl_review",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "gallaudet_mll": [
+              "missing_capability:accessible_consent",
+              "insufficient_evidence:deaf_co_design",
+              "insufficient_evidence:qualified_asl_review",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "how2sign_local": [
+              "missing_capability:accessible_consent",
+              "missing_capability:deaf_co_design",
+              "missing_capability:qualified_asl_review",
+              "rights_not_permitted:prohibited"
+            ],
+            "makehuman": [
+              "missing_capability:accessible_consent",
+              "missing_capability:deaf_co_design",
+              "missing_capability:qualified_asl_review"
+            ],
+            "nvidia_asl": [
+              "missing_capability:accessible_consent",
+              "missing_capability:deaf_co_design",
+              "missing_capability:qualified_asl_review",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:unresolved"
+            ],
+            "signavatars": [
+              "missing_capability:accessible_consent",
+              "missing_capability:deaf_co_design",
+              "missing_capability:qualified_asl_review",
+              "not_locally_verified:request_required",
+              "rights_not_permitted:permission_required"
+            ],
+            "smplx": [
+              "missing_capability:accessible_consent",
+              "missing_capability:deaf_co_design",
+              "missing_capability:qualified_asl_review",
+              "not_locally_verified:account_required",
+              "rights_not_permitted:permission_required"
+            ]
+          },
+          "evidence_sha256": {}
+        }
+      ],
+      "cross_source_capability_stitching_allowed": false,
+      "limitations": [
+        "checks recorded claims and file integrity, not legal interpretation",
+        "real state, synchronization, rig round-trip and qualified review remain required",
+        "redistribution, public deployment and identity use require separate action evidence"
+      ]
+    }
+  },
+  "paired_sign_resolution_two_primary_endpoints": [
+    {
+      "independent_units": 4,
+      "primary_endpoints": 2,
+      "family_alpha": 0.05,
+      "minimum_p_numerator": 1,
+      "minimum_p_denominator": 8,
+      "minimum_units_for_resolution": 7,
+      "resolution_possible": false,
+      "power_established": false
+    },
+    {
+      "independent_units": 6,
+      "primary_endpoints": 2,
+      "family_alpha": 0.05,
+      "minimum_p_numerator": 1,
+      "minimum_p_denominator": 32,
+      "minimum_units_for_resolution": 7,
+      "resolution_possible": false,
+      "power_established": false
+    },
+    {
+      "independent_units": 7,
+      "primary_endpoints": 2,
+      "family_alpha": 0.05,
+      "minimum_p_numerator": 1,
+      "minimum_p_denominator": 64,
+      "minimum_units_for_resolution": 7,
+      "resolution_possible": true,
+      "power_established": false
+    }
+  ],
+  "cokely_primary_exists": false,
+  "limits": [
+    "Synthetic tests validate contracts only.",
+    "No external permission or qualified review was created.",
+    "Actual source adapter, canonical-state training integration, synchronized round-trip and empirical ASL acceptance remain unproven.",
+    "No assertion that completing manual forms alone makes the translator execute."
+  ]
+}

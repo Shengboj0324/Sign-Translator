@@ -203,10 +203,19 @@ def seed_all(seed: int) -> None:
 
 @contextmanager
 def isolated_deterministic_rng(seed: int) -> Iterator[None]:
-    """Use a fixed RNG stream without perturbing the surrounding training stream."""
+    """Temporarily seed RNGs, restoring them even if seeding or the body fails.
+
+    MPS is preserved separately from the historical checkpoint RNG schema. This
+    provides local isolation, not MPS checkpoint continuation or numerical parity.
+    """
     previous = capture_rng_state()
-    seed_all(seed)
+    mps_state = torch.mps.get_rng_state() if torch.backends.mps.is_available() else None
     try:
+        seed_all(seed)
         yield
     finally:
-        restore_rng_state(previous)
+        try:
+            restore_rng_state(previous)
+        finally:
+            if mps_state is not None:
+                torch.mps.set_rng_state(mps_state)

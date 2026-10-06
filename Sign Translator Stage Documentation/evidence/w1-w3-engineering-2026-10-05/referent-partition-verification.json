@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2273 passed in 78.43s (0:01:18)",
+  "code_sha256": {
+    "signtranslator/planning/referent_partition.py": "759f4d6d12b2321e6e89422dffd569ed624d8afa0ae72d5b705cd794cb4c9a6b",
+    "tests/test_referent_partition.py": "5edf288b9b8ccaa77ef4f197be80a20e4efc23506123db69338e225e33e5f981",
+    "tests/test_text_referents.py": "7090be39e36d923865035363f8b4129e9f5f9e9c7af9a7a37c852f2213e02f64"
+  },
+  "verified_scope": "Exact bounded partition search; independent exhaustive oracle through five events; exact ties and extreme numerical gains; all small-example budget boundaries; learned fixture integration",
+  "ten_event_probe": {
+    "partitions": 115975,
+    "nodes": 142417,
+    "status": "ambiguous",
+    "all_logits_zero": true
+  },
+  "phase_exit_approved": false,
+  "manual_handoffs": "all nine absent",
+  "not_proven": [
+    "larger-sequence decoding",
+    "locus prediction",
+    "calibrated partition probability or semantic correctness",
+    "real source and reviewer acceptance"
+  ]
+}

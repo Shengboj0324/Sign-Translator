@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2263 passed in 77.63s (0:01:17)",
+  "code_sha256": {
+    "signtranslator/planning/candidate_graph.py": "d7f04582533db39a643c4e607db0ba0c943d536ee54aff5c720ea7f8e7e76852",
+    "tests/test_candidate_graph.py": "09dfb80443484bd081e9f99ce463c0a38698982e655f4a81b22dce6d5236860b",
+    "signtranslator/grammar/sir.py": "ae388186f49c16d73ea87171f1c72103d8bcc41a8d2d88ec095028c276348bd4"
+  },
+  "verified_scope": "Explicit candidate graph assembly, structural refusal, immutable result, vocabulary and source extent checks",
+  "phase_exit_approved": false,
+  "manual_handoffs": "all nine absent",
+  "not_proven": [
+    "calibrated edge decisions",
+    "predicted referents/loci",
+    "ASL semantic acceptance",
+    "source or reviewer approval"
+  ]
+}

@@ -14,12 +14,19 @@ import math
 import os
 from pathlib import Path
 import tempfile
+from contextlib import nullcontext
 from typing import Any, Callable, Dict, List, Mapping, Optional
 
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import BatchSampler, DataLoader, RandomSampler, SequentialSampler
 
+from ..inference_context import preserving_eval_mode
 from ..config import TrainerConfig
+from .objectives import ObjectiveAccumulator, SupportedObjective
+from ..data.governed_corpus import (
+    GovernedMotionBatch, GovernedMotionDataset, collate_governed_motion,
+    move_governed_batch,
+)
 from ..reproducibility import (
     canonical_json_bytes,
     capture_rng_state,
@@ -32,7 +39,32 @@ from ..reproducibility import (
 )
 
 
-CHECKPOINT_SCHEMA_VERSION = 2
+def _validated_training_state(state, *, epoch_limit):
+    """Validate resumable progress without coercion or model/optimizer mutation."""
+    fields = {"completed_epochs", "global_step", "best_val", "history"}
+    if not isinstance(state, dict) or set(state) != fields:
+        raise ValueError("checkpoint training state has unexpected fields")
+    for name in ("completed_epochs", "global_step"):
+        if type(state[name]) is not int or state[name] < 0:
+            raise ValueError("checkpoint progress must contain nonnegative exact integers")
+    if state["completed_epochs"] > epoch_limit:
+        raise ValueError("checkpoint epoch exceeds configured training horizon")
+    best = state["best_val"]
+    if type(best) not in (int, float) or (isinstance(best, float) and (math.isnan(best) or best == -math.inf)):
+        raise ValueError("checkpoint best metric must be finite or positive infinity")
+    history = state["history"]
+    if not isinstance(history, dict):
+        raise ValueError("checkpoint history must be a dictionary")
+    for name, values in history.items():
+        if type(name) is not str or not name or type(values) is not list:
+            raise ValueError("checkpoint history requires named lists")
+        if any(type(value) not in (int, float)
+               or (type(value) is float and not math.isfinite(value)) for value in values):
+            raise ValueError("checkpoint history values must be finite numbers, excluding booleans")
+    return {**state, "history": {name: list(values) for name, values in history.items()}}
+
+
+CHECKPOINT_SCHEMA_VERSION = 3
 VALIDATION_SEED_OFFSET = 1_000_003
 
 
@@ -69,7 +101,7 @@ def _model_contract(model: torch.nn.Module) -> dict[str, Any]:
 def _loader_contract(loader: Optional[DataLoader]) -> Optional[dict[str, Any]]:
     if loader is None:
         return None
-    return {
+    contract = {
         "class": f"{type(loader).__module__}.{type(loader).__qualname__}",
         "dataset_class": (
             f"{type(loader.dataset).__module__}.{type(loader.dataset).__qualname__}"),
@@ -81,6 +113,48 @@ def _loader_contract(loader: Optional[DataLoader]) -> Optional[dict[str, Any]]:
         "num_workers": loader.num_workers,
         "persistent_workers": loader.persistent_workers,
     }
+    if isinstance(loader.dataset, GovernedMotionDataset):
+        contract["governed"] = loader.dataset.training_contract
+    return contract
+
+
+def _governed_loaders(model, train_loader, val_loader) -> bool:
+    """Typed models opt into per-example-mean scalar losses and strict admission."""
+    governed = isinstance(train_loader.dataset, GovernedMotionDataset)
+    if val_loader is not None and isinstance(val_loader.dataset, GovernedMotionDataset) != governed:
+        raise ValueError("cannot mix governed and legacy loaders")
+    version = getattr(model, "governed_batch_schema_version", None)
+    if not governed:
+        if version is not None:
+            raise ValueError("governed model requires governed loaders")
+        return False
+    if type(version) is not int or version != 1:
+        raise ValueError("model must declare governed_batch_schema_version=1")
+    for loader, split in ((train_loader, "train"), (val_loader, "val")):
+        if loader is None:
+            continue
+        if loader.collate_fn is not collate_governed_motion:
+            raise ValueError("governed training requires the revalidating canonical collator")
+        # This initial route supports reproducible full-view sampling. Custom
+        # weighting/distributed sampling needs its own declared estimand/state.
+        if (type(loader.batch_sampler) is not BatchSampler
+                or type(loader.sampler) not in (SequentialSampler, RandomSampler)
+                or loader.generator is not None):
+            raise ValueError("governed loaders require standard full-view sampling with global RNG")
+        if isinstance(loader.sampler, RandomSampler) and (
+                loader.sampler.replacement or loader.sampler.num_samples != len(loader.dataset)
+                or loader.sampler.generator is not None):
+            raise ValueError("governed random sampling must cover the view without replacement")
+        if split == 'val' and type(loader.sampler) is not SequentialSampler:
+            raise ValueError("governed validation requires sequential full-view sampling")
+        if loader.dataset.training_contract["split"] != split:
+            raise ValueError(f"governed {split} loader uses the wrong split")
+        if (loader.dataset.training_contract["corpus_sha256"] !=
+                train_loader.dataset.training_contract["corpus_sha256"]):
+            raise ValueError("governed loaders must share the complete admitted corpus")
+    if val_loader is not None and val_loader.drop_last:
+        raise ValueError("governed validation must not drop the final batch")
+    return True
 
 
 def _json_domain(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -160,7 +234,7 @@ def _finite_losses(losses: Mapping[str, torch.Tensor], context: str) -> None:
 def _checked_step(loss: torch.Tensor, optimizer, parameters, grad_clip: float,
                   context: str) -> None:
     parameters = list(parameters)
-    optimizer.zero_grad()
+    optimizer.zero_grad(set_to_none=True)
     if not loss.requires_grad:
         raise ValueError(f"objective has no gradient path: {context}")
     loss.backward()
@@ -177,6 +251,18 @@ def _checked_step(loss: torch.Tensor, optimizer, parameters, grad_clip: float,
 
 
 class Trainer:
+    """Optimize legacy models or explicitly opted-in governed batch models.
+
+    A model declaring ``governed_batch_schema_version = 1`` receives the intact
+    typed batch in ``training_step`` and must return per-example-mean scalar
+    losses, including ``total``. Epoch reporting weights those means by sample
+    count. Additionally declaring ``governed_objective_schema_version = 1``
+    requires a SupportedObjective with explicit branch numerators and support.
+    Optimization uses full-population contributions; branch reports use their
+    own support counts and omit unavailable metrics. These declarations are
+    interface contracts, not ASL qualification.
+    Governed validation always uses this path, never a model's legacy loader hook.
+    """
     def __init__(self, model: torch.nn.Module, cfg: TrainerConfig,
                  train_loader: DataLoader,
                  val_loader: Optional[DataLoader] = None,
@@ -184,6 +270,12 @@ class Trainer:
         _require_batches(train_loader, "training")
         if val_loader is not None:
             _require_batches(val_loader, "validation")
+        self.governed = _governed_loaders(model, train_loader, val_loader)
+        objective_schema = getattr(model, 'governed_objective_schema_version', None)
+        self.supported_objectives = objective_schema is not None
+        if self.supported_objectives and (not self.governed or type(objective_schema) is not int
+                                          or objective_schema != 1):
+            raise ValueError('supported objectives require governed batches and objective schema 1')
         self.model = model.to(cfg.device)
         self.cfg = cfg
         self.train_loader = train_loader
@@ -204,6 +296,10 @@ class Trainer:
         self.completed_epochs = 0
         self.artifact_context = _json_domain(artifact_context or {})
         self.model_contract = _model_contract(model)
+        if self.governed:
+            self.model_contract["governed_batch_schema_version"] = 1
+        if self.supported_objectives:
+            self.model_contract['governed_objective_schema_version'] = 1
         self.implementation_identity = package_implementation_identity()
         self.runtime_environment = runtime_environment()
         self.data_contract = {
@@ -218,60 +314,125 @@ class Trainer:
             out[k] = v.to(self.cfg.device) if torch.is_tensor(v) else v
         return out
 
+    def _prepare_batch(self, batch, loader, partition):
+        if not self.governed:
+            if not isinstance(batch, dict):
+                raise TypeError("legacy trainer requires dictionary batches")
+            return self._to_device(batch), 1, batch.get('sample_ids', 'unavailable')
+        # Recheck configuration before any model or optimizer side effects.
+        _governed_loaders(self.model, self.train_loader, self.val_loader)
+        if _loader_contract(loader) != self.data_contract[partition]:
+            raise ValueError("governed loader contract changed after trainer construction")
+        expected = self.data_contract[partition]["governed"]
+        if not isinstance(batch, GovernedMotionBatch):
+            raise TypeError("governed loader must yield typed governed batches")
+        if batch.corpus_sha256 != expected["corpus_sha256"] or batch.split != expected["split"]:
+            raise ValueError("batch corpus/split does not match trainer admission")
+        size = len(batch.motion.sample_ids)
+        if size == 0 or size != len(batch.annotations):
+            raise ValueError("invalid governed batch cardinality")
+        return move_governed_batch(batch, self.cfg.device), size, batch.motion.sample_ids
+
+    def _check_loss_keys(self, losses, aggregate):
+        if self.governed and aggregate and losses.keys() != aggregate.keys():
+            raise ValueError("governed loss fields must remain identical across batches")
+
     def _record(self, prefix: str, losses: Dict[str, torch.Tensor]) -> None:
         for k, v in losses.items():
             self.history.setdefault(f"{prefix}_{k}", []).append(v.detach().item())
 
     # -- loops --------------------------------------------------------------
+    def _supported_epoch(self, loader, *, training: bool) -> Dict[str, float]:
+        """Keep the full population while reporting branch-specific support."""
+        _require_batches(loader, 'training' if training else 'validation')
+        if training:
+            self.model.train()
+        mode = nullcontext() if training else preserving_eval_mode(self.model)
+        accumulator = ObjectiveAccumulator()
+        rng = nullcontext() if training else isolated_deterministic_rng(self.cfg.seed + VALIDATION_SEED_OFFSET)
+        with mode:
+            with rng:
+                for index, batch in enumerate(loader):
+                    partition = 'train' if training else 'validation'
+                    batch, size, sample_ids = self._prepare_batch(batch, loader, partition)
+                    objective = self.model.training_step(batch, weights=self.cfg.loss_weights)
+                    if (not isinstance(objective, SupportedObjective)
+                            or objective.population_size != size
+                            or objective.weights != self.cfg.loss_weights):
+                        raise ValueError('supported objective must bind batch size and configured weights')
+                    schema = getattr(self.model, 'governed_objective_schema_version', None)
+                    if type(schema) is not int or schema != 1:
+                        raise ValueError('governed objective schema changed after construction')
+                    total = objective.total()
+                    accumulator.add(objective)
+                    if training:
+                        context = f'epoch={self.completed_epochs}, batch={index}, sample_ids={sample_ids!r}'
+                        _checked_step(total, self.opt, self.model.parameters(), self.cfg.grad_clip, context)
+                        self.sched.step()
+                        self.global_step += 1
+        result = accumulator.result()
+        support = {**accumulator.support, 'total': accumulator.population}
+        if training:
+            self.last_train_support = support
+        else:
+            self.last_validation_support = support
+        return result
+
     def train_epoch(self) -> Dict[str, float]:
+        if self.supported_objectives:
+            return self._supported_epoch(self.train_loader, training=True)
         _require_batches(self.train_loader, "training")
         self.model.train()
         agg: Dict[str, float] = {}
         count = 0
+        weight = 0
         for batch in self.train_loader:
-            batch = self._to_device(batch)
+            batch, batch_weight, sample_ids = self._prepare_batch(batch, self.train_loader, "train")
             losses = self.model.training_step(batch, weights=self.cfg.loss_weights)
             context = (f"epoch={self.completed_epochs}, batch={count}, step={self.global_step}, "
-                       f"sample_ids={batch.get('sample_ids', 'unavailable')!r}")
+                       f"sample_ids={sample_ids!r}")
             _finite_losses(losses, context)
+            self._check_loss_keys(losses, agg)
             loss = losses["total"]
             _checked_step(loss, self.opt, self.model.parameters(), self.cfg.grad_clip, context)
             self.sched.step()
             self.global_step += 1
 
             for k, v in losses.items():
-                agg[k] = agg.get(k, 0.0) + v.detach().item()
+                agg[k] = agg.get(k, 0.0) + v.detach().item() * batch_weight
             count += 1
+            weight += batch_weight
         if count == 0:
             raise RuntimeError("training iterator yielded zero batches")
-        return {k: v / count for k, v in agg.items()}
+        return {k: v / weight for k, v in agg.items()}
 
     @torch.no_grad()
     def validate(self) -> Dict[str, float]:
         if self.val_loader is None:
             return {}
-        was_training = self.model.training
-        self.model.eval()
+        if self.supported_objectives:
+            return self._supported_epoch(self.val_loader, training=False)
         agg: Dict[str, float] = {}
         count = 0
+        weight = 0
         # Diffusion validation samples timesteps/noise.  Fix that stream and restore
         # the training RNG afterward so validation is repeatable and observational.
-        try:
+        with preserving_eval_mode(self.model):
             with isolated_deterministic_rng(self.cfg.seed + VALIDATION_SEED_OFFSET):
-                if hasattr(self.model, 'validation_metrics'):
+                if not self.governed and hasattr(self.model, 'validation_metrics'):
                     return self.model.validation_metrics(self.val_loader, self.cfg.loss_weights)
                 for batch in self.val_loader:
-                    batch = self._to_device(batch)
+                    batch, batch_weight, sample_ids = self._prepare_batch(batch, self.val_loader, "validation")
                     losses = self.model.training_step(batch, weights=self.cfg.loss_weights)
-                    _finite_losses(losses, f"validation batch={count}, sample_ids={batch.get('sample_ids')!r}")
+                    _finite_losses(losses, f"validation batch={count}, sample_ids={sample_ids!r}")
+                    self._check_loss_keys(losses, agg)
                     for k, v in losses.items():
-                        agg[k] = agg.get(k, 0.0) + v.detach().item()
+                        agg[k] = agg.get(k, 0.0) + v.detach().item() * batch_weight
                     count += 1
-        finally:
-            self.model.train(was_training)
+                    weight += batch_weight
         if count == 0:
             raise RuntimeError("validation iterator yielded zero batches")
-        return {k: v / count for k, v in agg.items()}
+        return {k: v / weight for k, v in agg.items()}
 
     def fit(self, verbose: bool = False,
             max_epochs: Optional[int] = None) -> Dict[str, List[float]]:
@@ -287,12 +448,22 @@ class Trainer:
             self.history.setdefault("lr", []).append(self.sched.get_last_lr()[0])
             for k, v in train_losses.items():
                 self.history.setdefault(f"train_{k}", []).append(v)
+                if self.supported_objectives:
+                    self.history.setdefault(f"train_{k}_epoch", []).append(epoch + 1)
+            if self.supported_objectives:
+                for name, support in self.last_train_support.items():
+                    self.history.setdefault(f'train_support_{name}', []).append(support)
 
             val_losses = {}
             if self.val_loader is not None and (epoch + 1) % self.cfg.val_every == 0:
                 val_losses = self.validate()
                 for k, v in val_losses.items():
                     self.history.setdefault(f"val_{k}", []).append(v)
+                    if self.supported_objectives:
+                        self.history.setdefault(f"val_{k}_epoch", []).append(epoch + 1)
+                if self.supported_objectives:
+                    for name, support in self.last_validation_support.items():
+                        self.history.setdefault(f'val_support_{name}', []).append(support)
                 metric = self.cfg.selection_metric
                 if metric not in val_losses or not math.isfinite(val_losses[metric]):
                     raise ValueError(f"selection metric {metric!r} is unavailable or nonfinite")
@@ -350,6 +521,7 @@ class Trainer:
                 "history": self.history,
             },
             "rng_state": capture_rng_state(),
+            "best_model_state": self.best_model_state,
         }
         descriptor, temporary_name = tempfile.mkstemp(
             prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent)
@@ -478,8 +650,8 @@ class Trainer:
             "runtime_environment", "data_contract", "artifact_context", "training_state",
         }
         if set(manifest) != manifest_fields:
-            raise ValueError("checkpoint manifest fields do not match schema version 2")
-        if manifest.get("schema_version") != CHECKPOINT_SCHEMA_VERSION:
+            raise ValueError("checkpoint manifest fields do not match the checkpoint schema")
+        if type(manifest.get("schema_version")) is not int or manifest["schema_version"] not in (2, 3):
             raise ValueError("unsupported checkpoint manifest schema")
         if manifest.get("checkpoint_size") != source.stat().st_size:
             raise ValueError("checkpoint size does not match its manifest")
@@ -507,10 +679,16 @@ class Trainer:
             "runtime_environment", "data_contract", "trainer_config", "artifact_context",
             "model", "optimizer", "scheduler", "training_state", "rng_state",
         }
+        if manifest["schema_version"] == 3:
+            required.add("best_model_state")
         if set(checkpoint) != required:
-            raise ValueError("checkpoint fields do not match schema version 2")
-        if checkpoint["schema_version"] != CHECKPOINT_SCHEMA_VERSION:
+            raise ValueError("checkpoint fields do not match the checkpoint schema")
+        if (type(checkpoint["schema_version"]) is not int
+                or checkpoint["schema_version"] != manifest["schema_version"]):
             raise ValueError("unsupported checkpoint schema")
+        if mode == "resume":
+            training_state = _validated_training_state(
+                checkpoint["training_state"], epoch_limit=self.cfg.epochs)
         for field in ("kind", "model_contract", "implementation_identity",
                       "runtime_environment", "data_contract", "trainer_config",
                       "artifact_context", "training_state"):
@@ -524,9 +702,12 @@ class Trainer:
         if checkpoint["model_contract"] != self.model_contract:
             raise ValueError("checkpoint model contract does not match this model")
 
-        self.model.load_state_dict(checkpoint["model"], strict=True)
         if mode == "weights":
+            self.model.load_state_dict(checkpoint["model"], strict=True)
             return
+
+        if checkpoint["schema_version"] != CHECKPOINT_SCHEMA_VERSION:
+            raise ValueError("schema 2 lacks best-model state; use explicit weights warm start")
 
         loaded_config = checkpoint["trainer_config"]
         current_config = self.cfg.to_dict()
@@ -548,19 +729,29 @@ class Trainer:
         if checkpoint["data_contract"] != self.data_contract:
             raise ValueError("resume data-loader contract does not match checkpoint")
 
+        best_state = checkpoint["best_model_state"]
+        best_value = training_state["best_val"]
+        if best_state is None:
+            if best_value != math.inf:
+                raise ValueError("finite best metric requires retained best-model weights")
+        else:
+            current_state = self.model.state_dict()
+            if (not math.isfinite(best_value) or not isinstance(best_state, Mapping)
+                    or best_state.keys() != current_state.keys()):
+                raise ValueError("best-model state and metric are inconsistent")
+            for name, value in best_state.items():
+                expected = current_state[name]
+                if (not isinstance(value, torch.Tensor) or value.shape != expected.shape
+                        or value.dtype != expected.dtype):
+                    raise ValueError("best-model tensor contract mismatch")
+            best_state = {name: value.detach().cpu().clone() for name, value in best_state.items()}
+
+        self.model.load_state_dict(checkpoint["model"], strict=True)
         self.opt.load_state_dict(checkpoint["optimizer"])
         self.sched.load_state_dict(checkpoint["scheduler"])
-        training_state = checkpoint["training_state"]
-        if set(training_state) != {
-                "completed_epochs", "global_step", "best_val", "history"}:
-            raise ValueError("checkpoint training state has unexpected fields")
-        self.completed_epochs = int(training_state["completed_epochs"])
-        self.global_step = int(training_state["global_step"])
-        self.best_val = float(training_state["best_val"])
-        self.history = {
-            str(name): [float(value) for value in values]
-            for name, values in training_state["history"].items()
-        }
-        if self.completed_epochs < 0 or self.global_step < 0:
-            raise ValueError("checkpoint contains negative training progress")
+        self.completed_epochs = training_state["completed_epochs"]
+        self.global_step = training_state["global_step"]
+        self.best_val = training_state["best_val"]
+        self.history = training_state["history"]
         restore_rng_state(checkpoint["rng_state"])
+        self.best_model_state = best_state

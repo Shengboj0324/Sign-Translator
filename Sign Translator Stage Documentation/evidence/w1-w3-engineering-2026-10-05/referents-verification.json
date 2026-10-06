@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2268 passed in 78.40s (0:01:18)",
+  "code_sha256": {
+    "signtranslator/planning/referents.py": "f055cf436dcf665b386a6ca447cfbb651a77fa98b231e332f7dbafb428d15e92",
+    "signtranslator/planning/text_referents.py": "ba4b855877559108094e4c246c898bff434411bfb46695d31eb1c9adfb3b6bd8",
+    "tests/test_referents.py": "b6b776cf3f69511d1ab40604f2e542e65de8aefad0abc406569fb6b389692a77",
+    "tests/test_text_referents.py": "66f482bbdc9877ec3eccfe157722e8c3945aa626e769872295a92abe102f5ea3",
+    "tests/test_text_sir_labels.py": "b4d5005532ba01a8e0ab64186ce3c277d97d5b27457b2e2f8e3897121de41dc9"
+  },
+  "verified_scope": "Referent equality targets invariant to annotation ID renaming; known unordered pair NLL; exact symmetric head; fictional joint learning and source-only candidate scores; CPU checkpoint reproduction; absent-support behavior",
+  "phase_exit_approved": false,
+  "manual_handoffs": "all nine absent",
+  "not_proven": [
+    "referent partition decoding",
+    "locus prediction",
+    "calibrated graph decoding",
+    "held-out ASL meaning",
+    "real source and reviewer acceptance"
+  ]
+}

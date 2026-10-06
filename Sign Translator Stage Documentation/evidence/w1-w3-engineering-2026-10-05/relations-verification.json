@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -o addopts='' -q -W error --tb=short",
+  "result": "2239 passed in 82.43s (0:01:22)",
+  "code_sha256": {
+    "signtranslator/grammar/sir.py": "ae388186f49c16d73ea87171f1c72103d8bcc41a8d2d88ec095028c276348bd4",
+    "signtranslator/planning/relations.py": "83ba885408e6ad56f935c6c74540f46ccd5da5a2f3f851e5fccac58629450b4c",
+    "signtranslator/planning/text_relations.py": "96a20bb032d8c52a4b989fa7b844cffada7fa39e4fa4bb58f970d1da2c3acc34",
+    "tests/test_sir_relations.py": "473676c11c8fe8cd1b30fa6e180217b7251342e9b1c2e5a07be3ebdd8cf82304",
+    "tests/test_text_sir_relations.py": "9bab65daadc3b474ed40efef09f55f6671de6f39784a90397475c56799fa1097"
+  },
+  "verified_scope": "Recorded-positive and structural-negative relation support; unknown masks; analytical and numerical multilabel gradients; joint relation fixture learning; raw generated relation scores; LOCUS target validation",
+  "phase_exit_approved": false,
+  "manual_handoffs": "all nine absent",
+  "not_proven": [
+    "complete SIR graph generation",
+    "referent/locus prediction or calibrated edge threshold",
+    "joint training of examples with no relation support",
+    "relation-time candidate acceptance",
+    "held-out ASL meaning or generalization",
+    "real-source or reviewer acceptance"
+  ]
+}

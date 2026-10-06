@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -o addopts='' -q -W error --tb=short",
+  "result": "2197 passed in 72.47s (0:01:12)",
+  "code_sha256": {
+    "signtranslator/data/governed_motion.py": "44a274abaa555ce48c535838e468ff697b9610b1443a8029a7d591a4a0139ea1",
+    "signtranslator/data/governed_corpus.py": "63e24d26396c2b376ab66af00000fd95921d03341d8844c4fa6c041be5d966bb",
+    "signtranslator/data/governed_text.py": "94762cbc856ce6b371318ff0549b9e5917a1584d1a726452178994b3f4829a35",
+    "signtranslator/planning/text_labels.py": "5bdf46908c61597d6f840f686b0c8a36aeaf5a8113a84651c4e3944964ae5390",
+    "tests/test_governed_text.py": "77566a399ae596d6518f685ae0706e06ca2794be44e38dfc9719766a53372cc7",
+    "tests/test_text_sir_labels.py": "dbdec90c3810701575619681674c7bc3bcb0b3311d6822a83b4bf18a6140d2dc"
+  },
+  "verified_scope": "Same-read transcript byte retention; explicit lossless UTF-8 byte alphabet; text-only scaffolded label-head optimization through governed Trainer; padding and target-tensor isolation; vocabulary-bound checkpoint restoration",
+  "phase_exit_approved": false,
+  "manual_handoffs": "all nine absent",
+  "not_proven": [
+    "free-generation event recovery",
+    "timing, graph, reference or motion prediction",
+    "learned ASL meaning or generalization",
+    "video dependence",
+    "calibrated abstention",
+    "real-source or reviewer acceptance"
+  ]
+}

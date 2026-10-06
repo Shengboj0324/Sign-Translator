@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error --tb=short",
+  "result": "2337 passed in 82.57s",
+  "focused_tests": "52 passed in 3.96s",
+  "code_sha256": {
+    "signtranslator/inference_context.py": "5a0299ede86a548657d85cc86d17205c10aaf088f58799ccf86f30ed4716c3bd",
+    "signtranslator/training/trainer.py": "252943237156c23f8967c848544bc0a7e9d7553a90464eba159e81eee9f87599",
+    "tests/test_validation_modes.py": "8d6ba38be73044eccea5ab08a31976fbb0a3741f6af2eeb5b53de5e35e7162c6",
+    "tests/test_inference_context.py": "aa7a1b3680323becec489d721006ceead86986b919b2970c8b8339447a32bcba",
+    "signtranslator/planning/text_sequence.py": "9525beac18243b38141e10e51b1db581f8bcb5785be5de644cf9d52eb23e2f1b",
+    "signtranslator/planning/text_timing.py": "7ab082f4f74adcc769d455ee2f213b741e4a215755951a0c50bd3c917854077c",
+    "signtranslator/planning/text_relations.py": "8b17a9eec6a8a63e58615700f9932056e12f45855dd6edba42e1fc414c465ccd",
+    "signtranslator/planning/text_referents.py": "d22025a7d7cd70ef5197a3f00a1a5f36e91b8c112b2904b3005641fa0129d05a",
+    "signtranslator/planning/text_loci.py": "592d8589d8b6a576b0ee6d0fd7a28c6e6759163927781b8c020ac4abf5ec4e89",
+    "signtranslator/planning/source_intervention.py": "12a30195465483a69e06df95378e607807fb81600311dcf553d676ebe6c067c7"
+  },
+  "verified_scope": "Four validation paths preserve mixed module modes and CPU RNG on success and exceptions; no-gradient evaluation",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "not_proven": [
+    "accelerator RNG or numerical parity",
+    "custom train/eval side effect rollback",
+    "empirical W1-W3 acceptance"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error tests/test_relation_evaluation.py tests/test_source_intervention.py tests/test_temporal_evaluation.py tests/test_sequence_evaluation.py",
+  "result": "36 passed in 0.86s",
+  "code_sha256": {
+    "signtranslator/planning/relation_evaluation.py": "45e8727a85428caf8e92f57c1b779fec0de113bd4e588bbe3c33afb50dd1c5d5",
+    "tests/test_relation_evaluation.py": "cd619f83e697aa8a6c83f83d205481d261e86e3c2006728bf3d7048ec14ba110"
+  },
+  "verified_scope": "400-digit Decimal Brier oracle; sign-complement symmetry; nonzero high-confidence errors; subnormal and maximum finite aggregation; diagnostic integration",
+  "previous_full_suite": "2374 passed in 85.21s before this precision fix; not rerun for this focused change",
+  "manual_handoffs": "all nine absent",
+  "phase_exit_approved": false,
+  "not_proven": [
+    "arbitrary precision in floating-point scores",
+    "calibration or empirical W1-W3 acceptance"
+  ]
+}

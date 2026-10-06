@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -o addopts='' -q -W error --tb=short",
+  "result": "2212 passed in 74.00s (0:01:14)",
+  "code_sha256": {
+    "signtranslator/planning/text_labels.py": "d818e6ef525e477aaa262756d68154e0ced96f595c8ac66c306f3fb6f5388ddf",
+    "signtranslator/planning/label_sequence.py": "551a9a683350d880e0c71864d4b92a8465f69cf9d5d26d4cdfa580beda56d36a",
+    "signtranslator/planning/text_sequence.py": "01803587832241c729da08051c23b08c71656ac389071fe60994df1dbf5b9a81",
+    "tests/test_sir_label_sequence.py": "445cdf70a64decf079fa67b1a91c026546fbd4c698cec1c2ce777ecfd76d0bc6",
+    "tests/test_text_sir_sequence.py": "69cfa3a4dfe55b388b2545acf2324a1beea0b3f0af0bb3d5b08477065bb5510e"
+  },
+  "verified_scope": "Shifted causal kind/label decoder; single STOP training target; analytical and numerical gradients; padding isolation; source-only greedy length prediction; explicit empty/capacity refusal; fixture learning and checkpoint reproduction",
+  "phase_exit_approved": false,
+  "manual_handoffs": "all nine absent",
+  "not_proven": [
+    "complete temporal SIR generation",
+    "timing, relations, references or motion prediction",
+    "held-out ASL meaning or generalization",
+    "video dependence",
+    "calibrated semantic or OOD abstention",
+    "real-source or reviewer acceptance"
+  ]
+}
