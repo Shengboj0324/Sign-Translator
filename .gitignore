@@ -18,3 +18,5 @@ runs/
 wandb/
 .DS_Store
 .idea/
+.env.r2.local
+.r2-migration/
