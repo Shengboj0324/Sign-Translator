@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 import hashlib
 import json
 import math
+from itertools import islice
 from pathlib import Path
 
 from torch.utils.data import DataLoader
@@ -19,6 +20,9 @@ from .planning.source_intervention import compare_source_intervention, _state_sh
 from .planning.text_loci import LocusTextConfig, LocusTextSIRModel
 from .reproducibility import canonical_json_bytes, isolated_deterministic_rng
 from .training.trainer import Trainer
+from .training.exposure import summarize_exposure
+from .planning.relation_exposure import summarize_relation_exposure
+from .planning.relation_evaluation import validated_relation_thresholds
 
 
 @dataclass(frozen=True)
@@ -47,6 +51,37 @@ def run_governed_planner(corpus: GovernedMotionCorpus, vocabulary: GovernedLabel
     Checkpoint writes follow TrainerConfig.ckpt_path and are not rolled back if
     a later operation fails. Exact continuation is verified on CPU only.
     """
+    return _execute_governed_planner(corpus, vocabulary, alphabet,
+        model_config=model_config, trainer_config=trainer_config,
+        validation=validation, shuffle=shuffle, resume_from=resume_from,
+        max_epochs=max_epochs, perform_training=True)
+
+
+def load_governed_planner(corpus: GovernedMotionCorpus, vocabulary: GovernedLabelVocabulary,
+                          alphabet: LocusAlphabet, *, model_config: LocusTextConfig,
+                          trainer_config: TrainerConfig, validation: bool, shuffle: bool,
+                          checkpoint_path: str | Path) -> GovernedPlannerRun:
+    """Restore and freshly audit a committed checkpoint without fitting or saving.
+
+    Uses the same admitted train/validation views, configuration, support identity
+    and strict resume validation as run_governed_planner. It does not open the test
+    view. Checkpoint and sidecar must match the current implementation/runtime and
+    original training contract; this is not a weights-only compatibility bypass.
+    Caller RNG state is restored. The returned mutable Trainer is suitable for
+    explicit development diagnostics; exact continued training should use
+    run_governed_planner(resume_from=...), which restores RNG around execution.
+    """
+    if not isinstance(checkpoint_path, (str, Path)) or not str(checkpoint_path):
+        raise ValueError('explicit checkpoint path required for load-only execution')
+    return _execute_governed_planner(corpus, vocabulary, alphabet,
+        model_config=model_config, trainer_config=trainer_config,
+        validation=validation, shuffle=shuffle, resume_from=checkpoint_path,
+        max_epochs=None, perform_training=False)
+
+
+def _execute_governed_planner(corpus, vocabulary, alphabet, *, model_config,
+                              trainer_config, validation, shuffle, resume_from,
+                              max_epochs, perform_training):
     if (not isinstance(corpus, GovernedMotionCorpus)
             or not isinstance(vocabulary, GovernedLabelVocabulary)
             or not isinstance(alphabet, LocusAlphabet)
@@ -112,7 +147,8 @@ def run_governed_planner(corpus: GovernedMotionCorpus, vocabulary: GovernedLabel
         trainer = Trainer(model, cfg, train_loader, val_loader, artifact_context=context)
         if resume_from is not None:
             trainer.load(resume_from, mode='resume')
-        trainer.fit(max_epochs=max_epochs)
+        if perform_training:
+            trainer.fit(max_epochs=max_epochs)
         audit = audit_exposure_declarations(trainer, vocabulary, alphabet)
         data = audit.to_dict()
         if data['contradictions'] or data['target_cell_audit']['contradictions']:
@@ -134,7 +170,8 @@ class GovernedPlannerDiagnostics:
 
 def diagnose_governed_planner(run: GovernedPlannerRun, *, view: str, model_state: str,
                               permutation: tuple[int, ...], seed: int, max_samples: int,
-                              sample_indices: tuple[int, ...] | None = None) -> GovernedPlannerDiagnostics:
+                              sample_indices: tuple[int, ...] | None = None,
+                              relation_thresholds=None) -> GovernedPlannerDiagnostics:
     """Run paired five-head diagnostics on an explicitly selected model copy.
 
     Current means in-memory weights, not an inferred checkpoint file. Best means
@@ -146,6 +183,7 @@ def diagnose_governed_planner(run: GovernedPlannerRun, *, view: str, model_state
         raise ValueError('canonical governed planner run required')
     if view not in ('train', 'validation') or model_state not in ('current', 'best_validation'):
         raise ValueError('explicit train/validation view and current/best_validation state required')
+    relation_thresholds = validated_relation_thresholds(relation_thresholds)
     trainer = run.trainer
     if not trainer._epoch_committed:
         raise ValueError('diagnostics require a committed training boundary')
@@ -181,6 +219,36 @@ def diagnose_governed_planner(run: GovernedPlannerRun, *, view: str, model_state
     if model_state == 'best_validation' and (
             trainer.best_model_state is None or not math.isfinite(trainer.best_val)):
         raise ValueError('no retained best-validation model is available')
+    # A retained validation winner can precede the current checkpoint cursor.
+    # Validate the complete recorded history before deriving its first-minimum
+    # epoch; fit updates the winner only on a strict improvement, retaining ties.
+    trainer._check_supported_history(
+        dict(completed_epochs=trainer.completed_epochs, global_step=trainer.global_step,
+             best_val=trainer.best_val, history=trainer.history),
+        (json.loads(record) for record in trainer._optimizer_exposure))
+    def selection_identity():
+        return canonical_json_bytes(dict(history=trainer.history,
+            completed_epochs=trainer.completed_epochs, global_step=trainer.global_step,
+            best_val=repr(trainer.best_val)))
+    recorded_selection = selection_identity()
+    selected_epoch = trainer.completed_epochs
+    if model_state == 'best_validation':
+        metric_key = f'val_{trainer.cfg.selection_metric}'
+        first_minimum = trainer.history[metric_key].index(trainer.best_val)
+        selected_epoch = trainer.history[f'{metric_key}_epoch'][first_minimum]
+    selected_step = selected_epoch * len(trainer.train_loader)
+    selected_exposure = (exposure if selected_step == trainer.global_step else summarize_exposure(
+        (json.loads(record) for record in islice(trainer._optimizer_exposure, selected_step)),
+        global_step=selected_step, completed_epochs=selected_epoch, committed=True,
+        weights=trainer.cfg.loss_weights, identities=trainer.train_loader.dataset.supervision_identities,
+        data_contract=trainer.data_contract['train'],
+        implementation_identity=trainer.implementation_identity, model_contract=trainer.model_contract))
+    relation_exposure = summarize_relation_exposure(
+        (json.loads(record) for record in islice(trainer._optimizer_exposure, selected_step)),
+        global_step=selected_step, weights=trainer.cfg.loss_weights,
+        identities=trainer.train_loader.dataset.supervision_identities,
+        max_events=trainer.model.model_cfg.max_events,
+        expected_ledger_sha256=selected_exposure.to_dict()['ledger_sha256'])
     indices = tuple(full_contract['record_indices'][index] for index in sample_indices)
     selected = GovernedMotionDataset(dataset[0].corpus, indices, full_contract['split'])
     original_state = _state_sha256(trainer.model)
@@ -188,21 +256,28 @@ def diagnose_governed_planner(run: GovernedPlannerRun, *, view: str, model_state
     if model_state == 'best_validation':
         model.load_state_dict(trainer.best_model_state, strict=True)
     report = compare_source_intervention(model, selected, permutation=permutation,
-                                         seed=seed, max_samples=max_samples)
+                                         seed=seed, max_samples=max_samples, relation_thresholds=relation_thresholds)
     if (dataset.training_contract != full_contract or trainer.exposure_report().payload != exposure.payload
-            or _state_sha256(trainer.model) != original_state):
-        raise ValueError('training model, view or exposure changed during diagnostics')
-    payload = dict(schema_version=1, scope='governed-run-development-diagnostics',
+            or _state_sha256(trainer.model) != original_state or selection_identity() != recorded_selection):
+        raise ValueError('training model, view, exposure or selection history changed during diagnostics')
+    payload = dict(schema_version=3, scope='governed-run-development-diagnostics',
                    model_state=model_state, view=view, full_view_contract=full_contract,
                    sample_indices=list(sample_indices),
                    completed_epochs=trainer.completed_epochs, global_step=trainer.global_step,
                    selection_metric=trainer.cfg.selection_metric,
                    best_validation_value=trainer.best_val if math.isfinite(trainer.best_val) else None,
                    training_exposure_sha256=exposure.sha256,
+                   selected_training_boundary=dict(completed_epochs=selected_epoch, global_step=selected_step,
+                       basis=('first-minimum-validation-row' if model_state == 'best_validation'
+                              else 'current-committed-cursor')),
+                   selected_boundary_exposure_sha256=selected_exposure.sha256,
+                   selected_boundary_exposure=selected_exposure.to_dict(),
+                   selected_relation_exposure=relation_exposure,
                    intervention_sha256=report.sha256, intervention=report.to_dict(),
                    phase_exit_approved=False,
                    limitations=['Explicit development subset; not an independent final evaluation.',
                                 'State hash binds evaluated model tensors, not a checkpoint file or full training history.',
                                 'Retained best means validation-selected, not calibrated or linguistically accepted.',
+                                'Selected boundary follows recorded history; declarations do not prove the evaluated tensors received those gradients.',
                                 'The model copy adds memory cost; no accelerator or latency qualification.'])
     return GovernedPlannerDiagnostics(canonical_json_bytes(payload))

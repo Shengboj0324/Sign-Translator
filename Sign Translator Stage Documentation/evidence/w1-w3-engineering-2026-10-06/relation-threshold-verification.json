@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "full_suite": {
+    "passed": 2841,
+    "seconds": 128.78,
+    "exit_code": 0,
+    "warnings": "error",
+    "log": "relation-threshold-full-suite.txt"
+  },
+  "focused": {
+    "passed": 30,
+    "seconds": 0.81,
+    "exit_code": 0,
+    "warnings": "error",
+    "log": "relation-threshold-focused.txt"
+  },
+  "source_sha256": {
+    "signtranslator/planning/relation_evaluation.py": "53f7e27aadc52ef6658f2298e3d24eff4aa00290dc9221e3d6660f8656f67021",
+    "tests/test_relation_threshold_evaluation.py": "cff9027a347915dff7f22b42d07356f689a23a8ec877a7b2aba875b6ddb0b0d7"
+  },
+  "manual_handoffs_absent": 9,
+  "phase_exit_approved": false,
+  "scope": [
+    "Explicit strict-threshold confusion and abstention counts",
+    "Unknown target decisions separated from scored rates",
+    "Exact numerator/denominator pairs with unavailable zero denominators",
+    "Float32 score embedding and unrounded thresholds",
+    "Failed generations unavailable and default score report preserved"
+  ],
+  "limitations": [
+    "Conditional exact-label known-support cell-weighted diagnostics",
+    "No threshold selection calibration or independent-unit claim",
+    "Optional Python API, not automatic CLI evaluation"
+  ]
+}

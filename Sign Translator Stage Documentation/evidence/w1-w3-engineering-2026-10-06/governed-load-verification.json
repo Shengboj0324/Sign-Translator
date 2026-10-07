@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "full_suite": {
+    "passed": 2807,
+    "seconds": 123.67,
+    "exit_code": 0,
+    "warnings": "error"
+  },
+  "focused": {
+    "passed": 34,
+    "seconds": 8.32,
+    "exit_code": 0
+  },
+  "initial_failure": "New assertions used optimizer/scheduler instead of existing Trainer opt/sched attributes; corrected in tests.",
+  "source_sha256": {
+    "signtranslator/governed_run.py": "08d7a99586f4129b9d100cdacab00095cccfa20977cfa95a0340302e60949d47",
+    "tests/test_governed_load.py": "bda97bb1bcc74430e9b22d9a6d29cae2ce6ad9f49cbc280953052516500d2941"
+  },
+  "manual_handoffs_absent": 9,
+  "phase_exit_approved": false,
+  "scope": [
+    "Committed partial and completed checkpoint restoration without fit/save",
+    "Model optimizer scheduler cursor history exposure and diagnostic equality",
+    "Caller RNG and file bytes/mtime preservation",
+    "Fresh source and strict checkpoint/config refusal",
+    "Only configured train/validation views opened after corpus admission"
+  ],
+  "limitations": [
+    "Python API, no load-only diagnostic CLI",
+    "Strict existing implementation/runtime resume compatibility remains",
+    "CPU verification, no accelerator exact-continuation qualification",
+    "No real-source permissions or empirical ASL acceptance"
+  ]
+}

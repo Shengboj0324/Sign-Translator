@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2761 passed in 121.14s",
+  "focused": "45 passed in 4.47s",
+  "code_sha256": {
+    "signtranslator/data/governed_manifest.py": "7c9ead06615b4f645260018bafc54f9ac3b7770d1ea2afaf189dd6b3819450b8",
+    "tests/test_governed_manifest.py": "444bbc89dadeea6111c687d8419e47bce557724ea175e1abfa1719a9323cdb65",
+    "docs/GOVERNED_INPUT_MANIFEST.md": "3c372a6d0f08bac12d01d635ba2f144d204332b931c3fed9c1f2ebc93e1b992c"
+  },
+  "scope": "Explicit local canonical-artifact manifest admission and read-only CLI; identical corpus identity/training behavior to direct construction on fictional inputs; full population and existing source/review/split gates retained",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Requires converted canonical motion and supplied authentic evidence; no native-source conversion or training CLI.",
+    "Admission checks all declared splits, including test; it does not prove population completeness.",
+    "Recorded claims and file integrity do not independently verify human qualifications, rights interpretation, calibration or ASL competence.",
+    "Relative nonsymlink path checks are not an atomic filesystem snapshot against concurrent replacement."
+  ]
+}

@@ -12,7 +12,8 @@ from math import lcm
 import torch
 
 from .partition_bounds import (partition_suffix_upper_bounds, minimum_added_pairs,
-                               placed_pair_penalty_tables, prefix_attachment_upper_bound)
+                               placed_pair_penalty_tables, prefix_attachment_upper_bound,
+                               child_attachment_upper_bounds)
 from .assignment_bounds import injective_assignment_upper_bound
 from .loci import LocusAlphabet
 from .locus_assignment import decode_locus_assignment
@@ -115,11 +116,11 @@ def decode_joint_spatial(candidate: LocusSequenceCandidate, alphabet: LocusAlpha
     for i in range(n - 1, -1, -1):
         future_locus[i] = future_locus[i + 1] + (max(locus_values[i]) if place[i] else 0)
 
-    def upper_bound(prefix, maximum, ref_gain):
+    def upper_bound(prefix, maximum, ref_gain, attachment=None):
         index = len(prefix)
         reference_bound = ref_gain + future_positive[index]
-        reference_bound += prefix_attachment_upper_bound(
-            prefix, n, pair, place, len(alphabet.identities))
+        reference_bound += (prefix_attachment_upper_bound(
+            prefix, n, pair, place, len(alphabet.identities)) if attachment is None else attachment)
         # Retain prefix persistence and bound injective column competition,
         # while relaxing future attachment constraints. Both terms are optimistic.
         placed_clusters = {}
@@ -154,7 +155,7 @@ def decode_joint_spatial(candidate: LocusSequenceCandidate, alphabet: LocusAlpha
         elif second is None or gain > second:
             second = gain
 
-    def visit(prefix, maximum, ref_gain):
+    def visit(prefix, maximum, ref_gain, bound=None):
         nonlocal work, partitions, exhausted
         if work == max_work:
             exhausted = True
@@ -165,7 +166,7 @@ def decode_joint_spatial(candidate: LocusSequenceCandidate, alphabet: LocusAlpha
         # Distinct fixed prefix clusters cannot merge in a completion.
         if groups > len(alphabet.identities):
             return
-        if second is not None and upper_bound(prefix, maximum, ref_gain) <= second:
+        if second is not None and (upper_bound(prefix, maximum, ref_gain) if bound is None else bound) <= second:
             return
         if i == n:
             partitions += 1
@@ -191,11 +192,23 @@ def decode_joint_spatial(candidate: LocusSequenceCandidate, alphabet: LocusAlpha
                 offer(ref_gain + scaled_assignment(assignment.runner_up_gain), None, None)
             return
         choices = []
+        attachments = child_attachment_upper_bounds(prefix, n, pair, place, len(alphabet.identities))
         for label in range(maximum + 2):
             added = sum(pair[(j, i)] for j, previous in enumerate(prefix) if previous == label)
-            choices.append((added, label))
-        for added, label in sorted(choices, key=lambda item: (-item[0], item[1])):
-            visit(prefix + (label,), max(maximum, label), ref_gain + added)
+            child = prefix + (label,)
+            attachment = attachments[label]
+            bound = (upper_bound(child, max(maximum, label), ref_gain + added, attachment)
+                     if attachment is not None else None)
+            choices.append((bound, added, label, child))
+        # Explore the most promising complete-objective relaxation first. This
+        # changes only traversal order: a bound never substitutes for a feasible
+        # assignment, and exhaustion still discards every provisional winner.
+        # Infeasible children retain their counted visits, after feasible ones.
+        choices.sort(key=lambda item: (item[0] is None,
+                                       0 if item[0] is None else -item[0],
+                                       -item[1], item[2]))
+        for bound, added, label, child in choices:
+            visit(child, max(maximum, label), ref_gain + added, bound)
             if exhausted:
                 return
 

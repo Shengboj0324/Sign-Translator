@@ -1,0 +1,13 @@
+8 positive complete
+8 negative complete
+8 mixed complete
+16 positive complete
+16 negative complete
+16 mixed complete
+32 positive complete
+32 negative complete
+32 mixed complete
+64 positive complete
+64 negative complete
+64 mixed complete
+saved 72 configurations

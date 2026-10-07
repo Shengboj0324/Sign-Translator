@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "scope": "72 fixed synthetic configurations, two calls each",
+  "old_work": 182097,
+  "new_work": 176822,
+  "old_seconds": 2.9666309990134323,
+  "new_seconds": 4.814082250966749,
+  "additional_completed": [
+    {
+      "events": 8,
+      "pattern": "negative",
+      "placement": "alternating",
+      "budget": 1000,
+      "status": "unique_optimum_candidate"
+    },
+    {
+      "events": 16,
+      "pattern": "negative",
+      "placement": "all",
+      "budget": 10000,
+      "status": "unique_optimum_candidate"
+    }
+  ],
+  "previously_completed_regressions": 0,
+  "statuses": {
+    "1000": {
+      "old": {
+        "unique_optimum_candidate": 16,
+        "search_exhausted": 19,
+        "ambiguous": 1
+      },
+      "new": {
+        "unique_optimum_candidate": 17,
+        "search_exhausted": 18,
+        "ambiguous": 1
+      }
+    },
+    "10000": {
+      "old": {
+        "unique_optimum_candidate": 20,
+        "ambiguous": 2,
+        "search_exhausted": 14
+      },
+      "new": {
+        "unique_optimum_candidate": 21,
+        "ambiguous": 2,
+        "search_exhausted": 13
+      }
+    }
+  },
+  "implementation_sha256": "2f1dbd0fda0e1e2b5d26e51511ee100553c25b852eb1f728d3670a2d7b542f85",
+  "phase_exit_approved": false,
+  "limitations": [
+    "Descriptive sequential timings, not controlled latency benchmarks.",
+    "Precomputed bounds cost CPU outside the counted node/probe budget.",
+    "Ordering can worsen other inputs; no universal work or time improvement.",
+    "Synthetic optimality and search completion do not establish ASL quality."
+  ]
+}

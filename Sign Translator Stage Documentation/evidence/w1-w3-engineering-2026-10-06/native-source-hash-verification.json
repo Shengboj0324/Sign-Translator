@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "checks": {
+    "focused": {
+      "passed": 63,
+      "seconds": 0.99,
+      "exit_code": 0,
+      "warnings": "error",
+      "log": "native-source-hash-focused.txt"
+    },
+    "full-suite": {
+      "passed": 2856,
+      "seconds": 135.08,
+      "exit_code": 0,
+      "warnings": "error",
+      "log": "native-source-hash-full-suite.txt"
+    }
+  },
+  "source_sha256": {
+    "signtranslator/data_engineering/state_ingestion.py": "467287a770cdc826bc2b412821d3499d6b778e18fbd9b5ac2afef0f76be6c824",
+    "signtranslator/reproducibility.py": "b4a841292402fc182ce17e33229e470a6d0548479c903f75015906e8e3be98a6",
+    "tests/test_pose_multichannel.py": "83aacf52dafdf73bedcb08c662edfb191600ea8a327d072ed9c59821e8856cbf"
+  },
+  "manual_handoffs_absent": 9,
+  "phase_exit_approved": false,
+  "scope": [
+    "Native-source hashing uses existing one-MiB streaming reader",
+    "Shared source hashed once within validation call",
+    "Detected source metadata change during read rejected"
+  ],
+  "limitations": [
+    "Hash buffer bound only; no whole-process memory bound",
+    "Metadata comparison is not an atomic filesystem snapshot",
+    "Fictional source fixture does not establish scientific or rights acceptance"
+  ]
+}

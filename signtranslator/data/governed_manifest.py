@@ -112,6 +112,7 @@ class GovernedPlannerInputs:
     vocabulary: GovernedLabelVocabulary
     alphabet: LocusAlphabet
     manifest_sha256: str
+    declared_files: tuple[Path, ...]
 
     @property
     def phase_exit_approved(self):
@@ -148,13 +149,18 @@ def load_governed_planner_inputs(path: Path, *, expected_sha256: str) -> Governe
     if len({s.source_id for s in sources}) != len(sources):
         raise ValueError('duplicate manifest source identities')
     root = path.parent.resolve()
+    declared_files = {path.resolve()}
+    def reference(value):
+        resolved = _file(root, value)
+        declared_files.add(resolved)
+        return resolved
     authorizations = {}
     for key, item in value['authorizations'].items():
         _object(item, ('source_id', 'authorization', 'consent', 'local_evidence'), 'source authorization')
         if item['source_id'] != key:
             raise ValueError('authorization key and subject differ')
         authorizations[key] = AuthorizationEvidence(DataAuthorization.from_manifest(item['authorization']),
-            _enum(ConsentState, item['consent']), _file(root, item['local_evidence']), key)
+            _enum(ConsentState, item['consent']), reference(item['local_evidence']), key)
     if not isinstance(value['records'], list) or not value['records']:
         raise ValueError('nonempty declared record population required')
     records = []
@@ -164,8 +170,8 @@ def load_governed_planner_inputs(path: Path, *, expected_sha256: str) -> Governe
             raise ValueError('source_files must map source identities to paths')
         arguments = dict(item)
         for name in ('motion_path', 'video_path', 'transcript_path', 'annotation_authorization_path', 'alignment_path'):
-            arguments[name] = _file(root, item[name])
-        arguments['source_files'] = {key: _file(root, ref) for key, ref in item['source_files'].items()}
+            arguments[name] = reference(item[name])
+        arguments['source_files'] = {key: reference(ref) for key, ref in item['source_files'].items()}
         arguments['annotation'] = GovernedSIRAnnotation.from_manifest(item['annotation'])
         arguments['sample'] = _sample(item['sample'])
         records.append(GovernedMotionRecord(**arguments))
@@ -173,7 +179,7 @@ def load_governed_planner_inputs(path: Path, *, expected_sha256: str) -> Governe
     for name in ('lexicon', 'convention'):
         item = _object(value[name], ('artifact', 'path'), name)
         artifact = GovernedArtifact.from_dict(item['artifact'])
-        artifact_path = _file(root, item['path'])
+        artifact_path = reference(item['path'])
         with artifact_path.open('rb') as stream:
             artifact_bytes = stream.read(4 * 1024 * 1024 + 1)
         artifacts[name] = artifact, artifact_bytes
@@ -183,4 +189,32 @@ def load_governed_planner_inputs(path: Path, *, expected_sha256: str) -> Governe
            for r in records):
         raise ValueError('manifest artifacts differ from record annotation bindings')
     corpus = GovernedMotionCorpus(records, sources=sources, authorizations=authorizations)
-    return GovernedPlannerInputs(corpus, vocabulary, alphabet, expected_sha256)
+    return GovernedPlannerInputs(corpus, vocabulary, alphabet, expected_sha256,
+                                 tuple(sorted(declared_files)))
+
+
+def main(argv=None):
+    """Read-only admission check; prints identities/counts, never grants approval."""
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('manifest', type=Path)
+    parser.add_argument('--sha256', required=True, help='expected SHA-256 of the exact manifest bytes')
+    args = parser.parse_args(argv)
+    try:
+        inputs = load_governed_planner_inputs(args.manifest, expected_sha256=args.sha256)
+    except (ValueError, PermissionError, OSError) as error:
+        parser.error(str(error))
+    records = json.loads(inputs.corpus.manifest_bytes)['records']
+    result = dict(schema_version=1, evidence_kind='recorded_claims_and_file_integrity',
+                  manifest_sha256=inputs.manifest_sha256, corpus_sha256=inputs.corpus.content_sha256,
+                  samples=len(records), splits={split: sum(r['split'] == split for r in records)
+                                               for split in ('train', 'val', 'test')},
+                  lexicon_sha256=inputs.vocabulary.lexicon.sha256,
+                  convention_sha256=inputs.alphabet.convention.sha256,
+                  phase_exit_approved=False)
+    print(canonical_json_bytes(result).decode('utf-8'))
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

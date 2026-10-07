@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "command": ".venv/bin/python -m pytest -q -o addopts='' -W error",
+  "result": "2775 passed in 126.05s",
+  "focused": "42 passed in 4.62s",
+  "code_sha256": {
+    "signtranslator/governed_train.py": "e89eaf942bd1efe1096341a0fef3d1170f7fd7794e7d61b2047f6245f887988a",
+    "signtranslator/data/governed_manifest.py": "0920ddcffaace92b8d26b8d5baabc05d4c6e95396a67075eeac5fa432a636a89",
+    "tests/test_governed_train_cli.py": "d9e178b36d87f85e1b4bbf88e390a3f2704cf83b45cc4d7b7e8d330520974452",
+    "docs/GOVERNED_TRAINING_RUN.md": "1c803ae7ec5aef0371e3eef524f4d432e4099ee0aab36aa72b4349dcb6bedbf5"
+  },
+  "scope": "Complete byte-bound governed run configuration/CLI, direct-run and exact CPU resume parity, pretraining output-policy checks and declared input protection",
+  "manual_handoffs": "all nine absent; evidence null",
+  "phase_exit_approved": false,
+  "limits": [
+    "Requires canonical input artifacts and supplied authentic evidence; no native-source conversion or empirical phase acceptance.",
+    "CPU exact continuation verified; accelerator continuation remains unqualified.",
+    "Output path checks do not provide a concurrency-safe filesystem sandbox.",
+    "Existing checkpoint replacement is explicitly permitted only via flag; later failures do not roll back prior writes.",
+    "Configured best/last paths do not assert each destination was written by this invocation."
+  ]
+}

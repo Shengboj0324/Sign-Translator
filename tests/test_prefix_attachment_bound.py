@@ -50,3 +50,56 @@ def test_bound_dominates_all_small_feasible_completions():
                     assert actual <= bound
                     checked += 1
     assert checked > 1000
+
+
+def test_shared_child_bounds_exactly_equal_independent_prefix_bounds():
+    from signtranslator.planning.partition_bounds import child_attachment_upper_bounds
+    rng = random.Random(20261008)
+    checked = 0
+    for count in range(2, 8):
+        for repeat in range(12):
+            capacity = rng.randint(1, 4)
+            place = tuple(bool(rng.getrandbits(1)) for _ in range(count))
+            pair = {(i, j): rng.randint(-20, 20) * (2**2000 if repeat == 0 else 1)
+                    for i in range(count) for j in range(i + 1, count)}
+            for length in range(1, count):
+                for prefix in partitions(length):
+                    if len({prefix[i] for i in range(length) if place[i]}) > capacity:
+                        continue
+                    shared = child_attachment_upper_bounds(prefix, count, pair, place, capacity)
+                    expected = []
+                    for label in range(max(prefix) + 2):
+                        child = prefix + (label,)
+                        if len({child[i] for i in range(length + 1) if place[i]}) > capacity:
+                            expected.append(None)
+                        else:
+                            expected.append(prefix_attachment_upper_bound(child, count, pair, place, capacity))
+                    assert shared == tuple(expected)
+                    checked += len(shared)
+    assert checked > 10000
+
+
+def test_child_maxima_exhaustive_ties_signs_and_placement():
+    """Every small gain/mask combination agrees with independent recomputation.
+
+    Tied maxima must retain two distinct groups; an unplaced group must never
+    become available merely because its score exceeds the placed maximum.
+    """
+    from signtranslator.planning.partition_bounds import child_attachment_upper_bounds
+
+    edges = tuple((i, j) for i in range(4) for j in range(i + 1, 4))
+    for values in product((-1, 0, 1), repeat=len(edges)):
+        pair = dict(zip(edges, values))
+        for place in product((False, True), repeat=4):
+            for prefix in ((0,), (0, 0), (0, 1)):
+                for capacity in (1, 2, 3):
+                    if len({label for i, label in enumerate(prefix) if place[i]}) > capacity:
+                        continue
+                    expected = []
+                    for label in range(max(prefix) + 2):
+                        child = prefix + (label,)
+                        if len({group for i, group in enumerate(child) if place[i]}) > capacity:
+                            expected.append(None)
+                        else:
+                            expected.append(prefix_attachment_upper_bound(child, 4, pair, place, capacity))
+                    assert child_attachment_upper_bounds(prefix, 4, pair, place, capacity) == tuple(expected)

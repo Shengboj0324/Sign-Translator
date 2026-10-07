@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "full_suite": {
+    "passed": 2837,
+    "seconds": 135.25,
+    "exit_code": 0,
+    "warnings": "error",
+    "log": "relation-exposure-full-suite.txt"
+  },
+  "focused": {
+    "passed": 43,
+    "seconds": 10.42,
+    "exit_code": 0,
+    "warnings": "error",
+    "log": "relation-exposure-focused.txt"
+  },
+  "source_sha256": {
+    "signtranslator/planning/relation_exposure.py": "adf1b3820130485b3cc7015995cf7bfd6147a57b57edea86349809e89d1baa82",
+    "signtranslator/governed_run.py": "d2898811e7526f89d7fdf6ff7b4fb9e9f7b1d05f093367893aef8137fdfd2bfd",
+    "tests/test_relation_exposure.py": "a07fcce4ba3f6eb67afdda9ffcd70a4f9682a3b024d7511a91948fff648f9229",
+    "tests/test_selected_exposure.py": "a100541656c295a03bebf4ea53a4d94bbc3868a35de822aee3b67b957359cb09"
+  },
+  "manual_handoffs_absent": 9,
+  "phase_exit_approved": false,
+  "scope": [
+    "Selected-ledger hash-bound relation type and polarity counts",
+    "Distinct sample IDs separated from repeated cell presentations",
+    "Missing and explicitly empty declarations separated",
+    "Canonical nonself relation domain and model event capacity validation",
+    "Earlier selected boundary and checkpoint reload preserve projection"
+  ],
+  "limitations": [
+    "No independent-unit, gradient, calibration or competence certificate",
+    "Missing targets and unknown-cell totals are not reconstructed",
+    "Extra selected-ledger traversal and per-type sample sets"
+  ]
+}

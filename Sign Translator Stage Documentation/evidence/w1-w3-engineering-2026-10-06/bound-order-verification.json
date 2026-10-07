@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "full_suite": {
+    "passed": 2795,
+    "exit_code": 0,
+    "warnings": "error",
+    "log": "bound-order-full-suite.txt"
+  },
+  "focused": {
+    "passed": 31,
+    "exit_code": 0,
+    "log": "bound-order-focused.txt"
+  },
+  "independent_oracle": {
+    "cases": 20,
+    "events": 8,
+    "assignments_per_case": 256,
+    "exact_budget_checks": true
+  },
+  "comparison": "bound-order-comparison.json",
+  "source_sha256": {
+    "signtranslator/planning/joint_spatial.py": "2f1dbd0fda0e1e2b5d26e51511ee100553c25b852eb1f728d3670a2d7b542f85",
+    "tests/test_joint_spatial.py": "9e07251960c9be03df16a3bf76ec1966c470b9d5999a56c7dfbbba44b6e7256f"
+  },
+  "manual_handoffs_absent": 9,
+  "phase_exit_approved": false,
+  "spaces_readback_verified": true
+}

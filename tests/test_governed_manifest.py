@@ -122,3 +122,33 @@ def test_hash_duplicate_keys_and_nonfinite_numbers_refused(tmp_path):
         path.write_bytes(payload)
         with pytest.raises(ValueError):
             load_governed_planner_inputs(path, expected_sha256=hashlib.sha256(payload).hexdigest())
+
+
+def test_read_only_command_reports_identities_without_acceptance(tmp_path, capsys):
+    from signtranslator.data.governed_manifest import main
+    values, manifest = handoff(tmp_path)
+    path, digest = write(tmp_path, manifest)
+    before = set(tmp_path.rglob('*'))
+    assert main([str(path), '--sha256', digest]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result['corpus_sha256'] == values[0].content_sha256
+    assert result['splits'] == {'train': 3, 'val': 1, 'test': 1}
+    assert result['phase_exit_approved'] is False
+    assert set(tmp_path.rglob('*')) == before
+    with pytest.raises(SystemExit) as caught:
+        main([str(path), '--sha256', '0' * 64])
+    assert caught.value.code == 2
+    assert capsys.readouterr().out == ''
+
+
+def test_manifest_size_and_symlink_directory_refused(tmp_path, monkeypatch):
+    import signtranslator.data.governed_manifest as module
+    _, manifest = handoff(tmp_path)
+    (tmp_path / 'linked-directory').symlink_to(tmp_path, target_is_directory=True)
+    manifest['lexicon']['path'] = 'linked-directory/lexicon.json'
+    path, digest = write(tmp_path, manifest)
+    with pytest.raises(ValueError, match='symlinks'):
+        load_governed_planner_inputs(path, expected_sha256=digest)
+    monkeypatch.setattr(module, 'MAX_MANIFEST_BYTES', 8)
+    with pytest.raises(ValueError, match='size limit'):
+        load_governed_planner_inputs(path, expected_sha256=digest)

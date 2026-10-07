@@ -1,0 +1,72 @@
+FF...............................                                        [100%]
+=================================== FAILURES ===================================
+_ test_partial_checkpoint_load_preserves_state_and_diagnostic_without_writes[current] _
+
+tmp_path = PosixPath('/private/var/folders/y0/l9ns18ns5472mqrprmhhmsw00000gn/T/pytest-of-jiangshengbo/pytest-67/test_partial_checkpoint_load_p0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10e409100>
+model_state = 'current'
+
+    @pytest.mark.parametrize('model_state', ['current', 'best_validation'])
+    def test_partial_checkpoint_load_preserves_state_and_diagnostic_without_writes(tmp_path, monkeypatch, model_state):
+        values = fixture(tmp_path)
+        values = (*values[:-1], replace(values[-1], ckpt_path=str(tmp_path / 'run.pt')))
+        original = invoke(values, max_epochs=1)
+        checkpoint = checkpoint_paths(values[-1].ckpt_path)['last']
+        options = dict(view='train', model_state=model_state, sample_indices=(2, 0),
+                       permutation=(1, 0), seed=9, max_samples=2)
+        expected_diagnostic = diagnose_governed_planner(original, **options)
+        # The load-only API must not inspect the reserved test view after admission.
+        values[0]._records[-1].transcript_path.write_bytes(b'reserved test bytes')
+        before_files = snapshot_files(tmp_path)
+        before_torch = torch.get_rng_state().clone()
+        before_python = random.getstate()
+        before_numpy = np.random.get_state()
+        monkeypatch.setattr(Trainer, 'fit', forbid)
+        monkeypatch.setattr(Trainer, 'save', forbid)
+        restored = load(values, checkpoint)
+        assert restored.trainer.completed_epochs == original.trainer.completed_epochs == 1
+        assert restored.trainer.global_step == original.trainer.global_step
+        assert _state_sha256(restored.trainer.model) == _state_sha256(original.trainer.model)
+>       torch.testing.assert_close(restored.trainer.optimizer.state_dict(),
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                   original.trainer.optimizer.state_dict(), rtol=0, atol=0)
+E       AttributeError: 'Trainer' object has no attribute 'optimizer'
+
+tests/test_governed_load.py:53: AttributeError
+_ test_partial_checkpoint_load_preserves_state_and_diagnostic_without_writes[best_validation] _
+
+tmp_path = PosixPath('/private/var/folders/y0/l9ns18ns5472mqrprmhhmsw00000gn/T/pytest-of-jiangshengbo/pytest-67/test_partial_checkpoint_load_p1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x11c69b0e0>
+model_state = 'best_validation'
+
+    @pytest.mark.parametrize('model_state', ['current', 'best_validation'])
+    def test_partial_checkpoint_load_preserves_state_and_diagnostic_without_writes(tmp_path, monkeypatch, model_state):
+        values = fixture(tmp_path)
+        values = (*values[:-1], replace(values[-1], ckpt_path=str(tmp_path / 'run.pt')))
+        original = invoke(values, max_epochs=1)
+        checkpoint = checkpoint_paths(values[-1].ckpt_path)['last']
+        options = dict(view='train', model_state=model_state, sample_indices=(2, 0),
+                       permutation=(1, 0), seed=9, max_samples=2)
+        expected_diagnostic = diagnose_governed_planner(original, **options)
+        # The load-only API must not inspect the reserved test view after admission.
+        values[0]._records[-1].transcript_path.write_bytes(b'reserved test bytes')
+        before_files = snapshot_files(tmp_path)
+        before_torch = torch.get_rng_state().clone()
+        before_python = random.getstate()
+        before_numpy = np.random.get_state()
+        monkeypatch.setattr(Trainer, 'fit', forbid)
+        monkeypatch.setattr(Trainer, 'save', forbid)
+        restored = load(values, checkpoint)
+        assert restored.trainer.completed_epochs == original.trainer.completed_epochs == 1
+        assert restored.trainer.global_step == original.trainer.global_step
+        assert _state_sha256(restored.trainer.model) == _state_sha256(original.trainer.model)
+>       torch.testing.assert_close(restored.trainer.optimizer.state_dict(),
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                   original.trainer.optimizer.state_dict(), rtol=0, atol=0)
+E       AttributeError: 'Trainer' object has no attribute 'optimizer'
+
+tests/test_governed_load.py:53: AttributeError
+=========================== short test summary info ============================
+FAILED tests/test_governed_load.py::test_partial_checkpoint_load_preserves_state_and_diagnostic_without_writes[current]
+FAILED tests/test_governed_load.py::test_partial_checkpoint_load_preserves_state_and_diagnostic_without_writes[best_validation]
+2 failed, 31 passed in 7.86s

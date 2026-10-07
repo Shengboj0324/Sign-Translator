@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "full_suite": {
+    "passed": 2827,
+    "seconds": 129.5,
+    "exit_code": 0,
+    "warnings": "error",
+    "log": "selected-exposure-full-suite.txt"
+  },
+  "focused": {
+    "passed": 44,
+    "seconds": 11.51,
+    "exit_code": 0,
+    "warnings": "error",
+    "log": "selected-exposure-focused.txt"
+  },
+  "source_sha256": {
+    "signtranslator/governed_run.py": "e2504cf5997922f87a997a1b0d2f9b432603dbd35728824cd03dd5abd62c6dda",
+    "tests/test_selected_exposure.py": "c4687eccb28d15093e6289a7392a6e0ab4814ea9a31d55d1c5cdaec2822173e3"
+  },
+  "manual_handoffs_absent": 9,
+  "phase_exit_approved": false,
+  "scope": [
+    "Separate full-run and selected-boundary exposure identities",
+    "First validation minimum with retained ties and nonunit cadence",
+    "Earlier selected prefix matches recorded early exposure and excludes later calls",
+    "Checkpoint reload reproduces full diagnostic payload",
+    "Invalid history and during-diagnostic selection mutation refused"
+  ],
+  "limitations": [
+    "Historical declarations do not prove evaluated tensor gradient lineage",
+    "Schema-1 diagnostic reports lack selected-boundary attribution",
+    "Extra linear history validation and prefix-summary passes",
+    "Synthetic CPU verification, no empirical ASL acceptance"
+  ]
+}

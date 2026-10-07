@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "full_suite": {
+    "passed": 2820,
+    "seconds": 126.66,
+    "exit_code": 0,
+    "warnings": "error",
+    "log": "governed-diagnose-cli-full-suite.txt"
+  },
+  "focused": {
+    "passed": 38,
+    "seconds": 7.2,
+    "exit_code": 0,
+    "warnings": "error",
+    "log": "governed-diagnose-cli-focused.txt"
+  },
+  "source_sha256": {
+    "signtranslator/governed_diagnose.py": "a8bb578da7af269b63b7af0262b3378f02c7c212515309831c042adce9a38ddf",
+    "signtranslator/governed_train.py": "e674a7ff80ebc2ef6c72479bc1b0d11423208338a6ab4e3e416c976957672c10",
+    "tests/test_governed_diagnose_cli.py": "025c4d6681069f3f4a2eee4c689d9aa8578a5832f44bbd72054522b363096160"
+  },
+  "manual_handoffs_absent": 9,
+  "phase_exit_approved": false,
+  "scope": [
+    "Explicit checkpoint identity and bounded development selection",
+    "Direct current/best-validation diagnostic parity",
+    "No fit/save, file byte/mtime preservation and caller RNG preservation",
+    "Invalid request/hash refusal before model load",
+    "Full input population re-admission including test records",
+    "Changed checkpoint during diagnostics refused"
+  ],
+  "limitations": [
+    "Trusted checkpoint origin required by existing resume deserialization",
+    "No atomic concurrent-filesystem snapshot",
+    "Synthetic CPU evidence, no ASL competence or empirical approval",
+    "Whole artifact parsing and model/report memory remain"
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "checks": {
+    "focused": {
+      "passed": 33,
+      "exit_code": 0,
+      "warnings": "error",
+      "log": "child-maxima-focused.txt"
+    },
+    "full-suite": {
+      "passed": 2854,
+      "exit_code": 0,
+      "warnings": "error",
+      "log": "child-maxima-full-suite.txt"
+    }
+  },
+  "source_sha256": {
+    "signtranslator/planning/partition_bounds.py": "9a7e11e05d0e277ffdefd3fb23c79abbee7c79b19ef5c9e9c75f280197cd96bb",
+    "tests/test_prefix_attachment_bound.py": "1a73e72e2b6629596393e0c68bf95f78b458d9876caeadc56a08ebf09363d984"
+  },
+  "comparison": "child-maxima-comparison.json",
+  "manual_handoffs_absent": 9,
+  "phase_exit_approved": false,
+  "scope": "Exact sibling bounds with linear group scanning; exhaustive small-domain parity and full decoder result equality on 72 synthetic configurations",
+  "limitations": [
+    "No additional budget-exhausted cases resolved",
+    "No real-data or target-hardware performance claim",
+    "Manual source, permission and review evidence remain absent"
+  ]
+}

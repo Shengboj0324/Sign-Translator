@@ -251,8 +251,33 @@ For continuation, keep the original total epoch horizon/configuration and pass
 run at a committed boundary. Use this runner again for isolated continuation.
 CPU exact continuation is verified; accelerator continuation is not qualified.
 Checkpoint files written before a later failure are retained. Reports are immutable
-snapshots; the returned trainer remains mutable. No complete CLI/source-manifest
-importer or real-data pilot is supplied by this API.
+snapshots; the returned trainer remains mutable. A byte-bound local JSON handoff
+now constructs the admitted inputs without manually instantiating every Python
+record. See [the governed input manifest guide](docs/GOVERNED_INPUT_MANIFEST.md)
+for its exact fields and the read-only validation command:
+
+```sh
+.venv/bin/python -m signtranslator.data.governed_manifest inputs.json --sha256 EXPECTED_MANIFEST_SHA256
+```
+
+This admits the complete declared population, including test records, through the
+existing governance checks. It expects canonical motion/reviewed SIR and supplied
+evidence; native-source conversion and a real-data pilot remain outstanding. An explicit
+[governed training command](docs/GOVERNED_TRAINING_RUN.md) now accepts a complete
+byte-bound run configuration and supports committed checkpoint continuation. The
+admission command writes no files; the training command writes configured
+checkpoints. Neither marks manual handoffs or phases approved.
+
+To inspect a saved committed checkpoint without executing additional epochs, use
+`load_governed_planner` with the same admitted corpus, model/trainer settings and
+validation/shuffle choices. It performs strict resume validation and a fresh
+exposure audit, restores the caller's RNG, and neither fits nor saves. See the
+[load-only example](docs/GOVERNED_TRAINING_RUN.md#load-a-checkpoint-for-development-diagnostics).
+The [explicit diagnostic command](docs/GOVERNED_TRAINING_RUN.md#run-checkpoint-diagnostics-from-the-command-line)
+uses the original run configuration, a required checkpoint hash and a deliberately
+selected train/validation subset, and emits JSON without training or file writes.
+An optional threshold manifest and its explicit hash enable original-source
+relation decision diagnostics; supplied thresholds remain uncalibrated.
 
 `diagnose_governed_planner` evaluates an explicit copy of current in-memory or
 retained best-validation weights. For a validation view with at least two admitted
@@ -271,7 +296,12 @@ report = diagnostic.to_dict()
 Indices are local to the chosen train/validation view; the permutation indexes that
 ordered subset. The immutable report retains the full and selected view contracts,
 the actual evaluated model-state hash, model-selection metadata, exposure-report
-identity, raw paired candidates and all five reference diagnostics. It does not
+identity, raw paired candidates and all five reference diagnostics. Schema 3 also
+records a separately validated selected-model epoch/step boundary and exposure
+summary, excluding later optimizer calls for an earlier retained best model.
+The selected ledger also has per-relation-type positive/negative presentation and
+distinct-sample counts, with unrecorded declarations separate from empty ones.
+The original run-level cursor/exposure fields still describe the loaded run. It does not
 infer a checkpoint filename or provide independent test evidence. Unknown/missing
 selection and replaced view contracts fail explicitly; there is no automatic
 sampling or test-partition option. Training tensors remain on the original model;

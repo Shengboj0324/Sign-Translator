@@ -155,3 +155,42 @@ def test_integer_bound_scale_preserves_extreme_binary_scores_and_rational_weight
         assert result.status == 'ambiguous' and result.referents is None
     else:
         assert states[(result.referents, result.loci)] == expected[0]
+
+
+@pytest.mark.parametrize('seed', range(20))
+def test_bound_order_matches_direct_two_locus_assignment_enumeration(seed):
+    # With all events placed and two loci, every feasible partition/placement
+    # corresponds to exactly one binary locus vector. This oracle enumerates
+    # those vectors directly, without partition generation or search bounds.
+    import random
+    rng = random.Random(20261007 + seed)
+    n = 8
+    refs = [[0] * n for _ in range(n)]
+    for i in range(n):
+        for j in range(i + 1, n):
+            refs[i][j] = refs[j][i] = rng.randint(-20, 20)
+    loci = [[rng.randint(-30, 30), rng.randint(-30, 30)] for _ in range(n)]
+    rw, lw = Fraction(2, 7), Fraction(5, 3)
+    states = {}
+    for assignment in product(range(2), repeat=n):
+        gain = rw * sum(refs[i][j] for i in range(n) for j in range(i + 1, n)
+                        if assignment[i] == assignment[j])
+        gain += lw * sum(loci[i][assignment[i]] for i in range(n))
+        states[assignment] = gain
+    expected = sorted(states.values(), reverse=True)
+    c, a = candidate(loci, refs)
+    result = decode(c, a, rw=rw, lw=lw)
+    assert result.best_gain == expected[0]
+    assert result.runner_up_gain == expected[1]
+    if expected[0] == expected[1]:
+        assert result.status == 'ambiguous'
+        assert result.referents is result.loci is None
+    else:
+        assert result.status == 'unique_optimum_candidate'
+        assert states[result.loci] == expected[0]
+        mapping = {}
+        assert result.referents == tuple(mapping.setdefault(x, len(mapping)) for x in result.loci)
+    assert decode(c, a, budget=result.work, rw=rw, lw=lw) == result
+    refused = decode(c, a, budget=result.work - 1, rw=rw, lw=lw)
+    assert refused.status == 'search_exhausted'
+    assert refused.best_gain is refused.runner_up_gain is refused.referents is refused.loci is None

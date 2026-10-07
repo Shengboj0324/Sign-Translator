@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "full_suite": {
+    "passed": 2853,
+    "seconds": 131.77,
+    "exit_code": 0,
+    "warnings": "error",
+    "log": "governed-threshold-full-suite.txt"
+  },
+  "focused": {
+    "passed": 35,
+    "seconds": 7.21,
+    "exit_code": 0,
+    "warnings": "error",
+    "log": "governed-threshold-focused.txt"
+  },
+  "source_sha256": {
+    "signtranslator/governed_diagnose.py": "4d47530608524c7740ae6a6c3618a06e6221bbc97263b35a97d1711cf6e67d54",
+    "signtranslator/governed_run.py": "7d83862a5cd79c6dd810dffcae401d70c9011c6acf07c8e79a1878f4c919edf7",
+    "signtranslator/planning/source_intervention.py": "98b92edf2b4fee6d92a73f5d63d23c0c254a1b1ab7f683c7ce74643f8477d02b",
+    "signtranslator/planning/relation_evaluation.py": "dc51853c694ca56a1c2e9acd9db8ff90b7a1f9345346eaba16db3ac326250e4e",
+    "tests/test_governed_threshold_manifest.py": "ccd796c030e68a2b3dd3d99bd93aa73b75ac473223e11181ca253e17fa5f4315"
+  },
+  "manual_handoffs_absent": 9,
+  "phase_exit_approved": false,
+  "scope": [
+    "Optional explicit thresholds through governed API and original-source evaluation",
+    "Strict bounded byte-bound threshold manifest and paired flags",
+    "CLI/direct API parity and file preservation without fit/save",
+    "Invalid manifest refusal before checkpoint load",
+    "API threshold snapshot validation before model copy"
+  ],
+  "limitations": [
+    "Supplied thresholds remain uncalibrated",
+    "Permuted sources are not newly annotated evaluation pairs",
+    "No empirical phase approval, gradient or ASL competence certificate"
+  ]
+}

@@ -6,10 +6,10 @@ separate phase-exit requirements, even if this eligibility check succeeds.
 """
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 
 from ..pose.multichannel import MultichannelMotion
+from ..reproducibility import sha256_file
 from .phase2_policy import Phase2Scope,AuthorizationEvidence,assess_phase2_scope
 from .source_portfolio import SourceCandidate
 
@@ -43,7 +43,7 @@ def validate_phase2_state(state: MultichannelMotion, *,
         if not isinstance(source,Path) or source.is_symlink() or not source.is_file():
             raise ValueError(f'{name}: source must be a regular local file')
         if channel.source_id not in hashes:
-            hashes[channel.source_id] = hashlib.sha256(source.read_bytes()).hexdigest()
+            hashes[channel.source_id] = sha256_file(source)
         if hashes[channel.source_id] != channel.source_sha256:
             raise ValueError(f'{name}: source hash does not match motion provenance')
     return {'source_sha256': hashes, 'eligibility': decision, 'phase_exit_approved': False}

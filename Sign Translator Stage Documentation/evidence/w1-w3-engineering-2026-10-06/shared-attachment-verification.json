@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "full_suite": {
+    "passed": 2796,
+    "seconds": 123.65,
+    "exit_code": 0,
+    "warnings": "error"
+  },
+  "focused": {
+    "passed": 32,
+    "seconds": 0.74,
+    "exit_code": 0
+  },
+  "paired_configurations": 72,
+  "calls_per_implementation": 144,
+  "complete_result_equality": true,
+  "baseline_seconds": 4.823434178986645,
+  "new_seconds": 3.1219126629803213,
+  "manual_handoffs_absent": 9,
+  "phase_exit_approved": false,
+  "source_sha256": {
+    "signtranslator/planning/partition_bounds.py": "ef9acb34e0162e974899e8d4877f1ba36b79c1c52a687a5ca2873da09498c80f",
+    "signtranslator/planning/joint_spatial.py": "aacec3bd2b0a54f849ad0b557e4389c2b8ea4200f8e78e9f9cee830b065bbbda",
+    "tests/test_prefix_attachment_bound.py": "120540347a1b595dc1d6057ff5e61080e9df87f89fcc11ee85918f65b3449cdd",
+    "tests/test_joint_spatial.py": "9e07251960c9be03df16a3bf76ec1966c470b9d5999a56c7dfbbba44b6e7256f"
+  },
+  "limitations": [
+    "Fixed synthetic systems, not independent draws from a real model distribution.",
+    "Two runs per configuration are descriptive timings, not latency percentiles.",
+    "Work budgets bound node/probe counts, not elapsed time; target hardware remains absent.",
+    "Score reconstruction and budget monotonicity are consistency checks, not independent exhaustive optimality proofs."
+  ]
+}

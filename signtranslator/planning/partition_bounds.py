@@ -25,6 +25,64 @@ def prefix_attachment_upper_bound(prefix, count, pair, place, capacity):
     return bound
 
 
+def child_attachment_upper_bounds(prefix, count, pair, place, capacity):
+    """Compute the same attachment bound for every one-event extension.
+
+    Inputs are the decoder's validated gains and a nonempty, nonterminal,
+    capacity-feasible canonical prefix. Entries correspond to labels 0 through
+    max(prefix)+1; None marks a child that exceeds placed-group capacity.
+
+    For each future event, aggregate gains from the common parent once. Adding
+    the next event changes exactly one group gain by pair[next, future]. Taking
+    the same allowed-group maximum as prefix_attachment_upper_bound therefore
+    gives exactly its result for each feasible child, including negative forced
+    attachment and unplaced groups. Only aggregation work is shared; no bound is
+    relaxed or tightened. Two largest gains retain distinct group identities,
+    including ties, so excluding the changed group takes constant time. Per
+    future event the work is O(len(prefix) + groups), with O(groups) storage.
+    """
+    index = len(prefix)
+    groups = max(prefix) + 1
+    placed = {label for event, label in enumerate(prefix) if place[event]}
+    child_counts = [len(placed) + int(place[index] and label not in placed)
+                    for label in range(groups + 1)]
+    bounds = [0 if size <= capacity else None for size in child_counts]
+
+    def top_two(gains, labels):
+        winner = first = second = None
+        for label in labels:
+            value = gains[label]
+            if first is None or value > first:
+                winner, first, second = label, value, first
+            elif second is None or value > second:
+                second = value
+        return winner, first, second
+
+    for future in range(index + 1, count):
+        gains = [0] * (groups + 1)
+        for past, label in enumerate(prefix):
+            gains[label] += pair[past, future]
+        added = pair[index, future]
+        all_top = top_two(gains, range(groups + 1))
+        placed_top = top_two(gains, placed)
+        for label, size in enumerate(child_counts):
+            if bounds[label] is None:
+                continue
+            if size == capacity and place[future]:
+                winner, first, second = placed_top
+                unchanged = second if winner == label else first
+                changed = gains[label] + added if place[index] or label in placed else None
+                # A feasible full-capacity child has at least one allowed group.
+                best = (changed if unchanged is None else unchanged if changed is None
+                        else max(unchanged, changed))
+            else:
+                winner, first, second = all_top
+                unchanged = second if winner == label else first
+                best = max(0, unchanged, gains[label] + added)
+            bounds[label] += best
+    return tuple(bounds)
+
+
 def partition_suffix_upper_bounds(count, pair):
     """Bound each suffix using positive gains minus disjoint triangle conflicts.
 

@@ -1,5 +1,58 @@
 # 06 — Implementation Roadmap
 
+## Latest W2 native-source verification update — October 6, 2026
+
+Canonical-state admission now hashes native source bytes through the existing
+`reproducibility.sha256_file` routine instead of materializing the complete file
+with `Path.read_bytes`. Reads are bounded to one MiB and shared source identities
+are still hashed once across the eleven channels within a validation call.
+The routine also rejects changes to device, inode, size or nanosecond modification
+time detected across the read. This is change detection, not an atomic snapshot
+or proof against adversarial replacement that restores the checked metadata.
+
+Focused integration tests exercise a multi-block fictional source, forbid whole
+source materialization, check digest equality and single-source reuse, and append
+bytes at end-of-read to prove refusal before a validation result is returned.
+This bounds source-hashing read buffers only; canonical archive decoding, tensor
+allocation and other admission memory costs remain. The 15 W1/W2 requirements
+and Phase-3C external dependencies still require the missing real artifacts.
+All nine manual handoffs remain absent. Evidence:
+`evidence/w1-w3-engineering-2026-10-06/native-source-hash-*`.
+Validation: 63 focused checks passed in 0.99 seconds; the full suite passed
+2,856 tests in 135.08 seconds, with warnings treated as errors. Source hashes
+and the still-absent handoff count are recorded in the verification JSON.
+
+## Latest W3 exact-search update — October 6, 2026
+
+The sibling attachment bound now retains the two largest gains at distinct group
+indices, including tied values. Removing the changed group from a maximum then
+takes constant time. Separate placed-group maxima preserve forced negative
+attachment at full locus capacity; unplaced groups never become eligible merely
+because they have a larger score. Per future event, sibling evaluation now costs
+O(prefix length + group count), using O(group count) temporary storage, rather
+than rescanning every group for every child. Integer arithmetic, exact bounds,
+branch ordering and exhaustion refusal are unchanged.
+
+All 72 synthetic workload configurations returned identical complete result
+objects against the retained previous implementation, including scores, IDs,
+work and evaluated partitions. Across two alternating-order runs per case,
+summed times were 2.9647 seconds before and 2.5438 seconds after (about 14% lower).
+Work remains 176,822 units across the matrix; this change does not close additional
+budget-exhausted cases. These descriptive timings are not real-model latency or
+target-hardware qualification. An exhaustive small-domain regression covers all
+ternary edge gains, placement masks, selected canonical prefixes and capacities;
+the existing large-integer and exhaustive completion checks remain applicable.
+Evidence: `evidence/w1-w3-engineering-2026-10-06/child-maxima-*`.
+Validation: 33 focused checks and all 2,854 full-suite tests passed with warnings
+treated as errors. The quiet logs contain per-test outcomes; elapsed suite time
+was not captured for this run. Source hashes are retained in the verification JSON.
+
+The direct paired learner still requires the governed corpus, frozen source/state
+semantics and accepted split recorded in Phase 3C. Existing text-only prediction
+heads and source-text interventions do not satisfy paired-video dependence.
+All nine manual interventions remain absent, with null evidence; W1/W2/W3
+empirical acceptance remains unapproved.
+
 ## W1–W3 engineering continuation — 2026-10-05
 
 The user has explicitly declared all nine manual handoffs absent. Their current
@@ -2414,6 +2467,67 @@ full-ledger access still have their own costs. Large-token handling, artifact pa
 and representative admitted-workload profiling remain open. October 6 `stream-json-*`
 evidence retains replay, focused/full logs and source hashes. All nine manual handoffs
 remain absent/null; empirical W1/W2/W3 phase acceptance remains unapproved.
+
+## Explicit canonical-artifact input handoff — 2026-10-06
+
+Verified: **2,761 passed in 121.14 seconds**, warnings as errors; 45 focused checks
+passed in 4.47 seconds. Module CLI help also ran successfully.
+
+`load_governed_planner_inputs` accepts a SHA-256-bound, version-1 local JSON manifest
+containing the complete canonical record population, source capability claims,
+action authorization evidence, canonical samples, reviewed SIR, vocabulary and locus
+convention files. Exact keys, explicit enum names, bounded JSON/payload reads,
+nonfinite/duplicate-key refusal and normalized relative nonsymlink file references
+prevent silent defaults or inferred approvals. Existing `GovernedMotionCorpus`
+admission reruns source hashes, action rights, review bindings, alignment/layout and
+split/content isolation before returning the corpus/vocabulary/alphabet. It checks
+all declared splits, including test, during admission; later training still avoids
+the admitted test view. It does not establish population completeness or human truth.
+
+`python -m signtranslator.data.governed_manifest MANIFEST --sha256 EXPECTED` performs
+read-only admission and prints identities/counts with phase approval false. The guide
+at `docs/GOVERNED_INPUT_MANIFEST.md` documents every top-level, source, authorization,
+record and sample field and connects the result to the existing typed runner.
+Fictional controls prove exact corpus identity and training parity against direct
+construction, reject changed held-out bytes, missing/withdrawn authorization,
+artifact mismatch, malformed fields/hash/JSON, path escape and symlinks, and verify
+that admission/command use creates no files. No actual human/source handoff was added.
+
+This imports already converted canonical artifacts; native-source conversion,
+a training CLI, human permissions/review, real-data pilot and empirical acceptance
+remain outstanding. Relative-path checks are not an atomic filesystem snapshot
+against concurrent replacement. October 6 `governed-manifest-*` evidence records
+focused/full regression and source hashes. All nine manual handoffs remain absent
+with null evidence; W1/W2/W3 empirical phase exits remain unapproved.
+
+## Explicit governed training configuration and CLI — 2026-10-06
+
+Verified: **2,775 passed in 126.05 seconds**, warnings as errors; 42 focused checks
+passed in 4.62 seconds. Module CLI help also ran successfully.
+
+`python -m signtranslator.governed_train CONFIG --sha256 EXPECTED` now connects the
+canonical input handoff to the existing governed runner. Schema 1 requires complete
+typed model/trainer fields, exact-byte configuration and input-manifest hashes,
+explicit validation/shuffle choices, seed/device and a relative checkpoint prefix.
+It supplies no synthetic fallback or missing mathematical defaults. Additional-epoch
+limits and committed resume use the original trainer horizon and identity checks.
+
+Checkpoint destinations are preflighted before training; replacement requires an
+explicit flag. The input loader now retains the declared file paths so even that
+flag cannot authorize replacing the run configuration or any declared input.
+Symlinked outputs, path escapes and existing nondirectory parents are refused.
+The canonical stdout summary records input/config/corpus/model identities, progress,
+history, exposure and fresh audit with phase approval false. Configured checkpoint
+paths do not imply every best/last artifact was written by this invocation.
+
+Fictional tests match direct-run weights/history/exposure after fresh execution and
+resume; invalid configurations refuse training/output, and configuration/artifact
+collision checks preserve input bytes. Complete field/command/resume documentation
+is in `docs/GOVERNED_TRAINING_RUN.md`. CPU continuation is verified only; existing
+file checks are not a concurrent-filesystem sandbox, and failures do not roll back
+prior checkpoint writes. Native-source conversion, actual human/data evidence,
+real pilots and empirical W1/W2/W3 acceptance remain outstanding. All nine manual
+handoffs remain absent/null. October 6 `governed-train-cli-*` retains verification.
 
 ## Refreshed W1/W2 acceptance audit and source inventory — 2026-09-26
 
@@ -5057,3 +5171,228 @@ Defer raw speech and photorealistic rendering.
 - Do not optimize rendering appearance before motion is understandable.
 - Do not claim production readiness because latency or quantization formulas pass
   unit tests.
+
+
+## Joint search ordered by complete-objective bounds — 2026-10-06
+
+The W3 joint spatial decoder now explores feasible child prefixes in descending
+order of their existing exact integer upper bound, then immediate reference gain,
+then canonical label. It caches that bound for the child visit. This changes only
+traversal order: all feasible completions remain represented, pruning still uses
+the proven upper bound against the second-best feasible score, and exhausted or
+tied searches still yield no usable referent/locus IDs. Infeasible children retain
+their counted visits. No floating-point priority or approximate winner is introduced.
+
+The retained 72-configuration synthetic matrix completes one additional case at
+each budget: exhaustion falls from 19/36 to 18/36 at 1,000 work units and from
+14/36 to 13/36 at 10,000. Total counted work falls from 182,097 to 176,822.
+No previously completed matrix case becomes exhausted, and all commonly completed
+best/runner-up scores and statuses match. Twenty additional eight-event mixed-score
+controls are checked against independent enumeration of all 256 binary locus
+vectors, including exact-budget completion and one-unit-short refusal.
+
+This is a proof-completion tradeoff, not a latency optimization: calculating child
+bounds ahead of traversal adds CPU work excluded by the existing node/probe budget.
+A cheaper locus-increment ordering experiment failed to complete additional matrix
+cases and was not adopted. Retained scripts/results document both experiments.
+The remaining 13/36 high-budget exhausted cases, real-score calibration, native
+source conversion and evidence-backed pilot execution remain open. All nine manual
+handoffs remain absent with null evidence; empirical W1/W2/W3 acceptance is unchanged.
+
+Validation: 31 focused checks and the full 2,795-test suite passed with warnings
+as errors. Sequential descriptive profiling of 144 calls took 2.97 seconds before
+and 4.81 seconds after; this is not a controlled latency benchmark. The additional
+completed configurations are eight negative-score events with alternating placement
+at 1,000 units, and sixteen negative-score events with all events placed at 10,000.
+Verification and source hashes are in `bound-order-verification.json`.
+
+
+## Shared sibling attachment aggregation — 2026-10-06
+
+`child_attachment_upper_bounds` computes the same prefix-to-future attachment
+bounds for every child using one common parent aggregation per future event.
+Extending the prefix changes only the chosen group's gain by the next event's
+pair score. The allowed-group maximum is unchanged: full placed capacity forces
+placed events to attach to an existing placed group; other events retain the
+zero-gain fresh-group relaxation. Infeasible children still receive counted visits.
+
+This is an exact computation refactor, not a new relaxation or a changed objective.
+Integer arithmetic, bound-based traversal priorities, best/runner-up scores,
+ambiguity, budget accounting and exhaustion refusal must remain identical.
+Exhaustive small-prefix comparisons include partial placement, capacity refusal,
+negative/zero/mixed gains and 2,000-bit scaling. Temporary child placement sets
+use O(number of prefix groups squared) storage; no whole-search memo is retained.
+The complete 72-configuration comparison also checks every result field,
+including returned IDs, work and evaluated partitions, against the retained
+pre-refactor decoder. Two runs per configuration alternate old/new evaluation
+order; timings remain descriptive synthetic measurements, not production latency.
+
+The remaining search failures and source/calibration/reviewer dependencies are
+unchanged. All nine manual handoffs stay absent, evidence null. W1/W2/W3 empirical
+acceptance remains unapproved.
+
+Validation: 32 focused checks passed in 0.74 seconds; the full suite passed
+2,796 tests in 123.65 seconds with warnings as errors. All complete result fields
+match in the paired matrix. Alternating-order descriptive totals are 4.82 seconds
+before and 3.12 seconds after across 144 calls per implementation (about 35% less
+elapsed time on this fixed synthetic matrix). Counted work remains 176,822;
+exhaustion remains 18/36 at 1,000 and 13/36 at 10,000. Source hashes and full
+comparison data are retained in `shared-attachment-verification.json` and
+`shared-attachment-comparison.json`. The Spaces tracker and root summary were
+reconciled and read back successfully.
+
+
+## Load-only governed checkpoint inspection — 2026-10-06
+
+`load_governed_planner` reconstructs a governed run at its committed checkpoint
+boundary without fitting or saving. It shares the training runner's admitted-view
+preflight, support identity, strict resume loader and fresh exposure declaration
+audit. Partial checkpoints no longer need an accidental additional epoch merely
+to make them available to `diagnose_governed_planner`. The returned model,
+optimizer/scheduler, history, cursor and exposure remain at the saved boundary.
+Current and retained best-validation diagnostics are explicit selections.
+
+The API restores caller RNG and checks source/configuration/checkpoint evidence;
+missing or stale inputs return no run. It opens only configured train/validation
+views of an already admitted corpus. Input-manifest admission still checks the
+entire declared population, including test records. Tests forbid `fit` and `save`,
+compare file bytes and modification times, compare saved state and full diagnostic
+payloads, and cover partial/complete checkpoints with validation enabled/disabled.
+
+Strict implementation/runtime compatibility is unchanged. For exact continued
+training use the isolated `run_governed_planner(resume_from=...)` path, not a direct
+`fit` call on the returned mutable trainer after caller RNG restoration. This is
+a Python entry point; no load-only diagnostic CLI is implied. The README now
+clarifies that admission is read-only but configured training writes checkpoints.
+All nine manual handoffs remain absent; no empirical W1/W2/W3 approval is inferred.
+
+Validation: 34 focused checks passed in 8.32 seconds and the full suite passed
+2,807 tests in 123.67 seconds, with warnings as errors. Initial new-test attribute
+name mistakes were corrected without weakening assertions; the failed run is
+retained. Source hashes and verification scope are recorded in
+`governed-load-verification.json`. Spaces status, component inventory and parent
+summary were reconciled and verified by exact readback.
+
+
+## Explicit checkpoint diagnostic command — 2026-10-06
+
+`python -m signtranslator.governed_diagnose` now connects shared strict run-config
+parsing, full canonical-manifest admission, load-only checkpoint restoration and
+explicit development diagnostics. Required arguments bind the configuration and
+checkpoint hashes, train/validation view, current/retained-best weights, ordered
+local subset, complete permutation, diagnostic uint32 seed and 1–64 sample cap.
+There is no test-view option, automatic sampling or checkpoint discovery.
+
+No training or file writes occur. Canonical stdout JSON contains the bound input
+identities, complete diagnostic report/hash and fresh declaration audit/hash.
+Both current and retained-best reports match the direct API; tests forbid fit/save,
+check checkpoint/input bytes and mtimes, and exercise independent working-directory
+resolution, invalid selections/hashes, changed held-out population bytes and
+checkpoint mutation during diagnostics. Failure emits no diagnostic JSON.
+The read-only command requires original compatible configuration and checkpoint
+implementation/runtime identities. Before/after hashing does not make the file
+set an atomic snapshot. Output/memory costs and empirical acceptance remain open.
+All nine manual handoffs are still absent, with null evidence.
+
+Validation: 38 focused command/load checks passed in 7.20 seconds; the full suite
+passed 2,820 tests in 126.66 seconds with warnings as errors. The module's help
+entry point also executes successfully. Source identities and verification scope
+are saved in `governed-diagnose-cli-verification.json`. Spaces status, component
+inventory and root summary were updated and verified by exact readback.
+
+
+## Selected-model exposure attribution — 2026-10-06
+
+Governed diagnostic schema 2 distinguishes the loaded run's complete exposure
+identity from the optimizer declarations through the selected model's recorded
+boundary. For retained best-validation weights, the epoch is the first minimum
+of the configured metric's validated history, indexed by its recorded epoch rows.
+Strict-improvement ties and validation cadence are preserved. The selected step
+is that epoch times the governed fixed loader length; a streamed prefix summary
+excludes later optimizer calls. Current weights reuse the current exposure report.
+
+Existing run-level epoch/step/exposure fields retain their meanings. New selected
+boundary and exposure payload/hash fields are explicit; the diagnostic CLI envelope
+remains schema 1 while its nested diagnostic report becomes schema 2. Inconsistent
+history is rejected before copying the model, and history/cursor/selection mutation
+during evaluation refuses the report. Historical declarations do not prove that
+arbitrary mutable tensor bytes received those gradients; evaluated tensor identity
+remains separately bound. Extra validation/summary passes have linear history cost.
+All nine manual handoffs remain absent and empirical W1/W2/W3 acceptance is open.
+
+Validation: 44 focused checks passed in 11.51 seconds; the full suite passed
+2,827 tests in 129.50 seconds with warnings as errors. Source identities and
+verification scope are retained in `selected-exposure-verification.json`.
+Spaces status, component inventory and parent summary were reconciled and
+verified by exact readback.
+
+
+## Relation-type exposure projection — 2026-10-06
+
+Governed diagnostic schema 3 retains schema 2's selected boundary and adds a
+projection bound to that exact ledger hash. Each canonical relation type has its
+own positive/negative cell-presentation counts, distinct sample IDs per polarity,
+and recorded polarity inventory. Types with no recorded cells cannot borrow
+support from another type. Missing declarations remain unrecorded; explicit empty
+lists remain distinct. Unknown-cell totals are not invented from selected cells.
+
+The projection validates the full selected record sequence, directed nonself binary
+cell contract, relation codebook and model event capacity. It does not apply the
+graph decoder's separate 128-event search limit. Repeated samples are not treated
+as independent statistical units; these counts do not prove nonzero gradients or
+calibrated graph competence. The graph decoder's thresholds and acceptance status
+are unchanged. One extra selected-history traversal and per-type sample sets are
+required. All nine manual handoffs remain absent with null evidence.
+
+Validation: 43 focused checks passed in 10.42 seconds; the full suite passed
+2,837 tests in 135.25 seconds with warnings as errors. Analytical type/polarity
+counts, repeated samples, count-only history, invalid domains/hashes and model
+capacities above the graph-search cap are covered. Source identities and scope
+are in `relation-exposure-verification.json`. Spaces status, inventory and parent
+summary were reconciled and verified by exact readback.
+
+## Explicit relation threshold evaluation — 2026-10-06
+
+`evaluate_relation_sequences` now optionally evaluates the same strict lower/upper
+logit threshold semantics used by diagnostic graph decoding. It reports per-type
+and per-example confusion counts, target-polarity-specific abstentions and separate
+unscored decisions on unknown targets. Coverage and conditional error retain exact
+integer numerator/denominator pairs; zero denominators are unavailable. Only exact
+label sequences with known targets contribute scored cells. Failed generations
+and label mismatches do not become negative predictions.
+
+Float32 scores embed exactly in float64 before comparison, preserving threshold
+boundaries without rounding thresholds to model dtype. Supplied-threshold reports
+use relation-evaluation schema 2; omitted thresholds preserve schema 1. This is a
+Python API option, not automatic threshold selection or CLI calibration. Per-cell
+counts do not establish independence, full-graph accuracy or empirical acceptance.
+All nine manual handoffs remain absent, with null evidence.
+
+Validation: 30 focused checks passed in 0.81 seconds; the full suite passed
+2,841 tests in 128.78 seconds with warnings as errors. Source identities and
+verification scope are retained in `relation-threshold-verification.json`.
+Spaces status, implementation inventory and root summary were reconciled and
+verified by exact readback.
+
+## Governed threshold diagnostic integration — 2026-10-06
+
+Explicit relation thresholds now flow through `diagnose_governed_planner` and
+`compare_source_intervention` to the original-source reviewed-reference evaluator.
+Thresholds are snapshotted and validated before generation. Permuted sources keep
+their own identities and are not treated as newly annotated examples.
+
+The diagnostic CLI accepts an optional paired threshold-manifest path and SHA-256.
+A strict four-KiB schema-1 JSON manifest requires exact relation order and finite
+floating-point lower/upper bounds, with lower strictly below upper. Invalid pairs,
+paths, hashes, fields or values are refused before checkpoint loading. Output with
+a manifest uses wrapper schema 2 and binds its hash; absent thresholds preserve
+wrapper schema 1. The governed diagnostic remains schema 3; the nested original
+relation evaluation uses schema 2 when thresholds are provided. No training,
+automatic threshold choice, calibration acceptance or file writes are introduced.
+All nine manual handoffs remain absent with null evidence.
+
+Validation: 35 focused checks passed in 7.21 seconds; the full suite passed
+2,853 tests in 131.77 seconds with warnings as errors. CLI help also executes
+successfully. Source identities and scope are recorded in
+`governed-threshold-verification.json`. Spaces status, inventory and parent summary
+were reconciled and verified by exact readback.

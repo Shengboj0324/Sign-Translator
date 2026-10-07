@@ -107,6 +107,70 @@ def test_scoped_ingestion_requires_real_bytes_and_never_approves_phase(tmp_path)
     assert recovered.sample_id==state.sample_id
 
 
+@pytest.mark.parametrize('change_during_read', [False, True])
+def test_ingestion_streams_native_source_and_rejects_changed_file(tmp_path, monkeypatch, change_during_read):
+    import hashlib
+    from pathlib import Path
+    from test_de_phase2_policy import fixture as policy_fixture
+    from signtranslator.data_engineering.state_ingestion import validate_phase2_state
+    from signtranslator.data_engineering.phase2_policy import Phase2Scope
+
+    source, auth = policy_fixture(tmp_path)
+    media = tmp_path / 'large-fictional-native-source'
+    payload = b'fictional-native-motion\x00' * 150000
+    media.write_bytes(payload)
+    digest = hashlib.sha256(payload).hexdigest()
+    state = fixture()
+    state = replace(state, channels={name: replace(channel, source_id=source.source_id,
+                    source_sha256=digest) for name, channel in state.channels.items()})
+    original_open = Path.open
+    original_read_bytes = Path.read_bytes
+    reads = []
+    opened = []
+
+    class BoundedReader:
+        def __enter__(self):
+            self.stream = original_open(media, 'rb')
+            return self
+
+        def __exit__(self, *args):
+            self.stream.close()
+
+        def read(self, size=-1):
+            assert 0 < size <= 1024 * 1024
+            reads.append(size)
+            value = self.stream.read(size)
+            if not value and change_during_read:
+                with original_open(media, 'ab') as destination:
+                    destination.write(b'changed')
+            return value
+
+    def guarded_open(path, *args, **kwargs):
+        if path == media:
+            assert args == ('rb',) and not kwargs
+            opened.append(path)
+            return BoundedReader()
+        return original_open(path, *args, **kwargs)
+
+    def guarded_read_bytes(path):
+        assert path != media, 'native source must not be materialized for hashing'
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, 'open', guarded_open)
+    monkeypatch.setattr(Path, 'read_bytes', guarded_read_bytes)
+    options = dict(sources=(source,), scope=Phase2Scope.RESEARCH,
+                   authorizations={'fixture': auth}, source_files={'fixture': media})
+    if change_during_read:
+        with pytest.raises(RuntimeError, match='file changed while hashing'):
+            validate_phase2_state(state, **options)
+    else:
+        result = validate_phase2_state(state, **options)
+        assert result['source_sha256'] == {source.source_id: digest}
+        assert result['phase_exit_approved'] is False
+    assert len(opened) == 1  # All eleven channels share one source identity.
+    assert len(reads) >= 4
+
+
 @pytest.mark.parametrize('mutation',['duplicate_metadata','extra_array','wrong_dtype'])
 def test_archive_rejects_structural_tampering_even_with_new_hash(tmp_path,mutation):
     import hashlib,json

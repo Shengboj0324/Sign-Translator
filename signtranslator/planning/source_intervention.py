@@ -19,7 +19,7 @@ from .text_loci import LocusTextSIRModel
 from .text_sequence import LabelSequenceCandidate
 from .sequence_evaluation import evaluate_label_sequences
 from .temporal_evaluation import evaluate_temporal_sequences
-from .relation_evaluation import evaluate_relation_sequences
+from .relation_evaluation import evaluate_relation_sequences, validated_relation_thresholds
 from .referent_evaluation import evaluate_referent_sequences
 from .locus_evaluation import evaluate_locus_sequences
 
@@ -68,7 +68,7 @@ def _candidate_dict(candidate):
 @torch.no_grad()
 def compare_source_intervention(model: LocusTextSIRModel, dataset: GovernedMotionDataset, *,
                                  permutation: tuple[int, ...], seed: int,
-                                 max_samples: int) -> SourceInterventionReport:
+                                 max_samples: int, relation_thresholds=None) -> SourceInterventionReport:
     """Compare original and explicitly permuted sources using identical RNG seeds.
 
     Each pass restores external RNG state, and the original model mode is restored
@@ -87,6 +87,7 @@ def compare_source_intervention(model: LocusTextSIRModel, dataset: GovernedMotio
     if (not isinstance(permutation, tuple) or len(permutation) != count
             or any(type(i) is not int for i in permutation) or set(permutation) != set(range(count))):
         raise ValueError('explicit complete permutation of view rows required')
+    relation_thresholds = validated_relation_thresholds(relation_thresholds)
     contract = dataset.training_contract
     first = dataset[0]
     view = GovernedMotionDataset(first.corpus, tuple(contract['record_indices']), contract['split'])
@@ -116,7 +117,8 @@ def compare_source_intervention(model: LocusTextSIRModel, dataset: GovernedMotio
             relation_evaluation = evaluate_relation_sequences(
                 tuple(c.referential.relational for c in original_candidates), tuple(batch.annotations),
                 model.vocabulary, annotation_sha256=text.annotation_sha256,
-                max_cells=10_000_000, max_relation_cells=10_000_000).to_dict()
+                max_cells=10_000_000, max_relation_cells=10_000_000,
+                relation_thresholds=relation_thresholds).to_dict()
             referent_evaluation = evaluate_referent_sequences(
                 tuple(c.referential for c in original_candidates), tuple(batch.annotations),
                 model.vocabulary, annotation_sha256=text.annotation_sha256,
