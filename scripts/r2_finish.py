@@ -19,6 +19,8 @@ def finish(wait_pid):
                 break
             print(json.dumps({'state': 'waiting_for_upload', 'pid': wait_pid}), flush=True)
             time.sleep(30)
+    if not (r2.STATE / 'complete.json').exists():
+        raise RuntimeError('Uploader exited without completion evidence; restore and cleanup were not started. See upload.log.')
     complete = json.loads((r2.STATE / 'complete.json').read_text())
     if not complete['complete'] or r2.file_hash(r2.STATE / 'catalog.jsonl') != complete['catalog']['sha256']:
         raise ValueError('complete, unchanged catalog required')
@@ -28,7 +30,7 @@ def finish(wait_pid):
     r2.verify_head(s3, bucket, complete['catalog'])
     selections = {}
     file_count = 0
-    for record in r2.records():
+    for index, record in enumerate(r2.records()):
         r2.verify_head(s3, bucket, record)
         manifest = r2.STATE / record['manifest']
         if r2.file_hash(manifest) != record['manifest_sha256']:
@@ -38,6 +40,9 @@ def finish(wait_pid):
         if len(members) != record['files']:
             raise ValueError('member count differs from catalog')
         file_count += len(members)
+        if (index + 1) % 50 == 0:
+            print(json.dumps({'state': 'checking_restore_indexes', 'archives': index + 1,
+                              'files': file_count}), flush=True)
         for row in members:
             parts = r2.safe_key(row['key']).parts
             group = '/'.join(parts[:2])
@@ -49,6 +54,7 @@ def finish(wait_pid):
     checked = []
     with tempfile.TemporaryDirectory(prefix='restore-validation-', dir=r2.STATE) as temporary:
         for group, row in selections.items():
+            print(json.dumps({'state': 'testing_restore', 'group': group}), flush=True)
             destination = Path(temporary) / r2.safe_key(row['key']).parts[0]
             r2.restore(row['key'], destination)
             restored = destination.joinpath(*r2.safe_key(row['key']).parts[1:])

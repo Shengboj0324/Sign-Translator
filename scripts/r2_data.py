@@ -92,7 +92,10 @@ def pack(rows, archive, manifest):
                 if source.read(1):
                     raise ValueError('source grew during archive creation')
             check_source(row)
-            members.append({**row, 'sha256': reader.digest.hexdigest()})
+            digest = reader.digest.hexdigest()
+            if row.get('sha256') is not None and digest != row['sha256']:
+                raise ValueError('source content changed since reconciliation: ' + str(path))
+            members.append({**row, 'sha256': digest})
         payload = json.dumps(members, separators=(',', ':')).encode()
         info = tarfile.TarInfo('_r2_members.json')
         info.size, info.mode = len(payload), 0o600
@@ -194,10 +197,16 @@ def upload():
             verify_head(s3, bucket, record)
             if file_hash(STATE / record['manifest']) != record['manifest_sha256']:
                 raise ValueError('local member manifest changed')
+            if (index + 1) % 50 == 0:
+                print(json.dumps({'state': 'rechecking_verified_archives',
+                                  'checked': index + 1, 'total': len(completed)}), flush=True)
             continue
         archive = STATE / f'part-{index:06d}.tar.gz'
         manifest = STATE / f'part-{index:06d}.json.gz'
+        print(json.dumps({'state': 'packing', 'part': index, 'files': len(rows)}), flush=True)
         pack(rows, archive, manifest)
+        print(json.dumps({'state': 'uploading_and_verifying', 'part': index,
+                          'archive_bytes': archive.stat().st_size}), flush=True)
         record = upload_verified(s3, bucket, archive, f'{REMOTE}/archives/{archive.name}')
         record.update(files=len(rows), first=rows[0]['key'], last=rows[-1]['key'],
                       source_bytes=sum(row['size'] for row in rows),

@@ -33,6 +33,17 @@ not establish a complete migration. Current logs: `.r2-migration/upload.log`.
 .r2-migration/venv/bin/python scripts/r2_data.py upload
 ```
 
+## Cloud-backed source reconciliation
+
+The remaining evidence files included macOS dataless placeholders. Reading their
+contents changed some nanosecond timestamps, causing exact inventory checks to
+stop packing. The repair reads every remaining file before reconciling metadata,
+then rehashes it with stable identity checks. Reconciled rows include SHA-256;
+packing must match that hash as well as the exact source identity. Previously
+verified inventory rows and archives are preserved. The original inventory had
+no content hashes, so reconciliation does not assert historical byte equality.
+The audit is retained locally and in R2 as `reconciliation-hydrated.json`.
+
 ## Retrieval and loader integration
 
 Current dataset readers use regular local files, including hash-bound paths.

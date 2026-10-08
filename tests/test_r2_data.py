@@ -43,6 +43,18 @@ def test_pack_refuses_inventory_mutation(tmp_path):
         r2.pack([record], tmp_path / 'archive', tmp_path / 'manifest')
 
 
+def test_pack_refuses_changed_content_with_preserved_identity(tmp_path):
+    import os
+    path = tmp_path / 'source'
+    path.write_bytes(b'old')
+    record = row(path, 'data/source')
+    record['sha256'] = r2.file_hash(path)
+    path.write_bytes(b'new')
+    os.utime(path, ns=(record['mtime_ns'], record['mtime_ns']))
+    with pytest.raises(ValueError, match='content changed since reconciliation'):
+        r2.pack([record], tmp_path / 'archive', tmp_path / 'manifest')
+
+
 @pytest.mark.parametrize('key', ['/data/x', 'data/../x', 'data//x', 'data/./x', 'secret/x'])
 def test_paths_fail_closed(key):
     with pytest.raises(ValueError):
