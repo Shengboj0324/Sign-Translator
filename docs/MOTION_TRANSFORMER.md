@@ -187,8 +187,8 @@ runs a long-discourse locus-persistence test and whole-chain cycle stress.
 | 6g | decoding strategies + experiment harness | done (8 tests) |
 | 6h | integration + cycle stress + full regression | done (6 tests) |
 
-Motion layer: 74 tests, green on two consecutive runs; whole project (1056 tests)
-green.
+Motion layer: 74 tests, green on two consecutive runs at that stage; the
+whole-project total recorded then was 1,056 tests. These are stage snapshots, not the current verdict; rerun the suite (see the README reproducibility section).
 
 ## 11. Findings (post-implementation)
 

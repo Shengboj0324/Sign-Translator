@@ -205,7 +205,8 @@ loss-vs-linguistic-usefulness dissociation harness.
 | 11h | integration + cycle stress + full regression | done (3 tests) |
 
 Pretraining layer: 69 tests, green on two consecutive runs under
-`-W error::UserWarning`; whole project green (all 120 test files).
+`-W error::UserWarning` at that stage, with 120 test files in the project then.
+These are stage snapshots, not the current verdict; rerun the suite (see the README reproducibility section).
 
 ## 11. Findings (post-implementation)
 

@@ -128,6 +128,8 @@ x_{t_next} = √ᾱ_{t_next} · x̂_0 + √(1 − ᾱ_{t_next} − σ²) · ε_�
 
 ## 4. Joint objective
 
+The two-branch objective of the legacy `SignTranslator` research API is
+
 ```
 L = w_c · L_InfoNCE + w_d · L_diff.
 ```
@@ -136,6 +138,18 @@ The diffusion generator is conditioned on the language latent `z^l` so that the
 same vector which contrastive learning aligns with motion also drives motion
 synthesis. `test_training_reduces_loss_on_synthetic_data` confirms the combined
 objective decreases under optimisation — the end-to-end correctness check.
+
+The **canonical** executable objective is the five-branch weighted sum computed by
+`BidirectionalSignTranslator.training_step` and optimised by `training/trainer.py`.
+With the `run.py` defaults (`DEFAULT_LOSS_WEIGHTS`),
+
+```
+L = 1.0 · L_generation + 0.3 · L_alignment + 2.0 · L_plan
+  + 1.0 · L_sign_CTC   + 1.0 · L_speech_CTC.
+```
+
+A batch missing a branch's fields omits that branch rather than contributing zero.
+These are the current synthetic weights, not a measured optimum.
 
 ## 5. Continuous sign recognition (CTC)
 

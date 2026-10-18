@@ -165,8 +165,8 @@ uncertainty, and intensity-monotone articulation.
 | 9g | evaluation batteries | done (6 tests) |
 | 9h | integration + cycle stress + full regression | done (5 tests) |
 
-Facial/NMM layer: 44 tests, green on two consecutive runs; whole project (1220
-tests) green.
+Facial/NMM layer: 44 tests, green on two consecutive runs at that stage; the
+whole-project total recorded then was 1,220 tests. These are stage snapshots, not the current verdict; rerun the suite (see the README reproducibility section).
 
 ## 11. Findings (post-implementation)
 

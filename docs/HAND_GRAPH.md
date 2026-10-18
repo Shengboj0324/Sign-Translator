@@ -217,8 +217,8 @@ baselines for the required comparison, and runs whole-chain cycle stress.
 | 5g | hand-specific evaluation metrics | done (9 tests) |
 | 5h | integration + cycle stress + full regression | done (8 tests) |
 
-Hand-graph layer: 77 tests, green on two consecutive runs; whole project (982
-tests) green.
+Hand-graph layer: 77 tests, green on two consecutive runs at that stage; the
+whole-project total recorded then was 982 tests. These are stage snapshots, not the current verdict; rerun the suite (see the README reproducibility section).
 
 ## 12. Findings (post-implementation)
 

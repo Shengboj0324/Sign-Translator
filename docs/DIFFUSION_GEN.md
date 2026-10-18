@@ -178,8 +178,8 @@ must never be a primary training objective (per the document).
 | 7g | consistency / rectified-flow distillation | done (7 tests) |
 | 7h | evaluation + baselines + integration + regression | done (10 tests) |
 
-Diffusion layer: 60 tests, green on two consecutive runs; whole project (1116
-tests) green.
+Diffusion layer: 60 tests, green on two consecutive runs at that stage; the
+whole-project total recorded then was 1,116 tests. These are stage snapshots, not the current verdict; rerun the suite (see the README reproducibility section).
 
 ## 12. Findings (post-implementation)
 

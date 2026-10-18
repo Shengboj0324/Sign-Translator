@@ -250,7 +250,8 @@ regressions.
 | 4g | identity/motion separation + signer-leakage tests | done (5 tests) |
 | 4h | integration + cycle stress + full regression | done (7 tests) |
 
-Pose layer: 83 tests, green on two consecutive runs; whole project (901 tests) green.
+Pose layer: 83 tests, green on two consecutive runs at that stage; the
+whole-project total recorded then was 901 tests. These are stage snapshots, not the current verdict; rerun the suite (see the README reproducibility section).
 
 ## 10. Findings (post-implementation)
 

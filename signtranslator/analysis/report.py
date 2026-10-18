@@ -4,12 +4,18 @@ Computes, on a validation split, one metric per branch plus an integration
 metric, checks each against a threshold, and returns a structured report whose
 ``passed`` flag summarises whether the model meets the acceptance bar.
 
-Metrics
+Gated metrics (every key of ``DEFAULT_THRESHOLDS``)
     recognition_wer         sign -> gloss CTC word error rate         (lower)
-    planner_token_accuracy  spoken -> gloss token accuracy            (higher)
-    recall_at_1 / at_5      motion<->gloss manifold retrieval         (higher)
+    planner_token_accuracy  1 - edits / sum(max(hyp, ref) lengths)    (higher)
+    recall_at_1             motion<->gloss manifold retrieval         (higher)
     generation_val_loss     diffusion denoising loss on val           (lower)
     cycle_consistency_wer   gloss -> generate -> recognise -> gloss   (lower)
+    speech_wer              audio features -> spoken tokens (CTC)     (lower)
+
+Reported without a threshold
+    planner_wer, planner_exact_match, planner_truncation_rate, recall_at_5, and
+    planner_semantic_field_accuracy, which stays ``None`` because no governed SIR
+    field reference exists.
 """
 
 from __future__ import annotations

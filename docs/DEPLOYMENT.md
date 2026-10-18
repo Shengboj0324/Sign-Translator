@@ -169,7 +169,8 @@ shape-stability guard.
 | 13h | replay harness + integration + full regression | done (3 tests) |
 
 Deployment layer: 56 tests, green on two consecutive runs under
-`-W error::UserWarning`; whole project green (all 136 test files).
+`-W error::UserWarning` at that stage, with 136 test files in the project then.
+These are stage snapshots, not the current verdict; rerun the suite (see the README reproducibility section).
 
 ## 11. Findings (post-implementation)
 

@@ -325,7 +325,8 @@ triangulation, and the sensitive-trait non-inference guard.
 | 10h | datasheets + manifest + integration + regression | done (5 tests) |
 
 Data-engineering layer: 63 tests, green on two consecutive runs under
-`-W error::UserWarning`; whole project green (all 112 test files).
+`-W error::UserWarning` at that stage, with 112 test files in the project then.
+These are stage snapshots, not the current verdict; rerun the suite (see the README reproducibility section).
 
 ## 11. Findings (post-implementation)
 

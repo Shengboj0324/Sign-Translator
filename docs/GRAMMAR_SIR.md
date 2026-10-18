@@ -243,7 +243,8 @@ graph-aware Transformer, not a pretrained AMR parser.
 | 3g | minimal-pairs battery + locus persistence + OOV | done (15 tests) |
 | 3h | integration + cycle stress + regression | done (11 tests) |
 
-Grammar layer: 137 tests, green on two consecutive runs; whole project green.
+Grammar layer: 137 tests, green on two consecutive runs at that stage, with the
+whole project green then. These are stage snapshots, not the current verdict; rerun the suite (see the README reproducibility section).
 
 ## 11. Findings (post-implementation)
 

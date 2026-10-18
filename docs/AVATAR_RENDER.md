@@ -173,8 +173,8 @@ enforced appearance/signing separation.
 | 8g | linguistically-aware LOD + consent | done (5 tests) |
 | 8h | evaluation + separation + integration + regression | done (8 tests) |
 
-Rendering layer: 69 tests, green on two consecutive runs; whole project (1176
-tests) green.
+Rendering layer: 69 tests, green on two consecutive runs at that stage; the
+whole-project total recorded then was 1,176 tests. These are stage snapshots, not the current verdict; rerun the suite (see the README reproducibility section).
 
 ## 11. Findings (post-implementation)
 

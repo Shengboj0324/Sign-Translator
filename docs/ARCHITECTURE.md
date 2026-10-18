@@ -187,14 +187,21 @@ per-frame features once and reuses them for CTC recognition and (via time-mean)
 the manifold embedding — these are provably the same clip embedding.
 
 ### `analysis/report.py` — pass-gated evaluation
-Computes one metric per branch plus an integration diagnostic and checks each
-against a threshold. **Gated** (acceptance): `recognition_wer`,
-`planner_token_accuracy`, `recall_at_1`, `generation_val_loss`. **Diagnostic**
-(reported, non-gating): `cycle_consistency_wer`. Cycle-consistency is a full
-generative round-trip (gloss → generate → re-recognise); achieving low error
-requires high-fidelity conditional sampling that needs far more diffusion
-training/compute than a CPU smoke run, so it is tracked honestly but does not
-gate acceptance. The `run.py` CLI ties ingest → train → analyze and exits
+Computes one metric per branch plus an integration metric and checks each against
+a threshold. Every entry of `DEFAULT_THRESHOLDS` is **gated** (acceptance):
+`recognition_wer`, `planner_token_accuracy`, `recall_at_1`,
+`generation_val_loss`, `cycle_consistency_wer`, and `speech_wer`.
+`DIAGNOSTIC_THRESHOLDS` — reported but non-gating — is currently empty.
+Cycle-consistency is the full generative round-trip (gloss → generate →
+re-recognise) and is the strictest check: it passes only once conditional
+sampling is faithful enough for the recogniser to read generated motion, which
+needs far more diffusion training than a CPU smoke run. `speech_wer` additionally
+fails whenever acoustic coverage is partial, and `planner_token_accuracy`
+additionally fails on any missing-EOS truncation. Further metrics are reported
+without thresholds (`planner_wer`, `planner_exact_match`,
+`planner_truncation_rate`, `recall_at_5`), and
+`planner_semantic_field_accuracy` stays `None` until governed SIR field
+references exist. The `run.py` CLI ties ingest → train → analyze and exits
 non-zero if the gated metrics do not pass.
 
 ### Honest limitations of the trained demo
