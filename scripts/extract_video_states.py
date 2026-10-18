@@ -21,6 +21,8 @@ import sys
 import tempfile
 import zipfile
 
+import numpy as np
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
@@ -89,6 +91,11 @@ def _process(job):
             path = Path(temporary) / "state.npz"
             digest = state.save(path)
             store.put(key, path.read_bytes())
+            # Raw monocular landmarks, kept for the two-view quality gate's comparison.
+            buffer = io.BytesIO()
+            np.savez_compressed(buffer, times=clip.times, pose_world=clip.pose_world,
+                                pose_visibility=clip.pose_visibility, pose_found=clip.pose_found)
+            store.put(f"{prefix}/landmarks/{sample}.npz", buffer.getvalue())
     except (ValueError, OSError) as error:
         return dict(sample_id=sample, status="refused", reason=str(error)[:300])
     available = [n for n, c in state.channels.items() if c.valid.any()]

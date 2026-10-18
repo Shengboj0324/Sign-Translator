@@ -41,7 +41,41 @@ and starts the verified transfer when Drive serves the files. Chunked range
 requests were not used to get around the quota. OpenHands ASL pose archives are
 acquired with the publisher's MD5 checked.
 
-## 2. Video to canonical state (`data_engineering/video_landmarks.py`)
+## 2. Primary pipeline: two-view triangulation (decision in [DATA_QUALITY_DECISION.md](DATA_QUALITY_DECISION.md))
+
+The monocular MediaPipe path below loses quality (6th of 8 estimators on downstream
+sign-language translation in a 2026 study; monocular depth is a guess). The primary
+pipeline replaces its body and hands:
+
+* **2D:** Sapiens-1B (Goliath 308 keypoints, CC BY-NC 4.0) on both How2Sign views
+  (`sapiens_keypoints.py`, `scripts/sapiens_keypoints_runpod.py`); the signer's box is
+  the largest non-green region of the green-screen frame; heatmap peaks are refined
+  to sub-pixel by per-axis parabola fits.
+* **Synchronisation:** each frontal/lateral clip pair's lag is the maximiser of the
+  normalised correlation of wrist/elbow vertical velocity (both cameras share the
+  vertical); pairs below r = 0.8 are dropped, and a session's lags must agree.
+* **Self-calibration** (`two_view_geometry.py`): RANSAC fundamental matrix, essential
+  decomposition with the cheirality check, then bundle adjustment over both focal
+  lengths and the relative pose with reprojection **and rigid-bone-length** residuals.
+  The bone term is essential, not decorative: the two cameras fixate the signer, the
+  degenerate case for focal recovery from epipolar geometry. In tests, without it the
+  focal lengths come out 40–47% wrong while reprojection still looks perfect
+  (0.3–0.4 px); with it they are within 1%.
+* **Triangulation and IK:** linear triangulation in camera-1 coordinates, then the same
+  swing IK; rotations are scale-invariant, so the unidentifiable metric scale does not
+  affect them. MediaPipe still supplies the 52 face blendshapes, head rotation and
+  blink on the same frontal frames.
+* **Gate** (`two_view_states.py`, thresholds fixed before real data): bundle adjustment
+  converged, median reprojection ≤ 2 px in each view, at least one synchronised pair
+  with consistent lags, and triangulated bone-length CV below the monocular CV on the
+  same clips. Only passing sessions produce states (`scripts/triangulate_how2sign_sessions.py`).
+  End to end on a synthetic signer with fixating cameras: lag recovered exactly, focal
+  lengths within 3%, forearm directions within 1.5° (median).
+
+To verify on the real files: the lateral clip names are assumed to end in
+`-rgb_side`, mirroring the frontal `-rgb_front`.
+
+## 3. Monocular fallback (`data_engineering/video_landmarks.py`)
 
 * **Estimators.** MediaPipe Tasks 0.10.21 with pinned model hashes: pose landmarker
   (heavy, 33 world landmarks in metres), hand landmarker (21 world landmarks per
@@ -80,7 +114,7 @@ visibility threshold), 11.5 frames/s on this Mac's CPU. Full How2Sign extraction
 (about 5 million frames) is therefore a Runpod CPU job (`scripts/extract_video_states.py`,
 sharded and resumable).
 
-## 3. Sentence-aligned manifest (`scripts/build_how2sign_text_manifest.py`)
+## 4. Sentence-aligned manifest (`scripts/build_how2sign_text_manifest.py`)
 
 Each converted clip is joined with its realigned English sentence and given its
 partition from the **frozen signer-disjoint fold plan** (B11; fold 0: 29,012 train,
@@ -89,7 +123,7 @@ test splits) are labelled `heldout_official` and never used for training or mode
 selection. The manifest kind `continuous` admits every channel the estimator
 produced; per-frame masks inside each state carry the rest.
 
-## 4. English to motion (`generation/text_to_motion.py`)
+## 5. English to motion (`generation/text_to_motion.py`)
 
 * **Text.** NFC-normalised UTF-8 bytes with BOS/EOS — no downloaded tokenizer.
 * **Model.** A transformer text encoder, a duration head (log seconds), and a
@@ -109,7 +143,7 @@ Tests confirm exact byte encoding, the neutral start, that training reduces the
 loss below 30% of its initial value on a toy set and learns durations, and that
 generated states validate.
 
-## 5. Training entrypoint (`scripts/train_text_to_motion.py`)
+## 6. Training entrypoint (`scripts/train_text_to_motion.py`)
 
 Data, checkpoints and logs live in an object store (R2, or a directory in tests).
 AdamW with linear warmup and cosine decay, gradient clipping, bf16 autocast on CUDA,

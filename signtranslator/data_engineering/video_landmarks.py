@@ -145,17 +145,19 @@ def _polar_rotation(matrices: np.ndarray) -> np.ndarray:
     return u @ vt
 
 
-def canonical_from_landmarks(clip: ClipLandmarks, *, sample_id: str, source_id: str, source_sha256: str,
-                             clock_id: str, inference_method: str) -> tuple[MultichannelMotion, dict]:
-    frames = len(clip.times)
-    world = clip.pose_world @ Y_UP.T
+def solve_rotations(world: np.ndarray, visible_pose: np.ndarray,
+                    hands: dict[str, tuple[np.ndarray, np.ndarray]]) -> tuple[dict, dict]:
+    """Body and finger rotations from y-up 3D points in the MediaPipe pose-33 index layout.
+
+    ``world`` is (T, 33, 3) with only the body indices used here required; ``visible_pose``
+    is (T, 33); ``hands`` maps side -> ((T, 21, 3) y-up points in base-to-tip finger
+    order, (T,) validity). Any estimator or triangulation can feed this.
+    """
     mid_hip = (world[:, L_HIP] + world[:, R_HIP]) / 2
     mid_shoulder = (world[:, L_SHOULDER] + world[:, R_SHOULDER]) / 2
     points = np.concatenate((world, mid_hip[:, None], mid_shoulder[:, None]), axis=1)
-    visible = np.concatenate((clip.pose_visibility >= VISIBILITY_THRESHOLD,
-                              (clip.pose_visibility[:, [L_HIP, R_HIP]] >= VISIBILITY_THRESHOLD).all(1, keepdims=True),
-                              (clip.pose_visibility[:, [L_SHOULDER, R_SHOULDER]] >= VISIBILITY_THRESHOLD).all(1, keepdims=True)),
-                             axis=1) & clip.pose_found[:, None]
+    visible = np.concatenate((visible_pose, visible_pose[:, [L_HIP, R_HIP]].all(1, keepdims=True),
+                              visible_pose[:, [L_SHOULDER, R_SHOULDER]].all(1, keepdims=True)), axis=1)
     up = mid_shoulder - mid_hip
     pelvis, pelvis_ok = frame_from_axes(world[:, L_HIP] - world[:, R_HIP], up)
     chest, chest_ok = frame_from_axes(world[:, L_SHOULDER] - world[:, R_SHOULDER], up)
@@ -165,17 +167,39 @@ def canonical_from_landmarks(clip: ClipLandmarks, *, sample_id: str, source_id: 
     chest_local = np.einsum("tji,tjk->tik", pelvis, chest)
     rotations = {"Pelvis": (pelvis, pelvis_ok), "Chest": (chest_local, pelvis_ok & chest_ok)}
     rotations.update({j.name: (body[j.name][0], body[j.name][2]) for j in BODY_JOINTS})
-    hands = assign_hands(clip)
     hand_rotations = {}
-    for side, (landmarks, found) in hands.items():
-        hand_points = landmarks @ Y_UP.T
+    for side, (hand_points, found) in hands.items():
         frame, ok = frame_from_axes(hand_points[:, 5] - hand_points[:, 17], hand_points[:, 9] - hand_points[:, 0])
         ok &= found
-        forearm_local, forearm_world, forearm_ok = body[f"{side}Forearm"]
+        _, forearm_world, forearm_ok = body[f"{side}Forearm"]
         rotations[f"{side}Hand"] = (np.einsum("tji,tjk->tik", forearm_world, frame), ok & forearm_ok)
         solved = solve_chain(hand_points, {"Hand": (frame, ok)}, finger_joints(side))
         hand_rotations[side] = {j.name: (solved[j.name][0], solved[j.name][2]) for j in finger_joints(side)}
+    return rotations, hand_rotations
 
+
+def canonical_from_landmarks(clip: ClipLandmarks, *, sample_id: str, source_id: str, source_sha256: str,
+                             clock_id: str, inference_method: str, points: dict | None = None,
+                             frame: str = FRAME) -> tuple[MultichannelMotion, dict]:
+    """Canonical state from a clip's landmarks.
+
+    By default body and hands come from the clip's monocular world landmarks. Pass
+    ``points`` = {"world": (T,33,3) y-up, "visible": (T,33), "hands": {side: ((T,21,3), (T,))}}
+    to use other 3D points (for example two-view triangulation) while the face,
+    head and blink channels still come from the clip.
+    """
+    frames = len(clip.times)
+    if points is None:
+        world = clip.pose_world @ Y_UP.T
+        visible_pose = (clip.pose_visibility >= VISIBILITY_THRESHOLD) & clip.pose_found[:, None]
+        assigned = assign_hands(clip)
+        hands = {side: (landmarks @ Y_UP.T, found) for side, (landmarks, found) in assigned.items()}
+    else:
+        world, visible_pose, hands = points["world"], points["visible"], points["hands"]
+        if world.shape[0] != frames:
+            raise ValueError("3D points must share the clip's frames")
+    rotations, hand_rotations = solve_rotations(world, visible_pose, hands)
+    hands = {side: (None, hands[side][1]) for side in hands}
     def rotation_channel(names, table):
         mats = np.stack([table[n][0] for n in names], axis=1)
         valid = np.stack([table[n][1] for n in names], axis=1)
@@ -189,10 +213,10 @@ def canonical_from_landmarks(clip: ClipLandmarks, *, sample_id: str, source_id: 
                              units=units, source_id=source_id, source_sha256=source_sha256, convention=CONVENTION,
                              inference_method=inference_method if valid.any() else None)
 
-    channels = {"body": channel(*rotation_channel(BODY_LABELS, rotations), BODY_LABELS, "unitless", FRAME)}
+    channels = {"body": channel(*rotation_channel(BODY_LABELS, rotations), BODY_LABELS, "unitless", frame)}
     for side, name in (("Left", "left_hand"), ("Right", "right_hand")):
         labels = tuple(j.name for j in finger_joints(side))
-        channels[name] = channel(*rotation_channel(labels, hand_rotations[side]), labels, "unitless", FRAME)
+        channels[name] = channel(*rotation_channel(labels, hand_rotations[side]), labels, "unitless", frame)
     face_ok = clip.face_found & bool(clip.blendshape_names)
     if face_ok.any():
         rotation = _polar_rotation(clip.face_matrix[:, :3, :3])
@@ -365,5 +389,5 @@ def inference_method() -> str:
             + f"; {CONVENTION}; values are fitted, not observed")
 
 
-__all__ = ["MODEL_SHA256", "MODEL_URLS", "ClipLandmarks", "square_crop", "BODY_LABELS", "BODY_JOINTS", "finger_joints",
+__all__ = ["MODEL_SHA256", "MODEL_URLS", "ClipLandmarks", "square_crop", "solve_rotations", "BODY_LABELS", "BODY_JOINTS", "finger_joints",
            "assign_hands", "canonical_from_landmarks", "verify_models", "extract_clip", "inference_method"]

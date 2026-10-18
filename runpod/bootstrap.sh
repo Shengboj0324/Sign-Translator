@@ -14,6 +14,9 @@ cd "$WORK"
 cd Sign-Translator
 python -c "import torch; assert torch.__version__.startswith('2.13'), torch.__version__; print('torch', torch.__version__, 'cuda', torch.cuda.is_available())"
 pip install --quiet -r runpod/requirements-runpod.txt
+# MediaPipe pulls the GUI build of OpenCV, which needs libGL; server images lack it.
+pip uninstall -y -q opencv-contrib-python || true
+pip install --quiet "opencv-contrib-python-headless==5.0.0.93"
 pip install --quiet -e . --no-deps
 mkdir -p "$WORK/models"
 python - <<'PY'
@@ -29,5 +32,5 @@ for name in MODEL_SHA256:
 verify_models(out)
 print("models verified")
 PY
-python -m pytest -q -x -p no:cacheprovider tests/test_generation_text_to_motion.py tests/test_train_text_to_motion_script.py tests/test_de_video_landmarks.py
+python -m pytest -q -x -p no:cacheprovider tests/test_generation_text_to_motion.py tests/test_train_text_to_motion_script.py tests/test_de_video_landmarks.py tests/test_de_two_view_geometry.py tests/test_de_two_view_states.py tests/test_de_sapiens_keypoints.py
 echo "bootstrap complete"

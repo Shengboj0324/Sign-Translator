@@ -44,6 +44,23 @@ python scripts/extract_video_states.py --zip-key acquisition/2026-10-17-v1/how2s
 Shards are independent and resumable: re-running skips clips already written. Each
 shard writes `reports/shard-XXX-of-NNN.json`.
 
+## 3b. Sapiens 2D on both views (GPU pods) and two-view triangulation
+
+The checkpoint is mirrored in R2 at
+`acquisition/2026-10-17-v1/models-sapiens/sapiens_1b_goliath_best_goliath_AP_639_torchscript.pt2`;
+copy it to `/workspace/models/`; its pinned SHA-256 is `d1077c15e66fb2798893e569f71cb063f0b0778af2a62e3c0233807a351c31f3` (4,677,003,899 bytes).
+
+```bash
+python scripts/sapiens_keypoints_runpod.py --zip-key acquisition/2026-10-17-v1/how2sign-public/train_rgb_front_clips.zip --zip-sha256 <SHA256> --prefix acquisition/2026-10-17-v1/derived/how2sign-sapiens-front-v1 --checkpoint /workspace/models/sapiens_1b_goliath_best_goliath_AP_639_torchscript.pt2 --checkpoint-sha256 d1077c15e66fb2798893e569f71cb063f0b0778af2a62e3c0233807a351c31f3 --shard 0 --shards 4
+python scripts/sapiens_keypoints_runpod.py --zip-key acquisition/2026-10-17-v1/how2sign-public/train_rgb_side_clips.zip --zip-sha256 <SHA256> --prefix acquisition/2026-10-17-v1/derived/how2sign-sapiens-side-v1 --checkpoint /workspace/models/sapiens_1b_goliath_best_goliath_AP_639_torchscript.pt2 --checkpoint-sha256 d1077c15e66fb2798893e569f71cb063f0b0778af2a62e3c0233807a351c31f3 --shard 0 --shards 4
+python scripts/triangulate_how2sign_sessions.py --front-keypoints acquisition/2026-10-17-v1/derived/how2sign-sapiens-front-v1 --side-keypoints acquisition/2026-10-17-v1/derived/how2sign-sapiens-side-v1 --monocular acquisition/2026-10-17-v1/derived/how2sign-video-estimate-v1 --prefix acquisition/2026-10-17-v1/derived/how2sign-two-view-v1 --shard 0 --shards 8
+```
+
+**Gate before training.** Read every `how2sign-two-view-v1/reports/*.json`: each session
+lists its gate result and reasons. Train only on the two-view states (build the
+manifest from `how2sign-two-view-v1/reports/`). If too few sessions pass, stop and
+report — do not fall back to monocular states silently.
+
 ## 4. Build the training manifest (once, after all shards)
 
 ```bash

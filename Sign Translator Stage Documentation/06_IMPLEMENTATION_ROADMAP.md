@@ -1,5 +1,22 @@
 # 06 — Implementation Roadmap
 
+## Data-quality decision: two-view Sapiens triangulation before training — October 18, 2026
+
+The owner asked whether the replacement sacrifices quality. It does: monocular
+MediaPipe ranks 6th of 8 pose estimators on downstream sign-language translation
+(arXiv 2604.24609) and guesses depth. Research found a better, fully automatic path:
+How2Sign's frontal and lateral HD cameras allow true triangulation once each session's
+cameras are self-calibrated, and Sapiens (CC BY-NC 4.0, public) is the most
+occlusion-robust 2D estimator in that study.
+
+* `data_engineering/two_view_geometry.py`: RANSAC F, cheirality, and a bundle
+  adjustment whose rigid-bone residuals make focal lengths identifiable for fixating
+  cameras; without them the error is 40–47% while reprojection looks perfect.
+* `data_engineering/sapiens_keypoints.py`, `two_view_states.py`, and Runpod scripts
+  for Sapiens 2D and per-session triangulation with a declared gate.
+* Training is gated on real sessions passing: ≤ 2 px reprojection, synchronised views,
+  and lower bone-length variation than the monocular estimate.
+
 ## Training-ready: continuous video states, English-to-motion, Runpod — October 18, 2026
 
 The owner's update unblocked three items and redirected two. See

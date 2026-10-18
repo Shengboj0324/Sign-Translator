@@ -1,6 +1,7 @@
 # Runpod pods: install on top of the pod image's CUDA build of torch (2.13.x).
 av>=18,<19
 numpy>=2.5,<2.6
+scipy==1.17.1
 boto3>=1.40,<2
-mediapipe==0.10.21
+mediapipe==1.1.1
 pytest>=9.1,<9.2
