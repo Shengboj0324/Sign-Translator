@@ -335,6 +335,48 @@ signer-held-out repeated evaluation with per-signer results and source grouping 
 fold. A fixed industrial evaluation split requires additional authorized signers and a
 new, preregistered split analysis.
 
+### Frozen leave-one-component-out plan — 2026-10-17
+
+That interim design is now frozen as a content-addressed artifact,
+`evidence/w1-fold-plan-2026-10-17/fold-plan.json`, SHA-256
+`00ea2bb9305bb78d96b25e4dbbc8eb2d1393ab862cd79857db56d73c11a34778`, built by
+`signtranslator/data_engineering/fold_plan.py` from the certified mapping above (hash
+verified before use). Grouping is over the signer × `VIDEO_ID` bipartite graph, so it is
+frozen before any windowing.
+
+The real graph has **six components**, and one fact changes the earlier signer-level
+picture: signers 5 and 8 share source videos, as do signers 1 and 2, so each pair is a
+single component.
+
+| Component | Signers | Sources | Rows | Trainable rows |
+|---|---|---:|---:|---:|
+| c00 | 9 | 18 | 292 | 292 |
+| c01 | 1, 2 | 71 | 1,315 | 1,314 |
+| c02 | 5, 8 | 1,873 | 26,806 | 26,695 |
+| c03 | 3 | 163 | 1,861 | 1,859 |
+| c04 | 4 | 24 | 398 | 398 |
+| c05 | 11 | 43 | 493 | 486 |
+
+Each fold tests one component. Its validation component is the exact integer argmin of
+`|n_j · den(f) − num(f) · P|` over the non-test pool `P` at declared fraction `f = 3/20`,
+ties broken by identity, so no floating-point rounding can alter a choice and the plan is
+re-derivable. Five folds train on at least 27,871 rows. The fold that tests c02 trains on
+3,863: that is a property of the data, not of the plan. A first attempt with positional
+rotating validation made c02 the validation set of one fold and left 3,035 training rows
+for no statistical benefit; it is preserved, marked superseded, beside the frozen plan.
+
+Exact sign-test resolution with six independent test units is `p_min = 2^(1−6) = 1/32`.
+That resolves one primary endpoint at `α = 0.05` and **cannot** resolve two under
+Bonferroni, which need at least seven units (`k ≥ 1 + log2(m/α)`). B68 is therefore
+confirmed exactly, not relaxed: more How2Sign clips cannot help, only more authorised
+independent sources can. Resolution is a necessary condition, not a power analysis.
+
+Every metadata row keeps its component, including the 118 missing-source and 3
+structural-failure rows, so a later recovery inherits its partition instead of being
+reassigned. Their exact recovery targets are in
+`evidence/w1-missing-data-2026-10-17/recovery-manifest.json`; per-signer counts match the
+certificate (`1:1, 3:2, 5:44, 8:64, 11:7`), and 108 of the 118 belong to c02.
+
 Official evidence:
 
 - [How2Sign download, license, and limitations](https://how2sign.github.io/)
@@ -348,7 +390,7 @@ Official evidence:
 | [SignAvatars](https://github.com/ZhengdiYu/SignAvatars) | Requested SMPL-X body, articulated hands, jaw, expression, camera translation for continuous subsets | Request form; non-commercial research terms; commercial permission must be requested separately | Not acquired; source does not document explicit eye gaze; How2Sign text remains English translation, not gloss |
 | [RIT/CUNY ASL Motion-Capture Corpus](https://latlab.ist.rit.edu/downloads.html) | Unscripted continuous multi-sentence ASL with dominant-hand gloss timing, some non-dominant-hand gloss, English translation, spatial referents, BVH/FBX motion, and front/side/face video | Access by inquiry to Matt Huenerfauth; the download page does not publish a dataset license, commercial grant, or model-derivative terms | Closest known legacy co-observed linguistic-motion source, but only 98 stories from 3 signers; rights, capture schema, calibration, facial channels, consent scope, and present availability must be verified |
 | [ASL STEM Dialogue Motion Capture (LREC 2026)](https://aclanthology.org/2026.lrec-1.669/) | Natural instructor-student ASL dialogue plus isolated vocabulary, synchronized Vicon 3D body/hand/finger trajectories, RGB video, sentence translation, and SLAASh-aligned STEM sign timing | Paper says data may be made available to researchers under proper agreements; no public dataset license or commercial grant is stated | Only 2 fluent Deaf signers and 8.52 minutes of dialogue; no co-observed facial-expression or gaze capture is reported; annotation authors explicitly report limitations |
-| [3D-LEX v1.0](https://github.com/OlineRanum/SAPA) | True high-resolution Vicon body pose, StretchSense hand data, ARKit facial blendshapes, raw markers/sensors, and retargeted FBX for 1,000 ASL lexical items | Dataset is CC BY 4.0; project repository says to contact the authors for access | Best identified permissively licensed 3D lexical source, but isolated and one example per sign; 5 total signers and only 1 primarily ASL signer make it unfit as standalone ASL supervision |
+| [3D-LEX v1.0](https://github.com/OlineRanum/SAPA) | True high-resolution Vicon body pose, StretchSense hand data, ARKit facial blendshapes, raw markers/sensors, and retargeted FBX for 1,000 ASL lexical items | **Public on OSF (`osf.io/3wsed`, verified 2026-10-17) under CC BY 4.0**, as seven zip archives totalling 11.84 GB, each with a publisher SHA-256: handshape parts 1–3 (9.89 GiB), Vicon markers (371 MB), ARKit face (14.5 MB), GLB and FBX animation (832 MB). The OSF wiki lists known missing files (e.g. 12 hand-pose, 62 GLB). **Acquired 2026-10-18** into R2 with publisher-hash checks; 611 of 938 GLB files convert and pass independent marker validation (`docs/SOURCE_ADAPTERS.md`). **Fully ingested 2026-10-18:** 911 face-only Live Link Face states on their own clock (not synchronisable with the skeleton), glove validation admitting 362 left / 541 right hands, Signbank gloss candidates, one content-addressed manifest (`derived/3d-lex-corpus-manifest-v2`) | Best identified permissively licensed 3D lexical source, but isolated and one example per sign; 5 total signers and only 1 primarily ASL signer make it unfit as standalone ASL supervision |
 | [ASLLRP / ASLLVD](https://www.bu.edu/asllrp/av/dai-asllvd.html) | Authentic gloss conventions, sign timing, start/end handshapes, native-signer tokens, four synchronized views; continuous corpora add non-manual tiers | Account/access process; research and education; commercial use requires explicit permission under [DAI terms](https://www.bu.edu/asllrp/dai-terms.html) | Linguistic reference rather than continuous metric 3D motion; not acquired or commercially authorized |
 | [Dennis Cokely Parallel Corpus](https://encompass.eku.edu/cokely_videos/) | Downloadable MP4/EAF examples with project-specific ID-gloss annotations and English–ASL idea-unit alignment | One *I Have a Dream* EAF/HD/SD item is locally hash-bound; publisher labels the collection CC BY-NC-SA 4.0 | Six formal-speech translations are a valuable annotation/reference pilot, not broad-domain supervision, canonical SIR, 3D motion, or commercial authorization |
 | [CARD / SLAASh](https://sites.google.com/gallaudet.edu/card/data) | Current ELAN templates and annotation-convention lineage, including ASL Signbank linkage | Public documentation/templates; exact rights must be preserved per downloaded artifact | Annotation infrastructure and conventions, not How2Sign glosses or a co-observed training corpus |
@@ -383,6 +425,10 @@ The evidence-backed acquisition order is:
    CC BY 4.0 status, raw Vicon/hand-sensor data, facial blendshapes, and FBX exports make it
    valuable for converters, retargeting, rotation validation, and hand/face unit tests. Its
    signer and language-authenticity limitations prohibit treating it as continuous ASL truth.
+   *Update 2026-10-17:* it no longer needs an author request — the ASL release is public on
+   OSF with per-file SHA-256, so it is the first source for which a native adapter can be
+   written against real files rather than a guessed schema. It still cannot close B01:
+   isolated signs from few signers do not co-observe continuous discourse.
 3. **Pursue ASLLRP continuous data and ASL Signbank access.** These remain the strongest
    linguistic-convention and multiview references for authentic source-native gloss and
    non-manual annotation, but require separate commercial permission.

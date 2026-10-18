@@ -16,6 +16,18 @@ from .canonical_state import (
     channel_bindings_from_state,
     channel_loss_per_example,
 )
+from .representation_comparison import (
+    compare_reconstructions,
+    hidden_spans,
+    hold_out_rest_baseline,
+    interpolation_baseline,
+)
+from .stream_render import (
+    encode_timestamped_video,
+    presentation_timestamps,
+    verify_timestamped_video,
+    write_frame_bundle,
+)
 from .state_rig import (
     BONE_LOCAL_AFTER_REST,
     ChannelBoneMapping,
@@ -37,6 +49,14 @@ __all__ = [
     "StateRigBinding",
     "channel_bindings_from_state",
     "channel_loss_per_example",
+    "compare_reconstructions",
+    "encode_timestamped_video",
+    "hidden_spans",
+    "hold_out_rest_baseline",
+    "interpolation_baseline",
+    "presentation_timestamps",
+    "verify_timestamped_video",
+    "write_frame_bundle",
     "pose_state_frame",
     "pose_state_sequence",
 ]

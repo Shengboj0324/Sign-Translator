@@ -191,6 +191,7 @@ class CanonicalStateConfig:
     locus_count: int
     bindings: tuple[CanonicalChannelBinding, ...]
     max_gap_seconds: float | None = None
+    allow_inferred_targets: bool = False
     schema_version: int = 1
 
     def __post_init__(self) -> None:
@@ -220,6 +221,8 @@ class CanonicalStateConfig:
                 or any(not isinstance(binding, CanonicalChannelBinding) for binding in self.bindings)):
             raise ValueError("every canonical channel requires exactly one declared binding")
         validate_max_gap_seconds(self.max_gap_seconds)
+        if type(self.allow_inferred_targets) is not bool:
+            raise ValueError("allow_inferred_targets must be an explicit boolean")
 
     @property
     def binding_map(self) -> dict[str, CanonicalChannelBinding]:
@@ -236,6 +239,7 @@ class CanonicalStateConfig:
             max_events=self.max_events, lexicon_sha256=self.lexicon_sha256,
             convention_sha256=self.convention_sha256, locus_count=self.locus_count,
             max_gap_seconds=self.max_gap_seconds,
+            allow_inferred_targets=self.allow_inferred_targets,
             bindings=[binding.to_dict() for binding in self.bindings])
 
     def sha256(self) -> str:
@@ -443,7 +447,8 @@ class CanonicalStateSIRDecoder(nn.Module):
                  translation_scale_metres: float = .05,
                  coefficient_scale: float = .5, velocity_weight: float = 1.,
                  max_frames: int = 4096, max_events: int = 128,
-                 max_gap_seconds: float | None = None) -> None:
+                 max_gap_seconds: float | None = None,
+                 allow_inferred_targets: bool = False) -> None:
         super().__init__()
         if not isinstance(vocabulary, GovernedLabelVocabulary):
             raise ValueError("a governed label vocabulary is required")
@@ -460,13 +465,17 @@ class CanonicalStateSIRDecoder(nn.Module):
             lexicon_sha256=vocabulary.lexicon.sha256,
             convention_sha256=vocabulary.convention.sha256,
             locus_count=len(locus_alphabet.identities), bindings=tuple(bindings),
-            max_gap_seconds=max_gap_seconds)
+            max_gap_seconds=max_gap_seconds, allow_inferred_targets=allow_inferred_targets)
 
+        self._build_layers(len(vocabulary.entries))
+
+    def _build_layers(self, label_count: int) -> None:
+        """Construct every layer from the bound config; shared by all entry points."""
         cfg = self.model_cfg
         # Event conditioning: kind, governed label, referent presence, locus and
         # the reviewed interval expressed in the declared extent.
         self.kind_embedding = nn.Embedding(len(EVENT_KINDS), cfg.event_dim)
-        self.label_embedding = nn.Embedding(len(vocabulary.entries), cfg.event_dim)
+        self.label_embedding = nn.Embedding(label_count, cfg.event_dim)
         self.locus_embedding = nn.Embedding(cfg.locus_count + 1, cfg.event_dim)
         self.referent_embedding = nn.Embedding(2, cfg.event_dim)
         self.event_interval = nn.Linear(3, cfg.event_dim)
@@ -488,6 +497,26 @@ class CanonicalStateSIRDecoder(nn.Module):
                 head.bias.copy_(self._head_bias(binding))
             self.heads[binding.name] = head
 
+    @classmethod
+    def profiling_kernel(cls, config: CanonicalStateConfig, *,
+                         label_count: int) -> "CanonicalStateSIRDecoder":
+        """Identical layers without a governed vocabulary, for arithmetic profiling.
+
+        The returned module exposes :meth:`condition` and :meth:`heads_for` only;
+        every governed entry point refuses it, because it is bound to no
+        reviewed vocabulary or locus convention.
+        """
+        if not isinstance(config, CanonicalStateConfig):
+            raise ValueError("a typed canonical-state configuration is required")
+        _bounded_int(label_count, "label_count", low=1, high=1 << 20)
+        kernel = cls.__new__(cls)
+        nn.Module.__init__(kernel)
+        kernel.vocabulary = None
+        kernel.locus_alphabet = None
+        kernel.model_cfg = config
+        kernel._build_layers(label_count)
+        return kernel
+
     @staticmethod
     def _head_bias(binding: CanonicalChannelBinding) -> torch.Tensor:
         if binding.kind == "rotation_6d_columns":
@@ -500,6 +529,8 @@ class CanonicalStateSIRDecoder(nn.Module):
 
     # -- binding checks -----------------------------------------------------
     def _check_binding(self) -> None:
+        if self.vocabulary is None or self.locus_alphabet is None:
+            raise ValueError("a profiling kernel is bound to no governed vocabulary")
         if (self.vocabulary.lexicon.sha256 != self.model_cfg.lexicon_sha256
                 or self.vocabulary.convention.sha256 != self.model_cfg.convention_sha256
                 or self.locus_alphabet.convention != self.vocabulary.convention
@@ -600,12 +631,26 @@ class CanonicalStateSIRDecoder(nn.Module):
 
     def frame_states(self, batch: GovernedMotionBatch) -> torch.Tensor:
         """Conditioned per-frame features; reads no channel values."""
+        return self.condition(self._frame_features(batch), self._event_features(batch),
+                              self._membership(batch), batch.motion.lengths,
+                              batch.motion.frame_valid)
+
+    def condition(self, frames: torch.Tensor, events: torch.Tensor,
+                  membership: torch.Tensor, lengths: torch.Tensor,
+                  frame_valid: torch.Tensor) -> torch.Tensor:
+        """Tensor core of conditioning, separated from governed batch decoding.
+
+        ``frames`` is ``B,T,F`` clock features, ``events`` is ``B,E,D`` event
+        features, ``membership`` is boolean ``B,E,T``. Governed callers reach it
+        only through :meth:`frame_states`; it exists separately so the exact
+        same arithmetic can be profiled and tested at realistic sizes.
+        """
         cfg = self.model_cfg
-        frames = self._frame_features(batch)
-        events = self._event_features(batch)
-        membership = self._membership(batch)
         frame_tokens = self.frame_projection(frames)
         batch_size, frame_count, _ = frame_tokens.shape
+        if (membership.dtype != torch.bool
+                or membership.shape != (batch_size, events.shape[1], frame_count)):
+            raise ValueError("membership must be boolean B,E,T matching frames and events")
         null = self.null_event.expand(batch_size, 1, cfg.event_dim)
         keys_source = torch.cat((null, events), dim=1)
         # The null event is always attendable, so every frame -- including one
@@ -629,23 +674,26 @@ class CanonicalStateSIRDecoder(nn.Module):
             raise FloatingPointError("event attention produced a nonfinite distribution")
         context = (weights @ value).transpose(1, 2).reshape(batch_size, frame_count, cfg.event_dim)
         joined = torch.cat((frame_tokens, context), dim=-1)
-        lengths = batch.motion.lengths.to("cpu")
-        packed = pack_padded_sequence(joined, lengths, batch_first=True, enforce_sorted=False)
+        packed = pack_padded_sequence(joined, lengths.to("cpu"), batch_first=True,
+                                      enforce_sorted=False)
         output, _ = self.temporal(packed)
         states, _ = pad_packed_sequence(output, batch_first=True, total_length=frame_count)
-        return torch.where(batch.motion.frame_valid.to(states.device)[..., None], states,
+        return torch.where(frame_valid.to(states.device)[..., None], states,
                            torch.zeros_like(states))
 
-    def predict(self, batch: GovernedMotionBatch) -> dict[str, torch.Tensor]:
-        """Raw per-channel predictions in each channel's parameterisation."""
-        self._check_batch(batch)
-        states = self.frame_states(batch)
+    def heads_for(self, states: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Per-channel raw predictions from conditioned frame states."""
         predictions = {}
         for binding in self.model_cfg.bindings:
             raw = self.heads[binding.name](states)
             predictions[binding.name] = raw.reshape(
                 *raw.shape[:2], binding.elements, binding.width)
         return predictions
+
+    def predict(self, batch: GovernedMotionBatch) -> dict[str, torch.Tensor]:
+        """Raw per-channel predictions in each channel's parameterisation."""
+        self._check_batch(batch)
+        return self.heads_for(self.frame_states(batch))
 
     # -- objective ----------------------------------------------------------
     def training_step(self, batch: GovernedMotionBatch, *, weights: dict) -> SupportedObjective:
@@ -662,7 +710,8 @@ class CanonicalStateSIRDecoder(nn.Module):
         for name in CANONICAL_BRANCHES:
             values, support, diagnostics = channel_loss_per_example(
                 name, predictions[name], batch.motion.channels[name], frame_valid,
-                config=self.model_cfg, timestamps=timestamps)
+                config=self.model_cfg, timestamps=timestamps,
+                allow_inferred=self.model_cfg.allow_inferred_targets)
             self.last_diagnostics[name] = diagnostics
             terms[name] = SupportedTerm(
                 values.sum(), int(support.sum()),

@@ -1,5 +1,129 @@
 # 06 — Implementation Roadmap
 
+## Every 3D-LEX modality ingested through one manifest — October 18, 2026
+
+All seven 3D-LEX archives are now in R2 and publisher-verified (handshape part 1
+needed exact 64 MiB multipart slices: short network reads had produced unequal parts,
+which R2 rejects). The remaining modalities are ingested, each by an adapter written
+against the measured files. See `docs/SOURCE_ADAPTERS.md` §9–§12.
+
+* **Face** (`data_engineering/llf_face.py`): 911 face-only states — 52 ARKit
+  coefficients, exact unit gaze vectors, eyelid closure — on each file's exact
+  rational device clock. 824 files are truncated mid-row, so an unterminated last line
+  is always discarded. The device is head-worn and shares no observable or clock with
+  the skeleton, so face samples are separate and never merged frame-wise (B73).
+* **Hands** (`data_engineering/glove_validation.py`): finger flexion as the exact twist
+  about a declared local axis, compared with StretchSense gloves on one 120 Hz offset
+  for both hands, thresholds reused from the elbows. 362 left and 541 right hands are
+  admitted (median r 0.9993, median centred error 0.18°). Glove counter restarts are
+  resolved by dropping both sides of every overlap, never by assuming an order.
+* **A source defect found by that check:** 181 salvaged files end on a key that snaps
+  to the bind pose. The adapter now removes end frames within 2° of rest (conversion
+  v4); baselines and the learned comparison were recomputed: interpolation 0.75° body,
+  1.17–1.39° hands; the residual model again never beats it (all 183 test signs tied).
+* **Gloss** (`data_engineering/signbank_ecv.py`): strict ECV parsing; 744 labels with
+  one ID-gloss stem candidate, 195 with variant choices; candidates only (B74).
+  Signbank is CC BY-NC-SA 4.0, now recorded in the source registry with 3D-LEX.
+* **Integration** (`data_engineering/corpus_manifest.py`, `data/manifest_dataset.py`):
+  a write-once manifest (`derived/3d-lex-corpus-manifest-v2`, SHA-256 `c7617289…61e7`)
+  admits each channel only on its evidence; a hash-checked, size-bounded cache and a
+  dataset serve performer-disjoint partitions with unadmitted channels masked. An
+  end-to-end run on the real manifest matched every collated mask.
+
+Validation: the full warning-strict suite passes **3,023 tests in 147.73 seconds**;
+hashes of every changed file are in
+`evidence/w1-w4-seal-2026-10-17/final-verification-2026-10-18.json`.
+Evidence: `evidence/w4-3dlex-ingestion-2026-10-18-v2/` (v1 superseded) and
+`evidence/w4-3dlex-2026-10-17/` (conversion v4, baselines v4, experiment v4, the
+sanitized acquisition ledger).
+
+## First real canonical data: 3D-LEX acquired, adapted and validated — October 18, 2026
+
+With the user's approval of four specific downloads, the project now holds real
+captured 3D motion in canonical form. See `docs/SOURCE_ADAPTERS.md`.
+
+* **Acquisition.** 3D-LEX v1.0 ASL (CC BY 4.0, 11.84 GB, seven archives) and the ASL
+  Signbank ECV snapshot were streamed into R2 with publisher-hash checks and an R2
+  re-read; nothing was staged locally. A dropped 3.23 GB transfer was refused by the
+  size check and retried with a verified prefix re-read.
+* **Item 4, native adapter.** `data_engineering/gltf_motion.py` parses glTF 2.0
+  strictly and maps the 68-joint skeleton to canonical channels under a declared
+  mapping. Measured defects are handled by explicit rules: terminal reset keys by
+  the exact longest physically plausible subsequence; a keyed axis-correction node by
+  opt-in salvage with root rotation and translation unavailable.
+* **Independent validation.** `data_engineering/marker_validation.py` checks every
+  converted file's elbow flexion against the raw Vicon markers on one jointly
+  searched clock. 611 of 938 files pass (426 clean, 185 salvaged; 55,540 valid
+  frames, ≈38.6 min); the capture rate is recovered as 120 Hz in 605 of them.
+* **First real W4 baseline (B44).** On one hidden 0.25 s span per sign, geodesic
+  interpolation reconstructs body joints to 0.78° and hands to 1.19–1.41°, against
+  1.74° and 2.39–2.67° for zero-order hold. These are the numbers a learned
+  representation must beat. They are descriptive: only two performers survive
+  validation, so `p_min = 1/2` and no leave-one-performer-out plan is possible.
+* **Item 5, first real training.** A residual masked-motion model trained on one
+  performer and tested once on the other never beat geodesic interpolation on
+  validation, so selection kept the baseline; test error is identical (0.813°). A
+  real, reported negative result: interpolation wins at 0.25 s gaps on this source.
+* **How2Sign missing media (B13), resolved negatively.** The publisher's own archive
+  was read by range requests (3.75 MB of 33 GB); none of the 118 missing clips is in
+  it. They were never released and cannot be recovered by any download.
+* **Cokely HD (B67) still open.** The built-in browser reaches the page but does not
+  persist downloads; the files sit behind Cloudflare bot management, which was not
+  circumvented. The user must download them in a normal browser.
+
+Corrections made on the way, preserved as superseded history: an isolated-frame
+plausibility rule that missed two-key resets (176 files wrongly refused), and a
+constant-ancestor shortcut that would have moved four files into a 90°-rotated frame.
+
+Validation: the full warning-strict suite passes **2,966 tests in 151.75 seconds**,
+including 22 adapter tests (an exhaustive brute-force check of the plausibility
+programme among them) and 5 marker-validation tests that recover a hidden rate and
+offset exactly. Evidence: `evidence/w4-3dlex-2026-10-17/` and
+`evidence/w1-missing-data-2026-10-17/publisher-archive-check.json`.
+
+## Leakage seal, capacity, comparison and stream rendering — October 17, 2026
+
+The four plan items that need no external handoff are done; the two that do are
+blocked on approval of specific downloads and on reviewers, as recorded below.
+
+* **Leakage sealed for How2Sign (B11).** `data_engineering/fold_plan.py` freezes a
+  content-addressed leave-one-component-out plan before windowing, from the
+  hash-verified certified signer mapping restored directly from R2. Six components;
+  every fold is certified signer- and source-disjoint from the stored plan alone;
+  validation is the exact integer argmin of `|n_j·den(f) − num(f)·P|`, so the plan is
+  re-derivable without floating-point choices. A first positional-rotation attempt
+  starved one fold's training set and is preserved as superseded history.
+* **Missing data bound (B13).** The 118 missing and 3 structural rows are tied to
+  their exact archive, members and fold component, so recovery cannot move a sample
+  across partitions.
+* **Item 1, M09 capacity.** `scripts/m09_benchmark.py` measures each workload in its
+  own process for attributable peak memory. On this host: canonical training kernel
+  22.9 clips/s (CPU), generation p95 6.5 ms per 10-s clip, real rig posing 89.6 fps,
+  legacy epoch 3.9 s. MPS fails by design because governed clocks and targets are
+  float64; the B34 fix is a declared precision policy, not silent narrowing.
+* **Item 2, W4 comparison protocol.** `generation/representation_comparison.py`
+  scores methods only on common support with per-method coverage, against exact SO(3)
+  geodesic and great-circle baselines on the true clock.
+* **Item 3, stream rendering.** `generation/stream_render.py` and
+  `scripts/w3_render_stream.py` render a posed bundle in Blender and encode per-frame
+  PTS from the canonical clock with a proven half-tick bound; the recorded run
+  reproduces a nonuniform clock to 7.2e-16 s.
+
+Also recorded: 3D-LEX v1.0 ASL is public on OSF under CC BY 4.0, which unblocks the
+native-adapter item for a real, documented source; and B70, the iCloud/full-disk
+condition behind the session's tool stalls.
+
+Items 4–6 remain gated. Item 4, the native source adapter, is ready to start on
+3D-LEX the moment its archives are approved for download. Items 5 and 6 still need a
+co-observed continuous source, action-bound permission and qualified reviewers; no
+download can supply the last of these.
+
+Validation: 32 further focused tests (fold plan, profiling kernel, comparison
+protocol, stream encoding). Evidence: `evidence/w1-fold-plan-2026-10-17/`,
+`evidence/w1-missing-data-2026-10-17/`, `evidence/m09-capacity-2026-10-17/` and
+`evidence/w3-render-stream-2026-10-17/`. All nine manual handoffs except the measured
+part of M09 remain absent; `phase_exit_approved` stays false.
+
 ## W4 canonical-state generation and declared rig posing — October 17, 2026
 
 Guide items 2 and 4 of *Engineering that remains after manual inputs arrive* are

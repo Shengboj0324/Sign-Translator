@@ -446,3 +446,56 @@ def test_generated_state_round_trips_through_the_canonical_archive(tmp_path):
         assert reloaded.channels[name].inference_method == state.channels[name].inference_method
     with pytest.raises(ValueError, match='explicit inference method'):
         model.generate_canonical_state(batch, inference_method=' ')
+
+
+# ---------------------------------------------------------------------------
+# profiling kernel and tensor core
+# ---------------------------------------------------------------------------
+def test_profiling_kernel_has_identical_layers_and_refuses_governed_use(tmp_path):
+    vocabulary, alphabet, corpus = corpus_fixture(tmp_path)
+    governed = build_model(vocabulary, alphabet)
+    kernel = CanonicalStateSIRDecoder.profiling_kernel(
+        governed.model_cfg, label_count=len(vocabulary.entries))
+    assert {name: tuple(t.shape) for name, t in kernel.state_dict().items()} == {
+        name: tuple(t.shape) for name, t in governed.state_dict().items()}
+    kernel.load_state_dict(governed.state_dict())
+    batch = one_batch(corpus, batch_size=2)
+    expected = governed.predict(batch)
+    observed = kernel.heads_for(kernel.condition(
+        governed._frame_features(batch), governed._event_features(batch),
+        governed._membership(batch), batch.motion.lengths, batch.motion.frame_valid))
+    for name in CANONICAL_BRANCHES:
+        assert torch.equal(expected[name], observed[name])
+    with pytest.raises(ValueError, match="no governed vocabulary"):
+        kernel.predict(batch)
+    with pytest.raises(ValueError, match="no governed vocabulary"):
+        kernel.training_step(batch, weights=WEIGHTS)
+
+
+def test_condition_rejects_mismatched_membership(tmp_path):
+    vocabulary, alphabet, corpus = corpus_fixture(tmp_path)
+    model = build_model(vocabulary, alphabet)
+    batch = one_batch(corpus, batch_size=1)
+    frames = model._frame_features(batch)
+    events = model._event_features(batch)
+    membership = model._membership(batch)
+    with pytest.raises(ValueError, match="membership must be boolean"):
+        model.condition(frames, events, membership.to(torch.int64), batch.motion.lengths,
+                        batch.motion.frame_valid)
+    with pytest.raises(ValueError, match="membership must be boolean"):
+        model.condition(frames, events, membership[:, :1], batch.motion.lengths,
+                        batch.motion.frame_valid)
+
+
+def test_inferred_targets_train_only_under_the_declared_config_flag(tmp_path):
+    vocabulary, alphabet, corpus = corpus_fixture(tmp_path)
+    batch = one_batch(corpus, batch_size=1)
+    channel = batch.motion.channels['body']
+    solved = replace(channel, observed=torch.zeros_like(channel.observed))
+    batch = replace(batch, motion=replace(batch.motion, channels={**batch.motion.channels,
+                                                                  'body': solved}))
+    strict = build_model(vocabulary, alphabet)
+    assert strict.training_step(batch, weights=WEIGHTS).terms['body'].supported_examples == 0
+    permissive = build_model(vocabulary, alphabet, allow_inferred_targets=True)
+    assert permissive.training_step(batch, weights=WEIGHTS).terms['body'].supported_examples == 1
+    assert strict.model_cfg.sha256() != permissive.model_cfg.sha256()

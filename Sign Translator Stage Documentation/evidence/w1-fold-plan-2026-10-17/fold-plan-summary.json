@@ -1,0 +1,214 @@
+{
+  "certification": {
+    "certified": true,
+    "components": 6,
+    "folds": 6,
+    "quarantined": 0
+  },
+  "components": [
+    {
+      "audit_status": {
+        "quality_warning": 259,
+        "valid": 33
+      },
+      "component_id": "c00",
+      "rows": 292,
+      "signers": [
+        "9"
+      ],
+      "sources": 18
+    },
+    {
+      "audit_status": {
+        "missing_source": 1,
+        "quality_warning": 1226,
+        "valid": 88
+      },
+      "component_id": "c01",
+      "rows": 1315,
+      "signers": [
+        "1",
+        "2"
+      ],
+      "sources": 71
+    },
+    {
+      "audit_status": {
+        "missing_source": 108,
+        "quality_warning": 24653,
+        "structural_failure": 3,
+        "valid": 2042
+      },
+      "component_id": "c02",
+      "rows": 26806,
+      "signers": [
+        "5",
+        "8"
+      ],
+      "sources": 1873
+    },
+    {
+      "audit_status": {
+        "missing_source": 2,
+        "quality_warning": 1739,
+        "valid": 120
+      },
+      "component_id": "c03",
+      "rows": 1861,
+      "signers": [
+        "3"
+      ],
+      "sources": 163
+    },
+    {
+      "audit_status": {
+        "quality_warning": 277,
+        "valid": 121
+      },
+      "component_id": "c04",
+      "rows": 398,
+      "signers": [
+        "4"
+      ],
+      "sources": 24
+    },
+    {
+      "audit_status": {
+        "missing_source": 7,
+        "quality_warning": 467,
+        "valid": 19
+      },
+      "component_id": "c05",
+      "rows": 493,
+      "signers": [
+        "11"
+      ],
+      "sources": 43
+    }
+  ],
+  "folds": [
+    {
+      "fold_index": 0,
+      "test": "c00",
+      "trainable_rows": {
+        "test": 292,
+        "train": 28893,
+        "val": 1859
+      },
+      "val": "c03"
+    },
+    {
+      "fold_index": 1,
+      "test": "c01",
+      "trainable_rows": {
+        "test": 1314,
+        "train": 27871,
+        "val": 1859
+      },
+      "val": "c03"
+    },
+    {
+      "fold_index": 2,
+      "test": "c02",
+      "trainable_rows": {
+        "test": 26695,
+        "train": 3863,
+        "val": 486
+      },
+      "val": "c05"
+    },
+    {
+      "fold_index": 3,
+      "test": "c03",
+      "trainable_rows": {
+        "test": 1859,
+        "train": 27871,
+        "val": 1314
+      },
+      "val": "c01"
+    },
+    {
+      "fold_index": 4,
+      "test": "c04",
+      "trainable_rows": {
+        "test": 398,
+        "train": 28787,
+        "val": 1859
+      },
+      "val": "c03"
+    },
+    {
+      "fold_index": 5,
+      "test": "c05",
+      "trainable_rows": {
+        "test": 486,
+        "train": 28699,
+        "val": 1859
+      },
+      "val": "c03"
+    }
+  ],
+  "mapping_sha256": "82337aef0d4324cd121fd3e0be7d7b7e03838892466fa1b85d9e8618ccdea9cd",
+  "phase_exit_approved": false,
+  "plan_sha256": "00ea2bb9305bb78d96b25e4dbbc8eb2d1393ab862cd79857db56d73c11a34778",
+  "sign_test_resolution": [
+    {
+      "alpha": "1/20",
+      "bonferroni_threshold": "1/20",
+      "family_size": 1,
+      "minimum_p": "1/32",
+      "minimum_p_float": 0.03125,
+      "minimum_units_required": 6,
+      "resolvable": true
+    },
+    {
+      "alpha": "1/20",
+      "bonferroni_threshold": "1/40",
+      "family_size": 2,
+      "minimum_p": "1/32",
+      "minimum_p_float": 0.03125,
+      "minimum_units_required": 7,
+      "resolvable": false
+    },
+    {
+      "alpha": "1/20",
+      "bonferroni_threshold": "1/60",
+      "family_size": 3,
+      "minimum_p": "1/32",
+      "minimum_p_float": 0.03125,
+      "minimum_units_required": 7,
+      "resolvable": false
+    },
+    {
+      "alpha": "1/100",
+      "bonferroni_threshold": "1/100",
+      "family_size": 1,
+      "minimum_p": "1/32",
+      "minimum_p_float": 0.03125,
+      "minimum_units_required": 8,
+      "resolvable": false
+    },
+    {
+      "alpha": "1/100",
+      "bonferroni_threshold": "1/200",
+      "family_size": 2,
+      "minimum_p": "1/32",
+      "minimum_p_float": 0.03125,
+      "minimum_units_required": 9,
+      "resolvable": false
+    },
+    {
+      "alpha": "1/100",
+      "bonferroni_threshold": "1/300",
+      "family_size": 3,
+      "minimum_p": "1/32",
+      "minimum_p_float": 0.03125,
+      "minimum_units_required": 10,
+      "resolvable": false
+    }
+  ],
+  "trainable_statuses": [
+    "valid",
+    "quality_warning"
+  ]
+}

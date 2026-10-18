@@ -1,5 +1,6 @@
 from .synthetic import SyntheticSignDataset, collate_batch
 from .multichannel import MotionBatch, ChannelBatch, collate_multichannel
+from .manifest_dataset import ManifestMotionDataset
 from .corpus import (
     CorpusSpec, generate_corpus, load_manifest, validate_corpus,
     SignDataset, collate_corpus, PoseStandardizer,
@@ -16,7 +17,7 @@ from .adapters import (
 )
 
 __all__ = [
-    "MotionBatch", "ChannelBatch", "collate_multichannel",
+    "MotionBatch", "ChannelBatch", "collate_multichannel", "ManifestMotionDataset",
     "SyntheticSignDataset", "collate_batch",
     "QualityReport", "CleaningReport", "inspect_pose", "clean_pose",
     "interpolate_missing", "robust_zscore",

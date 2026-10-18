@@ -1,0 +1,17 @@
+{
+  "archive": "train_rgb_front_clips.zip",
+  "archive_bytes": 33033658988,
+  "archive_members": 31049,
+  "checked_at": "2026-10-18T05:26:36.372922+00:00",
+  "conclusion": "The 118 missing_source rows are absent from the publisher's official release itself, not lost from the local copy. They cannot be recovered by re-download; only the publisher could supply them. They remain quarantined, each keeping its frozen fold component.",
+  "google_drive_id": "1VX7n0jjW0pW3GEdgOks3z8nqE6iI6EnW",
+  "method": "zip central directory read by 5 HTTP range requests (3,753,312 bytes of 33,033,658,988); no media member downloaded",
+  "phase_exit_approved": false,
+  "results": {
+    "missing_rows_found_case_insensitively": 0,
+    "missing_rows_found_in_archive": 0,
+    "missing_rows_whose_video_has_other_released_clips": 118,
+    "present_rows_found_in_archive": 31047
+  },
+  "schema_version": 1
+}

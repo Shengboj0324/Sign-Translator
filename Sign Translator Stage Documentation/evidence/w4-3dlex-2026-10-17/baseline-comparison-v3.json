@@ -1,0 +1,167 @@
+{
+  "best_possible_two_sided_sign_test_p": "1/2",
+  "conversion_report_sha256": "5854b1c2047ce8b202cbd3066cc25f5dbfcf6fa06ee7007d7aef09d9ab462dc5",
+  "coverage": {
+    "body": {
+      "interpolation": 0.9907248636009353,
+      "rest": 1.0,
+      "zero_order_hold": 1.0
+    },
+    "head_rotation": {
+      "interpolation": 0.9908577574616833,
+      "rest": 1.0,
+      "zero_order_hold": 1.0
+    },
+    "left_hand": {
+      "interpolation": 0.9908577574616833,
+      "rest": 1.0,
+      "zero_order_hold": 1.0
+    },
+    "right_hand": {
+      "interpolation": 0.9908577574616833,
+      "rest": 1.0,
+      "zero_order_hold": 1.0
+    },
+    "root_translation": {
+      "interpolation": 0.9869230769230769,
+      "rest": 1.0,
+      "zero_order_hold": 1.0
+    }
+  },
+  "independent_units": 2,
+  "interpretation": "Signs are not independent units: they share performers. With 2 performers no two-sided paired sign test can go below p = 1/2; these are descriptive baseline errors, not a confirmatory comparison.",
+  "per_sign_interpolation_minus_hold": {
+    "body": {
+      "fraction_interpolation_better": 0.8495867768595041,
+      "mean": -0.9568323845612743,
+      "signs": 605
+    },
+    "head_rotation": {
+      "fraction_interpolation_better": 0.859504132231405,
+      "mean": -0.39784136045431756,
+      "signs": 605
+    },
+    "left_hand": {
+      "fraction_interpolation_better": 0.7950413223140496,
+      "mean": -1.2660063706743705,
+      "signs": 605
+    },
+    "right_hand": {
+      "fraction_interpolation_better": 0.8264462809917356,
+      "mean": -1.1916504510594061,
+      "signs": 605
+    },
+    "root_translation": {
+      "fraction_interpolation_better": 0.8714285714285714,
+      "mean": -0.0007636295254230359,
+      "signs": 420
+    }
+  },
+  "performer_level": {
+    "body": {
+      "interpolation_better": 2,
+      "performers_compared": 2
+    },
+    "head_rotation": {
+      "interpolation_better": 2,
+      "performers_compared": 2
+    },
+    "left_hand": {
+      "interpolation_better": 2,
+      "performers_compared": 2
+    },
+    "right_hand": {
+      "interpolation_better": 2,
+      "performers_compared": 2
+    },
+    "root_translation": {
+      "interpolation_better": 1,
+      "performers_compared": 1
+    }
+  },
+  "phase_exit_approved": false,
+  "pooled": {
+    "body": {
+      "interpolation": {
+        "cells": 76266,
+        "mean_error": 0.77985016722253
+      },
+      "rest": {
+        "cells": 76266,
+        "mean_error": 67.29668728050055
+      },
+      "zero_order_hold": {
+        "cells": 76266,
+        "mean_error": 1.7358934361500507
+      }
+    },
+    "head_rotation": {
+      "interpolation": {
+        "cells": 3685,
+        "mean_error": 0.36000207869884004
+      },
+      "rest": {
+        "cells": 3685,
+        "mean_error": 21.576547265922716
+      },
+      "zero_order_hold": {
+        "cells": 3685,
+        "mean_error": 0.7572356123090893
+      }
+    },
+    "left_hand": {
+      "interpolation": {
+        "cells": 55275,
+        "mean_error": 1.4079124655081023
+      },
+      "rest": {
+        "cells": 55275,
+        "mean_error": 24.038399597272385
+      },
+      "zero_order_hold": {
+        "cells": 55275,
+        "mean_error": 2.673812398645727
+      }
+    },
+    "right_hand": {
+      "interpolation": {
+        "cells": 55275,
+        "mean_error": 1.1927190735649602
+      },
+      "rest": {
+        "cells": 55275,
+        "mean_error": 22.74829281862065
+      },
+      "zero_order_hold": {
+        "cells": 55275,
+        "mean_error": 2.3861460777744816
+      }
+    },
+    "root_translation": {
+      "interpolation": {
+        "cells": 2566,
+        "mean_error": 0.0006203888990792625
+      },
+      "rest": {
+        "cells": 2566,
+        "mean_error": 1.3072577069352223
+      },
+      "zero_order_hold": {
+        "cells": 2566,
+        "mean_error": 0.0013867317735937609
+      }
+    }
+  },
+  "reference": "valid_including_inferred (solved skeleton)",
+  "schema_version": 1,
+  "signs_scored": 611,
+  "skipped": {},
+  "span_seconds": 0.25,
+  "units": {
+    "body": "degrees",
+    "head_rotation": "degrees",
+    "left_hand": "degrees",
+    "right_hand": "degrees",
+    "root_translation": "metres"
+  }
+}

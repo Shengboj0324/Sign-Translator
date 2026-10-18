@@ -1,0 +1,38 @@
+{
+  "counts": {
+    "face_samples": 911,
+    "gloss_ambiguous_stem": 195,
+    "gloss_keyword_only": 59,
+    "gloss_unique_stem": 744,
+    "gloss_unmatched": 3,
+    "left_hand_validated": 340,
+    "right_hand_validated": 511,
+    "skeleton_samples": 611
+  },
+  "face_prefix": "acquisition/2026-10-17-v1/derived/3d-lex-face-llf-v1",
+  "inputs": {
+    "archive:FacePose/ASL_LLF.zip": "4b4b3905b3c9630ac182594fd647fadce4e4527b4cf056f7b873a86ab5d2a41f",
+    "archive:Handshape/Handshape Data Part 1.zip": "9c455775bad6d5b9e025afa655eb5a91b509b89865d0a634ccdcdf3a879d5c80",
+    "archive:Handshape/Handshape Data Part 2.zip": "66e065205aa580d2e0a8b62417c23443cad536d5d5f2ccb99059934f70429847",
+    "archive:Handshape/Handshape Data Part 3.zip": "d264106a014ed7c01cb79e6ee24f23057b43f6d5f055fe5cf77d9befa86ae7cc",
+    "conversion_report": "be554ee012fe2ae55b1e495307a322d5c3bc431eebfe2cc61f190c46a269a895",
+    "signbank_ecv": "7f51c84d6e45029bf4464bceff3f4e53504d253746e8c350af4af9f650eb1044"
+  },
+  "manifest_key": "acquisition/2026-10-17-v1/derived/3d-lex-corpus-manifest-v1/manifest.json",
+  "manifest_sha256": "58c08a832ee91d72f4ca4721f1cdc2587bd72f5df7b26510446f1816e67a09f8",
+  "phase_exit_approved": false,
+  "split": {
+    "confirmatory": false,
+    "independent_units": 2,
+    "kind": "skeleton",
+    "note": "descriptive only: fewer than three independent performer groups",
+    "samples_by_performer": {
+      "582d3e201cc7f4eca361f34efa1f4946ba0c419f2aaa31024279c2ba28c0ce53": 185,
+      "c4fe5c47a5396775a1ea2200b00c483ee39ac4b01537c3f10c39f774e47f13c1": 426
+    },
+    "test_performer_sha256": [
+      "582d3e201cc7f4eca361f34efa1f4946ba0c419f2aaa31024279c2ba28c0ce53"
+    ],
+    "train_performer_sha256": "c4fe5c47a5396775a1ea2200b00c483ee39ac4b01537c3f10c39f774e47f13c1"
+  }
+}

@@ -55,8 +55,13 @@
     {
       "id": "M09",
       "requirement": "capacity_and_target_hardware",
-      "status": "absent",
-      "evidence": null
+      "status": "measured_pending_target_declaration",
+      "evidence": {
+        "path": "evidence/m09-capacity-2026-10-17/benchmark.json",
+        "recorded_on": "2026-10-17",
+        "covers": "host hardware, per-workload throughput, latency and peak memory",
+        "remaining": "owner declaration of the target device, deployment mode and staffed calendar; a real source conversion to measure"
+      }
     }
   ],
   "interpretation": "Absent means the requested handoff is not supplied. Existing source candidates, partial assets, code and synthetic tests remain available but do not fill these handoffs. Cokely is source-specific; commercial lineage is separate from research. This register is documentation, not an authorization bypass."

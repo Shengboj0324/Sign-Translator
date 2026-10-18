@@ -346,6 +346,34 @@ CURRENT_SOURCE_CANDIDATES = (
         "their own bound evidence.",
     ),
     SourceCandidate(
+        "three_d_lex_asl", "3D-LEX v1.0 ASL isolated-sign motion lexicon",
+        "https://osf.io/3wsed/", AccessStatus.LOCAL_VERIFIED,
+        # Face, gaze and eyelid are on an unsynchronised device clock, so they are
+        # recorded under distinct capability names that no co-observation bundle accepts.
+        evidence("isolated_asl", "body_3d", "left_hand_3d", "right_hand_3d", "head_pose",
+                 "face_expression_unsynchronized", "eye_gaze_unsynchronized",
+                 "eyelid_state_unsynchronized", "stable_signer_id",
+                 "raw_marker_motion", "glove_hand_motion", level=EvidenceLevel.LOCAL_VERIFIED),
+        RightsStatus.PERMITTED, RightsStatus.UNRESOLVED, RightsStatus.UNRESOLVED,
+        "Seven archives hash-verified against the publisher in R2 (CC BY 4.0). Isolated "
+        "signs only: no continuous discourse or text alignment. All values are solved, "
+        "not observed. Face, gaze and eyelid come from a head-worn Live Link Face device "
+        "on its own clock with no established synchronisation to the skeleton, so they "
+        "never co-occur frame-wise with body or hands. Two performers survive validation. "
+        "Commercial rights are unresolved: the licence text permits reuse with "
+        "attribution, but performer consent for commercial derivatives is unreviewed.",
+    ),
+    SourceCandidate(
+        "asl_signbank_ecv", "ASL Signbank lexicon (ELAN external controlled vocabulary)",
+        "https://aslsignbank.com/about/copyright/", AccessStatus.LOCAL_VERIFIED,
+        evidence("lexical_gloss_inventory", level=EvidenceLevel.LOCAL_VERIFIED),
+        RightsStatus.PERMITTED, RightsStatus.PROHIBITED, RightsStatus.PROHIBITED,
+        "CC BY-NC-SA 4.0: no commercial reuse, and derivatives such as gloss mappings "
+        "must be shared alike with the Hochgesang, Crasborn and Lillo-Martin citation. "
+        "An ID-gloss inventory with English keywords only; label matches to it are "
+        "candidates for review, not identifications.",
+    ),
+    SourceCandidate(
         "gallaudet_mll", "Gallaudet Motion Light Lab",
         "https://gallaudet.edu/visual-language-visual-learning/ml2/",
         AccessStatus.REQUEST_REQUIRED,

@@ -87,7 +87,14 @@ degenerate Gram–Schmidt and zero-norm failures at step zero without hiding the
 later: a degenerate prediction during training still fails explicitly rather
 than being silently regularised.
 
-### 1.4 Exposure declarations
+### 1.4 Inferred targets are an explicit opt-in
+
+`allow_inferred_targets` (default false, recorded in the configuration hash) decides whether
+valid-but-unobserved values, such as a solved skeleton, may serve as training targets. Real
+3D-LEX states are entirely solved, so a run on them must declare it; a run that does not
+simply sees zero support, never a silent substitution.
+
+### 1.5 Exposure declarations
 
 Branch terms declare per-example support membership and **no** cell-level target
 declarations. Dense motion cells would grow the optimizer-exposure ledger in
@@ -126,7 +133,52 @@ asset commit, whether inferred values were posed, and
 exactly is not evidence that it is anatomically or linguistically right: that
 remains the source-specific, reviewable question recorded in B47/B48/B69.
 
-## 3. What this does and does not establish
+## 3. Representation comparison protocol (W4)
+
+`representation_comparison.py` implements the masked-reconstruction protocol B44
+requires before any learned representation may be preferred. Declared spans of
+the state's own clock are hidden; each method reconstructs the full state; every
+method is scored only on cells that were valid, observed, hidden **and**
+reconstructed by every compared method. Each method's own coverage is reported
+separately, so declining hard cells cannot win a comparison.
+
+The interpolation baseline runs on the true clock with `τ = (t − t_a)/(t_b − t_a)`:
+rotations follow the SO(3) geodesic `R_a exp(τ log(R_aᵀ R_b))`, gaze follows the
+great-circle slerp, and translations, coefficients and bounded states
+interpolate linearly (convex, so bounded states stay in `[0, 1]`). Cells without
+a visible neighbour on both sides are not extrapolated. A rotation pair within
+the declared radius of `π`, or an antipodal gaze pair, has two equally short
+geodesics, so that cell is reported uncovered instead of guessed. Tests show
+reconstruction exact to `1e-9°` for constant angular velocity on a nonuniform
+clock, where a frame-index `τ` errs by more than `0.05`.
+
+## 4. Timestamp-exact streams
+
+`stream_render.py` separates *what* is rendered from *when* it is shown. A frame
+bundle stores posed vertices, rig faces, the state's own clock and provenance,
+with write-once semantics. The encoder sets each frame's presentation timestamp
+from the clock, `PTS_i = round((t_i − t_0)/b)`, on exact rationals of the float64
+inputs, so `|PTS_i·b − (t_i − t_0)| ≤ b/2`; two frames closer than one tick are
+refused rather than merged. The default `b = 1/90000 s` bounds representation
+error at about 5.6 µs. The verifier decodes the stream and checks frame count,
+strict ordering and every timestamp against that bound.
+
+`scripts/w3_render_stream.py` renders a bundle in a factory-startup, background
+Blender process with the deterministic Workbench engine, then encodes and
+verifies. The recorded run (`evidence/w3-render-stream-2026-10-17/`) rendered 48
+frames of a declared, non-linguistic arm motion on a nonuniform clock; the
+decoded video reproduces the clock to `7.2e-16 s`, and identical poses produce
+bit-identical frames. It is an inspection render, not a qualified appearance:
+eyes, teeth and tongue are not attached in this path.
+
+## 5. Profiling kernel
+
+`CanonicalStateSIRDecoder.profiling_kernel` builds the governed model's exact
+layers through the same builder without a governed vocabulary, so arithmetic
+can be measured at realistic sizes. A test loads governed weights into it and
+asserts bit-identical predictions; every governed entry point refuses it.
+
+## 6. What this does and does not establish
 
 Established against the current fixtures and the pinned rig geometry: identity
 rotations reproduce rest geometry through the adapter; a declared rotation moves

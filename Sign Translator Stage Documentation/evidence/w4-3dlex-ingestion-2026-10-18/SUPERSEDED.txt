@@ -1,0 +1,1 @@
+Superseded by ../w4-3dlex-ingestion-2026-10-18-v2/: this v1 run refused 61 glove exports whose device counter restarts a second's frame field; v2 drops only the ambiguous overlap rows. Face states and gloss candidates are byte-identical between the runs.

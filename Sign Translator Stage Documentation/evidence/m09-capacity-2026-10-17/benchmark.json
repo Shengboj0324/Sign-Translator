@@ -1,0 +1,127 @@
+{
+  "environment": {
+    "cpu": "Apple M4 Max",
+    "disk_free_bytes": 15892344832,
+    "disk_total_bytes": 994662584320,
+    "logical_cpus": 14,
+    "machine": "arm64",
+    "memory_bytes": 38654705664,
+    "mps_available": true,
+    "platform": "macOS-27.0.1-arm64-arm-64bit",
+    "python": "3.12.14",
+    "torch": "2.13.0",
+    "torch_threads": 10
+  },
+  "limitations": [
+    "Synthetic tensors measure arithmetic cost only, not model quality.",
+    "No real source conversion was available to measure.",
+    "Single host; thermal state and background load are uncontrolled.",
+    "Extrapolations are linear and exclude the listed costs."
+  ],
+  "linear_extrapolation": {
+    "assumption": "31,044 trainable How2Sign-scale clips of 10 s each, CPU, this kernel only",
+    "excludes": [
+      "data loading and admission",
+      "validation",
+      "checkpoint I/O",
+      "seeds and ablations",
+      "restarts"
+    ],
+    "hours_per_100_epochs": 37.70688360532343,
+    "seconds_per_epoch": 1357.4478097916435
+  },
+  "results": {
+    "canonical_infer:cpu": {
+      "clip_seconds_of_motion": 10.0,
+      "latency_seconds": {
+        "max": 0.006694874988170341,
+        "mean": 0.006142252599238418,
+        "min": 0.005924208991928026,
+        "n": 50,
+        "p50": 0.00610370900540147,
+        "p95": 0.006473810445459094,
+        "p99": 0.006661269331525546
+      },
+      "peak_rss_bytes": 219086848,
+      "process_wall_seconds": 0.9309772090055048,
+      "real_time_factor_p95": 0.0006473810445459094,
+      "status": "measured"
+    },
+    "canonical_infer:mps": {
+      "error": "TypeError: Cannot convert a MPS Tensor to float64 dtype as the MPS framework doesn't support float64. Please use float32 instead.",
+      "peak_rss_bytes": 218595328,
+      "process_wall_seconds": 0.6533079580112826,
+      "status": "failed"
+    },
+    "canonical_train:cpu": {
+      "clips_per_second_p50": 22.86938751977874,
+      "frames_per_second_p50": 6860.816255933622,
+      "parameters": 473728,
+      "peak_rss_bytes": 440320000,
+      "process_wall_seconds": 9.215415040991502,
+      "sizes": {
+        "batch": 8,
+        "body": 22,
+        "events": 40,
+        "face": 52,
+        "frames": 300,
+        "hand": 15
+      },
+      "status": "measured",
+      "step_seconds": {
+        "max": 0.36097583299851976,
+        "mean": 0.3516631936974591,
+        "min": 0.34668508399045095,
+        "n": 20,
+        "p50": 0.3498126039921772,
+        "p95": 0.3599268743550056,
+        "p99": 0.36076604126981693
+      }
+    },
+    "canonical_train:mps": {
+      "error": "TypeError: Cannot convert a MPS Tensor to float64 dtype as the MPS framework doesn't support float64. Please use float32 instead.",
+      "peak_rss_bytes": 218873856,
+      "process_wall_seconds": 0.6537867920123972,
+      "status": "failed"
+    },
+    "legacy_epoch:cpu": {
+      "epoch_seconds": 3.8943875830154866,
+      "note": "includes synthetic corpus generation and validation",
+      "optimizer_steps": 8,
+      "parameters": 1610109,
+      "peak_rss_bytes": 535674880,
+      "process_wall_seconds": 4.565197541000089,
+      "status": "measured",
+      "steps_per_second": 2.0542382671129698
+    },
+    "rig_pose:cpu": {
+      "bones": 163,
+      "dtype": "torch.float64",
+      "frames_per_second_p50": 89.63015823401491,
+      "peak_rss_bytes": 308936704,
+      "pose_seconds": {
+        "max": 0.028364458004944026,
+        "mean": 0.01287912226592501,
+        "min": 0.010553749976679683,
+        "n": 15,
+        "p50": 0.011156958993524313,
+        "p95": 0.020627124884049396,
+        "p99": 0.0268169913807651
+      },
+      "process_wall_seconds": 0.9311741669953335,
+      "real_time_30fps_feasible_p95": true,
+      "rig_load_seconds": 0.16217662498820573,
+      "status": "measured",
+      "vertices": 19158
+    }
+  },
+  "schema_version": 1,
+  "sizes": {
+    "batch": 8,
+    "body": 22,
+    "events": 40,
+    "face": 52,
+    "frames": 300,
+    "hand": 15
+  }
+}

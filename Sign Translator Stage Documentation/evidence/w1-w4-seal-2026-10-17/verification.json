@@ -1,0 +1,36 @@
+{
+  "artifacts": {
+    "fold_plan_sha256": "00ea2bb9305bb78d96b25e4dbbc8eb2d1393ab862cd79857db56d73c11a34778",
+    "mapping_sha256": "82337aef0d4324cd121fd3e0be7d7b7e03838892466fa1b85d9e8618ccdea9cd",
+    "render_video_sha256": "7e4728568db51e8c7b87ef7556614dc90a194674df23fad87336ed30e54c9171"
+  },
+  "code_sha256": {
+    "scripts/m09_benchmark.py": "0d88497f227792e79cb5ec982d9de899b299e5ab276efa834c6a8baf7770e93d",
+    "scripts/w1_fold_plan.py": "ab9edfd94dfd9182ae255e8d4c8bebdae3b95d5cbc88716f519f958ca66c14be",
+    "scripts/w3_render_stream.py": "f624bff51e509a42275cc0473d4544fd6858d33afe988ba212d54e78ac019435",
+    "signtranslator/data_engineering/fold_plan.py": "a1b92f6e2d676049d05ebfe4bf24bf5b43a359bb01f0a9b969ae7d71fc2d5514",
+    "signtranslator/generation/__init__.py": "af3c9928f8ec08c9b0d486c1d3bb45b4975fda2daa1aa0372d52c0e84fa309fd",
+    "signtranslator/generation/canonical_state.py": "f050ab31998879f3ee7711e3a50bc84a52f1714ce0d87f63ba0d9d56dcfe61cd",
+    "signtranslator/generation/representation_comparison.py": "93d1c076730d694a0452a54958a709ca97b7a1125e85ed19bf441e377a84a66e",
+    "signtranslator/generation/stream_render.py": "5a36aed374113ebe2d997a1ab5fad05f31ec2819fdf516c4bcc365fc02e8ae67",
+    "tests/test_de_fold_plan.py": "edbb00e38219f2b5b18af7910bb0e05504d32f333df6287cfba12b9bbe6d2e0b",
+    "tests/test_generation_canonical_state.py": "2ec8189b80e4e51c671a8d1c4307e0ca40a4f827c880662e8f5a3a37f6c17429",
+    "tests/test_generation_representation_comparison.py": "d148979b85957ab1e82e5acfd7195b7c20178eea72484291167c455d506a3f0e",
+    "tests/test_generation_stream_render.py": "5cdca928bfb9144d1475a6bb5974e06a5815ec05389e6c68fa5afa4938b14ff1"
+  },
+  "data_access_route": "Signer mapping restored directly from R2 by key range with catalog, archive and member SHA-256 checks; no iCloud-evicted local index was read.",
+  "limitations": [
+    "No third-party data was downloaded in this increment; downloads await explicit approval.",
+    "Comparison and rendering ran on fictional or declared synthetic states, not signing.",
+    "Benchmarks are single-host kernel measurements with uncontrolled thermal state."
+  ],
+  "phase_exit_approved": false,
+  "recorded_at": "2026-10-18T05:17:17.603566+00:00",
+  "schema_version": 1,
+  "scope": "Leakage seal, missing-data binding, M09 capacity, W4 comparison protocol, stream rendering",
+  "verification": {
+    "compileall": "passed",
+    "diff_check": "passed",
+    "full_suite": "2929 passed in 154.37s, warnings treated as errors"
+  }
+}

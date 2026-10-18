@@ -1,0 +1,1 @@
+conversion-report-v1-superseded.json used an isolated-frame rule that refused 176 files whose reset artifact spans two keys, and refused 4 files for a constant ancestor channel without checking its value. v2 replaces both with the longest plausible subsequence and a static-value check. v1 states remain in R2 under derived/3d-lex-canonical-v1/.
