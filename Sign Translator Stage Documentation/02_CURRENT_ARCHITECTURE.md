@@ -58,6 +58,15 @@ flowchart LR
 | Pretraining | `pretraining/` | Masked modeling, synthetic field negatives, held-out video-dependence certificate | No |
 | Evaluation framework | `eval_framework/` | Contracts, statistics, protocols | No |
 | Deployment | `deployment/` | Latency and runtime-control primitives | No |
+| Canonical-state generation | `generation/` | Reviewed-SIR-conditioned canonical motion, declared state-to-rig posing | No; it runs on the **governed** path |
+
+The `generation/` row is the second entry that is genuinely trainable today, and
+it does not go through `run.py`. Like the W3 planner, it consumes an admitted
+`GovernedMotionCorpus` through the canonical `Trainer`, so "not active in
+`run.py`" here means the legacy synthetic experiment does not call it, not that
+it is unintegrated. Its targets are the eleven canonical channels; its
+conditioning is reviewed event timing. See
+[the design document](../docs/CANONICAL_STATE_GENERATION.md).
 
 Some specialized packages import mathematical helpers from one another, but
 this is not equivalent to participation in the train/inference graph.
@@ -137,6 +146,13 @@ generated rotations/translation/expression
     -> frame renderer
     -> timestamped video/stream
 ```
+
+The first two stages now exist as `generation/state_rig.py`: a complete declared
+binding from canonical channels to the pinned rig's bones, units and rest basis,
+posed frame by frame with explicit refusal of unavailable channels and an
+explicit opt-in for unobserved values. The frame renderer and timestamped stream
+remain separate, and no declared binding has been qualified against a real
+source or reviewed for signing fidelity.
 
 ### Model-to-runtime bridge
 

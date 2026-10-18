@@ -1,0 +1,35 @@
+{
+  "code_sha256": {
+    "docs/CANONICAL_STATE_GENERATION.md": "798d8bc3e19528982d61add912820db96047f15c8f196b466e92522626d50b96",
+    "signtranslator/generation/__init__.py": "82c9d4e767054294a45600322cca84259c49b081f8af232b5d3d4b12a4413170",
+    "signtranslator/generation/canonical_state.py": "ce8d331d5a25c82135ab02164a8ca187902a8d209bc28b3e77fc8ae07b6ada13",
+    "signtranslator/generation/state_rig.py": "7b8aedd317b195acd64eb680f992e9605276310d1d9c9e8c9780b77f9631149d",
+    "tests/test_generation_canonical_state.py": "6f6287de35430497db2550d1252b012e78f04fbc44f40145e7496315fb310084",
+    "tests/test_generation_state_rig.py": "16659166683796b1ae00377736fa33337ec0d320c2506ded70a55a01dd8003bc"
+  },
+  "implements": [
+    "source acquisition guide: engineering item 2",
+    "source acquisition guide: engineering item 4 (partial)",
+    "11-channel boundary audit: declared canonical-state-to-rig mapping"
+  ],
+  "limitations": [
+    "Every fixture is explicitly fictional synthetic governance evidence.",
+    "No real co-observed source, calibration, permission, qualified review or rig qualification is supplied.",
+    "Declared state-to-rig bindings are recorded claims; their anatomical and linguistic correctness is unverified.",
+    "Branch weights, physical scales and the velocity coupling are declared modelling choices, not calibrated values.",
+    "Generated states are unobserved with zero confidence and cannot be admitted as observation or supervision.",
+    "This is the W4 regression baseline required before preferring a tokenised or diffusion alternative; it is not a trained or winning result."
+  ],
+  "manual_handoffs_absent": 9,
+  "phase_exit_approved": false,
+  "recorded_at": "2026-10-18T04:29:09.947076+00:00",
+  "rig_asset_root": "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/source-intake/makehuman",
+  "schema_version": 1,
+  "scope": "W4 canonical-state generation and declared rig posing",
+  "verification": {
+    "compileall_exit": 0,
+    "focused_summary": "30 passed in 2.56s",
+    "focused_tests_exit": 0,
+    "full_suite": "2897 passed in 157.13s, warnings treated as errors"
+  }
+}

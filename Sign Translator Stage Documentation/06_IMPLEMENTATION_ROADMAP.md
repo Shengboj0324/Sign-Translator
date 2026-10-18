@@ -1,5 +1,55 @@
 # 06 — Implementation Roadmap
 
+## W4 canonical-state generation and declared rig posing — October 17, 2026
+
+Guide items 2 and 4 of *Engineering that remains after manual inputs arrive* are
+now implemented, and the 11-channel boundary audit's missing canonical-state-to-rig
+mapping has an explicit declared contract. `signtranslator/generation/` adds:
+
+* `CanonicalStateSIRDecoder`, a governed-batch model predicting all eleven
+  canonical channels in their own geometry, conditioned on reviewed event
+  timing. Frames attend exactly the reviewed events whose half-open interval
+  contains their clock value, plus one always-attendable null event; membership
+  rows are cross-checked against the SIR target rows before use, so a silent
+  reordering cannot mis-condition a frame. Conditioning never reads the channel
+  values it predicts, which a perturbation test asserts bit-identically.
+* Per-channel objectives with exact identities: `‖R−R̂‖²_F/8 = sin²(θ/2)` on
+  SO(3) (bounded gradient where `arccos` is singular, geodesic degrees reported
+  as a diagnostic), dimensionless Huber on declared metre and coefficient
+  scales, `(1−cos∠)/2` on the gaze sphere, and the Bernoulli divergence
+  `KL(Bern(t)‖Bern(σ(z)))` whose exact zero is attained only at `σ(z)=t`.
+  Translation velocity uses actual elapsed seconds with `max_gap_seconds`
+  honoured; a test shows a ten-times longer clock lowers the velocity error for
+  the same displacement, which a frame-index surrogate cannot reproduce.
+* `StateRigBinding` and `pose_state_frame`, which refuse to pose until every rig
+  bone is declared driven or held at rest and every canonical channel is
+  declared driving or unmapped. An unavailable required element fails rather
+  than falling back to the bind pose; a valid-but-unobserved value is posed only
+  under an explicit opt-in that the posed frame records.
+
+Support semantics are unchanged in kind and now cover motion: a channel with no
+observed support yields zero branch support, an exact zero bookkeeping sum and a
+`KeyError` on access, never a measured zero. Generated states are emitted
+`observed=False` with zero confidence, so the existing supervision weights are
+exactly zero and generated motion cannot re-enter training as evidence; it still
+round-trips through the canonical archive with rotations in SO(3), unit-norm gaze
+and bounded blink and contact.
+
+Validation: 30 new focused tests; the full warning-strict suite passes
+**2,897 tests in 157.13 seconds**, with compilation and diff checks passing.
+Evidence: `evidence/w4-canonical-state-2026-10-17/verification.json`.
+Identity rotations reproduce the pinned real rig's rest geometry
+through the adapter to 1e-12, the declared unit conversion matches an independent
+float64 oracle, and exact epoch-boundary continuation reproduces uninterrupted
+training for the new model family.
+
+This is the W4 conditioned-regression baseline that B44 requires **before** a
+tokenised or diffusion alternative may be preferred. It is not a trained,
+calibrated or reviewed result. All nine manual handoffs remain absent; B01–B08,
+B42–B48 and B51 are unchanged; `phase_exit_approved` stays false. The next
+engineering increment is the native source adapter (guide item 1), which should
+be written against a real sample packet's documented schema rather than guessed.
+
 ## Latest W2 native-source verification update — October 6, 2026
 
 Canonical-state admission now hashes native source bytes through the existing

@@ -111,6 +111,7 @@ These modules implement separately testable primitives, **not** one integrated p
 | [11 Pretraining](docs/PRETRAINING.md) | 2D masked reconstruction scores only *originally valid and artificially hidden* observations; point/span/region masks are compared with interpolation, last-value and mean baselines. Hard negatives test shortcuts. | Quarantined gloss-independent experiment, not 3D translation. |
 | [12 Evaluation](docs/EVALUATION_FRAMEWORK.md) | Metric contracts form a conjunction with mandatory caveats; paired tests and source-cluster bootstrap quantify uncertainty. SignBLEU/text similarity cannot substitute for human comprehension. | Qualified independent ASL study not yet performed. |
 | [13 Deployment](docs/DEPLOYMENT.md) | Display-commit monotonicity requires committed prefix `C_t` to remain a prefix of `C_(t+1)`; latency includes buffering, lookahead, computation, rendering, queueing. Bounded queues require explicit arrival/service assumptions. Numerical optimization gates check equivalence and quality. | No measured end-to-end SLA or deployed service. |
+| [14 Canonical-state generation](docs/CANONICAL_STATE_GENERATION.md) | Reviewed SIR and a declared clock condition all eleven canonical channels in their own geometry: `‖R−R̂‖²_F/8 = sin²(θ/2)` on SO(3), Huber on declared physical scales, `(1−cos∠)/2` on the gaze sphere, and `KL(Bern(t)‖Bern(σ(z)))` for bounded states. Frames attend only the reviewed events containing their clock value. | Baseline conditioned regression on fictional fixtures; no real source, calibration, qualified review or rig qualification. |
 
 The intended multichannel target must eventually co-observe manual articulation, body, face, eye aperture/gaze, spatial reference, and variable timing. Concatenating unrelated datasets cannot manufacture that paired observation.
 
@@ -267,6 +268,19 @@ evidence; native-source conversion and a real-data pilot remain outstanding. An 
 byte-bound run configuration and supports committed checkpoint continuation. The
 admission command writes no files; the training command writes configured
 checkpoints. Neither marks manual handoffs or phases approved.
+
+### Canonical-state motion branch
+
+`signtranslator.generation` adds the second governed model family: a
+`CanonicalStateSIRDecoder` that predicts all eleven canonical motion channels from
+reviewed SIR on the source clock, and a `StateRigBinding` that poses a canonical
+state through the pinned rig only after every bone and channel is explicitly
+declared driven, held at rest, or unmapped. Both run through the same `Trainer`,
+exposure ledger and checkpoint contracts as the W3 planner. Generated states are
+emitted unobserved with zero confidence, so the existing supervision weights are
+exactly zero and no generated motion can re-enter training as evidence. See
+[the canonical-state generation design](docs/CANONICAL_STATE_GENERATION.md); it is
+the W4 regression baseline, not a trained, calibrated or reviewed result.
 
 To inspect a saved committed checkpoint without executing additional epochs, use
 `load_governed_planner` with the same admitted corpus, model/trainer settings and
