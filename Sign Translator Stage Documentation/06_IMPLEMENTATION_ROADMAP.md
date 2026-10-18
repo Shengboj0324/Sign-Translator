@@ -38,6 +38,15 @@ against the measured files. See `docs/SOURCE_ADAPTERS.md` §9–§12.
   transfer holds for body, right hand and head and fails for the left hand. See
   `docs/CALIBRATION_ABSTENTION.md`.
 
+* **Hardware acceptance (M09).** The owner declared the target: this host, offline batch,
+  full 3D-LEX ingest within 15 minutes and serving p95 within 20 ms. The first measured run
+  took 19.0 minutes and failed; with archives read once into memory under a publisher-hash
+  check and only network I/O overlapped, it takes 4.7 minutes with every output
+  byte-identical to the frozen results, and serving p95 is 9.15 ms: **accepted** for that
+  target (`evidence/m09-acceptance-2026-10-18/`).
+* **Gloss review packet and outreach drafts** prepared for the externally blocked items
+  (`evidence/gloss-review-packet-2026-10-18/`, `outreach-drafts-2026-10-18.md`).
+
 Validation: the full warning-strict suite passes **3,028 tests in 159.06 seconds**;
 hashes of every changed file are in
 `evidence/w1-w4-seal-2026-10-17/final-verification-2026-10-18.json`.

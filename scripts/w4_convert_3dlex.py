@@ -90,6 +90,20 @@ def open_zip(s3, bucket, key):
     return zipfile.ZipFile(io.BufferedReader(RangeFile(s3, bucket, key), buffer_size=1 << 20))
 
 
+def open_zip_in_memory(s3, bucket, key):
+    """One streamed GET into memory, accepted only if it equals the publisher-verified hash.
+
+    Thousands of ranged reads become one transfer; nothing touches the disk.
+    """
+    provenance = json.loads(s3.get_object(Bucket=bucket, Key=key + ".provenance.json")["Body"].read())
+    if not provenance.get("verified_by_r2_reread"):
+        raise SystemExit(f"{key}: archive has no verified provenance")
+    payload = s3.get_object(Bucket=bucket, Key=key)["Body"].read()
+    if hashlib.sha256(payload).hexdigest() != provenance["sha256"] or len(payload) != provenance["bytes"]:
+        raise SystemExit(f"{key}: in-memory copy differs from the verified archive")
+    return zipfile.ZipFile(io.BytesIO(payload))
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--derived-prefix", required=True)
@@ -99,14 +113,21 @@ def main(argv=None) -> int:
                         help="convert keyed-axis files with root rotation/translation unavailable")
     parser.add_argument("--validate-markers", action="store_true",
                         help="admit only files whose elbows agree with the raw Vicon markers")
+    parser.add_argument("--in-memory", action="store_true",
+                        help="read each archive with one verified GET instead of ranged reads")
+    parser.add_argument("--workers", type=int, default=1,
+                        help="concurrent verified uploads; conversion itself stays on one thread")
     args = parser.parse_args(argv)
+    if args.workers < 1:
+        parser.error("--workers must be positive")
+    opener = open_zip_in_memory if args.in_memory else open_zip
     s3, bucket = client()
     prefix = args.derived_prefix.rstrip("/")
     if s3.list_objects_v2(Bucket=bucket, Prefix=prefix + "/", MaxKeys=1).get("KeyCount"):
         raise SystemExit("derived prefix already holds objects; choose a new version")
 
     performers, vicon_members = {}, {}
-    vicon = open_zip(s3, bucket, f"{SOURCE}/BodyPose/ASL_Vicon_MarkerData.zip")
+    vicon = opener(s3, bucket, f"{SOURCE}/BodyPose/ASL_Vicon_MarkerData.zip")
     for info in vicon.infolist():
         if info.is_dir():
             continue
@@ -116,6 +137,8 @@ def main(argv=None) -> int:
         performers[sign] = hashlib.sha256((SALT + label).encode()).hexdigest()
         vicon_members[sign] = info.filename
 
+    marker_text = {}
+
     def validate(sign, data, state):
         thresholds = dict(min_correlation=MIN_CORRELATION,
                           max_centred_mae_degrees=MAX_CENTRED_MAE_DEGREES,
@@ -123,7 +146,7 @@ def main(argv=None) -> int:
         if sign not in vicon_members:
             return dict(status="unavailable", reason="no Vicon marker file for this sign",
                         thresholds=thresholds)
-        names, markers = parse_v3d_markers(vicon.read(vicon_members[sign]).decode("utf-8", "replace"))
+        names, markers = parse_v3d_markers(marker_text[sign])
         valid = state.channels["body"].valid[:, state.channels["body"].labels.index("LeftArm")]
         times, left = skeleton_elbow_flexion(data, "Left")
         _, right = skeleton_elbow_flexion(data, "Right")
@@ -143,47 +166,66 @@ def main(argv=None) -> int:
                                 result.centred_mae_degrees, result.reference_ranges_degrees, passed)},
                     thresholds=thresholds)
 
-    archive = open_zip(s3, bucket, f"{SOURCE}/Animation/ASL_ANIM_GLB.zip")
+    archive = opener(s3, bucket, f"{SOURCE}/Animation/ASL_ANIM_GLB.zip")
     members = [info for info in archive.infolist() if not info.is_dir()]
     if args.limit:
         members = members[:args.limit]
-    records, refusals = [], collections.Counter()
-    with tempfile.TemporaryDirectory() as temporary:
+
+    def process(item):
+        """One file: convert, validate, store. Returns (record, refusal key or None)."""
+        info, data = item
+        sign = info.filename.rsplit("/", 1)[-1].removesuffix(".glb")
+        sample = f"3dlex-asl-{sign}"
+        state, report = adapt_glb(data, sample_id=sample, source_id="3d-lex-v1.0-asl",
+                                  clock_id=f"{sample}-glb-clock", inference_method=INFERENCE,
+                                  salvage_reoriented_root=args.salvage)
+        record = dict(sign=sign, member=info.filename, glb_sha256=report.source_sha256,
+                      glb_bytes=len(data), performer_sha256=performers.get(sign),
+                      report=report.to_dict())
+        if state is not None and args.validate_markers:
+            record["marker_validation"] = validate(sign, data, state)
+            if record["marker_validation"]["status"] != "passed":
+                return record, (f"marker validation {record['marker_validation']['status']}"
+                                + (" (salvaged file)" if report.status == "converted_partial" else ""))
+        if state is None:
+            return record, report.reason.split(":")[0]
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / f"{sign}.npz"
+            digest = state.save(path)
+            payload = path.read_bytes()
+        key = f"{prefix}/states/{sign}.npz"
+        uploads.append(pool.submit(upload, key, payload, digest))
+        record.update(state_key=key, state_sha256=digest, state_bytes=len(payload),
+                      frames=len(state.timestamps),
+                      valid_frames=int(state.channels["body"].valid.any(axis=1).sum()))
+        return record, None
+
+    def upload(key, payload, digest):
+        s3.put_object(Bucket=bucket, Key=key, Body=payload, Metadata={"sha256": digest})
+        stored = s3.get_object(Bucket=bucket, Key=key)["Body"].read()
+        if hashlib.sha256(stored).hexdigest() != digest:
+            raise SystemExit(f"R2 re-read mismatch for {key}")
+
+    # Conversion and validation are CPU-bound Python and run on this thread, in member
+    # order (threads would only contend for the interpreter lock). Only the network
+    # round trips of verified uploads overlap, and every one is confirmed before the
+    # report is written.
+    from concurrent.futures import ThreadPoolExecutor
+    records, refusals, uploads = [], collections.Counter(), []
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
         for position, info in enumerate(members):
             sign = info.filename.rsplit("/", 1)[-1].removesuffix(".glb")
-            data = archive.read(info)
-            sample = f"3dlex-asl-{sign}"
-            state, report = adapt_glb(data, sample_id=sample, source_id="3d-lex-v1.0-asl",
-                                      clock_id=f"{sample}-glb-clock", inference_method=INFERENCE,
-                                      salvage_reoriented_root=args.salvage)
-            record = dict(sign=sign, member=info.filename, glb_sha256=report.source_sha256,
-                          glb_bytes=len(data), performer_sha256=performers.get(sign),
-                          report=report.to_dict())
-            if state is not None and args.validate_markers:
-                record["marker_validation"] = validate(sign, data, state)
-                if record["marker_validation"]["status"] != "passed":
-                    refusals[f"marker validation {record['marker_validation']['status']}"
-                             + (" (salvaged file)" if report.status == "converted_partial" else "")] += 1
-                    records.append(record)
-                    continue
-            if state is None:
-                refusals[report.reason.split(":")[0]] += 1
-            else:
-                path = Path(temporary) / f"{sign}.npz"
-                digest = state.save(path)
-                payload = path.read_bytes()
-                path.unlink()
-                key = f"{prefix}/states/{sign}.npz"
-                s3.put_object(Bucket=bucket, Key=key, Body=payload, Metadata={"sha256": digest})
-                stored = s3.get_object(Bucket=bucket, Key=key)["Body"].read()
-                if hashlib.sha256(stored).hexdigest() != digest:
-                    raise SystemExit(f"R2 re-read mismatch for {key}")
-                record.update(state_key=key, state_sha256=digest, state_bytes=len(payload),
-                              frames=len(state.timestamps),
-                              valid_frames=int(state.channels["body"].valid.any(axis=1).sum()))
+            if sign in vicon_members:
+                marker_text[sign] = vicon.read(vicon_members[sign]).decode("utf-8", "replace")
+            record, refusal = process((info, archive.read(info)))
+            marker_text.pop(sign, None)
             records.append(record)
+            if refusal is not None:
+                refusals[refusal] += 1
             if position % 100 == 0:
                 print(f"{position}/{len(members)} processed", flush=True)
+        for future in uploads:
+            future.result()
 
     converted = [r for r in records if "state_key" in r]
     invalid = collections.Counter(len(r["report"]["invalid_frames"]) for r in converted)

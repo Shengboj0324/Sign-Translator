@@ -1,0 +1,75 @@
+{
+  "declaration": {
+    "criteria": {
+      "full_3dlex_ingest_wall_seconds_max": 900,
+      "serving_p95_ms_per_sample_max": 20
+    },
+    "declared_by": "project owner, in conversation, 2026-10-18",
+    "deployment_mode": "offline batch ingestion and training-time serving",
+    "note": "criteria declared before the measurements below were taken",
+    "target_device": "this host: Apple M4 Max, CPU, 36 GiB"
+  },
+  "environment": {
+    "cpu": "Apple M4 Max",
+    "disk_free_bytes": 13269024768,
+    "disk_total_bytes": 994662584320,
+    "logical_cpus": 14,
+    "machine": "arm64",
+    "memory_bytes": 38654705664,
+    "mps_available": true,
+    "platform": "macOS-27.0.1-arm64-arm-64bit",
+    "python": "3.12.14",
+    "torch": "2.13.0",
+    "torch_threads": 10
+  },
+  "identity_checks": {
+    "counts": {
+      "face_samples": 911,
+      "left_hand_validated": 362,
+      "right_hand_validated": 541,
+      "skeleton_samples": 611
+    },
+    "face_report_equal_to_v2": true,
+    "glove_report_equal_to_v2": true,
+    "marker_validation_equal_to_v4": true,
+    "state_sha256_all_938_equal_to_v4": true
+  },
+  "limitations": [
+    "one host and one network link; R2 throughput varies",
+    "not a live or interactive latency claim",
+    "other devices need their own declaration and run"
+  ],
+  "phase_exit_approved": false,
+  "recorded": "2026-10-18",
+  "runs": [
+    {
+      "convert_seconds": 501,
+      "ingest_seconds": 641,
+      "mode": "sequential ranged reads (original scripts)",
+      "run": "m09-acceptance-run-1",
+      "total_seconds": 1142,
+      "verdict": "fail"
+    },
+    {
+      "mode": "8 compute threads",
+      "run": "m09-acceptance-run-2",
+      "verdict": "aborted: slower than sequential (interpreter-lock and torch thread contention); its R2 prefix is incomplete and unused"
+    },
+    {
+      "convert_seconds": 205,
+      "ingest_seconds": 77,
+      "mode": "archives read once into memory with publisher-hash check; compute on one thread; 8 concurrent verified uploads; 16 ingestion I/O workers",
+      "run": "m09-acceptance-run-3",
+      "total_seconds": 282,
+      "verdict": "pass"
+    }
+  ],
+  "schema_version": 1,
+  "serving": {
+    "p50_ms": 6.77,
+    "p95_ms": 9.15,
+    "source": "m09-capacity-2026-10-18-real-conversion/benchmark.json",
+    "verdict": "pass"
+  },
+  "verdict": "accepted for the declared target"
+}

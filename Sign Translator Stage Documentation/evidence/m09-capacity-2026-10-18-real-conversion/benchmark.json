@@ -1,0 +1,102 @@
+{
+  "environment": {
+    "cpu": "Apple M4 Max",
+    "disk_free_bytes": 13269024768,
+    "disk_total_bytes": 994662584320,
+    "logical_cpus": 14,
+    "machine": "arm64",
+    "memory_bytes": 38654705664,
+    "mps_available": true,
+    "platform": "macOS-27.0.1-arm64-arm-64bit",
+    "python": "3.12.14",
+    "torch": "2.13.0",
+    "torch_threads": 10
+  },
+  "limitations": [
+    "one host; no target device or deployment mode is declared",
+    "R2 transfer time is excluded and depends on the link",
+    "per-file cost varies with take length; the sample is content-ordered, not stratified"
+  ],
+  "linear_extrapolation": {
+    "full_release_938_files_seconds": 264.5665980105036,
+    "note": "single process, sum of per-file means, network excluded; linear in measured cost only"
+  },
+  "manifest_sha256": "c761728913baf7be422a665c377952852ae09504b444d92e746081ab819561e7",
+  "peak_rss_bytes": 426278912,
+  "phase_exit_approved": false,
+  "results": {
+    "convert_glb": {
+      "files_per_second": 94.67316766882598,
+      "max": 35.15774998231791,
+      "mean": 10.562654917157488,
+      "min": 9.284792002290487,
+      "n": 120,
+      "p50": 10.234791989205405,
+      "p95": 11.570381588535383,
+      "p99": 12.029525979887694
+    },
+    "face_conversion": {
+      "files_per_second": 697.8353343696433,
+      "max": 6.995333009399474,
+      "mean": 1.4330028170661535,
+      "min": 0.21595900761894882,
+      "n": 120,
+      "p50": 0.38050000148359686,
+      "p95": 5.38836074701976,
+      "p99": 6.850522758322769
+    },
+    "glove_validation": {
+      "files_per_second": 27.238696402409914,
+      "max": 119.50654198881239,
+      "mean": 36.7124764425777,
+      "min": 20.486249995883554,
+      "n": 120,
+      "p50": 27.010853998945095,
+      "p95": 91.4916568988701,
+      "p99": 119.25496473180829
+    },
+    "interpolate_and_bound": {
+      "files_per_second": 14.170251962050552,
+      "max": 88.9665000140667,
+      "mean": 70.57037536651478,
+      "min": 1.7542919958941638,
+      "n": 120,
+      "p50": 73.30449999426492,
+      "p95": 78.45224731136112,
+      "p99": 85.40408744185697
+    },
+    "marker_validation": {
+      "files_per_second": 4.285485166564111,
+      "max": 394.8970419878606,
+      "mean": 233.34580826510015,
+      "min": 144.93433298775926,
+      "n": 120,
+      "p50": 210.026562504936,
+      "p95": 369.0649419411784,
+      "p99": 389.75579149788246
+    },
+    "serve_and_collate_batch_of_8": {
+      "files_per_second": 14.28017451601344,
+      "max": 75.62570899608545,
+      "mean": 70.02715540196125,
+      "min": 62.77175000286661,
+      "n": 15,
+      "p50": 70.64449999597855,
+      "p95": 75.11330829293001,
+      "p99": 75.52322885545436
+    },
+    "serve_from_verified_cache": {
+      "files_per_second": 142.69436714124313,
+      "max": 9.86900000134483,
+      "mean": 7.007985108551414,
+      "min": 5.477875005453825,
+      "n": 120,
+      "p50": 6.767562503227964,
+      "p95": 9.152463935606647,
+      "p99": 9.746707758167759
+    }
+  },
+  "rounds": 3,
+  "schema_version": 1,
+  "signs": 40
+}

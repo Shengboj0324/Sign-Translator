@@ -23,6 +23,8 @@ from pathlib import Path
 import re
 import sys
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -37,7 +39,7 @@ from signtranslator.data_engineering.glove_validation import (  # noqa: E402
 from signtranslator.data_engineering.llf_face import adapt_llf  # noqa: E402
 from signtranslator.data_engineering.signbank_ecv import map_labels, parse_ecv  # noqa: E402
 from signtranslator.pose.multichannel import CHANNELS, MultichannelMotion  # noqa: E402
-from w4_convert_3dlex import SOURCE, client, open_zip  # noqa: E402
+from w4_convert_3dlex import SOURCE, client, open_zip, open_zip_in_memory  # noqa: E402
 
 GLOVE_FILE = re.compile(r"([LR])_([A-Za-z0-9]+)\.csv")
 ECV_KEY = "acquisition/2026-10-17-v1/asl-signbank/ecv-snapshot-2026-10-18T040017Z/asl.ecv"
@@ -106,7 +108,14 @@ def main(argv=None) -> int:
     parser.add_argument("--manifest-key", required=True)
     parser.add_argument("--evidence", type=Path, required=True)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--workers", type=int, default=1,
+                        help="concurrent signs; results are identical and kept in sorted order")
     args = parser.parse_args(argv)
+    if args.workers < 1:
+        parser.error("--workers must be positive")
+    if args.workers > 1:
+        import torch
+        torch.set_num_threads(1)  # workers overlap network waits; avoid oversubscribing cores
     args.evidence.mkdir(parents=True, exist_ok=False)
     s3, bucket = client()
     face_prefix = args.face_prefix.rstrip("/")
@@ -126,12 +135,13 @@ def main(argv=None) -> int:
     lexicon = parse_ecv(ecv_bytes)
 
     # --- face states --------------------------------------------------------
-    llf = open_zip(s3, bucket, f"{SOURCE}/FacePose/ASL_LLF.zip")
-    face, face_reports = {}, []
-    members = sorted(n for n in llf.namelist() if n.endswith(".csv"))
-    for member in members[:args.limit]:
+    llf = open_zip_in_memory(s3, bucket, f"{SOURCE}/FacePose/ASL_LLF.zip")
+    members = sorted(n for n in llf.namelist() if n.endswith(".csv"))[:args.limit]
+    payloads = [(member, llf.read(member)) for member in members]  # zip reads stay on this thread
+
+    def convert_face(item):
+        member, payload = item
         sign = member.rsplit("/", 1)[-1].removesuffix(".csv")
-        payload = llf.read(member)
         state, report = adapt_llf(payload, sample_id=f"3dlex-asl-{sign}-llf", source_id="three_d_lex_asl_llf",
                                   clock_id=f"llf-device-timecode:{sign}", inference_method=LLF_INFERENCE)
         entry = dict(status=report.status, reason=report.reason, source_sha256=report.source_sha256,
@@ -144,8 +154,13 @@ def main(argv=None) -> int:
             entry.update(state_key=key, state_sha256=digest, frames=report.frames,
                          span_seconds=round(report.span_seconds, 6), dropped_tail=report.dropped_tail,
                          dropped_frames=report.dropped_frames)
-        face[sign] = entry
-        face_reports.append(dict(sign=sign, **report.to_dict()))
+        return sign, entry, dict(sign=sign, **report.to_dict())
+
+    face, face_reports = {}, []
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+        for sign, entry, report in pool.map(convert_face, payloads):
+            face[sign] = entry
+            face_reports.append(report)
     print(f"face: {collections.Counter(e['status'] for e in face.values())}", flush=True)
 
     # --- glove validation -------------------------------------------------
@@ -166,17 +181,23 @@ def main(argv=None) -> int:
             side = {"L": "Left", "R": "Right"}[prefix]
             if side in gloves[sign]:
                 duplicates.add(sign)
-            gloves[sign][side] = (archive, name, meta_name)
-    hand_results, glove_reports = {}, []
-    eligible = sorted(s for s, r in conversion.items()
-                      if "state_key" in r and (r.get("marker_validation") or {}).get("status") == "passed")
-    for sign in eligible[:args.limit]:
+            gloves[sign][side] = (part, name, meta_name)
+    local = threading.local()
+
+    def part_zip(part):
+        # Zip handles are not thread-safe; each worker opens its own per part.
+        handles = local.__dict__.setdefault("handles", {})
+        if part not in handles:
+            handles[part] = open_zip(s3, bucket, f"{SOURCE}/Handshape/Handshape Data Part {part}.zip")
+        return handles[part]
+
+    def validate_sign(sign):
         record = conversion[sign]
         if sign in duplicates:
-            hand_results[sign] = {side: dict(status="duplicate_glove_export") for side in ("Left", "Right")}
-            continue
+            return sign, {side: dict(status="duplicate_glove_export") for side in ("Left", "Right")}
         parsed, problems = {}, {}
-        for side, (archive, name, meta_name) in gloves.get(sign, {}).items():
+        for side, (part, name, meta_name) in gloves.get(sign, {}).items():
+            archive = part_zip(part)
             try:
                 meta = parse_glove_metadata(archive.read(meta_name))
                 if meta["side"] != side:
@@ -191,8 +212,16 @@ def main(argv=None) -> int:
         for side, glove in parsed.items():
             result[side].update(glove_ambiguous_frames=glove.ambiguous_frames,
                                 glove_collapsed_duplicates=glove.collapsed_duplicates)
-        hand_results[sign] = result
-        glove_reports.append(dict(sign=sign, **result))
+        return sign, result
+
+    eligible = sorted(s for s, r in conversion.items()
+                      if "state_key" in r and (r.get("marker_validation") or {}).get("status") == "passed")
+    hand_results, glove_reports = {}, []
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+        for sign, result in pool.map(validate_sign, eligible[:args.limit]):
+            hand_results[sign] = result
+            if sign not in duplicates:
+                glove_reports.append(dict(sign=sign, **result))
     print("hands:", {side: collections.Counter(r[side]["status"] for r in hand_results.values())
                      for side in ("Left", "Right")}, flush=True)
 

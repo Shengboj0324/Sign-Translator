@@ -55,12 +55,22 @@
     {
       "id": "M09",
       "requirement": "capacity_and_target_hardware",
-      "status": "measured_pending_target_declaration",
+      "status": "accepted_for_declared_target",
       "evidence": {
         "path": "evidence/m09-capacity-2026-10-17/benchmark.json",
         "recorded_on": "2026-10-17",
         "covers": "host hardware, per-workload throughput, latency and peak memory",
-        "remaining": "owner declaration of the target device, deployment mode and staffed calendar; a real source conversion to measure"
+        "remaining": "staffed calendar; any other target device or a live mode needs its own declaration and run",
+        "real_conversion": {
+          "path": "evidence/m09-capacity-2026-10-18-real-conversion/benchmark.json",
+          "recorded_on": "2026-10-18",
+          "covers": "real 3D-LEX conversion, marker and glove validation, face conversion, verified serving and collation, interpolation with a conformal bound; per-file latency on this host"
+        },
+        "acceptance": {
+          "path": "evidence/m09-acceptance-2026-10-18/acceptance.json",
+          "recorded_on": "2026-10-18",
+          "covers": "owner-declared target (this host, offline batch): full ingest 282 s against 900 s, serving p95 9.15 ms against 20 ms"
+        }
       }
     }
   ],
