@@ -30,3 +30,13 @@ def test_signbank_is_noncommercial_lexicon_only():
 
 def test_gate_stays_closed_with_new_sources():
     assert not CURRENT_PRE_PHASE_2_DECISION.approved
+
+
+def test_estimated_and_licensed_sources_are_recorded_honestly():
+    estimate = SOURCES["how2sign_video_estimate"]
+    reasons = failures("continuous_coobserved_3d_research", "how2sign_video_estimate")
+    for capability in ("body_3d", "left_hand_3d", "right_hand_3d", "face_expression", "head_pose", "eye_gaze"):
+        assert f"missing_capability:{capability}" in reasons  # estimates never count as capture
+    assert estimate.rights_for(IntendedUse.COMMERCIAL_TRAINING) is RightsStatus.PROHIBITED
+    assert SOURCES["sapa_asl_lex_phonology"].rights_for(IntendedUse.COMMERCIAL_TRAINING) is RightsStatus.PROHIBITED
+    assert SOURCES["cokely_afs_parallel_corpus"].rights_for(IntendedUse.RESEARCH_TRAINING) is RightsStatus.PERMITTED

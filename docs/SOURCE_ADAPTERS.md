@@ -324,7 +324,18 @@ before the files arrive:
 The mapping for the real skeleton, and any face or gaze channels (the release lists a
 face video, not face tracking), can only be declared after the first file is inspected.
 
-## 14. What remains open for this source
+## 14. Phonological candidates from SAPA (`data_engineering/sapa_phonology.py`)
+
+The 3D-LEX authors' SAPA repository holds WLASL metadata merged with ASL-LEX expert
+phonology for 988 glosses and two automatic handshape labelings derived from 3D-LEX.
+Every phonological field is constant within each gloss (checked; a gloss whose
+instances disagree is refused). Joined by exact gloss, 937 of 938 3D-LEX signs get
+expert features (50 ASL-LEX handshape classes) and the automatic labels (52 k-means,
+21 Euclidean-distance classes): `evidence/sapa-phonology-2026-10-18/`. Like the
+Signbank candidates, the join names an entry by English label and needs the gloss
+review; ASL-LEX is CC BY-NC 4.0.
+
+## 15. What remains open for this source
 
 * Face-to-skeleton synchronisation: unrecoverable from the release; would need a
   shared event or timecode from the publisher.

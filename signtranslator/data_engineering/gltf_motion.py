@@ -603,6 +603,63 @@ def adapt_glb(data: bytes, *, sample_id: str, source_id: str, clock_id: str,
     return state, report
 
 
+def joint_world_positions(data: bytes, joints: tuple[str, ...]) -> tuple[np.ndarray, np.ndarray]:
+    """World positions (T, J, 3) of the named joints by vectorised forward kinematics.
+
+    Each node's local matrix per frame composes its keyed TRS (or static value) by
+    glTF's ``T R S``; world matrices compose parent before child. Agrees with the
+    per-frame composition used by :func:`skeleton_elbow_flexion`.
+    """
+    glb = parse_glb(data)
+    animation = extract_animation(glb)
+    nodes = glb.document["nodes"]
+    names = [node["name"] for node in nodes]
+    parents = _parent_map(nodes)
+    frames = len(animation.times)
+    cache: dict[int, np.ndarray] = {}
+
+    def local(index):
+        node = nodes[index]
+        name = names[index]
+        animated = any(name in tracks for tracks in
+                       (animation.rotations, animation.translations, animation.scales))
+        if not animated:
+            return np.broadcast_to(_trs_matrix(node), (frames, 4, 4))
+        if "matrix" in node:
+            raise ValueError(f"{name}: an animated node cannot also carry a matrix")
+        xyzw = animation.rotations.get(name)
+        if xyzw is None:
+            xyzw = np.tile(np.asarray(node.get("rotation", (0., 0., 0., 1.)), dtype=np.float64), (frames, 1))
+        wxyz = torch.from_numpy(np.concatenate((xyzw[:, 3:], xyzw[:, :3]), axis=1).astype(np.float64))
+        rotation = quaternion_to_matrix(wxyz).numpy()
+        scale = animation.scales.get(name)
+        if scale is None:
+            scale = np.tile(np.asarray(node.get("scale", (1., 1., 1.)), dtype=np.float64), (frames, 1))
+        translation = animation.translations.get(name)
+        if translation is None:
+            translation = np.tile(np.asarray(node.get("translation", (0., 0., 0.)), dtype=np.float64), (frames, 1))
+        matrix = np.zeros((frames, 4, 4))
+        matrix[:, :3, :3] = rotation * scale[:, None, :]
+        matrix[:, :3, 3] = translation
+        matrix[:, 3, 3] = 1.
+        return matrix
+
+    def world(index):
+        if index not in cache:
+            matrix = local(index)
+            if index in parents:
+                matrix = world(parents[index]) @ matrix
+            cache[index] = matrix
+        return cache[index]
+
+    lookup = {name: i for i, name in enumerate(names)}
+    missing = [joint for joint in joints if joint not in lookup]
+    if missing:
+        raise ValueError(f"joints not in the file: {missing}")
+    positions = np.stack([world(lookup[joint])[:, :3, 3] for joint in joints], axis=1)
+    return animation.times, positions
+
+
 def skeleton_elbow_flexion(data: bytes, side: str) -> tuple[np.ndarray, np.ndarray]:
     """Elbow flexion of the solved skeleton by full forward kinematics.
 

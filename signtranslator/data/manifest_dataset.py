@@ -24,8 +24,8 @@ class ManifestMotionDataset(Dataset):
                  fetch: Callable[[str], bytes], require_channels=()) -> None:
         if partition not in PARTITIONS:
             raise ValueError(f"partition must be one of {PARTITIONS}")
-        if kind not in ("skeleton", "face"):
-            raise ValueError("kind must be 'skeleton' or 'face'")
+        if kind not in ("skeleton", "face", "continuous"):
+            raise ValueError("kind must be 'skeleton', 'face' or 'continuous'")
         split = manifest["split"]
         train = split["train_performer_sha256"]
         test = set(split["test_performer_sha256"])

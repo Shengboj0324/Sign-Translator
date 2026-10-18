@@ -1,0 +1,65 @@
+{
+  "agreed_labels": {},
+  "answered_rows": 6,
+  "audited": "2026-10-18",
+  "outcome": "no label admitted: every answered row lacks a chosen candidate and a reviewer key",
+  "problems": [
+    {
+      "decision": "Confirm",
+      "issues": [
+        "confirm needs chosen_cve_id (one of ['2056', '3537'])",
+        "reviewer_sha256 must be a 64-hex SHA-256 key, never a name"
+      ],
+      "line": 2,
+      "sign": "agreement"
+    },
+    {
+      "decision": "Confirm",
+      "issues": [
+        "confirm needs chosen_cve_id (one of ['14', '909', '2066', '2068', '3101', '3562', '3771', '4587'])",
+        "reviewer_sha256 must be a 64-hex SHA-256 key, never a name"
+      ],
+      "line": 3,
+      "sign": "and"
+    },
+    {
+      "decision": "Confirm",
+      "issues": [
+        "confirm needs chosen_cve_id (one of ['406', '2072', '2073', '4403', '4481'])",
+        "reviewer_sha256 must be a 64-hex SHA-256 key, never a name"
+      ],
+      "line": 4,
+      "sign": "apple"
+    },
+    {
+      "decision": "Confirm",
+      "issues": [
+        "confirm needs chosen_cve_id (one of ['21', '22', '23', '529', '1142', '3617', '3775', '3782'])",
+        "reviewer_sha256 must be a 64-hex SHA-256 key, never a name"
+      ],
+      "line": 5,
+      "sign": "ask"
+    },
+    {
+      "decision": "Confirm",
+      "issues": [
+        "confirm needs chosen_cve_id (one of ['855', '3190'])",
+        "reviewer_sha256 must be a 64-hex SHA-256 key, never a name"
+      ],
+      "line": 6,
+      "sign": "balance"
+    },
+    {
+      "decision": "Confirm",
+      "issues": [
+        "confirm needs chosen_cve_id (one of ['42', '2087', '2088', '3043', '3790'])",
+        "reviewer_sha256 must be a 64-hex SHA-256 key, never a name"
+      ],
+      "line": 7,
+      "sign": "balloon"
+    }
+  ],
+  "schema_version": 1,
+  "sheet_sha256": "ae42dada782722b8a9b4207db195c6a726c5c2ba499f9df86935c0c659f30eb2",
+  "valid_answers": 0
+}

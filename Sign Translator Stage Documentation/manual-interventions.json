@@ -7,8 +7,13 @@
     {
       "id": "M01",
       "requirement": "continuous_coobserved_source",
-      "status": "absent",
-      "evidence": null
+      "status": "absent_estimated_replacement_implemented",
+      "evidence": {
+        "recorded_on": "2026-10-18",
+        "path": "docs/CONTINUOUS_TRAINING.md",
+        "covers": "no request-free continuous 3D corpus exists; co-observed states estimated from How2Sign video (observed=False)",
+        "remaining": "a captured continuous co-observed source (RIT/CUNY, SignAvatars, Panoptic) for capture-level claims"
+      }
     },
     {
       "id": "M02",
@@ -19,8 +24,13 @@
     {
       "id": "M03",
       "requirement": "qualified_creation_review_adjudication",
-      "status": "absent",
-      "evidence": null
+      "status": "protocol_issued_partial_answers",
+      "evidence": {
+        "recorded_on": "2026-10-18",
+        "path": "docs/GLOSS_REVIEW_PROTOCOL.md",
+        "covers": "review packet, 735 skeleton previews, strict audit; first sheet has 6 answers, none admissible",
+        "remaining": "two qualified reviewers completing the packet with candidate IDs and reviewer keys"
+      }
     },
     {
       "id": "M04",
@@ -43,8 +53,12 @@
     {
       "id": "M07",
       "requirement": "cokely_primary_hd_recovery",
-      "status": "absent",
-      "evidence": null
+      "status": "recovered_exact",
+      "evidence": {
+        "recorded_on": "2026-10-18",
+        "r2_prefix": "acquisition/2026-10-17-v1/cokely-afs-parallel-corpus/i-have-a-dream/",
+        "covers": "owner browser download; HD video 650,953,008 bytes sha256 8eb18b6b2f01a5a179100b0acd84a639b5f2a0ee95fb0195d477b946217c6bb3 and EAF 3c981ba4df1a2e590339a93dbf7aa2fb8163a87538d1e86be58f80e6a294285c equal the binding"
+      }
     },
     {
       "id": "M08",

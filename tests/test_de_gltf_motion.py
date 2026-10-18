@@ -357,3 +357,57 @@ def test_rest_pose_rule_counts_toward_the_exclusion_limit():
     assert report.status == "refused" and "exclusion limit" in report.reason
     with pytest.raises(ValueError):
         adapt(build_glb(frames=frames), rest_pose_tolerance_degrees=-1.)
+
+
+def _with_offsets(data, offsets):
+    """Rebuild a GLB with static translations on named nodes."""
+    json_length = struct.unpack_from("<I", data, 12)[0]
+    document = json.loads(data[20:20 + json_length])
+    for node in document["nodes"]:
+        if node["name"] in offsets:
+            node["translation"] = offsets[node["name"]]
+    binary = data[20 + json_length:]
+    payload = json.dumps(document).encode()
+    payload += b" " * (-len(payload) % 4)
+    body = struct.pack("<II", len(payload), 0x4E4F534A) + payload + binary
+    return struct.pack("<4sII", b"glTF", 2, 12 + len(body)) + body
+
+
+def test_vectorised_forward_kinematics_matches_per_frame_composition():
+    from signtranslator.data_engineering.gltf_motion import (
+        _parent_map, _trs_matrix, extract_animation, joint_world_positions,
+    )
+    frames = 12
+    tracks = {joint: np.array([quaternion_xyzw(np.array([.1 * t, .3, -.2 + .05 * t])) for t in range(frames)])
+              for joint in ("Hips", "LeftArm", "LeftForeArm", "Spine", "LeftShoulder")}
+    path = np.array([[.01 * t, .9 + .002 * t, .003 * t] for t in range(frames)])
+    data = _with_offsets(build_glb(frames=frames, rotations=tracks, root_path=path),
+                         {"Spine": [0., .1, 0.], "LeftShoulder": [.05, .2, 0.], "LeftArm": [.1, 0., 0.],
+                          "LeftForeArm": [.25, 0., 0.], "LeftHand": [.22, 0., .01]})
+    joints = ("Spine", "LeftArm", "LeftForeArm", "LeftHand")
+    times, positions = joint_world_positions(data, joints)
+    glb = parse_glb(data)
+    animation = extract_animation(glb)
+    nodes = glb.document["nodes"]
+    names = [n["name"] for n in nodes]
+    parents = _parent_map(nodes)
+
+    def local(i, f):
+        node = dict(nodes[i])
+        for key, tr in (("rotation", animation.rotations), ("translation", animation.translations)):
+            if names[i] in tr:
+                node[key] = tr[names[i]][f].tolist()
+        return _trs_matrix(node)
+
+    for f in range(frames):
+        for k, joint in enumerate(joints):
+            i = names.index(joint)
+            m = local(i, f)
+            while i in parents:
+                i = parents[i]
+                m = local(i, f) @ m
+            np.testing.assert_allclose(positions[f, k], m[:3, 3], atol=1e-12)
+    # Offsets rotate with the animated Hips, so this is not a degenerate check.
+    assert np.ptp(positions[:, 3], axis=0).max() > .01
+    with pytest.raises(ValueError, match="not in the file"):
+        joint_world_positions(data, ("NoSuchJoint",))

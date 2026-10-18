@@ -36,6 +36,7 @@ MANIFEST_SCHEMA_VERSION = 1
 SKELETON_CHANNELS = ("root_translation", "body", "head_rotation")
 FACE_CHANNELS = ("face", "left_gaze", "right_gaze", "blink")
 HAND_CHANNELS = {"Left": "left_hand", "Right": "right_hand"}
+KINDS = ("skeleton", "face", "continuous")
 _SHA = set("0123456789abcdef")
 
 
@@ -63,7 +64,15 @@ def usable_channels(record: Mapping, kind: str) -> tuple[str, ...]:
         if face.get("status") != "converted" or not face.get("state_sha256"):
             return ()
         return tuple(name for name in CHANNELS if name in FACE_CHANNELS)
-    raise ValueError("kind must be 'skeleton' or 'face'")
+    if kind == "continuous":
+        # Video-estimated states: every channel the estimator produced shares one
+        # clock; per-frame validity masks inside the state carry the rest.
+        part = record.get("continuous") or {}
+        if part.get("status") != "converted" or not part.get("state_sha256"):
+            return ()
+        names = set(part.get("available_channels", ()))
+        return tuple(name for name in CHANNELS if name in names)
+    raise ValueError("kind must be 'skeleton', 'face' or 'continuous'")
 
 
 def build_corpus_manifest(*, corpus_id: str, inputs: Mapping[str, str], records: list[dict],
@@ -78,14 +87,14 @@ def build_corpus_manifest(*, corpus_id: str, inputs: Mapping[str, str], records:
         raise ValueError("records need unique sign identifiers")
     ordered = sorted((dict(r) for r in records), key=lambda r: r["sign"])
     for record in ordered:
-        for kind in ("skeleton", "face"):
+        for kind in KINDS:
             part = record.get(kind) or {}
             if part.get("state_sha256") is not None and not _is_sha(part["state_sha256"]):
                 raise ValueError(f"{record['sign']}: {kind} state hash is malformed")
-        record["usable"] = {kind: list(usable_channels(record, kind)) for kind in ("skeleton", "face")}
+        record["usable"] = {kind: list(usable_channels(record, kind)) for kind in KINDS}
     counts = collections.Counter()
     for record in ordered:
-        for kind in ("skeleton", "face"):
+        for kind in KINDS:
             if record["usable"][kind]:
                 counts[f"{kind}_samples"] += 1
         for side, channel in HAND_CHANNELS.items():
@@ -123,8 +132,8 @@ def load_manifest(path: Path, *, expected_sha256: str) -> dict:
     if canonical_json(manifest) != data[:-1]:
         raise ValueError("manifest bytes are not canonical")
     for record in manifest["records"]:
-        for kind in ("skeleton", "face"):
-            if record["usable"][kind] != list(usable_channels(record, kind)):
+        for kind in KINDS:
+            if record["usable"].get(kind, []) != list(usable_channels(record, kind)):
                 raise ValueError(f"{record['sign']}: stored usable channels disagree with the rule")
     return manifest
 

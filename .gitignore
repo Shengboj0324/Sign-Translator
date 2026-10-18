@@ -20,3 +20,7 @@ wandb/
 .idea/
 .env.r2.local
 .r2-migration/
+
+# Cokely corpus downloads live in R2 (acquisition/2026-10-17-v1/cokely-afs-parallel-corpus/)
+/*CokelyAFSParallelCorpus*
+~$*

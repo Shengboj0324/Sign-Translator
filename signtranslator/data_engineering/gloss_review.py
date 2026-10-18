@@ -77,37 +77,79 @@ def write_review_sheet(rows: list[dict]) -> str:
     return stream.getvalue()
 
 
-def parse_review_sheet(text: str, offered: list[dict]) -> list[dict]:
-    """Validate returned answers against the rows that were offered."""
+def audit_review_sheet(text: str, offered: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Check every answered row; return (valid answers, per-row problems).
+
+    Decision words are matched case-insensitively ("Confirm" is "confirm"); nothing
+    else is repaired. In particular a confirm/choose without a chosen identifier is a
+    problem even when one candidate seems obvious: the reviewer must name it.
+    """
     by_sign = {r["sign"]: r for r in offered}
     reader = csv.DictReader(io.StringIO(text))
     if tuple(reader.fieldnames or ()) != FIELDS:
         raise ValueError("review sheet columns differ from the issued packet")
-    answers = []
+    answers, problems = [], []
     for number, row in enumerate(reader, start=2):
-        if not row["decision"]:
+        decision = row["decision"].strip().lower()
+        if not decision:
             continue  # unanswered rows stay unreviewed
-        sign = row["sign"]
-        if sign not in by_sign:
-            raise ValueError(f"line {number}: {sign!r} was not offered")
-        if row["decision"] not in DECISIONS:
-            raise ValueError(f"line {number}: decision must be one of {DECISIONS}")
-        if not _SHA.fullmatch(row["reviewer_sha256"]):
-            raise ValueError(f"line {number}: reviewer must be a SHA-256 key, never a name")
-        allowed = {cell.split("|", 1)[0] for key, cell in by_sign[sign].items()
+        sign, issues = row["sign"], []
+        offered_row = by_sign.get(sign)
+        if offered_row is None:
+            problems.append(dict(line=number, sign=sign, issues=["sign was not offered"]))
+            continue
+        allowed = {cell.split("|", 1)[0] for key, cell in offered_row.items()
                    if key.startswith("candidate_") and cell}
-        chosen = row["chosen_cve_id"]
-        if row["decision"] in ("confirm", "choose"):
-            if chosen not in allowed:
-                raise ValueError(f"line {number}: chosen identifier is not an offered candidate")
+        chosen = row["chosen_cve_id"].strip()
+        if decision not in DECISIONS:
+            issues.append(f"decision must be one of {DECISIONS}")
+        elif decision in ("confirm", "choose"):
+            if not chosen:
+                issues.append(f"{decision} needs chosen_cve_id (one of {sorted(allowed, key=int)})")
+            elif chosen not in allowed:
+                issues.append("chosen identifier is not an offered candidate")
         elif chosen:
-            raise ValueError(f"line {number}: a {row['decision']} answer chooses nothing")
-        answers.append(dict(sign=sign, decision=row["decision"], chosen_cve_id=chosen or None,
-                            reviewer_sha256=row["reviewer_sha256"], notes=row["notes"]))
-    keys = [(a["sign"], a["reviewer_sha256"]) for a in answers]
-    if len(keys) != len(set(keys)):
-        raise ValueError("a reviewer answered the same sign twice")
+            issues.append(f"a {decision} answer chooses nothing")
+        if not _SHA.fullmatch(row["reviewer_sha256"].strip()):
+            issues.append("reviewer_sha256 must be a 64-hex SHA-256 key, never a name")
+        if issues:
+            problems.append(dict(line=number, sign=sign, decision=row["decision"], issues=issues))
+            continue
+        answers.append(dict(sign=sign, decision=decision, chosen_cve_id=chosen or None,
+                            reviewer_sha256=row["reviewer_sha256"].strip(), notes=row["notes"]))
+    seen = collections.Counter((a["sign"], a["reviewer_sha256"]) for a in answers)
+    for (sign, _), count in seen.items():
+        if count > 1:
+            problems.append(dict(line=None, sign=sign, issues=["a reviewer answered the same sign twice"]))
+    duplicated = {key for key, count in seen.items() if count > 1}
+    return [a for a in answers if (a["sign"], a["reviewer_sha256"]) not in duplicated], problems
+
+
+def parse_review_sheet(text: str, offered: list[dict]) -> list[dict]:
+    """Strict form: every answered row must be valid, or the sheet is refused."""
+    answers, problems = audit_review_sheet(text, offered)
+    if problems:
+        first = problems[0]
+        raise ValueError(f"line {first['line']}: {'; '.join(first['issues'])}")
     return answers
+
+
+def agreed_labels(answers: list[dict], *, minimum_reviewers: int = 2) -> dict[str, str]:
+    """Signs whose chosen identifier is the same for at least ``minimum_reviewers``
+    distinct reviewers, with no reviewer choosing differently or answering none_match."""
+    if type(minimum_reviewers) is not int or minimum_reviewers < 2:
+        raise ValueError("at least two independent reviewers are required")
+    by_sign = collections.defaultdict(dict)
+    for answer in answers:
+        by_sign[answer["sign"]][answer["reviewer_sha256"]] = answer["chosen_cve_id"] or answer["decision"]
+    labels = {}
+    for sign, outcomes in by_sign.items():
+        values = set(outcomes.values())
+        if len(outcomes) >= minimum_reviewers and len(values) == 1:
+            (value,) = values
+            if value not in DECISIONS:
+                labels[sign] = value
+    return dict(sorted(labels.items()))
 
 
 def review_agreement(answers: list[dict], first: str, second: str) -> dict:
@@ -134,4 +176,4 @@ def review_agreement(answers: list[dict], first: str, second: str) -> dict:
 
 
 __all__ = ["PRIORITY", "DECISIONS", "FIELDS", "build_review_rows", "write_review_sheet",
-           "parse_review_sheet", "review_agreement"]
+           "audit_review_sheet", "parse_review_sheet", "agreed_labels", "review_agreement"]

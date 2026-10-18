@@ -1,5 +1,31 @@
 # 06 — Implementation Roadmap
 
+## Training-ready: continuous video states, English-to-motion, Runpod — October 18, 2026
+
+The owner's update unblocked three items and redirected two. See
+`docs/CONTINUOUS_TRAINING.md` and `docs/RUNPOD.md`.
+
+* **Cokely (B67) closed:** the downloaded HD video and EAF equal the binding exactly;
+  six files are in R2.
+* **Continuous source replacement (B01 path):** RIT/CUNY never replied, and research
+  found no continuous ASL 3D corpus without a request. Co-observed states are now
+  estimated from continuous How2Sign video: pinned MediaPipe models on ROI crops,
+  exact swing IK (forward kinematics reproduces every observed bone), anatomical hand
+  assignment, declared unavailable gaze/root/contact. Pilot on real footage: pose and
+  face in 100% of frames. How2Sign translations are in R2; the large zips await Drive's
+  download quota (B75), watched automatically.
+* **SAPA-main:** the authors' code holds no motion, but its WLASL + ASL-LEX phonology
+  joins to 937 of 938 3D-LEX signs as review-required candidates
+  (`data_engineering/sapa_phonology.py`); OpenHands ASL pose archives (CC BY 4.0) are
+  acquired with publisher MD5.
+* **Gloss review:** `docs/GLOSS_REVIEW_PROTOCOL.md`, skeleton previews for 735 signs
+  (R2 zip), and a strict audit; the first sheet's six answers need candidate IDs and
+  reviewer keys before any label is admitted.
+* **Training readiness:** a byte-level text-to-motion transformer
+  (`generation/text_to_motion.py`) trained with the canonical per-channel losses, a
+  sentence-aligned manifest on the frozen signer-disjoint fold plan, and a resumable
+  R2-backed entrypoint with Runpod bootstrap. Remaining input: the Runpod R2 secrets.
+
 ## Every 3D-LEX modality ingested through one manifest — October 18, 2026
 
 All seven 3D-LEX archives are now in R2 and publisher-verified (handshape part 1

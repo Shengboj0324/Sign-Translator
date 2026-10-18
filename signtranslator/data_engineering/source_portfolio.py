@@ -374,6 +374,46 @@ CURRENT_SOURCE_CANDIDATES = (
         "candidates for review, not identifications.",
     ),
     SourceCandidate(
+        "how2sign_video_estimate", "How2Sign continuous video with estimated co-observed 3D",
+        "https://how2sign.github.io/", AccessStatus.PUBLIC_DOWNLOAD,
+        # Estimated channels carry *_estimated names: they are monocular estimates,
+        # so no capture-level co-observation bundle can be satisfied by them.
+        evidence("continuous_asl", "text_alignment", "stable_signer_id", "body_3d_estimated",
+                 "left_hand_3d_estimated", "right_hand_3d_estimated", "head_pose_estimated",
+                 "face_expression_estimated", "eyelid_state_estimated", level=EvidenceLevel.LOCAL_VERIFIED),
+        RightsStatus.PERMITTED, RightsStatus.PROHIBITED, RightsStatus.PROHIBITED,
+        "CC BY-NC 4.0. Body, hands, head and face are MediaPipe estimates from the same frames "
+        "(one clock), observed=False; gaze, root translation and contact are not estimated. "
+        "Large zips await Google Drive's download quota; translations are in R2.",
+    ),
+    SourceCandidate(
+        "openhands_asl_poses", "OpenHands ISLR pose archives (WLASL, MS-ASL, ASLLVD)",
+        "https://zenodo.org/records/6674324", AccessStatus.LOCAL_VERIFIED,
+        evidence("isolated_asl", "two_d_pose", "gloss_label", level=EvidenceLevel.PUBLISHER_CLAIM),
+        RightsStatus.PERMITTED, RightsStatus.UNRESOLVED, RightsStatus.UNRESOLVED,
+        "Pose archives are CC BY 4.0 on Zenodo and acquired with the publisher MD5; the "
+        "underlying videos carry their own terms (WLASL C-UDA, MS-ASL research), so "
+        "commercial use is unresolved. Isolated signs only.",
+    ),
+    SourceCandidate(
+        "sapa_asl_lex_phonology", "SAPA WLASL metadata with ASL-LEX phonology",
+        "https://github.com/OlineRanum/SAPA", AccessStatus.LOCAL_VERIFIED,
+        evidence("phonological_annotation_candidates", level=EvidenceLevel.LOCAL_VERIFIED),
+        RightsStatus.PERMITTED, RightsStatus.PROHIBITED, RightsStatus.PROHIBITED,
+        "Expert ASL-LEX features joined to 937 of 938 3D-LEX signs by exact gloss, plus the "
+        "authors' automatic handshape labels. ASL-LEX is CC BY-NC 4.0; label matches need "
+        "the gloss review.",
+    ),
+    SourceCandidate(
+        "cokely_afs_parallel_corpus", "Cokely AFS Parallel Corpus: I Have a Dream",
+        "https://encompass.eku.edu/cokely_videos/1", AccessStatus.LOCAL_VERIFIED,
+        evidence("continuous_asl", "authentic_gloss", "text_alignment", "rgb_front",
+                 level=EvidenceLevel.LOCAL_VERIFIED),
+        RightsStatus.PERMITTED, RightsStatus.PROHIBITED, RightsStatus.PROHIBITED,
+        "HD video and EAF match the Phase 3A binding exactly (650,953,008 bytes); in R2. "
+        "One interpreted speech: a bounded linguistic pilot, not a population.",
+    ),
+    SourceCandidate(
         "gallaudet_mll", "Gallaudet Motion Light Lab",
         "https://gallaudet.edu/visual-language-visual-learning/ml2/",
         AccessStatus.REQUEST_REQUIRED,

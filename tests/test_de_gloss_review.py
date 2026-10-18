@@ -5,7 +5,8 @@ import io
 import pytest
 
 from signtranslator.data_engineering.gloss_review import (
-    build_review_rows, parse_review_sheet, review_agreement, write_review_sheet,
+    agreed_labels, audit_review_sheet, build_review_rows, parse_review_sheet, review_agreement,
+    write_review_sheet,
 )
 
 A, B = "a" * 64, "b" * 64
@@ -74,3 +75,27 @@ def test_agreement_and_kappa_are_exact():
     assert result["agreement"] == pytest.approx(.75) and result["kappa"] == pytest.approx((.75 - .375) / .625)
     assert result["agreed_labels"] == 3
     assert review_agreement(answers, A, "c" * 64)["signs"] == 0
+
+
+def test_audit_reports_every_problem_and_accepts_decision_case():
+    rows = build_review_rows(RECORDS, gloss_url_base=URL)
+    text = answered(rows, {"about": dict(decision="Confirm"),  # as received: no choice, no key
+                           "hate": dict(decision="CONFIRM", chosen_cve_id="4", reviewer_sha256=A),
+                           "zebra": dict(decision="maybe", reviewer_sha256=A)})
+    answers, problems = audit_review_sheet(text, rows)
+    assert [(a["sign"], a["decision"], a["chosen_cve_id"]) for a in answers] == [("hate", "confirm", "4")]
+    issues = {p["sign"]: p["issues"] for p in problems}
+    assert any("needs chosen_cve_id" in i for i in issues["about"])
+    assert any("never a name" in i for i in issues["about"])
+    assert any("decision must be" in i for i in issues["zebra"])
+
+
+def test_agreed_labels_need_two_unanimous_reviewers():
+    answers = [dict(sign="x", decision="choose", chosen_cve_id="1", reviewer_sha256=A, notes=""),
+               dict(sign="x", decision="choose", chosen_cve_id="1", reviewer_sha256=B, notes=""),
+               dict(sign="y", decision="choose", chosen_cve_id="2", reviewer_sha256=A, notes=""),
+               dict(sign="y", decision="none_match", chosen_cve_id=None, reviewer_sha256=B, notes=""),
+               dict(sign="z", decision="confirm", chosen_cve_id="3", reviewer_sha256=A, notes="")]
+    assert agreed_labels(answers) == {"x": "1"}
+    with pytest.raises(ValueError):
+        agreed_labels(answers, minimum_reviewers=1)
