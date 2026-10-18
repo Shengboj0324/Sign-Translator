@@ -1,0 +1,116 @@
+{
+  "cameras": [
+    "00_21",
+    "00_07"
+  ],
+  "device": "mps",
+  "frames": 101,
+  "notes": [
+    "direction errors are medians/means over bones and frames after one rotation per method",
+    "PA-MPJPE in cm on shoulders, elbows and wrists",
+    "true-calibration triangulation ignores lens distortion"
+  ],
+  "results": {
+    "arm_direction_error_degrees": {
+      "mediapipe_monocular": [
+        13.676829916383928,
+        16.110463131422208,
+        404
+      ],
+      "sapiens_two_view_self_calibrated": [
+        2.9517229019765416,
+        3.0754816661388875,
+        403
+      ],
+      "sapiens_two_view_true_calibration": [
+        2.810991228885356,
+        3.129007068043502,
+        403
+      ]
+    },
+    "arm_pa_mpjpe_cm": {
+      "mediapipe_monocular": 5.3444438373324425,
+      "sapiens_two_view_self_calibrated": 1.374638634816649,
+      "sapiens_two_view_true_calibration": 1.296802170811197
+    },
+    "bone_length_cv": {
+      "mediapipe_monocular": 0.10160524128133318,
+      "sapiens_two_view_self_calibrated": 0.02322152750563783,
+      "sapiens_two_view_true_calibration": 0.026230970994499836
+    },
+    "hand_direction_error_degrees": {
+      "mediapipe_monocular": {
+        "Left": [
+          14.939000380553395,
+          18.199026306802608,
+          2000
+        ],
+        "Right": [
+          19.284031648024254,
+          21.327110147451524,
+          2020
+        ]
+      },
+      "sapiens_two_view_self_calibrated": {
+        "Left": [
+          8.584630119685187,
+          10.877457472714024,
+          2003
+        ],
+        "Right": [
+          6.189846170716773,
+          7.674186366145399,
+          2020
+        ]
+      },
+      "sapiens_two_view_true_calibration": {
+        "Left": [
+          8.579041723569725,
+          10.963326463521543,
+          2003
+        ],
+        "Right": [
+          6.1238609944817775,
+          7.616993177022609,
+          2020
+        ]
+      }
+    },
+    "hand_frames_fraction": {
+      "mediapipe_monocular": {
+        "Left": 0.9900990099009901,
+        "Right": 1.0
+      },
+      "sapiens_two_view_self_calibrated": {
+        "Left": 0.9801980198019802,
+        "Right": 1.0
+      },
+      "sapiens_two_view_true_calibration": {
+        "Left": 0.9801980198019802,
+        "Right": 1.0
+      }
+    }
+  },
+  "schema_version": 1,
+  "self_calibration": {
+    "converged": true,
+    "focal": [
+      1578.2696269206688,
+      1438.129610496434
+    ],
+    "reprojection_px": [
+      0.5805176781482935,
+      0.6267319170250127
+    ],
+    "true_focal": [
+      1397.27,
+      1395.68
+    ]
+  },
+  "sequence": "171204_pose1_sample",
+  "sync": {
+    "correlation": 0.9304363357248525,
+    "lag_frames": 0,
+    "passed": true
+  }
+}
