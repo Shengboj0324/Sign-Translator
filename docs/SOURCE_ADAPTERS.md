@@ -303,7 +303,28 @@ every collated mask matched the manifest, and the cache stayed within 5 MiB.
 With two performer groups no leave-one-group-out plan exists; the manifest records a
 descriptive train-on-one, test-on-the-other split and `confirmatory: false`.
 
-## 13. What remains open for this source
+## 13. Prepared adapter for the continuous source: BVH (`data_engineering/bvh_motion.py`)
+
+The RIT/CUNY ASL Motion-Capture Corpus (first release: 98 multi-sentence stories from
+3 signers, 30 s to 4 min each) ships per story a BVH and an FBX file, gloss start/end
+keyframes, a referent list, an English translation and front, side and face videos.
+Access is by request, so the adapter is written against the BVH format and is ready
+before the files arrive:
+
+* strict parsing of the hierarchy and motion block — one root, unique names, balanced
+  braces, known non-repeated channels, row widths and frame count checked, finite
+  values; `Frame Time` is parsed as an exact decimal and frame `i` is at `i·dt`;
+* rotations compose in listed channel order, `R = R_a(θ₁) R_b(θ₂) R_c(θ₃)`, from
+  standard right-handed elementary rotations (checked against Rodrigues to 1e-14), and
+  forward kinematics `p_child = p_parent + R_parent (offset + T)` is checked exactly;
+* a declared `BVHMapping` must cover every joint as mapped or excluded and name the
+  root with position channels; the metre conversion is declared, not inferred;
+* gloss keyframes convert to seconds exactly on the file's own clock.
+
+The mapping for the real skeleton, and any face or gaze channels (the release lists a
+face video, not face tracking), can only be declared after the first file is inspected.
+
+## 14. What remains open for this source
 
 * Face-to-skeleton synchronisation: unrecoverable from the release; would need a
   shared event or timecode from the publisher.

@@ -9,7 +9,8 @@ named instead of guessed.
 
 ## 1. RIT/CUNY continuous motion sample (closes B01 if the sample qualifies)
 
-**To:** matt.huenerfauth@rit.edu
+**To:** matt.huenerfauth@rit.edu (the corpus page, latlab.ist.rit.edu/corpus/, also lists
+matt at cs.qc.cuny.edu)
 **Subject:** Research access request: one continuous ASL motion-capture sample
 
 Dear Dr. Huenerfauth,
@@ -85,7 +86,14 @@ With thanks,
 
 ---
 
-## 4. Cokely HD video (B67) — your own download, no email needed
+## 4. SignAvatars annotations — a form only you can submit
+
+SignAvatars (github.com/ZhengdiYu/SignAvatars) releases its SMPL-X/MANO annotations,
+including a 34K-clip ASL subset built on How2Sign green-screen clips, only through a
+request form for non-commercial research. Submitting it binds you to their data licence,
+so it must be you. The How2Sign front-view clips it builds on are already part of the local verified release.
+
+## 5. Cokely HD video (B67) — your own download, no email needed
 
 Open the publisher page in a normal browser, download
 `2_I_Have_a_Dream_720_CokelyAFSParallelCorpus_v1_0.mp4`, and tell me its location.
