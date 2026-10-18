@@ -1,0 +1,399 @@
+{
+  "alpha": 0.1,
+  "difficulty": "largest geodesic angle between the visible rotations bracketing the span",
+  "floor_degrees": 0.1,
+  "independent_performers": 2,
+  "interpretation": "same-performer coverage is covered by the split-conformal theorem; other-performer coverage tests transfer and carries no guarantee",
+  "manifest_sha256": "c761728913baf7be422a665c377952852ae09504b444d92e746081ab819561e7",
+  "method": "geodesic interpolation",
+  "phase_exit_approved": false,
+  "results": [
+    {
+      "calibration": {
+        "alpha": 0.1,
+        "calibration_units": 210,
+        "floor": 0.1,
+        "quantile": 1.1013950144368918
+      },
+      "channel": "body",
+      "other_performer": {
+        "abstention_rate": 0.5956284153005464,
+        "accepted_mean_error": 0.36588864047903535,
+        "accepted_violation_rate": 0.01092896174863388,
+        "coverage": 0.9617486338797814,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 183
+      },
+      "same_performer_held_out": {
+        "abstention_rate": 0.7952380952380952,
+        "accepted_mean_error": 0.4922562604717022,
+        "accepted_violation_rate": 0.004761904761904762,
+        "coverage": 0.8857142857142857,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 210
+      },
+      "span_seconds": 0.25,
+      "transfer_calibration": {
+        "alpha": 0.1,
+        "calibration_units": 420,
+        "floor": 0.1,
+        "quantile": 1.1601954678965105
+      }
+    },
+    {
+      "calibration": {
+        "alpha": 0.1,
+        "calibration_units": 110,
+        "floor": 0.1,
+        "quantile": 0.8727538200437293
+      },
+      "channel": "left_hand",
+      "other_performer": {
+        "abstention_rate": 0.38235294117647056,
+        "accepted_mean_error": 0.6075541978147835,
+        "accepted_violation_rate": 0.022058823529411766,
+        "coverage": 0.6617647058823529,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 136
+      },
+      "same_performer_held_out": {
+        "abstention_rate": 0.8198198198198198,
+        "accepted_mean_error": 0.3445878605078763,
+        "accepted_violation_rate": 0.009009009009009009,
+        "coverage": 0.9369369369369369,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 111
+      },
+      "span_seconds": 0.25,
+      "transfer_calibration": {
+        "alpha": 0.1,
+        "calibration_units": 221,
+        "floor": 0.1,
+        "quantile": 0.8412489024315453
+      }
+    },
+    {
+      "calibration": {
+        "alpha": 0.1,
+        "calibration_units": 188,
+        "floor": 0.1,
+        "quantile": 0.8086635895216467
+      },
+      "channel": "right_hand",
+      "other_performer": {
+        "abstention_rate": 0.5668789808917197,
+        "accepted_mean_error": 0.2529145812639083,
+        "accepted_violation_rate": 0.0,
+        "coverage": 0.9363057324840764,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 157
+      },
+      "same_performer_held_out": {
+        "abstention_rate": 0.5425531914893617,
+        "accepted_mean_error": 0.5281041876726777,
+        "accepted_violation_rate": 0.015957446808510637,
+        "coverage": 0.9095744680851063,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 188
+      },
+      "span_seconds": 0.25,
+      "transfer_calibration": {
+        "alpha": 0.1,
+        "calibration_units": 376,
+        "floor": 0.1,
+        "quantile": 0.7863306172862035
+      }
+    },
+    {
+      "calibration": {
+        "alpha": 0.1,
+        "calibration_units": 210,
+        "floor": 0.1,
+        "quantile": 1.037564065574201
+      },
+      "channel": "head_rotation",
+      "other_performer": {
+        "abstention_rate": 0.16939890710382513,
+        "accepted_mean_error": 0.24671054504151427,
+        "accepted_violation_rate": 0.0,
+        "coverage": 0.9781420765027322,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 183
+      },
+      "same_performer_held_out": {
+        "abstention_rate": 0.2761904761904762,
+        "accepted_mean_error": 0.4613712624670521,
+        "accepted_violation_rate": 0.004761904761904762,
+        "coverage": 0.8571428571428571,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 210
+      },
+      "span_seconds": 0.25,
+      "transfer_calibration": {
+        "alpha": 0.1,
+        "calibration_units": 420,
+        "floor": 0.1,
+        "quantile": 1.1163860971191297
+      }
+    },
+    {
+      "calibration": {
+        "alpha": 0.1,
+        "calibration_units": 208,
+        "floor": 0.1,
+        "quantile": 1.06650545913874
+      },
+      "channel": "body",
+      "other_performer": {
+        "abstention_rate": 0.6978021978021978,
+        "accepted_mean_error": 0.3765114449321487,
+        "accepted_violation_rate": 0.005494505494505495,
+        "coverage": 0.9505494505494505,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 182
+      },
+      "same_performer_held_out": {
+        "abstention_rate": 0.9234449760765551,
+        "accepted_mean_error": 0.8165014788458427,
+        "accepted_violation_rate": 0.0,
+        "coverage": 0.84688995215311,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 209
+      },
+      "span_seconds": 0.5,
+      "transfer_calibration": {
+        "alpha": 0.1,
+        "calibration_units": 417,
+        "floor": 0.1,
+        "quantile": 1.3580043354080962
+      }
+    },
+    {
+      "calibration": {
+        "alpha": 0.1,
+        "calibration_units": 109,
+        "floor": 0.1,
+        "quantile": 0.9537511740108743
+      },
+      "channel": "left_hand",
+      "other_performer": {
+        "abstention_rate": 0.48148148148148145,
+        "accepted_mean_error": 0.733628370703507,
+        "accepted_violation_rate": 0.02962962962962963,
+        "coverage": 0.6592592592592592,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 135
+      },
+      "same_performer_held_out": {
+        "abstention_rate": 0.9357798165137615,
+        "accepted_mean_error": 0.5679038575407713,
+        "accepted_violation_rate": 0.0,
+        "coverage": 0.908256880733945,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 109
+      },
+      "span_seconds": 0.5,
+      "transfer_calibration": {
+        "alpha": 0.1,
+        "calibration_units": 218,
+        "floor": 0.1,
+        "quantile": 0.9537511740108743
+      }
+    },
+    {
+      "calibration": {
+        "alpha": 0.1,
+        "calibration_units": 187,
+        "floor": 0.1,
+        "quantile": 0.9624466020591155
+      },
+      "channel": "right_hand",
+      "other_performer": {
+        "abstention_rate": 0.6794871794871795,
+        "accepted_mean_error": 0.1771907164226662,
+        "accepted_violation_rate": 0.0,
+        "coverage": 0.9294871794871795,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 156
+      },
+      "same_performer_held_out": {
+        "abstention_rate": 0.7165775401069518,
+        "accepted_mean_error": 0.38633531370193813,
+        "accepted_violation_rate": 0.0053475935828877,
+        "coverage": 0.9037433155080213,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 187
+      },
+      "span_seconds": 0.5,
+      "transfer_calibration": {
+        "alpha": 0.1,
+        "calibration_units": 374,
+        "floor": 0.1,
+        "quantile": 0.9565070463257964
+      }
+    },
+    {
+      "calibration": {
+        "alpha": 0.1,
+        "calibration_units": 208,
+        "floor": 0.1,
+        "quantile": 1.328740682976956
+      },
+      "channel": "head_rotation",
+      "other_performer": {
+        "abstention_rate": 0.3516483516483517,
+        "accepted_mean_error": 0.39147894249931614,
+        "accepted_violation_rate": 0.005494505494505495,
+        "coverage": 0.9560439560439561,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 182
+      },
+      "same_performer_held_out": {
+        "abstention_rate": 0.5406698564593302,
+        "accepted_mean_error": 0.71744102381213,
+        "accepted_violation_rate": 0.014354066985645933,
+        "coverage": 0.937799043062201,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 209
+      },
+      "span_seconds": 0.5,
+      "transfer_calibration": {
+        "alpha": 0.1,
+        "calibration_units": 417,
+        "floor": 0.1,
+        "quantile": 1.2240044946315511
+      }
+    },
+    {
+      "calibration": {
+        "alpha": 0.1,
+        "calibration_units": 209,
+        "floor": 0.1,
+        "quantile": 1.1839883521494725
+      },
+      "channel": "body",
+      "other_performer": {
+        "abstention_rate": 0.75,
+        "accepted_mean_error": 0.435321936170566,
+        "accepted_violation_rate": 0.0,
+        "coverage": 0.9333333333333333,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 180
+      },
+      "same_performer_held_out": {
+        "abstention_rate": 0.9952153110047847,
+        "accepted_mean_error": 1.2827600270162822,
+        "accepted_violation_rate": 0.0,
+        "coverage": 0.9234449760765551,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 209
+      },
+      "span_seconds": 1.0,
+      "transfer_calibration": {
+        "alpha": 0.1,
+        "calibration_units": 418,
+        "floor": 0.1,
+        "quantile": 1.1127407092282926
+      }
+    },
+    {
+      "calibration": {
+        "alpha": 0.1,
+        "calibration_units": 110,
+        "floor": 0.1,
+        "quantile": 0.9960614087901442
+      },
+      "channel": "left_hand",
+      "other_performer": {
+        "abstention_rate": 0.5074626865671642,
+        "accepted_mean_error": 1.0865294719937069,
+        "accepted_violation_rate": 0.07462686567164178,
+        "coverage": 0.6492537313432836,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 134
+      },
+      "same_performer_held_out": {
+        "abstention_rate": 1.0,
+        "accepted_mean_error": null,
+        "accepted_violation_rate": 0.0,
+        "coverage": 0.8108108108108109,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 111
+      },
+      "span_seconds": 1.0,
+      "transfer_calibration": {
+        "alpha": 0.1,
+        "calibration_units": 221,
+        "floor": 0.1,
+        "quantile": 1.1022123899585663
+      }
+    },
+    {
+      "calibration": {
+        "alpha": 0.1,
+        "calibration_units": 188,
+        "floor": 0.1,
+        "quantile": 1.035915760215036
+      },
+      "channel": "right_hand",
+      "other_performer": {
+        "abstention_rate": 0.7677419354838709,
+        "accepted_mean_error": 0.19839534174341644,
+        "accepted_violation_rate": 0.0,
+        "coverage": 0.9290322580645162,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 155
+      },
+      "same_performer_held_out": {
+        "abstention_rate": 0.8138297872340425,
+        "accepted_mean_error": 0.47720733483192074,
+        "accepted_violation_rate": 0.0,
+        "coverage": 0.898936170212766,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 188
+      },
+      "span_seconds": 1.0,
+      "transfer_calibration": {
+        "alpha": 0.1,
+        "calibration_units": 376,
+        "floor": 0.1,
+        "quantile": 1.035915760215036
+      }
+    },
+    {
+      "calibration": {
+        "alpha": 0.1,
+        "calibration_units": 209,
+        "floor": 0.1,
+        "quantile": 1.3862212150917235
+      },
+      "channel": "head_rotation",
+      "other_performer": {
+        "abstention_rate": 0.5,
+        "accepted_mean_error": 0.7144264745122427,
+        "accepted_violation_rate": 0.03333333333333333,
+        "coverage": 0.9111111111111111,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 180
+      },
+      "same_performer_held_out": {
+        "abstention_rate": 0.7990430622009569,
+        "accepted_mean_error": 1.1348534643955137,
+        "accepted_violation_rate": 0.014354066985645933,
+        "coverage": 0.8995215311004785,
+        "guarantee": "P(accept and error > 2.0) <= 0.1 under exchangeability",
+        "units": 209
+      },
+      "span_seconds": 1.0,
+      "transfer_calibration": {
+        "alpha": 0.1,
+        "calibration_units": 418,
+        "floor": 0.1,
+        "quantile": 1.3866854952375944
+      }
+    }
+  ],
+  "schema_version": 1,
+  "tolerance_degrees": 2.0,
+  "unit": "one hidden span of one sign; error is the span's largest geodesic error"
+}

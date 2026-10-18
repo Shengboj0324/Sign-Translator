@@ -32,7 +32,6 @@ from signtranslator.generation.representation_comparison import hidden_spans  # 
 from signtranslator.pose.multichannel import MultichannelMotion  # noqa: E402
 from w4_convert_3dlex import client  # noqa: E402
 
-SPAN_SECONDS = .25
 
 
 def sign_seed(sign: str, variant: int | None = None) -> int:
@@ -47,6 +46,8 @@ def main(argv=None) -> int:
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--variants", type=int, default=6)
     parser.add_argument("--hidden-dim", type=int, default=96)
+    parser.add_argument("--span-seconds", type=float, default=.25,
+                        help="hidden span length; .25 is the original run, longer gaps were pre-declared")
     args = parser.parse_args(argv)
     report = json.loads(args.conversion_report.read_bytes())
     records = [r for r in report["records"] if "state_key" in r]
@@ -68,7 +69,7 @@ def main(argv=None) -> int:
     def example(sign, seed):
         state = states[sign][1]
         try:
-            hidden = hidden_spans(state, channels=ROTATION_CHANNELS, span_seconds=SPAN_SECONDS,
+            hidden = hidden_spans(state, channels=ROTATION_CHANNELS, span_seconds=args.span_seconds,
                                   spans=1, seed=seed)
         except ValueError:
             return None
@@ -110,7 +111,7 @@ def main(argv=None) -> int:
         design="train one performer, select on held-out tenth of its signs, test once on the other",
         train_performer_sha256=train_performer, test_performer_sha256=test_performer,
         fit_signs=len(fit_signs), validation_signs=len(validation_signs), test_signs=len(test_signs),
-        train_examples=len(training), span_seconds=SPAN_SECONDS, variants=args.variants,
+        train_examples=len(training), span_seconds=args.span_seconds, variants=args.variants,
         hidden_dim=args.hidden_dim, epochs=args.epochs, selected_epoch=best[1],
         parameters=sum(p.numel() for p in model.parameters()),
         validation_history=history, test=test_result,

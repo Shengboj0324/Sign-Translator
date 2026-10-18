@@ -30,12 +30,21 @@ against the measured files. See `docs/SOURCE_ADAPTERS.md` §9–§12.
   dataset serve performer-disjoint partitions with unadmitted channels masked. An
   end-to-end run on the real manifest matched every collated mask.
 
-Validation: the full warning-strict suite passes **3,023 tests in 147.73 seconds**;
+* **Item 5 on real data: longer gaps and calibration.** The pre-declared 0.5 s and
+  1.0 s gap runs are negative as well: the learned model never beats interpolation on
+  validation, so interpolation stays selected. `generation/conformal_abstention.py` gives
+  it a split-conformal error bound with abstention whose accepted-miss rate is at most
+  α by construction; on real data within-performer coverage is 0.893 (target 0.90),
+  transfer holds for body, right hand and head and fails for the left hand. See
+  `docs/CALIBRATION_ABSTENTION.md`.
+
+Validation: the full warning-strict suite passes **3,028 tests in 159.06 seconds**;
 hashes of every changed file are in
 `evidence/w1-w4-seal-2026-10-17/final-verification-2026-10-18.json`.
 Evidence: `evidence/w4-3dlex-ingestion-2026-10-18-v2/` (v1 superseded) and
-`evidence/w4-3dlex-2026-10-17/` (conversion v4, baselines v4, experiment v4, the
-sanitized acquisition ledger).
+`evidence/w4-3dlex-2026-10-17/` (conversion v4, baselines and experiments v4 at three
+gap lengths, the sanitized acquisition ledger) and
+`evidence/w5-calibration-abstention-2026-10-18/`.
 
 ## First real canonical data: 3D-LEX acquired, adapted and validated — October 18, 2026
 

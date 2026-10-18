@@ -190,9 +190,21 @@ float32 rounding as wins and is superseded by explicit better/worse/tied counts)
 0.25 s gaps in 24 fps solved motion, interpolation is near the noise floor and this
 model overfits its training performer instead of
 generalising. Simple baselines stay eligible to win, and here interpolation wins.
-The next pre-declared question is whether learning helps on longer gaps, where
-interpolation degrades; it was not run after seeing this result, to avoid choosing a
-protocol by its outcome. One held-out performer is one unit, so this is descriptive.
+The pre-declared follow-up asked whether learning helps on longer gaps, where
+interpolation degrades. It was run with the identical design and seed rule:
+
+| Hidden span | Interpolation, validation | Model, validation (30 epochs) | Selected | Test (other performer) |
+|---|---:|---:|---|---:|
+| 0.25 s | 1.27° | 1.41–1.64° | epoch 0 | 0.739°, 183 signs tied |
+| 0.5 s | 2.46° | 2.63–3.66° | epoch 0 | 1.450°, 182 signs tied |
+| 1.0 s | 4.12° | 4.22–5.03° | epoch 0 | 2.802°, 180 signs tied |
+
+Interpolation error grows roughly linearly with the gap (body 0.75°, 1.47°, 2.60°;
+`baseline-comparison-v4-span*.json`), yet this model never beats it on validation at
+any length. The negative result therefore holds across the pre-declared gap lengths
+for this model and this data: about 400 isolated signs from one performer do not
+teach a residual model structure that interpolation lacks. One held-out performer is
+one unit, so this is descriptive.
 
 ## 9. Face, gaze and eyelid: Live Link Face (`data_engineering/llf_face.py`)
 
