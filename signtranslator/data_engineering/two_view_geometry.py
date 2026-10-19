@@ -1,7 +1,7 @@
 """Two-view self-calibration and triangulation using the signer as calibration object.
 
 How2Sign recorded each session with a frontal and a lateral HD camera (1280×720,
-30 fps) whose calibration was not released. This module recovers both cameras from
+24 fps H.264, measured on the acquired clips) whose calibration was not released. This module recovers both cameras from
 the signer's own 2D keypoints and triangulates 3D.
 
 **Why plain epipolar self-calibration is not enough.** Both cameras look at the

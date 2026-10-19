@@ -25,7 +25,7 @@ better pipeline is implemented and measured.**
 
 | Option | Gain | Cost / condition |
 |---|---|---|
-| **Two-view triangulation of How2Sign** (frontal + lateral HD cameras, both 1280×720 at 30 fps in the same studio) | Removes monocular depth ambiguity: 3D from geometry, not a guess | Calibration is not released → self-calibrate per recording session from the signer's own keypoints; synchronisation not documented → measure it |
+| **Two-view triangulation of How2Sign** (frontal + lateral HD cameras, both 1280×720 H.264 at 24 fps in the same studio, measured on the acquired clips) | Removes monocular depth ambiguity: 3D from geometry, not a guess | Calibration is not released → self-calibrate per recording session from the signer's own keypoints; synchronisation not documented → measure it |
 | **Sapiens 2D keypoints** (Meta, 308 points incl. dense hands and face; CC BY-NC 4.0) | Best occlusion robustness and near-best translation BLEU in the 2026 study | GPU (Runpod); non-commercial, like How2Sign |
 | SDPose (MIT) | Best BLEU in the study | GPU, slow |
 | WiLoR / HaMeR hands | Strong monocular fingers | MANO licence (owner registration) |
@@ -145,7 +145,7 @@ What each step contributed, and what was rejected:
    it cost 0.6° arm and 0.8 cm PA-MPJPE on the tuning sequence.
 6. **Temporal smoothing of the triangulated arms — not adopted.** A Gaussian of
    σ = 1 frame gained 0.1–0.3° arm direction under self-calibration on all three
-   sequences but was mixed under the dome calibration (−0.18 to +0.10°); at 30 fps it
+   sequences but was mixed under the dome calibration (−0.18 to +0.10°); at Panoptic's 30 fps — and more so at How2Sign's 24 fps — it
    begins to attenuate the fastest arm movements, which the motion model must learn,
    so the gain does not justify the bandwidth loss.
 7. **High-resolution hand crops — rejected.** The whole-body model is less confident
