@@ -122,7 +122,7 @@ the regressor on signer-disjoint validation; train both and select on
 # Diffusion
 python scripts/train_text_to_motion.py --manifest-key $D/how2sign-text-manifest-v1/manifest.json --manifest-sha256 <MANIFEST_SHA256> --run t2m-diffusion-v1 --objective diffusion --steps 200000 --batch-size 32 --workers 8
 # Motion tokens: tokenizer, then the prior with the tokenizer pinned by hash
-python scripts/train_motion_tokens.py --stage tokenizer --manifest-key $D/how2sign-text-manifest-v1/manifest.json --manifest-sha256 <MANIFEST_SHA256> --run tokens-vq-v1 --steps 200000 --hidden 512 --code-dim 256 --codebook 1024 --batch-size 64 --workers 8
+python scripts/train_motion_tokens.py --stage tokenizer --manifest-key $D/how2sign-text-manifest-v1/manifest.json --manifest-sha256 <MANIFEST_SHA256> --run tokens-vq-v1 --steps 200000 --hidden 512 --code-dim 256 --codebook 1024 --down-layers 1 --batch-size 64 --workers 8
 python scripts/train_motion_tokens.py --stage prior --manifest-key $D/how2sign-text-manifest-v1/manifest.json --manifest-sha256 <MANIFEST_SHA256> --run tokens-prior-v1 --tokenizer-key training-runs/tokens-vq-v1/checkpoints/step-00200000.pt --tokenizer-sha256 <TOKENIZER_SHA256> --steps 200000 --batch-size 32 --workers 8
 python scripts/evaluate_text_to_motion.py --manifest-key $D/how2sign-text-manifest-v1/manifest.json --manifest-sha256 <MANIFEST_SHA256> --checkpoint-key training-runs/tokens-prior-v1/checkpoints/step-00200000.pt --partition val --guidance 1,2,3
 ``` If the pod

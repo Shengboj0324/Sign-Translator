@@ -236,6 +236,13 @@ On a controlled bimodal task (one text, body rotated ±45°) the regressor outpu
 - **Fréchet caveat:** generated clips are valid in every frame, while real clips lack
   hands in some frames, so part of each Fréchet value reflects missing hands rather
   than motion.
+- **Halving the tokenizer's downsampling (÷2 instead of ÷4, same budget)** improves its
+  reconstruction: hand speed ratio 0.16 → 0.20–0.21, body 0.74 → 1.03, Fréchet 2506 →
+  2351. Per-frame error stays at 16° body and 20° hands.
+- **That error floor is partly the proxy data.** Monocular MediaPipe hand landmarks
+  jitter, which inflates the reference hands' measured speed. The two-view states'
+  hand refit (temporal smoothness, hinge prior) gives cleaner targets. The production
+  tokenizer should use `--down-layers 1`.
 
 **Recommendation for the production run** (two-view states, full corpus, Runpod):
 train the motion-token generator as the primary model, with a larger tokenizer
