@@ -419,18 +419,21 @@ def _unit_to_raw(model: TextToMotion, unit: torch.Tensor) -> dict:
 
 @torch.no_grad()
 def generate(model: TextToMotion, texts, *, fps: float, sample_prefix: str = "generated", steps: int = 50,
-             guidance: float = 2., eta: float = 0., seed: int = 0) -> list[MultichannelMotion]:
+             guidance: float = 2., eta: float = 0., seed: int = 0, durations=None) -> list[MultichannelMotion]:
     """Generated canonical states: observed=False, zero confidence, on a declared clock.
 
     Regression models decode once; diffusion models sample with ``steps`` DDIM steps,
     classifier-free ``guidance`` and stochasticity ``eta`` from a seeded generator.
+    ``durations`` (seconds per text) replaces the predicted durations, e.g. to compare
+    with reference motion frame by frame.
     """
     model.eval()
     tokens, mask = encode_texts(texts, max_bytes=model.config.max_text_bytes)
     device = next(model.parameters()).device
     tokens, mask = tokens.to(device), mask.to(device)
     hidden, log_duration = model.encode(tokens, mask)
-    durations = log_duration.exp().clamp(1 / fps, model.config.max_seconds)
+    durations = (log_duration.exp() if durations is None else
+                 torch.as_tensor(durations, dtype=log_duration.dtype, device=device)).clamp(1 / fps, model.config.max_seconds)
     generator = torch.Generator().manual_seed(seed)
     if model.config.objective == "diffusion":
         empty = _empty_text_like(tokens[:1, :2])
