@@ -49,12 +49,31 @@ class StoreRangeFile(io.RawIOBase):
         size = self.size - self.position if size is None or size < 0 else min(size, self.size - self.position)
         if size <= 0:
             return b""
-        data = self.s3.get_object(Bucket=self.bucket, Key=self.key,
-                                  Range=f"bytes={self.position}-{self.position + size - 1}")["Body"].read()
+        data = self._ranged(self.position, size)
         if len(data) != size:
             raise IOError("short ranged read")
         self.position += size
         return data
+
+    def _ranged(self, start: int, size: int, attempts: int = 12) -> bytes:
+        """One ranged GET, retried with jittered exponential backoff when R2 throttles.
+
+        R2 answers many workers reading the same object with ServiceUnavailable
+        ("reduce your rate of simultaneous reads"); that is transient, not a failure.
+        """
+        import random
+        import time
+        from botocore.exceptions import ClientError
+        for attempt in range(attempts):
+            try:
+                return self.s3.get_object(Bucket=self.bucket, Key=self.key,
+                                          Range=f"bytes={start}-{start + size - 1}")["Body"].read()
+            except ClientError as error:
+                code = error.response.get("Error", {}).get("Code", "")
+                if code not in ("ServiceUnavailable", "SlowDown", "503", "InternalError") or attempt == attempts - 1:
+                    raise
+                time.sleep(min(30., .5 * 2 ** attempt) * (.5 + random.random()))
+        raise AssertionError("unreachable")
 
     def readinto(self, buffer):
         data = self.read(len(buffer))

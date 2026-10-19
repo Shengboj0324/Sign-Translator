@@ -25,3 +25,35 @@ def test_sapiens_job_refuses_a_file_without_video(tmp_path):
     from sapiens_keypoints_runpod import clip_keypoints
     with pytest.raises(ValueError):
         clip_keypoints(streamless_mp4(tmp_path / "empty.mp4"), model=None, device=torch.device("cpu"), batch=1)
+
+
+def test_ranged_reads_retry_r2_throttling_and_raise_other_errors(monkeypatch):
+    from botocore.exceptions import ClientError
+    from extract_video_states import StoreRangeFile
+    import time
+    monkeypatch.setattr(time, "sleep", lambda seconds: None)
+    calls = {"n": 0}
+
+    class Body:
+        def read(self):
+            return b"abcd"
+
+    class FakeS3:
+        def head_object(self, **_):
+            return {"ContentLength": 4}
+
+        def get_object(self, **_):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise ClientError({"Error": {"Code": "ServiceUnavailable"}}, "GetObject")
+            return {"Body": Body()}
+
+    stream = StoreRangeFile(FakeS3(), "bucket", "key")
+    assert stream.read(4) == b"abcd" and calls["n"] == 3
+
+    class Denied(FakeS3):
+        def get_object(self, **_):
+            raise ClientError({"Error": {"Code": "AccessDenied"}}, "GetObject")
+
+    with pytest.raises(ClientError):
+        StoreRangeFile(Denied(), "bucket", "key").read(4)
