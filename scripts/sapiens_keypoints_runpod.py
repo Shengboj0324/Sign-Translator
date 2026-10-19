@@ -16,6 +16,7 @@ import hashlib
 import io
 import json
 import os
+import re
 from pathlib import Path
 import sys
 import tempfile
@@ -84,16 +85,20 @@ def main(argv=None) -> int:
     parser.add_argument("--shards", type=int, default=1)
     parser.add_argument("--batch", type=int, default=16)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--match", help="only clips whose file name matches this regular expression")
     parser.add_argument("--no-flip", dest="flip", action="store_false", help="disable flip test-time augmentation")
     args = parser.parse_args(argv)
     store = R2Store(os.environ)
     provenance = json.loads(store.get(args.zip_key + ".provenance.json"))
     if provenance.get("sha256") != args.zip_sha256 or not provenance.get("verified_by_r2_reread"):
         raise SystemExit("the zip is not the verified acquisition named by --zip-sha256")
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else
+                          "mps" if torch.backends.mps.is_available() else "cpu")
     model, model_sha = load_model(args.checkpoint, args.checkpoint_sha256, device)
     archive = zipfile.ZipFile(io.BufferedReader(StoreRangeFile(store.s3, store.bucket, args.zip_key), 1 << 20))
     members = sorted(n for n in archive.namelist() if n.endswith(".mp4"))
+    if args.match:
+        members = [m for m in members if re.search(args.match, Path(m).name)]
     shard = [m for i, m in enumerate(members) if i % args.shards == args.shard][:args.limit]
     prefix = args.prefix.rstrip("/")
     done = 0

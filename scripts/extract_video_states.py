@@ -15,6 +15,7 @@ import hashlib
 import io
 import json
 import os
+import re
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 import sys
@@ -115,6 +116,7 @@ def main(argv=None) -> int:
     parser.add_argument("--shards", type=int, default=1)
     parser.add_argument("--workers", type=int, default=os.cpu_count() or 1)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--match", help="only clips whose file name matches this regular expression")
     args = parser.parse_args(argv)
     if not 0 <= args.shard < args.shards:
         raise SystemExit("shard must be in [0, shards)")
@@ -125,6 +127,8 @@ def main(argv=None) -> int:
         raise SystemExit("the zip is not the verified acquisition named by --zip-sha256")
     archive = zipfile.ZipFile(io.BufferedReader(StoreRangeFile(store.s3, store.bucket, args.zip_key), 1 << 20))
     members = sorted(n for n in archive.namelist() if n.endswith(".mp4"))
+    if args.match:
+        members = [m for m in members if re.search(args.match, Path(m).name)]
     shard = [m for i, m in enumerate(members) if i % args.shards == args.shard][:args.limit]
     print(f"{len(members)} clips, shard {args.shard}/{args.shards}: {len(shard)}", flush=True)
     jobs = [(m, args.prefix.rstrip("/"), args.source_id, args.zip_sha256) for m in shard]
