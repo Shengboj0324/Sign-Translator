@@ -264,3 +264,15 @@ in the order they were found:
 
    The full run calibrates intrinsics over 40 sessions (`calibrate_how2sign_cameras.py`)
    and reports every session's gate; training uses only passing sessions.
+8. **End to end on a training-split session.** `03SgrpiJkSw-8` (15 clips, train
+   partition of the frozen fold plan) was run with intrinsics fitted only on the three
+   validation sessions (SHA-256 `e9448d9d…`). Result:
+   - lag 0, 15/15 clips;
+   - reprojection 1.18/0.83 px;
+   - arm CV 0.040 against monocular 0.046, so the gate **passes**; 15 two-view states.
+
+   `build_how2sign_text_manifest.py` built a manifest from the two-view report
+   (`a72fef8c…`; 15 train records, no missing text), and `train_text_to_motion.py` ran 30
+   steps of a small model on it. The loss fell from 1.74 to 0.82 (body 0.44 → 0.12), and
+   the checkpoint and log were written to `training-runs/pilot-smoke-2026-10-19/`. This
+   verifies every stage from the verified zips to a training step on real two-view states.
