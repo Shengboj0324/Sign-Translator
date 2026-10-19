@@ -79,6 +79,13 @@ done
 python scripts/triangulate_how2sign_sessions.py --front-keypoints $D/how2sign-sapiens-front-v1 --side-keypoints $D/how2sign-sapiens-side-v1 --monocular $D/how2sign-video-estimate-v1 --prefix $D/how2sign-two-view-v1 --shard 0 --shards 8
 ```
 
+**Compute budget.** The clips total 67.0 hours (train 59.3, val 3.3, test 4.3; 35,263
+sentences) at 24 fps: 5.79 M frames per view, so 23.2 M Sapiens-1B forward passes for
+both views with flip TTA (11.6 M with `--no-flip`). Measured on the pilot session
+(Apple M-series GPU, fp32, 817 frames): 1.34 s per pass. Measure the pod's rate on one shard with
+`--limit 50` before launching all shards, and size the shard count from it; the
+MediaPipe and triangulation stages are CPU-bound and comparatively cheap.
+
 **Gate before training.** Read every `how2sign-two-view-v1/reports/*.json`: each session
 lists its gate result and reasons. Train only on the two-view states (the manifest
 below is built from `how2sign-two-view-v1/reports/`). If too few sessions pass, stop
