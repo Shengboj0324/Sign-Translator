@@ -5,7 +5,7 @@ from scipy.spatial.transform import Rotation
 
 from signtranslator.data_engineering.two_view_geometry import (
     TwoViewObservations, bone_length_cv, calibrate, eight_point, intrinsics, project, sampson,
-    triangulate, triangulate_session, view_offset,
+    distort_division, triangulate, triangulate_session, undistort_division, view_offset,
 )
 
 SIZE = (1280, 720)
@@ -91,3 +91,18 @@ def test_reprojection_alone_cannot_detect_the_fixating_degeneracy():
     assert max(unconstrained.median_reprojection_px) < 1.  # looks fine...
     assert abs(unconstrained.focal1 / 1100. - 1) > .2       # ...but is not
     assert unconstrained.bone_length_cv > 10 * constrained.bone_length_cv
+
+
+def test_division_model_distortion_is_recovered_and_removes_its_bias():
+    obs, rotation, _ = observations(noise=.5, seed=3)
+    distorted = TwoViewObservations(distort_division(obs.view1, SIZE, 1100., .25),
+                                    distort_division(obs.view2, SIZE, 1450., .15),
+                                    obs.usable, SIZE, SIZE, obs.bones)
+    np.testing.assert_allclose(undistort_division(distorted.view1, SIZE, 1100., .25), obs.view1, atol=1e-3)
+    pinhole = calibrate(distorted, focal_guess=1280.)
+    modelled = calibrate(distorted, focal_guess=1280., distortion=True)
+    assert abs(modelled.distortion[0] - .25) < .05 and abs(modelled.distortion[1] - .15) < .05
+    assert abs(modelled.focal1 / 1100. - 1) < .03 and abs(modelled.focal2 / 1450. - 1) < .03
+    assert max(modelled.median_reprojection_px) < max(pinhole.median_reprojection_px)
+    assert bone_length_cv(triangulate_session(modelled, distorted), obs.bones) < \
+        bone_length_cv(triangulate_session(pinhole, distorted), obs.bones)

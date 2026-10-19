@@ -29,8 +29,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from signtranslator.data.text_motion_dataset import R2Store  # noqa: E402
 from signtranslator.data_engineering.two_view_states import (  # noqa: E402
-    ClipKeypoints, aligned, calibrate_session, monocular_bone_cv, rotation_inputs, session_gate, symmetry_error,
-    synchronise, triangulated_bone_cv, triangulated_points, triangulated_state,
+    ClipKeypoints, aligned, calibrate_session, monocular_bone_cv, refined_points, rotation_inputs, session_gate,
+    symmetry_error, synchronise, triangulated_bone_cv, triangulated_points, triangulated_state,
 )
 from signtranslator.data_engineering.video_landmarks import solve_rotations  # noqa: E402
 from signtranslator.pose.multichannel import MultichannelMotion  # noqa: E402
@@ -98,6 +98,7 @@ def main(argv=None) -> int:
         triangulated, mono_cvs = {}, []
         for sentence, front, side, lag, (times, fp, fc, sp, sc) in aligned_pairs:
             points, usable = triangulated_points(calibration, fp, fc, sp, sc)
+            points = refined_points(calibration, points, usable, fp, fc, sp, sc)
             triangulated[sentence] = (points, usable, max(0, -lag), len(times))
             landmarks_key = f"{args.monocular.rstrip('/')}/landmarks/{sentence}-rgb_front.npz"
             if store.exists(landmarks_key):
@@ -123,7 +124,8 @@ def main(argv=None) -> int:
             state = triangulated_state(monocular, slice(start, start + count), rotations, hands,
                                        source_id="how2sign_two_view", source_sha256=mono_sha,
                                        inference_method=("Sapiens-1B Goliath on frontal and lateral views, "
-                                                         "bone-constrained two-view self-calibration, swing IK; "
+                                                         "bone-constrained two-view self-calibration, rigid smooth hand fit, "
+                                                         "swing IK; "
                                                          "face/head/blink MediaPipe; values are estimates"))
             with tempfile.TemporaryDirectory() as temporary:
                 path = Path(temporary) / "s.npz"

@@ -14,7 +14,13 @@ residuals are (i) reprojection errors in pixels and (ii) the relative deviation 
 each rigid bone's length from its per-session mean.
 
 **Model.** Pinhole cameras with square pixels and the principal point at the image
-centre (stated assumptions; lens distortion is not modelled). Gauge: camera 1 is
+centre (stated assumptions). Optionally (``distortion=True``) each camera has one
+radial coefficient in Fitzgibbon's division model,
+``x_u = c + (x_d − c) / (1 + λ |(x_d − c)/f|²)``, which is estimable from two views and
+first-order equivalent to a Brown ``k1 = −λ``. Reprojection is always measured in the
+observed (distorted) pixels — measured on undistorted pixels the objective could be
+lowered by shrinking the whole image towards the centre — and ``|λ| ≤ 1`` and
+``f ∈ [0.2, 10]·width`` are hard bounds. Gauge: camera 1 is
 ``[I | 0]``, the baseline has unit length (metric scale is not identifiable; canonical
 rotations are scale-invariant, so they do not need it). Unknowns: ``log f1``,
 ``log f2``, the rotation vector of camera 2 and the baseline direction. 3D points are
@@ -85,6 +91,28 @@ def ransac_fundamental(x1, x2, *, threshold: float = 2., iterations: int = 2000,
     return eight_point(x1[inliers], x2[inliers]), inliers
 
 
+def undistort_division(points: np.ndarray, size, focal: float, coefficient: float) -> np.ndarray:
+    """Division-model undistortion of (..., 2) pixels about the image centre."""
+    if coefficient == 0:
+        return points
+    centre = np.array(size, dtype=float) / 2
+    offset = points - centre
+    r2 = np.sum((offset / focal) ** 2, axis=-1, keepdims=True)
+    return centre + offset / (1 + coefficient * r2)
+
+
+def distort_division(points: np.ndarray, size, focal: float, coefficient: float, iterations: int = 8) -> np.ndarray:
+    """Inverse of :func:`undistort_division` by fixed-point iteration (contractive for |λ r²| < ½)."""
+    if coefficient == 0:
+        return points
+    centre = np.array(size, dtype=float) / 2
+    undistorted = points - centre
+    distorted = undistorted
+    for _ in range(iterations):
+        distorted = undistorted * (1 + coefficient * np.sum((distorted / focal) ** 2, axis=-1, keepdims=True))
+    return centre + distorted
+
+
 def projections(params: np.ndarray, size1, size2) -> tuple[np.ndarray, np.ndarray]:
     f1, f2 = np.exp(params[:2])
     rotation = Rotation.from_rotvec(params[2:5]).as_matrix()
@@ -120,12 +148,26 @@ class TwoViewObservations:
     bones: tuple[tuple[int, int], ...]
 
 
+def _undistorted(params, obs: TwoViewObservations, t_idx, j_idx):
+    x1, x2 = obs.view1[t_idx, j_idx], obs.view2[t_idx, j_idx]
+    if len(params) > 7:
+        f1, f2 = np.exp(params[:2])
+        x1 = undistort_division(x1, obs.size1, f1, params[7])
+        x2 = undistort_division(x2, obs.size2, f2, params[8])
+    return x1, x2
+
+
 def _residuals(params, obs: TwoViewObservations, bone_weight: float):
     p1, p2 = projections(params, obs.size1, obs.size2)
     t_idx, j_idx = np.nonzero(obs.usable)
-    x1, x2 = obs.view1[t_idx, j_idx], obs.view2[t_idx, j_idx]
+    x1, x2 = _undistorted(params, obs, t_idx, j_idx)
     points = triangulate(p1, p2, x1, x2)
-    reprojection = np.concatenate(((project(p1, points) - x1).ravel(), (project(p2, points) - x2).ravel()))
+    q1, q2 = project(p1, points), project(p2, points)
+    if len(params) > 7:
+        f1, f2 = np.exp(params[:2])
+        q1 = distort_division(q1, obs.size1, f1, params[7])
+        q2 = distort_division(q2, obs.size2, f2, params[8])
+    reprojection = np.concatenate(((q1 - obs.view1[t_idx, j_idx]).ravel(), (q2 - obs.view2[t_idx, j_idx]).ravel()))
     grid = np.full(obs.usable.shape + (3,), np.nan)
     grid[t_idx, j_idx] = points
     bone_terms = []
@@ -173,6 +215,11 @@ class Calibration:
     bone_length_cv: float      # median coefficient of variation of rigid bones
     inlier_fraction: float
     converged: bool
+    distortion: tuple[float, float] = (0., 0.)   # division-model coefficient per camera
+
+    def undistort(self, view1: np.ndarray, view2: np.ndarray, size1, size2):
+        return (undistort_division(view1, size1, self.focal1, self.distortion[0]),
+                undistort_division(view2, size2, self.focal2, self.distortion[1]))
 
     def matrices(self, size1, size2):
         p1 = intrinsics(self.focal1, size1) @ np.c_[np.eye(3), np.zeros(3)]
@@ -192,41 +239,68 @@ def bone_length_cv(points: np.ndarray, bones) -> float:
 
 
 def calibrate(obs: TwoViewObservations, *, focal_guess: float | None = None, bone_weight: float = 50.,
-              ransac_threshold: float = 3., seed: int = 0) -> Calibration:
-    """Self-calibrate a camera pair; robust start, then bone-constrained bundle adjustment."""
+              ransac_threshold: float = 3., seed: int = 0, distortion: bool = False,
+              anchors: tuple[int, ...] = ()) -> Calibration:
+    """Self-calibrate a camera pair; robust start, then bone-constrained bundle adjustment.
+
+    With ``distortion`` the pinhole solution is refined once more with one division-model
+    coefficient per camera, started at zero. ``anchors`` are extra view-consistent
+    joints (not on a bone) allowed into the reprojection term.
+    """
     if obs.view1.shape != obs.view2.shape or obs.usable.shape != obs.view1.shape[:2]:
         raise ValueError("views and mask must share (T, J)")
-    t_idx, j_idx = np.nonzero(obs.usable)
+    # Only joints on a rigid bone (and the anchors) take part: on real data the remaining keypoints
+    # (face contour, feet, ...) are not view-consistent — on CMU Panoptic under the
+    # dome's own calibration their median two-view error is 6 px against 1.2 px for
+    # arm and hand joints, and they would outnumber the bone joints four to one.
+    on_bone = np.zeros(obs.usable.shape[1], bool)
+    on_bone[[j for bone in obs.bones for j in bone] + list(anchors)] = True
+    usable = obs.usable & on_bone
+    t_idx, j_idx = np.nonzero(usable)
     x1, x2 = obs.view1[t_idx, j_idx], obs.view2[t_idx, j_idx]
     f, inliers = ransac_fundamental(x1, x2, threshold=ransac_threshold, seed=seed)
-    usable = obs.usable.copy()
     usable[t_idx[~inliers], j_idx[~inliers]] = False
     clean = TwoViewObservations(obs.view1, obs.view2, usable, obs.size1, obs.size2, obs.bones)
     guess = focal_guess or float(max(obs.size1))
     start = initial_parameters(clean, guess, f)
+    width = float(max(obs.size1))
+    lower = np.r_[np.log(.2 * width), np.log(.2 * width), np.full(5, -np.inf)]
+    upper = np.r_[np.log(10 * width), np.log(10 * width), np.full(5, np.inf)]
+    start[:2] = np.clip(start[:2], lower[:2] + 1e-6, upper[:2] - 1e-6)
     result = least_squares(_residuals, start, args=(clean, bone_weight), method="trf", loss="soft_l1",
-                           f_scale=2., x_scale="jac", max_nfev=400)
+                           f_scale=2., x_scale="jac", max_nfev=400, bounds=(lower, upper))
+    if distortion:
+        result = least_squares(_residuals, np.r_[result.x, 0., 0.], args=(clean, bone_weight), method="trf",
+                               loss="soft_l1", f_scale=2., x_scale="jac", max_nfev=400,
+                               bounds=(np.r_[lower, -1., -1.], np.r_[upper, 1., 1.]))
     p1, p2 = projections(result.x, obs.size1, obs.size2)
     t_idx, j_idx = np.nonzero(usable)
-    points = triangulate(p1, p2, obs.view1[t_idx, j_idx], obs.view2[t_idx, j_idx])
+    x1, x2 = _undistorted(result.x, obs, t_idx, j_idx)
+    points = triangulate(p1, p2, x1, x2)
     grid = np.full(usable.shape + (3,), np.nan)
     grid[t_idx, j_idx] = points
-    errors1 = np.linalg.norm(project(p1, points) - obs.view1[t_idx, j_idx], axis=1)
-    errors2 = np.linalg.norm(project(p2, points) - obs.view2[t_idx, j_idx], axis=1)
+    q1, q2 = project(p1, points), project(p2, points)
+    if distortion:
+        q1 = distort_division(q1, obs.size1, np.exp(result.x[0]), result.x[7])
+        q2 = distort_division(q2, obs.size2, np.exp(result.x[1]), result.x[8])
+    errors1 = np.linalg.norm(q1 - obs.view1[t_idx, j_idx], axis=1)
+    errors2 = np.linalg.norm(q2 - obs.view2[t_idx, j_idx], axis=1)
     rotation = Rotation.from_rotvec(result.x[2:5]).as_matrix()
     theta, phi = result.x[5:7]
     return Calibration(float(np.exp(result.x[0])), float(np.exp(result.x[1])), rotation,
                        np.array([np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)]),
                        (float(np.median(errors1)), float(np.median(errors2))), bone_length_cv(grid, obs.bones),
-                       float(inliers.mean()), bool(result.success))
+                       float(inliers.mean()), bool(result.success),
+                       (float(result.x[7]), float(result.x[8])) if distortion else (0., 0.))
 
 
 def triangulate_session(calibration: Calibration, obs: TwoViewObservations) -> np.ndarray:
     """(T, J, 3) points in camera-1 coordinates (unit baseline); NaN where unusable."""
     p1, p2 = calibration.matrices(obs.size1, obs.size2)
+    view1, view2 = calibration.undistort(obs.view1, obs.view2, obs.size1, obs.size2)
     t_idx, j_idx = np.nonzero(obs.usable)
     grid = np.full(obs.usable.shape + (3,), np.nan)
-    grid[t_idx, j_idx] = triangulate(p1, p2, obs.view1[t_idx, j_idx], obs.view2[t_idx, j_idx])
+    grid[t_idx, j_idx] = triangulate(p1, p2, view1[t_idx, j_idx], view2[t_idx, j_idx])
     return grid
 
 
@@ -252,4 +326,4 @@ def view_offset(signal1: np.ndarray, signal2: np.ndarray, *, max_lag: int = 15) 
 
 __all__ = ["intrinsics", "eight_point", "sampson", "ransac_fundamental", "triangulate", "project",
            "TwoViewObservations", "Calibration", "calibrate", "triangulate_session", "bone_length_cv",
-           "view_offset", "initial_parameters", "projections"]
+           "view_offset", "initial_parameters", "projections", "undistort_division", "distort_division"]

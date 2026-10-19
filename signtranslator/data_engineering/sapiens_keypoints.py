@@ -107,6 +107,38 @@ def decode_heatmaps(heatmaps: np.ndarray, box) -> tuple[np.ndarray, np.ndarray]:
     return np.stack((u, v), axis=1), confidence
 
 
+# Left/right channel pairs for the keypoints this project uses (body and both hands).
+FLIP_PAIRS = ((1, 2), (3, 4), (5, 6), (7, 8), (62, 41), (9, 10), (11, 12), (13, 14),
+              *zip(HAND21["Left"][1:], HAND21["Right"][1:]))
+
+
+def flip_average(heatmaps: np.ndarray, flipped: np.ndarray, pairs=FLIP_PAIRS) -> np.ndarray:
+    """Average heatmaps with those of the horizontally mirrored crop.
+
+    The mirrored prediction is flipped back along width and its left/right channels
+    swapped, so channel k of both terms describes the same anatomical keypoint.
+    Channels outside ``pairs`` are self-symmetric (e.g. the nose) and simply averaged.
+    """
+    back = flipped[:, :, ::-1].copy()
+    swapped = back.copy()
+    for a, b in pairs:
+        swapped[a], swapped[b] = back[b], back[a]
+    return (heatmaps + swapped) / 2
+
+
+def hand_box(points: np.ndarray, confidence: np.ndarray, side: str, shoulder_width: float,
+             *, scale: float = 1.6, threshold: float = .3):
+    """Square-ish box around one hand's confident keypoints, at least a fraction of the shoulders."""
+    index = list(HAND21[side])
+    ok = confidence[index] >= threshold
+    if ok.sum() < 3:
+        return None
+    xy = points[index][ok]
+    centre = (xy.min(0) + xy.max(0)) / 2
+    extent = max(float(np.ptp(xy, axis=0).max()), .25 * shoulder_width) * scale
+    return (centre[0] - extent / 2, centre[1] - extent / 2, centre[0] + extent / 2, centre[1] + extent / 2)
+
+
 def to_pose33(points: np.ndarray, confidence: np.ndarray, threshold: float) -> tuple[np.ndarray, np.ndarray]:
     """Goliath (T, 308, D) -> MediaPipe pose-33 layout (T, 33, D) and visibility (T, 33)."""
     frames, _, dims = points.shape
@@ -124,5 +156,5 @@ def to_hand21(points: np.ndarray, confidence: np.ndarray, side: str, threshold: 
     return points[:, index], (confidence[:, index] >= threshold).all(axis=1)
 
 
-__all__ = ["INPUT_SIZE", "BODY_TO_POSE33", "HAND21", "green_screen_box", "crop_box", "preprocess",
-           "decode_heatmaps", "to_pose33", "to_hand21"]
+__all__ = ["INPUT_SIZE", "BODY_TO_POSE33", "HAND21", "FLIP_PAIRS", "green_screen_box", "crop_box", "preprocess",
+           "decode_heatmaps", "flip_average", "hand_box", "to_pose33", "to_hand21"]

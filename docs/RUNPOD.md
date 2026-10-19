@@ -50,6 +50,10 @@ The checkpoint is mirrored in R2 at
 `acquisition/2026-10-17-v1/models-sapiens/sapiens_1b_goliath_best_goliath_AP_639_torchscript.pt2`;
 copy it to `/workspace/models/`; its pinned SHA-256 is `d1077c15e66fb2798893e569f71cb063f0b0778af2a62e3c0233807a351c31f3` (4,677,003,899 bytes).
 
+Flip test-time augmentation is on by default (two forward passes per frame); the
+session script then self-calibrates on rigid-bone joints only and refits each hand
+with a rigid, temporally smooth two-view skeleton (`DATA_QUALITY_DECISION.md` §6).
+
 ```bash
 python scripts/sapiens_keypoints_runpod.py --zip-key acquisition/2026-10-17-v1/how2sign-public/train_rgb_front_clips.zip --zip-sha256 <SHA256> --prefix acquisition/2026-10-17-v1/derived/how2sign-sapiens-front-v1 --checkpoint /workspace/models/sapiens_1b_goliath_best_goliath_AP_639_torchscript.pt2 --checkpoint-sha256 d1077c15e66fb2798893e569f71cb063f0b0778af2a62e3c0233807a351c31f3 --shard 0 --shards 4
 python scripts/sapiens_keypoints_runpod.py --zip-key acquisition/2026-10-17-v1/how2sign-public/train_rgb_side_clips.zip --zip-sha256 <SHA256> --prefix acquisition/2026-10-17-v1/derived/how2sign-sapiens-side-v1 --checkpoint /workspace/models/sapiens_1b_goliath_best_goliath_AP_639_torchscript.pt2 --checkpoint-sha256 d1077c15e66fb2798893e569f71cb063f0b0778af2a62e3c0233807a351c31f3 --shard 0 --shards 4

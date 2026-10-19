@@ -3,7 +3,10 @@
 Each clip is decoded on its own presentation timestamps; the signer's box comes from
 the green screen per frame; frames are batched through the TorchScript model in
 bf16 on CUDA; heatmaps are decoded with sub-pixel refinement and mapped back to the
-image. Keypoints (float32), confidences (float16) and times go write-once to the
+image. Each frame is also run mirrored and the heatmaps averaged with left/right
+channels swapped (flip test-time augmentation; better keypoints against CMU Panoptic
+ground truth on two sequences, see docs/DATA_QUALITY_DECISION.md §6; ``--no-flip``
+halves the compute). Keypoints (float32), confidences (float16) and times go write-once to the
 object store as one NPZ per clip. Sharded and resumable like the MediaPipe job.
 """
 from __future__ import annotations
@@ -27,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from extract_video_states import StoreRangeFile  # noqa: E402
 from signtranslator.data.text_motion_dataset import R2Store  # noqa: E402
 from signtranslator.data_engineering.sapiens_keypoints import (  # noqa: E402
-    crop_box, decode_heatmaps, green_screen_box, preprocess,
+    crop_box, decode_heatmaps, flip_average, green_screen_box, preprocess,
 )
 
 MODEL_URL = ("https://huggingface.co/facebook/sapiens-pose-1b-torchscript/resolve/main/"
@@ -43,7 +46,7 @@ def load_model(path: Path, expected_sha256: str | None, device):
 
 
 @torch.no_grad()
-def clip_keypoints(video: Path, model, device, batch: int):
+def clip_keypoints(video: Path, model, device, batch: int, flip: bool = True):
     import av
     times, frames, boxes = [], [], []
     with av.open(str(video)) as container:
@@ -62,8 +65,10 @@ def clip_keypoints(video: Path, model, device, batch: int):
         inputs = torch.cat([preprocess(frames[i], boxes[i]) for i in chunk]).to(device)
         with torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
             heatmaps = model(inputs).float().cpu().numpy()
+            mirrored = model(torch.flip(inputs, dims=[3])).float().cpu().numpy() if flip else None
         for k, i in enumerate(chunk):
-            p, c = decode_heatmaps(heatmaps[k], boxes[i])
+            heat = flip_average(heatmaps[k], mirrored[k]) if flip else heatmaps[k]
+            p, c = decode_heatmaps(heat, boxes[i])
             points[i], confidence[i] = p, c
     return np.array(times), points, confidence
 
@@ -79,6 +84,7 @@ def main(argv=None) -> int:
     parser.add_argument("--shards", type=int, default=1)
     parser.add_argument("--batch", type=int, default=16)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--no-flip", dest="flip", action="store_false", help="disable flip test-time augmentation")
     args = parser.parse_args(argv)
     store = R2Store(os.environ)
     provenance = json.loads(store.get(args.zip_key + ".provenance.json"))
@@ -99,17 +105,17 @@ def main(argv=None) -> int:
         with tempfile.TemporaryDirectory() as temporary:
             video = Path(temporary) / "clip.mp4"
             video.write_bytes(payload)
-            times, points, confidence = clip_keypoints(video, model, device, args.batch)
+            times, points, confidence = clip_keypoints(video, model, device, args.batch, args.flip)
             buffer = io.BytesIO()
             np.savez_compressed(buffer, times=times, points=points, confidence=confidence,
                                 clip_sha256=np.array(hashlib.sha256(payload).hexdigest()),
-                                model_sha256=np.array(model_sha))
+                                model_sha256=np.array(model_sha), flip_tta=np.array(args.flip))
             store.put(key, buffer.getvalue())
         done += 1
         if index % 50 == 0:
             print(f"{index}/{len(shard)} {member}", flush=True)
     store.put(f"{prefix}/reports/shard-{args.shard:03d}-of-{args.shards:03d}.json", json.dumps(dict(
-        zip_key=args.zip_key, zip_sha256=args.zip_sha256, model_sha256=model_sha, clips=len(shard),
+        zip_key=args.zip_key, zip_sha256=args.zip_sha256, model_sha256=model_sha, flip_tta=args.flip, clips=len(shard),
         written=done)).encode())
     print(json.dumps(dict(model_sha256=model_sha, written=done, clips=len(shard))))
     return 0

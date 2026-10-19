@@ -4,9 +4,10 @@ from scipy.spatial.transform import Rotation
 
 from signtranslator.data_engineering.landmark_kinematics import unit
 from signtranslator.data_engineering.sapiens_keypoints import HAND21
-from signtranslator.data_engineering.two_view_geometry import intrinsics, project
+from signtranslator.data_engineering.two_view_geometry import intrinsics, project, triangulate
 from signtranslator.data_engineering.two_view_states import (
-    ClipKeypoints, aligned, calibrate_session, rigid_bones, rotation_inputs, session_gate, synchronise,
+    ClipKeypoints, aligned, calibrate_session, hand_skeleton, refine_hands, rigid_bones, rotation_inputs, session_gate,
+    synchronise,
     triangulated_bone_cv, triangulated_points,
 )
 from signtranslator.data_engineering.video_landmarks import BODY_JOINTS, Y_UP, solve_rotations
@@ -129,3 +130,31 @@ def test_merged_state_takes_body_from_triangulation_and_face_from_monocular():
     assert merged.channels["body"].coordinate_frame == "two-view-triangulated-camera1-y-up"
     assert merged.channels["face"].valid.all() and merged.channels["face"].source_id == "src"
     assert not merged.channels["head_translation"].valid.any() and len(merged.timestamps) == len(times)
+
+
+def test_hand_refinement_reduces_finger_direction_error_and_keeps_arms():
+    truth = goliath_motion()
+    p1, p2 = cameras()
+    rng = np.random.default_rng(9)
+    flat = truth.reshape(-1, 3)
+    shape = truth.shape[:2] + (2,)
+    v1 = project(p1, flat).reshape(shape) + rng.normal(scale=1.5, size=shape)
+    v2 = project(p2, flat).reshape(shape) + rng.normal(scale=1.5, size=shape)
+    used = sorted({i for b in rigid_bones() for i in b})
+    conf = np.zeros(truth.shape[:2])
+    conf[:, used] = 1.
+    raw = np.full(truth.shape, np.nan)
+    raw[:, used] = triangulate(p1, p2, v1[:, used].reshape(-1, 2), v2[:, used].reshape(-1, 2)).reshape(len(truth), -1, 3)
+    refined = refine_hands(raw, v1, v2, conf, conf, p1, p2)
+    def finger_error(points):
+        errors = []
+        for side in ("Left", "Right"):
+            skeleton = hand_skeleton(side)
+            for k in range(1, len(skeleton.joints)):
+                a, b = skeleton.joints[skeleton.parents[k]], skeleton.joints[k]
+                d, g = unit(points[:, b] - points[:, a])[0], unit(truth[:, b] - truth[:, a])[0]
+                errors.append(np.degrees(np.arccos(np.clip((d * g).sum(-1), -1, 1))))
+        return float(np.median(errors))
+    assert finger_error(refined) < .7 * finger_error(raw)
+    np.testing.assert_array_equal(refined[:, [5, 6, 7, 8, 62, 41]], raw[:, [5, 6, 7, 8, 62, 41]])
+    assert hand_skeleton("Left").joints[0] == HAND21["Left"][0] and len(hand_skeleton("Right").joints) == 21

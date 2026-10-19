@@ -15,6 +15,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from .sapiens_keypoints import HAND21, to_hand21, to_pose33
+from .skeleton_fit import Skeleton, fit_skeleton
 from .two_view_geometry import Calibration, TwoViewObservations, bone_length_cv, calibrate, triangulate_session, view_offset
 from ..pose.multichannel import CHANNELS, MotionChannel, MultichannelMotion
 from ..pose.rotations import matrix_to_rotation_6d
@@ -23,6 +24,7 @@ from .video_landmarks import BODY_LABELS, Y_UP, finger_joints
 CONFIDENCE = .3
 MAX_REPROJECTION_PX = 2.
 MIN_SYNC_CORRELATION = .8
+CALIBRATION_ANCHORS = (0,)    # nose: on no bone but view-consistent (1.1 px median two-view error on Panoptic)
 MAX_LAG_FRAMES = 15
 
 # Rigid segments in Goliath indices: arms, shoulder and hip widths, legs, finger phalanges.
@@ -74,7 +76,8 @@ def aligned(front: ClipKeypoints, side: ClipKeypoints, lag: int):
     return (front.times[f], front.points[f], front.confidence[f], side.points[s], side.confidence[s])
 
 
-def calibrate_session(pairs, *, size=(1280, 720), max_frames: int = 3000, seed: int = 0) -> Calibration:
+def calibrate_session(pairs, *, size=(1280, 720), max_frames: int = 3000, seed: int = 0,
+                      distortion: bool = False) -> Calibration:
     """Calibrate from frame-aligned pairs [(front_pts, front_conf, side_pts, side_conf), ...]."""
     v1 = np.concatenate([p[0] for p in pairs])
     c1 = np.concatenate([p[1] for p in pairs])
@@ -84,13 +87,60 @@ def calibrate_session(pairs, *, size=(1280, 720), max_frames: int = 3000, seed: 
         pick = np.sort(np.random.default_rng(seed).choice(len(v1), max_frames, replace=False))
         v1, c1, v2, c2 = v1[pick], c1[pick], v2[pick], c2[pick]
     usable = (c1 >= CONFIDENCE) & (c2 >= CONFIDENCE)
-    return calibrate(TwoViewObservations(v1, v2, usable, size, size, rigid_bones()), seed=seed)
+    return calibrate(TwoViewObservations(v1, v2, usable, size, size, rigid_bones()), seed=seed, distortion=distortion,
+                     anchors=CALIBRATION_ANCHORS)
 
 
 def triangulated_points(calibration: Calibration, front_pts, front_conf, side_pts, side_conf, *, size=(1280, 720)):
     usable = (front_conf >= CONFIDENCE) & (side_conf >= CONFIDENCE)
     obs = TwoViewObservations(front_pts, side_pts, usable, size, size, rigid_bones())
     return triangulate_session(calibration, obs), usable
+
+
+HAND_SMOOTHNESS = 20.    # tuned on CMU Panoptic 171026_pose3; see docs/DATA_QUALITY_DECISION.md
+
+
+def hand_skeleton(side: str) -> Skeleton:
+    """Wrist-rooted finger chains of one hand, in Goliath indices."""
+    hand = HAND21[side]
+    joints, parents = [hand[0]], [-1]
+    for finger in range(5):
+        chain = (hand[0], *hand[1 + 4 * finger: 5 + 4 * finger])
+        for a, b in zip(chain, chain[1:]):
+            joints.append(b)
+            parents.append(joints.index(a))
+    return Skeleton(tuple(joints), tuple(parents))
+
+
+def refine_hands(points3d: np.ndarray, view1: np.ndarray, view2: np.ndarray, conf1: np.ndarray, conf2: np.ndarray,
+                 p1: np.ndarray, p2: np.ndarray, *, smoothness: float = HAND_SMOOTHNESS) -> np.ndarray:
+    """Finger joints re-estimated by a rigid-bone, temporally smooth two-view hand fit.
+
+    Arms stay as triangulated (fitting them as well cost accuracy on Panoptic); each
+    hand's fitted finger offsets are re-attached to the triangulated wrist, so only
+    finger directions change. Views must be undistorted pixels for the pinhole
+    ``p1``/``p2``. Joints not triangulated in a frame stay NaN.
+    """
+    out = points3d.copy()
+    for side in ("Left", "Right"):
+        skeleton = hand_skeleton(side)
+        try:
+            fitted, _ = fit_skeleton(points3d, view1, view2, conf1, conf2, p1, p2, skeleton, smoothness=smoothness)
+        except ValueError:
+            continue                                   # this hand is never triangulated
+        wrist, fingers = skeleton.joints[0], list(skeleton.joints[1:])
+        refined = fitted[:, fingers] - fitted[:, [wrist]] + points3d[:, [wrist]]
+        keep = np.isfinite(points3d[:, fingers]).all(-1, keepdims=True)
+        out[:, fingers] = np.where(keep, refined, np.nan)
+    return out
+
+
+def refined_points(calibration: Calibration, points3d, usable, front_pts, front_conf, side_pts, side_conf, *,
+                   size=(1280, 720), smoothness: float = HAND_SMOOTHNESS) -> np.ndarray:
+    """:func:`refine_hands` for a self-calibrated session clip."""
+    view1, view2 = calibration.undistort(front_pts, side_pts, size, size)
+    p1, p2 = calibration.matrices(size, size)
+    return refine_hands(points3d, view1, view2, front_conf * usable, side_conf * usable, p1, p2, smoothness=smoothness)
 
 
 def rotation_inputs(points3d: np.ndarray, usable: np.ndarray) -> dict:
@@ -197,4 +247,5 @@ def triangulated_state(monocular: MultichannelMotion, frames: slice, rotations: 
 
 __all__ = ["triangulated_state", "rigid_bones", "motion_signal", "ClipKeypoints", "synchronise", "aligned", "calibrate_session",
            "triangulated_points", "rotation_inputs", "symmetry_error", "session_gate", "monocular_bone_cv",
-           "triangulated_bone_cv", "CONFIDENCE", "MAX_REPROJECTION_PX", "MIN_SYNC_CORRELATION"]
+           "triangulated_bone_cv", "CONFIDENCE", "MAX_REPROJECTION_PX", "MIN_SYNC_CORRELATION", "CALIBRATION_ANCHORS",
+           "HAND_SMOOTHNESS", "hand_skeleton", "refine_hands", "refined_points"]
