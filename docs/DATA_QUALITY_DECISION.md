@@ -237,5 +237,30 @@ in the order they were found:
      is ≤ 0.1° or none.
    - A missing joint is a missing rotation downstream, so the declared 0.3 stands.
 
-Next: calibrate the shared intrinsics over more sessions, then re-evaluate each
-session's gate with them.
+7. **Three validation sessions with shared intrinsics.** Two more sessions were
+   processed (`_2FBDaOPYig-3`, 12 clips; `eY32ru3Nstc-8`, 20 clips; Sapiens without flip
+   TTA, diagnostic only). Epipolar sync finds a sharp lag in each (8, 2 and −2 frames)
+   and admits every clip.
+
+   For each session, the focal lengths were fitted jointly on the *other two* (a
+   held-out test, as production uses intrinsics from other sessions), and only the
+   session's pose was fitted. Arm bone-length CV, triangulated against monocular:
+
+   | Session | Calibrated alone | Held-out shared intrinsics | Monocular | Gate (held-out) |
+   |---|---:|---:|---:|---|
+   | `a4uz0W33REs-3` | 0.0439 (f 807/2470) | 0.0415 (f 1021/1174) | 0.0366 | fails |
+   | `_2FBDaOPYig-3` | 0.0455 (f 964/1103) | 0.0395 (f 1103/1368) | 0.0411 | passes |
+   | `eY32ru3Nstc-8` | 0.0365 (f 1012/1339) | 0.0366 (f 1019/1392) | 0.0414 | passes |
+
+   - Held-out focal lengths agree within ±4% (frontal) and ±8% (lateral), consistent
+     with fixed studio cameras.
+   - Shared intrinsics improve CV on two sessions and leave the third unchanged; the
+     joint fit over all three gives 1051/1279 px.
+   - Two of three sessions pass the declared gate.
+   - Caution on the quality criterion: Panoptic's own multi-camera reference has an arm
+     CV of 0.037, and MediaPipe's world landmarks carry a learned body prior. So
+     "triangulated CV below MediaPipe's" is a strict test, not a measure of accuracy.
+     It was kept unchanged.
+
+   The full run calibrates intrinsics over 40 sessions (`calibrate_how2sign_cameras.py`)
+   and reports every session's gate; training uses only passing sessions.

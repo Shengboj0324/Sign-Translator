@@ -1,0 +1,14 @@
+a4uz0W33REs-3 lag 8 clips 11 of 11  sharp True
+_2FBDaOPYig-3 lag 2 clips 12 of 12  sharp True
+eY32ru3Nstc-8 lag -2 clips 20 of 20  sharp True
+monocular CV {'a4uz0W33REs-3': 0.0366, '_2FBDaOPYig-3': 0.0411, 'eY32ru3Nstc-8': 0.0414}
+alone  a4uz0W33REs-3 {'focal': (807, 2470), 'reproj': (np.float64(2.37), np.float64(0.26)), 'tri_cv': 0.0439, 'sym': 0.05}
+alone  _2FBDaOPYig-3 {'focal': (964, 1103), 'reproj': (np.float64(1.11), np.float64(0.84)), 'tri_cv': 0.0455, 'sym': 0.125}
+alone  eY32ru3Nstc-8 {'focal': (1012, 1339), 'reproj': (np.float64(1.51), np.float64(0.9)), 'tri_cv': 0.0365, 'sym': 0.038}
+joint intrinsics 1051 1279
+joint  a4uz0W33REs-3 {'focal': (1051, 1279), 'reproj': (np.float64(1.92), np.float64(1.33)), 'tri_cv': 0.0402, 'sym': 0.061}
+joint  _2FBDaOPYig-3 {'focal': (1051, 1279), 'reproj': (np.float64(1.18), np.float64(0.79)), 'tri_cv': 0.0423, 'sym': 0.092}
+joint  eY32ru3Nstc-8 {'focal': (1051, 1279), 'reproj': (np.float64(1.15), np.float64(0.78)), 'tri_cv': 0.0381, 'sym': 0.049}
+held-out a4uz0W33REs-3 intrinsics from ['_2FBDaOPYig-3', 'eY32ru3Nstc-8'] {'focal': (1021, 1174), 'reproj': (np.float64(1.81), np.float64(1.41)), 'tri_cv': 0.0415, 'sym': 0.073}
+held-out _2FBDaOPYig-3 intrinsics from ['a4uz0W33REs-3', 'eY32ru3Nstc-8'] {'focal': (1103, 1368), 'reproj': (np.float64(1.2), np.float64(0.77)), 'tri_cv': 0.0395, 'sym': 0.079}
+held-out eY32ru3Nstc-8 intrinsics from ['a4uz0W33REs-3', '_2FBDaOPYig-3'] {'focal': (1019, 1392), 'reproj': (np.float64(1.55), np.float64(0.86)), 'tri_cv': 0.0366, 'sym': 0.038}

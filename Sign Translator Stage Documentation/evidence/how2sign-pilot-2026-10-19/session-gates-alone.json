@@ -1,0 +1,592 @@
+{
+ "_2FBDaOPYig-3": {
+  "gates": {
+   "_2FBDaOPYig-3": {
+    "epipolar_curve": {
+     "-1": 9.34855058300336,
+     "-10": 20.370015605547728,
+     "-11": 19.315855830115915,
+     "-12": 17.813977228948634,
+     "-13": 18.881088243547673,
+     "-14": 17.694630431858698,
+     "-15": 18.21506004410024,
+     "-2": 12.08881138976473,
+     "-3": 13.241707339212363,
+     "-4": 13.28984116708926,
+     "-5": 15.842218747257558,
+     "-6": 20.817129087470235,
+     "-7": 18.08622363793874,
+     "-8": 19.625692762535117,
+     "-9": 19.119253250142677,
+     "0": 8.292153597712549,
+     "1": 5.691287101763933,
+     "10": 18.323859394625465,
+     "11": 17.566915689481814,
+     "12": 18.83288856939506,
+     "13": 19.438026197337365,
+     "14": 19.907438362725003,
+     "15": 17.710739490317387,
+     "2": 5.581525398636276,
+     "3": 6.563882303069541,
+     "4": 9.628058942175564,
+     "5": 12.420231029231253,
+     "6": 12.977755614272645,
+     "7": 14.435766394420234,
+     "8": 15.406731873983283,
+     "9": 17.359044614593415
+    },
+    "epipolar_sampson_px": 5.581525398636276,
+    "focal": [
+     964.201753430067,
+     1102.7232883264871
+    ],
+    "lag_frames": 2,
+    "monocular_bone_cv": 0.04107639917032844,
+    "passed": false,
+    "reasons": [
+     "triangulated bone-length CV 0.0455 is not below monocular 0.0411"
+    ],
+    "reprojection_px": [
+     1.114953172904945,
+     0.8432609281734593
+    ],
+    "shared_intrinsics": null,
+    "symmetry_error": 0.1251649702895779,
+    "sync": [
+     {
+      "lag_frames": 2,
+      "observations": 6010,
+      "passed": true,
+      "sampson_px": 7.305912092972315,
+      "sentence": "_2FBDaOPYig_1-3",
+      "velocity_correlation": 0.48592322889559697,
+      "velocity_lag_frames": 2
+     },
+     {
+      "lag_frames": 2,
+      "observations": 1726,
+      "passed": true,
+      "sampson_px": 4.646739311865134,
+      "sentence": "_2FBDaOPYig_10-3",
+      "velocity_correlation": 0.5264865555925486,
+      "velocity_lag_frames": 2
+     },
+     {
+      "lag_frames": 2,
+      "observations": 3092,
+      "passed": true,
+      "sampson_px": 5.373137625329364,
+      "sentence": "_2FBDaOPYig_11-3",
+      "velocity_correlation": 0.655701513000676,
+      "velocity_lag_frames": 2
+     },
+     {
+      "lag_frames": 2,
+      "observations": 7524,
+      "passed": true,
+      "sampson_px": 5.10164020823025,
+      "sentence": "_2FBDaOPYig_12-3",
+      "velocity_correlation": 0.640367078966789,
+      "velocity_lag_frames": 2
+     },
+     {
+      "lag_frames": 2,
+      "observations": 7334,
+      "passed": true,
+      "sampson_px": 6.122451694199018,
+      "sentence": "_2FBDaOPYig_2-3",
+      "velocity_correlation": 0.6276320146999959,
+      "velocity_lag_frames": 1
+     },
+     {
+      "lag_frames": 2,
+      "observations": 5158,
+      "passed": true,
+      "sampson_px": 6.496084657748865,
+      "sentence": "_2FBDaOPYig_3-3",
+      "velocity_correlation": 0.4138209279379527,
+      "velocity_lag_frames": 1
+     },
+     {
+      "lag_frames": 2,
+      "observations": 2772,
+      "passed": true,
+      "sampson_px": 7.47466463862186,
+      "sentence": "_2FBDaOPYig_4-3",
+      "velocity_correlation": 0.30471494205396765,
+      "velocity_lag_frames": -15
+     },
+     {
+      "lag_frames": 2,
+      "observations": 11835,
+      "passed": true,
+      "sampson_px": 5.508328668374349,
+      "sentence": "_2FBDaOPYig_5-3",
+      "velocity_correlation": 0.5506252319190319,
+      "velocity_lag_frames": 2
+     },
+     {
+      "lag_frames": 2,
+      "observations": 3444,
+      "passed": true,
+      "sampson_px": 5.2074967400753405,
+      "sentence": "_2FBDaOPYig_6-3",
+      "velocity_correlation": 0.6237851952487409,
+      "velocity_lag_frames": 2
+     },
+     {
+      "lag_frames": 2,
+      "observations": 1516,
+      "passed": true,
+      "sampson_px": 4.721232113489053,
+      "sentence": "_2FBDaOPYig_7-3",
+      "velocity_correlation": 0.57267689350162,
+      "velocity_lag_frames": 2
+     },
+     {
+      "lag_frames": 2,
+      "observations": 1837,
+      "passed": true,
+      "sampson_px": 6.139445955302037,
+      "sentence": "_2FBDaOPYig_8-3",
+      "velocity_correlation": 0.5792450400180084,
+      "velocity_lag_frames": 2
+     },
+     {
+      "lag_frames": 2,
+      "observations": 5967,
+      "passed": true,
+      "sampson_px": 3.825841018065704,
+      "sentence": "_2FBDaOPYig_9-3",
+      "velocity_correlation": 0.5221295663524275,
+      "velocity_lag_frames": 2
+     }
+    ],
+    "thresholds": {
+     "confidence": 0.3,
+     "max_clip_epipolar_ratio": 2.0,
+     "max_reprojection_px": 2.0,
+     "quality": "triangulated bone-length CV below monocular",
+     "sync": "epipolar, session lag",
+     "sync_sharpness": 0.8
+    },
+    "triangulated_bone_cv": 0.045489807075060014
+   }
+  },
+  "states": 0
+ },
+ "a4uz0W33REs-3": {
+  "gates": {
+   "a4uz0W33REs-3": {
+    "epipolar_curve": {
+     "-1": 15.748206895261635,
+     "-10": 17.408145273132188,
+     "-11": 16.66132761514738,
+     "-12": 16.359490305431926,
+     "-13": 16.884604843818778,
+     "-14": 17.683377223858127,
+     "-15": 20.52546268483944,
+     "-2": 15.918098174997432,
+     "-3": 16.58038958623309,
+     "-4": 19.96040345721526,
+     "-5": 17.96422626798349,
+     "-6": 16.921089722781797,
+     "-7": 18.84198227327684,
+     "-8": 16.52958816621124,
+     "-9": 17.485810863919607,
+     "0": 15.425407141760314,
+     "1": 14.29240800998867,
+     "10": 8.527866407133619,
+     "11": 10.193207753243673,
+     "12": 11.056707130922078,
+     "13": 14.31476441554144,
+     "14": 14.176098840857271,
+     "15": 17.626791847154657,
+     "2": 13.026543276453445,
+     "3": 10.206478828716257,
+     "4": 11.180239794065816,
+     "5": 10.763723213684516,
+     "6": 7.788547633890027,
+     "7": 4.862735133319882,
+     "8": 4.200589269923623,
+     "9": 5.48663306371468
+    },
+    "epipolar_sampson_px": 4.200589269923623,
+    "focal": [
+     807.0601101772655,
+     2470.2139763224427
+    ],
+    "lag_frames": 8,
+    "monocular_bone_cv": 0.036638328457265744,
+    "passed": false,
+    "reasons": [
+     "median reprojection 2.37 px > 2.0",
+     "triangulated bone-length CV 0.0439 is not below monocular 0.0366"
+    ],
+    "reprojection_px": [
+     2.3741355645224855,
+     0.2593689385369887
+    ],
+    "shared_intrinsics": null,
+    "symmetry_error": 0.05034299578760598,
+    "sync": [
+     {
+      "lag_frames": 8,
+      "observations": 206,
+      "passed": true,
+      "sampson_px": 7.1578822040714964,
+      "sentence": "a4uz0W33REs_0-3",
+      "velocity_correlation": 0.5015415600423306,
+      "velocity_lag_frames": 2
+     },
+     {
+      "lag_frames": 8,
+      "observations": 206,
+      "passed": true,
+      "sampson_px": 6.663347771736987,
+      "sentence": "a4uz0W33REs_1-3",
+      "velocity_correlation": 0.2787652150103139,
+      "velocity_lag_frames": 10
+     },
+     {
+      "lag_frames": 8,
+      "observations": 3379,
+      "passed": true,
+      "sampson_px": 4.026497836618175,
+      "sentence": "a4uz0W33REs_10-3",
+      "velocity_correlation": 0.29748501304146246,
+      "velocity_lag_frames": 7
+     },
+     {
+      "lag_frames": 8,
+      "observations": 980,
+      "passed": true,
+      "sampson_px": 4.394173285126151,
+      "sentence": "a4uz0W33REs_11-3",
+      "velocity_correlation": 0.3517657685541933,
+      "velocity_lag_frames": -8
+     },
+     {
+      "lag_frames": 8,
+      "observations": 3171,
+      "passed": true,
+      "sampson_px": 3.84072485646242,
+      "sentence": "a4uz0W33REs_2-3",
+      "velocity_correlation": 0.797770132627347,
+      "velocity_lag_frames": 8
+     },
+     {
+      "lag_frames": 8,
+      "observations": 871,
+      "passed": true,
+      "sampson_px": 5.535614905476223,
+      "sentence": "a4uz0W33REs_4-3",
+      "velocity_correlation": 0.8023604056665827,
+      "velocity_lag_frames": 8
+     },
+     {
+      "lag_frames": 8,
+      "observations": 2156,
+      "passed": true,
+      "sampson_px": 3.031827771610855,
+      "sentence": "a4uz0W33REs_5-3",
+      "velocity_correlation": 0.5092753601193217,
+      "velocity_lag_frames": 9
+     },
+     {
+      "lag_frames": 8,
+      "observations": 1755,
+      "passed": true,
+      "sampson_px": 4.73853364853725,
+      "sentence": "a4uz0W33REs_6-3",
+      "velocity_correlation": 0.4197351425782091,
+      "velocity_lag_frames": 9
+     },
+     {
+      "lag_frames": 8,
+      "observations": 13923,
+      "passed": true,
+      "sampson_px": 4.288575830090633,
+      "sentence": "a4uz0W33REs_7-3",
+      "velocity_correlation": 0.7790393680697854,
+      "velocity_lag_frames": 8
+     },
+     {
+      "lag_frames": 8,
+      "observations": 539,
+      "passed": true,
+      "sampson_px": 4.869247658560101,
+      "sentence": "a4uz0W33REs_8-3",
+      "velocity_correlation": 0.5723705642083695,
+      "velocity_lag_frames": 8
+     },
+     {
+      "lag_frames": 8,
+      "observations": 196,
+      "passed": true,
+      "sampson_px": 3.776912469160487,
+      "sentence": "a4uz0W33REs_9-3",
+      "velocity_correlation": 0.4738733575360593,
+      "velocity_lag_frames": -2
+     }
+    ],
+    "thresholds": {
+     "confidence": 0.3,
+     "max_clip_epipolar_ratio": 2.0,
+     "max_reprojection_px": 2.0,
+     "quality": "triangulated bone-length CV below monocular",
+     "sync": "epipolar, session lag",
+     "sync_sharpness": 0.8
+    },
+    "triangulated_bone_cv": 0.043892845566034476
+   }
+  },
+  "states": 0
+ },
+ "eY32ru3Nstc-8": {
+  "gates": {
+   "eY32ru3Nstc-8": {
+    "epipolar_curve": {
+     "-1": 8.9193352262375,
+     "-10": 20.742038264149123,
+     "-11": 26.04594382815118,
+     "-12": 23.03555675683604,
+     "-13": 26.14482331496967,
+     "-14": 27.338879564852782,
+     "-15": 26.25580153880113,
+     "-2": 5.628484287390726,
+     "-3": 8.312956594153517,
+     "-4": 12.935388008793261,
+     "-5": 18.213811525544994,
+     "-6": 17.464469930847812,
+     "-7": 24.150283187189302,
+     "-8": 19.642713899102148,
+     "-9": 25.972491891831368,
+     "0": 15.146043534010584,
+     "1": 13.490897461363812,
+     "10": 24.714838516246015,
+     "11": 26.96645651999434,
+     "12": 31.51460237138052,
+     "13": 21.011596357360716,
+     "14": 24.928731543119667,
+     "15": 22.97277986807899,
+     "2": 19.58138936734112,
+     "3": 19.098362842736886,
+     "4": 22.699145166154015,
+     "5": 24.251209771480365,
+     "6": 23.56770025767478,
+     "7": 32.05912247012186,
+     "8": 25.66449527482537,
+     "9": 25.15313208222265
+    },
+    "epipolar_sampson_px": 5.628484287390726,
+    "focal": [
+     1012.3315748667662,
+     1338.6287404434806
+    ],
+    "lag_frames": -2,
+    "monocular_bone_cv": 0.04140724104159659,
+    "passed": true,
+    "reasons": [],
+    "reprojection_px": [
+     1.5142598397210556,
+     0.896423772942976
+    ],
+    "shared_intrinsics": null,
+    "symmetry_error": 0.037631084725723116,
+    "sync": [
+     {
+      "lag_frames": -2,
+      "observations": 4445,
+      "passed": true,
+      "sampson_px": 5.348032590405832,
+      "sentence": "eY32ru3Nstc_0-8",
+      "velocity_correlation": 0.8187446147304108,
+      "velocity_lag_frames": -1
+     },
+     {
+      "lag_frames": -2,
+      "observations": 2209,
+      "passed": true,
+      "sampson_px": 5.064063822990904,
+      "sentence": "eY32ru3Nstc_1-8",
+      "velocity_correlation": 0.6675266070140288,
+      "velocity_lag_frames": -2
+     },
+     {
+      "lag_frames": -2,
+      "observations": 3520,
+      "passed": true,
+      "sampson_px": 6.430057460761382,
+      "sentence": "eY32ru3Nstc_10-8",
+      "velocity_correlation": 0.7048316458289428,
+      "velocity_lag_frames": -2
+     },
+     {
+      "lag_frames": -2,
+      "observations": 2218,
+      "passed": true,
+      "sampson_px": 7.085484085940948,
+      "sentence": "eY32ru3Nstc_11-8",
+      "velocity_correlation": 0.7526362846231035,
+      "velocity_lag_frames": -2
+     },
+     {
+      "lag_frames": -2,
+      "observations": 3387,
+      "passed": true,
+      "sampson_px": 6.1985300878835945,
+      "sentence": "eY32ru3Nstc_12-8",
+      "velocity_correlation": 0.563113119784601,
+      "velocity_lag_frames": -3
+     },
+     {
+      "lag_frames": -2,
+      "observations": 4571,
+      "passed": true,
+      "sampson_px": 4.8938213601786185,
+      "sentence": "eY32ru3Nstc_13-8",
+      "velocity_correlation": 0.2912499556499625,
+      "velocity_lag_frames": -1
+     },
+     {
+      "lag_frames": -2,
+      "observations": 1993,
+      "passed": true,
+      "sampson_px": 5.429032872873894,
+      "sentence": "eY32ru3Nstc_14-8",
+      "velocity_correlation": 0.7007542764430086,
+      "velocity_lag_frames": -2
+     },
+     {
+      "lag_frames": -2,
+      "observations": 566,
+      "passed": true,
+      "sampson_px": 5.269848660634743,
+      "sentence": "eY32ru3Nstc_15-8",
+      "velocity_correlation": 0.49337985034684756,
+      "velocity_lag_frames": -1
+     },
+     {
+      "lag_frames": -2,
+      "observations": 6274,
+      "passed": true,
+      "sampson_px": 4.984087086706196,
+      "sentence": "eY32ru3Nstc_16-8",
+      "velocity_correlation": 0.7000068259407727,
+      "velocity_lag_frames": -2
+     },
+     {
+      "lag_frames": -2,
+      "observations": 2469,
+      "passed": true,
+      "sampson_px": 4.581871907934554,
+      "sentence": "eY32ru3Nstc_17-8",
+      "velocity_correlation": 0.7342607765904938,
+      "velocity_lag_frames": -2
+     },
+     {
+      "lag_frames": -2,
+      "observations": 3481,
+      "passed": true,
+      "sampson_px": 5.919650499340622,
+      "sentence": "eY32ru3Nstc_18-8",
+      "velocity_correlation": 0.8033364560510156,
+      "velocity_lag_frames": -2
+     },
+     {
+      "lag_frames": -2,
+      "observations": 1789,
+      "passed": true,
+      "sampson_px": 4.510806211168762,
+      "sentence": "eY32ru3Nstc_19-8",
+      "velocity_correlation": 0.3346387197764341,
+      "velocity_lag_frames": -7
+     },
+     {
+      "lag_frames": -2,
+      "observations": 491,
+      "passed": true,
+      "sampson_px": 6.542942636478668,
+      "sentence": "eY32ru3Nstc_2-8",
+      "velocity_correlation": 0.7421526193143804,
+      "velocity_lag_frames": 11
+     },
+     {
+      "lag_frames": -2,
+      "observations": 8031,
+      "passed": true,
+      "sampson_px": 6.170597200666923,
+      "sentence": "eY32ru3Nstc_3-8",
+      "velocity_correlation": 0.7511997878725635,
+      "velocity_lag_frames": -2
+     },
+     {
+      "lag_frames": -2,
+      "observations": 1818,
+      "passed": true,
+      "sampson_px": 6.183307546578861,
+      "sentence": "eY32ru3Nstc_4-8",
+      "velocity_correlation": 0.8630820042709965,
+      "velocity_lag_frames": -2
+     },
+     {
+      "lag_frames": -2,
+      "observations": 3316,
+      "passed": true,
+      "sampson_px": 5.470202178920376,
+      "sentence": "eY32ru3Nstc_5-8",
+      "velocity_correlation": 0.853450199812894,
+      "velocity_lag_frames": -2
+     },
+     {
+      "lag_frames": -2,
+      "observations": 385,
+      "passed": true,
+      "sampson_px": 9.191122018749812,
+      "sentence": "eY32ru3Nstc_6-8",
+      "velocity_correlation": 0.5931213893537676,
+      "velocity_lag_frames": -2
+     },
+     {
+      "lag_frames": -2,
+      "observations": 1403,
+      "passed": true,
+      "sampson_px": 8.170531184063925,
+      "sentence": "eY32ru3Nstc_7-8",
+      "velocity_correlation": 0.7651560693337954,
+      "velocity_lag_frames": -2
+     },
+     {
+      "lag_frames": -2,
+      "observations": 3239,
+      "passed": true,
+      "sampson_px": 5.621039878089301,
+      "sentence": "eY32ru3Nstc_8-8",
+      "velocity_correlation": 0.671951110477246,
+      "velocity_lag_frames": -3
+     },
+     {
+      "lag_frames": -2,
+      "observations": 1888,
+      "passed": true,
+      "sampson_px": 7.242078792761116,
+      "sentence": "eY32ru3Nstc_9-8",
+      "velocity_correlation": 0.471316182488081,
+      "velocity_lag_frames": -2
+     }
+    ],
+    "thresholds": {
+     "confidence": 0.3,
+     "max_clip_epipolar_ratio": 2.0,
+     "max_reprojection_px": 2.0,
+     "quality": "triangulated bone-length CV below monocular",
+     "sync": "epipolar, session lag",
+     "sync_sharpness": 0.8
+    },
+    "triangulated_bone_cv": 0.036527679434145005
+   }
+  },
+  "states": 20
+ }
+}
