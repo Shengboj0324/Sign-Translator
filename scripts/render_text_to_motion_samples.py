@@ -11,33 +11,21 @@ side, left hand, right hand). An inspection aid: generated motion is
 from __future__ import annotations
 
 import argparse
-import io
 import json
 from pathlib import Path
 import sys
 import tempfile
 
 import numpy as np
-import torch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from evaluate_text_to_motion import load_state  # noqa: E402
+from evaluate_text_to_motion import load_generator, load_state  # noqa: E402
 from signtranslator.data_engineering.corpus_manifest import load_manifest  # noqa: E402
 from signtranslator.generation.canonical_skeleton import skeleton_positions  # noqa: E402
 from signtranslator.generation.skeleton_preview import encode_preview, render_preview_frames  # noqa: E402
-from signtranslator.generation.text_to_motion import TextToMotion, TextToMotionConfig, generate  # noqa: E402
 from train_text_to_motion import make_store  # noqa: E402
-
-
-def load_model(store, key: str, manifest_sha256: str) -> TextToMotion:
-    checkpoint = torch.load(io.BytesIO(store.get(key)), map_location="cpu", weights_only=False)
-    if checkpoint["manifest_sha256"] != manifest_sha256:
-        raise SystemExit(f"{key} was trained on a different manifest")
-    model = TextToMotion(TextToMotionConfig.from_dict(checkpoint["config"]))
-    model.load_state_dict(checkpoint["model"])
-    return model.eval()
 
 
 def main(argv=None) -> int:
@@ -57,7 +45,7 @@ def main(argv=None) -> int:
         path = Path(temporary) / "manifest.json"
         path.write_bytes(store.get(args.manifest_key) + b"\n")
         manifest = load_manifest(path, expected_sha256=args.manifest_sha256)
-    models = [load_model(store, key, args.manifest_sha256) for key in args.checkpoint_key]
+    generators = [load_generator(store, key, args.manifest_sha256) for key in args.checkpoint_key]
     records = sorted((r for r in manifest["records"] if r["partition"] == args.partition and r.get("text")
                       and r["continuous"]["seconds"] >= args.min_seconds), key=lambda r: r["sign"])[:args.count]
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -66,8 +54,7 @@ def main(argv=None) -> int:
         reference = load_state(store, record["continuous"]["state_key"], record["continuous"]["state_sha256"])
         fps = 1. / float(np.median(np.diff(reference.timestamps)))
         seconds = len(reference.timestamps) / fps
-        columns = [reference] + [generate(m, [record["text"]], fps=fps, durations=[seconds], guidance=1.,
-                                          seed=args.seed)[0] for m in models]
+        columns = [reference] + [sample(record["text"], fps, seconds, 1., 50, args.seed) for _, _, sample in generators]
         rendered = []
         for state in columns:
             joints, positions, bones = skeleton_positions(state)
@@ -77,7 +64,7 @@ def main(argv=None) -> int:
         out = args.output_dir / f"{record['sign']}.mp4"
         encode_preview(video, np.asarray(reference.timestamps[:frames]) - reference.timestamps[0], out)
         index.append(dict(file=out.name, text=record["text"], seconds=round(frames / fps, 2),
-                          columns=["reference (video estimate)"] + [m.config.objective for m in models]))
+                          columns=["reference (video estimate)"] + [label for label, _, _ in generators]))
         print(json.dumps(index[-1]), flush=True)
     (args.output_dir / "index.json").write_text(json.dumps(index, indent=2) + "\n")
     return 0

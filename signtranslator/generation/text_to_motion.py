@@ -356,10 +356,10 @@ def training_loss(model: TextToMotion, tokens, text_mask, motion: MotionBatch):
     return total, terms, diagnostics
 
 
-def _native_values(model: TextToMotion, raw: dict) -> dict:
-    """Head outputs -> each channel's valid native values (one example, (T, J, D))."""
+def native_values(config: TextToMotionConfig, raw: dict) -> dict:
+    """Head-parameterised outputs -> each channel's valid native values (one example, (T, J, D))."""
     values = {}
-    for binding in model.config.bindings:
+    for binding in config.bindings:
         r = raw[binding.name].double()
         if binding.kind == "rotation_6d_columns":
             values[binding.name] = matrix_to_rotation_6d(rotation_6d_to_matrix(r))
@@ -399,22 +399,39 @@ def _sample_unit(model: TextToMotion, hidden, mask, empty_hidden, empty_mask, se
     return x0
 
 
-def _unit_to_raw(model: TextToMotion, unit: torch.Tensor) -> dict:
-    """Split a diffusion vector (1, T, W) into per-channel native values; untrained -> neutral."""
+def unit_to_raw(config: TextToMotionConfig, unit: torch.Tensor) -> dict:
+    """Split a unit-space vector (B, T, W) into head-parameterised channels; untrained -> neutral."""
     raw, offset = {}, 0
-    trained = {entry[0]: entry for entry in model.layout}
-    for binding in model.config.bindings:
+    trained = {entry[0]: entry for entry in diffusion_layout(config)}
+    for binding in config.bindings:
         if binding.name in trained:
             _, kind, elements, flat = trained[binding.name]
             piece = unit[..., offset:offset + flat].reshape(*unit.shape[:2], elements, binding.width)
-            native = _unit_to_native(kind, piece, model.config)
+            native = _unit_to_native(kind, piece, config)
             raw[binding.name] = (torch.logit(native.clamp(1e-6, 1 - 1e-6)) if kind == "bounded_scalar"
                                  else native)
             offset += flat
         else:
-            raw[binding.name] = model._neutral(binding).to(unit).reshape(1, 1, binding.elements, binding.width
-                                                                          ).expand(1, unit.shape[1], -1, -1)
+            raw[binding.name] = TextToMotion._neutral(binding).to(unit).reshape(
+                1, 1, binding.elements, binding.width).expand(unit.shape[0], unit.shape[1], -1, -1)
     return raw
+
+
+def assemble_state(config: TextToMotionConfig, text: str, native: dict, frames: int, fps: float, sample_id: str,
+                   clock_id: str, *, method: str = "text_to_motion") -> MultichannelMotion:
+    """A generated canonical state: trained channels valid, observed=False, zero confidence."""
+    channels = {}
+    for binding in config.bindings:
+        trained = binding.name in config.trained_channels
+        valid = np.full((frames, binding.elements), trained)
+        channels[binding.name] = MotionChannel(
+            values=np.where(valid[..., None], native[binding.name].cpu().numpy(), 0.), valid=valid,
+            observed=np.zeros_like(valid), confidence=np.zeros(valid.shape), labels=binding.labels,
+            coordinate_frame=binding.coordinate_frame, units=binding.units,
+            source_id=method, source_sha256=hashlib.sha256(text.encode()).hexdigest(),
+            convention=binding.convention,
+            inference_method=f"{method} config {config.sha256()[:16]}" if trained else None)
+    return MultichannelMotion(np.arange(frames, dtype=np.float64) / fps, clock_id, sample_id, channels)
 
 
 @torch.no_grad()
@@ -445,26 +462,16 @@ def generate(model: TextToMotion, texts, *, fps: float, sample_prefix: str = "ge
         if model.config.objective == "diffusion":
             unit = _sample_unit(model, hidden[row:row + 1], mask[row:row + 1], empty_hidden, empty != PAD, seconds,
                                 durations[row:row + 1], steps=steps, guidance=guidance, eta=eta, generator=generator)
-            out = _unit_to_raw(model, unit)
+            out = unit_to_raw(model.config, unit)
         else:
             out = model.decode(hidden[row:row + 1], mask[row:row + 1], seconds,
                                torch.ones_like(seconds, dtype=torch.bool), durations[row:row + 1])
-        native = _native_values(model, {k: v[0] for k, v in out.items()})
-        channels = {}
-        for binding in model.config.bindings:
-            trained = binding.name in model.config.trained_channels
-            valid = np.full((frames, binding.elements), trained)
-            channels[binding.name] = MotionChannel(
-                values=np.where(valid[..., None], native[binding.name].cpu().numpy(), 0.), valid=valid,
-                observed=np.zeros_like(valid), confidence=np.zeros(valid.shape), labels=binding.labels,
-                coordinate_frame=binding.coordinate_frame, units=binding.units,
-                source_id="text_to_motion", source_sha256=hashlib.sha256(text.encode()).hexdigest(),
-                convention=binding.convention,
-                inference_method=f"text_to_motion config {model.config.sha256()[:16]}" if trained else None)
-        states.append(MultichannelMotion(np.arange(frames, dtype=np.float64) / fps, f"{sample_prefix}-clock",
-                                         f"{sample_prefix}:{row}", channels))
+        native = native_values(model.config, {k: v[0] for k, v in out.items()})
+        states.append(assemble_state(model.config, text, native, frames, fps, f"{sample_prefix}:{row}",
+                                     f"{sample_prefix}-clock"))
     return states
 
 
 __all__ = ["encode_texts", "TextToMotionConfig", "TextToMotion", "training_loss", "generate", "batch_seconds",
-           "utterance_duration", "alpha_bar", "diffusion_layout", "diffusion_targets", "heads_to_unit"]
+           "utterance_duration", "alpha_bar", "diffusion_layout", "diffusion_targets", "heads_to_unit", "unit_to_raw",
+           "native_values", "assemble_state", "LossScales"]
