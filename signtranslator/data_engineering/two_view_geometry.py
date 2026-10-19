@@ -123,10 +123,18 @@ def projections(params: np.ndarray, size1, size2) -> tuple[np.ndarray, np.ndarra
     return p1, p2
 
 
-def triangulate(p1: np.ndarray, p2: np.ndarray, x1: np.ndarray, x2: np.ndarray) -> np.ndarray:
-    """Linear (DLT) triangulation of many points at once; returns (N, 3)."""
+def triangulate(p1: np.ndarray, p2: np.ndarray, x1: np.ndarray, x2: np.ndarray,
+                w1: np.ndarray | None = None, w2: np.ndarray | None = None) -> np.ndarray:
+    """Linear (DLT) triangulation of many points at once; returns (N, 3).
+
+    Optional per-point weights scale each view's two equations (e.g. keypoint
+    confidences), so a joint seen poorly in one view is placed mostly by the other.
+    """
     rows = np.stack((x1[:, 0, None] * p1[2] - p1[0], x1[:, 1, None] * p1[2] - p1[1],
                      x2[:, 0, None] * p2[2] - p2[0], x2[:, 1, None] * p2[2] - p2[1]), axis=1)
+    if w1 is not None:
+        # Rows are normalised so the weights, not the projections' scale, set each view's say.
+        rows = rows / np.linalg.norm(rows, axis=2, keepdims=True) * np.stack((w1, w1, w2, w2), axis=1)[..., None]
     homogeneous = np.linalg.svd(rows)[2][:, -1]
     return homogeneous[:, :3] / homogeneous[:, 3:]
 

@@ -181,6 +181,23 @@ def undistort(points, camera, iterations=20):
     return (x * np.diag(k)[:2] + k[:2, 2]).reshape(points.shape)
 
 
+ARM_JOINTS = (5, 6, 7, 8, 62, 41)
+
+
+def smooth_joints(points, joints, sigma):
+    """Gaussian temporal smoothing of the given joints (NaN-aware)."""
+    from scipy.ndimage import gaussian_filter1d
+    out = points.copy()
+    for j in joints:
+        track = points[:, j]
+        finite = np.isfinite(track).all(1)
+        if finite.sum() < 3:
+            continue
+        filled = np.stack([np.interp(np.arange(len(track)), np.flatnonzero(finite), track[finite, c]) for c in range(3)], 1)
+        out[:, j] = np.where(finite[:, None], gaussian_filter1d(filled, sigma, axis=0, mode="nearest"), np.nan)
+    return out
+
+
 def goliath_skeleton() -> Skeleton:
     joints, parents = [5], [-1]
     def add(j, parent):
@@ -227,6 +244,7 @@ def main(argv=None) -> int:
     parser.add_argument("--calibration-frames", type=int, default=0,
                         help="also calibrate on this many frames spread over the whole sequence")
     parser.add_argument("--hinge", default="0", help="comma-separated hinge-prior weights for the hand refit")
+    parser.add_argument("--extras", action="store_true", help="also weighted DLT and arm smoothing variants")
     parser.add_argument("--no-full-fit", action="store_true", help="skip the whole-skeleton fit variants")
     parser.add_argument("--hand-scales", default="1.6,3", help="hand-crop scales for Stage A ('' for none)")
     args = parser.parse_args(argv)
@@ -342,6 +360,14 @@ def main(argv=None) -> int:
             tri[t_idx, j_idx] = triangulate(p1, p2, x1[t_idx, j_idx], x2[t_idx, j_idx])
             tag = f"{label} [{calib}-calib]"
             results[tag] = metrics(tri, gt_body, gt_hands)
+            if args.extras:
+                weighted = np.full_like(tri, np.nan)
+                weighted[t_idx, j_idx] = triangulate(p1, p2, x1[t_idx, j_idx], x2[t_idx, j_idx],
+                                                     fc[t_idx, j_idx], sc[t_idx, j_idx])
+                results[f"{tag}+wdlt"] = metrics(weighted, gt_body, gt_hands)
+                for sigma in (1., 2.):
+                    results[f"{tag}+armsmooth(σ={sigma:g})"] = metrics(smooth_joints(tri, ARM_JOINTS, sigma),
+                                                                      gt_body, gt_hands)
             for lam in (float(x) for x in args.smoothness.split(",")):
                 if not args.no_full_fit:
                     try:

@@ -141,7 +141,14 @@ What each step contributed, and what was rejected:
    PA-MPJPE were equal or better on all three sequences with flip keypoints
    (PA-MPJPE 2.39 → 2.21, 3.33 → 3.26, 1.31 → 1.22 cm), fingers within ±0.2°. The coefficient itself is weakly identified; only its
    effect on the triangulation is relied on.
-5. **High-resolution hand crops — rejected.** The whole-body model is less confident
+5. **Confidence-weighted triangulation — rejected.** Mixed; with the dome calibration
+   it cost 0.6° arm and 0.8 cm PA-MPJPE on the tuning sequence.
+6. **Temporal smoothing of the triangulated arms — not adopted.** A Gaussian of
+   σ = 1 frame gained 0.1–0.3° arm direction under self-calibration on all three
+   sequences but was mixed under the dome calibration (−0.18 to +0.10°); at 30 fps it
+   begins to attenuate the fastest arm movements, which the motion model must learn,
+   so the gain does not justify the bandwidth loss.
+7. **High-resolution hand crops — rejected.** The whole-body model is less confident
    on hand-only crops (0.93 → 0.1–0.76) and its crop positions made fingers worse
    (7.09° → 8.38° with the dome calibration).
 

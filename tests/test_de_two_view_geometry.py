@@ -106,3 +106,17 @@ def test_division_model_distortion_is_recovered_and_removes_its_bias():
     assert max(modelled.median_reprojection_px) < max(pinhole.median_reprojection_px)
     assert bone_length_cv(triangulate_session(modelled, distorted), obs.bones) < \
         bone_length_cv(triangulate_session(pinhole, distorted), obs.bones)
+
+
+def test_weighted_triangulation_is_exact_without_noise_and_follows_the_trusted_view():
+    obs, _, _ = observations(noise=0.)
+    p1, p2, *_ = cameras()
+    x1, x2 = obs.view1.reshape(-1, 2), obs.view2.reshape(-1, 2)
+    exact = triangulate(p1, p2, x1, x2)
+    ones = np.ones(len(x1))
+    np.testing.assert_allclose(triangulate(p1, p2, x1, x2, ones, ones), exact, atol=1e-8)
+    shifted = x2 + [25., 0.]                       # corrupt view 2
+    trusted = triangulate(p1, p2, x1, shifted, ones, .05 * ones)
+    plain = triangulate(p1, p2, x1, shifted)
+    assert np.median(np.linalg.norm(project(p1, trusted) - x1, axis=1)) < \
+        .2 * np.median(np.linalg.norm(project(p1, plain) - x1, axis=1))
