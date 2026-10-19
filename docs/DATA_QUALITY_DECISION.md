@@ -85,3 +85,67 @@ Training starts only when all of the following hold on real How2Sign front/side 
 These criteria were fixed before the Panoptic run and were not changed after it.
 If a criterion fails, the result is reported and the next option in §2 is evaluated
 before training — no training on a pipeline whose quality is unmeasured.
+
+## 6. Error minimisation, measured (CMU Panoptic, 2026-10-19)
+
+Goal: drive arm-direction, finger and joint-position error towards zero. Every change
+was measured with `scripts/panoptic_accuracy_experiments.py` against the dome's
+multi-camera reconstruction, tuned on `171026_pose3` (cameras 00_13/00_01, 150
+frames) and checked on the held-out `170915_office1` (00_22/00_23, 150 frames) and on
+the §4 sequence `171204_pose1_sample` (00_21/00_07, 97 frames). Video and ground
+truth were verified to share frame numbering (offset 0 minimises the true-calibration
+error on every sequence). Evidence: `evidence/panoptic-accuracy-2026-10-19/`.
+
+**Adopted pipeline** (flip test-time augmentation → self-calibration on rigid-bone
+joints with one division-model radial coefficient per camera → triangulation → rigid,
+temporally smooth two-view refit of each hand, λ = 20):
+
+| Sequence | Method | Arm direction, median | Fingers L/R, median | Arm PA-MPJPE |
+|---|---|---:|---:|---:|
+| 171026_pose3 (tuning) | MediaPipe monocular | 15.3° | — | 5.87 cm |
+| | §4 pipeline (all keypoints in calibration) | 14.6° (calibration failed) | 25.9° / 20.1° | 18.1 cm |
+| | **adopted** | **3.23°** | **7.18° / 9.89°** | **2.21 cm** |
+| | adopted keypoints, dome calibration | 3.53° | 6.00° / 8.38° | 1.03 cm |
+| 170915_office1 (held out) | MediaPipe monocular | 10.6° | — | 5.60 cm |
+| | **adopted** | **4.32°** | **7.01° / 12.50°** | **3.26 cm** |
+| | adopted keypoints, dome calibration | 3.92° | 7.31° / 12.12° | 1.64 cm |
+| 171204_pose1_sample (§4) | MediaPipe monocular | 14.0° | — | 5.29 cm |
+| | §4 result | 2.95° | 8.6° / 6.2° | 1.37 cm |
+| | **adopted** | **2.91°** | **5.64° / 4.45°** | **1.22 cm** |
+
+What each step contributed, and what was rejected:
+
+1. **Calibrate on rigid-bone joints only (plus the nose).** Under the dome's own
+   calibration, Sapiens face-contour and other non-bone keypoints have a 6.2 px median
+   two-view error (63% above 3 px) against 1.2 px for arm and hand joints, and they
+   outnumber them four to one. Including them drove the self-calibration to a wrong
+   solution on `171026_pose3` (focal 1 168 420 px; arm error 14.6°). Restricted to
+   bone joints it converges (0.6/0.9 px median reprojection) on all three sequences.
+2. **Flip test-time augmentation** (mirror the crop, swap left/right heatmap channels,
+   average). With the dome calibration it improves fingers on all three sequences and
+   arms on two, the third being equal within 0.04° (held-out: 4.37° → 3.92° arm,
+   9.43°/17.31° → 8.00°/15.48° fingers).
+3. **Hand refit** (`skeleton_fit.py`, `two_view_states.refine_hands`): each hand is a
+   wrist-rooted chain of fixed (session-median) bone lengths whose directions minimise
+   confidence-weighted reprojection in both views plus a second-difference penalty;
+   the fitted fingers are re-attached to the triangulated wrist. Fingers improve on
+   every sequence and calibration (by 0.9–2.4° median). Fitting the arms as well was
+   rejected: it cost 0.3–1.5° of arm accuracy.
+4. **Radial distortion in the bundle adjustment.** Panoptic HD lenses have k1 ≈ −0.26;
+   modelled (residuals in observed pixels, |λ| ≤ 1, focal bounds) arm direction and
+   PA-MPJPE were equal or better on all three sequences with flip keypoints
+   (PA-MPJPE 2.39 → 2.21, 3.33 → 3.26, 1.31 → 1.22 cm), fingers within ±0.2°. The coefficient itself is weakly identified; only its
+   effect on the triangulation is relied on.
+5. **High-resolution hand crops — rejected.** The whole-body model is less confident
+   on hand-only crops (0.93 → 0.1–0.76) and its crop positions made fingers worse
+   (7.09° → 8.38° with the dome calibration).
+
+**Where the remaining error lives, and the floor.** With the dome calibration the
+adopted keypoints reach 3.5–3.9° on arms and 1.0–1.6 cm PA-MPJPE, so self-calibration
+still accounts for most of the joint-position gap (2.2–3.3 cm vs 1.0–1.6 cm) while
+costing ≤ 0.4° of arm direction. Panoptic's reference itself is not exact: its arm
+bone lengths vary by 3.7% (CV) over time and its hand reconstruction reprojects at
+2.1 px, so errors below ≈2–3° cannot be resolved against it. "Infinitely close to 0"
+is not measurable with any available reference; a mocap-grade check
+(InterHand2.6M-class hand data, or an optical-mocap body set) is the next step if the
+owner can obtain one.

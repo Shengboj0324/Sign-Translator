@@ -77,7 +77,7 @@ def aligned(front: ClipKeypoints, side: ClipKeypoints, lag: int):
 
 
 def calibrate_session(pairs, *, size=(1280, 720), max_frames: int = 3000, seed: int = 0,
-                      distortion: bool = False) -> Calibration:
+                      distortion: bool = True) -> Calibration:
     """Calibrate from frame-aligned pairs [(front_pts, front_conf, side_pts, side_conf), ...]."""
     v1 = np.concatenate([p[0] for p in pairs])
     c1 = np.concatenate([p[1] for p in pairs])

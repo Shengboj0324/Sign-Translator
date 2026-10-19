@@ -75,7 +75,10 @@ def test_session_pipeline_recovers_lag_cameras_and_exact_rotations():
     assert sync["lag_frames"] == 2 and sync["passed"]
     times, fp, fc, sp, sc = aligned(front, side, sync["lag_frames"])
     calibration = calibrate_session([(fp, fc, sp, sc)])
-    assert abs(calibration.focal1 / 1150 - 1) < .03 and abs(calibration.focal2 / 1400 - 1) < .03
+    # Default session calibration also fits one radial coefficient per camera; on these
+    # undistorted views it must stay near zero, at a small cost in focal precision.
+    assert abs(calibration.focal1 / 1150 - 1) < .04 and abs(calibration.focal2 / 1400 - 1) < .04
+    assert max(abs(c) for c in calibration.distortion) < .05
     points, usable = triangulated_points(calibration, fp, fc, sp, sc)
     cv = triangulated_bone_cv(points)
     gate = session_gate(calibration, [sync], cv, monocular_cv=.08)
