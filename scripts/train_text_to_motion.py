@@ -112,6 +112,11 @@ def main(argv=None) -> int:
     parser.add_argument("--amp", choices=("none", "bf16"), default="bf16")
     args = parser.parse_args(argv)
 
+    if args.device == "mps":
+        # Measured 2026-10-19 (torch on Apple GPU): rotation checks on real batches fail on
+        # MPS for every valid left-hand joint and produce non-finite values for the right
+        # hand, while CPU passes them all in float32 and float64. Train on CUDA or CPU.
+        raise SystemExit("MPS is refused: it miscomputes rotation operations at batch scale")
     store = make_store(args.store)
     device = torch.device("cuda" if args.device == "auto" and torch.cuda.is_available() else
                           ("cpu" if args.device == "auto" else args.device))
