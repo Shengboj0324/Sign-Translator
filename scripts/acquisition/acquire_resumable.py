@@ -33,6 +33,9 @@ parser.add_argument('--license', required=True)
 parser.add_argument('--source-page', required=True)
 parser.add_argument('--ledger', type=Path, required=True)
 parser.add_argument('--header', action='append', default=[])
+parser.add_argument('--verify-existing', action='store_true',
+                    help='an object left without provenance (re-read interrupted): re-hash it from R2 and accept it '
+                         'only if size and SHA-256 equal the expected values, else delete it')
 parser.add_argument('--mirror-of', help='publisher URL this byte-identical mirror copy stands in for')
 parser.add_argument('--evidence', help='JSON object: why the mirror is byte-identical to the publisher file')
 args = parser.parse_args()
@@ -49,6 +52,29 @@ s3 = boto3.client('s3', endpoint_url=env['R2_ENDPOINT_URL'], region_name='auto',
 bucket = env['R2_BUCKET']
 
 from botocore.exceptions import ClientError
+
+
+def reread(key, size):
+    """SHA-256 and MD5 of the stored object via ranged GETs, each range retried on its own."""
+    sha, md, position, block = hashlib.sha256(), hashlib.md5(), 0, 256 * 1024 * 1024
+    while position < size:
+        end = min(position + block, size) - 1
+        for attempt in range(8):
+            try:
+                piece = s3.get_object(Bucket=bucket, Key=key, Range=f'bytes={position}-{end}')['Body'].read()
+                if len(piece) != end - position + 1:
+                    raise OSError('short ranged read')
+                break
+            except Exception as error:  # noqa: BLE001 - network errors of every kind are retried
+                if attempt == 7:
+                    raise
+                print(f'  re-read retry at byte {position:,}: {error}', flush=True)
+                time.sleep(2 ** attempt)
+        sha.update(piece)
+        md.update(piece)
+        position = end + 1
+    return sha.hexdigest(), md.hexdigest()
+
 try:
     s3.head_object(Bucket=bucket, Key=key)
     present = True
@@ -60,7 +86,28 @@ if present:
     try:
         prior = json.loads(s3.get_object(Bucket=bucket, Key=key + '.provenance.json')['Body'].read())
     except ClientError:
-        raise SystemExit(f'{key} exists without provenance; refusing to overwrite')
+        if not (args.verify_existing and args.expected_sha256 and args.expected_size):
+            raise SystemExit(f'{key} exists without provenance; refusing to overwrite')
+        stored = s3.head_object(Bucket=bucket, Key=key)['ContentLength']
+        started = time.monotonic()
+        sha256, md5_hex = reread(key, stored) if stored == args.expected_size else (None, None)
+        if stored != args.expected_size or sha256 != args.expected_sha256:
+            s3.delete_object(Bucket=bucket, Key=key)
+            raise SystemExit(f'{key}: stored object ({stored} bytes, sha256 {sha256}) is not the expected file; removed')
+        record = dict(key=key, url=args.url, final_url=None, source_page=args.source_page, license=args.license,
+                      bytes=stored, sha256=sha256, publisher_sha256=args.expected_sha256,
+                      publisher_size=args.expected_size, md5=md5_hex, publisher_md5=args.expected_md5,
+                      content_type=None, verified_by_r2_reread=True, seconds=round(time.monotonic() - started, 1),
+                      resumes=None, acquired_at=datetime.now(timezone.utc).isoformat(),
+                      note='transfer completed (stream hash checked before completion); first re-read was interrupted; '
+                           'object re-read and re-hashed by ranged GETs',
+                      mirror_of=args.mirror_of, mirror_evidence=json.loads(args.evidence) if args.evidence else None)
+        s3.put_object(Bucket=bucket, Key=key + '.provenance.json',
+                      Body=json.dumps(record, indent=2, sort_keys=True).encode())
+        with args.ledger.open('a') as ledger:
+            ledger.write(json.dumps(record, sort_keys=True) + '\n')
+        print(json.dumps({k: record[k] for k in ('key', 'bytes', 'sha256', 'seconds')}))
+        sys.exit(0)
     if args.expected_sha256 and prior.get('sha256') == args.expected_sha256 and prior.get('verified_by_r2_reread'):
         print(json.dumps({'key': key, 'status': 'already_present_and_verified'}))
         sys.exit(0)
@@ -152,13 +199,9 @@ except BaseException:
     raise
 
 # Re-read from R2: the stored object, not the network stream, must match.
-check = hashlib.sha256()
-size = 0
-body = s3.get_object(Bucket=bucket, Key=key)['Body']
-for chunk in iter(lambda: body.read(1 << 20), b''):
-    check.update(chunk)
-    size += len(chunk)
-if check.hexdigest() != sha256 or size != total:
+size = s3.head_object(Bucket=bucket, Key=key)['ContentLength']
+reread_sha256 = reread(key, size)[0] if size == total else None
+if reread_sha256 != sha256 or size != total:
     s3.delete_object(Bucket=bucket, Key=key)
     raise SystemExit(f'R2 re-read mismatch for {key}; object removed')
 

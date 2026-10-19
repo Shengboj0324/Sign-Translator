@@ -77,7 +77,7 @@ for name, (drive_id, drive_size) in DRIVE.items():
                     translation_csvs_identical=len(CSV), checked='size equal to publisher; sha256 equal to mirror LFS id')
     print(f'== {name} {size:,} bytes sha256 {sha256}', flush=True)
     r = subprocess.run([PY, '-I', str(HERE / 'acquire_resumable.py'), REPO, BASE + path, f'how2sign-public/{name}',
-                        '--expected-size', str(size), '--expected-sha256', sha256, '--always-range',
+                        '--expected-size', str(size), '--expected-sha256', sha256, '--always-range', '--verify-existing',
                         '--license', 'CC BY-NC 4.0', '--source-page', 'https://how2sign.github.io/',
                         '--mirror-of', f'https://drive.google.com/file/d/{drive_id}', '--evidence', json.dumps(evidence),
                         '--ledger', LEDGER], capture_output=True, text=True)
