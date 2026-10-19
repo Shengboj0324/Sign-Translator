@@ -38,6 +38,7 @@ def main(argv=None) -> int:
     parser.add_argument("--count", type=int, default=3)
     parser.add_argument("--min-seconds", type=float, default=3.)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--guidance", type=float, default=2., help="for diffusion and token generators")
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args(argv)
     store = make_store(args.store)
@@ -54,7 +55,8 @@ def main(argv=None) -> int:
         reference = load_state(store, record["continuous"]["state_key"], record["continuous"]["state_sha256"])
         fps = 1. / float(np.median(np.diff(reference.timestamps)))
         seconds = len(reference.timestamps) / fps
-        columns = [reference] + [sample(record["text"], fps, seconds, 1., 50, args.seed) for _, _, sample in generators]
+        columns = [reference] + [sample(record["text"], fps, seconds, args.guidance, 50, args.seed)
+                                 for _, _, sample in generators]
         rendered = []
         for state in columns:
             joints, positions, bones = skeleton_positions(state)

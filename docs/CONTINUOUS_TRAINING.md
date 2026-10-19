@@ -181,43 +181,65 @@ resume that refuses a checkpoint from a different configuration or manifest. A t
 trains, checkpoints, and resumes from the saved step.
 
 
-## Generative decoder: diffusion (2026-10-19)
+## Generative decoders: diffusion and motion tokens (2026-10-19)
 
 A decoder trained to minimise per-frame error predicts the conditional *mean*
 motion. Where several signings of a sentence are plausible, the mean is none of
-them: it is a damped, under-articulated pose. `--objective diffusion`
-(`generation/text_to_motion.py`) trains the same network as a denoiser:
-- **Noising:** the trained channels are mapped to a unit-scale vector and noised on a
-  cosine schedule.
-- **Prediction:** the decoder, given the noisy motion and the noise level, predicts
-  the clean motion through the same heads and per-channel losses (x₀
-  parameterisation).
-- **Guidance:** text is dropped 10% of the time for classifier-free guidance.
-- **Sampling:** seeded DDIM; every estimate is projected onto SO(3) and [0, 1].
+them: it is a damped, under-articulated pose. Two generative decoders were added
+and measured against the regressor.
+
+- **Diffusion** (`--objective diffusion`, `generation/text_to_motion.py`).
+  - The trained channels, as a unit-scale vector, are noised on a cosine schedule.
+  - The decoder, given the noisy motion and the noise level, predicts the clean
+    motion through the same heads and per-channel losses (x₀ parameterisation).
+  - Text is dropped 10% of the time for classifier-free guidance.
+  - Sampling is seeded DDIM, with every estimate projected onto SO(3) and [0, 1].
+- **Motion tokens** (`generation/motion_tokens.py`, `scripts/train_motion_tokens.py`),
+  in the style of T2M-GPT.
+  - Tokenizer: a 1D-conv VQ-VAE turns motion into discrete codes (time ÷4, EMA
+    codebook, straight-through gradients), trained with the same per-channel losses.
+  - Prior: a byte-level text encoder with a duration head conditions a causal
+    transformer that predicts the codes, with seeded sampling and classifier-free
+    guidance on the logits.
 
 On a controlled bimodal task (one text, body rotated ±45°) the regressor outputs
-0° — neither signing — while diffusion samples both modes (tested).
+0° — neither signing — while both generative decoders sample both modes (tested).
 
-**Measured on real signing** (proxy data: monocular states of train shard 0;
-fold-plan train 3,610 clips, signer-disjoint val 238 clips; d=128, 3+3 layers,
-3,000 CPU steps each; `scripts/evaluate_text_to_motion.py`, frame-aligned to each
-reference clip). Ratios are generated over real; 1 is realistic.
+**Measured on real signing.**
+- **Data:** proxy monocular states of train shard 0, split by the fold plan into 3,610
+  train clips and 238 signer-disjoint val clips.
+- **Models:** d = 128, 3+3 layers, 3,000 CPU steps each; tokenizer 128 hidden, 256
+  codes.
+- **Evaluation:** `scripts/evaluate_text_to_motion.py`, frame-aligned to each reference
+  clip. Ratios are generated over real; 1 is realistic.
 
-| | Regression | Diffusion (guidance 1) |
-|---|---:|---:|
-| Body angular speed ratio | 0.024 | **0.229** |
-| Hand angular speed ratio (L/R) | 0.002 / 0.002 | **0.079 / 0.098** |
-| Body temporal-variation ratio | 0.081 | **0.377** |
-| Hand temporal-variation ratio (L/R) | 0.012 / 0.011 | **0.207 / 0.201** |
-| Fréchet distance (standardised clip features) | 2503 | **1999** |
-| Per-frame geodesic error, body / hands | **18.2° / 24°** | 19.3° / 26–28° |
+| | Regression | Diffusion (g = 1) | Motion tokens (g = 2) |
+|---|---:|---:|---:|
+| Fréchet distance (standardised clip features) | 2503 | 1999 | **1815** |
+| Body angular-speed ratio | 0.024 | 0.229 | **0.774** |
+| Body temporal-variation ratio | 0.081 | 0.377 | **0.675** |
+| Hand angular-speed ratio (L/R) | 0.002 / 0.002 | 0.079 / 0.098 | **0.172 / 0.170** |
+| Hand temporal-variation ratio (L/R) | 0.012 / 0.011 | 0.207 / 0.201 | **0.215** / 0.175 |
+| Per-frame geodesic error, body | 18.2° | 19.3° | **17.0°** |
+| Per-frame geodesic error, hands (L/R) | **24.0° / 23.8°** | 26.2° / 28.4° | 26.2° / 24.8° |
 
-Diffusion moves 10–50× closer to real articulation and 20% closer in distribution,
-at 1–4° more per-frame error. Per-frame error rewards the frozen mean, so its small
-rise is the expected trade. Guidance 2 did not improve on 1.
+- **Motion tokens are best overall.** They are closest to real articulation and
+  distribution, and best per frame on the body.
+- **Diffusion** is second, ahead of regression on everything except per-frame error,
+  which rewards the frozen mean.
+- **Guidance:** it helps the token prior (Fréchet 2008 → 1815 from g = 1 to 2) and
+  does not help diffusion.
+- **The token generator's limit is its tokenizer.** Its own reconstructions of the
+  validation clips have 16° body and 20° hand error and keep 16% of real hand speed,
+  with 248 of 256 codes in use. A larger tokenizer trained longer is the next lever:
+  reference tokenizers train about 100× longer.
+- **Fréchet caveat:** generated clips are valid in every frame, while real clips lack
+  hands in some frames, so part of each Fréchet value reflects missing hands rather
+  than motion.
 
-Both remain far from real motion (ratios 0.1–0.4), as expected for a small model
-trained briefly on 3,610 proxy clips. The production run (two-view states, the full
-corpus, a larger model on Runpod) should use `--objective diffusion`. Rendered
-samples (reference | regression | diffusion) are in
-`evidence/generated-motion-2026-10-19/`.
+**Recommendation for the production run** (two-view states, full corpus, Runpod):
+train the motion-token generator as the primary model, with a larger tokenizer
+trained for longer, and diffusion as the second candidate; select on the
+signer-disjoint validation metrics above. Rendered samples are in
+`evidence/generated-motion-2026-10-19/`, each video showing reference | regression |
+diffusion | motion tokens.

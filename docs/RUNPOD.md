@@ -112,7 +112,20 @@ It prints the manifest SHA-256 used in the next step.
 python scripts/train_text_to_motion.py --manifest-key acquisition/2026-10-17-v1/derived/how2sign-text-manifest-v1/manifest.json --manifest-sha256 <MANIFEST_SHA256> --run t2m-v1 --steps 100000 --batch-size 32 --workers 8
 ```
 
-Checkpoints go to `training-runs/t2m-v1/checkpoints/` every 2,000 steps. If the pod
+Checkpoints go to `training-runs/t2m-v1/checkpoints/` every 2,000 steps.
+
+**Generative decoders** (`CONTINUOUS_TRAINING.md`, "Generative decoders"). They beat
+the regressor on signer-disjoint validation; train both and select on
+`scripts/evaluate_text_to_motion.py`:
+
+```bash
+# Diffusion
+python scripts/train_text_to_motion.py --manifest-key $D/how2sign-text-manifest-v1/manifest.json --manifest-sha256 <MANIFEST_SHA256> --run t2m-diffusion-v1 --objective diffusion --steps 200000 --batch-size 32 --workers 8
+# Motion tokens: tokenizer, then the prior with the tokenizer pinned by hash
+python scripts/train_motion_tokens.py --stage tokenizer --manifest-key $D/how2sign-text-manifest-v1/manifest.json --manifest-sha256 <MANIFEST_SHA256> --run tokens-vq-v1 --steps 200000 --hidden 512 --code-dim 256 --codebook 1024 --batch-size 64 --workers 8
+python scripts/train_motion_tokens.py --stage prior --manifest-key $D/how2sign-text-manifest-v1/manifest.json --manifest-sha256 <MANIFEST_SHA256> --run tokens-prior-v1 --tokenizer-key training-runs/tokens-vq-v1/checkpoints/step-00200000.pt --tokenizer-sha256 <TOKENIZER_SHA256> --steps 200000 --batch-size 32 --workers 8
+python scripts/evaluate_text_to_motion.py --manifest-key $D/how2sign-text-manifest-v1/manifest.json --manifest-sha256 <MANIFEST_SHA256> --checkpoint-key training-runs/tokens-prior-v1/checkpoints/step-00200000.pt --partition val --guidance 1,2,3
+``` If the pod
 stops, run the same command again: it resumes from the newest checkpoint and refuses
 one made with a different configuration or manifest.
 

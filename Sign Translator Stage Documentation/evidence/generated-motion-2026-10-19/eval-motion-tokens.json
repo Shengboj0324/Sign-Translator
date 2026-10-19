@@ -1,0 +1,57 @@
+{
+  "checkpoint_key": "training-runs/arch-compare-tokens-cpu-v1/checkpoints/step-00003000.pt",
+  "clips": 238,
+  "generator": "motion_tokens",
+  "manifest_sha256": "bf4d7a77ddf9d024baffffc990f1bcbf979b222a63b5f18b24fad4dfb7e23c3c",
+  "partition": "val",
+  "results": {
+    "motion_tokens guidance 1": {
+      "body": {
+        "geodesic_deg": 17.51100599822996,
+        "speed_ratio": 0.7540357189901377,
+        "variation_ratio": 0.6017620043369412
+      },
+      "frechet": 2007.9914534259985,
+      "head_rotation": {
+        "geodesic_deg": 20.856837554452945,
+        "speed_ratio": 0.9825457372770099,
+        "variation_ratio": 0.46251302843929853
+      },
+      "left_hand": {
+        "geodesic_deg": 26.52373588238492,
+        "speed_ratio": 0.15967349719877588,
+        "variation_ratio": 0.1732821716203385
+      },
+      "right_hand": {
+        "geodesic_deg": 25.402054081620992,
+        "speed_ratio": 0.1850930803494256,
+        "variation_ratio": 0.1714262151075891
+      }
+    },
+    "motion_tokens guidance 2": {
+      "body": {
+        "geodesic_deg": 16.991215453556695,
+        "speed_ratio": 0.7744439562781245,
+        "variation_ratio": 0.6748667998038805
+      },
+      "frechet": 1815.3538614352694,
+      "head_rotation": {
+        "geodesic_deg": 18.51261074061868,
+        "speed_ratio": 1.1968058821843799,
+        "variation_ratio": 0.5039113440828983
+      },
+      "left_hand": {
+        "geodesic_deg": 26.226250662653715,
+        "speed_ratio": 0.17184081247165384,
+        "variation_ratio": 0.21499023504416764
+      },
+      "right_hand": {
+        "geodesic_deg": 24.782851447719562,
+        "speed_ratio": 0.17021955624593588,
+        "variation_ratio": 0.17533147964198045
+      }
+    }
+  },
+  "schema_version": 1,
+  "steps": 50
+}
