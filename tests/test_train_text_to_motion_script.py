@@ -51,3 +51,23 @@ def test_trains_checkpoints_and_resumes(tmp_path, monkeypatch):
     assert script.main(common + ["--steps", "6"]) == 0  # resumes from step 4
     log = json.loads((tmp_path / "store/training-runs/smoke/log/step-00000006.json").read_text())
     assert [e["step"] for e in log] == [5, 6] and "val/body" in log[-1]
+
+
+def test_diffusion_objective_trains_checkpoints_and_resumes(tmp_path, monkeypatch):
+    monkeypatch.setenv("SIGN_CACHE_DIR", str(tmp_path / "cache"))
+    digest = store_with_manifest(tmp_path / "store")
+    script = load_script()
+    common = ["--store", f"dir:{tmp_path / 'store'}", "--manifest-key", "manifest.json", "--manifest-sha256", digest,
+              "--run", "diff-run", "--batch-size", "2", "--d-model", "32", "--heads", "4", "--text-layers", "1",
+              "--motion-layers", "1", "--feedforward", "64", "--warmup", "2", "--eval-every", "2", "--eval-batches", "1",
+              "--checkpoint-every", "2", "--workers", "0", "--trained-channels", "body,head_rotation,face", "--amp", "none",
+              "--objective", "diffusion"]
+    assert script.main(common + ["--steps", "4"]) == 0
+    run = json.loads((tmp_path / "store/training-runs/diff-run/run.json").read_text())
+    assert run["config"]["objective"] == "diffusion" and run["config"]["cfg_dropout"] == .1
+    assert script.main(common + ["--steps", "6"]) == 0
+    # A regression run must refuse to resume a diffusion checkpoint (different config).
+    import pytest
+    regression = common[:common.index("--objective")]
+    with pytest.raises(SystemExit, match="different config"):
+        script.main(regression + ["--steps", "8"])

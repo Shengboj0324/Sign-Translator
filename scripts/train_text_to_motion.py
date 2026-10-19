@@ -98,6 +98,9 @@ def main(argv=None) -> int:
     parser.add_argument("--feedforward", type=int, default=2048)
     parser.add_argument("--dropout", type=float, default=.1)
     parser.add_argument("--max-seconds", type=float, default=20.)
+    parser.add_argument("--objective", choices=("regression", "diffusion"), default="regression",
+                        help="diffusion samples a plausible motion instead of predicting the conditional mean")
+    parser.add_argument("--cfg-dropout", type=float, default=.1, help="diffusion: empty-text probability")
     parser.add_argument("--trained-channels", default="body,left_hand,right_hand,head_rotation,face,blink")
     parser.add_argument("--eval-every", type=int, default=1_000)
     parser.add_argument("--eval-batches", type=int, default=50)
@@ -127,7 +130,8 @@ def main(argv=None) -> int:
     config = TextToMotionConfig(
         bindings=channel_bindings_from_state(first_state), trained_channels=tuple(args.trained_channels.split(",")),
         d_model=args.d_model, heads=args.heads, text_layers=args.text_layers, motion_layers=args.motion_layers,
-        feedforward=args.feedforward, dropout=args.dropout, max_seconds=args.max_seconds)
+        feedforward=args.feedforward, dropout=args.dropout, max_seconds=args.max_seconds,
+        objective=args.objective, cfg_dropout=args.cfg_dropout)
     model = TextToMotion(config).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     prefix = f"training-runs/{args.run}"
