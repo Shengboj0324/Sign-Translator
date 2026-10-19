@@ -98,6 +98,13 @@ def triangulated_points(calibration: Calibration, front_pts, front_conf, side_pt
 
 
 HAND_SMOOTHNESS = 20.    # tuned on CMU Panoptic 171026_pose3; see docs/DATA_QUALITY_DECISION.md
+HAND_HINGE_WEIGHT = 20.  # coplanar-phalanx prior, tuned on 171026_pose3 (plateau 20-100); DATA_QUALITY_DECISION §6
+
+
+def finger_hinges(side: str) -> tuple[tuple[int, int, int], ...]:
+    """Per finger, the child joints of its last three bones (1-DOF hinged phalanges)."""
+    hand = HAND21[side]
+    return tuple(tuple(hand[2 + 4 * finger: 5 + 4 * finger]) for finger in range(5))
 
 
 def hand_skeleton(side: str) -> Skeleton:
@@ -113,7 +120,8 @@ def hand_skeleton(side: str) -> Skeleton:
 
 
 def refine_hands(points3d: np.ndarray, view1: np.ndarray, view2: np.ndarray, conf1: np.ndarray, conf2: np.ndarray,
-                 p1: np.ndarray, p2: np.ndarray, *, smoothness: float = HAND_SMOOTHNESS) -> np.ndarray:
+                 p1: np.ndarray, p2: np.ndarray, *, smoothness: float = HAND_SMOOTHNESS,
+                 hinge_weight: float = HAND_HINGE_WEIGHT) -> np.ndarray:
     """Finger joints re-estimated by a rigid-bone, temporally smooth two-view hand fit.
 
     Arms stay as triangulated (fitting them as well cost accuracy on Panoptic); each
@@ -125,7 +133,8 @@ def refine_hands(points3d: np.ndarray, view1: np.ndarray, view2: np.ndarray, con
     for side in ("Left", "Right"):
         skeleton = hand_skeleton(side)
         try:
-            fitted, _ = fit_skeleton(points3d, view1, view2, conf1, conf2, p1, p2, skeleton, smoothness=smoothness)
+            fitted, _ = fit_skeleton(points3d, view1, view2, conf1, conf2, p1, p2, skeleton, smoothness=smoothness,
+                                     hinges=finger_hinges(side), hinge_weight=hinge_weight)
         except ValueError:
             continue                                   # this hand is never triangulated
         wrist, fingers = skeleton.joints[0], list(skeleton.joints[1:])
@@ -248,4 +257,4 @@ def triangulated_state(monocular: MultichannelMotion, frames: slice, rotations: 
 __all__ = ["triangulated_state", "rigid_bones", "motion_signal", "ClipKeypoints", "synchronise", "aligned", "calibrate_session",
            "triangulated_points", "rotation_inputs", "symmetry_error", "session_gate", "monocular_bone_cv",
            "triangulated_bone_cv", "CONFIDENCE", "MAX_REPROJECTION_PX", "MIN_SYNC_CORRELATION", "CALIBRATION_ANCHORS",
-           "HAND_SMOOTHNESS", "hand_skeleton", "refine_hands", "refined_points"]
+           "HAND_SMOOTHNESS", "HAND_HINGE_WEIGHT", "finger_hinges", "hand_skeleton", "refine_hands", "refined_points"]

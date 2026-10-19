@@ -1,0 +1,131 @@
+{
+  "calibration": {
+    "raw+flip [self+dist]": {
+      "distortion": [
+        -0.46546612817694516,
+        -0.26995403664410933
+      ],
+      "focal": [
+        1426.7978291329148,
+        1284.7820266723277
+      ],
+      "reprojection_px": [
+        0.6985063077555742,
+        1.1551033697445718
+      ],
+      "true_focal": [
+        1514.48,
+        1572.47
+      ],
+      "true_k1": [
+        -0.261501,
+        -0.237312
+      ]
+    },
+    "raw+flip [self]": {
+      "distortion": [
+        0.0,
+        0.0
+      ],
+      "focal": [
+        1453.888788689632,
+        1268.1184462093456
+      ],
+      "reprojection_px": [
+        0.677456122074494,
+        1.1947226857908275
+      ],
+      "true_focal": [
+        1514.48,
+        1572.47
+      ],
+      "true_k1": [
+        -0.261501,
+        -0.237312
+      ]
+    }
+  },
+  "cameras": [
+    "00_22",
+    "00_23"
+  ],
+  "frame_offset": 0,
+  "frames": 150,
+  "offset_check": {
+    "-2": 4.3591747294591805,
+    "-1": 4.15960128659659,
+    "0": 3.919558062170969,
+    "1": 4.211692379471179,
+    "2": 4.535862164872569
+  },
+  "results": {
+    "mediapipe_monocular": {
+      "arm_direction_mean_deg": 12.696584983514635,
+      "arm_direction_median_deg": 10.631523437932465,
+      "arm_pa_mpjpe_cm": 5.5996152756856254
+    },
+    "raw+flip [self+dist-calib]": {
+      "arm_bone_cv": 0.04050902575494748,
+      "arm_direction_mean_deg": 4.865351190513834,
+      "arm_direction_median_deg": 4.315527838121785,
+      "arm_pa_mpjpe_cm": 3.260112357718553,
+      "left_fingers_mean_deg": 9.986518379345947,
+      "left_fingers_median_deg": 8.068057994813714,
+      "right_fingers_mean_deg": 18.036435778268118,
+      "right_fingers_median_deg": 14.915607606805917
+    },
+    "raw+flip [self+dist-calib]+handfit(\u03bb=20,\u03bc=20)": {
+      "arm_bone_cv": 0.04050902575494748,
+      "arm_direction_mean_deg": 4.865351190513834,
+      "arm_direction_median_deg": 4.315527838121785,
+      "arm_pa_mpjpe_cm": 3.260112357718553,
+      "left_fingers_mean_deg": 8.573360751566225,
+      "left_fingers_median_deg": 7.044490351897688,
+      "right_fingers_mean_deg": 14.671720062431174,
+      "right_fingers_median_deg": 11.773318632107337
+    },
+    "raw+flip [self-calib]": {
+      "arm_bone_cv": 0.041354453960180546,
+      "arm_direction_mean_deg": 4.960894469811297,
+      "arm_direction_median_deg": 4.476595750688626,
+      "arm_pa_mpjpe_cm": 3.334175432495437,
+      "left_fingers_mean_deg": 9.978640556740007,
+      "left_fingers_median_deg": 8.030381178933535,
+      "right_fingers_mean_deg": 17.994259285990186,
+      "right_fingers_median_deg": 14.947874284628508
+    },
+    "raw+flip [self-calib]+handfit(\u03bb=20,\u03bc=20)": {
+      "arm_bone_cv": 0.041354453960180546,
+      "arm_direction_mean_deg": 4.960894469811297,
+      "arm_direction_median_deg": 4.476595750688626,
+      "arm_pa_mpjpe_cm": 3.334175432495437,
+      "left_fingers_mean_deg": 8.651462423506379,
+      "left_fingers_median_deg": 7.106159479499136,
+      "right_fingers_mean_deg": 14.87700878433815,
+      "right_fingers_median_deg": 12.034409140829357
+    },
+    "raw+flip [true-calib]": {
+      "arm_bone_cv": 0.042392607855845886,
+      "arm_direction_mean_deg": 4.715986980141088,
+      "arm_direction_median_deg": 3.919558062170969,
+      "arm_pa_mpjpe_cm": 1.640855289588613,
+      "left_fingers_mean_deg": 10.019157324025892,
+      "left_fingers_median_deg": 8.001847762129094,
+      "right_fingers_mean_deg": 19.018795947218106,
+      "right_fingers_median_deg": 15.475304819904487
+    },
+    "raw+flip [true-calib]+handfit(\u03bb=20,\u03bc=20)": {
+      "arm_bone_cv": 0.042392607855845886,
+      "arm_direction_mean_deg": 4.715986980141088,
+      "arm_direction_median_deg": 3.919558062170969,
+      "arm_pa_mpjpe_cm": 1.640855289588613,
+      "left_fingers_mean_deg": 8.563584020824194,
+      "left_fingers_median_deg": 7.285900394361686,
+      "right_fingers_mean_deg": 13.89089682750614,
+      "right_fingers_median_deg": 11.609787812028232
+    }
+  },
+  "schema_version": 1,
+  "sequence": "170915_office1",
+  "start": 1000
+}

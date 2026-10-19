@@ -98,20 +98,20 @@ error on every sequence). Evidence: `evidence/panoptic-accuracy-2026-10-19/`.
 
 **Adopted pipeline** (flip test-time augmentation → self-calibration on rigid-bone
 joints with one division-model radial coefficient per camera → triangulation → rigid,
-temporally smooth two-view refit of each hand, λ = 20):
+temporally smooth two-view refit of each hand with a hinge prior, λ = 20, μ = 20):
 
 | Sequence | Method | Arm direction, median | Fingers L/R, median | Arm PA-MPJPE |
 |---|---|---:|---:|---:|
 | 171026_pose3 (tuning) | MediaPipe monocular | 15.3° | — | 5.87 cm |
 | | §4 pipeline (all keypoints in calibration) | 14.6° (calibration failed) | 25.9° / 20.1° | 18.1 cm |
-| | **adopted** | **3.23°** | **7.18° / 9.89°** | **2.21 cm** |
-| | adopted keypoints, dome calibration | 3.53° | 6.00° / 8.38° | 1.03 cm |
+| | **adopted** | **3.23°** | **6.89° / 9.60°** | **2.21 cm** |
+| | adopted keypoints, dome calibration | 3.53° | 5.65° / 8.23° | 1.03 cm |
 | 170915_office1 (held out) | MediaPipe monocular | 10.6° | — | 5.60 cm |
-| | **adopted** | **4.32°** | **7.01° / 12.50°** | **3.26 cm** |
-| | adopted keypoints, dome calibration | 3.92° | 7.31° / 12.12° | 1.64 cm |
+| | **adopted** | **4.32°** | **7.04° / 11.77°** | **3.26 cm** |
+| | adopted keypoints, dome calibration | 3.92° | 7.29° / 11.61° | 1.64 cm |
 | 171204_pose1_sample (§4) | MediaPipe monocular | 14.0° | — | 5.29 cm |
 | | §4 result | 2.95° | 8.6° / 6.2° | 1.37 cm |
-| | **adopted** | **2.91°** | **5.64° / 4.45°** | **1.22 cm** |
+| | **adopted** | **2.91°** | **5.56° / 4.29°** | **1.22 cm** |
 
 What each step contributed, and what was rejected:
 
@@ -131,6 +131,11 @@ What each step contributed, and what was rejected:
    the fitted fingers are re-attached to the triangulated wrist. Fingers improve on
    every sequence and calibration (by 0.9–2.4° median). Fitting the arms as well was
    rejected: it cost 0.3–1.5° of arm accuracy.
+   **Hinge prior.** Interphalangeal joints are 1-DOF hinges, so a finger's proximal,
+   middle and distal phalanges are coplanar; the fit adds μ·det[u₁, u₂, u₃] per finger
+   and frame (zero exactly when coplanar). Fingers improved monotonically up to
+   μ = 20 on all three sequences (held-out right hand 12.19° → 11.59°), plateau to
+   μ = 100 on the tuning sequence and degrade at 300; μ = 20 is used.
 4. **Radial distortion in the bundle adjustment.** Panoptic HD lenses have k1 ≈ −0.26;
    modelled (residuals in observed pixels, |λ| ≤ 1, focal bounds) arm direction and
    PA-MPJPE were equal or better on all three sequences with flip keypoints
@@ -147,9 +152,9 @@ plus 300 frames spread over the whole recording, evaluation on the same 150 fram
 
 | 170915_office1 | Arm direction | Fingers L/R | Arm PA-MPJPE |
 |---|---:|---:|---:|
-| adopted, 150-frame calibration | 4.32° | 7.01° / 12.50° | 3.26 cm |
-| **adopted, session-scale calibration (450 frames)** | **3.55°** | **7.22° / 12.19°** | **1.85 cm** |
-| adopted keypoints, dome calibration | 3.92° | 7.49° / 12.11° | 1.64 cm |
+| adopted, 150-frame calibration | 4.32° | 7.04° / 11.77° | 3.26 cm |
+| **adopted, session-scale calibration (450 frames)** | **3.55°** | **7.10° / 11.59°** | **1.85 cm** |
+| adopted keypoints, dome calibration | 3.92° | 7.29° / 11.61° | 1.64 cm |
 
 With session-scale data the self-calibration is within 0.2 cm and 0.4° of the dome's own
 calibration (focal lengths 1666/1516 px vs 1514/1572 px). Its radial coefficient came

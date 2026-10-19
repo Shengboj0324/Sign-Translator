@@ -1,0 +1,221 @@
+{
+  "calibration": {
+    "raw+flip [self+dist]": {
+      "distortion": [
+        -0.18945236130636398,
+        -0.18448665636099448
+      ],
+      "focal": [
+        1309.198534655859,
+        1354.9339733940128
+      ],
+      "reprojection_px": [
+        0.8210233985933982,
+        0.6884692430111273
+      ],
+      "true_focal": [
+        1397.27,
+        1395.68
+      ],
+      "true_k1": [
+        -0.28791,
+        -0.28638
+      ]
+    },
+    "raw+flip [self]": {
+      "distortion": [
+        0.0,
+        0.0
+      ],
+      "focal": [
+        1341.1348032307772,
+        1409.665171632905
+      ],
+      "reprojection_px": [
+        0.9445694556726619,
+        0.7664190695482382
+      ],
+      "true_focal": [
+        1397.27,
+        1395.68
+      ],
+      "true_k1": [
+        -0.28791,
+        -0.28638
+      ]
+    }
+  },
+  "cameras": [
+    "00_21",
+    "00_07"
+  ],
+  "frame_offset": 0,
+  "frames": 97,
+  "offset_check": {
+    "-2": 4.39598149828449,
+    "-1": 3.613597708281592,
+    "0": 2.9089397935644135,
+    "1": 3.6902313003372815,
+    "2": 4.293043028703162
+  },
+  "results": {
+    "mediapipe_monocular": {
+      "arm_direction_mean_deg": 16.004698421407973,
+      "arm_direction_median_deg": 13.950516717027323,
+      "arm_pa_mpjpe_cm": 5.291094581145459
+    },
+    "raw+flip [self+dist-calib]": {
+      "arm_bone_cv": 0.026871313573394277,
+      "arm_direction_mean_deg": 3.221048254701778,
+      "arm_direction_median_deg": 2.9102063577744186,
+      "arm_pa_mpjpe_cm": 1.2236652693507954,
+      "left_fingers_mean_deg": 9.027961968368523,
+      "left_fingers_median_deg": 7.495574528355457,
+      "right_fingers_mean_deg": 6.558640072097844,
+      "right_fingers_median_deg": 5.402988752402372
+    },
+    "raw+flip [self+dist-calib]+handfit(\u03bb=20)": {
+      "arm_bone_cv": 0.026871313573394277,
+      "arm_direction_mean_deg": 3.221048254701778,
+      "arm_direction_median_deg": 2.9102063577744186,
+      "arm_pa_mpjpe_cm": 1.2236652693507954,
+      "left_fingers_mean_deg": 6.840725843463888,
+      "left_fingers_median_deg": 5.636482897172,
+      "right_fingers_mean_deg": 6.133337612452432,
+      "right_fingers_median_deg": 4.452324358966299
+    },
+    "raw+flip [self+dist-calib]+handfit(\u03bb=20,\u03bc=2)": {
+      "arm_bone_cv": 0.026871313573394277,
+      "arm_direction_mean_deg": 3.221048254701778,
+      "arm_direction_median_deg": 2.9102063577744186,
+      "arm_pa_mpjpe_cm": 1.2236652693507954,
+      "left_fingers_mean_deg": 6.82675859303973,
+      "left_fingers_median_deg": 5.637311822110302,
+      "right_fingers_mean_deg": 6.03508156978623,
+      "right_fingers_median_deg": 4.4347899502379855
+    },
+    "raw+flip [self+dist-calib]+handfit(\u03bb=20,\u03bc=20)": {
+      "arm_bone_cv": 0.026871313573394277,
+      "arm_direction_mean_deg": 3.221048254701778,
+      "arm_direction_median_deg": 2.9102063577744186,
+      "arm_pa_mpjpe_cm": 1.2236652693507954,
+      "left_fingers_mean_deg": 6.718091484084956,
+      "left_fingers_median_deg": 5.562867138091958,
+      "right_fingers_mean_deg": 5.639937754302335,
+      "right_fingers_median_deg": 4.290812048430075
+    },
+    "raw+flip [self+dist-calib]+handfit(\u03bb=20,\u03bc=5)": {
+      "arm_bone_cv": 0.026871313573394277,
+      "arm_direction_mean_deg": 3.221048254701778,
+      "arm_direction_median_deg": 2.9102063577744186,
+      "arm_pa_mpjpe_cm": 1.2236652693507954,
+      "left_fingers_mean_deg": 6.785925157076772,
+      "left_fingers_median_deg": 5.592279641323154,
+      "right_fingers_mean_deg": 5.821791029905985,
+      "right_fingers_median_deg": 4.4009138928580835
+    },
+    "raw+flip [self-calib]": {
+      "arm_bone_cv": 0.02621290619241845,
+      "arm_direction_mean_deg": 3.4456262890538083,
+      "arm_direction_median_deg": 3.0064705350651764,
+      "arm_pa_mpjpe_cm": 1.3093961060818364,
+      "left_fingers_mean_deg": 9.047268491043098,
+      "left_fingers_median_deg": 7.480467786706089,
+      "right_fingers_mean_deg": 6.670980837711814,
+      "right_fingers_median_deg": 5.4863920989354575
+    },
+    "raw+flip [self-calib]+handfit(\u03bb=20)": {
+      "arm_bone_cv": 0.02621290619241845,
+      "arm_direction_mean_deg": 3.4456262890538083,
+      "arm_direction_median_deg": 3.0064705350651764,
+      "arm_pa_mpjpe_cm": 1.3093961060818364,
+      "left_fingers_mean_deg": 6.869414857498751,
+      "left_fingers_median_deg": 5.758516891074791,
+      "right_fingers_mean_deg": 6.07618692885909,
+      "right_fingers_median_deg": 4.581168344416831
+    },
+    "raw+flip [self-calib]+handfit(\u03bb=20,\u03bc=2)": {
+      "arm_bone_cv": 0.02621290619241845,
+      "arm_direction_mean_deg": 3.4456262890538083,
+      "arm_direction_median_deg": 3.0064705350651764,
+      "arm_pa_mpjpe_cm": 1.3093961060818364,
+      "left_fingers_mean_deg": 6.856299757485468,
+      "left_fingers_median_deg": 5.747582240743336,
+      "right_fingers_mean_deg": 5.971357563418103,
+      "right_fingers_median_deg": 4.568512310638573
+    },
+    "raw+flip [self-calib]+handfit(\u03bb=20,\u03bc=20)": {
+      "arm_bone_cv": 0.02621290619241845,
+      "arm_direction_mean_deg": 3.4456262890538083,
+      "arm_direction_median_deg": 3.0064705350651764,
+      "arm_pa_mpjpe_cm": 1.3093961060818364,
+      "left_fingers_mean_deg": 6.743789768115312,
+      "left_fingers_median_deg": 5.5857186323446975,
+      "right_fingers_mean_deg": 5.601787355963549,
+      "right_fingers_median_deg": 4.436815098619488
+    },
+    "raw+flip [self-calib]+handfit(\u03bb=20,\u03bc=5)": {
+      "arm_bone_cv": 0.02621290619241845,
+      "arm_direction_mean_deg": 3.4456262890538083,
+      "arm_direction_median_deg": 3.0064705350651764,
+      "arm_pa_mpjpe_cm": 1.3093961060818364,
+      "left_fingers_mean_deg": 6.817826130840514,
+      "left_fingers_median_deg": 5.687094931353746,
+      "right_fingers_mean_deg": 5.755799089059873,
+      "right_fingers_median_deg": 4.5321325129128205
+    },
+    "raw+flip [true-calib]": {
+      "arm_bone_cv": 0.024378749653904273,
+      "arm_direction_mean_deg": 3.0211674793396224,
+      "arm_direction_median_deg": 2.9089397935644135,
+      "arm_pa_mpjpe_cm": 1.208109201989592,
+      "left_fingers_mean_deg": 9.075322770187134,
+      "left_fingers_median_deg": 7.531091595562463,
+      "right_fingers_mean_deg": 6.54447949127645,
+      "right_fingers_median_deg": 5.359883863371645
+    },
+    "raw+flip [true-calib]+handfit(\u03bb=20)": {
+      "arm_bone_cv": 0.024378749653904273,
+      "arm_direction_mean_deg": 3.0211674793396224,
+      "arm_direction_median_deg": 2.9089397935644135,
+      "arm_pa_mpjpe_cm": 1.208109201989592,
+      "left_fingers_mean_deg": 6.865521248452081,
+      "left_fingers_median_deg": 5.603982068786987,
+      "right_fingers_mean_deg": 6.081414342798518,
+      "right_fingers_median_deg": 4.429511831449247
+    },
+    "raw+flip [true-calib]+handfit(\u03bb=20,\u03bc=2)": {
+      "arm_bone_cv": 0.024378749653904273,
+      "arm_direction_mean_deg": 3.0211674793396224,
+      "arm_direction_median_deg": 2.9089397935644135,
+      "arm_pa_mpjpe_cm": 1.208109201989592,
+      "left_fingers_mean_deg": 6.851502079931878,
+      "left_fingers_median_deg": 5.6015489459682,
+      "right_fingers_mean_deg": 5.997642310423993,
+      "right_fingers_median_deg": 4.407373581958431
+    },
+    "raw+flip [true-calib]+handfit(\u03bb=20,\u03bc=20)": {
+      "arm_bone_cv": 0.024378749653904273,
+      "arm_direction_mean_deg": 3.0211674793396224,
+      "arm_direction_median_deg": 2.9089397935644135,
+      "arm_pa_mpjpe_cm": 1.208109201989592,
+      "left_fingers_mean_deg": 6.746328393646505,
+      "left_fingers_median_deg": 5.548261141504037,
+      "right_fingers_mean_deg": 5.630118904979814,
+      "right_fingers_median_deg": 4.277049360252759
+    },
+    "raw+flip [true-calib]+handfit(\u03bb=20,\u03bc=5)": {
+      "arm_bone_cv": 0.024378749653904273,
+      "arm_direction_mean_deg": 3.0211674793396224,
+      "arm_direction_median_deg": 2.9089397935644135,
+      "arm_pa_mpjpe_cm": 1.208109201989592,
+      "left_fingers_mean_deg": 6.810014739818007,
+      "left_fingers_median_deg": 5.577439151759304,
+      "right_fingers_mean_deg": 5.808524648653338,
+      "right_fingers_median_deg": 4.425299404502924
+    }
+  },
+  "schema_version": 1,
+  "sequence": "171204_pose1_sample",
+  "start": 2
+}

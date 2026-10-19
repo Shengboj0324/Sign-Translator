@@ -15,7 +15,10 @@ and a sparse Jacobian, is
 * a temporal term ``λ |u(t+1) − 2u(t) + u(t−1)|`` on each direction's second difference
   (an acceleration penalty: constant angular velocity costs nothing);
 * bone lengths fixed to the per-session robust (median) triangulated lengths, so the
-  fit cannot trade length for direction.
+  fit cannot trade length for direction;
+* optionally, a hinge prior ``μ det[u_a, u_b, u_c]`` for chains of three bones joined
+  by 1-DOF hinges (the proximal, middle and distal phalanges of a finger): the triple
+  product of the unit directions vanishes exactly when they are coplanar.
 """
 
 from __future__ import annotations
@@ -43,11 +46,14 @@ def _tangent_basis(u0: np.ndarray):
 
 def fit_skeleton(points3d: np.ndarray, view1: np.ndarray, view2: np.ndarray, conf1: np.ndarray,
                  conf2: np.ndarray, p1: np.ndarray, p2: np.ndarray, skeleton: Skeleton, *,
-                 smoothness: float = 20., max_nfev: int = 60) -> tuple[np.ndarray, dict]:
+                 smoothness: float = 20., max_nfev: int = 60, hinges: tuple[tuple[int, int, int], ...] = (),
+                 hinge_weight: float = 0.) -> tuple[np.ndarray, dict]:
     """Refined (T, K, 3) points (NaN for joints outside the skeleton) and a report.
 
     ``points3d`` (T, K, 3) is the triangulated initialisation (NaN allowed);
     views are (T, K, 2) pixels with confidences (T, K); p1/p2 are 3x4 projections.
+    ``hinges`` are triples of keypoint indices, each the child joint of one bone of a
+    hinged three-bone chain.
     """
     frames = len(points3d)
     joints, parents = np.array(skeleton.joints), np.array(skeleton.parents)
@@ -75,6 +81,10 @@ def fit_skeleton(points3d: np.ndarray, view1: np.ndarray, view2: np.ndarray, con
         nearest = np.array([good[np.argmin(np.abs(good - t))] for t in range(frames)])
         u0[:, k] = direction[nearest]
     e1, e2 = _tangent_basis(u0[:, 1:])
+    position = {j: k for k, j in enumerate(joints)}
+    hinge_bones = np.array([[position[j] - 1 for j in triple] for triple in hinges], dtype=int).reshape(-1, 3)
+    if hinge_weight == 0:
+        hinge_bones = hinge_bones[:0]
     w1 = np.sqrt(np.clip(conf1[:, joints], 0, 1))
     w2 = np.sqrt(np.clip(conf2[:, joints], 0, 1))
     x1, x2 = view1[:, joints], view2[:, joints]
@@ -99,7 +109,9 @@ def fit_skeleton(points3d: np.ndarray, view1: np.ndarray, view2: np.ndarray, con
         r1 = ((project(p1, pos) - x1) * w1[..., None]).ravel()
         r2 = ((project(p2, pos) - x2) * w2[..., None]).ravel()
         smooth = smoothness * (u[2:] - 2 * u[1:-1] + u[:-2]).ravel() if frames > 2 else np.zeros(0)
-        return np.concatenate((np.nan_to_num(r1), np.nan_to_num(r2), smooth))
+        hinge = hinge_weight * np.einsum("thi,thi->th", u[:, hinge_bones[:, 0]],
+                                         np.cross(u[:, hinge_bones[:, 1]], u[:, hinge_bones[:, 2]])).ravel()
+        return np.concatenate((np.nan_to_num(r1), np.nan_to_num(r2), smooth, hinge))
 
     # Sparsity: a frame's reprojections depend on its root and the directions of the
     # joint's ancestors; smoothness couples three consecutive frames of one direction.
@@ -107,7 +119,8 @@ def fit_skeleton(points3d: np.ndarray, view1: np.ndarray, view2: np.ndarray, con
     for k in range(1, n):
         ancestors[k] = ancestors[parents[k]] + [k]
     rows_per_frame = n * 2
-    total_rows = 2 * frames * rows_per_frame + (max(frames - 2, 0)) * (n - 1) * 3
+    smooth_rows = max(frames - 2, 0) * (n - 1) * 3
+    total_rows = 2 * frames * rows_per_frame + smooth_rows + frames * len(hinge_bones)
     sparsity = lil_matrix((total_rows, frames * 3 + frames * (n - 1) * 2), dtype=np.int8)
     for view in range(2):
         for t in range(frames):
@@ -126,6 +139,12 @@ def fit_skeleton(points3d: np.ndarray, view1: np.ndarray, view2: np.ndarray, con
                 for dt in range(3):
                     col = frames * 3 + ((t + dt) * (n - 1) + k) * 2
                     sparsity[row, col:col + 2] = 1
+    base_hinge = base + smooth_rows
+    for t in range(frames):
+        for h, bones in enumerate(hinge_bones):
+            for k in bones:
+                col = frames * 3 + (t * (n - 1) + k) * 2
+                sparsity[base_hinge + t * len(hinge_bones) + h, col:col + 2] = 1
     x0 = np.concatenate((root.ravel(), np.zeros(frames * (n - 1) * 2)))
     start = np.sqrt(np.mean(residuals(x0)[:base] ** 2))
     result = least_squares(residuals, x0, jac_sparsity=sparsity.tocsr(), method="trf", loss="soft_l1", f_scale=2.,

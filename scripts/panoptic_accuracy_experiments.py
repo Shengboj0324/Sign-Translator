@@ -226,6 +226,8 @@ def main(argv=None) -> int:
     parser.add_argument("--variants", help="comma-separated subset of variant labels to evaluate")
     parser.add_argument("--calibration-frames", type=int, default=0,
                         help="also calibrate on this many frames spread over the whole sequence")
+    parser.add_argument("--hinge", default="0", help="comma-separated hinge-prior weights for the hand refit")
+    parser.add_argument("--no-full-fit", action="store_true", help="skip the whole-skeleton fit variants")
     parser.add_argument("--hand-scales", default="1.6,3", help="hand-crop scales for Stage A ('' for none)")
     args = parser.parse_args(argv)
     name = args.sequence.name
@@ -341,16 +343,18 @@ def main(argv=None) -> int:
             tag = f"{label} [{calib}-calib]"
             results[tag] = metrics(tri, gt_body, gt_hands)
             for lam in (float(x) for x in args.smoothness.split(",")):
-                try:
-                    fitted, report = fit_skeleton(tri, x1, x2, fc * usable, sc * usable, p1, p2, goliath_skeleton(),
-                                                  smoothness=lam)
-                except ValueError as error:
-                    results[f"{tag}+fit(λ={lam:g})"] = dict(error=str(error))
-                    continue
-                results[f"{tag}+fit(λ={lam:g})"] = dict(metrics(fitted, gt_body, gt_hands),
-                                                         fit_rms_px=[report["start_rms_px"], report["end_rms_px"]])
-                hybrid = refine_hands(tri, x1, x2, fc * usable, sc * usable, p1, p2, smoothness=lam)
-                results[f"{tag}+handfit(λ={lam:g})"] = metrics(hybrid, gt_body, gt_hands)
+                if not args.no_full_fit:
+                    try:
+                        fitted, report = fit_skeleton(tri, x1, x2, fc * usable, sc * usable, p1, p2,
+                                                      goliath_skeleton(), smoothness=lam)
+                        results[f"{tag}+fit(λ={lam:g})"] = dict(
+                            metrics(fitted, gt_body, gt_hands), fit_rms_px=[report["start_rms_px"], report["end_rms_px"]])
+                    except ValueError as error:
+                        results[f"{tag}+fit(λ={lam:g})"] = dict(error=str(error))
+                for mu in (float(x) for x in args.hinge.split(",")):
+                    hybrid = refine_hands(tri, x1, x2, fc * usable, sc * usable, p1, p2, smoothness=lam, hinge_weight=mu)
+                    suffix = f",μ={mu:g}" if mu else ""
+                    results[f"{tag}+handfit(λ={lam:g}{suffix})"] = metrics(hybrid, gt_body, gt_hands)
     record = dict(schema_version=1, sequence=name, cameras=[args.front, args.side], start=args.start, frames=count,
                   frame_offset=best_offset, offset_check=offsets, calibration=calibration_report, results=results)
     args.output.parent.mkdir(parents=True, exist_ok=True)
