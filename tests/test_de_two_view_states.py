@@ -6,7 +6,8 @@ from signtranslator.data_engineering.landmark_kinematics import unit
 from signtranslator.data_engineering.sapiens_keypoints import HAND21
 from signtranslator.data_engineering.two_view_geometry import intrinsics, project, triangulate
 from signtranslator.data_engineering.two_view_states import (
-    ClipKeypoints, aligned, calibrate_session, hand_skeleton, refine_hands, rigid_bones, rotation_inputs, session_gate,
+    ClipKeypoints, aligned, calibrate_session, epipolar_synchronise, hand_skeleton, in_image, refine_hands, rigid_bones,
+    rotation_inputs, session_gate,
     synchronise,
     triangulated_bone_cv, triangulated_points,
 )
@@ -75,10 +76,14 @@ def test_session_pipeline_recovers_lag_cameras_and_exact_rotations():
     assert sync["lag_frames"] == 2 and sync["passed"]
     times, fp, fc, sp, sc = aligned(front, side, sync["lag_frames"])
     calibration = calibrate_session([(fp, fc, sp, sc)])
-    # Default session calibration also fits one radial coefficient per camera; on these
-    # undistorted views it must stay near zero, at a small cost in focal precision.
+    # Default session calibration also fits one radial coefficient per camera. The views
+    # here are undistorted, so the fitted correction must move the observed keypoints by
+    # less than the 0.6 px keypoint noise (the coefficient itself is weakly identified).
     assert abs(calibration.focal1 / 1150 - 1) < .04 and abs(calibration.focal2 / 1400 - 1) < .04
-    assert max(abs(c) for c in calibration.distortion) < .05
+    u1, u2 = calibration.undistort(fp, sp, (1280, 720), (1280, 720))
+    seen = fc > 0
+    assert np.median(np.linalg.norm(u1 - fp, axis=-1)[seen]) < .3
+    assert np.median(np.linalg.norm(u2 - sp, axis=-1)[seen]) < .3
     points, usable = triangulated_points(calibration, fp, fc, sp, sc)
     cv = triangulated_bone_cv(points)
     gate = session_gate(calibration, [sync], cv, monocular_cv=.08)
@@ -161,3 +166,55 @@ def test_hand_refinement_reduces_finger_direction_error_and_keeps_arms():
     assert finger_error(refined) < .7 * finger_error(raw)
     np.testing.assert_array_equal(refined[:, [5, 6, 7, 8, 62, 41]], raw[:, [5, 6, 7, 8, 62, 41]])
     assert hand_skeleton("Left").joints[0] == HAND21["Left"][0] and len(hand_skeleton("Right").joints) == 21
+
+
+def session_clips(lag=2, seeds=(0, 1, 2), noise=.6):
+    """Several sentences of one session: different motion, the same two cameras and lag."""
+    p1, p2 = cameras()
+    used = sorted({i for b in rigid_bones() for i in b} | {0})
+    out = []
+    for seed in seeds:
+        points = goliath_motion(frames=90, seed=seed)
+        rng = np.random.default_rng(100 + seed)
+        conf = np.zeros((len(points), 308))
+        conf[:, used] = 1.
+        def view(p):
+            v = np.zeros((len(points), 308, 2))
+            v[:, used] = project(p, points[:, used].reshape(-1, 3)).reshape(len(points), len(used), 2)
+            return v + rng.normal(scale=noise, size=v.shape)
+        front, side = view(p1), view(p2)
+        side = np.concatenate((np.repeat(side[:1], lag, 0), side))[:len(points)]
+        times = np.arange(len(points)) / 24.
+        out.append((f"s{seed}", ClipKeypoints("f", times, front, conf), ClipKeypoints("s", times, side, conf)))
+    return out
+
+
+def test_epipolar_synchronisation_finds_the_session_lag_and_drops_a_miscut_clip():
+    clips_ = session_clips()
+    sync = epipolar_synchronise(clips_)
+    assert sync["lag_frames"] == 2 and sync["sharp"] and sync["passed"]
+    assert all(c["passed"] for c in sync["clips"]) and sync["session_sampson_px"] < 1.
+    # A clip whose side view was cut from elsewhere in the recording is rejected.
+    name, front, side = clips_[0]
+    other = session_clips(seeds=(7,))[0][2]
+    sync = epipolar_synchronise(clips_ + [("miscut", front, other)])
+    assert sync["lag_frames"] == 2
+    assert [c["passed"] for c in sync["clips"]] == [True, True, True, False]
+
+
+def test_epipolar_synchronisation_refuses_views_without_a_sharp_minimum():
+    clips_ = session_clips()
+    unrelated = [(n, f, session_clips(seeds=(10 + i,))[0][2]) for i, (n, f, _) in enumerate(clips_)]
+    sync = epipolar_synchronise(unrelated)
+    assert not sync["passed"] and not any(c["passed"] for c in sync["clips"])
+
+
+def test_keypoints_outside_the_image_are_never_observations():
+    pts = np.array([[[10., 10.], [-1., 5.], [1279.9, 719.9], [1280., 3.], [5., 720.]]])
+    assert in_image(pts, (1280, 720)).tolist() == [[True, False, True, False, False]]
+    front, side, _ = clips()
+    times, fp, fc, sp, sc = aligned(front, side, 2)
+    fp = fp.copy(); fp[:, 41] = [-50., 300.]                         # right wrist pushed off-image
+    calibration = calibrate_session([(fp, fc, sp, sc)])
+    points, usable = triangulated_points(calibration, fp, fc, sp, sc)
+    assert not usable[:, 41].any() and np.isnan(points[:, 41]).all()

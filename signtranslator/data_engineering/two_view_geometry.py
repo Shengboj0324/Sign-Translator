@@ -248,12 +248,16 @@ def bone_length_cv(points: np.ndarray, bones) -> float:
 
 def calibrate(obs: TwoViewObservations, *, focal_guess: float | None = None, bone_weight: float = 50.,
               ransac_threshold: float = 3., seed: int = 0, distortion: bool = False,
-              anchors: tuple[int, ...] = ()) -> Calibration:
+              anchors: tuple[int, ...] = (), ransac_joints: tuple[int, ...] | None = None) -> Calibration:
     """Self-calibrate a camera pair; robust start, then bone-constrained bundle adjustment.
 
     With ``distortion`` the pinhole solution is refined once more with one division-model
     coefficient per camera, started at zero. ``anchors`` are extra view-consistent
-    joints (not on a bone) allowed into the reprojection term.
+    joints (not on a bone) allowed into the reprojection term. With ``ransac_joints``
+    the robust epipolar start is fitted on those joints only (the most view-consistent
+    ones), and every other observation is kept or dropped by its Sampson distance to
+    that geometry — inconsistent keypoints (e.g. occluded fingers in a profile view)
+    can then neither bias the start nor enter the bundle adjustment.
     """
     if obs.view1.shape != obs.view2.shape or obs.usable.shape != obs.view1.shape[:2]:
         raise ValueError("views and mask must share (T, J)")
@@ -266,7 +270,12 @@ def calibrate(obs: TwoViewObservations, *, focal_guess: float | None = None, bon
     usable = obs.usable & on_bone
     t_idx, j_idx = np.nonzero(usable)
     x1, x2 = obs.view1[t_idx, j_idx], obs.view2[t_idx, j_idx]
-    f, inliers = ransac_fundamental(x1, x2, threshold=ransac_threshold, seed=seed)
+    if ransac_joints is None:
+        f, inliers = ransac_fundamental(x1, x2, threshold=ransac_threshold, seed=seed)
+    else:
+        subset = np.isin(j_idx, ransac_joints)
+        f, _ = ransac_fundamental(x1[subset], x2[subset], threshold=ransac_threshold, seed=seed)
+        inliers = sampson(f, x1, x2) < ransac_threshold
     usable[t_idx[~inliers], j_idx[~inliers]] = False
     clean = TwoViewObservations(obs.view1, obs.view2, usable, obs.size1, obs.size2, obs.bones)
     guess = focal_guess or float(max(obs.size1))

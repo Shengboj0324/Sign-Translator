@@ -16,7 +16,10 @@ import numpy as np
 
 from .sapiens_keypoints import HAND21, to_hand21, to_pose33
 from .skeleton_fit import Skeleton, fit_skeleton
-from .two_view_geometry import Calibration, TwoViewObservations, bone_length_cv, calibrate, triangulate_session, view_offset
+from .two_view_geometry import (
+    Calibration, TwoViewObservations, bone_length_cv, calibrate, ransac_fundamental, sampson, triangulate_session,
+    view_offset,
+)
 from ..pose.multichannel import CHANNELS, MotionChannel, MultichannelMotion
 from ..pose.rotations import matrix_to_rotation_6d
 from .video_landmarks import BODY_LABELS, Y_UP, finger_joints
@@ -26,6 +29,18 @@ MAX_REPROJECTION_PX = 2.
 MIN_SYNC_CORRELATION = .8
 CALIBRATION_ANCHORS = (0,)    # nose: on no bone but view-consistent (1.1 px median two-view error on Panoptic)
 MAX_LAG_FRAMES = 15
+# Epipolar synchronisation and calibration seeding (decided on the first real How2Sign
+# session, before any training; docs/DATA_QUALITY_DECISION.md §7). Nose, shoulders,
+# elbows and wrists are the view-consistent keypoints on How2Sign (0.75-2 px median
+# Sampson distance; hand keypoints in the profile view ~4.8 px), so they seed the
+# calibration. Timing needs fast motion, which the hands carry: body+hands give a sharp
+# single minimum over lags (ratio 0.54 to lags >= 2 frames away), body alone a flat one (0.88).
+CALIBRATION_SEED_JOINTS = (0, 5, 6, 7, 8, 62, 41)
+SYNC_JOINTS = CALIBRATION_SEED_JOINTS + HAND21["Left"] + HAND21["Right"]
+SYNC_CONFIDENCE = .5
+MIN_SYNC_OBSERVATIONS = 200        # pooled correspondences needed to decide a session's lag
+SYNC_SHARPNESS = .8                # best lag's error must be < 0.8x that of every lag >= 2 frames away
+MAX_CLIP_EPIPOLAR_RATIO = 2.       # a clip whose error at the session lag exceeds 2x the session's is dropped
 
 # Rigid segments in Goliath indices: arms, shoulder and hip widths, legs, finger phalanges.
 _BODY_BONES = ((5, 7), (7, 62), (6, 8), (8, 41), (5, 6), (9, 10), (9, 11), (11, 13), (10, 12), (12, 14))
@@ -66,6 +81,62 @@ def synchronise(front: ClipKeypoints, side: ClipKeypoints) -> dict:
     return dict(lag_frames=int(lag), correlation=float(r), passed=bool(r >= MIN_SYNC_CORRELATION))
 
 
+def in_image(points: np.ndarray, size) -> np.ndarray:
+    """Whether each (…, 2) keypoint lies inside the image; outside points are extrapolations."""
+    width, height = size
+    return (points[..., 0] >= 0) & (points[..., 0] < width) & (points[..., 1] >= 0) & (points[..., 1] < height)
+
+
+def _shifted(front: ClipKeypoints, side: ClipKeypoints, lag: int, joints, size):
+    """Correspondences ``front[t] ↔ side[t + lag]`` of ``joints`` seen confidently in both views."""
+    start, stop = max(0, -lag), min(len(front.points), len(side.points) - lag)
+    if stop - start < 1:
+        return np.zeros((0, 2)), np.zeros((0, 2))
+    fp, sp = front.points[start:stop][:, joints], side.points[start + lag:stop + lag][:, joints]
+    ok = ((front.confidence[start:stop][:, joints] >= SYNC_CONFIDENCE) &
+          (side.confidence[start + lag:stop + lag][:, joints] >= SYNC_CONFIDENCE) &
+          in_image(fp, size) & in_image(sp, size))
+    return fp[ok], sp[ok]
+
+
+def epipolar_synchronise(pairs, *, size=(1280, 720), max_lag: int = MAX_LAG_FRAMES, seed: int = 0) -> dict:
+    """One view lag for a whole session, from epipolar consistency of view-consistent joints.
+
+    ``pairs`` is [(sentence, front, side), ...] from one recording session: both clips of
+    a sentence were cut from the same two continuous recordings, so the lag is a property
+    of the session. For each candidate integer lag the clips' correspondences are pooled,
+    a fundamental matrix is fitted robustly and scored by the median Sampson distance;
+    in time-misaligned frames every moving joint violates the epipolar constraint, so the
+    true lag minimises it. The lag is accepted only if the minimum is sharp; then each
+    clip is kept unless its own error at that lag exceeds ``MAX_CLIP_EPIPOLAR_RATIO``
+    times the session's (a clip cut differently from the rest).
+    """
+    joints = list(SYNC_JOINTS)
+    curve, fits = {}, {}
+    for lag in range(-max_lag, max_lag + 1):
+        gathered = [_shifted(f, s, lag, joints, size) for _, f, s in pairs]
+        x1 = np.concatenate([g[0] for g in gathered])
+        x2 = np.concatenate([g[1] for g in gathered])
+        if len(x1) < MIN_SYNC_OBSERVATIONS:
+            continue
+        f, _ = ransac_fundamental(x1, x2, threshold=3., iterations=500, seed=seed)
+        curve[lag], fits[lag] = float(np.median(sampson(f, x1, x2))), f
+    if not curve:
+        return dict(lag_frames=None, passed=False, reason="too few confident correspondences", curve={}, clips=[])
+    lag = min(curve, key=curve.get)
+    far = [v for k, v in curve.items() if abs(k - lag) >= 2]
+    sharp = bool(far) and curve[lag] < SYNC_SHARPNESS * min(far)
+    clips = []
+    for sentence, front, side in pairs:
+        x1, x2 = _shifted(front, side, lag, joints, size)
+        error = float(np.median(sampson(fits[lag], x1, x2))) if len(x1) else float("inf")
+        clips.append(dict(sentence=sentence, sampson_px=error, observations=int(len(x1)),
+                          passed=bool(sharp and error <= MAX_CLIP_EPIPOLAR_RATIO * curve[lag])))
+    return dict(lag_frames=int(lag), session_sampson_px=curve[lag], sharp=sharp, passed=sharp,
+                reason=None if sharp else "the epipolar error has no sharp minimum over lags",
+                curve={int(k): v for k, v in curve.items()}, clips=clips)
+
+
 def aligned(front: ClipKeypoints, side: ClipKeypoints, lag: int):
     """Frame-aligned (front, side) arrays for ``side[t + lag] ↔ front[t]``."""
     start, stop = max(0, -lag), min(len(front.times), len(side.times) - lag)
@@ -86,13 +157,14 @@ def calibrate_session(pairs, *, size=(1280, 720), max_frames: int = 3000, seed: 
     if len(v1) > max_frames:
         pick = np.sort(np.random.default_rng(seed).choice(len(v1), max_frames, replace=False))
         v1, c1, v2, c2 = v1[pick], c1[pick], v2[pick], c2[pick]
-    usable = (c1 >= CONFIDENCE) & (c2 >= CONFIDENCE)
+    usable = (c1 >= CONFIDENCE) & (c2 >= CONFIDENCE) & in_image(v1, size) & in_image(v2, size)
     return calibrate(TwoViewObservations(v1, v2, usable, size, size, rigid_bones()), seed=seed, distortion=distortion,
-                     anchors=CALIBRATION_ANCHORS)
+                     anchors=CALIBRATION_ANCHORS, ransac_joints=CALIBRATION_SEED_JOINTS)
 
 
 def triangulated_points(calibration: Calibration, front_pts, front_conf, side_pts, side_conf, *, size=(1280, 720)):
-    usable = (front_conf >= CONFIDENCE) & (side_conf >= CONFIDENCE)
+    usable = ((front_conf >= CONFIDENCE) & (side_conf >= CONFIDENCE) &
+              in_image(front_pts, size) & in_image(side_pts, size))
     obs = TwoViewObservations(front_pts, side_pts, usable, size, size, rigid_bones())
     return triangulate_session(calibration, obs), usable
 
@@ -189,8 +261,9 @@ def session_gate(calibration: Calibration, sync: list[dict], triangulated_cv: fl
     if monocular_cv is not None and not triangulated_cv < monocular_cv:
         reasons.append(f"triangulated bone-length CV {triangulated_cv:.4f} is not below monocular {monocular_cv:.4f}")
     return dict(passed=not reasons, reasons=reasons, thresholds=dict(
-        max_reprojection_px=MAX_REPROJECTION_PX, min_sync_correlation=MIN_SYNC_CORRELATION,
-        confidence=CONFIDENCE, quality="triangulated bone-length CV below monocular"))
+        max_reprojection_px=MAX_REPROJECTION_PX, sync="epipolar, session lag", sync_sharpness=SYNC_SHARPNESS,
+        max_clip_epipolar_ratio=MAX_CLIP_EPIPOLAR_RATIO, confidence=CONFIDENCE,
+        quality="triangulated bone-length CV below monocular"))
 
 
 def monocular_bone_cv(pose_world: np.ndarray, visibility: np.ndarray) -> float:
@@ -255,6 +328,7 @@ def triangulated_state(monocular: MultichannelMotion, frames: slice, rotations: 
 
 
 __all__ = ["triangulated_state", "rigid_bones", "motion_signal", "ClipKeypoints", "synchronise", "aligned", "calibrate_session",
+           "epipolar_synchronise", "in_image", "SYNC_JOINTS", "CALIBRATION_SEED_JOINTS",
            "triangulated_points", "rotation_inputs", "symmetry_error", "session_gate", "monocular_bone_cv",
            "triangulated_bone_cv", "CONFIDENCE", "MAX_REPROJECTION_PX", "MIN_SYNC_CORRELATION", "CALIBRATION_ANCHORS",
            "HAND_SMOOTHNESS", "HAND_HINGE_WEIGHT", "finger_hinges", "hand_skeleton", "refine_hands", "refined_points"]

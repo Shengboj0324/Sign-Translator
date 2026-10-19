@@ -29,7 +29,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from signtranslator.data.text_motion_dataset import R2Store  # noqa: E402
 from signtranslator.data_engineering.two_view_states import (  # noqa: E402
-    ClipKeypoints, aligned, calibrate_session, monocular_bone_cv, refined_points, rotation_inputs, session_gate,
+    ClipKeypoints, aligned, calibrate_session, epipolar_synchronise, monocular_bone_cv, refined_points,
+    rotation_inputs, session_gate,
     symmetry_error, synchronise, triangulated_bone_cv, triangulated_points, triangulated_state,
 )
 from signtranslator.data_engineering.video_landmarks import solve_rotations  # noqa: E402
@@ -80,18 +81,27 @@ def main(argv=None) -> int:
     names = [n for i, n in enumerate(names) if i % args.shards == args.shard]
     results, gates = [], {}
     for session in names:
-        pairs, syncs = [], []
+        clips = []
         for sentence, keys in sorted(sessions[session].items()):
             if set(keys) != {"front", "side"}:
                 continue
-            front = load_keypoints(store, keys["front"], sentence)
-            side = load_keypoints(store, keys["side"], sentence)
-            sync = synchronise(front, side)
-            syncs.append(dict(sentence=sentence, **sync))
-            if sync["passed"]:
-                pairs.append((sentence, front, side, sync["lag_frames"]))
+            clips.append((sentence, load_keypoints(store, keys["front"], sentence),
+                          load_keypoints(store, keys["side"], sentence)))
+        if not clips:
+            gates[session] = dict(passed=False, reasons=["no clip seen by both views"], sync=[])
+            continue
+        epipolar = epipolar_synchronise([(s, f, sd) for s, f, sd in clips])
+        lag = epipolar["lag_frames"]
+        velocity = {s: synchronise(f, sd) for s, f, sd in clips}      # recorded for comparison only
+        finite = lambda x: x if np.isfinite(x) else None                   # strict JSON: no infinities
+        syncs = [dict(clip, sampson_px=finite(clip["sampson_px"]), lag_frames=lag,
+                      velocity_lag_frames=velocity[clip["sentence"]]["lag_frames"],
+                      velocity_correlation=finite(velocity[clip["sentence"]]["correlation"]))
+                 for clip in epipolar["clips"]]
+        pairs = [(s, f, sd, lag) for (s, f, sd), clip in zip(clips, epipolar["clips"]) if clip["passed"]]
         if not pairs:
-            gates[session] = dict(passed=False, reasons=["no synchronised clip pair"], sync=syncs)
+            gates[session] = dict(passed=False, reasons=[epipolar["reason"] or "no clip passed epipolar synchronisation"],
+                                  sync=syncs, epipolar_curve=epipolar["curve"])
             continue
         aligned_pairs = [(s, f, sd, lag, aligned(f, sd, lag)) for s, f, sd, lag in pairs]
         calibration = calibrate_session([a[4][1:] for a in aligned_pairs])
@@ -108,7 +118,8 @@ def main(argv=None) -> int:
         tri_cv = triangulated_bone_cv(all_points)
         mono_cv = float(np.nanmedian(mono_cvs)) if mono_cvs else None
         gate = session_gate(calibration, syncs, tri_cv, mono_cv)
-        gate.update(sync=syncs, triangulated_bone_cv=tri_cv, monocular_bone_cv=mono_cv,
+        gate.update(sync=syncs, lag_frames=lag, epipolar_sampson_px=epipolar["session_sampson_px"],
+                    epipolar_curve=epipolar["curve"], triangulated_bone_cv=tri_cv, monocular_bone_cv=mono_cv,
                     symmetry_error=symmetry_error(all_points), focal=[calibration.focal1, calibration.focal2],
                     reprojection_px=list(calibration.median_reprojection_px))
         gates[session] = gate
