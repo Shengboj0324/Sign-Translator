@@ -1,0 +1,32 @@
+[
+  {
+    "file": "-4Sl9mPOlfA_7-3-rgb_front.mp4",
+    "text": "Set that down and we're going to do the same thing to this side.",
+    "seconds": 3.87,
+    "columns": [
+      "reference (video estimate)",
+      "regression",
+      "diffusion"
+    ]
+  },
+  {
+    "file": "-9KqRMBAAsA_7-3-rgb_front.mp4",
+    "text": "We'll just hold the two, come around, draw it into a knot and now you can plug it in.",
+    "seconds": 10.04,
+    "columns": [
+      "reference (video estimate)",
+      "regression",
+      "diffusion"
+    ]
+  },
+  {
+    "file": "-BABPsEWA54_14-3-rgb_front.mp4",
+    "text": "Start with my left side.",
+    "seconds": 3.21,
+    "columns": [
+      "reference (video estimate)",
+      "regression",
+      "diffusion"
+    ]
+  }
+]

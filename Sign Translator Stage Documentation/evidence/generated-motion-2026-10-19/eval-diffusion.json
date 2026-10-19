@@ -1,0 +1,57 @@
+{
+  "checkpoint_key": "training-runs/arch-compare-diffusion-cpu-v1/checkpoints/step-00003000.pt",
+  "clips": 238,
+  "config_sha256": "34e36b79a3c5b7c7b33b95c8b4e1707c52ba8155cc36f6cc9d0284f3c4f7cbb2",
+  "manifest_sha256": "bf4d7a77ddf9d024baffffc990f1bcbf979b222a63b5f18b24fad4dfb7e23c3c",
+  "partition": "val",
+  "results": {
+    "diffusion guidance 1": {
+      "body": {
+        "geodesic_deg": 19.314730346244247,
+        "speed_ratio": 0.22927774557643688,
+        "variation_ratio": 0.37686271408823074
+      },
+      "frechet": 1998.753974549345,
+      "head_rotation": {
+        "geodesic_deg": 24.494698321831017,
+        "speed_ratio": 0.3091376027470413,
+        "variation_ratio": 0.3114765174858847
+      },
+      "left_hand": {
+        "geodesic_deg": 26.22536899304481,
+        "speed_ratio": 0.07866190238183624,
+        "variation_ratio": 0.20711854795206194
+      },
+      "right_hand": {
+        "geodesic_deg": 28.37628925270301,
+        "speed_ratio": 0.09780065182322718,
+        "variation_ratio": 0.20087912172297506
+      }
+    },
+    "diffusion guidance 2": {
+      "body": {
+        "geodesic_deg": 19.441767999956355,
+        "speed_ratio": 0.2249959506342697,
+        "variation_ratio": 0.355765068110357
+      },
+      "frechet": 2011.9666396291004,
+      "head_rotation": {
+        "geodesic_deg": 23.84260342379933,
+        "speed_ratio": 0.3010679141501501,
+        "variation_ratio": 0.2994168950982175
+      },
+      "left_hand": {
+        "geodesic_deg": 26.089288597935315,
+        "speed_ratio": 0.07455369585944652,
+        "variation_ratio": 0.19004236544370867
+      },
+      "right_hand": {
+        "geodesic_deg": 28.308646020200175,
+        "speed_ratio": 0.09654572886784733,
+        "variation_ratio": 0.19182944216194733
+      }
+    }
+  },
+  "schema_version": 1,
+  "steps": 50
+}

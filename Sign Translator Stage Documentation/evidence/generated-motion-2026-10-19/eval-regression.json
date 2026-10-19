@@ -1,0 +1,34 @@
+{
+  "checkpoint_key": "training-runs/arch-compare-regression-cpu-v1/checkpoints/step-00003000.pt",
+  "clips": 238,
+  "config_sha256": "b3f33768c7d10f2e5a4ca7d6b904584366dffa6d256d115ea2e182fa19bc1851",
+  "manifest_sha256": "bf4d7a77ddf9d024baffffc990f1bcbf979b222a63b5f18b24fad4dfb7e23c3c",
+  "partition": "val",
+  "results": {
+    "regression": {
+      "body": {
+        "geodesic_deg": 18.193101320641816,
+        "speed_ratio": 0.024496166076731215,
+        "variation_ratio": 0.08115908870503977
+      },
+      "frechet": 2503.033920179405,
+      "head_rotation": {
+        "geodesic_deg": 19.73528268680247,
+        "speed_ratio": 0.024423674257145606,
+        "variation_ratio": 0.04170505823494647
+      },
+      "left_hand": {
+        "geodesic_deg": 24.030321137623176,
+        "speed_ratio": 0.002486258848301837,
+        "variation_ratio": 0.01240673028649142
+      },
+      "right_hand": {
+        "geodesic_deg": 23.81926575706367,
+        "speed_ratio": 0.001954980038364755,
+        "variation_ratio": 0.011195333450925054
+      }
+    }
+  },
+  "schema_version": 1,
+  "steps": 50
+}

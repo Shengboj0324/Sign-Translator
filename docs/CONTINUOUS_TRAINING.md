@@ -179,3 +179,45 @@ validation every N steps (per-channel loss and geodesic error), checkpoints with
 optimizer and RNG state under `training-runs/<run>/checkpoints/`, and automatic
 resume that refuses a checkpoint from a different configuration or manifest. A test
 trains, checkpoints, and resumes from the saved step.
+
+
+## Generative decoder: diffusion (2026-10-19)
+
+A decoder trained to minimise per-frame error predicts the conditional *mean*
+motion. Where several signings of a sentence are plausible, the mean is none of
+them: it is a damped, under-articulated pose. `--objective diffusion`
+(`generation/text_to_motion.py`) trains the same network as a denoiser:
+- **Noising:** the trained channels are mapped to a unit-scale vector and noised on a
+  cosine schedule.
+- **Prediction:** the decoder, given the noisy motion and the noise level, predicts
+  the clean motion through the same heads and per-channel losses (x₀
+  parameterisation).
+- **Guidance:** text is dropped 10% of the time for classifier-free guidance.
+- **Sampling:** seeded DDIM; every estimate is projected onto SO(3) and [0, 1].
+
+On a controlled bimodal task (one text, body rotated ±45°) the regressor outputs
+0° — neither signing — while diffusion samples both modes (tested).
+
+**Measured on real signing** (proxy data: monocular states of train shard 0;
+fold-plan train 3,610 clips, signer-disjoint val 238 clips; d=128, 3+3 layers,
+3,000 CPU steps each; `scripts/evaluate_text_to_motion.py`, frame-aligned to each
+reference clip). Ratios are generated over real; 1 is realistic.
+
+| | Regression | Diffusion (guidance 1) |
+|---|---:|---:|
+| Body angular speed ratio | 0.024 | **0.229** |
+| Hand angular speed ratio (L/R) | 0.002 / 0.002 | **0.079 / 0.098** |
+| Body temporal-variation ratio | 0.081 | **0.377** |
+| Hand temporal-variation ratio (L/R) | 0.012 / 0.011 | **0.207 / 0.201** |
+| Fréchet distance (standardised clip features) | 2503 | **1999** |
+| Per-frame geodesic error, body / hands | **18.2° / 24°** | 19.3° / 26–28° |
+
+Diffusion moves 10–50× closer to real articulation and 20% closer in distribution,
+at 1–4° more per-frame error. Per-frame error rewards the frozen mean, so its small
+rise is the expected trade. Guidance 2 did not improve on 1.
+
+Both remain far from real motion (ratios 0.1–0.4), as expected for a small model
+trained briefly on 3,610 proxy clips. The production run (two-view states, the full
+corpus, a larger model on Runpod) should use `--objective diffusion`. Rendered
+samples (reference | regression | diffusion) are in
+`evidence/generated-motion-2026-10-19/`.
