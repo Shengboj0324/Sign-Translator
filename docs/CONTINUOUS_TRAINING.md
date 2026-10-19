@@ -50,6 +50,20 @@ independently uploaded mirror (`WayenVan/how2sign-front-clips`). Each zip gets a
 member manifest (name, size, CRC-32, SHA-256) in R2. OpenHands ASL pose archives
 are acquired with the publisher's MD5 checked.
 
+Verification results (2026-10-19), every member CRC-checked from R2:
+
+| Zip | Clips | CSV sentences without a clip | Frontal clips byte-compared with the independent mirror |
+|---|---:|---:|---|
+| `train_rgb_front_clips.zip` | 31,047 | 118 | 621 / 621 identical |
+| `train_rgb_side_clips.zip` | 31,165 | 0 | — (no independent side mirror) |
+| `val_rgb_front_clips.zip` | 1,739 | 2 | 35 / 35 identical |
+| `val_rgb_side_clips.zip` | 1,741 | 0 | — |
+| `test_rgb_front_clips.zip` | 2,343 | 14 | 47 / 47 identical |
+| `test_rgb_side_clips.zip` | 2,357 | 0 | — |
+
+The frontal gaps are in the publisher's release itself: the independent mirror has
+exactly the same clip counts. Every clip is 1280×720 H.264 at 24 fps.
+
 ## 2. Primary pipeline: two-view triangulation (decision in [DATA_QUALITY_DECISION.md](DATA_QUALITY_DECISION.md))
 
 The monocular MediaPipe path below loses quality (6th of 8 estimators on downstream
