@@ -283,6 +283,9 @@ def extract_clip(video: Path, models: dict[str, Path], *, start_seconds: float =
     crop's camera, so the adapter reports head translation as unavailable.
     """
     import av
+    with av.open(str(video)) as probe:                  # refuse unreadable clips before loading models
+        if not probe.streams.video:
+            raise ValueError("the file has no video stream")
     import mediapipe as mp
     vision = mp.tasks.vision
     base = mp.tasks.BaseOptions

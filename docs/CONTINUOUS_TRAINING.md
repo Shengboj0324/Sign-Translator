@@ -62,7 +62,12 @@ Verification results (2026-10-19), every member CRC-checked from R2:
 | `test_rgb_side_clips.zip` | 2,357 | 0 | — |
 
 The frontal gaps are in the publisher's release itself: the independent mirror has
-exactly the same clip counts. Every clip is 1280×720 H.264 at 24 fps.
+exactly the same clip counts. The lateral zips instead hold 81 empty 262-byte MP4
+placeholders with no stream (69 train, 4 val, 8 test). 79 of them stand where the
+frontal clip is also missing; 2 val sentences have a frontal clip but an empty lateral
+one. Both extraction jobs record such clips as refused instead of failing. Sentences
+with both views usable: 35,127 (train 31,047, val 1,737, test 2,343). Every readable
+clip is 1280×720 H.264 at 24 fps.
 
 ## 2. Primary pipeline: two-view triangulation (decision in [DATA_QUALITY_DECISION.md](DATA_QUALITY_DECISION.md))
 

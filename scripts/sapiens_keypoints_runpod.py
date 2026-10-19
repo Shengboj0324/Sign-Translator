@@ -51,6 +51,8 @@ def clip_keypoints(video: Path, model, device, batch: int, flip: bool = True):
     import av
     times, frames, boxes = [], [], []
     with av.open(str(video)) as container:
+        if not container.streams.video:
+            raise ValueError("the file has no video stream")
         for frame in container.decode(container.streams.video[0]):
             rgb = frame.to_ndarray(format="rgb24")
             box = green_screen_box(rgb)
@@ -101,7 +103,7 @@ def main(argv=None) -> int:
         members = [m for m in members if re.search(args.match, Path(m).name)]
     shard = [m for i, m in enumerate(members) if i % args.shards == args.shard][:args.limit]
     prefix = args.prefix.rstrip("/")
-    done = 0
+    done, refused = 0, []
     for index, member in enumerate(shard):
         key = f"{prefix}/keypoints/{Path(member).stem}.npz"
         if store.exists(key):
@@ -110,7 +112,14 @@ def main(argv=None) -> int:
         with tempfile.TemporaryDirectory() as temporary:
             video = Path(temporary) / "clip.mp4"
             video.write_bytes(payload)
-            times, points, confidence = clip_keypoints(video, model, device, args.batch, args.flip)
+            try:
+                times, points, confidence = clip_keypoints(video, model, device, args.batch, args.flip)
+                if len(times) == 0:
+                    raise ValueError("the video stream has no frames")
+            except (ValueError, OSError) as error:      # unreadable clip in the source: recorded, not fatal
+                refused.append(dict(member=member, clip_sha256=hashlib.sha256(payload).hexdigest(),
+                                    reason=str(error)[:300]))
+                continue
             buffer = io.BytesIO()
             np.savez_compressed(buffer, times=times, points=points, confidence=confidence,
                                 clip_sha256=np.array(hashlib.sha256(payload).hexdigest()),
@@ -121,8 +130,8 @@ def main(argv=None) -> int:
             print(f"{index}/{len(shard)} {member}", flush=True)
     store.put(f"{prefix}/reports/{Path(args.zip_key).stem}-shard-{args.shard:03d}-of-{args.shards:03d}.json", json.dumps(dict(
         zip_key=args.zip_key, zip_sha256=args.zip_sha256, model_sha256=model_sha, flip_tta=args.flip, clips=len(shard),
-        written=done)).encode())
-    print(json.dumps(dict(model_sha256=model_sha, written=done, clips=len(shard))))
+        written=done, refused=refused)).encode())
+    print(json.dumps(dict(model_sha256=model_sha, written=done, refused=len(refused), clips=len(shard))))
     return 0
 
 
