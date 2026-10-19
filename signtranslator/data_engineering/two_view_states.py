@@ -17,7 +17,8 @@ import numpy as np
 from .sapiens_keypoints import HAND21, to_hand21, to_pose33
 from .skeleton_fit import Skeleton, fit_skeleton
 from .two_view_geometry import (
-    Calibration, TwoViewObservations, bone_length_cv, calibrate, ransac_fundamental, sampson, triangulate_session,
+    Calibration, TwoViewObservations, bone_length_cv, calibrate, calibrate_jointly, ransac_fundamental, sampson,
+    triangulate_session,
     view_offset,
 )
 from ..pose.multichannel import CHANNELS, MotionChannel, MultichannelMotion
@@ -147,9 +148,8 @@ def aligned(front: ClipKeypoints, side: ClipKeypoints, lag: int):
     return (front.times[f], front.points[f], front.confidence[f], side.points[s], side.confidence[s])
 
 
-def calibrate_session(pairs, *, size=(1280, 720), max_frames: int = 3000, seed: int = 0,
-                      distortion: bool = True) -> Calibration:
-    """Calibrate from frame-aligned pairs [(front_pts, front_conf, side_pts, side_conf), ...]."""
+def session_observations(pairs, *, size=(1280, 720), max_frames: int = 3000, seed: int = 0) -> TwoViewObservations:
+    """Pooled observations of frame-aligned pairs [(front_pts, front_conf, side_pts, side_conf), ...]."""
     v1 = np.concatenate([p[0] for p in pairs])
     c1 = np.concatenate([p[1] for p in pairs])
     v2 = np.concatenate([p[2] for p in pairs])
@@ -158,8 +158,35 @@ def calibrate_session(pairs, *, size=(1280, 720), max_frames: int = 3000, seed: 
         pick = np.sort(np.random.default_rng(seed).choice(len(v1), max_frames, replace=False))
         v1, c1, v2, c2 = v1[pick], c1[pick], v2[pick], c2[pick]
     usable = (c1 >= CONFIDENCE) & (c2 >= CONFIDENCE) & in_image(v1, size) & in_image(v2, size)
-    return calibrate(TwoViewObservations(v1, v2, usable, size, size, rigid_bones()), seed=seed, distortion=distortion,
-                     anchors=CALIBRATION_ANCHORS, ransac_joints=CALIBRATION_SEED_JOINTS)
+    return TwoViewObservations(v1, v2, usable, size, size, rigid_bones())
+
+
+# Radial distortion is off by default: with the signer in the image centre the
+# division-model coefficient trades off against the focal lengths (on undistorted
+# synthetic sessions the joint fit invents λ ≈ -0.27 and focal lengths 7% low), and
+# How2Sign's lenses are unknown. It helped on Panoptic only because those lenses are
+# strongly distorted (k1 ≈ -0.26); see docs/DATA_QUALITY_DECISION.md §7.
+DISTORTION = False
+
+
+def calibrate_session(pairs, *, size=(1280, 720), max_frames: int = 3000, seed: int = 0,
+                      distortion: bool = DISTORTION, intrinsics=None) -> Calibration:
+    """Calibrate from frame-aligned pairs [(front_pts, front_conf, side_pts, side_conf), ...].
+
+    With ``intrinsics`` (f1, f2, λ1, λ2) shared by the cameras — from
+    :func:`calibrate_cameras` over many sessions — only the session's pose is fitted.
+    """
+    obs = session_observations(pairs, size=size, max_frames=max_frames, seed=seed)
+    return calibrate(obs, seed=seed, distortion=distortion, anchors=CALIBRATION_ANCHORS,
+                     ransac_joints=CALIBRATION_SEED_JOINTS, intrinsics=intrinsics)
+
+
+def calibrate_cameras(sessions, *, size=(1280, 720), max_frames: int = 600, seed: int = 0,
+                      distortion: bool = DISTORTION) -> list[Calibration]:
+    """Joint calibration of many sessions (each a list of aligned pairs) with shared intrinsics."""
+    observations = [session_observations(pairs, size=size, max_frames=max_frames, seed=seed) for pairs in sessions]
+    return calibrate_jointly(observations, seed=seed, distortion=distortion, anchors=CALIBRATION_ANCHORS,
+                             ransac_joints=CALIBRATION_SEED_JOINTS)
 
 
 def triangulated_points(calibration: Calibration, front_pts, front_conf, side_pts, side_conf, *, size=(1280, 720)):
@@ -328,7 +355,8 @@ def triangulated_state(monocular: MultichannelMotion, frames: slice, rotations: 
 
 
 __all__ = ["triangulated_state", "rigid_bones", "motion_signal", "ClipKeypoints", "synchronise", "aligned", "calibrate_session",
-           "epipolar_synchronise", "in_image", "SYNC_JOINTS", "CALIBRATION_SEED_JOINTS",
+           "epipolar_synchronise", "in_image", "SYNC_JOINTS", "CALIBRATION_SEED_JOINTS", "session_observations",
+           "calibrate_cameras",
            "triangulated_points", "rotation_inputs", "symmetry_error", "session_gate", "monocular_bone_cv",
            "triangulated_bone_cv", "CONFIDENCE", "MAX_REPROJECTION_PX", "MIN_SYNC_CORRELATION", "CALIBRATION_ANCHORS",
            "HAND_SMOOTHNESS", "HAND_HINGE_WEIGHT", "finger_hinges", "hand_skeleton", "refine_hands", "refined_points"]

@@ -142,6 +142,8 @@ def test_joint_calibration_shares_intrinsics_and_beats_short_noisy_sessions_alon
     assert len({(round(c.focal1, 6), round(c.focal2, 6)) for c in joint}) == 1      # shared intrinsics
     assert error(joint[0]) < .03
     assert error(joint[0]) < np.median([error(c) for c in alone])
+    with_distortion = calibrate_jointly(sessions, focal_guess=1280., distortion=True)
+    assert len({c.distortion for c in with_distortion}) == 1 and error(with_distortion[0]) < .05
     for c, angle in zip(joint, (62, 70, 78, 66)):                                     # per-session poses
         _, _, rotation, _, _ = cameras(angle=angle)
         assert np.degrees(np.arccos(np.clip((np.trace(c.rotation.T @ rotation) - 1) / 2, -1, 1))) < 2.

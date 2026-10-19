@@ -61,6 +61,36 @@ def load_state(store, key) -> tuple[MultichannelMotion, str]:
         return MultichannelMotion.load(path, expected_sha256=digest), digest
 
 
+def discover_sessions(store, front_prefix: str, side_prefix: str) -> dict:
+    """session -> sentence -> {"front": key, "side": key} from the keypoint prefixes."""
+    sessions = collections.defaultdict(dict)
+    for prefix, view in ((front_prefix, "front"), (side_prefix, "side")):
+        for key in store.list(prefix.rstrip("/") + "/keypoints/"):
+            parsed = session_of(Path(key).stem)
+            if parsed and parsed[2] == view:
+                sessions[parsed[0]].setdefault(parsed[1], {})[view] = key
+    return sessions
+
+
+def synchronised(store, sentences: dict) -> dict:
+    """Load a session's clip pairs, find its view lag by epipolar geometry, align accepted clips."""
+    clips = [(sentence, load_keypoints(store, keys["front"], sentence), load_keypoints(store, keys["side"], sentence))
+             for sentence, keys in sorted(sentences.items()) if set(keys) == {"front", "side"}]
+    if not clips:
+        return dict(reason="no clip seen by both views", syncs=[], aligned=[], epipolar=None)
+    epipolar = epipolar_synchronise(clips)
+    lag = epipolar["lag_frames"]
+    velocity = {s: synchronise(f, sd) for s, f, sd in clips}      # recorded for comparison only
+    finite = lambda x: x if np.isfinite(x) else None                 # strict JSON: no infinities
+    syncs = [dict(clip, sampson_px=finite(clip["sampson_px"]), lag_frames=lag,
+                  velocity_lag_frames=velocity[clip["sentence"]]["lag_frames"],
+                  velocity_correlation=finite(velocity[clip["sentence"]]["correlation"]))
+             for clip in epipolar["clips"]]
+    pairs = [(s, f, sd, lag, aligned(f, sd, lag)) for (s, f, sd), clip in zip(clips, epipolar["clips"]) if clip["passed"]]
+    reason = None if pairs else (epipolar["reason"] or "no clip passed epipolar synchronisation")
+    return dict(reason=reason, syncs=syncs, aligned=pairs, epipolar=epipolar, lag=lag)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--front-keypoints", required=True, help="prefix holding keypoints/<clip>.npz (frontal)")
@@ -69,42 +99,30 @@ def main(argv=None) -> int:
     parser.add_argument("--prefix", required=True)
     parser.add_argument("--shard", type=int, default=0)
     parser.add_argument("--shards", type=int, default=1)
+    parser.add_argument("--intrinsics-key", help="shared camera intrinsics from calibrate_how2sign_cameras.py")
+    parser.add_argument("--intrinsics-sha256", help="required with --intrinsics-key")
     args = parser.parse_args(argv)
     store = R2Store(os.environ)
-    sessions = collections.defaultdict(dict)
-    for prefix, view in ((args.front_keypoints, "front"), (args.side_keypoints, "side")):
-        for key in store.list(prefix.rstrip("/") + "/keypoints/"):
-            parsed = session_of(Path(key).stem)
-            if parsed and parsed[2] == view:
-                sessions[parsed[0]].setdefault(parsed[1], {})[view] = key
+    intrinsics = None
+    if args.intrinsics_key:
+        payload = store.get(args.intrinsics_key)
+        if hashlib.sha256(payload).hexdigest() != args.intrinsics_sha256:
+            raise SystemExit("the intrinsics file differs from --intrinsics-sha256")
+        shared = json.loads(payload)["intrinsics"]
+        intrinsics = (shared["focal1"], shared["focal2"], *shared["distortion"])
+    sessions = discover_sessions(store, args.front_keypoints, args.side_keypoints)
     names = sorted(sessions)
     names = [n for i, n in enumerate(names) if i % args.shards == args.shard]
     results, gates = [], {}
     for session in names:
-        clips = []
-        for sentence, keys in sorted(sessions[session].items()):
-            if set(keys) != {"front", "side"}:
-                continue
-            clips.append((sentence, load_keypoints(store, keys["front"], sentence),
-                          load_keypoints(store, keys["side"], sentence)))
-        if not clips:
-            gates[session] = dict(passed=False, reasons=["no clip seen by both views"], sync=[])
+        session_sync = synchronised(store, sessions[session])
+        syncs, aligned_pairs = session_sync["syncs"], session_sync["aligned"]
+        if not aligned_pairs:
+            gates[session] = dict(passed=False, reasons=[session_sync["reason"]], sync=syncs,
+                                  epipolar_curve=(session_sync["epipolar"] or {}).get("curve"))
             continue
-        epipolar = epipolar_synchronise([(s, f, sd) for s, f, sd in clips])
-        lag = epipolar["lag_frames"]
-        velocity = {s: synchronise(f, sd) for s, f, sd in clips}      # recorded for comparison only
-        finite = lambda x: x if np.isfinite(x) else None                   # strict JSON: no infinities
-        syncs = [dict(clip, sampson_px=finite(clip["sampson_px"]), lag_frames=lag,
-                      velocity_lag_frames=velocity[clip["sentence"]]["lag_frames"],
-                      velocity_correlation=finite(velocity[clip["sentence"]]["correlation"]))
-                 for clip in epipolar["clips"]]
-        pairs = [(s, f, sd, lag) for (s, f, sd), clip in zip(clips, epipolar["clips"]) if clip["passed"]]
-        if not pairs:
-            gates[session] = dict(passed=False, reasons=[epipolar["reason"] or "no clip passed epipolar synchronisation"],
-                                  sync=syncs, epipolar_curve=epipolar["curve"])
-            continue
-        aligned_pairs = [(s, f, sd, lag, aligned(f, sd, lag)) for s, f, sd, lag in pairs]
-        calibration = calibrate_session([a[4][1:] for a in aligned_pairs])
+        epipolar, lag = session_sync["epipolar"], session_sync["lag"]
+        calibration = calibrate_session([a[4][1:] for a in aligned_pairs], intrinsics=intrinsics)
         triangulated, mono_cvs = {}, []
         for sentence, front, side, lag, (times, fp, fc, sp, sc) in aligned_pairs:
             points, usable = triangulated_points(calibration, fp, fc, sp, sc)
@@ -119,7 +137,7 @@ def main(argv=None) -> int:
         mono_cv = float(np.nanmedian(mono_cvs)) if mono_cvs else None
         gate = session_gate(calibration, syncs, tri_cv, mono_cv)
         gate.update(sync=syncs, lag_frames=lag, epipolar_sampson_px=epipolar["session_sampson_px"],
-                    epipolar_curve=epipolar["curve"], triangulated_bone_cv=tri_cv, monocular_bone_cv=mono_cv,
+                    epipolar_curve=epipolar["curve"], shared_intrinsics=args.intrinsics_key, triangulated_bone_cv=tri_cv, monocular_bone_cv=mono_cv,
                     symmetry_error=symmetry_error(all_points), focal=[calibration.focal1, calibration.focal2],
                     reprojection_px=list(calibration.median_reprojection_px))
         gates[session] = gate

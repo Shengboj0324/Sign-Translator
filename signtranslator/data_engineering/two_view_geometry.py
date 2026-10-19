@@ -352,29 +352,31 @@ def calibrate_jointly(sessions: list[TwoViewObservations], *, focal_guess: float
     guess = focal_guess or float(max(sessions[0].size1))
     starts = [initial_parameters(c, guess, f) for c, f, _ in cleaned]
     low, high = _focal_bounds(sessions[0].size1)
-    n_shared = 4 if distortion else 2
 
-    def unpack(x):
+    def unpack(x, n_shared):
         shared, poses = x[:n_shared], x[n_shared:].reshape(len(sessions), 5)
         return [np.r_[shared[:2], pose, shared[2:]] for pose in poses]
 
-    def residuals(x):
-        return np.concatenate([_residuals(params, c, bone_weight) for params, (c, _, _) in zip(unpack(x), cleaned)])
+    def residuals(x, n_shared):
+        return np.concatenate([_residuals(params, c, bone_weight)
+                               for params, (c, _, _) in zip(unpack(x, n_shared), cleaned)])
 
     lower = np.r_[low, low, np.full(5 * len(sessions), -np.inf)]
     upper = np.r_[high, high, np.full(5 * len(sessions), np.inf)]
     x0 = np.r_[np.clip(np.log(guess), low + 1e-6, high - 1e-6), np.clip(np.log(guess), low + 1e-6, high - 1e-6),
                np.concatenate([s[2:7] for s in starts])]
-    result = least_squares(residuals, x0, method="trf", loss="soft_l1", f_scale=2., x_scale="jac",
+    result = least_squares(residuals, x0, args=(2,), method="trf", loss="soft_l1", f_scale=2., x_scale="jac",
                            max_nfev=400, bounds=(lower, upper))
-    if distortion:
+    n_shared = 2
+    if distortion:                       # refine with one radial coefficient per camera, started at zero
+        n_shared = 4
         x0 = np.r_[result.x[:2], 0., 0., result.x[2:]]
         lower = np.r_[lower[:2], -1., -1., lower[2:]]
         upper = np.r_[upper[:2], 1., 1., upper[2:]]
-        result = least_squares(residuals, x0, method="trf", loss="soft_l1", f_scale=2., x_scale="jac",
+        result = least_squares(residuals, x0, args=(4,), method="trf", loss="soft_l1", f_scale=2., x_scale="jac",
                                max_nfev=400, bounds=(lower, upper))
     return [_calibration(params, c, inlier, bool(result.success))
-            for params, (c, _, inlier) in zip(unpack(result.x), cleaned)]
+            for params, (c, _, inlier) in zip(unpack(result.x, n_shared), cleaned)]
 
 
 def triangulate_session(calibration: Calibration, obs: TwoViewObservations) -> np.ndarray:

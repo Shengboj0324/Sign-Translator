@@ -76,8 +76,15 @@ for split in train val test; do
   python scripts/sapiens_keypoints_runpod.py --zip-key $H/${split}_rgb_front_clips.zip --zip-sha256 ${FRONT[$split]} --prefix $D/how2sign-sapiens-front-v1 --checkpoint $CK --checkpoint-sha256 $CS --shard 0 --shards 4
   python scripts/sapiens_keypoints_runpod.py --zip-key $H/${split}_rgb_side_clips.zip --zip-sha256 ${SIDE[$split]} --prefix $D/how2sign-sapiens-side-v1 --checkpoint $CK --checkpoint-sha256 $CS --shard 0 --shards 4
 done
-python scripts/triangulate_how2sign_sessions.py --front-keypoints $D/how2sign-sapiens-front-v1 --side-keypoints $D/how2sign-sapiens-side-v1 --monocular $D/how2sign-video-estimate-v1 --prefix $D/how2sign-two-view-v1 --shard 0 --shards 8
+# Shared intrinsics of the two studio cameras, jointly over 40 sessions (written once; prints its SHA-256):
+python scripts/calibrate_how2sign_cameras.py --front-keypoints $D/how2sign-sapiens-front-v1 --side-keypoints $D/how2sign-sapiens-side-v1 --sessions 40 --output-key $D/how2sign-cameras-v1/intrinsics.json
+python scripts/triangulate_how2sign_sessions.py --front-keypoints $D/how2sign-sapiens-front-v1 --side-keypoints $D/how2sign-sapiens-side-v1 --monocular $D/how2sign-video-estimate-v1 --prefix $D/how2sign-two-view-v1 --intrinsics-key $D/how2sign-cameras-v1/intrinsics.json --intrinsics-sha256 <INTRINSICS_SHA256> --shard 0 --shards 8
 ```
+
+Synchronisation is epipolar and per session (`DATA_QUALITY_DECISION.md` §7). Read the
+intrinsics file's per-session reprojection before triangulating: if many sessions sit
+well above the others, the cameras changed between recordings and the shared
+intrinsics must be split by recording group.
 
 **Compute budget.** The clips total 67.0 hours (train 59.3, val 3.3, test 4.3; 35,263
 sentences) at 24 fps: 5.79 M frames per view, so 23.2 M Sapiens-1B forward passes for
