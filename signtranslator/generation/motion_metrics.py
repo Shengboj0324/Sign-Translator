@@ -12,8 +12,9 @@ These metrics therefore pair accuracy with articulation and realism:
 * ``variation_ratio`` — median per-joint temporal standard deviation of the 6D
   values, generated over reference;
 * ``frechet`` — Fréchet distance between the distributions of per-clip features
-  (mean pose, temporal variation, mean angular speed per joint), in a PCA basis
-  fitted on the reference clips (the text-to-motion "FID"; lower is better).
+  (mean pose, temporal variation, mean angular speed per joint), each feature
+  standardised by the reference, in a PCA basis fitted on the reference clips (the
+  text-to-motion "FID"; lower is better).
 """
 from __future__ import annotations
 
@@ -74,6 +75,11 @@ def frechet_distance(generated: np.ndarray, reference: np.ndarray, *, dimensions
     fill = np.where(np.isfinite(fill), fill, 0.)
     reference = np.where(np.isfinite(reference), reference, fill)
     generated = np.where(np.isfinite(generated), generated, fill)
+    # Features mix units (6D components, degrees per second): standardise every column
+    # by the reference's mean and spread so that no unit dominates the basis.
+    centre, spread = reference.mean(0), reference.std(0)
+    spread = np.where(spread > 1e-12, spread, 1.)
+    reference, generated = (reference - centre) / spread, (generated - centre) / spread
     centre = reference.mean(0)
     _, _, vt = np.linalg.svd(reference - centre, full_matrices=False)
     basis = vt[:min(dimensions, len(vt))].T
