@@ -27,7 +27,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from signtranslator.data.text_motion_dataset import R2Store  # noqa: E402
+from signtranslator.data.text_motion_dataset import DirectoryStore, R2Store  # noqa: E402
 from signtranslator.data_engineering.two_view_states import (  # noqa: E402
     ClipKeypoints, aligned, calibrate_session, epipolar_synchronise, monocular_bone_cv, refined_points,
     rotation_inputs, session_gate,
@@ -93,6 +93,7 @@ def synchronised(store, sentences: dict) -> dict:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--store", default="r2", help="r2, or dir:<path> for a local mirror")
     parser.add_argument("--front-keypoints", required=True, help="prefix holding keypoints/<clip>.npz (frontal)")
     parser.add_argument("--side-keypoints", required=True, help="prefix holding keypoints/<clip>.npz (lateral)")
     parser.add_argument("--monocular", required=True, help="prefix holding states/ and landmarks/ (frontal)")
@@ -102,7 +103,7 @@ def main(argv=None) -> int:
     parser.add_argument("--intrinsics-key", help="shared camera intrinsics from calibrate_how2sign_cameras.py")
     parser.add_argument("--intrinsics-sha256", help="required with --intrinsics-key")
     args = parser.parse_args(argv)
-    store = R2Store(os.environ)
+    store = R2Store(os.environ) if args.store == "r2" else DirectoryStore(Path(args.store[4:]))
     intrinsics = None
     if args.intrinsics_key:
         payload = store.get(args.intrinsics_key)
