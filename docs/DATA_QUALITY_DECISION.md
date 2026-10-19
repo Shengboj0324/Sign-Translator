@@ -177,3 +177,55 @@ bone lengths vary by 3.7% (CV) over time and its hand reconstruction reprojects 
 is not measurable with any available reference; a mocap-grade check
 (InterHand2.6M-class hand data, or an optical-mocap body set) is the next step if the
 owner can obtain one.
+
+## 7. First real How2Sign session (pilot, 2026-10-19)
+
+The two-view pipeline was run end to end on one validation session
+(`a4uz0W33REs-3`, 11 sentences, 832 frames per view, 1280×720 H.264 at 24 fps) from
+the verified zips: MediaPipe states for the frontal view, Sapiens-1B with flip TTA on
+both views, then synchronisation, calibration, triangulation and the §5 gate. Outputs
+are in R2 under `acquisition/2026-10-17-v1/derived/pilot-val-a4uz0W33REs-3/`. Findings,
+in the order they were found:
+
+1. **Velocity-correlation synchronisation failed.** Only 1 of 11 clips reached the
+   declared r ≥ 0.8, so the gate passed on a single clip and a calibration from it.
+   Yet 7 of the 11 clips agreed on a lag of 8–9 frames.
+2. **Synchronisation is now epipolar and per session.** For each candidate lag the
+   clips' correspondences are pooled, a fundamental matrix is fitted robustly, and the
+   median Sampson distance is scored; misaligned frames violate the epipolar
+   constraint, so the true lag minimises it. On the pilot the minimum is at 8 frames,
+   with a sharpness ratio of 0.54 (the declared requirement is < 0.8 against every lag
+   ≥ 2 frames away), and all 11 clips pass. Within the longest clip the best sub-frame
+   lag stays at 8 ± 0.25 frames throughout, so there is no clock drift and integer
+   lags suffice.
+3. **Keypoint consistency differs from Panoptic.** With the epipolar geometry fitted on
+   body joints, the median Sampson distances are:
+   - nose 0.75 px;
+   - left shoulder 1.8 px, elbows 2.2–2.9 px;
+   - left wrist 2.0 px, right wrist 5.0 px;
+   - **hand keypoints 4.8 px** (Panoptic: 1.2 px under its own calibration).
+
+   The right shoulder is never confidently seen by the lateral camera, and the leg
+   keypoints fall outside the frame (y up to 765 on a 720-px image). Consequences:
+   - keypoints outside the image are never observations;
+   - the calibration's robust start is fitted on nose, shoulders, elbows and wrists;
+   - timing uses body plus hands, because hands carry the fast motion. Body alone gives
+     a flat curve (ratio 0.88); body plus hands gives a sharp one (0.54).
+
+   Left/right label swaps and frame-rate jitter were tested and excluded: swapping
+   labels raises the error to 18–57 px, and the error does not grow with joint speed.
+4. **One short session does not identify the focal lengths.** Across reasonable
+   settings the single-session self-calibration of the pilot lands anywhere from
+   548 to 2 889 px, and the radial coefficients run to their bounds. Two consequences:
+   - **Lens distortion is off by default.** On undistorted synthetic sessions the joint
+     fit invents λ ≈ −0.27 and focal lengths 7% low. It helped on Panoptic only because
+     those lenses are known to be strongly distorted.
+   - **Focal lengths are now shared across sessions of the same studio cameras**
+     (`calibrate_how2sign_cameras.py`), with a pose per session. On four short, noisy
+     synthetic sessions the focal error falls from up to 12% alone to 0.1%/1.7% jointly.
+5. **The gate refuses the pilot session, as it should.** Calibrated alone, its
+   triangulated arm bone-length CV is 0.039–0.044 against the monocular 0.037, and its
+   reprojection reaches 2.37 px. No threshold was changed to admit it.
+
+Next: calibrate the shared intrinsics over more sessions, then re-evaluate each
+session's gate with them.
