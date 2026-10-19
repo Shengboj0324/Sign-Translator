@@ -71,6 +71,14 @@ Frame detection rates: pose 100%, face 99.9%, left hand 89–93%, right hand 92�
 the summary is in `evidence/how2sign-pilot-2026-10-19/monocular-extraction-summary.json`. Every readable
 clip is 1280×720 H.264 at 24 fps.
 
+**Release defect, take-5 sessions (audit B80).** In sessions whose name ends in `-5`,
+about a third of How2Sign, every lateral clip holds ¾ of the frontal clip's frames and
+shows a different moment of the recording. No time mapping aligns them: the epipolar
+error stays at 15–16 px for every candidate scale, offset and linear placement,
+against ~4 px for good sessions. The session script refuses them with that reason, so
+two-view states come from the other takes; take-5 sentences keep monocular states.
+Re-cutting their lateral clips from the raw side recordings is the recovery path.
+
 ## 2. Primary pipeline: two-view triangulation (decision in [DATA_QUALITY_DECISION.md](DATA_QUALITY_DECISION.md))
 
 The monocular MediaPipe path below loses quality (6th of 8 estimators on downstream

@@ -100,6 +100,24 @@ def _shifted(front: ClipKeypoints, side: ClipKeypoints, lag: int, joints, size):
     return fp[ok], sp[ok]
 
 
+def time_scale(pairs, *, min_frames: int = 24, tolerance: float = .02) -> float:
+    """Session ratio ``lateral frames / frontal frames`` (1 when equal within ``tolerance``).
+
+    How2Sign take-5 sessions are defective in the release: every lateral clip holds ¾ of
+    the frontal clip's frames (sampled: 84 of 85 take-5 sessions, ratio 0.748–0.751; all
+    155 sampled sessions of other takes, 1.00) and shows a different moment of the
+    recording — no time scale, offset, or linear placement on the recording aligns them
+    (measured: the epipolar error stays at 15–16 px for every candidate, against ~4 px
+    for synchronised sessions). The ratio is constant within a session and is the
+    median over its clips of at least ``min_frames`` frames.
+    """
+    ratios = [len(side.times) / len(front.times) for _, front, side in pairs if len(front.times) >= min_frames]
+    if not ratios:
+        return 1.
+    scale = float(np.median(ratios))
+    return 1. if abs(scale - 1.) < tolerance else scale
+
+
 def epipolar_synchronise(pairs, *, size=(1280, 720), max_lag: int = MAX_LAG_FRAMES, seed: int = 0) -> dict:
     """One view lag for a whole session, from epipolar consistency of view-consistent joints.
 
@@ -356,6 +374,7 @@ def triangulated_state(monocular: MultichannelMotion, frames: slice, rotations: 
 
 __all__ = ["triangulated_state", "rigid_bones", "motion_signal", "ClipKeypoints", "synchronise", "aligned", "calibrate_session",
            "epipolar_synchronise", "in_image", "SYNC_JOINTS", "CALIBRATION_SEED_JOINTS", "session_observations",
+           "time_scale",
            "calibrate_cameras",
            "triangulated_points", "rotation_inputs", "symmetry_error", "session_gate", "monocular_bone_cv",
            "triangulated_bone_cv", "CONFIDENCE", "MAX_REPROJECTION_PX", "MIN_SYNC_CORRELATION", "CALIBRATION_ANCHORS",

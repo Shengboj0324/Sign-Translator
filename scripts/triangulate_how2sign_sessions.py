@@ -30,7 +30,7 @@ sys.path.insert(0, str(ROOT))
 from signtranslator.data.text_motion_dataset import DirectoryStore, R2Store  # noqa: E402
 from signtranslator.data_engineering.two_view_states import (  # noqa: E402
     ClipKeypoints, aligned, calibrate_session, epipolar_synchronise, monocular_bone_cv, refined_points,
-    rotation_inputs, session_gate,
+    rotation_inputs, session_gate, time_scale,
     symmetry_error, synchronise, triangulated_bone_cv, triangulated_points, triangulated_state,
 )
 from signtranslator.data_engineering.video_landmarks import solve_rotations  # noqa: E402
@@ -78,6 +78,11 @@ def synchronised(store, sentences: dict) -> dict:
              for sentence, keys in sorted(sentences.items()) if set(keys) == {"front", "side"}]
     if not clips:
         return dict(reason="no clip seen by both views", syncs=[], aligned=[], epipolar=None)
+    scale = time_scale(clips)
+    if scale != 1.:                              # take-5 release defect: lateral clips mis-cut (audit B80)
+        return dict(reason=f"lateral clips hold {scale:.3f} of the frontal frames and show other moments "
+                           "(How2Sign take-5 release defect); not synchronisable", syncs=[], aligned=[],
+                    epipolar=None, lag=None, time_scale=scale)
     epipolar = epipolar_synchronise(clips)
     lag = epipolar["lag_frames"]
     velocity = {s: synchronise(f, sd) for s, f, sd in clips}      # recorded for comparison only
@@ -88,7 +93,7 @@ def synchronised(store, sentences: dict) -> dict:
              for clip in epipolar["clips"]]
     pairs = [(s, f, sd, lag, aligned(f, sd, lag)) for (s, f, sd), clip in zip(clips, epipolar["clips"]) if clip["passed"]]
     reason = None if pairs else (epipolar["reason"] or "no clip passed epipolar synchronisation")
-    return dict(reason=reason, syncs=syncs, aligned=pairs, epipolar=epipolar, lag=lag)
+    return dict(reason=reason, syncs=syncs, aligned=pairs, epipolar=epipolar, lag=lag, time_scale=scale)
 
 
 def main(argv=None) -> int:
@@ -137,7 +142,8 @@ def main(argv=None) -> int:
         tri_cv = triangulated_bone_cv(all_points)
         mono_cv = float(np.nanmedian(mono_cvs)) if mono_cvs else None
         gate = session_gate(calibration, syncs, tri_cv, mono_cv)
-        gate.update(sync=syncs, lag_frames=lag, epipolar_sampson_px=epipolar["session_sampson_px"],
+        gate.update(sync=syncs, lag_frames=lag, time_scale=session_sync["time_scale"],
+                    epipolar_sampson_px=epipolar["session_sampson_px"],
                     epipolar_curve=epipolar["curve"], shared_intrinsics=args.intrinsics_key, triangulated_bone_cv=tri_cv, monocular_bone_cv=mono_cv,
                     symmetry_error=symmetry_error(all_points), focal=[calibration.focal1, calibration.focal2],
                     reprojection_px=list(calibration.median_reprojection_px))

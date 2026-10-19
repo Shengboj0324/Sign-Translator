@@ -7,7 +7,7 @@ from signtranslator.data_engineering.sapiens_keypoints import HAND21
 from signtranslator.data_engineering.two_view_geometry import intrinsics, project, triangulate
 from signtranslator.data_engineering.two_view_states import (
     ClipKeypoints, aligned, calibrate_session, epipolar_synchronise, hand_skeleton, in_image, refine_hands, rigid_bones,
-    rotation_inputs, session_gate,
+    rotation_inputs, session_gate, time_scale,
     synchronise,
     triangulated_bone_cv, triangulated_points,
 )
@@ -218,3 +218,11 @@ def test_keypoints_outside_the_image_are_never_observations():
     calibration = calibrate_session([(fp, fc, sp, sc)])
     points, usable = triangulated_points(calibration, fp, fc, sp, sc)
     assert not usable[:, 41].any() and np.isnan(points[:, 41]).all()
+
+
+def test_session_frame_ratio_detects_short_lateral_clips():
+    clips_ = session_clips()
+    assert time_scale(clips_) == 1.
+    short = [(n, f, ClipKeypoints(sd.name, sd.times[:int(len(sd.times) * .75)], sd.points[:int(len(sd.times) * .75)],
+                                  sd.confidence[:int(len(sd.times) * .75)])) for n, f, sd in clips_]
+    assert abs(time_scale(short) - .75) < .02
