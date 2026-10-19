@@ -29,8 +29,8 @@ The owner's update unblocked three items and redirected two. See
   estimated from continuous How2Sign video: pinned MediaPipe models on ROI crops,
   exact swing IK (forward kinematics reproduces every observed bone), anatomical hand
   assignment, declared unavailable gaze/root/contact. Pilot on real footage: pose and
-  face in 100% of frames. How2Sign translations are in R2; the large zips await Drive's
-  download quota (B75), watched automatically.
+  face in 100% of frames. How2Sign translations are in R2; the clip zips stream into R2 from a
+  byte-identical, verified mirror while Drive's quota is exhausted (B75).
 * **SAPA-main:** the authors' code holds no motion, but its WLASL + ASL-LEX phonology
   joins to 937 of 938 3D-LEX signs as review-required candidates
   (`data_engineering/sapa_phonology.py`); OpenHands ASL pose archives (CC BY 4.0) are

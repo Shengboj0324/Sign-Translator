@@ -36,10 +36,19 @@ with Apache-2.0 estimators, and to keep the request-only sources as upgrades.
 
 Acquisition status (R2 `acquisition/2026-10-17-v1/`): How2Sign original and
 realigned English translations for all splits are in R2. The large How2Sign zips
-returned Google Drive's "quota exceeded" page; a watcher retries every two hours
-and starts the verified transfer when Drive serves the files. Chunked range
-requests were not used to get around the quota. OpenHands ASL pose archives are
-acquired with the publisher's MD5 checked.
+returned Google Drive's "quota exceeded" page, and the institutional copy (CORA,
+doi:10.34810/DATA33) is behind an anti-bot challenge; neither was circumvented.
+The clip zips are instead streamed into R2 (memory only, no local staging) from
+the public Hugging Face mirror `aipieces/How2Sign` at pinned commit `1231830f`,
+accepted only as a byte-identical copy of the publisher's files: its six
+translation CSVs are SHA-256-identical to the Drive copies, every zip has exactly
+the byte count Drive reported, the stream must hash to the mirror's declared
+SHA-256 and the stored object is re-read and re-hashed, then
+`scripts/verify_how2sign_zips.py` checks every member's CRC-32, reconciles clip
+names with the official CSV, and byte-compares a sample of frontal clips with an
+independently uploaded mirror (`WayenVan/how2sign-front-clips`). Each zip gets a
+member manifest (name, size, CRC-32, SHA-256) in R2. OpenHands ASL pose archives
+are acquired with the publisher's MD5 checked.
 
 ## 2. Primary pipeline: two-view triangulation (decision in [DATA_QUALITY_DECISION.md](DATA_QUALITY_DECISION.md))
 

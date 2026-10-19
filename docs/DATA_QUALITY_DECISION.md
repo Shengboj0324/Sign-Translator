@@ -71,7 +71,7 @@ is the most accurate continuous 3D the project can obtain without a request.
 ## 5. Gate before any training run
 
 Training starts only when all of the following hold on real How2Sign front/side pairs
-(they arrive when Google Drive's quota clears):
+(acquired from the verified mirror, see CONTINUOUS_TRAINING.md):
 
 1. **Synchronisation:** the per-clip view offset is measured by motion
    cross-correlation, is consistent within a session, and pairs failing the declared
