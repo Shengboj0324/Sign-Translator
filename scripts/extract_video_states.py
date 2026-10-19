@@ -79,7 +79,18 @@ def _process(job):
     sample = Path(member).stem
     key = f"{prefix}/states/{sample}.npz"
     if store.exists(key):
-        return dict(sample_id=sample, status="already_present", state_key=key)
+        # Resumed shard: report the stored state's hash, so the report stays a complete,
+        # verifiable index of the shard (the manifest builder skips entries without one).
+        from signtranslator.pose.multichannel import MultichannelMotion
+        payload = store.get(key)
+        digest = hashlib.sha256(payload).hexdigest()
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "state.npz"
+            path.write_bytes(payload)
+            state = MultichannelMotion.load(path, expected_sha256=digest)
+        return dict(sample_id=sample, status="already_present", state_key=key, state_sha256=digest,
+                    seconds=float(state.timestamps[-1] - state.timestamps[0]),
+                    available_channels=[n for n, c in state.channels.items() if c.valid.any()])
     payload = archive.read(member)
     try:
         with tempfile.TemporaryDirectory() as temporary:
