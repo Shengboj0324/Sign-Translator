@@ -43,7 +43,10 @@ the acquisition provenance before it reads a byte:
 | `test_rgb_side_clips.zip` | `ec5013b24ed561c46e65ec60ce3a1669c8ad218269c0496aea5d0fefb67a8e8e` |
 
 Monocular states of the frontal view (face, head and blink channels of the two-view
-states come from here; also the monocular comparison in the gate). Run shard `i` of
+states come from here; also the monocular comparison in the gate). **Done on
+2026-10-19 for every split**: 35,129 frontal clips, none refused; the per-zip summary is
+in `evidence/how2sign-pilot-2026-10-19/monocular-extraction-summary.json`. Re-running
+the commands below only verifies and skips them. Run shard `i` of
 `n` for each split (start with `--limit 20` to check one shard end to end):
 
 ```bash

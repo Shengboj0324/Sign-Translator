@@ -1,0 +1,45 @@
+{
+  "acquisition/2026-10-17-v1/how2sign-public/test_rgb_front_clips.zip": {
+    "clips": {
+      "converted": 2343
+    },
+    "detection_rate": {
+      "face": 0.9993,
+      "left_hand": 0.9297,
+      "pose": 1.0,
+      "right_hand": 0.9446
+    },
+    "frames": 381412,
+    "hours": 4.06,
+    "shards": 1
+  },
+  "acquisition/2026-10-17-v1/how2sign-public/train_rgb_front_clips.zip": {
+    "clips": {
+      "already_present": 2558,
+      "converted": 28489
+    },
+    "detection_rate": {
+      "face": 0.9995,
+      "left_hand": 0.9134,
+      "pose": 1.0,
+      "right_hand": 0.9248
+    },
+    "frames": 4627813,
+    "hours": 55.23,
+    "shards": 8
+  },
+  "acquisition/2026-10-17-v1/how2sign-public/val_rgb_front_clips.zip": {
+    "clips": {
+      "converted": 1739
+    },
+    "detection_rate": {
+      "face": 0.9997,
+      "left_hand": 0.8909,
+      "pose": 1.0,
+      "right_hand": 0.9278
+    },
+    "frames": 275233,
+    "hours": 2.96,
+    "shards": 1
+  }
+}

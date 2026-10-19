@@ -66,7 +66,9 @@ exactly the same clip counts. The lateral zips instead hold 81 empty 262-byte MP
 placeholders with no stream (69 train, 4 val, 8 test). 79 of them stand where the
 frontal clip is also missing; 2 val sentences have a frontal clip but an empty lateral
 one. Both extraction jobs record such clips as refused instead of failing. Sentences
-with both views usable: 35,127 (train 31,047, val 1,737, test 2,343). Every readable
+with both views usable: 35,127 (train 31,047, val 1,737, test 2,343). MediaPipe monocular states exist for all 35,129 frontal clips (none refused).
+Frame detection rates: pose 100%, face 99.9%, left hand 89–93%, right hand 92–95%;
+the summary is in `evidence/how2sign-pilot-2026-10-19/monocular-extraction-summary.json`. Every readable
 clip is 1280×720 H.264 at 24 fps.
 
 ## 2. Primary pipeline: two-view triangulation (decision in [DATA_QUALITY_DECISION.md](DATA_QUALITY_DECISION.md))
