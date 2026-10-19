@@ -78,18 +78,38 @@ class R2Store:
     ``AWS_SECRET_ACCESS_KEY`` (for example Runpod secrets); nothing is logged.
     """
 
+    _SETTINGS = ("R2_ENDPOINT_URL", "R2_BUCKET", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY")
+
     def __init__(self, env: Mapping[str, str]) -> None:
-        import boto3
-        from botocore.config import Config
-        missing = [k for k in ("R2_ENDPOINT_URL", "R2_BUCKET", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY") if not env.get(k)]
+        missing = [k for k in self._SETTINGS if not env.get(k)]
         if missing:
             raise ValueError(f"missing R2 settings: {missing}")
+        self._settings = {k: env[k] for k in self._SETTINGS}
         self.bucket = env["R2_BUCKET"]
-        self.s3 = boto3.client("s3", endpoint_url=env["R2_ENDPOINT_URL"], region_name="auto",
-                               aws_access_key_id=env["AWS_ACCESS_KEY_ID"],
-                               aws_secret_access_key=env["AWS_SECRET_ACCESS_KEY"],
-                               config=Config(connect_timeout=20, read_timeout=300,
-                                             retries={"mode": "standard", "max_attempts": 8}))
+        self._client = None
+
+    @property
+    def s3(self):
+        """The boto3 client, created on first use in each process (clients cannot be pickled)."""
+        if self._client is None:
+            import boto3
+            from botocore.config import Config
+            self._client = boto3.client("s3", endpoint_url=self._settings["R2_ENDPOINT_URL"], region_name="auto",
+                                        aws_access_key_id=self._settings["AWS_ACCESS_KEY_ID"],
+                                        aws_secret_access_key=self._settings["AWS_SECRET_ACCESS_KEY"],
+                                        config=Config(connect_timeout=20, read_timeout=300,
+                                                      retries={"mode": "standard", "max_attempts": 8}))
+        return self._client
+
+    def __getstate__(self):
+        # Data-loader workers started by "spawn" (macOS, Windows) receive the store by
+        # pickling; they rebuild their own client. The settings stay in process memory.
+        state = dict(self.__dict__)
+        state["_client"] = None
+        return state
+
+    def __repr__(self) -> str:
+        return f"R2Store(bucket={self.bucket!r})"              # never shows credentials
 
     def get(self, key: str) -> bytes:
         return self.s3.get_object(Bucket=self.bucket, Key=key)["Body"].read()
