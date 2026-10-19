@@ -246,19 +246,8 @@ def bone_length_cv(points: np.ndarray, bones) -> float:
     return float(np.median(values)) if values else float("nan")
 
 
-def calibrate(obs: TwoViewObservations, *, focal_guess: float | None = None, bone_weight: float = 50.,
-              ransac_threshold: float = 3., seed: int = 0, distortion: bool = False,
-              anchors: tuple[int, ...] = (), ransac_joints: tuple[int, ...] | None = None) -> Calibration:
-    """Self-calibrate a camera pair; robust start, then bone-constrained bundle adjustment.
-
-    With ``distortion`` the pinhole solution is refined once more with one division-model
-    coefficient per camera, started at zero. ``anchors`` are extra view-consistent
-    joints (not on a bone) allowed into the reprojection term. With ``ransac_joints``
-    the robust epipolar start is fitted on those joints only (the most view-consistent
-    ones), and every other observation is kept or dropped by its Sampson distance to
-    that geometry — inconsistent keypoints (e.g. occluded fingers in a profile view)
-    can then neither bias the start nor enter the bundle adjustment.
-    """
+def _cleaned(obs: TwoViewObservations, *, ransac_threshold: float, seed: int, anchors, ransac_joints):
+    """Observations restricted to bone joints (and anchors) that agree with a robust epipolar start."""
     if obs.view1.shape != obs.view2.shape or obs.usable.shape != obs.view1.shape[:2]:
         raise ValueError("views and mask must share (T, J)")
     # Only joints on a rigid bone (and the anchors) take part: on real data the remaining keypoints
@@ -277,12 +266,65 @@ def calibrate(obs: TwoViewObservations, *, focal_guess: float | None = None, bon
         f, _ = ransac_fundamental(x1[subset], x2[subset], threshold=ransac_threshold, seed=seed)
         inliers = sampson(f, x1, x2) < ransac_threshold
     usable[t_idx[~inliers], j_idx[~inliers]] = False
-    clean = TwoViewObservations(obs.view1, obs.view2, usable, obs.size1, obs.size2, obs.bones)
-    guess = focal_guess or float(max(obs.size1))
-    start = initial_parameters(clean, guess, f)
-    width = float(max(obs.size1))
-    lower = np.r_[np.log(.2 * width), np.log(.2 * width), np.full(5, -np.inf)]
-    upper = np.r_[np.log(10 * width), np.log(10 * width), np.full(5, np.inf)]
+    return TwoViewObservations(obs.view1, obs.view2, usable, obs.size1, obs.size2, obs.bones), f, float(inliers.mean())
+
+
+def _calibration(params, obs: TwoViewObservations, inlier_fraction: float, converged: bool) -> Calibration:
+    """The Calibration described by one pair's parameter vector, with its diagnostics on ``obs``."""
+    distortion = len(params) > 7
+    p1, p2 = projections(params, obs.size1, obs.size2)
+    t_idx, j_idx = np.nonzero(obs.usable)
+    x1, x2 = _undistorted(params, obs, t_idx, j_idx)
+    points = triangulate(p1, p2, x1, x2)
+    grid = np.full(obs.usable.shape + (3,), np.nan)
+    grid[t_idx, j_idx] = points
+    q1, q2 = project(p1, points), project(p2, points)
+    if distortion:
+        q1 = distort_division(q1, obs.size1, np.exp(params[0]), params[7])
+        q2 = distort_division(q2, obs.size2, np.exp(params[1]), params[8])
+    errors1 = np.linalg.norm(q1 - obs.view1[t_idx, j_idx], axis=1)
+    errors2 = np.linalg.norm(q2 - obs.view2[t_idx, j_idx], axis=1)
+    theta, phi = params[5:7]
+    return Calibration(float(np.exp(params[0])), float(np.exp(params[1])), Rotation.from_rotvec(params[2:5]).as_matrix(),
+                       np.array([np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)]),
+                       (float(np.median(errors1)), float(np.median(errors2))), bone_length_cv(grid, obs.bones),
+                       inlier_fraction, converged, (float(params[7]), float(params[8])) if distortion else (0., 0.))
+
+
+def _focal_bounds(size):
+    width = float(max(size))
+    return np.log(.2 * width), np.log(10 * width)
+
+
+def calibrate(obs: TwoViewObservations, *, focal_guess: float | None = None, bone_weight: float = 50.,
+              ransac_threshold: float = 3., seed: int = 0, distortion: bool = False,
+              anchors: tuple[int, ...] = (), ransac_joints: tuple[int, ...] | None = None,
+              intrinsics: tuple[float, float, float, float] | None = None) -> Calibration:
+    """Self-calibrate a camera pair; robust start, then bone-constrained bundle adjustment.
+
+    With ``intrinsics`` = (f1, f2, λ1, λ2) — e.g. from :func:`calibrate_jointly` on many
+    sessions of the same cameras — only this session's relative pose is estimated.
+
+    With ``distortion`` the pinhole solution is refined once more with one division-model
+    coefficient per camera, started at zero. ``anchors`` are extra view-consistent
+    joints (not on a bone) allowed into the reprojection term. With ``ransac_joints``
+    the robust epipolar start is fitted on those joints only (the most view-consistent
+    ones), and every other observation is kept or dropped by its Sampson distance to
+    that geometry — inconsistent keypoints (e.g. occluded fingers in a profile view)
+    can then neither bias the start nor enter the bundle adjustment.
+    """
+    clean, f, inlier_fraction = _cleaned(obs, ransac_threshold=ransac_threshold, seed=seed, anchors=anchors,
+                                         ransac_joints=ransac_joints)
+    if intrinsics is not None:
+        f1, f2, l1, l2 = intrinsics
+        fixed = lambda pose: np.r_[np.log(f1), np.log(f2), pose, l1, l2]
+        pose0 = initial_parameters(clean, float(np.sqrt(f1 * f2)), f)[2:7]
+        result = least_squares(lambda pose: _residuals(fixed(pose), clean, bone_weight), pose0, method="trf",
+                               loss="soft_l1", f_scale=2., x_scale="jac", max_nfev=400)
+        return _calibration(fixed(result.x), clean, inlier_fraction, bool(result.success))
+    start = initial_parameters(clean, focal_guess or float(max(obs.size1)), f)
+    low, high = _focal_bounds(obs.size1)
+    lower, upper = np.r_[low, low, np.full(5, -np.inf)], np.r_[high, high, np.full(5, np.inf)]
     start[:2] = np.clip(start[:2], lower[:2] + 1e-6, upper[:2] - 1e-6)
     result = least_squares(_residuals, start, args=(clean, bone_weight), method="trf", loss="soft_l1",
                            f_scale=2., x_scale="jac", max_nfev=400, bounds=(lower, upper))
@@ -290,25 +332,49 @@ def calibrate(obs: TwoViewObservations, *, focal_guess: float | None = None, bon
         result = least_squares(_residuals, np.r_[result.x, 0., 0.], args=(clean, bone_weight), method="trf",
                                loss="soft_l1", f_scale=2., x_scale="jac", max_nfev=400,
                                bounds=(np.r_[lower, -1., -1.], np.r_[upper, 1., 1.]))
-    p1, p2 = projections(result.x, obs.size1, obs.size2)
-    t_idx, j_idx = np.nonzero(usable)
-    x1, x2 = _undistorted(result.x, obs, t_idx, j_idx)
-    points = triangulate(p1, p2, x1, x2)
-    grid = np.full(usable.shape + (3,), np.nan)
-    grid[t_idx, j_idx] = points
-    q1, q2 = project(p1, points), project(p2, points)
+    return _calibration(result.x, clean, inlier_fraction, bool(result.success))
+
+
+def calibrate_jointly(sessions: list[TwoViewObservations], *, focal_guess: float | None = None,
+                      bone_weight: float = 50., ransac_threshold: float = 3., seed: int = 0,
+                      distortion: bool = False, anchors: tuple[int, ...] = (),
+                      ransac_joints: tuple[int, ...] | None = None) -> list[Calibration]:
+    """Calibrate several sessions recorded by the same two cameras at once.
+
+    The intrinsics — both focal lengths and, with ``distortion``, both radial
+    coefficients — are shared by every session; each session keeps its own relative
+    pose (the cameras may be moved between sessions). Pooling sessions multiplies the
+    pose variety that the bone-length term needs to resolve the focal lengths of
+    fixating cameras, which one short session may not provide.
+    """
+    cleaned = [_cleaned(o, ransac_threshold=ransac_threshold, seed=seed, anchors=anchors,
+                        ransac_joints=ransac_joints) for o in sessions]
+    guess = focal_guess or float(max(sessions[0].size1))
+    starts = [initial_parameters(c, guess, f) for c, f, _ in cleaned]
+    low, high = _focal_bounds(sessions[0].size1)
+    n_shared = 4 if distortion else 2
+
+    def unpack(x):
+        shared, poses = x[:n_shared], x[n_shared:].reshape(len(sessions), 5)
+        return [np.r_[shared[:2], pose, shared[2:]] for pose in poses]
+
+    def residuals(x):
+        return np.concatenate([_residuals(params, c, bone_weight) for params, (c, _, _) in zip(unpack(x), cleaned)])
+
+    lower = np.r_[low, low, np.full(5 * len(sessions), -np.inf)]
+    upper = np.r_[high, high, np.full(5 * len(sessions), np.inf)]
+    x0 = np.r_[np.clip(np.log(guess), low + 1e-6, high - 1e-6), np.clip(np.log(guess), low + 1e-6, high - 1e-6),
+               np.concatenate([s[2:7] for s in starts])]
+    result = least_squares(residuals, x0, method="trf", loss="soft_l1", f_scale=2., x_scale="jac",
+                           max_nfev=400, bounds=(lower, upper))
     if distortion:
-        q1 = distort_division(q1, obs.size1, np.exp(result.x[0]), result.x[7])
-        q2 = distort_division(q2, obs.size2, np.exp(result.x[1]), result.x[8])
-    errors1 = np.linalg.norm(q1 - obs.view1[t_idx, j_idx], axis=1)
-    errors2 = np.linalg.norm(q2 - obs.view2[t_idx, j_idx], axis=1)
-    rotation = Rotation.from_rotvec(result.x[2:5]).as_matrix()
-    theta, phi = result.x[5:7]
-    return Calibration(float(np.exp(result.x[0])), float(np.exp(result.x[1])), rotation,
-                       np.array([np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)]),
-                       (float(np.median(errors1)), float(np.median(errors2))), bone_length_cv(grid, obs.bones),
-                       float(inliers.mean()), bool(result.success),
-                       (float(result.x[7]), float(result.x[8])) if distortion else (0., 0.))
+        x0 = np.r_[result.x[:2], 0., 0., result.x[2:]]
+        lower = np.r_[lower[:2], -1., -1., lower[2:]]
+        upper = np.r_[upper[:2], 1., 1., upper[2:]]
+        result = least_squares(residuals, x0, method="trf", loss="soft_l1", f_scale=2., x_scale="jac",
+                               max_nfev=400, bounds=(lower, upper))
+    return [_calibration(params, c, inlier, bool(result.success))
+            for params, (c, _, inlier) in zip(unpack(result.x), cleaned)]
 
 
 def triangulate_session(calibration: Calibration, obs: TwoViewObservations) -> np.ndarray:
@@ -342,5 +408,5 @@ def view_offset(signal1: np.ndarray, signal2: np.ndarray, *, max_lag: int = 15) 
 
 
 __all__ = ["intrinsics", "eight_point", "sampson", "ransac_fundamental", "triangulate", "project",
-           "TwoViewObservations", "Calibration", "calibrate", "triangulate_session", "bone_length_cv",
+           "TwoViewObservations", "Calibration", "calibrate", "calibrate_jointly", "triangulate_session", "bone_length_cv",
            "view_offset", "initial_parameters", "projections", "undistort_division", "distort_division"]

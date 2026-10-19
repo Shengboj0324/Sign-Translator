@@ -4,7 +4,7 @@ import pytest
 from scipy.spatial.transform import Rotation
 
 from signtranslator.data_engineering.two_view_geometry import (
-    TwoViewObservations, bone_length_cv, calibrate, eight_point, intrinsics, project, sampson,
+    TwoViewObservations, bone_length_cv, calibrate, calibrate_jointly, eight_point, intrinsics, project, sampson,
     distort_division, triangulate, triangulate_session, undistort_division, view_offset,
 )
 
@@ -120,3 +120,38 @@ def test_weighted_triangulation_is_exact_without_noise_and_follows_the_trusted_v
     plain = triangulate(p1, p2, x1, shifted)
     assert np.median(np.linalg.norm(project(p1, trusted) - x1, axis=1)) < \
         .2 * np.median(np.linalg.norm(project(p1, plain) - x1, axis=1))
+
+
+def short_session(angle, seed, frames=25, noise=2.):
+    """A short, noisy session: same two cameras (f 1100/1450), its own relative pose."""
+    body, bones = skeleton(frames=frames, seed=seed)
+    p1, p2, *_ = cameras(angle=angle)
+    rng = np.random.default_rng(seed + 50)
+    flat = (body + [0, 0, 3]).reshape(-1, 3)
+    shape = body.shape[:2] + (2,)
+    v1 = project(p1, flat).reshape(shape) + rng.normal(scale=noise, size=shape)
+    v2 = project(p2, flat).reshape(shape) + rng.normal(scale=noise, size=shape)
+    return TwoViewObservations(v1, v2, np.ones(body.shape[:2], bool), SIZE, SIZE, bones)
+
+
+def test_joint_calibration_shares_intrinsics_and_beats_short_noisy_sessions_alone():
+    sessions = [short_session(angle, seed) for angle, seed in ((62, 11), (70, 12), (78, 13), (66, 14))]
+    alone = [calibrate(s, focal_guess=1280.) for s in sessions]
+    joint = calibrate_jointly(sessions, focal_guess=1280.)
+    error = lambda c: max(abs(c.focal1 / 1100. - 1), abs(c.focal2 / 1450. - 1))
+    assert len({(round(c.focal1, 6), round(c.focal2, 6)) for c in joint}) == 1      # shared intrinsics
+    assert error(joint[0]) < .03
+    assert error(joint[0]) < np.median([error(c) for c in alone])
+    for c, angle in zip(joint, (62, 70, 78, 66)):                                     # per-session poses
+        _, _, rotation, _, _ = cameras(angle=angle)
+        assert np.degrees(np.arccos(np.clip((np.trace(c.rotation.T @ rotation) - 1) / 2, -1, 1))) < 2.
+
+
+def test_fixed_intrinsics_estimate_only_the_session_pose():
+    sessions = [short_session(angle, seed) for angle, seed in ((62, 11), (70, 12), (78, 13), (66, 14))]
+    shared = calibrate_jointly(sessions[:3], focal_guess=1280.)[0]
+    held_out = calibrate(sessions[3], intrinsics=(shared.focal1, shared.focal2, *shared.distortion))
+    assert (held_out.focal1, held_out.focal2) == (shared.focal1, shared.focal2)
+    _, _, rotation, _, _ = cameras(angle=66)
+    assert np.degrees(np.arccos(np.clip((np.trace(held_out.rotation.T @ rotation) - 1) / 2, -1, 1))) < 2.
+    assert max(held_out.median_reprojection_px) < 3.
