@@ -118,6 +118,9 @@ def main(argv=None) -> int:
             if store.exists(manifest_key):
                 summary[key] = dict(status="already verified")
                 continue
+            if not store.exists(key + ".provenance.json"):         # still being re-read after transfer
+                summary[key] = dict(status="transfer not yet verified")
+                continue
             provenance = json.loads(store.get(key + ".provenance.json"))
             if not provenance.get("verified_by_r2_reread"):
                 raise SystemExit(f"{key}: transfer was not verified")
