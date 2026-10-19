@@ -34,6 +34,8 @@ def main(argv=None) -> int:
     parser.add_argument("--fold-plan-sha256", required=True)
     parser.add_argument("--fold", type=int, default=0)
     parser.add_argument("--manifest-key", required=True)
+    parser.add_argument("--corpus-id", default="how2sign-video-estimate-text-v1",
+                        help="how2sign-two-view-text-v1 when built from the two-view reports")
     args = parser.parse_args(argv)
     store = R2Store(os.environ) if args.store == "r2" else DirectoryStore(Path(args.store[4:]))
     plan = FoldPlan.load(args.fold_plan, expected_sha256=args.fold_plan_sha256)
@@ -65,7 +67,7 @@ def main(argv=None) -> int:
     split = dict(kind="continuous", fold_plan_sha256=args.fold_plan_sha256, fold=args.fold,
                  counts={p: sum(r["partition"] == p for r in records) for p in {r["partition"] for r in records}},
                  note="partitions inherit the frozen signer-disjoint fold plan")
-    manifest = build_corpus_manifest(corpus_id="how2sign-video-estimate-text-v1", inputs=inputs, records=records,
+    manifest = build_corpus_manifest(corpus_id=args.corpus_id, inputs=inputs, records=records,
                                      split=split)
     payload = canonical_json(manifest)
     if store.exists(args.manifest_key):

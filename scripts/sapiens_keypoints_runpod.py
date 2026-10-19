@@ -119,7 +119,7 @@ def main(argv=None) -> int:
         done += 1
         if index % 50 == 0:
             print(f"{index}/{len(shard)} {member}", flush=True)
-    store.put(f"{prefix}/reports/shard-{args.shard:03d}-of-{args.shards:03d}.json", json.dumps(dict(
+    store.put(f"{prefix}/reports/{Path(args.zip_key).stem}-shard-{args.shard:03d}-of-{args.shards:03d}.json", json.dumps(dict(
         zip_key=args.zip_key, zip_sha256=args.zip_sha256, model_sha256=model_sha, flip_tta=args.flip, clips=len(shard),
         written=done)).encode())
     print(json.dumps(dict(model_sha256=model_sha, written=done, clips=len(shard))))

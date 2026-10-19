@@ -143,7 +143,7 @@ def main(argv=None) -> int:
                   shards=args.shards, clips=len(results),
                   status_counts={s: sum(r["status"] == s for r in results) for s in {r["status"] for r in results}},
                   results=results)
-    store.put(f"{args.prefix.rstrip('/')}/reports/shard-{args.shard:03d}-of-{args.shards:03d}.json",
+    store.put(f"{args.prefix.rstrip('/')}/reports/{Path(args.zip_key).stem}-shard-{args.shard:03d}-of-{args.shards:03d}.json",
               json.dumps(report, sort_keys=True).encode())
     print(json.dumps(report["status_counts"]))
     return 0
