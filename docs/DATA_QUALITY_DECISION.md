@@ -140,10 +140,26 @@ What each step contributed, and what was rejected:
    on hand-only crops (0.93 → 0.1–0.76) and its crop positions made fingers worse
    (7.09° → 8.38° with the dome calibration).
 
+**Session-scale calibration.** The rows above calibrate on the 150 evaluated frames
+only. Production calibrates each How2Sign session on up to 3 000 frames from all its
+clips. Measured the same way on the held-out sequence (calibration on the 150 frames
+plus 300 frames spread over the whole recording, evaluation on the same 150 frames):
+
+| 170915_office1 | Arm direction | Fingers L/R | Arm PA-MPJPE |
+|---|---:|---:|---:|
+| adopted, 150-frame calibration | 4.32° | 7.01° / 12.50° | 3.26 cm |
+| **adopted, session-scale calibration (450 frames)** | **3.55°** | **7.22° / 12.19°** | **1.85 cm** |
+| adopted keypoints, dome calibration | 3.92° | 7.49° / 12.11° | 1.64 cm |
+
+With session-scale data the self-calibration is within 0.2 cm and 0.4° of the dome's own
+calibration (focal lengths 1666/1516 px vs 1514/1572 px). Its radial coefficient came
+out with the opposite sign to the lens's (−0.17/−0.14 vs ≈ +0.25): it is not
+identified and acts only as a small regulariser.
+
 **Where the remaining error lives, and the floor.** With the dome calibration the
-adopted keypoints reach 3.5–3.9° on arms and 1.0–1.6 cm PA-MPJPE, so self-calibration
-still accounts for most of the joint-position gap (2.2–3.3 cm vs 1.0–1.6 cm) while
-costing ≤ 0.4° of arm direction. Panoptic's reference itself is not exact: its arm
+adopted keypoints reach 3.5–3.9° on arms and 1.0–1.6 cm PA-MPJPE, and session-scale
+self-calibration comes within 0.2 cm of that, so the remaining error is the 2D
+keypoints themselves. Panoptic's reference itself is not exact: its arm
 bone lengths vary by 3.7% (CV) over time and its hand reconstruction reprojects at
 2.1 px, so errors below ≈2–3° cannot be resolved against it. "Infinitely close to 0"
 is not measurable with any available reference; a mocap-grade check
