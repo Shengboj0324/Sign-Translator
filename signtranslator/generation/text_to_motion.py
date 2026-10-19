@@ -338,7 +338,9 @@ def training_loss(model: TextToMotion, tokens, text_mask, motion: MotionBatch):
     prediction, log_duration, duration_rows = _prediction(model, tokens, text_mask, motion)
     loss_config = LossScales(**config.loss_config)
     terms, diagnostics = {}, {}
-    total = torch.zeros((), dtype=torch.float64, device=tokens.device)
+    # float64 accumulation except on Apple GPUs (MPS has no float64; float32 is ample here).
+    accumulate = torch.float32 if tokens.device.type == "mps" else torch.float64
+    total = torch.zeros((), dtype=accumulate, device=tokens.device)
     for name in config.trained_channels:
         values, support, info = channel_loss_per_example(
             name, prediction[name], motion.channels[name], motion.frame_valid, config=loss_config,
