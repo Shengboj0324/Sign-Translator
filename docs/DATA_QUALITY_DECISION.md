@@ -227,5 +227,15 @@ in the order they were found:
    triangulated arm bone-length CV is 0.039–0.044 against the monocular 0.037, and its
    reprojection reaches 2.37 px. No threshold was changed to admit it.
 
+6. **A stricter triangulation confidence threshold was measured on Panoptic and
+   rejected.** Calibration was held at the declared 0.3 and only the threshold for
+   triangulation was raised.
+   - On `170915_office1`, raising it to 0.7 appears to cut arm error from 3.92° to
+     1.18°. But at that threshold the left shoulder and right elbow are never
+     triangulated (coverage 0%), so the error is measured on the easy bones that remain.
+   - Where coverage stays near full (`171026_pose3`, `171204_pose1_sample`), the gain
+     is ≤ 0.1° or none.
+   - A missing joint is a missing rotation downstream, so the declared 0.3 stands.
+
 Next: calibrate the shared intrinsics over more sessions, then re-evaluate each
 session's gate with them.
