@@ -55,12 +55,10 @@ def to_device(batch, device):
     if device.type == "cpu":
         return tokens, mask, motion
     from dataclasses import replace
-    # Apple GPUs (MPS) have no float64: targets and clocks travel as float32 there.
-    real = torch.float32 if device.type == "mps" else None
-    channels = {name: replace(ch, values=ch.values.to(device, real), valid=ch.valid.to(device),
-                              observed=ch.observed.to(device), confidence=ch.confidence.to(device, real))
+    channels = {name: replace(ch, values=ch.values.to(device), valid=ch.valid.to(device),
+                              observed=ch.observed.to(device), confidence=ch.confidence.to(device))
                 for name, ch in motion.channels.items()}
-    motion = replace(motion, timestamps=motion.timestamps.to(device, real), frame_valid=motion.frame_valid.to(device),
+    motion = replace(motion, timestamps=motion.timestamps.to(device), frame_valid=motion.frame_valid.to(device),
                      lengths=motion.lengths.to(device), channels=channels)
     return tokens.to(device), mask.to(device), motion
 
