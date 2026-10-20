@@ -11,7 +11,11 @@ coefficient, 0.5 bounded state), so training starts from a valid pose.
 
 The objective is :func:`channel_loss_per_example` from the canonical-state model —
 ``sin²(θ/2)`` for rotations, Huber for coefficients and translations, Bernoulli KL
-for bounded states — over supported cells only, plus a Huber loss on log duration.
+for bounded states — over supported cells only, plus a Huber loss on log duration
+and, when the body and both hands are trained, the signing-space location loss of
+:mod:`signing_space` (wrists and fingertips in the chest frame, weight
+``location_weight``): per-joint rotation losses alone undervalue the shoulder and
+elbow, whose errors move the hand furthest.
 Video-estimated targets are inferred, so training declares ``allow_inferred=True``.
 Generated states are emitted ``observed=False`` with zero confidence: generated
 motion can never re-enter training as observation.
@@ -48,6 +52,7 @@ from ..data.multichannel import MotionBatch
 from ..pose.multichannel import CHANNELS, MotionChannel, MultichannelMotion
 from ..pose.rotations import matrix_to_rotation_6d, rotation_6d_to_matrix
 from .canonical_state import CanonicalChannelBinding, channel_loss_per_example
+from .signing_space import applicable, location_loss
 
 PAD, BOS, EOS = 256, 257, 258
 VOCABULARY = 259
@@ -94,6 +99,7 @@ class TextToMotionConfig:
     objective: str = "regression"          # or "diffusion"
     cfg_dropout: float = .1                # diffusion: probability of training on the empty text
     coefficient_norm: float = .5           # diffusion: coefficient values are divided by this
+    location_weight: float = .1            # signing-space wrist/fingertip loss (signing_space.py); 0 disables
     loss_config: dict = field(default_factory=lambda: dict(
         translation_scale_metres=.05, coefficient_scale=.1, velocity_weight=0.))
 
@@ -109,6 +115,8 @@ class TextToMotionConfig:
             raise ValueError("objective must be 'regression' or 'diffusion'")
         if not 0 <= self.cfg_dropout < 1 or self.coefficient_norm <= 0:
             raise ValueError("cfg_dropout must lie in [0, 1) and coefficient_norm be positive")
+        if self.location_weight < 0:
+            raise ValueError("location_weight must be nonnegative")
 
     def to_dict(self) -> dict:
         data = asdict(self)
@@ -348,12 +356,24 @@ def training_loss(model: TextToMotion, tokens, text_mask, motion: MotionBatch):
             terms[name] = float(term.detach())
             total = total + term
             diagnostics.update({f"{name}/{k}": v for k, v in info.items()})
+    location = signing_space_term(config, prediction, motion)
+    if location is not None:
+        terms["location"] = float(location.detach())
+        total = total + config.location_weight * location.to(total.dtype)
     if bool(duration_rows.any()):
         target = utterance_duration(motion).log().to(log_duration.dtype)
         duration_term = F.smooth_l1_loss(log_duration[duration_rows], target[duration_rows])
         terms["log_duration"] = float(duration_term.detach())
         total = total + config.duration_weight * duration_term.to(total.dtype)
     return total, terms, diagnostics
+
+
+def signing_space_term(config: TextToMotionConfig, prediction: dict, motion: MotionBatch):
+    """Location loss of the wrists and fingertips in the chest frame, or None when not applicable."""
+    if not config.location_weight or not applicable(config.bindings, config.trained_channels):
+        return None
+    loss, _ = location_loss({n: prediction[n] for n in ("body", "left_hand", "right_hand")}, motion)
+    return loss
 
 
 def native_values(config: TextToMotionConfig, raw: dict) -> dict:
@@ -472,6 +492,6 @@ def generate(model: TextToMotion, texts, *, fps: float, sample_prefix: str = "ge
     return states
 
 
-__all__ = ["encode_texts", "TextToMotionConfig", "TextToMotion", "training_loss", "generate", "batch_seconds",
+__all__ = ["encode_texts", "signing_space_term", "TextToMotionConfig", "TextToMotion", "training_loss", "generate", "batch_seconds",
            "utterance_duration", "alpha_bar", "diffusion_layout", "diffusion_targets", "heads_to_unit", "unit_to_raw",
            "native_values", "assemble_state", "LossScales"]

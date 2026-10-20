@@ -36,7 +36,7 @@ from ..data.multichannel import MotionBatch
 from .canonical_state import channel_loss_per_example
 from .text_to_motion import (
     BOS, EOS, PAD, VOCABULARY, LossScales, TextToMotionConfig, assemble_state, batch_seconds, diffusion_layout,
-    diffusion_targets, encode_texts, native_values, sinusoid, unit_to_raw, utterance_duration,
+    diffusion_targets, encode_texts, native_values, signing_space_term, sinusoid, unit_to_raw, utterance_duration,
 )
 
 
@@ -180,6 +180,10 @@ def tokenizer_loss(model: MotionVQ, motion: MotionBatch):
             term = values[support].mean()
             terms[name] = float(term.detach())
             total = total + term
+    location = signing_space_term(config.motion, raw, motion)
+    if location is not None:
+        terms["location"] = float(location.detach())
+        total = total + config.motion.location_weight * location.to(total.dtype)
     commitment = ((latents - quantized.detach()) ** 2).mean(-1)[token_valid].mean()
     terms["commitment"] = float(commitment.detach())
     used = index[token_valid].unique().numel()
