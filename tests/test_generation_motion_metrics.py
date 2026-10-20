@@ -53,3 +53,23 @@ def test_frechet_distance_grows_with_a_shift():
     assert frechet_distance(reference + rng.normal(scale=.01, size=reference.shape), reference) < .05
     assert frechet_distance(reference + 1., reference) > 5.
     assert np.isfinite(clip_features(state(1, 30))).any()
+
+
+def test_translation_and_direction_channels_use_metres_and_angles():
+    from signtranslator.generation.motion_metrics import distance, unit_angle_degrees
+    np.testing.assert_allclose(unit_angle_degrees(np.array([[1., 0, 0]]), np.array([[0., 1, 0]])), [90.])
+    np.testing.assert_allclose(unit_angle_degrees(np.array([1., 0, 0]), np.array([1., 1e-9, 0])), 0., atol=1e-6)
+    def walking(i, offset=(0., 0., 0.)):
+        s = state(i, 24)
+        path = np.zeros((24, 1, 3))
+        path[:, 0, 0] = .01 * (1 + .1 * i) * np.arange(24)          # 1–1.5 cm per frame at 24 fps
+        root = replace(s.channels["root_translation"], values=path + np.asarray(offset), valid=np.ones((24, 1), bool),
+                       confidence=np.ones((24, 1)), inference_method="test")
+        return replace(s, channels={**s.channels, "root_translation": root})
+    np.testing.assert_allclose(angular_speeds(walking(0), "root_translation"), .24, atol=1e-9)    # m/s
+    reference = [walking(i) for i in range(6)]
+    result = compare([walking(i, (0, .03, .04)) for i in range(6)], reference, channels=("root_translation",))
+    assert abs(result["root_translation"]["position_cm"] - 5.) < 1e-9
+    assert abs(result["root_translation"]["speed_ratio"] - 1) < 1e-9
+    assert compare(reference, reference, channels=("root_translation",))["frechet"] < 1e-6
+    np.testing.assert_allclose(distance("root_translation", np.zeros((1, 3)), np.array([[0, .03, .04]])), [.05])

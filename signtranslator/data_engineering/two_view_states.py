@@ -321,12 +321,19 @@ def triangulated_bone_cv(points3d: np.ndarray) -> float:
     return bone_length_cv(points3d, ((5, 7), (7, 62), (6, 8), (8, 41), (5, 6), (9, 10)))
 
 
+TRANSLATION_LABELS = {"root_translation": ("torso_anchor",), "head_translation": ("cyclopean_eye",)}
+TRANSLATION_FRAME = "two-view-session-world-y-up-metres"
+
+
 def triangulated_state(monocular: MultichannelMotion, frames: slice, rotations: dict, hand_rotations: dict, *,
-                       source_id: str, source_sha256: str, inference_method: str) -> MultichannelMotion:
+                       source_id: str, source_sha256: str, inference_method: str,
+                       translations: dict | None = None) -> MultichannelMotion:
     """Body and hands from triangulation; face, head and blink from the monocular state.
 
     Both are indexed by the frontal camera's frames, so ``frames`` (the aligned span)
-    puts them on one clock. Channels neither source provides stay unavailable.
+    puts them on one clock. ``translations`` maps ``root_translation`` and
+    ``head_translation`` to ((T, 3) metres, (T,) valid) in the session-world frame of
+    :mod:`body_space`. Channels no source provides stay unavailable.
     """
     import torch
     times = monocular.timestamps[frames]
@@ -350,6 +357,19 @@ def triangulated_state(monocular: MultichannelMotion, frames: slice, rotations: 
     for side, name in (("Left", "left_hand"), ("Right", "right_hand")):
         labels = tuple(j.name for j in finger_joints(side))
         channels[name] = rotation_channel(labels, hand_rotations[side], labels)
+    for name, (values, valid) in (translations or {}).items():
+        if name not in TRANSLATION_LABELS:
+            raise ValueError(f"{name} is not a translation channel")
+        values, valid = np.asarray(values, dtype=np.float64), np.asarray(valid, dtype=bool)
+        if values.shape != (count, 3) or valid.shape != (count,):
+            raise ValueError(f"{name} must be (T, 3) metres with a (T,) mask over the aligned frames")
+        valid = valid & np.isfinite(values).all(axis=1)
+        channels[name] = MotionChannel(
+            values=np.where(valid[:, None], values, 0.)[:, None], valid=valid[:, None],
+            observed=np.zeros((count, 1), dtype=bool), confidence=np.where(valid, 1., 0.)[:, None],
+            labels=TRANSLATION_LABELS[name], coordinate_frame=TRANSLATION_FRAME, units="m",
+            source_id=source_id, source_sha256=source_sha256, convention="body-space-anthropometric-scale-v1",
+            inference_method=inference_method if valid.any() else None)
     for name in CHANNELS:
         if name in channels:
             continue
@@ -372,7 +392,7 @@ def triangulated_state(monocular: MultichannelMotion, frames: slice, rotations: 
                               monocular.sample_id + ":two-view", channels)
 
 
-__all__ = ["triangulated_state", "rigid_bones", "motion_signal", "ClipKeypoints", "synchronise", "aligned", "calibrate_session",
+__all__ = ["triangulated_state", "TRANSLATION_LABELS", "TRANSLATION_FRAME", "rigid_bones", "motion_signal", "ClipKeypoints", "synchronise", "aligned", "calibrate_session",
            "epipolar_synchronise", "in_image", "SYNC_JOINTS", "CALIBRATION_SEED_JOINTS", "session_observations",
            "time_scale",
            "calibrate_cameras",

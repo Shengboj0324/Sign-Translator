@@ -90,7 +90,8 @@ def main(argv=None) -> int:
     records = sorted((r for r in manifest["records"] if r["partition"] == args.partition and r.get("text")),
                      key=lambda r: r["sign"])[:args.limit]
     references = [load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]) for r in records]
-    channels = tuple(c for c in ("body", "left_hand", "right_hand", "head_rotation") if c in trained)
+    channels = tuple(c for c in ("body", "left_hand", "right_hand", "head_rotation", "root_translation",
+                                 "head_translation", "left_gaze", "right_gaze") if c in trained)
     scales = [float(g) for g in args.guidance.split(",")] if label != "regression" else [None]
     results = {}
     for scale in scales:

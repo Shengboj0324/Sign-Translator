@@ -54,6 +54,8 @@ def test_sessions_are_synchronised_calibrated_gated_and_converted(tmp_path):
     for gate in report["gates"].values():
         assert gate["passed"], gate["reasons"]
         assert gate["lag_frames"] == 2 and all(c["passed"] for c in gate["sync"])
+        scale = gate["metric_scale"]
+        assert scale["metres_per_unit"] > 0 and .05 < scale["relative_sd"] < .2 and len(scale["origin"]) == 3
     assert len(report["results"]) == 6
     for result in report["results"]:
         payload = store.get(result["state_key"])
@@ -64,6 +66,10 @@ def test_sessions_are_synchronised_calibrated_gated_and_converted(tmp_path):
             state = MultichannelMotion.load(path, expected_sha256=result["state_sha256"])
         state.validate()
         assert state.channels["body"].coordinate_frame == "two-view-triangulated-camera1-y-up"
+        root = state.channels["root_translation"]
+        assert root.units == "m" and root.valid.mean() > .9 and "root_translation" in result["available_channels"]
+        # the synthetic torso bobs ±1 cm vertically; metric scale is anthropometric, so within its prior
+        assert .004 < float(np.std(root.values[root.valid[:, 0], 0, 1])) < .012
 
 
 def test_shared_intrinsics_are_pinned_by_hash_and_used(tmp_path):

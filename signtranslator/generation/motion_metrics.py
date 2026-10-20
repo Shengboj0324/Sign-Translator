@@ -5,10 +5,12 @@ plausible signings scores well on it while under-articulating every one of them.
 These metrics therefore pair accuracy with articulation and realism:
 
 * ``geodesic_deg`` — median geodesic angle between generated and reference joint
-  rotations on the shared clock (lower is better);
-* ``speed_ratio`` — median angular speed of generated joints over that of the
-  reference (deg/s between consecutive valid frames; 1 is realistic, < 1 is the
-  damped, averaged motion of a regressor);
+  rotations on the shared clock (lower is better); for translation channels
+  ``position_cm``, the median Euclidean distance, and for unit-vector channels
+  (gaze) ``angle_deg``, the median angle between the directions;
+* ``speed_ratio`` — median speed of generated joints over that of the reference
+  (deg/s, or m/s for translations, between consecutive valid frames; 1 is
+  realistic, < 1 is the damped, averaged motion of a regressor);
 * ``variation_ratio`` — median per-joint temporal standard deviation of the 6D
   values, generated over reference;
 * ``frechet`` — Fréchet distance between the distributions of per-clip features
@@ -21,7 +23,7 @@ from __future__ import annotations
 import numpy as np
 from scipy import linalg
 
-from ..pose.multichannel import MultichannelMotion
+from ..pose.multichannel import CHANNELS, MultichannelMotion
 
 ROTATION_CHANNELS = ("body", "left_hand", "right_hand", "head_rotation")
 
@@ -42,11 +44,32 @@ def geodesic_degrees(values_a: np.ndarray, values_b: np.ndarray) -> np.ndarray:
     return np.degrees(np.arccos(np.clip(cosine, -1., 1.)))
 
 
+def unit_angle_degrees(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Angle in degrees between corresponding directions (…, 3), robust near 0 and 180°."""
+    return np.degrees(np.arctan2(np.linalg.norm(np.cross(a, b), axis=-1), (a * b).sum(-1)))
+
+
+def distance(name: str, a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Per-element distance of a channel: degrees (rotations, directions) or metres (translations)."""
+    kind = CHANNELS[name][0]
+    if kind == "rotation_6d_columns":
+        return geodesic_degrees(a, b)
+    if kind == "unit_vector":
+        return unit_angle_degrees(a, b)
+    if kind == "translation":
+        return np.linalg.norm(a - b, axis=-1)
+    raise ValueError(f"{name}: no motion distance for {kind} channels")
+
+
+ERROR_NAME = {"rotation_6d_columns": ("geodesic_deg", 1.), "unit_vector": ("angle_deg", 1.),
+              "translation": ("position_cm", 100.)}
+
+
 def angular_speeds(state: MultichannelMotion, name: str) -> np.ndarray:
-    """Degrees per second between consecutive frames where a joint is valid in both; NaN elsewhere."""
+    """Speed between consecutive frames where an element is valid in both (deg/s, or m/s); NaN elsewhere."""
     channel = state.channels[name]
     dt = np.diff(state.timestamps)[:, None]
-    angle = geodesic_degrees(channel.values[1:], channel.values[:-1])
+    angle = distance(name, channel.values[1:], channel.values[:-1])
     both = channel.valid[1:] & channel.valid[:-1]
     return np.where(both, angle / np.where(dt > 0, dt, np.nan), np.nan)
 
@@ -104,7 +127,7 @@ def compare(generated: list[MultichannelMotion], reference: list[MultichannelMot
             gv, rv = g.channels[name].values[:frames], r.channels[name].values[:frames]
             valid = r.channels[name].valid[:frames] & g.channels[name].valid[:frames]
             if valid.any():
-                errors.append(geodesic_degrees(gv, rv)[valid])
+                errors.append(distance(name, gv, rv)[valid])
             speed_g.append(np.nanmedian(angular_speeds(g, name)) if g.channels[name].valid.any() else np.nan)
             speed_r.append(np.nanmedian(angular_speeds(r, name)) if r.channels[name].valid.any() else np.nan)
             for state, sink in ((g, spread_g), (r, spread_r)):
@@ -112,14 +135,15 @@ def compare(generated: list[MultichannelMotion], reference: list[MultichannelMot
                 values = np.where(ch.valid[..., None], ch.values, np.nan)
                 with np.errstate(all="ignore"):
                     sink.append(np.nanmedian(np.nanstd(values, axis=0)))
+        error_name, factor = ERROR_NAME[CHANNELS[name][0]]
         with np.errstate(all="ignore"):
-            out[name] = dict(
-                geodesic_deg=float(np.median(np.concatenate(errors))) if errors else float("nan"),
-                speed_ratio=float(np.nanmedian(speed_g) / np.nanmedian(speed_r)),
-                variation_ratio=float(np.nanmedian(spread_g) / np.nanmedian(spread_r)))
+            out[name] = {
+                error_name: factor * float(np.median(np.concatenate(errors))) if errors else float("nan"),
+                "speed_ratio": float(np.nanmedian(speed_g) / np.nanmedian(speed_r)),
+                "variation_ratio": float(np.nanmedian(spread_g) / np.nanmedian(spread_r))}
     out["frechet"] = frechet_distance(np.stack([clip_features(g, channels) for g in generated]),
                                       np.stack([clip_features(r, channels) for r in reference]))
     return out
 
 
-__all__ = ["geodesic_degrees", "angular_speeds", "clip_features", "frechet_distance", "compare", "ROTATION_CHANNELS"]
+__all__ = ["geodesic_degrees", "unit_angle_degrees", "distance", "angular_speeds", "clip_features", "frechet_distance", "compare", "ROTATION_CHANNELS"]

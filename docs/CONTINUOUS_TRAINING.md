@@ -113,6 +113,46 @@ pipeline replaces its body and hands:
 To verify on the real files: the lateral clip names are assumed to end in
 `-rgb_side`, mirroring the frontal `-rgb_front`.
 
+### Body position in space (`data_engineering/body_space.py`, 2026-10-19)
+
+Two-view geometry has no metric scale, so the signer's body sets it. Per session,
+four anthropometric cues — interpupillary distance, hand length (wrist to middle
+fingertip, summed along the fitted finger), forearm and upper arm — each give a
+log-scale estimate. They are combined by generalised least squares under a
+covariance with four parts:
+
+* population variation and correlation from **ANSUR II** (6,068 US Army adults,
+  equal-sex mixture; the public CSVs are archived in R2 under
+  `acquisition/2026-10-17-v1/anthropometry-ansur2/` and pinned by SHA-256 in
+  `scripts/derive_anthropometric_priors.py`, which `--check`s the embedded constants);
+* a landmark-definition term;
+* a reconstruction term;
+* the median's sampling error.
+
+A χ² of the residuals flags sessions whose cues disagree. The upper-arm reference is
+de Leva's joint-centre length (278.4 mm), because ANSUR measures from the acromion.
+
+`root_translation` (shoulder-joint midpoint) and `head_translation` (cyclopean eye,
+the gaze origin) are written in metres in the session-world frame: camera-1 axes made
+y-up, with the origin at the session's median torso anchor. The scale, its predicted
+SD, χ² and per-cue lengths go in each session's gate report. Text-to-motion and the
+token generators now train these channels by default, and evaluation reports
+`position_cm`.
+
+Validation against CMU Panoptic dome ground truth (3 sequences, self-calibrated
+two-view):
+
+| | office1 | pose3 | pose1 |
+|---|---|---|---|
+| scale error | +6.0% | +4.9% | −3.5% |
+| torso displacement RMS | 1.5 cm (motion 5.5 cm) | 0.6 cm (motion 2.0 cm) | 0.9 cm (motion 2.8 cm) |
+| head displacement RMS | 1.0 cm (motion 8.9 cm) | 0.7 cm (motion 2.2 cm) | 0.3 cm (motion 2.3 cm) |
+
+The predicted SD is 6.7%. The reconstruction terms were set from these same
+sequences, so this is a consistency check, not held-out accuracy. The floor is the
+population term: a proportionally larger signer cannot be told apart from a nearer
+one. Relative motion within a session is exact up to that one factor.
+
 ## 3. Monocular fallback (`data_engineering/video_landmarks.py`)
 
 * **Estimators.** MediaPipe Tasks 0.10.21 with pinned model hashes: pose landmarker

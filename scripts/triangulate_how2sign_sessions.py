@@ -28,6 +28,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from signtranslator.data.text_motion_dataset import DirectoryStore, R2Store  # noqa: E402
+from signtranslator.data_engineering.body_space import body_translations, metric_scale, session_frame  # noqa: E402
 from signtranslator.data_engineering.two_view_states import (  # noqa: E402
     ClipKeypoints, aligned, calibrate_session, epipolar_synchronise, monocular_bone_cv, refined_points,
     rotation_inputs, session_gate, time_scale,
@@ -140,13 +141,23 @@ def main(argv=None) -> int:
                     mono_cvs.append(monocular_bone_cv(mono["pose_world"], mono["pose_visibility"]))
         all_points = np.concatenate([t[0] for t in triangulated.values()])
         tri_cv = triangulated_bone_cv(all_points)
+        try:
+            scale = metric_scale(all_points)
+            world = session_frame(all_points, scale)
+        except ValueError as error:          # no cue or no torso anchor: translations stay unavailable
+            scale, world, scale_error = None, None, str(error)
         mono_cv = float(np.nanmedian(mono_cvs)) if mono_cvs else None
         gate = session_gate(calibration, syncs, tri_cv, mono_cv)
         gate.update(sync=syncs, lag_frames=lag, time_scale=session_sync["time_scale"],
                     epipolar_sampson_px=epipolar["session_sampson_px"],
                     epipolar_curve=epipolar["curve"], shared_intrinsics=args.intrinsics_key, triangulated_bone_cv=tri_cv, monocular_bone_cv=mono_cv,
                     symmetry_error=symmetry_error(all_points), focal=[calibration.focal1, calibration.focal2],
-                    reprojection_px=list(calibration.median_reprojection_px))
+                    reprojection_px=list(calibration.median_reprojection_px),
+                    metric_scale=None if scale is None else dict(
+                        metres_per_unit=scale.scale, relative_sd=scale.relative_sd, chi2=scale.chi2,
+                        cues={k: dict(metres=v[0], samples=v[1]) for k, v in scale.cues.items()},
+                        origin=world.origin.tolist()),
+                    metric_scale_error=None if scale is not None else scale_error)
         gates[session] = gate
         if not gate["passed"]:
             continue
@@ -157,11 +168,17 @@ def main(argv=None) -> int:
             monocular, mono_sha = load_state(store, state_key)
             inputs = rotation_inputs(points, usable)
             rotations, hands = solve_rotations(inputs["world"], inputs["visible"], inputs["hands"])
+            translations = None
+            if world is not None:
+                root, root_ok, head, head_ok = body_translations(points, world)
+                translations = dict(root_translation=(root, root_ok), head_translation=(head, head_ok))
             state = triangulated_state(monocular, slice(start, start + count), rotations, hands,
                                        source_id="how2sign_two_view", source_sha256=mono_sha,
+                                       translations=translations,
                                        inference_method=("Sapiens-1B Goliath on frontal and lateral views, "
                                                          "bone-constrained two-view self-calibration, rigid smooth hand fit, "
-                                                         "swing IK; "
+                                                         "swing IK; translations in metres by the "
+                                                         "anthropometric session scale (ANSUR II priors); "
                                                          "face/head/blink MediaPipe; values are estimates"))
             with tempfile.TemporaryDirectory() as temporary:
                 path = Path(temporary) / "s.npz"
