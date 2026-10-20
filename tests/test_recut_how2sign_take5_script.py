@@ -175,3 +175,11 @@ def test_clip_claims_block_a_second_job_but_expire(tmp_path, monkeypatch):
     assert claim(store, "c/x") and not claim(store, "c/x")
     store.put("c/x", json.dumps(dict(time=time.time() - 3600, host="dead")).encode())
     assert claim(store, "c/x")                                   # a stale claim is taken over
+
+
+def test_losing_a_claim_race_skips_instead_of_crashing():
+    from sapiens_keypoints_runpod import claim
+    class Racing:
+        def exists(self, key): return False
+        def put(self, key, payload): raise IOError("R2 re-read mismatch")
+    assert claim(Racing(), "c/x") is False

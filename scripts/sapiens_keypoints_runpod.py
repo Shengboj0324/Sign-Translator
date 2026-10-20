@@ -146,7 +146,8 @@ def claim(store, key: str) -> bool:
 
     Pods sharing a clip list would otherwise catch up with one another and then process
     the same clips in lockstep. A claim older than ``CLAIM_SECONDS`` (a crashed pod) is
-    taken over. The check-then-write race is small and costs at most one duplicate clip.
+    taken over. Two jobs claiming at once: the store's write-then-re-read check fails for
+    the loser, which skips the clip (at worst both proceed, one duplicate clip).
     """
     import time
     now = time.time()
@@ -156,7 +157,10 @@ def claim(store, key: str) -> bool:
                 return False
         except (ValueError, KeyError):
             pass
-    store.put(key, json.dumps(dict(time=now, host=os.uname().nodename)).encode())
+    try:
+        store.put(key, json.dumps(dict(time=now, host=os.uname().nodename, pid=os.getpid())).encode())
+    except IOError:                          # the re-read saw another job's claim: it won the race
+        return False
     return True
 
 
