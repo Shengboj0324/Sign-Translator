@@ -53,16 +53,26 @@ from train_text_to_motion import lr_at, make_store, to_device  # noqa: E402
 
 
 class WeightEMA:
-    """θ̄ ← d·θ̄ + (1 − d)·θ over trainable parameters; buffers stay the live model's."""
+    """θ̄ ← d_t·θ̄ + (1 − d_t)·θ over trainable parameters; buffers stay the live model's.
+
+    The decay warms up, d_t = min(decay, (1 + t)/(10 + t)) for update t, so the average
+    is not dominated by the random initialisation early in training (with a constant
+    0.999, step 500 would still weigh the initial weights by 0.999⁵⁰⁰ ≈ 0.61).
+    """
 
     def __init__(self, model: torch.nn.Module, decay: float) -> None:
-        self.decay = decay
+        self.decay, self.updates = decay, 0
         self.shadow = {n: p.detach().clone() for n, p in model.named_parameters()}
+
+    def current_decay(self) -> float:
+        return min(self.decay, (1 + self.updates) / (10 + self.updates))
 
     @torch.no_grad()
     def update(self, model: torch.nn.Module) -> None:
+        d = self.current_decay()
+        self.updates += 1
         for n, p in model.named_parameters():
-            self.shadow[n].mul_(self.decay).add_(p.detach(), alpha=1 - self.decay)
+            self.shadow[n].mul_(d).add_(p.detach(), alpha=1 - d)
 
     def state_dict(self, model: torch.nn.Module) -> dict:
         """The model's state dict with EMA parameters (buffers from the live model)."""
@@ -224,6 +234,7 @@ def main(argv=None) -> int:
     ema = WeightEMA(model, args.ema_decay)
     if checkpoints and resumed_ema is not None:
         ema.shadow = {n: resumed_ema[n].to(device).clone() for n in ema.shadow}
+        ema.updates = step
     val_batches = []
     if len(val):
         val_loader = DataLoader(val, batch_size=args.batch_size, shuffle=False, num_workers=0,

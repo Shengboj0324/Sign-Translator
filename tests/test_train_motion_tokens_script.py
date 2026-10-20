@@ -110,16 +110,21 @@ def test_weight_ema_is_the_exponential_average_and_swaps_cleanly():
     with torch.no_grad():
         model.weight.fill_(0.)
     ema = script.WeightEMA(model, decay=.9)
-    for value in (1., 2., 3.):
+    expected = 0.
+    for t, value in enumerate((1., 2., 3.)):
         with torch.no_grad():
             model.weight.fill_(value)
+        d = min(.9, (1 + t) / (10 + t))                                          # warm-up: .1, .18, .25
+        assert abs(ema.current_decay() - d) < 1e-12
         ema.update(model)
-    expected = ((0 * .9 + .1 * 1) * .9 + .1 * 2) * .9 + .1 * 3                   # θ̄_k = d θ̄_{k-1} + (1-d) θ_k
+        expected = d * expected + (1 - d) * value                                # θ̄_t = d_t θ̄_{t-1} + (1-d_t) θ_t
     assert abs(float(ema.shadow["weight"][0, 0]) - expected) < 1e-6
     live = ema.swap(model)
     assert abs(float(model.weight[0, 0]) - expected) < 1e-6
     ema.restore(model, live)
     assert float(model.weight[0, 0]) == 3.
+    late = script.WeightEMA(model, decay=.999); late.updates = 10 ** 6
+    assert late.current_decay() == .999                                           # the cap holds late in training
 
 
 def test_tokens_v2_train_validate_select_best_resume_and_evaluate(tmp_path, monkeypatch):
