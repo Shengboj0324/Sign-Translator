@@ -415,3 +415,12 @@ def test_locus_adherence_baseline_is_never_pointing():
     out = locus_adherence(states, ["Ask him.", "Cut it.", "Show them there."])
     assert out["planned_slots"] == 2 and out["never_pointed"] == 1. and out["within"] == 0.
     assert locus_adherence(states[:1], ["Cut it."]) == dict(planned_slots=0)
+
+
+def test_indicating_paths_run_between_two_loci():
+    from signtranslator.grammar_motion.agreement import indicating_paths
+    L = np.array([[np.sin(np.radians(-30)), 0, np.cos(np.radians(-30))], [np.sin(np.radians(30)), 0, np.cos(np.radians(30))]])
+    hand = np.concatenate([np.linspace(L[0] * 1.2, L[1] * 1.2, 10), np.tile(L[1] * 1.2, (5, 1))])
+    paths = indicating_paths(hand, np.ones(15, bool), [(0, 10), (10, 15)], L)
+    assert len(paths) == 1 and paths[0]["source"] == 0 and paths[0]["goal"] == 1 and paths[0]["direction_deg"] < 1e-6
+    assert indicating_paths(hand, np.ones(15, bool), [(0, 10)], L[:1]) == []

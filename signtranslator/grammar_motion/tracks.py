@@ -4,7 +4,8 @@ from __future__ import annotations
 import numpy as np
 
 from ..pose.multichannel import MultichannelMotion
-from .frames import body_frame_positions, dominant_side, to_body_frame
+from .agreement import indicating_paths
+from .frames import body_frame_positions, dominant_side, to_body_frame, unit as unit_vec
 from .nmm import head_gestures, nmm_tracks, span_fraction
 from .pointing import frame_speed, loci_from_events, pointing_events
 from .prosody import active_range, blink_onsets, boundary_evidence, final_lengthening, movement_units
@@ -57,7 +58,22 @@ def grammar_record(state: MultichannelMotion, nmm_baselines: dict | None = None)
         side = dominant_side(joints, pos, ok)
         events = pointing_events(joints, pos, ok, state.timestamps, side)
         loci = loci_from_events(events)
-        record["pointing"] = dict(dominant=side, events=[(e.start, e.stop) for e in events],
+        point_gaze = []
+        if gaze_cam is not None and events:
+            gb = to_body_frame(state, np.nan_to_num(gaze_cam))
+            ok_g = np.isfinite(gaze_cam).all(1)
+            rng = np.random.default_rng(0)
+            for e in events:
+                frames_ = [t for t in range(e.start, e.stop) if ok_g[t]]
+                if not frames_:
+                    continue
+                g = gb[frames_].mean(0)
+                control_t = [t for t in np.nonzero(ok_g)[0] if not e.start - 15 <= t < e.stop + 15]
+                ang = float(np.degrees(np.arccos(np.clip(unit_vec(g) @ e.direction, -1, 1))))
+                ctrl = (float(np.degrees(np.arccos(np.clip(unit_vec(gb[rng.choice(control_t)]) @ e.direction, -1, 1))))
+                        if control_t else None)
+                point_gaze.append(dict(angle_deg=ang, control_deg=ctrl))
+        record["pointing"] = dict(dominant=side, events=[(e.start, e.stop) for e in events], gaze=point_gaze,
                                   loci=[dict(azimuth_deg=l.azimuth_deg, elevation_deg=l.elevation_deg,
                                              events=list(l.events), point=None if l.point is None else l.point.tolist())
                                         for l in loci])
@@ -79,6 +95,9 @@ def grammar_record(state: MultichannelMotion, nmm_baselines: dict | None = None)
         brow = nmm.z["brow_raise"] if nmm is not None else np.zeros(frames)
         yaw = gestures["yaw_deg"] if gestures is not None else np.zeros(frames)
         evidence = boundary_evidence(units, blinks, brow, yaw, final_window=int(round(.5 * fps)))
+        hand = pos[:, joints.index(f"{side}Hand")]
+        record["indicating"] = indicating_paths(hand, ok[:, joints.index(f"{side}Hand")], units,
+                                                np.array([l.direction for l in loci]).reshape(-1, 3))
         record["prosody"] = dict(units=units, blinks=blinks, boundaries=[e["unit"] for e in evidence if e["boundary"]],
                                  final_lengthening=final_lengthening(units),
                                  final_blink=bool(evidence and evidence[-1]["blink"]))

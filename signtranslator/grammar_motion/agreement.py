@@ -53,9 +53,34 @@ def agreement_loss(hand, source, goal, palm_normal=None, obj=None, weights=WEIGH
     return loss.mean()
 
 
+def indicating_paths(hand: np.ndarray, valid: np.ndarray, units, loci_dirs: np.ndarray, *,
+                     within_deg: float = 20., min_path: float = .15) -> list[dict]:
+    """Movement units of the dominant hand that run from one locus to another (agreement-verb shape).
+
+    ``hand`` is the (T, 3) chest-frame wrist path (shoulder widths), ``units`` the movement
+    units, ``loci_dirs`` the clip's (K, 3) locus directions. A unit is indicating when its
+    start and end directions from the chest lie within ``within_deg`` of two different loci
+    and it travels at least ``min_path`` shoulder widths.
+    """
+    if len(loci_dirs) < 2:
+        return []
+    L = unit(np.asarray(loci_dirs, float))
+    out = []
+    for a, b in units:
+        b = min(b, len(hand)) - 1
+        if b <= a or not (valid[a] and valid[b]):
+            continue
+        start, end = unit(hand[a]), unit(hand[b])
+        sa, sb = np.degrees(np.arccos(np.clip(L @ start, -1, 1))), np.degrees(np.arccos(np.clip(L @ end, -1, 1)))
+        i, j = int(sa.argmin()), int(sb.argmin())
+        if i != j and sa[i] <= within_deg and sb[j] <= within_deg and np.linalg.norm(hand[b] - hand[a]) >= min_path:
+            out.append(dict(unit=(a, b + 1), source=i, goal=j, **agreement_errors(hand[a:b + 1], None, L[i], L[j])))
+    return out
+
+
 def verb_class_from_path(hand: np.ndarray, palm_normal: np.ndarray) -> str:
     """'regular' when path and final facing are parallel, 'backwards' when antiparallel (the sign of ⟨Δh, n⟩)."""
     return "regular" if float(unit(hand[-1] - hand[0]) @ unit(palm_normal)) >= 0 else "backwards"
 
 
-__all__ = ["WEIGHTS", "SOURCE_GOAL", "agreement_errors", "agreement_loss", "verb_class_from_path"]
+__all__ = ["WEIGHTS", "SOURCE_GOAL", "agreement_errors", "agreement_loss", "indicating_paths", "verb_class_from_path"]

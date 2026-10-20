@@ -53,6 +53,7 @@ TESTS = [  # (English feature, detector score, expected direction)
     ("yes_no_question", "brow_raise_mean_z"), ("yes_no_question", "brow_raise_fraction"),
     ("conditional", "brow_raise_mean_z"), ("negation", "headshake_rate"), ("negation", "headshake_any"),
     ("reported_speech", "role_shift_fraction"), ("deixis", "pointing_rate"), ("third_person", "pointing_rate"),
+    ("third_person", "indicating_paths"),
 ]
 
 
@@ -96,6 +97,8 @@ def clip_scores(record: dict) -> dict:
     if pr:
         out["final_lengthening"] = pr["final_lengthening"]
         out["final_blink"] = float(pr["final_blink"])
+    if "indicating" in record:
+        out["indicating_paths"] = float(len(record["indicating"]))
     return out
 
 
@@ -156,6 +159,7 @@ def process(store, prefix, row, gaze_model, gaze_sha, baselines=None):
         state = replace(state, channels={**state.channels, **g})
     record = grammar_record(state, (baselines or {}).get(session_of(row["SENTENCE_NAME"])))
     return dict(sample=row["SENTENCE_NAME"], text=row["SENTENCE"], features=sentence_features(row["SENTENCE"]),
+                point_gaze=record.get("pointing", {}).get("gaze", []), indicating=record.get("indicating", []),
                 scores=clip_scores(record), loci=record.get("pointing", {}).get("loci", []),
                 role_shifts=record.get("role_shift", {}).get("spans", []), fps=record["fps"])
 
@@ -178,6 +182,14 @@ def summarise(rows, components, rng):
     az = np.array([l["azimuth_deg"] for l in loci]); el = np.array([l["elevation_deg"] for l in loci])
     q = lambda x: np.percentile(x, [5, 25, 50, 75, 95]).round(1).tolist() if len(x) else []
     fl = np.array([r["scores"]["final_lengthening"] for r in ok if r["scores"].get("final_lengthening")])
+    pg = [g for r in ok for g in r.get("point_gaze", []) if g["control_deg"] is not None]
+    gaze_point = {}
+    if pg:
+        a, c = np.array([g["angle_deg"] for g in pg]), np.array([g["control_deg"] for g in pg])
+        gaze_point = dict(events=len(pg), median_deg=float(np.median(a)), control_median_deg=float(np.median(c)),
+                          within_20=float(np.mean(a <= 20)), control_within_20=float(np.mean(c <= 20)),
+                          paired_closer=float(np.mean(a < c)),
+                          note="gaze during a point vs the same clip's gaze ≥0.5 s away; paired_closer > 0.5 means gaze follows points")
     out["distributions"] = dict(
         locus_azimuth_deg_p5_25_50_75_95=q(az), locus_elevation_deg_p5_25_50_75_95=q(el),
         loci_per_clip_mean=float(np.mean([r["scores"].get("loci", 0) for r in ok])),
@@ -185,6 +197,12 @@ def summarise(rows, components, rng):
         role_shift_clip_rate=float(np.mean([r["scores"].get("role_shift_fraction", 0) > 0 for r in ok])),
         final_lengthening_p25_50_75=np.percentile(fl, [25, 50, 75]).round(2).tolist() if len(fl) else [],
         final_blink_rate=float(np.mean([r["scores"].get("final_blink", 0) for r in ok])),
+        gaze_during_pointing=gaze_point,
+        indicating_paths_per_clip_with_two_loci=float(np.mean([len(r.get("indicating", [])) for r in ok
+                                                              if r["scores"].get("loci", 0) >= 2])) if any(
+            r["scores"].get("loci", 0) >= 2 for r in ok) else None,
+        indicating_direction_error_deg_median=float(np.median([p["direction_deg"] for r in ok for p in r.get("indicating", [])]))
+        if any(r.get("indicating") for r in ok) else None,
         marker_clip_rate={m: float(np.mean([r["scores"].get(f"{m}_fraction", 0) > 0 for r in ok]))
                           for m in ("brow_raise", "brow_furrow", "squint", "mm", "puff", "oo")},
         headshake_clip_rate=float(np.mean([r["scores"].get("headshake_any", 0) for r in ok])),
