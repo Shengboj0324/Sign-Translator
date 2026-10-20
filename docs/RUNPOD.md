@@ -27,6 +27,33 @@ This clones the repository, installs `runpod/requirements-runpod.txt`, downloads
 three MediaPipe models from R2 (`models/mediapipe-tasks-0.10.21/`), verifies their
 pinned SHA-256, and runs the smoke tests.
 
+## 2b. One command per stage: `runpod/pipeline.sh`
+
+After `runpod/bootstrap.sh` (which also downloads and hash-verifies the Sapiens checkpoint),
+every stage below is one command; each pins its inputs by SHA-256 and resumes:
+
+```bash
+runpod/pipeline.sh sapiens 0 4          # GPU pods: shard i of n, both views, all splits
+runpod/pipeline.sh cameras              # one pod: shared camera intrinsics (40 sessions)
+runpod/pipeline.sh triangulate 0 8      # CPU pods: sync, calibrate, gate, two-view states
+runpod/pipeline.sh manifest             # one pod: training manifest from the two-view reports
+runpod/pipeline.sh train tokens         # tokenizer then prior (recommended); or diffusion | regression
+runpod/pipeline.sh evaluate tokens-prior-v1
+```
+
+**Smoke-tested end to end on 2026-10-19** on four training sessions (two take-5,
+which were correctly refused as mis-cut — audit B80), under
+`derived/pipeline-smoke-2026-10-19/`.
+- **Sapiens:** 43 clips per view, none refused.
+- **Cameras:** shared intrinsics 1098/1286 px, consistent with the independent
+  three-validation-session estimate of 1051/1279 px.
+- **Triangulation:** 2 of 4 sessions passed the gate, 23 two-view states.
+- **Manifest:** 15 train and 8 val records, no missing text.
+- **Training and evaluation:** the token stages trained and the evaluation report was
+  written; those numbers come from 10 steps and only prove the stage runs.
+
+The sections below show what each stage runs.
+
 ## 3. Extract video states (CPU pods; one command per shard)
 
 The six clip zips are in R2 and verified (`scripts/verify_how2sign_zips.py` wrote a
