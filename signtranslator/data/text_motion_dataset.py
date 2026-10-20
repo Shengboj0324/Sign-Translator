@@ -106,7 +106,7 @@ class R2Store:
                                         aws_access_key_id=self._settings["AWS_ACCESS_KEY_ID"],
                                         aws_secret_access_key=self._settings["AWS_SECRET_ACCESS_KEY"],
                                         config=Config(connect_timeout=20, read_timeout=300,
-                                                      retries={"mode": "standard", "max_attempts": 8}))
+                                                      retries={"mode": "adaptive", "max_attempts": 20}))  # R2 throttles (429) under many readers
         return self._client
 
     def __getstate__(self):
