@@ -1,0 +1,480 @@
+"""Part-wise residual-VQ motion tokenizer and its depth-autoregressive text prior (tokens v2).
+
+**Why.** The v1 tokenizer (``motion_tokens.MotionVQ``) quantises the whole signer —
+body, 30 finger joints, face, gaze — to one of K codes per token. The joint
+configuration space is a product over parts, so a single codebook leaves a large
+quantisation error: on How2Sign v1 plateaued at ≈24° mean joint error and ≈10 cm
+hand-point error while its commitment term stayed high. Two structural changes:
+
+* **Parts.** Body (+ torso and head translation), left hand, right hand and face (+
+  head rotation, gaze, blink) get their own encoders and quantisers, so a handshape
+  never shares a code with a brow raise; one shared decoder reconstructs all
+  channels from all parts' latents, so hands stay coherent with the arms.
+* **Residual quantisation** (Zeghidour et al. 2021; Lee et al. 2022). Stage q
+  quantises the residual of the stages before it, ``r_q = r_{q−1} − e_q``, ``ẑ = Σ_q e_q``;
+  for Q stages of K codes the representable set grows as Kᴽ while each stage stays
+  a nearest-neighbour lookup. Every codebook is learnt by exponential moving
+  averages of the residuals assigned to it, and unused codes are re-seeded.
+  *Quantiser dropout*: with probability ``quantizer_dropout`` a batch uses only its
+  first q ~ U{1..Q} stages, so stage 1 alone is a usable coarse code.
+
+The straight-through estimator ``z + sg(ẑ − z)`` carries the reconstruction gradient
+to the encoders; ``commitment · ‖z − sg(ẑ)‖²`` keeps them near their codes.
+
+**Loss.** The canonical per-channel loss (as v1), plus the arm-and-hand skeleton
+loss of ``signing_space.skeleton_motion_loss`` — position, velocity and
+acceleration of all 44 arm and hand points, which weighs rotation errors by their
+lever arm and holds reconstructions to the reference's speed and smoothness.
+
+**Prior** (:class:`RVQPrior`). Codes of step t are ordered stage-major
+(stage 1 of every part, then stage 2, …), ``c_t = (c_t^1 … c_t^J)``, J = P·Q, and the
+sequence is factorised exactly as in the RQ-Transformer,
+
+    p(c | text) = Π_t Π_j p(c_t^j | c_t^{<j}, h_t),  h_t = Temporal(text, c_{<t}),
+
+a causal temporal transformer over steps (input: the summed embeddings of the
+previous step's codes plus its clock) and a small causal *depth* transformer over the
+J codes of a step, with one output head per code position (each has its own
+codebook). Training is teacher-forced cross entropy summed over j; generation
+samples j = 1..J in turn at every step, with classifier-free guidance on the logits.
+"""
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field
+import hashlib
+import json
+import math
+
+import torch
+from torch import nn
+from torch.nn import functional as F
+
+from ..data.multichannel import MotionBatch
+from .canonical_state import channel_loss_per_example
+from .motion_tokens import _ResBlock, _empty_like, token_seconds
+from .signing_space import applicable, skeleton_motion_loss
+from .text_to_motion import (
+    PAD, VOCABULARY, LossScales, TextToMotionConfig, assemble_state, batch_seconds, diffusion_layout,
+    diffusion_targets, encode_texts, generation_loci, grammar_projection, locus_projection, native_values, sinusoid,
+    training_loci, unit_to_raw, utterance_duration,
+)
+from ..grammar_motion.text import token_features
+
+PARTS = (("body", ("body", "root_translation", "head_translation")),
+         ("left_hand", ("left_hand",)),
+         ("right_hand", ("right_hand",)),
+         ("face", ("face", "head_rotation", "left_gaze", "right_gaze", "blink")))
+
+
+# --------------------------------------------------------------------------------------
+# Tokenizer
+
+
+@dataclass(frozen=True)
+class MotionRVQConfig:
+    motion: TextToMotionConfig
+    hidden: int = 384
+    code_dim: int = 128
+    codebook: int = 512
+    stages: int = 4
+    down_layers: int = 1
+    res_blocks: int = 2
+    commitment: float = .25
+    ema: float = .99
+    quantizer_dropout: float = .5
+    skeleton_weights: dict = field(default_factory=lambda: dict(position=1., velocity=.5, acceleration=.25))
+
+    def to_dict(self) -> dict:
+        data = asdict(self)
+        data["motion"] = self.motion.to_dict()
+        return data
+
+    def sha256(self) -> str:
+        return hashlib.sha256(json.dumps(self.to_dict(), sort_keys=True).encode()).hexdigest()
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "MotionRVQConfig":
+        data = dict(data)
+        data["motion"] = TextToMotionConfig.from_dict(data["motion"])
+        return cls(**data)
+
+    @property
+    def step(self) -> int:
+        return 2 ** self.down_layers
+
+    @property
+    def width(self) -> int:
+        return sum(entry[3] for entry in diffusion_layout(self.motion))
+
+    def part_slices(self) -> list[tuple[str, list[int]]]:
+        """(part, unit-vector columns) for every part that has a trained channel."""
+        offset, columns = 0, {}
+        for name, _, _, width in diffusion_layout(self.motion):
+            columns[name] = list(range(offset, offset + width))
+            offset += width
+        owner = {c: part for part, channels in PARTS for c in channels}
+        out = {}
+        for name, cols in columns.items():
+            out.setdefault(owner.get(name, "body"), []).extend(cols)
+        return [(part, out[part]) for part, _ in PARTS if part in out]
+
+    @property
+    def codes_per_step(self) -> int:
+        return len(self.part_slices()) * self.stages
+
+
+class ResidualQuantizer(nn.Module):
+    """Q EMA codebooks applied to successive residuals."""
+
+    def __init__(self, stages: int, codebook: int, dim: int, ema: float) -> None:
+        super().__init__()
+        self.stages, self.codebook, self.ema = stages, codebook, ema
+        self.register_buffer("codes", torch.randn(stages, codebook, dim) * .1)
+        self.register_buffer("code_mass", torch.ones(stages, codebook))
+        self.register_buffer("code_sum", self.codes.clone())
+
+    @staticmethod
+    def _nearest(x: torch.Tensor, codes: torch.Tensor) -> torch.Tensor:
+        d = x.pow(2).sum(-1, keepdim=True) - 2 * x @ codes.T + codes.pow(2).sum(-1)[None]
+        return d.argmin(-1)
+
+    def forward(self, z: torch.Tensor, stages: int | None = None):
+        """(ẑ = Σ e_q, indices (…, Q), residual inputs per stage); stages beyond ``stages`` are not used."""
+        used = self.stages if stages is None else stages
+        flat = z.reshape(-1, z.shape[-1])
+        residual, total, indices, inputs = flat, torch.zeros_like(flat), [], []
+        for q in range(self.stages):
+            index = self._nearest(residual, self.codes[q])
+            indices.append(index)
+            if q < used:
+                e = self.codes[q][index]
+                inputs.append(residual)
+                total = total + e
+                residual = residual - e
+        idx = torch.stack(indices, -1).reshape(*z.shape[:-1], self.stages)
+        return total.reshape(z.shape), idx, inputs
+
+    def lookup(self, indices: torch.Tensor) -> torch.Tensor:
+        """(…, Q) indices -> (…, dim) Σ_q codes[q][indices[..., q]]."""
+        return sum(self.codes[q][indices[..., q]] for q in range(self.stages))
+
+    @torch.no_grad()
+    def update(self, inputs, indices: torch.Tensor, valid: torch.Tensor) -> None:
+        flat_valid = valid.reshape(-1)
+        for q, x in enumerate(inputs):
+            x = x[flat_valid]
+            index = indices.reshape(-1, self.stages)[flat_valid, q]
+            if not len(x):
+                continue
+            onehot = F.one_hot(index, self.codebook).to(x.dtype)
+            self.code_mass[q].mul_(self.ema).add_(onehot.sum(0), alpha=1 - self.ema)
+            self.code_sum[q].mul_(self.ema).add_(onehot.T @ x, alpha=1 - self.ema)
+            self.codes[q].copy_(self.code_sum[q] / self.code_mass[q].clamp_min(1e-5)[:, None])
+            dead = self.code_mass[q] < 1e-3
+            if bool(dead.any()):
+                pick = torch.randint(len(x), (int(dead.sum()),), device=x.device)
+                self.codes[q][dead] = x[pick]
+                self.code_sum[q][dead] = x[pick]
+                self.code_mass[q][dead] = 1.
+
+
+def _encoder(width: int, config: MotionRVQConfig) -> nn.Sequential:
+    h = config.hidden
+    layers = [nn.Conv1d(width, h, 3, padding=1)]
+    for _ in range(config.down_layers):
+        layers += [nn.Conv1d(h, h, 4, stride=2, padding=1), *(_ResBlock(h) for _ in range(config.res_blocks))]
+    layers.append(nn.Conv1d(h, config.code_dim, 1))
+    return nn.Sequential(*layers)
+
+
+class MotionRVQ(nn.Module):
+    def __init__(self, config: MotionRVQConfig) -> None:
+        super().__init__()
+        self.config = config
+        self.parts = config.part_slices()
+        self.encoders = nn.ModuleDict({part: _encoder(len(cols), config) for part, cols in self.parts})
+        self.quantizers = nn.ModuleDict({part: ResidualQuantizer(config.stages, config.codebook, config.code_dim,
+                                                                 config.ema) for part, _ in self.parts})
+        h = config.hidden
+        decoder = [nn.Conv1d(len(self.parts) * config.code_dim, h, 3, padding=1)]
+        for _ in range(config.down_layers):
+            decoder += [*(_ResBlock(h) for _ in range(config.res_blocks)), nn.Upsample(scale_factor=2, mode="nearest"),
+                        nn.Conv1d(h, h, 3, padding=1)]
+        decoder += [nn.SiLU(), nn.Conv1d(h, config.width, 3, padding=1)]
+        self.decoder = nn.Sequential(*decoder)
+        for part, cols in self.parts:
+            self.register_buffer(f"columns_{part}", torch.tensor(cols, dtype=torch.long), persistent=False)
+
+    def _pad(self, x: torch.Tensor) -> tuple[torch.Tensor, int]:
+        frames = x.shape[1]
+        padded = math.ceil(frames / self.config.step) * self.config.step
+        return F.pad(x, (0, 0, 0, padded - frames)), frames
+
+    def token_valid(self, frame_valid: torch.Tensor) -> torch.Tensor:
+        return F.max_pool1d(self._pad(frame_valid[..., None].float())[0].transpose(1, 2),
+                            self.config.step).transpose(1, 2)[..., 0] > 0
+
+    def encode(self, unit: torch.Tensor) -> dict:
+        """part -> (B, K, code_dim) latents."""
+        padded, _ = self._pad(unit)
+        return {part: self.encoders[part](padded[..., getattr(self, f"columns_{part}")].transpose(1, 2)).transpose(1, 2)
+                for part, _ in self.parts}
+
+    def quantize(self, latents: dict, stages: int | None = None):
+        """(part -> ẑ, (B, K, J) stage-major code indices, part -> residual inputs)."""
+        quantized, indices, inputs = {}, {}, {}
+        for part, _ in self.parts:
+            quantized[part], indices[part], inputs[part] = self.quantizers[part](latents[part], stages)
+        stacked = torch.stack([indices[part] for part, _ in self.parts], dim=-1)      # (B, K, Q, P)
+        return quantized, stacked.flatten(-2), inputs                                 # j = q·P + p
+
+    def split_codes(self, codes: torch.Tensor) -> dict:
+        """(B, K, J) stage-major indices -> part -> (B, K, Q)."""
+        p = len(self.parts)
+        grid = codes.reshape(*codes.shape[:-1], self.config.stages, p)
+        return {part: grid[..., k] for k, (part, _) in enumerate(self.parts)}
+
+    def decode_latents(self, quantized: dict, frames: int) -> torch.Tensor:
+        x = torch.cat([quantized[part] for part, _ in self.parts], dim=-1)
+        return self.decoder(x.transpose(1, 2)).transpose(1, 2)[:, :frames]
+
+    def decode_codes(self, codes: torch.Tensor, frames: int) -> torch.Tensor:
+        per_part = self.split_codes(codes)
+        return self.decode_latents({part: self.quantizers[part].lookup(per_part[part]) for part, _ in self.parts}, frames)
+
+    def forward(self, unit: torch.Tensor, frame_valid: torch.Tensor, stages: int | None = None):
+        latents = self.encode(unit)
+        quantized, codes, inputs = self.quantize(latents, stages)
+        valid = self.token_valid(frame_valid)
+        if self.training:
+            per_part = self.split_codes(codes)
+            for part, _ in self.parts:
+                self.quantizers[part].update(inputs[part], per_part[part], valid)
+        straight = {part: latents[part] + (quantized[part] - latents[part]).detach() for part, _ in self.parts}
+        return self.decode_latents(straight, unit.shape[1]), latents, quantized, codes, valid
+
+
+def rvq_loss(model: MotionRVQ, motion: MotionBatch, *, stages: int | None = None):
+    """Per-channel reconstruction loss + skeleton position/velocity/acceleration + commitment.
+
+    In training, quantiser dropout draws the number of stages; ``stages`` forces it.
+    """
+    config = model.config
+    if stages is None and model.training and torch.rand(()) < config.quantizer_dropout:
+        stages = int(torch.randint(1, config.stages + 1, ()))
+    unit = diffusion_targets(config.motion, motion)
+    reconstruction, latents, quantized, codes, valid = model(unit, motion.frame_valid, stages)
+    raw = unit_to_raw(config.motion, reconstruction.double())
+    scales = LossScales(**config.motion.loss_config)
+    total = torch.zeros((), dtype=torch.float64, device=unit.device)
+    terms = {}
+    for name in config.motion.trained_channels:
+        values, support, _ = channel_loss_per_example(name, raw[name], motion.channels[name], motion.frame_valid,
+                                                      config=scales, timestamps=motion.timestamps, allow_inferred=True)
+        if bool(support.any()):
+            term = values[support].mean()
+            terms[name] = float(term.detach())
+            total = total + term
+    if applicable(config.motion.bindings, config.motion.trained_channels):
+        skeleton = skeleton_motion_loss({n: raw[n] for n in ("body", "left_hand", "right_hand")}, motion)
+        for key, value in skeleton.items():
+            terms[f"skeleton_{key}"] = float(value.detach())
+            total = total + config.skeleton_weights[key] * value.to(total.dtype)
+    commitment = torch.stack([((latents[p] - quantized[p].detach()) ** 2).mean(-1)[valid].mean()
+                              for p, _ in model.parts]).mean()
+    terms["commitment"] = float(commitment.detach())
+    terms["stages"] = float(stages or config.stages)
+    per_part = model.split_codes(codes)
+    for p, _ in model.parts:
+        terms[f"codes_used_{p}"] = float(per_part[p][..., 0][valid].unique().numel())
+    return total + config.commitment * commitment.to(total.dtype), terms
+
+
+# --------------------------------------------------------------------------------------
+# Depth-autoregressive prior
+
+
+@dataclass(frozen=True)
+class RVQPriorConfig:
+    tokenizer: MotionRVQConfig
+    d_model: int = 384
+    heads: int = 8
+    text_layers: int = 4
+    temporal_layers: int = 6
+    depth_layers: int = 2
+    feedforward: int = 1536
+    dropout: float = .1
+    max_text_bytes: int = 256
+    cfg_dropout: float = .1
+    duration_weight: float = .1
+    grammar_features: bool = True
+    locus_conditioning: bool = False
+    locus_dropout: float = .3
+
+    def to_dict(self) -> dict:
+        data = asdict(self)
+        data["tokenizer"] = self.tokenizer.to_dict()
+        return data
+
+    def sha256(self) -> str:
+        return hashlib.sha256(json.dumps(self.to_dict(), sort_keys=True).encode()).hexdigest()
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "RVQPriorConfig":
+        data = dict(data)
+        data["tokenizer"] = MotionRVQConfig.from_dict(data["tokenizer"])
+        return cls(**data)
+
+
+class RVQPrior(nn.Module):
+    def __init__(self, config: RVQPriorConfig) -> None:
+        super().__init__()
+        self.config = config
+        d, J, K = config.d_model, config.tokenizer.codes_per_step, config.tokenizer.codebook
+        self.J, self.K = J, K
+        self.embed = nn.Embedding(VOCABULARY, d, padding_idx=PAD)
+        if config.grammar_features:
+            self.grammar = grammar_projection(d)
+        if config.locus_conditioning:
+            self.loci = locus_projection(d)
+        layer = lambda: nn.TransformerEncoderLayer(d, config.heads, config.feedforward, config.dropout,
+                                                   batch_first=True, norm_first=True)
+        self.text_encoder = nn.TransformerEncoder(layer(), config.text_layers, enable_nested_tensor=False)
+        self.duration = nn.Sequential(nn.LayerNorm(d), nn.Linear(d, d), nn.GELU(), nn.Linear(d, 1))
+        # code j of a step has its own embedding table (index K = "start" for the first step)
+        self.code_embed = nn.Parameter(torch.randn(J, K + 1, d) * .02)
+        self.time = nn.Linear(2 * d, d)
+        self.temporal = nn.TransformerDecoder(nn.TransformerDecoderLayer(
+            d, config.heads, config.feedforward, config.dropout, batch_first=True, norm_first=True),
+            config.temporal_layers)
+        self.depth_position = nn.Parameter(torch.randn(J, d) * .02)
+        self.depth = nn.TransformerEncoder(layer(), config.depth_layers, enable_nested_tensor=False)
+        self.norm = nn.LayerNorm(d)
+        self.heads_out = nn.Parameter(torch.randn(J, d, K) * .02)
+        self.heads_bias = nn.Parameter(torch.zeros(J, K))
+
+    def encode(self, tokens, mask, loci=None):
+        positions = sinusoid(torch.arange(tokens.shape[1], device=tokens.device)[None].expand_as(tokens),
+                             self.config.d_model, max_period=1024.)
+        inputs = self.embed(tokens) + positions
+        if self.config.grammar_features:
+            inputs = inputs + self.grammar(token_features(tokens).to(inputs.dtype))[:, None]
+        if self.config.locus_conditioning and loci is not None:
+            inputs = inputs + self.loci(loci.to(inputs.dtype))[:, None]
+        hidden = self.text_encoder(inputs, src_key_padding_mask=~mask)
+        pooled = (hidden * mask[..., None]).sum(1) / mask.sum(1, keepdim=True).clamp_min(1)
+        return hidden, self.duration(pooled)[:, 0]
+
+    def _embed_codes(self, codes: torch.Tensor) -> torch.Tensor:
+        """(B, S, J) indices (K = start) -> (B, S, J, d) per-position embeddings."""
+        j = torch.arange(self.J, device=codes.device)
+        return self.code_embed[j, codes]
+
+    def temporal_states(self, hidden, text_mask, previous: torch.Tensor, seconds, duration):
+        """h_t for every step from the previous steps' codes ``previous`` (B, S, J) — start row first."""
+        d = self.config.d_model
+        phase = seconds / duration[:, None].clamp_min(1e-3)
+        x = self._embed_codes(previous).sum(2) + self.time(torch.cat(
+            (sinusoid(seconds, d, max_period=60.), sinusoid(phase, d, max_period=4.)), -1))
+        causal = torch.triu(torch.ones(x.shape[1], x.shape[1], dtype=torch.bool, device=x.device), 1)
+        return self.temporal(x, hidden, tgt_mask=causal, memory_key_padding_mask=~text_mask)
+
+    def depth_logits(self, h: torch.Tensor, codes_so_far: torch.Tensor) -> torch.Tensor:
+        """Logits (N, n+1, K) of code positions 0..n given h (N, d) and the step's first n codes (N, n)."""
+        n = codes_so_far.shape[1]
+        j = torch.arange(n, device=h.device)
+        inputs = [h[:, None]]
+        if n:
+            inputs.append(self.code_embed[j, codes_so_far])
+        x = torch.cat(inputs, 1) + self.depth_position[:n + 1]
+        causal = torch.triu(torch.ones(n + 1, n + 1, dtype=torch.bool, device=h.device), 1)
+        y = self.norm(self.depth(x, mask=causal))
+        return torch.einsum("nld,ldk->nlk", y, self.heads_out[:n + 1]) + self.heads_bias[:n + 1]
+
+
+def rvq_prior_loss(model: RVQPrior, tokenizer: MotionRVQ, tokens, text_mask, motion: MotionBatch, loci=None, *,
+                   train: bool = True):
+    """Σ_j cross entropy of the frozen tokenizer's codes, plus the duration term (text dropped only if ``train``)."""
+    config = model.config
+    with torch.no_grad():
+        tokenizer.eval()
+        unit = diffusion_targets(config.tokenizer.motion, motion)
+        _, codes, _ = tokenizer.quantize(tokenizer.encode(unit))                     # (B, S, J)
+        valid = tokenizer.token_valid(motion.frame_valid)
+    conditioned = (torch.rand(len(tokens), device=tokens.device) >= config.cfg_dropout) if train else \
+        torch.ones(len(tokens), dtype=torch.bool, device=tokens.device)
+    tokens = torch.where(conditioned[:, None], tokens, _empty_like(tokens))
+    text_mask = tokens != PAD
+    hidden, log_duration = model.encode(tokens, text_mask, training_loci(config, loci, conditioned) if train else loci)
+    start = torch.full_like(codes[:, :1], model.K)
+    previous = torch.cat((start, codes[:, :-1]), 1)
+    seconds = batch_seconds(motion).float()
+    step_seconds = seconds[:, ::config.tokenizer.step][:, :codes.shape[1]]
+    step_seconds = F.pad(step_seconds, (0, codes.shape[1] - step_seconds.shape[1]))
+    duration = (seconds * motion.frame_valid).amax(1)
+    h = model.temporal_states(hidden, text_mask, previous, step_seconds, duration)       # (B, S, d)
+    target = codes[valid]                                                                  # (N, J)
+    logits = model.depth_logits(h[valid], target[:, :-1])                                  # (N, J, K)
+    cross = F.cross_entropy(logits.reshape(-1, model.K), target.reshape(-1))
+    accuracy = (logits.argmax(-1) == target).float()
+    terms = {"tokens": float(cross.detach()), "token_accuracy": float(accuracy.mean()),
+             "stage1_accuracy": float(accuracy[:, :len(tokenizer.parts)].mean())}
+    total = cross
+    if bool(conditioned.any()):
+        target_duration = utterance_duration(motion).log().to(log_duration.dtype)
+        duration_term = F.smooth_l1_loss(log_duration[conditioned], target_duration[conditioned])
+        terms["log_duration"] = float(duration_term.detach())
+        total = total + config.duration_weight * duration_term
+    return total, terms
+
+
+@torch.no_grad()
+def generate_rvq_motion(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, fps: float, guidance: float = 1.,
+                        temperature: float = 1., top_k: int = 0, seed: int = 0, durations=None,
+                        sample_prefix: str = "tokens-v2", loci=None):
+    """Generated canonical states (observed=False, zero confidence) from sampled residual codes."""
+    prior.eval(); tokenizer.eval()
+    config = prior.config
+    device = next(prior.parameters()).device
+    encoded, mask = encode_texts(texts, max_bytes=config.max_text_bytes)
+    encoded, mask = encoded.to(device), mask.to(device)
+    hidden, log_duration = prior.encode(encoded, mask, generation_loci(config, texts, loci, device))
+    seconds_out = (log_duration.exp() if durations is None else
+                   torch.as_tensor(durations, dtype=log_duration.dtype, device=device)).clamp(1 / fps, 60.)
+    empty = _empty_like(encoded[:1, :2])
+    empty_hidden, _ = prior.encode(empty, empty != PAD)
+    generator = torch.Generator().manual_seed(seed)
+    states = []
+    for row, text in enumerate(texts):
+        frames = max(int(round(float(seconds_out[row]) * fps)), 1)
+        count = math.ceil(frames / config.tokenizer.step)
+        clock = token_seconds(config, count, fps, device)
+        sequence = torch.full((1, 1, prior.J), prior.K, dtype=torch.long, device=device)
+        for k in range(count):
+            h = prior.temporal_states(hidden[row:row + 1], mask[row:row + 1], sequence, clock[:, :k + 1],
+                                      seconds_out[row:row + 1])[:, -1]
+            h_free = prior.temporal_states(empty_hidden, empty != PAD, sequence, clock[:, :k + 1],
+                                           seconds_out[row:row + 1])[:, -1] if guidance != 1. else None
+            step_codes = torch.zeros((1, 0), dtype=torch.long, device=device)
+            for j in range(prior.J):
+                logits = prior.depth_logits(h, step_codes)[:, -1]
+                if h_free is not None:
+                    free = prior.depth_logits(h_free, step_codes)[:, -1]
+                    logits = free + guidance * (logits - free)
+                logits = logits / max(temperature, 1e-6)
+                if top_k:
+                    threshold = logits.topk(top_k, dim=-1).values[:, -1:]
+                    logits = logits.masked_fill(logits < threshold, -math.inf)
+                choice = torch.multinomial(torch.softmax(logits.float(), -1).cpu(), 1, generator=generator).to(device)
+                step_codes = torch.cat((step_codes, choice), 1)
+            sequence = torch.cat((sequence, step_codes[:, None]), 1)
+        unit = tokenizer.decode_codes(sequence[:, 1:], frames)
+        raw = unit_to_raw(config.tokenizer.motion, unit.double())
+        native = native_values(config.tokenizer.motion, {key: v[0] for key, v in raw.items()})
+        states.append(assemble_state(config.tokenizer.motion, text, native, frames, fps, f"{sample_prefix}:{row}",
+                                     f"{sample_prefix}-clock", method="motion_tokens_v2"))
+    return states
+
+
+__all__ = ["PARTS", "MotionRVQConfig", "ResidualQuantizer", "MotionRVQ", "rvq_loss", "RVQPriorConfig", "RVQPrior",
+           "rvq_prior_loss", "generate_rvq_motion"]

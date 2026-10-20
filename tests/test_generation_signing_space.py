@@ -133,3 +133,32 @@ def test_location_errors_are_zero_for_identical_states_and_grow_with_arm_error()
     other = [signer_state(s + 10) for s in range(3)]
     worse = location_errors(other, states)
     assert worse["wrist_cm"] > 5. and worse["fingertip_cm"] > worse["wrist_cm"] * .5
+
+
+def test_full_skeleton_contains_the_wrist_and_tip_subset_exactly():
+    from signtranslator.generation.signing_space import skeleton_points
+    state = signer_state(seed=4)
+    t = tensors(state)
+    full, names, chains = skeleton_points(*t, *LABELS.values())
+    sub, _ = signing_space_points(*t, *LABELS.values())
+    pick = [names.index(f"{s}Wrist") if p == "Hand" else names.index(f"{s}{p[:-3]}Tip")
+            for s in ("Left", "Right") for p in ("Hand", "ThumbTip", "IndexTip", "MiddleTip", "RingTip", "PinkyTip")]
+    torch.testing.assert_close(full[..., pick, :], sub)
+    assert full.shape[-2] == len(names) == len(chains) == 44 and len(set(names)) == 44
+    # bone lengths are the nominal ones in every frame (FK is rigid)
+    elbow, wrist = full[..., names.index("LeftElbow"), :], full[..., names.index("LeftWrist"), :]
+    torch.testing.assert_close(torch.linalg.vector_norm(wrist - elbow, dim=-1),
+                               torch.full(wrist.shape[:-1], .25, dtype=wrist.dtype))
+
+
+def test_skeleton_motion_loss_is_zero_on_the_reference_and_sees_speed():
+    from signtranslator.generation.signing_space import skeleton_motion_loss
+    batch = collate_multichannel([signer_state(s, frames=20, amplitude=.4) for s in range(2)])
+    exact = skeleton_motion_loss({n: batch.channels[n].values.clone() for n in LABELS}, batch)
+    assert set(exact) == {"position", "velocity", "acceleration"} and all(float(v) == 0. for v in exact.values())
+    frozen = {n: batch.channels[n].values[:, :1].expand_as(batch.channels[n].values).clone().requires_grad_(True)
+              for n in LABELS}                                            # the first pose held: right place at t=0 only
+    loss = skeleton_motion_loss(frozen, batch)
+    assert float(loss["velocity"]) > 0 and float(loss["position"]) > 0
+    sum(loss.values()).backward()
+    assert frozen["body"].grad.abs().sum() > 0

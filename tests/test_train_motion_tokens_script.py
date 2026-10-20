@@ -101,3 +101,88 @@ def test_prior_trains_with_locus_conditioning(tmp_path, monkeypatch):
                                "--feedforward", "64", "--steps", "2", "--locus-conditioning"]) == 0
     run = json.loads((tmp_path / "store/training-runs/pri/run.json").read_text())
     assert run["config"]["locus_conditioning"] is True
+
+
+def test_weight_ema_is_the_exponential_average_and_swaps_cleanly():
+    import torch
+    script = load_script()
+    model = torch.nn.Linear(2, 1, bias=False)
+    with torch.no_grad():
+        model.weight.fill_(0.)
+    ema = script.WeightEMA(model, decay=.9)
+    for value in (1., 2., 3.):
+        with torch.no_grad():
+            model.weight.fill_(value)
+        ema.update(model)
+    expected = ((0 * .9 + .1 * 1) * .9 + .1 * 2) * .9 + .1 * 3                   # θ̄_k = d θ̄_{k-1} + (1-d) θ_k
+    assert abs(float(ema.shadow["weight"][0, 0]) - expected) < 1e-6
+    live = ema.swap(model)
+    assert abs(float(model.weight[0, 0]) - expected) < 1e-6
+    ema.restore(model, live)
+    assert float(model.weight[0, 0]) == 3.
+
+
+def test_tokens_v2_train_validate_select_best_resume_and_evaluate(tmp_path, monkeypatch):
+    import sys
+    monkeypatch.setenv("SIGN_CACHE_DIR", str(tmp_path / "cache"))
+    digest = store_with_manifest(tmp_path / "store")
+    script = load_script()
+    store = tmp_path / "store"
+    base = ["--store", f"dir:{store}", "--manifest-key", "manifest.json", "--manifest-sha256", digest,
+            "--batch-size", "2", "--warmup", "1", "--checkpoint-every", "2", "--val-every", "1", "--val-batches", "2",
+            "--workers", "0", "--trained-channels", "body,head_rotation,face", "--architecture", "rvq"]
+    tok = base + ["--stage", "tokenizer", "--run", "tok2", "--hidden", "16", "--code-dim", "8", "--codebook", "16",
+                  "--stages", "2", "--down-layers", "1"]
+    assert script.main(tok + ["--steps", "2"]) == 0
+    assert script.main(tok + ["--steps", "4"]) == 0                              # resumes, EMA included
+    best = json.loads((store / "training-runs/tok2/best.json").read_text())
+    assert best["checkpoint_key"].startswith("training-runs/tok2/checkpoints/") and "val/loss" in best["validation"]
+    log = json.loads((store / "training-runs/tok2/log/step-00000004.json").read_text())
+    assert all("val/loss" in e for e in log)
+    import torch, io as _io
+    saved = torch.load(_io.BytesIO((store / "training-runs/tok2/checkpoints/step-00000004.pt").read_bytes()),
+                       weights_only=False)
+    assert saved["kind"] == "motion_rvq_tokenizer" and set(saved["ema"]) == set(saved["model"])
+    key = "training-runs/tok2/checkpoints/step-00000004.pt"
+    sha = hashlib.sha256((store / key).read_bytes()).hexdigest()
+    prior = base + ["--stage", "prior", "--run", "pri2", "--tokenizer-key", key, "--tokenizer-sha256", sha,
+                    "--d-model", "32", "--heads", "4", "--text-layers", "1", "--token-layers", "1", "--depth-layers", "1",
+                    "--feedforward", "64", "--steps", "2"]
+    assert script.main(prior) == 0
+    run = json.loads((store / "training-runs/pri2/run.json").read_text())
+    assert run["kind"] == "motion_rvq_prior" and run["config"]["grammar_features"] is True
+    sys.path.insert(0, str(ROOT / "scripts"))
+    spec = importlib.util.spec_from_file_location("evaluate", ROOT / "scripts/evaluate_text_to_motion.py")
+    evaluate = importlib.util.module_from_spec(spec); spec.loader.exec_module(evaluate)
+    assert evaluate.main(["--store", f"dir:{store}", "--manifest-key", "manifest.json", "--manifest-sha256", digest,
+                          "--checkpoint-key", "training-runs/pri2/checkpoints/step-00000002.pt", "--partition", "train",
+                          "--limit", "2", "--guidance", "1", "--output-key", "eval2.json"]) == 0
+    report = json.loads((store / "eval2.json").read_text())
+    assert report["generator"] == "motion_tokens_v2"
+
+
+def test_jitter_is_zero_on_uniform_rotation_and_the_diagnosis_runs(tmp_path, monkeypatch):
+    import sys
+    import torch
+    sys.path.insert(0, str(ROOT / "scripts"))
+    spec = importlib.util.spec_from_file_location("diagnose", ROOT / "scripts/diagnose_tokenizer.py")
+    diagnose = importlib.util.module_from_spec(spec); spec.loader.exec_module(diagnose)
+    from signtranslator.pose.rotations import axis_angle_to_matrix, matrix_to_rotation_6d
+    angles = torch.linspace(0, 1.2, 9, dtype=torch.float64)[:, None, None] * torch.tensor([[0., 0., 1.]], dtype=torch.float64)
+    r6 = matrix_to_rotation_6d(axis_angle_to_matrix(angles + 1e-9))
+    assert float(diagnose.jitter_deg(r6).max()) < 1e-4                     # constant angular velocity: no jitter
+    bumped = r6.clone(); bumped[4] = matrix_to_rotation_6d(axis_angle_to_matrix(torch.tensor([[0., .3, .6]], dtype=torch.float64)))
+    assert float(diagnose.jitter_deg(bumped)[3]) > 5.
+    monkeypatch.setenv("SIGN_CACHE_DIR", str(tmp_path / "cache"))
+    digest = store_with_manifest(tmp_path / "store")
+    script = load_script()
+    assert script.main(["--store", f"dir:{tmp_path / 'store'}", "--manifest-key", "manifest.json", "--manifest-sha256",
+                        digest, "--batch-size", "2", "--warmup", "1", "--checkpoint-every", "2", "--workers", "0",
+                        "--trained-channels", "body,head_rotation,face", "--architecture", "rvq", "--stage", "tokenizer",
+                        "--run", "t", "--hidden", "16", "--code-dim", "8", "--codebook", "16", "--stages", "2",
+                        "--down-layers", "1", "--steps", "2"]) == 0
+    assert diagnose.main(["--store", f"dir:{tmp_path / 'store'}", "--manifest-key", "manifest.json", "--manifest-sha256",
+                          digest, "--tokenizer-key", "training-runs/t/checkpoints/step-00000002.pt", "--partition", "train",
+                          "--limit", "2", "--output-key", "diag.json"]) == 0
+    report = json.loads((tmp_path / "store/diag.json").read_text())
+    assert report["overall"]["full_joint_deg"] is not None and report["overall"]["noise_joint_deg"] is not None

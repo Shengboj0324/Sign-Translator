@@ -27,6 +27,7 @@ from signtranslator.data_engineering.corpus_manifest import load_manifest  # noq
 from signtranslator.generation.motion_metrics import compare  # noqa: E402
 from signtranslator.generation.signing_space import location_errors  # noqa: E402
 from signtranslator.grammar_motion.evaluation import grammar_comparison, locus_adherence  # noqa: E402
+from signtranslator.generation.motion_rvq import MotionRVQ, RVQPrior, RVQPriorConfig, generate_rvq_motion  # noqa: E402
 from signtranslator.generation.motion_tokens import (  # noqa: E402
     MotionVQ, MotionVQConfig, TokenPrior, TokenPriorConfig, generate_tokens_motion,
 )
@@ -47,9 +48,23 @@ def load_generator(store, key: str, manifest_sha256: str, device: str = "cpu"):
     checkpoint = torch.load(io.BytesIO(store.get(key)), map_location="cpu", weights_only=False)
     if checkpoint["manifest_sha256"] != manifest_sha256:
         raise SystemExit(f"{key} was trained on a different manifest")
+    weights = checkpoint.get("ema") or checkpoint["model"]          # EMA weights when the run kept them
+    if checkpoint.get("kind") == "motion_rvq_prior":
+        prior = RVQPrior(RVQPriorConfig.from_dict(checkpoint["config"]))
+        prior.load_state_dict(weights)
+        tokenizer = MotionRVQ(prior.config.tokenizer)
+        tokenizer.load_state_dict(checkpoint["tokenizer_state"])
+        prior.to(device).eval(), tokenizer.to(device).eval()
+
+        def sample(text, fps, seconds, guidance, steps, seed):
+            return generate_rvq_motion(prior, tokenizer, [text], fps=fps, durations=[seconds], guidance=guidance,
+                                       seed=seed)[0]
+        return "motion_tokens_v2", prior.config.tokenizer.motion.trained_channels, sample
+    if checkpoint.get("kind") in ("motion_tokenizer", "motion_rvq_tokenizer"):
+        raise SystemExit(f"{key} is a tokenizer, not a generator; evaluate its prior")
     if checkpoint.get("kind") == "motion_token_prior":
         prior = TokenPrior(TokenPriorConfig.from_dict(checkpoint["config"]))
-        prior.load_state_dict(checkpoint["model"])
+        prior.load_state_dict(weights)
         tokenizer = MotionVQ(prior.config.tokenizer)
         tokenizer.load_state_dict(checkpoint["tokenizer_state"])
         prior.to(device).eval(), tokenizer.to(device).eval()
@@ -61,7 +76,7 @@ def load_generator(store, key: str, manifest_sha256: str, device: str = "cpu"):
     if checkpoint.get("kind") == "motion_tokenizer":
         raise SystemExit(f"{key} is a tokenizer, not a generator; evaluate its prior")
     model = TextToMotion(TextToMotionConfig.from_dict(checkpoint["config"]))
-    model.load_state_dict(checkpoint["model"])
+    model.load_state_dict(weights)
     model.to(torch.device(device)).eval()
 
     def sample(text, fps, seconds, guidance, steps, seed):
