@@ -8,6 +8,20 @@ clean, noisy, accented, code-switched and long-form speech.
 Every perturbation level here was **measured** before use (see the sweep recorded
 in ``evaluation.STANDARD_CONDITIONS``); levels picked by intuition produced a
 vacuous evaluation.
+
+Robustness to training numerics (audit B79). Every assertion on a trained model
+below was checked against its spread over 150 recognisers: training seeds 0-29,
+each at 1, 2, 4, 8 and the default number of CPU threads (10 on the reference
+machine). Under the original recipe (lr 3e-3, no clipping, six random training
+utterances) training failed outright for some seed/thread pairs (clean accuracy
+down to 0.0), and which test failed moved with the thread count. The model is
+now trained stably (see ``system``) and is bit-identical across thread counts
+for seed 0, but its *off-distribution* behaviour still depends on the seed:
+noise 0.020 leaves the noisy condition degenerate for 50 of the 150 recognisers
+and pitch x1.25 the accented one for 25. Claims that rode on one seed's
+off-distribution behaviour ("noise removes tokens", "every condition is
+informative") were therefore replaced by claims that hold for every measured
+recogniser, or that the harness itself guarantees.
 """
 
 import itertools
@@ -79,18 +93,29 @@ def _make(cond: Condition, fe, seed=0, n_utt=6):
 
 @pytest.fixture(scope="module")
 def system():
-    """Train the reference recogniser on clean primary-vocabulary speech."""
+    """Train the reference recogniser on clean primary-vocabulary speech.
+
+    Trained on all 27 three-word primary sentences with lr 1e-3 and gradient
+    clipping. Six random sentences at lr 3e-3 (the original recipe) diverged for
+    some seed/thread pairs and, even when converged, generalised to held-out
+    clean sentences only for some seeds (accuracy 0.34-1.0), so the clean
+    baseline itself rode on training numerics. With this recipe the training
+    loss reaches 0.0004-0.06 and clean accuracy is 1.0 in all 150 measured runs.
+    """
     torch.manual_seed(0)
     fe = LogMelSpectrogram()
-    feats, targets, _ = _make(Condition("clean", is_baseline=True), fe, seed=0)
+    sentences = [list(s) for s in itertools.product(PRIMARY, repeat=3)]
+    feats = torch.cat([fe(_utterance(s)[0]).t().unsqueeze(0) for s in sentences])
+    tgt = torch.tensor([[ALL[f] for f in s] for s in sentences])
     rec = SpeechRecognizer(input_dim=N_MELS, num_tokens=6, hidden_dim=96,
                            num_layers=2, num_heads=4, subsample=2)
-    tgt = torch.tensor(targets)
     lengths = torch.full((feats.shape[0],), tgt.shape[1], dtype=torch.long)
-    opt = torch.optim.Adam(rec.parameters(), lr=3e-3)
+    opt = torch.optim.Adam(rec.parameters(), lr=1e-3)
     for _ in range(320):
         loss = rec.loss(feats, tgt, lengths)
-        opt.zero_grad(); loss.backward(); opt.step()
+        opt.zero_grad(); loss.backward()
+        torch.nn.utils.clip_grad_norm_(rec.parameters(), 1.0)
+        opt.step()
     rec.eval()
     return rec, fe
 
@@ -118,45 +143,83 @@ def profiles(system):
 
 
 def test_baseline_is_at_ceiling_and_is_not_flagged(profiles):
-    """Clean speech SHOULD be at ceiling; that is not a defect."""
+    """Clean speech SHOULD be at ceiling; that is not a defect.
+
+    Measured clean accuracy: 1.0 in all 150 recognisers.
+    """
     clean = profiles["clean"]
     assert clean.accuracy > 0.95
     assert clean.is_informative          # exempt as a baseline
 
 
-def test_every_perturbed_condition_is_informative(profiles):
-    """No condition may be vacuous -- neither ceiling nor total collapse.
+# Perturbed conditions that were informative for every measured recogniser.
+ALWAYS_INFORMATIVE = ("code_switched", "long_form")
 
-    This is the guard the Stage 3 lesson demands: intuition-chosen severities
-    gave zero decoded tokens (noise) or zero degradation (pitch).
+
+def test_evaluation_is_not_vacuous(profiles):
+    """The guard the Stage 3 lesson demands, stated so it does not ride on a seed.
+
+    Intuition-chosen severities gave zero decoded tokens (noise) or zero
+    degradation (pitch). Whether noise 0.020 and pitch x1.25 land inside the
+    informative band depends on the training seed (degenerate for 50 and 25 of
+    150 recognisers), which is exactly why the harness characterises every
+    condition before concluding anything. Code-switching and long-form were
+    informative in all 150 (accuracy 0.42-0.67 and 0.24-0.88, coverage
+    0.67-1.33 and 0.40-1.95), so the evaluation always has conditions to
+    conclude from; seed 0 has all four informative at every thread count.
     """
-    degenerate = [name for name, p in profiles.items() if not p.is_informative]
-    assert degenerate == [], f"degenerate conditions: {degenerate}"
+    for name in ALWAYS_INFORMATIVE:
+        assert profiles[name].is_informative, profiles[name].summary()
+    informative = [n for n, p in profiles.items()
+                   if not p.is_baseline and p.is_informative]
+    assert len(informative) >= len(ALWAYS_INFORMATIVE)
 
 
 def test_perturbed_conditions_actually_degrade(profiles):
-    """Each perturbation must move accuracy below the clean baseline."""
+    """Each informative perturbation must move accuracy below the clean baseline.
+
+    A degenerate condition supports no conclusion (that is what the flag
+    means), so it is excluded rather than asserted on. Over 150 recognisers no
+    informative condition ever matched the clean baseline.
+    """
     clean = profiles["clean"].accuracy
     for name in ("noisy", "accented", "code_switched", "long_form"):
-        assert profiles[name].accuracy < clean, f"{name} did not degrade"
+        if profiles[name].is_informative:
+            assert profiles[name].accuracy < clean, f"{name} did not degrade"
 
 
 # ---------------------------------------------------------------------------
 # Core metrics per condition
 # ---------------------------------------------------------------------------
 def test_wer_breakdown_identifies_the_failure_mode(system, profiles):
-    """The S/D/I split must reveal *how* each condition breaks the model."""
+    """The S/D/I split must reveal *how* each condition breaks the model.
+
+    Code-switching inserts words the recogniser was never trained on, so each
+    of them must surface as a substitution or a deletion; that follows from
+    the training vocabulary, not from training numerics. Measured over 150
+    recognisers: S + D exceeded the number of secondary words by 0 or 1, and
+    no secondary token was ever emitted. The earlier claim that noise yields
+    more deletions than substitutions held only for some seeds (false for 32
+    of 60 seed/thread cells at noise 0.020, and no level from 0.02 to 0.08
+    made it hold), so it is not asserted. The S/D/I counting itself is
+    covered on exact fixtures in ``test_speech_evaluation``.
+    """
     rec, fe = system
     modes = {}
+    secondary = set(SECONDARY.values())
     for cond in STANDARD_CONDITIONS:
         feats, targets, _ = _make(cond, fe, seed=7)
         _, hyps = _decode(rec, feats)
         modes[cond.name] = word_error_rate(hyps, targets)
+        if cond.name == "code_switched":
+            n_secondary = sum(tok in secondary for t in targets for tok in t)
     assert modes["clean"].error_rate < 0.1
-    # Noise removes tokens; the breakdown should show that, not substitutions.
-    noisy = modes["noisy"]
-    assert noisy.error_rate > modes["clean"].error_rate
-    assert noisy.deletions >= noisy.substitutions, noisy.summary()
+    cs = modes["code_switched"]
+    assert n_secondary > 0
+    assert cs.substitutions + cs.deletions >= n_secondary, cs.summary()
+    for name, ops in modes.items():
+        if profiles[name].is_informative and not profiles[name].is_baseline:
+            assert ops.error_rate > modes["clean"].error_rate, (name, ops.summary())
 
 
 def test_cer_is_computed_over_a_real_orthography(system):
@@ -183,6 +246,7 @@ def test_timestamp_error_is_measured_against_physical_spans(system):
         pred = [(t.start_s, t.end_s) for t in timings]
         errors.append(timestamp_error(pred, spans[i]))
     mean_start = sum(e.mean_start_error_s for e in errors) / len(errors)
+    # Measured over 150 recognisers: 0.041-0.176 s.
     assert mean_start < 0.25, f"timestamps off by {mean_start * 1000:.0f} ms"
 
 
@@ -212,14 +276,26 @@ def test_ece_and_revision_rate_are_reported(system):
 def _arm_features(rec, feats, arm: str) -> torch.Tensor:
     """Pooled representation for one input arm.
 
-    transcript_only: the lexical posteriors (what a text-only planner sees).
+    transcript_only: the lexical posteriors (what a text-only planner sees),
+                     averaged over the first, middle and last third of the
+                     utterance so that word order -- which a transcript
+                     carries -- survives pooling.
     acoustic_only:   the encoder's acoustic states.
     fused:           both, concatenated.
+
+    A single average over the whole utterance (the earlier version) is a bag of
+    words: it cannot say which word came first, which is what the probe
+    predicts, so its clean accuracy was set by incidental cues and ran 0.29-1.0
+    over 150 recognisers (48-utterance probe set), below the majority-class rate
+    (0.58) for some seeds.
     """
     with torch.no_grad():
         hidden = rec.encode(feats)
         posteriors = F.softmax(rec.classifier(hidden), dim=-1)
-    lexical = posteriors.mean(dim=1)
+    edges = [0, posteriors.shape[1] // 3, 2 * posteriors.shape[1] // 3,
+             posteriors.shape[1]]
+    lexical = torch.cat([posteriors[:, a:b].mean(dim=1)
+                         for a, b in zip(edges, edges[1:])], dim=-1)
     acoustic = hidden.mean(dim=1)
     if arm == "transcript_only":
         return lexical
@@ -261,12 +337,15 @@ def ablation(system):
 
     Uses many utterances: an earlier version trained on 6 samples for a 6-way
     task and scored 0.0 on clean -- below chance. With too little data the
-    ablation measures probe noise rather than representation quality.
+    ablation measures probe noise rather than representation quality. At 48
+    utterances the acoustic probe still depended on the probe's own seed (clean
+    accuracy 0.54-1.0 over 150 recogniser/probe seed pairs, below the 0.58
+    majority rate for some); at 144 it is 0.75-1.0.
     """
     rec, fe = system
     n_classes = max(ALL.values()) + 1
     train_feats, train_tgt, _ = _make(Condition("clean", is_baseline=True),
-                                      fe, seed=0, n_utt=48)
+                                      fe, seed=0, n_utt=144)
     train_y = torch.tensor([t[0] for t in train_tgt])
 
     results = {}
@@ -282,13 +361,25 @@ def ablation(system):
     return results
 
 
-def test_probe_learns_the_clean_task_before_it_is_used_for_ablation(ablation):
-    """A probe near chance would make every ablation number meaningless."""
-    chance = 1.0 / (max(ALL.values()) + 1)
+def test_probe_learns_the_clean_task_before_it_is_used_for_ablation(system, ablation):
+    """A probe near chance would make every ablation number meaningless.
+
+    "Chance" is the majority-class rate of the clean evaluation labels, a
+    deterministic reference (0.58 here). The earlier bound, three times a
+    uniform 1/7, was 0.43 -- below what always guessing the commonest first
+    word scores. Measured clean probe accuracy over 150 recognisers, the probe
+    seed varied with the training seed: acoustic_only 0.75-1.0, transcript_only
+    and fused 1.0 in every run.
+    """
+    _, fe = system
+    _, targets, _ = _make(Condition("clean", is_baseline=True), fe, seed=21, n_utt=24)
+    first = torch.tensor([t[0] for t in targets])
+    majority = float(torch.bincount(first).max()) / len(first)
     for arm, per_cond in ablation.items():
-        assert per_cond["clean"] > 3 * chance, (
-            f"{arm}: probe scored {per_cond['clean']:.3f} on clean, near chance "
-            f"({chance:.3f}) -- the ablation would be measuring noise")
+        assert per_cond["clean"] > majority, (
+            f"{arm}: probe scored {per_cond['clean']:.3f} on clean, no better "
+            f"than the majority class ({majority:.3f}) -- the ablation would be "
+            f"measuring noise")
 
 
 def test_all_three_arms_are_evaluated(ablation):
@@ -300,11 +391,17 @@ def test_all_three_arms_are_evaluated(ablation):
 
 
 def test_downstream_degrades_under_perturbation(ablation):
-    """Sign-plan degradation must be visible, not just recogniser WER."""
+    """Sign-plan degradation must be visible, not just recogniser WER.
+
+    Measured clean-minus-worst over 150 recognisers (probe seed varied with the
+    training seed): at least 0.125 for transcript_only, 0.29 for acoustic_only
+    and 0.17 for fused -- three or more of 24 utterances -- so the inequality is
+    asserted strictly.
+    """
     for arm, per_cond in ablation.items():
         clean = per_cond["clean"]
         worst = min(per_cond[n] for n in ("noisy", "accented", "code_switched"))
-        assert worst <= clean, f"{arm}: perturbation did not degrade downstream"
+        assert worst < clean, f"{arm}: perturbation did not degrade downstream"
 
 
 def test_arms_are_genuinely_different_representations(system):
@@ -354,5 +451,10 @@ def test_full_report_renders_with_all_required_fields(system, profiles, ablation
     for arm in ("transcript_only", "acoustic_only", "fused"):
         assert arm in text
     assert "S=" in text and "D=" in text and "I=" in text     # breakdown present
-    assert report.degenerate_conditions() == []
+    # Which conditions are degenerate depends on the training seed (see
+    # test_evaluation_is_not_vacuous); the report must flag exactly those.
+    flagged = [p.condition for p in profiles.values() if not p.is_informative]
+    assert report.degenerate_conditions() == flagged
+    assert ("WARNING: degenerate conditions" in text) == bool(flagged)
+    assert not set(ALWAYS_INFORMATIVE) & set(flagged)
     assert len(report.results) == 3 * len(STANDARD_CONDITIONS)
