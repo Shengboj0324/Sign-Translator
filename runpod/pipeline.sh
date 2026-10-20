@@ -37,6 +37,8 @@ RAW=acquisition/2026-10-17-v1/how2sign-raw
 RECUT=$DERIVED/how2sign-sapiens-side-recut-v1
 CAMERAS=$DERIVED/how2sign-cameras-v1/intrinsics.json
 MANIFEST=$DERIVED/how2sign-text-manifest-v1/manifest.json
+# SUBSET: a scripts/select_how2sign_subset.py record; its clip regex becomes MATCH.
+[[ -n "${SUBSET:-}" ]] && MATCH=$($PY -c "import json,sys; print(json.load(open(sys.argv[1]))['match'])" "$SUBSET")
 MATCH_ARGS=()
 [[ -n "${MATCH:-}" ]] && MATCH_ARGS=(--match "$MATCH")
 
@@ -60,7 +62,8 @@ case "$stage" in
         key=$H/${split}_rgb_${view}_clips.zip
         prefix=$([[ $view == front ]] && echo "$FRONT_PREFIX" || echo "$SIDE_PREFIX")
         $PY scripts/sapiens_keypoints_runpod.py --zip-key "$key" --zip-sha256 "$(zip_sha "$key")" --prefix "$prefix" \
-          --checkpoint "$CK" --checkpoint-sha256 $CS --shard "$shard" --shards "$shards" ${SAPIENS_FLAGS:-} ${MATCH_ARGS[@]+"${MATCH_ARGS[@]}"}
+          --checkpoint "$CK" --checkpoint-sha256 $CS --shard "$shard" --shards "$shards" --rotate "${ROTATE:-0/1}" \
+          ${SAPIENS_FLAGS:-} ${MATCH_ARGS[@]+"${MATCH_ARGS[@]}"}
       done
     done ;;
   raw)

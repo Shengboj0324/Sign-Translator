@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from extract_video_states import StoreRangeFile  # noqa: E402
 from signtranslator.data.text_motion_dataset import R2Store  # noqa: E402
 from signtranslator.data_engineering.sapiens_keypoints import (  # noqa: E402
-    crop_box, decode_heatmaps, flip_average, green_screen_box, preprocess,
+    crop_box,
 )
 
 MODEL_URL = ("https://huggingface.co/facebook/sapiens-pose-1b-torchscript/resolve/main/"
@@ -46,40 +46,83 @@ def load_model(path: Path, expected_sha256: str | None, device):
     return model, digest
 
 
+_POOLS: dict = {}
+
+
+def _pool(workers: int):
+    """One box-finding process pool per worker count, kept for the life of the job."""
+    from concurrent.futures import ProcessPoolExecutor
+    if workers not in _POOLS:
+        _POOLS[workers] = ProcessPoolExecutor(workers)
+    return _POOLS[workers]
+
+
 @torch.no_grad()
-def frames_keypoints(frames, model, device, batch: int, flip: bool = True):
+def frames_keypoints(frames, model, device, batch: int, flip: bool = True, workers: int | None = None):
     """Keypoints of an iterable of RGB frames, run in batches as the frames stream in.
 
-    Only one batch of frames is held at a time, so whole raw recordings fit in memory.
-    The signer's box comes from the green screen per frame (whole frame if none).
+    A producer thread groups decoded frames into batches and finds each frame's
+    green-screen box in a process pool (``workers``; the CPU's count by default);
+    the crop, normalisation, model, flip average and heat-map decoding then run on
+    the device for the whole batch (``sapiens_batched``), overlapping with the next
+    batch's decoding. At most a few batches are held at a time, so whole raw
+    recordings fit in memory. A frame without a green screen uses the whole frame.
     """
-    points, confidence, pending = [], [], []
+    import queue
+    import threading
+    from signtranslator.data_engineering.sapiens_batched import (
+        decode_batch, flip_average_batch, green_screen_box_fast, preprocess_batch,
+    )
+    pool = _pool(workers or min(32, os.cpu_count() or 1))
+    ready: queue.Queue = queue.Queue(maxsize=3)
+    failure = []
 
-    def run():
-        inputs = torch.cat([preprocess(rgb, box) for rgb, box in pending]).to(device)
-        with torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
-            heatmaps = model(inputs).float().cpu().numpy()
-            mirrored = model(torch.flip(inputs, dims=[3])).float().cpu().numpy() if flip else None
-        for k, (_, box) in enumerate(pending):
-            heat = flip_average(heatmaps[k], mirrored[k]) if flip else heatmaps[k]
-            p, c = decode_heatmaps(heat, box)
-            points.append(p)
-            confidence.append(c)
-        pending.clear()
+    def produce():
+        try:
+            pending = []
+            def emit():
+                found = list(pool.map(green_screen_box_fast, pending, chunksize=max(1, len(pending) // 8)))
+                boxes = [crop_box(b if b is not None else (0., 0., float(f.shape[1]), float(f.shape[0])))
+                         for f, b in zip(pending, found)]
+                ready.put((np.stack(pending), np.array(boxes, dtype=np.float64)))
+                pending.clear()
+            for rgb in frames:
+                pending.append(np.ascontiguousarray(rgb))
+                if len(pending) == batch:
+                    emit()
+            if pending:
+                emit()
+        except BaseException as error:          # surfaced in the consumer
+            failure.append(error)
+        finally:
+            ready.put(None)
 
-    for rgb in frames:
-        box = green_screen_box(rgb)
-        if box is None:
-            box = (0., 0., float(rgb.shape[1]), float(rgb.shape[0]))
-        pending.append((rgb, crop_box(box)))
-        if len(pending) == batch:
-            run()
-    if pending:
-        run()
-    return (np.array(points, np.float32).reshape(-1, 308, 2), np.array(confidence, np.float16).reshape(-1, 308))
+    thread = threading.Thread(target=produce, daemon=True)
+    thread.start()
+    points, confidence = [], []
+    try:
+        while (item := ready.get()) is not None:
+            stack, boxes = item
+            frames_t = torch.from_numpy(stack).to(device, non_blocking=True)
+            boxes_t = torch.from_numpy(boxes).to(device)
+            inputs = preprocess_batch(frames_t, boxes_t)
+            with torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
+                heat = model(inputs).float()
+                if flip:
+                    heat = flip_average_batch(heat, model(torch.flip(inputs, dims=[3])).float())
+            p, c = decode_batch(heat, boxes_t if device.type != "mps" else boxes_t.float())
+            points.append(p.float().cpu().numpy())
+            confidence.append(c.cpu().numpy())
+    finally:
+        thread.join()
+    if failure:
+        raise failure[0]
+    if not points:
+        return np.zeros((0, 308, 2), np.float32), np.zeros((0, 308), np.float16)
+    return np.concatenate(points).astype(np.float32), np.concatenate(confidence).astype(np.float16)
 
 
-def clip_keypoints(video: Path, model, device, batch: int, flip: bool = True):
+def clip_keypoints(video: Path, model, device, batch: int, flip: bool = True, workers: int | None = None):
     import av
     times = []
     with av.open(str(video)) as container:
@@ -91,7 +134,7 @@ def clip_keypoints(video: Path, model, device, batch: int, flip: bool = True):
                 times.append(float(frame.pts * frame.time_base))
                 yield frame.to_ndarray(format="rgb24")
 
-        points, confidence = frames_keypoints(frames(), model, device, batch, flip)
+        points, confidence = frames_keypoints(frames(), model, device, batch, flip, workers)
     return np.array(times), points, confidence
 
 
@@ -108,6 +151,9 @@ def main(argv=None) -> int:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--match", help="only clips whose file name matches this regular expression")
     parser.add_argument("--no-flip", dest="flip", action="store_false", help="disable flip test-time augmentation")
+    parser.add_argument("--workers", type=int, help="green-screen box processes (default: min(32, CPUs))")
+    parser.add_argument("--rotate", default="0/1", help="i/n: start at the i-th n-th of the clip list and wrap, so n "
+                        "pods sharing one shard cover it from n places and finish by taking the others' remainders")
     args = parser.parse_args(argv)
     store = R2Store(os.environ)
     provenance = json.loads(store.get(args.zip_key + ".provenance.json"))
@@ -121,6 +167,9 @@ def main(argv=None) -> int:
     if args.match:
         members = [m for m in members if re.search(args.match, Path(m).name)]
     shard = [m for i, m in enumerate(members) if i % args.shards == args.shard][:args.limit]
+    part, parts = (int(x) for x in args.rotate.split("/"))
+    start = part * len(shard) // parts
+    shard = shard[start:] + shard[:start]
     prefix = args.prefix.rstrip("/")
     done, refused = 0, []
     for index, member in enumerate(shard):
@@ -132,12 +181,14 @@ def main(argv=None) -> int:
             video = Path(temporary) / "clip.mp4"
             video.write_bytes(payload)
             try:
-                times, points, confidence = clip_keypoints(video, model, device, args.batch, args.flip)
+                times, points, confidence = clip_keypoints(video, model, device, args.batch, args.flip, args.workers)
                 if len(times) == 0:
                     raise ValueError("the video stream has no frames")
             except (ValueError, OSError) as error:      # unreadable clip in the source: recorded, not fatal
                 refused.append(dict(member=member, clip_sha256=hashlib.sha256(payload).hexdigest(),
                                     reason=str(error)[:300]))
+                continue
+            if store.exists(key):                       # another pod on the same rotation got here first
                 continue
             buffer = io.BytesIO()
             np.savez_compressed(buffer, times=times, points=points, confidence=confidence,
@@ -147,7 +198,8 @@ def main(argv=None) -> int:
         done += 1
         if index % 50 == 0:
             print(f"{index}/{len(shard)} {member}", flush=True)
-    store.put(f"{prefix}/reports/{Path(args.zip_key).stem}-shard-{args.shard:03d}-of-{args.shards:03d}.json", json.dumps(dict(
+    rotation = "" if args.rotate == "0/1" else f"-rotate-{part:02d}-of-{parts:02d}"
+    store.put(f"{prefix}/reports/{Path(args.zip_key).stem}-shard-{args.shard:03d}-of-{args.shards:03d}{rotation}.json", json.dumps(dict(
         zip_key=args.zip_key, zip_sha256=args.zip_sha256, model_sha256=model_sha, flip_tta=args.flip, clips=len(shard),
         written=done, refused=refused)).encode())
     print(json.dumps(dict(model_sha256=model_sha, written=done, refused=len(refused), clips=len(shard))))
