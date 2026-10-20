@@ -86,6 +86,15 @@ The sample is 4,196 clips from 276 whole sessions (monocular states).
   azimuth has its median at 25° toward the signer's right (5–95%: 59° right to 41° left),
   so ipsilateral space dominates. Elevation has its median at +23° (5–95%: −16° to +46°).
 - **Markers:** role-shift segments occur in 16% of clips and headshakes in 16%.
+- **Gaze during pointing (779 points): not found.** The median angle between gaze and
+  the pointing direction is 53°, against 52° for the same clip's gaze at least 0.5 s
+  away. Gaze is closer than that control in 46% of events, and within 20° in 0.9% (control
+  1.9%). Either How2Sign signers keep looking at the addressee (camera) while pointing,
+  or a frame offset remains between the monocular body and the gaze. The two-view
+  re-measurement (post chain) separates the two.
+- **Indicating paths: none found.** No movement unit runs from one detected locus to
+  another within 20° in clips with two or more loci. The criterion (start and end
+  directions on loci) is stricter than verb paths, which start near the body.
 - **Prosody:** the final movement unit runs at 0.88× the median unit (interquartile range
   0.60–1.29), so the speed-minimum proxy does not show the ≈2× sentence-final lengthening
   Tang et al. report. The proxy is not a sign segmentation. Blinks fall in the final window
