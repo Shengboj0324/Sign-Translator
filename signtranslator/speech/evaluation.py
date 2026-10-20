@@ -208,7 +208,10 @@ class Condition:
 #
 # These numbers are specific to this model and this synthetic audio. Any real
 # system must be re-characterised with `characterise_condition` before its
-# results mean anything.
+# results mean anything. They are also specific to one training run: across 150
+# recognisers trained with the stage-5 test recipe (seeds 0-29 x 1/2/4/8/default
+# CPU threads), noise 0.020 left the noisy condition degenerate for 50 and pitch
+# x1.25 the accented one for 25 (audit B79).
 STANDARD_CONDITIONS: Tuple[Condition, ...] = (
     Condition("clean", is_baseline=True),
     Condition("noisy", noise=0.020),
