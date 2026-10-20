@@ -1,0 +1,232 @@
+{
+  "evaluation": {
+    "face_found_rate": 0.9998938062495022,
+    "feature_percentiles": {
+      "lookDownLeft": [
+        0.026,
+        0.237,
+        0.535
+      ],
+      "lookDownRight": [
+        0.025,
+        0.237,
+        0.523
+      ],
+      "lookInLeft": [
+        0.002,
+        0.041,
+        0.315
+      ],
+      "lookInRight": [
+        0.008,
+        0.091,
+        0.481
+      ],
+      "lookOutLeft": [
+        0.013,
+        0.108,
+        0.494
+      ],
+      "lookOutRight": [
+        0.006,
+        0.05,
+        0.318
+      ],
+      "lookUpLeft": [
+        0.012,
+        0.037,
+        0.278
+      ],
+      "lookUpRight": [
+        0.009,
+        0.033,
+        0.278
+      ]
+    },
+    "features_sha256": "cadc22c3b70c3dc22d0981a747be165f6d98323a44c3eebc7e64cc4ef5187cef",
+    "head_range_deg": [
+      [
+        -11.14,
+        14.01
+      ],
+      [
+        -18.7,
+        14.94
+      ]
+    ],
+    "images": 37663,
+    "protocol": "leave-one-participant-out on MPIIFaceGaze, images scaled to How2Sign face resolution; errors against the cyclopean direction (both channels carry it)",
+    "results": {
+      "binocular": {
+        "Left": {
+          "mean_deg": 7.615940274534253,
+          "median_deg": 7.125081561581377,
+          "p90_deg": 12.874460821219417,
+          "worst_participant_mean_deg": 11.07968469567234
+        },
+        "Right": {
+          "mean_deg": 7.615940274534253,
+          "median_deg": 7.125081561581377,
+          "p90_deg": 12.874460821219417,
+          "worst_participant_mean_deg": 11.07968469567234
+        }
+      },
+      "binocular+head": {
+        "Left": {
+          "mean_deg": 6.629216263562182,
+          "median_deg": 6.187389928720012,
+          "p90_deg": 11.169882374619235,
+          "worst_participant_mean_deg": 10.297417407019767
+        },
+        "Right": {
+          "mean_deg": 6.629216263562182,
+          "median_deg": 6.187389928720012,
+          "p90_deg": 11.169882374619235,
+          "worst_participant_mean_deg": 10.297417407019767
+        }
+      },
+      "head_only": {
+        "Left": {
+          "mean_deg": 16.874679386410172,
+          "median_deg": 16.19554328548317,
+          "p90_deg": 27.16490660975141,
+          "worst_participant_mean_deg": 26.37935919629828
+        },
+        "Right": {
+          "mean_deg": 16.874679386410172,
+          "median_deg": 16.19554328548317,
+          "p90_deg": 27.16490660975141,
+          "worst_participant_mean_deg": 26.37935919629828
+        }
+      },
+      "head_plus_offset": {
+        "Left": {
+          "mean_deg": 11.725519306998276,
+          "median_deg": 10.880936910967478,
+          "p90_deg": 20.46441311592237,
+          "worst_participant_mean_deg": 17.22049688097038
+        },
+        "Right": {
+          "mean_deg": 11.725519306998276,
+          "median_deg": 10.880936910967478,
+          "p90_deg": 20.46441311592237,
+          "worst_participant_mean_deg": 17.22049688097038
+        }
+      },
+      "model": {
+        "Left": {
+          "mean_deg": 7.504629421458674,
+          "median_deg": 6.977785774217788,
+          "p90_deg": 12.757613671420344,
+          "worst_participant_mean_deg": 10.705939007447512
+        },
+        "Right": {
+          "mean_deg": 7.504629421458674,
+          "median_deg": 6.977785774217788,
+          "p90_deg": 12.757613671420344,
+          "worst_participant_mean_deg": 10.705939007447512
+        }
+      },
+      "model_against_each_eye_at_calibration_distance": {
+        "Left": {
+          "mean_deg": 8.231077787463178,
+          "median_deg": 7.782291961073979
+        },
+        "Right": {
+          "mean_deg": 8.341740697735599,
+          "median_deg": 7.973988473855383
+        }
+      },
+      "monocular": {
+        "Left": {
+          "mean_deg": 7.504629421458674,
+          "median_deg": 6.977785774217788,
+          "p90_deg": 12.757613671420344,
+          "worst_participant_mean_deg": 10.705939007447512
+        },
+        "Right": {
+          "mean_deg": 7.504629421458674,
+          "median_deg": 6.977785774217788,
+          "p90_deg": 12.757613671420344,
+          "worst_participant_mean_deg": 10.705939007447512
+        }
+      }
+    },
+    "suffix_correlation": {
+      "Left": 0.8411651298057634,
+      "Right": -0.840331352642607
+    },
+    "variant": "monocular",
+    "zip_sha256": "237c0bd75bd5454b53c8c5b1cacccd73813e8e0475907a0624cdc547dd085482"
+  },
+  "features": [
+    "eyeLookIn",
+    "eyeLookOut",
+    "eyeLookUp",
+    "eyeLookDown",
+    "eyeBlink",
+    "eyeSquint",
+    "eyeWide"
+  ],
+  "head_range": [
+    [
+      -0.19441948204045062,
+      0.24459196686251025
+    ],
+    [
+      -0.3264402914617415,
+      0.26066824424434454
+    ]
+  ],
+  "max_blink": 0.5,
+  "pitch": {
+    "Left": [
+      -0.2099144351075582,
+      -0.07056968182918037,
+      0.012988381543906883,
+      0.33546119495261767,
+      -0.4709707883008723,
+      -0.02522110231772787,
+      0.1337648466126187,
+      4.407209422614915
+    ],
+    "Right": [
+      -0.08855805435635435,
+      0.06045152353553366,
+      -0.11334488527411661,
+      0.4681986302841773,
+      -0.6238862857792946,
+      0.28389237960594765,
+      -0.223396998985879,
+      1.5909439611846645
+    ]
+  },
+  "schema_version": 1,
+  "suffix": {
+    "Left": "Left",
+    "Right": "Right"
+  },
+  "variant": "monocular",
+  "yaw": {
+    "Left": [
+      -0.10577937396791054,
+      -0.590649465224049,
+      0.6345749672550894,
+      0.05489934361954766,
+      0.10808923301027737,
+      -0.08002520818822154,
+      0.04066318831108246,
+      0.37856706853810707
+    ],
+    "Right": [
+      -0.015363761440842767,
+      0.6040720292989874,
+      -0.6785291354169926,
+      0.027044154034588003,
+      0.07606401377294786,
+      -0.2899646745150851,
+      0.019394174269115678,
+      -2.0581861160769246
+    ]
+  }
+}

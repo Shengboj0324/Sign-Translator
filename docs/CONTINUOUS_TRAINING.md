@@ -153,6 +153,44 @@ sequences, so this is a consistency check, not held-out accuracy. The floor is t
 population term: a proportionally larger signer cannot be told apart from a nearer
 one. Relative motion within a session is exact up to that one factor.
 
+### Eye gaze (`data_engineering/gaze.py`, `scripts/fit_gaze_model.py`, 2026-10-19)
+
+Every How2Sign monocular state already carries MediaPipe's eye blendshapes
+(`eyeLook{In,Out,Up,Down}`, blink, squint, wide) and the face crop's head rotation,
+so no re-extraction is needed. They are calibrated to gaze on **MPIIFaceGaze**
+(15 participants, 37,663 images with 3D gaze targets; CC BY-NC-SA 4.0, archived in R2
+under `acquisition/2026-10-17-v1/gaze-mpiifacegaze/`). Each image is rescaled to
+How2Sign's interpupillary distance (44.6 px) and cut to the same face crop that
+`extract_clip` gives MediaPipe. Ground truth is expressed in that crop camera's
+axes, since its optical axis is the ray through the crop centre.
+
+Per eye, yaw and pitch are linear in the eye's seven blendshapes. The eye-in-head
+direction is rotated by the head and the two eyes are averaged into one cyclopean
+direction. Both `left_gaze` and `right_gaze` carry that direction: vergence moves
+the iris by well under a pixel at this resolution, so a per-eye fit would only
+reproduce the calibration screen's 0.55 m distance. A frame's gaze is withheld when
+the eye is closing (blink ≥ 0.5), and confidence falls with blink. The data decides
+which MediaPipe suffix is the anatomical left eye (r = +0.84 against horizontal gaze).
+
+Leave-one-participant-out angular error at How2Sign resolution:
+
+| model | mean | median | 90th pct |
+|---|---|---|---|
+| head direction only | 16.9° | 16.2° | 27.2° |
+| head + constant eye offset | 11.7° | 10.9° | 20.5° |
+| **calibrated blendshapes (used)** | **7.5°** | **7.0°** | **12.8°** |
+| with a head-pose term | 6.6° | 6.2° | 11.2° |
+
+The head-pose variant is not used: 73% of How2Sign head poses (yaw median −12°)
+lie outside MPIIFaceGaze's calibrated range (yaw −11° to 14°), so its head term
+would rest on unsupported covariates.
+
+On 80 How2Sign clips both eyes are valid in 91% of frames, gaze lies a median 17°
+from the camera axis, and median eye speed is 36°/s (99th percentile 250°/s,
+saccade range). The model (`gaze_model.json`, pinned by SHA-256 in each report)
+is applied in `scripts/triangulate_how2sign_sessions.py`. The generators train both
+gaze channels by default and evaluation reports `angle_deg`.
+
 ## 3. Monocular fallback (`data_engineering/video_landmarks.py`)
 
 * **Estimators.** MediaPipe Tasks 0.10.21 with pinned model hashes: pose landmarker

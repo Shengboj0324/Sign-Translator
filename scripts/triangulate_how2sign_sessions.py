@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from signtranslator.data.text_motion_dataset import DirectoryStore, R2Store  # noqa: E402
 from signtranslator.data_engineering.body_space import body_translations, metric_scale, session_frame  # noqa: E402
+from signtranslator.data_engineering.gaze import GazeModel  # noqa: E402
 from signtranslator.data_engineering.two_view_states import (  # noqa: E402
     ClipKeypoints, aligned, calibrate_session, epipolar_synchronise, monocular_bone_cv, refined_points,
     rotation_inputs, session_gate, time_scale,
@@ -37,6 +38,7 @@ from signtranslator.data_engineering.two_view_states import (  # noqa: E402
 from signtranslator.data_engineering.video_landmarks import solve_rotations  # noqa: E402
 from signtranslator.pose.multichannel import MultichannelMotion  # noqa: E402
 
+GAZE_MODEL = ROOT / "signtranslator/data_engineering/gaze_model.json"
 CLIP = re.compile(r"(?P<video>.+)_(?P<sentence>\d+)-(?P<camera>\d+)-rgb_(?P<view>front|side)")
 
 
@@ -108,7 +110,17 @@ def main(argv=None) -> int:
     parser.add_argument("--shards", type=int, default=1)
     parser.add_argument("--intrinsics-key", help="shared camera intrinsics from calibrate_how2sign_cameras.py")
     parser.add_argument("--intrinsics-sha256", help="required with --intrinsics-key")
+    parser.add_argument("--gaze-model", default=str(GAZE_MODEL),
+                        help="calibrated gaze model JSON (scripts/fit_gaze_model.py), or 'none'")
     args = parser.parse_args(argv)
+    gaze_model, gaze_sha = None, None
+    if args.gaze_model != "none":
+        text = Path(args.gaze_model).read_bytes()
+        gaze_model, gaze_sha = GazeModel.from_json(text.decode()), hashlib.sha256(text).hexdigest()
+        evaluation = gaze_model.evaluation.get("results", {}).get("model", {})
+        gaze_method = ("MediaPipe eye blendshapes and head rotation, per-eye map calibrated on MPIIFaceGaze "
+                       f"(model sha256 {gaze_sha[:12]}, leave-one-participant-out mean error "
+                       + ", ".join(f"{k} {v['mean_deg']:.1f}°" for k, v in sorted(evaluation.items())) + ")")
     store = R2Store(os.environ) if args.store == "r2" else DirectoryStore(Path(args.store[4:]))
     intrinsics = None
     if args.intrinsics_key:
@@ -175,6 +187,7 @@ def main(argv=None) -> int:
             state = triangulated_state(monocular, slice(start, start + count), rotations, hands,
                                        source_id="how2sign_two_view", source_sha256=mono_sha,
                                        translations=translations,
+                                       gaze_model=gaze_model, gaze_method=gaze_model and gaze_method,
                                        inference_method=("Sapiens-1B Goliath on frontal and lateral views, "
                                                          "bone-constrained two-view self-calibration, rigid smooth hand fit, "
                                                          "swing IK; translations in metres by the "
@@ -189,7 +202,7 @@ def main(argv=None) -> int:
                                 state_sha256=digest, seconds=float(state.timestamps[-1] - state.timestamps[0]),
                                 available_channels=[n for n, c in state.channels.items() if c.valid.any()],
                                 session=session))
-    report = dict(schema_version=1, shard=args.shard, shards=args.shards, sessions=len(names),
+    report = dict(schema_version=1, shard=args.shard, shards=args.shards, sessions=len(names), gaze_model_sha256=gaze_sha,
                   sessions_passed=sum(g["passed"] for g in gates.values()), gates=gates, results=results)
     store.put(f"{args.prefix.rstrip('/')}/reports/shard-{args.shard:03d}-of-{args.shards:03d}.json",
               json.dumps(report, sort_keys=True, default=float).encode())

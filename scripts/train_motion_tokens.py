@@ -62,7 +62,7 @@ def main(argv=None) -> int:
     parser.add_argument("--dropout", type=float, default=.1)
     parser.add_argument("--cfg-dropout", type=float, default=.1)
     parser.add_argument("--max-seconds", type=float, default=20.)
-    parser.add_argument("--trained-channels", default="body,left_hand,right_hand,head_rotation,face,blink,root_translation,head_translation")
+    parser.add_argument("--trained-channels", default="body,left_hand,right_hand,head_rotation,face,blink,root_translation,head_translation,left_gaze,right_gaze")
     parser.add_argument("--checkpoint-every", type=int, default=2_000)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--cache-bytes", type=int, default=8 * 2 ** 30)

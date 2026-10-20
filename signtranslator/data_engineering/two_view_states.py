@@ -327,13 +327,17 @@ TRANSLATION_FRAME = "two-view-session-world-y-up-metres"
 
 def triangulated_state(monocular: MultichannelMotion, frames: slice, rotations: dict, hand_rotations: dict, *,
                        source_id: str, source_sha256: str, inference_method: str,
-                       translations: dict | None = None) -> MultichannelMotion:
+                       translations: dict | None = None, gaze_model=None,
+                       gaze_method: str | None = None) -> MultichannelMotion:
     """Body and hands from triangulation; face, head and blink from the monocular state.
 
     Both are indexed by the frontal camera's frames, so ``frames`` (the aligned span)
     puts them on one clock. ``translations`` maps ``root_translation`` and
     ``head_translation`` to ((T, 3) metres, (T,) valid) in the session-world frame of
-    :mod:`body_space`. Channels no source provides stay unavailable.
+    :mod:`body_space`. With ``gaze_model`` (:class:`gaze.GazeModel`), ``left_gaze`` and
+    ``right_gaze`` come from the monocular face blendshapes and head rotation on the
+    same frames (``gaze_method`` is their inference method). Channels no source
+    provides stay unavailable.
     """
     import torch
     times = monocular.timestamps[frames]
@@ -370,6 +374,17 @@ def triangulated_state(monocular: MultichannelMotion, frames: slice, rotations: 
             labels=TRANSLATION_LABELS[name], coordinate_frame=TRANSLATION_FRAME, units="m",
             source_id=source_id, source_sha256=source_sha256, convention="body-space-anthropometric-scale-v1",
             inference_method=inference_method if valid.any() else None)
+    if gaze_model is not None:
+        face, head = monocular.channels["face"], monocular.channels["head_rotation"]
+        from .gaze import FEATURES, SIDES as EYES, gaze_channels
+        named = all(f + side in face.labels for f in FEATURES for side in EYES)
+        if named and face.valid[frames].any() and head.valid[frames].any():
+            from dataclasses import replace
+            window = lambda c: replace(c, values=c.values[frames], valid=c.valid[frames], observed=c.observed[frames],
+                                       confidence=c.confidence[frames])
+            channels.update(gaze_channels(window(face), window(head), gaze_model, source_id=source_id,
+                                          source_sha256=source_sha256,
+                                          inference_method=gaze_method or "calibrated MediaPipe eye blendshapes"))
     for name in CHANNELS:
         if name in channels:
             continue

@@ -101,7 +101,7 @@ def main(argv=None) -> int:
     parser.add_argument("--objective", choices=("regression", "diffusion"), default="regression",
                         help="diffusion samples a plausible motion instead of predicting the conditional mean")
     parser.add_argument("--cfg-dropout", type=float, default=.1, help="diffusion: empty-text probability")
-    parser.add_argument("--trained-channels", default="body,left_hand,right_hand,head_rotation,face,blink,root_translation,head_translation")
+    parser.add_argument("--trained-channels", default="body,left_hand,right_hand,head_rotation,face,blink,root_translation,head_translation,left_gaze,right_gaze")
     parser.add_argument("--eval-every", type=int, default=1_000)
     parser.add_argument("--eval-batches", type=int, default=50)
     parser.add_argument("--checkpoint-every", type=int, default=2_000)
