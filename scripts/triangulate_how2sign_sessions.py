@@ -1,7 +1,9 @@
 """Two-view How2Sign states per recording session, admitted only through the gate.
 
 Inputs (object store): Sapiens keypoints for frontal and lateral clips, and the
-monocular MediaPipe states and landmarks for the frontal clips. For each session
+monocular MediaPipe states and landmarks for the frontal clips. Take-5 sessions, whose
+released lateral clips are mis-cut, use lateral keypoints re-cut from the raw
+recordings when ``--recut-side-keypoints`` names them (``recut_how2sign_take5.py``). For each session
 (one source video recorded by both cameras): synchronise every clip pair, calibrate
 the camera pair once with the bone-constrained bundle adjustment, triangulate, and
 evaluate the declared gate (reprojection, synchronisation, triangulated vs monocular
@@ -64,15 +66,54 @@ def load_state(store, key) -> tuple[MultichannelMotion, str]:
         return MultichannelMotion.load(path, expected_sha256=digest), digest
 
 
-def discover_sessions(store, front_prefix: str, side_prefix: str) -> dict:
-    """session -> sentence -> {"front": key, "side": key} from the keypoint prefixes."""
+def discover_sessions(store, front_prefix: str, side_prefix: str, recut_prefix: str | None = None) -> dict:
+    """session -> sentence -> {"front": key, "side": key} from the keypoint prefixes.
+
+    With ``recut_prefix`` (``recut_how2sign_take5.py`` output), a session that has
+    re-cut lateral keypoints takes its lateral view only from there: the released
+    lateral clips of those (take-5) sessions are mis-cut (audit B80).
+    """
     sessions = collections.defaultdict(dict)
     for prefix, view in ((front_prefix, "front"), (side_prefix, "side")):
         for key in store.list(prefix.rstrip("/") + "/keypoints/"):
             parsed = session_of(Path(key).stem)
             if parsed and parsed[2] == view:
                 sessions[parsed[0]].setdefault(parsed[1], {})[view] = key
+    if recut_prefix:
+        recut = collections.defaultdict(dict)
+        for key in store.list(recut_prefix.rstrip("/") + "/keypoints/"):
+            parsed = session_of(Path(key).stem)
+            if parsed and parsed[2] == "side":
+                recut[parsed[0]][parsed[1]] = key
+        for session, sides in recut.items():
+            for sentence, keys in sessions.get(session, {}).items():
+                keys.pop("side", None)
+                if sentence in sides:
+                    keys["side"] = sides[sentence]
     return sessions
+
+
+def recut_provenance(store, recut_prefix: str | None, session: str, sentences: dict) -> tuple[dict | None, str | None]:
+    """(record summary, refusal) for a session whose lateral keypoints were re-cut, else (None, None).
+
+    The re-cut session record (offset, curves, source hashes) is pinned by SHA-256 in the
+    gate. Re-cut keypoints without an accepted record (an interrupted re-cut) refuse the session.
+    """
+    prefix = (recut_prefix or "").rstrip("/") + "/"
+    if not recut_prefix or not any(keys.get("side", "").startswith(prefix) for keys in sentences.values()):
+        return None, None
+    key = f"{prefix}sessions/{session}.json"
+    if not store.exists(key):
+        return None, "re-cut lateral keypoints without a session record (interrupted re-cut)"
+    payload = store.get(key)
+    record = json.loads(payload)
+    if not record.get("accepted"):
+        return None, "re-cut lateral keypoints for a session the re-cut refused"
+    offset = record["offset"]
+    return dict(kind="re-cut from the raw recordings (audit B80)", session_key=key,
+                session_sha256=hashlib.sha256(payload).hexdigest(), offset_frames=offset["offset_frames"],
+                offset_sampson_px=offset["sampson_px"], raw_side_sha256=record["raw_side"]["member_sha256"],
+                raw_front_sha256=record["raw_front"]["member_sha256"]), None
 
 
 def synchronised(store, sentences: dict) -> dict:
@@ -84,7 +125,8 @@ def synchronised(store, sentences: dict) -> dict:
     scale = time_scale(clips)
     if scale != 1.:                              # take-5 release defect: lateral clips mis-cut (audit B80)
         return dict(reason=f"lateral clips hold {scale:.3f} of the frontal frames and show other moments "
-                           "(How2Sign take-5 release defect); not synchronisable", syncs=[], aligned=[],
+                           "(How2Sign take-5 release defect); not synchronisable without re-cut lateral keypoints "
+                           "(recut_how2sign_take5.py, --recut-side-keypoints)", syncs=[], aligned=[],
                     epipolar=None, lag=None, time_scale=scale)
     epipolar = epipolar_synchronise(clips)
     lag = epipolar["lag_frames"]
@@ -104,6 +146,8 @@ def main(argv=None) -> int:
     parser.add_argument("--store", default="r2", help="r2, or dir:<path> for a local mirror")
     parser.add_argument("--front-keypoints", required=True, help="prefix holding keypoints/<clip>.npz (frontal)")
     parser.add_argument("--side-keypoints", required=True, help="prefix holding keypoints/<clip>.npz (lateral)")
+    parser.add_argument("--recut-side-keypoints", help="prefix of recut_how2sign_take5.py output: lateral keypoints "
+                                                           "re-cut from the raw recordings replace the released ones")
     parser.add_argument("--monocular", required=True, help="prefix holding states/ and landmarks/ (frontal)")
     parser.add_argument("--prefix", required=True)
     parser.add_argument("--shard", type=int, default=0)
@@ -129,15 +173,19 @@ def main(argv=None) -> int:
             raise SystemExit("the intrinsics file differs from --intrinsics-sha256")
         shared = json.loads(payload)["intrinsics"]
         intrinsics = (shared["focal1"], shared["focal2"], *shared["distortion"])
-    sessions = discover_sessions(store, args.front_keypoints, args.side_keypoints)
+    sessions = discover_sessions(store, args.front_keypoints, args.side_keypoints, args.recut_side_keypoints)
     names = sorted(sessions)
     names = [n for i, n in enumerate(names) if i % args.shards == args.shard]
     results, gates = [], {}
     for session in names:
+        side_source, refusal = recut_provenance(store, args.recut_side_keypoints, session, sessions[session])
+        if refusal:
+            gates[session] = dict(passed=False, reasons=[refusal], sync=[], side_source=None, epipolar_curve=None)
+            continue
         session_sync = synchronised(store, sessions[session])
         syncs, aligned_pairs = session_sync["syncs"], session_sync["aligned"]
         if not aligned_pairs:
-            gates[session] = dict(passed=False, reasons=[session_sync["reason"]], sync=syncs,
+            gates[session] = dict(passed=False, reasons=[session_sync["reason"]], sync=syncs, side_source=side_source,
                                   epipolar_curve=(session_sync["epipolar"] or {}).get("curve"))
             continue
         epipolar, lag = session_sync["epipolar"], session_sync["lag"]
@@ -160,7 +208,7 @@ def main(argv=None) -> int:
             scale, world, scale_error = None, None, str(error)
         mono_cv = float(np.nanmedian(mono_cvs)) if mono_cvs else None
         gate = session_gate(calibration, syncs, tri_cv, mono_cv)
-        gate.update(sync=syncs, lag_frames=lag, time_scale=session_sync["time_scale"],
+        gate.update(sync=syncs, lag_frames=lag, time_scale=session_sync["time_scale"], side_source=side_source,
                     epipolar_sampson_px=epipolar["session_sampson_px"],
                     epipolar_curve=epipolar["curve"], shared_intrinsics=args.intrinsics_key, triangulated_bone_cv=tri_cv, monocular_bone_cv=mono_cv,
                     symmetry_error=symmetry_error(all_points), focal=[calibration.focal1, calibration.focal2],

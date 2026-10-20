@@ -10,7 +10,7 @@ On any mismatch or error the multipart upload is aborted, so no unverified objec
 exists. After completion the object is re-read from R2 and re-hashed. A
 provenance record is stored beside the object and appended to the ledger.
 """
-import argparse, hashlib, json, sys, time, urllib.request
+import argparse, hashlib, json, os, sys, time, urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -43,7 +43,8 @@ args = parser.parse_args()
 if any(part in ('', '.', '..') for part in args.key.split('/')):
     raise SystemExit('unsafe object key')
 key = f'{PREFIX}/{args.key}'
-env = dict(l.split('=', 1) for l in (args.repo / '.env.r2.local').read_text().splitlines() if l)
+local = args.repo / '.env.r2.local'          # absent on pods: secrets come from the environment
+env = dict(l.split('=', 1) for l in local.read_text().splitlines() if l) if local.exists() else os.environ
 s3 = boto3.client('s3', endpoint_url=env['R2_ENDPOINT_URL'], region_name='auto',
                   aws_access_key_id=env['AWS_ACCESS_KEY_ID'],
                   aws_secret_access_key=env['AWS_SECRET_ACCESS_KEY'],

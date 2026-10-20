@@ -1,0 +1,452 @@
+{
+ "accepted": true,
+ "front_clips": {
+  "a4uz0W33REs_0-5-rgb_front": {
+   "clip_sha256": "4ff48ff3506c882be8763d31eb2cad51d0f54732c2fd92bdeda27f51ee7f6657",
+   "clip_zip": "acquisition/2026-10-17-v1/how2sign-public/val_rgb_front_clips.zip",
+   "clip_zip_sha256": "6cb48170131fdb7fc64d40381a3c4be41112ba4454444170f5a31af2227b6d36",
+   "csv_start": 0.28,
+   "frames": 24,
+   "keypoints_key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-front-v1/keypoints/a4uz0W33REs_0-5-rgb_front.npz",
+   "keypoints_sha256": "1fb44f67fd9953118bfd17b2710f27fcfb3a7d575d9d901ff497b0ec76cdb036",
+   "offset_observations": 1150,
+   "offset_sampson_px": 5.6810002624027724,
+   "placement": {
+    "error": 56.35747528076172,
+    "nominal": 12,
+    "reason": null,
+    "runner_up": 96.0206527709961,
+    "start": 12,
+    "status": "placed"
+   }
+  },
+  "a4uz0W33REs_1-5-rgb_front": {
+   "clip_sha256": "e9be12ce88686b675a8a03986f2ed03a70c88b9d0601d1638bcb724366c6eb2b",
+   "clip_zip": "acquisition/2026-10-17-v1/how2sign-public/val_rgb_front_clips.zip",
+   "clip_zip_sha256": "6cb48170131fdb7fc64d40381a3c4be41112ba4454444170f5a31af2227b6d36",
+   "csv_start": 0.89,
+   "frames": 40,
+   "keypoints_key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-front-v1/keypoints/a4uz0W33REs_1-5-rgb_front.npz",
+   "keypoints_sha256": "91e79ce71ac80e61774dc9ff4db178683b3126d77ece2c6b76cc8890ffbece5a",
+   "offset_observations": 1957,
+   "offset_sampson_px": 4.761093668429221,
+   "placement": {
+    "error": 56.72016143798828,
+    "nominal": 36,
+    "reason": null,
+    "runner_up": 65.47794342041016,
+    "start": 36,
+    "status": "placed"
+   }
+  },
+  "a4uz0W33REs_10-5-rgb_front": {
+   "clip_sha256": "697b4d361398979429a0f8bf16d647df4d7a4a9e589075376050472677899b14",
+   "clip_zip": "acquisition/2026-10-17-v1/how2sign-public/val_rgb_front_clips.zip",
+   "clip_zip_sha256": "6cb48170131fdb7fc64d40381a3c4be41112ba4454444170f5a31af2227b6d36",
+   "csv_start": 34.24,
+   "frames": 162,
+   "keypoints_key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-front-v1/keypoints/a4uz0W33REs_10-5-rgb_front.npz",
+   "keypoints_sha256": "d4a5f5f7bb42154caeabf438af2a02ce91396980cbbbb2d8bee17c766b14a369",
+   "offset_observations": 7863,
+   "offset_sampson_px": 5.5106337901279305,
+   "placement": {
+    "error": 56.0831184387207,
+    "nominal": 1370,
+    "reason": null,
+    "runner_up": 106.43729400634766,
+    "start": 1370,
+    "status": "placed"
+   }
+  },
+  "a4uz0W33REs_11-5-rgb_front": {
+   "clip_sha256": "976922177482f85228e1e0ca155f5f514b806074b3b90fe975d5a0a86d53ad34",
+   "clip_zip": "acquisition/2026-10-17-v1/how2sign-public/val_rgb_front_clips.zip",
+   "clip_zip_sha256": "6cb48170131fdb7fc64d40381a3c4be41112ba4454444170f5a31af2227b6d36",
+   "csv_start": 38.31,
+   "frames": 80,
+   "keypoints_key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-front-v1/keypoints/a4uz0W33REs_11-5-rgb_front.npz",
+   "keypoints_sha256": "601097e6805b83b51100cf5b73053430d05ea465158c793f9aae296d68c0436a",
+   "offset_observations": 3704,
+   "offset_sampson_px": 4.233624213656772,
+   "placement": {
+    "error": 56.75949478149414,
+    "nominal": 1533,
+    "reason": null,
+    "runner_up": 57.20863342285156,
+    "start": 1533,
+    "status": "still"
+   }
+  },
+  "a4uz0W33REs_2-5-rgb_front": {
+   "clip_sha256": "0186df8a77bf081bbd2680e99825dab1d10f694a72ce54eb5ac8aaf948977b16",
+   "clip_zip": "acquisition/2026-10-17-v1/how2sign-public/val_rgb_front_clips.zip",
+   "clip_zip_sha256": "6cb48170131fdb7fc64d40381a3c4be41112ba4454444170f5a31af2227b6d36",
+   "csv_start": 1.96,
+   "frames": 177,
+   "keypoints_key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-front-v1/keypoints/a4uz0W33REs_2-5-rgb_front.npz",
+   "keypoints_sha256": "6cdcfecd6cadbbf4c87211f0c42129044d7ede56b4861897c0601c22aca42239",
+   "offset_observations": 8634,
+   "offset_sampson_px": 5.1845300126837515,
+   "placement": {
+    "error": 57.0394172668457,
+    "nominal": 79,
+    "reason": null,
+    "runner_up": 141.30575561523438,
+    "start": 79,
+    "status": "placed"
+   }
+  },
+  "a4uz0W33REs_4-5-rgb_front": {
+   "clip_sha256": "47ae65539ba6f5cfabb41493865c8b52611a6c3807694af8745bc1ca88a2b2e7",
+   "clip_zip": "acquisition/2026-10-17-v1/how2sign-public/val_rgb_front_clips.zip",
+   "clip_zip_sha256": "6cb48170131fdb7fc64d40381a3c4be41112ba4454444170f5a31af2227b6d36",
+   "csv_start": 9.18,
+   "frames": 65,
+   "keypoints_key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-front-v1/keypoints/a4uz0W33REs_4-5-rgb_front.npz",
+   "keypoints_sha256": "c44b8d8e17974757f9d58b3529b3234b58f340b51e56347fc706a817cb69049b",
+   "offset_observations": 3108,
+   "offset_sampson_px": 4.831256163128391,
+   "placement": {
+    "error": 56.429412841796875,
+    "nominal": 368,
+    "reason": null,
+    "runner_up": 100.2631607055664,
+    "start": 368,
+    "status": "placed"
+   }
+  },
+  "a4uz0W33REs_5-5-rgb_front": {
+   "clip_sha256": "493998d8a885b46417617c61bf87b479fa222de951491f08ddc70d0dc5b9438d",
+   "clip_zip": "acquisition/2026-10-17-v1/how2sign-public/val_rgb_front_clips.zip",
+   "clip_zip_sha256": "6cb48170131fdb7fc64d40381a3c4be41112ba4454444170f5a31af2227b6d36",
+   "csv_start": 10.81,
+   "frames": 113,
+   "keypoints_key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-front-v1/keypoints/a4uz0W33REs_5-5-rgb_front.npz",
+   "keypoints_sha256": "eedb29d6baa78376913c0d8cc350b66847dc99782961db6e1bbe19459ad7dd48",
+   "offset_observations": 5507,
+   "offset_sampson_px": 4.06761503479078,
+   "placement": {
+    "error": 56.79543685913086,
+    "nominal": 433,
+    "reason": null,
+    "runner_up": 96.30784606933594,
+    "start": 433,
+    "status": "placed"
+   }
+  },
+  "a4uz0W33REs_6-5-rgb_front": {
+   "clip_sha256": "30d682aa11585a551bc4a0cb4df18035e6b57472f9a528dcfc62ea7f118da073",
+   "clip_zip": "acquisition/2026-10-17-v1/how2sign-public/val_rgb_front_clips.zip",
+   "clip_zip_sha256": "6cb48170131fdb7fc64d40381a3c4be41112ba4454444170f5a31af2227b6d36",
+   "csv_start": 14.19,
+   "frames": 101,
+   "keypoints_key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-front-v1/keypoints/a4uz0W33REs_6-5-rgb_front.npz",
+   "keypoints_sha256": "97388dccdf90fb25c71f8e77ea38e1d9ad7fc0b5e30a3717f75b0163cbc1e97a",
+   "offset_observations": 4819,
+   "offset_sampson_px": 5.221218764506159,
+   "placement": {
+    "error": 56.500892639160156,
+    "nominal": 568,
+    "reason": null,
+    "runner_up": 101.18846130371094,
+    "start": 568,
+    "status": "placed"
+   }
+  },
+  "a4uz0W33REs_7-5-rgb_front": {
+   "clip_sha256": "ca10b16f0bb60a83ba5a693e535ae5eb6258c31e898cba542c72a2b29b02a8e3",
+   "clip_zip": "acquisition/2026-10-17-v1/how2sign-public/val_rgb_front_clips.zip",
+   "clip_zip_sha256": "6cb48170131fdb7fc64d40381a3c4be41112ba4454444170f5a31af2227b6d36",
+   "csv_start": 17.96,
+   "frames": 566,
+   "keypoints_key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-front-v1/keypoints/a4uz0W33REs_7-5-rgb_front.npz",
+   "keypoints_sha256": "2cd76b00e95e20dc0c19e8e0650f2ec76edb00513e1ccddec665081a8ec24f1c",
+   "offset_observations": 27645,
+   "offset_sampson_px": 4.24594752164537,
+   "placement": {
+    "error": 56.5245246887207,
+    "nominal": 719,
+    "reason": null,
+    "runner_up": 83.70010375976562,
+    "start": 719,
+    "status": "placed"
+   }
+  },
+  "a4uz0W33REs_8-5-rgb_front": {
+   "clip_sha256": "efa2c5bd7c4e45744914b9f38814a5787707374c8a125ba363980dcc0a845bee",
+   "clip_zip": "acquisition/2026-10-17-v1/how2sign-public/val_rgb_front_clips.zip",
+   "clip_zip_sha256": "6cb48170131fdb7fc64d40381a3c4be41112ba4454444170f5a31af2227b6d36",
+   "csv_start": 32.23,
+   "frames": 30,
+   "keypoints_key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-front-v1/keypoints/a4uz0W33REs_8-5-rgb_front.npz",
+   "keypoints_sha256": "d7343620d4e9298e2fa7a7883d29c77313b12660d1ba6d4fc05c266e777bd990",
+   "offset_observations": 1470,
+   "offset_sampson_px": 4.619159692761214,
+   "placement": {
+    "error": 56.298553466796875,
+    "nominal": 1290,
+    "reason": null,
+    "runner_up": 56.3626594543457,
+    "start": 1290,
+    "status": "still"
+   }
+  },
+  "a4uz0W33REs_9-5-rgb_front": {
+   "clip_sha256": "479faf7cefae9aff3f5aeb872398f9a6374e2d4db1af45ce075115c80ef97ea0",
+   "clip_zip": "acquisition/2026-10-17-v1/how2sign-public/val_rgb_front_clips.zip",
+   "clip_zip_sha256": "6cb48170131fdb7fc64d40381a3c4be41112ba4454444170f5a31af2227b6d36",
+   "csv_start": 32.99,
+   "frames": 24,
+   "keypoints_key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-front-v1/keypoints/a4uz0W33REs_9-5-rgb_front.npz",
+   "keypoints_sha256": "af2211ccb46e1a5efc856227b4c278e677ab1217de6249bb335f520d66bb84c8",
+   "offset_observations": 1176,
+   "offset_sampson_px": 4.939364889392348,
+   "placement": {
+    "error": 56.05125045776367,
+    "nominal": 1320,
+    "reason": null,
+    "runner_up": 77.6847152709961,
+    "start": 1320,
+    "status": "placed"
+   }
+  }
+ },
+ "front_keypoints": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-front-v1",
+ "offset": {
+  "curve": {
+   "-60": 24.34313249287659,
+   "-59": 24.633691301748698,
+   "-58": 22.329973167602223,
+   "-57": 22.886639255047996,
+   "-56": 22.639461793953977,
+   "-55": 21.610309207376517,
+   "-54": 21.599743254116234,
+   "-53": 24.82455419340878,
+   "-52": 24.00725885934664,
+   "-51": 25.081397972146604,
+   "-50": 20.515716574379358,
+   "-49": 25.874667912623444,
+   "-48": 20.85163110592268,
+   "-47": 22.133168982528268,
+   "-46": 23.22737677092056,
+   "-45": 22.476399186878275,
+   "-44": 26.2522813995339,
+   "-43": 21.74253594740336,
+   "-42": 21.989885678448616,
+   "-41": 25.014838610306025,
+   "-40": 20.81702281886377,
+   "-39": 20.84126467405074,
+   "-38": 22.46251507165915,
+   "-37": 24.868095790809107,
+   "-36": 24.66282644802947,
+   "-35": 23.594371253007495,
+   "-34": 20.077209306635705,
+   "-33": 18.83897711895665,
+   "-32": 27.02778080837321,
+   "-31": 27.932431430873606,
+   "-30": 24.061388618942523,
+   "-29": 24.998370296418422,
+   "-28": 25.341620834032028,
+   "-27": 27.84106603976218,
+   "-26": 23.97553097077337,
+   "-25": 21.20248600896899,
+   "-24": 24.99200110089768,
+   "-23": 24.788392823081434,
+   "-22": 23.0122626060869,
+   "-21": 22.680049632772395,
+   "-20": 25.10870142163408,
+   "-19": 21.889420568444653,
+   "-18": 23.46859723188536,
+   "-17": 27.490597746157462,
+   "-16": 24.63039618444473,
+   "-15": 24.571679353949122,
+   "-14": 24.474570645797343,
+   "-13": 22.28625816982415,
+   "-12": 21.755179582154064,
+   "-11": 18.945234475426055,
+   "-10": 18.91024421820964,
+   "-9": 17.663272178226016,
+   "-8": 17.33877315883039,
+   "-7": 15.678886815513348,
+   "-6": 15.298974766889124,
+   "-5": 15.05727080261004,
+   "-4": 12.218487561693266,
+   "-3": 11.934921007572335,
+   "-2": 11.323805645383498,
+   "-1": 11.100979452850792,
+   "0": 12.377523070840388,
+   "1": 11.215957677179622,
+   "2": 10.746367272495968,
+   "3": 10.222601292987603,
+   "4": 9.032612017283977,
+   "5": 9.727846791957525,
+   "6": 7.4054533456199305,
+   "7": 7.82329120300343,
+   "8": 5.702532690041378,
+   "9": 4.568213244828662,
+   "10": 4.824564180513645,
+   "11": 6.003583396004714,
+   "12": 6.592099070953921,
+   "13": 7.470714207088034,
+   "14": 7.656549785672889,
+   "15": 8.836530669962887,
+   "16": 8.941557071130786,
+   "17": 9.370703824073214,
+   "18": 10.410090158402948,
+   "19": 9.964736881267465,
+   "20": 11.36184787752117,
+   "21": 12.233562642707803,
+   "22": 11.496385146029747,
+   "23": 12.871575174035828,
+   "24": 17.66151075726165,
+   "25": 18.548887481520303,
+   "26": 14.462669014184051,
+   "27": 16.2480431748655,
+   "28": 15.622138944799076,
+   "29": 16.695828680833838,
+   "30": 15.251469958309777,
+   "31": 18.666290008100212,
+   "32": 21.491839982340444,
+   "33": 24.963769229548443,
+   "34": 15.744169993416259,
+   "35": 19.22846818181906,
+   "36": 21.432444998522882,
+   "37": 19.16460399948767,
+   "38": 20.559344950547253,
+   "39": 20.876256048232737,
+   "40": 22.929843429664245,
+   "41": 19.79582885355873,
+   "42": 21.053871919117185,
+   "43": 20.400647752116083,
+   "44": 24.471222140992317,
+   "45": 21.931632382760547,
+   "46": 20.570494488887007,
+   "47": 22.438536295064875,
+   "48": 23.199253059132005,
+   "49": 23.6216986547591,
+   "50": 23.548678011175173,
+   "51": 24.56923456443907,
+   "52": 20.231242011092927,
+   "53": 21.41598579526506,
+   "54": 26.530353595537086,
+   "55": 24.899681595374485,
+   "56": 21.560741759597637,
+   "57": 22.615093308513607,
+   "58": 24.456019439165004,
+   "59": 20.825872072178882,
+   "60": 20.95437203825448
+  },
+  "fine_curve": {
+   "7.5": 6.114008868494226,
+   "7.75": 6.433576002827294,
+   "8.0": 5.702532690041378,
+   "8.25": 4.745260219672066,
+   "8.5": 4.607044091554867,
+   "8.75": 4.739821133944828,
+   "9.0": 4.568213244828662,
+   "9.25": 4.645569338861438,
+   "9.5": 4.752748840601161,
+   "9.75": 4.598451612582561,
+   "10.0": 4.824564180513645,
+   "10.25": 4.882192752189662,
+   "10.5": 5.025945469636411
+  },
+  "integer_offset": 9,
+  "offset_frames": 9.385628706627992,
+  "offset_seconds": 0.3128542902209331,
+  "passed": true,
+  "reason": null,
+  "sampson_px": 4.618707654934611,
+  "sharpness": 0.6929830992615241,
+  "zero_lag_ratio": 0.36907329670753725
+ },
+ "outputs": {
+  "a4uz0W33REs_0-5-rgb_side": {
+   "key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-side-recut-v1/keypoints/a4uz0W33REs_0-5-rgb_side.npz",
+   "sha256": "f115768f406bb2070b58ebedea7ea998ea710ac8d84157bcd53bb88345905fe7"
+  },
+  "a4uz0W33REs_1-5-rgb_side": {
+   "key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-side-recut-v1/keypoints/a4uz0W33REs_1-5-rgb_side.npz",
+   "sha256": "26285098e9c4c3ebeb927dbf86e87a3cd811cb6b01bf22e26f05201f21f17a3a"
+  },
+  "a4uz0W33REs_10-5-rgb_side": {
+   "key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-side-recut-v1/keypoints/a4uz0W33REs_10-5-rgb_side.npz",
+   "sha256": "6f6e9c4d238b7d9210955782879e71cf89f03fd1c8af064bd43762742633061b"
+  },
+  "a4uz0W33REs_11-5-rgb_side": {
+   "key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-side-recut-v1/keypoints/a4uz0W33REs_11-5-rgb_side.npz",
+   "sha256": "6711fb03520a3e53ca39cf2270aa693c974964cb75b4a96580a80312c480e5c6"
+  },
+  "a4uz0W33REs_2-5-rgb_side": {
+   "key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-side-recut-v1/keypoints/a4uz0W33REs_2-5-rgb_side.npz",
+   "sha256": "8c79ba6a67834fd667b2d31d72efb97fdd30456127a80d275c2498be5632fe09"
+  },
+  "a4uz0W33REs_4-5-rgb_side": {
+   "key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-side-recut-v1/keypoints/a4uz0W33REs_4-5-rgb_side.npz",
+   "sha256": "143d10067ad6841afa327e37d11f7eabfefb1745564b98df3afa82a3eabd3768"
+  },
+  "a4uz0W33REs_5-5-rgb_side": {
+   "key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-side-recut-v1/keypoints/a4uz0W33REs_5-5-rgb_side.npz",
+   "sha256": "92f3163d5edaf0a09a1c50a767884e877d6ed4cf634bb7a35608ed37615c985c"
+  },
+  "a4uz0W33REs_6-5-rgb_side": {
+   "key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-side-recut-v1/keypoints/a4uz0W33REs_6-5-rgb_side.npz",
+   "sha256": "f487d9c77c507cf514ac1462016323502646df5139ab746e6f3f241b82c69a63"
+  },
+  "a4uz0W33REs_7-5-rgb_side": {
+   "key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-side-recut-v1/keypoints/a4uz0W33REs_7-5-rgb_side.npz",
+   "sha256": "cb817079eb4577a69bd155a074c0051fb47ece1e1115e26ccc05df8c02eb4304"
+  },
+  "a4uz0W33REs_8-5-rgb_side": {
+   "key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-side-recut-v1/keypoints/a4uz0W33REs_8-5-rgb_side.npz",
+   "sha256": "426fadb5aa7613cbe6fe2b59dd7a48ac64dccce28b1658f0a65c8b4649984658"
+  },
+  "a4uz0W33REs_9-5-rgb_side": {
+   "key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-side-recut-v1/keypoints/a4uz0W33REs_9-5-rgb_side.npz",
+   "sha256": "fe46c56e6815da02d6e6c6d83b1e861a9574dcbfe18792be5f3c0e0b1f58c3d6"
+  }
+ },
+ "raw_front": {
+  "bytes": 68176143,
+  "frames": 1638,
+  "member": "a4uz0W33REs-5-rgb_front.mp4",
+  "member_sha256": "d34fb1225366ce3613152c591212a9a8c6b33a0b2a310b2f2b926fd1a018a363",
+  "zip_key": "acquisition/2026-10-17-v1/how2sign-raw/val_raw_videos/shard_009_014.zip",
+  "zip_sha256": "209c80d1450acc2d2a087fe99ba5e4f1074b16e5a9586691d14c0ed73cdb7599"
+ },
+ "raw_side": {
+  "bytes": 67850212,
+  "frames": 1638,
+  "member": "a4uz0W33REs-5-rgb_side.mp4",
+  "member_sha256": "9277e536009baa558b8f532da1d888e64320cd58e69ccfaa0fea5f74206a0a08",
+  "zip_key": "acquisition/2026-10-17-v1/how2sign-raw/val_rgb_side_raw_videos/shard_009_014.zip",
+  "zip_sha256": "a281765d12c0504784822e2a2a4ecd7e4cb9e135fd6a0c56e8349545c4453921"
+ },
+ "reason": null,
+ "sapiens": {
+  "flip_tta": true,
+  "frames": [
+   0,
+   1638
+  ],
+  "model_sha256": "d1077c15e66fb2798893e569f71cb063f0b0778af2a62e3c0233807a351c31f3",
+  "raw_keypoints_key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-side-recut-v1/raw-keypoints/a4uz0W33REs-5-rgb_side.npz",
+  "raw_keypoints_sha256": "b7c5d33c7121130a2eb6045b580033ca76f4e464e5617b6e82f1bfc23337ca8b"
+ },
+ "schema_version": 1,
+ "sentences": {
+  "acquisition/2026-10-17-v1/how2sign-public/how2sign_val.csv": "f6f0cef01c3f891ca624a45c71eb7f7748b77362d7418c47567a984384f1537c"
+ },
+ "session": "a4uz0W33REs-5",
+ "thresholds": {
+  "far_lag": 3,
+  "fine_step": 0.25,
+  "front_frames_per_unit": 40.0,
+  "match_ratio": 1.25,
+  "max_offset_frames": 60,
+  "max_sampson_px": 8.0,
+  "placement_sharpness": 0.9,
+  "placement_window": 8,
+  "sync_sharpness": 0.8
+ }
+}

@@ -90,3 +90,35 @@ def test_shared_intrinsics_are_pinned_by_hash_and_used(tmp_path):
     for gate in report["gates"].values():
         assert gate["shared_intrinsics"] == "cams/intrinsics.json"
         assert gate["focal"] == [shared["focal1"], shared["focal2"]]
+
+
+def test_take5_sessions_use_recut_lateral_keypoints(tmp_path):
+    store = DirectoryStore(tmp_path)
+    for i, (_, front, side) in enumerate(session_clips(lag=0, seeds=(0, 1, 2))):
+        write(store, "front", f"vidC_{i}-5-rgb_front", front)
+        kept = len(side.times) * 3 // 4
+        miscut = replace(side, times=side.times[:kept], points=side.points[-kept:], confidence=side.confidence[-kept:])
+        write(store, "side", f"vidC_{i}-5-rgb_side", miscut)          # the release: ¾ of the frames, elsewhere
+        write(store, "recut", f"vidC_{i}-5-rgb_side", side)           # re-cut from the raw recording
+        store.put(f"mono/states/vidC_{i}-5-rgb_front.npz", monocular_state(len(front.times)))
+    base = ["--store", f"dir:{tmp_path}", "--front-keypoints", "front", "--side-keypoints", "side", "--monocular", "mono"]
+    assert main(base + ["--prefix", "released"]) == 0
+    gate = json.loads(store.get("released/reports/shard-000-of-001.json"))["gates"]["vidC-5"]
+    assert not gate["passed"] and "take-5" in gate["reasons"][0] and gate["side_source"] is None
+    record = dict(accepted=True, offset=dict(offset_frames=9.35, sampson_px=4.2),
+                  raw_side=dict(member_sha256="a" * 64), raw_front=dict(member_sha256="b" * 64))
+    store.put("recut/sessions/vidC-5.json", json.dumps(record).encode())
+    assert main(base + ["--prefix", "recovered", "--recut-side-keypoints", "recut"]) == 0
+    report = json.loads(store.get("recovered/reports/shard-000-of-001.json"))
+    gate = report["gates"]["vidC-5"]
+    assert gate["passed"], gate["reasons"]
+    assert gate["lag_frames"] == 0 and gate["time_scale"] == 1.
+    source = gate["side_source"]
+    assert source["offset_frames"] == 9.35 and source["session_key"] == "recut/sessions/vidC-5.json"
+    assert source["session_sha256"] == hashlib.sha256(store.get("recut/sessions/vidC-5.json")).hexdigest()
+    assert len(report["results"]) == 3
+    # Re-cut keypoints whose session record is missing (an interrupted re-cut) refuse the session.
+    (tmp_path / "recut/sessions/vidC-5.json").unlink()
+    assert main(base + ["--prefix", "interrupted", "--recut-side-keypoints", "recut"]) == 0
+    gate = json.loads(store.get("interrupted/reports/shard-000-of-001.json"))["gates"]["vidC-5"]
+    assert not gate["passed"] and "session record" in gate["reasons"][0]

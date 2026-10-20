@@ -2,6 +2,8 @@
 # One-command stages of the How2Sign two-view pipeline (docs/RUNPOD.md), resumable.
 #
 #   runpod/pipeline.sh sapiens SHARD SHARDS     # GPU pods: Sapiens keypoints, both views, all splits
+#   runpod/pipeline.sh raw SPLIT                # one pod: raw recordings of both cameras into R2 (take-5 recovery)
+#   runpod/pipeline.sh recut SHARD SHARDS       # GPU pods: take-5 lateral keypoints re-cut from the raw recordings
 #   runpod/pipeline.sh cameras                  # one pod: shared camera intrinsics (written once)
 #   runpod/pipeline.sh triangulate SHARD SHARDS # CPU pods: sync, calibrate, gate, two-view states
 #   runpod/pipeline.sh manifest                 # one pod: training manifest from the two-view reports
@@ -11,7 +13,8 @@
 # Every stage re-reads its inputs from R2 and pins them by SHA-256; every job skips
 # work already written, so re-running a stage after an interruption continues it.
 # Overridable: DERIVED (output root), MONO (monocular states), SPLITS, MATCH (clip
-# filename regex, for smoke tests), SAPIENS_FLAGS, MODELS, TRAIN_FLAGS.
+# filename regex, for smoke tests), SAPIENS_FLAGS, MODELS, TRAIN_FLAGS, RECUT_MATCH (session
+# regex for recut), RECUT_FLAGS, LEDGER (local acquisition ledger of the raw stage).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 for v in R2_ENDPOINT_URL R2_BUCKET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
@@ -30,6 +33,8 @@ FOLD_SHA=00ea2bb9305bb78d96b25e4dbbc8eb2d1393ab862cd79857db56d73c11a34778
 FRONT_PREFIX=$DERIVED/how2sign-sapiens-front-v1
 SIDE_PREFIX=$DERIVED/how2sign-sapiens-side-v1
 TWO_VIEW=$DERIVED/how2sign-two-view-v1
+RAW=acquisition/2026-10-17-v1/how2sign-raw
+RECUT=$DERIVED/how2sign-sapiens-side-recut-v1
 CAMERAS=$DERIVED/how2sign-cameras-v1/intrinsics.json
 MANIFEST=$DERIVED/how2sign-text-manifest-v1/manifest.json
 MATCH_ARGS=()
@@ -58,13 +63,27 @@ case "$stage" in
           --checkpoint "$CK" --checkpoint-sha256 $CS --shard "$shard" --shards "$shards" ${SAPIENS_FLAGS:-} ${MATCH_ARGS[@]+"${MATCH_ARGS[@]}"}
       done
     done ;;
+  raw)
+    split=${1:?split}
+    $PY scripts/acquisition/acquire_how2sign_raw.py --split "$split" --ledger "${LEDGER:-${WORK:-/workspace}/acquisition-ledger.jsonl}" ;;
+  recut)
+    shard=${1:?shard}; shards=${2:?shards}
+    [[ -f $CK ]] || $PY -c "import os,sys; from signtranslator.data.text_motion_dataset import R2Store; open(sys.argv[1],'wb').write(R2Store(os.environ).get('acquisition/2026-10-17-v1/models-sapiens/sapiens_1b_goliath_best_goliath_AP_639_torchscript.pt2'))" "$CK"
+    inputs=()
+    for split in $SPLITS; do
+      key=$H/${split}_rgb_front_clips.zip
+      inputs+=(--front-zip "$key=$(zip_sha "$key")" --sentences "$H/how2sign_${split}.csv")
+    done
+    $PY scripts/recut_how2sign_take5.py --front-keypoints "$FRONT_PREFIX" "${inputs[@]}" --raw-prefix "$RAW" --prefix "$RECUT" \
+      --checkpoint "$CK" --checkpoint-sha256 $CS --shard "$shard" --shards "$shards" \
+      ${RECUT_MATCH:+--match "$RECUT_MATCH"} ${RECUT_FLAGS:-} ;;
   cameras)
     $PY scripts/calibrate_how2sign_cameras.py --front-keypoints "$FRONT_PREFIX" --side-keypoints "$SIDE_PREFIX" \
       --sessions "${SESSIONS:-40}" --output-key "$CAMERAS" ;;
   triangulate)
     shard=${1:?shard}; shards=${2:?shards}
     $PY scripts/triangulate_how2sign_sessions.py --front-keypoints "$FRONT_PREFIX" --side-keypoints "$SIDE_PREFIX" \
-      --monocular "$MONO" --prefix "$TWO_VIEW" --intrinsics-key "$CAMERAS" --intrinsics-sha256 "$(object_sha "$CAMERAS")" \
+      --recut-side-keypoints "$RECUT" --monocular "$MONO" --prefix "$TWO_VIEW" --intrinsics-key "$CAMERAS" --intrinsics-sha256 "$(object_sha "$CAMERAS")" \
       --shard "$shard" --shards "$shards" ;;
   manifest)
     $PY scripts/build_how2sign_text_manifest.py --reports-prefix "$TWO_VIEW/reports/" --corpus-id how2sign-two-view-text-v1 \

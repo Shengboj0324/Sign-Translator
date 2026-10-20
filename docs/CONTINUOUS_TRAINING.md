@@ -75,9 +75,13 @@ clip is 1280×720 H.264 at 24 fps.
 about a third of How2Sign, every lateral clip holds ¾ of the frontal clip's frames and
 shows a different moment of the recording. No time mapping aligns them: the epipolar
 error stays at 15–16 px for every candidate scale, offset and linear placement,
-against ~4 px for good sessions. The session script refuses them with that reason, so
-two-view states come from the other takes; take-5 sentences keep monocular states.
-Re-cutting their lateral clips from the raw side recordings is the recovery path.
+against ~4 px for good sessions. The session script refuses them with that reason.
+They are recovered from the raw 30 fps recordings (`runpod/pipeline.sh raw` and
+`recut`, `docs/RUNPOD.md` §3c). The released frontal clips are exact runs of raw
+frontal frames, so lateral keypoints are re-cut at the session's sub-frame camera
+offset, found by the epipolar scan. On `a4uz0W33REs-5` the offset is 9.39 frames with
+4.6 px epipolar error, and the session then passes the two-view gate. Until the stage
+has run over the corpus, take-5 sentences keep monocular states.
 
 ## 2. Primary pipeline: two-view triangulation (decision in [DATA_QUALITY_DECISION.md](DATA_QUALITY_DECISION.md))
 

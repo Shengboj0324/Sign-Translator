@@ -47,32 +47,51 @@ def load_model(path: Path, expected_sha256: str | None, device):
 
 
 @torch.no_grad()
-def clip_keypoints(video: Path, model, device, batch: int, flip: bool = True):
-    import av
-    times, frames, boxes = [], [], []
-    with av.open(str(video)) as container:
-        if not container.streams.video:
-            raise ValueError("the file has no video stream")
-        for frame in container.decode(container.streams.video[0]):
-            rgb = frame.to_ndarray(format="rgb24")
-            box = green_screen_box(rgb)
-            if box is None:
-                box = (0., 0., float(rgb.shape[1]), float(rgb.shape[0]))
-            times.append(float(frame.pts * frame.time_base))
-            frames.append(rgb)
-            boxes.append(crop_box(box))
-    points = np.zeros((len(frames), 308, 2), np.float32)
-    confidence = np.zeros((len(frames), 308), np.float16)
-    for start in range(0, len(frames), batch):
-        chunk = range(start, min(start + batch, len(frames)))
-        inputs = torch.cat([preprocess(frames[i], boxes[i]) for i in chunk]).to(device)
+def frames_keypoints(frames, model, device, batch: int, flip: bool = True):
+    """Keypoints of an iterable of RGB frames, run in batches as the frames stream in.
+
+    Only one batch of frames is held at a time, so whole raw recordings fit in memory.
+    The signer's box comes from the green screen per frame (whole frame if none).
+    """
+    points, confidence, pending = [], [], []
+
+    def run():
+        inputs = torch.cat([preprocess(rgb, box) for rgb, box in pending]).to(device)
         with torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
             heatmaps = model(inputs).float().cpu().numpy()
             mirrored = model(torch.flip(inputs, dims=[3])).float().cpu().numpy() if flip else None
-        for k, i in enumerate(chunk):
+        for k, (_, box) in enumerate(pending):
             heat = flip_average(heatmaps[k], mirrored[k]) if flip else heatmaps[k]
-            p, c = decode_heatmaps(heat, boxes[i])
-            points[i], confidence[i] = p, c
+            p, c = decode_heatmaps(heat, box)
+            points.append(p)
+            confidence.append(c)
+        pending.clear()
+
+    for rgb in frames:
+        box = green_screen_box(rgb)
+        if box is None:
+            box = (0., 0., float(rgb.shape[1]), float(rgb.shape[0]))
+        pending.append((rgb, crop_box(box)))
+        if len(pending) == batch:
+            run()
+    if pending:
+        run()
+    return (np.array(points, np.float32).reshape(-1, 308, 2), np.array(confidence, np.float16).reshape(-1, 308))
+
+
+def clip_keypoints(video: Path, model, device, batch: int, flip: bool = True):
+    import av
+    times = []
+    with av.open(str(video)) as container:
+        if not container.streams.video:
+            raise ValueError("the file has no video stream")
+
+        def frames():
+            for frame in container.decode(container.streams.video[0]):
+                times.append(float(frame.pts * frame.time_base))
+                yield frame.to_ndarray(format="rgb24")
+
+        points, confidence = frames_keypoints(frames(), model, device, batch, flip)
     return np.array(times), points, confidence
 
 

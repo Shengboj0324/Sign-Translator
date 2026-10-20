@@ -1,0 +1,203 @@
+{
+ "gate": {
+  "epipolar_curve": {
+   "-1": 5.142011084907141,
+   "-10": 14.064086318453459,
+   "-11": 13.938016472749618,
+   "-12": 12.327618600175278,
+   "-13": 14.388068644780589,
+   "-14": 18.84264186442338,
+   "-15": 14.461593703781862,
+   "-2": 6.896179984802336,
+   "-3": 6.959976951901684,
+   "-4": 8.298781953767707,
+   "-5": 7.988364177380325,
+   "-6": 10.015531429536516,
+   "-7": 10.696741425812526,
+   "-8": 9.490116730906166,
+   "-9": 11.815047561324432,
+   "0": 4.61869849924907,
+   "1": 5.005720309686964,
+   "10": 12.292019709851076,
+   "11": 17.102298405399107,
+   "12": 14.394142322761958,
+   "13": 14.641023058448265,
+   "14": 16.88551373863516,
+   "15": 15.330642539837738,
+   "2": 6.24958830544169,
+   "3": 8.357708599862757,
+   "4": 7.819400760211017,
+   "5": 8.940433402632426,
+   "6": 8.812452570348277,
+   "7": 8.86387177666903,
+   "8": 13.103212901697049,
+   "9": 11.298312629956719
+  },
+  "epipolar_sampson_px": 4.61869849924907,
+  "focal": [
+   879.1059747070192,
+   1249.0515193597696
+  ],
+  "lag_frames": 0,
+  "metric_scale": {
+   "chi2": 1.005325493189877,
+   "cues": {
+    "forearm": {
+     "metres": 0.26178272948049824,
+     "samples": 2764
+    },
+    "hand_length": {
+     "metres": 0.1796982881275854,
+     "samples": 2761
+    },
+    "interpupillary": {
+     "metres": 0.06711732024009821,
+     "samples": 1382
+    },
+    "upper_arm": {
+     "metres": 0.2885096103049549,
+     "samples": 2764
+    }
+   },
+   "metres_per_unit": 2.052308916004783,
+   "origin": [
+    0.022563539965750168,
+    0.01786988353824701,
+    0.6887509094372716
+   ],
+   "relative_sd": 0.06718305714634981
+  },
+  "metric_scale_error": null,
+  "monocular_bone_cv": 0.05090452593980031,
+  "passed": true,
+  "reasons": [],
+  "reprojection_px": [
+   1.9227392156834566,
+   0.9365135236463917
+  ],
+  "shared_intrinsics": null,
+  "side_source": {
+   "kind": "re-cut from the raw recordings (audit B80)",
+   "offset_frames": 9.385628706627992,
+   "offset_sampson_px": 4.618707654934611,
+   "raw_front_sha256": "d34fb1225366ce3613152c591212a9a8c6b33a0b2a310b2f2b926fd1a018a363",
+   "raw_side_sha256": "9277e536009baa558b8f532da1d888e64320cd58e69ccfaa0fea5f74206a0a08",
+   "session_key": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-sapiens-side-recut-v1/sessions/a4uz0W33REs-5.json",
+   "session_sha256": "23729886abda5496b4ef3c44728d59fea0cd9e919dad7b445cccd137d791073b"
+  },
+  "symmetry_error": 0.07622064946213603,
+  "sync": [
+   {
+    "lag_frames": 0,
+    "observations": 1150,
+    "passed": true,
+    "sampson_px": 5.6809940756932935,
+    "sentence": "a4uz0W33REs_0-5",
+    "velocity_correlation": 0.6679327602486562,
+    "velocity_lag_frames": -1
+   },
+   {
+    "lag_frames": 0,
+    "observations": 1957,
+    "passed": true,
+    "sampson_px": 4.7610932303277105,
+    "sentence": "a4uz0W33REs_1-5",
+    "velocity_correlation": 0.6921388342446965,
+    "velocity_lag_frames": 0
+   },
+   {
+    "lag_frames": 0,
+    "observations": 7863,
+    "passed": true,
+    "sampson_px": 5.51064079873022,
+    "sentence": "a4uz0W33REs_10-5",
+    "velocity_correlation": 0.6536677389884006,
+    "velocity_lag_frames": 1
+   },
+   {
+    "lag_frames": 0,
+    "observations": 3704,
+    "passed": true,
+    "sampson_px": 4.233621553872089,
+    "sentence": "a4uz0W33REs_11-5",
+    "velocity_correlation": 0.26983810984717377,
+    "velocity_lag_frames": -14
+   },
+   {
+    "lag_frames": 0,
+    "observations": 8634,
+    "passed": true,
+    "sampson_px": 5.184528513745369,
+    "sentence": "a4uz0W33REs_2-5",
+    "velocity_correlation": 0.7120275962442802,
+    "velocity_lag_frames": -1
+   },
+   {
+    "lag_frames": 0,
+    "observations": 3108,
+    "passed": true,
+    "sampson_px": 4.831247172686718,
+    "sentence": "a4uz0W33REs_4-5",
+    "velocity_correlation": 0.341304986564119,
+    "velocity_lag_frames": 6
+   },
+   {
+    "lag_frames": 0,
+    "observations": 5507,
+    "passed": true,
+    "sampson_px": 4.067613309472252,
+    "sentence": "a4uz0W33REs_5-5",
+    "velocity_correlation": 0.6574653260849916,
+    "velocity_lag_frames": -1
+   },
+   {
+    "lag_frames": 0,
+    "observations": 4819,
+    "passed": true,
+    "sampson_px": 5.221227529941405,
+    "sentence": "a4uz0W33REs_6-5",
+    "velocity_correlation": 0.5763266295645812,
+    "velocity_lag_frames": 0
+   },
+   {
+    "lag_frames": 0,
+    "observations": 27645,
+    "passed": true,
+    "sampson_px": 4.245953183423337,
+    "sentence": "a4uz0W33REs_7-5",
+    "velocity_correlation": 0.46532492496629974,
+    "velocity_lag_frames": 0
+   },
+   {
+    "lag_frames": 0,
+    "observations": 1470,
+    "passed": true,
+    "sampson_px": 4.619160973544054,
+    "sentence": "a4uz0W33REs_8-5",
+    "velocity_correlation": 0.6978782656641416,
+    "velocity_lag_frames": 4
+   },
+   {
+    "lag_frames": 0,
+    "observations": 1176,
+    "passed": true,
+    "sampson_px": 4.939364802074959,
+    "sentence": "a4uz0W33REs_9-5",
+    "velocity_correlation": 0.6349832584183878,
+    "velocity_lag_frames": 1
+   }
+  ],
+  "thresholds": {
+   "confidence": 0.3,
+   "max_clip_epipolar_ratio": 2.0,
+   "max_reprojection_px": 2.0,
+   "quality": "triangulated bone-length CV below monocular",
+   "sync": "epipolar, session lag",
+   "sync_sharpness": 0.8
+  },
+  "time_scale": 1.0,
+  "triangulated_bone_cv": 0.03485368525465746
+ },
+ "prefix": "acquisition/2026-10-17-v1/derived/recut-a4uz0W33REs-5-2026-10-19/how2sign-two-view-selfcal-v1",
+ "states": 11
+}

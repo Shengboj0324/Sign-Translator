@@ -34,8 +34,10 @@ every stage below is one command; each pins its inputs by SHA-256 and resumes:
 
 ```bash
 runpod/pipeline.sh sapiens 0 4          # GPU pods: shard i of n, both views, all splits
+runpod/pipeline.sh raw train            # one pod per split: raw recordings into R2 (take-5 recovery, §3c)
+runpod/pipeline.sh recut 0 8            # GPU pods: take-5 lateral keypoints re-cut from the raw recordings
 runpod/pipeline.sh cameras              # one pod: shared camera intrinsics (40 sessions)
-runpod/pipeline.sh triangulate 0 8      # CPU pods: sync, calibrate, gate, two-view states
+runpod/pipeline.sh triangulate 0 8      # CPU pods: sync, calibrate, gate, two-view states (take-5 via the re-cut)
 runpod/pipeline.sh manifest             # one pod: training manifest from the two-view reports
 runpod/pipeline.sh train tokens         # tokenizer then prior (recommended); or diffusion | regression
 runpod/pipeline.sh evaluate tokens-prior-v1
@@ -127,6 +129,53 @@ MediaPipe and triangulation stages are CPU-bound and comparatively cheap.
 lists its gate result and reasons. Train only on the two-view states (the manifest
 below is built from `how2sign-two-view-v1/reports/`). If too few sessions pass, stop
 and report — do not fall back to monocular states silently.
+
+## 3c. Recover the take-5 sessions (audit B80)
+
+The released lateral clips of take-5 sessions (about a third of How2Sign) are mis-cut,
+so the session script refuses them. Their raw 30 fps recordings are intact, and the
+released frontal clips are exact runs of raw frontal frames (from ⌈40 × START⌉ of the
+original CSV). Two stages recover them; `triangulate` then uses the re-cut lateral
+keypoints for those sessions (`--recut-side-keypoints`) and gates them like any other.
+
+1. **`raw SPLIT`** (network-bound, any pod) streams the mirror's raw-recording shards of
+   both cameras into `acquisition/2026-10-17-v1/how2sign-raw/` with
+   `scripts/acquisition/acquire_how2sign_raw.py`. Each shard must hash to the mirror's
+   Git LFS SHA-256 at the pinned commit and is re-read from R2. Where the publisher's own
+   zip is mirrored under `original/` (val, both cameras; test, frontal), every shard
+   member must also have the publisher's CRC-32 and size. Sizes: train 294 GB frontal +
+   313 GB lateral, val 17.5 + 17.3 GB, test 25.1 + 25.1 GB. With `--recordings REGEX`
+   only shards holding a matching recording are transferred.
+2. **`recut SHARD SHARDS`** (GPU) runs `scripts/recut_how2sign_take5.py` per take-5
+   session: it places every released frontal clip in the raw frontal recording by frame
+   differences (the clip must be the one the frontal keypoints came from, by hash), runs
+   Sapiens on the raw lateral recording (only frames the search can reach), finds the
+   camera offset by the epipolar scan with sub-frame refinement, refuses the session if
+   the minimum is not sharp and clearly below lag 0, and writes lateral keypoints on each
+   frontal clip's frames, interpolated at the fractional offset, to
+   `derived/how2sign-sapiens-side-recut-v1/keypoints/`. `sessions/<session>.json` holds
+   the provenance: source zip and recording hashes, clip placements, the offset, both
+   epipolar curves and per-clip errors.
+
+Budget: the raw lateral recordings hold about 8.6 M frames (41 KB per frame on the
+validated session); take-5 is about a third, so about 2.9 M frames or 5.7 M Sapiens
+passes with flip TTA, a quarter of the clip budget below. The frontal recordings are only
+decoded.
+
+**Run end to end on 2026-10-19** on `a4uz0W33REs-5` (val), under
+`derived/recut-a4uz0W33REs-5-2026-10-19/` (records copied to
+`evidence/how2sign-take5-recut-2026-10-19/`).
+- **Raw:** frontal and lateral shard 9 of 14; both hashes equal the mirror's, all ten
+  recordings in each equal the publisher zip by CRC-32 and size.
+- **Placement:** all 11 frontal clips; 9 to the frame (each at ⌈40 × START⌉), 2 too
+  still to tell neighbouring frames apart and so taken at their nominal start.
+- **Offset:** 9.39 frames (0.313 s; the earlier independent estimate was 9.35). The
+  epipolar error is 4.62 px there, 12.4 px at lag 0 and 14.5–27.9 px at offsets 15 or
+  more frames away. Per clip it is 4.1–5.7 px.
+- **Gate:** passed with the shared intrinsics of the smoke run. Reprojection is 1.64 and
+  1.17 px. The re-check finds lag 0 with 11 of 11 clips synchronised, and the
+  triangulated bone-length CV is 0.035 against 0.051 monocular. 11 two-view states were
+  written. Self-calibrated, it also passes (1.92 and 0.94 px).
 
 ## 4. Build the training manifest (once, after all shards)
 
