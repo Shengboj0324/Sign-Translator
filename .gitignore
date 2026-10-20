@@ -24,3 +24,8 @@ wandb/
 # Cokely corpus downloads live in R2 (acquisition/2026-10-17-v1/cokely-afs-parallel-corpus/)
 /*CokelyAFSParallelCorpus*
 ~$*
+runpod/fleet/pod_key
+runpod/fleet/pod_key.pub
+runpod/fleet/known_hosts
+runpod/fleet/ssh-*.txt
+runpod/fleet/fleet.json
