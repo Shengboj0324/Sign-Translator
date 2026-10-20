@@ -138,6 +138,28 @@ def clip_keypoints(video: Path, model, device, batch: int, flip: bool = True, wo
     return np.array(times), points, confidence
 
 
+CLAIM_SECONDS = 600
+
+
+def claim(store, key: str) -> bool:
+    """Claim a clip for this job unless another job claimed it less than ``CLAIM_SECONDS`` ago.
+
+    Pods sharing a clip list would otherwise catch up with one another and then process
+    the same clips in lockstep. A claim older than ``CLAIM_SECONDS`` (a crashed pod) is
+    taken over. The check-then-write race is small and costs at most one duplicate clip.
+    """
+    import time
+    now = time.time()
+    if store.exists(key):
+        try:
+            if now - float(json.loads(store.get(key))["time"]) < CLAIM_SECONDS:
+                return False
+        except (ValueError, KeyError):
+            pass
+    store.put(key, json.dumps(dict(time=now, host=os.uname().nodename)).encode())
+    return True
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--zip-key", required=True)
@@ -174,7 +196,7 @@ def main(argv=None) -> int:
     done, refused = 0, []
     for index, member in enumerate(shard):
         key = f"{prefix}/keypoints/{Path(member).stem}.npz"
-        if store.exists(key):
+        if store.exists(key) or not claim(store, f"{prefix}/claims/{Path(member).stem}"):
             continue
         payload = archive.read(member)
         with tempfile.TemporaryDirectory() as temporary:

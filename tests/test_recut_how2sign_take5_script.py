@@ -165,3 +165,13 @@ def test_sapiens_streams_frames_in_batches_and_keeps_their_order():
     points, confidence = frames_keypoints(frames, model, torch.device("cpu"), batch=2, flip=False)
     assert points.shape == (5, 308, 2) and confidence.shape == (5, 308)
     assert np.all(np.diff(points[:, 0, 0]) > 0) and np.all(confidence == 1)
+
+
+def test_clip_claims_block_a_second_job_but_expire(tmp_path, monkeypatch):
+    import json, time
+    from sapiens_keypoints_runpod import claim
+    from signtranslator.data.text_motion_dataset import DirectoryStore
+    store = DirectoryStore(tmp_path)
+    assert claim(store, "c/x") and not claim(store, "c/x")
+    store.put("c/x", json.dumps(dict(time=time.time() - 3600, host="dead")).encode())
+    assert claim(store, "c/x")                                   # a stale claim is taken over
