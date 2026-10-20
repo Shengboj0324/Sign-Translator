@@ -107,8 +107,11 @@ def load(store, key):
 
 
 def session_of(sample: str) -> str:
-    """'<VIDEOID>_<n>-<take>-rgb_front' -> '<VIDEOID>-<take>' (one signer, one recording)."""
-    head, take = sample.removesuffix("-rgb_front").rsplit("-", 1)
+    """'<VIDEOID>_<n>-<take>-rgb_front' -> '<VIDEOID>-<take>' (one signer, one recording); other names are their own session."""
+    stem = sample.removesuffix("-rgb_front")
+    if "-" not in stem or "_" not in stem.rsplit("-", 1)[0]:
+        return sample
+    head, take = stem.rsplit("-", 1)
     return head.rsplit("_", 1)[0] + "-" + take
 
 

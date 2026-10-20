@@ -356,3 +356,17 @@ def test_smoothing_keeps_length_for_clips_shorter_than_the_window():
     x = np.r_[np.zeros(20), np.ones(20)]
     y = nmm.smooth(x, np.ones(40, bool), 30.)
     assert y[:15].max() == 0 and y[25:].min() == 1 and np.all(np.diff(y) >= 0)
+
+
+def test_role_shift_ignores_off_screen_legs():
+    rng = np.random.default_rng(2)
+    yaw = rng.normal(0, 1.5, 120); yaw[30:75] -= 20.
+    state = body_state_with_yaw(yaw)
+    body = state.channels["body"]
+    valid = body.valid.copy()
+    for leg in ("LeftThigh", "LeftShin", "RightThigh", "RightShin"):
+        valid[:, LABELS["body"].index(leg)] = False
+    state = replace(state, channels={**state.channels, "body": replace(
+        body, valid=valid, values=np.where(valid[..., None], body.values, 0.), confidence=valid.astype(float))})
+    shifts, _ = role_shift.role_shifts(state, 30.)
+    assert len(shifts) == 1 and shifts[0].direction == "right"

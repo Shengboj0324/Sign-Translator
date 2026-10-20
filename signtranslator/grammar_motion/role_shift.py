@@ -13,8 +13,9 @@ relative to the signer's own narrator baseline, not by absolute angles.
 ``C = Σ_t ‖y_t − ȳ_{a:b}‖²`` (features standardised), β = ``PENALTY``·log T (BIC-like);
 pruning discards a candidate τ once ``F(τ) + C(y_{τ:t}) > F(t)``, which keeps the search
 exact. A segment is *shifted* when its mean feature vector departs from the narrator
-baseline (the clip's median) by more than ``SHIFT_Z`` in any of torso yaw, relative
-head yaw or gaze-to-addressee angle, and lasts at least ``MIN_SHIFT_S``; its
+baseline (the clip's median) by more than ``SHIFT_Z`` robust σ and ``MIN_SHIFT_DEG``
+degrees in any of torso yaw, relative head yaw or gaze-to-addressee angle, and lasts
+at least ``MIN_SHIFT_S``; its
 direction is the sign of its torso/head yaw (toward the signer's left or right).
 Head and eyes lead the torso in role shift (McDonald et al.), so a shift's onset is
 the earliest change point among the features' own segmentations within it.
@@ -29,8 +30,9 @@ from ..generation.motion_metrics import _matrices
 from .frames import chest_rotation
 
 PENALTY = 3.
-SHIFT_Z = 2.
-MIN_SHIFT_S = .4
+SHIFT_Z = 2.5
+MIN_SHIFT_DEG = 5.                # the segment must also turn this far in absolute terms
+MIN_SHIFT_S = .6                  # a quote or clause; shorter departures are head movement, not role shift
 MIN_SEGMENT = 4
 
 
@@ -72,7 +74,9 @@ def features(state, gaze: np.ndarray | None = None):
     forward = chest[:, :, 2]
     torso = np.degrees(np.arctan2(forward[:, 0], forward[:, 2]))
     head = state.channels["head_rotation"]
-    ok = state.channels["body"].valid.all(axis=1) & head.valid[:, 0]
+    body = state.channels["body"]
+    labels = list(body.labels)
+    ok = body.valid[:, labels.index("Pelvis")] & body.valid[:, labels.index("Chest")] & head.valid[:, 0]  # legs are off-screen
     identity = np.array([1., 0., 0., 0., 1., 0.])
     hf = _matrices(np.where(head.valid[:, :1], head.values[:, 0], identity))[:, :, 2]
     head_yaw = np.degrees(np.arctan2(hf[:, 0], hf[:, 2]))
@@ -104,7 +108,8 @@ def role_shifts(state, fps: float, gaze: np.ndarray | None = None) -> tuple[list
     idx = np.nonzero(ok)[0]
     v = x[idx]
     med = np.median(v, 0)
-    sigma = np.maximum(1.4826 * np.median(np.abs(v - med), 0), [2., 2., .01, 3.][:len(names)])
+    floors = {"torso_yaw_deg": 3., "head_minus_torso_yaw_deg": 3., "torso_x_m": .01, "gaze_from_addressee_deg": 4.}
+    sigma = np.maximum(1.4826 * np.median(np.abs(v - med), 0), [floors[n] for n in names])
     z = (v - med) / sigma
     cps = pelt(z, PENALTY * np.log(len(z)))
     report["change_points"] = [int(idx[c]) for c in cps]
@@ -114,7 +119,9 @@ def role_shifts(state, fps: float, gaze: np.ndarray | None = None) -> tuple[list
         mean = z[a:b].mean(0)
         dev = {n: float(m) for n, m in zip(names, mean)}
         angular = [abs(dev[n]) for n in names if n != "torso_x_m"]
-        if max(angular) >= SHIFT_Z and (idx[b - 1] + 1 - idx[a]) / fps >= MIN_SHIFT_S:
+        degrees = np.abs(v[a:b].mean(0) - med)[[i for i, n in enumerate(names) if n != "torso_x_m"]]
+        if (max(angular) >= SHIFT_Z and degrees.max() >= MIN_SHIFT_DEG
+                and (idx[b - 1] + 1 - idx[a]) / fps >= MIN_SHIFT_S):
             yaw = v[a:b, 0].mean() - med[0] + v[a:b, 1].mean() - med[1]
             shifts.append(RoleShift(int(idx[a]), int(idx[b - 1]) + 1, "left" if yaw > 0 else "right", dev))
     return shifts, report

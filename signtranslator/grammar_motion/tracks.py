@@ -46,12 +46,13 @@ def grammar_record(state: MultichannelMotion, nmm_baselines: dict | None = None)
                          for k, v in nmm.spans.items()}
     head = state.channels["head_rotation"]
     gestures = None
-    if head.valid.any():
+    if head.valid.any() and head.values.shape[1] == 1:
         gestures = head_gestures(head, fps)
         record["head"] = dict(headshake=gestures["headshake"], nod=gestures["nod"])
     body = state.channels["body"]
     gaze_cam = gaze_of(state)
-    if body.valid.any():
+    canonical = {"Pelvis", "Chest", "LeftUpperArm", "LeftForearm", "RightUpperArm", "RightForearm"} <= set(body.labels)
+    if body.valid.any() and canonical:
         joints, pos, ok = body_frame_positions(state)
         side = dominant_side(joints, pos, ok)
         events = pointing_events(joints, pos, ok, state.timestamps, side)

@@ -1,0 +1,306 @@
+{
+ "clips": 4208,
+ "measured": 4196,
+ "tests": [
+  {
+   "feature": "wh_question",
+   "score": "brow_furrow_mean_z",
+   "positives": 32,
+   "negatives": 4164,
+   "auc": 0.7312530019212296,
+   "ci95": [
+    0.6320582672910663,
+    0.8256776837175792
+   ],
+   "per_component": {
+    "c02": {
+     "auc": 0.7109700644183403,
+     "positives": 28
+    }
+   }
+  },
+  {
+   "feature": "wh_question",
+   "score": "brow_furrow_fraction",
+   "positives": 32,
+   "negatives": 4164,
+   "auc": 0.6129885626801153,
+   "ci95": [
+    0.5184878947526417,
+    0.7047748371457733
+   ],
+   "per_component": {
+    "c02": {
+     "auc": 0.6210543766578249,
+     "positives": 28
+    }
+   }
+  },
+  {
+   "feature": "yes_no_question",
+   "score": "brow_raise_mean_z",
+   "positives": 54,
+   "negatives": 4142,
+   "auc": 0.5897893306150187,
+   "ci95": [
+    0.5000957892948478,
+    0.6736957231253464
+   ],
+   "per_component": {
+    "c01": {
+     "auc": 0.7506172839506173,
+     "positives": 5
+    },
+    "c02": {
+     "auc": 0.570934275682513,
+     "positives": 47
+    }
+   }
+  },
+  {
+   "feature": "yes_no_question",
+   "score": "brow_raise_fraction",
+   "positives": 54,
+   "negatives": 4142,
+   "auc": 0.4816580825151564,
+   "ci95": [
+    0.40851591421213584,
+    0.5628793010175795
+   ],
+   "per_component": {
+    "c01": {
+     "auc": 0.7802469135802469,
+     "positives": 5
+    },
+    "c02": {
+     "auc": 0.44685672473156096,
+     "positives": 47
+    }
+   }
+  },
+  {
+   "feature": "conditional",
+   "score": "brow_raise_mean_z",
+   "positives": 490,
+   "negatives": 3706,
+   "auc": 0.5932927299360111,
+   "ci95": [
+    0.5674163105609217,
+    0.6190575266803969
+   ],
+   "per_component": {
+    "c01": {
+     "auc": 0.5801587301587302,
+     "positives": 27
+    },
+    "c02": {
+     "auc": 0.5971286653471327,
+     "positives": 442
+    },
+    "c03": {
+     "auc": 0.6117103235747303,
+     "positives": 11
+    },
+    "c04": {
+     "auc": 0.38671875,
+     "positives": 8
+    }
+   }
+  },
+  {
+   "feature": "negation",
+   "score": "headshake_rate",
+   "positives": 714,
+   "negatives": 3482,
+   "auc": 0.616851651631359,
+   "ci95": [
+    0.5990243290021351,
+    0.6356402153049617
+   ],
+   "per_component": {
+    "c01": {
+     "auc": 0.5476039016115352,
+     "positives": 36
+    },
+    "c02": {
+     "auc": 0.6197487828752799,
+     "positives": 637
+    },
+    "c03": {
+     "auc": 0.7126587005227782,
+     "positives": 26
+    },
+    "c04": {
+     "auc": 0.4838709677419355,
+     "positives": 9
+    },
+    "c05": {
+     "auc": 0.4878048780487805,
+     "positives": 6
+    }
+   }
+  },
+  {
+   "feature": "negation",
+   "score": "headshake_any",
+   "positives": 714,
+   "negatives": 3482,
+   "auc": 0.6155683410641684,
+   "ci95": [
+    0.5962291062318092,
+    0.6336329132457118
+   ],
+   "per_component": {
+    "c01": {
+     "auc": 0.5437871077184054,
+     "positives": 36
+    },
+    "c02": {
+     "auc": 0.6188384535426611,
+     "positives": 637
+    },
+    "c03": {
+     "auc": 0.7010828976848394,
+     "positives": 26
+    },
+    "c04": {
+     "auc": 0.4838709677419355,
+     "positives": 9
+    },
+    "c05": {
+     "auc": 0.4878048780487805,
+     "positives": 6
+    }
+   }
+  },
+  {
+   "feature": "reported_speech",
+   "score": "role_shift_fraction",
+   "positives": 40,
+   "negatives": 4155,
+   "auc": 0.4696570397111913,
+   "ci95": [
+    0.42935251203369434,
+    0.517382746690734
+   ],
+   "per_component": {
+    "c01": {
+     "auc": 0.45987654320987653,
+     "positives": 5
+    },
+    "c02": {
+     "auc": 0.47452722715880613,
+     "positives": 35
+    }
+   }
+  },
+  {
+   "feature": "deixis",
+   "score": "pointing_rate",
+   "positives": 1947,
+   "negatives": 2248,
+   "auc": 0.5299342724549311,
+   "ci95": [
+    0.5205932780287951,
+    0.5399193650647862
+   ],
+   "per_component": {
+    "c01": {
+     "auc": 0.511711972238288,
+     "positives": 91
+    },
+    "c02": {
+     "auc": 0.5300984018424175,
+     "positives": 1750
+    },
+    "c03": {
+     "auc": 0.5412246865959498,
+     "positives": 68
+    },
+    "c04": {
+     "auc": 0.5,
+     "positives": 23
+    },
+    "c05": {
+     "auc": 0.5357142857142857,
+     "positives": 14
+    }
+   }
+  },
+  {
+   "feature": "third_person",
+   "score": "pointing_rate",
+   "positives": 473,
+   "negatives": 3722,
+   "auc": 0.5214020855367718,
+   "ci95": [
+    0.5047045991322948,
+    0.5390719415327184
+   ],
+   "per_component": {
+    "c01": {
+     "auc": 0.5245375128468653,
+     "positives": 28
+    },
+    "c02": {
+     "auc": 0.5213187104731037,
+     "positives": 412
+    },
+    "c03": {
+     "auc": 0.5184791843670349,
+     "positives": 22
+    },
+    "c04": {
+     "auc": 0.5,
+     "positives": 11
+    }
+   }
+  }
+ ],
+ "distributions": {
+  "locus_azimuth_deg_p5_25_50_75_95": [
+   -58.9,
+   -35.8,
+   -25.5,
+   -11.7,
+   41.2
+  ],
+  "locus_elevation_deg_p5_25_50_75_95": [
+   -16.3,
+   8.7,
+   22.6,
+   34.6,
+   45.8
+  ],
+  "loci_per_clip_mean": 0.13465204957102003,
+  "clips_with_pointing": 0.10986653956148713,
+  "role_shift_clip_rate": 0.15776930409914203,
+  "final_lengthening_p25_50_75": [
+   0.6,
+   0.88,
+   1.29
+  ],
+  "final_blink_rate": 0.08603431839847474,
+  "marker_clip_rate": {
+   "brow_raise": 0.4742612011439466,
+   "brow_furrow": 0.20448045757864633,
+   "squint": 0.35510009532888465,
+   "mm": 0.3617731172545281,
+   "puff": 0.0,
+   "oo": 0.8527168732125834
+  },
+  "headshake_clip_rate": 0.16253574833174453,
+  "english_feature_rate": {
+   "wh_question": 0.0076263107721639654,
+   "yes_no_question": 0.012869399428026692,
+   "other_question": 0.016205910390848427,
+   "negation": 0.1701620591039085,
+   "conditional": 0.11677788369876073,
+   "reported_speech": 0.009532888465204958
+  }
+ },
+ "states": "acquisition/2026-10-17-v1/derived/how2sign-video-estimate-v1",
+ "gaze_model_sha256": "d615f12100278b82532ac0b84f3bebb1f163854e45c59e1a512f3cba40d6f37b",
+ "sessions": 276,
+ "sample_rule": "whole sessions in sha256 order up to 3000 clips, then sessions richest in question/negation/conditional sentences up to 1200 more clips"
+}

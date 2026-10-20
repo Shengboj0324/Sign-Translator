@@ -5,7 +5,8 @@ finger is extended — its three segments are nearly collinear and its tip is as
 from its knuckle as the finger is long — (ii) the middle, ring and little fingers
 are flexed (each tip within 70% of its finger length of its knuckle), (iii) the wrist is nearly still for at least
 ``MIN_HOLD`` consecutive frames, and (iv) the wrist is forward of the chest. The
-pointing direction is the unit vector from the index MCP to the fingertip.
+pointing direction is the unit vector from the index MCP to the fingertip; events
+steeper than ``MAX_ELEVATION_DEG`` are index-up handshapes (ONE, "wait"), not points.
 
 **Least-squares locus of several pointings.** Rays ``r_i(s) = p_i + s d_i`` meet (in the
 least-squares sense) at ``x* = (Σ A_i)⁻¹ Σ A_i p_i`` with ``A_i = I − d_i d_iᵀ``, the
@@ -34,6 +35,7 @@ REACH = .9                        # |tip − MCP| / finger length for "extended"
 CURL = .7                         # |tip − MCP| / finger length below which a finger is "flexed"
 MAX_WRIST_SPEED = 1.5             # shoulder widths per second for "still"
 LOCUS_RADIUS_DEG = 15.            # DP-vMF-means cluster radius (Straub et al.'s λ = cos radius)
+MAX_ELEVATION_DEG = 50.           # steeper index-up configurations (ONE, "wait") are not referential points
 
 
 def _finger(joints, positions, side, name):
@@ -112,8 +114,9 @@ def pointing_events(joints, positions, valid, times, side) -> list[PointingEvent
             u = t
             while u < len(mask) and mask[u]:
                 u += 1
-            d = unit(index[t:u, 4] - index[t:u, 1]).sum(0)
-            events.append(PointingEvent(t, u, index[t:u, 1].mean(0), unit(d)))
+            d = unit(unit(index[t:u, 4] - index[t:u, 1]).sum(0))
+            if np.degrees(azimuth_elevation(d)[1]) <= MAX_ELEVATION_DEG:
+                events.append(PointingEvent(t, u, index[t:u, 1].mean(0), d))
             t = u
         else:
             t += 1
