@@ -54,11 +54,39 @@ from ..pose.rotations import matrix_to_rotation_6d, rotation_6d_to_matrix
 from .canonical_state import CanonicalChannelBinding, channel_loss_per_example
 from .signing_space import applicable, location_loss
 from ..grammar_motion.text import FEATURES as GRAMMAR_FEATURES, token_features
+from ..grammar_motion.loci_conditioning import SLOT_WIDTH as LOCUS_SLOT_WIDTH, plan_loci
 
 PAD, BOS, EOS = 256, 257, 258
 VOCABULARY = 259
 _IDENTITY_6D = (1., 0., 0., 0., 1., 0.)
 _FORWARD = (0., 0., 1.)
+
+
+def locus_projection(d: int) -> nn.Linear:
+    """Linear map of the referent-locus slots to the model width, zero-initialised."""
+    layer = nn.Linear(LOCUS_SLOT_WIDTH, d)
+    nn.init.zeros_(layer.weight)
+    nn.init.zeros_(layer.bias)
+    return layer
+
+
+def training_loci(config, loci: torch.Tensor | None, keep: torch.Tensor | None = None):
+    """The slots a training step sees: hidden with probability ``locus_dropout`` and wherever the text is dropped."""
+    if loci is None or not config.locus_conditioning:
+        return None
+    hide = torch.rand(len(loci), device=loci.device) < config.locus_dropout
+    if keep is not None:
+        hide = hide | ~keep
+    return torch.where(hide[:, None], torch.zeros_like(loci), loci)
+
+
+def generation_loci(config, texts, loci, device):
+    """(B, SLOT_WIDTH) slots for generation: given, else planned from each text; None for locus-free models."""
+    if not config.locus_conditioning:
+        return None
+    if loci is None:
+        loci = np.stack([plan_loci(t) for t in texts])
+    return torch.as_tensor(np.asarray(loci), dtype=torch.float32, device=device)
 
 
 def grammar_projection(d: int) -> nn.Linear:
@@ -111,6 +139,8 @@ class TextToMotionConfig:
     coefficient_norm: float = .5           # diffusion: coefficient values are divided by this
     location_weight: float = .1            # signing-space wrist/fingertip loss (signing_space.py); 0 disables
     grammar_features: bool = False         # condition on the English's grammatical features (grammar_motion.text)
+    locus_conditioning: bool = False       # condition on referent-locus slots (grammar_motion.loci_conditioning)
+    locus_dropout: float = .3              # training: probability of hiding a clip's loci
     loss_config: dict = field(default_factory=lambda: dict(
         translation_scale_metres=.05, coefficient_scale=.1, velocity_weight=0.))
 
@@ -154,6 +184,8 @@ class TextToMotion(nn.Module):
         self.embed = nn.Embedding(VOCABULARY, d, padding_idx=PAD)
         if config.grammar_features:
             self.grammar = grammar_projection(d)
+        if config.locus_conditioning:
+            self.loci = locus_projection(d)
         self.text_encoder = nn.TransformerEncoder(nn.TransformerEncoderLayer(
             d, config.heads, config.feedforward, config.dropout, batch_first=True, norm_first=True),
             config.text_layers, enable_nested_tensor=False)
@@ -189,12 +221,14 @@ class TextToMotion(nn.Module):
             pattern = torch.zeros(binding.width)
         return pattern.repeat(binding.elements)
 
-    def encode(self, tokens: torch.Tensor, mask: torch.Tensor):
+    def encode(self, tokens: torch.Tensor, mask: torch.Tensor, loci: torch.Tensor | None = None):
         positions = sinusoid(torch.arange(tokens.shape[1], device=tokens.device)[None].expand_as(tokens),
                              self.config.d_model, max_period=1024.)
         inputs = self.embed(tokens) + positions
         if self.config.grammar_features:
             inputs = inputs + self.grammar(token_features(tokens).to(inputs.dtype))[:, None]
+        if self.config.locus_conditioning and loci is not None:
+            inputs = inputs + self.loci(loci.to(inputs.dtype))[:, None]
         hidden = self.text_encoder(inputs, src_key_padding_mask=~mask)
         pooled = (hidden * mask[..., None]).sum(1) / mask.sum(1, keepdim=True).clamp_min(1)
         log_duration = self.duration(pooled)[:, 0]
@@ -218,8 +252,8 @@ class TextToMotion(nn.Module):
             out[binding.name] = raw.reshape(*raw.shape[:2], binding.elements, binding.width)
         return out
 
-    def forward(self, tokens, text_mask, seconds, frame_mask):
-        hidden, log_duration = self.encode(tokens, text_mask)
+    def forward(self, tokens, text_mask, seconds, frame_mask, loci=None):
+        hidden, log_duration = self.encode(tokens, text_mask, loci)
         observed = (seconds * frame_mask).amax(1)  # teacher forcing: the real clock
         return self.decode(hidden, text_mask, seconds, frame_mask, observed), log_duration
 
@@ -331,18 +365,19 @@ def _empty_text_like(tokens: torch.Tensor) -> torch.Tensor:
     return empty
 
 
-def _prediction(model: TextToMotion, tokens, text_mask, motion: MotionBatch):
+def _prediction(model: TextToMotion, tokens, text_mask, motion: MotionBatch, loci=None):
     """Head outputs, log duration and the rows whose duration is supervised."""
     config = model.config
     seconds = batch_seconds(motion).float()
     observed = (seconds * motion.frame_valid).amax(1)       # teacher forcing: the real clock
     if config.objective == "regression":
-        prediction, log_duration = model(tokens, text_mask, seconds, motion.frame_valid)
+        prediction, log_duration = model(tokens, text_mask, seconds, motion.frame_valid,
+                                         training_loci(config, loci))
         return prediction, log_duration, torch.ones(len(tokens), dtype=torch.bool, device=tokens.device)
     conditioned = torch.rand(len(tokens), device=tokens.device) >= config.cfg_dropout
     tokens = torch.where(conditioned[:, None], tokens, _empty_text_like(tokens))
     text_mask = tokens != PAD
-    hidden, log_duration = model.encode(tokens, text_mask)
+    hidden, log_duration = model.encode(tokens, text_mask, training_loci(config, loci, conditioned))
     x0 = diffusion_targets(config, motion)
     t = torch.rand(len(tokens), device=tokens.device)
     ab = alpha_bar(t)[:, None, None]
@@ -351,7 +386,7 @@ def _prediction(model: TextToMotion, tokens, text_mask, motion: MotionBatch):
     return prediction, log_duration, conditioned
 
 
-def training_loss(model: TextToMotion, tokens, text_mask, motion: MotionBatch):
+def training_loss(model: TextToMotion, tokens, text_mask, motion: MotionBatch, loci=None):
     """Mean supported loss over trained channels plus the duration term.
 
     For ``objective="diffusion"`` the same losses score the decoder's estimate of the
@@ -359,7 +394,7 @@ def training_loss(model: TextToMotion, tokens, text_mask, motion: MotionBatch):
     is computed on the rows that kept their text.
     """
     config = model.config
-    prediction, log_duration, duration_rows = _prediction(model, tokens, text_mask, motion)
+    prediction, log_duration, duration_rows = _prediction(model, tokens, text_mask, motion, loci)
     loss_config = LossScales(**config.loss_config)
     terms, diagnostics = {}, {}
     total = torch.zeros((), dtype=torch.float64, device=tokens.device)
@@ -472,8 +507,11 @@ def assemble_state(config: TextToMotionConfig, text: str, native: dict, frames: 
 
 @torch.no_grad()
 def generate(model: TextToMotion, texts, *, fps: float, sample_prefix: str = "generated", steps: int = 50,
-             guidance: float = 2., eta: float = 0., seed: int = 0, durations=None) -> list[MultichannelMotion]:
+             guidance: float = 2., eta: float = 0., seed: int = 0, durations=None, loci=None) -> list[MultichannelMotion]:
     """Generated canonical states: observed=False, zero confidence, on a declared clock.
+
+    A locus-conditioned model takes ``loci`` ((B, SLOT_WIDTH) slots) or, by default, the
+    planner's slots for each text (``grammar_motion.loci_conditioning.plan_loci``).
 
     Regression models decode once; diffusion models sample with ``steps`` DDIM steps,
     classifier-free ``guidance`` and stochasticity ``eta`` from a seeded generator.
@@ -484,7 +522,8 @@ def generate(model: TextToMotion, texts, *, fps: float, sample_prefix: str = "ge
     tokens, mask = encode_texts(texts, max_bytes=model.config.max_text_bytes)
     device = next(model.parameters()).device
     tokens, mask = tokens.to(device), mask.to(device)
-    hidden, log_duration = model.encode(tokens, mask)
+    slots = generation_loci(model.config, texts, loci, device)
+    hidden, log_duration = model.encode(tokens, mask, slots)
     durations = (log_duration.exp() if durations is None else
                  torch.as_tensor(durations, dtype=log_duration.dtype, device=device)).clamp(1 / fps, model.config.max_seconds)
     generator = torch.Generator().manual_seed(seed)
@@ -508,6 +547,6 @@ def generate(model: TextToMotion, texts, *, fps: float, sample_prefix: str = "ge
     return states
 
 
-__all__ = ["grammar_projection", "encode_texts", "signing_space_term", "TextToMotionConfig", "TextToMotion", "training_loss", "generate", "batch_seconds",
+__all__ = ["grammar_projection", "locus_projection", "training_loci", "generation_loci", "encode_texts", "signing_space_term", "TextToMotionConfig", "TextToMotion", "training_loss", "generate", "batch_seconds",
            "utterance_duration", "alpha_bar", "diffusion_layout", "diffusion_targets", "heads_to_unit", "unit_to_raw",
            "native_values", "assemble_state", "LossScales"]

@@ -32,6 +32,15 @@ SIR, and `facial_nmm` for intervals. This package grounds them in motion.
   starts exactly as its text-only counterpart (tested). The features are computed from
   the byte tokens, so they are identical at training, at generation and for the empty
   guidance text. Both training scripts turn this on by default.
+- **Referent loci** (`loci_conditioning`, opt-in with `--locus-conditioning`). Each
+  training clip's own pointing clusters fill 4 slots (unit direction and presence), in
+  the order the referents are established. The slots enter through a zero-initialised
+  projection and are hidden 30% of the time, and always when the text is dropped for
+  guidance. At generation, `plan_loci` assigns slots from the English using the
+  contrastive policy: one slot per third-person referent, or one deictic slot. The
+  first referent goes at the measured How2Sign median (25.5° toward the signer's right,
+  +22.6°), the second is mirrored, and later ones go further out. This makes spatial
+  reference controllable. Passing explicit `loci` places the referents.
 - **Losses.** These already train every two-view channel:
   - the signing-space location loss (`generation/signing_space.py`);
   - the gaze channels;

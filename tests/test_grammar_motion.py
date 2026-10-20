@@ -370,3 +370,40 @@ def test_role_shift_ignores_off_screen_legs():
         body, valid=valid, values=np.where(valid[..., None], body.values, 0.), confidence=valid.astype(float))})
     shifts, _ = role_shift.role_shifts(state, 30.)
     assert len(shifts) == 1 and shifts[0].direction == "right"
+
+
+# ---------------------------------------------------------------- locus conditioning
+def test_locus_slots_planner_and_state_measurement():
+    from signtranslator.grammar_motion import loci_conditioning as lc
+    s = lc.slots([[0, 0, 2.], [1., 0, 0]])
+    assert s.shape == (lc.SLOT_WIDTH,) and s[3] == 1 and s[7] == 1 and s[11] == 0
+    np.testing.assert_allclose(s[:3], [0, 0, 1])
+    assert lc.plan_loci("Cut the paper.").sum() == 0
+    two = lc.plan_loci("Give it to him and then ask her.").reshape(lc.MAX_LOCI, 4)
+    assert two[:, 3].tolist() == [1, 1, 0, 0] and two[0, 0] < 0 < two[1, 0]       # right side first, then contrast
+    one = lc.plan_loci("Put it there.").reshape(lc.MAX_LOCI, 4)
+    assert one[:, 3].tolist() == [1, 0, 0, 0]
+    assert lc.state_loci(signer_state(0, frames=12)).shape == (lc.SLOT_WIDTH,)
+
+
+def test_locus_conditioning_trains_and_generates_with_planned_loci():
+    from signtranslator.data.multichannel import collate_multichannel
+    from signtranslator.data.text_motion_dataset import collate_text_motion
+    from signtranslator.generation.canonical_state import channel_bindings_from_state
+    from signtranslator.generation.text_to_motion import TextToMotion, TextToMotionConfig, generate, training_loss
+    states = [signer_state(s, frames=12) for s in range(2)]
+    tokens, mask, motion, texts, loci = collate_text_motion([("Ask him.", states[0]), ("Put it there.", states[1])], loci=True)
+    assert loci.shape == (2, 16)
+    config = TextToMotionConfig(bindings=channel_bindings_from_state(states[0]), trained_channels=("body",), d_model=32,
+                                heads=4, text_layers=1, motion_layers=1, feedforward=64, dropout=0., locus_conditioning=True)
+    model = TextToMotion(config)
+    loss, terms, _ = training_loss(model, tokens, mask, motion, loci)
+    loss.backward()
+    assert model.loci.weight.grad is not None
+    with torch.no_grad():
+        model.loci.weight.normal_()
+        for head in model.heads_out.values():                  # output heads start at zero (the neutral pose)
+            head.weight.normal_(std=.1)
+    a = generate(model, ["Ask him."], fps=24., durations=[.5])[0]
+    b = generate(model, ["Ask him."], fps=24., durations=[.5], loci=np.zeros((1, 16)))[0]
+    assert not np.allclose(a.channels["body"].values, b.channels["body"].values)   # planned loci change the motion

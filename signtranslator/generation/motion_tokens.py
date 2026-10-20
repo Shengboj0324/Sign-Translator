@@ -36,8 +36,8 @@ from ..data.multichannel import MotionBatch
 from .canonical_state import channel_loss_per_example
 from .text_to_motion import (
     BOS, EOS, PAD, VOCABULARY, LossScales, TextToMotionConfig, assemble_state, batch_seconds, diffusion_layout,
-    diffusion_targets, encode_texts, grammar_projection, native_values, signing_space_term, sinusoid, unit_to_raw,
-    utterance_duration,
+    diffusion_targets, encode_texts, generation_loci, grammar_projection, locus_projection, native_values,
+    signing_space_term, sinusoid, training_loci, unit_to_raw, utterance_duration,
 )
 from ..grammar_motion.text import token_features
 
@@ -210,6 +210,8 @@ class TokenPriorConfig:
     cfg_dropout: float = .1
     duration_weight: float = .1
     grammar_features: bool = False          # condition on the English's grammatical features
+    locus_conditioning: bool = False        # condition on referent-locus slots
+    locus_dropout: float = .3
 
     def to_dict(self) -> dict:
         data = asdict(self)
@@ -234,6 +236,8 @@ class TokenPrior(nn.Module):
         self.embed = nn.Embedding(VOCABULARY, d, padding_idx=PAD)
         if config.grammar_features:
             self.grammar = grammar_projection(d)
+        if config.locus_conditioning:
+            self.loci = locus_projection(d)
         self.text_encoder = nn.TransformerEncoder(nn.TransformerEncoderLayer(
             d, config.heads, config.feedforward, config.dropout, batch_first=True, norm_first=True),
             config.text_layers, enable_nested_tensor=False)
@@ -247,12 +251,14 @@ class TokenPrior(nn.Module):
         self.norm = nn.LayerNorm(d)
         self.logits = nn.Linear(d, codebook)
 
-    def encode(self, tokens, mask):
+    def encode(self, tokens, mask, loci=None):
         positions = sinusoid(torch.arange(tokens.shape[1], device=tokens.device)[None].expand_as(tokens),
                              self.config.d_model, max_period=1024.)
         inputs = self.embed(tokens) + positions
         if self.config.grammar_features:
             inputs = inputs + self.grammar(token_features(tokens).to(inputs.dtype))[:, None]
+        if self.config.locus_conditioning and loci is not None:
+            inputs = inputs + self.loci(loci.to(inputs.dtype))[:, None]
         hidden = self.text_encoder(inputs, src_key_padding_mask=~mask)
         pooled = (hidden * mask[..., None]).sum(1) / mask.sum(1, keepdim=True).clamp_min(1)
         return hidden, self.duration(pooled)[:, 0]
@@ -280,7 +286,7 @@ def token_seconds(config: TokenPriorConfig, count: int, fps: float, device) -> t
     return (torch.arange(count, device=device, dtype=torch.float32) * config.tokenizer.step / fps)[None]
 
 
-def prior_loss(model: TokenPrior, tokenizer: MotionVQ, tokens, text_mask, motion: MotionBatch):
+def prior_loss(model: TokenPrior, tokenizer: MotionVQ, tokens, text_mask, motion: MotionBatch, loci=None):
     """Cross entropy of the tokenizer's codes (frozen tokenizer) plus the duration term."""
     config = model.config
     with torch.no_grad():
@@ -292,7 +298,7 @@ def prior_loss(model: TokenPrior, tokenizer: MotionVQ, tokens, text_mask, motion
     conditioned = torch.rand(len(tokens), device=tokens.device) >= config.cfg_dropout
     tokens = torch.where(conditioned[:, None], tokens, _empty_like(tokens))
     text_mask = tokens != PAD
-    hidden, log_duration = model.encode(tokens, text_mask)
+    hidden, log_duration = model.encode(tokens, text_mask, training_loci(config, loci, conditioned))
     start = torch.full_like(index[:, :1], config.tokenizer.codebook)
     previous = torch.cat((start, index[:, :-1]), dim=1)
     seconds = batch_seconds(motion).float()
@@ -315,15 +321,17 @@ def prior_loss(model: TokenPrior, tokenizer: MotionVQ, tokens, text_mask, motion
 @torch.no_grad()
 def generate_tokens_motion(prior: TokenPrior, tokenizer: MotionVQ, texts, *, fps: float, guidance: float = 1.,
                            temperature: float = 1., top_k: int = 0, seed: int = 0, durations=None,
-                           sample_prefix: str = "tokens"):
-    """Generated canonical states from sampled motion tokens (observed=False, zero confidence)."""
+                           sample_prefix: str = "tokens", loci=None):
+    """Generated canonical states from sampled motion tokens (observed=False, zero confidence).
+
+    A locus-conditioned prior takes ``loci`` slots or plans them from each text."""
     prior.eval()
     tokenizer.eval()
     config = prior.config
     device = next(prior.parameters()).device
     encoded, mask = encode_texts(texts, max_bytes=config.max_text_bytes)
     encoded, mask = encoded.to(device), mask.to(device)
-    hidden, log_duration = prior.encode(encoded, mask)
+    hidden, log_duration = prior.encode(encoded, mask, generation_loci(config, texts, loci, device))
     seconds_out = (log_duration.exp() if durations is None else
                    torch.as_tensor(durations, dtype=log_duration.dtype, device=device)).clamp(1 / fps, 60.)
     empty = _empty_like(encoded[:1, :2])

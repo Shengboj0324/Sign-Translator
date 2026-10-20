@@ -9,6 +9,7 @@ every prior checkpoint, so one prior checkpoint fully defines the generator.
 from __future__ import annotations
 
 import argparse
+from functools import partial
 import hashlib
 import io
 import json
@@ -54,6 +55,8 @@ def main(argv=None) -> int:
     parser.add_argument("--code-dim", type=int, default=128)
     parser.add_argument("--codebook", type=int, default=512)
     parser.add_argument("--down-layers", type=int, default=2)
+    parser.add_argument("--locus-conditioning", action="store_true",
+                        help="prior: condition on referent-locus slots measured in each clip's pointing")
     parser.add_argument("--no-grammar-features", dest="grammar_features", action="store_false",
                         help="do not condition the prior on the English's grammatical features")
     parser.add_argument("--d-model", type=int, default=256)
@@ -107,7 +110,8 @@ def main(argv=None) -> int:
         tokenizer_state = saved["model"]
         config = TokenPriorConfig(tokenizer.config, d_model=args.d_model, heads=args.heads, text_layers=args.text_layers,
                                   token_layers=args.token_layers, feedforward=args.feedforward, dropout=args.dropout,
-                                  cfg_dropout=args.cfg_dropout, grammar_features=args.grammar_features)
+                                  cfg_dropout=args.cfg_dropout, grammar_features=args.grammar_features,
+                                  locus_conditioning=args.locus_conditioning)
         model = TokenPrior(config).to(device)
     kind = "motion_tokenizer" if args.stage == "tokenizer" else "motion_token_prior"
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=.01)
@@ -130,7 +134,8 @@ def main(argv=None) -> int:
                                                         manifest_sha256=args.manifest_sha256, args=vars(args),
                                                         train_records=len(train)), indent=2, sort_keys=True).encode())
     loader = DataLoader(train, batch_size=args.batch_size, shuffle=True, num_workers=args.workers,
-                        collate_fn=collate_text_motion, generator=torch.Generator().manual_seed(args.seed + step),
+                        collate_fn=partial(collate_text_motion, loci=args.locus_conditioning and args.stage == "prior"),
+                        generator=torch.Generator().manual_seed(args.seed + step),
                         persistent_workers=args.workers > 0, drop_last=True)
     log, started = [], time.monotonic()
 
@@ -148,13 +153,13 @@ def main(argv=None) -> int:
         for batch in loader:
             if step >= args.steps:
                 break
-            tokens, mask, motion = to_device(batch, device)
+            tokens, mask, motion, *loci = to_device(batch, device)
             for group in optimizer.param_groups:
                 group["lr"] = lr_at(step, base=args.lr, warmup=args.warmup, total=args.steps)
             if args.stage == "tokenizer":
                 loss, terms = tokenizer_loss(model, motion)
             else:
-                loss, terms = prior_loss(model, tokenizer, tokens, mask, motion)
+                loss, terms = prior_loss(model, tokenizer, tokens, mask, motion, *loci)
             if not torch.isfinite(loss):
                 raise FloatingPointError(f"non-finite loss at step {step}")
             optimizer.zero_grad(set_to_none=True)

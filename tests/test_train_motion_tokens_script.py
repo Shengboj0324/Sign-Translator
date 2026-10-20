@@ -83,3 +83,21 @@ def test_grammar_tracks_are_written_for_every_manifest_record(tmp_path):
     assert index["records"] and all((tmp_path / "store" / r["key"]).exists() for r in index["records"])
     record = json.loads((tmp_path / "store" / index["records"][0]["key"]).read_text())
     assert record["schema_version"] == 1 and record["manifest_sha256"] == digest
+
+
+def test_prior_trains_with_locus_conditioning(tmp_path, monkeypatch):
+    monkeypatch.setenv("SIGN_CACHE_DIR", str(tmp_path / "cache"))
+    digest = store_with_manifest(tmp_path / "store")
+    script = load_script()
+    base = ["--store", f"dir:{tmp_path / 'store'}", "--manifest-key", "manifest.json", "--manifest-sha256", digest,
+            "--batch-size", "2", "--warmup", "1", "--checkpoint-every", "2", "--workers", "0",
+            "--trained-channels", "body,head_rotation,face"]
+    assert script.main(base + ["--stage", "tokenizer", "--run", "tok", "--hidden", "16", "--code-dim", "8",
+                               "--codebook", "16", "--steps", "2"]) == 0
+    key = "training-runs/tok/checkpoints/step-00000002.pt"
+    tok_sha = hashlib.sha256((tmp_path / "store" / key).read_bytes()).hexdigest()
+    assert script.main(base + ["--stage", "prior", "--run", "pri", "--tokenizer-key", key, "--tokenizer-sha256", tok_sha,
+                               "--d-model", "32", "--heads", "4", "--text-layers", "1", "--token-layers", "1",
+                               "--feedforward", "64", "--steps", "2", "--locus-conditioning"]) == 0
+    run = json.loads((tmp_path / "store/training-runs/pri/run.json").read_text())
+    assert run["config"]["locus_conditioning"] is True

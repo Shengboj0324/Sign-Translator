@@ -40,10 +40,18 @@ class TextMotionDataset(Dataset):
         return record["text"], load_sample(record, "continuous", cache=self.cache, fetch=self.fetch)
 
 
-def collate_text_motion(items, *, max_text_bytes: int = 256):
+def collate_text_motion(items, *, max_text_bytes: int = 256, loci: bool = False):
+    """(tokens, mask, motion, texts) — plus (B, SLOT_WIDTH) referent-locus slots measured in each
+    state's own pointing (``grammar_motion.loci_conditioning.state_loci``) when ``loci``."""
     texts, states = zip(*items)
     tokens, mask = encode_texts(texts, max_bytes=max_text_bytes)
-    return tokens, mask, collate_multichannel(states), list(texts)
+    batch = (tokens, mask, collate_multichannel(states), list(texts))
+    if loci:
+        import numpy as np
+        import torch
+        from ..grammar_motion.loci_conditioning import state_loci
+        batch = batch + (torch.as_tensor(np.stack([state_loci(s) for s in states]), dtype=torch.float32),)
+    return batch
 
 
 class DirectoryStore:

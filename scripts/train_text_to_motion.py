@@ -11,6 +11,7 @@ partition is never touched here.
 from __future__ import annotations
 
 import argparse
+from functools import partial
 import io
 import json
 import math
@@ -51,16 +52,19 @@ def lr_at(step: int, *, base: float, warmup: int, total: int) -> float:
 
 
 def to_device(batch, device):
-    tokens, mask, motion, texts = batch
+    """(tokens, mask, motion) on ``device`` — and the locus slots, when the batch carries them."""
+    tokens, mask, motion, texts = batch[:4]
+    loci = batch[4].to(device) if len(batch) > 4 else None
     if device.type == "cpu":
-        return tokens, mask, motion
+        return (tokens, mask, motion) if loci is None else (tokens, mask, motion, loci)
     from dataclasses import replace
     channels = {name: replace(ch, values=ch.values.to(device), valid=ch.valid.to(device),
                               observed=ch.observed.to(device), confidence=ch.confidence.to(device))
                 for name, ch in motion.channels.items()}
     motion = replace(motion, timestamps=motion.timestamps.to(device), frame_valid=motion.frame_valid.to(device),
                      lengths=motion.lengths.to(device), channels=channels)
-    return tokens.to(device), mask.to(device), motion
+    out = (tokens.to(device), mask.to(device), motion)
+    return out if loci is None else out + (loci,)
 
 
 @torch.no_grad()
@@ -70,8 +74,8 @@ def evaluate(model, loader, device, limit):
     for index, batch in enumerate(loader):
         if index >= limit:
             break
-        tokens, mask, motion = to_device(batch, device)
-        _, terms, diagnostics = training_loss(model, tokens, mask, motion)
+        tokens, mask, motion, *loci = to_device(batch, device)
+        _, terms, diagnostics = training_loss(model, tokens, mask, motion, *loci)
         for key, value in {**terms, **{k: v for k, v in diagnostics.items() if k.endswith("geodesic_degrees_mean")}}.items():
             totals[key] = totals.get(key, 0.) + value
             counts[key] = counts.get(key, 0) + 1
@@ -98,6 +102,8 @@ def main(argv=None) -> int:
     parser.add_argument("--feedforward", type=int, default=2048)
     parser.add_argument("--dropout", type=float, default=.1)
     parser.add_argument("--max-seconds", type=float, default=20.)
+    parser.add_argument("--locus-conditioning", action="store_true",
+                        help="condition on referent-locus slots measured in each clip's pointing (planned at generation)")
     parser.add_argument("--no-grammar-features", dest="grammar_features", action="store_false",
                         help="do not condition on the English's grammatical features (grammar_motion.text)")
     parser.add_argument("--objective", choices=("regression", "diffusion"), default="regression",
@@ -138,7 +144,8 @@ def main(argv=None) -> int:
         bindings=channel_bindings_from_state(first_state), trained_channels=tuple(args.trained_channels.split(",")),
         d_model=args.d_model, heads=args.heads, text_layers=args.text_layers, motion_layers=args.motion_layers,
         feedforward=args.feedforward, dropout=args.dropout, max_seconds=args.max_seconds,
-        objective=args.objective, cfg_dropout=args.cfg_dropout, grammar_features=args.grammar_features)
+        objective=args.objective, cfg_dropout=args.cfg_dropout, grammar_features=args.grammar_features,
+        locus_conditioning=args.locus_conditioning)
     model = TextToMotion(config).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     prefix = f"training-runs/{args.run}"
@@ -160,10 +167,11 @@ def main(argv=None) -> int:
             parameters=sum(p.numel() for p in model.parameters())), indent=2, sort_keys=True).encode())
     generator = torch.Generator().manual_seed(args.seed + step)
     loader = DataLoader(train, batch_size=args.batch_size, shuffle=True, num_workers=args.workers,
-                        collate_fn=collate_text_motion, generator=generator, persistent_workers=args.workers > 0,
+                        collate_fn=partial(collate_text_motion, loci=args.locus_conditioning), generator=generator,
+                        persistent_workers=args.workers > 0,
                         drop_last=True)
     val_loader = DataLoader(val, batch_size=args.batch_size, shuffle=False, num_workers=min(args.workers, 2),
-                            collate_fn=collate_text_motion) if len(val) else None
+                            collate_fn=partial(collate_text_motion, loci=args.locus_conditioning)) if len(val) else None
     log, started = [], time.monotonic()
     model.train()
 
@@ -179,11 +187,11 @@ def main(argv=None) -> int:
         for batch in loader:
             if step >= args.steps:
                 break
-            tokens, mask, motion = to_device(batch, device)
+            tokens, mask, motion, *loci = to_device(batch, device)
             for group in optimizer.param_groups:
                 group["lr"] = lr_at(step, base=args.lr, warmup=args.warmup, total=args.steps)
             with torch.autocast(device.type, dtype=torch.bfloat16, enabled=args.amp == "bf16" and device.type == "cuda"):
-                loss, terms, _ = training_loss(model, tokens, mask, motion)
+                loss, terms, _ = training_loss(model, tokens, mask, motion, *loci)
             if not torch.isfinite(loss):
                 raise FloatingPointError(f"non-finite loss at step {step}")
             optimizer.zero_grad(set_to_none=True)
