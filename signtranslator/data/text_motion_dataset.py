@@ -79,6 +79,22 @@ class DirectoryStore:
         return sorted(str(p.relative_to(self.root)) for p in base.rglob("*") if p.is_file())
 
 
+def _stream_errors() -> tuple:
+    """botocore/urllib3 exception types raised when a response body stream breaks."""
+    out = []
+    try:
+        from botocore.exceptions import ConnectionClosedError, IncompleteReadError, ReadTimeoutError, ResponseStreamingError
+        out += [ConnectionClosedError, IncompleteReadError, ReadTimeoutError, ResponseStreamingError]
+    except ImportError:
+        pass
+    try:
+        from urllib3.exceptions import ProtocolError
+        out.append(ProtocolError)
+    except ImportError:
+        pass
+    return tuple(out)
+
+
 class R2Store:
     """Object store backed by Cloudflare R2; credentials come from the environment.
 
@@ -119,8 +135,24 @@ class R2Store:
     def __repr__(self) -> str:
         return f"R2Store(bucket={self.bucket!r})"              # never shows credentials
 
-    def get(self, key: str) -> bytes:
-        return self.s3.get_object(Bucket=self.bucket, Key=key)["Body"].read()
+    def get(self, key: str, attempts: int = 8) -> bytes:
+        """The object's bytes; a body read cut off mid-stream (broken pipe, reset, short read) is retried.
+
+        botocore retries the request but not the streaming of its body, which R2 can drop
+        under load; missing keys and other client errors are raised at once.
+        """
+        import random
+        import time
+        from botocore.exceptions import ClientError
+        for attempt in range(attempts):
+            try:
+                return self.s3.get_object(Bucket=self.bucket, Key=key)["Body"].read()
+            except ClientError:
+                raise
+            except (OSError, ConnectionError) + _stream_errors() as error:
+                if attempt == attempts - 1:
+                    raise
+                time.sleep(min(30., .5 * 2 ** attempt) * (.5 + random.random()))
 
     def put(self, key: str, payload: bytes) -> str:
         digest = hashlib.sha256(payload).hexdigest()
