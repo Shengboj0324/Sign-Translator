@@ -153,6 +153,17 @@ sequences, so this is a consistency check, not held-out accuracy. The floor is t
 population term: a proportionally larger signer cannot be told apart from a nearer
 one. Relative motion within a session is exact up to that one factor.
 
+**On real How2Sign sessions** (the four smoke-test sessions, two passing the gate):
+
+* **Scale:** two different signers on the same rig give 2.317 and 2.322 m per
+  reconstruction unit. The unit is the camera baseline, so the two must agree; they
+  do to within 0.2%, which checks the scale independently.
+* **Cue lengths:** interpupillary 64–65 mm, forearm 25 cm, upper arm 29–31 cm, hand
+  18 cm. The cues agree (χ² 0.58 and 2.14 on 3 degrees of freedom).
+* **Positions:** the eyes sit a median 22.5 cm above the shoulder-joint midpoint, and
+  the torso moves within 6 cm per clip.
+* **Validity:** root and head translations are valid in 88% of frames and gaze in 89%.
+
 ### Eye gaze (`data_engineering/gaze.py`, `scripts/fit_gaze_model.py`, 2026-10-19)
 
 Every How2Sign monocular state already carries MediaPipe's eye blendshapes
