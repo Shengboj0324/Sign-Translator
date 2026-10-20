@@ -97,4 +97,25 @@ def grammar_comparison(generated, references, texts) -> dict:
     return dict(tests=tests, distributions=distributions, clips=len(generated))
 
 
-__all__ = ["TESTS", "SCORES", "clip_scores", "auc", "wasserstein1", "grammar_comparison"]
+def locus_adherence(generated, texts, *, within_deg: float = 20.) -> dict:
+    """How closely generated pointing lands on the planner's loci (``loci_conditioning.plan_loci``).
+
+    For every planned slot of every text, the angle to the nearest locus the generated
+    clip points at (180° when it never points). A locus-free generator is the baseline.
+    """
+    from .loci_conditioning import MAX_LOCI, plan_loci, state_loci
+    angles = []
+    for state, text in zip(generated, texts):
+        planned = plan_loci(text).reshape(MAX_LOCI, 4)
+        found = state_loci(state).reshape(MAX_LOCI, 4)
+        dirs = found[found[:, 3] > 0, :3]
+        for slot in planned[planned[:, 3] > 0, :3]:
+            angles.append(float(np.degrees(np.arccos(np.clip((dirs @ slot).max(), -1, 1)))) if len(dirs) else 180.)
+    if not angles:
+        return dict(planned_slots=0)
+    a = np.array(angles)
+    return dict(planned_slots=len(a), median_deg=float(np.median(a)), within=float(np.mean(a <= within_deg)),
+                within_deg=within_deg, never_pointed=float(np.mean(a >= 180.)))
+
+
+__all__ = ["locus_adherence", "TESTS", "SCORES", "clip_scores", "auc", "wasserstein1", "grammar_comparison"]

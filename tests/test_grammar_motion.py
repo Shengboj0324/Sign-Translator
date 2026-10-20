@@ -407,3 +407,11 @@ def test_locus_conditioning_trains_and_generates_with_planned_loci():
     a = generate(model, ["Ask him."], fps=24., durations=[.5])[0]
     b = generate(model, ["Ask him."], fps=24., durations=[.5], loci=np.zeros((1, 16)))[0]
     assert not np.allclose(a.channels["body"].values, b.channels["body"].values)   # planned loci change the motion
+
+
+def test_locus_adherence_baseline_is_never_pointing():
+    from signtranslator.grammar_motion.evaluation import locus_adherence
+    states = [signer_state(s, frames=20, amplitude=.1) for s in range(3)]
+    out = locus_adherence(states, ["Ask him.", "Cut it.", "Show them there."])
+    assert out["planned_slots"] == 2 and out["never_pointed"] == 1. and out["within"] == 0.
+    assert locus_adherence(states[:1], ["Cut it."]) == dict(planned_slots=0)
