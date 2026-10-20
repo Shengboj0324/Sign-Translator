@@ -276,7 +276,9 @@ def rvq_loss(model: MotionRVQ, motion: MotionBatch, *, stages: int | None = None
             terms[name] = float(term.detach())
             total = total + term
     if applicable(config.motion.bindings, config.motion.trained_channels):
-        skeleton = skeleton_motion_loss({n: raw[n] for n in ("body", "left_hand", "right_hand")}, motion)
+        # float64 was needed for the SO(3) projection (unit_to_raw); the projected 6D columns are
+        # orthonormal, so the forward kinematics runs in float32 (GPUs run float64 at a fraction of the rate).
+        skeleton = skeleton_motion_loss({n: raw[n].float() for n in ("body", "left_hand", "right_hand")}, motion)
         for key, value in skeleton.items():
             terms[f"skeleton_{key}"] = float(value.detach())
             total = total + config.skeleton_weights[key] * value.to(total.dtype)
