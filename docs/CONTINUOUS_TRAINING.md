@@ -353,3 +353,34 @@ trained for longer, and diffusion as the second candidate; select on the
 signer-disjoint validation metrics above. Rendered samples are in
 `evidence/generated-motion-2026-10-19/`, each video showing reference | regression |
 diffusion | motion tokens.
+
+## Tokens v2: part-wise residual VQ, skeleton motion loss, RQ prior (2026-10-20)
+
+**Why.** On the How2Sign subset (3,968 training clips) the v1 tokenizer's
+window-averaged loss sat flat at about 0.70–0.76 from step 800 on. At that point the
+body rotation term (sin²(θ/2) ≈ 0.045) meant about 24° per joint, and the hand-location
+term meant about 10 cm. The commitment term stayed near 1. A single codebook of 1,024
+codes per two frames cannot cover the product space of body, 30 finger joints, face
+and gaze.
+
+| Problem | Fix | Where |
+|---|---|---|
+| A step's loss depends on which clips the batch drew (about ±0.1) | Validation every `--val-every` steps on fixed batches (fixed order, fixed noise seed, no text dropout). It uses an EMA of the weights (θ̄ ← 0.999 θ̄ + 0.001 θ), which checkpoints export as `ema`. The lowest validation loss is recorded in `best.json`, and evaluation loads EMA weights. | `scripts/train_motion_tokens.py` |
+| Quantisation error from one codebook | Parts (body + translations, left hand, right hand, face + head/gaze/blink), each with its own encoder and **residual** quantiser: Q EMA codebooks on successive residuals, r_q = r_{q−1} − e_q, ẑ = Σ e_q. Quantiser dropout (p = 0.5, q ~ U{1..Q}). One shared decoder. | `generation/motion_rvq.py` |
+| Rotation errors compound along the arm | Huber position, velocity and acceleration of all 44 arm and hand points by forward kinematics (scales 0.1 m, 0.5 m/s, 10 m/s²; weights 1, 0.5, 0.25) | `signing_space.skeleton_motion_loss` |
+| Several codes per step to predict | Exact factorisation p(c_t) = Π_j p(c_t^j \| c_t^{<j}, h_t). A temporal transformer gives h_t from the past steps; a causal depth transformer over the J = P·Q codes of a step has one head per code position (RQ-Transformer). Classifier-free guidance applies at every depth step. | `RVQPrior`, `generate_rvq_motion` |
+| Not knowing which part of the error is reachable | Per joint and per hand point, the error splits three ways: **target jitter** (the reference's angle to the geodesic midpoint of its neighbours), **decoder floor** (unquantised latents) and **quantisation gap** (full minus floor) | `scripts/diagnose_tokenizer.py` |
+
+Tests check:
+- RVQ is exact on sums of codes, and error does not increase with more stages;
+- the part columns cover the unit vector exactly once;
+- the code path equals the straight-through forward path in evaluation;
+- the depth transformer is causal, and its prefixes agree;
+- both models overfit a small batch;
+- the EMA algebra is correct;
+- train, validate, best.json, resume and evaluate work end to end.
+
+Both versions run on the same manifest and are compared on validation:
+- v1: `runpod/fleet/post.sh` chain on pod 1;
+- v2: `runpod/fleet/train_v2.sh`, with tokenizer 15k steps and priors 8k steps,
+  each selected by `best.json`.
