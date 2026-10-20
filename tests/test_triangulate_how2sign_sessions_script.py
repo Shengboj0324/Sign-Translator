@@ -122,3 +122,19 @@ def test_take5_sessions_use_recut_lateral_keypoints(tmp_path):
     assert main(base + ["--prefix", "interrupted", "--recut-side-keypoints", "recut"]) == 0
     gate = json.loads(store.get("interrupted/reports/shard-000-of-001.json"))["gates"]["vidC-5"]
     assert not gate["passed"] and "session record" in gate["reasons"][0]
+
+
+def test_a_clip_shorter_than_the_session_lag_is_dropped_not_fatal(monkeypatch):
+    import triangulate_how2sign_sessions as tri
+    clips = {f"s{i}": (f, sd) for i, (_, f, sd) in enumerate(session_clips(seeds=(0, 1, 2)))}
+    monkeypatch.setattr(tri, "load_keypoints", lambda store, key, sentence: clips[sentence][0 if key == "f" else 1])
+    real = tri.aligned
+    def aligned(front, side, lag):
+        if front is clips["s0"][0]:
+            raise ValueError("views do not overlap after alignment")
+        return real(front, side, lag)
+    monkeypatch.setattr(tri, "aligned", aligned)
+    out = tri.synchronised(None, {name: {"front": "f", "side": "s"} for name in clips})
+    assert [p[0] for p in out["aligned"]] == ["s1", "s2"] and out["reason"] is None
+    first = next(c for c in out["syncs"] if c.get("reason") == "views do not overlap after alignment")
+    assert first["passed"] is False

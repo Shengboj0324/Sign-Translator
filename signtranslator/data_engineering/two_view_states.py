@@ -29,7 +29,8 @@ CONFIDENCE = .3
 MAX_REPROJECTION_PX = 2.
 MIN_SYNC_CORRELATION = .8
 CALIBRATION_ANCHORS = (0,)    # nose: on no bone but view-consistent (1.1 px median two-view error on Panoptic)
-MAX_LAG_FRAMES = 15
+MAX_LAG_FRAMES = 30          # ±1 s at How2Sign's 30 fps (15 left 18% of sessions on the search edge)
+MAX_SYNC_POINTS = 20_000     # correspondences per candidate lag used to fit and score the epipolar curve
 # Epipolar synchronisation and calibration seeding (decided on the first real How2Sign
 # session, before any training; docs/DATA_QUALITY_DECISION.md §7). Nose, shoulders,
 # elbows and wrists are the view-consistent keypoints on How2Sign (0.75-2 px median
@@ -126,9 +127,12 @@ def epipolar_synchronise(pairs, *, size=(1280, 720), max_lag: int = MAX_LAG_FRAM
     of the session. For each candidate integer lag the clips' correspondences are pooled,
     a fundamental matrix is fitted robustly and scored by the median Sampson distance;
     in time-misaligned frames every moving joint violates the epipolar constraint, so the
-    true lag minimises it. The lag is accepted only if the minimum is sharp; then each
-    clip is kept unless its own error at that lag exceeds ``MAX_CLIP_EPIPOLAR_RATIO``
-    times the session's (a clip cut differently from the rest).
+    true lag minimises it. The lag is accepted only if the minimum is sharp and lies
+    inside the searched range (a minimum on the edge means the true lag is outside it);
+    then each clip is kept unless its own error at that lag exceeds
+    ``MAX_CLIP_EPIPOLAR_RATIO`` times the session's (a clip cut differently from the rest).
+    Each lag's curve value uses at most ``MAX_SYNC_POINTS`` correspondences drawn with a
+    fixed seed, so the median Sampson distance is estimated, not exhausted.
     """
     joints = list(SYNC_JOINTS)
     curve, fits = {}, {}
@@ -138,13 +142,17 @@ def epipolar_synchronise(pairs, *, size=(1280, 720), max_lag: int = MAX_LAG_FRAM
         x2 = np.concatenate([g[1] for g in gathered])
         if len(x1) < MIN_SYNC_OBSERVATIONS:
             continue
+        if len(x1) > MAX_SYNC_POINTS:
+            pick = np.random.default_rng(seed + lag + max_lag).choice(len(x1), MAX_SYNC_POINTS, replace=False)
+            x1, x2 = x1[pick], x2[pick]
         f, _ = ransac_fundamental(x1, x2, threshold=3., iterations=500, seed=seed)
         curve[lag], fits[lag] = float(np.median(sampson(f, x1, x2))), f
     if not curve:
         return dict(lag_frames=None, passed=False, reason="too few confident correspondences", curve={}, clips=[])
     lag = min(curve, key=curve.get)
     far = [v for k, v in curve.items() if abs(k - lag) >= 2]
-    sharp = bool(far) and curve[lag] < SYNC_SHARPNESS * min(far)
+    edge = abs(lag) >= max_lag
+    sharp = bool(far) and curve[lag] < SYNC_SHARPNESS * min(far) and not edge
     clips = []
     for sentence, front, side in pairs:
         x1, x2 = _shifted(front, side, lag, joints, size)
@@ -152,7 +160,8 @@ def epipolar_synchronise(pairs, *, size=(1280, 720), max_lag: int = MAX_LAG_FRAM
         clips.append(dict(sentence=sentence, sampson_px=error, observations=int(len(x1)),
                           passed=bool(sharp and error <= MAX_CLIP_EPIPOLAR_RATIO * curve[lag])))
     return dict(lag_frames=int(lag), session_sampson_px=curve[lag], sharp=sharp, passed=sharp,
-                reason=None if sharp else "the epipolar error has no sharp minimum over lags",
+                reason=None if sharp else ("the epipolar minimum lies on the edge of the searched lags" if edge
+                                           else "the epipolar error has no sharp minimum over lags"),
                 curve={int(k): v for k, v in curve.items()}, clips=clips)
 
 

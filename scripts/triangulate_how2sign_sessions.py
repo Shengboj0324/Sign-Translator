@@ -136,7 +136,16 @@ def synchronised(store, sentences: dict) -> dict:
                   velocity_lag_frames=velocity[clip["sentence"]]["lag_frames"],
                   velocity_correlation=finite(velocity[clip["sentence"]]["correlation"]))
              for clip in epipolar["clips"]]
-    pairs = [(s, f, sd, lag, aligned(f, sd, lag)) for (s, f, sd), clip in zip(clips, epipolar["clips"]) if clip["passed"]]
+    pairs = []
+    for (s, f, sd), clip in zip(clips, epipolar["clips"]):
+        if not clip["passed"]:
+            continue
+        try:
+            pairs.append((s, f, sd, lag, aligned(f, sd, lag)))
+        except ValueError as error:            # a clip shorter than the session lag: dropped, recorded
+            clip["passed"], clip["reason"] = False, str(error)
+    syncs = [dict(entry, passed=c["passed"], **({"reason": c["reason"]} if c.get("reason") else {}))
+             for entry, c in zip(syncs, epipolar["clips"])]
     reason = None if pairs else (epipolar["reason"] or "no clip passed epipolar synchronisation")
     return dict(reason=reason, syncs=syncs, aligned=pairs, epipolar=epipolar, lag=lag, time_scale=scale)
 

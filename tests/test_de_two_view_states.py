@@ -226,3 +226,11 @@ def test_session_frame_ratio_detects_short_lateral_clips():
     short = [(n, f, ClipKeypoints(sd.name, sd.times[:int(len(sd.times) * .75)], sd.points[:int(len(sd.times) * .75)],
                                   sd.confidence[:int(len(sd.times) * .75)])) for n, f, sd in clips_]
     assert abs(time_scale(short) - .75) < .02
+
+
+def test_a_minimum_on_the_edge_of_the_searched_lags_is_refused():
+    pairs = [(str(i), f, s) for i, (_, f, s) in enumerate(session_clips(seeds=(0, 1)))]
+    found = epipolar_synchronise(pairs, max_lag=6)
+    assert found["passed"] and found["lag_frames"] == 2
+    edge = epipolar_synchronise(pairs, max_lag=2)                   # the true lag sits on the boundary
+    assert not edge["passed"] and "edge" in edge["reason"]
