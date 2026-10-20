@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from signtranslator.data_engineering.corpus_manifest import load_manifest  # noqa: E402
 from signtranslator.generation.motion_metrics import compare  # noqa: E402
 from signtranslator.generation.signing_space import location_errors  # noqa: E402
+from signtranslator.grammar_motion.evaluation import grammar_comparison  # noqa: E402
 from signtranslator.generation.motion_tokens import (  # noqa: E402
     MotionVQ, MotionVQConfig, TokenPrior, TokenPriorConfig, generate_tokens_motion,
 )
@@ -107,6 +108,7 @@ def main(argv=None) -> int:
         if {"body", "left_hand", "right_hand"} <= set(channels) and all(
                 "LeftForearm" in r.channels["body"].labels for r in references):
             results[name]["signing_space"] = location_errors(generated, references)
+        results[name]["grammar"] = grammar_comparison(generated, references, [r["text"] for r in records])
         print(json.dumps({name: results[name]}, default=float), flush=True)
     report = dict(schema_version=1, checkpoint_key=args.checkpoint_key, generator=label,
                   manifest_sha256=args.manifest_sha256, partition=args.partition, clips=len(records),

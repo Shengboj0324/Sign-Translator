@@ -54,6 +54,8 @@ def main(argv=None) -> int:
     parser.add_argument("--code-dim", type=int, default=128)
     parser.add_argument("--codebook", type=int, default=512)
     parser.add_argument("--down-layers", type=int, default=2)
+    parser.add_argument("--no-grammar-features", dest="grammar_features", action="store_false",
+                        help="do not condition the prior on the English's grammatical features")
     parser.add_argument("--d-model", type=int, default=256)
     parser.add_argument("--heads", type=int, default=8)
     parser.add_argument("--text-layers", type=int, default=4)
@@ -105,7 +107,7 @@ def main(argv=None) -> int:
         tokenizer_state = saved["model"]
         config = TokenPriorConfig(tokenizer.config, d_model=args.d_model, heads=args.heads, text_layers=args.text_layers,
                                   token_layers=args.token_layers, feedforward=args.feedforward, dropout=args.dropout,
-                                  cfg_dropout=args.cfg_dropout)
+                                  cfg_dropout=args.cfg_dropout, grammar_features=args.grammar_features)
         model = TokenPrior(config).to(device)
     kind = "motion_tokenizer" if args.stage == "tokenizer" else "motion_token_prior"
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=.01)

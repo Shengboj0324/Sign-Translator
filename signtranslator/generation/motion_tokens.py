@@ -36,8 +36,10 @@ from ..data.multichannel import MotionBatch
 from .canonical_state import channel_loss_per_example
 from .text_to_motion import (
     BOS, EOS, PAD, VOCABULARY, LossScales, TextToMotionConfig, assemble_state, batch_seconds, diffusion_layout,
-    diffusion_targets, encode_texts, native_values, signing_space_term, sinusoid, unit_to_raw, utterance_duration,
+    diffusion_targets, encode_texts, grammar_projection, native_values, signing_space_term, sinusoid, unit_to_raw,
+    utterance_duration,
 )
+from ..grammar_motion.text import token_features
 
 
 # --------------------------------------------------------------------------------------
@@ -207,6 +209,7 @@ class TokenPriorConfig:
     max_text_bytes: int = 256
     cfg_dropout: float = .1
     duration_weight: float = .1
+    grammar_features: bool = False          # condition on the English's grammatical features
 
     def to_dict(self) -> dict:
         data = asdict(self)
@@ -229,6 +232,8 @@ class TokenPrior(nn.Module):
         self.config = config
         d = config.d_model
         self.embed = nn.Embedding(VOCABULARY, d, padding_idx=PAD)
+        if config.grammar_features:
+            self.grammar = grammar_projection(d)
         self.text_encoder = nn.TransformerEncoder(nn.TransformerEncoderLayer(
             d, config.heads, config.feedforward, config.dropout, batch_first=True, norm_first=True),
             config.text_layers, enable_nested_tensor=False)
@@ -245,7 +250,10 @@ class TokenPrior(nn.Module):
     def encode(self, tokens, mask):
         positions = sinusoid(torch.arange(tokens.shape[1], device=tokens.device)[None].expand_as(tokens),
                              self.config.d_model, max_period=1024.)
-        hidden = self.text_encoder(self.embed(tokens) + positions, src_key_padding_mask=~mask)
+        inputs = self.embed(tokens) + positions
+        if self.config.grammar_features:
+            inputs = inputs + self.grammar(token_features(tokens).to(inputs.dtype))[:, None]
+        hidden = self.text_encoder(inputs, src_key_padding_mask=~mask)
         pooled = (hidden * mask[..., None]).sum(1) / mask.sum(1, keepdim=True).clamp_min(1)
         return hidden, self.duration(pooled)[:, 0]
 

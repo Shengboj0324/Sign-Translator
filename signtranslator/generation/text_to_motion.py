@@ -53,11 +53,21 @@ from ..pose.multichannel import CHANNELS, MotionChannel, MultichannelMotion
 from ..pose.rotations import matrix_to_rotation_6d, rotation_6d_to_matrix
 from .canonical_state import CanonicalChannelBinding, channel_loss_per_example
 from .signing_space import applicable, location_loss
+from ..grammar_motion.text import FEATURES as GRAMMAR_FEATURES, token_features
 
 PAD, BOS, EOS = 256, 257, 258
 VOCABULARY = 259
 _IDENTITY_6D = (1., 0., 0., 0., 1., 0.)
 _FORWARD = (0., 0., 1.)
+
+
+def grammar_projection(d: int) -> nn.Linear:
+    """Linear map of the 8 English grammar features to the model width, zero-initialised
+    so a model starts exactly as its text-only counterpart."""
+    layer = nn.Linear(len(GRAMMAR_FEATURES), d)
+    nn.init.zeros_(layer.weight)
+    nn.init.zeros_(layer.bias)
+    return layer
 
 
 def encode_texts(texts, *, max_bytes: int = 256) -> tuple[torch.Tensor, torch.Tensor]:
@@ -100,6 +110,7 @@ class TextToMotionConfig:
     cfg_dropout: float = .1                # diffusion: probability of training on the empty text
     coefficient_norm: float = .5           # diffusion: coefficient values are divided by this
     location_weight: float = .1            # signing-space wrist/fingertip loss (signing_space.py); 0 disables
+    grammar_features: bool = False         # condition on the English's grammatical features (grammar_motion.text)
     loss_config: dict = field(default_factory=lambda: dict(
         translation_scale_metres=.05, coefficient_scale=.1, velocity_weight=0.))
 
@@ -141,6 +152,8 @@ class TextToMotion(nn.Module):
         self.config = config
         d = config.d_model
         self.embed = nn.Embedding(VOCABULARY, d, padding_idx=PAD)
+        if config.grammar_features:
+            self.grammar = grammar_projection(d)
         self.text_encoder = nn.TransformerEncoder(nn.TransformerEncoderLayer(
             d, config.heads, config.feedforward, config.dropout, batch_first=True, norm_first=True),
             config.text_layers, enable_nested_tensor=False)
@@ -179,7 +192,10 @@ class TextToMotion(nn.Module):
     def encode(self, tokens: torch.Tensor, mask: torch.Tensor):
         positions = sinusoid(torch.arange(tokens.shape[1], device=tokens.device)[None].expand_as(tokens),
                              self.config.d_model, max_period=1024.)
-        hidden = self.text_encoder(self.embed(tokens) + positions, src_key_padding_mask=~mask)
+        inputs = self.embed(tokens) + positions
+        if self.config.grammar_features:
+            inputs = inputs + self.grammar(token_features(tokens).to(inputs.dtype))[:, None]
+        hidden = self.text_encoder(inputs, src_key_padding_mask=~mask)
         pooled = (hidden * mask[..., None]).sum(1) / mask.sum(1, keepdim=True).clamp_min(1)
         log_duration = self.duration(pooled)[:, 0]
         return hidden, log_duration
@@ -492,6 +508,6 @@ def generate(model: TextToMotion, texts, *, fps: float, sample_prefix: str = "ge
     return states
 
 
-__all__ = ["encode_texts", "signing_space_term", "TextToMotionConfig", "TextToMotion", "training_loss", "generate", "batch_seconds",
+__all__ = ["grammar_projection", "encode_texts", "signing_space_term", "TextToMotionConfig", "TextToMotion", "training_loss", "generate", "batch_seconds",
            "utterance_duration", "alpha_bar", "diffusion_layout", "diffusion_targets", "heads_to_unit", "unit_to_raw",
            "native_values", "assemble_state", "LossScales"]

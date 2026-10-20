@@ -98,6 +98,8 @@ def main(argv=None) -> int:
     parser.add_argument("--feedforward", type=int, default=2048)
     parser.add_argument("--dropout", type=float, default=.1)
     parser.add_argument("--max-seconds", type=float, default=20.)
+    parser.add_argument("--no-grammar-features", dest="grammar_features", action="store_false",
+                        help="do not condition on the English's grammatical features (grammar_motion.text)")
     parser.add_argument("--objective", choices=("regression", "diffusion"), default="regression",
                         help="diffusion samples a plausible motion instead of predicting the conditional mean")
     parser.add_argument("--cfg-dropout", type=float, default=.1, help="diffusion: empty-text probability")
@@ -136,7 +138,7 @@ def main(argv=None) -> int:
         bindings=channel_bindings_from_state(first_state), trained_channels=tuple(args.trained_channels.split(",")),
         d_model=args.d_model, heads=args.heads, text_layers=args.text_layers, motion_layers=args.motion_layers,
         feedforward=args.feedforward, dropout=args.dropout, max_seconds=args.max_seconds,
-        objective=args.objective, cfg_dropout=args.cfg_dropout)
+        objective=args.objective, cfg_dropout=args.cfg_dropout, grammar_features=args.grammar_features)
     model = TextToMotion(config).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     prefix = f"training-runs/{args.run}"
