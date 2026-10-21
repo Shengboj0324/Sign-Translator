@@ -71,6 +71,46 @@ def test_evaluation_reports_grammar_for_a_trained_prior(tmp_path, monkeypatch):
     assert "grammar" in result and {"tests", "distributions"} <= set(result["grammar"])
 
 
+def test_evaluation_adds_r_precision_and_saves_generated_states(tmp_path, monkeypatch):
+    import sys
+    monkeypatch.setenv("SIGN_CACHE_DIR", str(tmp_path / "cache"))
+    digest = store_with_manifest(tmp_path / "store")
+    script = load_script()
+    store = ["--store", f"dir:{tmp_path / 'store'}", "--manifest-key", "manifest.json", "--manifest-sha256", digest]
+    base = store + ["--batch-size", "2", "--warmup", "1", "--checkpoint-every", "2", "--workers", "0",
+                    "--trained-channels", "body,head_rotation,face"]
+    assert script.main(base + ["--stage", "tokenizer", "--run", "tok", "--hidden", "16", "--code-dim", "8",
+                               "--codebook", "16", "--steps", "2"]) == 0
+    key = "training-runs/tok/checkpoints/step-00000002.pt"
+    tok_sha = hashlib.sha256((tmp_path / "store" / key).read_bytes()).hexdigest()
+    assert script.main(base + ["--stage", "prior", "--run", "pri", "--tokenizer-key", key, "--tokenizer-sha256", tok_sha,
+                               "--d-model", "32", "--heads", "4", "--text-layers", "1", "--token-layers", "1",
+                               "--feedforward", "64", "--steps", "2"]) == 0
+    sys.path.insert(0, str(ROOT / "scripts"))
+    spec = importlib.util.spec_from_file_location("train_retrieval", ROOT / "scripts/train_text_motion_retrieval.py")
+    retrieval = importlib.util.module_from_spec(spec); spec.loader.exec_module(retrieval)
+    assert retrieval.main(store + ["--run", "ret", "--batch-size", "3", "--d-model", "32", "--heads", "4",
+                                   "--motion-layers", "1", "--text-layers", "1", "--feedforward", "64", "--embedding", "16",
+                                   "--warmup", "1", "--val-every", "2", "--steps", "2", "--workers", "0",
+                                   "--trained-channels", "body,head_rotation,face"]) == 0
+    retrieval_key = json.loads((tmp_path / "store/training-runs/ret/best.json").read_text())["checkpoint_key"]
+    spec = importlib.util.spec_from_file_location("evaluate", ROOT / "scripts/evaluate_text_to_motion.py")
+    evaluate = importlib.util.module_from_spec(spec); spec.loader.exec_module(evaluate)
+    assert evaluate.main(store + ["--checkpoint-key", "training-runs/pri/checkpoints/step-00000002.pt", "--partition",
+                                  "train", "--limit", "3", "--guidance", "1", "--output-key", "eval.json",
+                                  "--retrieval-key", retrieval_key, "--save-generated", "generated/pri"]) == 0
+    report = json.loads((tmp_path / "store/eval.json").read_text())
+    result = next(iter(report["results"].values()))
+    scores = result["retrieval"]
+    assert {"r_at_1", "r_at_3", "matching_distance"} <= set(scores["generated"]) and scores["reference"]["clips"] == 3
+    saved = sorted(p.name for p in (tmp_path / "store/generated/pri/guidance-1").iterdir())
+    assert len(saved) == 3 and all(name.endswith(".npz") for name in saved)
+    from signtranslator.pose.multichannel import MultichannelMotion
+    path = tmp_path / "store/generated/pri/guidance-1" / saved[0]
+    state = MultichannelMotion.load(path, expected_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+    assert len(state.timestamps) > 0
+
+
 def test_grammar_tracks_are_written_for_every_manifest_record(tmp_path):
     import sys
     digest = store_with_manifest(tmp_path / "store")

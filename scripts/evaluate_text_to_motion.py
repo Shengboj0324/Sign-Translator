@@ -84,6 +84,32 @@ def load_generator(store, key: str, manifest_sha256: str, device: str = "cpu"):
     return model.config.objective, model.config.trained_channels, sample
 
 
+def load_retrieval(store, key: str, manifest_sha256: str):
+    """The frozen text-motion retrieval model (EMA weights), refusing one trained on another manifest."""
+    from signtranslator.generation.text_motion_retrieval import TextMotionRetrieval, TextMotionRetrievalConfig
+    saved = torch.load(io.BytesIO(store.get(key)), map_location="cpu", weights_only=False)
+    if saved.get("kind") != "text_motion_retrieval" or saved["manifest_sha256"] != manifest_sha256:
+        raise SystemExit(f"{key} is not a retrieval model trained on this manifest")
+    model = TextMotionRetrieval(TextMotionRetrievalConfig.from_dict(saved["config"]))
+    model.load_state_dict(saved.get("ema") or saved["model"])
+    return model.eval()
+
+
+@torch.no_grad()
+def retrieval_scores(model, states, texts, *, batch: int = 32) -> dict:
+    """R-precision (groups of 32, fixed seed) of ``states`` against their ``texts``."""
+    from signtranslator.data.multichannel import collate_multichannel
+    from signtranslator.generation.text_motion_retrieval import r_precision
+    from signtranslator.generation.text_to_motion import encode_texts
+    zm, zt = [], []
+    for start in range(0, len(states), batch):
+        zm.append(model.encode_motion(collate_multichannel(states[start:start + batch])))
+        tokens, mask = encode_texts(texts[start:start + batch])
+        zt.append(model.encode_text(tokens, mask))
+    zm, zt = torch.cat(zm), torch.cat(zt)
+    return r_precision(zm, zt, group=min(32, len(zm)))
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--store", default="r2")
@@ -97,6 +123,9 @@ def main(argv=None) -> int:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--output-key")
+    parser.add_argument("--retrieval-key", help="frozen text-motion retrieval checkpoint: adds R-precision of the "
+                                                 "generated motion and of the real motion on the same clips")
+    parser.add_argument("--save-generated", help="store prefix for the generated states (<prefix>/<guidance>/<sign>.npz)")
     args = parser.parse_args(argv)
     store = make_store(args.store)
     with tempfile.TemporaryDirectory() as temporary:
@@ -110,6 +139,9 @@ def main(argv=None) -> int:
     channels = tuple(c for c in ("body", "left_hand", "right_hand", "head_rotation", "root_translation",
                                  "head_translation", "left_gaze", "right_gaze") if c in trained)
     scales = [float(g) for g in args.guidance.split(",")] if label != "regression" else [None]
+    retrieval = load_retrieval(store, args.retrieval_key, args.manifest_sha256) if args.retrieval_key else None
+    texts = [r["text"] for r in records]
+    reference_retrieval = retrieval_scores(retrieval, references, texts) if retrieval else None
     results = {}
     for scale in scales:
         generated = []
@@ -125,8 +157,19 @@ def main(argv=None) -> int:
             results[name]["signing_space"] = location_errors(generated, references)
         results[name]["grammar"] = grammar_comparison(generated, references, [r["text"] for r in records])
         results[name]["grammar"]["locus_adherence"] = locus_adherence(generated, [r["text"] for r in records])
+        if retrieval:
+            results[name]["retrieval"] = dict(generated=retrieval_scores(retrieval, generated, texts),
+                                              reference=reference_retrieval)
+        if args.save_generated:
+            tag = "default" if scale is None else f"guidance-{scale:g}"
+            with tempfile.TemporaryDirectory() as temporary:
+                for record, state in zip(records, generated):
+                    path = Path(temporary) / f"{record['sign']}.npz"
+                    state.save(path)
+                    store.put(f"{args.save_generated.rstrip('/')}/{tag}/{record['sign']}.npz", path.read_bytes())
         print(json.dumps({name: results[name]}, default=float), flush=True)
     report = dict(schema_version=1, checkpoint_key=args.checkpoint_key, generator=label,
+                  retrieval_key=args.retrieval_key, saved_generated=args.save_generated,
                   manifest_sha256=args.manifest_sha256, partition=args.partition, clips=len(records),
                   steps=args.steps, results=results)
     if args.output_key:
