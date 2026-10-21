@@ -523,3 +523,28 @@ English length and clip duration correlate at 0.91, and the encoder saw whole cl
 Every evaluation now reports a duration-only control beside the real motion. A meaning score counts only when the control is at chance and the real motion is clearly above it.
 
 `scripts/score_generated_retrieval.py` re-scores stored generated states without regenerating them.
+
+### Generator round results so far (2026-10-21 07:40 UTC; 200 validation clips)
+
+| Generator | Best Fréchet (guidance) | Body speed / variation | Right-hand speed / variation | Headshake ratio | Notes |
+|---|---|---|---|---|---|
+| v1 tokens | 934 (3) | 0.84 / 0.92 | 0.34 / 0.21 | 2.44 | under-articulated hands |
+| v3a tokens (7.5 steps/s) | 662 (3) | 0.85 / 1.13 | 0.64 / 0.48 | 0.63 | prior never below chance on validation |
+| v3b tokens | 733 (3) | 0.69 / 0.89 | 0.59 / 0.42 | — | |
+| v3c tokens | 656 (3) | 0.77 / 0.90 | 0.62 / 0.45 | — | |
+| v2b tokens (30 steps/s) | 251 (3) | 0.97 / 0.96 | 0.85 / 0.66 | 2.28 (g3), 1.48 (g1) | |
+| **v2b tokens + loci** | **194 (2)** | 0.97 / — | 0.86 / 0.65 | 2.13 (g2), 1.37 (g1) | best so far; 17–19% of planned loci pointed at within 20° |
+| diffusion d384 | 938 (1) | **0.18** / 0.45 | 0.23 / 0.32 | 0.03 | near-static |
+
+**Diffusion d384 is near-static.** Its denoising validation was good (0.719), but its samples move at 0.15–0.18 of real speed:
+- not a sampler setting: η 0 or 1, 50 or 200 steps and guidance 1–3 change nothing;
+- the per-frame channel losses train no dynamics;
+- d512 had the same objective and was stopped at step 18k.
+
+The fix is the tokenizers' skeleton position/velocity/acceleration loss (`--motion-weight`). Runs `t2m-diffusion-m1` and `-m3` (weights 1 and 3) are training.
+
+**Gates.** No candidate passes all of them yet:
+- v2b + loci passes realism (best Fréchet) and articulation, apart from right-hand variation 0.65 just under 0.7;
+- it fails the headshake gate above guidance 1.
+
+R-precision is pending the duration-blind evaluator (`retrieval-hold`).
