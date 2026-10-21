@@ -100,3 +100,20 @@ def test_training_script_trains_validates_selects_and_stops(tmp_path, monkeypatc
     assert best["step"] == 2 and "val_r_at_3" in best
     log = json.loads(sorted((run / "log").iterdir())[-1].read_text())
     assert [e["step"] for e in log if "val/r_at_1" in e] == [2, 4, 6]
+
+
+def test_the_motion_embedding_is_blind_to_duration():
+    """Clips without motion must embed identically whatever their length (the first evaluator ranked by length)."""
+    from dataclasses import replace
+    import numpy as np
+    states = [state(0, 64), state(1, 150)]
+    blank = [replace(s, channels={n: replace(c, valid=np.zeros_like(c.valid), confidence=np.zeros_like(c.confidence),
+                                             observed=np.zeros_like(c.observed), values=np.zeros_like(c.values))
+                                  for n, c in s.channels.items()}) for s in states]
+    model = TextMotionRetrieval(TextMotionRetrievalConfig(motion_config(states), d_model=32, heads=4, motion_layers=1,
+                                                          text_layers=1, feedforward=64, dropout=0., embedding=16,
+                                                          window_frames=24, window_stride=12)).eval()
+    z = model.encode_motion(collate_multichannel(blank))
+    torch.testing.assert_close(z[0], z[1], atol=1e-5, rtol=1e-5)
+    real = model.encode_motion(collate_multichannel(states))
+    assert not torch.allclose(real[0], real[1], atol=1e-3)           # real content still separates clips

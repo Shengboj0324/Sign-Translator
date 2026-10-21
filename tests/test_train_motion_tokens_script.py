@@ -102,7 +102,8 @@ def test_evaluation_adds_r_precision_and_saves_generated_states(tmp_path, monkey
     report = json.loads((tmp_path / "store/eval.json").read_text())
     result = next(iter(report["results"].values()))
     scores = result["retrieval"]
-    assert {"r_at_1", "r_at_3", "matching_distance"} <= set(scores["generated"]) and scores["reference"]["clips"] == 3
+    assert {"r_at_1", "r_at_3", "matching_distance"} <= set(scores["generated"]) and scores["reference"]["real"]["clips"] == 3
+    assert scores["reference"]["duration_only"]["clips"] == 3
     saved = sorted(p.name for p in (tmp_path / "store/generated/pri/guidance-1").iterdir())
     assert len(saved) == 3 and all(name.endswith(".npz") for name in saved)
     from signtranslator.pose.multichannel import MultichannelMotion

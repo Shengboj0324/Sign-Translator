@@ -95,6 +95,14 @@ def load_retrieval(store, key: str, manifest_sha256: str):
     return model.eval()
 
 
+def blanked(states):
+    """The same clips with every channel removed: only their durations remain (the evaluator's control)."""
+    from dataclasses import replace
+    return [replace(s, channels={n: replace(c, valid=np.zeros_like(c.valid), confidence=np.zeros_like(c.confidence),
+                                            observed=np.zeros_like(c.observed), values=np.zeros_like(c.values))
+                                 for n, c in s.channels.items()}) for s in states]
+
+
 @torch.no_grad()
 def retrieval_scores(model, states, texts, *, batch: int = 32) -> dict:
     """R-precision (groups of 32, fixed seed) of ``states`` against their ``texts``."""
@@ -141,7 +149,9 @@ def main(argv=None) -> int:
     scales = [float(g) for g in args.guidance.split(",")] if label != "regression" else [None]
     retrieval = load_retrieval(store, args.retrieval_key, args.manifest_sha256) if args.retrieval_key else None
     texts = [r["text"] for r in records]
-    reference_retrieval = retrieval_scores(retrieval, references, texts) if retrieval else None
+    reference_retrieval = (dict(real=retrieval_scores(retrieval, references, texts),
+                                duration_only=retrieval_scores(retrieval, blanked(references), texts))
+                           if retrieval else None)
     results = {}
     for scale in scales:
         generated = []
