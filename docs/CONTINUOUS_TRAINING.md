@@ -478,3 +478,28 @@ explanations.
   every stage now uploads its log to R2 (`training-runs/<run>/stage-<name>.log`).
 - A 128-core pod built validation batches at under one clip per second with unbounded
   OpenMP threads. The chains export `OMP_NUM_THREADS=8`.
+
+### Generator round exit gate (declared 2026-10-21 05:50 UTC, before the diffusion and locus results)
+
+Candidates:
+- v1 tokens;
+- v2b tokens: plain and locus-conditioned;
+- v3a, v3b, v3c tokens;
+- diffusion d512 and d384.
+
+All are scored by `scripts/evaluate_text_to_motion.py` on the same 200 validation clips at guidance 1, 2 and 3. Selection uses validation only. The test partition (92 clips) is scored once, for the selected model only, and reported as the final number.
+
+1. **Realism (primary):** the lowest Fréchet distance, at any guidance.
+2. **Articulation:** speed and variation ratios for body, left hand and right hand within [0.7, 1.3]. Outside that range, the motion is frozen or jittery.
+3. **Grammar markers:** generated / reference rate ratios for headshake, nod, brow raise and brow furrow within [0.5, 2.0].
+4. **Accuracy against the reference:** body and hand geodesic error and wrist error are reported, not thresholded. A single reference cannot score valid alternative signings.
+5. **Ties:** within 10% Fréchet, prefer the model that passes more of 2–3, then the lower hand error.
+
+The round closes when:
+- every candidate is evaluated;
+- the selected model's test-partition evaluation is stored;
+- the comparison table is in these docs and the audit;
+- the best checkpoints are mirrored to the network volume;
+- every training pod is stopped.
+
+Failing gates 2–3 does not block the round. It is recorded as the problem for the next round, which is the plan in docs/NEXT_PHASE_PLAN.md.
