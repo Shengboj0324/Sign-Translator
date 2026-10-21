@@ -2,7 +2,7 @@
 # One-command stages of the How2Sign two-view pipeline (docs/RUNPOD.md), resumable.
 #
 #   runpod/pipeline.sh sapiens SHARD SHARDS     # GPU pods: Sapiens keypoints, both views, all splits
-#   runpod/pipeline.sh raw SPLIT                # one pod: raw recordings of both cameras into R2 (take-5 recovery)
+#   runpod/pipeline.sh raw SPLIT [I N]          # raw recordings of both cameras into R2 (take-5 recovery), mirror shards I mod N
 #   runpod/pipeline.sh recut SHARD SHARDS       # GPU pods: take-5 lateral keypoints re-cut from the raw recordings
 #   runpod/pipeline.sh cameras                  # one pod: shared camera intrinsics (written once)
 #   runpod/pipeline.sh triangulate SHARD SHARDS # CPU pods: sync, calibrate, gate, two-view states
@@ -68,7 +68,8 @@ case "$stage" in
     done ;;
   raw)
     split=${1:?split}
-    $PY scripts/acquisition/acquire_how2sign_raw.py --split "$split" --ledger "${LEDGER:-${WORK:-/workspace}/acquisition-ledger.jsonl}" ;;
+    $PY scripts/acquisition/acquire_how2sign_raw.py --split "$split" --ledger "${LEDGER:-${WORK:-/workspace}/acquisition-ledger.jsonl}" \
+      --shard "${2:-0}" --shards "${3:-1}" ;;
   recut)
     shard=${1:?shard}; shards=${2:?shards}
     [[ -f $CK ]] || $PY -c "import os,sys; from signtranslator.data.text_motion_dataset import R2Store; open(sys.argv[1],'wb').write(R2Store(os.environ).get('acquisition/2026-10-17-v1/models-sapiens/sapiens_1b_goliath_best_goliath_AP_639_torchscript.pt2'))" "$CK"

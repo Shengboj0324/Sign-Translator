@@ -15,7 +15,7 @@ accepted only when
 Downstream the recut checks every raw frontal recording frame by frame against the
 publisher-verified frontal clips, and the lateral one by epipolar geometry.
 
-Usage: acquire_how2sign_raw.py --split val [--view side] [--recordings REGEX] [--ledger L]
+Usage: acquire_how2sign_raw.py --split val [--view side] [--recordings REGEX] [--ledger L] [--shard i --shards n]
 
 Shards land at ``acquisition/2026-10-17-v1/how2sign-raw/<mirror folder>/<shard>.zip``.
 With ``--recordings`` only shards holding a matching recording are transferred.
@@ -103,12 +103,18 @@ def main(argv=None) -> int:
     parser.add_argument('--view', choices=('front', 'side', 'both'), default='both')
     parser.add_argument('--recordings', help='only shards holding a recording whose file name matches this regex')
     parser.add_argument('--ledger', type=Path, default=Path('acquisition-ledger.jsonl'))
+    parser.add_argument('--shard', type=int, default=0, help='with --shards: only mirror shards whose index is this modulo')
+    parser.add_argument('--shards', type=int, default=1)
     args = parser.parse_args(argv)
+    if not 0 <= args.shard < args.shards:
+        raise SystemExit('shard must be in [0, shards)')
     for view in ('front', 'side') if args.view == 'both' else (args.view,):
         folder = FOLDERS[args.split, view]
         publisher = PUBLISHER.get((args.split, view))
         reference = members(BASE + publisher) if publisher else None
-        for path, size, sha256 in shards(folder):
+        for index, (path, size, sha256) in enumerate(shards(folder)):
+            if index % args.shards != args.shard:
+                continue
             listing = members(BASE + path)
             if args.recordings and not any(re.search(args.recordings, name) for name in listing):
                 continue
