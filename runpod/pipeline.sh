@@ -14,7 +14,8 @@
 # work already written, so re-running a stage after an interruption continues it.
 # Overridable: DERIVED (output root), MONO (monocular states), SPLITS, MATCH (clip
 # filename regex, for smoke tests), SAPIENS_FLAGS, MODELS, TRAIN_FLAGS, RECUT_MATCH (session
-# regex for recut), RECUT_FLAGS, LEDGER (local acquisition ledger of the raw stage).
+# regex for recut), RECUT_FLAGS, LEDGER (local acquisition ledger of the raw stage), TAKE_FILTER (triangulate:
+# take5 | others; take-5 sessions after the re-cut, the others before it).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 for v in R2_ENDPOINT_URL R2_BUCKET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
@@ -88,7 +89,7 @@ case "$stage" in
     shard=${1:?shard}; shards=${2:?shards}
     $PY scripts/triangulate_how2sign_sessions.py --front-keypoints "$FRONT_PREFIX" --side-keypoints "$SIDE_PREFIX" \
       --recut-side-keypoints "$RECUT" --monocular "$MONO" --prefix "$TWO_VIEW" --intrinsics-key "$CAMERAS" --intrinsics-sha256 "$(object_sha "$CAMERAS")" \
-      --shard "$shard" --shards "$shards" ;;
+      --shard "$shard" --shards "$shards" ${TAKE_FILTER:+--take-filter "$TAKE_FILTER"} ;;
   manifest)
     $PY scripts/build_how2sign_text_manifest.py --reports-prefix "$TWO_VIEW/reports/" --corpus-id how2sign-two-view-text-v1 \
       --sentences $H/how2sign_realigned_train.csv $H/how2sign_realigned_val.csv $H/how2sign_realigned_test.csv \

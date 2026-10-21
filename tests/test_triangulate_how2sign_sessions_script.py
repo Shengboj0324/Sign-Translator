@@ -138,3 +138,19 @@ def test_a_clip_shorter_than_the_session_lag_is_dropped_not_fatal(monkeypatch):
     assert [p[0] for p in out["aligned"]] == ["s1", "s2"] and out["reason"] is None
     first = next(c for c in out["syncs"] if c.get("reason") == "views do not overlap after alignment")
     assert first["passed"] is False
+
+
+def test_take_filter_splits_sessions_into_disjoint_report_sets(tmp_path):
+    store = corpus(tmp_path)                                    # vidA-1 and vidB-1
+    for i, (_, front, side) in enumerate(session_clips(lag=0, seeds=(0, 1, 2))):
+        write(store, "front", f"vidC_{i}-5-rgb_front", front)
+        write(store, "side", f"vidC_{i}-5-rgb_side", side)
+        store.put(f"mono/states/vidC_{i}-5-rgb_front.npz", monocular_state(len(front.times)))
+    base = ["--store", f"dir:{tmp_path}", "--front-keypoints", "front", "--side-keypoints", "side", "--monocular", "mono",
+            "--prefix", "out"]
+    assert main(base + ["--take-filter", "others"]) == 0
+    assert main(base + ["--take-filter", "take5"]) == 0
+    others = json.loads(store.get("out/reports/shard-000-of-001-others.json"))["gates"]
+    take5 = json.loads(store.get("out/reports/shard-000-of-001-take5.json"))["gates"]
+    assert set(others) == {"vidA-1", "vidB-1"} and set(take5) == {"vidC-5"}
+    assert not store.exists("out/reports/shard-000-of-001.json")

@@ -155,6 +155,9 @@ def main(argv=None) -> int:
     parser.add_argument("--store", default="r2", help="r2, or dir:<path> for a local mirror")
     parser.add_argument("--front-keypoints", required=True, help="prefix holding keypoints/<clip>.npz (frontal)")
     parser.add_argument("--side-keypoints", required=True, help="prefix holding keypoints/<clip>.npz (lateral)")
+    parser.add_argument("--take-filter", choices=("all", "take5", "others"), default="all",
+                        help="only take-5 sessions (after the re-cut) or only the others (before it); each writes its "
+                             "own report files, so the two runs together equal one run over all sessions")
     parser.add_argument("--recut-side-keypoints", help="prefix of recut_how2sign_take5.py output: lateral keypoints "
                                                            "re-cut from the raw recordings replace the released ones")
     parser.add_argument("--monocular", required=True, help="prefix holding states/ and landmarks/ (frontal)")
@@ -184,6 +187,9 @@ def main(argv=None) -> int:
         intrinsics = (shared["focal1"], shared["focal2"], *shared["distortion"])
     sessions = discover_sessions(store, args.front_keypoints, args.side_keypoints, args.recut_side_keypoints)
     names = sorted(sessions)
+    if args.take_filter != "all":                 # session names end in their take: <video>-<take>
+        take5 = lambda n: n.rsplit("-", 1)[-1] == "5"    # noqa: E731
+        names = [n for n in names if take5(n) == (args.take_filter == "take5")]
     names = [n for i, n in enumerate(names) if i % args.shards == args.shard]
     results, gates = [], {}
     for session in names:
@@ -261,7 +267,8 @@ def main(argv=None) -> int:
                                 session=session))
     report = dict(schema_version=1, shard=args.shard, shards=args.shards, sessions=len(names), gaze_model_sha256=gaze_sha,
                   sessions_passed=sum(g["passed"] for g in gates.values()), gates=gates, results=results)
-    store.put(f"{args.prefix.rstrip('/')}/reports/shard-{args.shard:03d}-of-{args.shards:03d}.json",
+    suffix = "" if args.take_filter == "all" else f"-{args.take_filter}"
+    store.put(f"{args.prefix.rstrip('/')}/reports/shard-{args.shard:03d}-of-{args.shards:03d}{suffix}.json",
               json.dumps(report, sort_keys=True, default=float).encode())
     print(json.dumps(dict(sessions=len(names), passed=report["sessions_passed"], states=len(results))))
     return 0
