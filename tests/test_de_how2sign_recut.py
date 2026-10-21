@@ -117,3 +117,9 @@ def test_an_offset_beyond_the_search_range_is_refused():
 def test_needed_frames_cover_the_search_and_stay_in_the_recording():
     assert needed_frames([(100, 50), (300, 20)], 1000, max_offset=10) == (88, 332)
     assert needed_frames([(5, 50)], 60, max_offset=10) == (0, 60)
+
+
+def test_offset_scoring_in_processes_gives_the_same_result():
+    (fp, fc), (sp, sc) = recordings(offset=9.25)
+    placed = [(s, ClipKeypoints("f", np.arange(90) / 30., fp[s:s + 90], fc[s:s + 90])) for s in (20, 140, 260)]
+    assert estimate_offset(placed, sp, sc, max_offset=12, workers=2) == estimate_offset(placed, sp, sc, max_offset=12)

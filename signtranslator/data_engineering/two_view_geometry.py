@@ -72,22 +72,61 @@ def sampson(f: np.ndarray, x1: np.ndarray, x2: np.ndarray) -> np.ndarray:
     return np.sqrt(numerator / (fa[:, 0] ** 2 + fa[:, 1] ** 2 + ftb[:, 0] ** 2 + ftb[:, 1] ** 2))
 
 
+def _eight_point_batch(x1: np.ndarray, x2: np.ndarray) -> np.ndarray:
+    """:func:`eight_point` on a batch of minimal samples, (B, 8, 2) each -> (B, 3, 3)."""
+    def normalise(points):
+        centre = points.mean(axis=1)
+        scale = np.sqrt(2) / np.mean(np.linalg.norm(points - centre[:, None], axis=2), axis=1)
+        transform = np.zeros((len(points), 3, 3))
+        transform[:, 0, 0] = transform[:, 1, 1] = scale
+        transform[:, :2, 2] = -scale[:, None] * centre
+        transform[:, 2, 2] = 1.
+        homogeneous = np.concatenate((points, np.ones(points.shape[:2] + (1,))), axis=2)
+        return homogeneous @ transform.transpose(0, 2, 1), transform
+    a, t1 = normalise(x1)
+    b, t2 = normalise(x2)
+    design = np.einsum("bni,bnj->bnij", b, a).reshape(len(a), a.shape[1], 9)
+    f = np.linalg.svd(design)[2][:, -1].reshape(-1, 3, 3)
+    u, s, vt = np.linalg.svd(f)
+    s[:, 2] = 0.
+    f = (u * s[:, None, :]) @ vt
+    f = t2.transpose(0, 2, 1) @ f @ t1
+    return f / np.linalg.norm(f, axis=(1, 2), keepdims=True)
+
+
+def _sampson_batch(f: np.ndarray, x1: np.ndarray, x2: np.ndarray) -> np.ndarray:
+    """:func:`sampson` for a batch of F, (B, 3, 3) -> (B, N)."""
+    a = np.c_[x1, np.ones(len(x1))]
+    b = np.c_[x2, np.ones(len(x2))]
+    fa, ftb = a @ f.transpose(0, 2, 1), b @ f
+    numerator = np.einsum("nj,bnj->bn", b, fa) ** 2
+    return np.sqrt(numerator / (fa[..., 0] ** 2 + fa[..., 1] ** 2 + ftb[..., 0] ** 2 + ftb[..., 1] ** 2))
+
+
 def ransac_fundamental(x1, x2, *, threshold: float = 2., iterations: int = 2000, seed: int = 0):
-    """Robust F and inlier mask; the final F is refit on all inliers."""
+    """Robust F and inlier mask; the final F is refit on all inliers.
+
+    The hypotheses are the same minimal samples, drawn in the same order, as a loop of
+    :func:`eight_point` fits; they are solved and scored in batches (vectorised SVDs), and
+    the first hypothesis with the most inliers wins, as in the loop.
+    """
     rng = np.random.default_rng(seed)
-    best = None
-    for _ in range(iterations):
-        pick = rng.choice(len(x1), 8, replace=False)
-        try:
-            f = eight_point(x1[pick], x2[pick])
-        except np.linalg.LinAlgError:
-            continue
-        inliers = sampson(f, x1, x2) < threshold
-        if best is None or inliers.sum() > best[1].sum():
-            best = (f, inliers)
-    if best is None or best[1].sum() < 8:
+    picks = np.stack([rng.choice(len(x1), 8, replace=False) for _ in range(iterations)]) if iterations else None
+    best, best_count = None, -1
+    chunk = max(1, min(iterations, 2_000_000 // max(len(x1), 1)))
+    for begin in range(0, iterations, chunk):
+        pick = picks[begin:begin + chunk]
+        with np.errstate(invalid="ignore", divide="ignore"):
+            f = _eight_point_batch(x1[pick], x2[pick])
+            counts = (_sampson_batch(f, x1, x2) < threshold).sum(axis=1)
+        finite = np.isfinite(f).all(axis=(1, 2))
+        counts = np.where(finite, counts, -1)
+        k = int(np.argmax(counts))
+        if counts[k] > best_count:
+            best, best_count = f[k], int(counts[k])
+    if best is None or best_count < 8:
         raise ValueError("no fundamental matrix with at least 8 inliers")
-    inliers = best[1]
+    inliers = sampson(best, x1, x2) < threshold
     return eight_point(x1[inliers], x2[inliers]), inliers
 
 

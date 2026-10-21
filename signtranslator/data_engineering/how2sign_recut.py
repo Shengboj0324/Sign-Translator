@@ -155,19 +155,50 @@ def _score(placed, side_points, side_confidence, lag, *, size, seed):
     return float(np.median(sampson(f, x1, x2))), f, pairs
 
 
+_WORKER = {}
+
+
+def _init_worker(placed, side_points, side_confidence, size, seed):
+    _WORKER.update(placed=placed, side_points=side_points, side_confidence=side_confidence, size=size, seed=seed)
+
+
+def _score_lag(lag):
+    w = _WORKER
+    return _score(w["placed"], w["side_points"], w["side_confidence"], lag, size=w["size"], seed=w["seed"])[0]
+
+
+def _errors(placed, side_points, side_confidence, lags, *, size, seed, pool) -> dict:
+    """lag -> median Sampson error (None when too few correspondences); in a process pool when given."""
+    if pool is None:
+        values = [_score(placed, side_points, side_confidence, lag, size=size, seed=seed)[0] for lag in lags]
+    else:
+        values = list(pool.map(_score_lag, lags))
+    return {lag: v for lag, v in zip(lags, values) if v is not None}
+
+
 def estimate_offset(placed, side_points: np.ndarray, side_confidence: np.ndarray, *,
-                    max_offset: int = MAX_OFFSET_FRAMES, size=(1280, 720), seed: int = 0) -> dict:
+                    max_offset: int = MAX_OFFSET_FRAMES, size=(1280, 720), seed: int = 0, workers: int = 1) -> dict:
     """Sub-frame camera offset of a session from placed frontal clips and raw lateral keypoints.
 
     ``placed`` is [(raw start, frontal ClipKeypoints), ...]; ``side_points`` (N, 308, 2)
     and ``side_confidence`` (N, 308) cover the raw lateral recording (confidence 0 where
     not computed). Raw lateral frame ``start + m + offset`` shows frontal clip frame ``m``.
+    ``workers`` > 1 scores the offsets in that many processes; every offset's RANSAC has
+    the same seed either way, so the result does not depend on it.
     """
-    curve = {}
-    for lag in range(-max_offset, max_offset + 1):
-        error, _, _ = _score(placed, side_points, side_confidence, lag, size=size, seed=seed)
-        if error is not None:
-            curve[lag] = error
+    if workers > 1:
+        import multiprocessing
+        from concurrent.futures import ProcessPoolExecutor
+        with ProcessPoolExecutor(workers, mp_context=multiprocessing.get_context("spawn"), initializer=_init_worker,
+                                 initargs=(placed, side_points, side_confidence, size, seed)) as pool:
+            return _estimate_offset(placed, side_points, side_confidence, max_offset=max_offset, size=size, seed=seed,
+                                    pool=pool)
+    return _estimate_offset(placed, side_points, side_confidence, max_offset=max_offset, size=size, seed=seed, pool=None)
+
+
+def _estimate_offset(placed, side_points, side_confidence, *, max_offset, size, seed, pool) -> dict:
+    curve = _errors(placed, side_points, side_confidence, list(range(-max_offset, max_offset + 1)), size=size,
+                    seed=seed, pool=pool)
     result = dict(offset_frames=None, passed=False, curve=curve, fine_curve={}, sampson_px=None, sharpness=None,
                   zero_lag_ratio=None, clips=[])
     if not curve:
@@ -183,11 +214,8 @@ def estimate_offset(placed, side_points: np.ndarray, side_confidence: np.ndarray
     if abs(best) >= max_offset:
         return dict(result, reason="the epipolar minimum lies at the edge of the searched offsets")
     lags = best + np.arange(-FINE_HALF_WIDTH, FINE_HALF_WIDTH + FINE_STEP / 2, FINE_STEP)
-    fine = {}
-    for lag in lags:
-        error, _, _ = _score(placed, side_points, side_confidence, float(lag), size=size, seed=seed)
-        if error is not None:
-            fine[float(lag)] = error
+    fine = _errors(placed, side_points, side_confidence, [float(lag) for lag in lags], size=size, seed=seed,
+                   pool=pool)
     # The fine curve carries RANSAC noise of a few tenths of a pixel, so its minimum is the
     # vertex of a least-squares parabola over the whole grid rather than of three points.
     keys = np.array(sorted(fine))

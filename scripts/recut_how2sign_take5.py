@@ -216,7 +216,7 @@ def recover_session(store, args, session: str, clips: dict, rows: dict, fronts: 
     side_points, side_confidence = cached["points"].astype(np.float64), cached["confidence"].astype(np.float64)
     names = sorted(placed)
     offset = recut.estimate_offset([(placed[n], keypoints[n]) for n in names], side_points, side_confidence,
-                                   max_offset=args.max_offset)
+                                   max_offset=args.max_offset, workers=args.offset_workers)
     for name, clip in zip(names, offset.pop("clips")):
         info[name].update(offset_sampson_px=clip["sampson_px"], offset_observations=clip["observations"])
     record["offset"] = dict(offset, offset_seconds=None if offset["offset_frames"] is None
@@ -238,6 +238,20 @@ def recover_session(store, args, session: str, clips: dict, rows: dict, fronts: 
     return dict(record, accepted=True, outputs=outputs)
 
 
+def available_cpus() -> int:
+    """CPUs this process may use: the cgroup quota (containers report the host's cores), else the affinity set."""
+    try:
+        quota, period = open("/sys/fs/cgroup/cpu.max").read().split()
+        if quota != "max":
+            return max(1, int(quota) // int(period))
+    except (OSError, ValueError):
+        pass
+    try:
+        return max(1, len(os.sched_getaffinity(0)))
+    except AttributeError:
+        return os.cpu_count() or 1
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--store", default="r2", help="r2, or dir:<path> for a local mirror")
@@ -256,6 +270,8 @@ def main(argv=None) -> int:
     parser.add_argument("--max-offset", type=int, default=recut.MAX_OFFSET_FRAMES,
                         help="camera offsets searched, in raw frames either way")
     parser.add_argument("--match", help="only sessions whose name matches this regular expression")
+    parser.add_argument("--offset-workers", type=int, default=available_cpus(),
+                        help="processes scoring camera offsets (default: the CPU quota); results do not depend on it")
     parser.add_argument("--shard", type=int, default=0)
     parser.add_argument("--shards", type=int, default=1)
     args = parser.parse_args(argv)

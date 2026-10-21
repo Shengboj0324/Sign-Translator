@@ -157,3 +157,26 @@ def test_fixed_intrinsics_estimate_only_the_session_pose():
     _, _, rotation, _, _ = cameras(angle=66)
     assert np.degrees(np.arccos(np.clip((np.trace(held_out.rotation.T @ rotation) - 1) / 2, -1, 1))) < 2.
     assert max(held_out.median_reprojection_px) < 3.
+
+
+def test_batched_ransac_equals_the_hypothesis_loop():
+    from signtranslator.data_engineering.two_view_geometry import eight_point, ransac_fundamental, sampson
+    rng = np.random.default_rng(1)
+    x = np.c_[rng.uniform(-1, 1, (600, 2)), rng.uniform(3, 6, 600)]
+    k = np.array([[1000, 0, 640], [0, 1000, 360], [0, 0, 1.]])
+    r = np.array([[.8, 0, .6], [0, 1, 0], [-.6, 0, .8]])
+    p1 = x @ k.T; p1 = p1[:, :2] / p1[:, 2:]
+    p2 = (x @ r.T + [-1.5, 0, .5]) @ k.T; p2 = p2[:, :2] / p2[:, 2:]
+    p1 += rng.normal(size=p1.shape); p2 += rng.normal(size=p2.shape)
+    outliers = rng.random(600) < .3
+    p2[outliers] = rng.uniform(0, 1280, (outliers.sum(), 2))
+    loop_rng, best = np.random.default_rng(4), None
+    for _ in range(300):                                     # the reference: one hypothesis at a time
+        pick = loop_rng.choice(600, 8, replace=False)
+        f = eight_point(p1[pick], p2[pick])
+        inliers = sampson(f, p1, p2) < 2.
+        if best is None or inliers.sum() > best.sum():
+            best = inliers
+    f, inliers = ransac_fundamental(p1, p2, threshold=2., iterations=300, seed=4)
+    assert np.array_equal(inliers, best) and inliers[~outliers].mean() > .7
+    np.testing.assert_allclose(f, eight_point(p1[best], p2[best]))
