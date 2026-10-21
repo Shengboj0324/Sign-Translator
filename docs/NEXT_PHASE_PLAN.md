@@ -151,6 +151,21 @@ These start when the generator round's exit gate closes (docs/CONTINUOUS_TRAININ
    - verify the ZIP members;
    - extract monocular states;
    - map glosses.
+   - **Status (2026-10-21 12:55 UTC).**
+     - Acquired and verified: `ASL_Citizen.zip`, 45,924,134,223 B, SHA-256 `349c0e33…8eab`, re-read from R2.
+     - Contents: 83,399 videos, 2,731 glosses, every row with an ASL-LEX code. Splits: train 40,154 (35 signers), val 10,304 (6), test 32,941 (11).
+     - Extraction runs on 16 shards (`runpod/fleet/extract_asl_citizen.sh`, about 73 clips/min per 13.6-core pod).
+   - **Smoke-test findings (fixed before the full run):**
+     - The pod image lacked `libEGL`, and the extractor recorded the failure as a refusal of every clip. Now each worker probes the MediaPipe runtime at start and fails the job.
+     - Webcam framing cuts the body above the hips: hips are visible in 2% of frames. The hip-based chest frame then invalidated every arm joint, so the body was available in 3 of 48 clips.
+     - The opt-in `--upright-chest` prior takes the chest up axis from the camera vertical. It keeps chest yaw and roll and drops its lean. How2Sign is unchanged.
+     - On 512 clips, the body is now available in 84%. 77% of clips have arm rotations in at least 20% of their frames (median 41%), and hands are seen in a median 38% of frames. Isolated-sign clips start and end at rest.
+   - **Manifest:** `scripts/build_asl_citizen_manifest.py`.
+     - Publisher partitions, with signer-disjointness checked.
+     - Participants as pseudonyms.
+     - Gloss and ASL-LEX code with status `publisher_label`.
+     - Per-split quality counts.
+   - **Gloss mapping:** 887 of the 2,731 glosses match SAPA's ASL-LEX phonology entries exactly. Normalised matching is not used, since it would merge variants such as `SOCCER2`. The ASLLRP Sign Bank join waits for DAI 2.
 2. **Full How2Sign** (item 1a).
    - **Sapiens:** keypoints for every remaining clip. `runpod/pipeline.sh` without `SUBSET`; R2 claims skip the ≈ 13k frontal and side clips already done. About 57k clips at ≈ 40 clips/min on ten L40S pods: ≈ 24 h, ≈ $260.
    - **Take-5 sessions:** re-cut first (B80, `scripts/recut_how2sign_take5.py`).
