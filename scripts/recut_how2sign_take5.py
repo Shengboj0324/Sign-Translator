@@ -239,17 +239,21 @@ def recover_session(store, args, session: str, clips: dict, rows: dict, fronts: 
 
 
 def available_cpus() -> int:
-    """CPUs this process may use: the cgroup quota (containers report the host's cores), else the affinity set."""
+    """CPUs this process may use, at most 32: the cgroup quota (v2 ``cpu.max`` or v1 ``cfs_quota_us``;
+    containers report the host's cores), else the affinity set."""
+    for path, parse in (("/sys/fs/cgroup/cpu.max", lambda text: text.split()),
+                        ("/sys/fs/cgroup/cpu/cpu.cfs_quota_us", lambda text: (
+                            text.strip(), open("/sys/fs/cgroup/cpu/cpu.cfs_period_us").read().strip()))):
+        try:
+            quota, period = parse(open(path).read())
+            if quota not in ("max", "-1"):
+                return max(1, min(32, int(quota) // int(period)))
+        except (OSError, ValueError):
+            continue
     try:
-        quota, period = open("/sys/fs/cgroup/cpu.max").read().split()
-        if quota != "max":
-            return max(1, int(quota) // int(period))
-    except (OSError, ValueError):
-        pass
-    try:
-        return max(1, len(os.sched_getaffinity(0)))
+        return max(1, min(32, len(os.sched_getaffinity(0))))
     except AttributeError:
-        return os.cpu_count() or 1
+        return max(1, min(32, os.cpu_count() or 1))
 
 
 def main(argv=None) -> int:
