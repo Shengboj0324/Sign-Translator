@@ -35,7 +35,10 @@ clip's length:
 - **Training:** it sees one ``window_frames`` window per clip at a random offset.
 - **Position code:** frame position *within* the window.
 - **Scoring:** the embedding is the renormalised mean of the window embeddings at
-  stride ``window_stride`` (a clip shorter than a window is one zero-padded window).
+  stride ``window_stride``.
+- **Short clips:** a clip shorter than a window is one window, completed by holding its
+  last frame. A zero-padding mask leaked the length of short clips: blank-clip R@3 was
+  0.172 against chance 0.094.
 
 The acceptance check (``duration_control``) is that clips with all motion removed
 score at chance.
@@ -131,16 +134,24 @@ class TextMotionRetrieval(nn.Module):
         return F.normalize(self.motion_out(_masked_mean(h, mask)), dim=-1)
 
     def _windows(self, motion: MotionBatch, starts: list[list[int]]):
-        """(windows (N, w, W), masks (N, w), owner (N,)) cut from each clip at the given start frames."""
+        """(windows (N, w, W), masks (N, w), owner (N,)) cut from each clip at the given start frames.
+
+        A clip shorter than a window is extended by holding its last frame (a held final pose), never
+        zero-padded under a mask: a mask would tell the encoder the clip's length.
+        """
         unit = diffusion_targets(self.config.motion, motion)
         w = self.config.window_frames
-        padded = F.pad(unit, (0, 0, 0, w))
-        valid = F.pad(motion.frame_valid, (0, w))
-        cuts, masks, owner = [], [], []
+        lengths = [int(n) for n in motion.frame_valid.sum(1).tolist()]
+        cuts, owner = [], []
         for b, offsets in enumerate(starts):
+            n = max(lengths[b], 1)
+            clip = unit[b, :n]
+            if n < w:
+                clip = torch.cat((clip, clip[-1:].expand(w - n, -1)), 0)
             for s in offsets:
-                cuts.append(padded[b, s:s + w]); masks.append(valid[b, s:s + w]); owner.append(b)
-        return torch.stack(cuts), torch.stack(masks), torch.tensor(owner, device=unit.device)
+                cuts.append(clip[s:s + w]); owner.append(b)
+        cuts = torch.stack(cuts)
+        return cuts, torch.ones(cuts.shape[:2], dtype=torch.bool, device=unit.device), torch.tensor(owner, device=unit.device)
 
     def encode_motion(self, motion: MotionBatch, *, random_window: bool = False) -> torch.Tensor:
         """(B, embedding) unit vectors for a batch of (real or generated) motion, blind to its duration.
