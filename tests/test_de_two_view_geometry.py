@@ -180,3 +180,15 @@ def test_batched_ransac_equals_the_hypothesis_loop():
     f, inliers = ransac_fundamental(p1, p2, threshold=2., iterations=300, seed=4)
     assert np.array_equal(inliers, best) and inliers[~outliers].mean() > .7
     np.testing.assert_allclose(f, eight_point(p1[best], p2[best]))
+
+
+def test_a_large_refit_does_not_build_the_full_left_factor():
+    import tracemalloc
+    from signtranslator.data_engineering.two_view_geometry import eight_point
+    rng = np.random.default_rng(2)
+    x1, x2 = rng.uniform(0, 1000, (60000, 2)), rng.uniform(0, 1000, (60000, 2))
+    tracemalloc.start()
+    f = eight_point(x1, x2)                     # a full SVD would allocate U: 60000 x 60000 doubles = 29 GB
+    peak = tracemalloc.get_traced_memory()[1]
+    tracemalloc.stop()
+    assert peak < 200e6 and f.shape == (3, 3) and abs(np.linalg.det(f)) < 1e-9

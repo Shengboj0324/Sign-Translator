@@ -56,7 +56,7 @@ def eight_point(x1: np.ndarray, x2: np.ndarray) -> np.ndarray:
     a, t1 = _normalise(x1)
     b, t2 = _normalise(x2)
     design = np.einsum("ni,nj->nij", b, a).reshape(len(a), 9)
-    f = np.linalg.svd(design)[2][-1].reshape(3, 3)
+    f = np.linalg.svd(design, full_matrices=len(design) < 9)[2][-1].reshape(3, 3)   # all of V, never the n x n U (16 GB at 45k)
     u, s, vt = np.linalg.svd(f)
     f = u @ np.diag([s[0], s[1], 0.]) @ vt
     f = t2.T @ f @ t1
