@@ -180,3 +180,22 @@ def test_the_location_term_runs_under_bf16_autocast_with_the_float32_value():
         loss, terms, _ = training_loss(model, tokens, mask, batch)
     loss.backward()
     assert terms["location"] > 0 and torch.isfinite(loss)
+
+
+def test_the_generator_motion_term_trains_speed():
+    """motion_weight adds skeleton velocity/acceleration: the generator learns the reference's speed, not only poses."""
+    from signtranslator.generation.canonical_state import channel_bindings_from_state
+    from signtranslator.generation.text_to_motion import TextToMotion, TextToMotionConfig, encode_texts, training_loss
+    torch.manual_seed(0)
+    states = [signer_state(s, frames=16, amplitude=.3) for s in range(2)]
+    batch = collate_multichannel(states)
+    tokens, mask = encode_texts(["a", "b"])
+    base = dict(bindings=channel_bindings_from_state(states[0]), trained_channels=("body", "left_hand", "right_hand"),
+                d_model=32, heads=4, text_layers=1, motion_layers=1, feedforward=64, dropout=0., objective="diffusion")
+    off = TextToMotion(TextToMotionConfig(**base))
+    _, terms, _ = training_loss(off, tokens, mask, batch)
+    assert not any(k.startswith("skeleton_") for k in terms)
+    on = TextToMotion(TextToMotionConfig(**base, motion_weight=1.))
+    loss, terms, _ = training_loss(on, tokens, mask, batch)
+    assert {"skeleton_position", "skeleton_velocity", "skeleton_acceleration"} <= set(terms) and torch.isfinite(loss)
+    loss.backward()

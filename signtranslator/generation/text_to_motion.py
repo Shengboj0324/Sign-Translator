@@ -52,7 +52,7 @@ from ..data.multichannel import MotionBatch
 from ..pose.multichannel import CHANNELS, MotionChannel, MultichannelMotion
 from ..pose.rotations import matrix_to_rotation_6d, rotation_6d_to_matrix
 from .canonical_state import CanonicalChannelBinding, channel_loss_per_example
-from .signing_space import applicable, location_loss
+from .signing_space import applicable, location_loss, skeleton_motion_loss
 from ..grammar_motion.text import FEATURES as GRAMMAR_FEATURES, token_features
 from ..grammar_motion.loci_conditioning import SLOT_WIDTH as LOCUS_SLOT_WIDTH, plan_loci
 
@@ -138,6 +138,8 @@ class TextToMotionConfig:
     cfg_dropout: float = .1                # diffusion: probability of training on the empty text
     coefficient_norm: float = .5           # diffusion: coefficient values are divided by this
     location_weight: float = .1            # signing-space wrist/fingertip loss (signing_space.py); 0 disables
+    motion_weight: float = 0.              # skeleton position/velocity/acceleration loss (signing_space.skeleton_motion_loss)
+    skeleton_weights: dict = field(default_factory=lambda: dict(position=1., velocity=.5, acceleration=.25))
     grammar_features: bool = False         # condition on the English's grammatical features (grammar_motion.text)
     locus_conditioning: bool = False       # condition on referent-locus slots (grammar_motion.loci_conditioning)
     locus_dropout: float = .3              # training: probability of hiding a clip's loci
@@ -156,8 +158,8 @@ class TextToMotionConfig:
             raise ValueError("objective must be 'regression' or 'diffusion'")
         if not 0 <= self.cfg_dropout < 1 or self.coefficient_norm <= 0:
             raise ValueError("cfg_dropout must lie in [0, 1) and coefficient_norm be positive")
-        if self.location_weight < 0:
-            raise ValueError("location_weight must be nonnegative")
+        if self.location_weight < 0 or self.motion_weight < 0:
+            raise ValueError("location_weight and motion_weight must be nonnegative")
 
     def to_dict(self) -> dict:
         data = asdict(self)
@@ -411,6 +413,14 @@ def training_loss(model: TextToMotion, tokens, text_mask, motion: MotionBatch, l
     if location is not None:
         terms["location"] = float(location.detach())
         total = total + config.location_weight * location.to(total.dtype)
+    if config.motion_weight and applicable(config.bindings, config.trained_channels):
+        # Position, velocity and acceleration of all 44 arm and hand points: without them the per-frame channel
+        # losses leave the dynamics untrained, and the diffusion model sampled near-static motion (body speed
+        # 0.15-0.18 of real at every guidance, step count and eta; t2m-diffusion-d384-subset-v1).
+        skeleton = skeleton_motion_loss({n: prediction[n].float() for n in ("body", "left_hand", "right_hand")}, motion)
+        for key, value in skeleton.items():
+            terms[f"skeleton_{key}"] = float(value.detach())
+            total = total + config.motion_weight * config.skeleton_weights[key] * value.to(total.dtype)
     if bool(duration_rows.any()):
         target = utterance_duration(motion).log().to(log_duration.dtype)
         duration_term = F.smooth_l1_loss(log_duration[duration_rows], target[duration_rows])

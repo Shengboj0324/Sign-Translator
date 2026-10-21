@@ -121,6 +121,7 @@ def main(argv=None) -> int:
     parser.add_argument("--objective", choices=("regression", "diffusion"), default="regression",
                         help="diffusion samples a plausible motion instead of predicting the conditional mean")
     parser.add_argument("--cfg-dropout", type=float, default=.1, help="diffusion: empty-text probability")
+    parser.add_argument("--motion-weight", type=float, default=0., help="skeleton position/velocity/acceleration loss weight")
     parser.add_argument("--trained-channels", default="body,left_hand,right_hand,head_rotation,face,blink,root_translation,head_translation,left_gaze,right_gaze")
     parser.add_argument("--eval-every", type=int, default=1_000)
     parser.add_argument("--eval-batches", type=int, default=16, help="fixed validation batches")
@@ -159,6 +160,7 @@ def main(argv=None) -> int:
         d_model=args.d_model, heads=args.heads, text_layers=args.text_layers, motion_layers=args.motion_layers,
         feedforward=args.feedforward, dropout=args.dropout, max_seconds=args.max_seconds,
         objective=args.objective, cfg_dropout=args.cfg_dropout, grammar_features=args.grammar_features,
+        motion_weight=args.motion_weight,
         locus_conditioning=args.locus_conditioning)
     model = TextToMotion(config).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
