@@ -39,16 +39,18 @@ def rotation_6d_to_matrix(d6: torch.Tensor) -> torch.Tensor:
     d6 = [a; b]; r1 = a/|a|, r2 = normalize(b - (r1.b) r1), r3 = r1 x r2.
     The three become the *columns* of R.
     """
-    _check_vector(d6, 6)
+    checks = []
+    _check_vector(d6, 6, checks)
     a, b = d6[..., :3], d6[..., 3:]
-    r1 = _normalize(a)
-    b = _normalize(b)
+    r1 = _normalize(a, checks)
+    b = _normalize(b, checks)
     # remove the r1 component of b, then normalise
     b_proj = b - (r1 * b).sum(-1, keepdim=True) * r1
-    if bool((torch.linalg.vector_norm(b_proj, dim=-1) <= 32 * torch.finfo(d6.dtype).eps).any()):
-        raise ValueError("6D rotation axes are collinear or numerically unresolved")
-    r2 = _normalize(b_proj)
+    checks.append(((torch.linalg.vector_norm(b_proj, dim=-1) <= 32 * torch.finfo(d6.dtype).eps).any(),
+                   "6D rotation axes are collinear or numerically unresolved"))
+    r2 = _normalize(b_proj, checks)
     r3 = torch.cross(r1, r2, dim=-1)
+    _raise_first(checks)
     # stack as columns: R[..., :, k] = r_{k+1}
     return torch.stack((r1, r2, r3), dim=-1)
 
@@ -226,9 +228,11 @@ def axis_angle_to_rotation_6d(aa: torch.Tensor) -> torch.Tensor:
 
 def geodesic_distance(R1: torch.Tensor, R2: torch.Tensor) -> torch.Tensor:
     """(..., 3, 3) x (..., 3, 3) -> (...,) angle of R1^T R2 in [0, pi]."""
-    _check_rotation(R1)
-    _check_rotation(R2)
-    rel = R1.transpose(-1, -2) @ R2
+    checks = []
+    _check_rotation(R1, checks)
+    _check_rotation(R2, checks)
+    _raise_first(checks)
+    rel = _matmul3(R1.transpose(-1, -2), R2)
     trace = rel[..., 0, 0] + rel[..., 1, 1] + rel[..., 2, 2]
     cos = torch.clamp((trace - 1.0) * 0.5, -1.0, 1.0)
     # ||vee(R-R^T)|| / 2 = |sin(theta)| on SO(3). Unlike acos,
@@ -246,18 +250,49 @@ def is_rotation_matrix(R: torch.Tensor, atol: float = 1e-5) -> torch.Tensor:
     """Elementwise (...,) bool: R^T R = I and det R = +1 within ``atol``."""
     _check_matrix(R)
     eye = torch.eye(3, dtype=R.dtype, device=R.device).expand(R.shape)
-    orth = torch.linalg.norm(R.transpose(-1, -2) @ R - eye, dim=(-1, -2))
-    det = torch.linalg.det(R)
+    orth = torch.linalg.norm(_matmul3(R.transpose(-1, -2), R) - eye, dim=(-1, -2))
+    det = _det3(R)
     return (orth < atol) & ((det - 1.0).abs() < atol)
 
 
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
-def _normalize(v: torch.Tensor) -> torch.Tensor:
+def _matmul3(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+    """(..., 3, 3) @ (..., 3, 3) as broadcast products summed over k.
+
+    The same product as ``A @ B``; a batched GEMM pads each 3 x 3 block to a full tile,
+    which on a GPU costs ~10x more in float64 than these elementwise kernels.
+    """
+    return (A[..., :, :, None] * B[..., None, :, :]).sum(-2)
+
+
+def _det3(R: torch.Tensor) -> torch.Tensor:
+    """(..., 3, 3) -> (...,) determinant by cofactor expansion along the first row (no batched LU)."""
+    return (R[..., 0, 0] * (R[..., 1, 1] * R[..., 2, 2] - R[..., 1, 2] * R[..., 2, 1])
+            - R[..., 0, 1] * (R[..., 1, 0] * R[..., 2, 2] - R[..., 1, 2] * R[..., 2, 0])
+            + R[..., 0, 2] * (R[..., 1, 0] * R[..., 2, 1] - R[..., 1, 1] * R[..., 2, 0]))
+
+
+def _raise_first(checks: list) -> None:
+    """Raise ValueError for the first failed (flag, message) check, reading every flag at once.
+
+    A host read of a GPU tensor waits for the device, so a function that validates
+    several things collects its flags and reads them together; the error raised is
+    the one the checks, made in turn, would have raised.
+    """
+    if not checks:
+        return
+    failed = torch.stack([flag.reshape(()) for flag, _ in checks]).tolist()
+    for (_, message), bad in zip(checks, failed):
+        if bad:
+            raise ValueError(message)
+
+
+def _normalize(v: torch.Tensor, checks: list | None = None) -> torch.Tensor:
+    """``v / |v|``; ``checks``: append the validity check for :func:`_raise_first` instead of reading it now."""
     scale = v.abs().amax(dim=-1, keepdim=True)
-    if not bool(torch.isfinite(v).all()) or bool((scale == 0).any()):
-        raise ValueError("cannot normalize a zero or nonfinite rotation vector")
+    _check(checks, ~torch.isfinite(v).all() | (scale == 0).any(), "cannot normalize a zero or nonfinite rotation vector")
     scaled = v / scale
     return scaled / torch.linalg.vector_norm(scaled, dim=-1, keepdim=True)
 
@@ -291,16 +326,32 @@ def _check_matrix(R: torch.Tensor) -> None:
         raise ValueError(f"expected trailing shape (3, 3), got {tuple(R.shape[-2:])}")
 
 
-def _check_vector(value: torch.Tensor, width: int) -> None:
+def _check(checks: list | None, failed: torch.Tensor, message: str) -> None:
+    """Raise now if ``failed`` (one host read), or defer the check to :func:`_raise_first`."""
+    if checks is None:
+        if bool(failed):
+            raise ValueError(message)
+    else:
+        checks.append((failed, message))
+
+
+def _check_vector(value: torch.Tensor, width: int, checks: list | None = None) -> None:
     if value.ndim < 1 or value.shape[-1] != width:
         raise ValueError(f"expected trailing vector dimension {width}")
-    if value.dtype not in (torch.float32, torch.float64) or not bool(torch.isfinite(value).all()):
-        raise ValueError("rotation inputs must be finite float32 or float64 tensors")
+    message = "rotation inputs must be finite float32 or float64 tensors"
+    if value.dtype not in (torch.float32, torch.float64):
+        raise ValueError(message)
+    _check(checks, ~torch.isfinite(value).all(), message)
 
 
-def _check_rotation(value: torch.Tensor) -> None:
+def _check_rotation(value: torch.Tensor, checks: list | None = None) -> None:
     _check_matrix(value)
-    if value.dtype not in (torch.float32, torch.float64) or not bool(torch.isfinite(value).all()):
+    if value.dtype not in (torch.float32, torch.float64):
         raise ValueError("rotation matrix must be finite float32 or float64")
-    if not bool(is_rotation_matrix(value).all()):
-        raise ValueError("matrix must belong to SO(3), not a reflection or scaled transform")
+    if checks is None:
+        checks = []
+        _check_rotation(value, checks)
+        _raise_first(checks)
+        return
+    checks.append((~torch.isfinite(value).all(), "rotation matrix must be finite float32 or float64"))
+    checks.append((~is_rotation_matrix(value).all(), "matrix must belong to SO(3), not a reflection or scaled transform"))

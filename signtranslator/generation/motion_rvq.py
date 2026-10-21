@@ -222,13 +222,77 @@ class MotionRVQ(nn.Module):
         return {part: self.encoders[part](padded[..., getattr(self, f"columns_{part}")].transpose(1, 2)).transpose(1, 2)
                 for part, _ in self.parts}
 
+    def _codebook_buffers(self, name: str) -> torch.Tensor:
+        """A quantiser buffer of every part, stacked: (P, Q, …)."""
+        return torch.stack([getattr(self.quantizers[part], name) for part, _ in self.parts])
+
     def quantize(self, latents: dict, stages: int | None = None):
-        """(part -> ẑ, (B, K, J) stage-major code indices, part -> residual inputs)."""
-        quantized, indices, inputs = {}, {}, {}
-        for part, _ in self.parts:
-            quantized[part], indices[part], inputs[part] = self.quantizers[part](latents[part], stages)
-        stacked = torch.stack([indices[part] for part, _ in self.parts], dim=-1)      # (B, K, Q, P)
-        return quantized, stacked.flatten(-2), inputs                                 # j = q·P + p
+        """(part -> ẑ, (B, K, J) stage-major code indices, residual inputs per used stage (P, N, code_dim)).
+
+        All parts share the codebook shape, so each stage is one batched nearest-neighbour
+        search over the parts — the same arithmetic as :class:`ResidualQuantizer` per part.
+        """
+        names = [part for part, _ in self.parts]
+        used = self.config.stages if stages is None else stages
+        z = torch.stack([latents[part] for part in names])                             # (P, B, K, D)
+        flat = z.reshape(len(names), -1, z.shape[-1])
+        codes = self._codebook_buffers("codes")                                         # (P, Q, C, D)
+        residual, total, indices, inputs = flat, torch.zeros_like(flat), [], []
+        for q in range(self.config.stages):
+            book = codes[:, q]
+            d = (residual.pow(2).sum(-1, keepdim=True) - 2 * residual @ book.transpose(1, 2)
+                 + book.pow(2).sum(-1)[:, None])
+            index = d.argmin(-1)                                                        # (P, N)
+            indices.append(index)
+            if q < used:
+                e = torch.gather(book, 1, index[..., None].expand(-1, -1, book.shape[-1]))
+                inputs.append(residual)
+                total = total + e
+                residual = residual - e
+        quantized = dict(zip(names, total.reshape(z.shape).unbind(0)))
+        grid = torch.stack(indices, -1).permute(1, 2, 0)                                # (N, Q, P)
+        return quantized, grid.reshape(*z.shape[1:-1], -1), inputs                      # j = q·P + p
+
+    @torch.no_grad()
+    def update_codebooks(self, inputs, codes: torch.Tensor, valid: torch.Tensor) -> None:
+        """The EMA codebook update of every part's :meth:`ResidualQuantizer.update`, batched over parts.
+
+        The valid tokens are selected once for all parts and stages (one wait for the GPU).
+        The assigned-residual sums stay one matrix product per part: cuBLAS's batched GEMM
+        sums in another order, and these sums are what makes the update identical to the
+        per-part one. Dead codes are re-seeded part by part and stage by stage, drawing
+        random numbers in the same order.
+        """
+        names, ema, size = [part for part, _ in self.parts], self.config.ema, self.config.codebook
+        rows = valid.reshape(-1).nonzero()[:, 0]
+        if not len(rows) or not inputs:
+            return
+        grid = codes.reshape(-1, self.config.stages, len(names))[rows]                 # (N valid, Q, P)
+        mass, total, book = (self._codebook_buffers(n) for n in ("code_mass", "code_sum", "codes"))
+        selected = []
+        for q, x in enumerate(inputs):
+            x = x[:, rows]                                                              # (P, N valid, D)
+            selected.append(x)
+            onehot = x.new_zeros(*x.shape[:2], size).scatter_(2, grid[:, q].T[..., None], 1.)
+            mass[:, q].mul_(ema).add_(onehot.sum(1), alpha=1 - ema)
+            sums = torch.stack([onehot[k].T @ x[k] for k in range(len(names))])
+            total[:, q].mul_(ema).add_(sums, alpha=1 - ema)
+            book[:, q] = total[:, q] / mass[:, q].clamp_min(1e-5)[..., None]
+        for k, part in enumerate(names):
+            quantizer = self.quantizers[part]
+            quantizer.code_mass.copy_(mass[k]); quantizer.code_sum.copy_(total[k]); quantizer.codes.copy_(book[k])
+        dead = mass[:, :len(inputs)] < 1e-3                                             # (P, used, C)
+        if not bool(dead.any()):
+            return
+        for k, part in enumerate(names):
+            quantizer = self.quantizers[part]
+            for q, x in enumerate(selected):
+                if not bool(dead[k, q].any()):
+                    continue
+                pick = torch.randint(x.shape[1], (int(dead[k, q].sum()),), device=x.device)
+                quantizer.codes[q][dead[k, q]] = x[k][pick]
+                quantizer.code_sum[q][dead[k, q]] = x[k][pick]
+                quantizer.code_mass[q][dead[k, q]] = 1.
 
     def split_codes(self, codes: torch.Tensor) -> dict:
         """(B, K, J) stage-major indices -> part -> (B, K, Q)."""
@@ -249,9 +313,7 @@ class MotionRVQ(nn.Module):
         quantized, codes, inputs = self.quantize(latents, stages)
         valid = self.token_valid(frame_valid)
         if self.training:
-            per_part = self.split_codes(codes)
-            for part, _ in self.parts:
-                self.quantizers[part].update(inputs[part], per_part[part], valid)
+            self.update_codebooks(inputs, codes, valid)
         straight = {part: latents[part] + (quantized[part] - latents[part]).detach() for part, _ in self.parts}
         return self.decode_latents(straight, unit.shape[1]), latents, quantized, codes, valid
 
@@ -260,6 +322,8 @@ def rvq_loss(model: MotionRVQ, motion: MotionBatch, *, stages: int | None = None
     """Per-channel reconstruction loss + skeleton position/velocity/acceleration + commitment.
 
     In training, quantiser dropout draws the number of stages; ``stages`` forces it.
+    The terms are detached 0-dim tensors (``stages`` a float): reading them waits for the
+    GPU, so a training loop converts them only when it logs.
     """
     config = model.config
     if stages is None and model.training and torch.rand(()) < config.quantizer_dropout:
@@ -268,29 +332,38 @@ def rvq_loss(model: MotionRVQ, motion: MotionBatch, *, stages: int | None = None
     reconstruction, latents, quantized, codes, valid = model(unit, motion.frame_valid, stages)
     raw = unit_to_raw(config.motion, reconstruction.double())
     scales = LossScales(**config.motion.loss_config)
-    total = torch.zeros((), dtype=torch.float64, device=unit.device)
-    terms = {}
+    channels = []
     for name in config.motion.trained_channels:
         values, support, _ = channel_loss_per_example(name, raw[name], motion.channels[name], motion.frame_valid,
                                                       config=scales, timestamps=motion.timestamps, allow_inferred=True)
-        if bool(support.any()):
-            term = values[support].mean()
-            terms[name] = float(term.detach())
+        channels.append((name, values, support))
+    total = torch.zeros((), dtype=torch.float64, device=unit.device)
+    terms = {}
+    # which channels have support in this batch: one host sync for all of them
+    present = torch.stack([support.any() for _, _, support in channels]).tolist() if channels else []
+    for (name, values, support), keep in zip(channels, present):
+        if keep:
+            term = torch.where(support, values, torch.zeros_like(values)).sum() / support.sum()
+            terms[name] = term.detach()
             total = total + term
     if applicable(config.motion.bindings, config.motion.trained_channels):
         # float64 was needed for the SO(3) projection (unit_to_raw); the projected 6D columns are
         # orthonormal, so the forward kinematics runs in float32 (GPUs run float64 at a fraction of the rate).
         skeleton = skeleton_motion_loss({n: raw[n].float() for n in ("body", "left_hand", "right_hand")}, motion)
         for key, value in skeleton.items():
-            terms[f"skeleton_{key}"] = float(value.detach())
+            terms[f"skeleton_{key}"] = value.detach()
             total = total + config.skeleton_weights[key] * value.to(total.dtype)
-    commitment = torch.stack([((latents[p] - quantized[p].detach()) ** 2).mean(-1)[valid].mean()
-                              for p, _ in model.parts]).mean()
-    terms["commitment"] = float(commitment.detach())
+    names = [p for p, _ in model.parts]
+    z, zq = torch.stack([latents[p] for p in names]), torch.stack([quantized[p] for p in names])   # (P, B, K, D)
+    error = ((z - zq.detach()) ** 2).mean(-1)
+    commitment = (torch.where(valid, error, torch.zeros_like(error)).sum((1, 2)) / valid.sum()).mean()
+    terms["commitment"] = commitment.detach()
     terms["stages"] = float(stages or config.stages)
-    per_part = model.split_codes(codes)
-    for p, _ in model.parts:
-        terms[f"codes_used_{p}"] = float(per_part[p][..., 0][valid].unique().numel())
+    # distinct stage-1 codes per part on valid tokens (index ``codebook`` collects the padding)
+    first = torch.where(valid[..., None], codes[..., :len(names)], config.codebook).reshape(-1, len(names)).T
+    seen = torch.zeros(len(names), config.codebook + 1, dtype=torch.bool, device=codes.device).scatter_(1, first, True)
+    for p, count in zip(names, seen[:, :config.codebook].sum(1).unbind()):
+        terms[f"codes_used_{p}"] = count
     return total + config.commitment * commitment.to(total.dtype), terms
 
 

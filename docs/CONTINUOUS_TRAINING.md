@@ -402,3 +402,33 @@ That motivated v2b (`runpod/fleet/train_v2b.sh`):
 - `--base-blocks` residual blocks at full frame rate (without them the encoder sees
   only 5 frames);
 - early stopping with `--patience 4` validations.
+
+**Tokenizer step speed.** A GPU profile of the v2b step (L40S, batch 64, synthetic
+clips of 225–450 frames, hidden 512, 4 base blocks) put 55% of GPU time in float64
+batched 3×3 matrix products. They came from rotation validation (`R^T R`, `det`) and
+the geodesic diagnostic. cuBLAS pads each 3×3 block to a full GEMM tile, which costs
+about 10× an elementwise product-sum in float64. The second cost was the arm and hand
+FK, run one point and one joint at a time (5.6k of 9.2k forward ops). Changes, with
+the same arithmetic:
+- `pose/rotations.py`: 3×3 products and determinants written elementwise; each
+  function reads its validity checks in one host sync, raising the same error in the
+  same order;
+- `signing_space.skeleton_points` composes both sides and all fingers at once,
+  elementwise, and `skeleton_motion_loss` runs the prediction and the reference as
+  one batch with masked means;
+- `MotionRVQ.quantize`/`update_codebooks` handle all parts per stage at once.
+  Codes and codebooks are bit-identical to the per-part quantiser on CPU and CUDA;
+- `rvq_loss` returns its terms as device tensors. The training loop reads them only
+  when it prints, validates or checkpoints (a non-finite loss is still refused before
+  any save). `WeightEMA` uses `torch._foreach_*`.
+
+| Synthetic batch of 64 | before | after |
+|---|---|---|
+| 225–450 frames | 397 ms/step | 180 ms/step |
+| 300–600 frames | 518 ms/step | 248 ms/step |
+| host syncs / dispatched ops per step (CPU count, small model) | ~830 / 15.5k | ~90 / 5.8k |
+
+Peak memory rose 9.2 → 9.6 GiB. `torch.compile` of the encoders and decoder gave no
+further gain (182 ms), so it is not used. Over several steps the new and old code
+drift apart by float rounding about as fast as the old code drifts from itself
+(cuDNN), and `tests/test_generation_motion_rvq_vectorised.py` pins the equivalence.
