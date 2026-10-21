@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # post_full_tri.sh FIRST COUNT TOTAL — full How2Sign: wait until both views' keypoints are complete, then triangulate
 # shards FIRST..FIRST+COUNT-1 of TOTAL in parallel (camera intrinsics reused from the subset's validated calibration:
-# How2Sign's two cameras are the same rig). Logs per shard uploaded to R2.
+# How2Sign's two cameras are the same rig). Logs per shard uploaded to R2. RECUT_DONE=K also waits for K completion
+# markers of recut_take5.sh, so take-5 sessions triangulate from the re-cut lateral keypoints (audit B80).
 set -uo pipefail
 FIRST=$1 COUNT=$2 TOTAL=$3
 source /root/r2env.sh
@@ -13,9 +14,10 @@ upload() { python -c "import os,sys; from signtranslator.data.text_motion_datase
 last=-1; still=0
 while true; do
   f=$(count "$DERIVED/how2sign-sapiens-front-v1/keypoints/"); s=$(count "$DERIVED/how2sign-sapiens-side-v1/keypoints/")
-  t=$((f + s)); echo "$(date +%H:%M) front $f side $s"
+  r=$(count "$DERIVED/how2sign-sapiens-side-recut-v1/done/")
+  t=$((f + s)); echo "$(date +%H:%M) front $f side $s recut markers $r/${RECUT_DONE:-0}"
   [ "$t" -eq "$last" ] && still=$((still + 1)) || still=0; last=$t
-  if [ "$f" -ge 34900 ] && [ "$s" -ge 35000 ] && [ "$still" -ge 2 ]; then break; fi
+  if [ "$f" -ge 34900 ] && [ "$s" -ge 35000 ] && [ "$still" -ge 2 ] && [ "$r" -ge "${RECUT_DONE:-0}" ]; then break; fi
   sleep 300
 done
 echo "STAGE triangulate $FIRST..$((FIRST + COUNT - 1)) of $TOTAL $(date)"
