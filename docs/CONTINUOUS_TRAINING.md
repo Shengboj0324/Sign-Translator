@@ -384,3 +384,21 @@ Both versions run on the same manifest and are compared on validation:
 - v1: `runpod/fleet/post.sh` chain on pod 1;
 - v2: `runpod/fleet/train_v2.sh`, with tokenizer 15k steps and priors 8k steps,
   each selected by `best.json`.
+
+**Tokenizer results** (`scripts/diagnose_tokenizer.py`, 120 validation clips; the
+target jitter is a property of the data and is the same for both):
+
+| Tokenizer | Joints full / floor | 44 FK points full / floor | Fingertips full | Wrists (body/LeftHand, body/RightHand) |
+|---|---|---|---|---|
+| v1 (one VQ codebook, step 15k) | 19.1° / 17.9° | 10.9 / 8.7 cm | 11.7 cm | 36–41° |
+| v2 (RVQ + skeleton loss, best step 8k) | 9.6° / 9.1° | 2.2 / 1.8 cm | 2.5 cm | 22° |
+| target jitter | 2.0° | 0.9 cm | 1.0 cm | 2.8–5.2° |
+
+v2 halves the joint error and cuts point and fingertip error about fivefold. Its
+quantisation gap (full − floor) is 0.5°, so the remaining error sits in the decoder
+floor. v2's validation loss was lowest at steps 7.5k–8k and then rose (overfitting).
+That motivated v2b (`runpod/fleet/train_v2b.sh`):
+- no temporal downsampling (`--down-layers 0`);
+- `--base-blocks` residual blocks at full frame rate (without them the encoder sees
+  only 5 frames);
+- early stopping with `--patience 4` validations.
