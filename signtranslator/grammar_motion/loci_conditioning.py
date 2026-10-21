@@ -8,10 +8,15 @@ initialised, so a model starts as its locus-free counterpart).
 
 At generation there is no reference motion, so :func:`plan_loci` assigns slots from
 the English with the contrastive policy of the research report (new third-person
-referents alternate between the signer's ipsilateral and contralateral side; height
-only for iconic reasons) at the azimuth and elevation measured on How2Sign
-(``How2Sign grammar measurements``: median locus 25.5° toward the signer's right,
-+22.6° elevation; mirrored for the second referent, further out for later ones).
+referents alternate between the two sides; height only for iconic reasons) at the
+azimuth and elevation of the loci measured on two-view How2Sign with outward pointing
+(schema-2 grammar records, 2026-10-21: median 22.4° toward the signer's left, i.e.
+contralateral for the 90% right-dominant signers, interquartile −6° to +40°; median
+elevation +13.3°), mirrored for the second referent and further out for later ones.
+These are the loci the locus-conditioned generator is trained on (``state_loci``), so
+planned slots stay inside the training distribution. The earlier slots (25.5° right,
++22.6°) came from monocular states, where the dominant hand is misidentified in most
+clips and index handshapes counted as points.
 """
 from __future__ import annotations
 
@@ -23,8 +28,8 @@ from .text import sentence_features
 
 MAX_LOCI = 4
 SLOT_WIDTH = 4 * MAX_LOCI
-# (azimuth, elevation) degrees of planned slots; negative azimuth = signer's right (ipsilateral for right-dominant).
-PLANNED_SLOTS = ((-25.5, 22.6), (25.5, 22.6), (-50., 15.), (50., 15.))
+# (azimuth, elevation) degrees of planned slots; positive azimuth = signer's left (frames.py).
+PLANNED_SLOTS = ((22.4, 13.3), (-22.4, 13.3), (50., 13.3), (-50., 13.3))
 
 
 def direction(azimuth_deg: float, elevation_deg: float) -> np.ndarray:

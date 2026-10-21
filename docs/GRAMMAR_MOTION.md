@@ -82,9 +82,13 @@ The sample is 4,196 clips from 276 whole sessions (monocular states).
 
 **Reference distributions.** The literature gives none of these for ASL:
 
-- **Pointing:** 11% of clips contain a referential point, with 0.13 loci per clip. Locus
-  azimuth has its median at 25° toward the signer's right (5–95%: 59° right to 41° left),
-  so ipsilateral space dominates. Elevation has its median at +23° (5–95%: −16° to +46°).
+- **Pointing (superseded; see the two-view section below):** 11% of clips, 0.13 loci
+  per clip, median azimuth 25° toward the signer's right and elevation +23°. Two
+  faults make this an upper bound on noise rather than a distribution of points.
+  Monocular wrist travel picks the left hand as dominant in 84% of clips. Two-view
+  picks it in 10%, and both label the arms anatomically, so the measurement ran mostly
+  on the non-dominant hand. The detector also counted index handshapes aimed across
+  the body.
 - **Markers:** role-shift segments occur in 16% of clips and headshakes in 16%.
 - **Gaze during pointing (779 points): not found.** The median angle between gaze and
   the pointing direction is 53°, against 52° for the same clip's gaze at least 0.5 s
@@ -99,6 +103,59 @@ The sample is 4,196 clips from 276 whole sessions (monocular states).
   0.60–1.29), so the speed-minimum proxy does not show the ≈2× sentence-final lengthening
   Tang et al. report. The proxy is not a sign segmentation. Blinks fall in the final window
   of 8.6% of clips.
+
+### Two-view re-measurement (2026-10-21)
+
+The same script ran on the two-view states (`--states …/how2sign-two-view-v1`): 1,387
+clips with triangulated body and hands, 289 sessions. The results are in
+`evidence/grammar-motion-2026-10-20/how2sign-two-view-grammar-measurements-v2.json`
+and R2 `grammar-motion-v1/two-view-measurements-v2.json`. The grammar records use
+schema 2, where pointing requires the index to aim away from the signer
+(`pointing.OUTWARD_COS`).
+
+**Why schema 2.** Before it, 84% of right-hand "points" aimed across the body from a
+hand held low in front of the chest. Their cosine with the outward direction had a
+median of 0.06, so these were index handshapes of lexical signs. The outward criterion
+keeps 23% of them, with a median outward cosine of 0.49.
+
+| English feature | Detector score | AUC (95% CI) | Positives |
+|---|---|---|---|
+| wh-question | brow furrow, mean z | **0.716 (0.546–0.867)** | 11 |
+| yes/no question | brow raise, mean z | **0.791 (0.593–0.960)** | 9 |
+| conditional | brow raise, mean z | **0.600 (0.558–0.642)** | 159 |
+| negation | headshake rate | **0.606 (0.574–0.639)** | 233 |
+| reported speech | role-shift coverage | 0.474 (0.401–0.609) | 8 |
+| deixis | outward pointing rate | 0.509 (0.498–0.521) | 661 |
+| third-person pronouns | outward pointing rate | 0.507 (0.491–0.527) | 179 |
+
+**What replicates.** All four non-manual markers replicate on the second data set,
+including the yes/no raise that was borderline on monocular.
+
+**What does not.**
+- **Pointing:** outward pointing does not track English deixis or pronouns. The
+  earlier 0.53 came from index handshapes that co-occur with deictic words.
+- **Gaze during points:** gaze does not follow points (67 events, median 54° vs 55°
+  control; closer than control in 49%). Throughout, gaze stays 14–25° from the camera
+  axis, i.e. on the addressee. The frames agree (gaze and chest share the
+  camera-1 y-up axes; checked per clip), so this is how How2Sign signers behave, not
+  an offset.
+
+**Distributions** (the training distribution of `state_loci`):
+- 4.3% of clips hold an outward point, with 0.045 loci per clip.
+- Locus azimuth: median 22° toward the signer's left, contralateral for the 90%
+  right-dominant signers (5–95%: −68° to +69°).
+- Locus elevation: median +13° (5–95%: −32° to +47°).
+- Role shift appears in 18% of clips, headshake in 19%.
+- Final blinks occur in 13% of clips.
+
+**Consequences.**
+- `loci_conditioning.PLANNED_SLOTS` now uses these medians, ±22.4° at +13.3°.
+- The locus-conditioned prior is conditioned on rare, real points. With so few, it is
+  expected to differ little from the plain prior, and its locus adherence is reported
+  rather than relied on.
+- Two-view and monocular arms differ by 20–35° in forearm and index direction,
+  without a mirror (a mirrored match is 45–160° off). The two-view set passed the
+  reprojection gate and is the training set.
 
 ## Limits
 

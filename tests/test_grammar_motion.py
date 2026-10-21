@@ -396,7 +396,7 @@ def test_locus_slots_planner_and_state_measurement():
     np.testing.assert_allclose(s[:3], [0, 0, 1])
     assert lc.plan_loci("Cut the paper.").sum() == 0
     two = lc.plan_loci("Give it to him and then ask her.").reshape(lc.MAX_LOCI, 4)
-    assert two[:, 3].tolist() == [1, 1, 0, 0] and two[0, 0] < 0 < two[1, 0]       # right side first, then contrast
+    assert two[:, 3].tolist() == [1, 1, 0, 0] and two[0, 0] > 0 > two[1, 0]       # measured side first, then contrast
     one = lc.plan_loci("Put it there.").reshape(lc.MAX_LOCI, 4)
     assert one[:, 3].tolist() == [1, 0, 0, 0]
     assert lc.state_loci(signer_state(0, frames=12)).shape == (lc.SLOT_WIDTH,)
