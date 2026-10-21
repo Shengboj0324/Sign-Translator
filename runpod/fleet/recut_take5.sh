@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # recut_take5.sh I N GROUP LEDGERS SPLITS... — take-5 lateral keypoints re-cut from the raw recordings (audit B80) for
 # sessions I mod N of SPLITS, into full-v1/how2sign-sapiens-side-recut-v1. A session record is written once from the
-# frontal keypoints present at that moment, so this waits until frontal keypoints have stopped growing (no frontal work
-# left for these splits: every pod has moved on), and for val/test until frontal is complete. It then runs in passes:
+# frontal keypoints present at that moment, so this waits until the frontal keypoints of SPLITS (counted against the
+# released frontal zips of those splits) have stopped growing at >= 99% of their clips. It then runs in passes:
 # a pass recovers every session whose raw recordings (both cameras) are acquired and verified, and skips the others
 # without writing them; passes repeat every 10 min until a pass has run after the raw acquisition of SPLITS completed
 # (LEDGERS ledger files under how2sign-raw/ledgers/). Sapiens without flip, as the full-v1 keypoints. Writes
@@ -21,15 +21,28 @@ import os,sys; from signtranslator.data.text_motion_dataset import R2Store
 ks=R2Store(os.environ).list('acquisition/2026-10-17-v1/how2sign-raw/ledgers/')
 print(sum(any(f'raw-ledger-{s}-' in k for s in sys.argv[1:]) for k in ks))" $SPLITS_LIST; }
 upload() { python -c "import os,sys; from signtranslator.data.text_motion_dataset import R2Store; R2Store(os.environ).put(sys.argv[1], open(sys.argv[2],'rb').read())" "$1" "$2" || true; }
+# Frontal keypoints of SPLITS only (the fleet goes on to other splits' frontal clips): names from the released
+# frontal zips of these splits.
+split_count() { python -c "
+import io, os, sys, zipfile
+from pathlib import Path
+sys.path.insert(0, 'scripts')
+from signtranslator.data.text_motion_dataset import R2Store
+from extract_video_states import StoreRangeFile
+s = R2Store(os.environ); names = set()
+for split in sys.argv[1:]:
+    z = zipfile.ZipFile(io.BufferedReader(StoreRangeFile(s.s3, s.bucket, f'acquisition/2026-10-17-v1/how2sign-public/{split}_rgb_front_clips.zip'), 1 << 20))
+    names |= {Path(n).stem for n in z.namelist() if n.endswith('.mp4')}
+done = {Path(k).stem for k in s.list('$DERIVED/how2sign-sapiens-front-v1/keypoints/')}
+print(len(names & done), len(names))" $SPLITS_LIST; }
 last=-1; still=0
 while true; do
-  f=$(count "$DERIVED/how2sign-sapiens-front-v1/keypoints/")
+  read f total < <(split_count)
   [ "$f" -eq "$last" ] && still=$((still + 1)) || still=0; last=$f
-  echo "$(date +%H:%M) front $f (unchanged x$still)"
+  echo "$(date +%H:%M) frontal keypoints of $SPLITS_LIST: $f/$total (unchanged x$still)"
   ready=0
-  if [ "$still" -ge 2 ]; then
-    case " $SPLITS_LIST " in *" val "*|*" test "*) [ "$f" -ge 34900 ] && ready=1 ;; *) [ "$f" -ge 30000 ] && ready=1 ;; esac
-  fi
+  # Complete when it has stopped growing for two checks at >= 99% of the split's clips (a few clips are refused).
+  [ "$still" -ge 2 ] && [ $(( f * 100 )) -ge $(( total * 99 )) ] && ready=1
   [ $ready = 1 ] && break
   sleep 300
 done
