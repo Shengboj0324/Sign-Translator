@@ -548,3 +548,24 @@ The fix is the tokenizers' skeleton position/velocity/acceleration loss (`--moti
 - it fails the headshake gate above guidance 1.
 
 R-precision is pending the duration-blind evaluator (`retrieval-hold`).
+
+### Sampling-temperature sweep for v2b + loci (2026-10-21, guidance 1, 200 validation clips)
+
+| Temperature (body, left hand, right hand, face) | Fréchet | Right-hand variation | Headshake ratio | Gates passed |
+|---|---|---|---|---|
+| 1.0 everywhere | 234 | 0.66 | 1.37 | 9/10 |
+| 1.1 everywhere | 223 | 0.66 | 2.13 | 7/10 |
+| 1.2 everywhere | 199 | **0.72** | 3.00 | 8/10 |
+| **1.2, 1.2, 1.2, face 1.0** (`--part-temperature`) | **214** | 0.68 | **1.88** | **9/10** |
+| 1.1, 1.25, 1.25, face 0.9 | 224 | 0.67 | 2.39 | 8/10 |
+| 1.1, 1.2, 1.35, face 1.0 | 240 | 0.64 | 2.58 | 8/10 |
+| 1.2, 1.2, 1.4, face 0.95 | 222 | 0.68 | 2.22 | 8/10 |
+
+**What the sweep shows.**
+- Raising only the right-hand temperature does not raise right-hand variation: it stays at 0.64–0.72 for any setting.
+- The headshake ratio moves non-monotonically between 1.9 and 2.6.
+- At this sample size, differences of a few hundredths are noise, so the sweep stops. Tuning further would fit the validation set.
+
+**Selection rule result.** No setting passes every check. The rule picks the most checks passed, then the lowest Fréchet: body and hands at 1.2, face at 1.0, guidance 1. Its one failing check, right-hand variation 0.68 against the 0.7 gate, is carried to the next round (more data).
+
+**Meaning.** On R-precision with the validated evaluator, v2b settings score 0.15–0.19, against real motion 0.177 and chance 0.094 (192 clips). Uniform temperature 1.2 scores 0.161. v1 and v3 score 0.08–0.13.
