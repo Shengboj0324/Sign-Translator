@@ -205,3 +205,29 @@ def test_jitter_is_zero_on_uniform_rotation_and_the_diagnosis_runs(tmp_path, mon
     identity = torch.tensor([1., 0., 0., 0., 1., 0.], dtype=torch.float64)
     ref = torch.where(batch.channels["body"].valid[0][..., None], batch.channels["body"].values[0].double(), identity)
     assert torch.isfinite(diagnose.geodesic_deg(ref, ref)).all() and torch.isfinite(diagnose.jitter_deg(ref)).all()
+
+
+def test_early_stopping_ends_training_and_keeps_the_best_checkpoint(tmp_path, monkeypatch):
+    monkeypatch.setenv("SIGN_CACHE_DIR", str(tmp_path / "cache"))
+    digest = store_with_manifest(tmp_path / "store")
+    script = load_script()
+    losses = iter([1.0, .5, .6, .7, .8, .9, 1.0, 1.1])
+    real = script.rvq_loss
+    def fake_validation(model, motion, **kw):                       # a validation curve that turns up after step 2
+        loss, terms = real(model, motion, **kw)
+        if not model.training:
+            value = next(losses)
+            return loss * 0 + value, terms
+        return loss, terms
+    monkeypatch.setattr(script, "rvq_loss", fake_validation)
+    store = tmp_path / "store"
+    assert script.main(["--store", f"dir:{store}", "--manifest-key", "manifest.json", "--manifest-sha256", digest,
+                        "--batch-size", "2", "--warmup", "1", "--checkpoint-every", "100", "--val-every", "1",
+                        "--val-batches", "1", "--workers", "0", "--trained-channels", "body,head_rotation,face",
+                        "--architecture", "rvq", "--stage", "tokenizer", "--run", "es", "--hidden", "16", "--code-dim",
+                        "8", "--codebook", "16", "--stages", "2", "--down-layers", "1", "--steps", "50",
+                        "--patience", "3"]) == 0
+    best = json.loads((store / "training-runs/es/best.json").read_text())
+    assert best["step"] == 2 and abs(best["val_loss"] - .5) < 1e-9          # the best checkpoint is kept even off-schedule
+    checkpoints = sorted(p.name for p in (store / "training-runs/es/checkpoints").glob("*.pt"))
+    assert checkpoints[-1] == "step-00000005.pt"                           # stopped 3 validations after the best

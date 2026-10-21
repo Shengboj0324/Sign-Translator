@@ -110,6 +110,8 @@ def main(argv=None) -> int:
     parser.add_argument("--ema-decay", type=float, default=.999)
     parser.add_argument("--val-every", type=int, default=500)
     parser.add_argument("--val-batches", type=int, default=16)
+    parser.add_argument("--patience", type=int, default=0,
+                        help="stop after this many validations without a new best validation loss (0: never)")
     parser.add_argument("--store", default="r2")
     parser.add_argument("--manifest-key", required=True)
     parser.add_argument("--manifest-sha256", required=True)
@@ -279,6 +281,15 @@ def main(argv=None) -> int:
             store.put(f"{prefix}/best.json", json.dumps(best, indent=2, sort_keys=True).encode())
 
     model.train()
+    stale = 0                                  # validations since the last best
+
+    def note(metrics):
+        """Early stopping: count validations that do not improve on the best (``best`` set by checkpoint())."""
+        nonlocal stale
+        best_loss = best["val_loss"] if best else float("inf")
+        stale = 0 if metrics["val/loss"] < best_loss else stale + 1
+        return args.patience and stale >= args.patience
+
     while step < args.steps:
         for batch in loader:
             if step >= args.steps:
@@ -298,15 +309,23 @@ def main(argv=None) -> int:
             entry = dict(step=step, loss=float(loss.detach()), grad_norm=float(norm),
                          seconds=round(time.monotonic() - started, 1), **{f"train/{k}": v for k, v in terms.items()})
             log.append(entry)
-            metrics = None
+            metrics, stop = None, False
             if val_batches and (step % args.val_every == 0 or step == args.steps):
                 metrics = validate()
                 entry.update(metrics)
+                stop = note(metrics)
                 print(json.dumps({k: v for k, v in entry.items() if k == "step" or k.startswith("val/")}), flush=True)
+                if metrics is not None and (best is None or metrics["val/loss"] < best["val_loss"]) \
+                        and step % args.checkpoint_every != 0:
+                    checkpoint(metrics)                  # a new best between regular checkpoints is kept too
             if step % 50 == 0 or step == 1:
                 print(json.dumps(entry), flush=True)
-            if step % args.checkpoint_every == 0 or step == args.steps:
+            if step % args.checkpoint_every == 0 or step == args.steps or stop:
                 checkpoint(metrics if metrics is not None else (validate() if val_batches else None))
+            if stop:
+                print(json.dumps(dict(step=step, early_stop=True, best_step=best["step"], best_val_loss=best["val_loss"])),
+                      flush=True)
+                return 0
     return 0
 
 
