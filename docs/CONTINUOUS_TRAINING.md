@@ -575,3 +575,18 @@ R-precision is pending the duration-blind evaluator (`retrieval-hold`).
 - headshake ratio 1.88, 95% CI 1.40–2.77.
 
 Both CIs contain their gate boundary. On 200 validation clips the gate cannot separate this setting from passing or failing either check; the larger evaluation set of the full-How2Sign round can.
+
+### Diffusion with the skeleton motion loss: worse, not better (2026-10-21)
+
+| Run | Motion weight | Best Fréchet | Body speed | Right-hand speed |
+|---|---|---|---|---|
+| d384 | 0 | 938 | 0.18 | 0.23 |
+| m1 | 1 | 1,265 | 0.08 | 0.07 |
+| m3 | 3 | 1,513 | 0.09 | 0.08 |
+
+Adding position, velocity and acceleration terms to the x₀ estimate made the samples *more* static. At high noise the x₀ estimate is uncertain, and a velocity penalty on an uncertain estimate is smallest at zero velocity. The continuous diffusion generator in its current form (x₀-parameterised, per-frame losses, DDIM) does not produce signing motion at this data scale, and it is not a candidate.
+
+What would test it properly, for a later round with more data:
+- ε- or v-prediction with an MSE objective (a proper score for DDIM sampling);
+- geometric losses applied only at low noise levels, as MDM does in practice;
+- or latent diffusion on the v2b tokenizer's continuous latents.
