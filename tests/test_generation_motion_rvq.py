@@ -116,3 +116,24 @@ def test_prior_v2_learns_its_codes_and_generates_valid_states():
     out = generate_rvq_motion(prior, tokenizer, ["ask him"], fps=24., durations=[.5], guidance=2.)
     out[0].validate()
     assert out[0].channels["body"].valid.all() and len(out[0].timestamps) == 12
+
+
+def test_base_blocks_give_a_full_rate_tokenizer_depth_and_keep_old_checkpoints_loadable():
+    state = signer_state(0, frames=12)
+    base = small(state)
+    old = MotionRVQ(base)
+    from dataclasses import replace
+    assert MotionRVQ(MotionRVQConfig.from_dict(base.to_dict())).state_dict().keys() == old.state_dict().keys()
+    deep = MotionRVQ(replace(base, down_layers=0, base_blocks=3))
+    shallow = MotionRVQ(replace(base, down_layers=0))
+    count = lambda m: sum(1 for x in m.decoder if type(x).__name__ == "_ResBlock")
+    assert count(deep) == 3 and count(shallow) == 0
+    # the receptive field grows: an impulse in frame 6 reaches frames further away
+    torch.manual_seed(0)
+    for m in (deep, shallow):
+        for p in m.parameters():
+            torch.nn.init.normal_(p, std=.2)
+    x = torch.zeros(1, 12, base.width); x[:, 6] = 1.
+    zero = torch.zeros_like(x)
+    spread = lambda m: int(((m.encode(x)["body"] - m.encode(zero)["body"]).abs().sum(-1)[0] > 1e-6).sum())
+    assert spread(deep) > spread(shallow)

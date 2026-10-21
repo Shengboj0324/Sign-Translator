@@ -105,6 +105,7 @@ def main(argv=None) -> int:
     parser.add_argument("--stage", choices=("tokenizer", "prior"), required=True)
     parser.add_argument("--architecture", choices=("vq", "rvq"), default="vq", help="tokens v1 (vq) or v2 (rvq)")
     parser.add_argument("--stages", type=int, default=4, help="rvq: residual stages per part")
+    parser.add_argument("--base-blocks", type=int, default=0, help="rvq: residual blocks at full frame rate")
     parser.add_argument("--depth-layers", type=int, default=2, help="rvq prior: depth transformer layers")
     parser.add_argument("--ema-decay", type=float, default=.999)
     parser.add_argument("--val-every", type=int, default=500)
@@ -169,7 +170,7 @@ def main(argv=None) -> int:
             model = MotionVQ(config).to(device)
         else:
             config = MotionRVQConfig(motion, hidden=args.hidden, code_dim=args.code_dim, codebook=args.codebook,
-                                     stages=args.stages, down_layers=args.down_layers)
+                                     stages=args.stages, down_layers=args.down_layers, base_blocks=args.base_blocks)
             model = MotionRVQ(config).to(device)
         tokenizer, tokenizer_state = None, None
     else:

@@ -79,6 +79,8 @@ class MotionRVQConfig:
     stages: int = 4
     down_layers: int = 1
     res_blocks: int = 2
+    base_blocks: int = 0                # residual blocks at full frame rate (before downsampling / after upsampling);
+                                        # with down_layers = 0 they are the network's only depth
     commitment: float = .25
     ema: float = .99
     quantizer_dropout: float = .5
@@ -180,7 +182,7 @@ class ResidualQuantizer(nn.Module):
 
 def _encoder(width: int, config: MotionRVQConfig) -> nn.Sequential:
     h = config.hidden
-    layers = [nn.Conv1d(width, h, 3, padding=1)]
+    layers = [nn.Conv1d(width, h, 3, padding=1), *(_ResBlock(h) for _ in range(config.base_blocks))]
     for _ in range(config.down_layers):
         layers += [nn.Conv1d(h, h, 4, stride=2, padding=1), *(_ResBlock(h) for _ in range(config.res_blocks))]
     layers.append(nn.Conv1d(h, config.code_dim, 1))
@@ -200,7 +202,7 @@ class MotionRVQ(nn.Module):
         for _ in range(config.down_layers):
             decoder += [*(_ResBlock(h) for _ in range(config.res_blocks)), nn.Upsample(scale_factor=2, mode="nearest"),
                         nn.Conv1d(h, h, 3, padding=1)]
-        decoder += [nn.SiLU(), nn.Conv1d(h, config.width, 3, padding=1)]
+        decoder += [*(_ResBlock(h) for _ in range(config.base_blocks)), nn.SiLU(), nn.Conv1d(h, config.width, 3, padding=1)]
         self.decoder = nn.Sequential(*decoder)
         for part, cols in self.parts:
             self.register_buffer(f"columns_{part}", torch.tensor(cols, dtype=torch.long), persistent=False)
