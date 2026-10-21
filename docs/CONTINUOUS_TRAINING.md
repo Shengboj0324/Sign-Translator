@@ -569,3 +569,9 @@ R-precision is pending the duration-blind evaluator (`retrieval-hold`).
 **Selection rule result.** No setting passes every check. The rule picks the most checks passed, then the lowest Fréchet: body and hands at 1.2, face at 1.0, guidance 1. Its one failing check, right-hand variation 0.68 against the 0.7 gate, is carried to the next round (more data).
 
 **Meaning.** On R-precision with the validated evaluator, v2b settings score 0.15–0.19, against real motion 0.177 and chance 0.094 (192 clips). Uniform temperature 1.2 scores 0.161. v1 and v3 score 0.08–0.13.
+
+**Statistical resolution of the gate** (bootstrap over the 200 clips, 60 resamples, selected setting):
+- right-hand variation 0.684, 95% CI 0.654–0.712;
+- headshake ratio 1.88, 95% CI 1.40–2.77.
+
+Both CIs contain their gate boundary. On 200 validation clips the gate cannot separate this setting from passing or failing either check; the larger evaluation set of the full-How2Sign round can.
