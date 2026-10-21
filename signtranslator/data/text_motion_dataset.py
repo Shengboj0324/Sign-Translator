@@ -121,8 +121,12 @@ class R2Store:
             self._client = boto3.client("s3", endpoint_url=self._settings["R2_ENDPOINT_URL"], region_name="auto",
                                         aws_access_key_id=self._settings["AWS_ACCESS_KEY_ID"],
                                         aws_secret_access_key=self._settings["AWS_SECRET_ACCESS_KEY"],
-                                        config=Config(connect_timeout=20, read_timeout=300,
-                                                      retries={"mode": "adaptive", "max_attempts": 20}))  # R2 throttles (429) under many readers
+                                        # R2 throttles (429) under many readers: adaptive retries. read_timeout bounds a
+                                        # stalled response (each socket read, not a whole transfer); at 300 s one stalled
+                                        # log upload held a training run for 6 minutes (2026-10-21), and puts and gets are
+                                        # idempotent, so a shorter wait and a retry cost nothing.
+                                        config=Config(connect_timeout=20, read_timeout=60,
+                                                      retries={"mode": "adaptive", "max_attempts": 20}))
         return self._client
 
     def __getstate__(self):
