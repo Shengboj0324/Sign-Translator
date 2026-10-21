@@ -18,7 +18,16 @@ W=${WORKERS:-$W}
 # MediaPipe's tasks runtime loads libEGL/libGLESv2 even on CPU; the pytorch image ships without them.
 command -v apt-get > /dev/null && { apt-get update -qq > /dev/null; DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libegl1 libgles2 libgl1 > /dev/null; }
 echo "STAGE extract shard $SHARD/$SHARDS workers $W $(date)"
-python scripts/extract_video_states.py --zip-key $KEY --zip-sha256 $SHA --prefix acquisition/2026-10-17-v1/derived/asl-citizen-v1 \
-  --source-id asl_citizen_video_estimate --upright-chest --models-dir /root/work/models --shard $SHARD --shards $SHARDS --workers $W ${LIMIT:+--limit $LIMIT} \
-  || echo "FAILED extract $SHARD"
+# Exit 2: some clips met transient store/network errors (reported as "error"); the shard resumes, skipping
+# converted clips, until none is left (at most four passes).
+for pass in 1 2 3 4; do
+  python scripts/extract_video_states.py --zip-key $KEY --zip-sha256 $SHA --prefix acquisition/2026-10-17-v1/derived/asl-citizen-v1 \
+    --source-id asl_citizen_video_estimate --upright-chest --models-dir /root/work/models --shard $SHARD --shards $SHARDS --workers $W ${LIMIT:+--limit $LIMIT}
+  code=$?; echo "PASS $pass exit $code $(date)"
+  [ $code -eq 0 ] && break
+  [ $pass -eq 4 ] && echo "FAILED extract $SHARD"
+  sleep 60
+done
+python -c "import os,sys; from signtranslator.data.text_motion_dataset import R2Store; R2Store(os.environ).put(sys.argv[1], open(sys.argv[2],'rb').read())" \
+  "acquisition/2026-10-17-v1/derived/asl-citizen-v1/logs/extract-shard-$SHARD-of-$SHARDS.log" /root/extract.log || true
 echo EXTRACT-DONE

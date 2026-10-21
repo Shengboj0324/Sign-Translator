@@ -93,7 +93,39 @@ def _init(zip_key, models_dir):
                    archive=zipfile.ZipFile(io.BufferedReader(StoreRangeFile(store.s3, store.bucket, zip_key), 1 << 20)))
 
 
-def _process(job):
+def _process(job, attempts: int = 4):
+    """One clip, with transient store or network failures retried; a clip that still fails is reported
+    as ``error`` (not a refusal: the clip itself was never judged) and is retried by the next run."""
+    import random
+    import time
+    for attempt in range(attempts):
+        try:
+            return _process_once(job)
+        except Exception as error:  # noqa: BLE001 - every failure here is the store's or the network's
+            if attempt == attempts - 1:
+                return dict(sample_id=Path(job[0]).stem, status="error", reason=f"{type(error).__name__}: {error}"[:300])
+            time.sleep(min(60., 2. * 2 ** attempt) * (.5 + random.random()))
+
+
+def state_quality(state) -> dict:
+    """Frame counts of a stored state, for clips a resumed shard finds already converted. Hand frames
+    count frames with any finger rotation (the conversion report counts detected hands; they agree
+    except where a detected hand had a degenerate palm frame)."""
+    def frames_valid(name, labels=None):
+        channel = state.channels.get(name)
+        if channel is None or not channel.valid.any():
+            return 0
+        valid = channel.valid if labels is None else channel.valid[:, [channel.labels.index(l) for l in labels]]
+        return int(valid.any(axis=1).sum())
+    body = state.channels.get("body")
+    arms = {j: (frames_valid("body", (j,)) if body is not None and j in body.labels else 0)
+            for j in ("LeftForearm", "RightForearm")}
+    return dict(frames=len(state.timestamps), face_frames=frames_valid("head_rotation"),
+                left_hand_frames=frames_valid("left_hand"), right_hand_frames=frames_valid("right_hand"),
+                arm_frames=arms, quality_from_state=True)
+
+
+def _process_once(job):
     member, prefix, source_id, zip_sha256, upright_chest = job
     from signtranslator.data_engineering.video_landmarks import canonical_from_landmarks, extract_clip, inference_method
     store, archive = _WORKER["store"], _WORKER["archive"]
@@ -111,7 +143,7 @@ def _process(job):
             state = MultichannelMotion.load(path, expected_sha256=digest)
         return dict(sample_id=sample, status="already_present", state_key=key, state_sha256=digest,
                     seconds=float(state.timestamps[-1] - state.timestamps[0]),
-                    available_channels=[n for n, c in state.channels.items() if c.valid.any()])
+                    available_channels=[n for n, c in state.channels.items() if c.valid.any()], **state_quality(state))
     payload = archive.read(member)
     try:
         with tempfile.TemporaryDirectory() as temporary:
@@ -183,7 +215,7 @@ def main(argv=None) -> int:
     store.put(f"{args.prefix.rstrip('/')}/reports/{Path(args.zip_key).stem}-shard-{args.shard:03d}-of-{args.shards:03d}.json",
               json.dumps(report, sort_keys=True).encode())
     print(json.dumps(report["status_counts"]))
-    return 0
+    return 2 if report["status_counts"].get("error") else 0   # errors: run the shard again (it resumes)
 
 
 if __name__ == "__main__":

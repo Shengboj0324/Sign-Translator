@@ -94,7 +94,8 @@ def main(argv=None) -> int:
         raise SystemExit("the zip is not the verified acquisition named by --zip-sha256")
     rows, inputs = read_splits(open_zip(store, args.zip_key))
     inputs["zip"] = args.zip_sha256
-    records, statuses, unlisted = [], collections.Counter(), 0
+    results = {}                         # sample -> result; a conversion wins over a resumed shard's "already present"
+    statuses, unlisted = collections.Counter(), 0
     for key in sorted(store.list(args.reports_prefix)):
         payload = store.get(key)
         report = json.loads(payload)
@@ -103,23 +104,28 @@ def main(argv=None) -> int:
         inputs[f"report:{key.rsplit('/', 1)[-1]}"] = hashlib.sha256(payload).hexdigest()
         for result in report["results"]:
             statuses[result["status"]] += 1
-            if result["status"] != "converted" or "state_sha256" not in result:
+            if result["status"] not in ("converted", "already_present") or "state_sha256" not in result:
                 continue
-            row = rows.get(result["sample_id"])
-            if row is None:
-                unlisted += 1
-                continue
-            records.append(dict(
-                sign=result["sample_id"], text=None, partition=row["split"],
-                performer_sha256=hashlib.sha256(f"asl-citizen:{row['participant']}".encode()).hexdigest(),
-                gloss=dict(status="publisher_label", label=row["gloss"], asl_lex_code=row["asl_lex_code"],
-                           source="ASL_Citizen/splits"),
-                quality={k: result[k] for k in ("frames", "pose_frames", "face_frames", "left_hand_frames",
-                                                "right_hand_frames", "arm_frames")},
-                continuous=dict(status="converted", state_key=result["state_key"], state_sha256=result["state_sha256"],
-                                available_channels=result["available_channels"], seconds=result["seconds"])))
-    if len({r["sign"] for r in records}) != len(records):
-        raise SystemExit("a clip was converted in two shards")
+            previous = results.get(result["sample_id"])
+            if previous is not None and previous["state_sha256"] != result["state_sha256"]:
+                raise SystemExit(f"{result['sample_id']}: two different states")
+            if previous is None or previous["status"] == "already_present":
+                results[result["sample_id"]] = result
+    records = []
+    for result in results.values():
+        row = rows.get(result["sample_id"])
+        if row is None:
+            unlisted += 1
+            continue
+        records.append(dict(
+            sign=result["sample_id"], text=None, partition=row["split"],
+            performer_sha256=hashlib.sha256(f"asl-citizen:{row['participant']}".encode()).hexdigest(),
+            gloss=dict(status="publisher_label", label=row["gloss"], asl_lex_code=row["asl_lex_code"],
+                       source="ASL_Citizen/splits"),
+            quality={k: result.get(k) for k in ("frames", "pose_frames", "face_frames", "left_hand_frames",
+                                                "right_hand_frames", "arm_frames", "quality_from_state")},
+            continuous=dict(status="converted", state_key=result["state_key"], state_sha256=result["state_sha256"],
+                            available_channels=result["available_channels"], seconds=result["seconds"])))
     split = dict(kind="continuous", source="publisher splits (signer-disjoint, checked)",
                  counts={p: sum(r["partition"] == p for r in records) for p in SPLITS})
     manifest = build_corpus_manifest(corpus_id=args.corpus_id, inputs=inputs, records=records, split=split)

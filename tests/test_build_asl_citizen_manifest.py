@@ -13,7 +13,7 @@ SHA = "a" * 64
 HEADER = "Participant ID,Video file,Gloss,ASL-LEX Code\n"
 
 
-def setup_store(tmp_path, splits, results, upright=True):
+def setup_store(tmp_path, splits, results, upright=True, extra_reports=()):
     zip_key = "acq/ASL_Citizen.zip"
     (tmp_path / "acq").mkdir()
     with zipfile.ZipFile(tmp_path / zip_key, "w") as z:
@@ -23,6 +23,8 @@ def setup_store(tmp_path, splits, results, upright=True):
         dict(sha256=SHA, verified_by_r2_reread=True, license="research only")))
     (tmp_path / "rep").mkdir()
     (tmp_path / "rep/shard-0.json").write_text(json.dumps(dict(upright_chest=upright, results=results)))
+    for i, extra in enumerate(extra_reports, 1):
+        (tmp_path / f"rep/shard-{i}.json").write_text(json.dumps(dict(upright_chest=upright, results=extra)))
     return zip_key
 
 
@@ -66,3 +68,17 @@ def test_states_without_the_upright_prior_are_refused(tmp_path):
     splits = {"train": [("P1", "1-A.mp4", "A", "")], "val": [], "test": []}
     with pytest.raises(SystemExit, match="upright"):
         run(tmp_path, setup_store(tmp_path, splits, [converted("1-A")], upright=False))
+
+
+def test_a_resumed_shard_keeps_clips_found_already_converted(tmp_path):
+    splits = {"train": [("P1", "1-A.mp4", "A", ""), ("P1", "2-B.mp4", "B", "")], "val": [], "test": []}
+    present = dict(converted("2-B", arms=4), status="already_present", quality_from_state=True)
+    error = dict(sample_id="1-A", status="error", reason="ReadTimeoutError")
+    again = dict(converted("1-A"), status="already_present")            # found again by a later shard run
+    zip_key = setup_store(tmp_path, splits, [error, present], extra_reports=[[converted("1-A"), again]])
+    assert run(tmp_path, zip_key) == 0
+    manifest = json.loads((tmp_path / "out/m.json").read_text())
+    records = {r["sign"]: r for r in manifest["records"]}
+    assert set(records) == {"1-A", "2-B"} and manifest["extraction"]["missing"] == 0
+    assert records["2-B"]["quality"]["quality_from_state"] and records["2-B"]["quality"]["arm_frames"]["RightForearm"] == 4
+    assert records["1-A"]["quality"]["quality_from_state"] is None     # the conversion's own report wins
