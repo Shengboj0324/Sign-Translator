@@ -80,16 +80,22 @@ class DirectoryStore:
 
 
 def _stream_errors() -> tuple:
-    """botocore/urllib3 exception types raised when a response body stream breaks."""
+    """botocore/urllib3 exception types raised when a response body stream breaks.
+
+    Includes TLS failures mid-body (urllib3 ``SSLError``, e.g. "[SSL] record layer failure"),
+    which are not ``ProtocolError``s: one stopped a v3 tokenizer run in its first minutes
+    (2026-10-21, pod in Australia).
+    """
     out = []
     try:
-        from botocore.exceptions import ConnectionClosedError, IncompleteReadError, ReadTimeoutError, ResponseStreamingError
-        out += [ConnectionClosedError, IncompleteReadError, ReadTimeoutError, ResponseStreamingError]
+        from botocore.exceptions import (ConnectionClosedError, IncompleteReadError, ReadTimeoutError,
+                                         ResponseStreamingError, SSLError as BotoSSLError)
+        out += [ConnectionClosedError, IncompleteReadError, ReadTimeoutError, ResponseStreamingError, BotoSSLError]
     except ImportError:
         pass
     try:
-        from urllib3.exceptions import ProtocolError
-        out.append(ProtocolError)
+        from urllib3.exceptions import ProtocolError, SSLError as Urllib3SSLError
+        out += [ProtocolError, Urllib3SSLError]
     except ImportError:
         pass
     return tuple(out)

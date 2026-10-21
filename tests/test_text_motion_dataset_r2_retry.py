@@ -6,22 +6,22 @@ from signtranslator.data.text_motion_dataset import R2Store
 
 
 class Body:
-    def __init__(self, fail):
-        self.fail = fail
+    def __init__(self, fail, error=None):
+        self.fail, self.error = fail, error
     def read(self):
         if self.fail:
-            raise ResponseStreamingError(error=BrokenPipeError(32, "Broken pipe"))
+            raise self.error or ResponseStreamingError(error=BrokenPipeError(32, "Broken pipe"))
         return b"payload"
 
 
 class Client:
-    def __init__(self, failures, missing=False):
-        self.failures, self.missing, self.calls = failures, missing, 0
+    def __init__(self, failures, missing=False, error=None):
+        self.failures, self.missing, self.calls, self.error = failures, missing, 0, error
     def get_object(self, Bucket, Key):
         self.calls += 1
         if self.missing:
             raise ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
-        return {"Body": Body(self.calls <= self.failures)}
+        return {"Body": Body(self.calls <= self.failures, self.error)}
 
 
 def store(client, monkeypatch):
@@ -43,3 +43,9 @@ def test_persistent_breaks_and_client_errors_are_raised(monkeypatch):
     with pytest.raises(ClientError):
         store(client, monkeypatch).get("k")
     assert client.calls == 1
+
+
+def test_a_tls_failure_mid_body_is_retried(monkeypatch):
+    from urllib3.exceptions import SSLError
+    client = Client(failures=1, error=SSLError("[SSL] record layer failure (_ssl.c:2580)"))
+    assert store(client, monkeypatch).get("k") == b"payload" and client.calls == 2
