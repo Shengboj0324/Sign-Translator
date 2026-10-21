@@ -180,6 +180,24 @@ These start when the generator round's exit gate closes (docs/CONTINUOUS_TRAININ
    - **Data:** manifest v2.
    - **Retrain:** the selected generator family and the retrieval evaluator on manifest v2.
 3. **Meaning-level evaluation** (item 3a). The retrieval evaluator exists (`text_motion_retrieval.py`; R@3 ≈ 0.29 on real validation motion against chance 0.094 at 4k clips; it overfits early). Retrain it on manifest v2 with stronger regularisation. Score every generator with R-precision and keep their generated states for the human reviewers.
-4. **DAI 2 / Sign Bank** (items 1b and 2). Waiting for the access e-mail; the inbox is checked every 20 min. Claude does not type passwords: once credentials arrive, the user signs in and the acquisition proceeds from the signed-in session. Then the English → gloss planner is trained on ASLLRP.
+4. **DAI 2 / Sign Bank** (items 1b and 2).
+   - **Access:** the user's account was activated on 2026-10-21. The user signs in; Claude never types passwords.
+   - **Acquisition** (`~/.sign-translator-ops/dai_uploader.py`): downloads from the signed-in browser session into private R2 at `asllrp-dai2-v1/<collection>/`.
+     - Each file is identified by its exact server size.
+     - It is SHA-256 hashed while uploading, re-read from R2 and re-hashed, and written with a provenance record (source URL, version, licence).
+     - The local copy is deleted once verified.
+   - **Scope:** 121 current-version files, about 204 GB. The older archived releases (about 180 GB) are skipped: the site asks that the CSV and videos come from the same version. ASLLVD sign batch 17 is a 281-byte stub on their server.
+   - **Done (2026-10-21 22:20 UTC):**
+     - every annotation CSV and Excel file;
+     - the ASLLRP continuous-corpus sign, utterance and source videos;
+     - all RIT sentences files;
+     - all RIT citation files.
+   - **Remaining:** the ASLLVD videos (about 176 GB). Waiting for the user to sign in again, because the DAI session expired at about 22:05. Downloads then return HTTP 500 (`login_id` null).
+   - **Sign Bank outputs** (`scripts/build_signbank_lexicon.py`, under `derived/signbank-v1/`):
+     - lexicon: 4,037 main entries;
+     - ASL Citizen gloss map, by tier: 977 exact, 17 variant, 147 letters, 421 letters-no-number (non-exact matches need review), 1,169 unmatched;
+     - 2,410 ASLLRP and RIT utterances, holding 19,510 signs in time order.
+   - **Utterance motion:** extracted on the Mac. The ASLLRP studio framing shows hips, elbows and wrists in every frame, so the upright-chest prior is not used.
+   - **Still needed for the planner:** English translations of the utterances. They are in the DAI utterance XML, which needs the signed-in session.
 5. **Avatar and serving** (items 5 and 6) follow, with a model selected on R-precision and the realism gates.
 6. **Human Deaf reviewers** (on their way): they evaluate the stored generated states and the rendered avatar. Their findings drive fine-tuning.
