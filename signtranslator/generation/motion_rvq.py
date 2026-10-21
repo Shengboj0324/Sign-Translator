@@ -507,9 +507,16 @@ def rvq_prior_loss(model: RVQPrior, tokenizer: MotionRVQ, tokens, text_mask, mot
 
 @torch.no_grad()
 def generate_rvq_motion(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, fps: float, guidance: float = 1.,
-                        temperature: float = 1., top_k: int = 0, seed: int = 0, durations=None,
+                        temperature: float | dict = 1., top_k: int = 0, seed: int = 0, durations=None,
                         sample_prefix: str = "tokens-v2", loci=None):
-    """Generated canonical states (observed=False, zero confidence) from sampled residual codes."""
+    """Generated canonical states (observed=False, zero confidence) from sampled residual codes.
+
+    ``temperature`` is one value or a mapping part -> value (parts of ``tokenizer.parts``;
+    missing parts sample at 1): code position j = q·P + p belongs to part p. Per-part
+    temperatures let the hands sample more freely than the face, whose head-rotation codes
+    carry the headshakes (v2b + loci at T = 1.2: hands within the articulation gate, headshake
+    rate 3.0× the reference).
+    """
     prior.eval(); tokenizer.eval()
     config = prior.config
     device = next(prior.parameters()).device
@@ -521,6 +528,14 @@ def generate_rvq_motion(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, fps: fl
     empty = _empty_like(encoded[:1, :2])
     empty_hidden, _ = prior.encode(empty, empty != PAD)
     generator = torch.Generator().manual_seed(seed)
+    names = [part for part, _ in tokenizer.parts]
+    if isinstance(temperature, dict):
+        unknown = set(temperature) - set(names)
+        if unknown:
+            raise ValueError(f"unknown parts in temperature: {sorted(unknown)}")
+        per_code = [float(temperature.get(names[j % len(names)], 1.)) for j in range(prior.J)]
+    else:
+        per_code = [float(temperature)] * prior.J
     states = []
     for row, text in enumerate(texts):
         frames = max(int(round(float(seconds_out[row]) * fps)), 1)
@@ -538,7 +553,7 @@ def generate_rvq_motion(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, fps: fl
                 if h_free is not None:
                     free = prior.depth_logits(h_free, step_codes)[:, -1]
                     logits = free + guidance * (logits - free)
-                logits = logits / max(temperature, 1e-6)
+                logits = logits / max(per_code[j], 1e-6)
                 if top_k:
                     threshold = logits.topk(top_k, dim=-1).values[:, -1:]
                     logits = logits.masked_fill(logits < threshold, -math.inf)

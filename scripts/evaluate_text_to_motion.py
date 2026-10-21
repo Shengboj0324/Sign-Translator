@@ -134,6 +134,8 @@ def main(argv=None) -> int:
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--output-key")
     parser.add_argument("--temperature", type=float, default=1., help="token generators: sampling temperature")
+    parser.add_argument("--part-temperature", help="RVQ generators: per-part temperatures, e.g. body=1.2,left_hand=1.2,"
+                                                    "right_hand=1.2,face=1 (overrides --temperature)")
     parser.add_argument("--top-k", type=int, default=0, help="token generators: sample from the k most likely codes (0: all)")
     parser.add_argument("--retrieval-key", help="frozen text-motion retrieval checkpoint: adds R-precision of the "
                                                  "generated motion and of the real motion on the same clips")
@@ -144,8 +146,11 @@ def main(argv=None) -> int:
         path = Path(temporary) / "manifest.json"
         path.write_bytes(store.get(args.manifest_key) + b"\n")
         manifest = load_manifest(path, expected_sha256=args.manifest_sha256)
+    temperature = args.temperature
+    if args.part_temperature:
+        temperature = {k: float(v) for k, v in (item.split("=") for item in args.part_temperature.split(","))}
     label, trained, sample = load_generator(store, args.checkpoint_key, args.manifest_sha256, args.device,
-                                            temperature=args.temperature, top_k=args.top_k)
+                                            temperature=temperature, top_k=args.top_k)
     records = sorted((r for r in manifest["records"] if r["partition"] == args.partition and r.get("text")),
                      key=lambda r: r["sign"])[:args.limit]
     references = [load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]) for r in records]
@@ -185,7 +190,7 @@ def main(argv=None) -> int:
         print(json.dumps({name: results[name]}, default=float), flush=True)
     report = dict(schema_version=1, checkpoint_key=args.checkpoint_key, generator=label,
                   retrieval_key=args.retrieval_key, saved_generated=args.save_generated,
-                  temperature=args.temperature, top_k=args.top_k,
+                  temperature=temperature, top_k=args.top_k,
                   manifest_sha256=args.manifest_sha256, partition=args.partition, clips=len(records),
                   steps=args.steps, results=results)
     if args.output_key:

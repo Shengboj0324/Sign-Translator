@@ -11,10 +11,12 @@ M=$D/how2sign-text-manifest-v1/manifest.json
 sha() { python -c "import os,sys,hashlib; from signtranslator.data.text_motion_dataset import R2Store; print(hashlib.sha256(R2Store(os.environ).get(sys.argv[1])).hexdigest())" "$1"; }
 best() { python -c "import os,sys,json; from signtranslator.data.text_motion_dataset import R2Store; print(json.loads(R2Store(os.environ).get('training-runs/'+sys.argv[1]+'/best.json'))['checkpoint_key'])" "$1"; }
 upload() { python -c "import os,sys; from signtranslator.data.text_motion_dataset import R2Store; R2Store(os.environ).put(sys.argv[1], open(sys.argv[2],'rb').read())" "$1" "$2" || true; }
-MSHA=$(sha "$M"); TAG=$RUN-t$T
+MSHA=$(sha "$M")
+case "$T" in *=*) TFLAG="--part-temperature $T"; TAG=$RUN-pt$(echo "$T" | tr -cd '0-9.,' | tr ',' '-');;
+             *)   TFLAG="--temperature $T"; TAG=$RUN-t$T;; esac
 echo "STAGE evaluate-temperature $TAG $(date)"
 python scripts/evaluate_text_to_motion.py --manifest-key "$M" --manifest-sha256 "$MSHA" --checkpoint-key "$(best $RUN)" \
-  --partition val --guidance "$G" --temperature "$T" --device cuda --save-generated "$D/generated/$TAG" \
+  --partition val --guidance "$G" $TFLAG --device cuda --save-generated "$D/generated/$TAG" \
   --output-key "$D/evaluations/$TAG.json" > /root/stage-evalT-$TAG.log 2>&1 || echo "FAILED evaluate-temperature $TAG"
-tail -1 /root/stage-evalT-$TAG.log | cut -c1-300; upload "training-runs/$RUN/stage-evaluate-t$T.log" "/root/stage-evalT-$TAG.log"
+tail -1 /root/stage-evalT-$TAG.log | cut -c1-300; upload "training-runs/$RUN/stage-evaluate-${TAG#$RUN-}.log" "/root/stage-evalT-$TAG.log"
 echo EVAL-DONE

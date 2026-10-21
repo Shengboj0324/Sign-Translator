@@ -137,3 +137,16 @@ def test_base_blocks_give_a_full_rate_tokenizer_depth_and_keep_old_checkpoints_l
     zero = torch.zeros_like(x)
     spread = lambda m: int(((m.encode(x)["body"] - m.encode(zero)["body"]).abs().sum(-1)[0] > 1e-6).sum())
     assert spread(deep) > spread(shallow)
+
+
+def test_per_part_temperature_equals_the_scalar_when_uniform_and_changes_only_its_parts():
+    import pytest
+    states, tokenizer, prior = prior_setup()
+    parts = [p for p, _ in tokenizer.parts]
+    scalar = generate_rvq_motion(prior, tokenizer, ["ask him"], fps=24., durations=[.5], temperature=1.3, seed=3)[0]
+    uniform = generate_rvq_motion(prior, tokenizer, ["ask him"], fps=24., durations=[.5],
+                                  temperature={p: 1.3 for p in parts}, seed=3)[0]
+    for name in ("body", "left_hand", "face"):
+        np.testing.assert_array_equal(scalar.channels[name].values, uniform.channels[name].values)
+    with pytest.raises(ValueError, match="unknown parts"):
+        generate_rvq_motion(prior, tokenizer, ["ask him"], fps=24., durations=[.5], temperature={"tail": 2.})
