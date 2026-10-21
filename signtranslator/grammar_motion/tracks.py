@@ -11,7 +11,7 @@ from .pointing import frame_speed, loci_from_events, pointing_events
 from .prosody import active_range, blink_onsets, boundary_evidence, final_lengthening, movement_units
 from .role_shift import role_shifts
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2                 # 2: pointing requires an outward-aimed index (pointing.OUTWARD_COS)
 
 
 def fps_of(state: MultichannelMotion) -> float:

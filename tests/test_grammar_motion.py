@@ -116,6 +116,22 @@ def test_pointing_frames_need_an_extended_index_curled_fingers_and_a_hold():
     np.testing.assert_allclose(events[0].direction, [0, 0, 1], atol=1e-9)
 
 
+def test_an_index_aimed_across_or_back_at_the_body_is_not_a_point():
+    T = 30
+    truth = np.zeros(T, bool); truth[8:16] = True
+    joints, pos = _hand(T, truth)
+    valid = np.ones(pos.shape[:2], bool)
+    for direction, expected in (([1., 0., 0.], False),                      # across the body: cosine with outward ≈ 0
+                                ([0., 0., -1.], False),                     # back at the signer
+                                ([np.sin(np.radians(40)), 0., np.cos(np.radians(40))], True)):   # 40° contralateral
+        moved = pos.copy()
+        mcp = moved[:, joints.index("RightHandIndex1")]
+        for k in (2, 3, 4):
+            moved[truth, joints.index(f"RightHandIndex{k}")] = mcp[truth] + .04 * (k - 1) * np.array(direction)
+        found = pointing.pointing_frames(joints, moved, valid, np.arange(T) / 30., "Right")
+        assert found[8:16].all() == expected and not found[:8].any()
+
+
 # ---------------------------------------------------------------- non-manual markers
 def face_state(T=90, fps=30., raise_span=(30, 54), furrow_span=None, noise=.02, seed=0):
     rng = np.random.default_rng(seed)

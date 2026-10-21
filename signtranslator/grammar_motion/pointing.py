@@ -7,6 +7,15 @@ are flexed (each tip within 70% of its finger length of its knuckle), (iii) the 
 ``MIN_HOLD`` consecutive frames, and (iv) the wrist is forward of the chest. The
 pointing direction is the unit vector from the index MCP to the fingertip; events
 steeper than ``MAX_ELEVATION_DEG`` are index-up handshapes (ONE, "wait"), not points.
+(v) The finger points away from the signer: ``⟨d, unit(MCP − chest point)⟩ ≥ OUTWARD_COS``.
+Without (v), 84% of the right-hand "points" on two-view How2Sign (171 events) aimed
+across the body from a hand held low in front of the chest, and only 23% pointed
+outward (azimuth median 58° toward the other side; cosine with the outward direction
+median 0.06): index handshapes of lexical signs, not reference to a place in signing
+space. The threshold 0.3 (72°) keeps
+straight-forward points (cosine ≈ 0.85 from a hand in front of the chest) and
+moderately contralateral ones (≈ 0.4 at 40° across), and drops points at the
+signer's own body (first person), which name the signer, not a locus.
 
 **Least-squares locus of several pointings.** Rays ``r_i(s) = p_i + s d_i`` meet (in the
 least-squares sense) at ``x* = (Σ A_i)⁻¹ Σ A_i p_i`` with ``A_i = I − d_i d_iᵀ``, the
@@ -36,6 +45,7 @@ CURL = .7                         # |tip − MCP| / finger length below which a 
 MAX_WRIST_SPEED = 1.5             # shoulder widths per second for "still"
 LOCUS_RADIUS_DEG = 15.            # DP-vMF-means cluster radius (Straub et al.'s λ = cos radius)
 MAX_ELEVATION_DEG = 50.           # steeper index-up configurations (ONE, "wait") are not referential points
+OUTWARD_COS = .3                  # cosine of the pointing direction with the outward ray from the chest point
 
 
 def _finger(joints, positions, side, name):
@@ -66,8 +76,10 @@ def pointing_frames(joints, positions: np.ndarray, valid: np.ndarray, times: np.
     wrist = positions[:, joints.index(f"{side}Hand")]
     speed = frame_speed(wrist, times)
     forward = wrist[:, 2] > 0
+    mcp = index[:, 1]
+    outward = (unit(index[:, 4] - mcp) * unit(mcp)).sum(-1) >= OUTWARD_COS   # body-frame origin = chest point
     ok = valid[:, joints.index(f"{side}HandIndex4")] & valid[:, joints.index(f"{side}Hand")]
-    raw = extended & flexed & (speed <= MAX_WRIST_SPEED) & forward & ok
+    raw = extended & flexed & (speed <= MAX_WRIST_SPEED) & forward & outward & ok
     return _min_run(raw, MIN_HOLD)
 
 
