@@ -4,8 +4,10 @@ The gate (docs/CONTINUOUS_TRAINING.md, "Generator round exit gate", declared bef
 results) scores every candidate at every guidance scale on the same validation clips:
 
 1. **Realism (primary):** the lowest Fréchet distance.
-2. **Articulation:** speed and variation ratios of body, left hand and right hand within
-   ``ARTICULATION`` ([0.7, 1.3]).
+2. **Articulation:** speed and variation ratios of body, left hand, right hand and (from the
+   full-How2Sign round on) head rotation within ``ARTICULATION`` ([0.7, 1.3]). The subset round
+   left the head out and selected a generator whose head turned 1.87x (validation) to 3.29x
+   (test) too fast; ``--no-head`` reproduces that round's gate.
 3. **Grammar markers:** generated/reference rate ratios of headshake, nod, brow raise and
    brow furrow within ``MARKERS`` ([0.5, 2.0]).
 4. **Accuracy:** geodesic and wrist errors, reported and not thresholded.
@@ -30,14 +32,15 @@ from train_text_to_motion import make_store  # noqa: E402
 
 ARTICULATION = (.7, 1.3)
 MARKERS = (.5, 2.)
-ARTICULATED = ("body", "left_hand", "right_hand")
+ARTICULATED = ("body", "left_hand", "right_hand", "head_rotation")
+SUBSET_ROUND = ("body", "left_hand", "right_hand")
 MARKER_SCORES = ("headshake_rate", "nod_rate", "brow_raise_fraction", "brow_furrow_fraction")
 
 
-def score_setting(run: str, setting: str, result: dict) -> dict:
+def score_setting(run: str, setting: str, result: dict, channels=ARTICULATED) -> dict:
     """Gate checks of one (run, guidance) evaluation result."""
     checks = {}
-    for channel in ARTICULATED:
+    for channel in channels:
         if channel in result:
             for ratio in ("speed_ratio", "variation_ratio"):
                 value = result[channel][ratio]
@@ -48,7 +51,7 @@ def score_setting(run: str, setting: str, result: dict) -> dict:
         if ratio is not None:
             checks[marker] = (ratio, MARKERS[0] <= ratio <= MARKERS[1])
     accuracy = {f"{c}_error": next((v for k, v in result[c].items() if k.endswith(("_deg", "_cm"))), None)
-                for c in ARTICULATED if c in result}
+                for c in channels if c in result}
     accuracy.update({f"space_{k}": v for k, v in (result.get("signing_space") or {}).items()})
     passed = sum(ok for _, ok in checks.values())
     return dict(run=run, setting=setting, frechet=result["frechet"], checks=checks, passed=passed,
@@ -75,12 +78,14 @@ def main(argv=None) -> int:
     parser.add_argument("--runs", nargs="+", required=True)
     parser.add_argument("--retrieval-key", help="score_generated_retrieval.py output (reported, not gated)")
     parser.add_argument("--output-key")
+    parser.add_argument("--no-head", action="store_true", help="the subset round's gate (no head-rotation check)")
     args = parser.parse_args(argv)
+    channels = SUBSET_ROUND if args.no_head else ARTICULATED
     store = make_store(args.store)
     rows = []
     for run in args.runs:
         report = json.loads(store.get(f"{args.derived.rstrip('/')}/evaluations/{run}.json"))
-        rows += [score_setting(run, setting, result) for setting, result in report["results"].items()]
+        rows += [score_setting(run, setting, result, channels) for setting, result in report["results"].items()]
     retrieval = json.loads(store.get(args.retrieval_key)) if args.retrieval_key else None
     choice = select(rows)
     failing = [k for k, (_, ok) in choice["checks"].items() if not ok]

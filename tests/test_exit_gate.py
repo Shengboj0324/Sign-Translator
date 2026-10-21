@@ -8,7 +8,7 @@ gate = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate)
 
 def result(frechet, speed=1., variation=1., headshake=1., hand_error=20.):
     channel = lambda: dict(geodesic_deg=hand_error, speed_ratio=speed, variation_ratio=variation)
-    return dict(frechet=frechet, body=channel(), left_hand=channel(), right_hand=channel(),
+    return dict(frechet=frechet, body=channel(), left_hand=channel(), right_hand=channel(), head_rotation=channel(),
                 grammar=dict(distributions=dict(headshake_rate=dict(mean_ratio=headshake),
                                                 nod_rate=dict(mean_ratio=1.))))
 
@@ -16,7 +16,7 @@ def result(frechet, speed=1., variation=1., headshake=1., hand_error=20.):
 def test_checks_use_the_declared_bounds():
     row = gate.score_setting("r", "g1", result(100, speed=.69, headshake=2.01))
     assert row["checks"]["body_speed_ratio"] == (.69, False) and row["checks"]["headshake_rate"] == (2.01, False)
-    assert row["checks"]["body_variation_ratio"][1] and row["total"] == 8 and not row["all_pass"]
+    assert row["checks"]["body_variation_ratio"][1] and row["total"] == 10 and not row["all_pass"]
     edge = gate.score_setting("r", "g1", result(100, speed=.7, variation=1.3, headshake=.5))
     assert edge["all_pass"]
 
@@ -30,3 +30,10 @@ def test_selection_prefers_passing_then_lowest_frechet_with_the_tie_break():
     failing = [gate.score_setting("x", "g", result(300, speed=.5)), gate.score_setting("y", "g", result(250, speed=.5,
                                                                                                           headshake=3.))]
     assert gate.select(failing)["run"] == "x"                     # most checks passed when none passes them all
+
+
+def test_the_head_is_gated_from_the_full_round_and_the_subset_gate_is_reproducible():
+    fast_head = result(200)
+    fast_head["head_rotation"]["speed_ratio"] = 1.87
+    assert not gate.score_setting("r", "g", fast_head)["all_pass"]
+    assert gate.score_setting("r", "g", fast_head, gate.SUBSET_ROUND)["all_pass"]
