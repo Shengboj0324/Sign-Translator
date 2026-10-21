@@ -165,6 +165,13 @@ These start when the generator round's exit gate closes (docs/CONTINUOUS_TRAININ
      - Participants as pseudonyms.
      - Gloss and ASL-LEX code with status `publisher_label`.
      - Per-split quality counts.
+   - **Done 2026-10-21 15:26 UTC.**
+     - All 83,399 clips converted: no refusals, no unresolved errors.
+     - Nine shards died at 13:29 on a transient R2 failure and were resumed after the retry fix.
+     - Manifest: `derived/asl-citizen-v1/manifest-v1/manifest.json`, SHA-256 `708af3a6748742c0ce8d147a984ef1de57abcec94da47ff0ce82391b067661a6`, built on the Mac.
+     - Clips with arm rotations in at least 20% of frames: train 77%, val 70%, test 79%. Median arm fraction 0.41, 0.35, 0.41.
+     - Clips with hands in at least 20% of frames: 91–93% in every split.
+     - Downstream uses filter on the per-clip `quality` counts.
    - **Gloss mapping:** 887 of the 2,731 glosses match SAPA's ASL-LEX phonology entries exactly. Normalised matching is not used, since it would merge variants such as `SOCCER2`. The ASLLRP Sign Bank join waits for DAI 2.
 2. **Full How2Sign** (item 1a).
    - **Sapiens:** keypoints for every remaining clip. `runpod/pipeline.sh` without `SUBSET`; R2 claims skip the ≈ 13k frontal and side clips already done. About 57k clips at ≈ 40 clips/min on ten L40S pods: ≈ 24 h, ≈ $260.
