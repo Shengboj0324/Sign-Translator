@@ -162,3 +162,21 @@ def test_skeleton_motion_loss_is_zero_on_the_reference_and_sees_speed():
     assert float(loss["velocity"]) > 0 and float(loss["position"]) > 0
     sum(loss.values()).backward()
     assert frozen["body"].grad.abs().sum() > 0
+
+
+def test_the_location_term_runs_under_bf16_autocast_with_the_float32_value():
+    """The CUDA trainer runs under bf16 autocast: the heads emit bfloat16, which the rotation code refuses."""
+    from signtranslator.generation.canonical_state import channel_bindings_from_state
+    from signtranslator.generation.text_to_motion import TextToMotion, TextToMotionConfig, encode_texts, training_loss
+    torch.manual_seed(0)
+    states = [signer_state(s, frames=16, amplitude=.3) for s in range(2)]
+    batch = collate_multichannel(states)
+    tokens, mask = encode_texts(["a", "b"])
+    config = TextToMotionConfig(bindings=channel_bindings_from_state(states[0]), trained_channels=("body", "left_hand", "right_hand"),
+                                d_model=32, heads=4, text_layers=1, motion_layers=1, feedforward=64, dropout=0.,
+                                objective="diffusion")
+    model = TextToMotion(config)
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        loss, terms, _ = training_loss(model, tokens, mask, batch)
+    loss.backward()
+    assert terms["location"] > 0 and torch.isfinite(loss)

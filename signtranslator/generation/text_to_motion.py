@@ -420,10 +420,15 @@ def training_loss(model: TextToMotion, tokens, text_mask, motion: MotionBatch, l
 
 
 def signing_space_term(config: TextToMotionConfig, prediction: dict, motion: MotionBatch):
-    """Location loss of the wrists and fingertips in the chest frame, or None when not applicable."""
+    """Location loss of the wrists and fingertips in the chest frame, or None when not applicable.
+
+    The rotation heads' outputs are cast to float32 first: under bf16 autocast (the CUDA
+    default of the trainer) they are bfloat16, which the rotation code refuses and which
+    is too coarse for forward kinematics along the arm and fingers.
+    """
     if not config.location_weight or not applicable(config.bindings, config.trained_channels):
         return None
-    loss, _ = location_loss({n: prediction[n] for n in ("body", "left_hand", "right_hand")}, motion)
+    loss, _ = location_loss({n: prediction[n].float() for n in ("body", "left_hand", "right_hand")}, motion)
     return loss
 
 
