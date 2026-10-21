@@ -25,6 +25,7 @@ from functools import partial
 import hashlib
 import io
 import json
+import math
 import os
 from pathlib import Path
 import random
@@ -71,8 +72,10 @@ class WeightEMA:
     def update(self, model: torch.nn.Module) -> None:
         d = self.current_decay()
         self.updates += 1
-        for n, p in model.named_parameters():
-            self.shadow[n].mul_(d).add_(p.detach(), alpha=1 - d)
+        names, params = zip(*((n, p.detach()) for n, p in model.named_parameters()))
+        shadow = [self.shadow[n] for n in names]
+        torch._foreach_mul_(shadow, d)                     # one fused kernel per step, not two per tensor
+        torch._foreach_add_(shadow, list(params), alpha=1 - d)
 
     def state_dict(self, model: torch.nn.Module) -> dict:
         """The model's state dict with EMA parameters (buffers from the live model)."""
@@ -259,14 +262,35 @@ def main(argv=None) -> int:
                 tokens_v, mask_v, motion_v, *loci_v = to_device(batch, device)
                 loss_v, terms_v = loss_of(motion_v, tokens_v, mask_v, loci_v, train=False)
                 for key, value in dict(loss=float(loss_v), **terms_v).items():
-                    totals[key] = totals.get(key, 0.) + value
+                    totals[key] = totals.get(key, 0.) + float(value)
                 count += 1
         ema.restore(model, live)
         model.train()
         return {f"val/{k}": v / max(count, 1) for k, v in totals.items()}
 
+    pending = []                               # log entries whose values are still device tensors
+
+    def flush():
+        """Read the pending entries' values off the device (one wait for the GPU), in place; refuse a non-finite loss.
+
+        Reading a value back synchronises with the GPU, so the training step leaves its
+        metrics on the device and they are read here only when they are printed,
+        validated or checkpointed. A non-finite loss is therefore reported up to 50 steps
+        late (or when the poisoned weights make a later step fail), always before a save.
+        """
+        cells = [(entry, key) for entry in pending for key, value in entry.items() if isinstance(value, torch.Tensor)]
+        if cells:
+            values = torch.stack([entry[key].detach().to(torch.float64).reshape(()) for entry, key in cells]).tolist()
+            for (entry, key), value in zip(cells, values):
+                entry[key] = value
+        for entry in pending:
+            if not math.isfinite(entry["loss"]):
+                raise FloatingPointError(f"non-finite loss at step {entry['step'] - 1}")
+        pending.clear()
+
     def checkpoint(metrics: dict | None = None):
         nonlocal best
+        flush()
         buffer = io.BytesIO()
         torch.save(dict(kind=kind, model=model.state_dict(), ema=ema.state_dict(model), optimizer=optimizer.state_dict(),
                         step=step, validation=metrics,
@@ -297,20 +321,26 @@ def main(argv=None) -> int:
             tokens, mask, motion, *loci = to_device(batch, device)
             for group in optimizer.param_groups:
                 group["lr"] = lr_at(step, base=args.lr, warmup=args.warmup, total=args.steps)
-            loss, terms = loss_of(motion, tokens, mask, loci, train=True)
-            if not torch.isfinite(loss):
-                raise FloatingPointError(f"non-finite loss at step {step}")
-            optimizer.zero_grad(set_to_none=True)
-            loss.backward()
-            norm = torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
-            optimizer.step()
-            ema.update(model)
+            try:
+                loss, terms = loss_of(motion, tokens, mask, loci, train=True)
+                optimizer.zero_grad(set_to_none=True)
+                loss.backward()
+                norm = torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
+                optimizer.step()
+                ema.update(model)
+            except Exception:
+                flush()                        # an unread non-finite loss before this failure is its cause
+                raise
             step += 1
-            entry = dict(step=step, loss=float(loss.detach()), grad_norm=float(norm),
+            entry = dict(step=step, loss=loss.detach(), grad_norm=norm.detach(),
                          seconds=round(time.monotonic() - started, 1), **{f"train/{k}": v for k, v in terms.items()})
             log.append(entry)
+            pending.append(entry)
+            due_validation = val_batches and (step % args.val_every == 0 or step == args.steps)
+            if due_validation or step % 50 == 0 or step == 1 or step % args.checkpoint_every == 0 or step == args.steps:
+                flush()
             metrics, stop = None, False
-            if val_batches and (step % args.val_every == 0 or step == args.steps):
+            if due_validation:
                 metrics = validate()
                 entry.update(metrics)
                 stop = note(metrics)
@@ -326,6 +356,7 @@ def main(argv=None) -> int:
                 print(json.dumps(dict(step=step, early_stop=True, best_step=best["step"], best_val_loss=best["val_loss"])),
                       flush=True)
                 return 0
+    flush()
     return 0
 
 

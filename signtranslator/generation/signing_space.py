@@ -15,11 +15,13 @@ every rotation of the chain, weighted by its lever arm.
 """
 from __future__ import annotations
 
+import functools
+
 import torch
 import torch.nn.functional as F
 
 from ..data_engineering.video_landmarks import BODY_JOINTS, finger_joints
-from ..pose.rotations import rotation_6d_to_matrix
+from ..pose.rotations import _matmul3, rotation_6d_to_matrix
 from .canonical_skeleton import _FINGER_LENGTHS, _KNUCKLES, _LENGTH, _SHOULDER_HALF
 
 FINGERS = ("Thumb", "Index", "Middle", "Ring", "Pinky")
@@ -76,49 +78,101 @@ def signing_space_points(body6: torch.Tensor, left6: torch.Tensor, right6: torch
     return torch.stack(points, dim=-2), tuple(chains)
 
 
+@functools.lru_cache(maxsize=None)
+def _skeleton_layout(body_labels: tuple, left_labels: tuple, right_labels: tuple) -> dict:
+    """The static part of :func:`skeleton_points`: gathered joints, FK constants, point names and chains.
+
+    Per side the arm is Chest → UpperArm → Forearm → Hand, then five three-segment fingers.
+    """
+    index = {("body", n): k for k, n in enumerate(body_labels)}
+    index.update({("left_hand", n): k for k, n in enumerate(left_labels)})
+    index.update({("right_hand", n): k for k, n in enumerate(right_labels)})
+    spec = {j.name: j for j in BODY_JOINTS}
+    out = dict(arm=[], left_hand=[], right_hand=[], shoulder=[], arm_rest=[], knuckle=[], finger_rest=[])
+    names, chains = [], []
+    for side, sign in (("Left", 1.), ("Right", -1.)):
+        channel = f"{side.lower()}_hand"
+        if spec[f"{side}UpperArm"].parent != "Chest" or spec[f"{side}Forearm"].parent != f"{side}UpperArm":
+            raise ValueError("the arm chain is Chest -> UpperArm -> Forearm")
+        out["arm"] += [index[("body", f"{side}{j}")] for j in ("UpperArm", "Forearm", "Hand")]
+        out["shoulder"].append([sign * _SHOULDER_HALF, 0., 0.])
+        out["arm_rest"].append([spec[f"{side}UpperArm"].rest, spec[f"{side}Forearm"].rest])
+        chain = [("body", f"{side}UpperArm")]
+        names.append(f"{side}Elbow"); chains.append(tuple(chain))
+        chain.append(("body", f"{side}Forearm"))
+        names.append(f"{side}Wrist"); chains.append(tuple(chain))
+        hand_chain = chain + [("body", f"{side}Hand")]
+        joints = {j.name: j for j in finger_joints(side)}
+        knuckles, rests = [], []
+        for finger in FINGERS:
+            x, y = _KNUCKLES[finger]
+            knuckles.append([sign * x, y, 0.])
+            names.append(f"{side}{finger}MCP"); chains.append(tuple(hand_chain))
+            finger_chain, finger_rest = list(hand_chain), []
+            for segment, label in zip((1, 2, 3), ("PIP", "DIP", "Tip")):
+                name = f"{side}Hand{finger}{segment}"
+                out[channel].append(index[(channel, name)])
+                finger_rest.append(joints[name].rest)
+                finger_chain.append((channel, name))
+                names.append(f"{side}{finger}{label}"); chains.append(tuple(finger_chain))
+            rests.append(finger_rest)
+        out["knuckle"].append(knuckles)
+        out["finger_rest"].append(rests)
+    return dict(out, names=tuple(names), chains=tuple(chains))
+
+
+@functools.lru_cache(maxsize=None)
+def _skeleton_tensors(labels: tuple, dtype: torch.dtype, device: torch.device) -> dict:
+    """:func:`_skeleton_layout` as tensors on ``device``, made once (a host→device copy waits for the GPU)."""
+    layout = _skeleton_layout(*labels)
+    out = {key: torch.tensor(layout[key], dtype=dtype, device=device)
+           for key in ("shoulder", "arm_rest", "knuckle", "finger_rest")}
+    out.update({key: torch.tensor(layout[key], dtype=torch.long, device=device)
+                for key in ("arm", "left_hand", "right_hand")})
+    return out
+
+
+def _apply(matrix: torch.Tensor, vector: torch.Tensor) -> torch.Tensor:
+    """(…, 3, 3) · (…, 3) -> (…, 3), broadcasting the leading dimensions (elementwise, not a batched GEMM)."""
+    return (matrix * vector[..., None, :]).sum(-1)
+
+
 def skeleton_points(body6: torch.Tensor, left6: torch.Tensor, right6: torch.Tensor,
                     body_labels, left_labels, right_labels):
     """Chest-frame positions (…, 44, 3) of every arm and hand point, their names and chains.
 
     Per side: elbow, wrist, then for each finger its knuckle (MCP), PIP, DIP and tip —
     the same forward kinematics and nominal lengths as :func:`signing_space_points`,
-    which is the wrist-and-tip subset of these points.
+    which is the wrist-and-tip subset of these points. Both sides and all five fingers
+    are composed at once (one 6D→matrix conversion, three finger-segment steps), so the
+    cost in kernel launches does not grow with the number of points.
     """
-    index = {("body", n): k for k, n in enumerate(body_labels)}
-    index.update({("left_hand", n): k for k, n in enumerate(left_labels)})
-    index.update({("right_hand", n): k for k, n in enumerate(right_labels)})
-    tensors = {"body": body6, "left_hand": left6, "right_hand": right6}
-    rotation = lambda channel, name: rotation_6d_to_matrix(tensors[channel][..., index[(channel, name)], :])
-    like = body6
-    eye = torch.eye(3, dtype=like.dtype, device=like.device).expand(*body6.shape[:-2], 3, 3)
-    world = {"Chest": eye}
-    points, names, chains = [], [], []
-    for side, sign in (("Left", 1.), ("Right", -1.)):
-        channel = f"{side.lower()}_hand"
-        start = _vector([sign * _SHOULDER_HALF, 0., 0.], like).expand(*body6.shape[:-2], 3)
-        chain = []
-        for joint, part, point in ((f"{side}UpperArm", "UpperArm", f"{side}Elbow"),
-                                   (f"{side}Forearm", "Forearm", f"{side}Wrist")):
-            spec = next(j for j in BODY_JOINTS if j.name == joint)
-            world[joint] = world[spec.parent] @ rotation("body", joint)
-            start = start + _LENGTH[part] * (world[joint] @ _vector(spec.rest, like))
-            chain.append(("body", joint))
-            points.append(start); names.append(point); chains.append(tuple(chain))
-        wrist = start
-        hand = world[f"{side}Forearm"] @ rotation("body", f"{side}Hand")
-        hand_chain = chain + [("body", f"{side}Hand")]
-        for finger in FINGERS:
-            x, y = _KNUCKLES[finger]
-            position = wrist + hand @ _vector([sign * x, y, 0.], like)
-            points.append(position); names.append(f"{side}{finger}MCP"); chains.append(tuple(hand_chain))
-            frame, finger_chain = hand, list(hand_chain)
-            for segment, label in zip((1, 2, 3), ("PIP", "DIP", "Tip")):
-                spec = next(j for j in finger_joints(side) if j.name == f"{side}Hand{finger}{segment}")
-                frame = frame @ rotation(channel, spec.name)
-                position = position + _FINGER_LENGTHS[segment - 1] * (frame @ _vector(spec.rest, like))
-                finger_chain.append((channel, spec.name))
-                points.append(position); names.append(f"{side}{finger}{label}"); chains.append(tuple(finger_chain))
-    return torch.stack(points, dim=-2), tuple(names), tuple(chains)
+    labels = (tuple(body_labels), tuple(left_labels), tuple(right_labels))
+    layout, like = _skeleton_layout(*labels), body6
+    tensors = _skeleton_tensors(labels, like.dtype, like.device)
+    constant = tensors.__getitem__
+    lead = body6.shape[:-2]
+    rotations = rotation_6d_to_matrix(torch.cat((body6[..., tensors["arm"], :], left6[..., tensors["left_hand"], :],
+                                                 right6[..., tensors["right_hand"], :]), dim=-2))
+    arm = rotations[..., :6, :, :].reshape(*lead, 2, 3, 3, 3)                      # (…, side, joint, 3, 3)
+    finger = rotations[..., 6:, :, :].reshape(*lead, 2, len(FINGERS), 3, 3, 3)    # (…, side, finger, segment, 3, 3)
+    arm_rest = constant("arm_rest")
+    eye = torch.eye(3, dtype=like.dtype, device=like.device).expand(*lead, 2, 3, 3)
+    upper = _matmul3(eye, arm[..., 0, :, :])
+    elbow = constant("shoulder") + _LENGTH["UpperArm"] * _apply(upper, arm_rest[:, 0])
+    forearm = _matmul3(upper, arm[..., 1, :, :])
+    wrist = elbow + _LENGTH["Forearm"] * _apply(forearm, arm_rest[:, 1])
+    hand = _matmul3(forearm, arm[..., 2, :, :])[..., None, :, :]                         # (…, side, 1, 3, 3)
+    position = wrist[..., None, :] + _apply(hand, constant("knuckle"))
+    finger_rest = constant("finger_rest")
+    frame, along = hand, [position]
+    for segment in range(3):
+        frame = _matmul3(frame, finger[..., segment, :, :])
+        position = position + _FINGER_LENGTHS[segment] * _apply(frame, finger_rest[:, :, segment])
+        along.append(position)
+    fingers = torch.stack(along, dim=-2).flatten(-3, -2)                           # (…, side, 20, 3)
+    points = torch.cat((torch.stack((elbow, wrist), dim=-2), fingers), dim=-2)
+    return points.flatten(-3, -2), layout["names"], layout["chains"]
 
 
 MOTION_SCALES = dict(position=LOCATION_SCALE_METRES, velocity=.5, acceleration=10.)   # m, m/s, m/s²
@@ -140,49 +194,52 @@ def skeleton_motion_loss(prediction: dict, motion, *, scales=MOTION_SCALES) -> d
     identity = torch.tensor([1., 0., 0., 0., 1., 0.], dtype=dtype, device=prediction["body"].device)
     reference = [torch.where(motion.channels[n].valid[..., None], motion.channels[n].values.to(dtype), identity)
                  for n in names]
-    predicted, _, chains = skeleton_points(*(prediction[n] for n in names), *labels)
-    target, _, _ = skeleton_points(*reference, *labels)
-    target = target.detach()
+    # the prediction and the reference go through the kinematics as one batch
+    points, _, chains = skeleton_points(*(torch.stack((prediction[n], r)) for n, r in zip(names, reference)), *labels)
+    predicted, target = points[0], points[1].detach()
     channels = {n: (motion.channels[n].valid, tuple(motion.channels[n].layout.labels)) for n in names}
     support = _support(channels, chains, motion.frame_valid)                  # (B, T, P)
     t = motion.timestamps.to(dtype)
-    out = {}
-
-    def huber(error, mask, scale):
-        if not bool(mask.any()):
-            return None
-        d = torch.linalg.vector_norm(error, dim=-1)[mask] / scale
-        return F.huber_loss(d, torch.zeros_like(d), delta=1., reduction="mean")
-
-    position = huber(predicted - target, support, scales["position"])
-    if position is not None:
-        out["position"] = position
+    masks, errors = {"position": support}, {"position": predicted - target}
     if predicted.shape[1] >= 2:
         dt = (t[:, 1:] - t[:, :-1]).clamp_min(1e-3)[..., None, None]
         vp, vt = (predicted[:, 1:] - predicted[:, :-1]) / dt, (target[:, 1:] - target[:, :-1]) / dt
-        both = support[:, 1:] & support[:, :-1]
-        velocity = huber(vp - vt, both, scales["velocity"])
-        if velocity is not None:
-            out["velocity"] = velocity
+        masks["velocity"], errors["velocity"] = support[:, 1:] & support[:, :-1], vp - vt
         if predicted.shape[1] >= 3:
             dt2 = ((t[:, 2:] - t[:, :-2]) / 2).clamp_min(1e-3)[..., None, None]
             ap, at = (vp[:, 1:] - vp[:, :-1]) / dt2, (vt[:, 1:] - vt[:, :-1]) / dt2
-            three = both[:, 1:] & both[:, :-1]
-            acceleration = huber(ap - at, three, scales["acceleration"])
-            if acceleration is not None:
-                out["acceleration"] = acceleration
+            masks["acceleration"] = masks["velocity"][:, 1:] & masks["velocity"][:, :-1]
+            errors["acceleration"] = ap - at
+    # which terms have support: one host sync for all of them; the means are masked sums, not boolean selections
+    present = torch.stack([m.any() for m in masks.values()]).tolist()
+    out = {}
+    for (key, mask), keep in zip(masks.items(), present):
+        if keep:
+            d = torch.linalg.vector_norm(errors[key], dim=-1) / scales[key]
+            cells = F.huber_loss(d, torch.zeros_like(d), delta=1., reduction="none")
+            out[key] = torch.where(mask, cells, torch.zeros_like(cells)).sum() / mask.sum()
     return out
 
 
 def _support(channels: dict, chains, frame_valid: torch.Tensor) -> torch.Tensor:
-    """(B, T, 12) reference validity of every point's whole chain on valid frames."""
-    masks = []
-    for chain in chains:
-        ok = frame_valid.clone()
-        for channel, label in chain:
-            ok = ok & channels[channel][0][..., channels[channel][1].index(label)]
-        masks.append(ok)
-    return torch.stack(masks, dim=-1)
+    """(…, P) reference validity of every point's whole chain on valid frames."""
+    layout = tuple((name, tuple(labels)) for name, (_, labels) in channels.items())
+    index = _chain_index(layout, tuple(chains), frame_valid.device)
+    # one gather of every chain's joints (padded with an always-valid column), then all() along the chain
+    valid = torch.cat([valid for valid, _ in channels.values()] + [torch.ones_like(frame_valid)[..., None]], dim=-1)
+    return valid[..., index].all(-1) & frame_valid[..., None]
+
+
+@functools.lru_cache(maxsize=None)
+def _chain_index(layout: tuple, chains: tuple, device: torch.device) -> torch.Tensor:
+    """(P, longest chain) columns of the concatenated channel masks; the padding column is one past the last."""
+    column, offset = {}, 0
+    for name, labels in layout:
+        column.update({(name, label): offset + k for k, label in enumerate(labels)})
+        offset += len(labels)
+    width = max(len(chain) for chain in chains)
+    return torch.tensor([[column[link] for link in chain] + [offset] * (width - len(chain)) for chain in chains],
+                        device=device)
 
 
 def location_loss(prediction: dict, motion, *, scale: float = LOCATION_SCALE_METRES):

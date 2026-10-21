@@ -232,3 +232,23 @@ def test_early_stopping_ends_training_and_keeps_the_best_checkpoint(tmp_path, mo
     assert best["step"] == 2 and abs(best["val_loss"] - .5) < 1e-9          # the best checkpoint is kept even off-schedule
     checkpoints = sorted(p.name for p in (store / "training-runs/es/checkpoints").glob("*.pt"))
     assert checkpoints[-1] == "step-00000005.pt"                           # stopped 3 validations after the best
+
+
+def test_a_non_finite_training_loss_stops_the_run_before_anything_is_saved(tmp_path, monkeypatch):
+    """Metrics are read off the device only when logged, so the finiteness check runs there — still before a save."""
+    monkeypatch.setenv("SIGN_CACHE_DIR", str(tmp_path / "cache"))
+    digest = store_with_manifest(tmp_path / "store")
+    script = load_script()
+    real, calls = script.rvq_loss, iter(range(10 ** 6))
+    def poisoned(model, motion, **kw):
+        loss, terms = real(model, motion, **kw)
+        return (loss * float("nan") if model.training and next(calls) == 3 else loss), terms
+    monkeypatch.setattr(script, "rvq_loss", poisoned)
+    store = tmp_path / "store"
+    with pytest.raises(FloatingPointError, match="non-finite loss at step 3"):
+        script.main(["--store", f"dir:{store}", "--manifest-key", "manifest.json", "--manifest-sha256", digest,
+                     "--batch-size", "2", "--warmup", "1", "--checkpoint-every", "8", "--val-every", "100",
+                     "--workers", "0", "--trained-channels", "body,head_rotation,face", "--architecture", "rvq",
+                     "--stage", "tokenizer", "--run", "nan", "--hidden", "16", "--code-dim", "8", "--codebook", "16",
+                     "--stages", "2", "--down-layers", "1", "--steps", "10"])
+    assert not list((store / "training-runs/nan").glob("checkpoints/*.pt"))
