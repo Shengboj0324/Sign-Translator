@@ -169,6 +169,20 @@ class Sapiens:
         return sapiens_raw(payload, first, stop, self.model, self.device, self.batch, self.flip)
 
 
+class Stages:
+    """Seconds spent per stage of a session, printed as one line (where the time goes, session by session)."""
+
+    def __init__(self):
+        import time
+        self.time, self.last, self.spent = time, time.time(), {}
+
+    def __call__(self, stage: str):
+        now = self.time.time()
+        self.spent[stage] = round(now - self.last, 1)
+        self.last = now
+        print("stage seconds " + json.dumps(self.spent), flush=True)
+
+
 def recover_session(store, args, session: str, clips: dict, rows: dict, fronts: Archives, raws: Archives,
                     sapiens: Sapiens) -> dict:
     """Recover one session; returns its provenance record (written by the caller)."""
@@ -179,8 +193,11 @@ def recover_session(store, args, session: str, clips: dict, rows: dict, fronts: 
                                   sync_sharpness=SYNC_SHARPNESS, far_lag=recut.FAR_LAG,
                                   max_sampson_px=recut.MAX_SAMPSON_PX, fine_step=recut.FINE_STEP,
                                   front_frames_per_unit=recut.FRONT_FRAMES_PER_UNIT))
+    clock = Stages()
     front_raw, front_info = raws.read(f"{session}-rgb_front.mp4")
+    clock("read raw frontal")
     front_times, front_thumbs = decoded(front_raw, thumbnails=True)
+    clock("decode raw frontal")
     fps = measure_rate(front_times, "frontal")
     record["raw_front"] = dict(front_info, frames=len(front_times), fps=fps)
     record["thresholds"]["front_frames_per_unit"] = recut.frames_per_unit(fps)
@@ -199,7 +216,9 @@ def recover_session(store, args, session: str, clips: dict, rows: dict, fronts: 
         info[name] = dict(clip_zip=member["zip_key"], clip_zip_sha256=member["zip_sha256"],
                           clip_sha256=member["member_sha256"], keypoints_key=key, keypoints_sha256=keypoints_sha,
                           csv_start=rows[name], frames=len(times))
+    clock("read and decode released clips")
     placements = recut.place_clips(front_thumbs, thumbs, nominals)
+    clock("place clips")
     for name, placement in placements.items():
         info[name].update(placement=placement)
     record["front_clips"] = info
@@ -207,6 +226,7 @@ def recover_session(store, args, session: str, clips: dict, rows: dict, fronts: 
     if not placed:
         return dict(record, reason="no frontal clip could be placed in the raw frontal recording")
     side_raw, side_info = raws.read(f"{session}-rgb_side.mp4")
+    clock("read raw lateral")
     record["raw_side"] = side_info
     cache = f"{prefix}/raw-keypoints/{session}-rgb_side.npz"
     first, stop = recut.needed_frames([(s, len(keypoints[n].times)) for n, s in placed.items()],
@@ -224,6 +244,7 @@ def recover_session(store, args, session: str, clips: dict, rows: dict, fronts: 
                       stop=np.array(computed_stop), member_sha256=np.array(side_info["member_sha256"]),
                       model_sha256=np.array(sapiens.sha256), flip_tta=np.array(sapiens.flip))
         cache_sha = store.put(cache, npz(**cached))
+        clock("sapiens on raw lateral")
     same_rate(fps, measure_rate(cached["times"], "lateral"), "raw lateral recording")
     record["raw_side"].update(frames=len(cached["times"]))
     record["sapiens"] = dict(raw_keypoints_key=cache, raw_keypoints_sha256=cache_sha,
@@ -233,6 +254,7 @@ def recover_session(store, args, session: str, clips: dict, rows: dict, fronts: 
     names = sorted(placed)
     offset = recut.estimate_offset([(placed[n], keypoints[n]) for n in names], side_points, side_confidence,
                                    max_offset=args.max_offset, workers=args.offset_workers)
+    clock("offset search")
     for name, clip in zip(names, offset.pop("clips")):
         info[name].update(offset_sampson_px=clip["sampson_px"], offset_observations=clip["observations"])
     record["offset"] = dict(offset, offset_seconds=None if offset["offset_frames"] is None

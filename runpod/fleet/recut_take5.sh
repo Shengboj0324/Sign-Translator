@@ -14,6 +14,7 @@ export PATH=/root/venv/bin:$PATH OMP_NUM_THREADS=8
 cd /root/work/Sign-Translator
 export DERIVED=acquisition/2026-10-17-v1/derived/full-v1 MODELS=/root/work/models PY=python
 RECUT=$DERIVED/how2sign-sapiens-side-recut-v1
+LOG=/root/recut-$GROUP-$I-of-$N.log PASS=/root/recut-$GROUP-$I-of-$N-pass.log   # per shard: two shards may share a pod
 count() { python -c "import os,sys; from signtranslator.data.text_motion_dataset import R2Store; print(len(R2Store(os.environ).list(sys.argv[1])))" "$1"; }
 ledgers() { python -c "
 import os,sys; from signtranslator.data.text_motion_dataset import R2Store
@@ -36,15 +37,15 @@ failed=0
 for pass in $(seq 1 200); do
   l=$(ledgers); complete=0; [ "$l" -ge "$LEDGERS" ] && complete=1     # raw complete before this pass started
   echo "STAGE recut $GROUP $I/$N pass $pass (raw ledgers $l/$LEDGERS) $(date)"
-  SPLITS="$SPLITS_LIST" RECUT_FLAGS="--no-flip --batch 24" bash runpod/pipeline.sh recut $I $N > /root/recut-pass.log 2>&1 \
-    || { echo "FAILED recut $GROUP $I pass $pass" >> /root/recut-pass.log; failed=$((failed + 1)); }
-  cat /root/recut-pass.log >> /root/recut.log
-  grep -a '"sessions"' /root/recut-pass.log | tail -1
-  upload "$RECUT/logs/recut-$GROUP-$I-of-$N.log" /root/recut.log
-  if grep -aq "FAILED recut" /root/recut-pass.log; then [ $failed -ge 5 ] && break; sleep 120; continue; fi
+  SPLITS="$SPLITS_LIST" RECUT_FLAGS="--no-flip --batch 24 --offset-workers ${OFFSET_WORKERS:-12}" bash runpod/pipeline.sh recut $I $N > $PASS 2>&1 \
+    || { echo "FAILED recut $GROUP $I pass $pass" >> $PASS; failed=$((failed + 1)); }
+  cat $PASS >> $LOG
+  grep -a '"sessions"' $PASS | tail -1
+  upload "$RECUT/logs/recut-$GROUP-$I-of-$N.log" $LOG
+  if grep -aq "FAILED recut" $PASS; then [ $failed -ge 5 ] && break; sleep 120; continue; fi
   [ $complete = 1 ] && break
   sleep 600
 done
-grep -aq "FAILED recut" /root/recut-pass.log && echo "FAILED recut $GROUP $I" \
+grep -aq "FAILED recut" $PASS && echo "FAILED recut $GROUP $I" \
   || python -c "import os,sys; from signtranslator.data.text_motion_dataset import R2Store; R2Store(os.environ).put(sys.argv[1], b'done')" "$RECUT/done/$GROUP-$I-of-$N"
 echo RECUT-DONE
