@@ -161,6 +161,10 @@ def claim(store, key: str) -> bool:
         store.put(key, json.dumps(dict(time=now, host=os.uname().nodename, pid=os.getpid())).encode())
     except IOError:                          # the re-read saw another job's claim: it won the race
         return False
+    except Exception as error:               # R2 refuses concurrent writes to one object (503): another job is
+        if "ServiceUnavailable" in str(error) or "concurrent request rate" in str(error):   # claiming it now
+            return False
+        raise
     return True
 
 
