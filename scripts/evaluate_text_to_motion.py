@@ -43,7 +43,7 @@ def load_state(store, key: str, sha256: str) -> MultichannelMotion:
         return MultichannelMotion.load(path, expected_sha256=sha256)
 
 
-def load_generator(store, key: str, manifest_sha256: str, device: str = "cpu"):
+def load_generator(store, key: str, manifest_sha256: str, device: str = "cpu", *, temperature: float = 1., top_k: int = 0):
     """(label, trained channels, sample(text, fps, seconds, guidance, steps, seed)) for any checkpoint kind."""
     checkpoint = torch.load(io.BytesIO(store.get(key)), map_location="cpu", weights_only=False)
     if checkpoint["manifest_sha256"] != manifest_sha256:
@@ -58,6 +58,7 @@ def load_generator(store, key: str, manifest_sha256: str, device: str = "cpu"):
 
         def sample(text, fps, seconds, guidance, steps, seed):
             return generate_rvq_motion(prior, tokenizer, [text], fps=fps, durations=[seconds], guidance=guidance,
+                                       temperature=temperature, top_k=top_k,
                                        seed=seed)[0]
         return "motion_tokens_v2", prior.config.tokenizer.motion.trained_channels, sample
     if checkpoint.get("kind") in ("motion_tokenizer", "motion_rvq_tokenizer"):
@@ -71,6 +72,7 @@ def load_generator(store, key: str, manifest_sha256: str, device: str = "cpu"):
 
         def sample(text, fps, seconds, guidance, steps, seed):
             return generate_tokens_motion(prior, tokenizer, [text], fps=fps, durations=[seconds], guidance=guidance,
+                                          temperature=temperature, top_k=top_k,
                                           seed=seed)[0]
         return "motion_tokens", prior.config.tokenizer.motion.trained_channels, sample
     if checkpoint.get("kind") == "motion_tokenizer":
@@ -131,6 +133,8 @@ def main(argv=None) -> int:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--output-key")
+    parser.add_argument("--temperature", type=float, default=1., help="token generators: sampling temperature")
+    parser.add_argument("--top-k", type=int, default=0, help="token generators: sample from the k most likely codes (0: all)")
     parser.add_argument("--retrieval-key", help="frozen text-motion retrieval checkpoint: adds R-precision of the "
                                                  "generated motion and of the real motion on the same clips")
     parser.add_argument("--save-generated", help="store prefix for the generated states (<prefix>/<guidance>/<sign>.npz)")
@@ -140,7 +144,8 @@ def main(argv=None) -> int:
         path = Path(temporary) / "manifest.json"
         path.write_bytes(store.get(args.manifest_key) + b"\n")
         manifest = load_manifest(path, expected_sha256=args.manifest_sha256)
-    label, trained, sample = load_generator(store, args.checkpoint_key, args.manifest_sha256, args.device)
+    label, trained, sample = load_generator(store, args.checkpoint_key, args.manifest_sha256, args.device,
+                                            temperature=args.temperature, top_k=args.top_k)
     records = sorted((r for r in manifest["records"] if r["partition"] == args.partition and r.get("text")),
                      key=lambda r: r["sign"])[:args.limit]
     references = [load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]) for r in records]
@@ -180,6 +185,7 @@ def main(argv=None) -> int:
         print(json.dumps({name: results[name]}, default=float), flush=True)
     report = dict(schema_version=1, checkpoint_key=args.checkpoint_key, generator=label,
                   retrieval_key=args.retrieval_key, saved_generated=args.save_generated,
+                  temperature=args.temperature, top_k=args.top_k,
                   manifest_sha256=args.manifest_sha256, partition=args.partition, clips=len(records),
                   steps=args.steps, results=results)
     if args.output_key:
