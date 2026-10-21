@@ -432,3 +432,49 @@ Peak memory rose 9.2 → 9.6 GiB. `torch.compile` of the encoders and decoder ga
 further gain (182 ms), so it is not used. Over several steps the new and old code
 drift apart by float rounding about as fast as the old code drifts from itself
 (cuDNN), and `tests/test_generation_motion_rvq_vectorised.py` pins the equivalence.
+
+### v2b tokenizer and code learnability (2026-10-21)
+
+v2b (`--down-layers 0 --base-blocks 4`, best step 7,500, early-stopped at 9,500) has the
+best reconstruction so far:
+
+| | v2b | v2 |
+|---|---|---|
+| Joints | 8.3° | 9.6° |
+| Points | 1.7 cm | 2.2 cm |
+| Fingertips | 1.95 cm | 2.5 cm |
+| Wrists | 19° | 22° |
+
+Reconstruction does not decide generation, however. The diagnosis now also measures
+**learnability** (`code_statistics`): per code position the repeat rate, the unigram
+entropy and the plug-in bigram conditional entropy, and the rate in nats per second that
+a prior has to model. On 24 real validation clips:
+
+| Tokenizer | Code steps/s × codes per step | Mean repeat rate | Bigram rate |
+|---|---|---|---|
+| v1 | 15 × 1 | 0.79 | 8 nats/s (about 22 codes in effective use) |
+| v2 | 15 × 16 | 0.08 | 422 nats/s |
+| v2b | 30 × 16 | 0.14 | 1,070 nats/s |
+
+**What the numbers say.**
+- v1's codes carry too little information, which matches its under-articulated output.
+- v2 and v2b are codecs: near-uniform codes that change almost every step.
+- The v2b prior learns slowly accordingly. Validation token loss went 6.11 → 5.89 → 5.60
+  at steps 500 / 1,000 / 1,500, against a uniform loss of 6.24.
+
+**The v3 candidates** (`runpod/fleet/train_v3.sh`, one pod each) run at 7.5 code steps/s
+(`--down-layers 2`), the rate class of published RVQ text-to-motion:
+- v3a: 4 stages × 512 codes;
+- v3b: 2 × 512;
+- v3c: 4 × 256.
+
+Each chain runs tokenizer → diagnosis with learnability → plain prior → evaluation. The
+model is selected on generation quality, with reconstruction and learnability as
+explanations.
+
+**Relaunch notes.**
+- The first v2b prior chain failed on both priors at batch 128. At batch 64 the prior uses
+  32 GB of an L40S's 46 GB. Its logs were on the container disk, which is wiped at stop, so
+  every stage now uploads its log to R2 (`training-runs/<run>/stage-<name>.log`).
+- A 128-core pod built validation batches at under one clip per second with unbounded
+  OpenMP threads. The chains export `OMP_NUM_THREADS=8`.
