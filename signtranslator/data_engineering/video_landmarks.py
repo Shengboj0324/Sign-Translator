@@ -146,12 +146,20 @@ def _polar_rotation(matrices: np.ndarray) -> np.ndarray:
 
 
 def solve_rotations(world: np.ndarray, visible_pose: np.ndarray,
-                    hands: dict[str, tuple[np.ndarray, np.ndarray]]) -> tuple[dict, dict]:
+                    hands: dict[str, tuple[np.ndarray, np.ndarray]], *,
+                    upright_chest: bool = False) -> tuple[dict, dict]:
     """Body and finger rotations from y-up 3D points in the MediaPipe pose-33 index layout.
 
     ``world`` is (T, 33, 3) with only the body indices used here required; ``visible_pose``
     is (T, 33); ``hands`` maps side -> ((T, 21, 3) y-up points in base-to-tip finger
     order, (T,) validity). Any estimator or triangulation can feed this.
+
+    ``upright_chest`` is for framings that cut the body above the hips (webcam recordings
+    such as ASL Citizen): the chest frame takes its up axis from the camera vertical, made
+    orthogonal to the shoulder line, instead of from hips to shoulders. It needs only the
+    shoulders, keeps the chest's yaw and roll, and drops its lean; the arms (children of the
+    chest) and the hands then solve wherever their own points are seen. The pelvis, the
+    chest's rotation relative to it, and the legs stay invalid without the hips.
     """
     mid_hip = (world[:, L_HIP] + world[:, R_HIP]) / 2
     mid_shoulder = (world[:, L_SHOULDER] + world[:, R_SHOULDER]) / 2
@@ -160,9 +168,10 @@ def solve_rotations(world: np.ndarray, visible_pose: np.ndarray,
                               visible_pose[:, [L_SHOULDER, R_SHOULDER]].all(1, keepdims=True)), axis=1)
     up = mid_shoulder - mid_hip
     pelvis, pelvis_ok = frame_from_axes(world[:, L_HIP] - world[:, R_HIP], up)
-    chest, chest_ok = frame_from_axes(world[:, L_SHOULDER] - world[:, R_SHOULDER], up)
+    chest_up = np.broadcast_to(np.array([0., 1., 0.]), up.shape) if upright_chest else up
+    chest, chest_ok = frame_from_axes(world[:, L_SHOULDER] - world[:, R_SHOULDER], chest_up)
     pelvis_ok &= visible[:, MID_HIP] & visible[:, MID_SHOULDER]
-    chest_ok &= visible[:, MID_SHOULDER] & visible[:, MID_HIP]
+    chest_ok &= visible[:, MID_SHOULDER] & (True if upright_chest else visible[:, MID_HIP])
     body = solve_chain(points, {"Pelvis": (pelvis, pelvis_ok), "Chest": (chest, chest_ok)}, BODY_JOINTS, visible)
     chest_local = np.einsum("tji,tjk->tik", pelvis, chest)
     rotations = {"Pelvis": (pelvis, pelvis_ok), "Chest": (chest_local, pelvis_ok & chest_ok)}
@@ -180,7 +189,7 @@ def solve_rotations(world: np.ndarray, visible_pose: np.ndarray,
 
 def canonical_from_landmarks(clip: ClipLandmarks, *, sample_id: str, source_id: str, source_sha256: str,
                              clock_id: str, inference_method: str, points: dict | None = None,
-                             frame: str = FRAME) -> tuple[MultichannelMotion, dict]:
+                             frame: str = FRAME, upright_chest: bool = False) -> tuple[MultichannelMotion, dict]:
     """Canonical state from a clip's landmarks.
 
     By default body and hands come from the clip's monocular world landmarks. Pass
@@ -198,7 +207,7 @@ def canonical_from_landmarks(clip: ClipLandmarks, *, sample_id: str, source_id: 
         world, visible_pose, hands = points["world"], points["visible"], points["hands"]
         if world.shape[0] != frames:
             raise ValueError("3D points must share the clip's frames")
-    rotations, hand_rotations = solve_rotations(world, visible_pose, hands)
+    rotations, hand_rotations = solve_rotations(world, visible_pose, hands, upright_chest=upright_chest)
     hands = {side: (None, hands[side][1]) for side in hands}
     def rotation_channel(names, table):
         mats = np.stack([table[n][0] for n in names], axis=1)
@@ -244,6 +253,8 @@ def canonical_from_landmarks(clip: ClipLandmarks, *, sample_id: str, source_id: 
     state = MultichannelMotion(np.asarray(clip.times, dtype=np.float64), clock_id, sample_id, channels)
     report = dict(frames=frames, pose_frames=int(clip.pose_found.sum()), face_frames=int(face_ok.sum()),
                   left_hand_frames=int(hands["Left"][1].sum()), right_hand_frames=int(hands["Right"][1].sum()),
+                  arm_frames={j: int(rotations[j][1].sum()) for j in ("LeftForearm", "RightForearm")},
+                  upright_chest=upright_chest,
                   unavailable=sorted(n for n, c in channels.items() if not c.valid.any()))
     return state, report
 

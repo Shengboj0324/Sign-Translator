@@ -85,3 +85,33 @@ def test_face_head_and_declared_gaps():
         assert not missing.channels[name].valid.any()
     assert finger_joints("Left")[0].name == "LeftHandThumb1" and len(finger_joints("Right")) == 15
     assert np.isclose(np.linalg.det(Y_UP), 1.)
+
+
+def test_upright_chest_keeps_the_arms_when_the_hips_are_out_of_frame():
+    from signtranslator.data_engineering.landmark_kinematics import frame_from_axes
+    from signtranslator.data_engineering.video_landmarks import assign_hands, solve_rotations
+    c = clip()
+    visibility = c.pose_visibility.copy()
+    visibility[:, 23:] = 0.                                     # webcam framing: hips and legs unseen
+    c = replace(c, pose_visibility=visibility)
+    default, _ = convert(c)
+    assert not default.channels["body"].valid.any()             # the hip-based chest drops every arm joint
+    state, report = canonical_from_landmarks(c, sample_id="s", source_id="src", source_sha256="a" * 64,
+                                             clock_id="c", inference_method="test", upright_chest=True)
+    body = state.channels["body"]
+    valid = dict(zip(body.labels, body.valid.T))
+    for name in ("LeftUpperArm", "LeftForearm", "RightUpperArm", "RightForearm", "LeftHand", "RightHand"):
+        assert valid[name].all(), name
+    for name in ("Pelvis", "Chest", "LeftThigh", "LeftShin", "RightThigh", "RightShin"):
+        assert not valid[name].any(), name
+    assert report["upright_chest"] and report["arm_frames"] == {"LeftForearm": T, "RightForearm": T}
+    world = c.pose_world @ Y_UP.T
+    hands = {side: (points @ Y_UP.T, found) for side, (points, found) in assign_hands(c).items()}
+    rotations, _ = solve_rotations(world, visibility >= .5, hands, upright_chest=True)
+    chest, _ = frame_from_axes(world[:, 11] - world[:, 12], np.broadcast_to([0., 1., 0.], (T, 3)))
+    frames = {"Chest": chest}
+    for joint in BODY_JOINTS[:4]:                               # the arm bones are reproduced exactly
+        frames[joint.name] = frames[joint.parent] @ rotations[joint.name][0]
+        bone, _ = unit(world[:, joint.end] - world[:, joint.start])
+        rest, _ = unit(np.asarray(joint.rest))
+        np.testing.assert_allclose(np.einsum("tij,j->ti", frames[joint.name], rest), bone, atol=1e-6)

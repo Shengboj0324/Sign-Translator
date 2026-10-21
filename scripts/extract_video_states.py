@@ -94,7 +94,7 @@ def _init(zip_key, models_dir):
 
 
 def _process(job):
-    member, prefix, source_id, zip_sha256 = job
+    member, prefix, source_id, zip_sha256, upright_chest = job
     from signtranslator.data_engineering.video_landmarks import canonical_from_landmarks, extract_clip, inference_method
     store, archive = _WORKER["store"], _WORKER["archive"]
     sample = Path(member).stem
@@ -120,7 +120,9 @@ def _process(job):
             clip = extract_clip(video, _WORKER["models"], roi=True)
             state, report = canonical_from_landmarks(
                 clip, sample_id=sample, source_id=source_id, source_sha256=hashlib.sha256(payload).hexdigest(),
-                clock_id=f"{source_id}:{sample}:pts", inference_method=inference_method())
+                clock_id=f"{source_id}:{sample}:pts", upright_chest=upright_chest,
+                inference_method=inference_method() + ("; chest up axis from the camera vertical (upright prior)"
+                                                        if upright_chest else ""))
             path = Path(temporary) / "state.npz"
             digest = state.save(path)
             store.put(key, path.read_bytes())
@@ -148,6 +150,8 @@ def main(argv=None) -> int:
     parser.add_argument("--shards", type=int, default=1)
     parser.add_argument("--workers", type=int, default=os.cpu_count() or 1)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--upright-chest", action="store_true",
+                        help="framings cut above the hips: chest up axis from the camera vertical (solve_rotations)")
     parser.add_argument("--match", help="only clips whose file name matches this regular expression")
     args = parser.parse_args(argv)
     if not 0 <= args.shard < args.shards:
@@ -163,7 +167,7 @@ def main(argv=None) -> int:
         members = [m for m in members if re.search(args.match, Path(m).name)]
     shard = [m for i, m in enumerate(members) if i % args.shards == args.shard][:args.limit]
     print(f"{len(members)} clips, shard {args.shard}/{args.shards}: {len(shard)}", flush=True)
-    jobs = [(m, args.prefix.rstrip("/"), args.source_id, args.zip_sha256) for m in shard]
+    jobs = [(m, args.prefix.rstrip("/"), args.source_id, args.zip_sha256, args.upright_chest) for m in shard]
     results = []
     with ProcessPoolExecutor(max_workers=args.workers, initializer=_init,
                              initargs=(args.zip_key, args.models_dir)) as pool:
@@ -172,6 +176,7 @@ def main(argv=None) -> int:
             if i % 100 == 0:
                 print(f"{i}/{len(jobs)} {result['status']}", flush=True)
     report = dict(schema_version=1, zip_key=args.zip_key, zip_sha256=args.zip_sha256, shard=args.shard,
+                  upright_chest=args.upright_chest,
                   shards=args.shards, clips=len(results),
                   status_counts={s: sum(r["status"] == s for r in results) for s in {r["status"] for r in results}},
                   results=results)
