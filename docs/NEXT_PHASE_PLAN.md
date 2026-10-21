@@ -139,3 +139,25 @@ Read-only review: no download yet. Facts are from the pages and the licence page
 **Licence gate for release:** a release build lists every corpus in its training
 provenance. ASLLRP (and any other research-only data) is either excluded or covered by
 written permission.
+
+## Execution order after the generator round (recorded 2026-10-21 06:20 UTC)
+
+These start when the generator round's exit gate closes (docs/CONTINUOUS_TRAINING.md). Per the user's instruction of 2026-10-21, they proceed without waiting for input, under the same quality rules:
+- every pod stops when its chain ends;
+- every stage's log goes to R2;
+- data stays in R2 under private prefixes.
+
+1. **ASL Citizen acquisition** (item 1c). One small pod runs `acquire_resumable.py` for both files (≈ 46 GB, about 30 min on a datacentre link). Then:
+   - verify the ZIP members;
+   - extract monocular states;
+   - map glosses.
+2. **Full How2Sign** (item 1a).
+   - **Sapiens:** keypoints for every remaining clip. `runpod/pipeline.sh` without `SUBSET`; R2 claims skip the ≈ 13k frontal and side clips already done. About 57k clips at ≈ 40 clips/min on ten L40S pods: ≈ 24 h, ≈ $260.
+   - **Take-5 sessions:** re-cut first (B80, `scripts/recut_how2sign_take5.py`).
+   - **3D:** calibration and triangulation per session.
+   - **Data:** manifest v2.
+   - **Retrain:** the selected generator family and the retrieval evaluator on manifest v2.
+3. **Meaning-level evaluation** (item 3a). The retrieval evaluator exists (`text_motion_retrieval.py`; R@3 ≈ 0.29 on real validation motion against chance 0.094 at 4k clips; it overfits early). Retrain it on manifest v2 with stronger regularisation. Score every generator with R-precision and keep their generated states for the human reviewers.
+4. **DAI 2 / Sign Bank** (items 1b and 2). Waiting for the access e-mail; the inbox is checked every 20 min. Claude does not type passwords: once credentials arrive, the user signs in and the acquisition proceeds from the signed-in session. Then the English → gloss planner is trained on ASLLRP.
+5. **Avatar and serving** (items 5 and 6) follow, with a model selected on R-precision and the realism gates.
+6. **Human Deaf reviewers** (on their way): they evaluate the stored generated states and the rendered avatar. Their findings drive fine-tuning.
