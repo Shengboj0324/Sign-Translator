@@ -50,7 +50,7 @@ TSHA=$(python -c "import os,sys,hashlib; from signtranslator.data.text_motion_da
 python scripts/train_motion_tokens.py --stage prior --manifest-key "$M" --manifest-sha256 "$MSHA" --run tokens-prior-loci-v1   --tokenizer-key "$TOK" --tokenizer-sha256 "$TSHA" --steps "${STEPS:-30000}" --batch-size 64 --workers 8 --locus-conditioning   && bash runpod/pipeline.sh evaluate tokens-prior-loci-v1 || echo "FAILED prior-loci"
 echo "STAGE grammar-tracks $(date)"
 M=$DERIVED/how2sign-text-manifest-v1/manifest.json
-python scripts/annotate_grammar_tracks.py --manifest-key "$M" --manifest-sha256 "$(python -c "import os,sys,hashlib; from signtranslator.data.text_motion_dataset import R2Store; print(hashlib.sha256(R2Store(os.environ).get(sys.argv[1])).hexdigest())" "$M")"   --prefix "$DERIVED/grammar-tracks-v1" --workers 16 || echo "FAILED grammar-tracks"
+python scripts/annotate_grammar_tracks.py --manifest-key "$M" --manifest-sha256 "$(python -c "import os,sys,hashlib; from signtranslator.data.text_motion_dataset import R2Store; print(hashlib.sha256(R2Store(os.environ).get(sys.argv[1])).hexdigest())" "$M")"   --prefix "$DERIVED/grammar-tracks-v2" --workers 16 || echo "FAILED grammar-tracks"
 echo "STAGE grammar-measure-two-view $(date)"
 python scripts/measure_grammar_on_how2sign.py --states "$DERIVED/how2sign-two-view-v1" --clips 3000 --enrich-questions 1500   --workers 16 --output /root/grammar-two-view.json --output-key "$DERIVED/grammar-motion-v1/two-view-measurements.json"   || echo "FAILED grammar-measure"
 echo POST-DONE
