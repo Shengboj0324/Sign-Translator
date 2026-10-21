@@ -503,3 +503,23 @@ The round closes when:
 - every training pod is stopped.
 
 Failing gates 2–3 does not block the round. It is recorded as the problem for the next round, which is the plan in docs/NEXT_PHASE_PLAN.md.
+
+### Meaning-level evaluator: the duration confound (2026-10-21)
+
+**Version 1 measured duration, not meaning.** The first text–motion retrieval evaluator (`retrieval-ret-subset-v1`) reached validation R@3 0.349, against chance 0.094. The control exposed it:
+
+| Clips scored (200 validation clips, R@3) | Score |
+|---|---|
+| Real motion | 0.365 |
+| Same clips, every channel removed (duration only) | 0.370 |
+| Real motion of other clips | 0.104 |
+
+English length and clip duration correlate at 0.91, and the encoder saw whole clips with an absolute time code, so it learned to rank by length. The generators are given the reference durations, so they would have been credited for nothing. Every R-precision number from version 1 is void, including v3a's 0.365–0.385. The generated states those evaluations stored remain valid.
+
+**Version 2 is duration-blind** (`text_motion_retrieval.py`):
+- 2 s windows at a random offset in training, with within-window positions;
+- scoring by the mean over windows at a 1 s stride.
+
+Every evaluation now reports a duration-only control beside the real motion. A meaning score counts only when the control is at chance and the real motion is clearly above it.
+
+`scripts/score_generated_retrieval.py` re-scores stored generated states without regenerating them.
