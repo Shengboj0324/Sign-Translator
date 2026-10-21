@@ -212,3 +212,19 @@ one made with a different configuration or manifest.
 
 Only the four R2 secrets in Runpod. Nothing else in this workflow needs your
 identity or a licence acceptance.
+
+## Cost policy (2026-10-21)
+
+After a peak of about $53/h (48 pods), the rule is fewer pod-hours with unchanged quality and mathematics:
+
+- **Never interrupt running jobs for cost.** Every job resumes, so a cheaper but interruptible pod is acceptable.
+- **Prices (2026-10-21):**
+  - L40S: $1.09/h secure, $0.79/h community.
+  - 32-vCPU CPU pod: $1.12/h.
+
+  CPU pods are not cheaper per core than an L40S pod's allotment, so the saving comes from community L40S, not from moving CPU stages.
+- **Same GPU type within a derived dataset.** Sapiens keypoints are on L40S; the re-cut runs Sapiens on L40S too, so the numerics stay identical. Community cloud changes the host, not the GPU.
+- **No idle pods.**
+  - Each fleet has an auto-stop watcher that copies the pod's log to R2 before stopping it.
+  - Gated jobs (re-cut, triangulation) start their pods only when their inputs are close to ready.
+- **Fewer pods running longer, not bursts.** The take-5 re-cut runs on 12 community L40S pods: train sessions first, then val+test on the same pods. That costs about the same pod-hours as 20 pods, at 27% lower price.
