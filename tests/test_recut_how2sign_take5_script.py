@@ -152,6 +152,19 @@ def test_a_raw_zip_still_being_acquired_is_not_used(tmp_path, monkeypatch):
     assert report["sessions"][0]["reason"].startswith("raw recordings not acquired")
 
 
+def test_a_session_with_an_unusable_source_is_refused_and_the_pass_continues(tmp_path, monkeypatch):
+    store, zip_sha = corpus(tmp_path)
+    monkeypatch.setattr(script, "Sapiens", FakeSapiens)
+
+    def variable_rate(times, what):
+        raise ValueError(f"the raw {what} recording is not constant 30 fps: 3 of 299 frame steps off")
+    monkeypatch.setattr(script, "check_rate", variable_rate)
+    assert run(tmp_path, zip_sha) == 0
+    record = json.loads(store.get("out/sessions/vid-5.json"))
+    assert not record["accepted"] and record["reason"].startswith("the raw frontal recording is not constant")
+    assert json.loads(store.get("out/reports/shard-000-of-001.json"))["accepted"] == 0
+
+
 def test_a_wrong_front_zip_hash_is_refused(tmp_path):
     _, zip_sha = corpus(tmp_path)
     try:
@@ -182,7 +195,8 @@ def test_clip_claims_block_a_second_job_but_expire(tmp_path, monkeypatch):
     from sapiens_keypoints_runpod import claim
     from signtranslator.data.text_motion_dataset import DirectoryStore
     store = DirectoryStore(tmp_path)
-    assert claim(store, "c/x") and not claim(store, "c/x")
+    store.put("c/x", json.dumps(dict(time=time.time(), host="another-pod")).encode())
+    assert not claim(store, "c/x")                               # another job holds it
     store.put("c/x", json.dumps(dict(time=time.time() - 3600, host="dead")).encode())
     assert claim(store, "c/x")                                   # a stale claim is taken over
 

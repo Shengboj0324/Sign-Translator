@@ -102,8 +102,13 @@ def decoded(payload: bytes, *, thumbnails: bool):
 def check_rate(times: np.ndarray, what: str) -> None:
     """Raw recordings must be constant 30 fps: frame index is time."""
     steps = np.diff(times)
-    if len(times) < 2 or np.max(np.abs(steps * recut.RAW_FPS - 1)) > .25:
-        raise ValueError(f"the raw {what} recording is not constant {recut.RAW_FPS:g} fps")
+    if len(times) < 2:
+        raise ValueError(f"the raw {what} recording has fewer than two frames")
+    deviation = np.abs(steps * recut.RAW_FPS - 1)
+    if np.max(deviation) > .25:
+        raise ValueError(f"the raw {what} recording is not constant {recut.RAW_FPS:g} fps: {int((deviation > .25).sum())} "
+                         f"of {len(steps)} frame steps off by more than a quarter frame (largest "
+                         f"{float(np.max(steps)) * recut.RAW_FPS:.2f} frames, median {float(np.median(steps)) * recut.RAW_FPS:.3f})")
 
 
 def sapiens_raw(payload: bytes, first: int, stop: int, model, device, batch: int, flip: bool):
@@ -313,7 +318,10 @@ def main(argv=None) -> int:
         else:
             if sapiens.path is None and not store.exists(f"{prefix}/raw-keypoints/{session}-rgb_side.npz"):
                 raise SystemExit("--checkpoint is required to run Sapiens on the raw lateral recordings")
-            record = recover_session(store, args, session, sessions[session], rows, fronts, raws, sapiens)
+            try:
+                record = recover_session(store, args, session, sessions[session], rows, fronts, raws, sapiens)
+            except ValueError as error:      # a property of the session's sources (rate, frames): refused, recorded
+                record = dict(schema_version=1, session=session, accepted=False, reason=str(error)[:500])
             record.update(sentences=csvs, front_keypoints=args.front_keypoints)
             store.put(key, json.dumps(record, sort_keys=True, indent=1, default=float).encode())
         summary.append(dict(session=session, accepted=record["accepted"], reason=record["reason"], written=True,
