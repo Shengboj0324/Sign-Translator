@@ -84,10 +84,12 @@ class StoreRangeFile(io.RawIOBase):
 def _init(zip_key, models_dir):
     import torch
     from signtranslator.data.text_motion_dataset import R2Store
-    from signtranslator.data_engineering.video_landmarks import verify_models
+    from signtranslator.data_engineering.video_landmarks import probe_runtime, verify_models
     torch.set_num_threads(1)
     store = R2Store(os.environ)
-    _WORKER.update(store=store, models=verify_models(Path(models_dir)),
+    models = verify_models(Path(models_dir))
+    probe_runtime(models)               # an environment failure stops the job; it is not a clip refusal
+    _WORKER.update(store=store, models=models,
                    archive=zipfile.ZipFile(io.BufferedReader(StoreRangeFile(store.s3, store.bucket, zip_key), 1 << 20)))
 
 

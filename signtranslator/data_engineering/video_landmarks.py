@@ -259,6 +259,21 @@ def verify_models(directory: Path) -> dict[str, Path]:
     return paths
 
 
+def probe_runtime(models: dict[str, Path]) -> None:
+    """Create and close each landmarker once, so a broken runtime (a missing system library such as
+    libEGL) fails the job at start instead of being recorded as a refusal of every clip."""
+    import mediapipe as mp
+    vision, base = mp.tasks.vision, mp.tasks.BaseOptions
+    try:
+        for make, options, name in (
+                (vision.PoseLandmarker, vision.PoseLandmarkerOptions, "pose_landmarker_heavy.task"),
+                (vision.HandLandmarker, vision.HandLandmarkerOptions, "hand_landmarker.task"),
+                (vision.FaceLandmarker, vision.FaceLandmarkerOptions, "face_landmarker.task")):
+            make.create_from_options(options(base_options=base(model_asset_path=str(models[name])))).close()
+    except (OSError, RuntimeError) as error:
+        raise RuntimeError(f"the MediaPipe runtime cannot create landmarkers: {error}") from error
+
+
 def square_crop(image: np.ndarray, centre_xy: np.ndarray, side_px: float):
     """Square crop around a pixel centre, clipped to the image; returns crop and its offset."""
     height, width = image.shape[:2]
@@ -392,5 +407,5 @@ def inference_method() -> str:
             + f"; {CONVENTION}; values are fitted, not observed")
 
 
-__all__ = ["MODEL_SHA256", "MODEL_URLS", "ClipLandmarks", "square_crop", "solve_rotations", "BODY_LABELS", "BODY_JOINTS", "finger_joints",
+__all__ = ["MODEL_SHA256", "MODEL_URLS", "ClipLandmarks", "square_crop", "probe_runtime", "solve_rotations", "BODY_LABELS", "BODY_JOINTS", "finger_joints",
            "assign_hands", "canonical_from_landmarks", "verify_models", "extract_clip", "inference_method"]
