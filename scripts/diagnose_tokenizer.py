@@ -122,8 +122,10 @@ def main(argv=None) -> int:
         unit = diffusion_targets(motion_config, batch)
         recon = reconstructions(model, unit)
         raws = {k: unit_to_raw(motion_config, v.double()) for k, v in recon.items()}
-        reference = {n: batch.channels[n].values[0].double() for n in ROTATIONS if n in motion_config.trained_channels}
-        valid = {n: batch.channels[n].valid[0] for n in reference}
+        valid = {n: batch.channels[n].valid[0] for n in ROTATIONS if n in motion_config.trained_channels}
+        identity = torch.tensor([1., 0., 0., 0., 1., 0.], dtype=torch.float64)
+        # unavailable rotations are zero payload: identity keeps the maths defined, the masks drop them
+        reference = {n: torch.where(valid[n][..., None], batch.channels[n].values[0].double(), identity) for n in valid}
         for name, ref in reference.items():
             labels = batch.channels[name].layout.labels
             for kind, raw in raws.items():
@@ -138,18 +140,20 @@ def main(argv=None) -> int:
                     per_joint["noise"].setdefault(f"{name}/{label}", []).append(jit[ok, k].numpy())
         if all(n in reference for n in ("body", "left_hand", "right_hand")):
             labels = [batch.channels[n].layout.labels for n in ("body", "left_hand", "right_hand")]
-            identity = torch.tensor([1., 0., 0., 0., 1., 0.], dtype=torch.float64)
-            ref6 = [torch.where(valid[n][..., None], reference[n], identity) for n in ("body", "left_hand", "right_hand")]
-            target, names, _ = skeleton_points(*ref6, *labels)
+            target, names, chains = skeleton_points(*(reference[n] for n in ("body", "left_hand", "right_hand")), *labels)
+            channels = {n: (valid[n][None], tuple(batch.channels[n].layout.labels)) for n in ("body", "left_hand", "right_hand")}
+            from signtranslator.generation.signing_space import _support
+            point_ok = _support(channels, chains, torch.ones(1, len(target), dtype=torch.bool))[0]      # (T, P)
             for kind, raw in raws.items():
                 pts, _, _ = skeleton_points(*(raw[n][0] for n in ("body", "left_hand", "right_hand")), *labels)
                 dist = torch.linalg.vector_norm(pts - target, dim=-1) * 100
                 for k, name in enumerate(names):
-                    per_point[kind].setdefault(name, []).append(dist[:, k].numpy())
+                    per_point[kind].setdefault(name, []).append(dist[point_ok[:, k], k].numpy())
             if len(target) >= 3:
                 noise = torch.linalg.vector_norm(target[1:-1] - (target[:-2] + target[2:]) / 2, dim=-1) * 100
+                ok3 = point_ok[1:-1] & point_ok[:-2] & point_ok[2:]
                 for k, name in enumerate(names):
-                    per_point["noise"].setdefault(name, []).append(noise[:, k].numpy())
+                    per_point["noise"].setdefault(name, []).append(noise[ok3[:, k], k].numpy())
     med = lambda parts: float(np.median(np.concatenate(parts))) if parts and sum(map(len, parts)) else None
     joints = {key: {kind: med(per_joint[kind].get(key, [])) for kind in per_joint} for key in per_joint["full"]}
     points = {key: {kind: med(per_point[kind].get(key, [])) for kind in per_point} for key in per_point["full"]}

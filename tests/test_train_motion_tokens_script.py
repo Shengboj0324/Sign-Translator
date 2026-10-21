@@ -191,3 +191,17 @@ def test_jitter_is_zero_on_uniform_rotation_and_the_diagnosis_runs(tmp_path, mon
                           "--limit", "2", "--output-key", "diag.json"]) == 0
     report = json.loads((tmp_path / "store/diag.json").read_text())
     assert report["overall"]["full_joint_deg"] is not None and report["overall"]["noise_joint_deg"] is not None
+    # unavailable joints (zero payload) are masked, not fatal: the real data has off-screen legs
+    import numpy as np
+    from signtranslator.data.multichannel import collate_multichannel
+    from tests.test_generation_signing_space import signer_state
+    from dataclasses import replace
+    state = signer_state(0, frames=8)
+    body = state.channels["body"]
+    valid = body.valid.copy(); valid[:, -3:] = False
+    state = replace(state, channels={**state.channels, "body": replace(body, valid=valid,
+                    values=np.where(valid[..., None], body.values, 0.), confidence=valid.astype(float))})
+    batch = collate_multichannel([state])
+    identity = torch.tensor([1., 0., 0., 0., 1., 0.], dtype=torch.float64)
+    ref = torch.where(batch.channels["body"].valid[0][..., None], batch.channels["body"].values[0].double(), identity)
+    assert torch.isfinite(diagnose.geodesic_deg(ref, ref)).all() and torch.isfinite(diagnose.jitter_deg(ref)).all()
