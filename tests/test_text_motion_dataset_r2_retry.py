@@ -49,3 +49,26 @@ def test_a_tls_failure_mid_body_is_retried(monkeypatch):
     from urllib3.exceptions import SSLError
     client = Client(failures=1, error=SSLError("[SSL] record layer failure (_ssl.c:2580)"))
     assert store(client, monkeypatch).get("k") == b"payload" and client.calls == 2
+
+
+class Throttling:
+    """HeadObject answers 429 with no body (so no error code) a few times, then succeeds or reports 404."""
+    def __init__(self, throttled, missing=False):
+        self.throttled, self.missing, self.calls = throttled, missing, 0
+    def head_object(self, Bucket, Key):
+        self.calls += 1
+        if self.calls <= self.throttled:
+            raise ClientError({"Error": {"Code": "429", "Message": "Too Many Requests"},
+                               "ResponseMetadata": {"HTTPStatusCode": 429}}, "HeadObject")
+        if self.missing:
+            raise ClientError({"Error": {"Code": "404"}, "ResponseMetadata": {"HTTPStatusCode": 404}}, "HeadObject")
+        return {}
+
+
+def test_a_throttled_head_is_retried_and_a_missing_key_is_not(monkeypatch):
+    client = Throttling(throttled=3)
+    assert store(client, monkeypatch).exists("k") and client.calls == 4
+    client = Throttling(throttled=2, missing=True)
+    assert not store(client, monkeypatch).exists("k") and client.calls == 3
+    with pytest.raises(ClientError):
+        store(Throttling(throttled=99), monkeypatch).exists("k")

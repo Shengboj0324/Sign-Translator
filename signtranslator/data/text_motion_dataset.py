@@ -145,6 +145,29 @@ class R2Store:
     def __repr__(self) -> str:
         return f"R2Store(bucket={self.bucket!r})"              # never shows credentials
 
+    @staticmethod
+    def _throttled(error) -> bool:
+        """R2 throttling or a transient outage. A 429 on HEAD has no body, hence no error code,
+        so botocore's adaptive retries miss it; the status code is checked as well."""
+        response = getattr(error, "response", None) or {}
+        code = str((response.get("Error") or {}).get("Code", ""))
+        status = (response.get("ResponseMetadata") or {}).get("HTTPStatusCode")
+        return status in (429, 500, 502, 503, 504) or code in (
+            "429", "503", "SlowDown", "TooManyRequests", "ServiceUnavailable", "InternalError")
+
+    def _call(self, function, attempts: int = 10):
+        """``function()`` with throttled responses retried under jittered exponential backoff."""
+        import random
+        import time
+        from botocore.exceptions import ClientError
+        for attempt in range(attempts):
+            try:
+                return function()
+            except ClientError as error:
+                if not self._throttled(error) or attempt == attempts - 1:
+                    raise
+                time.sleep(min(60., .5 * 2 ** attempt) * (.5 + random.random()))
+
     def get(self, key: str, attempts: int = 8) -> bytes:
         """The object's bytes; a body read cut off mid-stream (broken pipe, reset, short read) is retried.
 
@@ -156,7 +179,7 @@ class R2Store:
         from botocore.exceptions import ClientError
         for attempt in range(attempts):
             try:
-                return self.s3.get_object(Bucket=self.bucket, Key=key)["Body"].read()
+                return self._call(lambda: self.s3.get_object(Bucket=self.bucket, Key=key))["Body"].read()
             except ClientError:
                 raise
             except (OSError, ConnectionError) + _stream_errors() as error:
@@ -166,7 +189,7 @@ class R2Store:
 
     def put(self, key: str, payload: bytes) -> str:
         digest = hashlib.sha256(payload).hexdigest()
-        self.s3.put_object(Bucket=self.bucket, Key=key, Body=payload, Metadata={"sha256": digest})
+        self._call(lambda: self.s3.put_object(Bucket=self.bucket, Key=key, Body=payload, Metadata={"sha256": digest}))
         if hashlib.sha256(self.get(key)).hexdigest() != digest:
             raise IOError(f"R2 re-read mismatch for {key}")
         return digest
@@ -174,7 +197,7 @@ class R2Store:
     def exists(self, key: str) -> bool:
         from botocore.exceptions import ClientError
         try:
-            self.s3.head_object(Bucket=self.bucket, Key=key)
+            self._call(lambda: self.s3.head_object(Bucket=self.bucket, Key=key))
             return True
         except ClientError as error:
             if error.response["Error"]["Code"] in ("404", "NoSuchKey", "NotFound"):
@@ -187,7 +210,7 @@ class R2Store:
             kwargs = dict(Bucket=self.bucket, Prefix=prefix)
             if token:
                 kwargs["ContinuationToken"] = token
-            page = self.s3.list_objects_v2(**kwargs)
+            page = self._call(lambda: self.s3.list_objects_v2(**kwargs))
             keys += [o["Key"] for o in page.get("Contents", [])]
             if not page.get("IsTruncated"):
                 return sorted(keys)
