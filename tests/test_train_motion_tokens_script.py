@@ -252,3 +252,20 @@ def test_a_non_finite_training_loss_stops_the_run_before_anything_is_saved(tmp_p
                      "--stage", "tokenizer", "--run", "nan", "--hidden", "16", "--code-dim", "8", "--codebook", "16",
                      "--stages", "2", "--down-layers", "1", "--steps", "10"])
     assert not list((store / "training-runs/nan").glob("checkpoints/*.pt"))
+
+
+def test_code_statistics_measure_repeat_rate_entropy_and_rate():
+    import sys
+    import numpy as np
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from diagnose_tokenizer import code_statistics
+    constant = (np.zeros((10, 2), int), np.ones(10, bool))                  # never changes: no information
+    stats = code_statistics([constant], codebook=4, steps_per_second=5.)
+    assert stats["repeat_rate"] == [1., 1.] and stats["unigram_entropy"] == [0., 0.] and stats["unigram_rate_nats_per_s"] == 0.
+    cycle = (np.stack([np.arange(40) % 4, np.arange(40) % 4], 1), np.ones(40, bool))    # uniform but deterministic
+    stats = code_statistics([cycle], codebook=4, steps_per_second=10.)
+    np.testing.assert_allclose(stats["unigram_entropy"], [np.log(4)] * 2)
+    np.testing.assert_allclose(stats["conditional_entropy"], [0., 0.], atol=1e-12)   # the next code is determined
+    assert stats["repeat_rate"] == [0., 0.] and abs(stats["unigram_rate_nats_per_s"] - 20 * np.log(4)) < 1e-9
+    masked = (np.array([[0], [1], [0], [1]]), np.array([True, False, False, True]))     # no valid adjacent pair
+    assert code_statistics([masked], codebook=2, steps_per_second=1.)["repeat_rate"] == [0.]

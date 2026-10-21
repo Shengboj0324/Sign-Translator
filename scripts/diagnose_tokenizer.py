@@ -68,6 +68,61 @@ def reconstructions(model, unit: torch.Tensor) -> dict:
     return dict(full=model.decode_codes(quantized, frames), floor=model.decode_codes(latents, frames))
 
 
+def codes_of(model, unit: torch.Tensor, frame_valid: torch.Tensor):
+    """((B, K, J) code indices, (B, K) token validity) of a tokenizer on ``unit``."""
+    with torch.no_grad():
+        latents = model.encode(unit)
+        _, codes, _ = model.quantize(latents)
+    codes = codes if codes.dim() == 3 else codes[..., None]
+    if hasattr(model, "token_valid"):
+        valid = model.token_valid(frame_valid)
+    else:
+        valid = torch.ones(codes.shape[:2], dtype=torch.bool)
+    return codes, valid
+
+
+def code_statistics(sequences, codebook: int, steps_per_second: float) -> dict:
+    """Learnability of a token stream: how much a prior must predict per second.
+
+    ``sequences`` is a list of ((K, J) codes, (K,) valid) per clip. Per code position j:
+    the repeat rate P(c_t = c_{t-1}) over valid adjacent pairs, the unigram entropy
+    H(c) and the plug-in first-order conditional entropy H(c_t | c_{t-1}) (biased low on
+    few samples; a lower estimate of what a bigram model leaves), all in nats. The
+    unigram rate steps/s × Σ_j H_j bounds what the prior has to model without context;
+    the conditional rate is the same with H(c_t | c_{t-1}). Reconstruction error alone
+    does not rank tokenizers for generation: a codec whose codes are near uniform and
+    change every step reconstructs well and is hard to predict from text.
+    """
+    J = sequences[0][0].shape[-1] if sequences else 0
+    repeats, pairs = np.zeros(J), 0
+    unigram = np.zeros((J, codebook))
+    bigram = np.zeros((J, codebook, codebook))
+    for codes, valid in sequences:
+        c, v = np.asarray(codes), np.asarray(valid, bool)
+        for j in range(J):
+            np.add.at(unigram[j], c[v, j], 1)
+        both = v[1:] & v[:-1]
+        pairs += int(both.sum())
+        repeats += (c[1:][both] == c[:-1][both]).sum(0)
+        for j in range(J):
+            np.add.at(bigram[j], (c[:-1][both, j], c[1:][both, j]), 1)
+
+    def entropy(counts):
+        p = counts[counts > 0] / counts.sum()
+        return float(-(p * np.log(p)).sum())
+
+    h = [entropy(unigram[j]) if unigram[j].sum() else 0. for j in range(J)]
+    hc = []
+    for j in range(J):
+        rows = bigram[j].sum(1)
+        total = rows.sum()
+        hc.append(float(sum(rows[a] / total * entropy(bigram[j][a]) for a in np.nonzero(rows)[0])) if total else 0.)
+    return dict(codes_per_step=J, steps_per_second=steps_per_second, codebook=codebook,
+                repeat_rate=[float(r / max(pairs, 1)) for r in repeats], unigram_entropy=h, conditional_entropy=hc,
+                unigram_rate_nats_per_s=steps_per_second * sum(h), conditional_rate_nats_per_s=steps_per_second * sum(hc),
+                max_entropy=float(np.log(codebook)))
+
+
 def geodesic_deg(a6: torch.Tensor, b6: torch.Tensor) -> torch.Tensor:
     ra, rb = rotation_6d_to_matrix(a6), rotation_6d_to_matrix(b6)
     cos = ((ra.transpose(-1, -2) @ rb).diagonal(dim1=-2, dim2=-1).sum(-1) - 1) / 2
@@ -116,11 +171,15 @@ def main(argv=None) -> int:
                      key=lambda r: r["sign"])[:args.limit]
     per_joint = {kind: {} for kind in ("full", "floor", "noise")}
     per_point = {kind: {} for kind in ("full", "floor", "noise")}
+    sequences, seconds = [], 0.
     for r in records:
         state = load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"])
         batch = collate_multichannel([state])
         unit = diffusion_targets(motion_config, batch)
         recon = reconstructions(model, unit)
+        codes, token_ok = codes_of(model, unit, batch.frame_valid)
+        sequences.append((codes[0].numpy(), token_ok[0].numpy()))
+        seconds += unit.shape[1] * float(np.median(np.diff(np.asarray(state.timestamps)))) if len(state.timestamps) > 1 else 0.
         raws = {k: unit_to_raw(motion_config, v.double()) for k, v in recon.items()}
         valid = {n: batch.channels[n].valid[0] for n in ROTATIONS if n in motion_config.trained_channels}
         identity = torch.tensor([1., 0., 0., 0., 1., 0.], dtype=torch.float64)
@@ -161,10 +220,16 @@ def main(argv=None) -> int:
     overall.update({f"{kind}_point_cm": med([v for parts in per_point[kind].values() for v in parts]) for kind in per_point})
     hands = {f"{kind}_fingertip_cm": med([v for name, parts in per_point[kind].items() if name.endswith("Tip") for v in parts])
              for kind in per_point}
+    steps = sum(len(c) for c, _ in sequences)
+    learnability = code_statistics(sequences, model.config.codebook, steps / max(seconds, 1e-9))
     report = dict(tokenizer_key=args.tokenizer_key, kind=saved["kind"], clips=len(records), overall=overall, hands=hands,
+                  learnability=learnability,
                   worst_joints=sorted(joints.items(), key=lambda kv: -(kv[1]["full"] or 0))[:12], joints=joints,
                   points=points)
-    print(json.dumps(dict(overall=overall, hands=hands, worst_joints=report["worst_joints"][:6]), indent=1, default=float))
+    print(json.dumps(dict(overall=overall, hands=hands, worst_joints=report["worst_joints"][:6],
+                          learnability={k: learnability[k] for k in ("codes_per_step", "steps_per_second",
+                                                                     "unigram_rate_nats_per_s", "conditional_rate_nats_per_s")}),
+                     indent=1, default=float))
     if args.output_key:
         store.put(args.output_key, json.dumps(report, indent=1, sort_keys=True, default=float).encode())
     return 0
