@@ -590,3 +590,37 @@ What would test it properly, for a later round with more data:
 - ε- or v-prediction with an MSE objective (a proper score for DDIM sampling);
 - geometric losses applied only at low noise levels, as MDM does in practice;
 - or latent diffusion on the v2b tokenizer's continuous latents.
+
+### Generator round: closed (2026-10-21 09:55 UTC)
+
+**Selected generator:**
+- model: v2b tokens + locus conditioning (`training-runs/tokens-rvq-d0b-prior-loci-subset-v1-r2/checkpoints/step-00005000.pt`), which embeds the v2b tokenizer state;
+- sampling: guidance 1, temperature 1.2 for body and hands and 1.0 for the face (`--part-temperature body=1.2,left_hand=1.2,right_hand=1.2,face=1.0`).
+
+**Mirrored** to the network volume at `/workspace/sign-translator/checkpoints/`, with a SHA-256 manifest:
+- the selected model;
+- the plain v2b prior;
+- the v2b tokenizer;
+- the validated retrieval evaluator (`retrieval-hold`, step 1,500).
+
+**Test partition (92 clips, scored once):**
+
+| Measure | Result |
+|---|---|
+| Fréchet | 255 (validation 214) |
+| Body speed / variation | 1.23 / **1.38** |
+| Left hand speed / variation | 1.22 / 1.12 |
+| Right hand speed / variation | 1.25 / 0.97 |
+| Errors | body 19.4°, hands 24–26°, wrist 10.0 cm, fingertip 15.3 cm |
+| R@3 | generated 0.172, real 0.141 (2 groups of 32; duration-only control at chance, 0.094) |
+
+The marker ratios do not transfer. Headshake is 5.7× and nod 20× the reference, because the test split has 6 sessions whose signers keep their heads still: reference rates are 0.017 and 0.003, against 0.048 and 0.046 on validation. The generated rates are the same on both splits.
+
+**Problems carried to the next round:**
+1. **Head rotation over-active.** Speed ratio 1.87 on validation and 3.29 on test. The declared gate never checked the head channel, so the next gate does. Most likely cause: face-part code noise at 30 code steps/s. Fix candidates are output smoothing of head rotation, tuned on validation, or a lower code rate for the face part only.
+2. **Right-hand variation** on validation: 0.68, 95% CI 0.654–0.712, borderline.
+3. **Small evaluation splits.** 200 validation and 92 test clips from 6 sessions cannot resolve the gates (the CIs straddle them). The full How2Sign round gives larger, more varied splits.
+4. **Meaning.** R-precision is near the real-motion ceiling, but that ceiling is itself only about 1.9× chance with a 4k-pair evaluator. More data is needed before meaning claims.
+5. **Diffusion is not viable as implemented** (see above).
+
+All pods stopped at 09:48 UTC.
