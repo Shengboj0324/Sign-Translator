@@ -137,6 +137,8 @@ def main(argv=None) -> int:
     parser.add_argument("--part-temperature", help="RVQ generators: per-part temperatures, e.g. body=1.2,left_hand=1.2,"
                                                     "right_hand=1.2,face=1 (overrides --temperature)")
     parser.add_argument("--top-k", type=int, default=0, help="token generators: sample from the k most likely codes (0: all)")
+    parser.add_argument("--head-smoothing", type=float, default=0.,
+                        help="seconds: centred SO(3) moving average of the generated head rotation (postprocess.py)")
     parser.add_argument("--retrieval-key", help="frozen text-motion retrieval checkpoint: adds R-precision of the "
                                                  "generated motion and of the real motion on the same clips")
     parser.add_argument("--save-generated", help="store prefix for the generated states (<prefix>/<guidance>/<sign>.npz)")
@@ -168,8 +170,11 @@ def main(argv=None) -> int:
         for record, reference in zip(records, references):
             fps = 1. / float(np.median(np.diff(reference.timestamps)))
             seconds = float(reference.timestamps[-1] - reference.timestamps[0]) + 1. / fps
-            generated.append(sample(record["text"], fps, seconds, scale if scale is not None else 1., args.steps,
-                                    args.seed))
+            out = sample(record["text"], fps, seconds, scale if scale is not None else 1., args.steps, args.seed)
+            if args.head_smoothing > 0 and "head_rotation" in out.channels:
+                from signtranslator.generation.postprocess import smooth_rotation_channel
+                out = smooth_rotation_channel(out, "head_rotation", args.head_smoothing)
+            generated.append(out)
         name = label if scale is None else f"{label} guidance {scale:g}"
         results[name] = compare(generated, references, channels)
         if {"body", "left_hand", "right_hand"} <= set(channels) and all(
@@ -190,7 +195,7 @@ def main(argv=None) -> int:
         print(json.dumps({name: results[name]}, default=float), flush=True)
     report = dict(schema_version=1, checkpoint_key=args.checkpoint_key, generator=label,
                   retrieval_key=args.retrieval_key, saved_generated=args.save_generated,
-                  temperature=temperature, top_k=args.top_k,
+                  temperature=temperature, top_k=args.top_k, head_smoothing=args.head_smoothing,
                   manifest_sha256=args.manifest_sha256, partition=args.partition, clips=len(records),
                   steps=args.steps, results=results)
     if args.output_key:

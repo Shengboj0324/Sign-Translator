@@ -624,3 +624,17 @@ The marker ratios do not transfer. Headshake is 5.7× and nod 20× the reference
 5. **Diffusion is not viable as implemented** (see above).
 
 All pods stopped at 09:48 UTC.
+
+### Head-rotation smoothing (post-processing, validation only; 2026-10-21)
+
+`generation/postprocess.smooth_rotation_channel` applies a centred moving average of the head rotation, projected back onto SO(3). `scripts/score_saved_generated.py` re-scores stored generated states under it, with no regeneration. At smoothing 0 it reproduces the stored evaluation exactly: Fréchet 213.565, head speed 1.867.
+
+Selected subset generator, 200 validation clips, with the head now in the gate:
+
+| Smoothing | Head speed ratio | Fréchet | Gate checks |
+|---|---|---|---|
+| 0 | 1.87 | 213.6 | 10/12 (head speed, right-hand variation) |
+| **0.2 s** | **1.11** | **211.1** | **11/12** (right-hand variation) |
+| 0.33 s | 0.81 | 209.6 | 9/12 (headshake, nod under-produced) |
+
+0.2 s is chosen on validation. The subset round's test split has been used once already, so this is not a test-split claim. The full-How2Sign chain (`post_full_train.sh`) sweeps 0.1 / 0.2 / 0.3 s on its saved validation states before its single test evaluation.

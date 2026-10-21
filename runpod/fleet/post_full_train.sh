@@ -33,5 +33,10 @@ stage $PRIOR evaluate python scripts/evaluate_text_to_motion.py --manifest-key "
   --checkpoint-key "$(best $PRIOR)" --partition val --limit 600 --guidance 1,2 \
   --part-temperature body=1.2,left_hand=1.2,right_hand=1.2,face=1.0 --device cuda --retrieval-key "$(best $RET)" \
   --save-generated "$D/generated/$PRIOR-pt" --output-key "$D/evaluations/$PRIOR-pt.json"
-stage $PRIOR gate python scripts/exit_gate.py --derived "$D" --runs $PRIOR-pt --output-key "$D/evaluations/$PRIOR-pt-gate.json"
+for h in 0.1 0.2 0.3; do      # head smoothing is post-processing: chosen on the saved validation states, no regeneration
+  stage $PRIOR smooth-$h python scripts/score_saved_generated.py --manifest-key "$M" --manifest-sha256 "$MSHA" \
+    --generated "$D/generated/$PRIOR-pt" --head-smoothing $h --output-key "$D/evaluations/$PRIOR-pt-hs$h.json"
+done
+stage $PRIOR gate python scripts/exit_gate.py --derived "$D" --runs $PRIOR-pt $PRIOR-pt-hs0.1 $PRIOR-pt-hs0.2 $PRIOR-pt-hs0.3 \
+  --output-key "$D/evaluations/$PRIOR-pt-gate.json"
 echo FULL-DONE
