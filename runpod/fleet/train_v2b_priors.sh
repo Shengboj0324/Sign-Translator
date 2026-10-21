@@ -7,6 +7,9 @@
 set -uo pipefail
 source /root/r2env.sh
 export PATH=/root/venv/bin:$PATH
+# Pods can have 128 cores: unbounded OpenMP threads spin on small CPU ops (validation batches are built in the
+# main process) and slowed loading to under one clip per second.
+export OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8
 cd /root/work/Sign-Translator
 D=acquisition/2026-10-17-v1/derived/subset-v1
 M=$D/how2sign-text-manifest-v1/manifest.json
