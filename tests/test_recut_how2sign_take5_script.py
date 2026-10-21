@@ -142,6 +142,16 @@ def test_a_session_whose_side_recording_does_not_match_is_refused(tmp_path, monk
     assert not store.list("out/keypoints/")
 
 
+def test_a_raw_zip_still_being_acquired_is_not_used(tmp_path, monkeypatch):
+    store, zip_sha = corpus(tmp_path)
+    (tmp_path / "raw/val_side_raw_videos/shard_001.zip.provenance.json").unlink()   # mid-acquisition
+    monkeypatch.setattr(script, "Sapiens", FakeSapiens)
+    assert run(tmp_path, zip_sha) == 0
+    assert not store.exists("out/sessions/vid-5.json")      # no write-once record from a partial input set
+    report = json.loads(store.get("out/reports/shard-000-of-001.json"))
+    assert report["sessions"][0]["reason"].startswith("raw recordings not acquired")
+
+
 def test_a_wrong_front_zip_hash_is_refused(tmp_path):
     _, zip_sha = corpus(tmp_path)
     try:

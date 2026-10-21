@@ -267,7 +267,10 @@ def main(argv=None) -> int:
         csvs[key] = verified_sha(store, key)
         for row in csv.DictReader(io.StringIO(store.get(key).decode()), delimiter="\t"):
             rows[row["SENTENCE_NAME"]] = float(row["START"])
-    raw_keys = [k for k in store.list(args.raw_prefix.rstrip("/") + "/") if k.endswith(".zip")]
+    # A zip without its provenance record is still being acquired (the record is written after the
+    # re-read verification): it is not used, and its sessions are reported as not acquired.
+    listed = set(store.list(args.raw_prefix.rstrip("/") + "/"))
+    raw_keys = [k for k in sorted(listed) if k.endswith(".zip") and k + ".provenance.json" in listed]
     raws = Archives(store, {key: verified_sha(store, key) for key in raw_keys})
     sessions = collections.defaultdict(dict)
     for key in store.list(args.front_keypoints.rstrip("/") + "/keypoints/"):
