@@ -23,10 +23,18 @@ class Store:
 
 
 def test_a_fresh_claim_blocks_others_and_an_old_one_is_taken_over():
+    import time
     store = Store()
-    assert module.claim(store, "c/a") and not module.claim(store, "c/a")
-    store.objects["c/b"] = json.dumps(dict(time=0.)).encode()          # a crashed pod's claim
+    store.objects["c/a"] = json.dumps(dict(time=time.time(), host="another-pod")).encode()
+    assert not module.claim(store, "c/a")                              # another pod is on it
+    store.objects["c/b"] = json.dumps(dict(time=0., host="another-pod")).encode()   # a crashed pod's claim
     assert module.claim(store, "c/b")
+
+
+def test_a_restarted_job_takes_back_its_own_fresh_claims():
+    store = Store()
+    assert module.claim(store, "c/a")
+    assert module.claim(store, "c/a")             # same host: the clip it was processing when it restarted
 
 
 def test_concurrent_write_refusal_is_a_lost_race_and_other_errors_still_raise():

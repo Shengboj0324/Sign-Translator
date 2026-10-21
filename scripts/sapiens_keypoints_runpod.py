@@ -20,6 +20,7 @@ import re
 from pathlib import Path
 import sys
 import tempfile
+import time
 import zipfile
 
 import numpy as np
@@ -139,6 +140,7 @@ def clip_keypoints(video: Path, model, device, batch: int, flip: bool = True, wo
 
 
 CLAIM_SECONDS = 600
+LISTING_SECONDS = 600
 
 
 def claim(store, key: str) -> bool:
@@ -153,7 +155,9 @@ def claim(store, key: str) -> bool:
     now = time.time()
     if store.exists(key):
         try:
-            if now - float(json.loads(store.get(key))["time"]) < CLAIM_SECONDS:
+            record = json.loads(store.get(key))
+            # A claim this host made (a restarted job) is taken back at once; others hold for CLAIM_SECONDS.
+            if record.get("host") != os.uname().nodename and now - float(record["time"]) < CLAIM_SECONDS:
                 return False
         except (ValueError, KeyError):
             pass
@@ -202,9 +206,15 @@ def main(argv=None) -> int:
     shard = shard[start:] + shard[:start]
     prefix = args.prefix.rstrip("/")
     done, refused = 0, []
+    # Finished clips are skipped from a listing, refreshed every LISTING_SECONDS, instead of one HEAD per clip: near
+    # the end of a pass most of a pod's list was done by other pods, and per-clip checks left the GPU idle for hours.
+    finished, listed_at = set(), 0.
     for index, member in enumerate(shard):
+        if time.time() - listed_at > LISTING_SECONDS:
+            finished = {Path(k).stem for k in store.list(f"{prefix}/keypoints/")}
+            listed_at = time.time()
         key = f"{prefix}/keypoints/{Path(member).stem}.npz"
-        if store.exists(key) or not claim(store, f"{prefix}/claims/{Path(member).stem}"):
+        if Path(member).stem in finished or store.exists(key) or not claim(store, f"{prefix}/claims/{Path(member).stem}"):
             continue
         payload = archive.read(member)
         with tempfile.TemporaryDirectory() as temporary:
