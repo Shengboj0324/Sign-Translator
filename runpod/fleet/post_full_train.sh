@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # post_full_train.sh — full How2Sign, after triangulation: manifest v2, the selected generator family retrained (v2b
 # tokenizer: full frame rate, base blocks; locus-conditioned RVQ prior at batch 64), the duration-blind retrieval
-# evaluator, then validation evaluation at the selected sampling settings with R-precision and the duration-only control,
+# evaluator, the motion -> English back-translator (frozen on the training partition), then validation evaluation at
+# the selected sampling settings with R-precision, back-translation BLEU (generated vs real vs blank) and the controls,
 # and the exit gate (head rotation included). Every stage's log goes to R2; the test partition is not touched here.
 set -uo pipefail
 source /root/r2env.sh
@@ -18,7 +19,7 @@ stage() { local run=$1 name=$2; shift 2; echo "STAGE $name $run $(date)"; "$@" >
 stage full-manifest manifest bash runpod/pipeline.sh manifest || { echo FULL-DONE; exit 1; }
 MSHA=$(sha "$M")
 COMMON="--architecture rvq --manifest-key $M --manifest-sha256 $MSHA --workers 8 --val-every 1000 --val-batches 32 --checkpoint-every 2000 --patience 5"
-TOKRUN=tokens-rvq-d0b-full-v1 PRIOR=tokens-rvq-d0b-prior-loci-full-v1 RET=retrieval-hold-full-v1
+TOKRUN=tokens-rvq-d0b-full-v1 PRIOR=tokens-rvq-d0b-prior-loci-full-v1 RET=retrieval-hold-full-v1 BT=back-translator-full-v1
 stage $TOKRUN tokenizer python scripts/train_motion_tokens.py $COMMON --batch-size 64 --stage tokenizer --run $TOKRUN \
   --steps 40000 --hidden 512 --code-dim 128 --codebook 512 --stages 4 --down-layers 0 --base-blocks 4 || { echo FULL-DONE; exit 1; }
 TOK=$(best $TOKRUN); TSHA=$(sha "$TOK")
@@ -26,6 +27,8 @@ stage $TOKRUN diagnose python scripts/diagnose_tokenizer.py --manifest-key "$M" 
   --limit 300 --output-key "$D/diagnostics/$TOKRUN.json"
 stage $RET retrieval python scripts/train_text_motion_retrieval.py --manifest-key "$M" --manifest-sha256 "$MSHA" --run $RET \
   --batch-size 128 --steps 30000 --val-every 500 --patience 8 --workers 8
+stage $BT back-translator python scripts/train_motion_to_text.py --manifest-key "$M" --manifest-sha256 "$MSHA" --run $BT \
+  --batch-size 64 --steps 40000 --val-every 2000 --val-clips 512 --patience 6 --workers 8
 stage $PRIOR prior python scripts/train_motion_tokens.py $COMMON --batch-size 64 --stage prior --run $PRIOR \
   --tokenizer-key "$TOK" --tokenizer-sha256 "$TSHA" --steps 40000 --d-model 384 --feedforward 1536 --token-layers 6 \
   --depth-layers 2 --locus-conditioning || { echo FULL-DONE; exit 1; }
@@ -33,6 +36,8 @@ stage $PRIOR evaluate python scripts/evaluate_text_to_motion.py --manifest-key "
   --checkpoint-key "$(best $PRIOR)" --partition val --limit 600 --guidance 1,2 \
   --part-temperature body=1.2,left_hand=1.2,right_hand=1.2,face=1.0 --device cuda --retrieval-key "$(best $RET)" \
   --save-generated "$D/generated/$PRIOR-pt" --output-key "$D/evaluations/$PRIOR-pt.json"
+stage $PRIOR back-translation python scripts/score_back_translation.py --manifest-key "$M" --manifest-sha256 "$MSHA" \
+  --translator-key "$(best $BT)" --generated "$D/generated/$PRIOR-pt" --output-key "$D/evaluations/$PRIOR-pt-bleu.json"
 for h in 0.1 0.2 0.3; do      # head smoothing is post-processing: chosen on the saved validation states, no regeneration
   stage $PRIOR smooth-$h python scripts/score_saved_generated.py --manifest-key "$M" --manifest-sha256 "$MSHA" \
     --generated "$D/generated/$PRIOR-pt" --head-smoothing $h --output-key "$D/evaluations/$PRIOR-pt-hs$h.json"
