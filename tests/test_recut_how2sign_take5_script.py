@@ -19,11 +19,11 @@ FRAMES = 420
 CLIPS = {0: (30, .74, 90), 1: (150, 3.68, 100), 2: (290, 7.23, 80)}    # sentence: (true raw start, CSV START, frames)
 
 
-def video(frames: np.ndarray) -> bytes:
-    """MP4 (30 fps) of grey frames."""
+def video(frames: np.ndarray, rate: int = 30) -> bytes:
+    """MP4 (30 fps unless given) of grey frames."""
     buffer = io.BytesIO()
     with av.open(buffer, "w", format="mp4") as container:
-        stream = container.add_stream("mpeg4", rate=30)
+        stream = container.add_stream("mpeg4", rate=rate)
         stream.width, stream.height, stream.pix_fmt = frames.shape[2], frames.shape[1], "yuv420p"
         stream.options = {"qscale": "2"}
         for image in frames:
@@ -55,7 +55,7 @@ def zipped(members: dict) -> bytes:
     return buffer.getvalue()
 
 
-def corpus(tmp_path, side_seed=0):
+def corpus(tmp_path, side_seed=0, fps=30):
     store = DirectoryStore(tmp_path)
     raw_front = images(FRAMES, 1)
     p1, _ = cameras()
@@ -63,18 +63,19 @@ def corpus(tmp_path, side_seed=0):
     clips, rows = {}, ["VIDEO_ID\tVIDEO_NAME\tSENTENCE_ID\tSENTENCE_NAME\tSTART\tEND\tSENTENCE"]
     for sentence, (start, csv_start, count) in CLIPS.items():
         name = f"vid_{sentence}-5-rgb_front"
-        clips[f"raw_videos/{name}.mp4"] = clip = video(raw_front[start:start + count])
+        clips[f"raw_videos/{name}.mp4"] = clip = video(raw_front[start:start + count], fps)
         buffer = io.BytesIO()
-        np.savez(buffer, times=np.arange(count) / 30., points=front_points[start:start + count].astype(np.float32),
+        np.savez(buffer, times=np.arange(count) / fps, points=front_points[start:start + count].astype(np.float32),
                  confidence=front_conf[start:start + count].astype(np.float16),
                  clip_sha256=np.array(hashlib.sha256(clip).hexdigest()))
         store.put(f"front/keypoints/{name}.npz", buffer.getvalue())
+        csv_start = round(csv_start * 30 / fps, 4)                 # START units: raw frames / ((4/3) x fps)
         rows.append(f"vid\tvid-5-rgb_front\tvid_{sentence}\t{name}\t{csv_start}\t{csv_start + count / 40}\ttext")
     zip_sha = put_verified(store, "pub/val_rgb_front_clips.zip", zipped(clips))
     put_verified(store, "pub/how2sign_val.csv", "\n".join(rows).encode())
-    put_verified(store, "raw/val_raw_videos/shard_001.zip", zipped({"vid-5-rgb_front.mp4": video(raw_front)}))
+    put_verified(store, "raw/val_raw_videos/shard_001.zip", zipped({"vid-5-rgb_front.mp4": video(raw_front, fps)}))
     put_verified(store, "raw/val_side_raw_videos/shard_001.zip",
-                 zipped({"vid-5-rgb_side.mp4": video(images(FRAMES, 2))}))
+                 zipped({"vid-5-rgb_side.mp4": video(images(FRAMES, 2), fps)}))
     return store, zip_sha
 
 
@@ -82,6 +83,7 @@ class FakeSapiens:
     """Stands in for Sapiens on the raw lateral recording: the scene seen by camera 2, ``OFFSET`` frames late."""
 
     side_seed = 0
+    fps = 30
 
     def __init__(self, path, sha256, batch, flip):
         self.path, self.sha256, self.flip = "fake", "f" * 64, flip
@@ -90,7 +92,7 @@ class FakeSapiens:
         _, p2 = cameras()
         points, confidence = views(np.arange(FRAMES) - OFFSET, p2, seed=self.side_seed)
         confidence[:first], confidence[stop:] = 0., 0.
-        return np.arange(FRAMES) / 30., points.astype(np.float32), confidence.astype(np.float16), min(stop, FRAMES)
+        return np.arange(FRAMES) / self.fps, points.astype(np.float32), confidence.astype(np.float16), min(stop, FRAMES)
 
 
 def run(tmp_path, zip_sha, prefix="out"):
@@ -132,6 +134,19 @@ def test_take5_session_is_placed_synchronised_and_recut(tmp_path, monkeypatch):
     assert run(tmp_path, zip_sha) == 0
 
 
+def test_a_24_fps_session_is_placed_at_its_own_rate(tmp_path, monkeypatch):
+    store, zip_sha = corpus(tmp_path, fps=24)
+    monkeypatch.setattr(FakeSapiens, "fps", 24)
+    monkeypatch.setattr(script, "Sapiens", FakeSapiens)
+    assert run(tmp_path, zip_sha) == 0
+    record = json.loads(store.get("out/sessions/vid-5.json"))
+    assert record["accepted"], record["reason"]
+    assert abs(record["raw_front"]["fps"] - 24) < 1e-6 and abs(record["thresholds"]["front_frames_per_unit"] - 32.) < 1e-9
+    for sentence, (start, _, _) in CLIPS.items():
+        assert record["front_clips"][f"vid_{sentence}-5-rgb_front"]["placement"]["start"] == start
+    assert abs(record["offset"]["offset_frames"] - OFFSET) < .1 and abs(record["offset"]["offset_seconds"] - OFFSET / 24) < .01
+
+
 def test_a_session_whose_side_recording_does_not_match_is_refused(tmp_path, monkeypatch):
     store, zip_sha = corpus(tmp_path)
     monkeypatch.setattr(FakeSapiens, "side_seed", 7)
@@ -158,7 +173,7 @@ def test_a_session_with_an_unusable_source_is_refused_and_the_pass_continues(tmp
 
     def variable_rate(times, what):
         raise ValueError(f"the raw {what} recording is not constant 30 fps: 3 of 299 frame steps off")
-    monkeypatch.setattr(script, "check_rate", variable_rate)
+    monkeypatch.setattr(script, "measure_rate", variable_rate)
     assert run(tmp_path, zip_sha) == 0
     record = json.loads(store.get("out/sessions/vid-5.json"))
     assert not record["accepted"] and record["reason"].startswith("the raw frontal recording is not constant")

@@ -99,16 +99,24 @@ def decoded(payload: bytes, *, thumbnails: bool):
     return np.array(times), (np.stack(frames) if frames else None)
 
 
-def check_rate(times: np.ndarray, what: str) -> None:
-    """Raw recordings must be constant 30 fps: frame index is time."""
+def measure_rate(times: np.ndarray, what: str) -> float:
+    """The recording's constant frame rate: frame index is time. How2Sign's raw recordings are 30 fps (val) or
+    23.976/24 fps (train); a recording whose frame steps stray from its own rate is refused."""
     steps = np.diff(times)
     if len(times) < 2:
         raise ValueError(f"the raw {what} recording has fewer than two frames")
-    deviation = np.abs(steps * recut.RAW_FPS - 1)
+    fps = 1. / float(np.median(steps))
+    deviation = np.abs(steps * fps - 1)
     if np.max(deviation) > .25:
-        raise ValueError(f"the raw {what} recording is not constant {recut.RAW_FPS:g} fps: {int((deviation > .25).sum())} "
+        raise ValueError(f"the raw {what} recording is not constant rate ({fps:.3f} fps): {int((deviation > .25).sum())} "
                          f"of {len(steps)} frame steps off by more than a quarter frame (largest "
-                         f"{float(np.max(steps)) * recut.RAW_FPS:.2f} frames, median {float(np.median(steps)) * recut.RAW_FPS:.3f})")
+                         f"{float(np.max(steps)) * fps:.2f} frames)")
+    return fps
+
+
+def same_rate(fps: float, other: float, what: str) -> None:
+    if abs(other / fps - 1) > 1e-3:
+        raise ValueError(f"the {what} runs at {other:.3f} fps, the raw frontal recording at {fps:.3f} fps")
 
 
 def sapiens_raw(payload: bytes, first: int, stop: int, model, device, batch: int, flip: bool):
@@ -173,8 +181,9 @@ def recover_session(store, args, session: str, clips: dict, rows: dict, fronts: 
                                   front_frames_per_unit=recut.FRONT_FRAMES_PER_UNIT))
     front_raw, front_info = raws.read(f"{session}-rgb_front.mp4")
     front_times, front_thumbs = decoded(front_raw, thumbnails=True)
-    check_rate(front_times, "frontal")
-    record["raw_front"] = dict(front_info, frames=len(front_times))
+    fps = measure_rate(front_times, "frontal")
+    record["raw_front"] = dict(front_info, frames=len(front_times), fps=fps)
+    record["thresholds"]["front_frames_per_unit"] = recut.frames_per_unit(fps)
     keypoints, thumbs, nominals, info = {}, {}, {}, {}
     for name, key in sorted(clips.items()):
         clip, clip_sha, keypoints_sha = load_keypoints(store, key, name)
@@ -184,7 +193,9 @@ def recover_session(store, args, session: str, clips: dict, rows: dict, fronts: 
         times, small = decoded(payload, thumbnails=True)
         if len(times) != len(clip.times):
             raise SystemExit(f"{name}: {len(times)} frames in the clip, {len(clip.times)} in its keypoints")
-        keypoints[name], thumbs[name], nominals[name] = clip, small, recut.nominal_start(rows[name])
+        if len(times) > 1:                       # a released clip is a run of raw frames: same rate
+            same_rate(fps, 1. / float(np.median(np.diff(times))), f"released clip {name}")
+        keypoints[name], thumbs[name], nominals[name] = clip, small, recut.nominal_start(rows[name], fps)
         info[name] = dict(clip_zip=member["zip_key"], clip_zip_sha256=member["zip_sha256"],
                           clip_sha256=member["member_sha256"], keypoints_key=key, keypoints_sha256=keypoints_sha,
                           csv_start=rows[name], frames=len(times))
@@ -213,7 +224,7 @@ def recover_session(store, args, session: str, clips: dict, rows: dict, fronts: 
                       stop=np.array(computed_stop), member_sha256=np.array(side_info["member_sha256"]),
                       model_sha256=np.array(sapiens.sha256), flip_tta=np.array(sapiens.flip))
         cache_sha = store.put(cache, npz(**cached))
-    check_rate(cached["times"], "lateral")
+    same_rate(fps, measure_rate(cached["times"], "lateral"), "raw lateral recording")
     record["raw_side"].update(frames=len(cached["times"]))
     record["sapiens"] = dict(raw_keypoints_key=cache, raw_keypoints_sha256=cache_sha,
                              model_sha256=str(cached["model_sha256"]), flip_tta=bool(cached["flip_tta"]),
@@ -225,7 +236,7 @@ def recover_session(store, args, session: str, clips: dict, rows: dict, fronts: 
     for name, clip in zip(names, offset.pop("clips")):
         info[name].update(offset_sampson_px=clip["sampson_px"], offset_observations=clip["observations"])
     record["offset"] = dict(offset, offset_seconds=None if offset["offset_frames"] is None
-                            else offset["offset_frames"] / recut.RAW_FPS)
+                            else offset["offset_frames"] / fps)
     if not offset["passed"]:
         return dict(record, reason=offset["reason"])
     outputs = {}

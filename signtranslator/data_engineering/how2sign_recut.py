@@ -37,7 +37,10 @@ from .two_view_geometry import ransac_fundamental, sampson
 from .two_view_states import SYNC_CONFIDENCE, SYNC_JOINTS, SYNC_SHARPNESS, MIN_SYNC_OBSERVATIONS, ClipKeypoints, in_image
 
 RAW_FPS = 30.
-FRONT_FRAMES_PER_UNIT = 40.      # released frontal clip = raw frontal frames from ~40 × START (original CSV)
+# A released frontal clip is a run of raw frontal frames from ⌈(4/3) × fps × START⌉ (original CSV): 40 × START for the
+# 30 fps recordings (validated on val, a4uz0W33REs-5), 31.97 × START for 23.976 fps train recordings (measured on six
+# clips of --7E2sU6zP4-5 by frame matching: 31.970–31.982).
+FRONT_FRAMES_PER_UNIT = 40.      # at RAW_FPS; frames_per_unit(fps) at another rate
 PLACEMENT_WINDOW = 8             # frames searched either side of the nominal start
 PLACEMENT_SHARPNESS = .9         # unique placement: best error < 0.9x every other start's (a4uz0W33REs-5:
                                  # moving clips 0.40-0.87, still clips 0.99-1.00)
@@ -53,9 +56,14 @@ FAR_LAG = 3                      # sharpness is judged against lags >= 3 frames 
 THUMBNAIL = (64, 36)             # (width, height) grey thumbnails for placement
 
 
-def nominal_start(start: float) -> int:
+def frames_per_unit(fps: float = RAW_FPS) -> float:
+    """Raw frames per unit of the CSV's START at a recording rate of ``fps``."""
+    return FRONT_FRAMES_PER_UNIT * fps / RAW_FPS
+
+
+def nominal_start(start: float, fps: float = RAW_FPS) -> int:
     """Raw frontal frame index where a released frontal clip nominally starts."""
-    return int(math.ceil(FRONT_FRAMES_PER_UNIT * start - 1e-6))
+    return int(math.ceil(frames_per_unit(fps) * start - 1e-6))
 
 
 def _placement_errors(raw: np.ndarray, clip: np.ndarray, nominal: int, window: int) -> dict:
@@ -251,5 +259,5 @@ def needed_frames(placed_spans, count: int, *, max_offset: int = MAX_OFFSET_FRAM
 
 
 __all__ = ["RAW_FPS", "FRONT_FRAMES_PER_UNIT", "PLACEMENT_WINDOW", "PLACEMENT_SHARPNESS", "MATCH_RATIO", "MAX_OFFSET_FRAMES",
-           "FINE_STEP", "FAR_LAG", "MAX_SAMPSON_PX", "THUMBNAIL", "nominal_start", "place_clips", "sample", "correspondences", "estimate_offset",
+           "FINE_STEP", "FAR_LAG", "MAX_SAMPSON_PX", "THUMBNAIL", "frames_per_unit", "nominal_start", "place_clips", "sample", "correspondences", "estimate_offset",
            "recut", "needed_frames"]
