@@ -40,7 +40,7 @@ stage $RUN prior python scripts/train_motion_tokens.py --architecture rvq --mani
   --workers 8 --val-every 1000 --val-batches 32 --checkpoint-every 2000 --patience 5 --batch-size 64 --stage prior --run $RUN \
   --tokenizer-key "$TOK" --tokenizer-sha256 "$TSHA" --tokenizer-manifest-sha256 "$FSHA" --init-key "$INIT" --init-sha256 "$ISHA" \
   --fps 24 --lr 1e-4 --warmup 500 --steps 20000 --d-model 384 --feedforward 1536 --token-layers 6 --depth-layers 2 \
-  --locus-conditioning || { echo PLAN-DONE; exit 1; }
+  --locus-conditioning --cache-bytes 12884901888 || { echo PLAN-DONE; exit 1; }
 GEN=$(best $RUN)
 EVAL="--manifest-key $MIX --manifest-sha256 $MSHA --partition val --guidance 1,2 --fps 24 --device cuda \
   --part-temperature body=1.2,left_hand=1.2,right_hand=1.2,face=1.0 --retrieval-key $(best $RET) --retrieval-manifest-sha256 $FSHA"
