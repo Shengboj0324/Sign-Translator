@@ -150,6 +150,23 @@ Read-only review: no download yet. Facts are from the pages and the licence page
   face-dropout augmentation; v2 training on a pod. `scripts/score_sign_generation.py` scores one-sign plans with a
   recogniser only after it passes validation.
 
+**Item 3b — evaluation by Deaf ASL users (tooling complete; waits for a generator and for reviewers)**
+- `docs/HUMAN_EVALUATION_PROTOCOL.md` (team) and `docs/HUMAN_EVALUATION_REVIEWER_GUIDE.md` (sent to reviewers):
+  - four-way comprehension choice plus a free translation;
+  - blind recovery of sentence type, negation and topic, with ASLLRP markers as the truth;
+  - naturalness 1-5.
+- Design: a Latin square over reviewer groups, so no reviewer sees a sentence twice and systems are paired by
+  utterance. Distractors are drawn from the whole partition and matched in length.
+- `signtranslator/eval_framework/human_study.py`:
+  - design and blinding: random ids, private hashed key;
+  - sheet validation: hashed reviewer keys only, primed reviewers excluded;
+  - scores: Wilson intervals, paired permutation against the recorded reference, Fleiss' kappa.
+- `scripts/build_human_eval_packet.py` renders every system the same way, on the recording's clock. It shows the
+  skeleton plus the new face panel (`generation/face_preview.py`: head turn, brows, eyelids, gaze, mouth). Tracking
+  gaps are held for display, so dropouts do not reveal the reference.
+- `scripts/score_human_eval.py` scores the returned sheets. Both scripts were smoke-tested end to end on real val
+  utterances.
+
 ## Mandatory: the sign recogniser must pass as an instrument before it scores generated motion
 
 The first isolated-sign recogniser (`training-runs/sign-recognizer-aslc-v1`, ASL Citizen, best step 27,000: 53.3% top-1 /
