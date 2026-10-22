@@ -19,7 +19,12 @@ validation motion is the ceiling the evaluator can resolve.
   to the unit sphere.
 
 **Text encoder.** The generators' byte encoding (``encode_texts``), a Transformer
-encoder, a masked mean and a projection.
+encoder, a masked mean and a projection - or, with ``text_embedding_key``, a frozen
+pretrained sentence embedding of each text (``scripts/embed_texts.py``,
+all-MiniLM-L6-v2) under a small trained projection. The byte encoder, trained from
+scratch on ~20k sentences, overfits within ~1.5k steps (full How2Sign: best R@3
+0.264); a frozen encoder that already places paraphrases together leaves only the
+projection to learn.
 
 **Loss.** Symmetric InfoNCE at a learned temperature τ = exp(−s), with s clamped to
 τ ≥ 0.01 (CLIP). Because the logits are cosine similarities divided by τ, the ranking
@@ -74,6 +79,9 @@ class TextMotionRetrievalConfig:
     initial_temperature: float = .07
     window_frames: int = 60                   # 2 s at 30 fps
     window_stride: int = 30
+    text_embedding_key: str | None = None     # frozen sentence embeddings (embed_texts.py) instead of the byte encoder
+    text_embedding_sha256: str | None = None
+    text_embedding_dim: int = 384
 
     def __post_init__(self):
         if self.d_model % self.heads:
@@ -117,9 +125,16 @@ class TextMotionRetrieval(nn.Module):
         self.motion_in = nn.Linear(width, d)
         self.motion_encoder = _encoder(d, config.heads, config.feedforward, config.dropout, config.motion_layers)
         self.motion_out = nn.Sequential(nn.LayerNorm(d), nn.Linear(d, config.embedding))
-        self.embed = nn.Embedding(VOCABULARY, d, padding_idx=PAD)
-        self.text_encoder = _encoder(d, config.heads, config.feedforward, config.dropout, config.text_layers)
-        self.text_out = nn.Sequential(nn.LayerNorm(d), nn.Linear(d, config.embedding))
+        if config.text_embedding_key:
+            e = config.text_embedding_dim
+            self.text_project = nn.Sequential(nn.LayerNorm(e), nn.Linear(e, d), nn.GELU(), nn.Dropout(config.dropout),
+                                              nn.Linear(d, config.embedding))
+            self._text_rows: dict[str, int] = {}
+            self.register_buffer("_text_matrix", torch.zeros(0, e), persistent=False)
+        else:
+            self.embed = nn.Embedding(VOCABULARY, d, padding_idx=PAD)
+            self.text_encoder = _encoder(d, config.heads, config.feedforward, config.dropout, config.text_layers)
+            self.text_out = nn.Sequential(nn.LayerNorm(d), nn.Linear(d, config.embedding))
         self.log_scale = nn.Parameter(torch.tensor(-math.log(config.initial_temperature)))
 
     @property
@@ -172,12 +187,50 @@ class TextMotionRetrieval(nn.Module):
         pooled = torch.zeros(len(lengths), z.shape[1], device=z.device, dtype=z.dtype).index_add_(0, owner, z)
         return F.normalize(pooled, dim=-1)
 
+    def attach_text_embeddings(self, keys, matrix) -> None:
+        """The frozen sentence-embedding table (``text_key`` of each text -> row of ``matrix``)."""
+        if not self.config.text_embedding_key:
+            raise ValueError("this retrieval model uses its own text encoder")
+        matrix = torch.as_tensor(matrix, dtype=torch.float32)
+        if matrix.shape[1] != self.config.text_embedding_dim or len(keys) != len(matrix):
+            raise ValueError("embedding table shape does not match the config")
+        self._text_rows = {k: i for i, k in enumerate(keys)}
+        self._text_matrix = matrix.to(self.log_scale.device)
+
     def encode_text(self, tokens: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         """(B, embedding) unit vectors for byte-encoded texts (``encode_texts``)."""
+        if self.config.text_embedding_key:
+            try:
+                rows = [self._text_rows[token_text_key(row)] for row in tokens.tolist()]
+            except KeyError as missing:
+                raise KeyError(f"text not in the embedding table ({missing}); embed it with embed_texts.py") from None
+            vectors = self._text_matrix[torch.tensor(rows, device=self._text_matrix.device)].to(tokens.device)
+            return F.normalize(self.text_project(vectors), dim=-1)
         positions = torch.arange(tokens.shape[1], device=tokens.device)[None].expand_as(tokens)
         h = self.embed(tokens) + sinusoid(positions, self.config.d_model, max_period=1e4)
         h = self.text_encoder(h, src_key_padding_mask=~mask)
         return F.normalize(self.text_out(_masked_mean(h, mask)), dim=-1)
+
+
+def token_text_key(row) -> str:
+    """The key of one byte-encoded text row: SHA-256 of its UTF-8 bytes (``encode_texts`` truncation and NFC)."""
+    return hashlib.sha256(bytes(int(t) for t in row if int(t) < 256)).hexdigest()
+
+
+def text_key(text: str, *, max_bytes: int = 256) -> str:
+    from .text_to_motion import encode_texts
+    return token_text_key(encode_texts([text], max_bytes=max_bytes)[0][0].tolist())
+
+
+def load_text_embeddings(store, key: str, sha256: str):
+    """(keys, matrix) of an ``embed_texts.py`` table, checked against its SHA-256."""
+    import io
+    import numpy as np
+    payload = store.get(key)
+    if hashlib.sha256(payload).hexdigest() != sha256:
+        raise ValueError(f"{key} differs from its expected SHA-256")
+    data = np.load(io.BytesIO(payload), allow_pickle=False)
+    return [str(k) for k in data["keys"]], data["vectors"].astype("float32")
 
 
 def retrieval_loss(model: TextMotionRetrieval, tokens, mask, motion: MotionBatch):
@@ -223,4 +276,5 @@ def r_precision(motion_embeddings: torch.Tensor, text_embeddings: torch.Tensor, 
             "matching_distance": matching, "clips": rows, "group": group}
 
 
-__all__ = ["TextMotionRetrievalConfig", "TextMotionRetrieval", "retrieval_loss", "r_precision", "MIN_TEMPERATURE"]
+__all__ = ["TextMotionRetrievalConfig", "TextMotionRetrieval", "retrieval_loss", "r_precision", "MIN_TEMPERATURE",
+           "token_text_key", "text_key", "load_text_embeddings"]

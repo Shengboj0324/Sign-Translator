@@ -118,3 +118,60 @@ def test_the_motion_embedding_is_blind_to_duration():
     torch.testing.assert_close(z[0], z[2], atol=1e-5, rtol=1e-5)
     real = model.encode_motion(collate_multichannel(states))
     assert not torch.allclose(real[0], real[1], atol=1e-3)           # real content still separates clips
+
+
+def test_frozen_sentence_embeddings_replace_the_text_encoder_and_still_learn():
+    from signtranslator.generation.text_motion_retrieval import text_key
+    torch.manual_seed(0)
+    states = [state(i, 20 + 4 * i) for i in range(4)]
+    texts = ["a dog runs", "cats sleep", "rain falls", "birds fly"]
+    model = _model(states, text_embedding_key="table.npz", text_embedding_sha256="0" * 64, text_embedding_dim=8)
+    assert not hasattr(model, "text_encoder")
+    model.attach_text_embeddings([text_key(t) for t in texts], torch.randn(4, 8))
+    tokens, mask = encode_texts(texts)
+    batch = collate_multichannel(states)
+    optimiser = torch.optim.Adam(model.parameters(), lr=3e-3)
+    for _ in range(150):
+        loss, terms = retrieval_loss(model, tokens, mask, batch)
+        optimiser.zero_grad(); loss.backward(); optimiser.step()
+    model.eval()
+    with torch.no_grad():
+        out = r_precision(model.encode_motion(batch), model.encode_text(tokens, mask), group=4, ks=(1,))
+    assert out["r_at_1"] == 1.
+    with pytest.raises(KeyError, match="embedding table"):
+        model.encode_text(*encode_texts(["never embedded"]))
+    with pytest.raises(ValueError):
+        _model(states).attach_text_embeddings(["k"], torch.zeros(1, 8))
+
+
+def test_the_script_trains_on_a_stored_embedding_table(tmp_path, monkeypatch):
+    import hashlib
+    import importlib.util
+    import io
+    import json
+    from pathlib import Path
+    import numpy as np
+    from signtranslator.generation.text_motion_retrieval import text_key
+    from tests.test_train_text_to_motion_script import store_with_manifest
+    monkeypatch.setenv("SIGN_CACHE_DIR", str(tmp_path / "cache"))
+    digest = store_with_manifest(tmp_path / "store")
+    manifest = json.loads((tmp_path / "store/manifest.json").read_text())
+    keys = sorted({text_key(r["text"]) for r in manifest["records"] if r.get("text")})
+    buffer = io.BytesIO(); np.savez(buffer, keys=np.array(keys), vectors=np.random.default_rng(0).normal(size=(len(keys), 8)).astype("float32"))
+    (tmp_path / "store/table.npz").write_bytes(buffer.getvalue())
+    sha = hashlib.sha256(buffer.getvalue()).hexdigest()
+    spec = importlib.util.spec_from_file_location(
+        "train_retrieval", Path(__file__).resolve().parents[1] / "scripts/train_text_motion_retrieval.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    args = ["--store", f"dir:{tmp_path / 'store'}", "--manifest-key", "manifest.json", "--manifest-sha256", digest,
+            "--run", "ret2", "--batch-size", "3", "--d-model", "32", "--heads", "4", "--motion-layers", "1",
+            "--feedforward", "64", "--embedding", "16", "--warmup", "1", "--val-every", "2", "--checkpoint-every", "2",
+            "--workers", "0", "--trained-channels", "body,head_rotation,face", "--steps", "4",
+            "--text-embedding-key", "table.npz", "--text-embedding-sha256", sha]
+    import pytest as _pytest
+    with _pytest.raises(Exception):
+        script.main(args[:-1] + ["0" * 64])                       # wrong table hash is refused
+    assert script.main(args) == 0
+    run = json.loads((tmp_path / "store/training-runs/ret2/best.json").read_text())
+    assert "val_r_at_3" in run

@@ -94,6 +94,10 @@ def load_retrieval(store, key: str, manifest_sha256: str):
         raise SystemExit(f"{key} is not a retrieval model trained on this manifest")
     model = TextMotionRetrieval(TextMotionRetrievalConfig.from_dict(saved["config"]))
     model.load_state_dict(saved.get("ema") or saved["model"])
+    if model.config.text_embedding_key:                # frozen sentence embeddings: the table named in the config
+        from signtranslator.generation.text_motion_retrieval import load_text_embeddings
+        model.attach_text_embeddings(*load_text_embeddings(store, model.config.text_embedding_key,
+                                                           model.config.text_embedding_sha256))
     return model.eval()
 
 

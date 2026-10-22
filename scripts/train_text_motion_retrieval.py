@@ -83,6 +83,9 @@ def main(argv=None) -> int:
     parser.add_argument("--cache-bytes", type=int, default=8 * 2 ** 30)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--device", default="auto")
+    parser.add_argument("--text-embedding-key", help="frozen sentence-embedding table (embed_texts.py) for the text side")
+    parser.add_argument("--text-embedding-sha256")
+    parser.add_argument("--fps", type=float, help="resample states whose rate differs from this (mixed-rate corpora)")
     args = parser.parse_args(argv)
     store = make_store(args.store)
     device = torch.device("cuda" if args.device == "auto" and torch.cuda.is_available() else
@@ -94,16 +97,26 @@ def main(argv=None) -> int:
         manifest = load_manifest(path, expected_sha256=args.manifest_sha256)
     cache = ContentCache(Path(os.environ.get("SIGN_CACHE_DIR", tempfile.gettempdir())) / "sign-translator-cache",
                          args.cache_bytes)
-    train = TextMotionDataset(manifest, partition="train", cache=cache, fetch=store.get, max_seconds=args.max_seconds)
-    val = TextMotionDataset(manifest, partition="val", cache=cache, fetch=store.get, max_seconds=args.max_seconds)
+    train = TextMotionDataset(manifest, partition="train", cache=cache, fetch=store.get, max_seconds=args.max_seconds,
+                              fps=args.fps)
+    val = TextMotionDataset(manifest, partition="val", cache=cache, fetch=store.get, max_seconds=args.max_seconds,
+                            fps=args.fps)
     if not len(train) or not len(val):
         raise SystemExit("the manifest needs training and validation records")
     motion = TextToMotionConfig(bindings=channel_bindings_from_state(train[0][1]),
                                 trained_channels=tuple(args.trained_channels.split(",")), max_seconds=args.max_seconds)
+    table = None
+    if args.text_embedding_key:
+        from signtranslator.generation.text_motion_retrieval import load_text_embeddings
+        table = load_text_embeddings(store, args.text_embedding_key, args.text_embedding_sha256)
     config = TextMotionRetrievalConfig(motion, d_model=args.d_model, heads=args.heads, motion_layers=args.motion_layers,
                                        text_layers=args.text_layers, feedforward=args.feedforward, dropout=args.dropout,
-                                       embedding=args.embedding)
+                                       embedding=args.embedding, text_embedding_key=args.text_embedding_key,
+                                       text_embedding_sha256=args.text_embedding_sha256,
+                                       **(dict(text_embedding_dim=int(table[1].shape[1])) if table else {}))
     model = TextMotionRetrieval(config).to(device)
+    if table:
+        model.attach_text_embeddings(*table)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     prefix = f"training-runs/{args.run}"
     step, resumed_ema = 0, None
