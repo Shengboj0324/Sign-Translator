@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 _WORKER = {}
+VIDEO_SUFFIXES = (".mp4", ".mov")         # How2Sign / ASL Citizen / ASLLRP clips are MP4; ASLLVD sign clips are QuickTime
 
 
 class StoreRangeFile(io.RawIOBase):
@@ -153,7 +154,7 @@ def _process_once(job):
     payload = archive.read(member)
     try:
         with tempfile.TemporaryDirectory() as temporary:
-            video = Path(temporary) / "clip.mp4"
+            video = Path(temporary) / ("clip" + (Path(member).suffix.lower() or ".mp4"))
             video.write_bytes(payload)
             clip = extract_clip(video, _WORKER["models"], roi=True)
             state, report = canonical_from_landmarks(
@@ -200,7 +201,7 @@ def main(argv=None) -> int:
     if provenance.get("sha256") != args.zip_sha256 or not provenance.get("verified_by_r2_reread"):
         raise SystemExit("the zip is not the verified acquisition named by --zip-sha256")
     archive = zipfile.ZipFile(io.BufferedReader(StoreRangeFile(store.s3, store.bucket, args.zip_key), 1 << 20))
-    members = sorted(n for n in archive.namelist() if n.endswith(".mp4"))
+    members = sorted(n for n in archive.namelist() if n.lower().endswith(VIDEO_SUFFIXES))
     if args.match:
         members = [m for m in members if re.search(args.match, Path(m).name)]
     shard = [m for i, m in enumerate(members) if i % args.shards == args.shard][:args.limit]
