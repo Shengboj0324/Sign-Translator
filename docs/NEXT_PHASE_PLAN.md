@@ -152,6 +152,14 @@ Read-only review: no download yet. Facts are from the pages and the licence page
     Retrieval and back-translation are judged against the English, and both systems are checked against the plan's
     markers.
   - Evaluation on How2Sign val checks for any regression on English input.
+- Citation-stitching baseline (EVALUATION_FRAMEWORK §7):
+  - Lexicon: `build_citation_lexicon.py`, R2 `citation-lexicon-v1/lexicon.json`, SHA `b326494e…`. 5,439 keys from
+    training-partition clips only (2,648 ASLLVD Sign Bank glosses, 2,791 ASL Citizen).
+  - ASLLVD clips are cut to the annotated sign: each DAI clip carries exactly 0.833 s of context either side.
+  - `generation/citation_stitch.py` normalises gloss decoration, splits compounds and maps indices to the Citizen
+    pointing signs. It covers 81.8% of val plan signs; fingerspelling, name signs and classifiers are held.
+  - Evaluated beside the plan generator in the post-gate chain, and available as a `stitch:` system in the human
+    study.
 - ASLLRP data quality: DAI 2 has one camera view per utterance (cam1, 640×480, upscaled to 1280×960). The
   better-tracked hand's validity is 0.94 for Cory and 0.73 for Rachel (train), but 0.65 for Jonathan (val) and
   about 0.6 for Ben (test). Invalid frames are masked in training. Human-study utterances need hand coverage ≥ 0.7,

@@ -134,7 +134,10 @@ def main(argv=None) -> int:
     parser.add_argument("--store", default="r2")
     parser.add_argument("--manifest-key", required=True)
     parser.add_argument("--manifest-sha256", required=True)
-    parser.add_argument("--checkpoint-key", required=True)
+    parser.add_argument("--checkpoint-key")
+    parser.add_argument("--lexicon-key", help="instead of a checkpoint: the citation-stitching baseline from this lexicon "
+                                              "(build_citation_lexicon.py), on plan records")
+    parser.add_argument("--lexicon-sha256")
     parser.add_argument("--partition", default="val")
     parser.add_argument("--limit", type=int, default=200)
     parser.add_argument("--guidance", default="1,2", help="diffusion guidance scales to evaluate")
@@ -170,11 +173,20 @@ def main(argv=None) -> int:
     temperature = args.temperature
     if args.part_temperature:
         temperature = {k: float(v) for k, v in (item.split("=") for item in args.part_temperature.split(","))}
-    label, trained, sample = load_generator(store, args.checkpoint_key, args.checkpoint_manifest_sha256 or args.manifest_sha256,
-                                            args.device,
-                                            temperature=temperature, top_k=args.top_k)
+    if bool(args.checkpoint_key) == bool(args.lexicon_key):
+        raise SystemExit("give exactly one of --checkpoint-key and --lexicon-key")
+    if args.lexicon_key:
+        from signtranslator.generation.citation_stitch import load_stitcher
+        stitcher = load_stitcher(store, args.lexicon_key, args.lexicon_sha256 or "")
+        label, trained, sample = ("citation_stitch", ("body", "left_hand", "right_hand", "head_rotation", "face", "blink"),
+                                  stitcher.sample)
+    else:
+        label, trained, sample = load_generator(store, args.checkpoint_key,
+                                                args.checkpoint_manifest_sha256 or args.manifest_sha256, args.device,
+                                                temperature=temperature, top_k=args.top_k)
     records = sorted((r for r in manifest["records"] if r["partition"] == args.partition and r.get("text")
-                      and (args.corpus is None or r.get("corpus") == args.corpus)),
+                      and (args.corpus is None or r.get("corpus") == args.corpus)
+                      and (not args.lexicon_key or r.get("plan"))),
                      key=lambda r: r["sign"])[:args.limit]
     if not records:
         raise SystemExit("no records to evaluate")
@@ -183,7 +195,7 @@ def main(argv=None) -> int:
         references = [at_rate(r, args.fps) for r in references]
     channels = tuple(c for c in ("body", "left_hand", "right_hand", "head_rotation", "root_translation",
                                  "head_translation", "left_gaze", "right_gaze") if c in trained)
-    scales = [float(g) for g in args.guidance.split(",")] if label != "regression" else [None]
+    scales = [float(g) for g in args.guidance.split(",")] if label not in ("regression", "citation_stitch") else [None]
     retrieval = (load_retrieval(store, args.retrieval_key, args.retrieval_manifest_sha256 or args.manifest_sha256)
                  if args.retrieval_key else None)
     # the generator is conditioned on the record's text (English, or a plan line); meaning is judged against English
@@ -221,7 +233,7 @@ def main(argv=None) -> int:
                     state.save(path)
                     store.put(f"{args.save_generated.rstrip('/')}/{tag}/{record['sign']}.npz", path.read_bytes())
         print(json.dumps({name: results[name]}, default=float), flush=True)
-    report = dict(schema_version=1, checkpoint_key=args.checkpoint_key, generator=label,
+    report = dict(schema_version=1, checkpoint_key=args.checkpoint_key, lexicon_key=args.lexicon_key, generator=label,
                   retrieval_key=args.retrieval_key, saved_generated=args.save_generated,
                   temperature=temperature, top_k=args.top_k, head_smoothing=args.head_smoothing,
                   manifest_sha256=args.manifest_sha256, partition=args.partition, corpus=args.corpus, fps=args.fps,

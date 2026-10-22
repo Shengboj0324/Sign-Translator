@@ -8,7 +8,8 @@ utterance is produced by every ``--system``:
   the utterance's plan line - the planner's gold plan, so this scores plan -> motion alone;
 - ``LABEL=english:KEY@SHA``: a generator conditioned on the English sentence (the pre-plan baseline);
 - ``LABEL=translate:KEY@SHA``: the full chain - the gloss planner (``--planner-run``) plans the English, the generator
-  signs the predicted plan.
+  signs the predicted plan;
+- ``LABEL=stitch:LEXICON_KEY@SHA``: the citation-stitching baseline (``generation.citation_stitch``) on the gold plan.
 
 Every system signs for the recorded utterance's duration at ``--fps`` (24, the generators' training rate; the reference
 is resampled to it), so length is no cue. Only utterances whose recorded hands are well tracked
@@ -58,8 +59,8 @@ def parse_system(spec: str) -> dict:
         return dict(label=label, kind="reference")
     kind, _, target = rest.partition(":")
     key, _, sha = target.rpartition("@")
-    if kind not in ("plan", "english", "translate") or not key or len(sha) != 64:
-        raise ValueError(f"--system {spec!r}: expected LABEL=<plan|english|translate>:KEY@<64-hex manifest SHA>")
+    if kind not in ("plan", "english", "translate", "stitch") or not key or len(sha) != 64:
+        raise ValueError(f"--system {spec!r}: expected LABEL=<plan|english|translate|stitch>:KEY@<64-hex SHA>")
     return dict(label=label, kind=kind, key=key, manifest_sha256=sha)
 
 
@@ -176,7 +177,9 @@ def main(argv=None) -> int:
     key.update(manifest_key=args.manifest_key, manifest_sha256=args.manifest_sha256, partition=args.partition,
                system_specs=systems, planner_run=args.planner_run, guidance=args.guidance, steps=args.steps,
                fps=args.fps, min_hand_coverage=args.min_hand_coverage)
-    samplers = {s["label"]: load_generator(store, s["key"], s["manifest_sha256"], args.device)[2]
+    from signtranslator.generation.citation_stitch import load_stitcher
+    samplers = {s["label"]: (load_stitcher(store, s["key"], s["manifest_sha256"]).sample if s["kind"] == "stitch" else
+                             load_generator(store, s["key"], s["manifest_sha256"], args.device)[2])
                 for s in systems if s["kind"] != "reference"}
     planned = {}
     if args.planner_run:
@@ -196,7 +199,8 @@ def main(argv=None) -> int:
         reference = references[item["sign"]]
         fps = args.fps
         seconds = len(reference.timestamps) / fps
-        condition = dict(plan=record["text"], english=record["english"], translate=planned.get(item["sign"]))
+        condition = dict(plan=record["text"], english=record["english"], translate=planned.get(item["sign"]),
+                         stitch=record["text"])
         if system["kind"] == "reference":
             state = reference
         else:
