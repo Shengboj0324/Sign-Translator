@@ -189,6 +189,33 @@ Read-only review: no download yet. Facts are from the pages and the licence page
 - `scripts/score_human_eval.py` scores the returned sheets. Both scripts were smoke-tested end to end on real val
   utterances.
 
+## Acceptance rules declared before results (2026-10-22, PDT afternoon)
+
+**Task No.1 review (on top of the declared exit gate).** The exit gate (scripts/exit_gate.py) checks realism,
+articulation and marker rates. It does not check meaning. The full-corpus instruments are weak:
+- retrieval R@3 is 0.264 (chance 0.094), early-stopped at step 1,500;
+- back-translation val BLEU is about 1.5, with val loss flat since step 6k.
+
+So the selected setting is accepted for the next phase only if, on the same validation clips and through the same
+frozen instruments:
+- generated R@3 is above the duration-only (blank) R@3;
+- generated back-translation BLEU is above blank BLEU.
+
+Both are reported beside real, which is the instruments' ceiling. If either fails, the generator round is not done.
+The failure is diagnosed (instrument or generator) before anything moves on.
+
+**Plan-conditioned generator (post_gate_plan_generator.sh), ASLLRP val (Jonathan).** The plan generator is preferred
+to the English-conditioned baseline only if all three hold:
+1. Retrieval R@3 and back-translation BLEU against the English are not lower than the baseline's, each judged at the
+   better guidance of each system.
+2. Grammar: for negation and for each question type with at least 10 positives, the marker AUC
+   (`grammar.tests[].generated_auc`) is higher than the baseline's. A marker AUC is generated motion's separation of
+   marked from unmarked utterances.
+3. How2Sign val: Fréchet distance and every articulation ratio stay within 10% of the full prior's own evaluation.
+
+The citation-stitching baseline is reported beside both. The generator should beat it on Fréchet distance and on the
+marker AUCs; stitching shows only the citation forms' own non-manuals.
+
 ## Mandatory: the sign recogniser must pass as an instrument before it scores generated motion
 
 The first isolated-sign recogniser (`training-runs/sign-recognizer-aslc-v1`, ASL Citizen, best step 27,000: 53.3% top-1 /
