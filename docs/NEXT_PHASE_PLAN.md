@@ -203,6 +203,9 @@ These start when the generator round's exit gate closes (docs/CONTINUOUS_TRAININ
      test 339 (Ben); 3 rows without a readable signer left out. Median hand coverage 81% of frames (p10 46%), face 100%.
      Some glosses carry classifier descriptions in backslashes (`ICL:X-over-thumb\eating out of a bowl\`); the planner must
      normalise them before use.
+   - **DAI 2 transfer complete (2026-10-22 06:20 PDT):** all 121 files (200.8 GB) are in private R2 under
+     `asllrp-dai2-v1/`, each re-read and re-hashed after upload with a provenance record (source URL, SHA-256, licence).
+     That includes the ASLLVD citation-form source and sign videos (93 files, about 172 GB). Their motion extraction is next.
    - **English translations (acquired 2026-10-22):** the DAI 2 utterance search export (2,407 utterances: English translation and
      SignStream rough-gloss tiers) is in R2 (`asllrp-dai2-v1/asllrp-continuous/utterance-search-2026-10-22.json`, SHA `cc9102d8…`).
      `scripts/build_asllrp_english_gloss.py` wrote the planner's pairs (`derived/asllrp-dai2-v1/english-gloss-v1/pairs.json`,
