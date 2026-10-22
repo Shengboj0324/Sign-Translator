@@ -12,6 +12,11 @@ is parsed into
   (``IX-3p:i``: target ``i``) or of a located sign (``MOVE:i``). Letters are renumbered per utterance in order of first
   appearance (``1`` is the first referent placed in space), the order the motion generator's locus slots use.
 
+A quoted classifier or gesture description that contains spaces arrives split across surface tokens
+(``SCL:bent-U-L"person`` ``walking"``); ``merge_quoted`` rejoins it into one sign before parsing and remaps the marker
+spans, which index the original tokens. Typographic quotes count as plain ones; a gesture keeps both quotes
+(``"WHAT"``, distinct from the lexical sign ``WHAT``).
+
 Markers (``topic/focus``, ``wh question``, ``y/n question``, ``rhq question``, ``negative``, ``cond/when``,
 ``relative cl``) become a multi-hot vector per surface token.
 
@@ -46,7 +51,7 @@ class SurfaceSign:
 
 def parse_surface_token(token: str) -> SurfaceSign:
     """One dominant-hand surface token -> (base gloss, source locus, target locus)."""
-    t = token.strip()
+    t = token.strip().replace("\u201c", '"').replace("\u201d", '"')   # typographic quotes as plain ones
     t = re.sub(r"\\[^\\]*\\", "", t)           # classifier / gesture descriptions between backslashes
     t = re.sub(r"_+$", "", t)                  # hold duration
     t = _HAND.sub("", t)
@@ -64,7 +69,10 @@ def parse_surface_token(token: str) -> SurfaceSign:
     t = re.sub(r"_+$", "", t)
     if '"' in t and re.match(r"^[A-Z]*CL:", t):  # classifier: keep the class and handshape, drop the description
         t = t.split('"', 1)[0]
-    t = t.rstrip('"')
+    if t.startswith('"') and t.count('"') == 1:      # a quoted gesture whose closing quote sat behind the hold: "WHAT"
+        t = t + '"'
+    elif not t.startswith('"') and t.endswith('"') and t.count('"') == 1:
+        t = t[:-1]                                    # a stray closing quote (no")
     return SurfaceSign(base=t or token.strip(), source=source, target=target)
 
 
@@ -101,10 +109,35 @@ class PlanTarget:
     markers: tuple[tuple[int, ...], ...]
 
 
+_QUOTES = '"\u201c\u201d'
+
+
+def merge_quoted(surface: list[str]) -> tuple[list[str], list[int]]:
+    """Rejoin a sign whose quoted description the whitespace split cut apart (``SCL:bent-U-L"person`` + ``walking"``
+    -> ``SCL:bent-U-L"person~walking"``). Returns the merged tokens and, for every original token, its merged index."""
+    merged, owner, open_quote = [], [], False
+    for tok in surface:
+        if open_quote:
+            merged[-1] += "~" + tok
+        else:
+            merged.append(tok)
+        owner.append(len(merged) - 1)
+        q = sum(tok.count(c) for c in _QUOTES)
+        if q % 2 == 1:
+            open_quote = not open_quote
+    return merged, owner
+
+
 def plan_target(pair: dict) -> PlanTarget:
-    signs = [parse_surface_token(t) for t in pair["surface"]]
+    surface, owner = merge_quoted(pair["surface"])
+    signs = [parse_surface_token(t) for t in surface]
+    markers = []
+    for m in pair.get("markers") or []:                 # marker spans index the original tokens: remap to merged
+        if m.get("token_start") is None or m.get("token_end") is None:
+            continue
+        markers.append(dict(m, token_start=owner[m["token_start"]], token_end=owner[m["token_end"] - 1] + 1))
     return PlanTarget(bases=tuple(s.base for s in signs), loci=tuple(canonical_loci(signs)),
-                      markers=tuple(tuple(r) for r in marker_matrix(len(signs), pair.get("markers") or [])))
+                      markers=tuple(tuple(r) for r in marker_matrix(len(signs), markers)))
 
 
 class GlossVocabulary:
@@ -178,4 +211,4 @@ def encode_target(vocab: GlossVocabulary, target: PlanTarget, *, max_tokens: int
 
 __all__ = ["MARKERS", "MAX_LOCI", "PAD", "BOS", "EOS", "GLOSS_END", "BYTE0", "FIRST_GLOSS", "SurfaceSign",
            "parse_surface_token", "canonical_loci", "marker_matrix", "PlanTarget", "plan_target", "GlossVocabulary",
-           "is_unit_end", "encode_target"]
+           "is_unit_end", "encode_target", "merge_quoted"]

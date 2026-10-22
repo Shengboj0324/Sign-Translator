@@ -79,3 +79,13 @@ def test_evaluation_counts_substitutions_and_marker_misses():
     hyp = [dict(glosses=["A", "X", "C"], loci=[(0, 0)] * 3, markers=[[0] * 7] * 3)]
     s = evaluate_plans(ref, hyp)
     assert abs(s["gloss_wer"] - 1 / 3) < 1e-9 and s["marker_f1"]["topic/focus"] == 0
+
+
+def test_split_quoted_descriptions_are_rejoined_and_markers_remapped():
+    from signtranslator.planning.asllrp_gloss import merge_quoted
+    surface = ["MOTHER", "SCL:bent-U-L\"person", "walking\"", "SELL+__", "\"WHAT\"_"]
+    assert merge_quoted(surface)[0] == ["MOTHER", "SCL:bent-U-L\"person~walking\"", "SELL+__", "\"WHAT\"_"]
+    t = plan_target(_pair("x", surface, [dict(tier="wh question", label="q", token_start=2, token_end=5)]))
+    assert t.bases == ("MOTHER", "SCL:bent-U-L", "SELL+", "\"WHAT\"")
+    k = MARKERS.index("wh question")
+    assert [m[k] for m in t.markers] == [0, 1, 1, 1]       # the span started inside the merged sign
