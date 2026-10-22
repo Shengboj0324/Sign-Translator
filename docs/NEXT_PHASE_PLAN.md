@@ -266,6 +266,25 @@ so **it must not score generated motion yet**. Required before any sign-level ev
 
 Until then the generator's meaning-level evaluation rests on the back-translator and the retrieval evaluator.
 
+**v2 result (2026-10-22, 16:57 PDT).**
+- Run and report: `sign-recognizer-v2`, best step 27,000; report `training-runs/sign-recognizer-v2/validation.json`.
+- Data: ASL Citizen + ASLLVD train signers, 24 fps, augmented.
+- Verdict: **passes all three pre-declared checks**. Usable as an instrument on its 474 reliable glosses (top-1 ≥ 0.8
+  over ≥ 3 val clips).
+
+| Check | v1 | v2 | Rule |
+|---|---|---|---|
+| In-domain, all 10,303 ASL Citizen val clips | 49.2% / 72.1% | 50.5% / 72.9% | reference |
+| Cross-signer, ASLLVD val signer Naomi (411 clips, 348 glosses) | 13.3%* | **60.8%** / 82.2% | ≥ 25% |
+| Blank | 0.04% | 0.03% | ≤ 2% |
+| No hands | 1.2% | 1.5% | ≤ 15% |
+| In-context ASLLRP signs, unseen studio and signers (diagnostic) | 2.6% | 8.3% / 17.8% (blank 0.17%) | - |
+
+\*v1 was measured on ASLLVD train+val signers with no ASLLVD in training. v2 trains on the ASLLVD train signers, so its
+cross check is on the held-out val signer: a new signer in a studio it has seen, not a new studio. The genuinely
+unseen domain is the in-context ASLLRP row. It improved 3×, but isolated-sign recognition of coarticulated signs stays
+low, so sign-level scoring of the generator stays on one-sign plans, beside real and blank scores.
+
 In-context diagnostic (added 2026-10-22, not part of the rule): `validate_sign_recognizer.py
 --continuous-manifest-key` cuts the annotated signs out of ASLLRP continuous utterances of the train/val signers
 (Cory, Rachel, Jonathan; unseen by the recogniser), padded by 0.1 s.
