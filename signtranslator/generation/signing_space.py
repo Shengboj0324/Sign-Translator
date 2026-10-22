@@ -66,7 +66,7 @@ def signing_space_points(body6: torch.Tensor, left6: torch.Tensor, right6: torch
         chains.append(tuple(chain[:2]))
         for finger in FINGERS:
             x, y = _KNUCKLES[finger]
-            position = wrist + hand @ _vector([sign * x, y, 0.], like)
+            position = wrist + hand @ _vector([x, y, 0.], like)       # hand x runs pinky -> index on both hands
             frame, finger_chain = hand, list(chain)
             for segment in (1, 2, 3):
                 spec = next(j for j in finger_joints(side) if j.name == f"{side}Hand{finger}{segment}")
@@ -106,7 +106,7 @@ def _skeleton_layout(body_labels: tuple, left_labels: tuple, right_labels: tuple
         knuckles, rests = [], []
         for finger in FINGERS:
             x, y = _KNUCKLES[finger]
-            knuckles.append([sign * x, y, 0.])
+            knuckles.append([x, y, 0.])                               # as canonical_skeleton (not mirrored)
             names.append(f"{side}{finger}MCP"); chains.append(tuple(hand_chain))
             finger_chain, finger_rest = list(hand_chain), []
             for segment, label in zip((1, 2, 3), ("PIP", "DIP", "Tip")):

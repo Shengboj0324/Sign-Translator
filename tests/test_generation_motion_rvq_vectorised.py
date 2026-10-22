@@ -65,7 +65,7 @@ def reference_skeleton_points(body6: torch.Tensor, left6: torch.Tensor, right6: 
         hand_chain = chain + [("body", f"{side}Hand")]
         for finger in FINGERS:
             x, y = _KNUCKLES[finger]
-            position = wrist + hand @ _vector([sign * x, y, 0.], like)
+            position = wrist + hand @ _vector([x, y, 0.], like)
             points.append(position); names.append(f"{side}{finger}MCP"); chains.append(tuple(hand_chain))
             frame, finger_chain = hand, list(hand_chain)
             for segment, label in zip((1, 2, 3), ("PIP", "DIP", "Tip")):
@@ -300,6 +300,9 @@ def test_vectorised_training_step_gives_the_reference_codes_losses_and_gradients
             assert float((p.grad - q.grad).norm()) <= 1e-5 * float(q.grad.norm()) + 1e-9, name
         for optimizer in optimizers:
             optimizer.step()
+        with torch.no_grad():                                     # each step starts from identical weights: Adam
+            for p, q in zip(model.parameters(), reference.parameters()):   # would amplify float32 rounding otherwise
+                q.copy_(p)
         for name, buffer in model.named_buffers():
             torch.testing.assert_close(buffer, dict(reference.named_buffers())[name], **TOLERANCE)
     with torch.no_grad():
