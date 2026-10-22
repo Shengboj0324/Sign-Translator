@@ -290,9 +290,12 @@ on the stored state, rig side = bone frames returned by `MakeHumanRig.pose`; onl
 where the joint and all ancestors are valid as stored; head scored against the stored
 `head_rotation`, since the canonical skeleton has no head orientation). Three ASLLRP DAI 2
 continuous utterances (plan manifest v2 records 0–2) and one generated state
-(`t2m-diffusion-m1-subset-v1/guidance-1/-4Sl9mPOlfA_0-3-rgb_front`):
+(`t2m-diffusion-m1-subset-v1/guidance-1/-4Sl9mPOlfA_0-3-rgb_front`), each rendered from its
+R2 key with its SHA-256 checked; the records are in
+`Sign Translator Stage Documentation/evidence/avatar-retarget-2026-10-22/`. Rendering the
+same state twice gave a byte-identical video:
 
-| clip | frames | upper arm n / median / p95 / max (°) | forearm | fingers (12×2 per frame) | thumb | head |
+| clip | frames | upper arm n / median / p95 / max (°) | forearm | fingers (non-thumb) | thumb | head |
 |---|---|---|---|---|---|---|
 | 10006709 | 281 | 558 / 0 / 1.2e-6 / 1.2e-6 | 558 / 0 / 8.5e-7 / 1.2e-6 | 2052 / 0 / 1.2e-6 / 1.5e-6 | 513 / 0 / 1.2e-6 / 1.2e-6 | 267 / 0 / 0 / 1.2e-6 |
 | 10036884 | 105 | 210 / 0 / 1.2e-6 / 1.7e-6 | 210 / 0 / 8.5e-7 / 1.2e-6 | 1428 / 0 / 8.5e-7 / 1.5e-6 | 357 / 0 / 1.2e-6 / 1.2e-6 | 105 / 0 / 0 / 3.4e-6 |
