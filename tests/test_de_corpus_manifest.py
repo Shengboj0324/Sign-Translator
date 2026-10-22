@@ -115,3 +115,20 @@ def test_performer_split_is_descriptive_below_three_groups():
     assert split["independent_units"] == 2 and not split["confirmatory"]
     with pytest.raises(ValueError):
         performer_split([record("a")])
+
+
+def test_content_cache_scans_only_when_over_budget(tmp_path):
+    import hashlib
+    from signtranslator.data_engineering.corpus_manifest import ContentCache
+    cache = ContentCache(tmp_path / "c", 1000)
+    scans = {"n": 0}
+    original = cache._evict
+    def counted(**kw):
+        scans["n"] += 1; original(**kw)
+    cache._evict = counted
+    blobs = [bytes([i]) * 100 for i in range(15)]
+    for b in blobs:
+        cache.get(f"k{b[0]}", hashlib.sha256(b).hexdigest(), lambda key, b=b: b)
+    on_disk = sum(p.stat().st_size for p in (tmp_path / "c").iterdir())
+    assert on_disk <= 1000 and scans["n"] == 5          # 10 fit; each of the 5 later inserts evicts the oldest
+    assert cache.get("k14", hashlib.sha256(blobs[14]).hexdigest(), lambda key: b"") == blobs[14]

@@ -148,6 +148,7 @@ class ContentCache:
         self.directory.mkdir(parents=True, exist_ok=True)
         self.max_bytes = max_bytes
         self.fetches = 0
+        self._total = None                       # running estimate of the bytes on disk (scanned once, then tracked)
 
     def _path(self, sha256: str) -> Path:
         if not _is_sha(sha256):
@@ -173,18 +174,24 @@ class ContentCache:
             with tempfile.NamedTemporaryFile(dir=self.directory, delete=False, prefix=".partial-") as tmp:
                 tmp.write(data)
             os.replace(tmp.name, path)
-            self._evict(keep=path)
+            if self._total is None:
+                self._total = self.size()
+            else:
+                self._total += len(data)
+            if self._total > self.max_bytes:     # scan and evict only when over budget, not on every insert
+                self._evict(keep=path)
         return data
 
     def _evict(self, *, keep: Path) -> None:
         entries = sorted((p for p in self.directory.iterdir() if _is_sha(p.name) and p != keep),
                          key=lambda p: p.stat().st_mtime_ns)
-        total = self.size()
+        total = self.size()                      # the true size: other processes may share the directory
         for entry in entries:
             if total <= self.max_bytes:
                 break
             total -= entry.stat().st_size
             entry.unlink()
+        self._total = total
 
 
 def mask_channels(state: MultichannelMotion, keep) -> MultichannelMotion:
