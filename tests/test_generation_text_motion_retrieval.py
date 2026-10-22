@@ -175,3 +175,23 @@ def test_the_script_trains_on_a_stored_embedding_table(tmp_path, monkeypatch):
     assert script.main(args) == 0
     run = json.loads((tmp_path / "store/training-runs/ret2/best.json").read_text())
     assert "val_r_at_3" in run
+
+
+def test_augmented_training_needs_a_rate_and_runs(tmp_path, monkeypatch):
+    import importlib.util
+    from pathlib import Path
+    from tests.test_train_text_to_motion_script import store_with_manifest
+    monkeypatch.setenv("SIGN_CACHE_DIR", str(tmp_path / "cache"))
+    digest = store_with_manifest(tmp_path / "store")
+    spec = importlib.util.spec_from_file_location(
+        "train_retrieval", Path(__file__).resolve().parents[1] / "scripts/train_text_motion_retrieval.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    args = ["--store", f"dir:{tmp_path / 'store'}", "--manifest-key", "manifest.json", "--manifest-sha256", digest,
+            "--run", "ret3", "--batch-size", "3", "--d-model", "32", "--heads", "4", "--motion-layers", "1",
+            "--text-layers", "1", "--feedforward", "64", "--embedding", "16", "--warmup", "1", "--val-every", "2",
+            "--checkpoint-every", "2", "--workers", "0", "--trained-channels", "body,head_rotation,face", "--steps", "2",
+            "--augment"]
+    with pytest.raises(SystemExit, match="needs --fps"):
+        script.main(args)
+    assert script.main(args + ["--fps", "30"]) == 0

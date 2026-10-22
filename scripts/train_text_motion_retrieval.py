@@ -55,6 +55,19 @@ def embed_all(model, batches, device):
     return torch.cat(zm), torch.cat(zt), float(np.mean(losses))
 
 
+_AUGMENT_RNG: dict = {}
+
+
+def worker_augment(state):
+    """Speed 0.85-1.15x and face dropout 0.2, no trimming (a sentence's first and last signs carry meaning); one
+    generator per loader process, seeded from torch."""
+    from signtranslator.generation.sign_recognizer import augment_sign
+    pid = os.getpid()
+    if pid not in _AUGMENT_RNG:
+        _AUGMENT_RNG[pid] = random.Random(torch.initial_seed())
+    return augment_sign(state, _AUGMENT_RNG[pid], speed=(.85, 1.15), trim=0., face_dropout=.2)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--store", default="r2")
@@ -86,6 +99,9 @@ def main(argv=None) -> int:
     parser.add_argument("--text-embedding-key", help="frozen sentence-embedding table (embed_texts.py) for the text side")
     parser.add_argument("--text-embedding-sha256")
     parser.add_argument("--fps", type=float, help="resample states whose rate differs from this (mixed-rate corpora)")
+    parser.add_argument("--augment", action="store_true",
+                        help="training clips at a random speed (0.85-1.15x) and, one time in five, without the face "
+                             "(needs --fps: the resampler turns the rescaled clock into frames)")
     args = parser.parse_args(argv)
     store = make_store(args.store)
     device = torch.device("cuda" if args.device == "auto" and torch.cuda.is_available() else
@@ -97,8 +113,10 @@ def main(argv=None) -> int:
         manifest = load_manifest(path, expected_sha256=args.manifest_sha256)
     cache = ContentCache(Path(os.environ.get("SIGN_CACHE_DIR", tempfile.gettempdir())) / "sign-translator-cache",
                          args.cache_bytes)
+    if args.augment and not args.fps:
+        raise SystemExit("--augment needs --fps")
     train = TextMotionDataset(manifest, partition="train", cache=cache, fetch=store.get, max_seconds=args.max_seconds,
-                              fps=args.fps)
+                              fps=args.fps, augment=worker_augment if args.augment else None)
     val = TextMotionDataset(manifest, partition="val", cache=cache, fetch=store.get, max_seconds=args.max_seconds,
                             fps=args.fps)
     if not len(train) or not len(val):
