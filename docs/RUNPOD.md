@@ -228,5 +228,5 @@ After a peak of about $53/h (48 pods), the rule is fewer pod-hours with unchange
   - Each fleet has an auto-stop watcher that copies the pod's log to R2 before stopping it.
   - Gated jobs (re-cut, triangulation) start their pods only when their inputs are close to ready.
 - **Fewer pods running longer, not bursts.** The take-5 re-cut runs on 10 community L40S pods ($7.90/h): train sessions first, then val+test on the same pods.
-- **Pod cap: at most 3 pods running at once** (user, 2026-10-22) once the Sapiens tail and the 9-pod take-5 re-cut finish. Later stages queue on those 3 pods; runs take longer, the math and data never change.
+- **Pod cap: at most 5 pods running at once** (user, 2026-10-22; raised from 3) once the Sapiens tail and the 9-pod take-5 re-cut finish. Later stages queue on those 3 pods; runs take longer, the math and data never change.
 - **Ceiling: $10/h** in total once the Sapiens fleet and the raw acquisition finish. Triangulation runs on the Mac. Training and evaluation run in sequence on 1–2 GPU pods.
