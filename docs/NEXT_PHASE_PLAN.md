@@ -189,6 +189,12 @@ Read-only review: no download yet. Facts are from the pages and the licence page
 - `scripts/score_human_eval.py` scores the returned sheets. Both scripts were smoke-tested end to end on real val
   utterances.
 
+**Item 6 — serving (path built; measured on the current research release)**
+- Pinned, hash-checked releases with a computed licence gate; a translation service; an HTTP API with bounded
+  backpressure; a latency benchmark (docs/DEPLOYMENT.md §12).
+- Measured on Mac CPU: p50 1.2 s end to end, with generation at 0.4× real time.
+- The release is research-only, because the planner is trained on ASLLRP.
+
 ## Acceptance rules declared before results (2026-10-22, PDT afternoon)
 
 **Task No.1 review (on top of the declared exit gate).** The exit gate (scripts/exit_gate.py) checks realism,

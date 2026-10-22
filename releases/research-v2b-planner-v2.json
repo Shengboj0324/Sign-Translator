@@ -1,0 +1,17 @@
+{
+ "name": "sign-translator-research",
+ "version": "2026-10-22-v2b-planner-v2",
+ "planner": {"key": "training-runs/gloss-planner-asllrp-v2/checkpoints/step-00008000.pt",
+             "sha256": "7e63b03416c56669982a1d14fcd8ff0fd4cf8b38d184adf4ba9e5cc921ade06a"},
+ "generator": {"checkpoint": {"key": "training-runs/tokens-rvq-d0b-prior-loci-subset-v1-r2/checkpoints/step-00005000.pt",
+                              "sha256": "7b18e84783bf6a4ba6fff4300b46653eae9c5d66bffb6c22fcfabb8b43c03db1"},
+               "manifest_sha256": "40572031dd8bd8e1f559c06d27af8ba084915bf4d56cb333f57173c217dcabd9",
+               "condition": "english", "guidance": 1.0,
+               "part_temperature": {"body": 1.2, "left_hand": 1.2, "right_hand": 1.2, "face": 1.0}},
+ "fps": 24.0,
+ "seconds_per_sign": 0.57,
+ "provenance": [
+  {"name": "How2Sign (two-view subset)", "licence": "CC BY-NC 4.0", "research_only": false, "non_commercial": true},
+  {"name": "ASLLRP / DAI 2 continuous (planner)", "licence": "ASLLRP Sign Bank Data Terms of Use", "research_only": true}
+ ]
+}

@@ -220,3 +220,36 @@ proved on controllable synthetic inputs; real engines drop in behind the same
 numerical-equivalence gate. Innovations: the display-commit monotonicity certificate,
 the backpressure-bounded-latency theorem, the numerically-certified optimization gate
 with online-softmax exactness, and the shape-stability guard.
+
+## 12. Serving path (2026-10-22): pinned releases, the service, HTTP, measured latency
+
+The mathematics above now has a runnable path:
+
+- `signtranslator/serving/release.py` — a **release** pins every model by store key and SHA-256 (planner, generator
+  and the generator's training manifest, conditioning and sampling settings) and lists its training provenance. The
+  licence gate is computed, not asserted: `public_release_allowed` is false while any corpus is research-only
+  (ASLLRP/DAI); `commercial_use_allowed` is also false while any is non-commercial (How2Sign, CC BY-NC 4.0).
+- `signtranslator/serving/service.py` — `TranslatorService` fetches and hash-checks each pinned model once, then for
+  each sentence: plan (gloss planner, beam 4) -> generate (plan line or English, len(glosses) x 0.57 s) -> optional
+  skeleton + face preview video, each stage timed; reproducible per seed; the generator runs under one lock.
+- `scripts/serve_translator.py` — HTTP: `GET /health`, `GET /release`, `POST /translate`. Backpressure is a bounded,
+  non-blocking semaphore (`--max-inflight`): the next request gets `503` + `Retry-After` instead of an unbounded queue
+  (§3's bounded-latency theorem). Bodies over 16 kB get 413, bad input gets 400. A research-only release binds only to
+  loopback unless `--research-use` is passed.
+- `scripts/benchmark_service.py` — per-stage latency distribution on real sentences.
+
+**Measured** (release `releases/research-v2b-planner-v2.json`: v2b generator + planner v2; Mac CPU, 4 threads; 8
+ASLLRP val sentences, warm; `releases/research-v2b-planner-v2.benchmark-mac-cpu.json`):
+
+| Stage | p50 | p95 |
+|---|---|---|
+| plan | 17 ms | 28 ms |
+| generate | 870 ms | 1,234 ms |
+| render (preview) | 321 ms | 436 ms |
+| total | 1,216 ms | 1,699 ms |
+
+Generation runs at 0.4x real time (p95 0.5x): a sentence is generated faster than it is signed. Live check: "Did
+you finish your homework?" -> plan `[yn IX-2p FINISH HOMEWORK IX-2p ]` (yes/no marking, sentence-final index), 55
+frames, 1.8 s end to end with video. Not yet done: ONNX/TensorRT export and GPU numbers (after the next generator is
+selected), streaming partial output, and the avatar renderer (item 5) in place of the preview.
+

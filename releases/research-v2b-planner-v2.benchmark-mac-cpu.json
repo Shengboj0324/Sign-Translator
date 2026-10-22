@@ -1,0 +1,107 @@
+{
+ "release": "sign-translator-research",
+ "version": "2026-10-22-v2b-planner-v2",
+ "release_sha256": "30421351d9307e61a9bc789b491edede6eded86296166469f48c08ee3670bf3d",
+ "device": "cpu",
+ "torch": "2.13.0",
+ "threads": 4,
+ "machine": "arm64",
+ "sentences": 8,
+ "render": true,
+ "stages_ms": {
+  "generate": {
+   "n": 8,
+   "p50": 870.1,
+   "p95": 1233.7,
+   "max": 1280.1,
+   "mean": 932.7
+  },
+  "plan": {
+   "n": 8,
+   "p50": 17.2,
+   "p95": 28.2,
+   "max": 29.2,
+   "mean": 18.0
+  },
+  "render": {
+   "n": 8,
+   "p50": 321.4,
+   "p95": 436.0,
+   "max": 463.2,
+   "mean": 327.0
+  },
+  "total": {
+   "n": 8,
+   "p50": 1216.0,
+   "p95": 1699.3,
+   "max": 1778.4,
+   "mean": 1285.0
+  }
+ },
+ "real_time_factor": {
+  "n": 8,
+  "p50": 0.4,
+  "p95": 0.5,
+  "max": 0.5,
+  "mean": 0.4
+ },
+ "examples": [
+  {
+   "text": "A boy is making a bonfire.",
+   "plan_line": "[topic BOY+ ] MAKE alt.FIRE",
+   "glosses": [
+    "BOY+",
+    "MAKE",
+    "alt.FIRE"
+   ],
+   "seconds": 1.71,
+   "frames": 41,
+   "timings_ms": {
+    "plan": 22.4,
+    "generate": 779.3,
+    "render": 246.1,
+    "total": 1054.5
+   },
+   "state_bytes": 106010,
+   "video_bytes": 132660
+  },
+  {
+   "text": "A boy maintained the bonfire.",
+   "plan_line": "[topic BOY+ ] PUT-AWAY+ alt.FINCE",
+   "glosses": [
+    "BOY+",
+    "PUT-AWAY+",
+    "alt.FINCE"
+   ],
+   "seconds": 1.71,
+   "frames": 41,
+   "timings_ms": {
+    "plan": 29.2,
+    "generate": 774.5,
+    "render": 287.3,
+    "total": 1097.6
+   },
+   "state_bytes": 106006,
+   "video_bytes": 139761
+  },
+  {
+   "text": "Are the clothes really on sale?",
+   "plan_line": "[yn DRESS/CLOTHES IX-3p>1 #SALE ]",
+   "glosses": [
+    "DRESS/CLOTHES",
+    "IX-3p",
+    "#SALE"
+   ],
+   "seconds": 1.71,
+   "frames": 41,
+   "timings_ms": {
+    "plan": 8.9,
+    "generate": 747.4,
+    "render": 257.4,
+    "total": 1020.6
+   },
+   "state_bytes": 106047,
+   "video_bytes": 136416
+  }
+ ]
+}
