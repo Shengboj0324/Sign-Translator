@@ -50,3 +50,44 @@ def test_rotating_the_chest_rotates_the_whole_upper_body_rigidly():
     rest_joints, rest_positions, rest_bones = skeleton_positions(rest_state())
     frames = render_preview_frames(rest_positions, rest_joints, rest_bones, panel=64)
     assert len(frames) == 3 and frames[0].shape == (128, 128, 3)
+
+
+def _hand_landmark_state():
+    """Both hands from mirror-image 21-point landmarks through the project's own adapter."""
+    from signtranslator.data_engineering.video_landmarks import ClipLandmarks, canonical_from_landmarks
+    world = np.zeros((1, 33, 3))
+    for index, point in ((11, (.18, .45, 0.)), (12, (-.18, .45, 0.)), (13, (.3, .25, .05)), (14, (-.3, .25, .05)),
+                         (15, (.3, .3, .3)), (16, (-.3, .3, .3)), (23, (.1, 0., 0.)), (24, (-.1, 0., 0.))):
+        world[0, index] = point
+    visible = np.zeros((1, 33), bool)
+    visible[0, [11, 12, 13, 14, 15, 16, 23, 24]] = True
+    left = np.zeros((21, 3))
+    left[0] = (.3, .3, .3)
+    for finger, (dx, start) in enumerate(((.035, 1), (.02, 5), (0., 9), (-.02, 13), (-.04, 17))):
+        for k in range(4):
+            left[start + k] = left[0] + (dx * (1.3 if finger == 0 else 1.), .02 + .07 * (finger > 0) + .025 * k, .01 * k)
+    right = left * [-1, 1, 1]                                    # the mirror image across the body midline
+    hands = {"Left": (left[None], np.ones(1, bool)), "Right": (right[None], np.ones(1, bool))}
+    clip = ClipLandmarks(times=np.zeros(1), pose_world=np.zeros((1, 33, 3)), pose_visibility=np.ones((1, 33)),
+                         pose_image=np.zeros((1, 33, 2)), pose_found=np.ones(1, bool),
+                         hands_world=np.zeros((1, 0, 21, 3)), hands_image=np.zeros((1, 0, 21, 2)),
+                         hands_found=np.zeros((1, 0), bool), blendshapes=np.zeros((1, 0)), blendshape_names=(),
+                         face_matrix=np.eye(4)[None], face_found=np.zeros(1, bool))
+    state, _ = canonical_from_landmarks(clip, sample_id="s", source_id="src", source_sha256="a" * 64, clock_id="c",
+                                        inference_method="synthetic landmarks",
+                                        points=dict(world=world, visible=visible, hands=hands))
+    return state, {"Left": left, "Right": right}
+
+
+def test_knuckle_bases_lie_on_the_landmark_side_for_both_hands():
+    state, landmarks = _hand_landmark_state()
+    joints, positions, _ = skeleton_positions(state)
+    at = {j: positions[0, i] for i, j in enumerate(joints)}
+    for side, points in landmarks.items():
+        index_side = points[5] - points[17]                       # landmark index MCP minus pinky MCP
+        assert (at[f"{side}HandIndex1"] - at[f"{side}HandPinky1"]) @ index_side > 0, side
+        assert (at[f"{side}HandThumb1"] - at[f"{side}HandPinky1"]) @ index_side > 0, side
+        # the two hands are mirror images of each other, knuckles included
+    for finger in ("Thumb", "Index", "Middle", "Ring", "Pinky"):
+        np.testing.assert_allclose(at[f"RightHand{finger}1"] - at["RightHand"],
+                                   (at[f"LeftHand{finger}1"] - at["LeftHand"]) * [-1, 1, 1], atol=1e-9)

@@ -333,13 +333,15 @@ closes the eye on the viewer's right.
   median 14–20° from frontal (the head appears tilted back), which is rendered as is.
 * `root_translation`, `head_translation` and `contact` are not rendered (the avatar's
   root is fixed in front of a fixed camera).
-* `canonical_skeleton.skeleton_positions` places the *right* hand's knuckle bases
-  mirrored in the hand frame (index base on the pinky side: `sign * x` with `sign = −1`,
-  while the hand frame's x runs pinky→index for both hands; measured cosine −0.986 vs
-  +0.986 for the left hand on 10036884). Bone directions are unaffected (they are what
-  this stage measures), but right-hand fingertip positions in that function are offset;
-  it is used by `grammar_motion/frames.py`, `render_text_to_motion_samples.py` and
-  `build_human_eval_packet.py`. Not changed here.
+* Found and fixed here: `canonical_skeleton.skeleton_positions` placed the *right* hand's
+  knuckle bases mirrored (`sign * x` with `sign = −1`, while the hand frame's x runs
+  pinky→index MCP on both hands). Independent check against MediaPipe *pose* landmarks
+  (BlazePose index/pinky knuckles 19/17 and 20/18, stored per clip next to the states), expressed
+  in each clip's Hand joint frame over six ASLLRP clips: the index knuckle lies on +x in
+  88–99% of right-hand frames and 65–97% of left-hand frames, whereas the skeleton put the
+  right index base on −x in 100% of frames. Bone directions were never affected; knuckle
+  bases and therefore fingertip positions of the right hand were (used by
+  `grammar_motion/frames.py`, `render_text_to_motion_samples.py`, `build_human_eval_packet.py`).
 * Workbench inspection render; not a qualified avatar appearance, and no claim of
   signing fidelity. `accepted_provenance` stays false.
 
