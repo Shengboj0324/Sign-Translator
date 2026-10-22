@@ -109,11 +109,16 @@ def write_frame_bundle(rig: MakeHumanRig, state: MultichannelMotion,
 
 def encode_timestamped_video(frames: Iterable[np.ndarray], clock: Sequence[float],
                              path: Path, *, time_base: Fraction = DEFAULT_TIME_BASE,
-                             codec: str = "libx264") -> dict:
+                             codec: str = "libx264", quality: str = "lossless") -> dict:
     """Encode RGB frames with PTS taken from the clock; refuse any reordering.
 
-    Returns the ticks, time base, absolute clock origin and exact error bound.
+    ``quality='lossless'`` (default) is H.264 4:4:4 at CRF 0. ``'review'`` is H.264
+    4:2:0 at CRF 16, which common players (QuickTime, browsers) decode; timestamps
+    are identical either way. Returns the ticks, time base, absolute clock origin
+    and exact error bound.
     """
+    if quality not in ("lossless", "review"):
+        raise ValueError("quality must be 'lossless' or 'review'")
     import av
 
     ticks = presentation_timestamps(clock, time_base=time_base)
@@ -128,11 +133,14 @@ def encode_timestamped_video(frames: Iterable[np.ndarray], clock: Sequence[float
     with av.open(str(path), mode="w") as container:
         stream = container.add_stream(codec, rate=None)
         stream.width, stream.height = width, height
-        stream.pix_fmt = "yuv444p" if codec == "libx264" else "yuv420p"
+        lossless = codec == "libx264" and quality == "lossless"
+        stream.pix_fmt = "yuv444p" if lossless else "yuv420p"
         stream.time_base = time_base
         stream.codec_context.time_base = time_base
-        if codec == "libx264":
+        if lossless:
             stream.options = {"crf": "0", "preset": "veryslow"}
+        elif codec == "libx264":
+            stream.options = {"crf": "16", "preset": "slow"}
         for tick, image in zip(ticks, frames):
             frame = av.VideoFrame.from_ndarray(image, format="rgb24")
             frame.pts = tick
@@ -143,6 +151,7 @@ def encode_timestamped_video(frames: Iterable[np.ndarray], clock: Sequence[float
             container.mux(packet)
     bound = timestamp_error_bound(clock, ticks, time_base)
     return dict(ticks=ticks, time_base=str(time_base), clock_origin_seconds=float(clock[0]),
+                codec=codec, pixel_format="yuv444p" if (codec == "libx264" and quality == "lossless") else "yuv420p",
                 max_timestamp_error_seconds=float(bound),
                 max_timestamp_error_exact=str(bound), frames=len(ticks))
 
