@@ -203,6 +203,15 @@ Read-only review: no download yet. Facts are from the pages and the licence page
 - Measured on Mac CPU: p50 1.2 s end to end, with generation at 0.4× real time.
 - The release is research-only, because the planner is trained on ASLLRP.
 
+**Retrieval evaluator v2 result (2026-10-22, 16:20 PDT).**
+- Setup: frozen all-MiniLM-L6-v2 sentence embeddings with a trained projection (`retrieval-minilm-full-v1`), on the
+  same data as v1.
+- Result: best R@3 **0.256** at step 3,000. v1 (byte text encoder) had 0.264, and chance is 0.094.
+- Overfitting moved to the motion side: train batch top-1 0.82 while val R@3 fell to 0.20 by step 7,000. The limit
+  is the motion encoder on ~20k clips, not the text encoder.
+- v1 stays the instrument. Next levers: motion-side augmentation (speed, mirroring-safe noise, channel dropout) and a
+  smaller or more regularised motion tower.
+
 ## Acceptance rules declared before results (2026-10-22, PDT afternoon)
 
 **Task No.1 review (on top of the declared exit gate).** The exit gate (scripts/exit_gate.py) checks realism,
