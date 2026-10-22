@@ -18,6 +18,13 @@ Deterministic, so they are equally available in training and at generation time:
 
 Discourse openers ("so", "and", "now", "okay", ...) are skipped before the first-word
 tests, so "So what do you do next?" is a wh-question.
+
+A **plan line** (``planning.plan_text``: ``[topic MOTHER ] IX-3p>1 [neg NOT LIKE ]``) is not English: its features
+come from its marker tags (``[wh`` / ``[yn`` / ``[rhq`` -> the three question features, ``[neg`` -> negation,
+``[cond`` -> conditional), ``third_person`` from its distinct locus slots and ``deixis`` from its index signs
+(``IX``). A line is a plan line when it carries a marker tag or locus arrow, or when it does not end in sentence
+punctuation and at least half its words are upper-case glosses (How2Sign: 0 of 24,496 sentences; ASLLRP plans: 2,402 of 2,403
+lines, the other having no marker or locus).
 """
 from __future__ import annotations
 
@@ -47,7 +54,34 @@ def words(sentence: str) -> list[str]:
     return _WORD.findall(sentence.lower().replace("’", "'"))
 
 
+_PLAN_TAG = re.compile(r"(?:^|\s)\[(topic|wh|yn|rhq|neg|cond|rel)(?=\s)")
+_ARROW = re.compile(r"(?:^|\s)(?:[1-4]>\S|\S+>[1-4](?=\s|$))")
+
+
+def is_plan_line(sentence: str) -> bool:
+    if _PLAN_TAG.search(sentence) or _ARROW.search(sentence):
+        return True
+    if re.search(r"[.?!]\W*$", sentence.strip()):        # English ends in sentence punctuation; a plan never does
+        return False
+    tokens = [t for t in sentence.split() if any(c.isalpha() for c in t)]
+    if not tokens:
+        return False
+    upper = sum(sum(c.isupper() for c in t) > sum(c.islower() for c in t) for t in tokens)
+    return upper / len(tokens) >= .5 and (len(tokens) > 1 or len(tokens[0]) > 1)
+
+
+def plan_features(line: str) -> dict:
+    tags = set(_PLAN_TAG.findall(line))
+    slots = {int(m) for m in re.findall(r"(?:^|\s)([1-4])>|>([1-4])(?=\s|$)", line) for m in m if m}
+    index = sum(1 for t in line.split() if re.match(r"^(?:[1-4]>)?\(?\d?h?\)?IX\b", t))
+    return dict(wh_question="wh" in tags, yes_no_question="yn" in tags, other_question="rhq" in tags,
+                negation="neg" in tags, conditional="cond" in tags, reported_speech=False,
+                third_person=min(len(slots), 4), deixis=min(index, 4))
+
+
 def sentence_features(sentence: str) -> dict:
+    if is_plan_line(sentence):
+        return plan_features(sentence)
     w = words(sentence)
     question = sentence.strip().endswith("?")
     content = [x for x in w if x not in OPENERS]
@@ -82,4 +116,4 @@ def token_features(tokens, *, pad: int = 256):
     return torch.tensor(np.array(rows), dtype=torch.float32, device=tokens.device)
 
 
-__all__ = ["FEATURES", "sentence_features", "feature_vector", "token_features", "words"]
+__all__ = ["FEATURES", "is_plan_line", "plan_features", "sentence_features", "feature_vector", "token_features", "words"]

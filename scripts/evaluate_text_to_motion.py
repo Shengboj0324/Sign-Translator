@@ -97,6 +97,15 @@ def load_retrieval(store, key: str, manifest_sha256: str):
     return model.eval()
 
 
+def at_rate(state, fps: float):
+    """``state`` resampled to ``fps`` when its median rate differs by more than 1% (``pose.resample``)."""
+    rate = 1. / float(np.median(np.diff(state.timestamps))) if len(state.timestamps) > 1 else fps
+    if abs(rate - fps) <= .01 * fps:
+        return state
+    from signtranslator.pose.resample import resample_motion
+    return resample_motion(state, fps)
+
+
 def blanked(states):
     """The same clips with every channel removed: only their durations remain (the evaluator's control)."""
     from dataclasses import replace
@@ -141,6 +150,16 @@ def main(argv=None) -> int:
                         help="seconds: centred SO(3) moving average of the generated head rotation (postprocess.py)")
     parser.add_argument("--retrieval-key", help="frozen text-motion retrieval checkpoint: adds R-precision of the "
                                                  "generated motion and of the real motion on the same clips")
+    parser.add_argument("--retrieval-manifest-sha256",
+                        help="the manifest the retrieval model was trained on, when it is not --manifest-sha256")
+    parser.add_argument("--corpus", help="mixed manifests: evaluate only records of this corpus")
+    parser.add_argument("--condition", choices=("text", "english"), default="text",
+                        help="what the generator is conditioned on: the record's text (English or a plan line), or "
+                             "its English (the pre-plan baseline on plan records)")
+    parser.add_argument("--checkpoint-manifest-sha256",
+                        help="the manifest the generator was trained on, when it is not --manifest-sha256")
+    parser.add_argument("--fps", type=float, help="resample references to this rate and generate at it (the rate the "
+                                                  "generator was trained at, for mixed-rate corpora)")
     parser.add_argument("--save-generated", help="store prefix for the generated states (<prefix>/<guidance>/<sign>.npz)")
     args = parser.parse_args(argv)
     store = make_store(args.store)
@@ -151,16 +170,24 @@ def main(argv=None) -> int:
     temperature = args.temperature
     if args.part_temperature:
         temperature = {k: float(v) for k, v in (item.split("=") for item in args.part_temperature.split(","))}
-    label, trained, sample = load_generator(store, args.checkpoint_key, args.manifest_sha256, args.device,
+    label, trained, sample = load_generator(store, args.checkpoint_key, args.checkpoint_manifest_sha256 or args.manifest_sha256,
+                                            args.device,
                                             temperature=temperature, top_k=args.top_k)
-    records = sorted((r for r in manifest["records"] if r["partition"] == args.partition and r.get("text")),
+    records = sorted((r for r in manifest["records"] if r["partition"] == args.partition and r.get("text")
+                      and (args.corpus is None or r.get("corpus") == args.corpus)),
                      key=lambda r: r["sign"])[:args.limit]
+    if not records:
+        raise SystemExit("no records to evaluate")
     references = [load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]) for r in records]
+    if args.fps:
+        references = [at_rate(r, args.fps) for r in references]
     channels = tuple(c for c in ("body", "left_hand", "right_hand", "head_rotation", "root_translation",
                                  "head_translation", "left_gaze", "right_gaze") if c in trained)
     scales = [float(g) for g in args.guidance.split(",")] if label != "regression" else [None]
-    retrieval = load_retrieval(store, args.retrieval_key, args.manifest_sha256) if args.retrieval_key else None
-    texts = [r["text"] for r in records]
+    retrieval = (load_retrieval(store, args.retrieval_key, args.retrieval_manifest_sha256 or args.manifest_sha256)
+                 if args.retrieval_key else None)
+    # the generator is conditioned on the record's text (English, or a plan line); meaning is judged against English
+    texts = [r.get("english") or r["text"] for r in records]
     reference_retrieval = (dict(real=retrieval_scores(retrieval, references, texts),
                                 duration_only=retrieval_scores(retrieval, blanked(references), texts))
                            if retrieval else None)
@@ -170,7 +197,8 @@ def main(argv=None) -> int:
         for record, reference in zip(records, references):
             fps = 1. / float(np.median(np.diff(reference.timestamps)))
             seconds = float(reference.timestamps[-1] - reference.timestamps[0]) + 1. / fps
-            out = sample(record["text"], fps, seconds, scale if scale is not None else 1., args.steps, args.seed)
+            condition = record["text"] if args.condition == "text" else (record.get("english") or record["text"])
+            out = sample(condition, fps, seconds, scale if scale is not None else 1., args.steps, args.seed)
             if args.head_smoothing > 0 and "head_rotation" in out.channels:
                 from signtranslator.generation.postprocess import smooth_rotation_channel
                 out = smooth_rotation_channel(out, "head_rotation", args.head_smoothing)
@@ -196,7 +224,9 @@ def main(argv=None) -> int:
     report = dict(schema_version=1, checkpoint_key=args.checkpoint_key, generator=label,
                   retrieval_key=args.retrieval_key, saved_generated=args.save_generated,
                   temperature=temperature, top_k=args.top_k, head_smoothing=args.head_smoothing,
-                  manifest_sha256=args.manifest_sha256, partition=args.partition, clips=len(records),
+                  manifest_sha256=args.manifest_sha256, partition=args.partition, corpus=args.corpus, fps=args.fps,
+                  condition=args.condition,
+                  clips=len(records),
                   steps=args.steps, results=results)
     if args.output_key:
         store.put(args.output_key, json.dumps(report, indent=2, sort_keys=True, default=float).encode())

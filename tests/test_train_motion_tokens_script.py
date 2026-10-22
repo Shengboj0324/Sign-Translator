@@ -310,3 +310,58 @@ def test_code_statistics_measure_repeat_rate_entropy_and_rate():
     assert stats["repeat_rate"] == [0., 0.] and abs(stats["unigram_rate_nats_per_s"] - 20 * np.log(4)) < 1e-9
     masked = (np.array([[0], [1], [0], [1]]), np.array([True, False, False, True]))     # no valid adjacent pair
     assert code_statistics([masked], codebook=2, steps_per_second=1.)["repeat_rate"] == [0.]
+
+
+def test_a_prior_warm_starts_from_another_prior_and_trains_at_a_fixed_rate(tmp_path, monkeypatch, capsys):
+    import io as _io
+    import torch
+    monkeypatch.setenv("SIGN_CACHE_DIR", str(tmp_path / "cache"))
+    digest = store_with_manifest(tmp_path / "store")
+    script = load_script()
+    store = tmp_path / "store"
+    base = ["--store", f"dir:{store}", "--manifest-key", "manifest.json", "--manifest-sha256", digest,
+            "--batch-size", "2", "--warmup", "1", "--checkpoint-every", "2", "--workers", "0",
+            "--trained-channels", "body,head_rotation,face", "--architecture", "rvq"]
+    assert script.main(base + ["--stage", "tokenizer", "--run", "tok", "--hidden", "16", "--code-dim", "8",
+                               "--codebook", "16", "--stages", "2", "--down-layers", "1", "--steps", "2"]) == 0
+    key = "training-runs/tok/checkpoints/step-00000002.pt"
+    sha = hashlib.sha256((store / key).read_bytes()).hexdigest()
+    prior = base + ["--stage", "prior", "--tokenizer-key", key, "--tokenizer-sha256", sha, "--d-model", "32",
+                    "--heads", "4", "--text-layers", "1", "--token-layers", "1", "--depth-layers", "1",
+                    "--feedforward", "64", "--steps", "2"]
+    assert script.main(prior + ["--run", "first"]) == 0
+    init = "training-runs/first/checkpoints/step-00000002.pt"
+    init_sha = hashlib.sha256((store / init).read_bytes()).hexdigest()
+    with pytest.raises(SystemExit, match="differs"):
+        script.main(prior + ["--run", "bad", "--init-key", init, "--init-sha256", "0" * 64])
+    with pytest.raises(SystemExit, match="different kind or config"):
+        script.main([a if a != "32" else "16" for a in prior] + ["--run", "bad2", "--init-key", init,
+                                                                  "--init-sha256", init_sha])
+    capsys.readouterr()
+    assert script.main(prior + ["--run", "second", "--init-key", init, "--init-sha256", init_sha, "--fps", "30"]) == 0
+    assert f"initialised from {init}" in capsys.readouterr().out
+    run = json.loads((store / "training-runs/second/run.json").read_text())
+    assert run["args"]["init_key"] == init and run["args"]["fps"] == 30
+    # the tokenizer's manifest must be the one named (here a wrong one is named)
+    with pytest.raises(SystemExit, match="not a tokenizer trained on this manifest"):
+        script.main(prior + ["--run", "third", "--tokenizer-manifest-sha256", "f" * 64])
+
+
+def test_the_dataset_resamples_states_to_a_fixed_rate(tmp_path, monkeypatch):
+    import numpy as np
+    from signtranslator.data.text_motion_dataset import DirectoryStore, TextMotionDataset
+    from signtranslator.data_engineering.corpus_manifest import ContentCache, load_manifest
+    digest = store_with_manifest(tmp_path / "store")
+    path = tmp_path / "store" / "manifest.json"
+    raw = path.read_bytes()
+    (tmp_path / "m.json").write_bytes(raw if raw.endswith(b"\n") else raw + b"\n")
+    manifest = load_manifest(tmp_path / "m.json", expected_sha256=digest)
+    store = DirectoryStore(tmp_path / "store")
+    cache = ContentCache(tmp_path / "cache", 2 ** 26)
+    kept = TextMotionDataset(manifest, partition="train", cache=cache, fetch=store.get)
+    native = 1 / np.median(np.diff(kept[0][1].timestamps))
+    moved = TextMotionDataset(manifest, partition="train", cache=cache, fetch=store.get, fps=native * 1.5)
+    rate = 1 / np.median(np.diff(moved[0][1].timestamps))
+    assert abs(rate - native * 1.5) < 1e-6 * native
+    same = TextMotionDataset(manifest, partition="train", cache=cache, fetch=store.get, fps=native * 1.005)
+    assert len(same[0][1].timestamps) == len(kept[0][1].timestamps)       # within 1%: left at its own rate

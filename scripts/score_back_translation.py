@@ -24,7 +24,7 @@ from signtranslator.data_engineering.corpus_manifest import load_manifest  # noq
 from signtranslator.generation.motion_to_text import (MotionToText, MotionToTextConfig,  # noqa: E402
                                                       WordVocabulary, corpus_bleu)
 from signtranslator.pose.multichannel import MultichannelMotion  # noqa: E402
-from evaluate_text_to_motion import blanked, load_state  # noqa: E402
+from evaluate_text_to_motion import at_rate, blanked, load_state  # noqa: E402
 from train_text_to_motion import make_store  # noqa: E402
 
 
@@ -59,6 +59,9 @@ def main(argv=None) -> int:
     parser.add_argument("--manifest-sha256", required=True)
     parser.add_argument("--translator-key", required=True, help="checkpoint of train_motion_to_text.py (best.json)")
     parser.add_argument("--generated", required=True, nargs="+", help="prefixes written by --save-generated")
+    parser.add_argument("--translator-manifest-sha256",
+                        help="the manifest the translator was trained on, when it is not --manifest-sha256")
+    parser.add_argument("--fps", type=float, help="resample the real references to this rate (as the evaluation did)")
     parser.add_argument("--beam", type=int, default=4)
     parser.add_argument("--output-key")
     args = parser.parse_args(argv)
@@ -67,7 +70,7 @@ def main(argv=None) -> int:
         path = Path(t) / "m.json"; path.write_bytes(store.get(args.manifest_key) + b"\n")
         manifest = load_manifest(path, expected_sha256=args.manifest_sha256)
     by_sign = {r["sign"]: r for r in manifest["records"]}
-    model, vocabulary = load_translator(store, args.translator_key, args.manifest_sha256)
+    model, vocabulary = load_translator(store, args.translator_key, args.translator_manifest_sha256 or args.manifest_sha256)
     out = {}
     for prefix in args.generated:
         groups = {}
@@ -84,7 +87,9 @@ def main(argv=None) -> int:
                     generated.append(MultichannelMotion.load(p, expected_sha256=hashlib.sha256(payload).hexdigest()))
             references = [load_state(store, by_sign[s]["continuous"]["state_key"], by_sign[s]["continuous"]["state_sha256"])
                           for s in signs]
-            texts = [by_sign[s]["text"] for s in signs]
+            if args.fps:
+                references = [at_rate(r, args.fps) for r in references]
+            texts = [by_sign[s].get("english") or by_sign[s]["text"] for s in signs]    # plan records: their English
             out[prefix][tag] = dict(generated=bleu_of(model, vocabulary, generated, texts, beam=args.beam),
                                     real=bleu_of(model, vocabulary, references, texts, beam=args.beam),
                                     blank=bleu_of(model, vocabulary, blanked(references), texts, beam=args.beam))

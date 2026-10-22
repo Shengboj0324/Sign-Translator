@@ -440,3 +440,16 @@ def test_indicating_paths_run_between_two_loci():
     paths = indicating_paths(hand, np.ones(15, bool), [(0, 10), (10, 15)], L)
     assert len(paths) == 1 and paths[0]["source"] == 0 and paths[0]["goal"] == 1 and paths[0]["direction_deg"] < 1e-6
     assert indicating_paths(hand, np.ones(15, bool), [(0, 10)], L[:1]) == []
+
+
+def test_plan_lines_take_their_features_from_marker_tags_not_english_words():
+    from signtranslator.grammar_motion.text import is_plan_line, sentence_features
+    f = sentence_features("[topic (5)POSS-1p FATHER ] IX-3p>1 LAZY IX-3p>1 [neg REFUSE MOW+ REFUSE ]")
+    assert f["negation"] and not f["wh_question"] and f["third_person"] == 1 and f["deixis"] == 2
+    assert sentence_features("[yn IX-2p FINISH ]")["yes_no_question"]
+    assert sentence_features("[wh WHO ] 1>GIVE>2 BOOK")["wh_question"]
+    assert sentence_features("[rhq WHY ] TIRED")["other_question"]
+    assert not sentence_features("[topic WHO KNOW ] NOT")["wh_question"]      # words inside a plan are glosses
+    for english in ("DAVID CLEMEN: Hi.", "O.K.", "Do you like it?", "I"):
+        assert not is_plan_line(english)
+    assert sentence_features("Do you like it?")["yes_no_question"]

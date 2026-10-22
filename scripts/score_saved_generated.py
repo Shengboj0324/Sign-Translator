@@ -24,7 +24,7 @@ from signtranslator.generation.postprocess import smooth_rotation_channel  # noq
 from signtranslator.generation.signing_space import location_errors  # noqa: E402
 from signtranslator.grammar_motion.evaluation import grammar_comparison  # noqa: E402
 from signtranslator.pose.multichannel import MultichannelMotion  # noqa: E402
-from evaluate_text_to_motion import load_state  # noqa: E402
+from evaluate_text_to_motion import at_rate, load_state  # noqa: E402
 from train_text_to_motion import make_store  # noqa: E402
 
 CHANNELS = ("body", "left_hand", "right_hand", "head_rotation", "root_translation", "head_translation", "left_gaze",
@@ -51,6 +51,7 @@ def main(argv=None) -> int:
     parser.add_argument("--manifest-sha256", required=True)
     parser.add_argument("--generated", required=True, help="a --save-generated prefix")
     parser.add_argument("--head-smoothing", type=float, default=0.)
+    parser.add_argument("--fps", type=float, help="resample the references to this rate (as the evaluation did)")
     parser.add_argument("--output-key", required=True)
     args = parser.parse_args(argv)
     store = make_store(args.store)
@@ -64,6 +65,8 @@ def main(argv=None) -> int:
                      for _, s in pairs]
         records = [by_sign[sign] for sign, _ in pairs]
         references = [load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]) for r in records]
+        if args.fps:
+            references = [at_rate(r, args.fps) for r in references]
         channels = tuple(c for c in CHANNELS if c in generated[0].channels and generated[0].channels[c].valid.any())
         name = f"{tag} head-smoothing {args.head_smoothing:g}"
         results[name] = compare(generated, references, channels)

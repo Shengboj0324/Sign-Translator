@@ -141,7 +141,21 @@ Read-only review: no download yet. Facts are from the pages and the licence page
 - `scripts/build_asllrp_plan_manifest.py`: plan -> motion manifest v2 (2,403 utterances, train 1,652 / val 412 /
   test 339, SHA `b0187725…`).
 - `scripts/translate_english.py`: English -> planner -> plan line -> plan-trained generator -> motion.
-- Next: train the generator on the plan manifest from the full-corpus tokenizer once task No.1's exit gate passes.
+- Plan-conditioned generator stage ready (`runpod/fleet/post_gate_plan_generator.sh`, starts after task No.1's exit
+  gate):
+  - Training: the full-corpus RVQ prior is warm-started (`train_motion_tokens.py --init-key`) on one mixed manifest,
+    How2Sign English plus ASLLRP plan lines (`build_mixed_text_manifest.py`), with the full-corpus tokenizer. All
+    states are resampled to 24 fps (`--fps`; ASLLRP is 30, and the priors count time in frames).
+  - Plan lines take their grammar features from their marker tags, not English words
+    (`grammar_motion.text.is_plan_line`). No How2Sign sentence is misread; 2,402 of 2,403 plans are recognised.
+  - Evaluation on ASLLRP val: the plan generator vs the English-conditioned full prior on the same utterances.
+    Retrieval and back-translation are judged against the English, and both systems are checked against the plan's
+    markers.
+  - Evaluation on How2Sign val checks for any regression on English input.
+- ASLLRP data quality: DAI 2 has one camera view per utterance (cam1, 640×480, upscaled to 1280×960). The
+  better-tracked hand's validity is 0.94 for Cory and 0.73 for Rachel (train), but 0.65 for Jonathan (val) and
+  about 0.6 for Ben (test). Invalid frames are masked in training. Human-study utterances need hand coverage ≥ 0.7,
+  so the recorded reference stays a fair upper bound.
 
 **Item 3 — evaluation instruments**
 - Back-translator: training on the full corpus (pod C).

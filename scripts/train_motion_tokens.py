@@ -78,6 +78,12 @@ def main(argv=None) -> int:
     parser.add_argument("--run", required=True)
     parser.add_argument("--tokenizer-key", help="prior stage: stage 1 checkpoint")
     parser.add_argument("--tokenizer-sha256", help="prior stage: its SHA-256")
+    parser.add_argument("--tokenizer-manifest-sha256",
+                        help="prior stage: the manifest the tokenizer was trained on, when it is not --manifest-sha256 "
+                             "(e.g. the full-corpus tokenizer under a prior trained on a mixed manifest)")
+    parser.add_argument("--init-key", help="prior stage: warm-start from this prior checkpoint (EMA weights), same config")
+    parser.add_argument("--init-sha256", help="its SHA-256")
+    parser.add_argument("--fps", type=float, help="resample states whose rate differs from this (mixed-rate corpora)")
     parser.add_argument("--steps", type=int, default=50_000)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=3e-4)
@@ -118,10 +124,12 @@ def main(argv=None) -> int:
         manifest = load_manifest(path, expected_sha256=args.manifest_sha256)
     cache = ContentCache(Path(os.environ.get("SIGN_CACHE_DIR", tempfile.gettempdir())) / "sign-translator-cache",
                          args.cache_bytes)
-    train = TextMotionDataset(manifest, partition="train", cache=cache, fetch=store.get, max_seconds=args.max_seconds)
+    train = TextMotionDataset(manifest, partition="train", cache=cache, fetch=store.get, max_seconds=args.max_seconds,
+                              fps=args.fps)
     if not len(train):
         raise SystemExit("the manifest has no training records")
-    val = TextMotionDataset(manifest, partition="val", cache=cache, fetch=store.get, max_seconds=args.max_seconds)
+    val = TextMotionDataset(manifest, partition="val", cache=cache, fetch=store.get, max_seconds=args.max_seconds,
+                            fps=args.fps)
     tokenizer_kind, prior_kind = kinds(args.architecture)
     if args.stage == "tokenizer":
         motion = TextToMotionConfig(bindings=channel_bindings_from_state(train[0][1]),
@@ -142,8 +150,10 @@ def main(argv=None) -> int:
         if hashlib.sha256(payload).hexdigest() != args.tokenizer_sha256:
             raise SystemExit("the tokenizer checkpoint differs from --tokenizer-sha256")
         saved = torch.load(io.BytesIO(payload), map_location="cpu", weights_only=False)
-        if saved.get("kind") != tokenizer_kind or saved["manifest_sha256"] != args.manifest_sha256:
-            raise SystemExit("--tokenizer-key is not a tokenizer trained on this manifest")
+        if saved.get("kind") != tokenizer_kind or saved["manifest_sha256"] != (args.tokenizer_manifest_sha256
+                                                                              or args.manifest_sha256):
+            raise SystemExit("--tokenizer-key is not a tokenizer trained on this manifest (or on "
+                             "--tokenizer-manifest-sha256)")
         tokenizer_state = saved.get("ema") or saved["model"]       # the EMA weights, when the tokenizer has them
         if args.architecture == "vq":
             tokenizer = MotionVQ(MotionVQConfig.from_dict(saved["config"]))
@@ -185,6 +195,17 @@ def main(argv=None) -> int:
         torch.set_rng_state(state["torch_rng"].cpu())
         print(f"resumed {checkpoints[-1]} at step {step}", flush=True)
     else:
+        if args.init_key:
+            if args.stage != "prior" or not args.init_sha256:
+                raise SystemExit("--init-key is for the prior stage and needs --init-sha256")
+            payload = store.get(args.init_key)
+            if hashlib.sha256(payload).hexdigest() != args.init_sha256:
+                raise SystemExit("the --init-key checkpoint differs from --init-sha256")
+            init = torch.load(io.BytesIO(payload), map_location=device, weights_only=False)
+            if init.get("kind") != kind or init["config_sha256"] != config.sha256():
+                raise SystemExit("--init-key is a different kind or config of prior")
+            model.load_state_dict(init.get("ema") or init["model"])
+            print(f"initialised from {args.init_key} (step {init.get('step')})", flush=True)
         store.put(f"{prefix}/run.json", json.dumps(dict(kind=kind, config=config.to_dict(), config_sha256=config.sha256(),
                                                         manifest_key=args.manifest_key,
                                                         manifest_sha256=args.manifest_sha256, args=vars(args),

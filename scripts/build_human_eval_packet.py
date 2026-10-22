@@ -10,7 +10,9 @@ utterance is produced by every ``--system``:
 - ``LABEL=translate:KEY@SHA``: the full chain - the gloss planner (``--planner-run``) plans the English, the generator
   signs the predicted plan.
 
-Every system signs on the recorded utterance's clock (its duration and frame rate), so length is no cue. All videos are
+Every system signs for the recorded utterance's duration at ``--fps`` (24, the generators' training rate; the reference
+is resampled to it), so length is no cue. Only utterances whose recorded hands are well tracked
+(``--min-hand-coverage``) are used, so the reference is a fair upper bound (ASLLRP val/test hands are often lost). All videos are
 drawn the same way: the four-panel skeleton preview plus the face panel (``face_preview``), with invalid frames of any
 channel held from the nearest valid frame (for display only), so tracking dropouts do not reveal the recorded
 reference.
@@ -93,8 +95,14 @@ def render(state, path: Path, *, panel: int) -> int:
     return len(frames)
 
 
-def choose_utterances(records, partition: str, count: int, min_seconds: float, rng: random.Random) -> list[dict]:
-    """``count`` records of ``partition`` with an English sentence, a plan and a state, distinct sentences."""
+def hand_coverage(state) -> float:
+    """Fraction of frames on which the better-tracked hand is valid (any joint)."""
+    return max(float(state.channels[h].valid.any(axis=1).mean()) for h in ("left_hand", "right_hand"))
+
+
+def choose_utterances(records, partition: str, count: int | None, min_seconds: float, rng: random.Random) -> list[dict]:
+    """``count`` (all, when None: in random order) records of ``partition`` with an English sentence, a plan and a
+    state, distinct sentences."""
     pool, seen = [], set()
     for r in sorted(records, key=lambda r: r["sign"]):
         english = (r.get("english") or "").strip()
@@ -104,9 +112,11 @@ def choose_utterances(records, partition: str, count: int, min_seconds: float, r
         if english.lower() in seen:
             continue
         seen.add(english.lower()); pool.append(r)
+    rng.shuffle(pool)
+    if count is None:
+        return pool
     if len(pool) < count:
         raise SystemExit(f"only {len(pool)} usable utterances in {partition}")
-    rng.shuffle(pool)
     return sorted(pool[:count], key=lambda r: r["sign"])
 
 
@@ -122,6 +132,11 @@ def main(argv=None) -> int:
     parser.add_argument("--count", type=int, default=60, help="utterances (each signed by every system)")
     parser.add_argument("--min-seconds", type=float, default=1.5)
     parser.add_argument("--seed", type=int, help="private design seed; drawn at random and kept in the key if omitted")
+    parser.add_argument("--fps", type=float, default=24., help="every system signs, and the reference is shown, at this "
+                                                                 "rate (the generators' training rate)")
+    parser.add_argument("--min-hand-coverage", type=float, default=.7,
+                        help="keep utterances whose better-tracked hand is valid on at least this fraction of the "
+                             "recording, so the reference is a fair upper bound")
     parser.add_argument("--guidance", type=float, default=2.)
     parser.add_argument("--steps", type=int, default=50)
     parser.add_argument("--panel", type=int, default=240)
@@ -137,19 +152,30 @@ def main(argv=None) -> int:
     if any(s["kind"] == "translate" for s in systems) and not args.planner_run:
         raise SystemExit("translate: systems need --planner-run")
     from train_text_to_motion import make_store
-    from evaluate_text_to_motion import load_generator, load_state
+    from evaluate_text_to_motion import at_rate, load_generator, load_state
     store = make_store(args.store)
     with tempfile.TemporaryDirectory() as t:
         p = Path(t) / "m.json"; p.write_bytes(store.get(args.manifest_key) + b"\n")
         manifest = load_manifest(p, expected_sha256=args.manifest_sha256)
     seed = args.seed if args.seed is not None else secrets.randbits(31)
-    chosen = choose_utterances(manifest["records"], args.partition, args.count, args.min_seconds, random.Random(seed))
+    candidates = choose_utterances(manifest["records"], args.partition, None, args.min_seconds, random.Random(seed))
+    chosen, references = [], {}
+    for r in candidates:                                       # in the seeded random order, until enough are kept
+        state = load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"])
+        if hand_coverage(state) >= args.min_hand_coverage:
+            chosen.append(r); references[r["sign"]] = at_rate(state, args.fps)
+        if len(chosen) == args.count:
+            break
+    if len(chosen) < args.count:
+        raise SystemExit(f"only {len(chosen)} utterances reach hand coverage {args.min_hand_coverage}")
+    chosen.sort(key=lambda r: r["sign"])
     key = design_study([dict(sign=r["sign"], english=r["english"], markers=r["plan"]["markers"]) for r in chosen],
                        [s["label"] for s in systems], seed=seed,
                        distractor_pool=sorted({(r.get("english") or "").strip() for r in manifest["records"]
                                                if r.get("partition") == args.partition and (r.get("english") or "").strip()}))
     key.update(manifest_key=args.manifest_key, manifest_sha256=args.manifest_sha256, partition=args.partition,
-               system_specs=systems, planner_run=args.planner_run, guidance=args.guidance, steps=args.steps)
+               system_specs=systems, planner_run=args.planner_run, guidance=args.guidance, steps=args.steps,
+               fps=args.fps, min_hand_coverage=args.min_hand_coverage)
     samplers = {s["label"]: load_generator(store, s["key"], s["manifest_sha256"], args.device)[2]
                 for s in systems if s["kind"] != "reference"}
     planned = {}
@@ -165,14 +191,10 @@ def main(argv=None) -> int:
     if out.exists() and any(out.iterdir()):
         raise SystemExit(f"{out} is not empty")
     (out / "key").mkdir(parents=True, exist_ok=True)
-    references = {}
     for n, item in enumerate(key["items"]):
         record, system = by_sign[item["sign"]], spec[item["system"]]
-        if item["sign"] not in references:
-            references[item["sign"]] = load_state(store, record["continuous"]["state_key"],
-                                                  record["continuous"]["state_sha256"])
         reference = references[item["sign"]]
-        fps = 1. / float(np.median(np.diff(reference.timestamps)))
+        fps = args.fps
         seconds = len(reference.timestamps) / fps
         condition = dict(plan=record["text"], english=record["english"], translate=planned.get(item["sign"]))
         if system["kind"] == "reference":

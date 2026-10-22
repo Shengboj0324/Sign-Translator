@@ -23,21 +23,31 @@ PARTITIONS = ("train", "val", "test")
 
 class TextMotionDataset(Dataset):
     def __init__(self, manifest: Mapping, *, partition: str, cache: ContentCache,
-                 fetch: Callable[[str], bytes], max_seconds: float | None = None) -> None:
+                 fetch: Callable[[str], bytes], max_seconds: float | None = None, fps: float | None = None) -> None:
+        """``fps``: resample every state whose median rate differs from it by more than 1%
+        (``pose.resample.resample_motion``) - corpora are recorded at 24, 25-30 and 30 fps, and the tokenizers and
+        priors count time in frames. ``None`` keeps every state at its own rate."""
         if partition not in PARTITIONS:
             raise ValueError(f"partition must be one of {PARTITIONS}")
         records = [r for r in manifest["records"]
                    if r.get("partition") == partition and r.get("text") and usable_channels(r, "continuous")]
         if max_seconds is not None:
             records = [r for r in records if r["continuous"].get("seconds", 0.) <= max_seconds]
-        self.records, self.cache, self.fetch = records, cache, fetch
+        self.records, self.cache, self.fetch, self.fps = records, cache, fetch, fps
 
     def __len__(self) -> int:
         return len(self.records)
 
     def __getitem__(self, index):
         record = self.records[index]
-        return record["text"], load_sample(record, "continuous", cache=self.cache, fetch=self.fetch)
+        state = load_sample(record, "continuous", cache=self.cache, fetch=self.fetch)
+        if self.fps is not None and len(state.timestamps) > 1:
+            import numpy as np
+            rate = 1. / float(np.median(np.diff(state.timestamps)))
+            if abs(rate - self.fps) > .01 * self.fps:
+                from ..pose.resample import resample_motion
+                state = resample_motion(state, self.fps)
+        return record["text"], state
 
 
 def collate_text_motion(items, *, max_text_bytes: int = 256, loci: bool = False):
