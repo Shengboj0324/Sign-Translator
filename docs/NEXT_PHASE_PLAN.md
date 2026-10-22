@@ -125,6 +125,33 @@ Read-only review: no download yet. Facts are from the pages and the licence page
 
 **DAI 2 login:** awaiting the user's confirmation (2026-10-21). The DAI 2 / Sign Bank plan above applies once it is ready.
 
+## Mandatory: the sign recogniser must pass as an instrument before it scores generated motion
+
+The first isolated-sign recogniser (`training-runs/sign-recognizer-aslc-v1`, ASL Citizen, best step 27,000: 53.3% top-1 /
+76.5% top-5 on a 2,000-clip validation subset) was validated with `scripts/validate_sign_recognizer.py` (rule fixed
+before the run; report `training-runs/sign-recognizer-aslc-v1/validation-interim.json`, step-23,000 checkpoint):
+
+| Check | Result | Rule | Pass |
+|---|---|---|---|
+| In-domain, all ASL Citizen validation signers (10,303 clips, 2,731 classes) | 49.2% top-1, 72.1% top-5 | reference | - |
+| Cross-domain, ASLLVD train+val signers, exact Sign Bank map (2,858 clips, 917 glosses) | **13.3% top-1**, 27.7% top-5 | >= 25% top-1 | **No** |
+| Blank (duration only) | 0.04% top-1 | <= 2% | Yes |
+| No hands | 1.2% top-1 | <= 15% | Yes |
+| Hands only | 19.4% top-1 | diagnostic | - |
+
+It reads the hands (no shortcut on duration or face) but does not transfer to another studio, camera set and signers,
+so **it must not score generated motion yet**. Required before any sign-level evaluation of the generator:
+
+1. Retrain on ASL Citizen + ASLLVD together (ASLLVD labels mapped through the exact Sign Bank <-> ASL Citizen gloss
+   map; ASLLVD test signer Tyler stays unread), with augmentation for camera and signer variation (view rotation,
+   scale, speed, small joint noise) - same validation rule, re-run unchanged.
+2. Pass all three checks; the published ASL Citizen baselines (~63% top-1 video, ~60% pose) remain the in-domain
+   reference.
+3. Score generated motion only on the glosses it recognises reliably on real data (top-1 >= 80% over >= 3 clips; 444
+   glosses for v1), always beside real-motion and blank scores through the same model.
+
+Until then the generator's meaning-level evaluation rests on the back-translator and the retrieval evaluator.
+
 ## Plan for the six items (order and gates)
 
 | # | Item | Plan | Gate before it starts |
