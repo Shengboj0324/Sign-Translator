@@ -316,6 +316,7 @@ def main(argv=None) -> int:
                         help="processes scoring camera offsets (default: the CPU quota); results do not depend on it")
     parser.add_argument("--shard", type=int, default=0)
     parser.add_argument("--shards", type=int, default=1)
+    parser.add_argument("--reverse", action="store_true", help="process the shard's sessions in reverse order")
     args = parser.parse_args(argv)
     store = R2Store(os.environ) if args.store == "r2" else DirectoryStore(Path(args.store[4:]))
     zips = dict(item.split("=", 1) for item in args.front_zip)
@@ -337,6 +338,8 @@ def main(argv=None) -> int:
             sessions[f"{match['video']}-{match['take']}"][Path(key).stem] = key
     names = sorted(n for n in sessions if not args.match or re.search(args.match, n))
     names = [n for i, n in enumerate(names) if i % args.shards == args.shard]
+    if args.reverse:                         # a helper taking half of a straggling shard from the other end
+        names = names[::-1]
     sapiens = Sapiens(args.checkpoint, args.checkpoint_sha256, args.batch, args.flip)
     prefix = args.prefix.rstrip("/")
     summary = []
