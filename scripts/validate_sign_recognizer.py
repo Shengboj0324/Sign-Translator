@@ -36,6 +36,7 @@ from signtranslator.data.multichannel import collate_multichannel  # noqa: E402
 from signtranslator.data_engineering.corpus_manifest import ContentCache, load_manifest, load_sample, mask_channels  # noqa: E402
 from signtranslator.generation.sign_recognizer import SignRecognizer, SignRecognizerConfig, top_k_accuracy  # noqa: E402
 from evaluate_text_to_motion import blanked  # noqa: E402
+from signtranslator.pose.resample import resample_motion  # noqa: E402
 from train_text_to_motion import make_store, to_device  # noqa: E402
 
 HANDS = ("left_hand", "right_hand")
@@ -81,6 +82,9 @@ def main(argv=None) -> int:
     parser.add_argument("--max-no-hands-top1", type=float, default=.15)
     parser.add_argument("--output-key", required=True)
     parser.add_argument("--device", default="auto")
+    parser.add_argument("--fps", type=float, default=0., help="resample clips to this rate (must match training)")
+    parser.add_argument("--cross-partitions", default="train,val",
+                        help="ASLLVD partitions for the cross-domain check; only those the recogniser never trained on")
     args = parser.parse_args(argv)
     store = make_store(args.store)
     device = torch.device("cuda" if args.device == "auto" and torch.cuda.is_available() else "cpu")
@@ -89,12 +93,15 @@ def main(argv=None) -> int:
     index = {g: i for i, g in enumerate(glosses)}
 
     def load(records):
-        states, labels = [], []
-        for r in records:
-            if r["continuous"].get("seconds", 0.) > args.max_seconds:
-                continue
-            states.append(load_sample(r, "continuous", cache=cache, fetch=store.get)); labels.append(r["_label"])
-        return states, torch.tensor(labels, dtype=torch.long)
+        from concurrent.futures import ThreadPoolExecutor
+        records = [r for r in records if r["continuous"].get("seconds", 0.) <= args.max_seconds]
+
+        def one(r):
+            s = load_sample(r, "continuous", cache=cache, fetch=store.get)
+            return resample_motion(s, args.fps) if args.fps else s
+        with ThreadPoolExecutor(16) as pool:               # R2 fetches dominate: load in parallel, keep the order
+            states = list(pool.map(one, records))
+        return states, torch.tensor([r["_label"] for r in records], dtype=torch.long)
 
     def score(states, labels):
         return {k: round(v, 4) for k, v in top_k_accuracy(logits_of(model, states, device), labels).items()} if len(labels) else None
@@ -103,7 +110,7 @@ def main(argv=None) -> int:
     val = [dict(r, _label=index[r["gloss"]["label"]]) for r in citizen["records"]
            if r.get("partition") == "val" and r["gloss"]["label"] in index]
     states, labels = load(val)
-    report = dict(run=args.run, checkpoint=best["checkpoint_key"], step=best["step"], classes=len(glosses))
+    report = dict(run=args.run, checkpoint=best["checkpoint_key"], step=best["step"], classes=len(glosses), fps=args.fps or None)
     logits = logits_of(model, states, device)
     report["in_domain"] = dict(clips=len(labels), **{k: round(v, 4) for k, v in top_k_accuracy(logits, labels).items()})
     report["controls"] = dict(blank=score(blanked(states), labels),
@@ -122,11 +129,14 @@ def main(argv=None) -> int:
         if m["method"] == "exact" and g in index:
             for c in m["candidates"]:
                 to_citizen[c].add(g)
+    cross_parts = tuple(args.cross_partitions.split(","))
+    if "test" in cross_parts:
+        raise SystemExit("the ASLLVD test signer stays unread here")
     asllvd = manifest_of(store, args.asllvd_manifest_key, args.asllvd_manifest_sha256)
     cross = [dict(r, _label=index[next(iter(to_citizen[r["gloss"]["label"]]))]) for r in asllvd["records"]
-             if r.get("partition") in ("train", "val") and len(to_citizen.get(r["gloss"]["label"], ())) == 1]
+             if r.get("partition") in cross_parts and len(to_citizen.get(r["gloss"]["label"], ())) == 1]
     cs, cl = load(cross)
-    report["cross_domain_asllvd"] = dict(clips=len(cl), glosses=len(set(cl.tolist())), partitions=["train", "val"],
+    report["cross_domain_asllvd"] = dict(clips=len(cl), glosses=len(set(cl.tolist())), partitions=list(cross_parts),
                                          **(score(cs, cl) or {}))
     c = report["cross_domain_asllvd"].get("top1", 0.)
     verdict = dict(cross_domain_ok=c >= args.min_cross_domain_top1,

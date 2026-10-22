@@ -28,13 +28,51 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from signtranslator.data_engineering.corpus_manifest import ContentCache, load_manifest  # noqa: E402
 from signtranslator.generation.canonical_state import channel_bindings_from_state  # noqa: E402
-from signtranslator.generation.sign_recognizer import (GlossMotionDataset, SignRecognizer,  # noqa: E402
+from signtranslator.generation.sign_recognizer import (GlossMotionDataset, augment_sign, SignRecognizer,  # noqa: E402
                                                        SignRecognizerConfig, collate_gloss_motion, top_k_accuracy)
 from signtranslator.generation.text_to_motion import TextToMotionConfig  # noqa: E402
 from signtranslator.training.weight_ema import WeightEMA  # noqa: E402
 from train_text_to_motion import lr_at, make_store, to_device  # noqa: E402
 
 KIND = "sign_recognizer"
+_AUGMENT_RNG = {}
+
+
+def worker_augment(state):
+    """``augment_sign`` with one generator per loader process, seeded from torch (workers get distinct seeds)."""
+    pid = os.getpid()
+    if pid not in _AUGMENT_RNG:
+        _AUGMENT_RNG[pid] = random.Random(torch.initial_seed())
+    return augment_sign(state, _AUGMENT_RNG[pid])
+
+
+def with_extra_corpus(store, manifest, key, sha, gloss_map_key, labels):
+    """``manifest`` plus the extra corpus's clips whose Sign Bank gloss maps *exactly* to one label: its training
+    partition joins training, its validation partition becomes ``cross_val`` (reported, never used for selection),
+    its test partition is left out unread."""
+    extra = load_store_manifest(store, key, sha)
+    to_label = {}
+    for g, m in json.loads(store.get(gloss_map_key))["mapping"].items():
+        if m["method"] == "exact" and g in labels:
+            for c in m["candidates"]:
+                to_label.setdefault(c, set()).add(g)
+    added = []
+    for r in extra["records"]:
+        target = to_label.get(r["gloss"]["label"], set())
+        if len(target) != 1 or r.get("partition") not in ("train", "val"):
+            continue
+        added.append(dict(r, partition="train" if r["partition"] == "train" else "cross_val",
+                          gloss=dict(r["gloss"], label=next(iter(target)), source_label=r["gloss"]["label"])))
+    print(json.dumps(dict(extra_corpus=key, train=sum(a["partition"] == "train" for a in added),
+                          cross_val=sum(a["partition"] == "cross_val" for a in added))), flush=True)
+    return dict(manifest, records=list(manifest["records"]) + added)
+
+
+def load_store_manifest(store, key, sha):
+    with tempfile.TemporaryDirectory() as t:
+        path = Path(t) / "manifest.json"
+        path.write_bytes(store.get(key) + b"\n")
+        return load_manifest(path, expected_sha256=sha)
 
 
 @torch.no_grad()
@@ -82,6 +120,11 @@ def main(argv=None) -> int:
     parser.add_argument("--cache-bytes", type=int, default=8 * 2 ** 30)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--device", default="auto")
+    parser.add_argument("--fps", type=float, default=0., help="resample every clip to this rate (0: as stored)")
+    parser.add_argument("--augment", action="store_true", help="speed, trim and face-dropout augmentation (training only)")
+    parser.add_argument("--extra-manifest-key", help="a second sign manifest (ASLLVD) whose glosses map exactly to labels")
+    parser.add_argument("--extra-manifest-sha256")
+    parser.add_argument("--gloss-map-key", default="acquisition/2026-10-17-v1/derived/signbank-v1/asl-citizen-gloss-map.json")
     args = parser.parse_args(argv)
     store = make_store(args.store)
     device = torch.device("cuda" if args.device == "auto" and torch.cuda.is_available() else
@@ -100,9 +143,13 @@ def main(argv=None) -> int:
         glosses = sorted({r["gloss"]["label"] for r in manifest["records"]
                           if r.get("partition") == "train" and (r.get("gloss") or {}).get("label")})
     labels = {g: i for i, g in enumerate(glosses)}
-    kw = dict(labels=labels, cache=cache, fetch=store.get, min_hand_fraction=args.min_hand_fraction)
-    train = GlossMotionDataset(manifest, partition="train", **kw)
+    if args.extra_manifest_key:
+        manifest = with_extra_corpus(store, manifest, args.extra_manifest_key, args.extra_manifest_sha256,
+                                     args.gloss_map_key, labels)
+    kw = dict(labels=labels, cache=cache, fetch=store.get, min_hand_fraction=args.min_hand_fraction, fps=args.fps or None)
+    train = GlossMotionDataset(manifest, partition="train", augment=worker_augment if args.augment else None, **kw)
     val = GlossMotionDataset(manifest, partition="val", **kw)
+    cross = GlossMotionDataset(manifest, partition="cross_val", **kw)
     keep = lambda d: [i for i, r in enumerate(d.records) if r["continuous"].get("seconds", 0.) <= args.max_seconds]  # noqa: E731
     train_ids, val_ids = keep(train), keep(val)
     if not train_ids or not val_ids:
@@ -133,8 +180,11 @@ def main(argv=None) -> int:
                         collate_fn=collate_gloss_motion, generator=torch.Generator().manual_seed(args.seed + step),
                         persistent_workers=args.workers > 0, drop_last=len(train_ids) > args.batch_size)
     chosen = sorted(random.Random(1234).sample(val_ids, min(args.val_clips, len(val_ids))))
-    val_batches = list(DataLoader(Subset(val, chosen), batch_size=args.batch_size, shuffle=False, num_workers=0,
-                                  collate_fn=collate_gloss_motion))
+    val_batches = list(DataLoader(Subset(val, chosen), batch_size=args.batch_size, shuffle=False,
+                                  num_workers=args.workers, collate_fn=collate_gloss_motion))
+    cross_ids = [i for i, r in enumerate(cross.records) if r["continuous"].get("seconds", 0.) <= args.max_seconds]
+    cross_batches = list(DataLoader(Subset(cross, cross_ids), batch_size=args.batch_size, shuffle=False,
+                                    num_workers=args.workers, collate_fn=collate_gloss_motion)) if cross_ids else []
     ema = WeightEMA(model, args.ema_decay)
     if resumed_ema is not None:
         ema.shadow = {n: resumed_ema[n].to(device).clone() for n in ema.shadow}
@@ -145,6 +195,8 @@ def main(argv=None) -> int:
     def validate() -> dict:
         live = ema.swap(model)
         metrics = evaluate(model, val_batches, device)
+        if cross_batches:                            # held-out signers of the extra corpus (never used for selection)
+            metrics.update({k.replace("val/", "cross/"): v for k, v in evaluate(model, cross_batches, device).items()})
         ema.restore(model, live)
         return metrics
 

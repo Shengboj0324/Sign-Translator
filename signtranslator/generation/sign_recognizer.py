@@ -19,6 +19,7 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset
 
 from ..data.multichannel import MotionBatch, collate_multichannel
+from ..pose.resample import resample_motion
 from ..data_engineering.corpus_manifest import ContentCache, load_sample, usable_channels
 from .text_to_motion import TextToMotionConfig, diffusion_layout, diffusion_targets, sinusoid
 
@@ -27,21 +28,52 @@ class GlossMotionDataset(Dataset):
     """(label index, state) for one partition; records whose gloss is not in ``labels`` are left out."""
 
     def __init__(self, manifest: Mapping, *, partition: str, labels: Mapping[str, int], cache: ContentCache,
-                 fetch: Callable[[str], bytes], min_hand_fraction: float = 0.) -> None:
+                 fetch: Callable[[str], bytes], min_hand_fraction: float = 0., fps: float | None = None,
+                 augment: Callable | None = None) -> None:
         def keep(r):
-            q = r.get("quality") or {}
-            hands = max(q.get("left_hand_frames") or 0, q.get("right_hand_frames") or 0) / max(q.get("frames") or 1, 1)
+            q = r.get("quality")
+            # the hand-visibility filter needs the record's quality counts; a corpus without them (ASLLVD) is not
+            # filtered here (ASLLVD sign clips: dominant hand tracked in a median 100%, p10 97% of frames)
+            hands = (max(q.get("left_hand_frames") or 0, q.get("right_hand_frames") or 0) / max(q.get("frames") or 1, 1)
+                     if q else 1.)
             return (r.get("partition") == partition and (r.get("gloss") or {}).get("label") in labels
                     and usable_channels(r, "continuous") and hands >= min_hand_fraction)
         self.records = [r for r in manifest["records"] if keep(r)]
         self.labels, self.cache, self.fetch = labels, cache, fetch
+        self.fps, self.augment = fps, augment        # corpora differ in frame rate: resample before the model sees frames
 
     def __len__(self) -> int:
         return len(self.records)
 
     def __getitem__(self, index):
         r = self.records[index]
-        return self.labels[r["gloss"]["label"]], load_sample(r, "continuous", cache=self.cache, fetch=self.fetch)
+        state = load_sample(r, "continuous", cache=self.cache, fetch=self.fetch)
+        if self.augment is not None:
+            state = self.augment(state)
+        if self.fps:
+            state = resample_motion(state, self.fps)
+        return self.labels[r["gloss"]["label"]], state
+
+
+def augment_sign(state, rng, *, speed=(.8, 1.25), trim=.1, face_dropout=.2):
+    """Training-time variation a recogniser must be invariant to: signing speed (the clock is rescaled, so a later
+    resample sees the sign faster or slower), a little lead-in/lead-out trimmed (clip boundaries differ by corpus) and,
+    sometimes, the face removed (so the hands carry the decision). Resample after this, never before."""
+    from dataclasses import replace
+    import numpy as np
+    from ..data_engineering.corpus_manifest import mask_channels
+    t = state.timestamps
+    n = len(t)
+    if n > 8 and trim > 0:
+        a = int(rng.random() * trim * n); b = n - int(rng.random() * trim * n)
+        if b - a >= 4:
+            state = replace(state, timestamps=t[a:b], channels={k: replace(c, values=c.values[a:b], valid=c.valid[a:b],
+                            observed=c.observed[a:b], confidence=c.confidence[a:b]) for k, c in state.channels.items()})
+    factor = speed[0] + rng.random() * (speed[1] - speed[0])
+    state = replace(state, timestamps=state.timestamps[0] + (state.timestamps - state.timestamps[0]) / factor)
+    if rng.random() < face_dropout:
+        state = mask_channels(state, [k for k in state.channels if k not in ("face", "blink")])
+    return state
 
 
 def collate_gloss_motion(items):
@@ -115,4 +147,4 @@ def top_k_accuracy(logits: torch.Tensor, labels: torch.Tensor, ks=(1, 5)) -> dic
     return {f"top{k}": float((ranked[:, :k] == labels[:, None]).any(1).float().mean()) for k in ks}
 
 
-__all__ = ["GlossMotionDataset", "collate_gloss_motion", "SignRecognizerConfig", "SignRecognizer", "top_k_accuracy"]
+__all__ = ["GlossMotionDataset", "augment_sign", "collate_gloss_motion", "SignRecognizerConfig", "SignRecognizer", "top_k_accuracy"]
