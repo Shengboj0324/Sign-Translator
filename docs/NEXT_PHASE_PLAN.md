@@ -125,6 +125,31 @@ Read-only review: no download yet. Facts are from the pages and the licence page
 
 **DAI 2 login:** awaiting the user's confirmation (2026-10-21). The DAI 2 / Sign Bank plan above applies once it is ready.
 
+## Implementation status (2026-10-22)
+
+**Item 2 — English -> ASL structure (code complete; training under way / waits for the exit gate)**
+- `signtranslator/planning/asllrp_gloss.py`: ASLLRP surface tokens -> base gloss, agreement/index locus slots
+  (renumbered by first placement, the generator's slot order), per-sign multi-hot of the seven grammatical markers;
+  split quoted descriptions rejoined (256 pseudo-glosses removed); gloss vocabulary with exact byte fallback.
+- `signtranslator/planning/english_gloss.py` + `scripts/train_gloss_planner.py`: English words -> gloss tokens with
+  locus and multi-label marker heads; evaluation by gloss WER/BLEU, aligned marker F1 per tier, locus accuracy and
+  utterance-level marker presence. Run v1 (old parse) best: gloss BLEU 27.0, WER 0.72, marker F1 0.67 (wh 0.75);
+  it memorises the 1,652 training pairs within ~4k steps (data-limited). v2 (fixed parse) training on the Mac.
+- `signtranslator/planning/plan_text.py`: the plan as one deterministic text line (`[topic MOTHER ] IX-loc>1
+  1>GIVE>2 [neg NOT LIKE ]`), lossless on all 2,403 pairs, so the byte-conditioned generators and their
+  classifier-free guidance learn plan -> motion unchanged.
+- `scripts/build_asllrp_plan_manifest.py`: plan -> motion manifest v2 (2,403 utterances, train 1,652 / val 412 /
+  test 339, SHA `b0187725…`).
+- `scripts/translate_english.py`: English -> planner -> plan line -> plan-trained generator -> motion.
+- Next: train the generator on the plan manifest from the full-corpus tokenizer once task No.1's exit gate passes.
+
+**Item 3 — evaluation instruments**
+- Back-translator: training on the full corpus (pod C).
+- Sign recogniser: v1 failed cross-domain (below). v2 path implemented: `signtranslator/pose/resample.py` (corpora
+  are 24 / 25-30 / 60 fps; the recogniser read frames), ASLLVD added through the exact gloss map, speed / trim /
+  face-dropout augmentation; v2 training on a pod. `scripts/score_sign_generation.py` scores one-sign plans with a
+  recogniser only after it passes validation.
+
 ## Mandatory: the sign recogniser must pass as an instrument before it scores generated motion
 
 The first isolated-sign recogniser (`training-runs/sign-recognizer-aslc-v1`, ASL Citizen, best step 27,000: 53.3% top-1 /
