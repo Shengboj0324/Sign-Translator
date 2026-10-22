@@ -189,6 +189,14 @@ Read-only review: no download yet. Facts are from the pages and the licence page
 - `scripts/score_human_eval.py` scores the returned sheets. Both scripts were smoke-tested end to end on real val
   utterances.
 
+**Item 4 — tuning (sweep ready; runs after the full prior)**
+- `runpod/fleet/post_gate_sampling_sweep.sh` evaluates the full prior on validation over:
+  - hands temperature {1.0, 1.2, 1.4} × face temperature {0.8, 1.0}, a cooler face because it carries the
+    over-active head codes;
+  - guidance {1, 1.5, 2}.
+- Each setting is scored by retrieval (with its blank control) and back-translation. The setting is selected with
+  the same declared exit gate over the core chain's evaluations plus the sweep. The test partition stays untouched.
+
 **Item 6 — serving (path built; measured on the current research release)**
 - Pinned, hash-checked releases with a computed licence gate; a translation service; an HTTP API with bounded
   backpressure; a latency benchmark (docs/DEPLOYMENT.md §12).
