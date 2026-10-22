@@ -37,10 +37,13 @@ def main(argv=None) -> int:
     parser.add_argument("--store", default="r2")
     parser.add_argument("--recognizer-run", required=True)
     parser.add_argument("--recognizer-validation-key", required=True, help="validate_sign_recognizer.py report")
-    parser.add_argument("--generator-key", required=True)
-    parser.add_argument("--generator-manifest-sha256", required=True)
-    parser.add_argument("--plan-glosses-key", required=True,
+    parser.add_argument("--generator-key")
+    parser.add_argument("--generator-manifest-sha256")
+    parser.add_argument("--plan-glosses-key",
                         help="JSON list of the glosses the generator saw in training (one-sign plans use only these)")
+    parser.add_argument("--lexicon-key", help="instead of a generator: the citation-stitching baseline (its clips are "
+                                              "training-partition recordings, so this checks the pipeline, not a model)")
+    parser.add_argument("--lexicon-sha256")
     parser.add_argument("--citizen-manifest-key", required=True)
     parser.add_argument("--citizen-manifest-sha256", required=True)
     parser.add_argument("--signbank-to-citizen-key", default="acquisition/2026-10-17-v1/derived/signbank-v1/asl-citizen-gloss-map.json")
@@ -58,7 +61,17 @@ def main(argv=None) -> int:
         raise SystemExit("the recogniser failed its instrument validation; it must not score generated motion")
     model, labels, _ = load_model(store, args.recognizer_run, args.device)
     index = {g: i for i, g in enumerate(labels)}
-    plan_glosses = set(json.loads(store.get(args.plan_glosses_key)))
+    if bool(args.generator_key) == bool(args.lexicon_key):
+        raise SystemExit("give exactly one of --generator-key and --lexicon-key")
+    stitcher = None
+    if args.lexicon_key:
+        from signtranslator.generation.citation_stitch import load_stitcher
+        stitcher = load_stitcher(store, args.lexicon_key, args.lexicon_sha256 or "")
+        plan_glosses = {k for k in stitcher.entries if not k.startswith("citizen:")}
+    else:
+        if not (args.generator_manifest_sha256 and args.plan_glosses_key):
+            raise SystemExit("a generator needs --generator-manifest-sha256 and --plan-glosses-key")
+        plan_glosses = set(json.loads(store.get(args.plan_glosses_key)))
     # Sign Bank (plan) gloss -> ASL Citizen label, exact matches only
     to_label = {}
     for g, m in json.loads(store.get(args.signbank_to_citizen_key))["mapping"].items():
@@ -70,7 +83,8 @@ def main(argv=None) -> int:
                      if len(cz) == 1 and next(iter(cz)) in reliable and sb in plan_glosses)[:args.limit]
     if not targets:
         raise SystemExit("no reliable gloss the generator can express")
-    _, _, sample = load_generator(store, args.generator_key, args.generator_manifest_sha256, args.device)
+    sample = (stitcher.sample if stitcher else
+              load_generator(store, args.generator_key, args.generator_manifest_sha256, args.device)[2])
     states, y = [], []
     for k, (signbank, citizen) in enumerate(targets):
         line = plan_to_text([signbank], [(0, 0)], [[0] * 7])
@@ -89,7 +103,8 @@ def main(argv=None) -> int:
     real = [r for r in citizen["records"] if r.get("partition") == "val" and r["gloss"]["label"] in wanted]
     real_states = [resample_motion(load_sample(r, "continuous", cache=cache, fetch=store.get), args.fps) for r in real]
     real_y = torch.tensor([index[r["gloss"]["label"]] for r in real])
-    out = dict(glosses=len(targets), samples=len(y), recognizer=args.recognizer_run, generator=args.generator_key,
+    out = dict(glosses=len(targets), samples=len(y), recognizer=args.recognizer_run,
+               generator=args.generator_key or f"citation-stitch:{args.lexicon_key}",
                generated={k: round(v, 4) for k, v in top_k_accuracy(logits_of(model, states, args.device), y).items()},
                blank={k: round(v, 4) for k, v in top_k_accuracy(logits_of(model, blanked(states), args.device), y).items()},
                real=dict(clips=len(real_y), **{k: round(v, 4) for k, v in

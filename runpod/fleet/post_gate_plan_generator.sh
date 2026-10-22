@@ -30,9 +30,47 @@ OUT=$ACQ/asllrp-dai2-v1/plan-generator-v1
 TOKRUN=tokens-rvq-d0b-full-v1 PRIOR=tokens-rvq-d0b-prior-loci-full-v1 RET=retrieval-hold-full-v1 BT=back-translator-full-v1
 RUN=tokens-rvq-d0b-prior-loci-plan-v1
 FSHA=$(sha "$FULL"); PSHA=$(sha "$PLAN")
-[ "$PSHA" = b01877253ea45b62aeaec313e2b9ffb075c0363af9d9e33ff5e4fe8c1902044a ] || { echo "plan manifest changed"; echo PLAN-DONE; exit 1; }
+[ "$PSHA" = b01877253ea45b62aeaec313e2b9ffb075c0363af9d9e33ff5e4fe8c1902044a ] || { echo "plan manifest changed"; # sign level: one-sign plans of the recogniser's reliable glosses (recogniser v2 passed its instrument validation)
+python - "$MIX" "$MSHA" "$OUT/plan-glosses.json" <<'PY'
+import os, sys, json, tempfile
+from pathlib import Path
+from signtranslator.data.text_motion_dataset import R2Store
+from signtranslator.data_engineering.corpus_manifest import load_manifest
+s = R2Store(os.environ)
+with tempfile.TemporaryDirectory() as t:
+    p = Path(t) / "m.json"; p.write_bytes(s.get(sys.argv[1]) + b"\n")
+    m = load_manifest(p, expected_sha256=sys.argv[2])
+glosses = sorted({g for r in m["records"] if r.get("partition") == "train" and r.get("plan") for g in r["plan"]["glosses"]})
+s.put(sys.argv[3], json.dumps(glosses).encode())
+PY
+stage $RUN sign-level python scripts/score_sign_generation.py --recognizer-run sign-recognizer-v2 \
+  --recognizer-validation-key training-runs/sign-recognizer-v2/validation.json --generator-key "$GEN" \
+  --generator-manifest-sha256 "$MSHA" --plan-glosses-key "$OUT/plan-glosses.json" \
+  --citizen-manifest-key $ACQ/asl-citizen-v1/manifest-v1/manifest.json \
+  --citizen-manifest-sha256 708af3a6748742c0ce8d147a984ef1de57abcec94da47ff0ce82391b067661a6 --fps 24 --device cuda \
+  --output-key "$OUT/evaluations/sign-level.json"
+echo PLAN-DONE; exit 1; }
 exists "$MIX" || stage $RUN mixed-manifest python scripts/build_mixed_text_manifest.py --input "$FULL@$FSHA" \
-  --input "$PLAN@$PSHA" --corpus-id how2sign-asllrp-plan-mixed-v1 --manifest-key "$MIX" || { echo PLAN-DONE; exit 1; }
+  --input "$PLAN@$PSHA" --corpus-id how2sign-asllrp-plan-mixed-v1 --manifest-key "$MIX" || { # sign level: one-sign plans of the recogniser's reliable glosses (recogniser v2 passed its instrument validation)
+python - "$MIX" "$MSHA" "$OUT/plan-glosses.json" <<'PY'
+import os, sys, json, tempfile
+from pathlib import Path
+from signtranslator.data.text_motion_dataset import R2Store
+from signtranslator.data_engineering.corpus_manifest import load_manifest
+s = R2Store(os.environ)
+with tempfile.TemporaryDirectory() as t:
+    p = Path(t) / "m.json"; p.write_bytes(s.get(sys.argv[1]) + b"\n")
+    m = load_manifest(p, expected_sha256=sys.argv[2])
+glosses = sorted({g for r in m["records"] if r.get("partition") == "train" and r.get("plan") for g in r["plan"]["glosses"]})
+s.put(sys.argv[3], json.dumps(glosses).encode())
+PY
+stage $RUN sign-level python scripts/score_sign_generation.py --recognizer-run sign-recognizer-v2 \
+  --recognizer-validation-key training-runs/sign-recognizer-v2/validation.json --generator-key "$GEN" \
+  --generator-manifest-sha256 "$MSHA" --plan-glosses-key "$OUT/plan-glosses.json" \
+  --citizen-manifest-key $ACQ/asl-citizen-v1/manifest-v1/manifest.json \
+  --citizen-manifest-sha256 708af3a6748742c0ce8d147a984ef1de57abcec94da47ff0ce82391b067661a6 --fps 24 --device cuda \
+  --output-key "$OUT/evaluations/sign-level.json"
+echo PLAN-DONE; exit 1; }
 MSHA=$(sha "$MIX")
 TOK=$(best $TOKRUN); TSHA=$(sha "$TOK"); INIT=$(best $PRIOR); ISHA=$(sha "$INIT")
 # same architecture as the full prior (so its weights load); fine-tuning rate and schedule
@@ -40,7 +78,26 @@ stage $RUN prior python scripts/train_motion_tokens.py --architecture rvq --mani
   --workers 8 --val-every 1000 --val-batches 32 --checkpoint-every 2000 --patience 5 --batch-size 64 --stage prior --run $RUN \
   --tokenizer-key "$TOK" --tokenizer-sha256 "$TSHA" --tokenizer-manifest-sha256 "$FSHA" --init-key "$INIT" --init-sha256 "$ISHA" \
   --fps 24 --lr 1e-4 --warmup 500 --steps 20000 --d-model 384 --feedforward 1536 --token-layers 6 --depth-layers 2 \
-  --locus-conditioning --cache-bytes 12884901888 || { echo PLAN-DONE; exit 1; }
+  --locus-conditioning --cache-bytes 12884901888 || { # sign level: one-sign plans of the recogniser's reliable glosses (recogniser v2 passed its instrument validation)
+python - "$MIX" "$MSHA" "$OUT/plan-glosses.json" <<'PY'
+import os, sys, json, tempfile
+from pathlib import Path
+from signtranslator.data.text_motion_dataset import R2Store
+from signtranslator.data_engineering.corpus_manifest import load_manifest
+s = R2Store(os.environ)
+with tempfile.TemporaryDirectory() as t:
+    p = Path(t) / "m.json"; p.write_bytes(s.get(sys.argv[1]) + b"\n")
+    m = load_manifest(p, expected_sha256=sys.argv[2])
+glosses = sorted({g for r in m["records"] if r.get("partition") == "train" and r.get("plan") for g in r["plan"]["glosses"]})
+s.put(sys.argv[3], json.dumps(glosses).encode())
+PY
+stage $RUN sign-level python scripts/score_sign_generation.py --recognizer-run sign-recognizer-v2 \
+  --recognizer-validation-key training-runs/sign-recognizer-v2/validation.json --generator-key "$GEN" \
+  --generator-manifest-sha256 "$MSHA" --plan-glosses-key "$OUT/plan-glosses.json" \
+  --citizen-manifest-key $ACQ/asl-citizen-v1/manifest-v1/manifest.json \
+  --citizen-manifest-sha256 708af3a6748742c0ce8d147a984ef1de57abcec94da47ff0ce82391b067661a6 --fps 24 --device cuda \
+  --output-key "$OUT/evaluations/sign-level.json"
+echo PLAN-DONE; exit 1; }
 GEN=$(best $RUN)
 EVAL="--manifest-key $MIX --manifest-sha256 $MSHA --partition val --guidance 1,2 --fps 24 --device cuda \
   --part-temperature body=1.2,left_hand=1.2,right_hand=1.2,face=1.0 --retrieval-key $(best $RET) --retrieval-manifest-sha256 $FSHA"
@@ -60,4 +117,23 @@ stage $RUN back-translation python scripts/score_back_translation.py --manifest-
   --generated "$OUT/generated/plan-asllrp" "$OUT/generated/english-baseline-asllrp" "$OUT/generated/stitch-asllrp" \
   "$OUT/generated/plan-how2sign" \
   --output-key "$OUT/evaluations/back-translation.json"
+# sign level: one-sign plans of the recogniser's reliable glosses (recogniser v2 passed its instrument validation)
+python - "$MIX" "$MSHA" "$OUT/plan-glosses.json" <<'PY'
+import os, sys, json, tempfile
+from pathlib import Path
+from signtranslator.data.text_motion_dataset import R2Store
+from signtranslator.data_engineering.corpus_manifest import load_manifest
+s = R2Store(os.environ)
+with tempfile.TemporaryDirectory() as t:
+    p = Path(t) / "m.json"; p.write_bytes(s.get(sys.argv[1]) + b"\n")
+    m = load_manifest(p, expected_sha256=sys.argv[2])
+glosses = sorted({g for r in m["records"] if r.get("partition") == "train" and r.get("plan") for g in r["plan"]["glosses"]})
+s.put(sys.argv[3], json.dumps(glosses).encode())
+PY
+stage $RUN sign-level python scripts/score_sign_generation.py --recognizer-run sign-recognizer-v2 \
+  --recognizer-validation-key training-runs/sign-recognizer-v2/validation.json --generator-key "$GEN" \
+  --generator-manifest-sha256 "$MSHA" --plan-glosses-key "$OUT/plan-glosses.json" \
+  --citizen-manifest-key $ACQ/asl-citizen-v1/manifest-v1/manifest.json \
+  --citizen-manifest-sha256 708af3a6748742c0ce8d147a984ef1de57abcec94da47ff0ce82391b067661a6 --fps 24 --device cuda \
+  --output-key "$OUT/evaluations/sign-level.json"
 echo PLAN-DONE
