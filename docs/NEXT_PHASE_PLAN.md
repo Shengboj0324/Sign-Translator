@@ -203,6 +203,11 @@ These start when the generator round's exit gate closes (docs/CONTINUOUS_TRAININ
      test 339 (Ben); 3 rows without a readable signer left out. Median hand coverage 81% of frames (p10 46%), face 100%.
      Some glosses carry classifier descriptions in backslashes (`ICL:X-over-thumb\eating out of a bowl\`); the planner must
      normalise them before use.
-   - **Still needed for the planner:** English translations of the utterances. They are in the DAI utterance XML, which needs the signed-in session.
+   - **English translations (acquired 2026-10-22):** the DAI 2 utterance search export (2,407 utterances: English translation and
+     SignStream rough-gloss tiers) is in R2 (`asllrp-dai2-v1/asllrp-continuous/utterance-search-2026-10-22.json`, SHA `cc9102d8…`).
+     `scripts/build_asllrp_english_gloss.py` wrote the planner's pairs (`derived/asllrp-dai2-v1/english-gloss-v1/pairs.json`,
+     SHA `91c9f83f…`): 2,403 English -> gloss pairs (train 1,652 / val 412 / test 339, same signer split), each with its
+     grammatical markers mapped to the signs they span: topic/focus 982, negation 600, conditional/when 428, wh 325,
+     rhetorical 249, yes-no 238, relative clause 43.
 5. **Avatar and serving** (items 5 and 6) follow, with a model selected on R-precision and the realism gates.
 6. **Human Deaf reviewers** (on their way): they evaluate the stored generated states and the rendered avatar. Their findings drive fine-tuning.
