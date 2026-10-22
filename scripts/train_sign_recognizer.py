@@ -20,6 +20,7 @@ import time
 
 import numpy as np
 import torch
+torch.multiprocessing.set_sharing_strategy("file_system")   # many small tensors per batch exhaust fd passing ("received 0 items of ancdata")
 from torch.utils.data import DataLoader, Subset
 
 ROOT = Path(__file__).resolve().parents[1]
