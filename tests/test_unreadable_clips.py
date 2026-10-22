@@ -57,3 +57,33 @@ def test_ranged_reads_retry_r2_throttling_and_raise_other_errors(monkeypatch):
 
     with pytest.raises(ClientError):
         StoreRangeFile(Denied(), "bucket", "key").read(4)
+
+
+def test_ranged_reads_retry_a_broken_or_short_body_stream(monkeypatch):
+    from botocore.exceptions import ResponseStreamingError
+    from extract_video_states import StoreRangeFile
+    import time
+    monkeypatch.setattr(time, "sleep", lambda seconds: None)
+    calls = {"n": 0}
+
+    class Broken:
+        def read(self):
+            raise ResponseStreamingError(error="IncompleteRead(2 bytes read, 2 more expected)")
+
+    class Short:
+        def read(self):
+            return b"ab"
+
+    class Whole:
+        def read(self):
+            return b"abcd"
+
+    class FakeS3:
+        def head_object(self, **_):
+            return {"ContentLength": 4}
+
+        def get_object(self, **_):
+            calls["n"] += 1
+            return {"Body": {1: Broken(), 2: Short()}.get(calls["n"], Whole())}
+
+    assert StoreRangeFile(FakeS3(), "bucket", "key").read(4) == b"abcd" and calls["n"] == 3

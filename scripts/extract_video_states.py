@@ -59,20 +59,26 @@ class StoreRangeFile(io.RawIOBase):
         """One ranged GET, retried with jittered exponential backoff when R2 throttles.
 
         R2 answers many workers reading the same object with ServiceUnavailable
-        ("reduce your rate of simultaneous reads"); that is transient, not a failure.
+        ("reduce your rate of simultaneous reads"); that is transient, not a failure. So is a body stream that
+        breaks part-way (IncompleteRead, connection reset) or arrives short: the whole range is fetched again.
         """
         import random
         import time
-        from botocore.exceptions import ClientError
+        from botocore.exceptions import ClientError, ConnectionError as BotoConnectionError, ResponseStreamingError
         for attempt in range(attempts):
             try:
-                return self.s3.get_object(Bucket=self.bucket, Key=self.key,
+                data = self.s3.get_object(Bucket=self.bucket, Key=self.key,
                                           Range=f"bytes={start}-{start + size - 1}")["Body"].read()
+                if len(data) == size or attempt == attempts - 1:
+                    return data
             except ClientError as error:
                 code = error.response.get("Error", {}).get("Code", "")
                 if code not in ("ServiceUnavailable", "SlowDown", "503", "InternalError") or attempt == attempts - 1:
                     raise
-                time.sleep(min(30., .5 * 2 ** attempt) * (.5 + random.random()))
+            except (ResponseStreamingError, BotoConnectionError, ConnectionError):
+                if attempt == attempts - 1:
+                    raise
+            time.sleep(min(30., .5 * 2 ** attempt) * (.5 + random.random()))
         raise AssertionError("unreachable")
 
     def readinto(self, buffer):
