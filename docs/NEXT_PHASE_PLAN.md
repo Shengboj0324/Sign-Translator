@@ -208,6 +208,15 @@ so **it must not score generated motion yet**. Required before any sign-level ev
 
 Until then the generator's meaning-level evaluation rests on the back-translator and the retrieval evaluator.
 
+In-context diagnostic (added 2026-10-22, not part of the rule): `validate_sign_recognizer.py
+--continuous-manifest-key` cuts the annotated signs out of ASLLRP continuous utterances of the train/val signers
+(Cory, Rachel, Jonathan; unseen by the recogniser), padded by 0.1 s.
+- Sample: 5,348 signs from 1,716 utterances, median 0.23 s.
+- v1 result: **2.6% top-1, 7.1% top-5** (blank 0.07%).
+- Isolated-sign recognisers do not read coarticulated signs inside sentences. Sign-level scoring of the generator
+  therefore stays on one-sign plans, and sentence-level meaning rests on back-translation, retrieval and the human
+  study.
+
 ## Plan for the six items (order and gates)
 
 | # | Item | Plan | Gate before it starts |

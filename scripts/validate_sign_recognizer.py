@@ -13,6 +13,12 @@ Reads the run's best checkpoint (EMA weights) and writes one report with:
 4. **Per-gloss reliability** on the ASL Citizen validation clips: the glosses recognised with top-1 >= ``--reliable``
    over at least ``--min-clips`` clips; sign-level evaluation of generated motion is restricted to that list.
 
+5. **In-context signs** (diagnostic, with ``--continuous-manifest-key``): top-1/top-5 on signs cut from ASLLRP
+   *continuous* utterances (DAI 2; ``asllrp_sentence_signs`` CSV frame spans, ``--context-seconds`` either side) of
+   its training and validation signers - a studio, camera and signers the recogniser never saw, and coarticulated
+   signs of ~0.3 s instead of ~1 s citation forms. It shows how far the instrument is from reading signs inside
+   sentences; the verdict below does not use it (generated motion is scored on one-sign plans).
+
 The verdict is a fixed rule (``--min-cross-domain-top1``, ``--max-blank-top1``, ``--max-no-hands-top1``), not a judgement
 made after seeing the numbers.
 """
@@ -52,6 +58,7 @@ def load_model(store, run: str, device):
 
 @torch.no_grad()
 def logits_of(model, states, device, batch: int = 64) -> torch.Tensor:
+    device = torch.device(device)                          # callers pass a name ("cpu", "cuda") or a device
     out = []
     for i in range(0, len(states), batch):
         motion = to_device((torch.zeros(0), torch.zeros(0), collate_multichannel(states[i:i + batch]), None), device)[2]
@@ -63,6 +70,53 @@ def manifest_of(store, key, sha):
     with tempfile.TemporaryDirectory() as t:
         p = Path(t) / "m.json"; p.write_bytes(store.get(key) + b"\n")
         return load_manifest(p, expected_sha256=sha)
+
+
+def cut(state, start: int, stop: int):
+    """Frames ``[start, stop)`` of ``state`` as their own state (clock kept)."""
+    from dataclasses import replace
+    return replace(state, timestamps=state.timestamps[start:stop].copy(),
+                   channels={n: replace(c, values=c.values[start:stop], valid=c.valid[start:stop],
+                                        observed=c.observed[start:stop], confidence=c.confidence[start:stop])
+                             for n, c in state.channels.items()})
+
+
+def continuous_segments(store, args, to_citizen, index, cache):
+    """Signs cut from ASLLRP continuous utterances of the gloss manifest's train/val partitions, labelled through the
+    exact Sign Bank -> ASL Citizen map; (states, labels, info)."""
+    import csv
+    from concurrent.futures import ThreadPoolExecutor
+    manifest = manifest_of(store, args.continuous_manifest_key, args.continuous_manifest_sha256)
+    utterances = {Path(r["source"]["utterance_video"]).stem: r for r in manifest["records"]
+                  if r.get("partition") in ("train", "val") and (r.get("source") or {}).get("utterance_video")}
+    rows = list(csv.DictReader(io.StringIO(store.get(args.continuous_csv_key).decode("utf-8-sig"))))
+    wanted = collections.defaultdict(list)
+    for row in rows:
+        stem = Path(row["Utterance video filename"]).stem
+        citizen = to_citizen.get(row["Main entry gloss label"], ())
+        if stem in utterances and len(citizen) == 1 and row["Hidden"] != "T":
+            wanted[stem].append((int(row["Start frame of the sign video"]), int(row["End frame of the sign video"]),
+                                 int(row["Start frame of the containing utterance"]),
+                                 int(row["End frame of the containing utterance"]), index[next(iter(citizen))]))
+
+    def one(stem):
+        state = load_sample(utterances[stem], "continuous", cache=cache, fetch=store.get)
+        out, mismatch = [], 0
+        for a, b, u0, u1, y in wanted[stem]:
+            if u1 - u0 + 1 != len(state.timestamps) or not (u0 <= a <= b <= u1):
+                mismatch += 1; continue
+            fps = 1. / float(np.median(np.diff(state.timestamps)))
+            pad = int(round(args.context_seconds * fps))
+            segment = cut(state, max(a - u0 - pad, 0), min(b - u0 + 1 + pad, len(state.timestamps)))
+            out.append((resample_motion(segment, args.fps) if args.fps else segment, y, (b - a + 1) / fps))
+        return out, mismatch
+    with ThreadPoolExecutor(16) as pool:
+        results = list(pool.map(one, sorted(wanted)))
+    items = [x for r, _ in results for x in r]
+    info = dict(utterances=len(wanted), span_mismatches=sum(m for _, m in results),
+                partitions=["train", "val"], context_seconds=args.context_seconds,
+                median_sign_seconds=round(float(np.median([x[2] for x in items])), 3) if items else None)
+    return [x[0] for x in items], torch.tensor([x[1] for x in items], dtype=torch.long), info
 
 
 def main(argv=None) -> int:
@@ -83,6 +137,11 @@ def main(argv=None) -> int:
     parser.add_argument("--output-key", required=True)
     parser.add_argument("--device", default="auto")
     parser.add_argument("--fps", type=float, default=0., help="resample clips to this rate (must match training)")
+    parser.add_argument("--continuous-manifest-key", help="ASLLRP gloss manifest (utterance states and partitions)")
+    parser.add_argument("--continuous-manifest-sha256")
+    parser.add_argument("--continuous-csv-key",
+                        default="acquisition/2026-10-17-v1/asllrp-dai2-v1/asllrp-continuous/asllrp_sentence_signs_2025_06_28.csv")
+    parser.add_argument("--context-seconds", type=float, default=.1)
     parser.add_argument("--cross-partitions", default="train,val",
                         help="ASLLVD partitions for the cross-domain check; only those the recogniser never trained on")
     args = parser.parse_args(argv)
@@ -138,6 +197,11 @@ def main(argv=None) -> int:
     cs, cl = load(cross)
     report["cross_domain_asllvd"] = dict(clips=len(cl), glosses=len(set(cl.tolist())), partitions=list(cross_parts),
                                          **(score(cs, cl) or {}))
+    if args.continuous_manifest_key:
+        segments, labels_c, info = continuous_segments(store, args, to_citizen, index, cache)
+        report["in_context_asllrp"] = dict(clips=len(labels_c), glosses=len(set(labels_c.tolist())), **info,
+                                           **(score(segments, labels_c) or {}),
+                                           blank=score(blanked(segments), labels_c), diagnostic=True)
     c = report["cross_domain_asllvd"].get("top1", 0.)
     verdict = dict(cross_domain_ok=c >= args.min_cross_domain_top1,
                    blank_ok=(report["controls"]["blank"] or {}).get("top1", 1.) <= args.max_blank_top1,
