@@ -198,6 +198,11 @@ These start when the generator round's exit gate closes (docs/CONTINUOUS_TRAININ
      - ASL Citizen gloss map, by tier: 977 exact, 17 variant, 147 letters, 421 letters-no-number (non-exact matches need review), 1,169 unmatched;
      - 2,410 ASLLRP and RIT utterances, holding 19,510 signs in time order.
    - **Utterance motion:** extracted on the Mac. The ASLLRP studio framing shows hips, elbows and wrists in every frame, so the upright-chest prior is not used.
+   - **Gloss -> motion manifest** (`derived/asllrp-dai2-v1/gloss-manifest-v1/manifest.json`, SHA `f8c40aea…`): all 2,407 extracted
+     utterances (2,127 ASLLRP, 280 RIT; 3.1 h) joined to their gloss sequences. Signer-disjoint: train 1,655, val 413 (Jonathan),
+     test 339 (Ben); 3 rows without a readable signer left out. Median hand coverage 81% of frames (p10 46%), face 100%.
+     Some glosses carry classifier descriptions in backslashes (`ICL:X-over-thumb\eating out of a bowl\`); the planner must
+     normalise them before use.
    - **Still needed for the planner:** English translations of the utterances. They are in the DAI utterance XML, which needs the signed-in session.
 5. **Avatar and serving** (items 5 and 6) follow, with a model selected on R-precision and the realism gates.
 6. **Human Deaf reviewers** (on their way): they evaluate the stored generated states and the rendered avatar. Their findings drive fine-tuning.
