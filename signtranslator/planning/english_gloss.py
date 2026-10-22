@@ -83,6 +83,10 @@ class EnglishGlossPlanner(nn.Module):
         self.source_locus = nn.Linear(c.d_model, MAX_LOCI + 1)
         self.target_locus = nn.Linear(c.d_model, MAX_LOCI + 1)
         self.markers = nn.Linear(c.d_model, len(MARKERS))
+        for embedding in (self.source, self.target):       # std d^-1/2: tied output logits start near uniform
+            nn.init.normal_(embedding.weight, std=c.d_model ** -.5)
+            with torch.no_grad():
+                embedding.weight[embedding.padding_idx].zero_()
 
     def encode(self, source: torch.Tensor):
         mask = source == WPAD
