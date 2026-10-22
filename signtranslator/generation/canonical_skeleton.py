@@ -64,7 +64,9 @@ def skeleton_positions(state: MultichannelMotion):
             world[spec.name] = frame
             if segment == 1:
                 x, y = _KNUCKLES[finger]
-                base = wrist + hand_world @ np.array([sign * x, y, 0.])
+                # The hand frame's x runs pinky -> index MCP on both hands (video_landmarks builds it
+                # from landmarks 5 - 17), so knuckle offsets are not mirrored by side.
+                base = wrist + hand_world @ np.array([x, y, 0.])
                 positions[f"{side}Hand{finger}1"] = base
                 bones.append((f"{side}Hand", f"{side}Hand{finger}1"))
             tip = positions[f"{side}Hand{finger}{segment}"] + _FINGER_LENGTHS[segment - 1] * (frame @ np.asarray(spec.rest))

@@ -82,3 +82,12 @@ def test_frame_bundle_binds_provenance_and_refuses_overwrite(tmp_path, rig):  # 
     with pytest.raises(ValueError, match="explicit opt-in"):
         write_frame_bundle(rig, state, binding_for(rig), tmp_path / "other.npz",
                            allow_inferred=False)
+
+
+def test_review_quality_is_playable_420_with_the_same_timestamps(tmp_path):
+    path = tmp_path / "review.mp4"
+    record = encode_timestamped_video(frames(len(NONUNIFORM)), NONUNIFORM, path, quality="review")
+    assert record["pixel_format"] == "yuv420p"
+    assert verify_timestamped_video(path, NONUNIFORM)["max_pts_drift_seconds"] == 0.
+    with pytest.raises(ValueError, match="quality"):
+        encode_timestamped_video(frames(len(NONUNIFORM)), NONUNIFORM, tmp_path / "x.mp4", quality="draft")

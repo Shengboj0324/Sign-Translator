@@ -172,6 +172,7 @@ enforced appearance/signing separation.
 | 8f | frame pacing + SO(3) interpolation | done (7 tests) |
 | 8g | linguistically-aware LOD + consent | done (5 tests) |
 | 8h | evaluation + separation + integration + regression | done (8 tests) |
+| 8i | real-state retarget onto the MakeHuman rig + Blender render (§12) | done (25 tests) |
 
 Rendering layer: 69 tests, green on two consecutive runs at that stage; the
 whole-project total recorded then was 1,176 tests. These are stage snapshots, not the current verdict; rerun the suite (see the README reproducibility section).
@@ -213,3 +214,134 @@ and drops into a real renderer behind the same stream interface. Innovations:
 handedness-certified retargeting, DQS volume preservation, linguistically-aware LOD
 with a hard finger/face guarantee, and structurally-enforced appearance/signing
 separation.
+
+## 12. Stage 8i: real-state retarget
+
+Real and generated canonical states (`MultichannelMotion`, conventions
+`mediapipe-tasks-swing-ik-y-up-v1` and `sapiens-two-view-swing-ik-y-up-v1`) are now
+rendered on the audited MakeHuman default rig instead of a stick skeleton:
+`signtranslator/avatar_render/retarget.py` (binding + retarget),
+`signtranslator/avatar_render/retarget_check.py` (measurements) and
+`scripts/render_avatar.py` (CLI). `w3_render_stream.py --synthetic-demo` is unchanged.
+
+**Binding (computed, not tuned).** `build_retarget_binding(rig)`:
+
+* *Axes.* Canonical: x = signer's left (image right), y up, z toward the camera.
+  The rig's rest geometry is checked to have `.L` shoulders at +x, the neck above
+  the hips and the eyes in front of the head joint, so the axis map is the identity
+  (no reflection is possible).
+* *Reference.* The project's own landmark IK (`video_landmarks.solve_rotations`) is
+  run on the rig's rest skeleton (shoulders, elbows, wrists, hips, knees, ankles and
+  the 21 hand points read from rest bone heads). That gives each canonical joint's
+  world frame `W_ref` for the rig's rest pose; a state equal to it poses the rig at
+  rest exactly (tested).
+* *Retarget.* `Δ_j = W_j W_refᵀ`; each rig bone driven by joint `j` gets
+  `G_b = Δ_j Rest_b`. Because the IK reproduces bone directions exactly, the rig's FK
+  reproduces every canonical bone direction whatever the lengths.
+* *Mapping.* Pelvis → `root`; chest → `spine02`, `spine01` (pelvis→chest blended over
+  `spine05`–`spine03`); upper arm → `upperarm01/02`; forearm → `lowerarm01/02`; hand
+  (full frame) → `wrist`; Thumb/Index/Middle/Ring/Pinky 1–3 → `finger1..5-1..3` on both
+  sides (all 30 finger joints); `head_rotation` (camera frame) → `head`, with
+  chest→head blended over `neck01`–`neck03`. Clavicles, shoulders, metacarpals and
+  breasts keep their rest relation to the parent. Legs are held at rest by default
+  (`--drive-legs` poses them): a waist-up render does not need them and generated
+  states carry unconstrained leg rotations.
+* *Twist* (not observed by swing IK; changes no direction): the upper arm is twisted
+  about the shoulder→elbow segment so the elbow bends about the rig's rest hinge
+  (weighted by the bend angle, zero for a straight arm), the forearm keeps its rest
+  relation to it, and `lowerarm02` takes half the forearm-to-hand twist so pronation
+  does not collapse at the wrist.
+* *Missing values.* Gaps of at most 0.5 s are slerped on the state's clock; longer
+  gaps (and clip ends) ease to the rig's rest relation over 0.25 s; never-valid joints
+  keep it. Every filled frame is counted in `verification.json`, and fills are never
+  scored.
+
+**Face.** MediaPipe blendshapes drive the audited MakeHuman face pose units
+(`face-poseunits.bvh`, bone rotations) by log-linear blending, after subtracting each
+coefficient's clip median (`--face-baseline none` uses raw scores; MediaPipe scores
+on signing video carry large constant offsets, e.g. `browDown*` ≈ 0.6–0.9 and
+`eyeSquint*` ≈ 0.6 on neutral faces). The `blink` channel replaces `eyeBlink*`. Left/right
+names are taken as the signer's own side (MakeHuman `Left*` units move the rig's +x
+side; checked on the mesh).
+
+| rendered (state coefficient → MakeHuman unit) | |
+|---|---|
+| brows | `browDown*` → `*BrowDown`; `browInnerUp` → both `*InnerBrowUp`; `browOuterUp*` → `*OuterBrowUp` |
+| eyelids | `eyeBlink*`/`blink` → `*UpperLidClosed`; `eyeWide*` → `*UpperLidOpen`; `eyeSquint*` → `*LowerLidUp` |
+| eyes | valid `left_gaze`/`right_gaze` aim the eye bones; else `eyeLookUp/Down/In/Out*` → `*EyeUp/Down/turnLeft/turnRight` |
+| cheeks, nose | `cheekSquint*` → `*CheekUp`; `cheekPuff` → `CheeksPump`; `noseSneer*` → `NoseWrinkler` |
+| jaw | `jawOpen` → `JawDrop`; `jawForward` → `ChinForward`; `jawLeft/Right` → `ChinLeft/Right` |
+| lips | `mouthSmile*` → `Mouth*PullUp`; `mouthFrown*` → `Mouth*PullDown`; `mouthStretch*` → `Mouth*PullSide`; `mouthLeft/Right` → `MouthMoveLeft/Right`; `mouthPucker` → `LipsKiss`; `mouthFunnel` → ½ `UpperLipForward` + ½ `lowerLipForward`; `mouthRollLower/Upper` → `lower/UpperLipBackward`; `mouthLowerDown*` → `lowerLipDown`; `mouthUpperUp*` → `UpperLipUp`; `mouthShrugLower` → `lowerLipUp` |
+| **not represented** | `_neutral` (not an expression), `mouthClose` (no unit separates lips from jaw), `mouthPressLeft/Right`, `mouthDimpleLeft/Right`, `mouthShrugUpper`; no tongue coefficient exists in the state, so the tongue units are unused |
+
+The body has no eyebrow, hair or lip geometry; brows are painted on the skin carried
+by the brow bones (so raise/furrow read at review resolution), eyes, teeth and tongue
+are the audited attachments coloured from their pinned textures (the transparent
+cornea shell is dropped), and the body wears a plain dark top so the hands contrast.
+
+**CLI.** `render_avatar.py --state S.npz [--sha256 H] | --key K --sha256 H [--store r2|dir:…]
+--out-dir NEW --allow-inferred [--resolution 384] [--start-seconds/--max-seconds]` writes
+`bundle.npz` (posed meshes, provenance), `frames/`, `avatar.mp4` (H.264 4:2:0, PTS from the
+state's clock; `--lossless` for 4:4:4 CRF 0) and `verification.json`. Rendering is Blender
+Workbench in `--background --factory-startup` with a fixed orthographic front camera.
+
+**Measurements** (`verification.json`; reference = `canonical_skeleton.skeleton_positions`
+on the stored state, rig side = bone frames returned by `MakeHumanRig.pose`; only frames
+where the joint and all ancestors are valid as stored; head scored against the stored
+`head_rotation`, since the canonical skeleton has no head orientation). Three ASLLRP DAI 2
+continuous utterances (plan manifest v2 records 0–2) and one generated state
+(`t2m-diffusion-m1-subset-v1/guidance-1/-4Sl9mPOlfA_0-3-rgb_front`), each rendered from its
+R2 key with its SHA-256 checked; the records are in
+`Sign Translator Stage Documentation/evidence/avatar-retarget-2026-10-22/`. Rendering the
+same state twice gave a byte-identical video:
+
+| clip | frames | upper arm n / median / p95 / max (°) | forearm | fingers (non-thumb) | thumb | head |
+|---|---|---|---|---|---|---|
+| 10006709 | 281 | 558 / 0 / 1.2e-6 / 1.2e-6 | 558 / 0 / 8.5e-7 / 1.2e-6 | 2052 / 0 / 1.2e-6 / 1.5e-6 | 513 / 0 / 1.2e-6 / 1.2e-6 | 267 / 0 / 0 / 1.2e-6 |
+| 10036884 | 105 | 210 / 0 / 1.2e-6 / 1.7e-6 | 210 / 0 / 8.5e-7 / 1.2e-6 | 1428 / 0 / 8.5e-7 / 1.5e-6 | 357 / 0 / 1.2e-6 / 1.2e-6 | 105 / 0 / 0 / 3.4e-6 |
+| 10075867 | 230 | 460 / 0 / 1.2e-6 / 1.2e-6 | 460 / 0 / 8.5e-7 / 1.2e-6 | 2580 / 0 / 1.2e-6 / 1.5e-6 | 645 / 0 / 1.2e-6 / 1.5e-6 | 230 / 0 / 0 / 2.4e-6 |
+| generated:0 | 206 | 412 / 0 / 1.2e-6 / 1.5e-6 | 412 / 0 / 8.5e-7 / 1.2e-6 | 4944 / 0 / 1.2e-6 / 1.7e-6 | 1236 / 0 / 1.2e-6 / 1.5e-6 | 206 / 0 / 0 / 2.4e-6 |
+
+The residuals are float64 `arccos` resolution: directions are reproduced exactly by
+construction, so these numbers verify the implementation (the rig's own FK, the
+local-rotation conversion, the twist choices and fills), not a fit. Before the twist was
+taken about the whole shoulder→elbow segment it was taken about `upperarm01`'s own axis,
+and because `upperarm01`/`upperarm02` are not collinear the upper-arm error was a real
+0.2–2.1° median (p95 ≤ 3.2°); the measurement caught it. The torso is deliberately
+distributed over five spine bones; its hips→neck direction differs from the canonical
+chest-up direction by a median 1.4–2.1° (informational, not an acceptance group).
+
+**Left/right.** (1) Structural: every `.L` bone is at x ≥ 0 and `.R` at x ≤ 0 at rest. (2)
+Per frame: the wrist's side of the chest (camera x) agrees between skeleton and rig in
+100% of scored frames on all four clips (frames within 5 cm of the midline excluded).
+(3) Rendered: a synthetic state built by the project's own adapter from the rig's rest
+landmarks with the left arm swung straight up is rendered through the same pipeline;
+all foreground above the head (126 px at 128×128) lies on the viewer's right. Tests
+also check that the raised right arm is the exact mirror image and that a left blink
+closes the eye on the viewer's right.
+
+**Limitations and findings.**
+
+* Only directions are copied. The rig keeps the default body's proportions, so
+  contacts (hand to chin, hand to hand) are not preserved, and monocular depth errors
+  can put a hand inside the torso (ASLLRP 10036884 frame 62: the canonical left hand is
+  3 cm behind the chest plane at the midline). There is no collision handling.
+* Hand coverage in the MediaPipe ASLLRP states is low: 10006709 has the right hand
+  valid in 76 of 281 frames (longest gap 6.0 s), 10075867 in 40 of 230. Those frames
+  are filled (slerp or ease to rest), counted, and excluded from every statistic.
+* `head_rotation` is a camera-frame MediaPipe face-geometry rotation; on ASLLRP it is a
+  median 14–20° from frontal (the head appears tilted back), which is rendered as is.
+* `root_translation`, `head_translation` and `contact` are not rendered (the avatar's
+  root is fixed in front of a fixed camera).
+* Found and fixed here: `canonical_skeleton.skeleton_positions` placed the *right* hand's
+  knuckle bases mirrored (`sign * x` with `sign = −1`, while the hand frame's x runs
+  pinky→index MCP on both hands). Independent check against MediaPipe *pose* landmarks
+  (BlazePose index/pinky knuckles 19/17 and 20/18, stored per clip next to the states), expressed
+  in each clip's Hand joint frame over six ASLLRP clips: the index knuckle lies on +x in
+  88–99% of right-hand frames and 65–97% of left-hand frames, whereas the skeleton put the
+  right index base on −x in 100% of frames. Bone directions were never affected; knuckle
+  bases and therefore fingertip positions of the right hand were (used by
+  `grammar_motion/frames.py`, `render_text_to_motion_samples.py`, `build_human_eval_packet.py`).
+* Workbench inspection render; not a qualified avatar appearance, and no claim of
+  signing fidelity. `accepted_provenance` stays false.
+
