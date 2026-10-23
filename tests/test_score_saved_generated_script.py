@@ -50,3 +50,26 @@ def test_pooled_calibration_comes_from_every_signer(tmp_path):
     (name, res), = out["results"].items()
     assert name.endswith("face-calibrated-pooled") and res["face_calibration"]["pooled_from"] == ["gen-a", "gen-b"]
     assert res["face_calibration"]["clips"] == dict(generated=4, real=4) and max(res["face_calibration"]["gain"]) > 1
+
+
+def test_postprocessing_grid_writes_every_variant_per_group(tmp_path):
+    import score_postprocessing_grid as grid
+    store = DirectoryStore(tmp_path)
+    records = []
+    for g, signs in (("c01", ["s1", "s2"]), ("c03", ["s3", "s4"])):
+        for i, sign in enumerate(signs):
+            digest = put_state(store, f"real/{sign}.npz", faced(i + 10 * len(records), .2))
+            records.append(dict(sign=sign, text="hello there", partition="val",
+                                continuous=dict(status="converted", state_key=f"real/{sign}.npz", state_sha256=digest)))
+            for tag in ("guidance-1", "guidance-2"):
+                put_state(store, f"gen/R-{g}/{tag}/{sign}.npz", faced(100 + len(records), .05))
+    m = build_corpus_manifest(corpus_id="t", records=records, inputs={"x": "a" * 64}, split=dict(kind="continuous"))
+    body = canonical_json(m); store.put("m.json", body)
+    assert grid.main(["--store", f"dir:{tmp_path}", "--manifest-key", "m.json", "--manifest-sha256",
+                      hashlib.sha256(body).hexdigest(), "--run", "R", "--groups", "c01,c03",
+                      "--generated-template", "gen/{run}-{group}", "--evaluations", "ev", "--head-smoothing", "0,0.2"]) == 0
+    names = sorted(k for k in store.list("ev/"))
+    assert names == sorted(f"ev/R-hs{h}{fc}-{g}.json" for h in ("0", "0.2") for fc in ("", "-fc") for g in ("c01", "c03"))
+    a = json.loads(store.get("ev/R-hs0.2-fc-c01.json"))["results"]["motion_tokens_v2 guidance 2"]["face_calibration"]
+    b = json.loads(store.get("ev/R-hs0.2-fc-c03.json"))["results"]["motion_tokens_v2 guidance 2"]["face_calibration"]
+    assert a == b and a["clips"] == dict(generated=4, real=4)       # one pooled calibration for both signers
