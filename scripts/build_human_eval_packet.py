@@ -84,6 +84,21 @@ def held_for_display(state):
     return replace(state, channels=channels)
 
 
+def render_avatar_video(state, path: Path, *, resolution: int = 384) -> int:
+    """The MakeHuman avatar render (``render_avatar.py``: Blender Workbench, front camera) of ``state`` to ``path``."""
+    import render_avatar
+    with tempfile.TemporaryDirectory() as tmp:
+        npz = Path(tmp) / "state.npz"
+        held_for_display(state).save(npz)
+        out = Path(tmp) / "render"
+        code = render_avatar.main(["--state", str(npz), "--out-dir", str(out), "--allow-inferred",
+                                   "--resolution", str(resolution)])
+        if code != 0 or not (out / "avatar.mp4").exists():
+            raise RuntimeError(f"avatar render failed ({code}); see {out}")
+        shutil.copy(out / "avatar.mp4", path)
+    return len(state.timestamps)
+
+
 def render(state, path: Path, *, panel: int) -> int:
     from signtranslator.generation.canonical_skeleton import skeleton_positions
     from signtranslator.generation.face_preview import with_face_panel
@@ -141,6 +156,8 @@ def main(argv=None) -> int:
     parser.add_argument("--guidance", type=float, default=2.)
     parser.add_argument("--steps", type=int, default=50)
     parser.add_argument("--panel", type=int, default=240)
+    parser.add_argument("--renderer", choices=("skeleton", "avatar"), default="skeleton",
+                        help="skeleton + face panel, or the MakeHuman avatar (Blender; slower)")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--output-prefix", help="store prefix (private) to copy the packet and key to")
     parser.add_argument("--device", default="cpu")
@@ -209,7 +226,10 @@ def main(argv=None) -> int:
             state = samplers[system["label"]](text, fps, seconds, args.guidance, args.steps, seed + n)
         group_dir = out / "packet" / f"group-{item['group']}"
         group_dir.mkdir(parents=True, exist_ok=True)
-        item["frames"] = render(state, group_dir / f"{item['item_id']}.mp4", panel=args.panel)
+        video = group_dir / f"{item['item_id']}.mp4"
+        item["frames"] = (render_avatar_video(state, video) if args.renderer == "avatar" else
+                          render(state, video, panel=args.panel))
+        item["renderer"] = args.renderer
         item["seconds"] = round(seconds, 3)
         print(json.dumps(dict(n=n + 1, of=len(key["items"]), group=item["group"])), flush=True)
     for g in range(key["groups"]):

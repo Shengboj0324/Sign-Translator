@@ -4,7 +4,12 @@ Thank you for reviewing. You may stop at any time. You are paid for the time you
 
 ## What you will see
 
-Each video shows a signer drawn as a simple figure:
+Your packet uses one of two kinds of video (the study team will tell you which).
+
+**A 3D avatar:** a plain human figure in a dark top, seen from the front, signing. The face shows eyebrow movements,
+blinks, eye gaze and mouth shapes. The figure is not a real person and has no facial hair or hairstyle on purpose.
+
+**A simple stick figure** (older packets):
 - Top two panels: the upper body from the front and from the side. The signer's left arm is blue and the right arm
   is red.
 - Bottom two panels: close-ups of the left and right hand.
