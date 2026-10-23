@@ -319,6 +319,61 @@ In-context diagnostic (added 2026-10-22, not part of the rule): `validate_sign_r
   therefore stays on one-sign plans, and sentence-level meaning rests on back-translation, retrieval and the human
   study.
 
+## Item 7 — YouTube ASL corpora (approved by the owner 2026-10-22, ~18:35 PDT)
+
+**Decision.**
+- The owner approved acquiring the YouTube-hosted ASL corpora for research. The candidates are YouTube-ASL (Uthus
+  et al. 2023, ~1,000 h, 2,500+ signers) and OpenASL (Shi et al. 2022, ~290 h); the research below confirms or
+  amends the list.
+- **Release intent:** the full model will eventually be open-sourced as a *research* model. Every corpus therefore
+  stays tracked in each release's provenance, and permission to release derived weights is requested from each
+  dataset's owners before any public release.
+  - Research: `docs/research/YOUTUBE_ASL_RESEARCH.md`, in progress. It covers which corpora and filters give the
+    best model, the expected gains, acquisition practice, and contacts and terms for derived-weight permission.
+- Data handling is the same as ASLLRP:
+  - private R2 prefix `acquisition/2026-10-17-v1/youtube-asl-v1/` and `.../openasl-v1/`;
+  - motion states and caption text only; videos are deleted after extraction and never redistributed;
+  - per-video provenance (video id, channel, upload date, YouTube licence field, caption kind manual/auto).
+  - Because of the licence field, a CC BY-only subset can be separated later if a more permissive release is
+    wanted.
+
+**Why.** Pose-only meaning measures are at a data ceiling:
+- back-translation BLEU 2.1 (v1), with v2 (T5) training now;
+- retrieval R@3 0.26 across three designs.
+
+Published pretraining on YouTube-ASL took pose-based How2Sign translation to about 12 BLEU. Expected effects
+(estimates, not results; to be replaced by the research report):
+- back-translator BLEU about 6–12;
+- retrieval R@3 about 0.35–0.45;
+- generator meaning and sign-level scores about 1.5–3×;
+- little change to non-manual grammar, which ASLLRP still supplies.
+
+**Stages, cost and time (estimates).**
+
+| Stage | Work | Where | Time | Cost |
+|---|---|---|---|---|
+| Y0 | Research report: corpora, filters, gains, contacts, terms | agent (running) | ~1 h | - |
+| Y1 | Acquisition tool `scripts/acquire_youtube_asl.py` | Mac (code + tests) | ~2 h | - |
+| Y2 | Pilot ~50 h: availability rate, caption kinds, hand coverage, extraction throughput, blocking | 1 CPU pod | ~3–6 h | <$10 |
+| Y3 | Full acquisition of the selected corpora | ≤4 CPU pods | ~2–4 days | ~$100–300 |
+| Y4 | Manifest `youtube-asl-manifest-v1`: quality filters, dedup across corpora, train-only + small channel-disjoint monitor split | Mac | ~2 h | - |
+| Y5 | Pretraining and fine-tuning in priority order (meaning instruments first, then the generator) | GPU pods | ~1–2 days | ~$50–150 |
+| Y6 | Same strict rules and gate as task No.1 | GPU pods | ~0.5 day | ~$10 |
+
+Y5 covers, in order:
+1. back-translator v2 (T5) and retrieval evaluator, pretrained on YouTube data then fine-tuned on How2Sign;
+2. the generator prior on How2Sign + YouTube English (motion tokens from the full-corpus tokenizer, re-checked for
+   learnability on the new domain).
+
+**Rules.**
+- YouTube data is training-only. No evaluation number may come from it: How2Sign val/test and ASLLRP val stay the
+  judges.
+- No circumvention of YouTube's bot checks, sign-in requirements or CAPTCHAs. If datacenter downloads are blocked,
+  acquisition pauses and the alternatives go to the owner (e.g. pre-extracted public features, a residential
+  low-rate path).
+- Videos are fetched at ≤720p with English captions. Only segments whose caption timing fits the signing (duration
+  limits, hands visible) are kept.
+
 ## Plan for the six items (order and gates)
 
 | # | Item | Plan | Gate before it starts |
