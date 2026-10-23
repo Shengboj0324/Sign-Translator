@@ -8,7 +8,7 @@ from build_youtube_asl_manifest import build, clean_text, keep_segment  # noqa: 
 
 ARGS = types.SimpleNamespace(min_words=2, min_seconds=1., max_seconds=20., max_words_per_second=4.,
                              min_words_per_second=.5, max_chars=300, min_face_coverage=.9, max_abs_yaw=30.,
-                             min_hand_coverage=.5, monitor_share=0., allow_auto=False, channel_cap=1.)
+                             min_hand_coverage=.5, max_other_person=.1, monitor_share=0., allow_auto=False, channel_cap=1.)
 
 
 def seg(text, start=0., end=3., cov=.9, k=0):
@@ -24,6 +24,8 @@ def test_filters():
     assert keep_segment(seg("my name is Ana", cov=.2), args=ARGS) == "hands_not_visible"
     assert keep_segment(seg("my name is Ana", end=30.), args=ARGS) == "duration"
     assert keep_segment(seg("my name is Ana"), args=ARGS) is None
+    assert keep_segment(dict(seg("my name is Ana"), other_person_fraction=.4), args=ARGS) == "second_person"
+    assert keep_segment(dict(seg("my name is Ana"), other_person_fraction=.05), args=ARGS) is None
     assert clean_text("NARRATOR: Hello there [laughs] friend") == "Hello there friend"
 
 

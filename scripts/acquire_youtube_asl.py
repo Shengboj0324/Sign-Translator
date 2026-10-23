@@ -153,6 +153,14 @@ def hand_coverage(state) -> float:
     return max(float(state.channels[h].valid.any(axis=1).mean()) for h in ("left_hand", "right_hand"))
 
 
+OTHER_PERSON_SCALE = .5   # a second person counts when their shoulders are at least half the signer's width
+
+
+def other_person_fraction(clip) -> float:
+    """Fraction of frames in which a second person of at least ``OTHER_PERSON_SCALE`` of the signer's size is seen."""
+    return float((clip.other_person >= OTHER_PERSON_SCALE).mean()) if len(clip.other_person) else 0.
+
+
 def face_stats(state) -> tuple[float, float | None]:
     """(fraction of frames with the face tracked, median |head yaw| in degrees) - for the frontal-view filter."""
     head = state.channels["head_rotation"]
@@ -219,7 +227,7 @@ def process(video_id: str, args, store, models, gate=None) -> dict:
         if not cues:
             return dict(video_id=video_id, status="no_usable_cues", meta=got["meta"], caption_kind=got["kind"],
                         caption_seconds=caption_seconds)
-        clip = extract_clip(got["video"], models, roi=True)
+        clip = extract_clip(got["video"], models, roi=True, count_people_every=args.count_people_every)
     method = inference_method()
     segments, refused = [], []
     for k, cue in enumerate(cues):
@@ -243,7 +251,9 @@ def process(video_id: str, args, store, models, gate=None) -> dict:
                              hand_coverage=round(hand_coverage(state), 3),
                              face_coverage=round(face_stats(state)[0], 3),
                              median_abs_yaw_deg=(round(face_stats(state)[1], 1) if face_stats(state)[1] is not None else None),
-                             available_channels=[n for n, c in state.channels.items() if c.valid.any()]))
+                             available_channels=[n for n, c in state.channels.items() if c.valid.any()],
+                             **({} if part.other_person is None else
+                                dict(other_person_fraction=round(other_person_fraction(part), 3)))))
     return dict(video_id=video_id, status="converted", meta=got["meta"], caption_kind=got["kind"], video_sha256=video_sha,
                 caption_seconds=caption_seconds,
                 cues=len(cues), segments=segments, refused=refused, inference_method=method)
@@ -261,6 +271,8 @@ def main(argv=None) -> int:
     parser.add_argument("--shards", type=int, default=1)
     parser.add_argument("--limit", type=int, help="at most this many videos of the shard (pilot)")
     parser.add_argument("--max-height", type=int, default=720)
+    parser.add_argument("--count-people-every", type=int, default=12,
+                        help="count people on every n-th frame for the single-signer filter (0: off)")
     parser.add_argument("--allow-auto-captions", action="store_true")
     parser.add_argument("--min-seconds", type=float, default=1.)
     parser.add_argument("--max-seconds", type=float, default=20.)

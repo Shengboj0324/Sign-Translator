@@ -111,6 +111,8 @@ class ClipLandmarks:
     face_matrix: np.ndarray      # (T, 4, 4)
     face_found: np.ndarray       # (T,)
     roi: bool = False            # face/hands came from crops; head translation is then unavailable
+    other_person: np.ndarray | None = None  # (T,) largest other person's shoulder width / the widest person's (0 when
+                                            # alone), held between counted frames; None when people were not counted
 
 
 def assign_hands(clip: ClipLandmarks) -> dict[str, tuple[np.ndarray, np.ndarray]]:
@@ -299,7 +301,7 @@ def square_crop(image: np.ndarray, centre_xy: np.ndarray, side_px: float):
 
 def extract_clip(video: Path, models: dict[str, Path], *, start_seconds: float = 0.,
                  stop_seconds: float | None = None, roi: bool = True,
-                 face_scale: float = .9, hand_scale: float = .9) -> ClipLandmarks:
+                 face_scale: float = .9, hand_scale: float = .9, count_people_every: int = 0) -> ClipLandmarks:
     """Run the landmarkers over every decoded frame in [start, stop).
 
     With ``roi`` (default), face and hand landmarkers run on square crops centred on
@@ -307,6 +309,12 @@ def extract_clip(video: Path, models: dict[str, Path], *, start_seconds: float =
     This keeps them in range on full-body shots; landmarks are mapped back to
     full-image coordinates. In ROI mode the face matrix's translation refers to the
     crop's camera, so the adapter reports head translation as unavailable.
+
+    With ``count_people_every`` = n > 0, every n-th frame also goes through a separate pose landmarker in image mode
+    that looks for up to three people. ``other_person`` records the second widest person's shoulder width relative
+    to the widest's, which lets a single-signer filter drop interviews and group shots. The signer's own tracker
+    stays single-person: asking it for two people changed a lone signer's landmarks (median 2%, 90th percentile 13%
+    of the image width on a CMU Panoptic clip).
     """
     import av
     with av.open(str(video)) as probe:                  # refuse unreadable clips before loading models
@@ -327,6 +335,10 @@ def extract_clip(video: Path, models: dict[str, Path], *, start_seconds: float =
         base_options=base(model_asset_path=str(models["face_landmarker.task"])), running_mode=mode,
         output_face_blendshapes=True, output_facial_transformation_matrixes=True, num_faces=1))
     hands_trackers = [hand_tracker(1), hand_tracker(1)] if roi else [hand_tracker(2)]
+    counter = vision.PoseLandmarker.create_from_options(vision.PoseLandmarkerOptions(
+        base_options=base(model_asset_path=str(models["pose_landmarker_heavy.task"])),
+        running_mode=vision.RunningMode.IMAGE, num_poses=3)) if count_people_every > 0 else None
+    other = 0.
     rows, names = [], None
 
     def to_image(array):
@@ -350,6 +362,13 @@ def extract_clip(video: Path, models: dict[str, Path], *, start_seconds: float =
             size = np.array([width, height], dtype=np.float64)
             p = pose.detect_for_video(to_image(rgb), ms)
             row = dict(t=t, pose_found=bool(p.pose_world_landmarks), hw=[], hi=[])
+            if counter is not None:
+                if len(rows) % count_people_every == 0:
+                    widths = sorted((float(np.linalg.norm(np.array([lm[L_SHOULDER].x - lm[R_SHOULDER].x,
+                                                                    lm[L_SHOULDER].y - lm[R_SHOULDER].y]) * size))
+                                     for lm in counter.detect(to_image(rgb)).pose_landmarks), reverse=True)
+                    other = widths[1] / max(widths[0], 1e-6) if len(widths) > 1 else 0.
+                row["other"] = other
             row["pw"] = np.array([[l.x, l.y, l.z] for l in p.pose_world_landmarks[0]]) if row["pose_found"] else np.zeros((33, 3))
             row["pv"] = np.array([l.visibility for l in p.pose_landmarks[0]]) if row["pose_found"] else np.zeros(33)
             row["pi"] = np.array([[l.x, l.y] for l in p.pose_landmarks[0]]) if row["pose_found"] else np.zeros((33, 2))
@@ -387,7 +406,7 @@ def extract_clip(video: Path, models: dict[str, Path], *, start_seconds: float =
                 row["bs"] = np.array([c.score for c in categories])
                 row["fm"] = np.asarray(f.facial_transformation_matrixes[0], dtype=np.float64)
             rows.append(row)
-    for detector in (pose, face, *hands_trackers):
+    for detector in (pose, face, *hands_trackers, *([counter] if counter is not None else [])):
         detector.close()
     if not rows:
         raise ValueError("no frames in the requested window")
@@ -408,7 +427,8 @@ def extract_clip(video: Path, models: dict[str, Path], *, start_seconds: float =
         hands_world=hw, hands_image=hi, hands_found=hf,
         blendshapes=np.stack([r.get("bs", np.zeros(width_bs)) for r in rows]),
         blendshape_names=names or (), face_matrix=np.stack([r.get("fm", np.eye(4)) for r in rows]),
-        face_found=np.array([r["face_found"] for r in rows]), roi=roi)
+        face_found=np.array([r["face_found"] for r in rows]), roi=roi,
+        other_person=np.array([r["other"] for r in rows]) if counter is not None else None)
 
 
 def inference_method() -> str:

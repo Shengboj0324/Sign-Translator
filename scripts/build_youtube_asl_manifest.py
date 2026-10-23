@@ -73,6 +73,8 @@ def keep_segment(segment: dict, *, args) -> str | None:
         return "face_not_visible"
     if segment.get("median_abs_yaw_deg") is not None and segment["median_abs_yaw_deg"] > args.max_abs_yaw:
         return "not_frontal"
+    if segment.get("other_person_fraction") is not None and segment["other_person_fraction"] > args.max_other_person:
+        return "second_person"   # interview / group shot: the caption may belong to someone other than the tracked signer
     return None
 
 
@@ -183,6 +185,9 @@ def main(argv=None) -> int:
     parser.add_argument("--max-seconds", type=float, default=20.)
     parser.add_argument("--max-words-per-second", type=float, default=4.)
     parser.add_argument("--min-hand-coverage", type=float, default=.5)
+    parser.add_argument("--max-other-person", type=float, default=.1,
+                        help="most frames allowed with a second person (acquired with --count-people-every; older segments "
+                             "without the field are kept)")
     parser.add_argument("--monitor-share", type=float, default=.01)
     parser.add_argument("--min-words-per-second", type=float, default=.5)
     parser.add_argument("--max-chars", type=int, default=300)

@@ -45,6 +45,22 @@ def test_slice_keeps_every_per_frame_array_in_the_window():
     assert acq.slice_clip(clip, 9., 10.) is None
 
 
+def test_second_person_fraction_follows_the_slice():
+    from dataclasses import replace
+    from signtranslator.data_engineering.video_landmarks import ClipLandmarks
+    T = 30
+    other = np.zeros(T); other[15:20] = .8; other[20:] = .3     # a person half the signer's size or more in 5 frames
+    clip = ClipLandmarks(times=np.arange(T) / 10., pose_world=np.zeros((T, 33, 3)), pose_visibility=np.zeros((T, 33)),
+                         pose_image=np.zeros((T, 33, 2)), pose_found=np.ones(T, bool), hands_world=np.zeros((T, 2, 21, 3)),
+                         hands_image=np.zeros((T, 2, 21, 2)), hands_found=np.zeros((T, 2), bool),
+                         blendshapes=np.zeros((T, 52)), blendshape_names=tuple(f"b{i}" for i in range(52)),
+                         face_matrix=np.zeros((T, 4, 4)), face_found=np.ones(T, bool), roi=True, other_person=other)
+    assert acq.other_person_fraction(acq.slice_clip(clip, 0., 1.)) == 0.
+    assert acq.other_person_fraction(acq.slice_clip(clip, 1., 2.)) == .5
+    assert acq.other_person_fraction(acq.slice_clip(clip, 2., 3.)) == 0.   # a small background figure does not count
+    assert replace(clip, other_person=None).other_person is None
+
+
 def test_a_bot_check_stops_instead_of_retrying(monkeypatch, tmp_path):
     class DL:
         def __init__(self, opts): pass
