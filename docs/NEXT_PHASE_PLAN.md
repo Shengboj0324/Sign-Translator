@@ -509,6 +509,10 @@ invalid or unvalidated for the generator's output domain.
   two-view, conformed. Stitching passes because it replays real ASLLRP states.
 - So the sign-level near-zero cannot yet separate "the generator does not sign the gloss" from "the recogniser does not
   read this domain".
+- **The fair sign-level reference is in-context signing.** The plan generator learned glosses from continuous ASLLRP
+  utterances, so its one-gloss output resembles coarticulated, in-context signs. On real in-context ASLLRP segments,
+  recogniser v2 reached 8.3% top-1, against 60.8% on isolated ASLLVD and 97% on the citation clips. Generated, at
+  0.5%, is still about 16× below that in-context reference. That points to the generator as well as the domain.
 - The grammar AUCs, which need no instrument, favour the plan generator. The tokenizer domain check found ASLLRP face
   and blink encoded 1.5–2.3× worse, which bounds what any generator on this tokenizer can show on ASLLRP.
 
