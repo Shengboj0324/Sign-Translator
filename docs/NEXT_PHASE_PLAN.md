@@ -247,7 +247,7 @@ if all six rules hold, whatever the gate said:
 |---|---|---|
 | R1 | Retrieval R@3 through the frozen evaluator, per clip, bootstrap 95% CI | generated CI entirely above blank CI |
 | R2 | Back-translation corpus BLEU, sentence bootstrap 95% CI | generated CI entirely above blank CI |
-| R3 | Nearest-training-clip distance in Fréchet feature space | ≤ 5% of generated clips closer than real val clips' 1st percentile |
+| R3 | Nearest-training-clip distance ÷ nearest unseen-real-clip distance (equal set sizes, Fréchet features) | ≤ 5% of generated clips below 0.5. The dry run on v2b gave 0% flagged, median 0.93 against 1.15 for real. A rule based on raw distance would have flagged mode-averaging as copying. |
 | R4 | Sentence-length thirds | every third's body, hand and head speed and variation ratios in [0.7, 1.3] |
 | R5 | One-word English prompts for the recogniser's reliable glosses | recogniser top-5 CI entirely above blank (real reported) |
 | R6 | Test partition, once (92 signer-disjoint clips); heldout_official reported | every gate check that passed on val passes on test |
