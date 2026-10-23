@@ -348,11 +348,16 @@ def extract_clip(video: Path, models: dict[str, Path], *, start_seconds: float =
         stream = container.streams.video[0]
         if start_seconds > 0:
             container.seek(int(start_seconds / stream.time_base), stream=stream, backward=True)
-        last_ms = -1
+        last_ms, last_t = -1, -float("inf")
         for frame in container.decode(stream):
+            if frame.pts is None:
+                continue
             t = float(frame.pts * frame.time_base)
             if t < start_seconds:
                 continue
+            if t <= last_t:        # a duplicate or backward timestamp (some downloaded streams): that frame is dropped
+                continue
+            last_t = t
             if stop_seconds is not None and t >= stop_seconds:
                 break
             ms = max(int(round(t * 1000)), last_ms + 1)  # landmarkers need strictly increasing ms

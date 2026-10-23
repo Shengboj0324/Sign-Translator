@@ -155,3 +155,4 @@ def test_claims_are_exclusive_and_stale_ones_are_taken_over(tmp_path):
     assert acq.claim("abcdefghijk", args, store)
     acq.drop_staged("abcdefghijk", args, store, "yt/staged/abcdefghijk.mp4")
     assert store.list("yt/staged/") == []
+
