@@ -10,6 +10,7 @@ at each requested guidance scale. Read-only except for the optional output key.
 from __future__ import annotations
 
 import argparse
+import collections
 import io
 import json
 import os
@@ -60,6 +61,12 @@ def load_generator(store, key: str, manifest_sha256: str, device: str = "cpu", *
             return generate_rvq_motion(prior, tokenizer, [text], fps=fps, durations=[seconds], guidance=guidance,
                                        temperature=temperature, top_k=top_k,
                                        seed=seed)[0]
+
+        def sample_batch(texts, fps, seconds, guidance, seed):
+            from signtranslator.generation.motion_rvq import generate_rvq_motion_batch
+            return generate_rvq_motion_batch(prior, tokenizer, texts, fps=fps, durations=seconds, guidance=guidance,
+                                             temperature=temperature, top_k=top_k, seed=seed)
+        sample.batch = sample_batch
         return "motion_tokens_v2", prior.config.tokenizer.motion.trained_channels, sample
     if checkpoint.get("kind") in ("motion_tokenizer", "motion_rvq_tokenizer"):
         raise SystemExit(f"{key} is a tokenizer, not a generator; evaluate its prior")
@@ -160,6 +167,8 @@ def main(argv=None) -> int:
     parser.add_argument("--retrieval-manifest-sha256",
                         help="the manifest the retrieval model was trained on, when it is not --manifest-sha256")
     parser.add_argument("--corpus", help="mixed manifests: evaluate only records of this corpus")
+    parser.add_argument("--batch", type=int, default=32, help="clips generated together (token generators; 1 = one "
+                                                               "at a time as before)")
     parser.add_argument("--face-calibration-key", help="store key of a face calibration (postprocess.estimate_face_"
                                                        "calibration JSON) applied to every generated state")
     parser.add_argument("--condition", choices=("text", "english"), default="text",
@@ -213,11 +222,29 @@ def main(argv=None) -> int:
     results = {}
     for scale in scales:
         generated = []
-        for record, reference in zip(records, references):
+        batched = {}
+        if getattr(sample, "batch", None) is not None and args.batch > 1:
+            # one batched generation per frame rate, in chunks of --batch clips, seeded per chunk
+            jobs = collections.defaultdict(list)
+            for i, (record, reference) in enumerate(zip(records, references)):
+                fps = 1. / float(np.median(np.diff(reference.timestamps)))
+                seconds = float(reference.timestamps[-1] - reference.timestamps[0]) + 1. / fps
+                condition = record["text"] if args.condition == "text" else (record.get("english") or record["text"])
+                jobs[round(fps, 4)].append((i, condition, seconds))
+            chunk = 0
+            for fps, items in sorted(jobs.items()):
+                for start in range(0, len(items), args.batch):
+                    part = items[start:start + args.batch]
+                    outs = sample.batch([c for _, c, _ in part], fps, [sec for _, _, sec in part],
+                                        scale if scale is not None else 1., args.seed + chunk)
+                    batched.update({i: o for (i, _, _), o in zip(part, outs)})
+                    chunk += 1
+        for index, (record, reference) in enumerate(zip(records, references)):
             fps = 1. / float(np.median(np.diff(reference.timestamps)))
             seconds = float(reference.timestamps[-1] - reference.timestamps[0]) + 1. / fps
             condition = record["text"] if args.condition == "text" else (record.get("english") or record["text"])
-            out = sample(condition, fps, seconds, scale if scale is not None else 1., args.steps, args.seed)
+            out = (batched[index] if index in batched else
+                   sample(condition, fps, seconds, scale if scale is not None else 1., args.steps, args.seed))
             if args.head_smoothing > 0 and "head_rotation" in out.channels:
                 from signtranslator.generation.postprocess import smooth_rotation_channel
                 out = smooth_rotation_channel(out, "head_rotation", args.head_smoothing)

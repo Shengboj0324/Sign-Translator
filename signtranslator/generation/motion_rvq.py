@@ -568,5 +568,67 @@ def generate_rvq_motion(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, fps: fl
     return states
 
 
+@torch.no_grad()
+def generate_rvq_motion_batch(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, fps: float, durations,
+                              guidance: float = 1., temperature: float | dict = 1., top_k: int = 0, seed: int = 0,
+                              sample_prefix: str = "tokens-v2", loci=None):
+    """``generate_rvq_motion`` for many texts at once: every step and every depth position is one batched call
+    instead of one per text (evaluation sets of hundreds of clips are otherwise bound by Python and leave the GPU
+    idle). Same model, same per-row duration, clock, guidance, temperatures and top-k; rows shorter than the longest
+    are generated to the common length and cut back to their own. With ``top_k=1`` it returns exactly the
+    per-text function's states (tested); with sampling, the random draws follow a different order, so individual
+    samples differ while their distribution does not."""
+    prior.eval(); tokenizer.eval()
+    config = prior.config
+    device = next(prior.parameters()).device
+    B = len(texts)
+    encoded, mask = encode_texts(texts, max_bytes=config.max_text_bytes)
+    encoded, mask = encoded.to(device), mask.to(device)
+    hidden, _ = prior.encode(encoded, mask, generation_loci(config, texts, loci, device))
+    seconds_out = torch.as_tensor(durations, dtype=hidden.dtype, device=device).clamp(1 / fps, 60.)
+    empty = _empty_like(encoded[:1, :2])
+    empty_hidden, _ = prior.encode(empty, empty != PAD)
+    empty_hidden, empty_mask = empty_hidden.expand(B, -1, -1), (empty != PAD).expand(B, -1)
+    generator = torch.Generator().manual_seed(seed)
+    names = [part for part, _ in tokenizer.parts]
+    if isinstance(temperature, dict):
+        unknown = set(temperature) - set(names)
+        if unknown:
+            raise ValueError(f"unknown parts in temperature: {sorted(unknown)}")
+        per_code = [float(temperature.get(names[j % len(names)], 1.)) for j in range(prior.J)]
+    else:
+        per_code = [float(temperature)] * prior.J
+    frames = [max(int(round(float(s) * fps)), 1) for s in seconds_out]
+    counts = [math.ceil(f / config.tokenizer.step) for f in frames]
+    K = max(counts)
+    clock = token_seconds(config, K, fps, device).expand(B, -1)
+    sequence = torch.full((B, 1, prior.J), prior.K, dtype=torch.long, device=device)
+    for k in range(K):
+        h = prior.temporal_states(hidden, mask, sequence, clock[:, :k + 1], seconds_out)[:, -1]
+        h_free = (prior.temporal_states(empty_hidden, empty_mask, sequence, clock[:, :k + 1], seconds_out)[:, -1]
+                  if guidance != 1. else None)
+        step_codes = torch.zeros((B, 0), dtype=torch.long, device=device)
+        for j in range(prior.J):
+            logits = prior.depth_logits(h, step_codes)[:, -1]
+            if h_free is not None:
+                free = prior.depth_logits(h_free, step_codes)[:, -1]
+                logits = free + guidance * (logits - free)
+            logits = logits / max(per_code[j], 1e-6)
+            if top_k:
+                threshold = logits.topk(top_k, dim=-1).values[:, -1:]
+                logits = logits.masked_fill(logits < threshold, -math.inf)
+            choice = torch.multinomial(torch.softmax(logits.float(), -1).cpu(), 1, generator=generator).to(device)
+            step_codes = torch.cat((step_codes, choice), 1)
+        sequence = torch.cat((sequence, step_codes[:, None]), 1)
+    states = []
+    for row, text in enumerate(texts):
+        unit = tokenizer.decode_codes(sequence[row:row + 1, 1:counts[row] + 1], frames[row])
+        raw = unit_to_raw(config.tokenizer.motion, unit.double())
+        native = native_values(config.tokenizer.motion, {key: v[0] for key, v in raw.items()})
+        states.append(assemble_state(config.tokenizer.motion, text, native, frames[row], fps, f"{sample_prefix}:{row}",
+                                     f"{sample_prefix}-clock", method="motion_tokens_v2"))
+    return states
+
+
 __all__ = ["PARTS", "MotionRVQConfig", "ResidualQuantizer", "MotionRVQ", "rvq_loss", "RVQPriorConfig", "RVQPrior",
-           "rvq_prior_loss", "generate_rvq_motion"]
+           "rvq_prior_loss", "generate_rvq_motion", "generate_rvq_motion_batch"]

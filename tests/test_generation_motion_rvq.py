@@ -150,3 +150,20 @@ def test_per_part_temperature_equals_the_scalar_when_uniform_and_changes_only_it
         np.testing.assert_array_equal(scalar.channels[name].values, uniform.channels[name].values)
     with pytest.raises(ValueError, match="unknown parts"):
         generate_rvq_motion(prior, tokenizer, ["ask him"], fps=24., durations=[.5], temperature={"tail": 2.})
+
+
+def test_batched_generation_equals_per_text_generation_when_deterministic():
+    from signtranslator.generation.motion_rvq import generate_rvq_motion_batch
+    states, tokenizer, prior = prior_setup()
+    texts, durations = ["ask him", "cut it now", "go"], [.5, .3, .42]
+    for guidance in (1., 2.):
+        one = [generate_rvq_motion(prior, tokenizer, [t], fps=24., durations=[d], guidance=guidance, top_k=1)[0]
+               for t, d in zip(texts, durations)]
+        many = generate_rvq_motion_batch(prior, tokenizer, texts, fps=24., durations=durations, guidance=guidance,
+                                         top_k=1)
+        for a, b in zip(one, many):
+            b.validate()
+            assert len(a.timestamps) == len(b.timestamps)
+            for name in a.channels:
+                torch.testing.assert_close(torch.as_tensor(a.channels[name].values),
+                                           torch.as_tensor(b.channels[name].values), atol=1e-5, rtol=1e-5)
