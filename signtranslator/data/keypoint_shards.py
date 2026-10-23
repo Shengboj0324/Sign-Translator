@@ -2,7 +2,7 @@
 landmarks) and ``build_fk_keypoint_shards.py`` (canonical states through forward kinematics), one format.
 
 An index (``index.json``) lists every shard's key and SHA-256, and the shards' source frame rate. Shards are
-SHA-checked on load and kept in memory, at about 25 MB per 1,000 clips. ``__getitem__`` does the following:
+SHA-checked on load, fetched once per process (shared by the train and monitor datasets) and kept in memory, at about 25 MB per 1,000 clips. ``__getitem__`` does the following:
 - resamples a clip from its source rate to ``target_fps``;
 - with ``augment``, stretches time by a random factor in [0.8, 1.25] (the UWB rate is assumed, so this also covers
   a 24–37.5 fps source), and applies a small random similarity transform (±8°, ×0.9–1.1, ±0.1 shift) to the
@@ -30,6 +30,22 @@ def load_index(store, key: str) -> dict:
     return json.loads(store.get(key))
 
 
+_SHARDS: dict = {}   # shard key -> (points, valid, offsets, meta): one fetch per process, shared by every dataset
+
+
+def _shard(store, shard: dict):
+    if shard["key"] not in _SHARDS:
+        payload = store.get(shard["key"])
+        if hashlib.sha256(payload).hexdigest() != shard["sha256"]:
+            raise ValueError(f"{shard['key']}: SHA-256 differs from the index")
+        meta_payload = store.get(shard["key"][:-4] + ".json")
+        if hashlib.sha256(meta_payload).hexdigest() != shard["meta_sha256"]:
+            raise ValueError(f"{shard['key']}: clip list SHA-256 differs from the index")
+        data = np.load(io.BytesIO(payload))
+        _SHARDS[shard["key"]] = (data["points"], data["valid"], data["offsets"], json.loads(meta_payload))
+    return _SHARDS[shard["key"]]
+
+
 class KeypointShardDataset(Dataset):
     def __init__(self, store, index_keys, *, partition: str, target_fps: float = 24., augment: bool = False,
                  max_seconds: float = 20., limit: int = 0, seed: int = 0) -> None:
@@ -43,14 +59,7 @@ class KeypointShardDataset(Dataset):
                 for shard in part["shards"]:
                     if not shard["partitions"].get(partition):
                         continue
-                    payload = store.get(shard["key"])
-                    if hashlib.sha256(payload).hexdigest() != shard["sha256"]:
-                        raise ValueError(f"{shard['key']}: SHA-256 differs from the index")
-                    meta_payload = store.get(shard["key"][:-4] + ".json")
-                    if hashlib.sha256(meta_payload).hexdigest() != shard["meta_sha256"]:
-                        raise ValueError(f"{shard['key']}: clip list SHA-256 differs from the index")
-                    data, meta = np.load(io.BytesIO(payload)), json.loads(meta_payload)
-                    points, valid, offsets = data["points"], data["valid"], data["offsets"]
+                    points, valid, offsets, meta = _shard(store, shard)
                     for k, m in enumerate(meta):
                         if m["partition"] != partition:
                             continue
