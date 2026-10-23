@@ -25,8 +25,8 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from signtranslator.data_engineering.corpus_manifest import load_manifest  # noqa: E402
 from signtranslator.generation.motion_metrics import compare  # noqa: E402
-from signtranslator.generation.postprocess import (calibrate_face, estimate_face_calibration,  # noqa: E402
-                                                   smooth_rotation_channel)
+from signtranslator.generation.postprocess import (calibrate_face, damp_rotation_channel,  # noqa: E402
+                                                   estimate_face_calibration, smooth_rotation_channel)
 from signtranslator.generation.signing_space import location_errors  # noqa: E402
 from signtranslator.grammar_motion.evaluation import grammar_comparison  # noqa: E402
 from score_saved_generated import CHANNELS, load_generated  # noqa: E402
@@ -59,6 +59,8 @@ def main(argv=None) -> int:
     parser.add_argument("--generated-template", required=True, help="prefix with {run} and {group}")
     parser.add_argument("--evaluations", required=True, help="store prefix the reports go under")
     parser.add_argument("--head-smoothing", default="0,0.1,0.2,0.3")
+    parser.add_argument("--head-damping", default="1", help="head excursion factors (postprocess.damp_rotation_channel); "
+                                                           "1 = none. Variants with a factor below 1 are named -hd<a>")
     parser.add_argument("--fps", type=float, default=24.)
     args = parser.parse_args(argv)
     from train_text_to_motion import make_store
@@ -77,14 +79,18 @@ def main(argv=None) -> int:
                     for r in records]
             data[g][tag] = ([s for _, s in pairs], refs, records)
     tags = set.intersection(*(set(d) for d in data.values()))
-    for h in (float(x) for x in args.head_smoothing.split(",")):
-        smoothed = {g: {tag: ([smooth_rotation_channel(s, "head_rotation", h) if h > 0 else s for s in data[g][tag][0]],)
-                        + data[g][tag][1:] for tag in tags} for g in groups}
+    import itertools
+    for h, a in itertools.product((float(x) for x in args.head_smoothing.split(",")),
+                                  [float(x) for x in args.head_damping.split(",")]):
+        def post(s):
+            s = smooth_rotation_channel(s, "head_rotation", h) if h > 0 else s
+            return damp_rotation_channel(s, "head_rotation", a) if a != 1 else s
+        smoothed = {g: {tag: ([post(s) for s in data[g][tag][0]],) + data[g][tag][1:] for tag in tags} for g in groups}
         calibration = {tag: estimate_face_calibration([s for g in groups for s in smoothed[g][tag][0]],
                                                       [r for g in groups for r in smoothed[g][tag][1]])
                        for tag in tags}
         for fc in (False, True):
-            variant = f"{args.run}-hs{h:g}" + ("-fc" if fc else "")
+            variant = f"{args.run}-hs{h:g}" + (f"-hd{a:g}" if a != 1 else "") + ("-fc" if fc else "")
             for g in groups:
                 results = {}
                 for tag in sorted(tags):
@@ -95,7 +101,7 @@ def main(argv=None) -> int:
                     if fc:
                         results[setting_name(tag)]["face_calibration"] = dict(calibration[tag], pooled_groups=groups)
                 store.put(f"{args.evaluations.rstrip('/')}/{variant}-{g}.json", json.dumps(dict(
-                    schema_version=1, run=variant, group=g, head_smoothing=h, face_calibrated=fc,
+                    schema_version=1, run=variant, group=g, head_smoothing=h, head_damping=a, face_calibrated=fc,
                     generated=args.generated_template.format(run=args.run, group=g), manifest_sha256=args.manifest_sha256,
                     results=results), indent=2, sort_keys=True, default=float).encode())
                 print(json.dumps({f"{variant}-{g}": {k: round(v["frechet"], 1) for k, v in results.items()}}), flush=True)

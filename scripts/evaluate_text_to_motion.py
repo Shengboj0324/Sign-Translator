@@ -162,6 +162,8 @@ def main(argv=None) -> int:
     parser.add_argument("--top-k", type=int, default=0, help="token generators: sample from the k most likely codes (0: all)")
     parser.add_argument("--head-smoothing", type=float, default=0.,
                         help="seconds: centred SO(3) moving average of the generated head rotation (postprocess.py)")
+    parser.add_argument("--head-damping", type=float, default=1., help="head excursion factor after smoothing "
+                                                                         "(postprocess.damp_rotation_channel)")
     parser.add_argument("--retrieval-key", help="frozen text-motion retrieval checkpoint: adds R-precision of the "
                                                  "generated motion and of the real motion on the same clips")
     parser.add_argument("--retrieval-manifest-sha256",
@@ -251,6 +253,9 @@ def main(argv=None) -> int:
             if args.head_smoothing > 0 and "head_rotation" in out.channels:
                 from signtranslator.generation.postprocess import smooth_rotation_channel
                 out = smooth_rotation_channel(out, "head_rotation", args.head_smoothing)
+            if args.head_damping != 1 and "head_rotation" in out.channels:
+                from signtranslator.generation.postprocess import damp_rotation_channel
+                out = damp_rotation_channel(out, "head_rotation", args.head_damping)
             if calibration is not None:
                 from signtranslator.generation.postprocess import calibrate_face
                 out = calibrate_face(out, calibration)
@@ -275,7 +280,7 @@ def main(argv=None) -> int:
         print(json.dumps({name: results[name]}, default=float), flush=True)
     report = dict(schema_version=1, checkpoint_key=args.checkpoint_key, lexicon_key=args.lexicon_key, generator=label,
                   retrieval_key=args.retrieval_key, saved_generated=args.save_generated,
-                  temperature=temperature, top_k=args.top_k, head_smoothing=args.head_smoothing,
+                  temperature=temperature, top_k=args.top_k, head_smoothing=args.head_smoothing, head_damping=args.head_damping,
                   manifest_sha256=args.manifest_sha256, partition=args.partition, corpus=args.corpus, fps=args.fps,
                   signer_component=args.signer_component,
                   condition=args.condition,

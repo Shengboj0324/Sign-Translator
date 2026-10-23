@@ -45,11 +45,14 @@ class GeneratorSpec:
     guidance: float = 1.
     part_temperature: dict = field(default_factory=dict)
     head_smoothing: float = 0.                        # seconds (postprocess.smooth_rotation_channel on head_rotation)
+    head_damping: float = 1.                          # excursion factor after smoothing (postprocess.damp_rotation_channel)
     face_calibration: dict | None = None              # postprocess.estimate_face_calibration, estimated on validation
 
     def __post_init__(self):
         if self.head_smoothing < 0:
             raise ValueError("head_smoothing must be >= 0 seconds")
+        if not 0 < self.head_damping <= 1:
+            raise ValueError("head_damping must be in (0, 1]")
         if self.face_calibration is not None and not all(
                 k in self.face_calibration for k in ("labels", "center_generated", "center_real", "gain")):
             raise ValueError("face_calibration must be an estimate_face_calibration result")
@@ -100,7 +103,7 @@ class Release:
 
     def to_dict(self) -> dict:
         data = asdict(self)
-        for k, default in (("head_smoothing", 0.), ("face_calibration", None)):   # unused post-processing is
+        for k, default in (("head_smoothing", 0.), ("head_damping", 1.), ("face_calibration", None)):   # unused post-processing is
             if data["generator"].get(k) == default:                              # omitted: older releases keep
                 data["generator"].pop(k)                                         # their SHA-256
         data["public_release_allowed"] = self.public_release_allowed

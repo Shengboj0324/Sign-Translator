@@ -119,13 +119,15 @@ def selected_setting(gate: dict) -> dict:
     guidance = float(m.group(1)) if m else 1.
     fc = run.endswith("-fc")
     core = run[:-3] if fc else run
+    hd = re.search(r"-hd([0-9.]+)$", core)                 # round 3: head damping after smoothing
+    core = core[:hd.start()] if hd else core
     hs = re.search(r"-hs([0-9.]+)$", core)
     base = core[:hs.start()] if hs else core
     t = re.search(r"-sweep-h([0-9.]+)-f([0-9.]+)", base)
     temperature = (f"body={t.group(1)},left_hand={t.group(1)},right_hand={t.group(1)},face={t.group(2)}" if t
                    else "body=1.2,left_hand=1.2,right_hand=1.2,face=1.0")          # the core chain's evaluation
     return dict(run=run, setting=setting, guidance=guidance, head_smoothing=float(hs.group(1)) if hs else 0.,
-                generated_run=base, tag=f"guidance-{guidance:g}", part_temperature=temperature, face_calibrated=fc)
+                head_damping=float(hd.group(1)) if hd else 1., generated_run=base, tag=f"guidance-{guidance:g}", part_temperature=temperature, face_calibrated=fc)
 
 
 def main(argv=None) -> int:
@@ -177,6 +179,9 @@ def main(argv=None) -> int:
     if sel["head_smoothing"] > 0:
         from signtranslator.generation.postprocess import smooth_rotation_channel
         generated = {k: smooth_rotation_channel(v, "head_rotation", sel["head_smoothing"]) for k, v in generated.items()}
+    if sel.get("head_damping", 1.) != 1:
+        from signtranslator.generation.postprocess import damp_rotation_channel
+        generated = {k: damp_rotation_channel(v, "head_rotation", sel["head_damping"]) for k, v in generated.items()}
     calibration = None
     if sel["face_calibrated"]:                       # the calibration the gate's candidate used, from its stored result
         if groups:                                   # the pooled calibration, identical in every group's report
@@ -273,6 +278,9 @@ def main(argv=None) -> int:
             if sel["head_smoothing"] > 0:
                 from signtranslator.generation.postprocess import smooth_rotation_channel
                 st = smooth_rotation_channel(st, "head_rotation", sel["head_smoothing"])
+            if sel.get("head_damping", 1.) != 1:
+                from signtranslator.generation.postprocess import damp_rotation_channel
+                st = damp_rotation_channel(st, "head_rotation", sel["head_damping"])
             sign_states.append(calibrate_face(st, calibration) if calibration else st)
             y.append(index[g])
     y = torch.tensor(y)
@@ -310,7 +318,8 @@ def main(argv=None) -> int:
                            *(["--checkpoint-manifest-sha256", args.checkpoint_manifest_sha256]
                              if args.checkpoint_manifest_sha256 else []),
                            "--guidance", f"{sel['guidance']:g}", "--part-temperature", sel["part_temperature"],
-                           "--head-smoothing", str(sel["head_smoothing"]), "--device", args.device,
+                           "--head-smoothing", str(sel["head_smoothing"]), "--head-damping", str(sel.get("head_damping", 1.)),
+                           "--device", args.device,
                            "--retrieval-key", args.retrieval_key, "--output-key", key, "--fps", "24"]
                           + (["--corpus", args.heldout_corpus] if args.heldout_corpus else [])
                           + (["--retrieval-manifest-sha256", args.retrieval_manifest_sha256] if args.retrieval_manifest_sha256 else [])

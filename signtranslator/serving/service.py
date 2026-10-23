@@ -121,6 +121,9 @@ class TranslatorService:
         if r.generator.head_smoothing > 0 and "head_rotation" in state.channels:
             from ..generation.postprocess import smooth_rotation_channel
             state = smooth_rotation_channel(state, "head_rotation", r.generator.head_smoothing)
+        if r.generator.head_damping != 1 and "head_rotation" in state.channels:
+            from ..generation.postprocess import damp_rotation_channel
+            state = damp_rotation_channel(state, "head_rotation", r.generator.head_damping)
         if r.generator.face_calibration is not None and "face" in state.channels:
             from ..generation.postprocess import calibrate_face
             state = calibrate_face(state, r.generator.face_calibration)

@@ -31,3 +31,12 @@ def test_selected_setting_reads_core_and_sweep_runs():
     sweep = selected_setting(dict(selected=dict(run="p-sweep-h1.4-f0.8", setting="motion_tokens_v2 guidance 1.5")))
     assert sweep["generated_run"] == "p-sweep-h1.4-f0.8" and sweep["tag"] == "guidance-1.5"
     assert sweep["part_temperature"] == "body=1.4,left_hand=1.4,right_hand=1.4,face=0.8"
+
+
+def test_selected_setting_reads_round3_variant_names():
+    import strict_prior_review as spr
+    sel = spr.selected_setting(dict(selected=dict(run="P-sweep-h1.2-f0.8-hs0.2-hd0.6-fc", setting="motion_tokens_v2 guidance 1.5")))
+    assert (sel["head_smoothing"], sel["head_damping"], sel["face_calibrated"]) == (0.2, 0.6, True)
+    assert sel["generated_run"] == "P-sweep-h1.2-f0.8" and sel["guidance"] == 1.5 and "face=0.8" in sel["part_temperature"]
+    plain = spr.selected_setting(dict(selected=dict(run="P-sweep-h1.0-f1.0-hs0.1", setting="motion_tokens_v2 guidance 2")))
+    assert (plain["head_smoothing"], plain["head_damping"], plain["face_calibrated"]) == (0.1, 1., False)

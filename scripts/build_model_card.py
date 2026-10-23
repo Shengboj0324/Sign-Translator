@@ -55,10 +55,11 @@ def card(release: dict, reports: dict) -> str:
              f"{'the plan line' if g['condition'] == 'plan' else 'the English sentence'}; guidance {g['guidance']}, "
              f"per-part temperatures {g.get('part_temperature') or 'none'}.",
              *([f"- **Post-processing:** head-rotation smoothing {g.get('head_smoothing', 0)} s"
+                + (f", head excursions damped to {g['head_damping']}x around the clip mean" if g.get("head_damping", 1) != 1 else "")
                 + ("; per-blendshape face calibration (gain = real / generated within-clip spread, clipped to [1, "
                    f"{g['face_calibration'].get('max_gain', 4)}], estimated on validation, confirmed once on test)"
                    if g.get("face_calibration") else "") + "."]
-               if g.get("head_smoothing") or g.get("face_calibration") else []),
+               if g.get("head_smoothing") or g.get("face_calibration") or g.get("head_damping", 1) != 1 else []),
              *([f"- **Known limits from the exit gate:** {', '.join(release['selection']['known_limits'])}."]
                if (release.get("selection") or {}).get("known_limits") else []),
              (f"- **Planner:** `{release['planner']['key']}` (SHA-256 `{release['planner']['sha256'][:16]}...`)."

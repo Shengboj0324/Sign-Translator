@@ -54,7 +54,8 @@ def main(argv=None) -> int:
     checkpoint = Pinned(args.checkpoint_key, hashlib.sha256(store.get(args.checkpoint_key)).hexdigest())
     generator = GeneratorSpec(checkpoint, args.manifest_sha256, condition="english", guidance=float(sel["guidance"]),
                               part_temperature=part_temperature(sel["part_temperature"]),
-                              head_smoothing=float(sel["head_smoothing"]), face_calibration=review.get("face_calibration"))
+                              head_smoothing=float(sel["head_smoothing"]), head_damping=float(sel.get("head_damping", 1.)),
+                              face_calibration=review.get("face_calibration"))
     release = Release(name=base.name, version=args.version, generator=generator, provenance=base.provenance,
                       planner=base.planner, fps=base.fps, seconds_per_sign=base.seconds_per_sign,
                       max_text_chars=base.max_text_chars)

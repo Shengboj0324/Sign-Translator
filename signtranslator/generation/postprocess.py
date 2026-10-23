@@ -62,7 +62,34 @@ def smooth_rotation_channel(state: MultichannelMotion, name: str, seconds: float
     return replace(state, channels={**state.channels, name: replace(channel, values=out.astype(values.dtype))})
 
 
-__all__ = ["estimate_face_calibration", "calibrate_face", "project_to_rotation", "smooth_rotation_channel"]
+def damp_rotation_channel(state: MultichannelMotion, name: str, factor: float) -> MultichannelMotion:
+    """``state`` with channel ``name``'s rotations pulled toward the clip's mean rotation: per joint,
+
+        R'_t = R̄ · exp( factor · log( R̄ᵀ R_t ) ),
+
+    with R̄ the chordal mean of the valid frames (``project_to_rotation``). ``factor`` 1 is the identity. Below 1 it
+    shrinks every excursion (nods, shakes, turns) by that factor while keeping their timing. Smoothing removes speed;
+    damping removes amplitude: round 3's answer to the full prior's head over-activity on unseen signers (R6: nod rate
+    19.8x, head variation 2.3x). Invalid frames are unchanged."""
+    if factor == 1:
+        return state
+    from ..pose.rotations import axis_angle_to_matrix, matrix_to_axis_angle
+    channel = state.channels[name]
+    values = np.asarray(channel.values, float)
+    valid = np.asarray(channel.valid, bool)
+    identity = np.array([1., 0., 0., 0., 1., 0.])
+    mats = rotation_6d_to_matrix(torch.from_numpy(np.where(valid[..., None], values, identity))).numpy()
+    w = valid.astype(float)[..., None, None]
+    mean = project_to_rotation((mats * w).sum(0) / np.maximum(w.sum(0), 1e-12))            # (J, 3, 3)
+    rel = np.einsum("jba,tjbc->tjac", mean, mats)                                            # R̄ᵀ R_t
+    aa = matrix_to_axis_angle(torch.from_numpy(rel)).numpy() * factor
+    damped = np.einsum("jab,tjbc->tjac", mean, axis_angle_to_matrix(torch.from_numpy(aa)).numpy())
+    out = np.where(valid[..., None], matrix_to_rotation_6d(torch.from_numpy(damped)).numpy(), values)
+    return replace(state, channels={**state.channels, name: replace(channel, values=out.astype(values.dtype))})
+
+
+__all__ = ["estimate_face_calibration", "calibrate_face", "damp_rotation_channel", "project_to_rotation",
+           "smooth_rotation_channel"]
 
 
 # --- face expression calibration ------------------------------------------------------------------------------------

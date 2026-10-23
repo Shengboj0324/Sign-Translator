@@ -537,6 +537,18 @@ addresses the causes.
 6. **Recogniser domain.** Validate the recogniser on How2Sign-layout isolated signs before it judges R5, through the
    same FK/conform path, as the plan generator's diagnosis already requires.
 
+**Round 3 addition, declared 2026-10-23 at 11:50 PDT, before any round-3 result: head-excursion damping.**
+- **What it is:** `postprocess.damp_rotation_channel` pulls each frame's head rotation toward the clip's mean by a
+  factor: R'_t = R̄ · exp(a · log(R̄ᵀ R_t)), a ∈ {0.8, 0.6}. Smoothing removes speed; damping removes amplitude.
+- **Why:** the full prior's R6 failure on the unseen signer was amplitude, not only speed (nod rate 19.8×, head
+  variation 2.3×).
+- **How it is selected:** the variants join the post-processing grid (every head smoothing × damping × pooled face
+  calibration). They are chosen by the same multi-signer gate across validation signers, and R6, test signer 9, stays
+  the final check.
+- **Mechanics:** `runpod/fleet/round3_supplement.sh` runs after stage B. **Round 3's verdict is the strict review of the
+  union selection.** Stage B's own strict review, on the undamped grid, is reported as preliminary.
+- **Pipeline:** the release spec and service carry `head_damping`, and the strict review applies it in every rule.
+
 **Home route: first soft refusals (2026-10-23, 11:05 PDT).** Two downloads (videos #830 and #956 of about 950) were
 answered "Please sign in. This helps protect our community." That is YouTube's soft bot check. It was not in the
 detector's patterns, so it was logged as an ordinary error.

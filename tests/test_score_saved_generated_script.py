@@ -67,9 +67,11 @@ def test_postprocessing_grid_writes_every_variant_per_group(tmp_path):
     body = canonical_json(m); store.put("m.json", body)
     assert grid.main(["--store", f"dir:{tmp_path}", "--manifest-key", "m.json", "--manifest-sha256",
                       hashlib.sha256(body).hexdigest(), "--run", "R", "--groups", "c01,c03",
-                      "--generated-template", "gen/{run}-{group}", "--evaluations", "ev", "--head-smoothing", "0,0.2"]) == 0
+                      "--generated-template", "gen/{run}-{group}", "--evaluations", "ev", "--head-smoothing", "0,0.2",
+                      "--head-damping", "1,0.6"]) == 0
     names = sorted(k for k in store.list("ev/"))
-    assert names == sorted(f"ev/R-hs{h}{fc}-{g}.json" for h in ("0", "0.2") for fc in ("", "-fc") for g in ("c01", "c03"))
+    assert names == sorted(f"ev/R-hs{h}{d}{fc}-{g}.json" for h in ("0", "0.2") for d in ("", "-hd0.6")
+                           for fc in ("", "-fc") for g in ("c01", "c03"))
     a = json.loads(store.get("ev/R-hs0.2-fc-c01.json"))["results"]["motion_tokens_v2 guidance 2"]["face_calibration"]
     b = json.loads(store.get("ev/R-hs0.2-fc-c03.json"))["results"]["motion_tokens_v2 guidance 2"]["face_calibration"]
     assert a == b and a["clips"] == dict(generated=4, real=4)       # one pooled calibration for both signers

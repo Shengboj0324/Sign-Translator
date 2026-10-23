@@ -4,7 +4,7 @@ from dataclasses import replace
 import numpy as np
 import torch
 
-from signtranslator.generation.postprocess import project_to_rotation, smooth_rotation_channel
+from signtranslator.generation.postprocess import damp_rotation_channel, project_to_rotation, smooth_rotation_channel
 from signtranslator.pose.rotations import axis_angle_to_matrix, matrix_to_rotation_6d, rotation_6d_to_matrix
 from tests.test_generation_text_to_motion import state
 
@@ -83,3 +83,15 @@ def test_face_calibration_restores_the_real_range_and_never_shrinks_it():
         [s.channels["face"].values[:, 0, 0].std() for s in real])
     assert .8 < ratio < 1.2 and all(((s.channels["face"].values >= 0) & (s.channels["face"].values <= 1)).all() for s in fixed)
     assert estimate_face_calibration(real, flat)["gain"][0] == 1.          # never reduces the range
+
+
+def test_damping_shrinks_excursions_around_the_mean_and_keeps_timing():
+    t = np.arange(96) / 24.
+    turn = with_head(.2 + .3 * np.sin(2 * np.pi * .5 * t))       # mean 0.2 rad, +-0.3 excursions
+    out = yaw(damp_rotation_channel(turn, "head_rotation", .5))
+    np.testing.assert_allclose(out - .2, .5 * (yaw(turn) - .2), atol=5e-3)   # half the excursion, same phase
+    assert damp_rotation_channel(turn, "head_rotation", 1.) is turn
+    gaps = np.ones((96, 1), bool); gaps[10:20] = False
+    held = with_head(.3 * np.sin(2 * np.pi * .5 * t), gaps)
+    damped = damp_rotation_channel(held, "head_rotation", .5)
+    np.testing.assert_array_equal(damped.channels["head_rotation"].values[10:20], held.channels["head_rotation"].values[10:20])
