@@ -85,6 +85,8 @@ def main(argv=None, *, build_model=build) -> int:
     parser.add_argument("--cache-bytes", type=int, default=8 * 2 ** 30)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--device", default="auto")
+    parser.add_argument("--init-key", help="fine-tune from this checkpoint (e.g. YouTube-ASL pretraining), same config")
+    parser.add_argument("--init-sha256")
     args = parser.parse_args(argv)
     store = make_store(args.store)
     device = torch.device("cuda" if args.device == "auto" and torch.cuda.is_available() else
@@ -122,6 +124,18 @@ def main(argv=None, *, build_model=build) -> int:
         torch.set_rng_state(state["torch_rng"].cpu())
         print(f"resumed {checkpoints[-1]} at step {step}", flush=True)
     else:
+        if args.init_key:
+            import hashlib
+            payload = store.get(args.init_key)
+            if hashlib.sha256(payload).hexdigest() != args.init_sha256:
+                raise SystemExit("the --init-key checkpoint differs from --init-sha256")
+            init = torch.load(io.BytesIO(payload), map_location=device, weights_only=False)
+            if init.get("kind") != KIND or init["config"]["t5_name"] != config.t5_name:
+                raise SystemExit("--init-key is not a back-translator v2 with the same language model")
+            if init["config_sha256"] != config.sha256():
+                raise SystemExit("--init-key was trained with a different config (channels, sizes)")
+            model.load_state_dict(init.get("ema") or init["model"])
+            print(f"initialised from {args.init_key} (step {init.get('step')})", flush=True)
         store.put(f"{prefix}/run.json", json.dumps(dict(
             kind=KIND, config=config.to_dict(), config_sha256=config.sha256(), manifest_key=args.manifest_key,
             manifest_sha256=args.manifest_sha256, args=vars(args), train_records=len(train), val_records=len(val)),

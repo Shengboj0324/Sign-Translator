@@ -397,7 +397,7 @@ Published pretraining on YouTube-ASL took pose-based How2Sign translation to abo
 | Y2 | Pilot ~50 h: availability rate, caption kinds, hand coverage, extraction throughput, blocking | 1 CPU pod | ~3–6 h | <$10 |
 | Y3 | Full acquisition of the selected corpora | ≤4 CPU pods | ~2–4 days | ~$100–300 |
 | Y4 | Manifest `youtube-asl-manifest-v1`: quality filters, dedup across corpora, train-only + small channel-disjoint monitor split | Mac | ~2 h | - |
-| Y5 | Pretraining and fine-tuning in priority order (meaning instruments first, then the generator) | GPU pods | ~1–2 days | ~$50–150 |
+| Y5 | Pretraining and fine-tuning in priority order (meaning instruments first: `runpod/fleet/youtube_pretrain_instruments.sh`, back-translator v2 pre-trained How2Sign+YouTube then fine-tuned on How2Sign, retrieval on the mix; then the generator) | GPU pods (300 GB disk) | ~1–2 days | ~$50–150 |
 | Y6 | Same strict rules and gate as task No.1 | GPU pods | ~0.5 day | ~$10 |
 
 Y5 covers, in order:
