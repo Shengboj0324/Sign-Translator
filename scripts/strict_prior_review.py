@@ -20,6 +20,8 @@ This review then checks the selected setting against six rules. Every rule must 
   recogniser's reliable glosses that occur as words in the How2Sign training sentences. The recogniser's top-5 on the
   generated signs needs a bootstrap interval entirely above blank. Real clips of those glosses are reported as the
   ceiling.
+- **Post-processing:** the selected candidate's head smoothing and face calibration (estimated on validation, stored
+  with the gate's candidate) are applied in every rule, including the sign-level and held-out checks.
 - **R6 held-out confirmation:** the selected setting is evaluated once on the test partition (signer-disjoint, 92
   clips), and every gate check that passed on validation must pass there too. The ``heldout_official`` clips (up to
   600; signer overlap unverified) are evaluated and reported.
@@ -115,13 +117,15 @@ def selected_setting(gate: dict) -> dict:
     run, setting = gate["selected"]["run"], gate["selected"]["setting"]
     m = re.search(r"guidance ([0-9.]+)", setting)
     guidance = float(m.group(1)) if m else 1.
-    hs = re.search(r"-hs([0-9.]+)$", run)
-    base = run[:hs.start()] if hs else run
+    fc = run.endswith("-fc")
+    core = run[:-3] if fc else run
+    hs = re.search(r"-hs([0-9.]+)$", core)
+    base = core[:hs.start()] if hs else core
     t = re.search(r"-sweep-h([0-9.]+)-f([0-9.]+)", base)
     temperature = (f"body={t.group(1)},left_hand={t.group(1)},right_hand={t.group(1)},face={t.group(2)}" if t
                    else "body=1.2,left_hand=1.2,right_hand=1.2,face=1.0")          # the core chain's evaluation
     return dict(run=run, setting=setting, guidance=guidance, head_smoothing=float(hs.group(1)) if hs else 0.,
-                generated_run=base, tag=f"guidance-{guidance:g}", part_temperature=temperature)
+                generated_run=base, tag=f"guidance-{guidance:g}", part_temperature=temperature, face_calibrated=fc)
 
 
 def main(argv=None) -> int:
@@ -162,6 +166,13 @@ def main(argv=None) -> int:
     if sel["head_smoothing"] > 0:
         from signtranslator.generation.postprocess import smooth_rotation_channel
         generated = {k: smooth_rotation_channel(v, "head_rotation", sel["head_smoothing"]) for k, v in generated.items()}
+    calibration = None
+    if sel["face_calibrated"]:                       # the calibration the gate's candidate used, from its stored result
+        stored = json.loads(store.get(f"{args.derived}/evaluations/{sel['run']}.json"))["results"]
+        calibration = next(v["face_calibration"] for k, v in stored.items() if k.startswith(sel["tag"]) and "face_calibration" in v)
+        from signtranslator.generation.postprocess import calibrate_face
+        generated = {k: calibrate_face(v, calibration) for k, v in generated.items()}
+    report["face_calibration"] = calibration
     signs = sorted(generated)[:64] if args.quick else sorted(generated)
     refs = [load_state(store, by_sign[s]["continuous"]["state_key"], by_sign[s]["continuous"]["state_sha256"]) for s in signs]
     gens = [generated[s] for s in signs]
@@ -242,7 +253,11 @@ def main(argv=None) -> int:
     sign_states, y = [], []
     for k, g in enumerate(words):
         for s in range(2):
-            sign_states.append(resample_motion(sample(g.lower(), 24., 1.2, sel["guidance"], 50, 7000 + 10 * k + s), 24.))
+            st = resample_motion(sample(g.lower(), 24., 1.2, sel["guidance"], 50, 7000 + 10 * k + s), 24.)
+            if sel["head_smoothing"] > 0:
+                from signtranslator.generation.postprocess import smooth_rotation_channel
+                st = smooth_rotation_channel(st, "head_rotation", sel["head_smoothing"])
+            sign_states.append(calibrate_face(st, calibration) if calibration else st)
             y.append(index[g])
     y = torch.tensor(y)
 
@@ -268,13 +283,19 @@ def main(argv=None) -> int:
     for partition, limit in (("test", 92), ("heldout_official", 600)):
         limit = 32 if args.quick else limit
         key = f"{args.derived}/evaluations/strict-{sel['run']}-{partition}{'-dryrun' if args.quick else ''}.json"
+        extra = []
+        if calibration:                                  # the validation calibration, applied unchanged on held-out data
+            cal_key = f"{args.derived}/evaluations/strict-{sel['run']}-face-calibration.json"
+            store.put(cal_key, json.dumps(calibration).encode())
+            extra = ["--face-calibration-key", cal_key]
         try:
             evaluate.main(["--store", args.store,     "--manifest-key", args.manifest_key, "--manifest-sha256", args.manifest_sha256,
                            "--checkpoint-key", args.checkpoint_key, "--partition", partition, "--limit", str(limit),
                            "--guidance", f"{sel['guidance']:g}", "--part-temperature", sel["part_temperature"],
                            "--head-smoothing", str(sel["head_smoothing"]), "--device", args.device,
                            "--retrieval-key", args.retrieval_key, "--output-key", key]
-                          + (["--retrieval-manifest-sha256", args.retrieval_manifest_sha256] if args.retrieval_manifest_sha256 else []))
+                          + (["--retrieval-manifest-sha256", args.retrieval_manifest_sha256] if args.retrieval_manifest_sha256 else [])
+                          + extra)
         except SystemExit as stop:                          # a partition the manifest does not have
             held[partition] = dict(absent=str(stop))
             continue

@@ -58,3 +58,28 @@ def test_invalid_frames_are_untouched_and_excluded():
     m = rotation_6d_to_matrix(torch.from_numpy(out.channels["head_rotation"].values[ok, 0])).numpy()
     np.testing.assert_allclose(m, np.eye(3)[None].repeat(len(ok), 0), atol=1e-9)       # neighbours never saw it
     assert smooth_rotation_channel(s, "head_rotation", 0.) is s
+
+
+def test_face_calibration_restores_the_real_range_and_never_shrinks_it():
+    from dataclasses import replace
+    import numpy as np
+    from signtranslator.generation.postprocess import calibrate_face, estimate_face_calibration
+    from tests.test_pose_resample import state
+    rng = np.random.default_rng(0)
+
+    def with_face(values):
+        s = state(np.arange(len(values)) / 24.)
+        f = s.channels["face"]
+        v = np.asarray(values, float)[:, None, None]
+        return replace(s, channels=dict(s.channels, face=replace(f, values=v, valid=np.ones((len(v), 1), bool),
+                                                                observed=np.ones((len(v), 1), bool),
+                                                                confidence=np.ones((len(v), 1)))))
+    real = [with_face(np.clip(.3 + .2 * rng.standard_normal(40), 0, 1)) for _ in range(6)]
+    flat = [with_face(np.clip(.1 + .05 * rng.standard_normal(40), 0, 1)) for _ in range(6)]
+    cal = estimate_face_calibration(flat, real)
+    assert 3 < cal["gain"][0] <= 4 and abs(cal["center_real"][0] - .3) < .05
+    fixed = [calibrate_face(s, cal) for s in flat]
+    ratio = np.mean([s.channels["face"].values[:, 0, 0].std() for s in fixed]) / np.mean(
+        [s.channels["face"].values[:, 0, 0].std() for s in real])
+    assert .8 < ratio < 1.2 and all(((s.channels["face"].values >= 0) & (s.channels["face"].values <= 1)).all() for s in fixed)
+    assert estimate_face_calibration(real, flat)["gain"][0] == 1.          # never reduces the range

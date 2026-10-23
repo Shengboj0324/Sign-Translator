@@ -40,6 +40,24 @@ for hands in 1.0 1.2 1.4; do for face in 0.8 1.0 1.2; do
   TAG=$PRIOR-sweep-h$hands-f$face; [ -f /root/sweep-ok-$TAG ] && RUNS="$RUNS $TAG"
 done; done
 export OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8
+# face calibration (postprocess.calibrate_face): the prior samples near-neutral faces (brow-down varies ~3x less than
+# real; the tokenizer reconstructs it at 0.95x). Calibrated variants of every base run, raw head and head smoothing 0.2,
+# join the gate as candidates; the calibration is estimated on validation like head smoothing and confirmed once on
+# test by the strict review (R6).
+BASES="$PRIOR-pt"
+for hands in 1.0 1.2 1.4; do for face in 0.8 1.0 1.2; do
+  TAG=$PRIOR-sweep-h$hands-f$face; [ -f /root/sweep-ok-$TAG ] && BASES="$BASES $TAG"
+done; done
+for base in $BASES; do
+  for h in 0 0.2; do
+    suffix=$([ "$h" = 0 ] && echo "-fc" || echo "-hs$h-fc")
+    ( stage $PRIOR fc-$base-$h python scripts/score_saved_generated.py --manifest-key "$M" --manifest-sha256 "$MSHA" \
+        --generated "$D/generated/$base" --head-smoothing $h --face-calibrate \
+        --output-key "$D/evaluations/$base$suffix.json" && touch /root/fc-ok-$base$suffix ) &
+  done
+done
+wait
+for base in $BASES; do for suffix in -fc -hs0.2-fc; do [ -f /root/fc-ok-$base$suffix ] && RUNS="$RUNS $base$suffix"; done; done
 GENERATED=""
 for r in $RUNS; do [[ $r == *sweep* ]] && GENERATED="$GENERATED $D/generated/$r"; done
 stage $PRIOR sweep-back-translation python scripts/score_back_translation.py --manifest-key "$M" --manifest-sha256 "$MSHA" \

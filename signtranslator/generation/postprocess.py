@@ -62,4 +62,47 @@ def smooth_rotation_channel(state: MultichannelMotion, name: str, seconds: float
     return replace(state, channels={**state.channels, name: replace(channel, values=out.astype(values.dtype))})
 
 
-__all__ = ["project_to_rotation", "smooth_rotation_channel"]
+__all__ = ["estimate_face_calibration", "calibrate_face", "project_to_rotation", "smooth_rotation_channel"]
+
+
+# --- face expression calibration ------------------------------------------------------------------------------------
+# The full-corpus prior samples face codes near the neutral face: on validation its brow-down / inner-brow / pucker
+# blendshapes vary ~3x less within a clip than the real signing, while the tokenizer reconstructs them at 0.89-0.97x
+# (the loss is in sampling, not in the codes). A per-blendshape affine map restores the real range:
+#
+#     v' = clip( c_real + g * (v - c_gen), 0, 1 ),   g = clip( s_real / s_gen, 1, g_max ),
+#
+# with c the pooled median and s the mean within-clip standard deviation of each blendshape over a calibration set of
+# generated clips and the real clips of the same sentences. It is a declared post-processing setting, chosen on
+# validation like head smoothing and confirmed once on the test partition (strict review R6); it never reduces a
+# blendshape's range (g >= 1).
+
+
+def estimate_face_calibration(generated, references, *, max_gain: float = 4.) -> dict:
+    def stats(states):
+        labels = states[0].channels["face"].labels
+        per_clip, pooled = [], []
+        for s in states:
+            f = s.channels["face"]
+            ok = f.valid[:, 0].astype(bool)
+            if ok.sum() >= 2:
+                v = f.values[ok, :, 0]
+                per_clip.append(v.std(0)); pooled.append(v)
+        return labels, np.median(np.concatenate(pooled), 0), np.mean(per_clip, 0)
+    labels, c_gen, s_gen = stats(generated)
+    labels_r, c_real, s_real = stats(references)
+    if tuple(labels) != tuple(labels_r):
+        raise ValueError("generated and reference face channels use different blendshape bases")
+    gain = np.clip(s_real / np.maximum(s_gen, 1e-6), 1., max_gain)
+    return dict(labels=list(labels), center_generated=c_gen.round(6).tolist(), center_real=c_real.round(6).tolist(),
+                gain=gain.round(4).tolist(), max_gain=max_gain, clips=dict(generated=len(generated), real=len(references)))
+
+
+def calibrate_face(state: MultichannelMotion, calibration: dict) -> MultichannelMotion:
+    f = state.channels["face"]
+    if list(f.labels) != calibration["labels"]:
+        raise ValueError("the calibration was estimated on another blendshape basis")
+    c_gen, c_real, g = (np.asarray(calibration[k], dtype=f.values.dtype) for k in ("center_generated", "center_real", "gain"))
+    values = np.clip(c_real[None, :, None] + g[None, :, None] * (f.values - c_gen[None, :, None]), 0., 1.)
+    values = np.where(f.valid[..., None], values, 0.).astype(f.values.dtype)
+    return replace(state, channels=dict(state.channels, face=replace(f, values=values)))

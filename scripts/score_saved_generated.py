@@ -20,7 +20,8 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from signtranslator.data_engineering.corpus_manifest import load_manifest  # noqa: E402
 from signtranslator.generation.motion_metrics import compare  # noqa: E402
-from signtranslator.generation.postprocess import smooth_rotation_channel  # noqa: E402
+from signtranslator.generation.postprocess import (calibrate_face, estimate_face_calibration,  # noqa: E402
+                                                   smooth_rotation_channel)
 from signtranslator.generation.signing_space import location_errors  # noqa: E402
 from signtranslator.grammar_motion.evaluation import grammar_comparison  # noqa: E402
 from signtranslator.pose.multichannel import MultichannelMotion  # noqa: E402
@@ -52,6 +53,9 @@ def main(argv=None) -> int:
     parser.add_argument("--generated", required=True, help="a --save-generated prefix")
     parser.add_argument("--head-smoothing", type=float, default=0.)
     parser.add_argument("--fps", type=float, help="resample the references to this rate (as the evaluation did)")
+    parser.add_argument("--face-calibrate", action="store_true",
+                        help="per-blendshape face calibration (postprocess.estimate_face_calibration) estimated on these "
+                             "clips and applied; stored with the result")
     parser.add_argument("--output-key", required=True)
     args = parser.parse_args(argv)
     store = make_store(args.store)
@@ -67,16 +71,23 @@ def main(argv=None) -> int:
         references = [load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]) for r in records]
         if args.fps:
             references = [at_rate(r, args.fps) for r in references]
+        calibration = None
+        if args.face_calibrate:
+            calibration = estimate_face_calibration(generated, references)
+            generated = [calibrate_face(s, calibration) for s in generated]
         channels = tuple(c for c in CHANNELS if c in generated[0].channels and generated[0].channels[c].valid.any())
-        name = f"{tag} head-smoothing {args.head_smoothing:g}"
+        name = f"{tag} head-smoothing {args.head_smoothing:g}" + (" face-calibrated" if calibration else "")
         results[name] = compare(generated, references, channels)
+        if calibration:
+            results[name]["face_calibration"] = calibration
         if all("LeftForearm" in r.channels["body"].labels for r in references):
             results[name]["signing_space"] = location_errors(generated, references)
         results[name]["grammar"] = grammar_comparison(generated, references, [r["text"] for r in records])
         print(json.dumps({name: {k: results[name][k] for k in ("frechet", "head_rotation") if k in results[name]}},
                          default=float), flush=True)
     store.put(args.output_key, json.dumps(dict(schema_version=1, generated=args.generated,
-                                               head_smoothing=args.head_smoothing, manifest_sha256=args.manifest_sha256,
+                                               head_smoothing=args.head_smoothing, face_calibrated=args.face_calibrate,
+                                               manifest_sha256=args.manifest_sha256,
                                                results=results), indent=2, sort_keys=True, default=float).encode())
     return 0
 

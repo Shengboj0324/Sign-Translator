@@ -160,6 +160,8 @@ def main(argv=None) -> int:
     parser.add_argument("--retrieval-manifest-sha256",
                         help="the manifest the retrieval model was trained on, when it is not --manifest-sha256")
     parser.add_argument("--corpus", help="mixed manifests: evaluate only records of this corpus")
+    parser.add_argument("--face-calibration-key", help="store key of a face calibration (postprocess.estimate_face_"
+                                                       "calibration JSON) applied to every generated state")
     parser.add_argument("--condition", choices=("text", "english"), default="text",
                         help="what the generator is conditioned on: the record's text (English or a plan line), or "
                              "its English (the pre-plan baseline on plan records)")
@@ -207,6 +209,7 @@ def main(argv=None) -> int:
     reference_retrieval = (dict(real=retrieval_scores(retrieval, references, texts),
                                 duration_only=retrieval_scores(retrieval, blanked(references), texts))
                            if retrieval else None)
+    calibration = json.loads(store.get(args.face_calibration_key)) if args.face_calibration_key else None
     results = {}
     for scale in scales:
         generated = []
@@ -218,6 +221,9 @@ def main(argv=None) -> int:
             if args.head_smoothing > 0 and "head_rotation" in out.channels:
                 from signtranslator.generation.postprocess import smooth_rotation_channel
                 out = smooth_rotation_channel(out, "head_rotation", args.head_smoothing)
+            if calibration is not None:
+                from signtranslator.generation.postprocess import calibrate_face
+                out = calibrate_face(out, calibration)
             generated.append(out)
         name = label if scale is None else f"{label} guidance {scale:g}"
         results[name] = compare(generated, references, channels)
