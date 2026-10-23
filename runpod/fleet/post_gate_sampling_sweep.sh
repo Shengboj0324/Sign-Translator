@@ -2,9 +2,9 @@
 # post_gate_sampling_sweep.sh — plan item 4 (tuning) on one GPU pod, after the full-corpus prior is trained: sweep the
 # sampling settings of tokens-rvq-d0b-prior-loci-full-v1 on the validation partition (test untouched) and select with
 # the same declared exit gate (scripts/exit_gate.py), so the sweep cannot change the rule it is judged by.
-#   - per-part temperatures: hands {1.0, 1.2, 1.4} x face {0.8, 1.0} (body follows the hands). The face part carries the
+#   - per-part temperatures: hands {1.0, 1.2, 1.4} x face {0.8, 1.0, 1.2} (body follows the hands). The face part carries the
 #     head-rotation codes, whose over-activity (1.9-3.3x too fast) was the subset round's carried problem, so a cooler
-#     face is part of the grid;
+#     face is part of the grid; a hotter face for brow furrows, which the full prior under-produces (0.09x at T=1.0);
 #   - guidance {1, 1.5, 2} inside each evaluation.
 # Every evaluation is saved under $D/evaluations/$PRIOR-sweep-<setting>.json with its generated states, scored by
 # retrieval R-precision (blank control inside) and back-translation, and the gate runs over the core chain's own
@@ -25,9 +25,9 @@ MSHA=$(sha "$M"); GEN=$(best $PRIOR); RKEY=$(best $RET); BKEY=$(best $BT)
 RUNS="$PRIOR-pt $PRIOR-pt-hs0.1 $PRIOR-pt-hs0.2 $PRIOR-pt-hs0.3"
 # the six settings run in parallel on the one GPU: generation is sequential per clip and leaves the GPU ~80% idle, so
 # six processes cut the wall time ~5x; every setting still scores the same 600 validation clips as the core chain
-export OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2
+export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 for hands in 1.0 1.2 1.4; do
-  for face in 0.8 1.0; do
+  for face in 0.8 1.0 1.2; do
     TAG=$PRIOR-sweep-h$hands-f$face
     ( stage $PRIOR sweep-h$hands-f$face python scripts/evaluate_text_to_motion.py --manifest-key "$M" --manifest-sha256 "$MSHA" \
         --checkpoint-key "$GEN" --partition val --limit 600 --guidance 1,1.5,2 --device cuda \
@@ -36,7 +36,7 @@ for hands in 1.0 1.2 1.4; do
   done
 done
 wait
-for hands in 1.0 1.2 1.4; do for face in 0.8 1.0; do
+for hands in 1.0 1.2 1.4; do for face in 0.8 1.0 1.2; do
   TAG=$PRIOR-sweep-h$hands-f$face; [ -f /root/sweep-ok-$TAG ] && RUNS="$RUNS $TAG"
 done; done
 export OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8
