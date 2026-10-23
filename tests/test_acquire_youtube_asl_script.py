@@ -78,6 +78,12 @@ def test_a_bot_check_stops_instead_of_retrying(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "yt_dlp", types.SimpleNamespace(YoutubeDL=Gone))
     assert acq.download("abcdefghijk", tmp_path, max_height=720, allow_auto=False)["status"] == "removed"
 
+    class NotAvailable(DL):
+        def extract_info(self, url, download):
+            raise Exception("ERROR: [youtube] abcdefghijk: This video is not available")
+    monkeypatch.setitem(sys.modules, "yt_dlp", types.SimpleNamespace(YoutubeDL=NotAvailable))
+    assert acq.download("abcdefghijk", tmp_path, max_height=720, allow_auto=False)["status"] == "removed"
+
 
 def test_sign_language_caption_tracks_count_as_english_captions():
     assert acq.is_caption_lang("ase") and acq.is_caption_lang("sgn-US") and acq.is_caption_lang("en-CA")

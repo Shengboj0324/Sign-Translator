@@ -196,7 +196,7 @@ def download(video_id: str, directory: Path, *, max_height: int, allow_auto: boo
         if any(p in message for p in BLOCK_PATTERNS):
             raise Blocked(str(error)[:300]) from None
         status = ("private" if "private" in message else "removed" if any(w in message for w in
-                  ("unavailable", "removed", "terminated", "does not exist")) else "error")
+                  ("unavailable", "not available", "removed", "terminated", "does not exist")) else "error")
         return dict(status=status, reason=str(error)[:300])
     manual = {k: v for k, v in (info.get("subtitles") or {}).items() if is_caption_lang(k)}
     kind = "manual" if manual else ("auto" if allow_auto and any(k.startswith("en") for k in
@@ -397,7 +397,9 @@ def main(argv=None) -> int:
                 drop_staged(video_id, args, store, staged["video_key"])
         counts[report["status"]] = counts.get(report["status"], 0) + 1
         print(json.dumps(dict(n=n + 1, of=len(mine), video_id=video_id, status=report["status"],
-                              segments=len(report.get("segments", [])), seconds=report["seconds_taken"])), flush=True)
+                              segments=len(report.get("segments", [])), seconds=report["seconds_taken"],
+                              **({"reason": report.get("reason", "")[:200]} if report["status"] == "error" else {}))),
+              flush=True)
         time.sleep(args.pause)
     print(json.dumps(dict(shard=args.shard, done=counts)), flush=True)
     return 0
