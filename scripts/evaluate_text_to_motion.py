@@ -167,6 +167,8 @@ def main(argv=None) -> int:
     parser.add_argument("--retrieval-manifest-sha256",
                         help="the manifest the retrieval model was trained on, when it is not --manifest-sha256")
     parser.add_argument("--corpus", help="mixed manifests: evaluate only records of this corpus")
+    parser.add_argument("--signer-component", help="evaluate only records of this fold-plan signer component "
+                                                   "(repartition_manifest.py; multi-signer validation)")
     parser.add_argument("--batch", type=int, default=32, help="clips generated together (token generators; 1 = one "
                                                                "at a time as before)")
     parser.add_argument("--face-calibration-key", help="store key of a face calibration (postprocess.estimate_face_"
@@ -201,6 +203,7 @@ def main(argv=None) -> int:
                                                 temperature=temperature, top_k=args.top_k)
     records = sorted((r for r in manifest["records"] if r["partition"] == args.partition and r.get("text")
                       and (args.corpus is None or r.get("corpus") == args.corpus)
+                      and (args.signer_component is None or r.get("signer_component") == args.signer_component)
                       and (not args.lexicon_key or r.get("plan"))),
                      key=lambda r: r["sign"])[:args.limit]
     if not records:
@@ -274,6 +277,7 @@ def main(argv=None) -> int:
                   retrieval_key=args.retrieval_key, saved_generated=args.save_generated,
                   temperature=temperature, top_k=args.top_k, head_smoothing=args.head_smoothing,
                   manifest_sha256=args.manifest_sha256, partition=args.partition, corpus=args.corpus, fps=args.fps,
+                  signer_component=args.signer_component,
                   condition=args.condition,
                   clips=len(records),
                   steps=args.steps, results=results)
