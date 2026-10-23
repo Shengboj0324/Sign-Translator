@@ -13,8 +13,12 @@ For every video id of ``--ids`` (one per line; sharded with ``--shard i --shards
 4. the video is deleted; ``<prefix>/videos/<id>.json`` records provenance, every cue (text, times, state key and
    hash, hand coverage) and refusals. A video with a report is skipped on a rerun (resumable).
 
-**No circumvention.** When YouTube asks for sign-in or a bot check ("confirm you're not a bot", HTTP 429, "Sign in"),
-the shard stops with ``BLOCKED`` in its log; nothing retries around it. Private, removed or caption-less videos are
+**Polite and no circumvention.** With ``--polite-dir`` every download on a machine goes through one gate: one at a time,
+``--download-interval`` seconds apart (20 s: at most 180 videos/hour per machine, under YouTube's ~300/hour guest
+rate), while extraction runs in parallel on the downloaded files. When YouTube asks for sign-in or a bot check
+("confirm you're not a bot", HTTP 429, "Sign in"), the refusal is logged as ``BLOCKED`` and every worker on that machine
+waits ``--blocked-backoff`` (1 h) before the next request; after ``--max-blocks`` refusals the shard stops. No cookies,
+sign-in, proxies or address changes are ever used. Private, removed or caption-less videos are
 recorded as such (the corpus's availability rate is part of the pilot's result).
 
 Research-only data: the prefix is private; videos are never stored or redistributed, only the derived motion and the
@@ -52,6 +56,53 @@ def is_caption_lang(code: str) -> bool:
 
 class Blocked(RuntimeError):
     """YouTube refused the datacenter client: stop, never work around it."""
+
+
+class PoliteGate:
+    """One download at a time per machine, at least ``interval`` seconds apart (an flock'd stamp file shared by all
+    workers), so a pod stays under YouTube's guest rate however many extraction workers it runs; and, once any worker
+    is refused, every worker waits ``backoff`` seconds before the next request (``blocked-until`` stamp). This only
+    respects the service's limits: no cookies, sign-in, proxies or address changes are used to get around a refusal."""
+
+    def __init__(self, directory: str, *, interval: float, backoff: float):
+        self.dir, self.interval, self.backoff = Path(directory), interval, backoff
+        self.dir.mkdir(parents=True, exist_ok=True)
+
+    def _stamp(self, name: str) -> float:
+        try:
+            return float((self.dir / name).read_text() or 0)
+        except (OSError, ValueError):
+            return 0.
+
+    def wait_blocked(self) -> float:
+        until = self._stamp("blocked-until")
+        if until > time.time():
+            time.sleep(until - time.time())
+        return until
+
+    def mark_blocked(self) -> None:
+        (self.dir / "blocked-until").write_text(str(time.time() + self.backoff))
+
+    def __enter__(self):
+        import fcntl
+        import threading
+        self.wait_blocked()
+        fh = open(self.dir / "download.lock", "a+")
+        fcntl.flock(fh, fcntl.LOCK_EX)                     # downloads are serialised across workers (processes)
+        wait = self._stamp("last-download") + self.interval - time.time()
+        if wait > 0:
+            time.sleep(wait)
+        self._held = getattr(self, "_held", {})
+        self._held[threading.get_ident()] = fh
+        return self
+
+    def __exit__(self, *exc):
+        import fcntl
+        import threading
+        fh = self._held.pop(threading.get_ident())
+        (self.dir / "last-download").write_text(str(time.time()))
+        fcntl.flock(fh, fcntl.LOCK_UN); fh.close()
+        return False
 
 
 def parse_vtt(text: str) -> list[dict]:
@@ -150,10 +201,14 @@ def download(video_id: str, directory: Path, *, max_height: int, allow_auto: boo
                 meta=meta)
 
 
-def process(video_id: str, args, store, models) -> dict:
+def process(video_id: str, args, store, models, gate=None) -> dict:
     from signtranslator.data_engineering.video_landmarks import canonical_from_landmarks, extract_clip, inference_method
     with tempfile.TemporaryDirectory() as tmp:
-        got = download(video_id, Path(tmp), max_height=args.max_height, allow_auto=args.allow_auto_captions)
+        if gate is None:
+            got = download(video_id, Path(tmp), max_height=args.max_height, allow_auto=args.allow_auto_captions)
+        else:
+            with gate:
+                got = download(video_id, Path(tmp), max_height=args.max_height, allow_auto=args.allow_auto_captions)
         if got["status"] != "downloaded":
             return dict(video_id=video_id, **got)
         video_sha = hashlib.sha256(got["video"].read_bytes()).hexdigest()
@@ -210,6 +265,10 @@ def main(argv=None) -> int:
     parser.add_argument("--max-seconds", type=float, default=20.)
     parser.add_argument("--pad", type=float, default=.2)
     parser.add_argument("--pause", type=float, default=2., help="seconds between videos (polite rate)")
+    parser.add_argument("--polite-dir", help="shared directory of the per-machine download gate (PoliteGate)")
+    parser.add_argument("--download-interval", type=float, default=20., help="seconds between downloads per machine")
+    parser.add_argument("--blocked-backoff", type=float, default=3600., help="wait after a refusal, seconds")
+    parser.add_argument("--max-blocks", type=int, default=3, help="stop after this many refusals")
     parser.add_argument("--retry-status", action="append", default=[],
                         help="reprocess videos whose stored report has this status (e.g. no_captions after a fix)")
     args = parser.parse_args(argv)
@@ -221,7 +280,8 @@ def main(argv=None) -> int:
     mine = [v for i, v in enumerate(ids) if i % args.shards == args.shard][:args.limit]
     models = verify_models(Path(args.models_dir))
     probe_runtime(models)
-    counts = {}
+    counts, blocks = {}, 0
+    gate = PoliteGate(args.polite_dir, interval=args.download_interval, backoff=args.blocked_backoff) if args.polite_dir else None
     for n, video_id in enumerate(mine):
         report_key = f"{args.prefix}/videos/{video_id}.json"
         if store.exists(report_key):
@@ -229,10 +289,14 @@ def main(argv=None) -> int:
                 continue
         started = time.monotonic()
         try:
-            report = process(video_id, args, store, models)
+            report = process(video_id, args, store, models, gate)
         except Blocked as blocked:
-            print(f"BLOCKED at video {n} ({video_id}): {blocked}", flush=True)
-            return 3
+            blocks += 1
+            print(f"BLOCKED at video {n} ({video_id}) [{blocks}/{args.max_blocks}]: {blocked}", flush=True)
+            if gate is None or blocks >= args.max_blocks:
+                return 3
+            gate.mark_blocked()                             # every worker on this machine waits the refusal out
+            continue
         except Exception as error:  # noqa: BLE001 - one bad video must not stop the shard; it is retried next run
             print(json.dumps(dict(video_id=video_id, status="error", reason=f"{type(error).__name__}: {error}"[:300])),
                   flush=True)

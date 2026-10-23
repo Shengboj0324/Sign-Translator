@@ -66,3 +66,21 @@ def test_a_bot_check_stops_instead_of_retrying(monkeypatch, tmp_path):
 def test_sign_language_caption_tracks_count_as_english_captions():
     assert acq.is_caption_lang("ase") and acq.is_caption_lang("sgn-US") and acq.is_caption_lang("en-CA")
     assert not acq.is_caption_lang("es") and "ase" in acq.CAPTION_LANGS
+
+
+def test_the_polite_gate_serialises_downloads_and_spreads_them(tmp_path):
+    import threading
+    import time
+    gate = acq.PoliteGate(str(tmp_path), interval=.2, backoff=.3)
+    stamps = []
+
+    def fetch():
+        with gate:
+            stamps.append(time.time())
+    threads = [threading.Thread(target=fetch) for _ in range(3)]
+    [t.start() for t in threads]; [t.join() for t in threads]
+    stamps.sort()
+    assert all(b - a >= .19 for a, b in zip(stamps, stamps[1:]))
+    gate.mark_blocked()
+    started = time.time(); gate.wait_blocked()
+    assert time.time() - started >= .25
