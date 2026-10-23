@@ -78,6 +78,12 @@ def test_a_bot_check_stops_instead_of_retrying(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "yt_dlp", types.SimpleNamespace(YoutubeDL=Gone))
     assert acq.download("abcdefghijk", tmp_path, max_height=720, allow_auto=False)["status"] == "removed"
 
+    class AgeGate(DL):
+        def extract_info(self, url, download):
+            raise Exception("ERROR: [youtube] abcdefghijk: Sign in to confirm your age. This video may be inappropriate for some users.")
+    monkeypatch.setitem(sys.modules, "yt_dlp", types.SimpleNamespace(YoutubeDL=AgeGate))
+    assert acq.download("abcdefghijk", tmp_path, max_height=720, allow_auto=False)["status"] == "age_restricted"
+
     class NotAvailable(DL):
         def extract_info(self, url, download):
             raise Exception("ERROR: [youtube] abcdefghijk: This video is not available")
