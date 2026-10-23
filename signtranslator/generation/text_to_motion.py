@@ -282,7 +282,8 @@ def utterance_duration(motion: MotionBatch) -> torch.Tensor:
     last = seconds.gather(1, (motion.lengths - 1)[:, None])[:, 0]
     steps = torch.diff(motion.timestamps, dim=1)
     valid = motion.frame_valid[:, 1:] & motion.frame_valid[:, :-1]
-    interval = torch.stack([steps[i][valid[i]].median() if valid[i].any() else torch.tensor(1 / 24., dtype=steps.dtype)
+    interval = torch.stack([steps[i][valid[i]].median() if valid[i].any() else torch.tensor(1 / 24., dtype=steps.dtype,
+                                                                                                    device=steps.device)
                             for i in range(len(steps))])
     return last + interval
 
