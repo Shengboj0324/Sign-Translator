@@ -405,6 +405,23 @@ Published pretraining on YouTube-ASL took pose-based How2Sign translation to abo
   - amanda.duarte@upc.edu (How2Sign, notice).
   - Replies are tracked by the 20-minute inbox check and recorded in each release's provenance.
 
+**Y2 pilot result (2026-10-22, 20:30 PDT; 95 YouTube-ASL videos, US-TX-3 GPU pod plus one 32-vCPU CPU pod).**
+- **Bugs found and fixed during the pilot:**
+  - a missing `libEGL`;
+  - a broken OpenCV install, where two variants removed `cv2`;
+  - English caption tracks filed under the sign-language code `ase` or regional `en-*`;
+  - new pods in US-MO-1 and US-NC-1 that never started.
+- **No YouTube blocking.** All downloads succeeded from the datacenter.
+- **Availability:** 76 of 95 videos converted (80%). Removed and private videos: 11%. 6 videos with no captions
+  remain, and 3 have no usable cues.
+- **Segments:** 2,633 segments (3.66 h) from 249 min of video. Median hand coverage 0.97, face coverage 1.0.
+- **After the manifest filters:** 2,152 segments (3.16 h), 82% kept. The main rejections were caption speed
+  (181 too fast, 30 too slow), too few words (98) and hands not visible (83).
+- **Throughput:** about 3.4 worker-minutes per minute of video, CPU-bound. Processing all of YouTube-ASL (984 h)
+  takes about 3,300 worker-hours: about 2.3 days on two 32-vCPU CPU pods ($0.96/h each), or about 1.2 days on four.
+- **Provenance gap:** yt-dlp returned no licence field for any video (the field is null). Channel, upload date and
+  caption kind are recorded.
+
 **Stages, cost and time (estimates).**
 
 | Stage | Work | Where | Time | Cost |
