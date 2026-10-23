@@ -457,6 +457,31 @@ Y5 covers, in order:
 2. the generator prior on How2Sign + YouTube English (motion tokens from the full-corpus tokenizer, re-checked for
    learnability on the new domain).
 
+**Second blocking event and fallback (2026-10-22, 22:27 PDT).** The polite resume ran on one CPU pod, one
+download every 24 s, after a refusal window of more than 80 minutes. YouTube answered its first request with
+"Sign in to confirm you're not a bot" on three workers at once. Under the rules, acquisition from YouTube is paused
+and the pod was released at once. No cookies, sign-in, proxies or IP hopping. YouTube-ASL stays at the 125 pilot
+videos (6.1 h).
+
+Only the owner can unblock it. Acquiring at a low rate from a non-datacenter connection carries Terms-of-Service
+implications (research report §4.3), so it is the owner's call. Until then the declared fallback runs:
+- **Data:** the **YouTube-ASL Clip Keypoint Dataset** (UWB / JSALT 2024, LINDAT 11234/1-5898, **CC BY 4.0**),
+  hosted by LINDAT, not YouTube. It is MediaPipe Holistic 2D, 33 pose + 2×21 hand + 478 face points per frame,
+  for 390,547 single-signer sentence clips with English translations (train/dev JSON), 337 GB in 10 zips.
+- **Acquisition:** `runpod/fleet/acquire_uwb_keypoints.sh` streams it into R2, MD5-verified, three streams at once.
+- **Use:** a **2D "second-opinion" back-translator**, keypoints → English (T5), pretrained on the 390k clips and
+  fine-tuned on How2Sign.
+  - Both How2Sign and generated motion reach it the same way: canonical 3D state → forward kinematics →
+    orthographic front projection → the shared 2D layout (shoulders, elbows, wrists, 2×21 hand points), normalised
+    by shoulder centre and width. Fine-tuning and evaluation therefore share one domain.
+  - It reads manual channels only. Face meaning stays with the existing instruments.
+- **Not covered:** this does not give the generator more 3D training data. That needs the video (blocked).
+- **Assumption:** clip names are frame ranges, and the source frame rate is not given, so 30 fps is assumed.
+  Pretraining uses time-stretch augmentation of ±25%. The How2Sign fine-tune runs at its known rate.
+- **Instrument acceptance before use** (same skepticism as the recogniser): on How2Sign val through the FK path,
+  real BLEU must exceed blank and shuffled-text controls by a clear margin. Per-sentence agreement with the T5
+  back-translator is reported. If it fails, it is not used.
+
 **Single-signer filter (2026-10-22, 22:15 PDT).** Acquisition counts people on every 12th frame with a separate
 image-mode pose pass. Each segment records `other_person_fraction`, and the manifest drops a segment when a second
 person at least half the signer's size appears in more than 10% of its frames (reason `second_person`). In an
