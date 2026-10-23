@@ -72,6 +72,9 @@ def main(argv=None, *, build_model=build) -> int:
     parser.add_argument("--train-index", action="append", required=True)
     parser.add_argument("--val-index", required=True)
     parser.add_argument("--monitor-index")
+    parser.add_argument("--select-on", choices=("val", "monitor"), default="val",
+                        help="the BLEU that picks the best checkpoint and drives early stopping: val (the judged domain) "
+                             "or monitor (pretraining: the pretraining corpus's own held-out split)")
     parser.add_argument("--run", required=True)
     parser.add_argument("--t5-name", default="google/flan-t5-base")
     parser.add_argument("--steps", type=int, default=100_000)
@@ -161,6 +164,9 @@ def main(argv=None, *, build_model=build) -> int:
         ema.updates = step
     best = json.loads(store.get(f"{prefix}/best.json")) if store.exists(f"{prefix}/best.json") else None
     stale, log, started = 0, [], time.monotonic()
+    if args.select_on == "monitor" and not monitor:
+        raise SystemExit("--select-on monitor needs --monitor-index")
+    selector = "monitor/bleu" if args.select_on == "monitor" else "val/bleu"
 
     def validate() -> dict:
         live = ema.swap(model)
@@ -179,8 +185,9 @@ def main(argv=None, *, build_model=build) -> int:
         key = f"{prefix}/checkpoints/step-{step:08d}.pt"
         items = [(key, buffer.getvalue()),
                  (f"{prefix}/log/step-{step:08d}.json", json.dumps(log, sort_keys=True, default=str).encode())]
-        if metrics and (best is None or metrics["val/bleu"] > best["val_bleu"]):
-            best = dict(checkpoint_key=key, step=step, val_bleu=metrics["val/bleu"], validation=metrics)
+        if metrics and (best is None or metrics[selector] > best["val_bleu"]):
+            best = dict(checkpoint_key=key, step=step, val_bleu=metrics[selector], selected_on=selector,
+                        validation=metrics)
             items.append((f"{prefix}/best.json", json.dumps(best, indent=2, sort_keys=True, default=str).encode()))
         uploader.submit(items)                 # background, in order (training.async_upload)
 
@@ -209,7 +216,7 @@ def main(argv=None, *, build_model=build) -> int:
             if step % args.val_every == 0 or step == args.steps:
                 metrics = validate()
                 entry.update({k: v for k, v in metrics.items() if not k.endswith("examples")})
-                improved = best is None or metrics["val/bleu"] > best["val_bleu"]
+                improved = best is None or metrics[selector] > best["val_bleu"]
                 stale = 0 if improved else stale + 1
                 print(json.dumps(dict(step=step, examples=metrics["val_examples"])), flush=True)
             log.append(entry)

@@ -64,3 +64,11 @@ def test_trains_selects_resumes_and_warm_starts(tmp_path):
     with pytest.raises(SystemExit):      # a different config cannot warm-start
         trainer.main(args_for(tmp_path, "bad", "--init-key", key, "--init-sha256", sha, "--d-model", "48",
                               "--heads", "4"), build_model=build_tiny)
+
+
+def test_selection_can_follow_the_monitor_split(tmp_path):
+    store = DirectoryStore(tmp_path)
+    shard_index(store, "uwb", [("train", "dog"), ("train", "cat"), ("monitor", "sun")], 30.)
+    shard_index(store, "h2s", [("val", "dog"), ("val", "cat"), ("train", "sun"), ("train", "dog")], 24.)
+    assert trainer.main(args_for(tmp_path, "mon", "--select-on", "monitor"), build_model=build_tiny) == 0
+    assert json.loads(store.get("training-runs/mon/best.json"))["selected_on"] == "monitor/bleu"

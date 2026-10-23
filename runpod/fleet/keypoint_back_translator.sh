@@ -31,7 +31,7 @@ UWB=$ACQ/youtube-asl-uwb-keypoints-v1/shards-v1/index.json
 H2S=$ACQ/full-v1/how2sign-fk-keypoints-v1/index.json
 FULL=$ACQ/full-v1/how2sign-text-manifest-v1/manifest.json; FSHA=$(sha $FULL)
 OUT=$ACQ/full-v1/keypoint-back-translator-v1
-PRE=back-translator-kp2d-uwb-v1 FT=back-translator-kp2d-uwb-ft-v1 ONLY=back-translator-kp2d-h2s-v1
+PRE=back-translator-kp2d-uwb-v2 FT=back-translator-kp2d-uwb-ft-v1 ONLY=back-translator-kp2d-h2s-v1
 COMMON="--val-index $H2S --workers 10 --batch-size 64"
 # smoke run first: every script of the chain on a 300-step model, so a bug surfaces in minutes, not after pretraining
 SMOKE=back-translator-kp2d-smoke-v1
@@ -48,8 +48,10 @@ if [ "$PHASE" = h2s ]; then
     --translator-key "$(best $ONLY)" --reference-key "$(best back-translator-t5-full-v1)" --output-key "$OUT/acceptance-$ONLY.json"
   echo KP-DONE; exit 0
 fi
+# pretraining converges on the pretraining corpus's own held-out split (UWB dev); How2Sign zero-shot BLEU is logged but
+# is noisy across the video -> FK domain gap (0.88 at 2k, 0.69 at 4k in the first attempt), so it does not stop it
 train_once $PRE pretrain python scripts/train_keypoints_to_text_t5.py --train-index $UWB --monitor-index $UWB $COMMON --run $PRE \
-  --steps 80000 --val-every 2000 --checkpoint-every 4000 --patience 6 || { echo KP-DONE; exit 1; }
+  --select-on monitor --steps 100000 --val-every 4000 --checkpoint-every 4000 --patience 5 || { echo KP-DONE; exit 1; }
 INIT=$(best $PRE)
 train_once $FT finetune python scripts/train_keypoints_to_text_t5.py --train-index $H2S $COMMON --run $FT --init-key "$INIT" \
   --init-sha256 "$(sha $INIT)" --steps 30000 --lr 1e-4 --decoder-lr 3e-5 --warmup 500 --val-every 1000 --checkpoint-every 2000 \
