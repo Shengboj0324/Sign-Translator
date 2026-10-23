@@ -150,6 +150,10 @@ def main(argv=None) -> int:
     parser.add_argument("--words", type=int, default=150)
     parser.add_argument("--output-key", required=True)
     parser.add_argument("--device", default="cuda")
+    parser.add_argument("--heldout-corpus", help="mixed manifests: R6 evaluates this corpus's test / heldout_official "
+                                                 "records only (round 3: how2sign-two-view-text-v1)")
+    parser.add_argument("--groups", help="round 3: comma-separated validation signer components; generated states are "
+                                         "pooled from <generated_run>-<group>, the gate is multi_signer_gate.py's")
     args = parser.parse_args(argv)
     store = make_store(args.store)
     with tempfile.TemporaryDirectory() as t:
@@ -162,14 +166,24 @@ def main(argv=None) -> int:
     sel = selected_setting(gate)
     report = dict(selected=sel, rules={})
     # validation states of the selected setting, as the core chain saved them
-    generated = load_saved(store, f"{args.derived}/generated/{sel['generated_run']}/{sel['tag']}")
+    groups = args.groups.split(",") if args.groups else None
+    if groups:                                       # every validation signer's clips, pooled
+        generated = {}
+        for g in groups:
+            generated.update(load_saved(store, f"{args.derived}/generated/{sel['generated_run']}-{g}/{sel['tag']}"))
+    else:
+        generated = load_saved(store, f"{args.derived}/generated/{sel['generated_run']}/{sel['tag']}")
     if sel["head_smoothing"] > 0:
         from signtranslator.generation.postprocess import smooth_rotation_channel
         generated = {k: smooth_rotation_channel(v, "head_rotation", sel["head_smoothing"]) for k, v in generated.items()}
     calibration = None
     if sel["face_calibrated"]:                       # the calibration the gate's candidate used, from its stored result
-        stored = json.loads(store.get(f"{args.derived}/evaluations/{sel['run']}.json"))["results"]
-        calibration = next(v["face_calibration"] for k, v in stored.items() if k.startswith(sel["tag"]) and "face_calibration" in v)
+        if groups:                                   # the pooled calibration, identical in every group's report
+            stored = json.loads(store.get(f"{args.derived}/evaluations/{sel['run']}-{groups[0]}.json"))["results"]
+            calibration = stored[sel["setting"]]["face_calibration"]
+        else:
+            stored = json.loads(store.get(f"{args.derived}/evaluations/{sel['run']}.json"))["results"]
+            calibration = next(v["face_calibration"] for k, v in stored.items() if k.startswith(sel["tag"]) and "face_calibration" in v)
         from signtranslator.generation.postprocess import calibrate_face
         generated = {k: calibrate_face(v, calibration) for k, v in generated.items()}
     report["face_calibration"] = calibration
@@ -293,7 +307,8 @@ def main(argv=None) -> int:
                            "--checkpoint-key", args.checkpoint_key, "--partition", partition, "--limit", str(limit),
                            "--guidance", f"{sel['guidance']:g}", "--part-temperature", sel["part_temperature"],
                            "--head-smoothing", str(sel["head_smoothing"]), "--device", args.device,
-                           "--retrieval-key", args.retrieval_key, "--output-key", key]
+                           "--retrieval-key", args.retrieval_key, "--output-key", key, "--fps", "24"]
+                          + (["--corpus", args.heldout_corpus] if args.heldout_corpus else [])
                           + (["--retrieval-manifest-sha256", args.retrieval_manifest_sha256] if args.retrieval_manifest_sha256 else [])
                           + extra)
         except SystemExit as stop:                          # a partition the manifest does not have
@@ -301,8 +316,11 @@ def main(argv=None) -> int:
             continue
         result = next(iter(json.loads(store.get(key))["results"].values()))
         held[partition] = score_setting(sel["run"], partition, result, ARTICULATED)
-    val_passed = {k for k, (_, ok) in gate["rows"][[i for i, r in enumerate(gate["rows"])
-                                                    if r["run"] == sel["run"] and r["setting"] == sel["setting"]][0]]["checks"].items() if ok}
+    row = next(r for r in gate["rows"] if r["run"] == sel["run"] and r["setting"] == sel["setting"])
+    if "per_group" in row:                           # multi-signer gate: a check counts if it passed on every signer
+        val_passed = set.intersection(*({k for k, (_, ok) in g["checks"].items() if ok} for g in row["per_group"].values()))
+    else:
+        val_passed = {k for k, (_, ok) in row["checks"].items() if ok}
     test_checks = held["test"].get("checks", {})
     regressions = sorted(k for k in val_passed if not test_checks.get(k, (None, False))[1])   # an absent test fails
     report["rules"]["R6_test_confirmation"] = dict(test=held["test"], heldout_official=held["heldout_official"],
