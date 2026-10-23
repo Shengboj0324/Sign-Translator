@@ -537,6 +537,15 @@ addresses the causes.
 6. **Recogniser domain.** Validate the recogniser on How2Sign-layout isolated signs before it judges R5, through the
    same FK/conform path, as the plan generator's diagnosis already requires.
 
+**Home route: first soft refusals (2026-10-23, 11:05 PDT).** Two downloads (videos #830 and #956 of about 950) were
+answered "Please sign in. This helps protect our community." That is YouTube's soft bot check. It was not in the
+detector's patterns, so it was logged as an ordinary error.
+- **Fixed:** the wording is now a block pattern.
+- **Response, per the rules:** stopped; a 2 h back-off (resume about 13:04 PDT); then half the rate (one download per
+  60 s); a 2 h back-off per further refusal; a full stop after 3.
+- No sign-in, cookies or address changes, as before.
+- 69.1 h collected so far. At the new pace, about 3 days to the 200 h threshold.
+
 **Round 3a: implemented and running (2026-10-23, 06:20 PDT).**
 - **Data** (mix `round3a-mixed-v1`, SHA `dc576f4a`; 49,235 training clips):
 
