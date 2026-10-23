@@ -93,6 +93,20 @@ def hand_coverage(state) -> float:
     return max(float(state.channels[h].valid.any(axis=1).mean()) for h in ("left_hand", "right_hand"))
 
 
+def face_stats(state) -> tuple[float, float | None]:
+    """(fraction of frames with the face tracked, median |head yaw| in degrees) - for the frontal-view filter."""
+    head = state.channels["head_rotation"]
+    ok = head.valid[:, 0].astype(bool)
+    if not ok.any():
+        return 0., None
+    from signtranslator.pose.rotations import rotation_6d_to_matrix
+    import torch
+    R = rotation_6d_to_matrix(torch.as_tensor(head.values[ok, 0], dtype=torch.float64)).numpy()
+    forward = R[:, :, 2]                                    # the face's +z axis in the camera frame
+    yaw = np.degrees(np.arctan2(forward[:, 0], forward[:, 2]))
+    return float(ok.mean()), float(np.median(np.abs(yaw)))
+
+
 def download(video_id: str, directory: Path, *, max_height: int, allow_auto: bool) -> dict:
     """(video path, captions text, caption kind, metadata) or a status for an unavailable video."""
     import yt_dlp
@@ -134,9 +148,12 @@ def process(video_id: str, args, store, models) -> dict:
         if got["status"] != "downloaded":
             return dict(video_id=video_id, **got)
         video_sha = hashlib.sha256(got["video"].read_bytes()).hexdigest()
-        cues = [c for c in parse_vtt(got["captions"]) if args.min_seconds <= c["end"] - c["start"] <= args.max_seconds]
+        all_cues = parse_vtt(got["captions"])
+        caption_seconds = round(sum(c["end"] - c["start"] for c in all_cues), 2)
+        cues = [c for c in all_cues if args.min_seconds <= c["end"] - c["start"] <= args.max_seconds]
         if not cues:
-            return dict(video_id=video_id, status="no_usable_cues", meta=got["meta"], caption_kind=got["kind"])
+            return dict(video_id=video_id, status="no_usable_cues", meta=got["meta"], caption_kind=got["kind"],
+                        caption_seconds=caption_seconds)
         clip = extract_clip(got["video"], models, roi=True)
     method = inference_method()
     segments, refused = [], []
@@ -159,8 +176,11 @@ def process(video_id: str, args, store, models) -> dict:
         segments.append(dict(cue=k, sample_id=sample, start=cue["start"], end=cue["end"], text=cue["text"],
                              state_key=key, state_sha256=digest, seconds=float(state.timestamps[-1] - state.timestamps[0]),
                              hand_coverage=round(hand_coverage(state), 3),
+                             face_coverage=round(face_stats(state)[0], 3),
+                             median_abs_yaw_deg=(round(face_stats(state)[1], 1) if face_stats(state)[1] is not None else None),
                              available_channels=[n for n, c in state.channels.items() if c.valid.any()]))
     return dict(video_id=video_id, status="converted", meta=got["meta"], caption_kind=got["kind"], video_sha256=video_sha,
+                caption_seconds=caption_seconds,
                 cues=len(cues), segments=segments, refused=refused, inference_method=method)
 
 

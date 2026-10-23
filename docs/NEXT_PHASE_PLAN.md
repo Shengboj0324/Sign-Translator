@@ -348,6 +348,39 @@ Published pretraining on YouTube-ASL took pose-based How2Sign translation to abo
 - generator meaning and sign-level scores about 1.5–3×;
 - little change to non-manual grammar, which ASLLRP still supplies.
 
+**Research result (2026-10-22, 19:00 PDT; `docs/research/YOUTUBE_ASL_RESEARCH.md`).**
+- **Corpora, in priority order:**
+  1. YouTube-ASL: 11,093 IDs, 984 h, every video filtered by Deaf annotators; IDs under CC BY 4.0; the list is in R2.
+  2. The ASL rows of YouTube-SL-25 add about 410 h but were checked by a non-native signer, so they need stricter
+     filters.
+  3. DailyMoth-70h and ASL STEM Wiki: consent-based, not on YouTube. They need licence agreements, which only the
+     owner can sign. Best suited to the generator.
+  4. OpenASL: skipped. Over 72% of its test set is inside YouTube-ASL, and its CC BY-NC-ND licence is the strictest.
+- **FLEURS-ASL** (Kaggle, CC BY-SA 4.0) is an independent evaluation set, never training data.
+- **Expected gains (pose-only, How2Sign test):**
+  - How2Sign alone gives about 1 BLEU, YouTube-ASL pretraining 12.4, all of YouTube-SL-25 15.4, against a human
+    ceiling of 19.8.
+  - Our target for the back-translator is about 8–14 BLEU, up from 2.1.
+  - No published study measures the effect on sign *generation*, so it is A/B-tested here.
+- **Filters:** the published ones are implemented in `build_youtube_asl_manifest.py`:
+  - 10 s–5 h, at least 360 px high, 15–60 fps, captions covering at least 40% of the video;
+  - captions of 300 characters or fewer, at 0.5–4 words per second;
+  - face tracked on at least 90% of frames, median head yaw at most 30°, hand coverage at least 0.5;
+  - near-duplicates of evaluation sentences removed (exact match, or word-5-gram Jaccard ≥ 0.8);
+  - no channel above 5% of the records.
+  - Still to calibrate in the pilot: a single-person check and the stricter generation-grade tier, which needs a
+    reviewer check of the top channels.
+- **Fallback if YouTube blocks the pods** (no circumvention): the UWB YouTube-ASL keypoints (MediaPipe 2D, CC BY 4.0,
+  348 GB) or SignVerse-2M (DWPose 2D, CC BY-NC 4.0).
+  - Both are 2D, so they can't supply our 3D rotations.
+  - They can train a 2D-keypoint back-translator and retrieval evaluator that read generated states projected to 2D.
+- **Permission requests (the owner sends them; draft in §4.5 of the report):**
+  - Required: Carol Neidle (carol@bu.edu) for ASLLRP, DAI 2, Sign Bank and ASLLVD; Microsoft (ASL_Citizen@microsoft.com)
+    for ASL Citizen.
+  - Courtesy notices: the YouTube-ASL and YouTube-SL-25 authors at Google, and How2Sign (amanda.duarte@upc.edu).
+- **Precedent:** Uni-Sign released YouTube-ASL-pretrained weights under CC BY-NC 4.0.
+- **Risk accepted by the owner:** YouTube's Terms restrict downloading.
+
 **Stages, cost and time (estimates).**
 
 | Stage | Work | Where | Time | Cost |
