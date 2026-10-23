@@ -209,8 +209,14 @@ Read-only review: no download yet. Facts are from the pages and the licence page
 - Result: best R@3 **0.256** at step 3,000. v1 (byte text encoder) had 0.264, and chance is 0.094.
 - Overfitting moved to the motion side: train batch top-1 0.82 while val R@3 fell to 0.20 by step 7,000. The limit
   is the motion encoder on ~20k clips, not the text encoder.
-- v1 stays the instrument. Next levers: motion-side augmentation (speed, mirroring-safe noise, channel dropout) and a
-  smaller or more regularised motion tower.
+- v1 stays the instrument.
+- v3 (`retrieval-aug-full-v1`) adds motion augmentation (speed 0.85–1.15×, face dropout 0.2) and dropout 0.3 to v1's
+  design.
+  - Best R@3 **0.264** at step 2,000, the same as v1.
+  - Overfitting slowed (train batch top-1 0.31 at step 6k against 0.82 for v2), but validation still plateaued.
+- Three designs reach the same ~0.26. That is the ceiling of pose-only retrieval on How2Sign sentences at this data
+  scale, not a fixable training fault.
+- Generated motion is therefore read relative to real (the ceiling) and blank (chance), never in absolute terms.
 
 ## Acceptance rules declared before results (2026-10-22, PDT afternoon)
 
