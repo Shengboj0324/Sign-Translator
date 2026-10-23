@@ -129,3 +129,16 @@ def test_home_staging_round_trip_and_deletion(monkeypatch, tmp_path):
         acq.unstage("abcdefghijk", args, store, tmp_path)
     acq.drop_staged("abcdefghijk", args, store, "yt/staged/abcdefghijk.mp4")
     assert store.list("yt/staged/") == []
+
+
+def test_claims_are_exclusive_and_stale_ones_are_taken_over(tmp_path):
+    from signtranslator.data.text_motion_dataset import DirectoryStore
+    store = DirectoryStore(tmp_path / "store")
+    args = types.SimpleNamespace(prefix="yt")
+    assert acq.claim("abcdefghijk", args, store, now=1000.)
+    assert not acq.claim("abcdefghijk", args, store, now=1000. + 60)          # held by another extractor
+    assert acq.claim("abcdefghijk", args, store, now=1000. + acq.CLAIM_TTL + 1)   # its extractor vanished
+    acq.release("abcdefghijk", args, store)
+    assert acq.claim("abcdefghijk", args, store)
+    acq.drop_staged("abcdefghijk", args, store, "yt/staged/abcdefghijk.mp4")
+    assert store.list("yt/staged/") == []

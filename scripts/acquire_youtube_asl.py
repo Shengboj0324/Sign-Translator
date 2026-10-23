@@ -251,9 +251,63 @@ def unstage(video_id: str, args, store, directory: Path) -> dict:
                 staged_key=staged["video_key"])
 
 
+CLAIM_TTL = 3 * 3600   # seconds after which a claim from a vanished extractor may be taken over
+
+
+def _delete(store, key: str) -> None:
+    if hasattr(store, "s3"):
+        store._call(lambda: store.s3.delete_object(Bucket=store.bucket, Key=key))
+    else:
+        (store.root / key).unlink(missing_ok=True)
+
+
+def claim(video_id: str, args, store, *, now: float | None = None) -> bool:
+    """Atomically claim a staged video for this extractor (create-if-absent: an R2 conditional PUT, or O_EXCL on a
+    directory store), so several pods can share the staging area without converting a video twice. A claim older
+    than ``CLAIM_TTL`` is taken over once (its extractor died)."""
+    import socket
+    key = f"{args.prefix}/staged/{video_id}.claim"
+    now = time.time() if now is None else now
+    body = json.dumps(dict(host=socket.gethostname(), pid=os.getpid(), at=now)).encode()
+
+    def create() -> bool:
+        if hasattr(store, "s3"):
+            from botocore.exceptions import ClientError
+            try:
+                store.s3.put_object(Bucket=store.bucket, Key=key, Body=body, IfNoneMatch="*")
+                return True
+            except ClientError as error:
+                if error.response.get("Error", {}).get("Code") not in ("PreconditionFailed", "412"):
+                    raise
+                return False
+        path = store.root / key
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            return False
+        with os.fdopen(fd, "wb") as f:
+            f.write(body)
+        return True
+    if create():
+        return True
+    try:
+        held = json.loads(store.get(key))
+    except Exception:  # noqa: BLE001 - released between the two calls
+        return create()
+    if now - float(held.get("at", now)) > CLAIM_TTL:
+        _delete(store, key)
+        return create()
+    return False
+
+
+def release(video_id: str, args, store) -> None:
+    _delete(store, f"{args.prefix}/staged/{video_id}.claim")
+
+
 def drop_staged(video_id: str, args, store, video_key: str) -> None:
     """Staged videos are deleted once extracted: the store keeps derived motion and captions, never the video."""
-    for key in (video_key, f"{args.prefix}/staged/{video_id}.json"):
+    for key in (video_key, f"{args.prefix}/staged/{video_id}.json", f"{args.prefix}/staged/{video_id}.claim"):
         if hasattr(store, "s3"):
             store._call(lambda k=key: store.s3.delete_object(Bucket=store.bucket, Key=k))
         else:
@@ -376,8 +430,18 @@ def main(argv=None) -> int:
                                           seconds=round(time.monotonic() - started, 1))), flush=True)
                     time.sleep(args.pause)
                     continue
+            elif args.stage == "extract":
+                if not claim(video_id, args, store):     # another extractor has it
+                    continue
+                try:
+                    report = process(video_id, args, store, models, gate, staged=True)
+                except BaseException:
+                    release(video_id, args, store)       # retried by whoever claims it next
+                    raise
+                if report["status"] == "error":
+                    release(video_id, args, store)
             else:
-                report = process(video_id, args, store, models, gate, staged=args.stage == "extract")
+                report = process(video_id, args, store, models, gate)
         except Blocked as blocked:
             blocks += 1
             print(f"BLOCKED at video {n} ({video_id}) [{blocks}/{args.max_blocks}]: {blocked}", flush=True)
