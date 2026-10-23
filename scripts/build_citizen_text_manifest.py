@@ -10,7 +10,9 @@ is the gloss's English word:
 - labels that are not dictionary words are left out: classifier or constructed-action forms (``-CA``, ``-CL``) and
   number compounds (``9OCLOCK``).
 
-Partitions are the publisher's, unchanged. Every record keeps its continuous state, gloss, performer and quality.
+Training is capped at ``--max-train-per-word`` clips per word (6), so 40k isolated clips do not outweigh How2Sign's
+18k sentences. Clips are taken from distinct signers first, in a deterministic hash order. Validation and test are
+not capped. Partitions are the publisher's, unchanged. Every record keeps its continuous state, gloss, performer and quality.
 Only ``train`` trains; R5 draws its real reference from ``val``.
 """
 from __future__ import annotations
@@ -45,6 +47,7 @@ def main(argv=None) -> int:
     parser.add_argument("--manifest-key", required=True)
     parser.add_argument("--manifest-sha256", required=True)
     parser.add_argument("--corpus-id", default="asl-citizen-text-v1")
+    parser.add_argument("--max-train-per-word", type=int, default=6)
     parser.add_argument("--output-key", required=True)
     args = parser.parse_args(argv)
     from signtranslator.data_engineering.corpus_manifest import build_corpus_manifest, canonical_json, load_manifest
@@ -62,6 +65,23 @@ def main(argv=None) -> int:
             why["not_a_word"] += 1; continue
         records.append(dict(r, text=word))
         why[f"kept_{r['partition']}"] += 1
+    import hashlib
+    by_word = collections.defaultdict(list)
+    for r in records:
+        if r["partition"] == "train":
+            by_word[r["text"]].append(r)
+    capped = set()
+    for word, rows in by_word.items():
+        rows.sort(key=lambda r: hashlib.sha256(r["sign"].encode()).hexdigest())
+        chosen, seen = [], set()
+        for r in rows:                                    # one clip per signer first, then any
+            if r.get("performer_sha256") not in seen:
+                chosen.append(r); seen.add(r.get("performer_sha256"))
+        chosen += [r for r in rows if r not in chosen]
+        capped.update(id(r) for r in chosen[:args.max_train_per_word])
+    dropped = sum(1 for r in records if r["partition"] == "train" and id(r) not in capped)
+    records = [r for r in records if r["partition"] != "train" or id(r) in capped]
+    why["train_over_cap"] = dropped
     counts = dict(collections.Counter(r["partition"] for r in records))
     split = dict(manifest["split"], counts=counts, note="publisher splits, unchanged; text = the gloss's English word")
     out = build_corpus_manifest(corpus_id=args.corpus_id, records=records,
