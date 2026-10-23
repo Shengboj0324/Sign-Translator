@@ -482,6 +482,19 @@ implications (research report §4.3), so it is the owner's call. Until then the 
   real BLEU must exceed blank and shuffled-text controls by a clear margin. Per-sentence agreement with the T5
   back-translator is reported. If it fails, it is not used.
 
+**Second-opinion meaning check of the full prior (2026-10-23, 03:55 PDT).** The accepted 2D back-translator
+(`back-translator-kp2d-h2s-v1`, an independent instrument reading FK projections) scored the full prior's core
+validation generations on 600 How2Sign val clips:
+
+| Guidance | Generated | Real | Blank | Shuffled | Share of the blank→real gap |
+|---|---|---|---|---|---|
+| 1 | 1.84 | 2.25 | 1.60 | 1.59 | 37% |
+| 2 | **2.16** | 2.25 | 1.60 | 1.59 | **86%** |
+
+Both instruments now find meaning in the generated motion above the text prior, so the signal is not an artefact
+of one instrument. The 3D back-translator gave guidance 1 BLEU 0.68 against real 0.80 and blank 0.0. These are
+point estimates; the strict review's R2 bootstrap rule uses the 3D translator, as declared.
+
 **Plan-conditioned generator: result against its declared rules (2026-10-23, 03:25 PDT).**
 `tokens-rvq-d0b-prior-loci-plan-v1`: warm-started from the full prior and trained on How2Sign + ASLLRP plan lines.
 It early-stopped at step 13,000; the best checkpoint is step 8,000 (val loss 3.488).
