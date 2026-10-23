@@ -482,6 +482,27 @@ implications (research report §4.3), so it is the owner's call. Until then the 
   real BLEU must exceed blank and shuffled-text controls by a clear margin. Per-sentence agreement with the T5
   back-translator is reported. If it fails, it is not used.
 
+**2D back-translator, How2Sign-only model: acceptance PASSED (2026-10-23, 02:32 PDT).**
+`back-translator-kp2d-h2s-v1`, best checkpoint step 13,000; it early-stopped at 19,000. Scored on 600 How2Sign val
+clips through the FK projection path, beam 4, with sentence-bootstrap 95% intervals:
+
+| Control | BLEU | 95% interval |
+|---|---|---|
+| real | **2.45** | 2.01–2.90 |
+| blank (durations only) | 1.47 | 1.15–1.77 |
+| shuffled sentences | 1.53 | 1.19–1.82 |
+
+- The rule passes: the real interval lies entirely above both controls.
+- Back-translator v2 (3D T5) scores 1.94 on the same clips.
+- Per-sentence agreement with v2 is Spearman 0.85: both instruments find the same sentences legible.
+- **Limits:**
+  - The margin over the text prior (blank) is modest.
+  - Training loss reached 1.4 against a validation loss of 3.9. On How2Sign alone the model overfits early; the UWB
+    pretraining stage is meant to fix that.
+  - Beam outputs sometimes repeat a phrase.
+- It may now be used as the second-opinion meaning instrument. The UWB-pretrained version replaces it only if it is
+  better on val BLEU and passes the same rule.
+
 **Home-connection route approved (2026-10-22, about 23:15 PDT).** The owner approved low-rate acquisition from the
 home connection. The rules are unchanged: no cookies, sign-in, proxies or CAPTCHA work, and the first bot check
 stops the downloader.
