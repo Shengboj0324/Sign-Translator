@@ -3,7 +3,8 @@
 For every video id of ``--ids`` (one per line; sharded with ``--shard i --shards n``):
 
 1. ``yt-dlp`` fetches the video (best stream at most ``--max-height`` px, no audio) and its English captions
-   (uploader captions preferred; auto-generated ones are taken only with ``--allow-auto-captions`` and are marked),
+   (uploader captions, whose track is usually filed under the sign language's code ``ase``, or ``sgn-US`` / ``en*``;
+   auto-generated ones are taken only with ``--allow-auto-captions`` and are marked),
    plus the metadata a release needs: channel, upload date, duration and YouTube's licence field;
 2. the MediaPipe landmarkers run once over the whole video (``video_landmarks.extract_clip``, ROI crops);
 3. each caption cue is cut out of those landmarks by its own clock (``--min-seconds``..``--max-seconds``, with
@@ -40,6 +41,13 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 BLOCK_PATTERNS = ("confirm you", "not a bot", "sign in to", "http error 429", "too many requests")
+# Uploaders of signed videos often file the English caption track under the sign language's own code: most
+# YouTube-ASL tracks are "ase" (American Sign Language), some "sgn-US"; English codes are taken as well.
+CAPTION_LANGS = ("ase", "sgn-US", "en", "en-US", "en-GB", "en-CA", "en-AU")
+
+
+def is_caption_lang(code: str) -> bool:
+    return code in CAPTION_LANGS or code.startswith("en")
 
 
 class Blocked(RuntimeError):
@@ -113,7 +121,7 @@ def download(video_id: str, directory: Path, *, max_height: int, allow_auto: boo
     url = f"https://www.youtube.com/watch?v={video_id}"
     opts = dict(quiet=True, no_warnings=True, outtmpl=str(directory / "%(id)s.%(ext)s"),
                 format=f"bv*[height<={max_height}][ext=mp4]/bv*[height<={max_height}]/b[height<={max_height}]",
-                writesubtitles=True, writeautomaticsub=allow_auto, subtitleslangs=["en", "en-US", "en-GB"],
+                writesubtitles=True, writeautomaticsub=allow_auto, subtitleslangs=list(CAPTION_LANGS),
                 subtitlesformat="vtt", noplaylist=True, retries=3)
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
@@ -125,12 +133,13 @@ def download(video_id: str, directory: Path, *, max_height: int, allow_auto: boo
         status = ("private" if "private" in message else "removed" if any(w in message for w in
                   ("unavailable", "removed", "terminated", "does not exist")) else "error")
         return dict(status=status, reason=str(error)[:300])
-    manual = {k: v for k, v in (info.get("subtitles") or {}).items() if k.startswith("en")}
+    manual = {k: v for k, v in (info.get("subtitles") or {}).items() if is_caption_lang(k)}
     kind = "manual" if manual else ("auto" if allow_auto and any(k.startswith("en") for k in
                                                                     (info.get("automatic_captions") or {})) else None)
     captions = next(iter(sorted(directory.glob(f"{video_id}*.vtt"))), None)
     videos = [p for p in directory.iterdir() if p.suffix in (".mp4", ".webm", ".mkv") and p.stem.startswith(video_id)]
-    meta = dict(channel_id=info.get("channel_id"), channel=info.get("channel"), upload_date=info.get("upload_date"),
+    meta = dict(caption_languages=sorted(manual), channel_id=info.get("channel_id"), channel=info.get("channel"),
+                upload_date=info.get("upload_date"),
                 duration=info.get("duration"), license=info.get("license"), title=info.get("title"),
                 height=info.get("height"), fps=info.get("fps"))
     if not videos:
@@ -201,6 +210,8 @@ def main(argv=None) -> int:
     parser.add_argument("--max-seconds", type=float, default=20.)
     parser.add_argument("--pad", type=float, default=.2)
     parser.add_argument("--pause", type=float, default=2., help="seconds between videos (polite rate)")
+    parser.add_argument("--retry-status", action="append", default=[],
+                        help="reprocess videos whose stored report has this status (e.g. no_captions after a fix)")
     args = parser.parse_args(argv)
     from train_text_to_motion import make_store
     from signtranslator.data_engineering.video_landmarks import probe_runtime, verify_models
@@ -214,7 +225,8 @@ def main(argv=None) -> int:
     for n, video_id in enumerate(mine):
         report_key = f"{args.prefix}/videos/{video_id}.json"
         if store.exists(report_key):
-            continue
+            if not args.retry_status or json.loads(store.get(report_key)).get("status") not in args.retry_status:
+                continue
         started = time.monotonic()
         try:
             report = process(video_id, args, store, models)

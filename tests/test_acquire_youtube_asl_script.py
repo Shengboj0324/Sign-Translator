@@ -61,3 +61,8 @@ def test_a_bot_check_stops_instead_of_retrying(monkeypatch, tmp_path):
             raise Exception("ERROR: Video unavailable. This video has been removed by the uploader")
     monkeypatch.setitem(sys.modules, "yt_dlp", types.SimpleNamespace(YoutubeDL=Gone))
     assert acq.download("abcdefghijk", tmp_path, max_height=720, allow_auto=False)["status"] == "removed"
+
+
+def test_sign_language_caption_tracks_count_as_english_captions():
+    assert acq.is_caption_lang("ase") and acq.is_caption_lang("sgn-US") and acq.is_caption_lang("en-CA")
+    assert not acq.is_caption_lang("es") and "ase" in acq.CAPTION_LANGS
