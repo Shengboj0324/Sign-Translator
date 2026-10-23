@@ -54,6 +54,13 @@ def card(release: dict, reports: dict) -> str:
              f"- **Generator:** `{g['checkpoint']['key']}` (SHA-256 `{g['checkpoint']['sha256'][:16]}...`), conditioned on "
              f"{'the plan line' if g['condition'] == 'plan' else 'the English sentence'}; guidance {g['guidance']}, "
              f"per-part temperatures {g.get('part_temperature') or 'none'}.",
+             *([f"- **Post-processing:** head-rotation smoothing {g.get('head_smoothing', 0)} s"
+                + ("; per-blendshape face calibration (gain = real / generated within-clip spread, clipped to [1, "
+                   f"{g['face_calibration'].get('max_gain', 4)}], estimated on validation, confirmed once on test)"
+                   if g.get("face_calibration") else "") + "."]
+               if g.get("head_smoothing") or g.get("face_calibration") else []),
+             *([f"- **Known limits from the exit gate:** {', '.join(release['selection']['known_limits'])}."]
+               if (release.get("selection") or {}).get("known_limits") else []),
              (f"- **Planner:** `{release['planner']['key']}` (SHA-256 `{release['planner']['sha256'][:16]}...`)."
               if release.get("planner") else "- **Planner:** none."),
              f"- **Timing:** {release['fps']} fps, {release['seconds_per_sign']} s per planned sign.",
@@ -139,7 +146,8 @@ def main(argv=None) -> int:
             key = getattr(args, f"{k}_key")
             if key:
                 reports[k] = json.loads(store.get(key))
-    args.output.write_text(card(release.to_dict(), reports) + "\n")
+    raw = json.loads(args.release.read_text())
+    args.output.write_text(card(release.to_dict() | {"selection": raw.get("selection")}, reports) + "\n")
     print(f"wrote {args.output}")
     return 0
 

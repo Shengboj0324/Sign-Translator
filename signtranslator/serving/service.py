@@ -118,6 +118,12 @@ class TranslatorService:
         t = time.perf_counter()
         with self._generate:
             state = self.sampler(condition, r.fps, seconds, r.generator.guidance, 50, seed)
+        if r.generator.head_smoothing > 0 and "head_rotation" in state.channels:
+            from ..generation.postprocess import smooth_rotation_channel
+            state = smooth_rotation_channel(state, "head_rotation", r.generator.head_smoothing)
+        if r.generator.face_calibration is not None and "face" in state.channels:
+            from ..generation.postprocess import calibrate_face
+            state = calibrate_face(state, r.generator.face_calibration)
         timings["generate"] = round(1000 * (time.perf_counter() - t), 1)
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "s.npz"

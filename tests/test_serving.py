@@ -108,3 +108,30 @@ def test_http_front_end_answers_and_applies_backpressure():
         assert code == 200 and body["frames"] > 0 and base64.b64decode(body["state_npz_base64"])[:2] == b"PK"
     finally:
         gate.set(); server.shutdown()
+
+
+def test_release_post_processing_round_trips_and_is_applied():
+    from signtranslator.generation.postprocess import calibrate_face, smooth_rotation_channel
+    from signtranslator.pose.multichannel import MultichannelMotion
+    s0 = state(np.arange(48) / 24.)
+    labels = list(s0.channels["face"].labels)
+    calibration = dict(labels=labels, center_generated=[.1] * len(labels), center_real=[.2] * len(labels),
+                       gain=[2.] * len(labels))
+    plain = release()
+    post = release(generator=GeneratorSpec(Pinned("g.pt", SHA), SHA, head_smoothing=.2, face_calibration=calibration))
+    assert "head_smoothing" not in plain.to_dict()["generator"]          # unused: omitted, old SHA kept
+    assert Release.from_dict(json.loads(json.dumps(post.to_dict()))) == post and post.sha256() != plain.sha256()
+    with pytest.raises(ValueError):
+        GeneratorSpec(Pinned("g.pt", SHA), SHA, face_calibration=dict(gain=[1.]))
+
+    def sampler(text, fps, seconds, guidance, steps, seed):
+        return s0
+    out = TranslatorService(post, None, sampler).translate("hello")
+    expected = calibrate_face(smooth_rotation_channel(s0, "head_rotation", .2), calibration)
+    import tempfile
+    from pathlib import Path
+    with tempfile.TemporaryDirectory() as t:
+        p = Path(t) / "s.npz"; p.write_bytes(out.state_npz)
+        got = MultichannelMotion.load(p, expected_sha256=hashlib.sha256(out.state_npz).hexdigest())
+    np.testing.assert_allclose(got.channels["face"].values, expected.channels["face"].values, atol=1e-6)
+    np.testing.assert_allclose(got.channels["head_rotation"].values, expected.channels["head_rotation"].values, atol=1e-6)

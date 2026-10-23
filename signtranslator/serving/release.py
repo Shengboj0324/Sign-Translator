@@ -44,8 +44,15 @@ class GeneratorSpec:
     condition: str = "english"                       # "english" or "plan"
     guidance: float = 1.
     part_temperature: dict = field(default_factory=dict)
+    head_smoothing: float = 0.                        # seconds (postprocess.smooth_rotation_channel on head_rotation)
+    face_calibration: dict | None = None              # postprocess.estimate_face_calibration, estimated on validation
 
     def __post_init__(self):
+        if self.head_smoothing < 0:
+            raise ValueError("head_smoothing must be >= 0 seconds")
+        if self.face_calibration is not None and not all(
+                k in self.face_calibration for k in ("labels", "center_generated", "center_real", "gain")):
+            raise ValueError("face_calibration must be an estimate_face_calibration result")
         if self.condition not in ("english", "plan"):
             raise ValueError("generator condition must be 'english' or 'plan'")
         if not _SHA.fullmatch(self.manifest_sha256 or ""):
@@ -93,6 +100,9 @@ class Release:
 
     def to_dict(self) -> dict:
         data = asdict(self)
+        for k, default in (("head_smoothing", 0.), ("face_calibration", None)):   # unused post-processing is
+            if data["generator"].get(k) == default:                              # omitted: older releases keep
+                data["generator"].pop(k)                                         # their SHA-256
         data["public_release_allowed"] = self.public_release_allowed
         data["commercial_use_allowed"] = self.commercial_use_allowed
         return data
@@ -106,7 +116,8 @@ class Release:
         g["checkpoint"] = Pinned(**g["checkpoint"])
         planner = Pinned(**data["planner"]) if data.get("planner") else None
         rest = {k: v for k, v in data.items()
-                if k not in ("generator", "planner", "provenance", "public_release_allowed", "commercial_use_allowed")}
+                if k not in ("generator", "planner", "provenance", "public_release_allowed", "commercial_use_allowed",
+                             "selection")}            # how the setting was chosen: documentation, not part of the spec
         return cls(generator=GeneratorSpec(**g), planner=planner,
                    provenance=tuple(Corpus(**c) for c in data["provenance"]), **rest)
 
