@@ -196,6 +196,8 @@ def download(video_id: str, directory: Path, *, max_height: int, allow_auto: boo
         message = str(error).lower()
         if "confirm your age" in message or "age-restricted" in message or "inappropriate for some users" in message:
             return dict(status="age_restricted", reason=str(error)[:300])   # needs sign-in: skipped, never circumvented
+        if "private video" in message:     # "Private video. If the owner ... granted you access, please sign in"
+            return dict(status="private", reason=str(error)[:300])          # a property of the video, not a bot check
         if any(p in message for p in BLOCK_PATTERNS):
             raise Blocked(str(error)[:300]) from None
         status = ("private" if "private" in message else "removed" if any(w in message for w in
