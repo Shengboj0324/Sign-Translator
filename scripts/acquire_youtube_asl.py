@@ -21,7 +21,12 @@ waits ``--blocked-backoff`` (1 h) before the next request; after ``--max-blocks`
 sign-in, proxies or address changes are ever used. Private, removed or caption-less videos are
 recorded as such (the corpus's availability rate is part of the pilot's result).
 
-Research-only data: the prefix is private; videos are never stored or redistributed, only the derived motion and the
+**Home connection (owner-approved 2026-10-22, after datacenter refusals).** The same rules apply. ``--stage download``
+runs on the owner's Mac: it only fetches through the gate and stages each video and its captions under
+``<prefix>/staged/``. ``--stage extract`` runs on CPU pods: it converts the staged videos, writes the reports, then
+deletes each staged video. A staged video is a transient copy, kept only until it is extracted.
+
+Research-only data: the prefix is private; videos are never kept or redistributed, only the derived motion and the
 caption text with their provenance.
 """
 from __future__ import annotations
@@ -179,7 +184,7 @@ def download(video_id: str, directory: Path, *, max_height: int, allow_auto: boo
     """(video path, captions text, caption kind, metadata) or a status for an unavailable video."""
     import yt_dlp
     url = f"https://www.youtube.com/watch?v={video_id}"
-    opts = dict(quiet=True, no_warnings=True, outtmpl=str(directory / "%(id)s.%(ext)s"),
+    opts = dict(quiet=True, no_warnings=True, noprogress=True, outtmpl=str(directory / "%(id)s.%(ext)s"),
                 format=f"bv*[height<={max_height}][ext=mp4]/bv*[height<={max_height}]/b[height<={max_height}]",
                 writesubtitles=True, writeautomaticsub=allow_auto, subtitleslangs=list(CAPTION_LANGS),
                 subtitlesformat="vtt", noplaylist=True, retries=3)
@@ -210,14 +215,55 @@ def download(video_id: str, directory: Path, *, max_height: int, allow_auto: boo
                 meta=meta)
 
 
-def process(video_id: str, args, store, models, gate=None) -> dict:
+def fetch(video_id: str, directory: Path, args, gate=None) -> dict:
+    if gate is None:
+        return download(video_id, directory, max_height=args.max_height, allow_auto=args.allow_auto_captions)
+    with gate:
+        return download(video_id, directory, max_height=args.max_height, allow_auto=args.allow_auto_captions)
+
+
+def stage_download(video_id: str, args, store, gate=None) -> dict:
+    """``--stage download`` (the owner-approved home connection): fetch one video and stage it in the private store
+    for a pod to extract. Videos that cannot be used are reported as final at once."""
+    with tempfile.TemporaryDirectory() as tmp:
+        got = fetch(video_id, Path(tmp), args, gate)
+        if got["status"] != "downloaded":
+            return dict(video_id=video_id, **got)
+        payload = got["video"].read_bytes()
+        video_key = f"{args.prefix}/staged/{video_id}{got['video'].suffix}"
+        store.put(video_key, payload)
+        staged = dict(video_id=video_id, video_key=video_key, video_sha256=hashlib.sha256(payload).hexdigest(),
+                      bytes=len(payload), captions=got["captions"], kind=got["kind"], meta=got["meta"],
+                      staged_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+        store.put(f"{args.prefix}/staged/{video_id}.json", json.dumps(staged, sort_keys=True).encode())
+    return dict(video_id=video_id, status="staged", bytes=len(payload))
+
+
+def unstage(video_id: str, args, store, directory: Path) -> dict:
+    """A staged video as ``download`` returns it (SHA-checked)."""
+    staged = json.loads(store.get(f"{args.prefix}/staged/{video_id}.json"))
+    payload = store.get(staged["video_key"])
+    if hashlib.sha256(payload).hexdigest() != staged["video_sha256"]:
+        raise ValueError(f"{staged['video_key']}: SHA-256 differs from the staging record")
+    path = directory / Path(staged["video_key"]).name
+    path.write_bytes(payload)
+    return dict(status="downloaded", video=path, captions=staged["captions"], kind=staged["kind"], meta=staged["meta"],
+                staged_key=staged["video_key"])
+
+
+def drop_staged(video_id: str, args, store, video_key: str) -> None:
+    """Staged videos are deleted once extracted: the store keeps derived motion and captions, never the video."""
+    for key in (video_key, f"{args.prefix}/staged/{video_id}.json"):
+        if hasattr(store, "s3"):
+            store._call(lambda k=key: store.s3.delete_object(Bucket=store.bucket, Key=k))
+        else:
+            (store.root / key).unlink(missing_ok=True)
+
+
+def process(video_id: str, args, store, models, gate=None, *, staged: bool = False) -> dict:
     from signtranslator.data_engineering.video_landmarks import canonical_from_landmarks, extract_clip, inference_method
     with tempfile.TemporaryDirectory() as tmp:
-        if gate is None:
-            got = download(video_id, Path(tmp), max_height=args.max_height, allow_auto=args.allow_auto_captions)
-        else:
-            with gate:
-                got = download(video_id, Path(tmp), max_height=args.max_height, allow_auto=args.allow_auto_captions)
+        got = unstage(video_id, args, store, Path(tmp)) if staged else fetch(video_id, Path(tmp), args, gate)
         if got["status"] != "downloaded":
             return dict(video_id=video_id, **got)
         video_sha = hashlib.sha256(got["video"].read_bytes()).hexdigest()
@@ -266,7 +312,7 @@ def main(argv=None) -> int:
     parser.add_argument("--ids-local", action="store_true")
     parser.add_argument("--prefix", required=True, help="private store prefix of this corpus")
     parser.add_argument("--source-id", default="youtube_asl_video_estimate")
-    parser.add_argument("--models-dir", required=True)
+    parser.add_argument("--models-dir", help="MediaPipe models (not needed for --stage download)")
     parser.add_argument("--shard", type=int, default=0)
     parser.add_argument("--shards", type=int, default=1)
     parser.add_argument("--limit", type=int, help="at most this many videos of the shard (pilot)")
@@ -282,6 +328,10 @@ def main(argv=None) -> int:
     parser.add_argument("--download-interval", type=float, default=20., help="seconds between downloads per machine")
     parser.add_argument("--blocked-backoff", type=float, default=3600., help="wait after a refusal, seconds")
     parser.add_argument("--max-blocks", type=int, default=3, help="stop after this many refusals")
+    parser.add_argument("--stage", choices=("all", "download", "extract"), default="all",
+                        help="all: download and extract here; download: fetch and stage videos in the private store "
+                             "(home connection); extract: convert staged videos, then delete them (pods)")
+    parser.add_argument("--shuffle-seed", type=int, help="visit the ids in this seeded random order (channel spread)")
     parser.add_argument("--retry-status", action="append", default=[],
                         help="reprocess videos whose stored report has this status (e.g. no_captions after a fix)")
     args = parser.parse_args(argv)
@@ -290,9 +340,22 @@ def main(argv=None) -> int:
     store = make_store(args.store)
     text = Path(args.ids).read_text() if args.ids_local else store.get(args.ids).decode()
     ids = [line.strip() for line in text.splitlines() if re.fullmatch(r"[A-Za-z0-9_-]{11}", line.strip())]
-    mine = [v for i, v in enumerate(ids) if i % args.shards == args.shard][:args.limit]
-    models = verify_models(Path(args.models_dir))
-    probe_runtime(models)
+    if args.stage == "extract":                               # what the home connection has staged so far
+        staged = {Path(k).name[:-5] for k in store.list(f"{args.prefix}/staged/") if k.endswith(".json")}
+        ids = [v for v in ids if v in staged]
+    if args.shuffle_seed is not None:
+        import random
+        random.Random(args.shuffle_seed).shuffle(ids)
+    if args.stage == "extract":   # by id hash: workers listing the growing staging area at different times agree
+        mine = [v for v in ids if int(hashlib.sha1(v.encode()).hexdigest(), 16) % args.shards == args.shard][:args.limit]
+    else:
+        mine = [v for i, v in enumerate(ids) if i % args.shards == args.shard][:args.limit]
+    models = None
+    if args.stage != "download":
+        if not args.models_dir:
+            raise SystemExit("--models-dir is needed to extract")
+        models = verify_models(Path(args.models_dir))
+        probe_runtime(models)
     counts, blocks = {}, 0
     gate = PoliteGate(args.polite_dir, interval=args.download_interval, backoff=args.blocked_backoff) if args.polite_dir else None
     for n, video_id in enumerate(mine):
@@ -300,9 +363,21 @@ def main(argv=None) -> int:
         if store.exists(report_key):
             if not args.retry_status or json.loads(store.get(report_key)).get("status") not in args.retry_status:
                 continue
+        if args.stage == "download" and store.exists(f"{args.prefix}/staged/{video_id}.json"):
+            continue
         started = time.monotonic()
         try:
-            report = process(video_id, args, store, models, gate)
+            if args.stage == "download":
+                report = stage_download(video_id, args, store, gate)
+                if report["status"] == "staged":                # not final: the pod's extraction writes the report
+                    counts["staged"] = counts.get("staged", 0) + 1
+                    print(json.dumps(dict(n=n + 1, of=len(mine), video_id=video_id, status="staged",
+                                          mb=round(report["bytes"] / 1e6, 1),
+                                          seconds=round(time.monotonic() - started, 1))), flush=True)
+                    time.sleep(args.pause)
+                    continue
+            else:
+                report = process(video_id, args, store, models, gate, staged=args.stage == "extract")
         except Blocked as blocked:
             blocks += 1
             print(f"BLOCKED at video {n} ({video_id}) [{blocks}/{args.max_blocks}]: {blocked}", flush=True)
@@ -317,6 +392,9 @@ def main(argv=None) -> int:
         report["seconds_taken"] = round(time.monotonic() - started, 1)
         if report["status"] != "error":
             store.put(report_key, json.dumps(report, sort_keys=True).encode())
+            if args.stage == "extract":
+                staged = json.loads(store.get(f"{args.prefix}/staged/{video_id}.json"))
+                drop_staged(video_id, args, store, staged["video_key"])
         counts[report["status"]] = counts.get(report["status"], 0) + 1
         print(json.dumps(dict(n=n + 1, of=len(mine), video_id=video_id, status=report["status"],
                               segments=len(report.get("segments", [])), seconds=report["seconds_taken"])), flush=True)

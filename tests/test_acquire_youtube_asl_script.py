@@ -100,3 +100,26 @@ def test_the_polite_gate_serialises_downloads_and_spreads_them(tmp_path):
     gate.mark_blocked()
     started = time.time(); gate.wait_blocked()
     assert time.time() - started >= .25
+
+
+def test_home_staging_round_trip_and_deletion(monkeypatch, tmp_path):
+    from signtranslator.data.text_motion_dataset import DirectoryStore
+    store = DirectoryStore(tmp_path / "store")
+    args = types.SimpleNamespace(prefix="yt", max_height=720, allow_auto_captions=False)
+
+    def fake_download(video_id, directory, *, max_height, allow_auto):
+        if video_id == "gonegonegon":
+            return dict(status="removed", reason="gone")
+        path = directory / f"{video_id}.mp4"; path.write_bytes(b"video-bytes-" + video_id.encode())
+        return dict(status="downloaded", video=path, captions="WEBVTT\n", kind="manual", meta=dict(fps=30))
+    monkeypatch.setattr(acq, "download", fake_download)
+    assert acq.stage_download("gonegonegon", args, store)["status"] == "removed"
+    assert acq.stage_download("abcdefghijk", args, store)["status"] == "staged"
+    assert store.exists("yt/staged/abcdefghijk.json") and store.exists("yt/staged/abcdefghijk.mp4")
+    got = acq.unstage("abcdefghijk", args, store, tmp_path)
+    assert got["video"].read_bytes() == b"video-bytes-abcdefghijk" and got["kind"] == "manual"
+    (store.root / "yt/staged/abcdefghijk.mp4").write_bytes(b"tampered")
+    with pytest.raises(ValueError):
+        acq.unstage("abcdefghijk", args, store, tmp_path)
+    acq.drop_staged("abcdefghijk", args, store, "yt/staged/abcdefghijk.mp4")
+    assert store.list("yt/staged/") == []
