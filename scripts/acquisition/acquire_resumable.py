@@ -109,7 +109,10 @@ if present:
             ledger.write(json.dumps(record, sort_keys=True) + '\n')
         print(json.dumps({k: record[k] for k in ('key', 'bytes', 'sha256', 'seconds')}))
         sys.exit(0)
-    if args.expected_sha256 and prior.get('sha256') == args.expected_sha256 and prior.get('verified_by_r2_reread'):
+    if prior.get('verified_by_r2_reread') and (
+            (args.expected_sha256 and prior.get('sha256') == args.expected_sha256)
+            or (not args.expected_sha256 and args.expected_md5 and prior.get('md5') == args.expected_md5
+                and prior.get('bytes') == args.expected_size)):
         print(json.dumps({'key': key, 'status': 'already_present_and_verified'}))
         sys.exit(0)
     raise SystemExit(f'refusing to overwrite existing object {key}')
