@@ -75,7 +75,10 @@ class MotionToT5(nn.Module):
     def encode(self, motion: MotionBatch):
         """(states (B, T', d_t5), mask (B, T') True = valid)."""
         x = diffusion_targets(self.config.motion, motion)
-        valid = motion.frame_valid.to(x.device)
+        return self.encode_units(x, motion.frame_valid.to(x.device))
+
+    def encode_units(self, x: torch.Tensor, valid: torch.Tensor):
+        """The encoder on per-frame input vectors ``x`` (B, T, width) under the frame mask ``valid`` (B, T)."""
         h = self.motion_in(x) * valid[..., None]
         if self.config.downsample > 1:
             h = self.downsample(h.transpose(1, 2)).transpose(1, 2)
