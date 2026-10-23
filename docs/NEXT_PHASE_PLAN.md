@@ -482,6 +482,21 @@ implications (research report §4.3), so it is the owner's call. Until then the 
   real BLEU must exceed blank and shuffled-text controls by a clear margin. Per-sentence agreement with the T5
   back-translator is reported. If it fails, it is not used.
 
+**Home-connection route approved (2026-10-22, about 23:15 PDT).** The owner approved low-rate acquisition from the
+home connection. The rules are unchanged: no cookies, sign-in, proxies or CAPTCHA work, and the first bot check
+stops the downloader.
+- **Home Mac:** `~/.sign-translator-ops/home_youtube.sh` runs `acquire_youtube_asl.py --stage download` in seeded
+  random order (spread across channels), one video at a time through the polite gate, 30 s apart. Each video and
+  its captions are staged in the private store.
+- **CPU pod:** `runpod/fleet/youtube_extract_loop.sh` runs `--stage extract`, writes the reports and deletes each
+  staged video. Staged videos are transient: only derived motion and captions are kept.
+- **Pace:** Mac upload is 4.1 MB/s and a 720p video is about 85 MB, so roughly 60–80 videos (6–7 h of video) per
+  hour. The plan's 200 h threshold for the YouTube pretraining round is about 1.5 days away.
+- **Trial:** 3 videos staged, no bot check.
+
+The UWB 2D keypoint instrument continues in parallel. It serves meaning checking, while the home-route video serves
+the generator.
+
 **Single-signer filter (2026-10-22, 22:15 PDT).** Acquisition counts people on every 12th frame with a separate
 image-mode pose pass. Each segment records `other_person_fraction`, and the manifest drops a segment when a second
 person at least half the signer's size appears in more than 10% of its frames (reason `second_person`). In an
