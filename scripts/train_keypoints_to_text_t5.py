@@ -21,6 +21,7 @@ import argparse
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import random
 import sys
@@ -234,4 +235,8 @@ def main(argv=None, *, build_model=build) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    code = main()
+    # Every upload has drained by now. Interpreter teardown (data-loader workers, the in-memory shard cache) hung for
+    # 25 minutes after the UWB pretraining's early stop, holding the GPU pod and the chain; exit without it.
+    sys.stdout.flush(); sys.stderr.flush()
+    os._exit(code)
