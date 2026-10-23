@@ -482,6 +482,52 @@ implications (research report §4.3), so it is the owner's call. Until then the 
   real BLEU must exceed blank and shuffled-text controls by a clear margin. Per-sentence agreement with the T5
   back-translator is reported. If it fails, it is not used.
 
+## Task No.1 verdict: exit gate PASSED on validation, strict review FAILED (2026-10-23, 05:50 PDT)
+
+**Gate.** The sweep over 9 per-part temperature settings × 3 guidance values produced 6 candidates that pass all 12
+checks, every one combining head smoothing 0.2 s with face calibration. That fixes both checks the core chain failed
+(head speed, brow furrow). The declared rule selected `sweep-h1.4-f1.2-hs0.2-fc` at guidance 2 (Fréchet 280.7): among
+passing candidates within 10% of the best Fréchet (257.5), it has the lowest right-hand error.
+
+**Strict review** (rules declared 2026-10-22, 17:40 PDT, before any result): **FAIL.**
+
+| Rule | Result | Pass |
+|---|---|---|
+| R1 retrieval | generated 0.236 [0.20, 0.27] vs blank [0.07, 0.12]; real 0.290 | yes |
+| R2 back-translation | generated 0.83 [0.62, 1.05] vs blank 0; real 0.80 | yes |
+| R3 copying | 0% flagged; median ratio 0.92 (real 1.16) | yes |
+| R4 length thirds | long and medium pass; short: body variation 1.47, right-hand variation 0.61 | **no** |
+| R5 one-word prompts | recogniser top-5: generated 0%, blank 0%, real 99.4% (95 words) | **no** |
+| R6 test, once | 92 signer-disjoint clips: 3/11 checks. Head speed 1.83×, nod rate 19.8×, brow raise 3.2×, body variation 1.69×. Official held-out (3,019 clips, reported): 8/12; head 1.35×, nod 2.0×, brow furrow 0.23×. | **no** |
+
+**What this means.** Validation does not represent unseen signers. Validation shares signers with training; test does
+not.
+- The post-processing tuned on validation did not transfer. Head smoothing brought head speed to 1.05× on val, but
+  unseen signers see 1.35–1.83×. The face calibration's brow furrow was 0.67× on val and 0.23× on held-out.
+- The carried problem, an over-active head (round 2026-10-21), is not solved; it was masked on validation.
+- The generator cannot sign a single word. That is outside its How2Sign sentence-level training, and the recogniser
+  reads it from a different capture domain (MediaPipe isolated signs). R5 cannot separate those two causes, but
+  generated scores 0 where real scores 99%.
+- Meaning at the sentence level is real (R1, R2, and the 2D second opinion).
+
+**The model is not deployable under the declared rules.** The rules are not relaxed; the next generator round
+addresses the causes.
+
+**Next generator round (round 3), designed from these failures:**
+1. **Population-level head and face statistics.** Select post-processing and sampling on a **signer-disjoint
+   validation split**, carved from train by performer, since How2Sign val shares signers. R6 stays the final test.
+   Then fix head over-activity in the model itself, through head-code temperature and a head-velocity term in the prior
+   training, not only by smoothing.
+2. **Single signs.** Add ASL Citizen isolated signs (already in R2; research use) to training as one-word English
+   prompts. Add ASLLRP citation forms too. R5 then measures a skill that was actually trained.
+3. **Mixed tokenizer.** Retrain it on How2Sign + YouTube-ASL + ASL Citizen + ASLLRP. The domain check found ASLLRP
+   face and blink encoded 1.5–2.3× worse; ASL Citizen and YouTube are checked the same way.
+4. **More signers.** YouTube-ASL home acquisition adds hundreds of signers. This is the direct cure for
+   signer-specific style and the main lever for R6.
+5. **Short utterances.** Report R4's short-third ratios during training validation.
+6. **Recogniser domain.** Validate the recogniser on How2Sign-layout isolated signs before it judges R5, through the
+   same FK/conform path, as the plan generator's diagnosis already requires.
+
 **Second-opinion meaning check of the full prior (2026-10-23, 03:55 PDT).** The accepted 2D back-translator
 (`back-translator-kp2d-h2s-v1`, an independent instrument reading FK projections) scored the full prior's core
 validation generations on 600 How2Sign val clips:
