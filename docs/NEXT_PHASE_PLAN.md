@@ -134,7 +134,13 @@ Read-only review: no download yet. Facts are from the pages and the licence page
 - `signtranslator/planning/english_gloss.py` + `scripts/train_gloss_planner.py`: English words -> gloss tokens with
   locus and multi-label marker heads; evaluation by gloss WER/BLEU, aligned marker F1 per tier, locus accuracy and
   utterance-level marker presence. Run v1 (old parse) best: gloss BLEU 27.0, WER 0.72, marker F1 0.67 (wh 0.75);
-  it memorises the 1,652 training pairs within ~4k steps (data-limited). v2 (fixed parse) training on the Mac.
+  it memorises the 1,652 training pairs within ~4k steps (data-limited).
+- v2 (fixed parse; `gloss-planner-asllrp-v2`, best step 8,000): gloss BLEU 27.7, WER 0.70, marker F1 0.70.
+- Locus accuracy is 0.233. On the same predicted glosses, the per-gloss majority locus scores 0.240 and "no locus" 0.
+  The locus head has learned only each gloss's usual slot, not the discourse context. Its slots already follow
+  canonical order (1 plan in 412 does not), so renumbering gains nothing.
+- Referent placement is under-determined from English at this data size. Spatial agreement is a target for the human
+  study and the reviewer-driven fine-tuning, not a solved part of the plan.
 - `signtranslator/planning/plan_text.py`: the plan as one deterministic text line (`[topic MOTHER ] IX-loc>1
   1>GIVE>2 [neg NOT LIKE ]`), lossless on all 2,403 pairs, so the byte-conditioned generators and their
   classifier-free guidance learn plan -> motion unchanged.
