@@ -24,7 +24,7 @@ PARTITIONS = ("train", "val", "test")
 class TextMotionDataset(Dataset):
     def __init__(self, manifest: Mapping, *, partition: str, cache: ContentCache,
                  fetch: Callable[[str], bytes], max_seconds: float | None = None, fps: float | None = None,
-                 augment: Callable | None = None) -> None:
+                 augment: Callable | None = None, template=None) -> None:
         """``fps``: resample every state whose median rate differs from it by more than 1%
         (``pose.resample.resample_motion``) - corpora are recorded at 24, 25-30 and 30 fps, and the tokenizers and
         priors count time in frames. ``None`` keeps every state at its own rate."""
@@ -35,6 +35,7 @@ class TextMotionDataset(Dataset):
         if max_seconds is not None:
             records = [r for r in records if r["continuous"].get("seconds", 0.) <= max_seconds]
         self.records, self.cache, self.fetch, self.fps, self.augment = records, cache, fetch, fps, augment
+        self.template = template
 
     def __len__(self) -> int:
         return len(self.records)
@@ -42,6 +43,9 @@ class TextMotionDataset(Dataset):
     def __getitem__(self, index):
         record = self.records[index]
         state = load_sample(record, "continuous", cache=self.cache, fetch=self.fetch)
+        if self.template is not None:
+            from .layout_adapter import conform
+            state = conform(state, self.template)
         if self.augment is not None:
             state = self.augment(state)
         if self.fps is not None and len(state.timestamps) > 1:

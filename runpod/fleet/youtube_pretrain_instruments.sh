@@ -36,7 +36,7 @@ MSHA=$(sha "$MIX")
 python scripts/prefetch_cache.py "$MIX"
 PRE=back-translator-t5-ytpre-$TAG FT=back-translator-t5-ytft-$TAG
 stage $PRE bt-pretrain python scripts/train_motion_to_text_t5.py --manifest-key "$MIX" --manifest-sha256 "$MSHA" --run $PRE \
-  --fps 24 --batch-size 32 --steps 60000 --val-every 2000 --val-clips 512 --patience 6 --workers 8 --cache-bytes 64424509440 \
+  --fps 24 --conform-to-corpus how2sign-two-view-text-v1 --batch-size 32 --steps 60000 --val-every 2000 --val-clips 512 --patience 6 --workers 8 --cache-bytes 64424509440 \
   || { echo YT-PRETRAIN-DONE; exit 1; }
 INIT=$(best $PRE); ISHA=$(sha "$INIT")
 stage $FT bt-finetune python scripts/train_motion_to_text_t5.py --manifest-key "$FULL" --manifest-sha256 "$FSHA" --run $FT \
@@ -44,5 +44,5 @@ stage $FT bt-finetune python scripts/train_motion_to_text_t5.py --manifest-key "
   --patience 6 --workers 8 --init-key "$INIT" --init-sha256 "$ISHA"
 RET=retrieval-ytmix-$TAG
 stage $RET retrieval python scripts/train_text_motion_retrieval.py --manifest-key "$MIX" --manifest-sha256 "$MSHA" --run $RET \
-  --batch-size 128 --steps 40000 --val-every 500 --patience 8 --workers 8 --augment --fps 24 --dropout 0.3 --cache-bytes 64424509440
+  --batch-size 128 --steps 40000 --val-every 500 --patience 8 --workers 8 --augment --fps 24 --conform-to-corpus how2sign-two-view-text-v1 --dropout 0.3 --cache-bytes 64424509440
 echo YT-PRETRAIN-DONE

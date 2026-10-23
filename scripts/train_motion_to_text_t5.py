@@ -53,6 +53,16 @@ def evaluate(model, batches, device, *, beam: int = 1) -> dict:
             "val/bleu": bleu["bleu"], "val/bleu_1": bleu["precisions"][0], "examples": list(zip(hypotheses[:5], references[:5]))}
 
 
+
+def layout_template(manifest, corpus: str, cache, fetch):
+    """The first training state of ``corpus`` in a mixed manifest: the layout every other corpus is conformed to."""
+    from signtranslator.data_engineering.corpus_manifest import load_sample
+    record = next((r for r in manifest["records"] if r.get("corpus") == corpus and r.get("partition") == "train"), None)
+    if record is None:
+        raise SystemExit(f"no training record of corpus {corpus!r} to take the layout from")
+    return load_sample(record, "continuous", cache=cache, fetch=fetch)
+
+
 def main(argv=None, *, build_model=build) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--store", default="r2")
@@ -74,6 +84,8 @@ def main(argv=None, *, build_model=build) -> int:
     parser.add_argument("--downsample", type=int, default=2)
     parser.add_argument("--max-tokens", type=int, default=64)
     parser.add_argument("--max-seconds", type=float, default=20.)
+    parser.add_argument("--conform-to-corpus", help="mixed manifests: conform every state to this corpus's channel "
+                                                    "layouts (data.layout_adapter)")
     parser.add_argument("--fps", type=float, help="resample states whose rate differs from this")
     parser.add_argument("--trained-channels", default="body,left_hand,right_hand,head_rotation,face,blink,root_translation,head_translation,left_gaze,right_gaze")
     parser.add_argument("--val-every", type=int, default=2000)
@@ -98,10 +110,11 @@ def main(argv=None, *, build_model=build) -> int:
         manifest = load_manifest(path, expected_sha256=args.manifest_sha256)
     cache = ContentCache(Path(os.environ.get("SIGN_CACHE_DIR", tempfile.gettempdir())) / "sign-translator-cache",
                          args.cache_bytes)
+    template = layout_template(manifest, args.conform_to_corpus, cache, store.get) if args.conform_to_corpus else None
     train = TextMotionDataset(manifest, partition="train", cache=cache, fetch=store.get, max_seconds=args.max_seconds,
-                              fps=args.fps)
+                              fps=args.fps, template=template)
     val = TextMotionDataset(manifest, partition="val", cache=cache, fetch=store.get, max_seconds=args.max_seconds,
-                            fps=args.fps)
+                            fps=args.fps, template=template)
     if not len(train) or not len(val):
         raise SystemExit("the manifest needs training and validation records")
     motion = TextToMotionConfig(bindings=channel_bindings_from_state(train[0][1]),

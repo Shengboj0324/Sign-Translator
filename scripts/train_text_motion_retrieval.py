@@ -68,6 +68,16 @@ def worker_augment(state):
     return augment_sign(state, _AUGMENT_RNG[pid], speed=(.85, 1.15), trim=0., face_dropout=.2)
 
 
+
+def layout_template(manifest, corpus: str, cache, fetch):
+    """The first training state of ``corpus`` in a mixed manifest: the layout every other corpus is conformed to."""
+    from signtranslator.data_engineering.corpus_manifest import load_sample
+    record = next((r for r in manifest["records"] if r.get("corpus") == corpus and r.get("partition") == "train"), None)
+    if record is None:
+        raise SystemExit(f"no training record of corpus {corpus!r} to take the layout from")
+    return load_sample(record, "continuous", cache=cache, fetch=fetch)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--store", default="r2")
@@ -98,6 +108,8 @@ def main(argv=None) -> int:
     parser.add_argument("--device", default="auto")
     parser.add_argument("--text-embedding-key", help="frozen sentence-embedding table (embed_texts.py) for the text side")
     parser.add_argument("--text-embedding-sha256")
+    parser.add_argument("--conform-to-corpus", help="mixed manifests: conform every state to this corpus's channel "
+                                                    "layouts (data.layout_adapter)")
     parser.add_argument("--fps", type=float, help="resample states whose rate differs from this (mixed-rate corpora)")
     parser.add_argument("--augment", action="store_true",
                         help="training clips at a random speed (0.85-1.15x) and, one time in five, without the face "
@@ -115,10 +127,11 @@ def main(argv=None) -> int:
                          args.cache_bytes)
     if args.augment and not args.fps:
         raise SystemExit("--augment needs --fps")
+    template = layout_template(manifest, args.conform_to_corpus, cache, store.get) if args.conform_to_corpus else None
     train = TextMotionDataset(manifest, partition="train", cache=cache, fetch=store.get, max_seconds=args.max_seconds,
-                              fps=args.fps, augment=worker_augment if args.augment else None)
+                              fps=args.fps, template=template, augment=worker_augment if args.augment else None)
     val = TextMotionDataset(manifest, partition="val", cache=cache, fetch=store.get, max_seconds=args.max_seconds,
-                            fps=args.fps)
+                            fps=args.fps, template=template)
     if not len(train) or not len(val):
         raise SystemExit("the manifest needs training and validation records")
     motion = TextToMotionConfig(bindings=channel_bindings_from_state(train[0][1]),

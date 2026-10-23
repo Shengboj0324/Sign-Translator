@@ -77,7 +77,7 @@ TOK=$(best $TOKRUN); TSHA=$(sha "$TOK"); INIT=$(best $PRIOR); ISHA=$(sha "$INIT"
 stage $RUN prior python scripts/train_motion_tokens.py --architecture rvq --manifest-key "$MIX" --manifest-sha256 "$MSHA" \
   --workers 8 --val-every 1000 --val-batches 32 --checkpoint-every 2000 --patience 5 --batch-size 64 --stage prior --run $RUN \
   --tokenizer-key "$TOK" --tokenizer-sha256 "$TSHA" --tokenizer-manifest-sha256 "$FSHA" --init-key "$INIT" --init-sha256 "$ISHA" \
-  --fps 24 --lr 1e-4 --warmup 500 --steps 20000 --d-model 384 --feedforward 1536 --token-layers 6 --depth-layers 2 \
+  --fps 24 --conform-to-corpus how2sign-two-view-text-v1 --lr 1e-4 --warmup 500 --steps 20000 --d-model 384 --feedforward 1536 --token-layers 6 --depth-layers 2 \
   --locus-conditioning --cache-bytes 12884901888 || { # sign level: one-sign plans of the recogniser's reliable glosses (recogniser v2 passed its instrument validation)
 python - "$MIX" "$MSHA" "$OUT/plan-glosses.json" <<'PY'
 import os, sys, json, tempfile

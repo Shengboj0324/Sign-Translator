@@ -60,6 +60,16 @@ def kinds(architecture: str) -> tuple[str, str]:
         ("motion_rvq_tokenizer", "motion_rvq_prior")
 
 
+
+def layout_template(manifest, corpus: str, cache, fetch):
+    """The first training state of ``corpus`` in a mixed manifest: the layout every other corpus is conformed to."""
+    from signtranslator.data_engineering.corpus_manifest import load_sample
+    record = next((r for r in manifest["records"] if r.get("corpus") == corpus and r.get("partition") == "train"), None)
+    if record is None:
+        raise SystemExit(f"no training record of corpus {corpus!r} to take the layout from")
+    return load_sample(record, "continuous", cache=cache, fetch=fetch)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stage", choices=("tokenizer", "prior"), required=True)
@@ -83,6 +93,8 @@ def main(argv=None) -> int:
                              "(e.g. the full-corpus tokenizer under a prior trained on a mixed manifest)")
     parser.add_argument("--init-key", help="prior stage: warm-start from this prior checkpoint (EMA weights), same config")
     parser.add_argument("--init-sha256", help="its SHA-256")
+    parser.add_argument("--conform-to-corpus", help="mixed manifests: conform every state to this corpus's channel "
+                                                    "layouts (data.layout_adapter)")
     parser.add_argument("--fps", type=float, help="resample states whose rate differs from this (mixed-rate corpora)")
     parser.add_argument("--steps", type=int, default=50_000)
     parser.add_argument("--batch-size", type=int, default=32)
@@ -124,12 +136,13 @@ def main(argv=None) -> int:
         manifest = load_manifest(path, expected_sha256=args.manifest_sha256)
     cache = ContentCache(Path(os.environ.get("SIGN_CACHE_DIR", tempfile.gettempdir())) / "sign-translator-cache",
                          args.cache_bytes)
+    template = layout_template(manifest, args.conform_to_corpus, cache, store.get) if args.conform_to_corpus else None
     train = TextMotionDataset(manifest, partition="train", cache=cache, fetch=store.get, max_seconds=args.max_seconds,
-                              fps=args.fps)
+                              fps=args.fps, template=template)
     if not len(train):
         raise SystemExit("the manifest has no training records")
     val = TextMotionDataset(manifest, partition="val", cache=cache, fetch=store.get, max_seconds=args.max_seconds,
-                            fps=args.fps)
+                            fps=args.fps, template=template)
     tokenizer_kind, prior_kind = kinds(args.architecture)
     if args.stage == "tokenizer":
         motion = TextToMotionConfig(bindings=channel_bindings_from_state(train[0][1]),
