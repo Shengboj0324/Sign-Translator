@@ -482,6 +482,44 @@ implications (research report §4.3), so it is the owner's call. Until then the 
   real BLEU must exceed blank and shuffled-text controls by a clear margin. Per-sentence agreement with the T5
   back-translator is reported. If it fails, it is not used.
 
+**Plan-conditioned generator: result against its declared rules (2026-10-23, 03:25 PDT).**
+`tokens-rvq-d0b-prior-loci-plan-v1`: warm-started from the full prior and trained on How2Sign + ASLLRP plan lines.
+It early-stopped at step 13,000; the best checkpoint is step 8,000 (val loss 3.488).
+
+| Rule | Plan generator | English baseline | Verdict |
+|---|---|---|---|
+| 1. Retrieval R@3 on ASLLRP val, better guidance | 0.128 | 0.177 | **fail** as declared. The instrument is invalid here: real ASLLRP scores 0.12 against chance 0.094. |
+| 1. Back-translation BLEU on ASLLRP | 0.0 | 0.0 | **uninformative.** Real ASLLRP also scores 0.0, because the How2Sign-trained translator does not read ASLLRP. |
+| 2. Marker AUC (guidance 2): wh / yes-no / negation | 0.665 / 0.557 / 0.483 | 0.572 / 0.445 / 0.459 | **pass.** Both are below 0.5 on negation (real 0.598). |
+| 3. How2Sign Fréchet; articulation within 10% of the full prior | Fréchet 199 vs 290; body speed 0.92 vs 1.06; variation 1.00 vs 1.24 | | **better, but misses the letter:** two ratios moved more than 10%, both toward 1.0 (real). |
+
+Other measurements:
+- How2Sign back-translation: 0.71 (guidance 1) against the full prior's 0.68, with real 0.81 and blank 0.0.
+- Sign level (recogniser v2, one-sign plans, 219 prompts): top-1 **0.5%**. Real ASLLRP citation clips score 97.3%, the
+  stitching pipeline check 88%, blank 0%.
+- ASLLRP Fréchet: 7,498 for the plan generator, 6,062 for the English baseline and 219 for stitching. Neither generator
+  produces ASLLRP-like motion.
+
+**Verdict: the plan generator is not adopted. The English-conditioned generator stays the selected system.**
+
+**Diagnosis.** On ASLLRP, all three meaning instruments (retrieval, back-translation, recogniser) are either shown
+invalid or unvalidated for the generator's output domain.
+- **Retrieval and back-translation:** real ASLLRP motion scores at chance and at 0.
+- **Recogniser:** validated only on monocular MediaPipe clips. The generators emit How2Sign-layout motion, Sapiens
+  two-view, conformed. Stitching passes because it replays real ASLLRP states.
+- So the sign-level near-zero cannot yet separate "the generator does not sign the gloss" from "the recogniser does not
+  read this domain".
+- The grammar AUCs, which need no instrument, favour the plan generator. The tokenizer domain check found ASLLRP face
+  and blink encoded 1.5–2.3× worse, which bounds what any generator on this tokenizer can show on ASLLRP.
+
+**Consequences for the next round:**
+- **Tokenizer:** one trained on the mix, as the YouTube round chain already does on a failed domain check.
+- **Recogniser:** validated on generator-domain real signs before it judges generated signs. This needs How2Sign-layout
+  isolated signs, for example re-estimating ASLLRP or ASL Citizen clips through the two-view-compatible path, or
+  testing the recogniser on How2Sign motion conformed to the monocular layout.
+- **Meaning on ASLLRP:** the 2D back-translator, which reads both domains through the same FK projection, is the
+  candidate meaning instrument. It is only to be used after its own acceptance on ASLLRP real.
+
 **2D back-translator, How2Sign-only model: acceptance PASSED (2026-10-23, 02:32 PDT).**
 `back-translator-kp2d-h2s-v1`, best checkpoint step 13,000; it early-stopped at 19,000. Scored on 600 How2Sign val
 clips through the FK projection path, beam 4, with sentence-bootstrap 95% intervals:
