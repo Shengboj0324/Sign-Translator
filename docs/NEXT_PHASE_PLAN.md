@@ -537,6 +537,33 @@ addresses the causes.
 6. **Recogniser domain.** Validate the recogniser on How2Sign-layout isolated signs before it judges R5, through the
    same FK/conform path, as the plan generator's diagnosis already requires.
 
+**Round 3a: implemented and running (2026-10-23, 06:20 PDT).**
+- **Data** (mix `round3a-mixed-v1`, SHA `dc576f4a`; 49,235 training clips):
+
+  | Corpus | Training clips | Manifest |
+  |---|---|---|
+  | How2Sign, multi-signer re-partition | 18,289 | `how2sign-text-manifest-v2-multisigner`, SHA `dcdb6451` |
+  | YouTube-ASL r3a (home route so far; 23.3 h after filters) | 15,560 | |
+  | ASL Citizen one-word prompts (capped at 6 per word, 2,289 words) | 13,734 | SHA `50125638` |
+  | ASLLRP plans | 1,652 | |
+
+  - Validation is How2Sign signers 3, 1/2 and 11 (3,096 clips), plus the other corpora's own validation splits.
+  - Test is signer 9, untouched; held-out is How2Sign's official test.
+- **Stage A** (`runpod/fleet/round3_tokenizer.sh`, running): a mixed tokenizer.
+  - The full-corpus tokenizer's domain check on the round-3 corpora: ASLLRP fails (blink 1.91×), ASL Citizen passes
+    (relative face 2.06×), YouTube passes (blink 1.48×).
+  - The new tokenizer must pass the same check on every corpus, or stage B does not start (`after_tok.sh`).
+- **Stage B** (`runpod/fleet/round3_prior.sh`): prior from scratch, then:
+  - a 3×3 temperature sweep × 3 guidance values, evaluated per validation signer;
+  - a post-processing grid with face calibration pooled over signers;
+  - the multi-signer gate (every signer must pass the declared checks);
+  - the strict review, R1–R6 unchanged, with R6 on test signer 9 once.
+
+  A local dry run (2 signers × 8 clips) exercised every stage.
+- **Caveat (instruments):** the retrieval evaluator and back-translator were trained on fold-0 training data, which
+  included signers 1/2 and 11, now validation. Their real-clip ceilings on those signers are inflated. The R1 and R2
+  rules compare generated with blank, not with real, so they stay valid.
+
 **Second-opinion meaning check of the full prior (2026-10-23, 03:55 PDT).** The accepted 2D back-translator
 (`back-translator-kp2d-h2s-v1`, an independent instrument reading FK projections) scored the full prior's core
 validation generations on 600 How2Sign val clips:
