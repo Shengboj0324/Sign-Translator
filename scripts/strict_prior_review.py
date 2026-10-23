@@ -140,6 +140,7 @@ def main(argv=None) -> int:
     parser.add_argument("--manifest-key", required=True)
     parser.add_argument("--manifest-sha256", required=True)
     parser.add_argument("--checkpoint-key", required=True)
+    parser.add_argument("--checkpoint-manifest-sha256", help="when the generator was trained on another manifest")
     parser.add_argument("--retrieval-key", required=True)
     parser.add_argument("--translator-key", required=True)
     parser.add_argument("--recognizer-run", default="sign-recognizer-v2")
@@ -263,7 +264,8 @@ def main(argv=None) -> int:
     words = sorted(g for g in validation["per_gloss"]["reliable_glosses"] if g.isalpha() and g.lower() in vocab_words)
     words = words[:args.words]
     temperature = {k: float(v) for k, v in (x.split("=") for x in sel["part_temperature"].split(","))}
-    _, _, sample = load_generator(store, args.checkpoint_key, args.manifest_sha256, args.device, temperature=temperature)
+    _, _, sample = load_generator(store, args.checkpoint_key, args.checkpoint_manifest_sha256 or args.manifest_sha256,
+                                  args.device, temperature=temperature)
     sign_states, y = [], []
     for k, g in enumerate(words):
         for s in range(2):
@@ -305,6 +307,8 @@ def main(argv=None) -> int:
         try:
             evaluate.main(["--store", args.store,     "--manifest-key", args.manifest_key, "--manifest-sha256", args.manifest_sha256,
                            "--checkpoint-key", args.checkpoint_key, "--partition", partition, "--limit", str(limit),
+                           *(["--checkpoint-manifest-sha256", args.checkpoint_manifest_sha256]
+                             if args.checkpoint_manifest_sha256 else []),
                            "--guidance", f"{sel['guidance']:g}", "--part-temperature", sel["part_temperature"],
                            "--head-smoothing", str(sel["head_smoothing"]), "--device", args.device,
                            "--retrieval-key", args.retrieval_key, "--output-key", key, "--fps", "24"]
