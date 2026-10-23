@@ -457,6 +457,16 @@ Y5 covers, in order:
 2. the generator prior on How2Sign + YouTube English (motion tokens from the full-corpus tokenizer, re-checked for
    learnability on the new domain).
 
+**Single-signer filter (2026-10-22, 22:15 PDT).** Acquisition counts people on every 12th frame with a separate
+image-mode pose pass. Each segment records `other_person_fraction`, and the manifest drops a segment when a second
+person at least half the signer's size appears in more than 10% of its frames (reason `second_person`). In an
+interview or group shot the caption may belong to someone other than the tracked signer.
+- The signer's own tracker stays single-person. Asking it for two people moved a lone signer's landmarks by a median
+  2% of image width (90th percentile 13%).
+- Validation: a lone signer scores 0% and a two-person clip 100%. The signer's landmarks are bit-identical, at no
+  measurable cost.
+- The 125 pilot videos were acquired before this and have no count, so their segments are kept.
+
 **Tokenizer domain check (2026-10-22, 21:58 PDT).** `scripts/tokenizer_domain_check.py`, rule fixed before any
 YouTube result: every channel's reconstruction error on a new corpus ≤ 1.5× How2Sign val's. A diagnostic, which
 does not change the rule, divides each error by the corpus's own signal scale, separating "moves more" from "encoded
