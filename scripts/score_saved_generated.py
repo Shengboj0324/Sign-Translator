@@ -56,6 +56,9 @@ def main(argv=None) -> int:
     parser.add_argument("--face-calibrate", action="store_true",
                         help="per-blendshape face calibration (postprocess.estimate_face_calibration) estimated on these "
                              "clips and applied; stored with the result")
+    parser.add_argument("--calibration-pool", nargs="+", default=[],
+                        help="estimate one face calibration from these --save-generated prefixes together (e.g. every "
+                             "validation signer's), then apply it here: a population calibration, not this signer's own")
     parser.add_argument("--output-key", required=True)
     args = parser.parse_args(argv)
     store = make_store(args.store)
@@ -64,6 +67,17 @@ def main(argv=None) -> int:
         manifest = load_manifest(path, expected_sha256=args.manifest_sha256)
     by_sign = {r["sign"]: r for r in manifest["records"]}
     results = {}
+    pool = {}                                    # tag -> (generated, references) over every pooled prefix
+    for prefix in args.calibration_pool:
+        for tag, pairs in load_generated(store, prefix).items():
+            gen = [smooth_rotation_channel(s, "head_rotation", args.head_smoothing) if args.head_smoothing > 0 else s
+                   for _, s in pairs]
+            refs = [load_state(store, by_sign[sign]["continuous"]["state_key"], by_sign[sign]["continuous"]["state_sha256"])
+                    for sign, _ in pairs]
+            if args.fps:
+                refs = [at_rate(r, args.fps) for r in refs]
+            g0, r0 = pool.get(tag, ([], []))
+            pool[tag] = (g0 + gen, r0 + refs)
     for tag, pairs in load_generated(store, args.generated).items():
         generated = [smooth_rotation_channel(s, "head_rotation", args.head_smoothing) if args.head_smoothing > 0 else s
                      for _, s in pairs]
@@ -72,11 +86,17 @@ def main(argv=None) -> int:
         if args.fps:
             references = [at_rate(r, args.fps) for r in references]
         calibration = None
-        if args.face_calibrate:
+        if args.calibration_pool:
+            if tag not in pool:
+                raise SystemExit(f"no pooled clips for {tag}")
+            calibration = dict(estimate_face_calibration(*pool[tag]), pooled_from=args.calibration_pool)
+            generated = [calibrate_face(s, calibration) for s in generated]
+        elif args.face_calibrate:
             calibration = estimate_face_calibration(generated, references)
             generated = [calibrate_face(s, calibration) for s in generated]
         channels = tuple(c for c in CHANNELS if c in generated[0].channels and generated[0].channels[c].valid.any())
-        name = f"{tag} head-smoothing {args.head_smoothing:g}" + (" face-calibrated" if calibration else "")
+        name = f"{tag} head-smoothing {args.head_smoothing:g}" + (
+            " face-calibrated-pooled" if args.calibration_pool else " face-calibrated" if calibration else "")
         results[name] = compare(generated, references, channels)
         if calibration:
             results[name]["face_calibration"] = calibration
@@ -86,7 +106,9 @@ def main(argv=None) -> int:
         print(json.dumps({name: {k: results[name][k] for k in ("frechet", "head_rotation") if k in results[name]}},
                          default=float), flush=True)
     store.put(args.output_key, json.dumps(dict(schema_version=1, generated=args.generated,
-                                               head_smoothing=args.head_smoothing, face_calibrated=args.face_calibrate,
+                                               head_smoothing=args.head_smoothing,
+                                               face_calibrated=args.face_calibrate or bool(args.calibration_pool),
+                                               calibration_pool=args.calibration_pool,
                                                manifest_sha256=args.manifest_sha256,
                                                results=results), indent=2, sort_keys=True, default=float).encode())
     return 0
