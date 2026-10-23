@@ -102,16 +102,20 @@ GEN=$(best $RUN)
 EVAL="--manifest-key $MIX --manifest-sha256 $MSHA --partition val --guidance 1,2 --fps 24 --device cuda \
   --part-temperature body=1.2,left_hand=1.2,right_hand=1.2,face=1.0 --retrieval-key $(best $RET) --retrieval-manifest-sha256 $FSHA"
 A=asllrp-dai2-plan-v2 H=how2sign-two-view-text-v1
-stage $RUN eval-asllrp-plan python scripts/evaluate_text_to_motion.py $EVAL --checkpoint-key "$GEN" --corpus $A --limit 412 \
-  --save-generated "$OUT/generated/plan-asllrp" --output-key "$OUT/evaluations/plan-asllrp.json"
-stage $RUN eval-asllrp-english-baseline python scripts/evaluate_text_to_motion.py $EVAL --checkpoint-key "$INIT" \
-  --checkpoint-manifest-sha256 "$FSHA" --condition english --corpus $A --limit 412 \
-  --save-generated "$OUT/generated/english-baseline-asllrp" --output-key "$OUT/evaluations/english-baseline-asllrp.json"
 LEX=$ACQ/asllrp-dai2-v1/citation-lexicon-v1/lexicon.json
-stage $RUN eval-asllrp-stitch python scripts/evaluate_text_to_motion.py $EVAL --lexicon-key "$LEX" --lexicon-sha256 "$(sha "$LEX")" \
-  --corpus $A --limit 412 --save-generated "$OUT/generated/stitch-asllrp" --output-key "$OUT/evaluations/stitch-asllrp.json"
-stage $RUN eval-how2sign python scripts/evaluate_text_to_motion.py $EVAL --checkpoint-key "$GEN" --corpus $H --limit 600 \
-  --save-generated "$OUT/generated/plan-how2sign" --output-key "$OUT/evaluations/plan-how2sign.json"
+# the four evaluations are independent and generation leaves the GPU mostly idle: run them in parallel
+export OMP_NUM_THREADS=3 MKL_NUM_THREADS=3 OPENBLAS_NUM_THREADS=3
+( stage $RUN eval-asllrp-plan python scripts/evaluate_text_to_motion.py $EVAL --checkpoint-key "$GEN" --corpus $A --limit 412 \
+  --save-generated "$OUT/generated/plan-asllrp" --output-key "$OUT/evaluations/plan-asllrp.json" ) &
+( stage $RUN eval-asllrp-english-baseline python scripts/evaluate_text_to_motion.py $EVAL --checkpoint-key "$INIT" \
+  --checkpoint-manifest-sha256 "$FSHA" --condition english --corpus $A --limit 412 \
+  --save-generated "$OUT/generated/english-baseline-asllrp" --output-key "$OUT/evaluations/english-baseline-asllrp.json" ) &
+( stage $RUN eval-asllrp-stitch python scripts/evaluate_text_to_motion.py $EVAL --lexicon-key "$LEX" --lexicon-sha256 "$(sha "$LEX")" \
+  --corpus $A --limit 412 --save-generated "$OUT/generated/stitch-asllrp" --output-key "$OUT/evaluations/stitch-asllrp.json" ) &
+( stage $RUN eval-how2sign python scripts/evaluate_text_to_motion.py $EVAL --checkpoint-key "$GEN" --corpus $H --limit 600 \
+  --save-generated "$OUT/generated/plan-how2sign" --output-key "$OUT/evaluations/plan-how2sign.json" ) &
+wait
+export OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8
 stage $RUN back-translation python scripts/score_back_translation.py --manifest-key "$MIX" --manifest-sha256 "$MSHA" \
   --translator-key "$(best $BT)" --translator-manifest-sha256 "$FSHA" --fps 24 \
   --generated "$OUT/generated/plan-asllrp" "$OUT/generated/english-baseline-asllrp" "$OUT/generated/stitch-asllrp" \
