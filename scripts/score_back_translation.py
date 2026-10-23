@@ -31,6 +31,11 @@ from train_text_to_motion import make_store  # noqa: E402
 def load_translator(store, key: str, manifest_sha256: str):
     """(model with EMA weights in eval mode, vocabulary), refusing one trained on another manifest."""
     saved = torch.load(io.BytesIO(store.get(key)), map_location="cpu", weights_only=False)
+    if saved.get("kind") == "keypoints_to_text_t5":          # 2D second opinion: reads states through FK projection
+        from signtranslator.generation.keypoints_to_text_t5 import KeypointsToT5Config, build
+        model = build(KeypointsToT5Config.from_dict(saved["config"]), pretrained=False)
+        model.load_state_dict(saved.get("ema") or saved["model"])
+        return model.eval(), "keypoints"
     if saved.get("kind") not in ("motion_to_text", "motion_to_text_t5") or saved["manifest_sha256"] != manifest_sha256:
         raise SystemExit(f"{key} is not a back-translator trained on this manifest")
     if saved["kind"] == "motion_to_text_t5":                 # v2: pretrained T5 decoder, its own tokenizer
@@ -48,6 +53,17 @@ def translate(model, vocabulary, states, *, beam: int = 4, batch: int = 32) -> l
     from signtranslator.data.multichannel import collate_multichannel
     out = []
     device = next(model.parameters()).device
+    if vocabulary == "keypoints":
+        from signtranslator.data.keypoint_shards import collate_keypoints
+        from signtranslator.data.keypoints2d import features, from_state, normalise
+        items = []
+        for state in states:
+            points, valid = from_state(at_rate(state, model.config.fps))
+            items.append((torch.from_numpy(features(normalise(points, valid, y_down=False), valid)), ""))
+        for i in range(0, len(items), batch):
+            (x, valid), _ = collate_keypoints(items[i:i + batch])
+            out += model.generate_text((x.to(device), valid.to(device)), beam=beam)
+        return out
     for i in range(0, len(states), batch):
         motion = collate_multichannel(states[i:i + batch])
         if vocabulary is None:                               # T5 back-translator decodes to text itself
@@ -60,7 +76,14 @@ def translate(model, vocabulary, states, *, beam: int = 4, batch: int = 32) -> l
 
 def bleu_of(model, vocabulary, states, texts, *, beam: int) -> dict:
     hypotheses = translate(model, vocabulary, states, beam=beam)
-    return dict(corpus_bleu(hypotheses, texts), examples=list(zip(hypotheses[:5], texts[:5])))
+    return dict(corpus_bleu(hypotheses, texts), examples=list(zip(hypotheses[:5], texts[:5])), hypotheses=hypotheses)
+
+
+def shuffled_control(hypotheses, texts) -> dict:
+    """The real clips' translations scored against other clips' sentences (rolled by half the set): what fluent,
+    generic output scores without matching its clip."""
+    rolled = texts[len(texts) // 2:] + texts[:len(texts) // 2]
+    return dict(corpus_bleu(hypotheses, rolled))
 
 
 def main(argv=None) -> int:
@@ -104,6 +127,7 @@ def main(argv=None) -> int:
             out[prefix][tag] = dict(generated=bleu_of(model, vocabulary, generated, texts, beam=args.beam),
                                     real=bleu_of(model, vocabulary, references, texts, beam=args.beam),
                                     blank=bleu_of(model, vocabulary, blanked(references), texts, beam=args.beam))
+            out[prefix][tag]["shuffled"] = shuffled_control(out[prefix][tag]["real"]["hypotheses"], texts)
             print(json.dumps({prefix: {tag: {k: round(v["bleu"], 2) for k, v in out[prefix][tag].items()}}}), flush=True)
     if args.output_key:
         store.put(args.output_key, json.dumps(dict(translator_key=args.translator_key, beam=args.beam, results=out),

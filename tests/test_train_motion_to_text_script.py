@@ -56,5 +56,5 @@ def test_scorer_reads_generated_real_and_blank(tmp_path, monkeypatch):
     assert scorer.main(["--store", f"dir:{store}", "--manifest-key", "manifest.json", "--manifest-sha256", digest,
                         "--translator-key", best, "--generated", "gen", "--beam", "2", "--output-key", "out.json"]) == 0
     result = json.loads((store / "out.json").read_text())["results"]["gen"]["g1"]
-    assert set(result) == {"generated", "real", "blank"}
+    assert set(result) == {"generated", "real", "blank", "shuffled"} and "bleu" in result["shuffled"]
     assert result["generated"]["bleu"] == result["real"]["bleu"]

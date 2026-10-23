@@ -39,3 +39,13 @@ def test_learns_to_say_what_each_clip_signs_and_ignores_padding():
     junk = features.clone(); junk[~valid] = 99.                 # padding must not change the output
     assert model.generate_text((junk, valid), beam=1) == texts
     assert KeypointsToT5Config.from_dict(json.loads(json.dumps(model.config.to_dict()))) == model.config
+
+
+def test_the_scorer_reads_canonical_states_through_the_keypoint_path():
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from score_back_translation import translate
+    from tests.test_generation_canonical_skeleton import rest_state
+    out = translate(tiny().eval(), "keypoints", [rest_state(30), rest_state(12)], beam=1)
+    assert len(out) == 2 and all(isinstance(t, str) for t in out)
