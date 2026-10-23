@@ -49,7 +49,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-BLOCK_PATTERNS = ("confirm you", "not a bot", "sign in to", "http error 429", "too many requests")
+BLOCK_PATTERNS = ("confirm you", "not a bot", "sign in to", "please sign in", "helps protect our community",
+                  "http error 429", "too many requests")
 # Uploaders of signed videos often file the English caption track under the sign language's own code: most
 # YouTube-ASL tracks are "ase" (American Sign Language), some "sgn-US"; English codes are taken as well.
 CAPTION_LANGS = ("ase", "sgn-US", "en", "en-US", "en-GB", "en-CA", "en-AU")
