@@ -72,7 +72,7 @@ def to_device(batch, device):
                 for name, ch in motion.channels.items()}
     motion = replace(motion, timestamps=motion.timestamps.to(device), frame_valid=motion.frame_valid.to(device),
                      lengths=motion.lengths.to(device), channels=channels)
-    out = (tokens.to(device), mask.to(device), motion)
+    out = (tokens.to(device) if tokens is not None else None, mask.to(device) if mask is not None else None, motion)
     return out if loci is None else out + (loci,)
 
 

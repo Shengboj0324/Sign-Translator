@@ -49,3 +49,16 @@ def test_the_scorer_reads_canonical_states_through_the_keypoint_path():
     from tests.test_generation_canonical_skeleton import rest_state
     out = translate(tiny().eval(), "keypoints", [rest_state(30), rest_state(12)], beam=1)
     assert len(out) == 2 and all(isinstance(t, str) for t in out)
+
+
+def test_motion_alone_moves_to_another_device():
+    """translate() hands (None, None, motion) to to_device: the missing text side must not break a CUDA move."""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from train_text_to_motion import to_device
+    from signtranslator.data.multichannel import collate_multichannel
+    from tests.test_generation_canonical_skeleton import rest_state
+    motion = collate_multichannel([rest_state(5)])
+    _, _, moved = to_device((None, None, motion, None), torch.device("meta"))
+    assert moved.timestamps.device.type == "meta"
