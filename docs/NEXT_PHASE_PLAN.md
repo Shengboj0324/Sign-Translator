@@ -252,6 +252,23 @@ if all six rules hold, whatever the gate said:
 | R5 | One-word English prompts for the recogniser's reliable glosses | recogniser top-5 CI entirely above blank (real reported) |
 | R6 | Test partition, once (92 signer-disjoint clips); heldout_official reported | every gate check that passed on val passes on test |
 
+**Added after the first full-prior validation results (2026-10-22, 20:30 PDT). Disclosed: this is a change made
+after seeing results.**
+- **Finding:** the full prior's evaluation (guidance 1 and 2, 600 val clips) showed brow furrow at 0.09–0.10× the
+  real rate, so the gate's marker check fails. It also showed head speed at 1.53×, which head smoothing already
+  targets.
+- **Diagnosis:** the tokenizer reconstructs the face blendshapes at 0.89–0.97× their real spread, but the prior
+  samples near-neutral faces. Brow-down varies about 3× less than real within a clip.
+- **New gate candidates:** `postprocess.calibrate_face`, a per-blendshape affine map estimated on validation that
+  never shrinks a range. It was checked on a held-out half of the val clips: brow furrow 0.20× → 0.99×, brow raise
+  0.92× → 0.73×, head markers unchanged.
+  - The gate rule is unchanged.
+  - The calibration is a post-processing setting chosen on validation, like head smoothing.
+  - The strict review applies the stored validation calibration unchanged in every rule, and R6 confirms it once on
+    the signer-disjoint test partition.
+- **Proper fix:** a prior that samples the face's full range, through face-code temperature or a variance-aware loss.
+  That belongs to the next generator round.
+
 **Plan-conditioned generator (post_gate_plan_generator.sh), ASLLRP val (Jonathan).** The plan generator is preferred
 to the English-conditioned baseline only if all three hold:
 1. Retrieval R@3 and back-translation BLEU against the English are not lower than the baseline's, each judged at the
