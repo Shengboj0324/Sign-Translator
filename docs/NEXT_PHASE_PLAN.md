@@ -380,6 +380,13 @@ Published pretraining on YouTube-ASL took pose-based How2Sign translation to abo
   - Courtesy notices: the YouTube-ASL and YouTube-SL-25 authors at Google, and How2Sign (amanda.duarte@upc.edu).
 - **Precedent:** Uni-Sign released YouTube-ASL-pretrained weights under CC BY-NC 4.0.
 - **Risk accepted by the owner:** YouTube's Terms restrict downloading.
+- **Permission requests sent 2026-10-22, ~19:05 PDT** from the owner's Gmail, in the owner's name (Shengbo Jiang,
+  Kehillah High School, https://github.com/Shengboj0324/Sign-Translator), at the owner's instruction:
+  - carol@bu.edu (ASLLRP / DAI 2 / Sign Bank / ASLLVD, permission);
+  - ASL_Citizen@microsoft.com (permission);
+  - the YouTube-ASL / YouTube-SL-25 authors at Google (notice + licence question);
+  - amanda.duarte@upc.edu (How2Sign, notice).
+  - Replies are tracked by the 20-minute inbox check and recorded in each release's provenance.
 
 **Stages, cost and time (estimates).**
 
