@@ -34,7 +34,7 @@
    "name": "ASLLRP / DAI 2 continuous (planner)",
    "licence": "ASLLRP Sign Bank Data Terms of Use",
    "research_only": true,
-   "permission": "requested 2026-10-22 (email to carol@bu.edu)"
+   "permission": "granted 2026-10-23 (email from Carol Neidle, BU, cc Dimitris Metaxas, Rutgers): non-commercial release of weights trained in part on ASLLRP/DAI 2; condition: attribution wording reviewed by ASLLRP before release"
   }
  ]
 }
