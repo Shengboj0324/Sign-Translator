@@ -31,8 +31,13 @@ from train_text_to_motion import make_store  # noqa: E402
 def load_translator(store, key: str, manifest_sha256: str):
     """(model with EMA weights in eval mode, vocabulary), refusing one trained on another manifest."""
     saved = torch.load(io.BytesIO(store.get(key)), map_location="cpu", weights_only=False)
-    if saved.get("kind") != "motion_to_text" or saved["manifest_sha256"] != manifest_sha256:
+    if saved.get("kind") not in ("motion_to_text", "motion_to_text_t5") or saved["manifest_sha256"] != manifest_sha256:
         raise SystemExit(f"{key} is not a back-translator trained on this manifest")
+    if saved["kind"] == "motion_to_text_t5":                 # v2: pretrained T5 decoder, its own tokenizer
+        from signtranslator.generation.motion_to_text_t5 import MotionToT5Config, build
+        model = build(MotionToT5Config.from_dict(saved["config"]), pretrained=False)
+        model.load_state_dict(saved.get("ema") or saved["model"])
+        return model.eval(), None
     model = MotionToText(MotionToTextConfig.from_dict(saved["config"]))
     model.load_state_dict(saved.get("ema") or saved["model"])
     return model.eval(), WordVocabulary(saved["vocabulary"]["words"])
@@ -42,8 +47,14 @@ def load_translator(store, key: str, manifest_sha256: str):
 def translate(model, vocabulary, states, *, beam: int = 4, batch: int = 32) -> list[str]:
     from signtranslator.data.multichannel import collate_multichannel
     out = []
+    device = next(model.parameters()).device
     for i in range(0, len(states), batch):
-        out += [vocabulary.decode(ids) for ids in model.generate(collate_multichannel(states[i:i + batch]), beam=beam)]
+        motion = collate_multichannel(states[i:i + batch])
+        if vocabulary is None:                               # T5 back-translator decodes to text itself
+            from train_text_to_motion import to_device
+            out += model.generate_text(to_device((None, None, motion, None), device)[2], beam=beam)
+        else:
+            out += [vocabulary.decode(ids) for ids in model.generate(motion, beam=beam)]
     return out
 
 
