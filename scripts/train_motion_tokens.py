@@ -289,12 +289,14 @@ def main(argv=None) -> int:
                         manifest_sha256=args.manifest_sha256, tokenizer_state=tokenizer_state,
                         tokenizer_key=args.tokenizer_key, tokenizer_sha256=args.tokenizer_sha256), buffer)
         key = f"{prefix}/checkpoints/step-{step:08d}.pt"
-        store.put(key, buffer.getvalue())
-        store.put(f"{prefix}/log/step-{step:08d}.json", json.dumps(log, sort_keys=True).encode())
+        items = [(key, buffer.getvalue()), (f"{prefix}/log/step-{step:08d}.json", json.dumps(log, sort_keys=True).encode())]
         if metrics and (best is None or metrics["val/loss"] < best["val_loss"]):
             best = dict(checkpoint_key=key, step=step, val_loss=metrics["val/loss"], validation=metrics)
-            store.put(f"{prefix}/best.json", json.dumps(best, indent=2, sort_keys=True).encode())
+            items.append((f"{prefix}/best.json", json.dumps(best, indent=2, sort_keys=True).encode()))
+        uploader.submit(items)                 # in the background, in order: the checkpoint before best.json
 
+    from signtranslator.training.async_upload import Uploader
+    uploader = Uploader(store)
     model.train()
     stale = 0                                  # validations since the last best
 
@@ -346,8 +348,10 @@ def main(argv=None) -> int:
             if stop:
                 print(json.dumps(dict(step=step, early_stop=True, best_step=best["step"], best_val_loss=best["val_loss"])),
                       flush=True)
+                uploader.drain()
                 return 0
     flush()
+    uploader.drain()
     return 0
 
 

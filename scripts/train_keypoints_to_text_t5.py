@@ -177,12 +177,15 @@ def main(argv=None, *, build_model=build) -> int:
                         step=step, validation=metrics, config=config.to_dict(), config_sha256=config.sha256(),
                         data_sha256=data_sha, train_index=args.train_index, val_index=args.val_index), buffer)
         key = f"{prefix}/checkpoints/step-{step:08d}.pt"
-        store.put(key, buffer.getvalue())
-        store.put(f"{prefix}/log/step-{step:08d}.json", json.dumps(log, sort_keys=True, default=str).encode())
+        items = [(key, buffer.getvalue()),
+                 (f"{prefix}/log/step-{step:08d}.json", json.dumps(log, sort_keys=True, default=str).encode())]
         if metrics and (best is None or metrics["val/bleu"] > best["val_bleu"]):
             best = dict(checkpoint_key=key, step=step, val_bleu=metrics["val/bleu"], validation=metrics)
-            store.put(f"{prefix}/best.json", json.dumps(best, indent=2, sort_keys=True, default=str).encode())
+            items.append((f"{prefix}/best.json", json.dumps(best, indent=2, sort_keys=True, default=str).encode()))
+        uploader.submit(items)                 # background, in order (training.async_upload)
 
+    from signtranslator.training.async_upload import Uploader
+    uploader = Uploader(store)
     model.train()
     while step < args.steps:
         for batch in loader:
@@ -217,7 +220,9 @@ def main(argv=None, *, build_model=build) -> int:
             if metrics and stale >= args.patience:
                 print(f"early stop at step {step}: no new best validation BLEU in {stale} validations", flush=True)
                 checkpoint(metrics)
+                uploader.drain()
                 return 0
+    uploader.drain()
     return 0
 
 
