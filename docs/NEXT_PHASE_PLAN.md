@@ -500,8 +500,14 @@ passing candidates within 10% of the best Fréchet (257.5), it has the lowest ri
 | R5 one-word prompts | recogniser top-5: generated 0%, blank 0%, real 99.4% (95 words) | **no** |
 | R6 test, once | 92 signer-disjoint clips: 3/11 checks. Head speed 1.83×, nod rate 19.8×, brow raise 3.2×, body variation 1.69×. Official held-out (3,019 clips, reported): 8/12; head 1.35×, nod 2.0×, brow furrow 0.23×. | **no** |
 
-**What this means.** Validation does not represent unseen signers. Validation shares signers with training; test does
-not.
+**What this means.** Every partition is signer-disjoint, from fold 0 of the frozen fold plan:
+- validation is **one** signer (3, 1,627 clips);
+- test is **one** other signer (9, 92 clips);
+- training is signers 1, 2, 4, 5, 8 and 11.
+
+So validation was never leaked. It is a single unseen signer, and everything tuned on it (sampling setting, head
+smoothing, face calibration) fitted that signer's style. Signer 9 differs. (Correction, 05:58 PDT: a first draft said
+validation shares signers with training. It does not.)
 - The post-processing tuned on validation did not transfer. Head smoothing brought head speed to 1.05× on val, but
   unseen signers see 1.35–1.83×. The face calibration's brow furrow was 0.67× on val and 0.23× on held-out.
 - The carried problem, an over-active head (round 2026-10-21), is not solved; it was masked on validation.
@@ -514,8 +520,11 @@ not.
 addresses the causes.
 
 **Next generator round (round 3), designed from these failures:**
-1. **Population-level head and face statistics.** Select post-processing and sampling on a **signer-disjoint
-   validation split**, carved from train by performer, since How2Sign val shares signers. R6 stays the final test.
+1. **Multi-signer selection.** Choose sampling and post-processing across several unseen signers, not one.
+   - Use the fold plan's leave-one-component-out folds: validation signers 3 and 1/2 (folds 0 and 3), plus signer 11.
+   - Require each choice to hold on every validation signer.
+   - Estimate face calibration from population statistics of all training signers.
+   - R6, test signer 9, stays the untouched final check.
    Then fix head over-activity in the model itself, through head-code temperature and a head-velocity term in the prior
    training, not only by smoothing.
 2. **Single signs.** Add ASL Citizen isolated signs (already in R2; research use) to training as one-word English
