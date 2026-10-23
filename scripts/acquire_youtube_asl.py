@@ -373,6 +373,8 @@ def main(argv=None) -> int:
     parser.add_argument("--shard", type=int, default=0)
     parser.add_argument("--shards", type=int, default=1)
     parser.add_argument("--limit", type=int, help="at most this many videos of the shard (pilot)")
+    parser.add_argument("--max-claims", type=int, help="extract: stop after converting this many claimed videos, so a "
+                        "worker re-lists the growing staging area (unsharded workers: any free worker takes any video)")
     parser.add_argument("--max-height", type=int, default=720)
     parser.add_argument("--count-people-every", type=int, default=12,
                         help="count people on every n-th frame for the single-signer filter (0: off)")
@@ -415,7 +417,10 @@ def main(argv=None) -> int:
         probe_runtime(models)
     counts, blocks = {}, 0
     gate = PoliteGate(args.polite_dir, interval=args.download_interval, backoff=args.blocked_backoff) if args.polite_dir else None
+    claimed = 0
     for n, video_id in enumerate(mine):
+        if args.max_claims and claimed >= args.max_claims:
+            break
         report_key = f"{args.prefix}/videos/{video_id}.json"
         if store.exists(report_key):
             if not args.retry_status or json.loads(store.get(report_key)).get("status") not in args.retry_status:
@@ -436,6 +441,7 @@ def main(argv=None) -> int:
             elif args.stage == "extract":
                 if not claim(video_id, args, store):     # another extractor has it
                     continue
+                claimed += 1
                 try:
                     report = process(video_id, args, store, models, gate, staged=True)
                 except BaseException:

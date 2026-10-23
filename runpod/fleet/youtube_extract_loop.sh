@@ -13,13 +13,16 @@ uv pip install -q yt-dlp && uv pip install --reinstall -q opencv-contrib-python-
 P=acquisition/2026-10-17-v1/youtube-asl-v1
 staged() { python -c "import os; from signtranslator.data.text_motion_dataset import R2Store; print(sum(k.endswith('.json') for k in R2Store(os.environ).list('$P/staged/')))"; }
 finished() { python -c "import os,sys; from signtranslator.data.text_motion_dataset import R2Store; sys.exit(0 if R2Store(os.environ).exists('$P/home-download-finished.json') else 1)"; }
-# 30 independent workers (sharded by video id): each converts whatever of its shard is staged, rests 2 min, repeats,
-# so one long video never holds the others back. A worker ends when the home downloader has finished and nothing is
-# staged, or after an hour with nothing staged anywhere (no idle pod).
+# 30 independent, unsharded workers. Each claims one staged video at a time (atomic claims: no video is taken twice;
+# a random visiting order per run keeps workers from racing for the same one), converts it and re-lists at once. It
+# rests 2 min only when nothing was free. Sharding by id left cores idle while one shard's videos queued behind a
+# long video. A worker ends when the home downloader has finished and nothing is staged, or after an hour with
+# nothing staged anywhere (no idle pod).
 worker() { local i=$1 idle=0
   while true; do
     python scripts/acquire_youtube_asl.py --stage extract --ids $P/youtube_asl_video_ids.txt --prefix $P \
-      --models-dir /root/work/models --shard $i --shards 30 >> /root/yt-x-$i.log 2>&1
+      --models-dir /root/work/models --max-claims 1 --shuffle-seed $RANDOM$i >> /root/yt-x-$i.log 2>&1
+    tail -1 /root/yt-x-$i.log | grep -qE '"done": \{\}|"error"' || { idle=0; continue; }   # a failed video waits
     n=$(staged)
     if [ "$n" = 0 ]; then
       finished && return 0
