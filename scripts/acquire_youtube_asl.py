@@ -89,6 +89,7 @@ class PoliteGate:
         self.wait_blocked()
         fh = open(self.dir / "download.lock", "a+")
         fcntl.flock(fh, fcntl.LOCK_EX)                     # downloads are serialised across workers (processes)
+        self.wait_blocked()                                 # a refusal while this worker queued is respected too
         wait = self._stamp("last-download") + self.interval - time.time()
         if wait > 0:
             time.sleep(wait)
