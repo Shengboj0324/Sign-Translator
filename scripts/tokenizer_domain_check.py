@@ -32,7 +32,7 @@ def channel_errors(model, states, batch: int = 16) -> dict:
     import diagnose_tokenizer as dt
     cfg = model.config.motion
     layout = diffusion_layout(cfg)
-    sums, counts = {}, {}
+    sums, counts, scale = {}, {}, {}
     for i in range(0, len(states), batch):
         b = collate_multichannel(states[i:i + batch])
         unit = diffusion_targets(cfg, b)
@@ -45,8 +45,11 @@ def channel_errors(model, states, batch: int = 16) -> dict:
             if valid.any():
                 err = (rec[..., off:off + width] - unit[..., off:off + width]).abs().mean(-1)[valid]
                 sums[name] = sums.get(name, 0.) + float(err.sum()); counts[name] = counts.get(name, 0) + int(valid.sum())
+                x = unit[..., off:off + width]   # signal scale: mean absolute deviation from each clip's own mean
+                m = (x * valid[..., None]).sum(1, keepdim=True) / valid.sum(1).clamp(min=1)[:, None, None]
+                scale[name] = scale.get(name, 0.) + float((x - m).abs().mean(-1)[valid].sum())
             off += width
-    return {k: sums[k] / counts[k] for k in sums}
+    return {k: sums[k] / counts[k] for k in sums}, {k: scale[k] / counts[k] for k in scale}
 
 
 def main(argv=None) -> int:
@@ -86,19 +89,27 @@ def main(argv=None) -> int:
             s = load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"])
             out.append(at_rate(conform(s, template), args.fps))
         return out
-    reference = channel_errors(model, states_of(reference_rows))
-    report = dict(reference_corpus=args.conform_to_corpus, reference=reference, corpora={}, max_ratio=args.max_ratio)
+    reference, reference_scale = channel_errors(model, states_of(reference_rows))
+    report = dict(reference_corpus=args.conform_to_corpus, reference=reference, reference_scale=reference_scale,
+                  corpora={}, max_ratio=args.max_ratio)
     ok = True
     for corpus in args.corpus:
         rows = sample_of(corpus, ("val", "monitor", "train"))
-        errors = channel_errors(model, states_of(rows))
+        errors, scale = channel_errors(model, states_of(rows))
         ratios = {k: round(errors[k] / max(reference.get(k, 1e-9), 1e-9), 3) for k in errors if k in reference}
         passed = all(v <= args.max_ratio for v in ratios.values())
         ok &= passed
-        report["corpora"][corpus] = dict(clips=len(rows), errors=errors, ratios=ratios, **{"pass": passed})
+        # diagnostic only (the pass rule is the absolute ratio): error relative to each corpus's own signal scale, so
+        # a channel that simply moves more in the new corpus is told apart from one the tokenizer encodes worse
+        relative = {k: round((errors[k] / max(scale[k], 1e-9)) / max(reference[k] / max(reference_scale[k], 1e-9), 1e-9), 3)
+                    for k in errors if k in reference and k in scale and k in reference_scale}
+        scale_ratios = {k: round(scale[k] / max(reference_scale[k], 1e-9), 3) for k in scale if k in reference_scale}
+        report["corpora"][corpus] = dict(clips=len(rows), errors=errors, ratios=ratios, scale=scale,
+                                         scale_ratios=scale_ratios, relative_ratios=relative, **{"pass": passed})
     report["pass"] = ok
     store.put(args.output_key, json.dumps(report, indent=1, sort_keys=True).encode())
-    print(json.dumps({c: dict(ratios=v["ratios"], passed=v["pass"]) for c, v in report["corpora"].items()}))
+    print(json.dumps({c: dict(ratios=v["ratios"], scale_ratios=v["scale_ratios"], relative_ratios=v["relative_ratios"],
+                              passed=v["pass"]) for c, v in report["corpora"].items()}))
     return 0 if ok else 4
 
 

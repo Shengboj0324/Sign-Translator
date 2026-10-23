@@ -38,7 +38,7 @@ COMMON="--architecture rvq --manifest-key $MIX --manifest-sha256 $MSHA --workers
   --checkpoint-every 2000 --patience 5 --batch-size 64 --fps 24 --conform-to-corpus how2sign-two-view-text-v1 --cache-bytes 107374182400"
 PRIOR_ARGS="--d-model 384 --feedforward 1536 --token-layers 6 --depth-layers 2 --locus-conditioning"
 if stage $RUN tokenizer-domain-check python scripts/tokenizer_domain_check.py --manifest-key "$MIX" --manifest-sha256 "$MSHA" \
-     --tokenizer-key "$TOK" --conform-to-corpus how2sign-two-view-text-v1 --corpus youtube-asl-$TAG \
+     --tokenizer-key "$TOK" --conform-to-corpus how2sign-two-view-text-v1 --corpus youtube-asl-$TAG --corpus asllrp-dai2-plan-v2 \
      --output-key "$D/tokenizer-domain-check.json"; then
   INIT=$(best $PRIOR); ISHA=$(sha "$INIT")
   stage $RUN prior python scripts/train_motion_tokens.py $COMMON --stage prior --run $RUN --tokenizer-key "$TOK" \

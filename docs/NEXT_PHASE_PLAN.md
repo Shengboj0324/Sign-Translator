@@ -457,6 +457,28 @@ Y5 covers, in order:
 2. the generator prior on How2Sign + YouTube English (motion tokens from the full-corpus tokenizer, re-checked for
    learnability on the new domain).
 
+**Tokenizer domain check (2026-10-22, 21:58 PDT).** `scripts/tokenizer_domain_check.py`, rule fixed before any
+YouTube result: every channel's reconstruction error on a new corpus ≤ 1.5× How2Sign val's. A diagnostic, which
+does not change the rule, divides each error by the corpus's own signal scale, separating "moves more" from "encoded
+worse". First run, ASLLRP (24 clips) through the frozen full-corpus tokenizer:
+
+| Channel | Error ratio | Signal-scale ratio | Relative-error ratio |
+|---|---|---|---|
+| body | 0.94 | 1.23 | 0.76 |
+| left hand | 0.95 | 1.03 | 0.93 |
+| right hand | 0.97 | 0.86 | 1.14 |
+| head rotation | 0.94 | 1.00 | 0.93 |
+| face | 1.41 | 0.92 | 1.53 |
+| blink | **2.09** | 0.93 | **2.25** |
+
+Result: **fail**. Body, hands and head encode as well as How2Sign. Face and blink do not: the motion is the same
+size, so this is a real encoding gap, not more movement. Consequences:
+- **Plan generator (running):** it uses the frozen tokenizer, so its ASLLRP face and blink output is bounded by
+  this. Its grammar results on brows are reported with this limit.
+- **YouTube round** (`runpod/fleet/youtube_generator_round.sh`): it checks YouTube-ASL and ASLLRP. A failure on
+  either trains a tokenizer on the mix first (How2Sign + YouTube + ASLLRP), then the prior from scratch, rather than
+  warm-starting.
+
 **Rules.**
 - YouTube data is training-only. No evaluation number may come from it: How2Sign val/test and ASLLRP val stay the
   judges.
