@@ -20,6 +20,12 @@ upload() { python -c "import os,sys; from signtranslator.data.text_motion_datase
 stage() { local run=$1 name=$2; shift 2; echo "STAGE $name $run $(date)"; "$@" > "/root/stage-$name-$run.log" 2>&1; local s=$?
   tail -3 "/root/stage-$name-$run.log"; upload "training-runs/$run/stage-$name.log" "/root/stage-$name-$run.log"
   [ $s = 0 ] || echo "FAILED $name $run (status $s)"; return $s; }
+exists() { python -c "import os,sys; from signtranslator.data.text_motion_dataset import R2Store; sys.exit(0 if R2Store(os.environ).exists(sys.argv[1]) else 1)" "$1"; }
+done_mark() { python -c "import os,sys; from signtranslator.data.text_motion_dataset import R2Store; R2Store(os.environ).put('training-runs/'+sys.argv[1]+'/DONE', b'done')" "$1"; }
+# a training stage that completed is never re-entered (a resumed trainer would reset its patience and train on)
+train_once() { local run=$1 name=$2; shift 2; exists "training-runs/$run/DONE" && { echo "SKIP $name $run (done)"; return 0; }
+  stage $run $name "$@" && done_mark $run; }
+PHASE=${KP_PHASE:-all}   # h2s: smoke + How2Sign-only model + its acceptance, before the UWB shards exist
 ACQ=acquisition/2026-10-17-v1/derived
 UWB=$ACQ/youtube-asl-uwb-keypoints-v1/shards-v1/index.json
 H2S=$ACQ/full-v1/how2sign-fk-keypoints-v1/index.json
@@ -29,19 +35,26 @@ PRE=back-translator-kp2d-uwb-v1 FT=back-translator-kp2d-uwb-ft-v1 ONLY=back-tran
 COMMON="--val-index $H2S --workers 10 --batch-size 64"
 # smoke run first: every script of the chain on a 300-step model, so a bug surfaces in minutes, not after pretraining
 SMOKE=back-translator-kp2d-smoke-v1
-stage $SMOKE smoke-train python scripts/train_keypoints_to_text_t5.py --train-index $H2S $COMMON --run $SMOKE --steps 300 \
+train_once $SMOKE smoke-train python scripts/train_keypoints_to_text_t5.py --train-index $H2S $COMMON --run $SMOKE --steps 300 \
   --val-every 300 --val-clips 64 --checkpoint-every 300 || { echo KP-DONE; exit 1; }
 stage $SMOKE smoke-accept python scripts/validate_keypoint_back_translator.py --manifest-key $FULL --manifest-sha256 $FSHA \
   --translator-key "$(best $SMOKE)" --limit 32 --beam 1 --output-key "$OUT/smoke-acceptance.json"
 [ -n "$(python -c "import os; from signtranslator.data.text_motion_dataset import R2Store; print(R2Store(os.environ).exists('$OUT/smoke-acceptance.json') or '')")" ] \
   || { echo "smoke acceptance wrote no report"; echo KP-DONE; exit 1; }
-stage $PRE pretrain python scripts/train_keypoints_to_text_t5.py --train-index $UWB --monitor-index $UWB $COMMON --run $PRE \
+if [ "$PHASE" = h2s ]; then
+  train_once $ONLY h2s-only python scripts/train_keypoints_to_text_t5.py --train-index $H2S $COMMON --run $ONLY --steps 40000 \
+    --val-every 1000 --checkpoint-every 2000 --patience 6 || { echo KP-DONE; exit 1; }
+  stage $ONLY accept python scripts/validate_keypoint_back_translator.py --manifest-key $FULL --manifest-sha256 $FSHA \
+    --translator-key "$(best $ONLY)" --reference-key "$(best back-translator-t5-full-v1)" --output-key "$OUT/acceptance-$ONLY.json"
+  echo KP-DONE; exit 0
+fi
+train_once $PRE pretrain python scripts/train_keypoints_to_text_t5.py --train-index $UWB --monitor-index $UWB $COMMON --run $PRE \
   --steps 80000 --val-every 2000 --checkpoint-every 4000 --patience 6 || { echo KP-DONE; exit 1; }
 INIT=$(best $PRE)
-stage $FT finetune python scripts/train_keypoints_to_text_t5.py --train-index $H2S $COMMON --run $FT --init-key "$INIT" \
+train_once $FT finetune python scripts/train_keypoints_to_text_t5.py --train-index $H2S $COMMON --run $FT --init-key "$INIT" \
   --init-sha256 "$(sha $INIT)" --steps 30000 --lr 1e-4 --decoder-lr 3e-5 --warmup 500 --val-every 1000 --checkpoint-every 2000 \
   --patience 6 || { echo KP-DONE; exit 1; }
-stage $ONLY h2s-only python scripts/train_keypoints_to_text_t5.py --train-index $H2S $COMMON --run $ONLY --steps 40000 \
+train_once $ONLY h2s-only python scripts/train_keypoints_to_text_t5.py --train-index $H2S $COMMON --run $ONLY --steps 40000 \
   --val-every 1000 --checkpoint-every 2000 --patience 6
 SEL=$FT
 if [ -n "$(best $ONLY 2>/dev/null)" ] && python -c "import sys; sys.exit(0 if float(sys.argv[1]) > float(sys.argv[2]) else 1)" "$(bleu $ONLY)" "$(bleu $FT)"; then SEL=$ONLY; fi
