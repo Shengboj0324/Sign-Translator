@@ -422,6 +422,24 @@ Published pretraining on YouTube-ASL took pose-based How2Sign translation to abo
 - **Provenance gap:** yt-dlp returned no licence field for any video (the field is null). Channel, upload date and
   caption kind are recorded.
 
+**Blocking event (2026-10-22, ~20:50 PDT).**
+- **What happened:**
+  - The first full-acquisition pods (two 32-vCPU CPU pods in EU-RO-1) ran 30 parallel downloaders each.
+  - YouTube began answering "Sign in to confirm you're not a bot" after about 125 videos.
+  - The polite restart still let workers queued on the download lock request once each, about 20 requests.
+- **Response, under the no-circumvention rule:**
+  - No cookies, sign-in, proxies or address changes.
+  - Downloads are serialised to one per machine with a gap between them. The gate re-checks a refusal after taking
+    its lock. A refusal makes every worker on the machine wait 1 h, and three refusals stop the shard.
+  - Both pods were released during the block.
+  - Acquisition resumes at ~22:20 PDT on **one** pod, one download per 24 s (≤150/h, under the ~300/h guest rate).
+- **New estimate:**
+  - Download-bound: all of YouTube-ASL takes about 3 days at 150 videos/h.
+  - Instrument pretraining starts as soon as a useful amount is in. ~200 h of YouTube-ASL arrives in about 0.7 days;
+    the published gains already show at a few hundred hours.
+  - Fallback for the instruments if refusals continue: the UWB YouTube-ASL keypoints (MediaPipe 2D, CC BY 4.0,
+    hosted outside YouTube).
+
 **Stages, cost and time (estimates).**
 
 | Stage | Work | Where | Time | Cost |
