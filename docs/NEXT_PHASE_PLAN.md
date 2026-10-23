@@ -239,6 +239,19 @@ frozen instruments:
 Both are reported beside real, which is the instruments' ceiling. If either fails, the generator round is not done.
 The failure is diagnosed (instrument or generator) before anything moves on.
 
+**Strict pass test of the full-corpus prior (declared 2026-10-22, 17:40 PDT, before any prior result).**
+`scripts/strict_prior_review.py` runs at the end of the sweep job, on the final gate selection. Task No.1 passes only
+if all six rules hold, whatever the gate said:
+
+| Rule | Test | Pass if |
+|---|---|---|
+| R1 | Retrieval R@3 through the frozen evaluator, per clip, bootstrap 95% CI | generated CI entirely above blank CI |
+| R2 | Back-translation corpus BLEU, sentence bootstrap 95% CI | generated CI entirely above blank CI |
+| R3 | Nearest-training-clip distance in Fréchet feature space | ≤ 5% of generated clips closer than real val clips' 1st percentile |
+| R4 | Sentence-length thirds | every third's body, hand and head speed and variation ratios in [0.7, 1.3] |
+| R5 | One-word English prompts for the recogniser's reliable glosses | recogniser top-5 CI entirely above blank (real reported) |
+| R6 | Test partition, once (92 signer-disjoint clips); heldout_official reported | every gate check that passed on val passes on test |
+
 **Plan-conditioned generator (post_gate_plan_generator.sh), ASLLRP val (Jonathan).** The plan generator is preferred
 to the English-conditioned baseline only if all three hold:
 1. Retrieval R@3 and back-translation BLEU against the English are not lower than the baseline's, each judged at the

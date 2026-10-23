@@ -37,4 +37,8 @@ for r in $RUNS; do [[ $r == *sweep* ]] && GENERATED="$GENERATED $D/generated/$r"
 stage $PRIOR sweep-back-translation python scripts/score_back_translation.py --manifest-key "$M" --manifest-sha256 "$MSHA" \
   --translator-key "$BKEY" --generated $GENERATED --output-key "$D/evaluations/$PRIOR-sweep-bleu.json"
 stage $PRIOR sweep-gate python scripts/exit_gate.py --derived "$D" --runs $RUNS --output-key "$D/evaluations/$PRIOR-sweep-gate.json"
+# the strict pass test (scripts/strict_prior_review.py, rules declared in docs/NEXT_PHASE_PLAN.md) on the final selection
+stage $PRIOR strict-review python scripts/strict_prior_review.py --derived "$D" --gate-key "$D/evaluations/$PRIOR-sweep-gate.json" \
+  --manifest-key "$M" --manifest-sha256 "$MSHA" --checkpoint-key "$GEN" --retrieval-key "$RKEY" --translator-key "$BKEY" \
+  --output-key "$D/evaluations/$PRIOR-strict-review.json" --device cuda
 echo SWEEP-DONE
