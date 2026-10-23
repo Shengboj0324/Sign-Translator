@@ -26,8 +26,10 @@ def release(**kw):
 def test_licence_gate_and_round_trip():
     r = release()
     assert r.public_release_allowed and not r.commercial_use_allowed
-    research = release(provenance=(Corpus("ASLLRP", "terms", True),))
+    research = release(provenance=(Corpus("ASLLRP", "terms", True, permission="requested 2026-10-22"),))
     assert not research.public_release_allowed and not research.commercial_use_allowed
+    cleared = release(provenance=(Corpus("ASLLRP", "terms", True, permission="granted 2026-11-01 (email)"),))
+    assert cleared.public_release_allowed
     assert Release.from_dict(json.loads(json.dumps(r.to_dict()))) == r
     with pytest.raises(ValueError):
         release(generator=GeneratorSpec(Pinned("g.pt", SHA), SHA, condition="plan"))      # plan needs a planner

@@ -9,9 +9,10 @@ A release manifest (JSON) names:
 - ``fps`` and ``seconds_per_sign`` (the duration rule when the plan is known);
 - ``provenance``: one entry per training corpus with its licence and whether it is research-only.
 
-**Licence gate.** ``public_release_allowed`` is false while any corpus is research-only (ASLLRP / DAI, ASL Citizen's
-research licence): such a release may run for research and evaluation, never as a public service, until every such
-corpus is excluded or covered by written permission (docs/NEXT_PHASE_PLAN.md, "Licence gate for release").
+**Licence gate.** ``public_release_allowed`` is false while any research-only corpus (ASLLRP / DAI, ASL Citizen's
+research licence) lacks recorded written permission (``permission: "granted ..."``): such a release may run for
+research and evaluation, never as a public one, until every such corpus is excluded or cleared (docs/NEXT_PHASE_PLAN.md,
+"Licence gate for release").
 ``commercial_use_allowed`` is also false while any corpus is non-commercial (How2Sign, CC BY-NC 4.0).
 
 Every model is fetched once and checked against its hash before anything loads it; a mismatch refuses the release.
@@ -57,6 +58,12 @@ class Corpus:
     licence: str
     research_only: bool
     non_commercial: bool = False
+    permission: str | None = None       # e.g. "requested 2026-10-22", "granted 2026-11-02 (email from ...)"
+
+    @property
+    def cleared(self) -> bool:
+        """A research-only corpus is cleared for a public release only by recorded written permission."""
+        return not self.research_only or (self.permission or "").startswith("granted")
 
 
 @dataclass(frozen=True)
@@ -78,7 +85,7 @@ class Release:
 
     @property
     def public_release_allowed(self) -> bool:
-        return not any(c.research_only for c in self.provenance)
+        return all(c.cleared for c in self.provenance)
 
     @property
     def commercial_use_allowed(self) -> bool:
