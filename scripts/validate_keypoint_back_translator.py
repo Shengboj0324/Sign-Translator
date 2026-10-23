@@ -50,8 +50,12 @@ def main(argv=None) -> int:
     parser.add_argument("--fps", type=float, default=24.)
     parser.add_argument("--limit", type=int, default=600)
     parser.add_argument("--beam", type=int, default=4)
+    parser.add_argument("--device", default="auto")
     parser.add_argument("--output-key", required=True)
     args = parser.parse_args(argv)
+    import torch
+    device = torch.device("cuda" if args.device == "auto" and torch.cuda.is_available() else
+                          ("cpu" if args.device == "auto" else args.device))
     from evaluate_text_to_motion import at_rate, blanked, load_state
     from score_back_translation import load_translator, shuffled_control, translate
     from strict_prior_review import bleu_ci
@@ -70,6 +74,7 @@ def main(argv=None) -> int:
     model, kind = load_translator(store, args.translator_key, args.manifest_sha256)
     if kind != "keypoints":
         raise SystemExit("--translator-key is not a 2D-keypoint back-translator")
+    model = model.to(device)
     real = translate(model, kind, states, beam=args.beam)
     blank = translate(model, kind, blanked(states), beam=args.beam)
     report = dict(translator_key=args.translator_key, clips=len(rows), beam=args.beam, controls={})
@@ -82,6 +87,7 @@ def main(argv=None) -> int:
     report["pass"] = bool(c["real"]["ci95"][0] > c["blank"]["ci95"][1] and c["real"]["ci95"][0] > c["shuffled"]["ci95"][1])
     if args.reference_key:
         ref_model, ref_kind = load_translator(store, args.reference_key, args.reference_manifest_sha256 or args.manifest_sha256)
+        ref_model = ref_model.to(device)
         other = translate(ref_model, ref_kind, states, beam=args.beam)
         a = [sentence_bleu(h, r) for h, r in zip(real, texts)]
         b = [sentence_bleu(h, r) for h, r in zip(other, texts)]

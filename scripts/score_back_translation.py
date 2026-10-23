@@ -97,6 +97,7 @@ def main(argv=None) -> int:
                         help="the manifest the translator was trained on, when it is not --manifest-sha256")
     parser.add_argument("--fps", type=float, help="resample the real references to this rate (as the evaluation did)")
     parser.add_argument("--beam", type=int, default=4)
+    parser.add_argument("--device", default="auto", help="auto: CUDA when available")
     parser.add_argument("--output-key")
     args = parser.parse_args(argv)
     store = make_store(args.store)
@@ -105,6 +106,9 @@ def main(argv=None) -> int:
         manifest = load_manifest(path, expected_sha256=args.manifest_sha256)
     by_sign = {r["sign"]: r for r in manifest["records"]}
     model, vocabulary = load_translator(store, args.translator_key, args.translator_manifest_sha256 or args.manifest_sha256)
+    if vocabulary is None or vocabulary == "keypoints":     # T5 translators move whole; v1 keeps its CPU path
+        model = model.to(torch.device("cuda" if args.device == "auto" and torch.cuda.is_available() else
+                                      ("cpu" if args.device == "auto" else args.device)))
     out = {}
     for prefix in args.generated:
         groups = {}
