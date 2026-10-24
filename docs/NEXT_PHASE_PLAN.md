@@ -791,7 +791,7 @@ checks and thresholds, on the clips the evaluation used (`round3a/evaluations/cr
 - Round 3's selection (8.7 checks per signer on average) is closer to each signer than the other real signers are
   (5.5 of 12).
 
-**Round 3b gate, declared 2026-10-23 23:10 PDT before any round-3b result.**
+**Round 3b gate, declared 2026-10-23 23:07 PDT before any round-3b result.**
 - **Envelope rule.** For each validation signer Y and each gate check c, the band is the declared band widened to the
   real cross-signer range: `[min(lo, min r_c(X→Y)), max(hi, max r_c(X→Y))]` over the other real signers X. The
   generated ratio against Y must lie in it.
@@ -824,7 +824,7 @@ The review judged the gate's fallback selection: `sweep-h1.2-f1.0-hs0.2`, guidan
 - The more sensitive 2D instrument still reads generated motion as less informative than durations alone.
 - Round 3 is not deployable.
 
-**Why R5 is 0: the ASL Citizen states are mostly missing arms and hands (2026-10-23, 23:50 PDT).**
+**Why R5 is 0: the ASL Citizen states are mostly missing arms and hands (2026-10-23, 23:40 PDT).**
 These were probes on 40 ASL Citizen val clips, conformed to How2Sign's layout as the prior trains on them, with the
 validated recogniser `sign-recognizer-v2`:
 
@@ -847,7 +847,7 @@ validated recogniser `sign-recognizer-v2`:
   clips.
 - It also means the generator's 13,734 one-word training clips gave it arm supervision on about 10% of their frames.
 
-**Round 3b design, declared 2026-10-24 00:10 PDT before any round-3b result.** It addresses R5 (one-word data
+**Round 3b design, declared 2026-10-23 23:48 PDT before any round-3b result.** It addresses R5 (one-word data
 without arms), R2b and R4 (head activity), plus more data.
 
 - **Data** (`round3b-mixed-v1`):
