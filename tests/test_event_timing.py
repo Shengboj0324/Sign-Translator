@@ -20,7 +20,7 @@ def test_huber_averages_endpoints_events_and_examples_with_zero_padding_gradient
     loss = aligned_timing_loss(prediction(values, vocab, annotations), annotations, vocab,
                                scale_seconds=1.)
     # a endpoint mean = 1; b event means = .25, 2; equal example weighting.
-    assert loss.item() == pytest.approx(1.0625)
+    assert loss.detach().item() == pytest.approx(1.0625)
     loss.backward()
     assert not values.grad[0, 1].any()
     assert values.grad[0, 0].tolist() == pytest.approx([.25, .25])

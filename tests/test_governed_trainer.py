@@ -86,9 +86,9 @@ def test_optimizer_and_exact_sample_weighted_validation(tmp_path):
     assert trainer.validate()['total'] == pytest.approx(14 / 3)
     assert torch.equal(before, torch.get_rng_state())
     assert trainer.model.training
-    initial = trainer.model.offset.item()
+    initial = trainer.model.offset.detach().item()
     trainer.fit()
-    assert trainer.global_step == 3 and trainer.model.offset.item() < initial
+    assert trainer.global_step == 3 and trainer.model.offset.detach().item() < initial
     assert trainer.history['train_total'][-1] < trainer.history['train_total'][0]
 
 
@@ -158,7 +158,7 @@ def test_changed_evidence_prevents_optimizer_step(tmp_path):
     with pytest.raises((ValueError, PermissionError)):
         trainer.train_epoch()
     assert trainer.global_step == 0 and not trainer.opt.state
-    assert trainer.model.offset.item() == 4.
+    assert trainer.model.offset.detach().item() == 4.
 
 
 def test_changed_collator_and_forged_batch_are_rejected(tmp_path):

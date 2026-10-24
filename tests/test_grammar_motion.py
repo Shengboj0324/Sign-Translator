@@ -242,7 +242,7 @@ def test_gaze_targets_and_the_agreement_window():
     g = torch.tensor(gaze, requires_grad=True)
     loss = gaze_locus.gaze_locus_loss(g, torch.tensor(np.tile(loci[1], (30, 1))), torch.ones(30, dtype=torch.float64))
     loss.backward()
-    assert float(loss) > 0 and g.grad.abs().sum() > 0
+    assert float(loss.detach()) > 0 and g.grad.abs().sum() > 0
 
 
 def test_agreement_errors_and_loss():
@@ -257,7 +257,7 @@ def test_agreement_errors_and_loss():
     h = torch.tensor(path[::-1].copy()[None], requires_grad=True)
     loss = agreement.agreement_loss(h, torch.tensor(src[None]), torch.tensor(goal[None]))
     loss.backward()
-    assert float(loss) > 1 and h.grad.abs().sum() > 0
+    assert float(loss.detach()) > 1 and h.grad.abs().sum() > 0
     good = agreement.agreement_loss(torch.tensor(path[None]), torch.tensor(src[None]), torch.tensor(goal[None]))
     assert float(good) < 1e-6
 

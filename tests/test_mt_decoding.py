@@ -35,10 +35,10 @@ def test_gpt_fits_a_repeating_token_pattern():
     gpt = MotionTokenGPT(num_codes=6, dim=32, num_layers=2)
     tokens = torch.tensor([[0, 1, 2, 3, 0, 1, 2, 3]]).repeat(4, 1)
     opt = torch.optim.Adam(gpt.parameters(), lr=3e-3)
-    l0 = gpt.loss(tokens).item()
+    l0 = gpt.loss(tokens).detach().item()
     for _ in range(300):
         opt.zero_grad(); loss = gpt.loss(tokens); loss.backward(); opt.step()
-    assert gpt.loss(tokens).item() < 0.2 * l0
+    assert gpt.loss(tokens).detach().item() < 0.2 * l0
 
 
 def test_gpt_generation_shape():

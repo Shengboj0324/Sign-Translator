@@ -159,7 +159,7 @@ def test_skeleton_motion_loss_is_zero_on_the_reference_and_sees_speed():
     frozen = {n: batch.channels[n].values[:, :1].expand_as(batch.channels[n].values).clone().requires_grad_(True)
               for n in LABELS}                                            # the first pose held: right place at t=0 only
     loss = skeleton_motion_loss(frozen, batch)
-    assert float(loss["velocity"]) > 0 and float(loss["position"]) > 0
+    assert float(loss["velocity"].detach()) > 0 and float(loss["position"].detach()) > 0
     sum(loss.values()).backward()
     assert frozen["body"].grad.abs().sum() > 0
 

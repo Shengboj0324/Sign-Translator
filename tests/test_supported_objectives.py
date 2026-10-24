@@ -100,6 +100,6 @@ def test_support_membership_preserves_loss_and_gradients():
     parameter = torch.nn.Parameter(torch.tensor(3., dtype=torch.float64))
     term = SupportedTerm(parameter.square(), 1, (False, True))
     objective = SupportedObjective({'a': term}, {'a': 2.}, 2)
-    assert objective.total().item() == 9.
+    assert objective.total().detach().item() == 9.
     objective.total().backward()
     assert parameter.grad.item() == 6.

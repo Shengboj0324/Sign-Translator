@@ -66,10 +66,10 @@ def test_handshape_head_learns_toward_target():
     targets = torch.randint(0, 6, (16,))
     mask = torch.ones(16, dtype=torch.float64)
     opt = torch.optim.Adam(head.parameters(), lr=0.1)
-    l0 = head.loss(h, targets, mask).item()
+    l0 = head.loss(h, targets, mask).detach().item()
     for _ in range(200):
         opt.zero_grad(); loss = head.loss(h, targets, mask); loss.backward(); opt.step()
-    assert head.loss(h, targets, mask).item() < 0.1 * l0     # fits the labels
+    assert head.loss(h, targets, mask).detach().item() < 0.1 * l0     # fits the labels
 
 
 def test_palm_orientation_geodesic_zero_at_target():

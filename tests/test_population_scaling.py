@@ -27,7 +27,7 @@ def test_population_weight_cancellation_preserves_smallest_subnormal(dtype, tiny
     value = torch.tensor(tiny, dtype=dtype, requires_grad=True)
     objective = SupportedObjective({'a': SupportedTerm(value, 1)}, {'a': 2.}, 2)
     loss = objective.total()
-    assert loss.item() == tiny
+    assert loss.detach().item() == tiny
     loss.backward()
     assert value.grad.item() == 1.
 
@@ -41,7 +41,7 @@ def test_scaled_forward_and_incoming_gradient_avoid_intermediate_range_loss(dtyp
     value = torch.tensor(maximum, dtype=dtype, requires_grad=True)
     result = weighted_population_scalar(value, weight, population)
     expected = float(Fraction(maximum) * Fraction(weight) / population)
-    assert result.item() == torch.tensor(expected, dtype=dtype).item()
+    assert result.detach().item() == torch.tensor(expected, dtype=dtype).detach().item()
     result.backward(torch.tensor(maximum, dtype=dtype))
     assert value.grad.item() == torch.tensor(expected, dtype=dtype).item()
 
@@ -60,7 +60,7 @@ def test_first_and_second_order_derivatives():
     assert torch.autograd.gradgradcheck(fn, (value,))
     first, = torch.autograd.grad(fn(value), value, create_graph=True)
     second, = torch.autograd.grad(first, value)
-    assert first.item() == pytest.approx(2 * 1.25 * .7 / 3)
+    assert first.detach().item() == pytest.approx(2 * 1.25 * .7 / 3)
     assert second.item() == pytest.approx(2 * .7 / 3)
 
 
@@ -111,7 +111,7 @@ def test_mps_scalar_fallback_preserves_values_and_gradients(value, weight, popul
     y.backward()
     assert y.device.type == 'mps' and x.grad.device.type == 'mps'
     expected = torch.tensor(float(Fraction(value)*Fraction(weight)/population), dtype=torch.float32)
-    assert y.item() == expected.item()
+    assert y.detach().item() == expected.detach().item()
     assert x.grad.item() == torch.tensor(weight/population,dtype=torch.float32).item()
 
 
@@ -121,7 +121,7 @@ def test_multiple_subnormal_contributions_are_combined_before_rounding(dtype,tin
     b = torch.tensor(tiny,dtype=dtype,requires_grad=True)
     loss = SupportedObjective({'a':SupportedTerm(a,1),'b':SupportedTerm(b,1)},
                               {'a':1.,'b':1.},2).total()
-    assert loss.item() == tiny
+    assert loss.detach().item() == tiny
     loss.backward()
     assert a.grad.item() == b.grad.item() == .5
 
@@ -135,7 +135,7 @@ def test_joint_loss_mixed_dtype_zero_branch_and_higher_derivatives():
     zero = torch.tensor(0.,dtype=torch.float32,requires_grad=True)
     tiny = torch.tensor(2.**-1074,dtype=torch.float64,requires_grad=True)
     result = weighted_population_sum((zero,tiny),(2.**1023,1.),1)
-    assert result.dtype == torch.float64 and result.item() == 2.**-1074
+    assert result.dtype == torch.float64 and result.detach().item() == 2.**-1074
 
 
 @pytest.mark.skipif(not MPS_USABLE,reason='MPS unavailable')
@@ -145,7 +145,7 @@ def test_mps_joint_sum_preserves_combined_subnormal():
     loss = SupportedObjective({'a':SupportedTerm(a,1),'b':SupportedTerm(b,1)},
                               {'a':1.,'b':1.},2).total()
     loss.backward()
-    assert loss.item() == 2.**-149 and a.grad.item() == b.grad.item() == .5
+    assert loss.detach().item() == 2.**-149 and a.grad.detach().item() == b.grad.detach().item() == .5
 
 
 @pytest.mark.parametrize('dtype', [torch.float32, torch.float64])
@@ -159,8 +159,8 @@ def test_branch_mean_large_support_matches_exact_reporting_and_gradient(dtype, s
     mean = objective['a']
     exact = Fraction(maximum) / support
     expected = torch.tensor(float(exact), dtype=dtype)
-    assert mean.dtype == dtype and mean.item() == expected.item()
-    assert objective.total().item() == mean.item()
+    assert mean.dtype == dtype and mean.detach().item() == expected.detach().item()
+    assert objective.total().detach().item() == mean.detach().item()
     # A large incoming derivative makes some otherwise unrepresentable inverse
     # counts produce representable gradients; do not materialize 1/support first.
     mean.backward(torch.tensor(maximum, dtype=dtype))
@@ -173,8 +173,8 @@ def test_branch_mean_large_support_matches_exact_reporting_and_gradient(dtype, s
 def test_branch_mean_uses_support_not_full_population_or_branch_weight():
     value = torch.tensor(18., dtype=torch.float64, requires_grad=True)
     objective = SupportedObjective({'a': SupportedTerm(value, 3)}, {'a': 7}, 10)
-    assert objective['a'].item() == 6.
-    assert objective.total().item() == pytest.approx(12.6)
+    assert objective['a'].detach().item() == 6.
+    assert objective.total().detach().item() == pytest.approx(12.6)
     objective['a'].backward()
     assert value.grad.item() == pytest.approx(1 / 3)
 

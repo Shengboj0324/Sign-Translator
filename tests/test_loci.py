@@ -31,7 +31,7 @@ def test_known_locus_loss_unknown_gradient_and_numeric_derivative(tmp_path):
     def loss(x):
         return locus_loss_per_example(LocusLogits(x, target.annotation_sha256,
             target.convention_sha256, target.vocabulary_sha256), annotations, v, alphabet)[0]
-    assert loss(scores).item() == pytest.approx(math.log(4/3))
+    assert loss(scores).detach().item() == pytest.approx(math.log(4/3))
     loss(scores).sum().backward()
     assert not scores.grad[0, 1].any()
     assert torch.autograd.gradcheck(loss, (scores.detach().requires_grad_(),))

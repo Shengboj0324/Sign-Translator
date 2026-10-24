@@ -28,7 +28,7 @@ def test_invalid_loss_or_gradient_preserves_optimizer_and_checkpoint(tmp_path,ki
     schedule=copy.deepcopy(trainer.sched.state_dict())
     with pytest.raises(FloatingPointError,match='batch=0'):
         trainer.train_epoch()
-    assert model.weight.item()==1.
+    assert model.weight.detach().item()==1.
     assert trainer.global_step==0 and not trainer.opt.state
     assert trainer.sched.state_dict()==schedule
     assert path.read_bytes()==before

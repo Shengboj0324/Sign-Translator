@@ -28,7 +28,7 @@ def test_real_adamw_overflow_cannot_commit_or_save(tmp_path):
         trainer.save(tmp_path / 'bad.pt')
     assert not (tmp_path / 'bad.pt').exists()
     trainer.load(initial)
-    assert model.offset.item() == 100. and trainer.global_step == 0 and trainer._epoch_committed
+    assert model.offset.detach().item() == 100. and trainer.global_step == 0 and trainer._epoch_committed
 
 
 @pytest.mark.parametrize('target', ['parameter', 'moment'])

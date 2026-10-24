@@ -61,7 +61,7 @@ def test_analytical_loss_unequal_support_and_unknown_gradients():
     negatives = int(counts[1]) - positives
     expected = (math.log(2.) + (positives * math.log(4/3) + negatives * math.log(4.)) / int(counts[1])) / 2
     loss = objective(scores)
-    assert loss.item() == pytest.approx(expected, abs=1e-14)
+    assert loss.detach().item() == pytest.approx(expected, abs=1e-14)
     loss.backward()
     assert not scores.grad[~target.known].any()
     assert torch.autograd.gradcheck(objective, (scores.detach().requires_grad_(),))

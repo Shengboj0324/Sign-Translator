@@ -175,7 +175,7 @@ def test_multiview_fit_reduces_objective_and_recovers_pose():
         opt.step()
     lossN, jN = total()
 
-    assert lossN.item() < 0.01 * loss0.item()                # objective collapsed
+    assert lossN.detach().item() < 0.01 * loss0.detach().item()                # objective collapsed
     mpjpe = (jN.detach() - gt_joints).norm(dim=-1).mean().item()
     assert mpjpe < 1e-2                                       # 3D recovered (multi-view)
 

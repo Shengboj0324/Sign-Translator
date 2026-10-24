@@ -34,7 +34,7 @@ def test_analytical_per_example_nll_includes_stop_and_excludes_padding():
     scores = probs.log().requires_grad_()
     loss = label_sequence_loss(prediction(scores, vocab, annotations), annotations, vocab)
     expected = ((-math.log(.6)-math.log(.7))/2 + (-math.log(.5)-math.log(.6)-math.log(.4))/3)/2
-    assert loss.item() == pytest.approx(expected, abs=1e-14)
+    assert loss.detach().item() == pytest.approx(expected, abs=1e-14)
     loss.backward()
     assert not scores.grad[0, 2].any()
     assert scores.grad[0, 1, 0] != 0  # stop target has a real gradient

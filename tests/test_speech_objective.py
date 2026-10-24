@@ -170,7 +170,7 @@ def test_feature_lengths_exclude_padding_from_ctc():
     out_len = obj(feats, targets, lengths, sign_embeddings=torch.randn(4, 48),
                   feature_lengths=flen)
     assert torch.isfinite(out_len.total)
-    assert abs(out_default.terms["asr"].item() - out_len.terms["asr"].item()) > 1e-6
+    assert abs(out_default.terms["asr"].detach().item() - out_len.terms["asr"].detach().item()) > 1e-6
     # the CTC input length used is the ENCODED (subsampled) length, not the raw 20
     assert int(rec.output_lengths(flen)[0]) < 20
 
