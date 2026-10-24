@@ -52,7 +52,7 @@ def test_tokenizer_learns_to_reconstruct_and_uses_its_codebook():
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-    assert float(loss) < .3 * float(first) and terms["codes_used"] >= 4
+    assert float(loss.detach()) < .3 * float(first.detach()) and terms["codes_used"] >= 4
 
 
 def test_token_prior_samples_both_modes_and_states_are_valid():
