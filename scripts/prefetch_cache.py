@@ -13,7 +13,7 @@ records = [r for key in sys.argv[1:] for r in json.loads(store.get(key))["record
 todo = {r["continuous"]["state_sha256"]: r["continuous"]["state_key"] for r in records
         if (r.get("continuous") or {}).get("state_key") and not (cache / r["continuous"]["state_sha256"]).is_file()}
 print(f"{len(records)} records, {len(todo)} to fetch", flush=True)
-done = [0]; t0 = time.time()
+done = [0]; t0 = time.time(); failed = []
 def one(item):
     sha, key = item
     for attempt in range(6):
@@ -27,9 +27,14 @@ def one(item):
             break
         except Exception as e:
             time.sleep(2 + 3 * attempt)
+    else:
+        failed.append(key)                      # never silently: a training run would hit it later
     done[0] += 1
     if done[0] % 2000 == 0:
         print(f"{done[0]}/{len(todo)} {time.time() - t0:.0f}s", flush=True)
 with ThreadPoolExecutor(32) as pool:
     list(pool.map(one, todo.items()))
 print(f"PREFETCH-DONE {done[0]} in {time.time() - t0:.0f}s", flush=True)
+if failed:
+    print(f"PREFETCH-FAILED {len(failed)} states missing or not matching the manifest, e.g. {sorted(failed)[:5]}", flush=True)
+    sys.exit(3)

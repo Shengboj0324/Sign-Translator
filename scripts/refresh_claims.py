@@ -48,6 +48,10 @@ def main(argv=None) -> int:
             continue                                    # released meanwhile
         if held.get("host") != host or not alive(int(held.get("pid", -1))):
             continue
+        video_id = key.rsplit("/", 1)[-1][:-len(".claim")]
+        if store.exists(f"{args.prefix}/videos/{video_id}.json"):
+            skipped += 1                                # already converted elsewhere: a duplicate is not kept alive
+            continue
         body = json.dumps(dict(held, at=time.time())).encode()
         try:
             store.s3.put_object(Bucket=store.bucket, Key=key, Body=body, IfMatch=head["ETag"])

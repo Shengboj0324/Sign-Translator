@@ -40,7 +40,7 @@ else
   HANDS="1.1 1.2 1.3" FACES="0.8 1.0 1.2"
 fi
 export MIX MSHA FSHA D RUN LIMIT
-python scripts/prefetch_cache.py $MIX
+python scripts/prefetch_cache.py $MIX || { echo "states missing or not matching the manifest"; echo R3B-DONE; exit 1; }
 
 # A. tokenizer acceptance (declared): domain check and recognisability round trip
 tok_ok() { local run=$1 tag=$2 key=$3

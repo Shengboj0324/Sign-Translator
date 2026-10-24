@@ -334,7 +334,7 @@ def process(video_id: str, args, store, models, gate=None, *, staged: bool = Fal
                         caption_seconds=caption_seconds)
         clip = extract_clip(got["video"], models, roi=True, count_people_every=args.count_people_every)
     method = inference_method()
-    segments, refused = [], []
+    segments, refused, pending = [], [], []   # states are written only after the duplicate check below
     for k, cue in enumerate(cues):
         part = slice_clip(clip, cue["start"] - args.pad, cue["end"] + args.pad)
         sample = f"{video_id}-{k:04d}"
@@ -350,7 +350,7 @@ def process(video_id: str, args, store, models, gate=None, *, staged: bool = Fal
             path = Path(tmp) / "s.npz"
             digest = state.save(path)
             key = f"{args.prefix}/states/{sample}.npz"
-            store.put(key, path.read_bytes())
+            pending.append((key, path.read_bytes()))
         segments.append(dict(cue=k, sample_id=sample, start=cue["start"], end=cue["end"], text=cue["text"],
                              state_key=key, state_sha256=digest, seconds=float(state.timestamps[-1] - state.timestamps[0]),
                              hand_coverage=round(hand_coverage(state), 3),
@@ -359,6 +359,12 @@ def process(video_id: str, args, store, models, gate=None, *, staged: bool = Fal
                              available_channels=[n for n, c in state.channels.items() if c.valid.any()],
                              **({} if part.other_person is None else
                                 dict(other_person_fraction=round(other_person_fraction(part), 3)))))
+    if staged and store.exists(f"{args.prefix}/videos/{video_id}.json"):
+        # another extractor converted this video meanwhile (a claim taken over before claims were refreshed): its
+        # states and report stay as they are; overwriting them would desynchronise every manifest built from them
+        return dict(video_id=video_id, status="duplicate", reason="converted by another extractor first")
+    for key, payload in pending:
+        store.put(key, payload)
     return dict(video_id=video_id, status="converted", meta=got["meta"], caption_kind=got["kind"], video_sha256=video_sha,
                 caption_seconds=caption_seconds,
                 cues=len(cues), segments=segments, refused=refused, inference_method=method)
@@ -449,8 +455,12 @@ def main(argv=None) -> int:
                 except BaseException:
                     release(video_id, args, store)       # retried by whoever claims it next
                     raise
-                if report["status"] == "error":
+                if report["status"] in ("error", "duplicate"):
                     release(video_id, args, store)
+                if report["status"] == "duplicate":
+                    counts["duplicate"] = counts.get("duplicate", 0) + 1
+                    print(json.dumps(dict(video_id=video_id, status="duplicate")), flush=True)
+                    continue
             else:
                 report = process(video_id, args, store, models, gate)
         except Blocked as blocked:
