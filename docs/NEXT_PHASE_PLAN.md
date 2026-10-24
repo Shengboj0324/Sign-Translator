@@ -910,6 +910,31 @@ without arms), R2b and R4 (head activity), plus more data.
   - Mix `round3b-mixed-v2` (SHA `ad8a5876`): 191,414 records, partitions and evaluation clips identical to round 3a.
 - **All 100,454 YouTube states were downloaded and SHA-verified** (0 mismatches) before round 3b was relaunched.
 
+## ASLLRP attribution requirements (Carol Neidle, email 2026-10-24 11:14 PDT)
+
+ASLLRP's permission for a non-commercial weights release (2026-10-23) stands. Before any distribution:
+1. **Cite each individual dataset used**, with the citation given on its DAI download page:
+   - the ASLLRP continuous signing corpus (2,123 plan utterances);
+   - the RIT sentence collection (280);
+   - ASLLVD via the Sign Bank (5,156 one-word training clips in round 3b, plus the recogniser's validation).
+
+   These citations are to be copied verbatim from the DAI pages (login) before release.
+2. **List the DAI and Sign Bank websites:** https://dai.cs.rutgers.edu/dai/s/dai and https://dai.cs.rutgers.edu/dai/s/signbank.
+3. **Give the full ASLLVD citation:** C. Neidle, A. Thangali and S. Sclaroff (2012), "Challenges in Development of the American
+   Sign Language Lexicon Video Dataset (ASLLVD) Corpus", 5th Workshop on the Representation and Processing of Sign
+   Languages: Interactions between Corpus and Lexicon, LREC 2012, Istanbul, 27 May 2012.
+4. **The attribution wording is revisited with ASLLRP** when results are ready to distribute.
+
+`scripts/build_model_card.py` now carries the full citations, both URLs and the attribution paragraph, marked as
+awaiting ASLLRP's review.
+
+She also points to C. Neidle (2023), "Challenges for Linguistically-Driven Computer-Based Sign Recognition from
+Continuous Signing for American Sign Language", arXiv:2311.00762. Her point: recognising signs within continuous
+signing is a prerequisite for translation.
+- Our sign-level checks today (R5) use isolated one-word prompts.
+- Recognition of signs inside generated continuous signing is not measured. It is recorded as a limitation and a
+  candidate check for a later round, using the ASLLRP segmented continuous-corpus signs from the Sign Bank.
+
 ## Speech input: audio -> English text -> ASL (owner's request, logged 2026-10-24 00:00 PDT; after the generator passes)
 
 The deployed model takes English text (`TranslatorService.translate(text)`). To translate spoken English, such as a

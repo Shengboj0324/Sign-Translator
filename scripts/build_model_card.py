@@ -25,14 +25,32 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 CITATIONS = {
     "How2Sign": "Duarte et al., How2Sign: A Large-scale Multimodal Dataset for Continuous American Sign Language, CVPR 2021.",
-    "ASLLRP": "Neidle et al., ASLLRP / DAI 2 and the ASLLRP Sign Bank, Boston University (dai.cs.rutgers.edu).",
-    "ASLLVD": "Neidle et al., American Sign Language Lexicon Video Dataset (ASLLVD), Boston University.",
+    "ASLLRP": ("C. Neidle, A. Opoku and D. Metaxas (2022), 'ASL Video Corpora & Sign Bank: Resources Available through the "
+               "American Sign Language Linguistic Research Project (ASLLRP)', arXiv:2201.07899; Data Access Interface (DAI 2): "
+               "https://dai.cs.rutgers.edu/dai/s/dai; ASLLRP ASL Sign Bank: https://dai.cs.rutgers.edu/dai/s/signbank; "
+               "plus the citation given on each dataset's DAI page."),
+    "ASLLVD": ("C. Neidle, A. Thangali and S. Sclaroff (2012), 'Challenges in Development of the American Sign Language Lexicon "
+               "Video Dataset (ASLLVD) Corpus', 5th Workshop on the Representation and Processing of Sign Languages: "
+               "Interactions between Corpus and Lexicon, LREC 2012, Istanbul, Turkey, May 27, 2012; ASLLRP ASL Sign Bank: "
+               "https://dai.cs.rutgers.edu/dai/s/signbank."),
     "ASL Citizen": "Desai et al., ASL Citizen: A Community-Sourced Dataset for Advancing Isolated Sign Language Recognition, NeurIPS 2023 Datasets.",
     "YouTube-ASL": "Uthus, Tanzer, Georg, YouTube-ASL: A Large-Scale, Open-Domain American Sign Language-English Parallel Corpus, NeurIPS 2023 (arXiv:2306.15162).",
     "YouTube-SL-25": "Tanzer & Zhang, YouTube-SL-25: A Large-Scale, Open-Domain Multilingual Sign Language Parallel Corpus, 2024.",
     "MediaPipe": "Lugaresi et al., MediaPipe: A Framework for Building Perception Pipelines, 2019.",
     "T5": "Chung et al., Scaling Instruction-Finetuned Language Models (Flan-T5), 2022.",
 }
+
+
+# requested by Carol Neidle (ASLLRP), 2026-10-23/24; wording to be reviewed again by ASLLRP before any distribution
+ASLLRP_ATTRIBUTION = (
+    "**ASLLRP attribution.** This model was trained in part on data from the American Sign Language Linguistic Research "
+    "Project (ASLLRP), Boston University, obtained through the Data Access Interface (DAI 2, "
+    "https://dai.cs.rutgers.edu/dai/s/dai) and the ASLLRP ASL Sign Bank (https://dai.cs.rutgers.edu/dai/s/signbank), under "
+    "the ASLLRP Sign Bank Data Terms of Use. We thank Carol Neidle, Dimitris Metaxas and the ASLLRP team. No data, video or "
+    "annotation is redistributed. Please cite C. Neidle, A. Opoku and D. Metaxas (2022), arXiv:2201.07899; C. Neidle, "
+    "A. Thangali and S. Sclaroff (2012), LREC 2012 workshop (ASLLVD); and each DAI dataset used (the ASLLRP continuous "
+    "signing corpus and the RIT sentence collection) as its DAI page specifies. *This wording awaits ASLLRP's review "
+    "before distribution.*")
 
 
 def cite(name: str) -> str | None:
@@ -70,7 +88,8 @@ def card(release: dict, reports: dict) -> str:
              "- Research on sign-language generation and its evaluation; demonstrations to and evaluation by Deaf signers.",
              "- **Not** a replacement for a qualified interpreter. **Not** for medical, legal, emergency or other "
              "safety-critical communication. **Not** for identifying signers.", "",
-             "## Training data and licences"]
+             "## Training data and licences", "",
+             ASLLRP_ATTRIBUTION]
     rows = [(c["name"], c["licence"], "yes" if c["research_only"] else "no", "yes" if c.get("non_commercial") else "no",
              c.get("permission") or "-", cite(c["name"]) or "-") for c in release["provenance"]]
     lines += [table(rows, ("Corpus", "Licence / terms", "Research only", "Non-commercial", "Release permission",
