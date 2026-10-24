@@ -48,6 +48,9 @@ def main(argv=None) -> int:
     parser.add_argument("--manifest-sha256", required=True)
     parser.add_argument("--corpus-id", default="asl-citizen-text-v1")
     parser.add_argument("--max-train-per-word", type=int, default=6)
+    parser.add_argument("--licence", default="ASL Citizen (Microsoft Research): research use, private store, no "
+                        "redistribution; text derived from the publisher's gloss labels",
+                        help="the source corpus's terms, recorded in the manifest (ASLLVD: ASLLRP Sign Bank terms)")
     parser.add_argument("--output-key", required=True)
     args = parser.parse_args(argv)
     from signtranslator.data_engineering.corpus_manifest import build_corpus_manifest, canonical_json, load_manifest
@@ -86,8 +89,7 @@ def main(argv=None) -> int:
     split = dict(manifest["split"], counts=counts, note="publisher splits, unchanged; text = the gloss's English word")
     out = build_corpus_manifest(corpus_id=args.corpus_id, records=records,
                                 inputs={args.manifest_key: args.manifest_sha256}, split=split)
-    out["license"] = ("ASL Citizen (Microsoft Research): research use, private store, no redistribution; "
-                      "text derived from the publisher's gloss labels")
+    out["license"] = args.licence
     if store.exists(args.output_key):
         raise SystemExit("refusing to overwrite an existing manifest")
     digest = store.put(args.output_key, canonical_json(out))
