@@ -24,7 +24,7 @@ stage() { local run=$1 name=$2; shift 2; echo "STAGE $name $run $(date)"; "$@" >
   [ $s = 0 ] || echo "FAILED $name $run (status $s)"; return $s; }
 export -f sha best upload exists stage
 ACQ=acquisition/2026-10-17-v1
-MIX=$ACQ/youtube-asl-v1/round3b-mixed-v1/manifest.json; MSHA=$(sha $MIX)
+MIX=$ACQ/youtube-asl-v1/round3b-mixed-v2/manifest.json; MSHA=$(sha $MIX)
 FULL=$ACQ/derived/full-v1/how2sign-text-manifest-v1/manifest.json; FSHA=$(sha $FULL)
 R3A_SHA=dc576f4aff4bef38b933b3646670d98c3160e2474c80fb0719d91631ce00d92c     # round 3a's mix (its tokenizer's manifest)
 D=$ACQ/youtube-asl-v1/round3b
