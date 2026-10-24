@@ -747,6 +747,66 @@ size, so this is a real encoding gap, not more movement. Consequences:
 - Videos are fetched at ≤720p with English captions. Only segments whose caption timing fits the signing (duration
   limits, hands visible) are kept.
 
+## Round 3 result: the multi-signer gate FAILED (2026-10-23, 22:33 PDT)
+
+- **Union gate** (`tokens-rvq-d0b-prior-r3a-gate-union.json`): 675 candidates (9 temperature settings × 25
+  post-processing variants × 3 guidance values). Each was scored on validation signers 1/2 (c01), 3 (c03) and 11
+  (c05), with the declared thresholds unchanged.
+  - **No candidate passes every check on every signer.**
+  - The rule's fallback selects the most checks passed: `sweep-h1.2-f1.0-hs0.2`, guidance 2, **26 of 35 checks**.
+    Its mean Fréchet distance is 229.4, against 280.7 for the full prior's selection.
+- **Its failures go in opposite directions on different signers:**
+
+  | Signer | Failing checks of the selection |
+  |---|---|
+  | c01 | brow raise 2.9× |
+  | c03 (head too still) | headshake 0.31×, nod 0.26×; hand variation 0.69× / 0.67× |
+  | c05 (head too active) | head speed 2.6×, variation 2.9×; headshake 8.9×; brow raise 6.4× |
+
+- Across all 675 candidates, the most common failures are nod, headshake, head speed and variation, and brow raise.
+- **Round 3 fails by its declared rules.** This is not reinterpreted after the fact.
+- The union strict review (R1–R6 with R2b) on the fallback selection is reported when it finishes.
+- **Operational faults fixed on the way:**
+  - One sweep evaluation ran out of GPU memory (4 concurrent on 44 GB); it was rerun by the supplement.
+  - `GROUPS` is a reserved bash variable: the gates were given signer group `0` (`fbef071`).
+  - The strict review lacked `transformers` for R2b (`9d9f08b`).
+
+**Instrument check of the multi-signer gate: real signers fail it (2026-10-23, 22:45 PDT).**
+`scripts/cross_signer_baseline.py` scores real validation clips of one signer as if generated, with the gate's own
+checks and thresholds, on the clips the evaluation used (`round3a/evaluations/cross-signer-baseline.json`).
+
+| Real clips of | judged by | checks passed |
+|---|---|---|
+| c01 | c03 / c05 | 6 / 12, 7 / 12 |
+| c03 | c01 / c05 | 4 / 11, 2 / 12 |
+| c05 | c01 / c03 | 8 / 11, 6 / 12 |
+| c01 / c03 / c05 | the other signers pooled | 8 / 12, 4 / 12, 6 / 12 |
+| each signer | the other half of its own clips | 11 / 11, 12 / 12, 11 / 12 |
+
+- Between real signers, head speed ratios run 0.29–3.5×, headshake rates 0.05–21×, nod rates 0.09–10.6× and brow
+  raise 0–5×.
+- Within one signer, nearly every check passes.
+- So the per-signer head and face checks measure **who is signing**. A text-conditioned generator cannot pass them on
+  signers 3 and 11 at once, and neither can real human signing.
+- Round 3's selection (8.7 checks per signer on average) is closer to each signer than the other real signers are
+  (5.5 of 12).
+
+**Round 3b gate, declared 2026-10-23 23:10 PDT before any round-3b result.**
+- **Envelope rule.** For each validation signer Y and each gate check c, the band is the declared band widened to the
+  real cross-signer range: `[min(lo, min r_c(X→Y)), max(hi, max r_c(X→Y))]` over the other real signers X. The
+  generated ratio against Y must lie in it.
+  - In words: generated motion must be at least as close to each signer as another real signer is.
+  - The band is never narrower than the declared one.
+- **Population envelope.** The same rule against all validation signers pooled, with the band widened by the real
+  signer-vs-others-pooled range.
+- A candidate passes only if every check passes in every signer's envelope and in the population envelope.
+- Selection, the meaning and copying rules (R1, R2, R2b, R3, R5) and R4 are unchanged.
+- **R6** (test signer 9, once): each check that passed on validation must lie in signer 9's envelope. That envelope
+  is the declared band widened by the validation signers' real ratios against signer 9.
+- The envelopes are computed from real clips only, before any round-3b generation is scored.
+- Human Deaf reviewers judge naturalness directly afterwards. The envelope only stops one person's style being
+  scored as an error.
+
 ## Plan for the six items (order and gates)
 
 | # | Item | Plan | Gate before it starts |

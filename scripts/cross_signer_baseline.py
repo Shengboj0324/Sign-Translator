@@ -7,6 +7,7 @@ gate's own checks (``exit_gate.score_setting``, thresholds unchanged):
 
 - ``X vs Y`` (X != Y): one real signer's style judged by another's. Where real signing fails a check, the check
   measures signer idiosyncrasy, and a generator conditioned on text alone cannot pass it on both signers at once.
+- ``X vs the others pooled``: one real signer against an equal-size hash sample of the other signers' clips.
 - ``X half A vs X half B``: the same signer split in two (deterministic by sign id), the within-signer baseline.
 
 Clips are the ones each group's evaluation used (the signs stored under ``--generated-template``). Speed, variation
@@ -73,6 +74,16 @@ def main(argv=None) -> int:
         out["cross"][f"{x}_vs_{y}"] = judged(clips[x], clips[y])
         r = out["cross"][f"{x}_vs_{y}"]
         print(json.dumps({f"{x} judged by {y}": f"{r['passed']}/{r['total']}", "failing": r["failing"]}), flush=True)
+    out["pooled_others"] = {}
+    for x in groups:                                  # one real signer against the other signers pooled
+        others = [y for y in groups if y != x]
+        pool = (sum((clips[y][0] for y in others), []), sum((clips[y][1] for y in others), []))
+        n = min(len(clips[x][0]), len(pool[0]))
+        idx = sorted(range(len(pool[0])), key=lambda i: hashlib.sha256(pool[1][i]["sign"].encode()).hexdigest())[:n]
+        out["pooled_others"][x] = judged(clips[x], ([pool[0][i] for i in idx], [pool[1][i] for i in idx]))
+        r = out["pooled_others"][x]
+        print(json.dumps({f"{x} judged by the others pooled": f"{r['passed']}/{r['total']}", "failing": r["failing"]}),
+              flush=True)
     for g in groups:
         states, records = clips[g]
         half = [int(hashlib.sha256(r["sign"].encode()).hexdigest(), 16) % 2 for r in records]
