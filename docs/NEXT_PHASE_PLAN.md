@@ -894,6 +894,22 @@ without arms), R2b and R4 (head activity), plus more data.
   - All four sources' terms are recorded.
 - Launched `runpod/fleet/round3b_all.sh` (smoke run, then the round) at 00:27 PDT.
 
+**Round 3b data rebuilt and every state verified (2026-10-24, 01:30 PDT).**
+- **What happened.** The smoke run's prior stopped on a state whose bytes no longer matched `manifest-r3b`.
+  - A duplicate extraction started before the claim heartbeat. Its claim had been taken over at the 3 h stale age.
+  - It finished at 01:01, after the manifest was built, and rewrote `feXU2ZMBdrI`'s 1,426 states and report.
+  - The prefetch had skipped the mismatch silently.
+- **Fixed (`1d046c7`):**
+  - An extraction never writes over a converted video: states are written only after the "already converted?"
+    check, with status `duplicate`.
+  - Claims of converted videos are not refreshed.
+  - The prefetch exits 3 on any missing or mismatching state, and round 3b stops on it.
+  - The last claimless duplicate process was stopped.
+- **Rebuilt from the then-consistent reports** (207 h captioned):
+  - YouTube `manifest-r3b2` (SHA `f69ad828`): 100,454 segments, **151.8 h** after filters.
+  - Mix `round3b-mixed-v2` (SHA `ad8a5876`): 191,414 records, partitions and evaluation clips identical to round 3a.
+- **All 100,454 YouTube states were downloaded and SHA-verified** (0 mismatches) before round 3b was relaunched.
+
 ## Speech input: audio -> English text -> ASL (owner's request, logged 2026-10-24 00:00 PDT; after the generator passes)
 
 The deployed model takes English text (`TranslatorService.translate(text)`). To translate spoken English, such as a
