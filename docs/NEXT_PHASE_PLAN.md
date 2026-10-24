@@ -640,6 +640,25 @@ invalid or unvalidated for the generator's output domain.
 - **Meaning on ASLLRP:** the 2D back-translator, which reads both domains through the same FK projection, is the
   candidate meaning instrument. It is only to be used after its own acceptance on ASLLRP real.
 
+**2D back-translator, UWB-pretrained and How2Sign fine-tuned: acceptance PASSED (2026-10-23, 17:11 PDT).**
+- **Pretraining** (`back-translator-kp2d-uwb-v2`): 323,978 UWB YouTube-ASL keypoint clips, selected on the UWB
+  monitor split. Best step 76,000, monitor BLEU 6.09; it early-stopped at 96,000. Zero-shot How2Sign BLEU stayed
+  about 1.1, so the How2Sign fine-tune was needed.
+- **Fine-tune** (`back-translator-kp2d-uwb-ft-v1`): initialised from step 76,000 and trained on How2Sign FK
+  keypoints. Best val BLEU 5.01, against 2.84 for the How2Sign-only model under the same selection; it early-stopped
+  at 15,000. The acceptance scored checkpoint 9,000 on the same 600 val clips and rule as below:
+
+| Control | BLEU | 95% interval |
+|---|---|---|
+| real | **4.09** | 3.51–4.68 |
+| blank (durations only) | 1.95 | 1.56–2.36 |
+| shuffled sentences | 1.59 | 1.24–1.94 |
+
+- The real interval lies well above both controls. The gap over blank is 2.1 BLEU, against 1.0 for the How2Sign-only
+  model, so the YouTube pretraining made the instrument clearly more sensitive.
+- Per-sentence agreement with back-translator v2 (3D T5, BLEU 1.94 on these clips) is Spearman 0.74.
+- This model replaces the How2Sign-only one as the 2D second opinion. Its reading of the full prior follows.
+
 **2D back-translator, How2Sign-only model: acceptance PASSED (2026-10-23, 02:32 PDT).**
 `back-translator-kp2d-h2s-v1`, best checkpoint step 13,000; it early-stopped at 19,000. Scored on 600 How2Sign val
 clips through the FK projection path, beam 4, with sentence-bootstrap 95% intervals:
