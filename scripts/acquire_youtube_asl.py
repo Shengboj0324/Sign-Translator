@@ -468,8 +468,12 @@ def main(argv=None) -> int:
         if report["status"] != "error":
             store.put(report_key, json.dumps(report, sort_keys=True).encode())
             if args.stage == "extract":
-                staged = json.loads(store.get(f"{args.prefix}/staged/{video_id}.json"))
-                drop_staged(video_id, args, store, staged["video_key"])
+                try:
+                    staged = json.loads(store.get(f"{args.prefix}/staged/{video_id}.json"))
+                except Exception:  # noqa: BLE001 - another extractor finished it first and dropped it
+                    staged = None
+                if staged:
+                    drop_staged(video_id, args, store, staged["video_key"])
         counts[report["status"]] = counts.get(report["status"], 0) + 1
         print(json.dumps(dict(n=n + 1, of=len(mine), video_id=video_id, status=report["status"],
                               segments=len(report.get("segments", [])), seconds=report["seconds_taken"],

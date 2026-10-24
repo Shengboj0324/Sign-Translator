@@ -32,9 +32,13 @@ worker() { local i=$1 idle=0
     fi
     sleep 120
   done; }
+# live claims are refreshed every 20 min: a 5-8 h video must not look abandoned after the 3 h takeover age
+( while true; do python scripts/refresh_claims.py --prefix $P >> /root/claims.log 2>&1; sleep 1200; done ) &
+HEARTBEAT=$!
 for i in $(seq 0 29); do worker $i & done
-while [ -n "$(jobs -r)" ]; do
+while [ "$(jobs -rp | grep -vc "^$HEARTBEAT$")" != 0 ]; do
   sleep 600
   echo "$(date -u +%H:%M) staged $(staged), converted $(grep -h '"status": "converted"' /root/yt-x-*.log | wc -l), errors $(grep -h '"status": "error"' /root/yt-x-*.log | wc -l)"
 done
+kill $HEARTBEAT 2>/dev/null
 echo EXTRACT-DONE
