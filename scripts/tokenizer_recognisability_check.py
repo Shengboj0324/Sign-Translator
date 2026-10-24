@@ -67,10 +67,14 @@ def main(argv=None) -> int:
     parser.add_argument("--manifest-key", required=True)
     parser.add_argument("--manifest-sha256", required=True)
     parser.add_argument("--corpus", required=True)
+    parser.add_argument("--template-manifest", help="key@sha256 of a manifest holding a --conform-to-corpus record, when "
+                                                    "--manifest-key has none (a single-corpus manifest)")
     parser.add_argument("--partition", default="val")
     parser.add_argument("--conform-to-corpus", default="how2sign-two-view-text-v1")
     parser.add_argument("--tokenizer-key", required=True)
     parser.add_argument("--recognizer-run", default="sign-recognizer-v2")
+    parser.add_argument("--gloss-map-key", help="Sign Bank -> ASL Citizen gloss map (validate_sign_recognizer.py's): "
+                                                "ASLLVD clips count only under a unique exact mapping")
     parser.add_argument("--limit", type=int, default=300)
     parser.add_argument("--fps", type=float, default=24.)
     parser.add_argument("--min-ratio", type=float, default=.9)
@@ -88,9 +92,26 @@ def main(argv=None) -> int:
     cache = ContentCache(Path(tempfile.gettempdir()) / "sign-translator-cache", 8 * 2 ** 30)
     recogniser, labels, _ = load_model(store, args.recognizer_run, args.device)
     index = {g: i for i, g in enumerate(labels)}
-    template = load_sample(next(r for r in manifest["records"] if r.get("corpus") == args.conform_to_corpus),
+    if args.gloss_map_key:                  # as in the recogniser's own cross-domain validation
+        import collections
+        to_citizen = collections.defaultdict(set)
+        for g, m in json.loads(store.get(args.gloss_map_key))["mapping"].items():
+            if m["method"] == "exact" and g in index:
+                for c in m["candidates"]:
+                    to_citizen[c].add(g)
+        global label_of
+        plain = label_of
+        label_of = lambda r: (next(iter(to_citizen[plain(r)])) if len(to_citizen.get(plain(r), ())) == 1  # noqa: E731
+                              else None)
+    pool = manifest["records"]
+    if args.template_manifest:
+        key, sha = args.template_manifest.rsplit("@", 1)
+        with tempfile.TemporaryDirectory() as t:
+            p = Path(t) / "t.json"; p.write_bytes(store.get(key) + b"\n")
+            pool = load_manifest(p, expected_sha256=sha)["records"]
+    template = load_sample(next(r for r in pool if r.get("corpus") == args.conform_to_corpus),
                            "continuous", cache=cache, fetch=store.get)
-    records = sorted((r for r in manifest["records"] if r.get("corpus") == args.corpus
+    records = sorted((r for r in manifest["records"] if (r.get("corpus") or manifest.get("corpus_id")) == args.corpus
                       and r["partition"] == args.partition and label_of(r) in index), key=lambda r: r["sign"])
     records = records[:args.limit]
     if not records:
