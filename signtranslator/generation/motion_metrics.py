@@ -20,6 +20,8 @@ These metrics therefore pair accuracy with articulation and realism:
 """
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 from scipy import linalg
 
@@ -109,7 +111,9 @@ def frechet_distance(generated: np.ndarray, reference: np.ndarray, *, dimensions
     a, b = (generated - centre) @ basis, (reference - centre) @ basis
     mu_a, mu_b = a.mean(0), b.mean(0)
     cov_a, cov_b = np.cov(a, rowvar=False), np.cov(b, rowvar=False)
-    root, _ = linalg.sqrtm(cov_a @ cov_b, disp=False)
+    with warnings.catch_warnings():          # as disp=False did: a singular product is handled by .real below
+        warnings.simplefilter("ignore", linalg.LinAlgWarning)
+        root = linalg.sqrtm(cov_a @ cov_b)   # SciPy 1.17 deprecates disp; same algorithm, same values
     root = root.real
     return float(((mu_a - mu_b) ** 2).sum() + np.trace(cov_a + cov_b - 2 * root))
 

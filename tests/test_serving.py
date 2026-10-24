@@ -89,9 +89,11 @@ def test_http_front_end_answers_and_applies_backpressure():
             with urllib.request.urlopen(req, timeout=10) as resp:
                 return resp.status, json.loads(resp.read())
         except urllib.error.HTTPError as e:
-            return e.code, json.loads(e.read())
+            with e:                       # an HTTPError holds the response socket open until closed
+                return e.code, json.loads(e.read())
     try:
-        health = json.loads(urllib.request.urlopen(url + "/health", timeout=5).read())
+        with urllib.request.urlopen(url + "/health", timeout=5) as resp:
+            health = json.loads(resp.read())
         assert health["status"] == "ok" and health["release_sha256"] == r.sha256()
         assert post({"text": ""})[0] == 400
         first = {}
@@ -107,7 +109,7 @@ def test_http_front_end_answers_and_applies_backpressure():
         code, body = first["r"]
         assert code == 200 and body["frames"] > 0 and base64.b64decode(body["state_npz_base64"])[:2] == b"PK"
     finally:
-        gate.set(); server.shutdown()
+        gate.set(); server.shutdown(); server.server_close()   # shutdown() stops serving, server_close() frees the socket
 
 
 def test_release_post_processing_round_trips_and_is_applied():

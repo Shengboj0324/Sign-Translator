@@ -162,9 +162,9 @@ def test_weight_ema_is_the_exponential_average_and_swaps_cleanly():
         expected = d * expected + (1 - d) * value                                # θ̄_t = d_t θ̄_{t-1} + (1-d_t) θ_t
     assert abs(float(ema.shadow["weight"][0, 0]) - expected) < 1e-6
     live = ema.swap(model)
-    assert abs(float(model.weight[0, 0]) - expected) < 1e-6
+    assert abs(float(model.weight[0, 0].detach()) - expected) < 1e-6
     ema.restore(model, live)
-    assert float(model.weight[0, 0]) == 3.
+    assert float(model.weight[0, 0].detach()) == 3.
     late = script.WeightEMA(model, decay=.999); late.updates = 10 ** 6
     assert late.current_decay() == .999                                           # the cap holds late in training
 

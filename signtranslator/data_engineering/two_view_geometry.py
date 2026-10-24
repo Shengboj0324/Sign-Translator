@@ -180,7 +180,8 @@ def triangulate(p1: np.ndarray, p2: np.ndarray, x1: np.ndarray, x2: np.ndarray,
 
 def project(p: np.ndarray, points: np.ndarray) -> np.ndarray:
     h = np.c_[points, np.ones(len(points))] @ p.T
-    return h[:, :2] / h[:, 2:]
+    with np.errstate(divide="ignore", invalid="ignore"):   # a point on the camera plane projects to inf / NaN
+        return h[:, :2] / h[:, 2:]
 
 
 @dataclass(frozen=True)

@@ -7,6 +7,20 @@ import torch
 from signtranslator import reproducibility as rng
 
 
+def _mps_usable() -> bool:
+    """MPS reported and able to allocate: hosted CI Macs report MPS but refuse every allocation (out of memory)."""
+    if not torch.backends.mps.is_available():
+        return False
+    try:
+        torch.zeros(1, device="mps")
+        return True
+    except RuntimeError:
+        return False
+
+
+MPS_USABLE = _mps_usable()
+
+
 def assert_state(expected):
     actual = rng.capture_rng_state()
     assert actual['python'] == expected['python']
@@ -69,7 +83,7 @@ def test_nested_streams_are_reproducible_and_restore_outer_sequence():
     assert_state(expected)
 
 
-@pytest.mark.skipif(not torch.backends.mps.is_available(), reason='MPS device unavailable')
+@pytest.mark.skipif(not MPS_USABLE, reason='MPS device unavailable')
 def test_real_mps_stream_restored_after_success_and_exception():
     saved = torch.mps.get_rng_state().clone()
     try:

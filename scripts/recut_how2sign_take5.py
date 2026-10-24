@@ -69,18 +69,18 @@ class Archives:
     """Members of several verified zips by file name, opened lazily."""
 
     def __init__(self, store, keys: dict):
-        self.store, self.keys, self.members, self.open = store, keys, {}, {}
+        self.store, self.keys, self.members = store, keys, {}
         for key in keys:
-            with zipfile.ZipFile(open_object(store, key)) as archive:
+            # ZipFile.close() does not close a file object it was given: both are closed here
+            with open_object(store, key) as handle, zipfile.ZipFile(handle) as archive:
                 for name in archive.namelist():
                     if name.endswith(".mp4"):
                         self.members[PurePosixPath(name).name] = (key, name)
 
     def read(self, file_name: str) -> tuple[bytes, dict]:
         key, member = self.members[file_name]
-        if key not in self.open:
-            self.open[key] = zipfile.ZipFile(open_object(self.store, key))
-        payload = self.open[key].read(member)
+        with open_object(self.store, key) as handle, zipfile.ZipFile(handle) as archive:   # nothing left open
+            payload = archive.read(member)
         return payload, dict(zip_key=key, zip_sha256=self.keys[key], member=member,
                              member_sha256=hashlib.sha256(payload).hexdigest(), bytes=len(payload))
 

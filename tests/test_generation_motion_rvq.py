@@ -40,7 +40,7 @@ def test_residual_quantizer_is_exact_on_sums_of_codes_and_improves_with_stages()
     for _ in range(30):
         total, idx, inputs = q(data)
         q.update(inputs, idx, torch.ones(len(data), dtype=torch.bool))
-    errors = [float((q(data, stages=s)[0] - data).pow(2).sum(-1).mean()) for s in range(1, 5)]
+    errors = [float((q(data, stages=s)[0] - data).pow(2).sum(-1).mean().detach()) for s in range(1, 5)]
     assert all(b <= a + 1e-6 for a, b in zip(errors, errors[1:])) and errors[-1] < .5 * errors[0]
 
 
@@ -69,7 +69,7 @@ def test_tokenizer_v2_learns_and_quantizer_dropout_uses_fewer_stages():
     for step in range(120):
         loss, terms = rvq_loss(model, batch, stages=3)
         optimizer.zero_grad(); loss.backward(); optimizer.step()
-        history.append(float(loss))
+        history.append(float(loss.detach()))
     assert history[-1] < .5 * history[0]
     assert {"skeleton_position", "skeleton_velocity", "skeleton_acceleration", "commitment"} <= set(terms)
     _, terms1 = rvq_loss(model, batch, stages=1)
@@ -77,7 +77,7 @@ def test_tokenizer_v2_learns_and_quantizer_dropout_uses_fewer_stages():
     model.eval()
     coarse, _ = rvq_loss(model, batch, stages=1)
     fine, _ = rvq_loss(model, batch, stages=3)
-    assert float(fine) < float(coarse)                                            # more stages, better reconstruction
+    assert float(fine.detach()) < float(coarse.detach())                                            # more stages, better reconstruction
 
 
 def prior_setup(seed=0):
@@ -110,9 +110,9 @@ def test_prior_v2_learns_its_codes_and_generates_valid_states():
     first = None
     for _ in range(150):
         loss, terms = rvq_prior_loss(prior, tokenizer, tokens, mask, batch, train=False)
-        first = first or float(loss)
+        first = first or float(loss.detach())
         optimizer.zero_grad(); loss.backward(); optimizer.step()
-    assert float(loss) < .3 * first and terms["token_accuracy"] > .8
+    assert float(loss.detach()) < .3 * first and terms["token_accuracy"] > .8
     out = generate_rvq_motion(prior, tokenizer, ["ask him"], fps=24., durations=[.5], guidance=2.)
     out[0].validate()
     assert out[0].channels["body"].valid.all() and len(out[0].timestamps) == 12

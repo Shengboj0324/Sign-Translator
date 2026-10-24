@@ -46,7 +46,10 @@ class ReferentTextSIRModel(RelationalTextSIRModel):
     def _referents(self, features, current_label_ids):
         events = torch.cat((features, self.label_embedding(current_label_ids)), dim=-1)
         a, b = events[:, :, None, :], events[:, None, :, :]
-        return self.referent_head(torch.cat((a + b, a * b), dim=-1)).squeeze(-1)
+        scores = self.referent_head(torch.cat((a + b, a * b), dim=-1)).squeeze(-1)
+        # the features are symmetric, but a tiled matrix product may sum rows (i, j) and (j, i) in different orders
+        # on some BLAS back ends (CI); averaging with the transpose makes the logits exactly symmetric everywhere
+        return .5 * (scores + scores.transpose(1, 2))
 
     def training_step(self, batch, *, weights: dict) -> SupportedObjective:
         required = {'sir_sequence', 'event_timing', 'sir_relations', 'referent_equality'}

@@ -8,6 +8,20 @@ from signtranslator.training.objectives import SupportedObjective, SupportedTerm
 from signtranslator.training.scaling import weighted_population_scalar
 
 
+def _mps_usable() -> bool:
+    """MPS reported and able to allocate: hosted CI Macs report MPS but refuse every allocation (out of memory)."""
+    if not torch.backends.mps.is_available():
+        return False
+    try:
+        torch.zeros(1, device="mps")
+        return True
+    except RuntimeError:
+        return False
+
+
+MPS_USABLE = _mps_usable()
+
+
 @pytest.mark.parametrize('dtype,tiny', [(torch.float32, 2.**-149), (torch.float64, 2.**-1074)])
 def test_population_weight_cancellation_preserves_smallest_subnormal(dtype, tiny):
     value = torch.tensor(tiny, dtype=dtype, requires_grad=True)
@@ -89,7 +103,7 @@ def test_negative_incoming_gradient_uses_the_same_stable_scale():
     assert value.grad.item() == expected
 
 
-@pytest.mark.skipif(not torch.backends.mps.is_available(), reason='MPS unavailable')
+@pytest.mark.skipif(not MPS_USABLE, reason='MPS unavailable')
 @pytest.mark.parametrize('value,weight,population', [(1.25, .7, 3), (2.**-149, 2., 2)])
 def test_mps_scalar_fallback_preserves_values_and_gradients(value, weight, population):
     x = torch.tensor(value, dtype=torch.float32, device='mps', requires_grad=True)
@@ -124,7 +138,7 @@ def test_joint_loss_mixed_dtype_zero_branch_and_higher_derivatives():
     assert result.dtype == torch.float64 and result.item() == 2.**-1074
 
 
-@pytest.mark.skipif(not torch.backends.mps.is_available(),reason='MPS unavailable')
+@pytest.mark.skipif(not MPS_USABLE,reason='MPS unavailable')
 def test_mps_joint_sum_preserves_combined_subnormal():
     a = torch.tensor(2.**-149,dtype=torch.float32,device='mps',requires_grad=True)
     b = torch.tensor(2.**-149,dtype=torch.float32,device='mps',requires_grad=True)
