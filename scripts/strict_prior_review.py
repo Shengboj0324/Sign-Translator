@@ -9,6 +9,8 @@ This review then checks the selected setting against six rules. Every rule must 
   Real is reported as the ceiling.
 - **R2 meaning (back-translation):** corpus BLEU-4 of the frozen back-translator's output. Same rule: the generated
   bootstrap interval must lie entirely above blank, by resampling sentences.
+- **R2b meaning, second instrument (round 3):** with ``--second-translator-key``, R2's rule through the accepted
+  2D keypoint back-translator, which reads states through the FK projection.
 - **R3 no copying:** for every generated clip, in the Fréchet feature space (``motion_metrics.clip_features``,
   standardised by the training clips, constant columns dropped), the ratio of its nearest training-clip distance to
   its nearest distance among an equal number of unseen real validation clips, its own reference excluded. A copy is
@@ -145,6 +147,7 @@ def main(argv=None) -> int:
     parser.add_argument("--checkpoint-manifest-sha256", help="when the generator was trained on another manifest")
     parser.add_argument("--retrieval-key", required=True)
     parser.add_argument("--translator-key", required=True)
+    parser.add_argument("--second-translator-key", help="R2b: the accepted 2D keypoint back-translator (round 3)")
     parser.add_argument("--recognizer-run", default="sign-recognizer-v2")
     parser.add_argument("--recognizer-validation-key", default="training-runs/sign-recognizer-v2/validation.json")
     parser.add_argument("--citizen-manifest-key", default="acquisition/2026-10-17-v1/derived/asl-citizen-v1/manifest-v1/manifest.json")
@@ -215,6 +218,20 @@ def main(argv=None) -> int:
         r2[name] = dict(bleu=point, ci95=ci)
     r2["pass"] = separated(r2["generated"]["ci95"], r2["blank"]["ci95"])
     report["rules"]["R2_back_translation_above_blank"] = r2
+    # R2b (round 3, declared 2026-10-23 17:35 PDT before any round-3 result): the same rule through the accepted,
+    # more sensitive 2D back-translator (UWB-pretrained, How2Sign fine-tuned; FK projection), which put the full
+    # prior's generations below blank (1.43 / 1.74 vs 1.95) where the 3D one had passed it
+    if args.second_translator_key:
+        model2, kind2 = load_translator(store, args.second_translator_key, args.manifest_sha256)
+        if kind2 != "keypoints":
+            raise SystemExit("--second-translator-key must be the 2D keypoint back-translator")
+        model2 = model2.to(torch.device(args.device if torch.cuda.is_available() or args.device == "cpu" else "cpu"))
+        r2b = dict(translator_key=args.second_translator_key)
+        for name, states in (("generated", gens), ("real", refs), ("blank", blanked(refs))):
+            point, ci = bleu_ci(translate(model2, kind2, states), texts)
+            r2b[name] = dict(bleu=point, ci95=ci)
+        r2b["pass"] = separated(r2b["generated"]["ci95"], r2b["blank"]["ci95"])
+        report["rules"]["R2b_2d_back_translation_above_blank"] = r2b
     # R3: copying shows as being much closer to a training clip than to unseen real clips; averaging does not
     rng = np.random.default_rng(0)
     train = [r for r in manifest["records"] if r["partition"] == "train" and r.get("text")]

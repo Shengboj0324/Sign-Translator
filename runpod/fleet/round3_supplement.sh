@@ -21,6 +21,7 @@ FULL=acquisition/2026-10-17-v1/derived/full-v1/how2sign-text-manifest-v1/manifes
 D=acquisition/2026-10-17-v1/youtube-asl-v1/round3a
 RUN=tokens-rvq-d0b-prior-r3a GROUPS=c01,c03,c05
 GEN=$(best $RUN) RKEY=$(best retrieval-hold-full-v1) BKEY=$(best back-translator-full-v1)
+KP2D=$(best back-translator-kp2d-uwb-ft-v1)    # R2b: the accepted 2D back-translator (declared 2026-10-23 17:35 PDT)
 export MIX MSHA D RUN
 exists() { python -c "import os,sys; from signtranslator.data.text_motion_dataset import R2Store; sys.exit(0 if R2Store(os.environ).exists(sys.argv[1]) else 1)" "$1"; }
 # 0. repair stage B: a sweep evaluation that failed there (4 concurrent evaluations ran a 44 GB GPU out of memory at
@@ -60,5 +61,6 @@ stage $RUN gate-union python scripts/multi_signer_gate.py --derived $D --runs $R
 stage $RUN strict-review-union python scripts/strict_prior_review.py --derived $D --gate-key $D/evaluations/$RUN-gate-union.json \
   --manifest-key $MIX --manifest-sha256 $MSHA --checkpoint-key "$GEN" --retrieval-key "$RKEY" --translator-key "$BKEY" \
   --retrieval-manifest-sha256 $FSHA --translator-manifest-sha256 $FSHA --groups $GROUPS \
-  --heldout-corpus how2sign-two-view-text-v1 --output-key $D/evaluations/$RUN-strict-review-union.json --device cuda
+  --heldout-corpus how2sign-two-view-text-v1 --second-translator-key "$KP2D" \
+  --output-key $D/evaluations/$RUN-strict-review-union.json --device cuda
 echo SUPP-DONE

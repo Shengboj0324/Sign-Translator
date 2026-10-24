@@ -659,6 +659,17 @@ invalid or unvalidated for the generator's output domain.
 - Per-sentence agreement with back-translator v2 (3D T5, BLEU 1.94 on these clips) is Spearman 0.74.
 - This model replaces the How2Sign-only one as the 2D second opinion. Its reading of the full prior follows.
 
+**Second opinion of the full prior through the fine-tuned 2D back-translator (2026-10-23, 17:27 PDT).** On the same
+600 How2Sign val clips, BLEU is: real **4.26**, blank 1.95, shuffled 1.22, generated **1.43** (guidance 1) and
+**1.74** (guidance 2). The full prior's generations score below the duration-only control. The more sensitive
+instrument finds no sentence meaning beyond what timing gives, where the 3D back-translator had passed R2 (0.83 vs
+real 0.80, within its noise).
+
+**R2b added to round 3's verdict (declared 2026-10-23 17:35 PDT, before any round-3 strict result).** The round-3
+union strict review (`round3_supplement.sh`) applies R2's rule through this 2D back-translator as well
+(`strict_prior_review.py --second-translator-key`). The generated bootstrap BLEU interval of the selected setting,
+pooled over the validation signers, must lie entirely above blank. Like every rule, R2b must pass for round 3 to pass.
+
 **2D back-translator, How2Sign-only model: acceptance PASSED (2026-10-23, 02:32 PDT).**
 `back-translator-kp2d-h2s-v1`, best checkpoint step 13,000; it early-stopped at 19,000. Scored on 600 How2Sign val
 clips through the FK projection path, beam 4, with sentence-bootstrap 95% intervals:
