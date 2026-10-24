@@ -807,6 +807,46 @@ checks and thresholds, on the clips the evaluation used (`round3a/evaluations/cr
 - Human Deaf reviewers judge naturalness directly afterwards. The envelope only stops one person's style being
   scored as an error.
 
+**Round 3 union strict review (2026-10-23, 23:36 PDT): FAILED on R2b, R4 and R5.**
+The review judged the gate's fallback selection: `sweep-h1.2-f1.0-hs0.2`, guidance 2.
+
+| Rule | Result | Numbers |
+|---|---|---|
+| R1 retrieval | **pass** | R@3 0.269 [0.241, 0.301] vs blank 0.094 [0.076, 0.113]; real 0.293 |
+| R2 3D back-translation | pass | BLEU 0.60 [0.47, 0.74] vs blank 0; real 0.60 |
+| R2b 2D back-translation | **fail** | generated 1.67 [1.41, 1.95], **below** blank 2.14 [1.81, 2.46]; real 3.88 |
+| R3 copying | pass | 0% flagged |
+| R4 length slices | fail | head speed 1.35-1.42x (short, long); head variation 1.46x (short) |
+| R5 one-word prompts | fail | top-5 0 / 258; real ASL Citizen 98.9% |
+| R6 test signer 9 | pass | no regressions of validation-passing checks |
+
+- Retrieval meaning is close to real (0.269 vs 0.293), up from 0.236 for the full prior.
+- The more sensitive 2D instrument still reads generated motion as less informative than durations alone.
+- Round 3 is not deployable.
+
+**Why R5 is 0: the ASL Citizen states are mostly missing arms and hands (2026-10-23, 23:50 PDT).**
+These were probes on 40 ASL Citizen val clips, conformed to How2Sign's layout as the prior trains on them, with the
+validated recogniser `sign-recognizer-v2`:
+
+| Input to the recogniser | top-5 |
+|---|---|
+| real clips | 0.75 |
+| the unit conversion alone (no tokenizer) | 0.75 |
+| round-3 tokenizer round trip, quantised or not, 1-4 stages | 0.03-0.05 |
+| round trip, with only the hands replaced by the reconstruction | 0.48 |
+| round trip, with only the body (arms) replaced | 0.08 |
+| **round trip on the frames the real clip observes**, its neutral fill elsewhere | **0.78-0.80** |
+
+- The median ASL Citizen clip has valid **body (arm) rotations on 10%** of its frames and hand rotations on 26-27%.
+  These are webcam framings where the elbows and hands leave the MediaPipe pose.
+- The recogniser learned to recognise signs from those few observed frames with a neutral fill.
+- Complete motion, even a faithful reconstruction of the real clip, is out of its domain: 0.75 -> 0.05.
+- So **R5 as declared cannot grade generated motion**, which is always complete. This is the generator-domain
+  instrument check that the instrument-skepticism rule demands, and it was missing.
+- The tokenizer is not the problem. Where the data exists, its reconstructions are recognised as well as the real
+  clips.
+- It also means the generator's 13,734 one-word training clips gave it arm supervision on about 10% of their frames.
+
 ## Plan for the six items (order and gates)
 
 | # | Item | Plan | Gate before it starts |
