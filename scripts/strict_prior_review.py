@@ -25,7 +25,8 @@ This review then checks the selected setting against six rules. Every rule must 
 - **Post-processing:** the selected candidate's head smoothing and face calibration (estimated on validation, stored
   with the gate's candidate) are applied in every rule, including the sign-level and held-out checks.
 - **R6 held-out confirmation:** the selected setting is evaluated once on the test partition (signer-disjoint, 92
-  clips), and every gate check that passed on validation must pass there too. The ``heldout_official`` clips (up to
+  clips), and every gate check that passed on validation must pass there too (round 3b, ``--envelope-key``: within
+  the test signer's real cross-signer envelope). The ``heldout_official`` clips (up to
   600; signer overlap unverified) are evaluated and reported.
 
 The report (``--output-key``) gives every number, each rule's pass and the overall verdict. A failure is a failure of
@@ -147,6 +148,8 @@ def main(argv=None) -> int:
     parser.add_argument("--checkpoint-manifest-sha256", help="when the generator was trained on another manifest")
     parser.add_argument("--retrieval-key", required=True)
     parser.add_argument("--translator-key", required=True)
+    parser.add_argument("--envelope-key", help="round 3b: cross_signer_baseline.py output with --test-limit; R6 judges "
+                                               "the test signer within its real cross-signer envelope")
     parser.add_argument("--second-translator-key", help="R2b: the accepted 2D keypoint back-translator (round 3)")
     parser.add_argument("--recognizer-run", default="sign-recognizer-v2")
     parser.add_argument("--recognizer-validation-key", default="training-runs/sign-recognizer-v2/validation.json")
@@ -351,6 +354,13 @@ def main(argv=None) -> int:
         val_passed = set.intersection(*({k for k, (_, ok) in g["checks"].items() if ok} for g in row["per_group"].values()))
     else:
         val_passed = {k for k, (_, ok) in row["checks"].items() if ok}
+    if args.envelope_key and "checks" in held["test"]:   # round 3b: the test signer's real cross-signer envelope
+        from signtranslator.generation.envelope import apply, bands
+        test_band = bands(json.loads(store.get(args.envelope_key))).get("test")
+        if test_band is None:
+            raise SystemExit("the envelope has no test band (cross_signer_baseline.py --test-limit)")
+        held["test"]["checks"] = apply(held["test"]["checks"], test_band)
+        held["test"]["envelope"] = test_band
     test_checks = held["test"].get("checks", {})
     regressions = sorted(k for k in val_passed if not test_checks.get(k, (None, False))[1])   # an absent test fails
     report["rules"]["R6_test_confirmation"] = dict(test=held["test"], heldout_official=held["heldout_official"],

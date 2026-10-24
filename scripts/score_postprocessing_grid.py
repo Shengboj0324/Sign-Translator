@@ -62,6 +62,8 @@ def main(argv=None) -> int:
     parser.add_argument("--head-damping", default="1", help="head excursion factors (postprocess.damp_rotation_channel); "
                                                            "1 = none. Variants with a factor below 1 are named -hd<a>")
     parser.add_argument("--fps", type=float, default=24.)
+    parser.add_argument("--pool-group", help="round 3b: also score every variant on all groups' clips pooled, written "
+                                             "as group <this name> (the population envelope's input)")
     args = parser.parse_args(argv)
     from train_text_to_motion import make_store
     store = make_store(args.store)
@@ -96,10 +98,13 @@ def main(argv=None) -> int:
                        for tag in tags}
         for fc in (False, True):
             variant = f"{args.run}-hs{h:g}" + (f"-hd{a:g}" if a != 1 else "") + ("-fc" if fc else "")
-            for g in groups:
+            for g in groups + ([args.pool_group] if args.pool_group else []):
                 results = {}
                 for tag in sorted(tags):
-                    states, refs, records = smoothed[g][tag]
+                    if g == args.pool_group:
+                        states, refs, records = (sum((list(smoothed[h][tag][i]) for h in groups), []) for i in range(3))
+                    else:
+                        states, refs, records = smoothed[g][tag]
                     if fc:
                         states = [calibrate_face(s, calibration[tag]) for s in states]
                     results[setting_name(tag)] = score(states, refs, records)

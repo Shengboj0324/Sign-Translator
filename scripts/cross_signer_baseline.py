@@ -10,7 +10,8 @@ gate's own checks (``exit_gate.score_setting``, thresholds unchanged):
 - ``X vs the others pooled``: one real signer against an equal-size hash sample of the other signers' clips.
 - ``X half A vs X half B``: the same signer split in two (deterministic by sign id), the within-signer baseline.
 
-Clips are the ones each group's evaluation used (the signs stored under ``--generated-template``). Speed, variation
+Clips are selected as ``evaluate_text_to_motion.py`` selects them (partition, corpus, signer component, sorted by
+sign, first ``--limit``), so the baseline uses the evaluated clips without any generation. Speed, variation
 and marker ratios are unpaired aggregate statistics, so unpaired clip sets are valid inputs. Per-clip pairing
 measures (geodesic error) are not used by the gate and are ignored here.
 """
@@ -38,8 +39,12 @@ def main(argv=None) -> int:
     parser.add_argument("--store", default="r2")
     parser.add_argument("--manifest-key", required=True)
     parser.add_argument("--manifest-sha256", required=True)
-    parser.add_argument("--generated-template", required=True, help="prefix with {group}; its signs are the clips")
-    parser.add_argument("--groups", required=True)
+    parser.add_argument("--groups", required=True, help="validation signer components")
+    parser.add_argument("--partition", default="val")
+    parser.add_argument("--corpus", default="how2sign-two-view-text-v1")
+    parser.add_argument("--limit", type=int, default=300, help="per group, as the sweep evaluated")
+    parser.add_argument("--test-limit", type=int, default=0, help="R6: also judge each group by the test partition's "
+                                                                 "first N clips of --corpus (92 = the R6 set)")
     parser.add_argument("--fps", type=float, default=24.)
     parser.add_argument("--output-key")
     args = parser.parse_args(argv)
@@ -48,19 +53,20 @@ def main(argv=None) -> int:
     with tempfile.TemporaryDirectory() as t:
         p = Path(t) / "m.json"; p.write_bytes(store.get(args.manifest_key) + b"\n")
         manifest = load_manifest(p, expected_sha256=args.manifest_sha256)
-    by_sign = {r["sign"]: r for r in manifest["records"]}
     groups = args.groups.split(",")
-    clips = {}
+
+    def select(partition, component, limit):   # evaluate_text_to_motion's selection: sorted by sign, first N
+        return sorted((r for r in manifest["records"] if r["partition"] == partition and r.get("text")
+                       and r.get("corpus") == args.corpus
+                       and (component is None or r.get("signer_component") == component)),
+                      key=lambda r: r["sign"])[:limit]
+
+    def load(records):
+        return ([at_rate(load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]), args.fps)
+                 for r in records], records)
+    clips = {g: load(select(args.partition, g, args.limit)) for g in groups}
     for g in groups:
-        prefix = args.generated_template.format(group=g).rstrip("/") + "/"
-        keys = [k for k in store.list(prefix) if k.endswith(".npz")]
-        tag = sorted({k.rsplit("/", 2)[-2] for k in keys})[0]
-        signs = sorted(k.rsplit("/", 1)[-1][:-4] for k in keys if k.rsplit("/", 2)[-2] == tag)
-        records = [by_sign[s] for s in signs]
-        states = [at_rate(load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]), args.fps)
-                  for r in records]
-        clips[g] = (states, records)
-        print(json.dumps(dict(group=g, clips=len(states))), flush=True)
+        print(json.dumps(dict(group=g, clips=len(clips[g][0]))), flush=True)
 
     def judged(gen, refs) -> dict:
         n = min(len(gen[0]), len(refs[0]))
@@ -93,6 +99,15 @@ def main(argv=None) -> int:
         r = out["within"][g]
         print(json.dumps({f"{g} half A judged by half B": f"{r['passed']}/{r['total']}", "failing": r["failing"]}),
               flush=True)
+    if args.test_limit:                               # R6: each validation signer judged by the test signer
+        test = load(select("test", None, args.test_limit))
+        out["test_cross"] = {}
+        for x in groups:
+            out["test_cross"][x] = judged(clips[x], test)
+            r = out["test_cross"][x]
+            print(json.dumps({f"{x} judged by test": f"{r['passed']}/{r['total']}", "failing": r["failing"]}), flush=True)
+    out["selection"] = dict(partition=args.partition, corpus=args.corpus, limit=args.limit, test_limit=args.test_limit,
+                            manifest_sha256=args.manifest_sha256)
     if args.output_key:
         store.put(args.output_key, json.dumps(out, indent=2, sort_keys=True).encode())
     return 0

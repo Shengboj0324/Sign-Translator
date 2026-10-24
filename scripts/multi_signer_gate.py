@@ -47,7 +47,19 @@ def select(rows: list[dict]) -> dict:
     return max(rows, key=lambda r: (r["passed"], -r["frechet"]))
 
 
-def candidates(store, derived: str, runs: list[str], groups: list[str]) -> list[dict]:
+def enveloped(row: dict, band: dict | None) -> dict:
+    """A score_setting row with its checks re-judged against an envelope (round 3b); unchanged without one."""
+    if band is None:
+        return row
+    from signtranslator.generation.envelope import apply
+    checks = apply(row["checks"], band)
+    passed = sum(ok for _, ok in checks.values())
+    return dict(row, checks=checks, passed=passed, all_pass=passed == len(checks) and len(checks) > 0)
+
+
+def candidates(store, derived: str, runs: list[str], groups: list[str], envelope: dict | None = None) -> list[dict]:
+    """``envelope`` (round 3b): ``envelope.bands`` of the real cross-signer baseline; every group, including ``pool``
+    (generated vs all validation signers pooled), is judged against its own envelope."""
     rows = []
     for run in runs:
         results = {g: json.loads(store.get(f"{derived.rstrip('/')}/evaluations/{run}-{g}.json"))["results"]
@@ -56,7 +68,8 @@ def candidates(store, derived: str, runs: list[str], groups: list[str]) -> list[
         if not settings:   # a candidate must never drop out of the gate silently
             raise SystemExit(f"{run}: no setting evaluated on every group ({', '.join(groups)})")
         for setting in sorted(settings):
-            rows.append(combine({g: score_setting(run, setting, results[g][setting], ARTICULATED) for g in groups}))
+            rows.append(combine({g: enveloped(score_setting(run, setting, results[g][setting], ARTICULATED),
+                                              envelope[g] if envelope else None) for g in groups}))
     return rows
 
 
@@ -66,11 +79,20 @@ def main(argv=None) -> int:
     parser.add_argument("--derived", required=True)
     parser.add_argument("--runs", nargs="+", required=True)
     parser.add_argument("--groups", required=True, help="comma-separated validation signer components")
+    parser.add_argument("--envelope-key", help="round 3b: cross_signer_baseline.py output; checks are judged against "
+                                               "each group's real cross-signer envelope (signtranslator.generation.envelope)")
     parser.add_argument("--output-key")
     args = parser.parse_args(argv)
     from train_text_to_motion import make_store
     store = make_store(args.store)
-    rows = candidates(store, args.derived, args.runs, args.groups.split(","))
+    envelope = None
+    if args.envelope_key:
+        from signtranslator.generation.envelope import bands
+        envelope = bands(json.loads(store.get(args.envelope_key)))
+        missing = [g for g in args.groups.split(",") if g not in envelope]
+        if missing:
+            raise SystemExit(f"the envelope has no band for group(s) {', '.join(missing)}")
+    rows = candidates(store, args.derived, args.runs, args.groups.split(","), envelope)
     if not rows:
         raise SystemExit("no candidate was evaluated on every group")
     choice = select(rows)
@@ -80,7 +102,7 @@ def main(argv=None) -> int:
     print(f"\nselected: {choice['run']} / {choice['setting']} (mean Fréchet {choice['frechet']:.1f}); "
           f"failing: {', '.join(choice['failing']) or 'none'}")
     if args.output_key:
-        store.put(args.output_key, json.dumps(dict(groups=args.groups.split(","), rows=rows, selected=dict(
+        store.put(args.output_key, json.dumps(dict(groups=args.groups.split(","), envelope=envelope, rows=rows, selected=dict(
             run=choice["run"], setting=choice["setting"], frechet=choice["frechet"], failing=choice["failing"])),
             indent=2, sort_keys=True, default=list).encode())
     return 0
