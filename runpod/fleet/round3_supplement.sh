@@ -25,14 +25,26 @@ KP2D=$(best back-translator-kp2d-uwb-ft-v1)    # R2b: the accepted 2D back-trans
 export MIX MSHA D RUN
 exists() { python -c "import os,sys; from signtranslator.data.text_motion_dataset import R2Store; sys.exit(0 if R2Store(os.environ).exists(sys.argv[1]) else 1)" "$1"; }
 complete() { python -c "import os,sys,json; from signtranslator.data.text_motion_dataset import R2Store; s=R2Store(os.environ); sys.exit(0 if s.exists(sys.argv[1]) and json.loads(s.get(sys.argv[1])).get('results') else 1)" "$1"; }
+grid_one() { local TAG=$RUN-sweep-h$1-f$2
+  OMP_NUM_THREADS=1 stage $RUN grid-hd-h$1-f$2 python scripts/score_postprocessing_grid.py --manifest-key $MIX --manifest-sha256 $MSHA \
+    --run $TAG --groups c01,c03,c05 --generated-template "$D/generated/{run}-{group}" --evaluations $D/evaluations \
+    --head-smoothing 0,0.1,0.2,0.3 --head-damping 0.8,0.6; }
+export -f grid_one
+# 1. the damped grids of the settings stage B evaluated on every signer start at once (CPU), beside the repair (GPU)
+for h in 1.0 1.2 1.4; do for f in 0.8 1.0 1.2; do TAG=$RUN-sweep-h$h-f$f
+  exists $D/evaluations/$TAG-c01.json && exists $D/evaluations/$TAG-c03.json && exists $D/evaluations/$TAG-c05.json \
+    && echo "$h $f"
+done; done | xargs -P 9 -L 1 bash -c 'grid_one "$@"' _ &
+GRIDS=$!
 # 0. repair stage B: a sweep evaluation that failed there (4 concurrent evaluations ran a 44 GB GPU out of memory at
 #    h1.2-f1.2-c01) is rerun here with the same arguments, one at a time, and a setting whose undamped grid is
 #    incomplete or empty is re-scored (stage B's grid wrote empty reports for the setting whose c01 generations were
-#    missing), so the union gate sees every declared candidate on every signer.
-for h in 1.0 1.2 1.4; do for f in 0.8 1.0 1.2; do TAG=$RUN-sweep-h$h-f$f; redo=0
+#    missing), so the union gate sees every declared candidate on every signer. A repaired setting's damped grid
+#    follows its repair.
+for h in 1.0 1.2 1.4; do for f in 0.8 1.0 1.2; do TAG=$RUN-sweep-h$h-f$f; redo=0 evaluated=0
   for g in c01 c03 c05; do
     exists $D/evaluations/$TAG-$g.json && continue
-    redo=1
+    redo=1 evaluated=1
     PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True OMP_NUM_THREADS=8 stage $RUN eval-h$h-f$f-$g \
       python scripts/evaluate_text_to_motion.py --manifest-key $MIX \
       --manifest-sha256 $MSHA --checkpoint-key "$GEN" --partition val --corpus how2sign-two-view-text-v1 \
@@ -43,17 +55,13 @@ for h in 1.0 1.2 1.4; do for f in 0.8 1.0 1.2; do TAG=$RUN-sweep-h$h-f$f; redo=0
   for s in 0 0.1 0.2 0.3; do for g in c01 c03 c05; do
     complete $D/evaluations/$TAG-hs$s-$g.json && complete $D/evaluations/$TAG-hs$s-fc-$g.json || redo=1; done; done
   if [ $redo = 1 ]; then
-    OMP_NUM_THREADS=8 stage $RUN grid-h$h-f$f python scripts/score_postprocessing_grid.py --manifest-key $MIX \
+    OMP_NUM_THREADS=4 stage $RUN grid-h$h-f$f python scripts/score_postprocessing_grid.py --manifest-key $MIX \
       --manifest-sha256 $MSHA --run $TAG --groups c01,c03,c05 --generated-template "$D/generated/{run}-{group}" \
       --evaluations $D/evaluations --head-smoothing 0,0.1,0.2,0.3
   fi
+  [ $evaluated = 1 ] && grid_one $h $f
 done; done
-grid_one() { local TAG=$RUN-sweep-h$1-f$2
-  OMP_NUM_THREADS=1 stage $RUN grid-hd-h$1-f$2 python scripts/score_postprocessing_grid.py --manifest-key $MIX --manifest-sha256 $MSHA \
-    --run $TAG --groups c01,c03,c05 --generated-template "$D/generated/{run}-{group}" --evaluations $D/evaluations \
-    --head-smoothing 0,0.1,0.2,0.3 --head-damping 0.8,0.6; }
-export -f grid_one
-for h in 1.0 1.2 1.4; do for f in 0.8 1.0 1.2; do echo "$h $f"; done; done | xargs -P 9 -L 1 bash -c 'grid_one "$@"' _
+wait $GRIDS
 RUNS=""
 for h in 1.0 1.2 1.4; do for f in 0.8 1.0 1.2; do TAG=$RUN-sweep-h$h-f$f; RUNS="$RUNS $TAG"
   for s in 0 0.1 0.2 0.3; do RUNS="$RUNS $TAG-hs$s $TAG-hs$s-fc"
