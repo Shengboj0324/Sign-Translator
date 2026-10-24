@@ -879,6 +879,25 @@ without arms), R2b and R4 (head activity), plus more data.
   - Each one-word prompt is sampled at **the generator's own predicted duration** instead of a fixed 1.2 s. Real
     ASL Citizen word clips run 1.5-5.8 s with their rests, so a fixed 1.2 s was shorter than every real clip.
 
+## Speech input: audio -> English text -> ASL (owner's request, logged 2026-10-24 00:00 PDT; after the generator passes)
+
+The deployed model takes English text (`TranslatorService.translate(text)`). To translate spoken English, such as a
+video's soundtrack, a speech-to-text stage goes in front of it:
+1. **Audio -> English sentences.** Either the repo's speech front-end (`signtranslator/speech/`: streaming
+   features, alignment, decoding, latency model) or a standard ASR model (for example Whisper, licence checked). It
+   outputs timed sentences and punctuation for the planner.
+2. **Acceptance before integration**, declared when the stage is built:
+   - word error rate on held-out English speech against a stated bar;
+   - median and p95 streaming latency;
+   - sentence segmentation checked against the generator's input limits (`max_text_chars`).
+3. **Integration:** `TranslatorService.translate_audio(audio)` runs ASR, then the existing text path. The release spec
+   pins the ASR model by SHA-256, like every other component.
+4. **End to end:** the strict review's meaning rules run on ASR transcripts of spoken How2Sign-like prompts, and the
+   human Deaf reviewers judge audio -> sign output as well.
+
+This starts once a generator round passes its strict review. The text path is the product's core, and speech only
+feeds it.
+
 ## Plan for the six items (order and gates)
 
 | # | Item | Plan | Gate before it starts |
