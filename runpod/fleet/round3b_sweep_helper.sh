@@ -20,6 +20,9 @@ ACQ=acquisition/2026-10-17-v1
 MIX=$ACQ/youtube-asl-v1/round3b-mixed-v2/manifest.json; MSHA=$(sha $MIX)
 FULL=$ACQ/derived/full-v1/how2sign-text-manifest-v1/manifest.json; FSHA=$(sha $FULL)
 D=$ACQ/youtube-asl-v1/round3b RUN=tokens-rvq-d0b-prior-r3b LIMIT=300
+# the chain uploads the prior's stage log only when the prior has finished: before that, best.json is a mid-training
+# checkpoint and evaluating it would store wrong results under the round's keys
+exists training-runs/$RUN/stage-prior.log || { echo "the round-3b prior has not finished: helper refused"; echo HELPER-DONE; exit 1; }
 GEN=$(best $RUN) RKEY=$(best retrieval-hold-full-v1)
 export MIX MSHA FSHA D RUN LIMIT GEN RKEY
 sweep_one() { local h=$1 f=$2 g=$3; local TAG=$RUN-sweep-h$h-f$f       # round3b.sh's sweep_one, verbatim arguments
