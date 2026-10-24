@@ -847,6 +847,38 @@ validated recogniser `sign-recognizer-v2`:
   clips.
 - It also means the generator's 13,734 one-word training clips gave it arm supervision on about 10% of their frames.
 
+**Round 3b design, declared 2026-10-24 00:10 PDT before any round-3b result.** It addresses R5 (one-word data
+without arms), R2b and R4 (head activity), plus more data.
+
+- **Data** (`round3b-mixed-v1`):
+
+  | Corpus | Training clips | Notes |
+  |---|---|---|
+  | How2Sign multi-signer | 18,289 | SHA `dcdb6451`, unchanged |
+  | YouTube-ASL r3b | about 75k segments, about 140 h after round 3a's unchanged filters | at 200 h captioned |
+  | ASL Citizen one-word | 13,734 | SHA `50125638`, kept for hands and face; arm frames are masked as invalid |
+  | **ASLLVD one-word** | **5,156** | 2,080 words, 6 signers, arms valid on 66% and hands on 98-100% of frames; publisher partitions; ASLLRP Sign Bank terms; SHA `29a605c4` |
+  | ASLLRP plans | 1,652 | |
+
+- **Tokenizer.** Round 3a's tokenizer (`tokens-rvq-d0b-r3a`) is reused only if both checks pass:
+  1. the domain check passes on YouTube r3b and ASLLVD (every channel at most 1.5x How2Sign val);
+  2. a **recognisability round trip** passes: on ASLLVD val, the recogniser's top-5 on tokenizer reconstructions
+     (scored on the frames the real clip observes) is at least 0.9x its top-5 on the real clips.
+
+  Otherwise a tokenizer is trained on the round-3b mix first, and must pass the same two checks.
+- **Prior:** from scratch, same architecture and schedule as round 3a, at most 60,000 steps, early stopping
+  (patience 5).
+- **Sweep:** hands {1.1, 1.2, 1.3} x face {0.8, 1.0, 1.2} x guidance {1, 1.5, 2}, per validation signer, 300 clips each.
+  - At most 3 concurrent evaluations, with expandable CUDA segments.
+  - Any failed evaluation is rerun before the grid.
+- **Post-processing grid:** head smoothing {0, 0.1, 0.2, 0.3} x head damping {1, 0.8, 0.6} x {none, pooled face
+  calibration}, per signer and pooled (`--pool-group pool`).
+- **Gate:** the envelope rule declared above, per signer and for the population.
+- **Strict review:** R1, R2, R2b, R3, R4 and R6 (envelope) as declared.
+  - R5's word list, recogniser and pass rule are unchanged.
+  - Each one-word prompt is sampled at **the generator's own predicted duration** instead of a fixed 1.2 s. Real
+    ASL Citizen word clips run 1.5-5.8 s with their rests, so a fixed 1.2 s was shorter than every real clip.
+
 ## Plan for the six items (order and gates)
 
 | # | Item | Plan | Gate before it starts |
