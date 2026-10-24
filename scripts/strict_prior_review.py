@@ -157,6 +157,8 @@ def main(argv=None) -> int:
     parser.add_argument("--citizen-manifest-sha256", default="708af3a6748742c0ce8d147a984ef1de57abcec94da47ff0ce82391b067661a6")
     parser.add_argument("--train-limit", type=int, default=4000, help="training clips sampled for the copy check")
     parser.add_argument("--words", type=int, default=150)
+    parser.add_argument("--word-seconds", type=float, default=1.2,
+                        help="R5 duration of each one-word sample; 0 = the generator's own predicted duration (round 3b)")
     parser.add_argument("--output-key", required=True)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--heldout-corpus", help="mixed manifests: R6 evaluates this corpus's test / heldout_official "
@@ -294,7 +296,8 @@ def main(argv=None) -> int:
     sign_states, y = [], []
     for k, g in enumerate(words):
         for s in range(2):
-            st = resample_motion(sample(g.lower(), 24., 1.2, sel["guidance"], 50, 7000 + 10 * k + s), 24.)
+            st = resample_motion(sample(g.lower(), 24., None if args.word_seconds <= 0 else args.word_seconds,
+                                        sel["guidance"], 50, 7000 + 10 * k + s), 24.)
             if sel["head_smoothing"] > 0:
                 from signtranslator.generation.postprocess import smooth_rotation_channel
                 st = smooth_rotation_channel(st, "head_rotation", sel["head_smoothing"])
