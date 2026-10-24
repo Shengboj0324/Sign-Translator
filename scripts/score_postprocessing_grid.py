@@ -78,7 +78,12 @@ def main(argv=None) -> int:
             refs = [at_rate(load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]), args.fps)
                     for r in records]
             data[g][tag] = ([s for _, s in pairs], refs, records)
+    missing = [g for g in groups if not data[g]]
+    if missing:   # empty reports would make the gate drop this setting silently
+        raise SystemExit(f"{args.run}: no stored generations for group(s) {', '.join(missing)}")
     tags = set.intersection(*(set(d) for d in data.values()))
+    if not tags:
+        raise SystemExit(f"{args.run}: no guidance setting stored for every group")
     import itertools
     for h, a in itertools.product((float(x) for x in args.head_smoothing.split(",")),
                                   [float(x) for x in args.head_damping.split(",")]):

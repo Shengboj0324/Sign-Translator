@@ -53,6 +53,8 @@ def candidates(store, derived: str, runs: list[str], groups: list[str]) -> list[
         results = {g: json.loads(store.get(f"{derived.rstrip('/')}/evaluations/{run}-{g}.json"))["results"]
                    for g in groups}
         settings = set.intersection(*(set(r) for r in results.values()))
+        if not settings:   # a candidate must never drop out of the gate silently
+            raise SystemExit(f"{run}: no setting evaluated on every group ({', '.join(groups)})")
         for setting in sorted(settings):
             rows.append(combine({g: score_setting(run, setting, results[g][setting], ARTICULATED) for g in groups}))
     return rows
