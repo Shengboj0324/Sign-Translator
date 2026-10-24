@@ -1,0 +1,326 @@
+{
+ "clips": 4521,
+ "measured": 1387,
+ "tests": [
+  {
+   "feature": "wh_question",
+   "score": "brow_furrow_mean_z",
+   "positives": 11,
+   "negatives": 1376,
+   "auc": 0.7156448202959831,
+   "ci95": [
+    0.5464257399577167,
+    0.8671808932346723
+   ],
+   "per_component": {
+    "c02": {
+     "auc": 0.6220268127432608,
+     "positives": 7
+    }
+   }
+  },
+  {
+   "feature": "wh_question",
+   "score": "brow_furrow_fraction",
+   "positives": 11,
+   "negatives": 1376,
+   "auc": 0.5471723044397463,
+   "ci95": [
+    0.40328851744186045,
+    0.7104708971987316
+   ],
+   "per_component": {
+    "c02": {
+     "auc": 0.5418048147614243,
+     "positives": 7
+    }
+   }
+  },
+  {
+   "feature": "yes_no_question",
+   "score": "brow_raise_mean_z",
+   "positives": 9,
+   "negatives": 1378,
+   "auc": 0.7910820835349137,
+   "ci95": [
+    0.5933438155136269,
+    0.9595327366553782
+   ],
+   "per_component": {
+    "c01": {
+     "auc": 0.7689839572192514,
+     "positives": 5
+    }
+   }
+  },
+  {
+   "feature": "yes_no_question",
+   "score": "brow_raise_fraction",
+   "positives": 9,
+   "negatives": 1378,
+   "auc": 0.7089582325431382,
+   "ci95": [
+    0.4980618045476536,
+    0.8913159167876149
+   ],
+   "per_component": {
+    "c01": {
+     "auc": 0.7679144385026738,
+     "positives": 5
+    }
+   }
+  },
+  {
+   "feature": "conditional",
+   "score": "brow_raise_mean_z",
+   "positives": 159,
+   "negatives": 1228,
+   "auc": 0.600127015344273,
+   "ci95": [
+    0.5577647091963207,
+    0.6416356810685677
+   ],
+   "per_component": {
+    "c01": {
+     "auc": 0.5550500454959054,
+     "positives": 35
+    },
+    "c02": {
+     "auc": 0.632474804031355,
+     "positives": 105
+    },
+    "c03": {
+     "auc": 0.5940677966101695,
+     "positives": 10
+    },
+    "c04": {
+     "auc": 0.3984375,
+     "positives": 8
+    }
+   }
+  },
+  {
+   "feature": "negation",
+   "score": "headshake_rate",
+   "positives": 233,
+   "negatives": 1154,
+   "auc": 0.6062157377585706,
+   "ci95": [
+    0.5739374521165418,
+    0.6385469276485596
+   ],
+   "per_component": {
+    "c01": {
+     "auc": 0.5621062833144888,
+     "positives": 41
+    },
+    "c02": {
+     "auc": 0.6111782175170801,
+     "positives": 154
+    },
+    "c03": {
+     "auc": 0.7173831070889894,
+     "positives": 26
+    },
+    "c04": {
+     "auc": 0.4838709677419355,
+     "positives": 9
+    }
+   }
+  },
+  {
+   "feature": "negation",
+   "score": "headshake_any",
+   "positives": 233,
+   "negatives": 1154,
+   "auc": 0.6057136587796877,
+   "ci95": [
+    0.5756210438036016,
+    0.6387690511079209
+   ],
+   "per_component": {
+    "c01": {
+     "auc": 0.5567759651106445,
+     "positives": 41
+    },
+    "c02": {
+     "auc": 0.6139287253031329,
+     "positives": 154
+    },
+    "c03": {
+     "auc": 0.7051282051282052,
+     "positives": 26
+    },
+    "c04": {
+     "auc": 0.4838709677419355,
+     "positives": 9
+    }
+   }
+  },
+  {
+   "feature": "reported_speech",
+   "score": "role_shift_fraction",
+   "positives": 8,
+   "negatives": 1371,
+   "auc": 0.4737417943107221,
+   "ci95": [
+    0.4008023340627279,
+    0.6088689824945296
+   ],
+   "per_component": {
+    "c01": {
+     "auc": 0.558288770053476,
+     "positives": 5
+    }
+   }
+  },
+  {
+   "feature": "deixis",
+   "score": "pointing_rate",
+   "positives": 661,
+   "negatives": 718,
+   "auc": 0.5245702678898774,
+   "ci95": [
+    0.5035854028040574,
+    0.5436543137560631
+   ],
+   "per_component": {
+    "c01": {
+     "auc": 0.5504850088183422,
+     "positives": 108
+    },
+    "c02": {
+     "auc": 0.5238750148821132,
+     "positives": 457
+    },
+    "c03": {
+     "auc": 0.5122549019607843,
+     "positives": 68
+    },
+    "c04": {
+     "auc": 0.5217391304347826,
+     "positives": 23
+    },
+    "c05": {
+     "auc": 0.3958333333333333,
+     "positives": 5
+    }
+   }
+  },
+  {
+   "feature": "third_person",
+   "score": "pointing_rate",
+   "positives": 179,
+   "negatives": 1200,
+   "auc": 0.534788175046555,
+   "ci95": [
+    0.5033247206703911,
+    0.569628084264432
+   ],
+   "per_component": {
+    "c01": {
+     "auc": 0.5461672473867596,
+     "positives": 28
+    },
+    "c02": {
+     "auc": 0.517984178199347,
+     "positives": 118
+    },
+    "c03": {
+     "auc": 0.6269296740994854,
+     "positives": 22
+    },
+    "c04": {
+     "auc": 0.5454545454545454,
+     "positives": 11
+    }
+   }
+  },
+  {
+   "feature": "third_person",
+   "score": "indicating_paths",
+   "positives": 179,
+   "negatives": 1200,
+   "auc": 0.5,
+   "ci95": [
+    0.5,
+    0.5
+   ],
+   "per_component": {
+    "c01": {
+     "auc": 0.5,
+     "positives": 28
+    },
+    "c02": {
+     "auc": 0.5,
+     "positives": 118
+    },
+    "c03": {
+     "auc": 0.5,
+     "positives": 22
+    },
+    "c04": {
+     "auc": 0.5,
+     "positives": 11
+    }
+   }
+  }
+ ],
+ "distributions": {
+  "locus_azimuth_deg_p5_25_50_75_95": [
+   -21.6,
+   35.4,
+   59.9,
+   76.0,
+   102.9
+  ],
+  "locus_elevation_deg_p5_25_50_75_95": [
+   -23.3,
+   0.6,
+   16.2,
+   27.5,
+   45.5
+  ],
+  "loci_per_clip_mean": 0.2062004325883201,
+  "clips_with_pointing": 0.1651045421773612,
+  "role_shift_clip_rate": 0.18312905551550107,
+  "final_lengthening_p25_50_75": [
+   0.55,
+   0.86,
+   1.29
+  ],
+  "final_blink_rate": 0.13049747656813265,
+  "gaze_during_pointing": {
+   "events": 325,
+   "median_deg": 77.86998012798242,
+   "control_median_deg": 79.86247096133881,
+   "within_20": 0.006153846153846154,
+   "control_within_20": 0.003076923076923077,
+   "paired_closer": 0.49846153846153846,
+   "note": "gaze during a point vs the same clip's gaze \u22650.5 s away; paired_closer > 0.5 means gaze follows points"
+  },
+  "indicating_paths_per_clip_with_two_loci": 0.0,
+  "indicating_direction_error_deg_median": null,
+  "marker_clip_rate": {
+   "brow_raise": 0.6020187454938717,
+   "brow_furrow": 0.22278298485940878,
+   "squint": 0.3287671232876712,
+   "mm": 0.5234318673395818,
+   "puff": 0.0,
+   "oo": 0.8147080028839221
+  },
+  "headshake_clip_rate": 0.18889689978370583,
+  "english_feature_rate": {
+   "wh_question": 0.007930785868781542,
+   "yes_no_question": 0.006488824801730353,
+   "other_question": 0.007930785868781542,
+   "negation": 0.16798846431146358,
+   "conditional": 0.11463590483056957,
+   "reported_speech": 0.005767844268204758
+  }
+ },
+ "states": "acquisition/2026-10-17-v1/derived/subset-v1/how2sign-two-view-v1",
+ "gaze_model_sha256": "d615f12100278b82532ac0b84f3bebb1f163854e45c59e1a512f3cba40d6f37b",
+ "sessions": 289,
+ "sample_rule": "whole sessions in sha256 order up to 3000 clips, then sessions richest in question/negation/conditional sentences up to 1500 more clips"
+}
