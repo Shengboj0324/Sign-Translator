@@ -879,6 +879,21 @@ without arms), R2b and R4 (head activity), plus more data.
   - Each one-word prompt is sampled at **the generator's own predicted duration** instead of a fixed 1.2 s. Real
     ASL Citizen word clips run 1.5-5.8 s with their rests, so a fixed 1.2 s was shorter than every real clip.
 
+**Round 3b data built and checked (2026-10-24, 00:25 PDT).**
+- **YouTube-ASL r3b** (SHA `55f7e0d3`): 200.7 h captioned, so 97,792 segments and **147.8 h** after round 3a's
+  filters. 97,371 train and 421 monitor.
+- **Mix `round3b-mixed-v1`** (SHA `13ad9797`): 188,752 records.
+  - Training: How2Sign 18,289; YouTube 97,371; ASL Citizen 13,734; ASLLVD 5,156; ASLLRP plans 1,652.
+- **Checked:**
+  - How2Sign val, test and heldout_official are identical to round 3a's.
+  - Each validation signer group's first 300 clips (the evaluated ones) are identical too, so round 3a's real-clip
+    baselines carry over.
+  - No sign id is in two partitions.
+  - Only 2 YouTube training captions of more than two words equal a How2Sign evaluation sentence, both the generic
+    "So what does that mean?".
+  - All four sources' terms are recorded.
+- Launched `runpod/fleet/round3b_all.sh` (smoke run, then the round) at 00:27 PDT.
+
 ## Speech input: audio -> English text -> ASL (owner's request, logged 2026-10-24 00:00 PDT; after the generator passes)
 
 The deployed model takes English text (`TranslatorService.translate(text)`). To translate spoken English, such as a
