@@ -1315,3 +1315,24 @@ d2's training log shows the trigger:
 - A step whose gradient norm exceeds 8× the median of the last 200 accepted steps (after step 500) applies neither the optimizer update nor the EMA update.
 - More than 100 consecutive spikes stop the run as diverging.
 - d4 is judged by the same rules and joins the same precedence (the passing candidate with the highest R2b round trip).
+
+## Round 3d amendment 2: domain check against a fixed reference (declared 2026-10-25, 09:55 PDT, before d2's, d3's and d4's verdicts)
+
+**d1 verdict:** rejected under the declared domain rule. ASLLVD right hand came out at 1.58 against the 1.5 limit (left hand 1.44, body 1.34); YouTube passed. d1's recognisability and fidelity checks are still running.
+
+The rule itself conflicts with the fidelity check. Its denominator is the candidate's own How2Sign error, which fidelity demands be driven down.
+
+| errors (unit space) | How2Sign body | How2Sign right hand | ASLLVD body | ASLLVD right hand |
+|---|---|---|---|---|
+| s8 (passed: 1.24, 1.29) | 4.16 | 1.67 | 5.15 | 2.14 |
+| d1 (failed: 1.34, 1.58) | 3.96 | 1.32 | 5.29 | 2.09 |
+
+d1 encodes ASLLVD hands better than s8 did and fails only because its How2Sign error fell 21%. s8v8 failed the same way.
+
+**Amended rule (for d2, d3 and d4):**
+- The denominator is fixed at round 3c's s8 reference errors (`round3c/tokenizer-domain-check-s8.json`).
+- Every channel of every new corpus must stay within 1.5× those errors.
+- This is not looser for the regressions the check exists to catch: the velocity-weighted family's ASLLVD body error of 7.3 would still fail (limit 6.24).
+- The check runs from the Mac orchestrator after each pod's checks, with the same clips, limit and corpora (`tokenizer-domain-check-<n>-a2.json`), via `tokenizer_domain_check.py --fixed-reference-key`.
+
+d1 stays judged by the rule declared before its result.

@@ -6,6 +6,14 @@ good as the codes it predicts, so before mixing a corpus in, this reconstructs u
 training sees them - and compares, per channel, the mean absolute reconstruction error in the tokenizer's unit
 space with the reference corpus's. Pass rule (fixed here): every channel's error ratio new/reference is at most
 ``--max-ratio`` (1.5); otherwise the tokenizer must be retrained on the mix first.
+
+**Round 3d amendment 2 (declared 2026-10-25 09:55 PDT, before d2's, d3's and d4's verdicts).** The ratio's
+denominator was the candidate's own reference-corpus error, so a tokenizer that reconstructs How2Sign better - what
+the fidelity check demands - fails even when it encodes the new corpora better too (s8v8; round 3d's d1: ASLLVD
+hands 2.09 against s8's 2.14, yet right hand 1.58 because its How2Sign error fell from 1.67 to 1.32). With
+``--fixed-reference-key`` (an earlier domain report, round 3c's s8) the denominator is that report's reference errors,
+fixed for every candidate: each new corpus must be encoded within ``--max-ratio`` of the baseline's How2Sign error.
+The candidate's own-reference ratios stay in the report (``ratios_own_reference``).
 """
 from __future__ import annotations
 
@@ -63,6 +71,8 @@ def main(argv=None) -> int:
     parser.add_argument("--fps", type=float, default=24.)
     parser.add_argument("--limit", type=int, default=120)
     parser.add_argument("--max-ratio", type=float, default=1.5)
+    parser.add_argument("--fixed-reference-key", help="round 3d amendment 2: a domain report whose reference errors are "
+                                                    "the fixed denominator (instead of this tokenizer's own)")
     parser.add_argument("--output-key", required=True)
     args = parser.parse_args(argv)
     import diagnose_tokenizer as dt
@@ -90,21 +100,28 @@ def main(argv=None) -> int:
             out.append(at_rate(conform(s, template), args.fps))
         return out
     reference, reference_scale = channel_errors(model, states_of(reference_rows))
+    own_reference = reference
+    if args.fixed_reference_key:
+        fixed = json.loads(store.get(args.fixed_reference_key))
+        reference = fixed["reference"]
     report = dict(reference_corpus=args.conform_to_corpus, reference=reference, reference_scale=reference_scale,
-                  corpora={}, max_ratio=args.max_ratio)
+                  own_reference=own_reference, fixed_reference_key=args.fixed_reference_key, corpora={},
+                  max_ratio=args.max_ratio)
     ok = True
     for corpus in args.corpus:
         rows = sample_of(corpus, ("val", "monitor", "train"))
         errors, scale = channel_errors(model, states_of(rows))
         ratios = {k: round(errors[k] / max(reference.get(k, 1e-9), 1e-9), 3) for k in errors if k in reference}
+        own_ratios = {k: round(errors[k] / max(own_reference.get(k, 1e-9), 1e-9), 3) for k in errors if k in own_reference}
         passed = all(v <= args.max_ratio for v in ratios.values())
         ok &= passed
         # diagnostic only (the pass rule is the absolute ratio): error relative to each corpus's own signal scale, so
         # a channel that simply moves more in the new corpus is told apart from one the tokenizer encodes worse
-        relative = {k: round((errors[k] / max(scale[k], 1e-9)) / max(reference[k] / max(reference_scale[k], 1e-9), 1e-9), 3)
+        relative = {k: round((errors[k] / max(scale[k], 1e-9)) / max(own_reference[k] / max(reference_scale[k], 1e-9), 1e-9), 3)
                     for k in errors if k in reference and k in scale and k in reference_scale}
         scale_ratios = {k: round(scale[k] / max(reference_scale[k], 1e-9), 3) for k in scale if k in reference_scale}
-        report["corpora"][corpus] = dict(clips=len(rows), errors=errors, ratios=ratios, scale=scale,
+        report["corpora"][corpus] = dict(clips=len(rows), errors=errors, ratios=ratios, ratios_own_reference=own_ratios,
+                                         scale=scale,
                                          scale_ratios=scale_ratios, relative_ratios=relative, **{"pass": passed})
     report["pass"] = ok
     store.put(args.output_key, json.dumps(report, indent=1, sort_keys=True).encode())
