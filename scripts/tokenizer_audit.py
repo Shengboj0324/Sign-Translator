@@ -53,6 +53,7 @@ def main(argv=None) -> int:
     p.add_argument("--tokenizer-key", required=True)
     p.add_argument("--per-group", type=int, default=40)
     p.add_argument("--device", default="cpu")
+    p.add_argument("--gains-key", help="amendment 5: fit_tokenizer_gains.py output, applied to every round trip")
     p.add_argument("--output-key")
     args = p.parse_args(argv)
     import warnings
@@ -85,12 +86,16 @@ def main(argv=None) -> int:
                                    and r.get("partition") == "val" and r.get("signer_component") == g]
     for corpus, part in (("youtube-asl-v1", "monitor"), ("asllvd-text-v1", "val")):
         groups[corpus] = [r for r in manifest["records"] if r.get("corpus") == corpus and r.get("partition") == part]
-    report = dict(tokenizer_key=args.tokenizer_key, groups={})
+    gains = json.loads(store.get(args.gains_key))["gains"] if args.gains_key else None
+    from fit_tokenizer_gains import apply_gains
+    report = dict(tokenizer_key=args.tokenizer_key, gains=gains, groups={})
     usage = collections.defaultdict(set)
     for name, records in groups.items():
         records = rng.sample(records, min(args.per_group, len(records)))
         real = [at_rate(conform(load_sample(r, "continuous", cache=cache, fetch=store.get), template), 24.) for r in records]
         trips = [round_trip(model, cfg, s, 24.) for s in real]
+        if gains:
+            trips = [apply_gains(t, gains) for t in trips]
         masked = [observed_like(t, r) for t, r in zip(trips, real)]
         res = compare(masked, real, ROT)
         row = {f"{c}_{k}": round(float(res[c][k]), 3) for c in ROT if c in res for k in ("speed_ratio", "variation_ratio")}
