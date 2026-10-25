@@ -32,7 +32,8 @@ export -f sha best upload exists stage
 ACQ=acquisition/2026-10-17-v1
 MIX=$ACQ/youtube-asl-v1/round3c-mixed-v1/manifest.json; MSHA=004bf6596a2330ee5f840bfeef0d233174f63d0602f72465b6c28a21078d00fd
 FULL=$ACQ/derived/full-v1/how2sign-text-manifest-v1/manifest.json
-RUN=tokens-rvq-d0b-prior-r3c D=$ACQ/youtube-asl-v1/round3c SIGNER_GROUPS=c01,c03,c05   # never GROUPS (reserved)
+# round 3d reuses this chain unchanged under its own names (R3_RUN, R3_D; docs "Round 3d design")
+RUN=${R3_RUN:-tokens-rvq-d0b-prior-r3c} D=${R3_D:-$ACQ/youtube-asl-v1/round3c} SIGNER_GROUPS=c01,c03,c05   # never GROUPS (reserved)
 if [ "${R3C_SMOKE:-0}" = 1 ]; then
   RUN=$RUN-smoke D=$D-smoke LIMIT=12 TESTLIM=12 QUICK=--quick HANDS="1.25" FACES="1.0" SMOOTH="0.1" DAMP="1,0.6"
 else
