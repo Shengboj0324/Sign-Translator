@@ -10,6 +10,13 @@ tokenizer recognisability check's ``round_trip``) and compared with the same cli
 - body, left hand, right hand and head rotation: speed ratio and variation ratio in [0.85, 1.15];
 - R2b: the 2D back-translator's BLEU on the round trips has a bootstrap 95% interval entirely above blank's.
 Both must hold. The report gives every ratio and BLEU, and ``pass``.
+
+**Round 3d (declared 2026-10-25 08:20 PDT, before any round-3d result).** With ``--speed-joints-key`` (a
+``joint_reliability.py`` report on How2Sign *training* clips), each channel's speed ratio is measured over the joints
+whose real frame velocity is signal (lag-1 velocity autocorrelation above the report's threshold); How2Sign's torso
+and upper-arm joints are jitter-dominated, so a speed ratio over them rewards reproducing extraction noise. The
+all-joint speed ratios stay in the report (``*_speed_ratio_all_joints``); variation ratios use every joint. Round 3d
+also runs R2b on 1000 clips (``--limit``), since at 300 even real clips barely separate from blank.
 """
 from __future__ import annotations
 
@@ -41,8 +48,23 @@ def observed_like(trip, real):
     return replace(trip, channels={name: masked(name, c) for name, c in trip.channels.items()})
 
 
+def restrict_joints(state, joints: dict):
+    """``state`` with each named channel's validity limited to its listed joints (labels)."""
+    channels = dict(state.channels)
+    for name, keep in joints.items():
+        if name not in channels:
+            continue
+        c = channels[name]
+        mask = np.array([label in keep for label in c.labels])
+        valid = c.valid & mask[None, :]
+        channels[name] = replace(c, valid=valid, observed=c.observed & valid,
+                                 confidence=np.where(valid, c.confidence, 0.),
+                                 values=np.where(valid[..., None], c.values, 0.))      # unavailable payload is zero
+    return replace(state, channels=channels)
+
+
 def judge(ratios: dict[str, float], bleu: dict, separated) -> dict:
-    bad = {k: v for k, v in ratios.items() if not BAND[0] <= v <= BAND[1]}
+    bad = {k: v for k, v in ratios.items() if not k.endswith("_all_joints") and not BAND[0] <= v <= BAND[1]}
     r2b_ok = separated(bleu["round_trip"]["ci95"], bleu["blank"]["ci95"])
     return dict(band=list(BAND), out_of_band=bad, r2b_above_blank=r2b_ok, **{"pass": not bad and r2b_ok})
 
@@ -59,6 +81,8 @@ def main(argv=None) -> int:
     p.add_argument("--device", default="cpu")
     p.add_argument("--gains-key", help="amendment 5: fit_tokenizer_gains.py output; its per-channel excursion gains "
                                          "are applied to every round trip after decoding")
+    p.add_argument("--speed-joints-key", help="round 3d: joint_reliability.py report; speed ratios over its reliable "
+                                                "joints (all-joint speeds are still reported)")
     p.add_argument("--output-key")
     args = p.parse_args(argv)
     import tempfile
@@ -91,6 +115,16 @@ def main(argv=None) -> int:
     res = compare([observed_like(t, r) for t, r in zip(trips, real)], real, CHANNELS)
     ratios = {f"{c}_{k}": round(float(res[c][k]), 3) for c in CHANNELS if c in res
               for k in ("speed_ratio", "variation_ratio")}
+    speed_joints = None
+    if args.speed_joints_key:
+        reliability = json.loads(store.get(args.speed_joints_key))
+        speed_joints = {name: v["reliable"] for name, v in reliability["channels"].items()}
+        masked_trips = [restrict_joints(observed_like(t, r), speed_joints) for t, r in zip(trips, real)]
+        restricted = compare(masked_trips, [restrict_joints(r, speed_joints) for r in real], CHANNELS)
+        for c in CHANNELS:
+            if c in speed_joints and c in restricted:
+                ratios[f"{c}_speed_ratio_all_joints"] = ratios[f"{c}_speed_ratio"]
+                ratios[f"{c}_speed_ratio"] = round(float(restricted[c]["speed_ratio"]), 3)
     translator, kind = load_translator(store, args.translator_key, args.translator_manifest_sha256)
     if kind != "keypoints":
         raise SystemExit("--translator-key must be the 2D keypoint back-translator")
@@ -102,7 +136,7 @@ def main(argv=None) -> int:
         bleu[name] = dict(bleu=point, ci95=ci)
     verdict = judge(ratios, bleu, separated)
     report = dict(tokenizer_key=args.tokenizer_key, clips=len(records), groups=sorted(groups), ratios=ratios, r2b=bleu,
-                  gains=gains,
+                  gains=gains, speed_joints=speed_joints,
                   **verdict)
     print(json.dumps(dict(ratios=ratios, r2b={k: v["bleu"] for k, v in bleu.items()}, out_of_band=verdict["out_of_band"],
                           r2b_above_blank=verdict["r2b_above_blank"], **{"pass": verdict["pass"]})), flush=True)

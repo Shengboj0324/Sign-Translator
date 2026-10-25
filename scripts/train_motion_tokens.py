@@ -70,7 +70,7 @@ def layout_template(manifest, corpus: str, cache, fetch):
     return load_sample(record, "continuous", cache=cache, fetch=fetch)
 
 
-LOSS_ONLY_FIELDS = ("quantizer_dropout", "velocity_weights")
+LOSS_ONLY_FIELDS = ("quantizer_dropout", "velocity_weights", "codebook_follows_lr")
 
 
 def warm_start_compatible(saved: dict, new: dict) -> bool:
@@ -98,6 +98,9 @@ def main(argv=None) -> int:
     parser.add_argument("--stage", choices=("tokenizer", "prior"), required=True)
     parser.add_argument("--architecture", choices=("vq", "rvq"), default="vq", help="tokens v1 (vq) or v2 (rvq)")
     parser.add_argument("--stages", type=int, default=4, help="rvq: residual stages per part")
+    parser.add_argument("--codebook-follows-lr", action="store_true",
+                        help="rvq: the codebooks' EMA rate follows the learning rate; no dead-code re-seeding below a "
+                             "quarter of the peak (round 3d)")
     parser.add_argument("--quantizer-dropout", type=float, default=.5,
                         help="rvq: probability a batch trains on a random number of stages (round 3c amendment 8)")
     parser.add_argument("--base-blocks", type=int, default=0, help="rvq: residual blocks at full frame rate")
@@ -187,7 +190,7 @@ def main(argv=None) -> int:
         else:
             config = MotionRVQConfig(motion, hidden=args.hidden, code_dim=args.code_dim, codebook=args.codebook,
                                      stages=args.stages, down_layers=args.down_layers, base_blocks=args.base_blocks,
-                                     quantizer_dropout=args.quantizer_dropout,
+                                     quantizer_dropout=args.quantizer_dropout, codebook_follows_lr=args.codebook_follows_lr,
                                      velocity_weights={k: float(v) for k, v in (x.split("=", 1) for x in args.velocity_weight)})
             model = MotionRVQ(config).to(device)
         tokenizer, tokenizer_state = None, None
@@ -358,6 +361,10 @@ def main(argv=None) -> int:
             tokens, mask, motion, *loci = to_device(batch, device)
             for group in optimizer.param_groups:
                 group["lr"] = lr_at(step, base=args.lr, warmup=args.warmup, total=args.steps)
+            if getattr(getattr(model, "config", None), "codebook_follows_lr", False):
+                # full rate through warmup (the codebooks must form), then the cosine decay's share of the peak
+                model.codebook_rate = 1. if step < args.warmup else optimizer.param_groups[0]["lr"] / args.lr
+                model.codebook_reseed = model.codebook_rate >= .25
             try:
                 loss, terms = loss_of(motion, tokens, mask, loci, train=True)
                 optimizer.zero_grad(set_to_none=True)

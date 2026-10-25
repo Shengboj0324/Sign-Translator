@@ -222,3 +222,23 @@ def test_velocity_scales_are_not_saved_so_s8v_checkpoints_load_under_the_new_cod
     model = MotionRVQ(weighted)
     assert not any(k.startswith("velocity_scale_") for k in model.state_dict())
     MotionRVQ(weighted).load_state_dict(model.state_dict())                 # strict load succeeds
+
+
+
+def test_codebook_rate_scales_the_ema_update_zero_freezes_the_codebooks_and_the_flag_keeps_old_shas():
+    states = [signer_state(s, frames=24, amplitude=.4) for s in range(2)]
+    batch = collate_multichannel(states)
+    base = small(states[0])
+    assert "codebook_follows_lr" not in base.to_dict()                                  # earlier configs unchanged
+    assert small(states[0], codebook_follows_lr=True).to_dict()["codebook_follows_lr"] is True
+
+    def moved(rate, reseed=True):
+        torch.manual_seed(0)
+        model = MotionRVQ(base).train()
+        model.codebook_rate, model.codebook_reseed = rate, reseed
+        before = model.quantizers["body"].codes.clone()
+        torch.manual_seed(1)
+        rvq_loss(model, batch, stages=3)
+        return float((model.quantizers["body"].codes - before).abs().max())
+    full, half, frozen = moved(1.), moved(.5), moved(0.)
+    assert frozen == 0. and 0. < half < full

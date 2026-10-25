@@ -84,6 +84,9 @@ class MotionRVQConfig:
     commitment: float = .25
     ema: float = .99
     quantizer_dropout: float = .5
+    # round 3d (opt-in): the codebooks' EMA rate follows the learning rate (rate lr/peak, no dead-code re-seeding below
+    # a quarter of the peak), so codebooks stop drifting while the network can no longer follow; False: earlier behaviour
+    codebook_follows_lr: bool = False
     skeleton_weights: dict = field(default_factory=lambda: dict(position=1., velocity=.5, acceleration=.25))
     # round 3c (opt-in): per-channel velocity matching, {channel: weight}. Empty keeps the earlier tokenizers' loss.
     velocity_weights: dict = field(default_factory=dict)
@@ -93,6 +96,8 @@ class MotionRVQConfig:
         data["motion"] = self.motion.to_dict()
         if not data.get("velocity_weights"):          # absent when unused: earlier tokenizers' configs (and SHAs) unchanged
             data.pop("velocity_weights", None)
+        if not data.get("codebook_follows_lr"):       # likewise
+            data.pop("codebook_follows_lr", None)
         return data
 
     def sha256(self) -> str:
@@ -213,6 +218,9 @@ class MotionRVQ(nn.Module):
         # velocity matching's normaliser per channel: a running mean of the real per-pair motion energy (0 = not yet seen)
         for name in (config.velocity_weights or {}):
             self.register_buffer(f"velocity_scale_{name}", torch.zeros((), dtype=torch.float64), persistent=False)
+        # the codebook update's rate (1: the configured EMA) and whether dead codes are re-seeded; the trainer sets
+        # them each step when config.codebook_follows_lr (runtime state, not saved)
+        self.codebook_rate, self.codebook_reseed = 1., True
 
     def _pad(self, x: torch.Tensor) -> tuple[torch.Tensor, int]:
         frames = x.shape[1]
@@ -270,7 +278,10 @@ class MotionRVQ(nn.Module):
         per-part one. Dead codes are re-seeded part by part and stage by stage, drawing
         random numbers in the same order.
         """
-        names, ema, size = [part for part, _ in self.parts], self.config.ema, self.config.codebook
+        if self.codebook_rate <= 0:
+            return
+        names, size = [part for part, _ in self.parts], self.config.codebook
+        ema = 1. - (1. - self.config.ema) * min(float(self.codebook_rate), 1.)
         rows = valid.reshape(-1).nonzero()[:, 0]
         if not len(rows) or not inputs:
             return
@@ -288,6 +299,8 @@ class MotionRVQ(nn.Module):
         for k, part in enumerate(names):
             quantizer = self.quantizers[part]
             quantizer.code_mass.copy_(mass[k]); quantizer.code_sum.copy_(total[k]); quantizer.codes.copy_(book[k])
+        if not self.codebook_reseed:
+            return
         dead = mass[:, :len(inputs)] < 1e-3                                             # (P, used, C)
         if not bool(dead.any()):
             return

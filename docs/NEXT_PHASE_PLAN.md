@@ -1240,3 +1240,56 @@ At weight 0.05 the head drifts out of band as training continues. **s8v7** uses 
 - `train_motion_tokens.py --init-key` now warm-starts a tokenizer whose config differs only in the loss-only fields `quantizer_dropout` and `velocity_weights`.
 
 **Precedence:** s8v6, s8v7, s8v8, s8v9. A candidate that passes without gains outranks one that needs the amendment-5 gains.
+
+## Round 3c tokenizer results so far (2026-10-25, 08:20 PDT; s8v7 still training)
+
+Every judged candidate is rejected:
+
+| candidate | domain | recognisability | fidelity (body speed, hand variation) | R2b round trip (blank 2.09) |
+|---|---|---|---|---|
+| s8v5 | fail (ASLLVD body 1.507) | — | fail (0.70, 0.77–0.78; head 1.19) | 3.16 |
+| s8v6 | pass (1.466) | pass (1.008) | fail (0.66, 0.77) | 3.17 |
+| s8v8 | fail (ASLLVD body 1.508) | pass (0.988) | fail (0.65, 0.77) | 3.46 |
+| s8v9 | pass (1.451) | pass (0.988) | fail (0.67, 0.77–0.78) | 3.28 |
+
+None qualifies for the amendment-5 gains: in each, R2b also fails, which is not a speed or variation failure.
+
+**What the damping is, from the diagnostics recorded in amendment 8 and these:**
+1. **Not a bug.** The representation is lossless: real clip → unit space → raw gives every ratio exactly 1.0.
+2. **Not EMA weights.** The raw weights damp the same.
+3. **Not the network's capacity.** Overfitting s8v6 on 8 How2Sign clips for 1200 steps gives body speed 1.05, variation 0.99, hands 0.93–0.98 and body error 1.6°. So the network can reproduce full amplitude.
+4. **It is underfitting**, a regression toward the mean across 125k clips, and it shrinks steadily with training. For s8 at steps 8k, 20k and 34k:
+   - hand variation 0.69–0.70, 0.73–0.79, 0.81–0.84;
+   - hand speed 0.72–0.77, 0.81–0.89, 0.88–0.94;
+   - body variation 0.81, 0.83, 0.88;
+   - head speed 1.78, 1.64, 1.50.
+5. **The cap on training length is the late spikes.**
+   - s8: validation loss 0.16 → 1.15 at step 35k.
+   - s8v6: 0.27 → 443 at step 30k, in head translation, face and blink.
+   - Both came as the cosine learning rate fell toward zero (1.2e-5 and 4.6e-5), while the codebooks kept updating at full EMA rate with random dead-code re-seeding.
+   - s8v6 at step 30k with its live weights explodes on rare validation clips: head translation error 0.375 m, a face value of 3.26.
+6. **Body speed over the torso measures jitter.** `scripts/joint_reliability.py` on 200 How2Sign training clips (report `round3d/joint-reliability-how2sign-train.json`):
+   - jitter-dominated (lag-1 velocity autocorrelation ≤ 0.1, speed about halved by 0.1 s smoothing): Pelvis, Chest, upper arms, thighs;
+   - signal: forearms, wrists and every finger joint.
+
+## Round 3d design (declared 2026-10-25, 08:20 PDT, before any round-3d result)
+
+**Tokenizer changes:**
+- **Codebooks follow the learning rate** (`--codebook-follows-lr`). The EMA rate is the full configured rate through warmup, then lr/peak; no dead-code re-seeding below a quarter of the peak.
+- **Longer training with patience 10.**
+- **Velocity weight 0.3** on head rotation and head translation only. That is s8v6's head term, which put head speed in band (1.055); body and hands get none, because velocity terms cost ASLLVD/YouTube pose accuracy.
+
+**Candidates**, each on its own pod with a smoke run first (`runpod/fleet/round3d_tokenizer_{d1,d2,d3}.sh`):
+- **d1:** s8 at step 34000 (EMA weights, SHA-256 `36f2c84e…06e1`, the best round-3c reconstruction) warm-started. lr 1.5e-4, cosine over 60000 steps, warmup 500.
+- **d2:** d1 with How2Sign sampled at weight 2. How2Sign is the damped corpus and the one the fidelity check judges.
+- **d3:** from scratch, the s8 recipe over 100000 steps at lr 3e-4.
+
+**Acceptance:** round 3c's three checks and limits, with two measurement corrections.
+- **Fidelity speed ratios** are taken over the reliable joints of the joint-reliability report (body: forearms and wrists; hands: all). All-joint speeds are still reported; variation ratios use every joint.
+- **R2b runs on 1000 How2Sign validation clips** instead of 300. At 300, even real clips (4.09 [3.16, 5.08]) barely clear blank (2.09 [1.44, 2.74]).
+
+No other rule changes. The domain check stays as declared, even though s8v8 showed that it penalises a better How2Sign reconstruction.
+
+**Precedence:** among passing candidates, the one with the highest R2b round-trip BLEU. The round-3c prior recipe (60000 steps, ASLLVD weight 3) then trains on it. The evaluation chain and the gate are those of round 3c, under round-3d run names.
+
+**If no round-3d candidate passes:** stop before the prior and report.
