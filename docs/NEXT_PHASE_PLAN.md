@@ -1296,3 +1296,22 @@ No other rule changes. The domain check stays as declared, even though s8v8 show
 **Precedence:** among passing candidates, the one with the highest R2b round-trip BLEU. The round-3c prior recipe (60000 steps, ASLLVD weight 3) then trains on it. The evaluation chain and the gate are those of round 3c, under round-3d run names.
 
 **If no round-3d candidate passes:** stop before the prior and report.
+
+## Round 3d amendment 1: d4, gradient-spike skipping (declared 2026-10-25, 09:35 PDT, before any round-3d verdict)
+
+Both warm-started candidates went unstable at mid learning rate:
+- **d1:** validation loss 1.95 at step 8k and 13.2 at 10k; best is still step 6k (0.242).
+- **d2:** 77.8 at 8k and 4500 at 9k; best is step 5k (0.205).
+
+d3, trained from scratch, is stable so far (0.411 at step 5k).
+
+d2's training log shows the trigger:
+- The gradient norm is normally 3–6, and every step is clipped to 1.0.
+- At step 7000 it jumped to 6998, with a head-translation velocity error of 7.9 and face error of 0.28.
+- Clipping bounds the step size, but the spike step still moves the weights in a corrupted direction.
+- Head-translation data have no glitches: How2Sign's largest frame jump is 3 cm, and no other corpus carries translations.
+
+**d4:** d3's recipe plus `--skip-grad-spikes 8`.
+- A step whose gradient norm exceeds 8× the median of the last 200 accepted steps (after step 500) applies neither the optimizer update nor the EMA update.
+- More than 100 consecutive spikes stop the run as diverging.
+- d4 is judged by the same rules and joins the same precedence (the passing candidate with the highest R2b round trip).

@@ -422,3 +422,19 @@ def test_a_tokenizer_warm_starts_with_a_different_quantizer_dropout_but_not_a_di
     assert script.warm_start_compatible({"a": 1, "quantizer_dropout": .5}, {"a": 1, "quantizer_dropout": 0.,
                                                                              "velocity_weights": {"body": 1.}})
     assert not script.warm_start_compatible({"a": 1}, {"a": 2})
+
+
+def test_gradient_spike_skipping_runs_and_logs_its_count(tmp_path, monkeypatch):
+    monkeypatch.setenv("SIGN_CACHE_DIR", str(tmp_path / "cache"))
+    digest = store_with_manifest(tmp_path / "store")
+    script = load_script()
+    store = tmp_path / "store"
+    assert script.main(["--store", f"dir:{store}", "--manifest-key", "manifest.json", "--manifest-sha256", digest,
+                        "--batch-size", "2", "--warmup", "1", "--checkpoint-every", "3", "--workers", "0",
+                        "--trained-channels", "body,head_rotation,face", "--architecture", "rvq", "--stage", "tokenizer",
+                        "--run", "spk", "--hidden", "16", "--code-dim", "8", "--codebook", "16", "--stages", "2",
+                        "--down-layers", "1", "--steps", "3", "--skip-grad-spikes", "8", "--codebook-follows-lr"]) == 0
+    log = json.loads((store / "training-runs/spk/log/step-00000003.json").read_text())
+    assert all(e["skipped_steps"] == 0 for e in log)             # under 500 steps nothing is skipped
+    run = json.loads((store / "training-runs/spk/run.json").read_text())
+    assert run["config"]["codebook_follows_lr"] is True and run["args"]["skip_grad_spikes"] == 8

@@ -21,6 +21,7 @@ every prior checkpoint, so one prior checkpoint fully defines the generator.
 from __future__ import annotations
 
 import argparse
+import collections
 from functools import partial
 import hashlib
 import io
@@ -29,6 +30,7 @@ import math
 import os
 from pathlib import Path
 import random
+import statistics
 import sys
 import tempfile
 import time
@@ -101,6 +103,9 @@ def main(argv=None) -> int:
     parser.add_argument("--codebook-follows-lr", action="store_true",
                         help="rvq: the codebooks' EMA rate follows the learning rate; no dead-code re-seeding below a "
                              "quarter of the peak (round 3d)")
+    parser.add_argument("--skip-grad-spikes", type=float, default=0.,
+                        help="skip the update (optimizer and EMA) of a step whose gradient norm exceeds this multiple of "
+                             "the running median of the last 200 accepted steps (after 500 steps); 0 = off (round 3d)")
     parser.add_argument("--quantizer-dropout", type=float, default=.5,
                         help="rvq: probability a batch trains on a random number of stages (round 3c amendment 8)")
     parser.add_argument("--base-blocks", type=int, default=0, help="rvq: residual blocks at full frame rate")
@@ -354,6 +359,7 @@ def main(argv=None) -> int:
         stale = 0 if metrics["val/loss"] < best_loss else stale + 1
         return args.patience and stale >= args.patience
 
+    accepted, skipped, consecutive = collections.deque(maxlen=200), 0, 0      # --skip-grad-spikes state
     while step < args.steps:
         for batch in loader:
             if step >= args.steps:
@@ -370,13 +376,26 @@ def main(argv=None) -> int:
                 optimizer.zero_grad(set_to_none=True)
                 loss.backward()
                 norm = torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
-                optimizer.step()
-                ema.update(model)
+                skip = False
+                if args.skip_grad_spikes > 0:          # one host sync per step, only when enabled
+                    value = float(norm)
+                    if not math.isfinite(value) or (len(accepted) >= 50 and step >= 500
+                                                     and value > args.skip_grad_spikes * statistics.median(accepted)):
+                        skip = True
+                        skipped += 1; consecutive += 1
+                        if consecutive > 100:
+                            raise SystemExit(f"over 100 consecutive gradient spikes at step {step}: the run is diverging")
+                    else:
+                        accepted.append(value); consecutive = 0
+                if not skip:
+                    optimizer.step()
+                    ema.update(model)
+                optimizer.zero_grad(set_to_none=True)
             except Exception:
                 flush()                        # an unread non-finite loss before this failure is its cause
                 raise
             step += 1
-            entry = dict(step=step, loss=loss.detach(), grad_norm=norm.detach(),
+            entry = dict(step=step, loss=loss.detach(), grad_norm=norm.detach(), **(dict(skipped_steps=skipped) if args.skip_grad_spikes > 0 else {}),
                          seconds=round(time.monotonic() - started, 1), **{f"train/{k}": v for k, v in terms.items()})
             log.append(entry)
             pending.append(entry)
