@@ -1,6 +1,6 @@
 """Per-channel excursion gains for a uniformly damped tokenizer (round 3c amendment 5, declared 2026-10-25 05:00 PDT).
 
-On ``--limit`` *training* clips of the How2Sign signer groups, each passed through the tokenizer and back and measured on
+On ``--limit`` *training* clips of How2Sign (every training signer), each passed through the tokenizer and back and measured on
 the frames the clip observed, the gain of channel c is
 
     g_c = clip( variation_real_c / variation_round_trip_c, 1, 1.5 ),
@@ -43,7 +43,8 @@ def main(argv=None) -> int:
     p.add_argument("--manifest-key", required=True)
     p.add_argument("--manifest-sha256", required=True)
     p.add_argument("--tokenizer-key", required=True)
-    p.add_argument("--groups", default="c01,c03,c05")
+    p.add_argument("--groups", default="", help="signer components to fit on (default: every training signer; the "
+                                                "How2Sign splits are signer-disjoint, so c01/c03/c05 have no training clips)")
     p.add_argument("--limit", type=int, default=300)
     p.add_argument("--output-key", required=True)
     args = p.parse_args(argv)
@@ -59,9 +60,11 @@ def main(argv=None) -> int:
     with tempfile.TemporaryDirectory() as t:
         path = Path(t) / "m.json"; path.write_bytes(store.get(args.manifest_key) + b"\n")
         manifest = load_manifest(path, expected_sha256=args.manifest_sha256)
-    groups = set(args.groups.split(","))
+    groups = {g for g in args.groups.split(",") if g}
     records = [r for r in manifest["records"] if r.get("corpus") == "how2sign-two-view-text-v1"
-               and r.get("partition") == "train" and r.get("signer_component") in groups]
+               and r.get("partition") == "train" and (not groups or r.get("signer_component") in groups)]
+    if not records:
+        raise SystemExit("no How2Sign training clips match")
     records = random.Random(0).sample(records, min(args.limit, len(records)))
     real = [at_rate(load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]), 24.)
             for r in records]
