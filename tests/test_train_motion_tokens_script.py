@@ -206,6 +206,23 @@ def test_tokens_v2_train_validate_select_best_resume_and_evaluate(tmp_path, monk
                           "--limit", "2", "--guidance", "1", "--output-key", "eval2.json"]) == 0
     report = json.loads((store / "eval2.json").read_text())
     assert report["generator"] == "motion_tokens_v2"
+    assert report["decoder_gains"] is None
+    # amendment 5: an accepted gains file for the prior's tokenizer becomes part of its decoder
+    from fit_tokenizer_gains import decoder_gains_key
+    gains_path = store / decoder_gains_key(key)
+    assert decoder_gains_key(key) == "training-runs/tok2/decoder-gains-step-00000004.json"
+    gains_path.write_text(json.dumps(dict(tokenizer_key=key, gains={"body": 1.4})))
+    evaluate_args = ["--store", f"dir:{store}", "--manifest-key", "manifest.json", "--manifest-sha256", digest,
+                     "--checkpoint-key", "training-runs/pri2/checkpoints/step-00000002.pt", "--partition", "train",
+                     "--limit", "2", "--guidance", "1"]
+    assert evaluate.main(evaluate_args + ["--output-key", "eval3.json"]) == 0
+    gained = json.loads((store / "eval3.json").read_text())
+    assert gained["decoder_gains"] == {"body": 1.4}
+    first, second = (next(v for k, v in r["results"].items()) for r in (report, gained))
+    assert second["body"]["variation_ratio"] > first["body"]["variation_ratio"]
+    gains_path.write_text(json.dumps(dict(tokenizer_key="training-runs/other/checkpoints/step-1.pt", gains={"body": 1.4})))
+    with pytest.raises(SystemExit, match="was fitted for"):
+        evaluate.main(evaluate_args + ["--output-key", "eval4.json"])
 
 
 def test_jitter_is_zero_on_uniform_rotation_and_the_diagnosis_runs(tmp_path, monkeypatch):

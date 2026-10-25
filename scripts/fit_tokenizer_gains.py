@@ -24,6 +24,15 @@ CHANNELS = ("body", "left_hand", "right_hand")
 CAP = (1., 1.5)
 
 
+def decoder_gains_key(tokenizer_key: str) -> str:
+    """Where an *accepted* gains file lives (amendment 5): written only after the gained fidelity and recognisability
+    checks pass; ``evaluate_text_to_motion.load_generator`` then applies it to every state decoded by that tokenizer."""
+    run, _, name = tokenizer_key.rpartition("/checkpoints/")
+    if not run or not name.endswith(".pt"):
+        raise ValueError(f"not a tokenizer checkpoint key: {tokenizer_key}")
+    return f"{run}/decoder-gains-{name[:-3]}.json"
+
+
 def apply_gains(state, gains: dict):
     """``state`` with each channel's excursions about its clip mean scaled by its gain (1 leaves it unchanged)."""
     from signtranslator.generation.postprocess import damp_rotation_channel

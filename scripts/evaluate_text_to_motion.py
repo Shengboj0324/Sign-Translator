@@ -44,6 +44,20 @@ def load_state(store, key: str, sha256: str) -> MultichannelMotion:
         return MultichannelMotion.load(path, expected_sha256=sha256)
 
 
+def accepted_decoder_gains(store, tokenizer_key):
+    """The accepted per-channel gains for ``tokenizer_key`` (``fit_tokenizer_gains.decoder_gains_key``), or None."""
+    if not tokenizer_key:
+        return None
+    from fit_tokenizer_gains import decoder_gains_key
+    key = decoder_gains_key(tokenizer_key)
+    if not store.exists(key):
+        return None
+    report = json.loads(store.get(key))
+    if report.get("tokenizer_key") != tokenizer_key:
+        raise SystemExit(f"{key} was fitted for {report.get('tokenizer_key')}, not {tokenizer_key}")
+    return report["gains"]
+
+
 def load_generator(store, key: str, manifest_sha256: str, device: str = "cpu", *, temperature: float = 1., top_k: int = 0):
     """(label, trained channels, sample(text, fps, seconds, guidance, steps, seed)) for any checkpoint kind."""
     checkpoint = torch.load(io.BytesIO(store.get(key)), map_location="cpu", weights_only=False)
@@ -67,6 +81,15 @@ def load_generator(store, key: str, manifest_sha256: str, device: str = "cpu", *
             return generate_rvq_motion_batch(prior, tokenizer, texts, fps=fps, durations=seconds, guidance=guidance,
                                              temperature=temperature, top_k=top_k, seed=seed)
         sample.batch = sample_batch
+        sample.decoder_gains = None
+        gains = accepted_decoder_gains(store, checkpoint.get("tokenizer_key"))
+        if gains:                      # amendment 5: the accepted gains are part of this tokenizer's decoder
+            from fit_tokenizer_gains import apply_gains
+            plain, plain_batch = sample, sample_batch
+            sample = lambda *a, **k: apply_gains(plain(*a, **k), gains)
+            sample.batch = lambda *a, **k: [apply_gains(o, gains) for o in plain_batch(*a, **k)]
+            sample.decoder_gains = gains
+            print(f"decoder gains applied: {gains}", flush=True)
         return "motion_tokens_v2", prior.config.tokenizer.motion.trained_channels, sample
     if checkpoint.get("kind") in ("motion_tokenizer", "motion_rvq_tokenizer"):
         raise SystemExit(f"{key} is a tokenizer, not a generator; evaluate its prior")
@@ -288,6 +311,7 @@ def main(argv=None) -> int:
                   retrieval_key=args.retrieval_key, saved_generated=args.save_generated,
                   temperature=temperature, top_k=args.top_k, head_smoothing=args.head_smoothing, head_damping=args.head_damping,
                   translation_smoothing=args.translation_smoothing,
+                  decoder_gains=getattr(sample, "decoder_gains", None) if args.checkpoint_key else None,
                   manifest_sha256=args.manifest_sha256, partition=args.partition, corpus=args.corpus, fps=args.fps,
                   signer_component=args.signer_component,
                   condition=args.condition,
