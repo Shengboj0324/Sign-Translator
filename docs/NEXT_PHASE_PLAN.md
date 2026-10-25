@@ -1120,3 +1120,22 @@ This is round 3b's remaining motion failure profile before any prior is involved
 - The passing candidate with the fewest codes per step is used (c1024 16, s6 24, s8 32).
 - If none passes, the round stops before the prior (TOKENIZER-FAILED) and is redesigned.
 - Everything else in the round-3c design is unchanged.
+
+## Round 3c amendment 2: a velocity-matched candidate (declared 2026-10-25, 02:45 PDT, before any tokenizer verdict)
+
+**Audit of the step-6000 checkpoints (s8, s6)** on real val clips (`scripts/tokenizer_audit.py`, How2Sign c01/c03/c05):
+- head speed 1.8–3.2×;
+- hand speed 0.67–0.86×;
+- right-hand variation 0.59–0.66×;
+- head-translation jitter 2.5–5.4×.
+
+They are no better than round 3a's tokenizer, although their validation loss is lower. The tokenizer's loss is per-frame error, plus velocity and acceleration only through the body and hand skeleton. Head rotation, head translation and the hand rotations carry no velocity term, so minimising per-frame error damps fast motion and leaves noise on near-still channels.
+
+**Amendment:**
+- `motion_rvq.velocity_matching_loss` (opt-in `--velocity-weight`) adds a relative frame-to-frame motion error per channel.
+- A fourth candidate, **s8v** (the s8 recipe plus velocity weight 1.0 on body, both hands, head rotation and head translation), trains on its own GPU pod (`runpod/fleet/round3c_tokenizer_v.sh`) and is judged by the same three checks.
+
+**Precedence:**
+- If any of s6, s8 or c1024 passes, it is used.
+- Only if all three fail and s8v passes does s8v's pod train the prior, with the same recipe.
+- If no candidate passes, the round stops before the prior.
