@@ -11,7 +11,7 @@ upload() { python -c "import os,sys; from signtranslator.data.text_motion_datase
 ACQ=acquisition/2026-10-17-v1
 MIX=$ACQ/youtube-asl-v1/round3c-mixed-v1/manifest.json; MSHA=$(sha $MIX)
 [ "$MSHA" = 004bf6596a2330ee5f840bfeef0d233174f63d0602f72465b6c28a21078d00fd ] || { echo "mix SHA mismatch"; exit 1; }
-RUN=tokens-rvq-d0b-prior-r3d
+RUN=${PRUN:-tokens-rvq-d0b-prior-r3d}   # PRUN: a speculative prior on a fallback candidate (amendment 3)
 if [ "${R3D_SMOKE:-0}" = 1 ]; then RUN=$RUN-smoke PSTEPS=300 PEVERY=100; else PSTEPS=60000 PEVERY=1000; fi
 python scripts/prefetch_cache.py $MIX || { echo "states missing or not matching the manifest"; exit 1; }
 TSHA=$(sha "$TOKKEY"); echo "tokenizer $TOKKEY $TSHA"
