@@ -94,6 +94,9 @@ def main(argv=None) -> int:
         masked = [observed_like(t, r) for t, r in zip(trips, real)]
         res = compare(masked, real, ROT)
         row = {f"{c}_{k}": round(float(res[c][k]), 3) for c in ROT if c in res for k in ("speed_ratio", "variation_ratio")}
+        # absolute per-frame accuracy (geodesic degrees on observed frames): s8v matched speeds while its poses drifted
+        # (body 8.3 deg vs round 3a's 3.5 on How2Sign, 26 vs 4 on YouTube), which only the domain check caught
+        row.update({f"{c}_error_deg": round(float(res[c]["geodesic_deg"]), 2) for c in ROT if c in res and "geodesic_deg" in res[c]})
         for c in TRANS:
             a = np.nanmean([vec_speed(m, c) for m in masked]); b = np.nanmean([vec_speed(r, c) for r in real])
             row[f"{c}_speed_ratio"] = round(float(a / b), 3) if b and np.isfinite(b) else None

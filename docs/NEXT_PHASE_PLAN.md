@@ -1148,3 +1148,18 @@ The audit of s8v at step 8000 (How2Sign c01/c03/c05):
 - body speed 0.64–0.71× and variation 0.55–0.70×, still damped. YouTube and ASLLVD are at 0.83–0.94×.
 
 A fifth candidate, **s8v3**, uses s8v's recipe with velocity weight 3 on body and both hands (1 on head rotation and translation). It runs on its own pod (`runpod/fleet/round3c_tokenizer_v3_all.sh`) with the same three checks. Precedence: c1024, s6, s8, then s8v, then s8v3. A candidate trains the prior only if every earlier one failed and it passes.
+
+## Round 3c amendment 4: s8v5 (declared 2026-10-25, 04:30 PDT, before s8v3's and the original candidates' verdicts)
+
+**s8v failed its domain check**, and correctly. Its per-frame pose error is far above round 3a's:
+- How2Sign: body 8.3° vs 3.5°, head 9.8° vs 2.6°;
+- YouTube and ASLLVD: body 26–27° vs 4°.
+
+At weight 1, the velocity term, which is relative and of order 1, outweighed the per-frame loss (of order 0.01) by 10–100×. Velocity matching ignores a constant offset, so the tokenizer kept the motion and lost the pose. Speeds and variation were close (head 0.93–1.13, YouTube and ASLLVD 0.83–0.99) while positions drifted. The deep audit (`tokenizer_audit.py`) now also reports absolute per-frame error, so a speed gain cannot hide a pose error.
+
+The per-batch normaliser also diverged on near-still batches (validation loss 14.6 at step 22000). Fixed in 418fb9e: a running energy scale.
+
+**New candidate s8v5** (`runpod/fleet/round3c_tokenizer_v5_all.sh`):
+- 8 stages, the stable velocity matching at weight 0.05 on the same five channels;
+- the same three checks;
+- precedence after c1024, s6, s8, s8v and s8v3.
