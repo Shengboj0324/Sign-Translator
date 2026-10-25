@@ -1213,7 +1213,7 @@ The s8v5 audit at step 16000 (How2Sign):
 
 At weight 0.05 the head drifts out of band as training continues. **s8v7** uses velocity weight 1.0 on head rotation and translation (the weight that put s8v's head in band) and 0.05 on body and hands (where s8v's weight 1 cost pose accuracy). Precedence: after s8v6.
 
-## Round 3c amendment 8: quantiser dropout, s8v8 and s8v9 (declared 2026-10-25, 08:20 PDT, before s8v6's and s8v7's verdicts)
+## Round 3c amendment 8: quantiser dropout, s8v8 and s8v9 (declared 2026-10-25, 07:00 PDT, before s8v6's and s8v7's verdicts)
 
 **s8v5 verdict:** rejected, on two checks.
 - **Domain:** ASLLVD body 1.507× How2Sign, against a 1.5 limit.
