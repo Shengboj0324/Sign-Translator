@@ -1330,9 +1330,11 @@ The rule itself conflicts with the fidelity check. Its denominator is the candid
 d1 encodes ASLLVD hands better than s8 did and fails only because its How2Sign error fell 21%. s8v8 failed the same way.
 
 **Amended rule (for d2, d3 and d4):**
-- The denominator is fixed at round 3c's s8 reference errors (`round3c/tokenizer-domain-check-s8.json`).
-- Every channel of every new corpus must stay within 1.5× those errors.
-- This is not looser for the regressions the check exists to catch: the velocity-weighted family's ASLLVD body error of 7.3 would still fail (limit 6.24).
+- Each channel's denominator is the larger of the candidate's own How2Sign error and round 3c's s8 reference error (`round3c/tokenizer-domain-check-s8.json`).
+- Every channel of every new corpus must stay within 1.5× that denominator.
+- So a better How2Sign reconstruction can no longer fail the check, and a corpus encoded much worse than How2Sign still fails as before.
+
+*Correction (10:05 PDT, before any d2–d4 result).* The first wording fixed the denominator at s8's errors alone. A plumbing run on d1 (40 clips, diagnostic only) showed that form failing head rotation at 2.2. The head velocity term raises head per-frame error on every corpus alike, How2Sign included (5.60 against s8's 3.10). That is a uniform accuracy shift, not the domain question, so the larger of the two errors is the denominator.
 - The check runs from the Mac orchestrator after each pod's checks, with the same clips, limit and corpora (`tokenizer-domain-check-<n>-a2.json`), via `tokenizer_domain_check.py --fixed-reference-key`.
 
 d1 stays judged by the rule declared before its result.

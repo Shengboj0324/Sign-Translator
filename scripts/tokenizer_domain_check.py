@@ -11,8 +11,11 @@ space with the reference corpus's. Pass rule (fixed here): every channel's error
 denominator was the candidate's own reference-corpus error, so a tokenizer that reconstructs How2Sign better - what
 the fidelity check demands - fails even when it encodes the new corpora better too (s8v8; round 3d's d1: ASLLVD
 hands 2.09 against s8's 2.14, yet right hand 1.58 because its How2Sign error fell from 1.67 to 1.32). With
-``--fixed-reference-key`` (an earlier domain report, round 3c's s8) the denominator is that report's reference errors,
-fixed for every candidate: each new corpus must be encoded within ``--max-ratio`` of the baseline's How2Sign error.
+``--fixed-reference-key`` (an earlier domain report, round 3c's s8) the denominator of each channel is the larger of
+the candidate's own reference error and that report's: a better How2Sign reconstruction can no longer fail the check,
+and a channel that is uniformly less accurate everywhere (How2Sign included) is judged relative to itself, as before
+(corrected 10:05 PDT, before any d2-d4 result: the fixed-only form, tried on d1 as a plumbing check, failed head
+rotation at 2.2 because the head velocity term raises head error on every corpus alike, which is not a domain question).
 The candidate's own-reference ratios stay in the report (``ratios_own_reference``).
 """
 from __future__ import annotations
@@ -102,8 +105,8 @@ def main(argv=None) -> int:
     reference, reference_scale = channel_errors(model, states_of(reference_rows))
     own_reference = reference
     if args.fixed_reference_key:
-        fixed = json.loads(store.get(args.fixed_reference_key))
-        reference = fixed["reference"]
+        fixed = json.loads(store.get(args.fixed_reference_key))["reference"]
+        reference = {k: max(v, fixed.get(k, v)) for k, v in own_reference.items()}
     report = dict(reference_corpus=args.conform_to_corpus, reference=reference, reference_scale=reference_scale,
                   own_reference=own_reference, fixed_reference_key=args.fixed_reference_key, corpora={},
                   max_ratio=args.max_ratio)

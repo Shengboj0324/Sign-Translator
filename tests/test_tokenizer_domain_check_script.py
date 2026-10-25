@@ -44,11 +44,15 @@ def test_a_fixed_reference_replaces_the_tokenizers_own_reference_errors(tmp_path
               "--corpus", "new", "--limit", "4"]
     domain.main(common + ["--output-key", "own.json"])
     own = json.loads((root / "own.json").read_text())
-    fixed = {k: 2 * v for k, v in own["reference"].items()}              # a baseline with twice the reference error
+    names = sorted(own["reference"])
+    # a baseline twice as inaccurate on the first channel (the candidate improved it) and half on the others
+    fixed = {k: (2 if k == names[0] else .5) * v for k, v in own["reference"].items()}
     (root / "baseline.json").write_text(json.dumps(dict(reference=fixed)))
     domain.main(common + ["--fixed-reference-key", "baseline.json", "--output-key", "fixed.json"])
     report = json.loads((root / "fixed.json").read_text())
     new, old = report["corpora"]["new"], own["corpora"]["new"]
-    assert report["reference"] == fixed and report["own_reference"] == own["reference"]
+    assert report["own_reference"] == own["reference"]
+    assert report["reference"] == {k: max(v, fixed[k]) for k, v in own["reference"].items()}
     for k, v in old["ratios"].items():
-        assert abs(new["ratios"][k] - v / 2) <= 1e-3 and new["ratios_own_reference"][k] == v
+        expect = v / 2 if k == names[0] else v          # the larger denominator: the baseline's, or the candidate's own
+        assert abs(new["ratios"][k] - expect) <= 1e-3 and new["ratios_own_reference"][k] == v
