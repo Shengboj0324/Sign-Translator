@@ -1316,7 +1316,7 @@ d2's training log shows the trigger:
 - More than 100 consecutive spikes stop the run as diverging.
 - d4 is judged by the same rules and joins the same precedence (the passing candidate with the highest R2b round trip).
 
-## Round 3d amendment 2: domain check against a fixed reference (declared 2026-10-25, 09:55 PDT, before d2's, d3's and d4's verdicts)
+## Round 3d amendment 2: domain check against a fixed reference (declared 2026-10-25, 09:45 PDT, before d2's, d3's and d4's verdicts)
 
 **d1 verdict:** rejected under the declared domain rule. ASLLVD right hand came out at 1.58 against the 1.5 limit (left hand 1.44, body 1.34); YouTube passed. d1's recognisability and fidelity checks are still running.
 
@@ -1334,7 +1334,7 @@ d1 encodes ASLLVD hands better than s8 did and fails only because its How2Sign e
 - Every channel of every new corpus must stay within 1.5× that denominator.
 - So a better How2Sign reconstruction can no longer fail the check, and a corpus encoded much worse than How2Sign still fails as before.
 
-*Correction (10:05 PDT, before any d2–d4 result).* The first wording fixed the denominator at s8's errors alone. A plumbing run on d1 (40 clips, diagnostic only) showed that form failing head rotation at 2.2. The head velocity term raises head per-frame error on every corpus alike, How2Sign included (5.60 against s8's 3.10). That is a uniform accuracy shift, not the domain question, so the larger of the two errors is the denominator.
+*Correction (09:50 PDT, before any d2–d4 result).* The first wording fixed the denominator at s8's errors alone. A plumbing run on d1 (40 clips, diagnostic only) showed that form failing head rotation at 2.2. The head velocity term raises head per-frame error on every corpus alike, How2Sign included (5.60 against s8's 3.10). That is a uniform accuracy shift, not the domain question, so the larger of the two errors is the denominator.
 - The check runs from the Mac orchestrator after each pod's checks, with the same clips, limit and corpora (`tokenizer-domain-check-<n>-a2.json`), via `tokenizer_domain_check.py --fixed-reference-key`.
 
 d1 stays judged by the rule declared before its result.

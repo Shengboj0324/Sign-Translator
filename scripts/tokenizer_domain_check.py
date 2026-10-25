@@ -7,14 +7,14 @@ training sees them - and compares, per channel, the mean absolute reconstruction
 space with the reference corpus's. Pass rule (fixed here): every channel's error ratio new/reference is at most
 ``--max-ratio`` (1.5); otherwise the tokenizer must be retrained on the mix first.
 
-**Round 3d amendment 2 (declared 2026-10-25 09:55 PDT, before d2's, d3's and d4's verdicts).** The ratio's
+**Round 3d amendment 2 (declared 2026-10-25 09:45 PDT, before d2's, d3's and d4's verdicts).** The ratio's
 denominator was the candidate's own reference-corpus error, so a tokenizer that reconstructs How2Sign better - what
 the fidelity check demands - fails even when it encodes the new corpora better too (s8v8; round 3d's d1: ASLLVD
 hands 2.09 against s8's 2.14, yet right hand 1.58 because its How2Sign error fell from 1.67 to 1.32). With
 ``--fixed-reference-key`` (an earlier domain report, round 3c's s8) the denominator of each channel is the larger of
 the candidate's own reference error and that report's: a better How2Sign reconstruction can no longer fail the check,
 and a channel that is uniformly less accurate everywhere (How2Sign included) is judged relative to itself, as before
-(corrected 10:05 PDT, before any d2-d4 result: the fixed-only form, tried on d1 as a plumbing check, failed head
+(corrected 09:50 PDT, before any d2-d4 result: the fixed-only form, tried on d1 as a plumbing check, failed head
 rotation at 2.2 because the head velocity term raises head error on every corpus alike, which is not a domain question).
 The candidate's own-reference ratios stay in the report (``ratios_own_reference``).
 """
