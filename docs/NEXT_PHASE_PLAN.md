@@ -1139,3 +1139,12 @@ They are no better than round 3a's tokenizer, although their validation loss is 
 - If any of s6, s8 or c1024 passes, it is used.
 - Only if all three fail and s8v passes does s8v's pod train the prior, with the same recipe.
 - If no candidate passes, the round stops before the prior.
+
+## Round 3c amendment 3: s8v3 (declared 2026-10-25, 03:25 PDT, before any tokenizer verdict)
+
+The audit of s8v at step 8000 (How2Sign c01/c03/c05):
+- head speed 0.97–1.02×, head-translation jitter 0.80–0.93×, now in band;
+- right-hand speed 0.81–0.83× and variation 0.73–0.80×;
+- body speed 0.64–0.71× and variation 0.55–0.70×, still damped. YouTube and ASLLVD are at 0.83–0.94×.
+
+A fifth candidate, **s8v3**, uses s8v's recipe with velocity weight 3 on body and both hands (1 on head rotation and translation). It runs on its own pod (`runpod/fleet/round3c_tokenizer_v3_all.sh`) with the same three checks. Precedence: c1024, s6, s8, then s8v, then s8v3. A candidate trains the prior only if every earlier one failed and it passes.

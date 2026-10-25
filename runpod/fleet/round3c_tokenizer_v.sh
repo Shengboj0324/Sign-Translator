@@ -26,14 +26,16 @@ else TSTEPS=40000 TEVERY=1000 TLIMIT=300 FLIMIT=300 SFX= PSTEPS=60000 PEVERY=100
 python scripts/prefetch_cache.py $MIX || { echo "states missing or not matching the manifest"; echo TOKV-DONE; exit 1; }
 GLOSS_MAP=$ACQ/derived/signbank-v1/asl-citizen-gloss-map.json
 KP2D=$(best back-translator-kp2d-uwb-ft-v1); KPSHA=ad8a5876c37fb17e80bf0c5e8d45e6bc8cd51f6849c23057e47ad6ae4d12cfd2
-name=s8v run=tokens-rvq-d0b-r3c-s8v$SFX
+# candidate name, velocity weights and the candidates that take precedence (amendment 3: s8v3, body/hands 3x)
+name=${CAND:-s8v} run=tokens-rvq-d0b-r3c-${CAND:-s8v}$SFX
+VW=${VW:-"body=1 left_hand=1 right_hand=1 head_rotation=1 head_translation=1"}
+PREV=${PREV:-"c1024 s6 s8"}
+VFLAGS=""; for w in $VW; do VFLAGS="$VFLAGS --velocity-weight $w"; done
 stage $run tokenizer python scripts/train_motion_tokens.py --architecture rvq --stage tokenizer --run $run \
   --manifest-key $MIX --manifest-sha256 $MSHA --fps 24 --conform-to-corpus how2sign-two-view-text-v1 --hidden 512 \
   --code-dim 128 --codebook 512 --stages 8 --down-layers 0 --base-blocks 4 --steps $TSTEPS --batch-size 64 \
   --lr 3e-4 --warmup 1000 --val-every $TEVERY --val-batches 32 --checkpoint-every $((TEVERY * 2)) --patience 5 \
-  --velocity-weight body=1 --velocity-weight left_hand=1 --velocity-weight right_hand=1 \
-  --velocity-weight head_rotation=1 --velocity-weight head_translation=1 \
-  --workers 10 --cache-bytes 107374182400 || { echo TOKV-DONE; exit 1; }
+  $VFLAGS --workers 10 --cache-bytes 107374182400 || { echo TOKV-DONE; exit 1; }
 key=$(best $run); verdict=PASS
 for check in domain recognisability fidelity; do
   case $check in
@@ -53,14 +55,14 @@ for check in domain recognisability fidelity; do
   echo "TOKENIZER-ERROR $name ($check, status $rc)"; echo TOKV-DONE; exit 1
 done
 [ "$verdict" = PASS ] && echo "TOKENIZER-PASS $name $key" || echo "TOKENIZER-$verdict $name"
-[ "${R3C_SMOKE:-0}" = 1 ] && { echo "smoke: s8v plumbing done"; echo TOKV-DONE; exit 0; }
+[ "${R3C_SMOKE:-0}" = 1 ] && { echo "smoke: $name plumbing done"; echo TOKV-DONE; exit 0; }
 # precedence: wait for the original three candidates' verdicts (every check writes its JSON report)
-original() { python - "$D" <<'EOF'
+original() { python - "$D" $PREV <<'EOF'
 import os, sys, json
 from signtranslator.data.text_motion_dataset import R2Store
 s, D = R2Store(os.environ), sys.argv[1]
 state = {}
-for n in ("c1024", "s6", "s8"):
+for n in sys.argv[2:]:
     keys = [f"{D}/tokenizer-{c}-{n}.json" for c in ("domain-check", "recognisability", "fidelity")]
     found = [json.loads(s.get(k))["pass"] for k in keys if s.exists(k)]
     state[n] = "fail" if False in found else ("pass" if len(found) == 3 else "pending")
@@ -72,7 +74,7 @@ echo "original candidates: $st"
 if echo "$st" | grep -q "=pass"; then echo "an original candidate passed: it is used; s8v trains no prior"; echo TOKV-DONE; exit 0; fi
 echo "$st" | grep -q pending && { echo "original candidates still pending after 8 h: no prior from s8v"; echo TOKV-DONE; exit 1; }
 [ "$verdict" = PASS ] || { echo "TOKENIZER-FAILED: no round-3c candidate passed its acceptance"; echo TOKV-DONE; exit 1; }
-echo "tokenizer chosen: s8v $key"
+echo "tokenizer chosen: $name $key"
 TSHA=$(sha "$key")
 stage $RUN prior python scripts/train_motion_tokens.py --architecture rvq --stage prior --run $RUN \
   --manifest-key $MIX --manifest-sha256 $MSHA --tokenizer-key "$key" --tokenizer-sha256 "$TSHA" \
