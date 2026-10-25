@@ -70,6 +70,19 @@ def layout_template(manifest, corpus: str, cache, fetch):
     return load_sample(record, "continuous", cache=cache, fetch=fetch)
 
 
+def corpus_sample_weights(records, weights: dict[str, float]) -> list[float]:
+    """Per-record sampling weights from per-corpus weights (``record["corpus"]``; corpora not named weigh 1). Round 3c:
+    ASLLVD's single-word clips are up-weighted once ASL Citizen's (arms tracked on 14% of frames, so their tokenized
+    targets have static hands) are dropped from the prior's mix. Weights must be positive and name known corpora."""
+    known = {r.get("corpus") for r in records}
+    unknown = set(weights) - known
+    if unknown:
+        raise SystemExit(f"--corpus-weight names corpora not in the training partition: {sorted(unknown)}")
+    if any(w <= 0 for w in weights.values()):
+        raise SystemExit("--corpus-weight values must be positive")
+    return [float(weights.get(r.get("corpus"), 1.)) for r in records]
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stage", choices=("tokenizer", "prior"), required=True)
@@ -117,6 +130,9 @@ def main(argv=None) -> int:
     parser.add_argument("--dropout", type=float, default=.1)
     parser.add_argument("--cfg-dropout", type=float, default=.1)
     parser.add_argument("--max-seconds", type=float, default=20.)
+    parser.add_argument("--corpus-weight", action="append", default=[],
+                        help="CORPUS=W (repeatable): sample that corpus's training records W times as often "
+                             "(with replacement, epoch length unchanged); round 3c: asllvd-text-v1=3")
     parser.add_argument("--trained-channels", default="body,left_hand,right_hand,head_rotation,face,blink,root_translation,head_translation,left_gaze,right_gaze")
     parser.add_argument("--checkpoint-every", type=int, default=2_000)
     parser.add_argument("--workers", type=int, default=4)
@@ -223,7 +239,14 @@ def main(argv=None) -> int:
                                                         manifest_key=args.manifest_key,
                                                         manifest_sha256=args.manifest_sha256, args=vars(args),
                                                         train_records=len(train)), indent=2, sort_keys=True).encode())
-    loader = DataLoader(train, batch_size=args.batch_size, shuffle=True, num_workers=args.workers,
+    sampler = None
+    if args.corpus_weight:
+        from torch.utils.data import WeightedRandomSampler
+        weights = {k: float(v) for k, v in (w.split("=", 1) for w in args.corpus_weight)}
+        sampler = WeightedRandomSampler(corpus_sample_weights(train.records, weights), num_samples=len(train),
+                                        replacement=True, generator=torch.Generator().manual_seed(args.seed + step))
+    loader = DataLoader(train, batch_size=args.batch_size, shuffle=sampler is None, sampler=sampler,
+                        num_workers=args.workers,
                         collate_fn=partial(collate_text_motion, loci=args.locus_conditioning and args.stage == "prior"),
                         generator=torch.Generator().manual_seed(args.seed + step),
                         persistent_workers=args.workers > 0, drop_last=True)

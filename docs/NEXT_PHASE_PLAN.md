@@ -1070,3 +1070,30 @@ or review check measures jitter, because the articulation ratios compare mean sp
 - If its strict review passes, the selected candidate gets head-translation smoothing equal to its head-rotation smoothing (at least 0.2 s).
 - The strict review is then rerun with it, plus R7. Both must pass before release.
 - If the review fails, round 3c adds translation smoothing to the grid and R7 to the review from the start, and treats the tokenizer's head-translation reconstruction (2.9% vs 0.6%) as a training target.
+
+## Round 3b result: FAILED (2026-10-24, 23:45 PDT)
+
+- **Gate (envelope, multi-signer): 46 of 47.** Selected sweep h1.2-f1.0 at guidance 1.5, head smoothing 0.1 s, damping 0.8, face calibration on, Fréchet 226. The one failure is c03 right-hand variation, 0.664 against the 0.70 floor. Head checks pass in every group.
+- **Strict review:**
+  - R1 retrieval PASS: 0.221 [0.193, 0.248] vs blank 0.094, real 0.293.
+  - R2 PASS: BLEU 0.78 vs blank 0.
+  - R3 PASS: no copies.
+  - **R2b FAIL:** 1.77 vs blank 2.14 (real 3.88).
+  - **R4 FAIL:** head speed 1.45 (short sentences) and 1.33 (long); short-sentence body variation 1.38.
+  - **R5 FAIL:** 0 of 111 words recognised (real 98.8%).
+  - **R6 FAIL:** test brow-raise 2.63 against an envelope maximum of 2.58.
+- **R5 root cause (measured on the Mac):**
+  - The generated single words have plausible durations (2.3–2.9 s), but the right hand moves at 29–77 °/s against 125–254 °/s real. The recogniser reads the real clips correctly, so it is not at fault.
+  - The prior's single-word targets come from two corpora. The 13,734 ASL Citizen clips have the body tracked on 14% of frames, and the tokenizer's neutral fill takes their median right-hand speed to **0 °/s**. The 5,156 ASLLVD clips keep 135 °/s.
+  - The prior learned that a single word means static hands. Round 3's 0 of 258 has the same cause.
+- **R2 vs R2b:** both translators are weak readers, and R2 rates generated motion above real (0.78 vs 0.60). R2b's instrument is checked before round 3c treats it as a target.
+
+## Round 3c design (declared 2026-10-25, 00:05 PDT, before any round-3c result)
+
+1. **Data:** mix `round3c-mixed-v1` (SHA `004bf6596a23…`, 125,015 training clips). It is round 3b's mix without ASL Citizen's motion: How2Sign, the YouTube r3b2 snapshot (unchanged, so data is not a second variable), ASLLRP plan lines and ASLLVD. ASL Citizen stays only in the recogniser, an evaluation instrument covered by its consent. That also removes it from the generator's provenance.
+2. **Prior:** same tokenizer (r3a), architecture, schedule and 60k-step cap as 3b, plus `--corpus-weight asllvd-text-v1=3`, so single words are about 11.5% of the samples.
+3. **Sweep:** hands {1.2, 1.25, 1.3} × face {0.8, 1.0} × guidance {1, 1.5, 2}, the hands and face settings 3b found best, plus 1.25 for c03's right-hand variation.
+4. **Grid:** head smoothing {0.1, 0.2, 0.3} × damping {1, 0.8, 0.6} × face calibration. Head-translation smoothing equals the head-rotation smoothing (at least 0.1 s). The grid runs on CPU pods.
+5. **Gate:** the round-3b envelope gate, plus R4's sentence-length slices as gate checks (per slice, head and body speed and variation in [0.7, 1.3]), plus R7 smoothness, so the selection cannot pick a candidate that the review then fails on those.
+6. **Strict review:** R1–R7 as declared (R7 per 2026-10-24 17:55), and the R6 test confirmation once. Every rule must pass.
+7. **Operations:** the GPU pod runs only GPU stages; the sweep uses two GPU pods; the review's memory uses `expandable_segments`.

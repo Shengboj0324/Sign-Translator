@@ -365,3 +365,14 @@ def test_the_dataset_resamples_states_to_a_fixed_rate(tmp_path, monkeypatch):
     assert abs(rate - native * 1.5) < 1e-6 * native
     same = TextMotionDataset(manifest, partition="train", cache=cache, fetch=store.get, fps=native * 1.005)
     assert len(same[0][1].timestamps) == len(kept[0][1].timestamps)       # within 1%: left at its own rate
+
+
+def test_corpus_sample_weights_up_weight_named_corpora_and_refuse_unknown_or_non_positive():
+    script = load_script()
+    records = [dict(corpus="asllvd-text-v1"), dict(corpus="youtube-asl-v1"), dict(corpus="asllvd-text-v1"), dict()]
+    assert script.corpus_sample_weights(records, {"asllvd-text-v1": 3.}) == [3., 1., 3., 1.]
+    assert script.corpus_sample_weights(records, {}) == [1., 1., 1., 1.]
+    with pytest.raises(SystemExit):
+        script.corpus_sample_weights(records, {"asl-citizen-text-v1": 2.})        # a typo or a dropped corpus
+    with pytest.raises(SystemExit):
+        script.corpus_sample_weights(records, {"asllvd-text-v1": 0.})
