@@ -50,7 +50,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from ..data.multichannel import MotionBatch
-from .canonical_state import channel_loss_per_example
+from .canonical_state import _supervision_weights, channel_loss_per_example
 from .motion_tokens import _ResBlock, _empty_like, token_seconds
 from .signing_space import applicable, skeleton_motion_loss
 from .text_to_motion import (
@@ -85,10 +85,14 @@ class MotionRVQConfig:
     ema: float = .99
     quantizer_dropout: float = .5
     skeleton_weights: dict = field(default_factory=lambda: dict(position=1., velocity=.5, acceleration=.25))
+    # round 3c (opt-in): per-channel velocity matching, {channel: weight}. Empty keeps the earlier tokenizers' loss.
+    velocity_weights: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         data = asdict(self)
         data["motion"] = self.motion.to_dict()
+        if not data.get("velocity_weights"):          # absent when unused: earlier tokenizers' configs (and SHAs) unchanged
+            data.pop("velocity_weights", None)
         return data
 
     def sha256(self) -> str:
@@ -318,6 +322,26 @@ class MotionRVQ(nn.Module):
         return self.decode_latents(straight, unit.shape[1]), latents, quantized, codes, valid
 
 
+def velocity_matching_loss(prediction: torch.Tensor, channel, frame_valid: torch.Tensor) -> torch.Tensor | None:
+    """Relative frame-to-frame velocity error of one channel, in its own parameterisation (``B,T,J,D``):
+
+        L = Σ_{supported t,t+1} ||(x̂_{t+1} - x̂_t) - (x_{t+1} - x_t)||² / Σ ||x_{t+1} - x_t||²,
+
+    over consecutive frames both supervised. Scale-free (1 when the reconstruction is static, 0 when its motion is
+    exact), so it penalises damping (hands too slow) and added jitter (a near-still head turned shaky) alike: the two
+    tokenizer faults the round-3c fidelity check found, which per-frame reconstruction loss does not see. ``None``
+    without a supported pair."""
+    w = _supervision_weights(channel, frame_valid, allow_inferred=True) > 0          # (B, T, J)
+    pair = w[:, 1:] & w[:, :-1]
+    if not bool(pair.any()):
+        return None
+    target = channel.values.to(prediction.dtype)
+    dp = prediction[:, 1:] - prediction[:, :-1]
+    dt = torch.where(pair[..., None], target[:, 1:] - target[:, :-1], torch.zeros_like(dp))
+    err = torch.where(pair[..., None], dp - dt, torch.zeros_like(dp))
+    return (err ** 2).sum() / ((dt ** 2).sum() + 1e-8)
+
+
 def rvq_loss(model: MotionRVQ, motion: MotionBatch, *, stages: int | None = None):
     """Per-channel reconstruction loss + skeleton position/velocity/acceleration + commitment.
 
@@ -353,6 +377,12 @@ def rvq_loss(model: MotionRVQ, motion: MotionBatch, *, stages: int | None = None
         for key, value in skeleton.items():
             terms[f"skeleton_{key}"] = value.detach()
             total = total + config.skeleton_weights[key] * value.to(total.dtype)
+    for name, weight in (config.velocity_weights or {}).items():           # round 3c (opt-in)
+        if name in raw and name in motion.channels:
+            value = velocity_matching_loss(raw[name], motion.channels[name], motion.frame_valid)
+            if value is not None:
+                terms[f"velocity_{name}"] = value.detach()
+                total = total + float(weight) * value.to(total.dtype)
     names = [p for p, _ in model.parts]
     z, zq = torch.stack([latents[p] for p in names]), torch.stack([quantized[p] for p in names])   # (P, B, K, D)
     error = ((z - zq.detach()) ** 2).mean(-1)

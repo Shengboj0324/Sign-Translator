@@ -130,6 +130,9 @@ def main(argv=None) -> int:
     parser.add_argument("--dropout", type=float, default=.1)
     parser.add_argument("--cfg-dropout", type=float, default=.1)
     parser.add_argument("--max-seconds", type=float, default=20.)
+    parser.add_argument("--velocity-weight", action="append", default=[],
+                        help="rvq tokenizer: CHANNEL=W (repeatable), per-channel velocity matching "
+                             "(motion_rvq.velocity_matching_loss); round 3c: head_rotation, head_translation, hands, body")
     parser.add_argument("--corpus-weight", action="append", default=[],
                         help="CORPUS=W (repeatable): sample that corpus's training records W times as often "
                              "(with replacement, epoch length unchanged); round 3c: asllvd-text-v1=3")
@@ -169,7 +172,8 @@ def main(argv=None) -> int:
             model = MotionVQ(config).to(device)
         else:
             config = MotionRVQConfig(motion, hidden=args.hidden, code_dim=args.code_dim, codebook=args.codebook,
-                                     stages=args.stages, down_layers=args.down_layers, base_blocks=args.base_blocks)
+                                     stages=args.stages, down_layers=args.down_layers, base_blocks=args.base_blocks,
+                                     velocity_weights={k: float(v) for k, v in (x.split("=", 1) for x in args.velocity_weight)})
             model = MotionRVQ(config).to(device)
         tokenizer, tokenizer_state = None, None
     else:

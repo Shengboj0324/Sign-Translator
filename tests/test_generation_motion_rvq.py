@@ -167,3 +167,31 @@ def test_batched_generation_equals_per_text_generation_when_deterministic():
             for name in a.channels:
                 torch.testing.assert_close(torch.as_tensor(a.channels[name].values),
                                            torch.as_tensor(b.channels[name].values), atol=1e-5, rtol=1e-5)
+
+
+def test_velocity_matching_is_zero_when_exact_one_when_static_and_penalises_jitter():
+    from signtranslator.generation.motion_rvq import velocity_matching_loss
+    states = [signer_state(s, frames=24, amplitude=.4) for s in range(2)]
+    batch = collate_multichannel(states)
+    ch = batch.channels["right_hand"]
+    exact = ch.values.double()
+    assert float(velocity_matching_loss(exact, ch, batch.frame_valid)) < 1e-12
+    static = exact[:, :1].expand_as(exact).clone()
+    assert abs(float(velocity_matching_loss(static, ch, batch.frame_valid)) - 1.) < 1e-9       # damping to stillness
+    jitter = exact + .05 * (-1.) ** torch.arange(exact.shape[1], dtype=exact.dtype)[None, :, None, None]
+    assert float(velocity_matching_loss(jitter, ch, batch.frame_valid)) > .01                   # added shake
+
+
+def test_velocity_weights_join_the_loss_only_when_set_and_leave_old_configs_unchanged():
+    torch.manual_seed(0)
+    states = [signer_state(s, frames=24, amplitude=.4) for s in range(2)]
+    batch = collate_multichannel(states)
+    plain = small(states[0])
+    weighted = small(states[0], velocity_weights={"right_hand": 1., "body": 2.})
+    assert "velocity_weights" not in plain.to_dict()                                  # earlier tokenizers' SHAs unchanged
+    assert MotionRVQConfig.from_dict(plain.to_dict()).sha256() == plain.sha256()
+    assert MotionRVQConfig.from_dict(weighted.to_dict()) == weighted and weighted.sha256() != plain.sha256()
+    _, terms = rvq_loss(MotionRVQ(weighted), batch, stages=3)
+    assert {"velocity_right_hand", "velocity_body"} <= set(terms)
+    _, terms = rvq_loss(MotionRVQ(plain), batch, stages=3)
+    assert not any(k.startswith("velocity_") for k in terms)
