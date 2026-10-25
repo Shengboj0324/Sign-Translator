@@ -210,6 +210,9 @@ class MotionRVQ(nn.Module):
         self.decoder = nn.Sequential(*decoder)
         for part, cols in self.parts:
             self.register_buffer(f"columns_{part}", torch.tensor(cols, dtype=torch.long), persistent=False)
+        # velocity matching's normaliser per channel: a running mean of the real per-pair motion energy (0 = not yet seen)
+        for name in (config.velocity_weights or {}):
+            self.register_buffer(f"velocity_scale_{name}", torch.zeros((), dtype=torch.float64), persistent=False)
 
     def _pad(self, x: torch.Tensor) -> tuple[torch.Tensor, int]:
         frames = x.shape[1]
@@ -322,7 +325,8 @@ class MotionRVQ(nn.Module):
         return self.decode_latents(straight, unit.shape[1]), latents, quantized, codes, valid
 
 
-def velocity_matching_loss(prediction: torch.Tensor, channel, frame_valid: torch.Tensor) -> torch.Tensor | None:
+def velocity_matching_loss(prediction: torch.Tensor, channel, frame_valid: torch.Tensor,
+                           scale: torch.Tensor | None = None, momentum: float = .99) -> torch.Tensor | None:
     """Relative frame-to-frame velocity error of one channel, in its own parameterisation (``B,T,J,D``):
 
         L = Σ_{supported t,t+1} ||(x̂_{t+1} - x̂_t) - (x_{t+1} - x_t)||² / Σ ||x_{t+1} - x_t||²,
@@ -339,7 +343,17 @@ def velocity_matching_loss(prediction: torch.Tensor, channel, frame_valid: torch
     dp = prediction[:, 1:] - prediction[:, :-1]
     dt = torch.where(pair[..., None], target[:, 1:] - target[:, :-1], torch.zeros_like(dp))
     err = torch.where(pair[..., None], dp - dt, torch.zeros_like(dp))
-    return (err ** 2).sum() / ((dt ** 2).sum() + 1e-8)
+    if scale is None:                                   # the batch's own motion energy (s8v; unstable on still batches)
+        return (err ** 2).sum() / ((dt ** 2).sum() + 1e-8)
+    # stable form: normalise by a running mean of the real per-pair energy, updated only in training. One batch of
+    # near-still clips (a still head, rest poses) can no longer drive the denominator to zero (s8v diverged at step
+    # 22000 with the per-batch form).
+    pairs = pair.sum()
+    energy = ((dt ** 2).sum() / pairs).detach().to(scale.dtype)
+    if prediction.requires_grad:
+        scale.copy_(energy if float(scale) == 0. else momentum * scale + (1. - momentum) * energy)
+    denominator = (scale if float(scale) > 0. else energy).to(err.dtype)
+    return (err ** 2).sum() / pairs / (denominator + 1e-12)
 
 
 def rvq_loss(model: MotionRVQ, motion: MotionBatch, *, stages: int | None = None):
@@ -379,7 +393,8 @@ def rvq_loss(model: MotionRVQ, motion: MotionBatch, *, stages: int | None = None
             total = total + config.skeleton_weights[key] * value.to(total.dtype)
     for name, weight in (config.velocity_weights or {}).items():           # round 3c (opt-in)
         if name in raw and name in motion.channels:
-            value = velocity_matching_loss(raw[name], motion.channels[name], motion.frame_valid)
+            value = velocity_matching_loss(raw[name], motion.channels[name], motion.frame_valid,
+                                           scale=getattr(model, f"velocity_scale_{name}", None))
             if value is not None:
                 terms[f"velocity_{name}"] = value.detach()
                 total = total + float(weight) * value.to(total.dtype)

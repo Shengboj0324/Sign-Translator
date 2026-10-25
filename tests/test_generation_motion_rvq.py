@@ -195,3 +195,30 @@ def test_velocity_weights_join_the_loss_only_when_set_and_leave_old_configs_unch
     assert {"velocity_right_hand", "velocity_body"} <= set(terms)
     _, terms = rvq_loss(MotionRVQ(plain), batch, stages=3)
     assert not any(k.startswith("velocity_") for k in terms)
+
+
+def test_stable_velocity_matching_uses_a_running_scale_and_is_not_blown_up_by_a_still_batch():
+    from signtranslator.generation.motion_rvq import velocity_matching_loss
+    states = [signer_state(s, frames=24, amplitude=.4) for s in range(2)]
+    batch = collate_multichannel(states)
+    ch = batch.channels["right_hand"]
+    exact = ch.values.double().requires_grad_(True)
+    scale = torch.zeros((), dtype=torch.float64)
+    assert float(velocity_matching_loss(exact, ch, batch.frame_valid, scale=scale).detach()) < 1e-12 and float(scale) > 0
+    moving = float(scale)
+    still = [signer_state(s, frames=24, amplitude=1e-6) for s in range(2)]           # a near-still batch
+    sb = collate_multichannel(still)
+    sc = sb.channels["right_hand"]
+    noisy = (sc.values.double() + 1e-3 * (-1.) ** torch.arange(24, dtype=torch.float64)[None, :, None, None])
+    stable = float(velocity_matching_loss(noisy.requires_grad_(True), sc, sb.frame_valid, scale=scale).detach())
+    unstable = float(velocity_matching_loss(noisy, sc, sb.frame_valid).detach())
+    assert unstable > 1e3 * stable                     # the per-batch form explodes on a still batch; the running one does not
+    assert abs(float(scale) - moving) / moving < .05   # one batch moves the running scale by at most (1 - momentum)
+
+
+def test_velocity_scales_are_not_saved_so_s8v_checkpoints_load_under_the_new_code():
+    states = [signer_state(s, frames=24, amplitude=.4) for s in range(2)]
+    weighted = small(states[0], velocity_weights={"right_hand": 1.})
+    model = MotionRVQ(weighted)
+    assert not any(k.startswith("velocity_scale_") for k in model.state_dict())
+    MotionRVQ(weighted).load_state_dict(model.state_dict())                 # strict load succeeds
