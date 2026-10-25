@@ -150,4 +150,32 @@ def compare(generated: list[MultichannelMotion], reference: list[MultichannelMot
     return out
 
 
-__all__ = ["geodesic_degrees", "unit_angle_degrees", "distance", "angular_speeds", "clip_features", "frechet_distance", "compare", "ROTATION_CHANNELS"]
+def high_frequency_rms(state: MultichannelMotion, name: str, *, cutoff_hz: float = 6., min_valid: float = .9) -> float | None:
+    """Amplitude of a channel's motion at or above ``cutoff_hz`` (the visible shake): per element with valid frames on
+    at least ``min_valid`` of the clip, the RMS of its mean-removed valid samples' spectral components f >= cutoff
+    (Parseval: sqrt( 2 Σ_{f ≥ cutoff} |X(f)|² ) / N), and the median over elements, in the channel's own units
+    (6D rotation components, metres). Signing lives below ~3 Hz; energy near Nyquist (12 Hz at 24 fps) is
+    frame-to-frame jitter. An absolute amplitude, not a share: smoothing lowers it monotonically, while a share can
+    rise when smoothing also removes mid-band motion. ``None`` when no element has enough valid frames."""
+    if name not in state.channels:
+        return None
+    channel = state.channels[name]
+    times = np.asarray(state.timestamps, float)
+    fps = 1. / float(np.median(np.diff(times))) if len(times) > 1 else 30.
+    values = np.asarray(channel.values, float)
+    valid = np.asarray(channel.valid, bool)
+    out = []
+    for j in range(values.shape[1]):
+        ok = valid[:, j]
+        if ok.mean() < min_valid or ok.sum() < 16:
+            continue
+        x = values[ok, j].reshape(int(ok.sum()), -1)
+        x = x - x.mean(0)
+        spectrum = np.fft.rfft(x, axis=0)
+        f = np.fft.rfftfreq(len(x), 1. / fps)
+        out.append(float(np.sqrt(2. * (np.abs(spectrum[f >= cutoff_hz]) ** 2).sum()) / len(x)))
+    return float(np.median(out)) if out else None
+
+
+__all__ = ["geodesic_degrees", "unit_angle_degrees", "distance", "angular_speeds", "clip_features", "frechet_distance",
+           "compare", "high_frequency_rms", "ROTATION_CHANNELS"]

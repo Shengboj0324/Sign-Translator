@@ -88,8 +88,35 @@ def damp_rotation_channel(state: MultichannelMotion, name: str, factor: float) -
     return replace(state, channels={**state.channels, name: replace(channel, values=out.astype(values.dtype))})
 
 
+def smooth_vector_channel(state: MultichannelMotion, name: str, seconds: float) -> MultichannelMotion:
+    """``state`` with vector channel ``name`` (e.g. ``head_translation``, metres) smoothed by the same centred window
+    as ``smooth_rotation_channel``: the mean of the valid frames within ``seconds``. Round 3b's head translation
+    carried 10x the real signers' energy above 6 Hz (5x from the tokenizer's reconstruction, the rest from sampling),
+    and only the head *rotation* was smoothed, so the avatar's head shook. Invalid frames are unchanged."""
+    if seconds <= 0:
+        return state
+    channel = state.channels[name]
+    times = np.asarray(state.timestamps, float)
+    fps = 1. / float(np.median(np.diff(times))) if len(times) > 1 else 30.
+    half = max(int(round(seconds * fps / 2)), 0)
+    if half == 0:
+        return state
+    values = np.asarray(channel.values, float)                      # (T, J, D)
+    valid = np.asarray(channel.valid, bool)                         # (T, J)
+    weights = valid.astype(float)[..., None]
+    t = len(times)
+    csum = np.concatenate([np.zeros((1,) + values.shape[1:]), np.cumsum(np.where(valid[..., None], values, 0.), 0)])
+    wsum = np.concatenate([np.zeros((1,) + weights.shape[1:]), np.cumsum(weights, 0)])
+    lo = np.clip(np.arange(t) - half, 0, t)
+    hi = np.clip(np.arange(t) + half + 1, 0, t)
+    count = wsum[hi] - wsum[lo]
+    mean = np.where(count > 0, (csum[hi] - csum[lo]) / np.maximum(count, 1e-12), values)
+    out = np.where(valid[..., None], mean, values)
+    return replace(state, channels={**state.channels, name: replace(channel, values=out.astype(values.dtype))})
+
+
 __all__ = ["estimate_face_calibration", "calibrate_face", "damp_rotation_channel", "project_to_rotation",
-           "smooth_rotation_channel"]
+           "smooth_rotation_channel", "smooth_vector_channel"]
 
 
 # --- face expression calibration ------------------------------------------------------------------------------------

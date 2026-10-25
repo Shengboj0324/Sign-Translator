@@ -1043,3 +1043,30 @@ These start when the generator round's exit gate closes (docs/CONTINUOUS_TRAININ
      rhetorical 249, yes-no 238, relative clause 43.
 5. **Avatar and serving** (items 5 and 6) follow, with a model selected on R-precision and the realism gates.
 6. **Human Deaf reviewers** (on their way): they evaluate the stored generated states and the rendered avatar. Their findings drive fine-tuning.
+
+## Smoothness rule R7 and head-translation smoothing (declared 2026-10-24, 17:55 PDT, before the round-3b verdict)
+
+**Finding.** The owner saw the first round-3b avatar render's head shake. Measured on 30 validation sentences
+(sweep h1.3-f0.8, c03, guidance 2) against the same sentences' real clips:
+- The share of motion energy at ≥ 6 Hz for head translation was 6.2% vs 0.6% real. The tokenizer's round trip alone gives 2.9%.
+- For head rotation it was 3.6% vs 0.8%.
+- Body, hands and root were at or below real.
+- In absolute amplitude (`motion_metrics.high_frequency_rms`), head translation is 2.0× real and head rotation 1.05×. The excess is broadband above 3 Hz, not a token-rate line.
+
+The post-processing grid smooths and damps only head *rotation*; head translation passes through untouched. No gate
+or review check measures jitter, because the articulation ratios compare mean speeds.
+
+**R7 smoothness (new rule, blocks release like R1–R6).**
+- For body, both hands, head rotation, head translation and root translation, the median over clips of the generated ≥ 6 Hz amplitude must be at most 1.5× the median of the same sentences' real clips.
+- It applies after the candidate's own post-processing, in every validation signer group, and again on test.
+- Script: `scripts/smoothness_check.py`.
+
+**Head-translation smoothing.**
+- `postprocess.smooth_vector_channel` smooths head translation with the same centred window as the head rotation.
+- On the sample above, 0.2 s on both head channels gives at most 0.73× real on every channel, with slow motion kept (unit tests).
+
+**Procedure for round 3b.**
+- The pod's chain runs as declared.
+- If its strict review passes, the selected candidate gets head-translation smoothing equal to its head-rotation smoothing (at least 0.2 s).
+- The strict review is then rerun with it, plus R7. Both must pass before release.
+- If the review fails, round 3c adds translation smoothing to the grid and R7 to the review from the start, and treats the tokenizer's head-translation reconstruction (2.9% vs 0.6%) as a training target.

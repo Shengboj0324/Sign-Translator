@@ -95,3 +95,39 @@ def test_damping_shrinks_excursions_around_the_mean_and_keeps_timing():
     held = with_head(.3 * np.sin(2 * np.pi * .5 * t), gaps)
     damped = damp_rotation_channel(held, "head_rotation", .5)
     np.testing.assert_array_equal(damped.channels["head_rotation"].values[10:20], held.channels["head_rotation"].values[10:20])
+
+
+def with_head_translation(x, valid=None):
+    s = state(0, len(x))
+    ch = s.channels["head_translation"]
+    values = np.zeros((len(x), 1, 3)); values[:, 0, 0] = x
+    v = np.ones((len(x), 1), bool) if valid is None else valid
+    return replace(s, channels={**s.channels, "head_translation": replace(ch, values=np.where(v[..., None], values, 0.),
+                                                                          valid=v, observed=v,
+                                                                          confidence=v.astype(float))})
+
+
+def test_vector_smoothing_keeps_slow_motion_removes_jitter_and_lowers_the_high_frequency_rms():
+    from signtranslator.generation.motion_metrics import high_frequency_rms
+    from signtranslator.generation.postprocess import smooth_vector_channel
+    t = np.arange(120) / 24.
+    slow = .02 * np.sin(2 * np.pi * .5 * t)                                         # a 0.5 Hz sway, 2 cm
+    jitter = .004 * (-1.) ** np.arange(120)                                         # frame-to-frame shake at Nyquist
+    noisy = with_head_translation(slow + jitter)
+    out = smooth_vector_channel(noisy, "head_translation", .25)
+    x = out.channels["head_translation"].values[:, 0, 0]
+    assert np.abs(x[12:-12] - slow[12:-12]).max() < .003                            # slow sway kept, shake gone
+    before = high_frequency_rms(noisy, "head_translation")
+    after = high_frequency_rms(out, "head_translation")
+    assert before > .003 and after < .25 * before
+    assert high_frequency_rms(with_head_translation(slow), "head_translation") < .05 * before   # leakage only
+    assert smooth_vector_channel(noisy, "head_translation", 0.) is noisy
+
+
+def test_vector_smoothing_leaves_invalid_frames_and_uses_only_valid_ones():
+    from signtranslator.generation.postprocess import smooth_vector_channel
+    x = np.full(48, .01); x[20] = 5.                                               # an outlier on an invalid frame
+    v = np.ones((48, 1), bool); v[20] = False
+    out = smooth_vector_channel(with_head_translation(x, v), "head_translation", .25)
+    vals = out.channels["head_translation"].values[:, 0, 0]
+    assert vals[20] == 0. and np.allclose(vals[v[:, 0]], .01)
