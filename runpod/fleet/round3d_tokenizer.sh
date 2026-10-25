@@ -27,7 +27,9 @@ python scripts/prefetch_cache.py $MIX || { echo "states missing or not matching 
 GLOSS_MAP=$ACQ/derived/signbank-v1/asl-citizen-gloss-map.json
 KP2D=$(best back-translator-kp2d-uwb-ft-v1); KPSHA=ad8a5876c37fb17e80bf0c5e8d45e6bc8cd51f6849c23057e47ad6ae4d12cfd2
 name=$CAND run=tokens-rvq-d0b-r3d-$CAND$SFX
-stage $run tokenizer python scripts/train_motion_tokens.py --architecture rvq --stage tokenizer --run $run \
+# CHECKS_ONLY=1: a run that stopped before its checks (d4: the spike guard's divergence stop, 2026-10-25 11:45 PDT)
+# is judged on its best checkpoint, as every early-stopped candidate is
+[ "${CHECKS_ONLY:-0}" = 1 ] || stage $run tokenizer python scripts/train_motion_tokens.py --architecture rvq --stage tokenizer --run $run \
   --manifest-key $MIX --manifest-sha256 $MSHA --fps 24 --conform-to-corpus how2sign-two-view-text-v1 --hidden 512 \
   --code-dim 128 --codebook 512 --stages 8 --down-layers 0 --base-blocks 4 --steps $STEPS --batch-size 64 \
   --lr 3e-4 --warmup 1000 --val-every $EVERY --val-batches 32 --checkpoint-every $((EVERY * 2)) --patience 10 \

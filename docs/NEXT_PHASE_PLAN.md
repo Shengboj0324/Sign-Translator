@@ -1362,3 +1362,13 @@ For a qualifying candidate:
 - A candidate passing without gains outranks any that needs them.
 - Within each class, the highest R2b round trip wins.
 - The gained checks run on a GPU pod (`runpod/fleet/round3d_gains.sh`), started by the orchestrator.
+
+## Round 3d note: d4's divergence stop (2026-10-25, 11:45 PDT)
+
+**What happened:** d4's spike guard stopped the run at step 31230, after more than 100 consecutive spikes (173 skipped in all).
+- Its best checkpoint, step 31000 at validation loss 0.2227, was validated before the blow-up.
+- The gradient norm then rose to 5098 and 17892 while every update was skipped.
+- The network's weights were therefore frozen, and the only state still changing was the RVQ codebooks: EMA update and dead-code re-seeding run in the forward pass, whatever the optimizer does.
+- This is direct evidence that the codebook dynamics, not optimizer steps, drive the tokenizers' spikes. It is the design input for any later tokenizer: freeze or slow the codebooks when the gradient norm spikes, or update them only on accepted steps.
+
+**How d4 is judged:** amendment 1 says the run "stops as diverging", not that the candidate is rejected. Every candidate is judged on its best checkpoint, early-stopped runs included. So d4's three checks run on step 31000 with the same rules (`CHECKS_ONLY=1 runpod/fleet/round3d_tokenizer_d4.sh`).
