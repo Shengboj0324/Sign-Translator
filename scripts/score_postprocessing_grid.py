@@ -40,9 +40,44 @@ def setting_name(tag: str) -> str:
     return f"{LABEL} guidance {tag.split('-', 1)[1]}" if tag.startswith("guidance-") else tag
 
 
-def score(generated, references, records) -> dict:
+def length_slices(generated, references, records) -> dict:
+    """R4's measure (strict_prior_review.py): clips split at sentence-length terciles; per slice the body, hand and head
+    speed and variation ratios. Round 3c gates on it, so the selection cannot pick what R4 then fails."""
+    import numpy as np
+    from exit_gate import ARTICULATED
+    lengths = np.array([len(r["text"].split()) for r in records])
+    cuts = np.percentile(lengths, [100 / 3, 200 / 3])
+    out = {}
+    for name, mask in (("short", lengths <= cuts[0]), ("medium", (lengths > cuts[0]) & (lengths <= cuts[1])),
+                       ("long", lengths > cuts[1])):
+        idx = np.nonzero(mask)[0]
+        if len(idx):
+            res = compare([generated[i] for i in idx], [references[i] for i in idx], ARTICULATED)
+            out[name] = {f"{c}_{k}": round(float(res[c][k]), 3) for c in ARTICULATED if c in res
+                         for k in ("speed_ratio", "variation_ratio")}
+    return out
+
+
+def smoothness(generated, references) -> dict:
+    """R7's measure (smoothness_check.py): per channel, median generated >= 6 Hz amplitude over the real median."""
+    import numpy as np
+    from signtranslator.generation.motion_metrics import high_frequency_rms
+    from smoothness_check import CHANNELS as R7_CHANNELS
+    out = {}
+    for c in R7_CHANNELS:
+        g = [v for v in (high_frequency_rms(s, c) for s in generated) if v is not None]
+        r = [v for v in (high_frequency_rms(s, c) for s in references) if v is not None]
+        out[c] = round(float(np.median(g) / max(np.median(r), 1e-12)), 3) if g and r else None
+    return out
+
+
+def score(generated, references, records, *, round3c: bool = False, pooled: bool = False) -> dict:
     channels = tuple(c for c in CHANNELS if c in generated[0].channels and generated[0].channels[c].valid.any())
     result = compare(generated, references, channels)
+    if round3c:
+        result["smoothness"] = smoothness(generated, references)
+        if pooled:
+            result["length_slices"] = length_slices(generated, references, records)
     if all("LeftForearm" in r.channels["body"].labels for r in references):
         result["signing_space"] = location_errors(generated, references)
     result["grammar"] = grammar_comparison(generated, references, [r["text"] for r in records])
@@ -62,6 +97,10 @@ def main(argv=None) -> int:
     parser.add_argument("--head-damping", default="1", help="head excursion factors (postprocess.damp_rotation_channel); "
                                                            "1 = none. Variants with a factor below 1 are named -hd<a>")
     parser.add_argument("--fps", type=float, default=24.)
+    parser.add_argument("--round3c", action="store_true",
+                        help="round 3c (declared 2026-10-25): head translation smoothed with the head-rotation window "
+                             "(at least 0.1 s); R7 smoothness scored in every group and R4's length slices on the pooled "
+                             "group, both gated by exit_gate.score_setting")
     parser.add_argument("--pool-group", help="round 3b: also score every variant on all groups' clips pooled, written "
                                              "as group <this name> (the population envelope's input)")
     args = parser.parse_args(argv)
@@ -91,7 +130,11 @@ def main(argv=None) -> int:
                                   [float(x) for x in args.head_damping.split(",")]):
         def post(s):
             s = smooth_rotation_channel(s, "head_rotation", h) if h > 0 else s
-            return damp_rotation_channel(s, "head_rotation", a) if a != 1 else s
+            s = damp_rotation_channel(s, "head_rotation", a) if a != 1 else s
+            if args.round3c and "head_translation" in s.channels:
+                from signtranslator.generation.postprocess import smooth_vector_channel
+                s = smooth_vector_channel(s, "head_translation", max(h, .1))
+            return s
         smoothed = {g: {tag: ([post(s) for s in data[g][tag][0]],) + data[g][tag][1:] for tag in tags} for g in groups}
         calibration = {tag: estimate_face_calibration([s for g in groups for s in smoothed[g][tag][0]],
                                                       [r for g in groups for r in smoothed[g][tag][1]])
@@ -107,7 +150,8 @@ def main(argv=None) -> int:
                         states, refs, records = smoothed[g][tag]
                     if fc:
                         states = [calibrate_face(s, calibration[tag]) for s in states]
-                    results[setting_name(tag)] = score(states, refs, records)
+                    results[setting_name(tag)] = score(states, refs, records, round3c=args.round3c,
+                                                       pooled=g == args.pool_group)
                     if fc:
                         results[setting_name(tag)]["face_calibration"] = dict(calibration[tag], pooled_groups=groups)
                 store.put(f"{args.evaluations.rstrip('/')}/{variant}-{g}.json", json.dumps(dict(

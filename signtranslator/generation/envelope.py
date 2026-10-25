@@ -18,7 +18,12 @@ MARKERS = (.5, 2.)
 MARKER_SCORES = ("headshake_rate", "nod_rate", "brow_raise_fraction", "brow_furrow_fraction")
 
 
+SMOOTHNESS = (0., 1.5)            # R7 (round 3c): >= 6 Hz amplitude at most 1.5x real
+
+
 def declared(check: str) -> tuple[float, float]:
+    if check.startswith("r7_"):
+        return SMOOTHNESS
     return MARKERS if check in MARKER_SCORES else ARTICULATION
 
 

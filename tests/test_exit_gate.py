@@ -37,3 +37,15 @@ def test_the_head_is_gated_from_the_full_round_and_the_subset_gate_is_reproducib
     fast_head["head_rotation"]["speed_ratio"] = 1.87
     assert not gate.score_setting("r", "g", fast_head)["all_pass"]
     assert gate.score_setting("r", "g", fast_head, gate.SUBSET_ROUND)["all_pass"]
+
+
+def test_round3c_length_slice_and_smoothness_checks_join_the_gate_when_present():
+    r = result(100)
+    r["length_slices"] = {"short": {"head_rotation_speed_ratio": 1.45}, "long": {"body_speed_ratio": 1.0}}
+    r["smoothness"] = {"head_translation": 2.0, "body": 0.9, "root_translation": None}
+    row = gate.score_setting("r", "g1", r)
+    assert row["checks"]["r4_short_head_rotation_speed_ratio"] == (1.45, False)      # round 3b's R4 failure
+    assert row["checks"]["r4_long_body_speed_ratio"] == (1.0, True)
+    assert row["checks"]["r7_head_translation"] == (2.0, False) and row["checks"]["r7_body"] == (0.9, True)
+    assert "r7_root_translation" not in row["checks"] and not row["all_pass"]
+    assert gate.score_setting("r", "g1", result(100))["total"] == 10                  # round-3b results unchanged

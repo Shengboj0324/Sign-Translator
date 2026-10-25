@@ -39,3 +39,9 @@ def test_gate_row_rejudged_by_envelope():
     assert enveloped(row, None) is row
     out = enveloped(row, {"nod_rate": (0.2, 3.0)})
     assert out["passed"] == 2 and out["all_pass"]
+
+
+def test_smoothness_checks_keep_their_own_upper_bound_under_the_envelope():
+    assert declared("r7_head_translation") == (0., 1.5) and declared("r4_short_body_speed_ratio") == (.7, 1.3)
+    out = apply({"r7_head_translation": (1.4, True), "r7_body": (1.6, False), "r4_short_body_speed_ratio": (1.2, True)}, {})
+    assert out["r7_head_translation"][1] and not out["r7_body"][1] and out["r4_short_body_speed_ratio"][1]

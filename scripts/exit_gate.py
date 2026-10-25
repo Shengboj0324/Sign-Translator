@@ -50,6 +50,12 @@ def score_setting(run: str, setting: str, result: dict, channels=ARTICULATED) ->
         ratio = (distributions.get(marker) or {}).get("mean_ratio")
         if ratio is not None:
             checks[marker] = (ratio, MARKERS[0] <= ratio <= MARKERS[1])
+    for name, ratios in (result.get("length_slices") or {}).items():      # round 3c: R4 inside the gate (pooled group)
+        for key, value in ratios.items():
+            checks[f"r4_{name}_{key}"] = (value, ARTICULATION[0] <= value <= ARTICULATION[1])
+    for channel, value in (result.get("smoothness") or {}).items():       # round 3c: R7 inside the gate
+        if value is not None:
+            checks[f"r7_{channel}"] = (value, value <= 1.5)
     accuracy = {f"{c}_error": next((v for k, v in result[c].items() if k.endswith(("_deg", "_cm"))), None)
                 for c in channels if c in result}
     accuracy.update({f"space_{k}": v for k, v in (result.get("signing_space") or {}).items()})
