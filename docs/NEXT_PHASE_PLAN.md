@@ -1212,3 +1212,31 @@ The s8v5 audit at step 16000 (How2Sign):
 - hand variation 0.71–0.77.
 
 At weight 0.05 the head drifts out of band as training continues. **s8v7** uses velocity weight 1.0 on head rotation and translation (the weight that put s8v's head in band) and 0.05 on body and hands (where s8v's weight 1 cost pose accuracy). Precedence: after s8v6.
+
+## Round 3c amendment 8: quantiser dropout, s8v8 and s8v9 (declared 2026-10-25, 08:20 PDT, before s8v6's and s8v7's verdicts)
+
+**s8v5 verdict:** rejected, on two checks.
+- **Domain:** ASLLVD body 1.507× How2Sign, against a 1.5 limit.
+- **Fidelity:** body speed 0.70, head 1.19, hand variation 0.77–0.78.
+- **R2b round trip:** 3.16, against blank 2.09; the intervals overlap.
+
+**Diagnosis of the damping, run on s8v6 at step 19000 (all diagnostics only, no verdict):**
+1. **The shrinkage is genuine, not noise.** On How2Sign, body speed is 0.65–0.77× at every percentile from p10 to p99. Smoothing both sides by 0.1 s leaves body 0.74, hands 0.73–0.77.
+2. **It is not signer generalisation.** How2Sign *training* clips (seen signers) give the same ratios as validation: body 0.64, hand variation 0.69–0.76.
+3. **It is not the quantiser.** Decoding the continuous latents, with the quantiser bypassed, gives the same ratios as 8 stages: body 0.63, hands 0.70–0.79. Fewer stages shrink further: 4 stages give 0.67–0.70, 1 stage 0.51–0.57.
+4. **Reference noise is corpus-specific:**
+   - How2Sign torso joints (Pelvis, Chest, thighs, upper arms) have negative lag-1 velocity autocorrelation (−0.19 to +0.03), so they are jitter-dominated. Their speed halves under 0.1 s smoothing.
+   - How2Sign fingers are smooth (+0.31 to +0.56).
+   - YouTube and ASLLVD fingers are jitter-dominated (−0.22 to +0.03).
+   - The fidelity rule is unchanged; these numbers are recorded for the next design.
+
+**Hypothesis.** `quantizer_dropout = 0.5` trains half of all batches on 1–8 random stages, with a decoder not told how many. The decoder that minimises the loss for coarse codes shrinks toward the mean, and the same weights then shrink full and continuous latents too. The shrinkage gets worse as stages are removed, which fits.
+
+**Candidates:** s8v6 at step 19000 (EMA weights, SHA-256 `b52fa16b…ac83`) is fine-tuned with its velocity weights unchanged.
+- Settings: lr 1e-4, warmup 200, up to 10000 steps, validation every 500, patience 5.
+- **s8v8:** quantiser dropout 0.
+- **s8v9:** quantiser dropout 0.1, so coarse stages keep some standalone use.
+- Judged by the same three checks and rules, smoke-tested first.
+- `train_motion_tokens.py --init-key` now warm-starts a tokenizer whose config differs only in the loss-only fields `quantizer_dropout` and `velocity_weights`.
+
+**Precedence:** s8v6, s8v7, s8v8, s8v9. A candidate that passes without gains outranks one that needs the amendment-5 gains.

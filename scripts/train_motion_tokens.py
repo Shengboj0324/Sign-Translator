@@ -70,6 +70,16 @@ def layout_template(manifest, corpus: str, cache, fetch):
     return load_sample(record, "continuous", cache=cache, fetch=fetch)
 
 
+LOSS_ONLY_FIELDS = ("quantizer_dropout", "velocity_weights")
+
+
+def warm_start_compatible(saved: dict, new: dict) -> bool:
+    """A tokenizer may warm-start another whose config differs only in loss-only fields (round 3c amendment 8): the
+    architecture, codebooks and motion layout must be identical."""
+    strip = lambda d: {k: v for k, v in d.items() if k not in LOSS_ONLY_FIELDS}
+    return strip(saved) == strip(new)
+
+
 def corpus_sample_weights(records, weights: dict[str, float]) -> list[float]:
     """Per-record sampling weights from per-corpus weights (``record["corpus"]``; corpora not named weigh 1). Round 3c:
     ASLLVD's single-word clips are up-weighted once ASL Citizen's (arms tracked on 14% of frames, so their tokenized
@@ -88,6 +98,8 @@ def main(argv=None) -> int:
     parser.add_argument("--stage", choices=("tokenizer", "prior"), required=True)
     parser.add_argument("--architecture", choices=("vq", "rvq"), default="vq", help="tokens v1 (vq) or v2 (rvq)")
     parser.add_argument("--stages", type=int, default=4, help="rvq: residual stages per part")
+    parser.add_argument("--quantizer-dropout", type=float, default=.5,
+                        help="rvq: probability a batch trains on a random number of stages (round 3c amendment 8)")
     parser.add_argument("--base-blocks", type=int, default=0, help="rvq: residual blocks at full frame rate")
     parser.add_argument("--depth-layers", type=int, default=2, help="rvq prior: depth transformer layers")
     parser.add_argument("--ema-decay", type=float, default=.999)
@@ -104,7 +116,9 @@ def main(argv=None) -> int:
     parser.add_argument("--tokenizer-manifest-sha256",
                         help="prior stage: the manifest the tokenizer was trained on, when it is not --manifest-sha256 "
                              "(e.g. the full-corpus tokenizer under a prior trained on a mixed manifest)")
-    parser.add_argument("--init-key", help="prior stage: warm-start from this prior checkpoint (EMA weights), same config")
+    parser.add_argument("--init-key", help="warm-start from this checkpoint's EMA weights: a prior of the same config, or "
+                                           "(round 3c amendment 8) a tokenizer whose config differs at most in the "
+                                           "loss-only fields quantizer_dropout and velocity_weights")
     parser.add_argument("--init-sha256", help="its SHA-256")
     parser.add_argument("--conform-to-corpus", help="mixed manifests: conform every state to this corpus's channel "
                                                     "layouts (data.layout_adapter)")
@@ -173,6 +187,7 @@ def main(argv=None) -> int:
         else:
             config = MotionRVQConfig(motion, hidden=args.hidden, code_dim=args.code_dim, codebook=args.codebook,
                                      stages=args.stages, down_layers=args.down_layers, base_blocks=args.base_blocks,
+                                     quantizer_dropout=args.quantizer_dropout,
                                      velocity_weights={k: float(v) for k, v in (x.split("=", 1) for x in args.velocity_weight)})
             model = MotionRVQ(config).to(device)
         tokenizer, tokenizer_state = None, None
@@ -229,14 +244,16 @@ def main(argv=None) -> int:
         print(f"resumed {checkpoints[-1]} at step {step}", flush=True)
     else:
         if args.init_key:
-            if args.stage != "prior" or not args.init_sha256:
-                raise SystemExit("--init-key is for the prior stage and needs --init-sha256")
+            if not args.init_sha256 or (args.stage == "tokenizer" and args.architecture != "rvq"):
+                raise SystemExit("--init-key needs --init-sha256 (and, for a tokenizer, --architecture rvq)")
             payload = store.get(args.init_key)
             if hashlib.sha256(payload).hexdigest() != args.init_sha256:
                 raise SystemExit("the --init-key checkpoint differs from --init-sha256")
             init = torch.load(io.BytesIO(payload), map_location=device, weights_only=False)
-            if init.get("kind") != kind or init["config_sha256"] != config.sha256():
-                raise SystemExit("--init-key is a different kind or config of prior")
+            same = (init["config_sha256"] == config.sha256() if args.stage == "prior"
+                    else warm_start_compatible(init["config"], config.to_dict()))
+            if init.get("kind") != kind or not same:
+                raise SystemExit("--init-key is a different kind or config")
             model.load_state_dict(init.get("ema") or init["model"])
             print(f"initialised from {args.init_key} (step {init.get('step')})", flush=True)
         store.put(f"{prefix}/run.json", json.dumps(dict(kind=kind, config=config.to_dict(), config_sha256=config.sha256(),

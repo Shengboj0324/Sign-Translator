@@ -376,3 +376,32 @@ def test_corpus_sample_weights_up_weight_named_corpora_and_refuse_unknown_or_non
         script.corpus_sample_weights(records, {"asl-citizen-text-v1": 2.})        # a typo or a dropped corpus
     with pytest.raises(SystemExit):
         script.corpus_sample_weights(records, {"asllvd-text-v1": 0.})
+
+
+def test_a_tokenizer_warm_starts_with_a_different_quantizer_dropout_but_not_a_different_architecture(tmp_path, monkeypatch,
+                                                                                                   capsys):
+    import torch
+    monkeypatch.setenv("SIGN_CACHE_DIR", str(tmp_path / "cache"))
+    digest = store_with_manifest(tmp_path / "store")
+    script = load_script()
+    store = tmp_path / "store"
+    base = ["--store", f"dir:{store}", "--manifest-key", "manifest.json", "--manifest-sha256", digest,
+            "--batch-size", "2", "--warmup", "1", "--checkpoint-every", "2", "--workers", "0",
+            "--trained-channels", "body,head_rotation,face", "--architecture", "rvq", "--stage", "tokenizer",
+            "--code-dim", "8", "--codebook", "16", "--stages", "2", "--down-layers", "1", "--steps", "2"]
+    assert script.main(base + ["--run", "tok", "--hidden", "16"]) == 0
+    init = "training-runs/tok/checkpoints/step-00000002.pt"
+    sha = hashlib.sha256((store / init).read_bytes()).hexdigest()
+    with pytest.raises(SystemExit, match="different kind or config"):          # a different width is not a warm start
+        script.main(base + ["--run", "wide", "--hidden", "32", "--init-key", init, "--init-sha256", sha])
+    capsys.readouterr()
+    assert script.main(base + ["--run", "qd0", "--hidden", "16", "--quantizer-dropout", "0", "--velocity-weight",
+                               "body=0.5", "--init-key", init, "--init-sha256", sha]) == 0
+    assert f"initialised from {init}" in capsys.readouterr().out
+    run = json.loads((store / "training-runs/qd0/run.json").read_text())
+    assert run["config"]["quantizer_dropout"] == 0. and run["config"]["velocity_weights"] == {"body": .5}
+    # the default keeps earlier tokenizers' configs (and SHAs) unchanged
+    assert json.loads((store / "training-runs/tok/run.json").read_text())["config"]["quantizer_dropout"] == .5
+    assert script.warm_start_compatible({"a": 1, "quantizer_dropout": .5}, {"a": 1, "quantizer_dropout": 0.,
+                                                                             "velocity_weights": {"body": 1.}})
+    assert not script.warm_start_compatible({"a": 1}, {"a": 2})

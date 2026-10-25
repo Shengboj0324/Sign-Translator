@@ -22,7 +22,9 @@ MIX=$ACQ/youtube-asl-v1/round3c-mixed-v1/manifest.json; MSHA=$(sha $MIX)
 [ "$MSHA" = 004bf6596a2330ee5f840bfeef0d233174f63d0602f72465b6c28a21078d00fd ] || { echo "mix SHA mismatch"; echo TOKV-DONE; exit 1; }
 D=$ACQ/youtube-asl-v1/round3c RUN=tokens-rvq-d0b-prior-r3c
 if [ "${R3C_SMOKE:-0}" = 1 ]; then D=$D-smoke RUN=$RUN-smoke TSTEPS=200 TEVERY=100 TLIMIT=24 FLIMIT=24 SFX=-smoke PSTEPS=300 PEVERY=100
-else TSTEPS=40000 TEVERY=1000 TLIMIT=300 FLIMIT=300 SFX= PSTEPS=60000 PEVERY=1000; fi
+else TSTEPS=${FT_STEPS:-40000} TEVERY=${FT_EVERY:-1000} TLIMIT=300 FLIMIT=300 SFX= PSTEPS=60000 PEVERY=1000; fi
+# amendment 8 (fine-tunes): TEXTRA carries extra trainer flags (--quantizer-dropout, --init-key/--init-sha256, --lr,
+# --warmup), appended last so they take precedence; FT_STEPS/FT_EVERY size the real run (the smoke keeps its toy sizes)
 python scripts/prefetch_cache.py $MIX || { echo "states missing or not matching the manifest"; echo TOKV-DONE; exit 1; }
 GLOSS_MAP=$ACQ/derived/signbank-v1/asl-citizen-gloss-map.json
 KP2D=$(best back-translator-kp2d-uwb-ft-v1); KPSHA=ad8a5876c37fb17e80bf0c5e8d45e6bc8cd51f6849c23057e47ad6ae4d12cfd2
@@ -35,7 +37,7 @@ stage $run tokenizer python scripts/train_motion_tokens.py --architecture rvq --
   --manifest-key $MIX --manifest-sha256 $MSHA --fps 24 --conform-to-corpus how2sign-two-view-text-v1 --hidden 512 \
   --code-dim 128 --codebook 512 --stages 8 --down-layers 0 --base-blocks 4 --steps $TSTEPS --batch-size 64 \
   --lr 3e-4 --warmup 1000 --val-every $TEVERY --val-batches 32 --checkpoint-every $((TEVERY * 2)) --patience 5 \
-  $VFLAGS --workers 10 --cache-bytes 107374182400 || { echo TOKV-DONE; exit 1; }
+  $VFLAGS --workers 10 --cache-bytes 107374182400 ${TEXTRA:-} || { echo TOKV-DONE; exit 1; }
 key=$(best $run); verdict=PASS
 for check in domain recognisability fidelity; do
   case $check in
