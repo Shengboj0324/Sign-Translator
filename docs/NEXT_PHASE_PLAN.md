@@ -1203,3 +1203,12 @@ No verdict would change, so **the declared fidelity rule stands unchanged**. Han
 - hand variation 0.64–0.76.
 
 **New candidate s8v6:** velocity weight 0.3 on head rotation and head translation, 0.05 on body and both hands, otherwise s8v5's recipe. The head barely moves, so its per-frame loss cannot see jitter and needs a stronger velocity term than the articulators. Precedence: after s8v5.
+
+## Round 3c amendment 7: s8v7 (declared 2026-10-25, 06:00 PDT, before s8's, s8v5's and s8v6's verdicts)
+
+The s8v5 audit at step 16000 (How2Sign):
+- head speed 1.13–1.53, up from 1.09–1.30 at step 8000;
+- body pose error 6.3–8.6°, close to s8's;
+- hand variation 0.71–0.77.
+
+At weight 0.05 the head drifts out of band as training continues. **s8v7** uses velocity weight 1.0 on head rotation and translation (the weight that put s8v's head in band) and 0.05 on body and hands (where s8v's weight 1 cost pose accuracy). Precedence: after s8v6.
