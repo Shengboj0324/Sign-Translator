@@ -1372,3 +1372,26 @@ For a qualifying candidate:
 - This is direct evidence that the codebook dynamics, not optimizer steps, drive the tokenizers' spikes. It is the design input for any later tokenizer: freeze or slow the codebooks when the gradient norm spikes, or update them only on accepted steps.
 
 **How d4 is judged:** amendment 1 says the run "stops as diverging", not that the candidate is rejected. Every candidate is judged on its best checkpoint, early-stopped runs included. So d4's three checks run on step 31000 with the same rules (`CHECKS_ONLY=1 runpod/fleet/round3d_tokenizer_d4.sh`).
+
+## Round 3d tokenizer result (2026-10-25, 14:36 PDT): d2 with decoder gains
+
+No candidate passed without gains. All three that qualified for the amendment-3 fallback passed with them:
+
+| candidate | gains (body, left hand, right hand) | gained fidelity (all ratios in [0.85, 1.15]) | gained recognisability | gained R2b (blank 1.86 [1.54, 2.18]) |
+|---|---|---|---|---|
+| **d2** (s8 warm start + 5000 steps, How2Sign ×2) | 1.17, 1.28, 1.27 | pass: body 1.00 / 1.04, hands 0.94–1.15, head 1.08 / 0.93 | 0.980 | **3.16 [2.74, 3.57]** |
+| d3 (from scratch, best at step 39000) | 1.21, 1.45, 1.41 | pass | 0.971 | 2.97 [2.54, 3.42] |
+| d4 (from scratch with spike skipping, best at 31000) | near the 1.5 cap | pass | — | 2.78 |
+
+**Choice:**
+- d2 wins on R2b, per the declared precedence. It also needs the smallest gains.
+- Its accepted gains are at `training-runs/tokens-rvq-d0b-r3d-d2/decoder-gains-step-00005000.json`. `load_generator` applies them to every generated state.
+- Its prior, `tokens-rvq-d0b-prior-r3d-d2g`, started speculatively at 11:10 PDT while d3 and d4 were still being judged, and becomes round 3d's prior (step 17000, validation loss 3.59).
+- The evaluation chain (sweep, grid, review and gate) follows automatically once the prior finishes.
+
+**Recorded observations:**
+- Applying gains lowers the R2b back-translation BLEU for every candidate (d3 3.48 → 2.97, d2 3.37 → 3.16): the 2D back-translator reads damped motion more easily, an instrument property worth knowing at the gate.
+- d2's deep audit with gains (`round3d/tokenizer-audit-d2-gained.json`):
+  - How2Sign hands at 0.91–1.02 variation and 1.03–1.24 speed (c05's left hand 1.24);
+  - no added jitter (jitter ratios 0.83–1.12);
+  - one carried flaw: c05's browInnerUp is 45× its nearly static real variation. Every candidate adds brow motion there, an R6 risk for the gate.
