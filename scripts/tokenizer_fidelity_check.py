@@ -80,7 +80,7 @@ def main(argv=None) -> int:
     real = [at_rate(load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]), 24.)
             for r in records]
     model, _ = dt.load_tokenizer(store, args.tokenizer_key)
-    model.to(args.device).eval()
+    model.eval()                 # round_trip collates on the CPU, as the recognisability check's tokenizer does
     trips = [round_trip(model, model.config.motion, s, 24.) for s in real]
     res = compare([observed_like(t, r) for t, r in zip(trips, real)], real, CHANNELS)
     ratios = {f"{c}_{k}": round(float(res[c][k]), 3) for c in CHANNELS if c in res
