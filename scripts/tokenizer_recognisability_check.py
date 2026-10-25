@@ -80,6 +80,7 @@ def main(argv=None) -> int:
     parser.add_argument("--min-ratio", type=float, default=.9)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--output-key")
+    parser.add_argument("--gains-key", help="amendment 5: fit_tokenizer_gains.py output, applied to every round trip")
     args = parser.parse_args(argv)
     import diagnose_tokenizer as dt
     from evaluate_text_to_motion import at_rate
@@ -120,6 +121,10 @@ def main(argv=None) -> int:
     cfg = model.config.motion
     real = [at_rate(conform(load_sample(r, "continuous", cache=cache, fetch=store.get), template), args.fps) for r in records]
     trip = [round_trip(model, cfg, s, args.fps) for s in real]
+    if args.gains_key:
+        from fit_tokenizer_gains import apply_gains
+        gains = json.loads(store.get(args.gains_key))["gains"]
+        trip = [apply_gains(t, gains) for t in trip]
     y = torch.tensor([index[label_of(r)] for r in records])
 
     def acc(states):

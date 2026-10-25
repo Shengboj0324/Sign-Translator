@@ -57,6 +57,8 @@ def main(argv=None) -> int:
     p.add_argument("--groups", default="c01,c03,c05")
     p.add_argument("--limit", type=int, default=300)
     p.add_argument("--device", default="cpu")
+    p.add_argument("--gains-key", help="amendment 5: fit_tokenizer_gains.py output; its per-channel excursion gains "
+                                         "are applied to every round trip after decoding")
     p.add_argument("--output-key")
     args = p.parse_args(argv)
     import tempfile
@@ -82,6 +84,10 @@ def main(argv=None) -> int:
     model, _ = dt.load_tokenizer(store, args.tokenizer_key)
     model.eval()                 # round_trip collates on the CPU, as the recognisability check's tokenizer does
     trips = [round_trip(model, model.config.motion, s, 24.) for s in real]
+    gains = json.loads(store.get(args.gains_key))["gains"] if args.gains_key else None
+    if gains:
+        from fit_tokenizer_gains import apply_gains
+        trips = [apply_gains(t, gains) for t in trips]
     res = compare([observed_like(t, r) for t, r in zip(trips, real)], real, CHANNELS)
     ratios = {f"{c}_{k}": round(float(res[c][k]), 3) for c in CHANNELS if c in res
               for k in ("speed_ratio", "variation_ratio")}
@@ -96,6 +102,7 @@ def main(argv=None) -> int:
         bleu[name] = dict(bleu=point, ci95=ci)
     verdict = judge(ratios, bleu, separated)
     report = dict(tokenizer_key=args.tokenizer_key, clips=len(records), groups=sorted(groups), ratios=ratios, r2b=bleu,
+                  gains=gains,
                   **verdict)
     print(json.dumps(dict(ratios=ratios, r2b={k: v["bleu"] for k, v in bleu.items()}, out_of_band=verdict["out_of_band"],
                           r2b_above_blank=verdict["r2b_above_blank"], **{"pass": verdict["pass"]})), flush=True)
