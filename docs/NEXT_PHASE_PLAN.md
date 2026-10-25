@@ -1338,3 +1338,27 @@ d1 encodes ASLLVD hands better than s8 did and fails only because its How2Sign e
 - The check runs from the Mac orchestrator after each pod's checks, with the same clips, limit and corpora (`tokenizer-domain-check-<n>-a2.json`), via `tokenizer_domain_check.py --fixed-reference-key`.
 
 d1 stays judged by the rule declared before its result.
+
+## Round 3d amendment 3: amendment 5's gains fallback applies to round 3d (declared 2026-10-25, 10:00 PDT, before d2's, d3's and d4's fidelity verdicts)
+
+**d1's fidelity (diagnostic, d1 is already rejected on the domain check):**
+- R2b on 1000 clips now separates: round trip 3.56 [3.08, 4.05] against blank 1.86 [1.54, 2.18].
+- In band: head speed 1.10, head variation 0.92, body variation 0.86, left-hand speed 0.87.
+- Out of band, all below: reliable-joint body speed 0.846, hand variation 0.73–0.75, right-hand speed 0.82.
+- Recognisability 1.004.
+
+The design's "round 3c's three checks and limits" includes round 3c's amendment-5 fallback. Stated explicitly here, it applies unchanged. A candidate qualifies when:
+- every fidelity failure is speed or variation of the body or hands below the band;
+- head rotation is in band;
+- R2b is above blank;
+- the domain check (amendment 2) and the recognisability check pass.
+
+For a qualifying candidate:
+1. Per-channel gains are fitted on 300 How2Sign *training* clips (`fit_tokenizer_gains.py`, cap [1, 1.5]).
+2. The fidelity check (1000 validation clips, reliable-joint speeds) and the recognisability check are rerun with `--gains-key`, and both must pass in full.
+3. The accepted gains are then written to `decoder-gains-<step>.json` beside the checkpoint, and every generated state downstream uses them (`load_generator`).
+
+**Precedence:**
+- A candidate passing without gains outranks any that needs them.
+- Within each class, the highest R2b round trip wins.
+- The gained checks run on a GPU pod (`runpod/fleet/round3d_gains.sh`), started by the orchestrator.
