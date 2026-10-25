@@ -1185,3 +1185,21 @@ No verdict would change, so **the declared fidelity rule stands unchanged**. Han
 - **Rule:** the fidelity check is rerun on validation with the gains applied and must pass in full (all ratios in [0.85, 1.15], R2b above blank). The recognisability check must also still pass.
 - **Downstream:** the gains become part of that tokenizer's decoder and are applied to every generated state downstream (sweep, grid, review), recorded in the release spec.
 - **Precedence:** a candidate that passes without gains outranks one that needs them.
+
+## Round 3c amendment 6: s8v6 (declared 2026-10-25, 05:30 PDT, before s8's and s8v5's verdicts)
+
+**Verdicts so far:**
+
+| candidate | domain | recognisability | fidelity |
+|---|---|---|---|
+| c1024 | pass | pass (0.996) | fail: head 2.04, hand speed 0.74–0.76, hand variation 0.64–0.67, body speed 0.68 |
+| s6 | pass | pass (1.0) | fail: head 1.90, hands 0.70–0.82, body speed 0.68 |
+| s8v | **fail** (pose error) | — | — |
+| s8v3 | **fail** (pose error; validation loss diverged to 102 at step 25000, best at 20000) | — | fail, damping only: body 0.76/0.84, hands 0.74–0.79; R2b round trip 3.23 vs blank 2.09 |
+
+**s8v5 audit at step 8000** (How2Sign):
+- head speed 1.09–1.30, head-translation jitter 0.72–0.82;
+- body pose error 6.8–9.9° (s8 at step 20k: 5.7–8.2°);
+- hand variation 0.64–0.76.
+
+**New candidate s8v6:** velocity weight 0.3 on head rotation and head translation, 0.05 on body and both hands, otherwise s8v5's recipe. The head barely moves, so its per-frame loss cannot see jitter and needs a stronger velocity term than the articulators. Precedence: after s8v5.
