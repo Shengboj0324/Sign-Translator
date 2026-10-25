@@ -1163,3 +1163,25 @@ The per-batch normaliser also diverged on near-still batches (validation loss 14
 - 8 stages, the stable velocity matching at weight 0.05 on the same five channels;
 - the same three checks;
 - precedence after c1024, s6, s8, s8v and s8v3.
+
+## Round 3c amendment 5: noise check and a declared amplitude fallback (2026-10-25, 05:00 PDT, before any pending fidelity verdict)
+
+**Measurement check.** Real clips smoothed over 0.1 s, against themselves:
+- speed drops to 0.54–0.78 (body 0.54–0.71); variation stays at 0.84–0.98;
+- so raw speed is noise-sensitive.
+
+Recomputed with both sides smoothed (How2Sign, 60 clips):
+
+| tokenizer | body speed | hand speed | variation |
+|---|---|---|---|
+| r3a | 0.80 | 0.74–0.76 | 0.72–0.94 |
+| s8 at step 20k | 0.80 | 0.78–0.84 | 0.73–0.92 |
+| s8v at step 20k | 0.77 | 0.80–0.83 | 0.69–0.95 |
+
+No verdict would change, so **the declared fidelity rule stands unchanged**. Hand and body amplitude is genuinely damped by about 20% in every candidate.
+
+**Fallback, declared before the verdicts of c1024, s6, s8, s8v3 and s8v5.** It applies only to a candidate whose every failure is speed or variation of the body or hands below the band, while head rotation is in band and the domain and recognisability checks pass.
+- **Correction:** a per-channel excursion gain after decoding, `R' = R̄ exp(g log(R̄ᵀ R))` (`postprocess.damp_rotation_channel` with a factor above 1). For each channel, g is fitted on 300 *training* clips as real variation over round-trip variation, capped at [1, 1.5].
+- **Rule:** the fidelity check is rerun on validation with the gains applied and must pass in full (all ratios in [0.85, 1.15], R2b above blank). The recognisability check must also still pass.
+- **Downstream:** the gains become part of that tokenizer's decoder and are applied to every generated state downstream (sweep, grid, review), recorded in the release spec.
+- **Precedence:** a candidate that passes without gains outranks one that needs them.
