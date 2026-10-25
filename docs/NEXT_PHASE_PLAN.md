@@ -1241,7 +1241,7 @@ At weight 0.05 the head drifts out of band as training continues. **s8v7** uses 
 
 **Precedence:** s8v6, s8v7, s8v8, s8v9. A candidate that passes without gains outranks one that needs the amendment-5 gains.
 
-## Round 3c tokenizer results so far (2026-10-25, 08:20 PDT; s8v7 still training)
+## Round 3c tokenizer results (2026-10-25; s8v7 added at 08:50 PDT)
 
 Every judged candidate is rejected:
 
@@ -1251,6 +1251,9 @@ Every judged candidate is rejected:
 | s8v6 | pass (1.466) | pass (1.008) | fail (0.66, 0.77) | 3.17 |
 | s8v8 | fail (ASLLVD body 1.508) | pass (0.988) | fail (0.65, 0.77) | 3.46 |
 | s8v9 | pass (1.451) | pass (0.988) | fail (0.67, 0.77–0.78) | 3.28 |
+| s8v7 (verdict 08:50 PDT) | pass (1.417) | pass (1.004) | fail (0.61, 0.66–0.67; head 1.02) | 3.21 |
+
+**Round 3c result: the tokenizer stage FAILED.** All nine candidates were rejected, so the round stops before the prior, as declared. s8v7 ran its full 40000 steps without a spike, but its head weight of 1.0 damps the hands most of all.
 
 None qualifies for the amendment-5 gains: in each, R2b also fails, which is not a speed or variation failure.
 
