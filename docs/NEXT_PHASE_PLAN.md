@@ -1363,7 +1363,7 @@ For a qualifying candidate:
 - Within each class, the highest R2b round trip wins.
 - The gained checks run on a GPU pod (`runpod/fleet/round3d_gains.sh`), started by the orchestrator.
 
-## Round 3d note: d4's divergence stop (2026-10-25, 11:45 PDT)
+## Round 3d note: d4's divergence stop (2026-10-25, 11:59 PDT)
 
 **What happened:** d4's spike guard stopped the run at step 31230, after more than 100 consecutive spikes (173 skipped in all).
 - Its best checkpoint, step 31000 at validation loss 0.2227, was validated before the blow-up.
