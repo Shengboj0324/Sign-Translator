@@ -12,6 +12,15 @@ best() { python -c "import os,sys,json; from signtranslator.data.text_motion_dat
 ACQ=acquisition/2026-10-17-v1
 MIX=$ACQ/youtube-asl-v1/round3c-mixed-v1/manifest.json MSHA=004bf6596a2330ee5f840bfeef0d233174f63d0602f72465b6c28a21078d00fd
 D=$ACQ/youtube-asl-v1/round3d GAINS=$D/tokenizer-gains-$CAND.json
+# already done for this checkpoint (run early for one candidate): nothing to redo
+if python - "$D" "$CAND" "$KEY" <<'PY'
+import os, sys, json
+from signtranslator.data.text_motion_dataset import R2Store
+s, (D, n, key) = R2Store(os.environ), sys.argv[1:]
+keys = [f"{D}/tokenizer-{c}-{n}-gained.json" for c in ("recognisability", "fidelity")]
+sys.exit(0 if all(s.exists(k) and json.loads(s.get(k))["tokenizer_key"] == key for k in keys) else 1)
+PY
+then echo "gained reports for $CAND $KEY already exist"; echo GAINS-DONE; exit 0; fi
 python scripts/prefetch_cache.py $MIX || { echo "states missing"; echo GAINS-DONE; exit 1; }
 KP2D=$(best back-translator-kp2d-uwb-ft-v1); KPSHA=ad8a5876c37fb17e80bf0c5e8d45e6bc8cd51f6849c23057e47ad6ae4d12cfd2
 echo "STAGE fit $(date)"
