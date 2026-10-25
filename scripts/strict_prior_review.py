@@ -165,6 +165,11 @@ def main(argv=None) -> int:
                                                  "records only (round 3: how2sign-two-view-text-v1)")
     parser.add_argument("--groups", help="round 3: comma-separated validation signer components; generated states are "
                                          "pooled from <generated_run>-<group>, the gate is multi_signer_gate.py's")
+    parser.add_argument("--translation-smoothing", type=float, default=0.,
+                        help="R7 rerun (declared 2026-10-24): seconds of head_translation smoothing applied after the "
+                             "gate candidate's own post-processing, in every rule; 0 = the candidate as selected")
+    parser.add_argument("--heldout-save-generated", help="store prefix: R6 saves its post-processed test states here "
+                                                         "(for smoothness_check.py on the test partition)")
     args = parser.parse_args(argv)
     store = make_store(args.store)
     with tempfile.TemporaryDirectory() as t:
@@ -175,7 +180,7 @@ def main(argv=None) -> int:
     if args.quick:
         args.train_limit, args.words = 200, 10
     sel = selected_setting(gate)
-    report = dict(selected=sel, rules={})
+    report = dict(selected=sel, rules={}, translation_smoothing=args.translation_smoothing)
     # validation states of the selected setting, as the core chain saved them
     groups = args.groups.split(",") if args.groups else None
     if groups:                                       # every validation signer's clips, pooled
@@ -190,6 +195,10 @@ def main(argv=None) -> int:
     if sel.get("head_damping", 1.) != 1:
         from signtranslator.generation.postprocess import damp_rotation_channel
         generated = {k: damp_rotation_channel(v, "head_rotation", sel["head_damping"]) for k, v in generated.items()}
+    if args.translation_smoothing > 0:
+        from signtranslator.generation.postprocess import smooth_vector_channel
+        generated = {k: smooth_vector_channel(v, "head_translation", args.translation_smoothing)
+                     if "head_translation" in v.channels else v for k, v in generated.items()}
     calibration = None
     if sel["face_calibrated"]:                       # the calibration the gate's candidate used, from its stored result
         if groups:                                   # the pooled calibration, identical in every group's report
@@ -304,6 +313,9 @@ def main(argv=None) -> int:
             if sel.get("head_damping", 1.) != 1:
                 from signtranslator.generation.postprocess import damp_rotation_channel
                 st = damp_rotation_channel(st, "head_rotation", sel["head_damping"])
+            if args.translation_smoothing > 0 and "head_translation" in st.channels:
+                from signtranslator.generation.postprocess import smooth_vector_channel
+                st = smooth_vector_channel(st, "head_translation", args.translation_smoothing)
             sign_states.append(calibrate_face(st, calibration) if calibration else st)
             y.append(index[g])
     y = torch.tensor(y)
@@ -342,9 +354,12 @@ def main(argv=None) -> int:
                              if args.checkpoint_manifest_sha256 else []),
                            "--guidance", f"{sel['guidance']:g}", "--part-temperature", sel["part_temperature"],
                            "--head-smoothing", str(sel["head_smoothing"]), "--head-damping", str(sel.get("head_damping", 1.)),
+                           "--translation-smoothing", str(args.translation_smoothing),
                            "--device", args.device,
                            "--retrieval-key", args.retrieval_key, "--output-key", key, "--fps", "24"]
                           + (["--corpus", args.heldout_corpus] if args.heldout_corpus else [])
+                          + (["--save-generated", f"{args.heldout_save_generated.rstrip('/')}/{partition}"]
+                             if args.heldout_save_generated else [])
                           + (["--retrieval-manifest-sha256", args.retrieval_manifest_sha256] if args.retrieval_manifest_sha256 else [])
                           + extra)
         except SystemExit as stop:                          # a partition the manifest does not have
