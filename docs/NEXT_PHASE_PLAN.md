@@ -1097,3 +1097,26 @@ or review check measures jitter, because the articulation ratios compare mean sp
 5. **Gate:** the round-3b envelope gate, plus R4's sentence-length slices as gate checks (per slice, head and body speed and variation in [0.7, 1.3]), plus R7 smoothness, so the selection cannot pick a candidate that the review then fails on those.
 6. **Strict review:** R1–R7 as declared (R7 per 2026-10-24 17:55), and the R6 test confirmation once. Every rule must pass.
 7. **Operations:** the GPU pod runs only GPU stages; the sweep uses two GPU pods; the review's memory uses `expandable_segments`.
+
+## Round 3c amendment: tokenizer stage (declared 2026-10-25, 00:20 PDT, before any round-3c result)
+
+**Finding.** Real How2Sign validation clips (c01/c03/c05) passed through round 3a's tokenizer and back, measured on the frames each clip observed (`scripts/tokenizer_fidelity_check.py`):
+- head rotation speed 1.58–1.93× real;
+- hand speed 0.71–0.80× and hand variation 0.67–0.74×;
+- body speed 0.67–0.72×;
+- R2b on 200 clips: round trip 3.05 [2.27, 3.90] vs blank 1.74 [1.04, 2.32]. The intervals overlap.
+
+This is round 3b's remaining motion failure profile before any prior is involved: head too active (R4), right-hand variation too low (the gate). Head rotation is observed on 100% of frames, so this is the tokenizer's quantisation, not gap filling. Round 3b's prior job was stopped during its smoke run's data check; nothing was trained.
+
+**Amendment.**
+- Stage A trains three tokenizer candidates in parallel on `round3c-mixed-v1`, with round 3a's recipe otherwise (hidden 512, code dimension 128, 40,000 steps maximum, early stop):
+  - s6: 6 residual stages;
+  - s8: 8 residual stages;
+  - c1024: 4 stages, 1024-entry codebook.
+- Each candidate must pass all three checks:
+  1. the domain check (YouTube, ASLLVD);
+  2. the recognisability round trip (ASLLVD val);
+  3. the new fidelity check (300 val clips): body, both hands and head rotation speed and variation ratios in [0.85, 1.15], and the R2b round trip's interval entirely above blank's.
+- The passing candidate with the fewest codes per step is used (c1024 16, s6 24, s8 32).
+- If none passes, the round stops before the prior (TOKENIZER-FAILED) and is redesigned.
+- Everything else in the round-3c design is unchanged.
