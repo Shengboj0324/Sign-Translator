@@ -38,9 +38,11 @@ def snapshot(repo: Path) -> dict:
     paths = [*repo.joinpath("signtranslator").rglob("*.py"),
              *repo.joinpath("tests").rglob("*.py"),
              *repo.joinpath(".github", "workflows").glob("*.yml")]
+    # requirements.txt was removed 2026-10-26 (a stale subset of pyproject.toml's ranges); absent files are skipped,
+    # so a verify run against an older baseline reports it as missing rather than crashing
     paths += [repo / name for name in (
         "conftest.py", "pyproject.toml", "requirements.lock", "requirements.txt",
-        "requirements-foundation.txt", "LICENSE", "scripts/w0_day1_baseline.py")]
+        "requirements-foundation.txt", "LICENSE", "scripts/w0_day1_baseline.py") if (repo / name).exists()]
     return {path.relative_to(repo).as_posix(): file_record(path)
             for path in sorted(set(paths))}
 
