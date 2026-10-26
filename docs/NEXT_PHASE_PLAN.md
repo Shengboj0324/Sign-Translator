@@ -1396,7 +1396,7 @@ No candidate passed without gains. All three that qualified for the amendment-3 
   - no added jitter (jitter ratios 0.83–1.12);
   - one carried flaw: c05's browInnerUp is 45× its nearly static real variation. Every candidate adds brow motion there, an R6 risk for the gate.
 
-## Round 3d amendment 4: the sweep's face temperatures (declared 2026-10-25, 17:52 PDT, before any round-3d evaluation result)
+## Round 3d amendment 4: the sweep's face temperatures (declared 2026-10-25, 17:22 PDT, before any round-3d evaluation result)
 
 The sweep's face temperatures {0.8, 1.0} were chosen when round 3b's head moved 1.45× too much. Head rotation is part of the face token part, so face temperature sets the head's motion.
 
