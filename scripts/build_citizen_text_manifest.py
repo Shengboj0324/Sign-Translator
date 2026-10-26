@@ -34,7 +34,7 @@ def english(label: str) -> str | None:
     """The English word of an ASL Citizen gloss label, or None when it is not a dictionary word."""
     if re.search(r"-(CA|CL)\b", label) or re.match(r"\d", label):
         return None
-    base = label.split("/")[0]
+    base = re.sub(r"^\([^)]*\)", "", label.split("/")[0])      # "(1)CHEAT", "(elbow)CHEAT" -> "CHEAT"
     base = re.sub(r"\d+$", "", base).replace(".", "")
     if not re.fullmatch(r"[A-Z][A-Z-]*", base):
         return None

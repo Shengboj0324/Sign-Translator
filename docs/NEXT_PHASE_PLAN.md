@@ -1614,3 +1614,8 @@ ASL Citizen motion is not in the generator.
 - **Unchanged:** every other gate and strict-review rule.
 
 **Cost and pods.** Two CPU pods now (ASL Citizen canonicalisation, RIT extraction). Then one GPU pod for the recogniser, and two for the priors once the mix and the tokenizer check are ready: at most 5 pods. Every pod is deleted after use, once its log is verified in R2.
+
+**Round 5 amendment 1 (2026-10-26, 20:59 UTC, before any round-5 result):**
+- **The ASLLRP in-context sign segments leave the generator mix.** Their signs are coarticulated fragments: median 0.234 s (recogniser v2's in-context diagnostic), so about 0.43 s with the ±0.1 s margins. Isolated citation forms run about 1.5 s with their holds. As one-word records for the same English words, the fragments would pull the prior's duration for one-word prompts toward a fragment's length. RIT's citation signs are the clean source.
+- **RIT clips are canonicalised to right-dominant** by the ASL Citizen rule (`scripts/canonicalize_asl_citizen.py`): dominant side by tracked forearm and hand frames; left-dominant clips mirrored by the exact mirror. They are not trimmed: the DAI sign clips are already cut to the sign.
+- **The mix** is `round3c-mixed-v1` plus RIT citation one-word records (×3, the text builder's cap of 6 training clips per word). Nothing else changes.
