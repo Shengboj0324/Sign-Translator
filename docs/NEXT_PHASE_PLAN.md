@@ -1544,3 +1544,25 @@ Every guidance stays below blank. The content failure lies in the prior.
 - R6: fail.
 - R5: passed narrowly. Top-5 was 2.25% [0.45%, 4.5%] against blank 0, at guidance 2, where round 3e's 1.35% [0, 3.15%] at guidance 1 just failed.
 - Both rounds sit around 2% against real signing's 99%. That is consistent with the content diagnosis, not progress on it.
+
+## Round 4 pilot result, recorded (2026-10-26, 20:28 UTC): HYPOTHESIS REJECTED
+
+Pilot checks at step 20000 (`round4/pilot-<arm>-step20000.json`; same 300 validation clips, same 150 words × 2 samples, same setting for every arm):
+
+| Arm | Meaning BLEU [95% CI] | Lexicon top-5 | Verdict |
+|---|---|---|---|
+| A control (byte encoder) | 1.406 [0.98, 1.82] | 0.0167 (5/300) | reference |
+| B MiniLM-L6 | 1.541 [1.02, 2.05] | 0.0133 (4/300) | not promising (lexicon below control) |
+| C flan-T5-base | 1.666 [1.16, 2.16] | 0.0033 (1/300) | not promising (lexicon below control) |
+| blank | 2.09 [1.44, 2.74] | 0 | |
+| real | 4.09 [3.16, 5.08] | 0.99 (review R5) | |
+
+**Validation loss** tracked the control within 0.01 at every step for both arms (step 20000: MiniLM 3.567, flan-T5 3.558, control 3.562).
+
+**Decision, as declared:** neither arm is promising, so neither continues to 60000 steps. Both prior pods were stopped at 20:28 UTC with checkpoints to step 23000–24000 in R2, and the pods were deleted after their logs were verified in R2.
+
+**Reading:**
+- The pretrained encoders move meaning in the right direction, by +0.14 and +0.26 BLEU. Neither move is significant, and every arm stays below blank.
+- Lexicon is at the floor in all three arms (1–5 hits in 300 against real signing's 99%). The differences between arms are a few samples and carry no information.
+- A frozen English encoder alone does not teach the prior what a sign looks like. The binding constraint is lexical data: only 94 of the 150 review words have any isolated clips in the mix, about 2.6 clips each.
+- The next lever is therefore lexical data, as declared. The next round is designed and declared before any of its results. flan-T5 remains a candidate encoder for it, as the arm with the best meaning point estimate.
