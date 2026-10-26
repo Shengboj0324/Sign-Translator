@@ -1466,3 +1466,36 @@ Sweep results so far: 15 of 27 at 07:08, guidance 1.5, ratios of generated to th
 - **Location:** results go under `round3e/` (`R3_D`).
 
 Every other rule is as declared for rounds 3c and 3d. The round-3d verdict is recorded when its chain finishes; it does not gate round 3e.
+
+## Round 3e result: the exit gate passed, the strict review FAILED (2026-10-26, 14:39 UTC)
+
+**Gate: passed, 95 of 95 checks**, the first setting of any round to do so.
+- Selected setting: hand and body temperature 1.1, face 1.0, guidance 1, head smoothing 0.1 s, face calibration (Fréchet 381.5).
+- Only 1 of 324 settings passed. Its nearest rivals failed only c01's nod rate (guidance 1.5 and 2) or brow-raise fraction (without face calibration).
+
+**Strict review on that setting:**
+
+| rule | result |
+|---|---|
+| R1 retrieval | pass: R@3 0.186 [0.161, 0.212] vs blank 0.094 (real 0.294) |
+| R2 text back-translation | pass: BLEU 0.80 vs blank 0.0 |
+| **R2b 2D back-translation** | **fail: generated 1.60 [1.32, 1.87] below blank 2.14 [1.81, 2.46]** (real 3.88) |
+| R3 no copying | pass: copy rate 0.0 |
+| R4 length slices | pass |
+| **R5 single-sign words** | **fail: top-5 1.35% [0, 3.2%]** (real 99%, 111 words) |
+| **R6 test confirmation** | **fail** |
+| R7 smoothness | pass, validation and test |
+
+R6 in detail:
+- The test signer passed all 11 articulation checks within its envelope.
+- How2Sign's official held-out set had too still a head (speed 0.62, variation 0.65) and too few headshakes (0.30×) and nods (0.40×).
+- The R7 checks were flagged as test regressions within R6.
+
+**The motion statistics are now right. The content is not.** R2b and R5 failed the same way in round 3b, so the tokenizer and temperature work of rounds 3c–3e did not touch them.
+
+**Diagnosis:**
+1. **The text encoder.** The prior conditions on raw UTF-8 bytes (`text_to_motion.encode_texts`) through a 4-layer transformer trained from scratch on about 125k captions. It has no lexical semantics, and a rare or single word gives almost no usable signal. The prior's validation token accuracy is 24.5% (stage 1: 41.5%).
+2. **Lexical coverage.**
+   - Of R5's 150 candidate words, only 94 appear as isolated ASLLVD signs in training, at about 2.6 clips each among 125k clips.
+   - The other 56 appear only inside How2Sign sentences (median 12 sentences per word).
+   - ASL Citizen, the large isolated-sign source, was removed in round 3c because its extracted states were mostly invalid (round 3b's R5 diagnosis).
