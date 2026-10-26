@@ -37,6 +37,8 @@ def main(argv=None) -> int:
     p.add_argument("--clips", type=int, default=300)
     p.add_argument("--words", type=int, default=150)
     p.add_argument("--device", default="cuda")
+    p.add_argument("--recognizer-run", default="sign-recognizer-v2",
+                   help="the lexicon instrument; its validation.json gives the reliable glosses (round 5: v3 if validated)")
     p.add_argument("--output-key", required=True)
     args = p.parse_args(argv)
     import warnings
@@ -81,8 +83,8 @@ def main(argv=None) -> int:
     meaning["above_blank"] = separated(meaning["generated"]["ci95"], meaning["blank"]["ci95"])
     print(json.dumps({"meaning": meaning}), flush=True)
     # lexicon
-    validation = json.loads(store.get("training-runs/sign-recognizer-v2/validation.json"))
-    recogniser, labels, _ = load_model(store, "sign-recognizer-v2", args.device)
+    validation = json.loads(store.get(f"training-runs/{args.recognizer_run}/validation.json"))
+    recogniser, labels, _ = load_model(store, args.recognizer_run, args.device)
     index = {g: i for i, g in enumerate(labels)}
     train = [r for r in manifest["records"] if r.get("corpus") == "how2sign-two-view-text-v1" and r.get("partition") == "train"]
     vocab = {w for r in train for w in re.findall(r"[a-z]+", r["text"].lower())}
@@ -97,7 +99,8 @@ def main(argv=None) -> int:
     hits = (logits_of(recogniser, states, args.device).topk(5, dim=1).indices == y[:, None]).any(1).float().numpy()
     blank_hits = (logits_of(recogniser, blanked(states), args.device).topk(5, dim=1).indices == y[:, None]).any(1).float().numpy()
     lexicon = dict(words=len(words), samples=len(y), generated_top5=round(float(hits.mean()), 4),
-                   blank_top5=round(float(blank_hits.mean()), 4))
+                   blank_top5=round(float(blank_hits.mean()), 4), recognizer_run=args.recognizer_run,
+                   per_word={g: int(hits[2 * k] + hits[2 * k + 1]) for k, g in enumerate(words)})
     print(json.dumps({"lexicon": lexicon}), flush=True)
     report = dict(checkpoint_key=args.checkpoint_key, part_temperature=temperature, guidance=args.guidance,
                   clips=len(texts), meaning=meaning, lexicon=lexicon)

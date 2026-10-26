@@ -54,8 +54,8 @@ def side_tracks(state):
     return out
 
 
-def canonicalize(state):
-    """(canonical state, report) for one clip, by the rule in the module docstring."""
+def canonicalize(state, trim: bool = True):
+    """(canonical state, report) for one clip, by the rule in the module docstring (``trim=False``: mirror only)."""
     from signtranslator.pose.mirror import mirror_state
     from render_avatar import slice_state
     tracks = side_tracks(state)
@@ -72,6 +72,8 @@ def canonicalize(state):
     t = state.timestamps
     idx = np.flatnonzero(arm)
     lo, hi = max(t[idx[0]] - MARGIN_SECONDS, t[0]), min(t[idx[-1]] + MARGIN_SECONDS, t[-1])
+    if not trim:
+        lo, hi = t[0], t[-1]
     keep = (t >= lo - 1e-9) & (t <= hi + 1e-9)
     state = slice_state(state, float(lo - t[0]), float(hi - lo) + 1e-6)
     seconds = float(t[keep][-1] - t[keep][0]) + (float(np.median(np.diff(t))) if len(t) > 1 else 0.)
@@ -83,14 +85,15 @@ def canonicalize(state):
                        score=score)
 
 
-def _work(record):
+def _work(job):
+    record, prefix, trim = job
     from signtranslator.data.text_motion_dataset import R2Store
     from evaluate_text_to_motion import load_state
     store = R2Store(os.environ)
-    key = f"{PREFIX}/states/{record['sign']}.npz"
+    key = f"{prefix}/states/{record['sign']}.npz"
     try:
         state, report = canonicalize(load_state(store, record["continuous"]["state_key"],
-                                                record["continuous"]["state_sha256"]))
+                                                record["continuous"]["state_sha256"]), trim=trim)
         if store.exists(key):
             digest = hashlib.sha256(store.get(key)).hexdigest()
         else:
@@ -111,36 +114,43 @@ def main(argv=None) -> int:
     p.add_argument("--workers", type=int, default=8)
     p.add_argument("--limit", type=int)
     p.add_argument("--assemble", action="store_true")
-    p.add_argument("--manifest-key", default=f"{PREFIX}/manifest.json")
+    p.add_argument("--source-key", default=SOURCE_KEY)
+    p.add_argument("--source-sha256", default=SOURCE_SHA)
+    p.add_argument("--prefix", default=PREFIX)
+    p.add_argument("--no-trim", action="store_true", help="mirror only (clips already cut to the sign, e.g. RIT)")
+    p.add_argument("--corpus-id", default="asl-citizen-canonical-v1")
+    p.add_argument("--manifest-key")
     args = p.parse_args(argv)
     from signtranslator.data.text_motion_dataset import R2Store
     from signtranslator.data_engineering.corpus_manifest import build_corpus_manifest, canonical_json, load_manifest
     store = R2Store(os.environ)
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "m.json"
-        path.write_bytes(store.get(SOURCE_KEY) + b"\n")
-        source = load_manifest(path, expected_sha256=SOURCE_SHA)
+        path.write_bytes(store.get(args.source_key) + b"\n")
+        source = load_manifest(path, expected_sha256=args.source_sha256)
+    prefix, trim = args.prefix, not args.no_trim
+    args.manifest_key = args.manifest_key or f"{prefix}/manifest.json"
     records = sorted(source["records"], key=lambda r: r["sign"])
     if not args.assemble:
         mine = [r for k, r in enumerate(records) if k % args.shards == args.shard][:args.limit]
-        report_key = f"{PREFIX}/reports/shard-{args.shard:03d}-of-{args.shards:03d}.json"
+        report_key = f"{prefix}/reports/shard-{args.shard:03d}-of-{args.shards:03d}.json"
         done = {}
         if store.exists(report_key):
             done = {r["sign"]: r for r in json.loads(store.get(report_key))["results"] if r["status"] == "converted"}
         todo = [r for r in mine if r["sign"] not in done]
         with mp.get_context("spawn").Pool(args.workers) as pool:
-            for k, result in enumerate(pool.imap_unordered(_work, todo, chunksize=8)):
+            for k, result in enumerate(pool.imap_unordered(_work, [(r, prefix, trim) for r in todo], chunksize=8)):
                 done[result["sign"]] = result
                 if (k + 1) % 2000 == 0:
                     print(f"{k + 1}/{len(todo)}", flush=True)
         results = [done[r["sign"]] for r in mine if r["sign"] in done]
-        store.put(report_key, json.dumps(dict(source_manifest_sha256=SOURCE_SHA, results=results)).encode())
+        store.put(report_key, json.dumps(dict(source_manifest_sha256=args.source_sha256, trim=trim, results=results)).encode())
         errors = sum(r["status"] != "converted" for r in results)
         print(json.dumps(dict(shard=args.shard, clips=len(mine), converted=len(results) - errors, errors=errors)))
         return 2 if errors else 0
     reports = {}
-    inputs = {"source_manifest": SOURCE_SHA}
-    for key in sorted(store.list(f"{PREFIX}/reports/")):
+    inputs = {"source_manifest": args.source_sha256}
+    for key in sorted(store.list(f"{prefix}/reports/")):
         payload = store.get(key)
         inputs[f"report:{key.rsplit('/', 1)[-1]}"] = hashlib.sha256(payload).hexdigest()
         for result in json.loads(payload)["results"]:
@@ -153,19 +163,18 @@ def main(argv=None) -> int:
             continue
         canonical = {k: result[k] for k in ("dominant", "mirrored", "no_arm", "window", "seconds", "arm_fraction",
                                              "hand_fraction", "generator_ok", "frames") if k in result}
-        out.append(dict(sign=record["sign"], text=(record["gloss"]["label"] or "").lower() or None,
-                        partition=record["partition"], performer_sha256=record["performer_sha256"],
-                        gloss=record["gloss"], canonical=canonical,
+        out.append(dict({k: v for k, v in record.items() if k not in ("continuous", "usable", "quality")},
+                        canonical=canonical,
                         continuous=dict(status="converted", state_key=result["state_key"],
                                         state_sha256=result["state_sha256"],
                                         available_channels=record["continuous"]["available_channels"],
                                         seconds=result.get("seconds", record["continuous"]["seconds"]))))
     split = dict(source["split"])
     split["counts"] = {p: sum(r["partition"] == p for r in out) for p in ("train", "val", "test")}
-    manifest = build_corpus_manifest(corpus_id="asl-citizen-canonical-v1", inputs=inputs, records=out, split=split)
-    manifest["licence"] = source.get("licence")
+    manifest = build_corpus_manifest(corpus_id=args.corpus_id, inputs=inputs, records=out, split=split)
+    manifest["licence"] = source.get("licence") or source.get("license")
     manifest["canonical_rule"] = dict(margin_seconds=MARGIN_SECONDS, min_seconds=MIN_SECONDS, min_arm=MIN_ARM,
-                                      min_hand=MIN_HAND, mirror="signtranslator.pose.mirror.mirror_state")
+                                      min_hand=MIN_HAND, trim=trim, mirror="signtranslator.pose.mirror.mirror_state")
     manifest["canonical_counts"] = {p: dict(clips=sum(r["partition"] == p for r in out),
                                             mirrored=sum(r["partition"] == p and r["canonical"]["mirrored"] for r in out),
                                             no_arm=sum(r["partition"] == p and r["canonical"]["no_arm"] for r in out),
