@@ -151,6 +151,9 @@ def main(argv=None) -> int:
     parser.add_argument("--feedforward", type=int, default=1024)
     parser.add_argument("--dropout", type=float, default=.1)
     parser.add_argument("--cfg-dropout", type=float, default=.1)
+    parser.add_argument("--text-model", help="prior: a frozen pretrained text encoder (Hugging Face name) instead of the "
+                                             "byte embedding (round 4)")
+    parser.add_argument("--text-model-revision", help="its pinned revision (commit hash)")
     parser.add_argument("--max-seconds", type=float, default=20.)
     parser.add_argument("--velocity-weight", action="append", default=[],
                         help="rvq tokenizer: CHANNEL=W (repeatable), per-channel velocity matching "
@@ -225,7 +228,7 @@ def main(argv=None) -> int:
             model = TokenPrior(config).to(device)
         else:
             config = RVQPriorConfig(tokenizer.config, temporal_layers=args.token_layers, depth_layers=args.depth_layers,
-                                    **common)
+                                    text_model=args.text_model, text_model_revision=args.text_model_revision, **common)
             model = RVQPrior(config).to(device)
     kind = tokenizer_kind if args.stage == "tokenizer" else prior_kind
 
@@ -235,7 +238,7 @@ def main(argv=None) -> int:
         if args.architecture == "vq":
             return prior_loss(model, tokenizer, tokens, mask, motion, *loci)
         return rvq_prior_loss(model, tokenizer, tokens, mask, motion, *loci, train=train)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=.01)
+    optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=args.lr, weight_decay=.01)
     prefix = f"training-runs/{args.run}"
     step = 0
     checkpoints = [k for k in store.list(f"{prefix}/checkpoints/") if k.endswith(".pt")]

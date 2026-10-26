@@ -242,3 +242,52 @@ def test_codebook_rate_scales_the_ema_update_zero_freezes_the_codebooks_and_the_
         return float((model.quantizers["body"].codes - before).abs().max())
     full, half, frozen = moved(1.), moved(.5), moved(0.)
     assert frozen == 0. and 0. < half < full
+
+
+class _FakeLM(torch.nn.Module):
+    """A tiny deterministic stand-in for a Hugging Face encoder (last_hidden_state of a word-hash embedding)."""
+    def __init__(self):
+        super().__init__()
+        self.config = type("C", (), {"hidden_size": 12})()
+        self.table = torch.nn.Embedding(97, 12)
+
+    def forward(self, input_ids, attention_mask):
+        return type("O", (), {"last_hidden_state": self.table(input_ids % 97)})()
+
+
+class _FakeTokenizer:
+    def __call__(self, texts, padding, truncation, max_length, return_tensors):
+        rows = [[1] + [sum(map(ord, w)) % 90 + 3 for w in t.split()] + [2] for t in texts]
+        width = max(len(r) for r in rows)
+        ids = torch.tensor([r + [0] * (width - len(r)) for r in rows])
+        return {"input_ids": ids, "attention_mask": (ids != 0).long()}
+
+
+def test_a_prior_with_a_frozen_pretrained_text_model_trains_generates_and_keeps_it_out_of_its_state(monkeypatch):
+    from dataclasses import replace
+    import signtranslator.generation.motion_rvq as mr
+    monkeypatch.setattr(mr, "load_text_model", lambda name, revision=None: (_FakeLM(), _FakeTokenizer()))
+    states, tokenizer, byte_prior = prior_setup()
+    config = replace(byte_prior.config, text_model="fake/encoder")
+    assert "text_model" in config.to_dict() and "text_model" not in byte_prior.config.to_dict()   # old SHAs unchanged
+    prior = RVQPrior(config)
+    frozen = dict(prior._lm.named_parameters())
+    assert not any(k.startswith("_lm") for k in prior.state_dict()) and all(not p.requires_grad for p in frozen.values())
+    batch = collate_multichannel(states)
+    tokens, mask = encode_texts(["ask him", "cut it"])
+    hidden, _, memory_mask = prior.encode(tokens, mask)
+    assert hidden.shape[1] == memory_mask.shape[1] == 4            # the text model's tokens, not the bytes
+    optimizer = torch.optim.Adam([p for p in prior.parameters() if p.requires_grad], lr=3e-3)
+    first = None
+    for _ in range(150):
+        loss, terms = rvq_prior_loss(prior, tokenizer, tokens, mask, batch, train=False)
+        first = first or float(loss.detach())
+        optimizer.zero_grad(); loss.backward(); optimizer.step()
+    assert float(loss.detach()) < .3 * first and terms["token_accuracy"] > .8
+    assert all(torch.equal(p, frozen[k]) for k, p in prior._lm.named_parameters())   # the text model never trains
+    out = generate_rvq_motion(prior, tokenizer, ["ask him"], fps=24., durations=[.5], guidance=2.)
+    out[0].validate()
+    from signtranslator.generation.motion_rvq import generate_rvq_motion_batch
+    batch_out = generate_rvq_motion_batch(prior, tokenizer, ["ask him", "cut it"], fps=24., durations=[.5, .4], guidance=2.)
+    assert len(batch_out) == 2 and all(o.channels["body"].valid.all() for o in batch_out)
+    again = RVQPrior(config); again.load_state_dict(prior.state_dict())             # strict load without the LM

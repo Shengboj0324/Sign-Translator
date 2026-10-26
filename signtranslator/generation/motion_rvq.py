@@ -445,10 +445,18 @@ class RVQPriorConfig:
     grammar_features: bool = True
     locus_conditioning: bool = False
     locus_dropout: float = .3
+    # round 4 (opt-in): a frozen pretrained text encoder (Hugging Face name, e.g. sentence-transformers/all-MiniLM-L6-v2
+    # or google/flan-t5-base) whose last hidden states, projected to d_model, replace the byte embedding as the input of
+    # the trainable text layers. None keeps the byte encoder (and every earlier prior's config and SHA).
+    text_model: str | None = None
+    text_model_revision: str | None = None
 
     def to_dict(self) -> dict:
         data = asdict(self)
         data["tokenizer"] = self.tokenizer.to_dict()
+        for key in ("text_model", "text_model_revision"):
+            if data.get(key) is None:
+                data.pop(key, None)
         return data
 
     def sha256(self) -> str:
@@ -459,6 +467,18 @@ class RVQPriorConfig:
         data = dict(data)
         data["tokenizer"] = MotionRVQConfig.from_dict(data["tokenizer"])
         return cls(**data)
+
+
+def load_text_model(name: str, revision: str | None = None):
+    """(frozen model, tokenizer) of a Hugging Face text encoder; T5-style models are used through their encoder."""
+    from transformers import AutoModel, AutoTokenizer
+    tokenizer = AutoTokenizer.from_pretrained(name, revision=revision)
+    if "t5" in name.lower():
+        from transformers import T5EncoderModel
+        model = T5EncoderModel.from_pretrained(name, revision=revision)
+    else:
+        model = AutoModel.from_pretrained(name, revision=revision)
+    return model, tokenizer
 
 
 class RVQPrior(nn.Module):
@@ -475,6 +495,12 @@ class RVQPrior(nn.Module):
         layer = lambda: nn.TransformerEncoderLayer(d, config.heads, config.feedforward, config.dropout,
                                                    batch_first=True, norm_first=True)
         self.text_encoder = nn.TransformerEncoder(layer(), config.text_layers, enable_nested_tensor=False)
+        if config.text_model:
+            # frozen and kept outside the module tree: not in state_dict, the optimizer or the weight EMA
+            lm, tok = load_text_model(config.text_model, config.text_model_revision)
+            object.__setattr__(self, "_lm", lm.eval().requires_grad_(False))
+            object.__setattr__(self, "_lm_tokenizer", tok)
+            self.text_in = nn.Linear(lm.config.hidden_size if hasattr(lm.config, "hidden_size") else lm.config.d_model, d)
         self.duration = nn.Sequential(nn.LayerNorm(d), nn.Linear(d, d), nn.GELU(), nn.Linear(d, 1))
         # code j of a step has its own embedding table (index K = "start" for the first step)
         self.code_embed = nn.Parameter(torch.randn(J, K + 1, d) * .02)
@@ -489,16 +515,37 @@ class RVQPrior(nn.Module):
         self.heads_bias = nn.Parameter(torch.zeros(J, K))
 
     def encode(self, tokens, mask, loci=None):
-        positions = sinusoid(torch.arange(tokens.shape[1], device=tokens.device)[None].expand_as(tokens),
-                             self.config.d_model, max_period=1024.)
-        inputs = self.embed(tokens) + positions
+        """(hidden (B, L, d), log duration (B,), memory mask (B, L)) of byte-encoded texts. With a pretrained text model
+        the memory is its tokenisation of the same texts, so its length and mask differ from the byte input's."""
+        if self.config.text_model:
+            inputs, mask = self._pretrained_inputs(tokens)
+        else:
+            positions = sinusoid(torch.arange(tokens.shape[1], device=tokens.device)[None].expand_as(tokens),
+                                 self.config.d_model, max_period=1024.)
+            inputs = self.embed(tokens) + positions
         if self.config.grammar_features:
             inputs = inputs + self.grammar(token_features(tokens).to(inputs.dtype))[:, None]
         if self.config.locus_conditioning and loci is not None:
             inputs = inputs + self.loci(loci.to(inputs.dtype))[:, None]
         hidden = self.text_encoder(inputs, src_key_padding_mask=~mask)
         pooled = (hidden * mask[..., None]).sum(1) / mask.sum(1, keepdim=True).clamp_min(1)
-        return hidden, self.duration(pooled)[:, 0]
+        return hidden, self.duration(pooled)[:, 0], mask
+
+    def _pretrained_inputs(self, tokens):
+        """The frozen text model's last hidden states of the byte rows' texts, projected and position-coded."""
+        texts = [bytes(int(b) for b in row if int(b) < 256).decode("utf-8", errors="ignore") for row in tokens.cpu()]
+        batch = self._lm_tokenizer(texts, padding=True, truncation=True, max_length=128, return_tensors="pt")
+        device = tokens.device
+        if next(self._lm.parameters()).device != device:
+            object.__setattr__(self, "_lm", self._lm.to(device))
+        with torch.no_grad():
+            lm = self._lm.get_encoder() if hasattr(self._lm, "get_encoder") else self._lm
+            states = lm(input_ids=batch["input_ids"].to(device),
+                        attention_mask=batch["attention_mask"].to(device)).last_hidden_state
+        mask = batch["attention_mask"].to(device).bool()
+        positions = sinusoid(torch.arange(states.shape[1], device=device)[None].expand(states.shape[0], -1),
+                             self.config.d_model, max_period=1024.)
+        return self.text_in(states.to(self.text_in.weight.dtype)) + positions, mask
 
     def _embed_codes(self, codes: torch.Tensor) -> torch.Tensor:
         """(B, S, J) indices (K = start) -> (B, S, J, d) per-position embeddings."""
@@ -540,7 +587,8 @@ def rvq_prior_loss(model: RVQPrior, tokenizer: MotionRVQ, tokens, text_mask, mot
         torch.ones(len(tokens), dtype=torch.bool, device=tokens.device)
     tokens = torch.where(conditioned[:, None], tokens, _empty_like(tokens))
     text_mask = tokens != PAD
-    hidden, log_duration = model.encode(tokens, text_mask, training_loci(config, loci, conditioned) if train else loci)
+    hidden, log_duration, text_mask = model.encode(tokens, text_mask,
+                                                   training_loci(config, loci, conditioned) if train else loci)
     start = torch.full_like(codes[:, :1], model.K)
     previous = torch.cat((start, codes[:, :-1]), 1)
     seconds = batch_seconds(motion).float()
@@ -580,11 +628,11 @@ def generate_rvq_motion(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, fps: fl
     device = next(prior.parameters()).device
     encoded, mask = encode_texts(texts, max_bytes=config.max_text_bytes)
     encoded, mask = encoded.to(device), mask.to(device)
-    hidden, log_duration = prior.encode(encoded, mask, generation_loci(config, texts, loci, device))
+    hidden, log_duration, mask = prior.encode(encoded, mask, generation_loci(config, texts, loci, device))
     seconds_out = (log_duration.exp() if durations is None else
                    torch.as_tensor(durations, dtype=log_duration.dtype, device=device)).clamp(1 / fps, 60.)
     empty = _empty_like(encoded[:1, :2])
-    empty_hidden, _ = prior.encode(empty, empty != PAD)
+    empty_hidden, _, empty_mask = prior.encode(empty, empty != PAD)
     generator = torch.Generator().manual_seed(seed)
     names = [part for part, _ in tokenizer.parts]
     if isinstance(temperature, dict):
@@ -603,7 +651,7 @@ def generate_rvq_motion(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, fps: fl
         for k in range(count):
             h = prior.temporal_states(hidden[row:row + 1], mask[row:row + 1], sequence, clock[:, :k + 1],
                                       seconds_out[row:row + 1])[:, -1]
-            h_free = prior.temporal_states(empty_hidden, empty != PAD, sequence, clock[:, :k + 1],
+            h_free = prior.temporal_states(empty_hidden, empty_mask, sequence, clock[:, :k + 1],
                                            seconds_out[row:row + 1])[:, -1] if guidance != 1. else None
             step_codes = torch.zeros((1, 0), dtype=torch.long, device=device)
             for j in range(prior.J):
@@ -642,11 +690,11 @@ def generate_rvq_motion_batch(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, f
     B = len(texts)
     encoded, mask = encode_texts(texts, max_bytes=config.max_text_bytes)
     encoded, mask = encoded.to(device), mask.to(device)
-    hidden, _ = prior.encode(encoded, mask, generation_loci(config, texts, loci, device))
+    hidden, _, mask = prior.encode(encoded, mask, generation_loci(config, texts, loci, device))
     seconds_out = torch.as_tensor(durations, dtype=hidden.dtype, device=device).clamp(1 / fps, 60.)
     empty = _empty_like(encoded[:1, :2])
-    empty_hidden, _ = prior.encode(empty, empty != PAD)
-    empty_hidden, empty_mask = empty_hidden.expand(B, -1, -1), (empty != PAD).expand(B, -1)
+    empty_hidden, _, empty_mask = prior.encode(empty, empty != PAD)
+    empty_hidden, empty_mask = empty_hidden.expand(B, -1, -1), empty_mask.expand(B, -1)
     generator = torch.Generator().manual_seed(seed)
     names = [part for part, _ in tokenizer.parts]
     if isinstance(temperature, dict):
