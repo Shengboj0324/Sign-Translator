@@ -1499,3 +1499,37 @@ R6 in detail:
    - Of R5's 150 candidate words, only 94 appear as isolated ASLLVD signs in training, at about 2.6 clips each among 125k clips.
    - The other 56 appear only inside How2Sign sentences (median 12 sentences per word).
    - ASL Citizen, the large isolated-sign source, was removed in round 3c because its extracted states were mostly invalid (round 3b's R5 diagnosis).
+
+**Guidance is not the fix.** R2b on 300 round-3e validation clips (selected setting, saved generations, the same post-processing):
+
+| | R2b BLEU |
+|---|---|
+| real | 3.82 [3.08, 4.61] |
+| blank | 2.20 [1.68, 2.71] |
+| generated, guidance 1 | 1.44 [1.02, 1.82] |
+| generated, guidance 1.5 | 1.80 [1.28, 2.28] |
+| generated, guidance 2 | 1.83 [1.35, 2.29] |
+
+Every guidance stays below blank. The content failure lies in the prior.
+
+## Round 4 pilot: a pretrained text encoder for the prior (declared 2026-10-26, 15:08 UTC, before any round-4 result)
+
+**Hypothesis.** The byte-level text encoder, trained from scratch, gives the prior almost no lexical meaning. That would explain R2b below blank and R5 near zero, which motion statistics cannot fix.
+
+**Unchanged:** round 3d's tokenizer (d2 with its accepted decoder gains), the mix, and the prior recipe (60000 steps, ASLLVD ×3, locus conditioning).
+
+**Arms:**
+- **A (control):** round 3d's byte-encoder prior `tokens-rvq-d0b-prior-r3d-d2g`, already trained on the same 60000-step schedule. Its checkpoints at matching steps are the control.
+- **B:** a frozen `sentence-transformers/all-MiniLM-L6-v2` (Apache-2.0) feeding the trainable text layers (`--text-model`).
+- **C:** the frozen `google/flan-t5-base` encoder (Apache-2.0), likewise.
+
+**Pilot measure** (`scripts/pilot_content_check.py`). At step 20000 of each arm, at round 3e's selected sampling setting (hands and body 1.1, face 1.0, guidance 1.5, head and head-translation smoothing 0.1 s):
+- **meaning:** R2b-style BLEU on 300 fixed How2Sign validation clips, generated against real and blank;
+- **lexicon:** R5-style top-5 on the review's word list.
+
+**Decision rule:**
+- An arm is promising if its generated BLEU exceeds the control's at step 20000 and its lexicon top-5 is at least the control's.
+- The promising arm with the highest generated BLEU continues to 60000 steps; the other is stopped.
+- That full prior is then judged by the full declared chain (sweep, grid, gate, strict review).
+- If neither arm is promising, the text-encoder hypothesis is rejected and the next lever is lexical data (a re-extracted ASL Citizen).
+- No rule of the gate or the review changes.
