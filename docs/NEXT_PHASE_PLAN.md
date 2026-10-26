@@ -1566,3 +1566,51 @@ Pilot checks at step 20000 (`round4/pilot-<arm>-step20000.json`; same 300 valida
 - Lexicon is at the floor in all three arms (1–5 hits in 300 against real signing's 99%). The differences between arms are a few samples and carry no information.
 - A frozen English encoder alone does not teach the prior what a sign looks like. The binding constraint is lexical data: only 94 of the 150 review words have any isolated clips in the mix, about 2.6 clips each.
 - The next lever is therefore lexical data, as declared. The next round is designed and declared before any of its results. flan-T5 remains a candidate encoder for it, as the arm with the best meaning point estimate.
+
+## Round 5: lexical data within its terms, and a right-dominant recogniser (declared 2026-10-26, 20:55 UTC, before any round-5 result)
+
+**Findings that set this round** (2026-10-26, 20:30–20:55 UTC):
+1. **The R5 recogniser is not mirror-invariant.** On 240 ASL Citizen validation clips, `sign-recognizer-v2` scores top-5 0.767 on the stored states and 0.304 on the same states mirrored (`signtranslator.pose.mirror`).
+2. **ASL Citizen stores the signing hand on the left in about 60% of clips.** These are left-handed participants or mirrored webcams: 184 of 300 sampled train clips have more left-forearm tracking. How2Sign and the generator sign right-handed (37 of 40 How2Sign clips have the faster right hand). So the instrument that grades the generator's one-word signs learned partly from left-dominant signing. The low tracking fractions found earlier (median arm 0.40, hand 0.39) are mostly the resting hand out of frame, not failed tracking of the signing hand.
+3. **Consent.** ASL Citizen's consent covers sign language recognition, so its motion stays out of the generator, as round 3c decided. It may train the recogniser.
+4. **Lexical data within the ASLLRP terms** (already part of the generator's sources):
+   - The RIT citation-form signs of DAI 2 were never extracted. They hold 12,197 tokens, 592 of them for 86 of the 150 R5 words, against 249 from ASLLVD train.
+   - ASLLRP's continuous signing has 19,510 annotated sign tokens, 683 of them for 50 R5 words in the training signers.
+
+**A. Instrument: `sign-recognizer-v3`.**
+- **Recipe:** v2's exactly (same arguments, ASL Citizen plus the ASLLVD train signers, 24 fps, augmented), except that ASL Citizen comes from the canonical manifest (`scripts/canonicalize_asl_citizen.py`). That manifest is right-dominant: left-dominant clips are mirrored by the exact mirror, which `tests/test_pose_mirror.py` checks against mirrored landmarks and reflected forward kinematics. Each clip is trimmed to its active signing ±0.2 s.
+- **Validation:** v2's three checks, unchanged (blank top-1 ≤ 2%, no-hands top-1 ≤ 15%, ASLLVD val signer top-1 ≥ 25%), plus two that keep it at least as good as v2:
+  - canonical ASL Citizen val top-5 ≥ 0.70 (v2: 0.729 on its own manifest);
+  - ASLLVD val signer top-1 ≥ 0.58 (v2: 0.608).
+- **If v3 passes:** it is the R5 and pilot-lexicon instrument from round 5 on. Its reliable glosses and the R5 word list are re-derived by the unchanged rules (top-1 ≥ 0.8 over ≥ 3 val clips; reliable glosses that occur as words in How2Sign training sentences). If it fails, v2 stays.
+- Every round-5 lexicon number, control included, is read by the same instrument.
+
+**B. Generator data: mix `round5-mixed-v1`.** It is `round3c-mixed-v1` unchanged plus:
+- **RIT citation signs**, one record per annotated token:
+  - text: the main-entry gloss, lowercased, with variant numbers and punctuation removed (ASLLVD's convention);
+  - partition: signer-disjoint, one RIT signer for validation, fixed in the builder;
+  - weight: ×3, like ASLLVD.
+- **ASLLRP in-context sign segments** from the gloss manifest's training utterances:
+  - lexical signs only;
+  - the annotated frames ±0.1 s, at least 0.2 s long;
+  - text as above; weight ×1.
+
+ASL Citizen motion is not in the generator.
+
+**C. Tokenizer:** d2 with its accepted gains, unchanged. Before any prior trains, an instrument check: the tokenizer round trip of RIT validation clips must keep at least 0.8 of the real clips' recogniser top-5 (v3, or v2 if v3 is not ready). If it fails, the prior does not start and the cause is diagnosed first.
+
+**D. Prior pilot.** Round 4's recipe (60,000 steps, ASLLVD ×3, locus conditioning) on `round5-mixed-v1`:
+- **A5:** the byte text encoder.
+- **C5:** frozen flan-T5-base, the round-4 arm with the best meaning point estimate.
+- **Control:** round 4's control (byte encoder, `round3c-mixed-v1`) at step 20000, re-measured with the round-5 instrument.
+- **Pilot measure:** `scripts/pilot_content_check.py` at step 20000, round 3e's sampling setting, with the round-5 instrument.
+- **Decision rule:**
+  - An arm is **promising** if three things hold:
+    - its lexicon top-5 is at least 0.05 above the control's;
+    - the paired bootstrap 95% interval of that difference (resampling words) excludes 0;
+    - its meaning BLEU is not below the control's.
+  - The promising arm with the higher lexicon continues to 60,000 steps; the other is stopped and deleted. The winner is then judged by the full declared chain: sweep, grid, gate, and the strict review with the round-5 R5 instrument.
+  - If neither arm is promising, the hypothesis "isolated lexical data within our terms fixes the lexicon" is rejected. The next lever is structural: a gloss-planned path (the English → gloss planner plus a per-sign motion lexicon), designed and declared separately.
+- **Unchanged:** every other gate and strict-review rule.
+
+**Cost and pods.** Two CPU pods now (ASL Citizen canonicalisation, RIT extraction). Then one GPU pod for the recogniser, and two for the priors once the mix and the tokenizer check are ready: at most 5 pods. Every pod is deleted after use, once its log is verified in R2.
