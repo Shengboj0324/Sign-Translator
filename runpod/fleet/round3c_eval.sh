@@ -37,7 +37,7 @@ RUN=${R3_RUN:-tokens-rvq-d0b-prior-r3c} D=${R3_D:-$ACQ/youtube-asl-v1/round3c} S
 if [ "${R3C_SMOKE:-0}" = 1 ]; then
   RUN=$RUN-smoke D=$D-smoke LIMIT=12 TESTLIM=12 QUICK=--quick HANDS="1.25" FACES="1.0" SMOOTH="0.1" DAMP="1,0.6"
 else
-  LIMIT=300 TESTLIM=92 QUICK= HANDS="1.2 1.25 1.3" FACES="${R3_FACES:-0.8 1.0}" SMOOTH="0.1,0.2,0.3" DAMP="1,0.8,0.6"
+  LIMIT=300 TESTLIM=92 QUICK= HANDS="${R3_HANDS:-1.2 1.25 1.3}" FACES="${R3_FACES:-0.8 1.0}" SMOOTH="0.1,0.2,0.3" DAMP="1,0.8,0.6"
 fi
 # round 3d amendment 4: R3_FACES (face temperatures {1.0, 1.1, 1.2}); R3_NPARTS sweep pods (part a, b, c, ...)
 export MIX MSHA D RUN LIMIT
@@ -45,12 +45,13 @@ export MIX MSHA D RUN LIMIT
 FSHA=$(sha $FULL); GEN=$(best $RUN); RKEY=$(best retrieval-hold-full-v1); export FSHA GEN RKEY
 
 settings() { for h in $HANDS; do for f in $FACES; do echo "$h $f"; done; done; }
-sweep_one() { local h=$1 f=$2 g=$3; local TAG=$RUN-sweep-h$h-f$f
+# a hand entry "1.05b1.1" samples the hands at 1.05 and the body at 1.1; a plain "1.2" sets both (rounds 3c and 3d)
+sweep_one() { local h=$1 f=$2 g=$3; local TAG=$RUN-sweep-h$h-f$f; local hand=${h%b*} body=${h#*b}
   exists $D/evaluations/$TAG-$g.json && { echo "stored: $TAG-$g"; return 0; }
   PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True OMP_NUM_THREADS=2 stage $RUN eval-h$h-f$f-$g \
     $PY scripts/evaluate_text_to_motion.py --manifest-key $MIX --manifest-sha256 $MSHA --checkpoint-key "$GEN" \
     --partition val --corpus how2sign-two-view-text-v1 --signer-component $g --limit $LIMIT --guidance 1,1.5,2 --fps 24 \
-    --device $DEVICE --batch 32 --part-temperature body=$h,left_hand=$h,right_hand=$h,face=$f --retrieval-key "$RKEY" \
+    --device $DEVICE --batch 32 --part-temperature body=$body,left_hand=$hand,right_hand=$hand,face=$f --retrieval-key "$RKEY" \
     --retrieval-manifest-sha256 $FSHA --save-generated $D/generated/$TAG-$g --output-key $D/evaluations/$TAG-$g.json; }
 export -f sweep_one
 
