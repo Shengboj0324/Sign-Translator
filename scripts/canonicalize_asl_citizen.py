@@ -18,8 +18,9 @@ The rule's constants are fixed here, declared with round 5 (docs/NEXT_PHASE_PLAN
 them.
 
 ``--shard i --shards n`` writes the canonical states (write-once) and a per-shard report. ``--assemble`` joins the
-reports into the canonical manifest, which keeps the source manifest's partitions, glosses and pseudonyms. Research
-use only under the Microsoft Research Licence Terms; everything stays private in R2.
+reports into the canonical manifest, which keeps the source manifest's partitions, glosses, pseudonyms and quality
+counts: the recogniser's ``--min-hand-fraction`` filter reads the larger side's hand frames over all frames, which
+mirroring does not change. Research use only under the source's terms; everything stays private in R2.
 """
 from __future__ import annotations
 
@@ -163,7 +164,7 @@ def main(argv=None) -> int:
             continue
         canonical = {k: result[k] for k in ("dominant", "mirrored", "no_arm", "window", "seconds", "arm_fraction",
                                              "hand_fraction", "generator_ok", "frames") if k in result}
-        out.append(dict({k: v for k, v in record.items() if k not in ("continuous", "usable", "quality")},
+        out.append(dict({k: v for k, v in record.items() if k not in ("continuous", "usable")},
                         canonical=canonical,
                         continuous=dict(status="converted", state_key=result["state_key"],
                                         state_sha256=result["state_sha256"],
