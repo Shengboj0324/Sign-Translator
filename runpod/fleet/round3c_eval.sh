@@ -37,8 +37,9 @@ RUN=${R3_RUN:-tokens-rvq-d0b-prior-r3c} D=${R3_D:-$ACQ/youtube-asl-v1/round3c} S
 if [ "${R3C_SMOKE:-0}" = 1 ]; then
   RUN=$RUN-smoke D=$D-smoke LIMIT=12 TESTLIM=12 QUICK=--quick HANDS="1.25" FACES="1.0" SMOOTH="0.1" DAMP="1,0.6"
 else
-  LIMIT=300 TESTLIM=92 QUICK= HANDS="1.2 1.25 1.3" FACES="0.8 1.0" SMOOTH="0.1,0.2,0.3" DAMP="1,0.8,0.6"
+  LIMIT=300 TESTLIM=92 QUICK= HANDS="1.2 1.25 1.3" FACES="${R3_FACES:-0.8 1.0}" SMOOTH="0.1,0.2,0.3" DAMP="1,0.8,0.6"
 fi
+# round 3d amendment 4: R3_FACES (face temperatures {1.0, 1.1, 1.2}); R3_NPARTS sweep pods (part a, b, c, ...)
 export MIX MSHA D RUN LIMIT
 [ "$(sha $MIX)" = $MSHA ] || { echo "round-3c mix is not the declared one"; echo "$PHASE-DONE"; exit 1; }
 FSHA=$(sha $FULL); GEN=$(best $RUN); RKEY=$(best retrieval-hold-full-v1); export FSHA GEN RKEY
@@ -57,7 +58,7 @@ case $PHASE in
 sweep)
   # the 18 evaluations in a fixed order, alternately to part a and b
   jobs=$(settings | while read h f; do for g in c01 c03 c05; do echo "$h $f $g"; done; done | awk -v p="$PART" \
-    'p == "" || (p == "a" && NR % 2 == 1) || (p == "b" && NR % 2 == 0)')
+    -v n="${R3_NPARTS:-2}" 'p == "" || (NR - 1) % n == index("abcdefgh", p) - 1')
   echo "$jobs" | xargs -P 3 -L 1 bash -c 'sweep_one "$@"' _
   echo "$jobs" | while read h f g; do
     exists $D/evaluations/$RUN-sweep-h$h-f$f-$g.json || OMP_NUM_THREADS=8 sweep_one $h $f $g \

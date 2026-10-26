@@ -1395,3 +1395,28 @@ No candidate passed without gains. All three that qualified for the amendment-3 
   - How2Sign hands at 0.91–1.02 variation and 1.03–1.24 speed (c05's left hand 1.24);
   - no added jitter (jitter ratios 0.83–1.12);
   - one carried flaw: c05's browInnerUp is 45× its nearly static real variation. Every candidate adds brow motion there, an R6 risk for the gate.
+
+## Round 3d amendment 4: the sweep's face temperatures (declared 2026-10-25, 17:52 PDT, before any round-3d evaluation result)
+
+The sweep's face temperatures {0.8, 1.0} were chosen when round 3b's head moved 1.45× too much. Head rotation is part of the face token part, so face temperature sets the head's motion.
+
+**Diagnostics** (d2's prior at step 32000, signer group c03, 24 validation clips, guidance 1.5, d2's gains, no post-processing):
+
+| hand / face temperature | head speed, variation | headshake / nod rate vs real | brow-raise z (real 2.29) |
+|---|---|---|---|
+| 1.0 / 1.0 | 0.42, 0.47 | — | — |
+| 1.25 / 1.0 | 0.63, 0.48 | 0 / 0 | 2.59 |
+| 1.25 / 1.25 | 1.25, 1.12 | 1.75× / 3.1× | 2.76 |
+| 1.25 / 1.5 | 2.01, 1.12 | 5.1× / 6.7× | 1.97 |
+
+At hand 1.0 the hands are far too still (variation 0.38–0.50); at 1.25 they are near (0.83–0.84).
+
+- With this tokenizer the head is too still at face temperatures up to 1.0, and 0.8 can only make it stiller.
+- The grid can only smooth or damp the head (factors ≤ 1), so it cannot rescue a still head.
+- The declared hand range {1.2, 1.25, 1.3} is right.
+
+**Amendment:**
+- Face temperatures {1.0, 1.1, 1.2} replace {0.8, 1.0} (`R3_FACES`). Hand temperatures, guidance, the grid, the envelopes, the gate and the strict review R1–R7 are unchanged.
+- That makes 27 sweep evaluations, run on 3 GPU pods (`R3_NPARTS=3`), and 675 evaluation files after the grid.
+
+This widens the declared search where the diagnostics show the optimum lies. It loosens no rule. The strict review still judges the selected setting, R6 included on the held-out test states.
