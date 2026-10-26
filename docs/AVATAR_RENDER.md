@@ -345,3 +345,82 @@ closes the eye on the viewer's right.
 * Workbench inspection render; not a qualified avatar appearance, and no claim of
   signing fidelity. `accepted_provenance` stays false.
 
+
+## Avatar v2 plan (pre-designed 2026-10-26 02:40 UTC; starts once a generator passes its exit gate)
+
+**Goal:** a production-quality avatar that keeps every verified property of the current pipeline (retarget errors, left/right checks, timestamps, determinism) and fixes two things the owner saw: the flat Workbench look and the shaking.
+
+**Principle:** accuracy is a hard constraint and aesthetics are optimised inside it. Every change below is measured, and nothing makes it into a release render unless the measures hold.
+
+### 1. Find where the shaking comes from before fixing it
+
+Three test sets go through the same pipeline:
+- 5 generated clips;
+- 5 *real* How2Sign clips (the control: if real motion shakes too, the cause is the pipeline, not the model);
+- 5 real clips smoothed by 0.1 s.
+
+A *shake score* (≥ 6 Hz RMS) is measured at each stage:
+- (a) the canonical state (R7's `high_frequency_rms`);
+- (b) the retargeted bone rotations;
+- (c) the skinned vertex positions of the hands, head and chest;
+- (d) screen-space 2D positions of the same points.
+
+The first stage where generated clips exceed the control is where the shaking starts.
+
+Likely causes, each checked:
+- quaternion hemisphere flips between frames (q and −q), which show as one-frame spins;
+- per-frame retarget or IK solutions jumping between equivalent poses;
+- jitter in root and head translation (How2Sign's torso joints are jitter-dominated, round-3c diagnosis);
+- the generator's own ≥ 6 Hz content (R7 bounds it at 1.5× real, which still shows on a rigid mesh).
+
+### 2. Remove the shaking, accuracy-preserving
+
+**Fixes, in order:**
+1. **Continuity:** align each frame's quaternion to the previous one's hemisphere before any interpolation (`pacing.py` SLERP).
+2. **Adaptive smoothing on SO(3):** a per-joint one-euro filter on the rotation manifold, with log map about the previous frame. Its cutoff rises with angular speed, so slow, still periods lose jitter while fast signing movements and holds keep their timing. Parameters are per bone group (torso strongest, fingers lightest), fitted on real clips to minimise shake score subject to the accuracy guard.
+3. **Stable base:** the pelvis and lower body locked to a seated or standing pose, and root translation low-passed at about 1 Hz. Torso rotation is filtered more strongly than the arms, since How2Sign's torso motion is mostly noise.
+4. **Render at 60 fps:** SLERP-resample from the generator's 24 fps. This adds no information, only temporal smoothness.
+
+**Accuracy guard** (automatic, per clip):
+- the filtered motion's per-bone angular error against unfiltered is p95 ≤ 3° (fingers ≤ 4°);
+- fingertip and wrist positions stay within 1.5 cm at p95;
+- the sign recogniser (R5's) and the 2D back-translator (R2b's), run on the filtered states, must not lose accuracy;
+- any joint that breaks the guard gets a lighter filter.
+
+### 3. Appearance
+
+- **Engine:** EEVEE (fast) for previews and Cycles for release, with AgX colour, soft key, fill and rim lights, ambient occlusion, a neutral plain background and fixed seeds for determinism.
+- **Character:** MakeHuman/MPFB2 assets under CC0 or CC-BY only (licence checked, recorded in the render's INDEX.json):
+  - realistic skin and hair materials;
+  - a solid dark, fitted top, so the hands contrast with the torso and nothing occludes the signing space;
+  - no loose sleeves;
+  - skin-tone hands with nails.
+- **Hands:** high-resolution hand mesh with dual-quaternion skinning (`dqs.py`, no candy-wrapper wrists), plus corrective shape keys at knuckles and wrist.
+- **Face:** the 52 ARKit blendshapes as shape keys on a face with brow, eyelid and mouth topology good enough to read non-manual markers. Brow raise and furrow are grammatical, so they must be clearly visible. Eye gaze and blinks are driven.
+- **Camera:** a waist-up frontal view of the full signing space, plus an optional slight 3/4 view, orthographic or a long lens to avoid distortion.
+
+### 4. Slower option
+
+Playback at 0.8× and 1.0× via `pacing.py` time-stretch, so expression channels stay synchronised; the owner asked for slower motion.
+
+### 5. Verification and storage
+
+Each render's `verification.json` records:
+- the existing retarget checks;
+- the shake score at each stage, against the real-clip control;
+- the accuracy guard;
+- the recogniser and back-translator scores on the rendered states;
+- the determinism re-render.
+
+Every render goes to R2 under `renders/<round>-<date>/` with `INDEX.json`.
+
+### 6. Rounds
+
+| Round | Content | Pass |
+|---|---|---|
+| A | diagnosis | stage reports |
+| B | continuity, filters and stable base | shake score ≤ the real-clip control |
+| C | EEVEE appearance and character assets | 10-clip preview set for the owner |
+| D | Cycles release renders on held-out test sentences | the human reviewers' packet |
+
+Each round is committed with its numbers.
