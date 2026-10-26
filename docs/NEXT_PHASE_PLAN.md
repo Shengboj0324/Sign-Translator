@@ -1631,3 +1631,18 @@ ASL Citizen motion is not in the generator.
 - **New instrument: `sign-recognizer-v3b`.** v2's recipe on canonical-v2, under round 5's unchanged instrument checks and rule.
 - **RIT** is studio video with both forearms in view, so tracking counts do not show its signers' dominance. Its per-signer side is the side whose wrist moves faster: mean speed in the canonical skeleton, over up to 100 clips per signer. All of a signer's clips are mirrored when it is the left.
 - **Amendment 2, RIT detail (23:05 UTC, before any RIT result):** wrist speed was rejected as the RIT cue before use. On ASLLVD's right-dominant studio signers it differed by only 5–20% between sides and called one of six left. RIT's per-signer side is instead the side whose wrist is raised higher: the median over up to 100 clips of each clip's 90th-percentile wrist height above the shoulder (`scripts/signer_dominance_motion.py`). On ASLLVD it picks the right for all six signers, by 0.05–0.19 in median.
+
+**Round 5 amendment 3 (2026-10-26, 23:58 UTC, before any round-5 result; no prior has trained):**
+- **The tokenizer check passed, but the data underneath it failed.** The ratio was 1.13 on 219 RIT val clips; the RIT states themselves are not usable:
+  - hands are tracked on a median 20–27% of frames, against about 100% for ASLLVD;
+  - in the conformed validation states, hands are valid on 2–4% of frames;
+  - the recogniser reads only 14% top-5 on the real clips.
+- **Cause.** RIT is a wide 1280×720 studio shot, so the hands are small (about 40 px) and often blurred. The extractor's hand crops (0.9 shoulder widths around each wrist) cut the fingers off.
+- **Wider crops fix it.** On three RIT clips, crops of 1.8 shoulder widths find both hands on 69%, 98% and 94% of frames, against 12%, 67% and 39% at 0.9.
+- **The two pilot priors were stopped and deleted during setup (23:56 UTC), before any step.** Nothing trained on the hand-less states.
+- **Re-extraction:** RIT is re-extracted with `--hand-scale 1.8` into `derived/asllrp-dai2-v1/rit-citation-sign-videos-v2`. Its manifest, signer sides, canonical states, text records and mix are rebuilt as v2: `round5-mixed-v2`, which is round 3c plus RIT v2, nothing else.
+- **A data gate before any prior trains** (new, declared now), on RIT validation:
+  - the median clip's frames with both hands tracked must be at least 0.6;
+  - the recogniser's real top-5 must be at least 0.30;
+  - the tokenizer ratio of 0.8 stays.
+  - If the gate fails, RIT does not enter the mix.

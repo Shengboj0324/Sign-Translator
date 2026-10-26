@@ -133,7 +133,7 @@ def state_quality(state) -> dict:
 
 
 def _process_once(job):
-    member, prefix, source_id, zip_sha256, upright_chest = job
+    member, prefix, source_id, zip_sha256, upright_chest, hand_scale = job
     from signtranslator.data_engineering.video_landmarks import canonical_from_landmarks, extract_clip, inference_method
     store, archive = _WORKER["store"], _WORKER["archive"]
     sample = Path(member).stem
@@ -156,7 +156,7 @@ def _process_once(job):
         with tempfile.TemporaryDirectory() as temporary:
             video = Path(temporary) / ("clip" + (Path(member).suffix.lower() or ".mp4"))
             video.write_bytes(payload)
-            clip = extract_clip(video, _WORKER["models"], roi=True)
+            clip = extract_clip(video, _WORKER["models"], roi=True, hand_scale=hand_scale)
             state, report = canonical_from_landmarks(
                 clip, sample_id=sample, source_id=source_id, source_sha256=hashlib.sha256(payload).hexdigest(),
                 clock_id=f"{source_id}:{sample}:pts", upright_chest=upright_chest,
@@ -191,6 +191,8 @@ def main(argv=None) -> int:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--upright-chest", action="store_true",
                         help="framings cut above the hips: chest up axis from the camera vertical (solve_rotations)")
+    parser.add_argument("--hand-scale", type=float, default=.9,
+                        help="hand crop side in shoulder widths (wide studio shots with small hands: 1.8; RIT, 2026-10-26)")
     parser.add_argument("--match", help="only clips whose file name matches this regular expression")
     args = parser.parse_args(argv)
     if not 0 <= args.shard < args.shards:
@@ -206,7 +208,7 @@ def main(argv=None) -> int:
         members = [m for m in members if re.search(args.match, Path(m).name)]
     shard = [m for i, m in enumerate(members) if i % args.shards == args.shard][:args.limit]
     print(f"{len(members)} clips, shard {args.shard}/{args.shards}: {len(shard)}", flush=True)
-    jobs = [(m, args.prefix.rstrip("/"), args.source_id, args.zip_sha256, args.upright_chest) for m in shard]
+    jobs = [(m, args.prefix.rstrip("/"), args.source_id, args.zip_sha256, args.upright_chest, args.hand_scale) for m in shard]
     results = []
     with ProcessPoolExecutor(max_workers=args.workers, initializer=_init,
                              initargs=(args.zip_key, args.models_dir)) as pool:

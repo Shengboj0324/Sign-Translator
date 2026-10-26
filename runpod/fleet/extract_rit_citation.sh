@@ -18,7 +18,7 @@ for K in $P/rit-sign-videos__batch_signs_v1_1.zip $P/rit-sign-videos__batch_sign
   echo "STAGE extract $(basename $K) workers $W $(date)"
   for pass in $(seq 1 12); do          # each pass resumes; a pass that ends clean (exit 0) means every clip is done
     python scripts/extract_video_states.py --zip-key $K --zip-sha256 $SHA \
-      --prefix acquisition/2026-10-17-v1/derived/asllrp-dai2-v1/rit-citation-sign-videos --source-id rit-citation-sign-videos \
+      --prefix acquisition/2026-10-17-v1/derived/asllrp-dai2-v1/${RIT_PREFIX:-rit-citation-sign-videos} --source-id ${RIT_PREFIX:-rit-citation-sign-videos} ${HAND_SCALE:+--hand-scale $HAND_SCALE} \
       --models-dir /root/work/models --workers $W ${LIMIT:+--limit $LIMIT} 2>&1 | grep -v -E "^W0000|inference_feedback" | tail -3
     code=${PIPESTATUS[0]}; echo "PASS $pass exit $code $(date)"
     [ $code -eq 0 ] && break
