@@ -1619,3 +1619,14 @@ ASL Citizen motion is not in the generator.
 - **The ASLLRP in-context sign segments leave the generator mix.** Their signs are coarticulated fragments: median 0.234 s (recogniser v2's in-context diagnostic), so about 0.43 s with the ±0.1 s margins. Isolated citation forms run about 1.5 s with their holds. As one-word records for the same English words, the fragments would pull the prior's duration for one-word prompts toward a fragment's length. RIT's citation signs are the clean source.
 - **RIT clips are canonicalised to right-dominant** by the ASL Citizen rule (`scripts/canonicalize_asl_citizen.py`): dominant side by tracked forearm and hand frames; left-dominant clips mirrored by the exact mirror. They are not trimmed: the DAI sign clips are already cut to the sign.
 - **The mix** is `round3c-mixed-v1` plus RIT citation one-word records (×3, the text builder's cap of 6 training clips per word). Nothing else changes.
+
+**Round 5 amendment 2 (2026-10-26, 23:00 UTC, before any round-5 result; no instrument has graded anything):**
+- **The per-clip dominance rule was wrong for ASL Citizen.** Within a single signer it mirrored between 52% and 100% of the clips with a tracked arm (all but two signers). A signer's handedness and recording do not change between clips, so `canonical-v1` mixed left- and right-dominant versions of the same people. Recogniser v3 trained on it reached validation top-5 0.72 at step 8000, against v2's 0.78 at the same step.
+- **v3 is stopped.** Its run (`training-runs/sign-recognizer-v3`, stopped at step 8500, no validation report) is not an instrument.
+- **New rule: dominance per signer.** All of a signer's clips are mirrored if that signer's left forearm is tracked on more frames, summed over their clips.
+  - Hand frames are left out: the resting hand at the bottom of a webcam frame is detected through most of a clip while its forearm is not.
+  - ASL Citizen: 50 signers mirrored, 2 kept (78,897 and 4,502 clips). This fits mirrored webcams and about 4% left-handed participants.
+  - Trimming and the generator flags are unchanged. They now follow the signer's dominant forearm, and a clip where it is never tracked is kept whole.
+- **New ASL Citizen manifest:** prefix `derived/asl-citizen-v1/canonical-v2`.
+- **New instrument: `sign-recognizer-v3b`.** v2's recipe on canonical-v2, under round 5's unchanged instrument checks and rule.
+- **RIT** is studio video with both forearms in view, so tracking counts do not show its signers' dominance. Its per-signer side is the side whose wrist moves faster: mean speed in the canonical skeleton, over up to 100 clips per signer. All of a signer's clips are mirrored when it is the left.

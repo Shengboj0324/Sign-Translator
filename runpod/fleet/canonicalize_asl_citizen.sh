@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # canonicalize_asl_citizen.sh — round 5 data: every ASL Citizen clip right-dominant (mirrored where the signing hand is
 # stored on the left) and trimmed to its active signing (scripts/canonicalize_asl_citizen.py), then the canonical
-# manifest. Shards resume from their reports; research use only, everything private in R2.
+# manifest. Shards resume from their reports; CANON_ARGS passes options through (round 5 amendment 2:
+# --dominance signer --prefix .../canonical-v2 --corpus-id asl-citizen-canonical-v2). Research use only, private in R2.
 set -uo pipefail
 source /root/r2env.sh
 export PATH=/root/venv/bin:$PATH OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
@@ -14,9 +15,9 @@ SHARDS=64
 echo "STAGE canonicalize workers $W $(date)"
 for s in $(seq ${FROM:-0} ${TO:-63}); do
   for pass in 1 2 3; do
-    python scripts/canonicalize_asl_citizen.py --shard $s --shards $SHARDS --workers $W && break
+    python scripts/canonicalize_asl_citizen.py --shard $s --shards $SHARDS --workers $W ${CANON_ARGS:-} && break
     echo "shard $s pass $pass exit $?"; sleep 30
   done
 done
-[ -n "${ASSEMBLE:-1}" ] && python scripts/canonicalize_asl_citizen.py --assemble
+[ -n "${ASSEMBLE:-1}" ] && python scripts/canonicalize_asl_citizen.py --assemble ${CANON_ARGS:-}
 echo CANONICALIZE-DONE

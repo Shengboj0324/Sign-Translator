@@ -86,6 +86,8 @@ def main(argv=None) -> int:
                            sign_type=row.get("sign type", "").strip(),
                            handshapes={h: row[h].strip() for h in HANDSHAPES if row.get(h, "").strip()}),
                 source=dict(full_video=row["full video filename"], clip=row["Sign clip video filename"]),
+                quality={k: result.get(k) for k in ("frames", "pose_frames", "face_frames", "left_hand_frames",
+                                                    "right_hand_frames", "arm_frames")},
                 continuous=dict(status="converted", state_key=result["state_key"], state_sha256=result["state_sha256"],
                                 available_channels=result["available_channels"], seconds=result["seconds"])))
     counts = {p: sum(r["partition"] == p for r in records) for p in ("train", "val", "test")}
