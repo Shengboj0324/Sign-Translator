@@ -1533,3 +1533,14 @@ Every guidance stays below blank. The content failure lies in the prior.
 - That full prior is then judged by the full declared chain (sweep, grid, gate, strict review).
 - If neither arm is promising, the text-encoder hypothesis is rejected and the next lever is lexical data (a re-extracted ASL Citizen).
 - No rule of the gate or the review changes.
+
+## Round 3d result, recorded (2026-10-26, 15:36 UTC): FAILED
+
+**Gate:** the best of 324 settings passed 78 of 95 checks: hand 1.2, face 1.0, head smoothing 0.1 s, damping 0.8, face calibration, guidance 2. It failed body variation and hand speed for c01 and c05, the over-activity found at 07:21.
+
+**Strict review on that setting:**
+- R2b: fail, 1.62 below blank 2.14.
+- R4: fail.
+- R6: fail.
+- R5: passed narrowly. Top-5 was 2.25% [0.45%, 4.5%] against blank 0, at guidance 2, where round 3e's 1.35% [0, 3.15%] at guidance 1 just failed.
+- Both rounds sit around 2% against real signing's 99%. That is consistent with the content diagnosis, not progress on it.
