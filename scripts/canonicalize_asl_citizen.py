@@ -147,6 +147,8 @@ def main(argv=None) -> int:
     p.add_argument("--source-sha256", default=SOURCE_SHA)
     p.add_argument("--prefix", default=PREFIX)
     p.add_argument("--no-trim", action="store_true", help="mirror only (clips already cut to the sign, e.g. RIT)")
+    p.add_argument("--sides-key", help="with --dominance signer: a JSON {performer: side or {side: ...}} that sets each "
+                   "signer's side (signer_dominance_motion.py, for studio corpora) instead of forearm counts")
     p.add_argument("--dominance", choices=("clip", "signer"), default="clip",
                    help="per-clip side (canonical-v1) or the signer's side for all their clips (round 5 amendment 2)")
     p.add_argument("--corpus-id", default="asl-citizen-canonical-v1")
@@ -170,7 +172,12 @@ def main(argv=None) -> int:
             done = {r["sign"]: r for r in json.loads(store.get(report_key))["results"] if r["status"] == "converted"}
         todo = [r for r in mine if r["sign"] not in done]
         with mp.get_context("spawn").Pool(args.workers) as pool:
-            sides = signer_sides(records) if args.dominance == "signer" else {}
+            sides = signer_sides(records) if args.dominance == "signer" and not args.sides_key else {}
+            if args.dominance == "signer" and args.sides_key:
+                sides = {k: (v["side"] if isinstance(v, dict) else v) for k, v in json.loads(store.get(args.sides_key)).items()}
+                missing = {r["performer_sha256"] for r in records} - set(sides)
+                if missing:
+                    raise SystemExit(f"--sides-key has no side for {len(missing)} signers")
             for k, result in enumerate(pool.imap_unordered(_work, [(r, prefix, trim, sides.get(r["performer_sha256"])) for r in todo], chunksize=8)):
                 done[result["sign"]] = result
                 if (k + 1) % 2000 == 0:
