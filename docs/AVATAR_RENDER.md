@@ -346,7 +346,7 @@ closes the eye on the viewer's right.
   signing fidelity. `accepted_provenance` stays false.
 
 
-## Avatar v2 plan (pre-designed 2026-10-26 02:40 UTC; starts once a generator passes its exit gate)
+## Avatar v2 plan (pre-designed 2026-10-26 02:30 UTC; starts once a generator passes its exit gate)
 
 **Goal:** a production-quality avatar that keeps every verified property of the current pipeline (retarget errors, left/right checks, timestamps, determinism) and fixes two things the owner saw: the flat Workbench look and the shaking.
 
