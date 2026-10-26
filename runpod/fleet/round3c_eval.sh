@@ -58,7 +58,10 @@ export -f sweep_one
 case $PHASE in
 sweep)
   # the 18 evaluations in a fixed order, alternately to part a and b
-  jobs=$(settings | while read h f; do for g in c01 c03 c05; do echo "$h $f $g"; done; done | awk -v p="$PART" \
+  # R3_ROTATE=1 (round 3e): rotate the signer groups per setting, so every sweep pod gets a share of each group (round
+  # 3d's split gave one pod every long c03 clip)
+  jobs=$(settings | awk -v r="${R3_ROTATE:-0}" '{n=split("c01 c03 c05", g, " "); for (i = 0; i < n; i++)
+      print $1, $2, g[(r == 1 ? (i + NR - 1) % n : i) + 1]}' | awk -v p="$PART" \
     -v n="${R3_NPARTS:-2}" 'p == "" || (NR - 1) % n == index("abcdefgh", p) - 1')
   echo "$jobs" | xargs -P 3 -L 1 bash -c 'sweep_one "$@"' _
   echo "$jobs" | while read h f g; do

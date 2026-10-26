@@ -1420,3 +1420,49 @@ At hand 1.0 the hands are far too still (variation 0.38–0.50); at 1.25 they ar
 - That makes 27 sweep evaluations, run on 3 GPU pods (`R3_NPARTS=3`), and 675 evaluation files after the grid.
 
 This widens the declared search where the diagnostics show the optimum lies. It loosens no rule. The strict review still judges the selected setting, R6 included on the held-out test states.
+
+## Round 3d sweep: over-active at every declared temperature (2026-10-26, 07:21 UTC; all times UTC from here)
+
+Sweep results so far: 15 of 27 at 07:08, guidance 1.5, ratios of generated to that signer group's real motion:
+
+| setting | c01 body speed / variation | c05 body speed / variation | c05 hand speed | c03 body speed / variation |
+|---|---|---|---|---|
+| hand 1.2 / face 1.0 | 1.26 / 1.41 | 1.28 / 1.41 | 1.63–1.68 | 0.97 / 1.12 |
+| hand 1.2 / face 1.2 | 1.42 / 1.62 | 1.50 / 1.66 | 1.75–1.77 | 1.13 / 1.31 |
+| hand 1.25 / face 1.2 | 1.54 / 1.72 | 1.61 / 1.70 | 1.85–1.95 | — |
+
+**What the gate will do with these:**
+- Its articulation bands are [0.7, 1.3], widened by real cross-signer ratios (round 3b's cross-signer baseline, the same real clips). Body variation, for example, is about [0.70, 1.30] for judges c01 and c05.
+- The post-processing grid adjusts only the head (smoothing, damping) and face calibration.
+- So no round-3d setting can pass the body and hand checks on c01 and c05. The declared chain still runs to its verdict, because its strict review measures R2b, R5 and R6 on generated motion.
+
+**Why the sweep overshoots:**
+- The hand temperatures {1.2, 1.25, 1.3} were tuned to offset round 3b's damped tokenizer.
+- d2's accepted decoder gains (body 1.17, hands 1.27) already restore amplitude, so the two compound.
+- c03, a more energetic signer, sits near range. c01 and c05 do not.
+
+**Lower-temperature diagnostics** (final prior, face 1.0, 24 clips per group, guidance 1.5):
+
+| group, temperature | body speed / variation | hand speed | hand variation | head speed / variation |
+|---|---|---|---|---|
+| c01, 1.0 | 0.73 / 0.86 | 0.98–0.99 | 0.77–0.85 | 0.95 / 0.82 |
+| c01, 1.1 | 1.02 / 1.00 | 1.29 | 1.00–1.13 | 1.22 / 0.81 |
+| c05, 1.0 | 0.80 / 0.69 | 0.94–1.09 | 0.73–0.86 | 1.31 / 1.37 |
+| c05, 1.1 | 1.04 / 0.94 | 1.19–1.29 | 0.87–1.06 | 1.84 / 2.04 |
+
+**Sweep pod imbalance:** the round-3d split gave one pod every c03 evaluation, and c03's clips are longer, taking about 2 h per evaluation. A helper pod computed c03's three hand-1.3 evaluations with identical flags, and the sweep script's "already stored" check skips them.
+
+## Round 3e design: an evaluation-only round (declared 2026-10-26, 07:21 UTC, before any round-3e result)
+
+**What stays the same:** round 3d's tokenizer (d2 with its accepted decoder gains) and its prior (`tokens-rvq-d0b-prior-r3d-d2g` at step 60000), with no retraining. Also unchanged:
+- guidance {1, 1.5, 2};
+- the post-processing grid (head smoothing {0.1, 0.2, 0.3} × damping {1, 0.8, 0.6} × face calibration, head-translation smoothing);
+- the cross-signer envelopes and the gate;
+- the strict review R1–R7, including the held-out test set.
+
+**What changes:**
+- **Sweep temperatures:** hands and body {1.0, 1.05, 1.1} (`R3_HANDS`), face {0.9, 1.0} (`R3_FACES`). That is 18 evaluations on 3 GPU pods.
+- **Balanced split:** signer groups are rotated per setting (`R3_ROTATE=1`), so each pod gets a share of every group.
+- **Location:** results go under `round3e/` (`R3_D`).
+
+Every other rule is as declared for rounds 3c and 3d. The round-3d verdict is recorded when its chain finishes; it does not gate round 3e.
