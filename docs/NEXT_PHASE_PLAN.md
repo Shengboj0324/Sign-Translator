@@ -1655,3 +1655,20 @@ ASL Citizen motion is not in the generator.
   - Records keep their stored states and carry `"mirror": true` for every clip of a left-dominant signer (`scripts/build_mirror_flag_manifest.py`). `corpus_manifest.load_sample` mirrors those clips on load, after channel masking. A test checks that loading equals `mirror_state`.
   - Validation and checks are unchanged (round 5 A).
 - **v3b is stopped and is not an instrument.** The instrument is v3c if it passes, otherwise v2.
+
+## New lexical sources: conditions and plan (2026-10-27, 02:06 UTC)
+
+The owner pointed to five sources and approved MS-ASL. Each one's conditions, as read from its own pages and files:
+
+| Source | What it holds | Terms (as stated by the source) | Use here |
+|---|---|---|---|
+| **PopSign ASL v1.0** (Georgia Tech) | 250 signs, 200,686 phone videos, 47 signers, 1.1 TB; per-sign tar files by split (`signdata.cc.gatech.edu/data/popsign_v1_0/{game,non-game}/{train,val,test}/<sign>.tar`, about 2.1 GB per training tar) | "Popsign v1.0 is licensed under CC BY 4.0" | Generator and recogniser, with attribution. About 30 of the 150 R5 words. |
+| **ASL-LEX 2.0** (OSF `zpha4`) | `signdata.csv` with 60+ lexical and phonological properties for 2,723 signs, plus `signdataKEY.csv`; about 10 example videos | Database CC BY 4.0 (body text; the site footer says CC BY-NC 4.0). "The sign reference videos are © ASL-LEX.org." | The lexical database only: gloss mapping, frequency and phonology for the gloss-planned path. The videos are not taken. |
+| **Sem-Lex** (BU; github.com/leekezar/SemLex) | 91,148 isolated videos, 3,149 signs, 41 deaf signers, aligned with ASL-LEX and Sign Bank. Pose files "will be available soon". | Download links come after agreeing to the terms in a Google Form. Participants consented to sharing "for the purpose of developing sign language technology". | **Needs the owner to submit the form** (personal details and acceptance of terms). |
+| **WLASL v0.3** (cloned) | 2,000 glosses, 21,083 instances. Only 5,135 instances (3,250 videos) are on YouTube; the rest are on dictionary sites (signingsavvy, handspeak, aslpro, spreadthesign, asldeafined, signstock, aslsearch). 113 R5 words, 1,303 instances. | C-UDA 1.0: "solely for Computational Use"; trained models are unrestricted "Results". The provider gives no warranty of rights in the videos. Pre-processed videos are available through a Google Form that accepts their terms of use. | The YouTube subset through the approved home route. The dictionary-site videos and the form **wait for the owner's decision**. |
+| **MS-ASL** (Microsoft, `MS-ASL.zip`, 1.9 MB of JSON) | 1,000 classes, 25,513 clips cut from 7,213 YouTube videos, with times and boxes. 61 R5 words, 1,562 clips. | C-UDA 0.1 (computational use). Approved by the owner (2026-10-27). | YouTube downloads through the approved low-rate home route (no circumvention), then extraction on pods. |
+
+**Sequencing:**
+- Round 5 stays as declared (RIT only), so its result is not confounded.
+- The new sources are acquired and extracted now, in parallel, into private R2 prefixes with their terms in each manifest.
+- They enter the generator in a round 6 that is declared before any of its results. PopSign and MS-ASL clips are canonicalised per signer by the round-5 rule.
