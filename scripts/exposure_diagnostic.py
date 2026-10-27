@@ -14,6 +14,12 @@ clip is read by the recogniser in six forms:
 - ``free_run``: ordinary sampling at the clip's duration (guidance ``--guidance``).
 If one-step samples read well but free-run does not, errors accumulating over the sampled history (exposure bias)
 are the cause. Prompts use each record's own text. Writes one JSON report.
+
+``--extra`` adds two free-run variants that locate the drift and test an inference-only lever:
+- ``prefix25`` / ``prefix50`` / ``prefix75``: the first 25/50/75% of the steps are the real codes, the rest is
+  sampled (guidance ``--guidance``, generation's planned loci and empty-text branch);
+- ``coarse_sampled``: free run where only the first residual stage of each part is sampled and the finer stages are
+  their mode (their sampled noise otherwise enters every later step's history).
 """
 from __future__ import annotations
 
@@ -43,6 +49,7 @@ def main(argv=None) -> int:
     p.add_argument("--guidance", type=float, default=1.5)
     p.add_argument("--recognizer-run", default="sign-recognizer-v2")
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--extra", action="store_true", help="add the prefix and coarse-sampled free-run variants")
     p.add_argument("--device", default="cuda")
     p.add_argument("--output-key", required=True)
     args = p.parse_args(argv)
@@ -54,8 +61,10 @@ def main(argv=None) -> int:
     from signtranslator.data_engineering.corpus_manifest import ContentCache, load_manifest
     from signtranslator.generation.motion_rvq import MotionRVQ, RVQPrior, RVQPriorConfig, generate_rvq_motion
     from signtranslator.generation.postprocess import smooth_rotation_channel, smooth_vector_channel
+    from signtranslator.generation.motion_tokens import _empty_like
     from signtranslator.generation.text_to_motion import (
-        assemble_state, batch_seconds, diffusion_targets, encode_texts, native_values, unit_to_raw)
+        PAD, assemble_state, batch_seconds, diffusion_targets, empty_loci, encode_texts, generation_loci, native_values,
+        unit_to_raw)
     from signtranslator.grammar_motion.loci_conditioning import state_loci
     from evaluate_text_to_motion import accepted_decoder_gains
     from fit_tokenizer_gains import apply_gains
@@ -102,6 +111,38 @@ def main(argv=None) -> int:
                     for n, c in state.channels.items()}
         return replace(state, channels=channels)
 
+    P = len(tokenizer.parts)
+
+    @torch.no_grad()
+    def continue_from(text, prefix, count, seed, greedy_fine=False):
+        """Free run of ``count`` steps after the real codes ``prefix`` (1, k, J), as ``generate_rvq_motion`` samples."""
+        config = prior.config
+        tk, mk = (t.to(device) for t in encode_texts([text]))
+        hid, _, mk = prior.encode(tk, mk, generation_loci(config, [text], None, device))
+        empty = _empty_like(tk[:1, :2])
+        e_hid, _, e_mask = prior.encode(empty, empty != PAD, empty_loci(config, device))
+        seconds_out = torch.tensor([count / 24.], device=device)
+        clock = (torch.arange(count, device=device, dtype=torch.float32) / 24.)[None]
+        g = torch.Generator().manual_seed(seed)
+        sequence = torch.cat((torch.full((1, 1, prior.J), prior.K, dtype=torch.long, device=device), prefix), 1)
+        for k in range(prefix.shape[1], count):
+            h = prior.temporal_states(hid, mk, sequence, clock[:, :k + 1], seconds_out)[:, -1]
+            h_free = (prior.temporal_states(e_hid, e_mask, sequence, clock[:, :k + 1], seconds_out)[:, -1]
+                      if args.guidance != 1. else None)
+            step_codes = torch.zeros((1, 0), dtype=torch.long, device=device)
+            for j in range(prior.J):
+                logits = prior.depth_logits(h, step_codes)[:, -1]
+                if h_free is not None:
+                    free = prior.depth_logits(h_free, step_codes)[:, -1]
+                    logits = free + args.guidance * (logits - free)
+                if greedy_fine and j >= P:                          # stage >= 2 of every part: its mode
+                    choice = logits.argmax(-1, keepdim=True)
+                else:
+                    choice = torch.multinomial(torch.softmax(logits.float(), -1).cpu(), 1, generator=g).to(device)
+                step_codes = torch.cat((step_codes, choice), 1)
+            sequence = torch.cat((sequence, step_codes[:, None]), 1)
+        return decode(sequence[:, 1:], count, text)
+
     by_word = collections.defaultdict(list)
     for k, r in enumerate(data.records):
         if r.get("corpus") in args.corpus and r.get("text"):
@@ -143,6 +184,11 @@ def main(argv=None) -> int:
         seconds_real = frames / 24.
         forms["free_run"].append(post(generate_rvq_motion(prior, tokenizer, [text], fps=24., durations=[seconds_real],
                                                           guidance=args.guidance, seed=9500 + 10 * n)[0]))
+        if args.extra:
+            for f in (.25, .5, .75):
+                k = int(round(f * frames))
+                forms[f"prefix{int(100 * f)}"].append(continue_from(text, codes[:, :k], frames, 9600 + 10 * n))
+            forms["coarse_sampled"].append(continue_from(text, codes[:, :0], frames, 9800 + 10 * n, greedy_fine=True))
         y.append(index[w])
         rows.append(dict(word=w, text=text, frames=frames,
                          onestep_code_agreement=round(float((drawn == codes[0]).float().mean()), 4),
