@@ -1884,3 +1884,31 @@ Both arms were stopped at 14:27 UTC as declared, and their pods were deleted (lo
 3. **Reading it.**
    - If retrieval is high (top-1 well above chance) while generated training words fail the recogniser, the prior does read its text, and the fault lies in autoregressive sampling: error accumulation over about 1,700 codes, which input corruption is meant to reduce.
    - If retrieval is near chance, the text pathway is the fault, and the next lever targets it.
+
+## Word retrieval result, and the code audit's guidance bug (recorded and declared 2026-10-27, 14:59 UTC)
+
+**Teacher-forced word retrieval** (64 training clips with 64 distinct words per corpus, rank of the own word; chance top-1 0.016, mean rank 32.5; the clip's own measured loci):
+
+| Checkpoint | RIT top-1 / mean rank | WLASL top-1 / mean rank | ASLLVD top-1 / mean rank |
+|---|---|---|---|
+| Control (r3d-d2g step 20000; never saw RIT or WLASL) | 0.016 / 29.9 | 0.031 / 28.3 | 0.953 / 1.17 |
+| B6 step 20000 | 0.672 / 3.39 | 0.750 / 3.12 | 0.906 / 1.50 |
+| A7 step 5000 | 0.109 / 17.2 | 0.219 / 15.0 | (pending) |
+
+The shuffled control reads at chance in every case (top-1 0.00–0.03). **So the priors do read their text:** on their own training corpora, teacher-forced likelihood picks the clip's word out of 64 in 67–95% of cases. The control reads at chance only on the corpora it never trained on.
+
+**Code audit (2026-10-27, 6 reviewers): a guidance bug found independently by two of them.**
+- In the unguided branch of classifier-free guidance, every sampler (`motion_rvq.py` single and batched, `motion_tokens.py`, `text_to_motion.py`) encoded the empty text **without the locus projection**.
+- In training, a dropped text always passes zero slots through that projection, bias included (`training_loci`). So at any guidance ≠ 1, sampling pushed away from an unconditional distribution computed on an input never seen in training.
+- Every locus-conditioned prior was sampled at guidance 1.5 in the pilots and diagnostics: round 5 and later, the control included.
+- Fixed in 8664f5c, with a regression test.
+- **The other audit findings** (minor, or outside the generator's path) are recorded separately when all six reviews are in.
+
+**Identification test (declared before its result).** B6 step 20000, `lexicon_diagnostic.py` on its 60 most frequent training words (pre-fix: generated 0.000 at own duration, 0.017 at real duration; real 0.925):
+1. the fixed sampler at guidance 1.5;
+2. guidance 1.0, which has no unguided branch, so the bug cannot act;
+3. word retrieval with zero loci (the condition one-word generation uses).
+
+**Reading.**
+- If (1) or (2) is well above the pre-fix 0.000–0.017 (for example at least 0.15), the guidance bug was the main cause of the content failure. In that case every earlier pilot is re-scored with the fixed sampler, the control included, before any verdict is revised.
+- If both stay near 0 while retrieval stays high, the cause is in autoregressive sampling itself. The round-7 pilot (input corruption) then tests that.
