@@ -1699,3 +1699,15 @@ The owner pointed to five sources and approved MS-ASL. Each one's conditions, as
   - the byte prior `tokens-rvq-d0b-prior-r3d-d2g` is the control.
 - **A promising arm resumes training** from its latest checkpoint (step 23000–24000, same run, config and manifest) to 60000, then goes through the full declared chain.
 - If neither is promising, round 6 (new lexical data) is next.
+- **WLASL audit (2026-10-27, 04:26 UTC).** All 8,258 downloads are packed into seven zips in R2, each verified by re-read. The local copies were deleted at 04:09. Checking content signatures before trusting the extraction showed that aslsearch.com's 1,875 "videos" are 114-byte HTML pages: the site is dead and answers every URL with a page. They are excluded; the pod refused all of them. **Usable: 6,382 real MP4 clips** from six hosts:
+
+  | Host | Clips |
+  |---|---|
+  | signstock | 1,968 |
+  | asldeafined | 1,833 |
+  | spreadthesign | 1,584 |
+  | startasl (s3) | 619 |
+  | aslbricks | 217 |
+  | elementalaslconcepts | 161 |
+
+  The downloader now rejects any payload without a video signature (`not_a_video`).

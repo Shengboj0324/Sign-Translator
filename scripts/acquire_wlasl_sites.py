@@ -86,6 +86,8 @@ def fetch_host(host: str, items: list[dict], args) -> list[dict]:
                 data = r.read(args.max_bytes + 1)
             if len(data) > args.max_bytes:
                 out.append(dict(row, status="too_large")); continue
+            if b"ftyp" not in data[:64] and not data[:4] == b"\x1aE\xdf\xa3":   # MP4/MOV or Matroska/WebM signature
+                out.append(dict(row, status="not_a_video", bytes=len(data))); continue   # e.g. a dead site's HTML page
             target.write_bytes(data); refusals = 0
             out.append(dict(row, status="downloaded", file=str(target), bytes=len(data)))
         except urllib.error.HTTPError as e:
