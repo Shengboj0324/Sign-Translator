@@ -209,6 +209,26 @@ def main(argv=None) -> int:
         report["top1"][name] = round(float((logits.argmax(1) == target).float().mean()), 4)
         for k, r in enumerate(rows):
             r[f"{name}_hit"] = int(hits[k])
+    def activity(state, names=("body", "left_hand", "right_hand", "head_rotation")):
+        """Mean absolute frame-to-frame change per channel (per second), over frames valid in both."""
+        out = {}
+        for name in names:
+            c = state.channels.get(name)
+            if c is None or len(c.values) < 2:
+                continue
+            ok = c.valid[1:] & c.valid[:-1]
+            if not ok.any():
+                continue
+            d = np.abs(np.diff(c.values, axis=0))
+            d = d.reshape(*d.shape[:2], -1).mean(-1) if d.ndim > 2 else d
+            out[name] = float(d[ok].mean() * 24.)
+        return out
+    report["motion_activity"] = {}
+    for name, states in forms.items():
+        acts = [activity(st) for st in states]
+        report["motion_activity"][name] = {ch: round(float(np.mean([a[ch] for a in acts if ch in a])), 4)
+                                           for ch in ("body", "left_hand", "right_hand", "head_rotation")
+                                           if any(ch in a for a in acts)}
     report["onestep_code_agreement"] = round(float(np.mean([r["onestep_code_agreement"] for r in rows])), 4)
     report["argmax_code_agreement"] = round(float(np.mean([r["argmax_code_agreement"] for r in rows])), 4)
     print(json.dumps({k: v for k, v in report.items() if k != "decoder_gains"}), flush=True)
