@@ -625,6 +625,32 @@ def rvq_prior_loss(model: RVQPrior, tokenizer: MotionRVQ, tokens, text_mask, mot
 
 
 @torch.no_grad()
+def rvq_sequence_log_likelihood(model: RVQPrior, tokenizer: MotionRVQ, tokens, text_mask, motion: MotionBatch,
+                                loci=None) -> torch.Tensor:
+    """(B,) summed log-probability of each row's valid tokenizer codes under teacher forcing: ``rvq_prior_loss``'s
+    evaluation path (no text dropout, no corruption), not averaged. Word retrieval scores one clip's codes under many
+    candidate texts with it (round 7, amendment 1)."""
+    config = model.config
+    with torch.no_grad():
+        tokenizer.eval()
+        unit = diffusion_targets(config.tokenizer.motion, motion)
+        _, codes, _ = tokenizer.quantize(tokenizer.encode(unit))                     # (B, S, J)
+        valid = tokenizer.token_valid(motion.frame_valid)
+        hidden, _, text_mask = model.encode(tokens, text_mask, loci)
+        start = torch.full_like(codes[:, :1], model.K)
+        previous = torch.cat((start, codes[:, :-1]), 1)
+        seconds = batch_seconds(motion).float()
+        step_seconds = seconds[:, ::config.tokenizer.step][:, :codes.shape[1]]
+        step_seconds = F.pad(step_seconds, (0, codes.shape[1] - step_seconds.shape[1]))
+        duration = (seconds * motion.frame_valid).amax(1)
+        h = model.temporal_states(hidden, text_mask, previous, step_seconds, duration)
+        target = codes[valid]                                                              # (N, J)
+        logits = model.depth_logits(h[valid], target[:, :-1])                              # (N, J, K)
+        log_p = logits.log_softmax(-1).gather(-1, target[..., None])[..., 0].sum(1)        # (N,)
+        row = torch.arange(len(codes), device=codes.device)[:, None].expand_as(valid)[valid]
+        return torch.zeros(len(codes), dtype=log_p.dtype, device=log_p.device).index_add_(0, row, log_p)
+
+
 def generate_rvq_motion(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, fps: float, guidance: float = 1.,
                         temperature: float | dict = 1., top_k: int = 0, seed: int = 0, durations=None,
                         sample_prefix: str = "tokens-v2", loci=None):

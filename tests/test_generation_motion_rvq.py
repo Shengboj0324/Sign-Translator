@@ -7,7 +7,7 @@ from signtranslator.data.multichannel import collate_multichannel
 from signtranslator.generation.canonical_state import channel_bindings_from_state
 from signtranslator.generation.motion_rvq import (
     MotionRVQ, MotionRVQConfig, RVQPrior, RVQPriorConfig, ResidualQuantizer, generate_rvq_motion, rvq_loss,
-    rvq_prior_loss,
+    rvq_prior_loss, rvq_sequence_log_likelihood,
 )
 from signtranslator.generation.text_to_motion import TextToMotionConfig, diffusion_targets, encode_texts
 from tests.test_generation_signing_space import signer_state
@@ -313,3 +313,20 @@ def test_input_corruption_is_opt_in_training_only_and_keeps_old_config_shas():
     torch.manual_seed(2)
     b, _ = rvq_prior_loss(prior, tokenizer, tokens, mask, batch, train=True)
     assert not torch.isclose(a, b)                                              # training sees a corrupted history
+
+
+def test_sequence_log_likelihood_sums_the_evaluation_loss_per_row_and_depends_on_the_text():
+    states, tokenizer, prior = prior_setup()
+    prior.eval()
+    batch = collate_multichannel(states)
+    tokens, mask = encode_texts(["ask him", "cut it"])
+    loss, terms = rvq_prior_loss(prior, tokenizer, tokens, mask, batch, train=False)
+    ll = rvq_sequence_log_likelihood(prior, tokenizer, tokens, mask, batch)
+    valid = tokenizer.token_valid(batch.frame_valid)
+    codes = int(valid.sum()) * tokenizer.config.codes_per_step
+    assert ll.shape == (2,) and bool((ll < 0).all())
+    torch.testing.assert_close(-ll.sum() / codes, torch.tensor(terms["tokens"], dtype=ll.dtype), rtol=1e-5, atol=1e-5)
+    one = rvq_sequence_log_likelihood(prior, tokenizer, tokens[1:], mask[1:], collate_multichannel(states[1:]))
+    torch.testing.assert_close(one, ll[1:], rtol=1e-4, atol=1e-4)            # rows are scored independently
+    swapped, smask = encode_texts(["cut it", "ask him"])
+    assert not torch.allclose(rvq_sequence_log_likelihood(prior, tokenizer, swapped, smask, batch), ll)
