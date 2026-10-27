@@ -2217,3 +2217,21 @@ D7 (input corruption 1.0) at step 20000 against the re-scored control:
 - **Run:** smoke first, then 60000 steps with patience 10, launched in t2x's freed slot.
 - **t4x continues as declared** (best validation still improving). t4xb is prepared and launches only by a further amendment.
 - **t2x amendment-2 domain check (20:34 UTC): passed** (YouTube-ASL ratios against the fixed reference: body 0.65, hands 0.72–0.74). t2x stays rejected on fidelity alone.
+
+## Step-20000 exposure reads, rounds 8–9, and amendment 2 to round 11 (recorded and declared 2026-10-27, 21:14 UTC, before the H9/HC9 pilot verdicts)
+
+**Step-20000 exposure reads** (same 60 training words, recogniser v2; reported beside the pilots):
+
+| Arm | Free run, step 10000 | Free run, step 20000 | One-step (sampled / mode), step 20000 |
+|---|---|---|---|
+| H9 | 0.000 | 0.033 | 0.750 / 0.817 |
+| HC9 | 0.033 | **0.133** (8 of 60) | 0.667 / 0.750 |
+
+- B6's free run was 0.017.
+- **HC9 is the first arm whose free run moves.** It hides the leading history behind the start code half the time, and its temporal input sums only stage 1 of each part, and it rose fourfold between steps 10000 and 20000.
+- H9 (dropout without the coarse history) did not move. So the coarse history is the effective part: the fine-detail copy path is what kept the text out of the trajectory.
+
+**Amendment 2 to round 11 (declared before any round-11 result):**
+1. **Arm L11c** (new): L11's recipe plus `--history-stages 1`. It launches in the first pod slot freed after the H9/HC9 pilots. Its gate is the same as L11's: step 10000, free run ≥ 0.20 learnable, < 0.05 fails.
+2. **HC9 continues to step 40000** from its step-20000 checkpoint, whatever its pilot verdict says. This is a diagnostic of the trend, with exposure reads at steps 30000 and 40000, in the second freed slot. If its pilot is promising, the declared rule (continue to 60000) applies instead.
+3. **L11 continues unchanged,** as the control for the coarse history on trimmed, isolated-weighted data.
