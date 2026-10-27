@@ -2197,7 +2197,7 @@ D7 (input corruption 1.0) at step 20000 against the re-scored control:
 - **Recognisability: passed.** Round trip top-5 0.763 against 0.817 for real (ratio 0.93, at least 0.9 required).
 - **Fidelity:** still running on the pod.
 
-## Round 10: t2x verdict, and amendment 1, t2xb (recorded and declared 2026-10-27, 20:21 UTC, before any t2xb result)
+## Round 10: t2x verdict, and amendment 1, t2xb (recorded and declared 2026-10-27, 20:20 UTC, before any t2xb result)
 
 **t2x: REJECTED (fidelity).** Best checkpoint at step 13000; early stop at step 23000 after gradient spikes up to 214.
 - **Fidelity ratios** (band 0.85–1.15):
