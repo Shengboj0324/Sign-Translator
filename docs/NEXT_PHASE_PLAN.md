@@ -2075,3 +2075,22 @@ A7 (input corruption 0.5) at step 20000 against the control re-scored on the fix
 - Real motion reads BLEU 4.089, blank 2.09. The BLEU gain only brings A7 to the blank level.
 - A7 stays stopped; its checkpoints are kept in R2.
 - This matches the step-10000 early read (free run 0.017): random corruption does not break the copycat shortcut. The coarse stages of the history survive it.
+
+## Round 10: coarser tokenizers (declared 2026-10-27, 18:10 UTC, before any round-10 result)
+
+**Why** (research report, rank 4).
+- Every published discrete-token motion or sign generator runs at about 5 steps/s with ≤ 6 codes per step. Ours runs at 768 codes/s.
+- Measured sweeps (MoTok; LMR) show the full-rate tokenizer reconstructs best but generates worst.
+- MoMask's generation quality is best at 5–6 residual levels.
+- This is the remedy for the copycat shortcut at its source, and a hedge if rounds 8–9 fail. It is a hyperparameter change of the same residual-VQ tokenizer, not a new architecture.
+
+**Candidates.** Round 3d's tokenizer stage and checks (`round3d_tokenizer.sh`, now `round10_tokenizer.sh`): d2's recipe from scratch, 60000 steps, smoke first.
+- **t2x:** `--down-layers 1` (12 Hz), `--stages 4`: 16 codes per step, 192 codes/s.
+- **t4x:** `--down-layers 2` (6 Hz), `--stages 4`: 16 codes per step, 96 codes/s. It starts when a pod is free.
+
+**Gates (unchanged from round 3d):** the domain check, the recognisability check, and the fidelity check, with amendment 5's gains fallback.
+
+**If a candidate passes:**
+- **Learnability check first:** a smoke prior.
+- **Then a prior** on B6's recipe, with the best round 8 or 9 training option if one is promising.
+- **The same pilot** (rule D with amendment 2), and the exposure diagnostic's free-run form reported beside it.
