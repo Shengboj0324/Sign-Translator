@@ -1808,3 +1808,19 @@ The round-4 checkpoints at step 20000, re-measured with per-word hits. Meaning s
   - **Locus mismatch is ruled out for one-word prompts.** Motion-measured training loci are non-empty for only 2–7% of one-word clips, and the text-planned ones are empty.
   - **Noted for later:** How2Sign sentences have text-planned loci on 52% of texts but motion-measured ones on 12%, a train/generation mismatch for sentences.
   - **Running:** teacher-forced token loss with real vs empty text (does the prior condition on the word at all?), plus sampling with oracle loci and at temperature 0.7.
+
+**Round 6 audit, root cause (2026-10-27, 12:57 UTC): the prior barely conditions on its text.**
+
+The B6 checkpoint at step 20000, 256 training clips per corpus: teacher-forced token cross entropy with the real text vs with the empty text (the same input as training's text dropout).
+
+| Corpus | CE, text | CE, empty | Text gain (nats) | Token accuracy, text / empty |
+|---|---|---|---|---|
+| RIT | 3.156 | 3.168 | 0.011 | 0.2946 / 0.2933 |
+| WLASL | 2.639 | 2.654 | 0.015 | 0.4116 / 0.4098 |
+| ASLLVD | 3.653 | 3.668 | 0.015 | 0.2130 / 0.2114 |
+| How2Sign | 3.509 | 3.514 | 0.005 | 0.2420 / 0.2415 |
+
+- **What it means.** The text moves the code prediction by about 0.01 nats, so the prior is close to an unconditional motion model. Its previous codes predict the next ones (motion continuity), and it learned to rely on those rather than on the text.
+- **This explains every content failure.** R2b is below blank, R5 is near 0, training words come out at 0.000 against 0.925 for real clips, more data did not help, and guidance helped only a little.
+- **Sampling is ruled out.** Real duration gave 0.025, oracle loci 0.025, temperature 0.7 gave 0.0125.
+- **Next: a training-procedure fix inside the current architecture,** as the owner asked. During training, a random fraction of the previous-code inputs is corrupted (the T2M-GPT strategy), so the prior cannot coast on continuity and must use the text. It is declared as round 7, with the text-use gain as its early check.
