@@ -1962,7 +1962,7 @@ Each finding was verified by the reviewer with a numerical check or an exact der
 1. The pilot runs every arm and the control on the fixed sampler. The control is re-scored, and that re-score is the paired reference.
 2. The BLEU condition of rule D becomes non-inferiority: the paired-bootstrap 95% lower bound of BLEU(arm) − BLEU(control), over the same resampled clips, must be above −0.5 BLEU. The lexicon condition is unchanged.
 
-## Identification test 1 result, and test 2 declared (2026-10-27, 15:35 UTC)
+## Identification test 1 result, and test 2 declared (2026-10-27, 15:30 UTC)
 
 **Test 1 result** (B6 step 20000, its 60 most frequent training words; real clips 0.925):
 
