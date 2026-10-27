@@ -214,12 +214,25 @@ def mask_channels(state: MultichannelMotion, keep) -> MultichannelMotion:
     return replace(state, channels=channels)
 
 
+def window_state(state: MultichannelMotion, lo: float, hi: float) -> MultichannelMotion:
+    """The frames of ``state`` whose time since its first frame lies in [lo, hi]."""
+    t = state.timestamps - state.timestamps[0]
+    keep = (t >= lo - 1e-9) & (t <= hi + 1e-9)
+    if not keep.any():
+        raise ValueError(f"{state.sample_id}: window [{lo}, {hi}] contains no frames")
+    channels = {name: replace(c, values=c.values[keep], valid=c.valid[keep], observed=c.observed[keep],
+                              confidence=c.confidence[keep]) for name, c in state.channels.items()}
+    return MultichannelMotion(np.ascontiguousarray(state.timestamps[keep]), state.clock_id, state.sample_id, channels)
+
+
 def load_sample(record: Mapping, kind: str, *, cache: ContentCache,
                 fetch: Callable[[str], bytes]) -> MultichannelMotion:
     """Fetch, verify and decode one sample with every unadmitted channel masked.
 
     A record with ``"mirror": true`` is returned left-right mirrored (``signtranslator.pose.mirror``, exact), after
-    masking: right-dominant canonical form without rewriting the stored state (round 5 amendment 4)."""
+    masking: right-dominant canonical form without rewriting the stored state (round 5 amendment 4). A part with
+    ``"window_seconds": [lo, hi]`` (seconds from the state's first frame) keeps only the frames inside it (round 10:
+    one-word clips cut to the sign and a margin)."""
     usable = usable_channels(record, kind)
     if not usable:
         raise ValueError(f"{record.get('sign')}: no usable {kind} channels")
@@ -230,6 +243,8 @@ def load_sample(record: Mapping, kind: str, *, cache: ContentCache,
         path.write_bytes(data)
         state = MultichannelMotion.load(path, expected_sha256=part["state_sha256"])
     state = mask_channels(state, usable)
+    if part.get("window_seconds") is not None:
+        state = window_state(state, *part["window_seconds"])
     if record.get("mirror") is True:
         from ..pose.mirror import mirror_state
         state = mirror_state(state, sample_id=state.sample_id)

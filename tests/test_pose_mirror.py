@@ -120,3 +120,25 @@ def test_load_sample_mirrors_flagged_records(tmp_path):
     for name in ("body", "left_hand", "right_hand"):
         np.testing.assert_allclose(flipped.channels[name].values, want.channels[name].values, atol=1e-12)
         np.testing.assert_array_equal(flipped.channels[name].valid, want.channels[name].valid)
+
+
+def test_load_sample_keeps_only_the_window_of_a_windowed_record(tmp_path):
+    from signtranslator.data_engineering.corpus_manifest import ContentCache, load_sample
+    rng = np.random.default_rng(5)
+    state = _state(*_points(rng), rng)
+    digest = state.save(tmp_path / "s.npz")
+    blob = (tmp_path / "s.npz").read_bytes()
+    record = dict(sign="s", continuous=dict(status="converted", state_key="k", state_sha256=digest,
+                                            available_channels=["body", "left_hand", "right_hand", "face", "blink"]))
+    cache = ContentCache(tmp_path / "cache", max_bytes=1 << 30)
+    whole = load_sample(record, "continuous", cache=cache, fetch=lambda k: blob)
+    t = whole.timestamps - whole.timestamps[0]
+    lo, hi = float(t[1]), float(t[-2])
+    cut = load_sample(dict(record, continuous=dict(record["continuous"], window_seconds=[lo, hi])), "continuous",
+                      cache=cache, fetch=lambda k: blob)
+    assert len(cut.timestamps) == len(whole.timestamps) - 2
+    np.testing.assert_array_equal(cut.timestamps, whole.timestamps[1:-1])
+    np.testing.assert_array_equal(cut.channels["body"].values, whole.channels["body"].values[1:-1])
+    flipped = load_sample(dict(record, mirror=True, continuous=dict(record["continuous"], window_seconds=[lo, hi])),
+                          "continuous", cache=cache, fetch=lambda k: blob)
+    np.testing.assert_allclose(flipped.channels["body"].values, mirror_state(cut).channels["body"].values, atol=1e-12)
