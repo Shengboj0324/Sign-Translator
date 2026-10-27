@@ -1841,3 +1841,46 @@ The B6 checkpoint at step 20000, 256 training clips per corpus: teacher-forced t
 - The best promising arm continues to 60000 steps and then goes through the full declared chain.
 
 **If neither arm passes the early check or the pilot:** the next within-architecture lever, declared before use. Candidates: a stronger text pathway (more text layers or a larger text width), an auxiliary text–motion contrastive loss, or classifier-free guidance trained with a higher text-dropout rate.
+
+## Round 7 early check, recorded (2026-10-27, 14:27 UTC), and amendment 1: the early gate was invalid (declared 14:31 UTC, before any further round-7 result)
+
+**Recorded result, step 5000** (`text_use_check.py`, 256 training clips per corpus):
+
+| Arm | RIT | WLASL | ASLLVD | How2Sign | Declared gate (≥ 0.10 on 2 of 3 one-word corpora) |
+|---|---|---|---|---|---|
+| A7 (x = 0.5) | 0.0072 | 0.0110 | 0.0091 | 0.0039 | fail |
+| D7 (x = 1.0) | 0.0062 | 0.0143 | 0.0085 | 0.0036 | fail |
+
+Both arms were stopped at 14:27 UTC as declared, and their pods were deleted (logs verified in R2). Their step-5000 checkpoints are in R2.
+
+**Audit: the gate could not be passed by any prior, and the round-6 root cause is withdrawn.**
+- **The bound.** The cross entropy is a mean per code, and tokenizer d2 has no time downsampling. That gives 32 codes per frame at 24 fps, so about 1,650–1,860 codes per one-word training clip (mean 2.15–2.42 s).
+- The text carries at most the word: I(word; codes) ≤ H(word). That is 5.4 nats over the 256 sampled clips, and at most about 7.6 nats over the whole training vocabulary.
+- So the largest possible mean text gain per code is about H(word) / codes per clip:
+
+  | Corpus | Bound (sample H) | Bound (full vocabulary) |
+  |---|---|---|
+  | RIT | 0.0033 | 0.0044 |
+  | WLASL | 0.0029 | 0.0038 |
+  | ASLLVD | 0.0031 | 0.0043 |
+  | How2Sign | 0.0012 | — |
+
+  The declared 0.10 was 25–35 times above what a perfect use of the text can give.
+- **What the measured gains do show.** B6, A7 and D7 measure 0.006–0.015 per code. That is already at or above the bound, which is possible only because the empty text is not the marginal over words: training drops the text only 10% of the time.
+  - Per clip, the gain is about 0.011 × 1,700 ≈ 15–25 nats.
+  - So the measure cannot tell "ignores the text" from "uses it fully". The round-6 conclusion ("the prior barely conditions on its text") rested on it and is withdrawn.
+  - The lexicon failures themselves stand: training words are generated at 0.000–0.033 against real clips at 0.908–0.925. Their cause is open again.
+- **Lesson, recorded:** a per-token gate must be checked against its information bound before it is declared.
+
+**Amendment 1 (declared before any further round-7 result):**
+1. **The early gate is void.** A7 and D7 resume from their step-5000 checkpoints, with the same run, config and manifest, to the declared step-20000 pilot. The pilot rule (round-5 rule D, unchanged) decides round 7.
+2. **A valid text-use instrument: teacher-forced word retrieval** (`word_retrieval_check.py`). Per one-word corpus, 64 training clips with 64 distinct words are drawn with a fixed seed.
+   - Each clip's codes are scored under each of the 64 words by summed teacher-forced log-likelihood, with no corruption and the clip's own loci and duration.
+   - It reports top-1, top-5, mean rank (chance: 1/64, 5/64, 32.5), and the summed per-clip gain over the empty text.
+   - It also reports the score margin: true word vs the mean of the other words, in nats per clip.
+   - It runs on the control (`r3d-d2g` step 20000), B6 step 20000, and A7 and D7 at steps 5000 and 20000.
+   - It is a diagnostic. It is reported, not gated, until it is validated.
+   - Its validation requirement: on a sanity case with shuffled words (each clip scored against a permuted candidate list), it must read at chance.
+3. **Reading it.**
+   - If retrieval is high (top-1 well above chance) while generated training words fail the recogniser, the prior does read its text, and the fault lies in autoregressive sampling: error accumulation over about 1,700 codes, which input corruption is meant to reduce.
+   - If retrieval is near chance, the text pathway is the fault, and the next lever targets it.
