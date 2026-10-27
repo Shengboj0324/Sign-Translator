@@ -462,6 +462,15 @@ class RVQPriorConfig:
     # at a rate drawn uniformly in [0, scheduled_sampling], so training sees histories like its own samples.
     # 0 keeps every earlier prior's config and SHA.
     scheduled_sampling: float = 0.
+    # round 9 candidates against the copycat shortcut (2026-10-27 research report: at 24 fps the full previous frame
+    # nearly determines the next, so the text matters only where history cannot predict, the sign's onset).
+    # history_dropout (training only): with this probability per sequence, every history step before a random cut
+    # is replaced by the start code (index K), as at generation's first step, so the prior must introduce the sign
+    # from the text at any point. history_stages: the temporal transformer sums only the first n residual stages of
+    # each part of the previous step (training and generation alike; 0 = all), removing the fine-detail copy path.
+    # 0 keeps every earlier prior's config and SHA.
+    history_dropout: float = 0.
+    history_stages: int = 0
 
     def to_dict(self) -> dict:
         data = asdict(self)
@@ -469,7 +478,7 @@ class RVQPriorConfig:
         for key in ("text_model", "text_model_revision"):
             if data.get(key) is None:
                 data.pop(key, None)
-        for key in ("input_corruption", "scheduled_sampling"):
+        for key in ("input_corruption", "scheduled_sampling", "history_dropout", "history_stages"):
             if not data.get(key):
                 data.pop(key, None)
         return data
@@ -571,7 +580,10 @@ class RVQPrior(nn.Module):
         """h_t for every step from the previous steps' codes ``previous`` (B, S, J) — start row first."""
         d = self.config.d_model
         phase = seconds / duration[:, None].clamp_min(1e-3)
-        x = self._embed_codes(previous).sum(2) + self.time(torch.cat(
+        embedded = self._embed_codes(previous)                                 # (B, S, J, d); code j = q·P + p
+        if self.config.history_stages:
+            embedded = embedded[:, :, :self.config.history_stages * (self.J // self.config.tokenizer.stages)]
+        x = embedded.sum(2) + self.time(torch.cat(
             (sinusoid(seconds, d, max_period=60.), sinusoid(phase, d, max_period=4.)), -1))
         causal = torch.triu(torch.ones(x.shape[1], x.shape[1], dtype=torch.bool, device=x.device), 1)
         return self.temporal(x, hidden, tgt_mask=causal, memory_key_padding_mask=~text_mask)
@@ -620,6 +632,11 @@ def rvq_prior_loss(model: RVQPrior, tokenizer: MotionRVQ, tokens, text_mask, mot
         hit = torch.rand(previous.shape[:2], device=previous.device) < rate
         hit[:, 0] = False                               # the start token stays
         previous = torch.where(hit[..., None], own, previous)
+    if train and config.history_dropout > 0:           # round 9 candidate: whole history spans hidden
+        drop = torch.rand(len(previous), device=previous.device) < config.history_dropout
+        cut = (torch.rand(len(previous), device=previous.device) * previous.shape[1]).long() + 1     # 1..S
+        hidden_steps = (torch.arange(previous.shape[1], device=previous.device)[None] < cut[:, None]) & drop[:, None]
+        previous = torch.where(hidden_steps[..., None], torch.full_like(previous, model.K), previous)
     if train and config.input_corruption > 0:          # round 7: corrupt the conditioning history, not the targets
         rate = torch.rand(len(previous), 1, device=previous.device) * config.input_corruption
         hit = torch.rand(previous.shape[:2], device=previous.device) < rate

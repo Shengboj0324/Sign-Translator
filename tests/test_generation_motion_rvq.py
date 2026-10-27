@@ -379,3 +379,49 @@ def test_scheduled_sampling_is_opt_in_training_only_feeds_model_samples_and_keep
     assert not torch.isclose(a, b)                                              # training sees its own samples
     a.backward()
     assert all(p.grad is None or torch.isfinite(p.grad).all() for p in scheduled.parameters())
+
+
+def test_history_dropout_is_opt_in_training_only_and_hides_whole_spans_behind_the_start_code():
+    from dataclasses import replace
+    states, tokenizer, prior = prior_setup()
+    assert "history_dropout" not in prior.config.to_dict() and "history_stages" not in prior.config.to_dict()
+    dropped = RVQPrior(replace(prior.config, history_dropout=1.))
+    dropped.load_state_dict(prior.state_dict())
+    batch = collate_multichannel(states)
+    tokens, mask = encode_texts(["ask him", "cut it"])
+    prior.eval(); dropped.eval()
+    torch.manual_seed(1)
+    plain, _ = rvq_prior_loss(prior, tokenizer, tokens, mask, batch, train=False)
+    torch.manual_seed(1)
+    same, _ = rvq_prior_loss(dropped, tokenizer, tokens, mask, batch, train=False)
+    torch.testing.assert_close(plain, same)                                     # evaluation never hides history
+    seen = []
+    original = dropped.temporal_states
+    dropped.temporal_states = lambda h, m, previous, *a: seen.append(previous.clone()) or original(h, m, previous, *a)
+    torch.manual_seed(3)
+    rvq_prior_loss(dropped, tokenizer, tokens, mask, batch, train=True)
+    previous = seen[0]
+    start = (previous == dropped.K).all(-1)                                     # (B, S): steps showing the start code
+    for row in start:
+        k = int(row.long().sum())
+        assert k >= 1 and bool(row[:k].all()) and not bool(row[k:].any())       # one leading span, then real codes
+
+
+def test_history_stages_limits_the_temporal_input_to_the_coarse_codes_in_training_and_generation():
+    from dataclasses import replace
+    states, tokenizer, prior = prior_setup()
+    coarse = RVQPrior(replace(prior.config, history_stages=1))
+    coarse.load_state_dict(prior.state_dict())
+    P = coarse.J // coarse.config.tokenizer.stages
+    hidden = torch.zeros(1, 3, coarse.config.d_model); mask = torch.ones(1, 3, dtype=torch.bool)
+    codes = torch.randint(0, coarse.K, (1, 4, coarse.J))
+    other = codes.clone(); other[..., P:] = torch.randint(0, coarse.K, other[..., P:].shape)   # fine stages differ
+    seconds = torch.arange(4.)[None] / 24.; duration = torch.tensor([4 / 24.])
+    coarse.eval()
+    with torch.no_grad():
+        torch.testing.assert_close(coarse.temporal_states(hidden, mask, codes, seconds, duration),
+                                   coarse.temporal_states(hidden, mask, other, seconds, duration))
+        assert not torch.allclose(prior.eval().temporal_states(hidden, mask, codes, seconds, duration),
+                                  prior.temporal_states(hidden, mask, other, seconds, duration))
+    out = generate_rvq_motion(coarse, tokenizer, ["ask him"], fps=24., durations=[.25], guidance=1.5)[0]
+    assert len(out.timestamps) == 6
