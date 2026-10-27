@@ -84,10 +84,13 @@ def main(argv=None) -> int:
     translator = translator.to(torch.device(args.device))
     meaning = {}
     for name, states in (("generated", gens), ("real", refs), ("blank", blanked(refs))):
-        point, ci = bleu_ci(translate(translator, kind, states), texts)
-        meaning[name] = dict(bleu=point, ci95=ci)
+        hyps = translate(translator, kind, states)
+        point, ci = bleu_ci(hyps, texts)
+        meaning[name] = dict(bleu=point, ci95=ci, hypotheses=list(hyps))     # kept for the paired BLEU test (round 7)
+    meaning["references"] = list(texts)
     meaning["above_blank"] = separated(meaning["generated"]["ci95"], meaning["blank"]["ci95"])
-    print(json.dumps({"meaning": meaning}), flush=True)
+    print(json.dumps({"meaning": {k: {f: v for f, v in m.items() if f != "hypotheses"} if isinstance(m, dict) else m
+                                  for k, m in meaning.items() if k != "references"}}), flush=True)
     # lexicon
     validation = json.loads(store.get(f"training-runs/{args.recognizer_run}/validation.json"))
     recogniser, labels, _ = load_model(store, args.recognizer_run, args.device)

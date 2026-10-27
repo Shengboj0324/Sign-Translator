@@ -31,3 +31,18 @@ def test_reports_must_share_words_and_instrument():
         paired_difference({"a": 1}, {"b": 1})
     with pytest.raises(ValueError):
         verdict(report({"a": 1}, 1.), report({"a": 1}, 1., run="sign-recognizer-v2"))
+
+
+def test_paired_bleu_is_non_inferiority_when_both_reports_keep_their_translations():
+    refs = [f"the cat sat on mat number {i}" for i in range(40)]
+    good = list(refs)
+    worse = [r.replace("cat sat", "dog ran") for r in refs]
+    words = {f"w{i}": 0 for i in range(10)}
+
+    def report(hyps, hits):
+        return dict(lexicon=dict(recognizer_run="v2", per_word=hits, generated_top5=0.),
+                    meaning=dict(generated=dict(bleu=0., hypotheses=hyps), references=refs))
+    same = verdict(report(good, words), report(good, words))
+    assert same["bleu_paired"]["difference"] == 0 and same["bleu_ok"]                 # equal meaning passes
+    lower = verdict(report(worse, words), report(good, words))
+    assert lower["bleu_paired"]["ci95"][0] < -.5 and not lower["bleu_ok"]             # clearly worse fails
