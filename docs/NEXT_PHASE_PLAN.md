@@ -1688,3 +1688,14 @@ The owner pointed to five sources and approved MS-ASL. Each one's conditions, as
   - **Fetched:** the other seven hosts, about 8,260 instances.
   - **Next:** `after_wlasl.sh` packs per-host zips into R2 with provenance and extracts them on one CPU pod (`runpod/fleet/extract_wlasl.sh`).
   - `WLASL_v0.3.json` and `C-UDA-1.0.pdf` are in R2 with provenance.
+
+**Round 5 amendment 5 (2026-10-27, 02:55 UTC, before any reading by the round-5 instrument):**
+- **RIT v2 failed the declared data gate, so it stays out of the round-5 mix.** On the median validation clip, both hands are tracked on at most 0.485 of frames, against 0.6.
+  - For the record, and not as a gate: the wider crops raised the dominant hand's tracking from 0.12 to 0.71 (median max(L,R)) and the right hand's from 0.06 to 0.60.
+  - The both-hands measure was declared before the result and is kept as declared. RIT is reconsidered for round 6 under a gate declared then, and that gate will say openly that the 0.71 is already known.
+- **Without RIT, round 5's arms would train on exactly round 4's data.** A5 is the round-4 control's recipe; C5 is round 4's arm C. So no new prior is trained.
+- **Instead, the round-5 decision rule (D) is applied to the round-4 checkpoints at step 20000,** each read by the round-5 instrument (v3c if it validates, otherwise v2):
+  - MiniLM (`tokens-rvq-d0b-prior-r4-minilm`) and flan-T5 (`tokens-rvq-d0b-prior-r4-flant5`) are the arms;
+  - the byte prior `tokens-rvq-d0b-prior-r3d-d2g` is the control.
+- **A promising arm resumes training** from its latest checkpoint (step 23000–24000, same run, config and manifest) to 60000, then goes through the full declared chain.
+- If neither is promising, round 6 (new lexical data) is next.
