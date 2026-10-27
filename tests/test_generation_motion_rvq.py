@@ -355,3 +355,27 @@ def test_guidance_encodes_the_empty_text_as_training_drops_it_zero_slots_through
     with torch.no_grad():
         torch.testing.assert_close(encode(empty, empty != PAD, dropped)[0], encode(empty, empty != PAD, empties[0])[0])
         assert not torch.allclose(encode(empty, empty != PAD, None)[0], encode(empty, empty != PAD, empties[0])[0])
+
+
+def test_scheduled_sampling_is_opt_in_training_only_feeds_model_samples_and_keeps_old_config_shas():
+    from dataclasses import replace
+    states, tokenizer, prior = prior_setup()
+    assert "scheduled_sampling" not in prior.config.to_dict()                    # earlier priors' SHAs unchanged
+    scheduled = RVQPrior(replace(prior.config, scheduled_sampling=1.))
+    scheduled.load_state_dict(prior.state_dict())
+    assert scheduled.config.to_dict()["scheduled_sampling"] == 1.
+    batch = collate_multichannel(states)
+    tokens, mask = encode_texts(["ask him", "cut it"])
+    prior.eval(); scheduled.eval()
+    torch.manual_seed(1)
+    plain, _ = rvq_prior_loss(prior, tokenizer, tokens, mask, batch, train=False)
+    torch.manual_seed(1)
+    same, _ = rvq_prior_loss(scheduled, tokenizer, tokens, mask, batch, train=False)
+    torch.testing.assert_close(plain, same)                                     # evaluation never replaces history
+    torch.manual_seed(2)
+    a, _ = rvq_prior_loss(scheduled, tokenizer, tokens, mask, batch, train=True)
+    torch.manual_seed(2)
+    b, _ = rvq_prior_loss(prior, tokenizer, tokens, mask, batch, train=True)
+    assert not torch.isclose(a, b)                                              # training sees its own samples
+    a.backward()
+    assert all(p.grad is None or torch.isfinite(p.grad).all() for p in scheduled.parameters())

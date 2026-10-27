@@ -455,6 +455,13 @@ class RVQPriorConfig:
     # motion continuity and must read the text. Round 6's audit: the text moved the prediction by about 0.01 nats.
     # 0 keeps every earlier prior's config and SHA.
     input_corruption: float = 0.
+    # round 8 candidate (opt-in, training only): scheduled sampling against exposure bias (identification test 2:
+    # one-step samples from the real history read 0.82-0.87, free run 0.017). A first, gradient-free pass draws every
+    # step's codes from the prior given the real history (each code given the real codes before it in its step: one
+    # parallel depth pass); each sequence then replaces its history by those model codes
+    # at a rate drawn uniformly in [0, scheduled_sampling], so training sees histories like its own samples.
+    # 0 keeps every earlier prior's config and SHA.
+    scheduled_sampling: float = 0.
 
     def to_dict(self) -> dict:
         data = asdict(self)
@@ -462,8 +469,9 @@ class RVQPriorConfig:
         for key in ("text_model", "text_model_revision"):
             if data.get(key) is None:
                 data.pop(key, None)
-        if not data.get("input_corruption"):
-            data.pop("input_corruption", None)
+        for key in ("input_corruption", "scheduled_sampling"):
+            if not data.get(key):
+                data.pop(key, None)
         return data
 
     def sha256(self) -> str:
@@ -598,16 +606,26 @@ def rvq_prior_loss(model: RVQPrior, tokenizer: MotionRVQ, tokens, text_mask, mot
                                                    training_loci(config, loci, conditioned) if train else loci)
     start = torch.full_like(codes[:, :1], model.K)
     previous = torch.cat((start, codes[:, :-1]), 1)
+    seconds = batch_seconds(motion).float()
+    step_seconds = seconds[:, ::config.tokenizer.step][:, :codes.shape[1]]
+    step_seconds = F.pad(step_seconds, (0, codes.shape[1] - step_seconds.shape[1]))
+    duration = (seconds * motion.frame_valid).amax(1)
+    if train and config.scheduled_sampling > 0:        # round 8 candidate: histories drawn from the model itself
+        with torch.no_grad():
+            h0 = model.temporal_states(hidden, text_mask, previous, step_seconds, duration)
+            logits0 = model.depth_logits(h0.reshape(-1, h0.shape[-1]), codes.reshape(-1, model.J)[:, :-1])
+            drawn = torch.multinomial(torch.softmax(logits0.float(), -1).reshape(-1, model.K), 1).reshape(codes.shape)
+        own = torch.cat((start, drawn[:, :-1]), 1)
+        rate = torch.rand(len(previous), 1, device=previous.device) * config.scheduled_sampling
+        hit = torch.rand(previous.shape[:2], device=previous.device) < rate
+        hit[:, 0] = False                               # the start token stays
+        previous = torch.where(hit[..., None], own, previous)
     if train and config.input_corruption > 0:          # round 7: corrupt the conditioning history, not the targets
         rate = torch.rand(len(previous), 1, device=previous.device) * config.input_corruption
         hit = torch.rand(previous.shape[:2], device=previous.device) < rate
         hit[:, 0] = False                               # the start token stays
         noise = torch.randint_like(previous, model.K)
         previous = torch.where(hit[..., None], noise, previous)
-    seconds = batch_seconds(motion).float()
-    step_seconds = seconds[:, ::config.tokenizer.step][:, :codes.shape[1]]
-    step_seconds = F.pad(step_seconds, (0, codes.shape[1] - step_seconds.shape[1]))
-    duration = (seconds * motion.frame_valid).amax(1)
     h = model.temporal_states(hidden, text_mask, previous, step_seconds, duration)       # (B, S, d)
     target = codes[valid]                                                                  # (N, J)
     logits = model.depth_logits(h[valid], target[:, :-1])                                  # (N, J, K)
