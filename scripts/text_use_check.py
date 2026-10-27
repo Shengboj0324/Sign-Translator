@@ -40,7 +40,8 @@ def main(argv=None) -> int:
     from signtranslator.data.text_motion_dataset import R2Store, TextMotionDataset, collate_text_motion
     from signtranslator.data_engineering.corpus_manifest import ContentCache, load_manifest
     from signtranslator.generation.motion_rvq import MotionRVQ, RVQPrior, RVQPriorConfig, rvq_prior_loss
-    from signtranslator.generation.text_to_motion import encode_texts
+    from signtranslator.generation.motion_tokens import _empty_like
+    from signtranslator.generation.text_to_motion import PAD
     from train_motion_tokens import layout_template
     from train_text_to_motion import to_device
     store = R2Store(os.environ)
@@ -67,8 +68,8 @@ def main(argv=None) -> int:
             for batch in loader:
                 tokens, mask, motion, texts, *loci = batch
                 for name in ("text", "empty"):
-                    tk, mk = (tokens, mask) if name == "text" else encode_texts([""] * len(texts),
-                                                                                max_bytes=prior.config.max_text_bytes)
+                    tk = tokens if name == "text" else _empty_like(tokens)   # the empty text, as in training's dropout
+                    mk = tk != PAD
                     tk, mk, mo = to_device((tk, mk, motion, None), device)[:3]
                     lo = [l.to(device) for l in loci]
                     _, terms = rvq_prior_loss(prior, tokenizer, tk, mk, mo, *lo, train=False)
