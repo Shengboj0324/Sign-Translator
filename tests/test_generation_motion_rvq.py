@@ -425,3 +425,34 @@ def test_history_stages_limits_the_temporal_input_to_the_coarse_codes_in_trainin
                                   prior.temporal_states(hidden, mask, other, seconds, duration))
     out = generate_rvq_motion(coarse, tokenizer, ["ask him"], fps=24., durations=[.25], guidance=1.5)[0]
     assert len(out.timestamps) == 6
+
+
+def test_part_valid_loss_drops_the_codes_of_unobserved_parts_and_keeps_old_config_shas():
+    from dataclasses import replace
+    from signtranslator.generation.motion_rvq import part_code_weights
+    states, tokenizer, prior = prior_setup()
+    assert "part_valid_loss" not in prior.config.to_dict()
+    masked = RVQPrior(replace(prior.config, part_valid_loss=True))
+    masked.load_state_dict(prior.state_dict())
+    c = states[0].channels["left_hand"]
+    gone = replace(c, valid=np.zeros_like(c.valid), values=np.zeros_like(c.values), observed=np.zeros_like(c.observed),
+                   confidence=np.zeros_like(c.confidence))
+    states = [replace(states[0], channels={**states[0].channels, "left_hand": gone})] + list(states[1:])
+    batch = collate_multichannel(states)
+    valid = tokenizer.token_valid(batch.frame_valid)
+    w = part_code_weights(tokenizer, masked.config, batch, valid)                    # (N, J)
+    names = [p for p, _ in tokenizer.parts]
+    P, n0 = len(names), int(valid[0].sum())
+    for j in range(masked.J):
+        part = names[j % P]
+        if part == "face":                                                    # the test states have no face tracking
+            assert not bool(w[:, j].any())
+        elif part == "left_hand":                                             # gone in clip 0 only
+            assert not bool(w[:n0, j].any()) and bool(w[n0:, j].all())
+        else:
+            assert bool(w[:, j].all())
+    tokens, mask = encode_texts(["ask him", "cut it"])
+    prior.eval(); masked.eval()
+    plain, _ = rvq_prior_loss(prior, tokenizer, tokens, mask, batch, train=False)
+    kept, _ = rvq_prior_loss(masked, tokenizer, tokens, mask, batch, train=False)
+    assert not torch.isclose(plain, kept) and torch.isfinite(kept)

@@ -55,7 +55,7 @@ from .motion_tokens import _ResBlock, _empty_like, token_seconds
 from .signing_space import applicable, skeleton_motion_loss
 from .text_to_motion import (
     PAD, VOCABULARY, LossScales, TextToMotionConfig, assemble_state, batch_seconds, diffusion_layout,
-    diffusion_targets, empty_loci, encode_texts, generation_loci, grammar_projection, locus_projection, native_values,
+    diffusion_targets, diffusion_valid, empty_loci, encode_texts, generation_loci, grammar_projection, locus_projection, native_values,
     sinusoid, training_loci, unit_to_raw, utterance_duration,
 )
 from ..grammar_motion.text import token_features
@@ -471,6 +471,11 @@ class RVQPriorConfig:
     # 0 keeps every earlier prior's config and SHA.
     history_dropout: float = 0.
     history_stages: int = 0
+    # round 10 (opt-in): a code's cross entropy counts only where its part was observed (at least half of the part's
+    # unit columns valid in the token's frames). Untracked hands or arms are filled with the neutral pose by
+    # diffusion_targets, so without this the prior learns to emit "flat hand" codes there (2026-10-27 audit;
+    # WLASL's untracked arm frames). False keeps every earlier prior's config and SHA.
+    part_valid_loss: bool = False
 
     def to_dict(self) -> dict:
         data = asdict(self)
@@ -478,7 +483,7 @@ class RVQPriorConfig:
         for key in ("text_model", "text_model_revision"):
             if data.get(key) is None:
                 data.pop(key, None)
-        for key in ("input_corruption", "scheduled_sampling", "history_dropout", "history_stages"):
+        for key in ("input_corruption", "scheduled_sampling", "history_dropout", "history_stages", "part_valid_loss"):
             if not data.get(key):
                 data.pop(key, None)
         return data
@@ -601,6 +606,17 @@ class RVQPrior(nn.Module):
         return torch.einsum("nld,ldk->nlk", y, self.heads_out[:n + 1]) + self.heads_bias[:n + 1]
 
 
+@torch.no_grad()
+def part_code_weights(tokenizer: MotionRVQ, config: RVQPriorConfig, motion: MotionBatch, valid: torch.Tensor):
+    """(N, J) 0/1 weights of the valid tokens' codes: 1 where the code's part was observed (at least half of the part's
+    unit columns valid in the token's frames). Code j belongs to part j mod P."""
+    observed = diffusion_valid(config.tokenizer.motion, motion)                            # (B, T, W)
+    part_ok = torch.stack([tokenizer.token_valid(observed[..., getattr(tokenizer, f"columns_{part}")].float().mean(-1)
+                                                 >= .5) for part, _ in tokenizer.parts], -1)  # (B, S, P)
+    J = config.tokenizer.codes_per_step
+    return part_ok[valid][:, torch.arange(J, device=part_ok.device) % len(tokenizer.parts)].float()
+
+
 def rvq_prior_loss(model: RVQPrior, tokenizer: MotionRVQ, tokens, text_mask, motion: MotionBatch, loci=None, *,
                    train: bool = True):
     """Σ_j cross entropy of the frozen tokenizer's codes, plus the duration term (text dropped only if ``train``)."""
@@ -646,7 +662,12 @@ def rvq_prior_loss(model: RVQPrior, tokenizer: MotionRVQ, tokens, text_mask, mot
     h = model.temporal_states(hidden, text_mask, previous, step_seconds, duration)       # (B, S, d)
     target = codes[valid]                                                                  # (N, J)
     logits = model.depth_logits(h[valid], target[:, :-1])                                  # (N, J, K)
-    cross = F.cross_entropy(logits.reshape(-1, model.K), target.reshape(-1))
+    if config.part_valid_loss:
+        weight = part_code_weights(tokenizer, config, motion, valid)
+        per_code = F.cross_entropy(logits.reshape(-1, model.K), target.reshape(-1), reduction="none")
+        cross = (per_code * weight.reshape(-1)).sum() / weight.sum().clamp_min(1.)
+    else:
+        cross = F.cross_entropy(logits.reshape(-1, model.K), target.reshape(-1))
     accuracy = (logits.argmax(-1) == target).float()
     terms = {"tokens": float(cross.detach()), "token_accuracy": float(accuracy.mean()),
              "stage1_accuracy": float(accuracy[:, :len(tokenizer.parts)].mean())}

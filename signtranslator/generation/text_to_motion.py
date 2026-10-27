@@ -360,6 +360,16 @@ def diffusion_targets(config: TextToMotionConfig, motion: MotionBatch) -> torch.
     return torch.cat(parts, dim=-1) * motion.frame_valid[..., None]
 
 
+def diffusion_valid(config: TextToMotionConfig, motion: MotionBatch) -> torch.Tensor:
+    """(B, T, W) bool: which cells of ``diffusion_targets`` hold observed values (channel and frame valid), column
+    for column. The other cells hold the neutral value."""
+    parts = []
+    for name, _, elements, width in diffusion_layout(config):
+        valid = motion.channels[name].valid & motion.frame_valid[..., None]                # (B, T, elements)
+        parts.append(valid[..., None].expand(*valid.shape, width // elements).reshape(*valid.shape[:2], -1))
+    return torch.cat(parts, dim=-1)
+
+
 def heads_to_unit(config: TextToMotionConfig, prediction: dict) -> torch.Tensor:
     """The decoder's x₀ estimate (head outputs) in the diffusion vector space."""
     parts = []

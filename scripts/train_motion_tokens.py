@@ -163,6 +163,8 @@ def main(argv=None) -> int:
     parser.add_argument("--history-dropout", type=float, default=0.,
                         help="rvq prior: with this probability per sequence, hide every history step before a random "
                              "cut behind the start code (round 9 candidate, against the copycat shortcut; 0 = off)")
+    parser.add_argument("--part-valid-loss", action="store_true",
+                        help="rvq prior: count a code's cross entropy only where its part was observed (round 10)")
     parser.add_argument("--history-stages", type=int, default=0,
                         help="rvq prior: the temporal transformer sees only the first n residual stages of each part "
                              "of the previous step (0 = all)")
@@ -243,7 +245,8 @@ def main(argv=None) -> int:
                                     text_model=args.text_model, text_model_revision=args.text_model_revision,
                                     input_corruption=args.input_corruption,
                                     scheduled_sampling=args.scheduled_sampling, history_dropout=args.history_dropout,
-                                    history_stages=args.history_stages, **common)
+                                    history_stages=args.history_stages, part_valid_loss=args.part_valid_loss,
+                                    **common)
             model = RVQPrior(config).to(device)
     kind = tokenizer_kind if args.stage == "tokenizer" else prior_kind
 
