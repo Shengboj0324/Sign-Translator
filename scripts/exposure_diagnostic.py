@@ -49,6 +49,8 @@ def main(argv=None) -> int:
     p.add_argument("--mix-sha256", required=True)
     p.add_argument("--corpus", action="append", required=True)
     p.add_argument("--words", type=int, default=60)
+    p.add_argument("--word-list", help="comma-separated labels to use instead of the most frequent words (those without "
+                   "a training clip are skipped)")
     p.add_argument("--guidance", type=float, default=1.5)
     p.add_argument("--recognizer-run", default="sign-recognizer-v2")
     p.add_argument("--seed", type=int, default=0)
@@ -153,7 +155,10 @@ def main(argv=None) -> int:
             label = r["text"].upper().replace(" ", "")
             if label in index:
                 by_word[label].append(k)
-    words = sorted(by_word, key=lambda w: (-len(by_word[w]), w))[:args.words]
+    if args.word_list:
+        words = [w for w in args.word_list.split(",") if w in by_word][:args.words]
+    else:
+        words = sorted(by_word, key=lambda w: (-len(by_word[w]), w))[:args.words]
     forms = collections.defaultdict(list)
     y, rows = [], []
     generator = torch.Generator().manual_seed(args.seed)
