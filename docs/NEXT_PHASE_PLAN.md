@@ -2188,3 +2188,11 @@ D7 (input corruption 1.0) at step 20000 against the re-scored control:
   - **Fail:** free run < 0.05 at step 10000. Even focused on isolated signs, this prior cannot produce its own training words from text. That is the evidence a structural change needs (for example, retrieval of real dictionary clips for isolated words), and it is brought to the owner with the numbers.
   - **Between 0.05 and 0.20:** it continues to step 20000, with the same reading.
 - **Launch:** when the trimmed manifest is in R2 and a pod is free. To free the slot, S8 is stopped then, its checkpoints kept. Its step-10000 early read showed no gain (free run 0.017), and its declared pilot would not finish before 22:10 UTC.
+
+## Round 10 note: the domain check's declared form (2026-10-27, 20:13 UTC, before the amended check's result)
+
+- **Which form applies.** Round 10's gates are "unchanged from round 3d", and round 3d's domain check is the amendment-2 form: s8's fixed reference errors as the denominator, run by `after_tok_3d.sh`.
+- **What went wrong.** The pod stage copied from `round3d_tokenizer.sh` runs the plain form. It reported t2x (best at step 13000; early stop at step 23000) as failing on ASLLVD, with left hand 1.62 and right hand 1.57 against 1.5.
+- **What runs instead.** The amendment-2 check runs on the same clips, limit and corpora as round 3d (`domain_a2_r10.sh`). Its result decides. Both reports are kept.
+- **Recognisability: passed.** Round trip top-5 0.763 against 0.817 for real (ratio 0.93, at least 0.9 required).
+- **Fidelity:** still running on the pod.
