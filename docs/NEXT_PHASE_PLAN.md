@@ -1788,3 +1788,18 @@ The round-4 checkpoints at step 20000, re-measured with per-word hits. Meaning s
 - **Round 6 pilot note (2026-10-27, 10:56 UTC, before any round-6 pilot number).** The first B6 pilot check stopped at load: the check was hard-wired to round 3c's manifest, and the round-6 priors are bound to `round6-mixed-v1`. It produced no numbers; the C6 check was stopped and its pod deleted before it ran.
   - The check now takes the prior's training mix (`--mix-key/--mix-sha256`). Round 3c's and round 6's mixes yield the same 300 How2Sign validation clips and the same 150 R5 words (checked), so the arms stay comparable with the round-5 control file.
   - Both checks were relaunched at 10:56 UTC.
+
+## Round 6 result, recorded (2026-10-27, 11:38 UTC): NOT PROMISING (rule D, instrument v2)
+
+| Arm | Meaning BLEU [95% CI] | Lexicon top-5 | Paired difference vs control [95% CI] |
+|---|---|---|---|
+| Control (round 4, byte, round3c mix) | 1.406 | 0.0167 (5/300) | — |
+| B6 (byte, round6 mix) | 1.460 [0.89, 2.10] | 0.0067 (2/300) | −0.010 [−0.027, 0.003] |
+| C6 (flan-T5, round6 mix) | 1.543 [1.01, 2.04] | 0.000 (0/300) | −0.017 [−0.033, −0.003] |
+
+- Both priors were stopped and their pods deleted at 11:38, after the logs were verified in R2. Checkpoints are kept, to step 25000 (B6) and 24000 (C6).
+- **Audit.** About three times the clean isolated-sign data (RIT v2 and WLASL, both with real top-5 above 0.55 through the tokenizer) moved lexicon not at all. C6 is significantly below the control. So the bottleneck is no longer data quantity.
+- **Next, before any new training lever:** a diagnostic on the round-6 checkpoints.
+  - Can the prior produce words it **was trained on**: the most frequent one-word training texts, read by v2?
+  - Are its one-word durations in the range of real citation signs?
+  - If trained words also fail, the fault is in how one-word conditioning is learned or sampled, not in vocabulary coverage, and the next lever targets that.
