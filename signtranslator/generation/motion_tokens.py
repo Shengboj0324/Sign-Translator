@@ -36,7 +36,7 @@ from ..data.multichannel import MotionBatch
 from .canonical_state import channel_loss_per_example
 from .text_to_motion import (
     BOS, EOS, PAD, VOCABULARY, LossScales, TextToMotionConfig, assemble_state, batch_seconds, diffusion_layout,
-    diffusion_targets, encode_texts, generation_loci, grammar_projection, locus_projection, native_values,
+    diffusion_targets, empty_loci, encode_texts, generation_loci, grammar_projection, locus_projection, native_values,
     signing_space_term, sinusoid, training_loci, unit_to_raw, utterance_duration,
 )
 from ..grammar_motion.text import token_features
@@ -335,7 +335,7 @@ def generate_tokens_motion(prior: TokenPrior, tokenizer: MotionVQ, texts, *, fps
     seconds_out = (log_duration.exp() if durations is None else
                    torch.as_tensor(durations, dtype=log_duration.dtype, device=device)).clamp(1 / fps, 60.)
     empty = _empty_like(encoded[:1, :2])
-    empty_hidden, _ = prior.encode(empty, empty != PAD)
+    empty_hidden, _ = prior.encode(empty, empty != PAD, empty_loci(config, device))
     generator = torch.Generator().manual_seed(seed)
     states = []
     for row, text in enumerate(texts):

@@ -89,6 +89,16 @@ def generation_loci(config, texts, loci, device):
     return torch.as_tensor(np.asarray(loci), dtype=torch.float32, device=device)
 
 
+def empty_loci(config, device):
+    """(1, SLOT_WIDTH) zero slots for the empty text of classifier-free guidance, as training sees it: a dropped text
+    always has its slots zeroed (``training_loci``) and still passes through the locus projection, bias included.
+    None for locus-free models. (Before 2026-10-27 the unguided branch skipped the projection: an input never seen in
+    training.)"""
+    if not config.locus_conditioning:
+        return None
+    return torch.zeros(1, LOCUS_SLOT_WIDTH, device=device)
+
+
 def grammar_projection(d: int) -> nn.Linear:
     """Linear map of the 8 English grammar features to the model width, zero-initialised
     so a model starts exactly as its text-only counterpart."""
@@ -545,7 +555,7 @@ def generate(model: TextToMotion, texts, *, fps: float, sample_prefix: str = "ge
     generator = torch.Generator().manual_seed(seed)
     if model.config.objective == "diffusion":
         empty = _empty_text_like(tokens[:1, :2])
-        empty_hidden, _ = model.encode(empty, empty != PAD)
+        empty_hidden, _ = model.encode(empty, empty != PAD, empty_loci(model.config, device))
     states = []
     for row, text in enumerate(texts):
         frames = max(int(round(float(durations[row]) * fps)), 1)

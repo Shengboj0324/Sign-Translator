@@ -55,8 +55,8 @@ from .motion_tokens import _ResBlock, _empty_like, token_seconds
 from .signing_space import applicable, skeleton_motion_loss
 from .text_to_motion import (
     PAD, VOCABULARY, LossScales, TextToMotionConfig, assemble_state, batch_seconds, diffusion_layout,
-    diffusion_targets, encode_texts, generation_loci, grammar_projection, locus_projection, native_values, sinusoid,
-    training_loci, unit_to_raw, utterance_duration,
+    diffusion_targets, empty_loci, encode_texts, generation_loci, grammar_projection, locus_projection, native_values,
+    sinusoid, training_loci, unit_to_raw, utterance_duration,
 )
 from ..grammar_motion.text import token_features
 
@@ -651,6 +651,7 @@ def rvq_sequence_log_likelihood(model: RVQPrior, tokenizer: MotionRVQ, tokens, t
         return torch.zeros(len(codes), dtype=log_p.dtype, device=log_p.device).index_add_(0, row, log_p)
 
 
+@torch.no_grad()
 def generate_rvq_motion(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, fps: float, guidance: float = 1.,
                         temperature: float | dict = 1., top_k: int = 0, seed: int = 0, durations=None,
                         sample_prefix: str = "tokens-v2", loci=None):
@@ -671,7 +672,7 @@ def generate_rvq_motion(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, fps: fl
     seconds_out = (log_duration.exp() if durations is None else
                    torch.as_tensor(durations, dtype=log_duration.dtype, device=device)).clamp(1 / fps, 60.)
     empty = _empty_like(encoded[:1, :2])
-    empty_hidden, _, empty_mask = prior.encode(empty, empty != PAD)
+    empty_hidden, _, empty_mask = prior.encode(empty, empty != PAD, empty_loci(config, device))
     generator = torch.Generator().manual_seed(seed)
     names = [part for part, _ in tokenizer.parts]
     if isinstance(temperature, dict):
@@ -732,7 +733,7 @@ def generate_rvq_motion_batch(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, f
     hidden, _, mask = prior.encode(encoded, mask, generation_loci(config, texts, loci, device))
     seconds_out = torch.as_tensor(durations, dtype=hidden.dtype, device=device).clamp(1 / fps, 60.)
     empty = _empty_like(encoded[:1, :2])
-    empty_hidden, _, empty_mask = prior.encode(empty, empty != PAD)
+    empty_hidden, _, empty_mask = prior.encode(empty, empty != PAD, empty_loci(config, device))
     empty_hidden, empty_mask = empty_hidden.expand(B, -1, -1), empty_mask.expand(B, -1)
     generator = torch.Generator().manual_seed(seed)
     names = [part for part, _ in tokenizer.parts]

@@ -330,3 +330,28 @@ def test_sequence_log_likelihood_sums_the_evaluation_loss_per_row_and_depends_on
     torch.testing.assert_close(one, ll[1:], rtol=1e-4, atol=1e-4)            # rows are scored independently
     swapped, smask = encode_texts(["cut it", "ask him"])
     assert not torch.allclose(rvq_sequence_log_likelihood(prior, tokenizer, swapped, smask, batch), ll)
+
+
+def test_guidance_encodes_the_empty_text_as_training_drops_it_zero_slots_through_the_locus_projection():
+    from dataclasses import replace
+    from signtranslator.generation.motion_rvq import generate_rvq_motion_batch
+    from signtranslator.generation.motion_tokens import _empty_like
+    from signtranslator.generation.text_to_motion import LOCUS_SLOT_WIDTH, PAD, training_loci
+    states, tokenizer, prior = prior_setup()
+    prior = RVQPrior(replace(prior.config, locus_conditioning=True, locus_dropout=0.)).eval()
+    torch.nn.init.normal_(prior.loci.bias, std=1.)                             # a trained projection has a bias
+    seen = []
+    encode = prior.encode
+    prior.encode = lambda tokens, mask, loci=None: seen.append(loci) or encode(tokens, mask, loci)
+    generate_rvq_motion(prior, tokenizer, ["ask him"], fps=24., durations=[.25], guidance=2.)
+    generate_rvq_motion_batch(prior, tokenizer, ["ask him", "cut it"], fps=24., durations=[.25, .25], guidance=2.)
+    empties = [seen[1], seen[3]]                                                # each sampler: text, then empty text
+    for loci in empties:
+        assert loci is not None and loci.shape == (1, LOCUS_SLOT_WIDTH) and not bool(loci.any())
+    # the same input as a training row whose text was dropped: slots zeroed, projection applied
+    tokens, mask = encode_texts(["ask him"])
+    dropped = training_loci(prior.config, torch.ones(1, LOCUS_SLOT_WIDTH), torch.zeros(1, dtype=torch.bool))
+    empty = _empty_like(tokens[:, :2])
+    with torch.no_grad():
+        torch.testing.assert_close(encode(empty, empty != PAD, dropped)[0], encode(empty, empty != PAD, empties[0])[0])
+        assert not torch.allclose(encode(empty, empty != PAD, None)[0], encode(empty, empty != PAD, empties[0])[0])
