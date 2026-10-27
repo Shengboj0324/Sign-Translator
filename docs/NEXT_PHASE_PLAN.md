@@ -2015,3 +2015,18 @@ B6 step 20000, 60 training words, recogniser v2:
   1. **Scheduled sampling:** part of the training history comes from the model's own one-step samples instead of random codes.
   2. **A coarser autoregressive rate:** a tokenizer with time downsampling, so 4–8× fewer sequential steps per sign.
   3. Both are training changes with the same architecture. Each is declared before use.
+
+## Round 8: scheduled sampling against exposure bias (declared 2026-10-27, 15:45 UTC, before any round-8 result)
+
+**Hypothesis** (from identification test 2). The prior loses the sign only when it conditions on its own sampled history. Training on histories drawn from its own one-step samples closes that gap more directly than round 7's random corruption. It runs in parallel with round 7, so a failure of round 7 does not cost another half day.
+
+**Arm S8.** B6's recipe exactly (byte encoder, `round6-mixed-v1`, RIT/WLASL/ASLLVD at weight 3, locus conditioning, tokenizer d2 with its gains, 60000 steps), plus `--scheduled-sampling 0.5`:
+- a gradient-free pass draws each step's 32 codes given the real history (one parallel depth pass);
+- each sequence replaces its history by those codes at a rate drawn uniformly in [0, 0.5];
+- no random corruption. Smoke first.
+
+**Checks, on the fixed sampler:**
+- **Early read at step 10000, not gated:** `exposure_diagnostic.py`, free-run form against B6's 0.017.
+- **Pilot at step 20000:** round-5 rule D with amendment 2, i.e. lexicon +0.05 over the re-scored control with the paired bootstrap 95% interval excluding 0, and paired BLEU non-inferiority (lower bound > −0.5). The training-word diagnostic and the exposure diagnostic are reported beside it.
+
+**Selection.** If more than one of A7, D7 and S8 is promising, the one with the highest lexicon difference continues to 60000 steps and then the full declared chain. A tie within 0.02 goes to the higher paired BLEU.
