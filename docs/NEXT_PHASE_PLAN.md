@@ -2125,3 +2125,66 @@ D7 (input corruption 1.0) at step 20000 against the re-scored control:
 - The one-step forms are high for every arm. At 24 fps the next frame given the real previous one is mostly a small change, so a real history all but guarantees a readable decode. The one-step result therefore shows copying ability, not knowledge of the sign's trajectory.
 - The working interpretation is now: **at one code step per frame, no step carries enough of the sign for the text to determine it.** The token rate is the lever, which is round 10 (t2x, t4x).
 - **Change of priority** (declared): as soon as a round-10 tokenizer passes its gates, its prior is trained with history dropout 0.5, the guard against copying that stays valid at a coarser rate. Rounds 8–9 still run to their declared pilots.
+
+## Root-cause analyses (2026-10-27, four independent agents) and round 11 (declared 19:55 UTC, before any round-11 result)
+
+**Mechanism (free-run trace; B6 step 20000, 60 training words, CPU; scripts kept with the agent's notes).**
+- **Text influence per step is small throughout,** and about equal under teacher forcing and in free runs.
+  - KL(text ‖ empty) over the 4 stage-1 codes is 0.02–0.07 nats per step after step 0, against a stage-1 entropy of 2.0–2.4 nats.
+  - Summed over all 32 codes it is about 0.2 nats per step, mostly in the fine stages.
+- **One-step forms come from the history, not the text:**
+
+  | Form | Top-5 |
+  |---|---|
+  | Copy of the previous real frame | 0.883 |
+  | One-step with the true text | 0.817 |
+  | One-step with an empty text | 0.733 |
+  | One-step with a wrong word's text | 0.800 |
+
+- **Free runs are generic signing motion.**
+  - Arm speed, acceleration and jitter are real-like, and motion starts on schedule.
+  - There is no return to rest (0.64 m/s in the last 0.25 s against 0.16 real), and hand articulation is about 30–35% lower.
+  - By wrist-path DTW they rank their own word at chance (27.6 of 59), and two seeds of a word are as unlike as two words.
+  - The recogniser reads them as scattered labels.
+- **No inference lever helps:** guidance 0–5, temperature 0.7, the duration convention, or real prefixes of up to 12 frames.
+- **No remaining train/generation mismatch.**
+- **Reading:** the prior learned generic signing dynamics but not the word-to-trajectory mapping. The text controls fine-stage detail, which is why teacher-forced retrieval works, but not the movement the recogniser reads. Exposure bias is a symptom: nothing pulls a free run back to the word.
+
+**Data timing (one-word clips, 80 per corpus).**
+- The lexical movement lies in about 0.3–0.7 of each clip. Rest before and after is about 11–17 frames each (RIT, ASLLVD). WLASL's arm is untracked on 23% of frames (median), filled with an identity pose (arm horizontal).
+- One-word clips are 20% of samples but only 9.5% of trained frames. The median is 5 clips per word, and 32% of words have ≤ 2.
+- Duration prediction (5.7% error), phase, loci and the text encoder (discriminative: centred cosine −0.02 between words) are consistent and not the cause.
+
+**History (why this was found only now).**
+- The failure was visible from 2026-10-23 (R5 0% against real 99.4%). It was attributed in turn to real-but-insufficient confounds.
+- The full-rate tokenizer (v2b, `down_layers 0`, 10-20/21) was chosen on sentence Fréchet, a texture statistic. Round 3c's fidelity-only selection raised it to 8 stages (768 codes/s).
+- No gate measured "can it sign its own training words in free run". The cheap decomposition (free run vs real-prefix continuation vs held pose, on trained words) was first run on 10-27.
+
+**Standing gates from now on** (declared):
+1. **Generation gap, on every prior checkpoint that is evaluated.** On trained words, free-run top-5 against reconstruction, and each real-prefix continuation against its hold control. Reported with every pilot, gated from round 11 (below).
+2. **Before attributing a content failure to data or vocabulary,** free run on trained items is measured.
+3. **Tokenizer learnability and token rate** are reported before any prior is trained: codes/s, and a smoke prior's free run on trained words.
+4. **Every per-token threshold is checked against its information bound;** conditioning is measured per clip, with a shuffled control.
+5. **After one null round, decompose before adding arms.**
+6. **Instrument rules:**
+   - Generated reading at or above real voids an instrument.
+   - Real references use held-out signers.
+   - BLEU conditions are paired.
+   - The guided and unguided branches are tested for parity with training's dropped text.
+
+**New training options (opt-in, tested):**
+- `--part-valid-loss`: a code's cross entropy counts only where its part was observed.
+- `continuous.window_seconds` in manifests: frames outside are dropped on load.
+- `build_trimmed_word_manifest.py`: one-word clips cut to the dominant wrist's active span ± 0.25 s. Building now: `round10-mixed-v1`.
+
+**Round 11: can the prior learn the word-to-trajectory mapping at all?** An isolated-sign learnability test on the current tokenizer d2.
+- **Arm L11:** B6's recipe on `round10-mixed-v1` (trimmed), with these changes:
+  - `--corpus-weight` rit-text-r6=60, wlasl-text-r6=60, asllvd-text-v1=60, so one-word clips dominate the samples;
+  - `--history-dropout 0.5`;
+  - `--part-valid-loss`;
+  - smoke first.
+- **Gate at steps 5000 and 10000** (`exposure_diagnostic.py`, the same 60 trained words, prompted with each record's text):
+  - **Pass:** free run ≥ 0.20 top-5 at step 10000, above B6's 0.017. The mapping is learnable, and the round-10 prior (coarse tokenizer) uses this recipe.
+  - **Fail:** free run < 0.05 at step 10000. Even focused on isolated signs, this prior cannot produce its own training words from text. That is the evidence a structural change needs (for example, retrieval of real dictionary clips for isolated words), and it is brought to the owner with the numbers.
+  - **Between 0.05 and 0.20:** it continues to step 20000, with the same reading.
+- **Launch:** when the trimmed manifest is in R2 and a pod is free. To free the slot, S8 is stopped then, its checkpoints kept. Its step-10000 early read showed no gain (free run 0.017), and its declared pilot would not finish before 22:10 UTC.
