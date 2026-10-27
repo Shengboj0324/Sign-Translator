@@ -2196,3 +2196,23 @@ D7 (input corruption 1.0) at step 20000 against the re-scored control:
 - **What runs instead.** The amendment-2 check runs on the same clips, limit and corpora as round 3d (`domain_a2_r10.sh`). Its result decides. Both reports are kept.
 - **Recognisability: passed.** Round trip top-5 0.763 against 0.817 for real (ratio 0.93, at least 0.9 required).
 - **Fidelity:** still running on the pod.
+
+## Round 10: t2x verdict, and amendment 1, t2xb (recorded and declared 2026-10-27, 20:21 UTC, before any t2xb result)
+
+**t2x: REJECTED (fidelity).** Best checkpoint at step 13000; early stop at step 23000 after gradient spikes up to 214.
+- **Fidelity ratios** (band 0.85–1.15):
+
+  | | Body | Left hand | Right hand | Head rotation |
+  |---|---|---|---|---|
+  | Speed | 0.694 | 0.558 | 0.542 | 1.03 |
+  | Variation | 0.814 | 0.604 | 0.566 | 0.878 |
+
+- **Recognisability passed** (0.763 against 0.817 real), and the R2b round trip is above blank (2.91 against 1.86).
+- **Amendment 5's gains fallback cannot pass.** Gains are capped at 1.5, so the right hand would reach 0.542 × 1.5 = 0.81 speed and 0.566 × 1.5 = 0.85 variation, both below the band. It is not run.
+- The amendment-2 domain check is still running and is recorded as a report.
+
+**Amendment 1: t2xb** (`round10_tokenizer_t2xb.sh`). The same 2× tokenizer (12 Hz, 4 stages), and the same gates as t2x, fixed against the two causes seen:
+- **Instability:** `--lr 1.5e-4 --warmup 2000 --skip-grad-spikes 8` (round 3d amendment 1's rule).
+- **Damped hands:** velocity matching at 0.3 on body and both hands (round 3c's s8v used 1.0, which damped the hands).
+- **Run:** smoke first, then 60000 steps with patience 10, launched in t2x's freed slot.
+- **t4x continues as declared** (best validation still improving). t4xb is prepared and launches only by a further amendment.
