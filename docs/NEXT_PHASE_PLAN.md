@@ -2294,3 +2294,20 @@ H9 at step 20000:
 - With HC9, round 9 is not promising; both arms' checkpoints are kept.
 - HC9 resumes to step 40000 as the declared trend diagnostic (21:41 UTC).
 - Round 8 (S8) was stopped at step 14000 for round 11's slot.
+
+## L11 on the R5 words, step 5000 (recorded 2026-10-27, 21:50 UTC; a preview, not the pilot)
+
+`exposure_diagnostic.py --word-list` with the pilot's 150 R5 words. The 108 that have one-word training clips in `round10-mixed-v1` (median 5 clips) were scored, one real clip each:
+
+| Form | Top-5 |
+|---|---|
+| Real | 0.954 |
+| Reconstruction | 0.870 |
+| One-step (sampled / mode) | 0.417 / 0.546 |
+| **Free run** | **0.333** (36 of 108) |
+
+- HC9 hit 1 of 216 samples on the same words.
+- **The mapping reaches words seen as isolated signs only about 5 times.**
+- **Differences from the pilot,** which decides:
+  - The preview uses each clip's real duration, the record's own text, temperature 1.0 and guidance 1.5.
+  - The pilot uses the predicted duration, per-part temperature, both samples per word, and all 150 words, including 42 with no isolated clip.
