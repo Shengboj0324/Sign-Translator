@@ -2282,7 +2282,7 @@ D7 (input corruption 1.0) at step 20000 against the re-scored control:
 - HC9 hit 1 of 216 samples on those words, and 0 on the rest. Its free-run gain (0.133 on the 60 most frequent training words) did not reach words with few clips.
 - **For L11's pilot:** the R5 lexicon is mostly words seen as isolated signs about 5 times. It tests generalisation from few examples, not only memory.
 
-## Round 9 result, recorded (2026-10-27, 21:44 UTC): NOT PROMISING
+## Round 9 result, recorded (2026-10-27, 21:42 UTC): NOT PROMISING
 
 H9 at step 20000:
 
