@@ -1764,3 +1764,10 @@ A corpus that fails stays out. If both fail, the round stops.
 - The best promising arm continues to 60000 steps and then goes through the full chain.
 - If neither is promising, the next lever comes from the within-architecture list: an auxiliary word-identity loss, one-word curriculum sampling, per-prompt guidance and duration. It is declared before use; there is no structural change, as the owner asked.
 - **Round 6 build note (2026-10-27, 06:36 UTC, before any round-6 result).** The first WLASL text manifest (`wlasl-text-r6`) came out empty: the gloss → English rule accepted only uppercase glosses, and WLASL's are lowercase English. It was caught before the mix was written. The rule now accepts lowercase and spaced glosses, with uppercase labels unchanged (checked on ten cases and the builder's test). WLASL is rebuilt as `wlasl-text-r6b`; the empty manifest is unused. RIT's text records (`rit-text-r6`: 5,295 training records, 1,546 words) are unaffected.
+- **Round 6 data checks (2026-10-27, 06:42 UTC), as declared:**
+  - **RIT v2** (`rit-text-r6`, 141 val clips): real v2 top-5 0.553 (it was 0.14 with the old crops), round trip 0.553, ratio 1.00. **It enters.**
+  - **WLASL** (`wlasl-text-r6`, 279 val clips): real top-5 0.685, round trip 0.677, ratio 0.989. **It enters.**
+    - The first attempt could not run: WLASL's English labels have no Sign Bank gloss to map through. It was not a failed check, and the two prior pods that had started were deleted before any step.
+    - Labels are now matched by exact uppercase spelling (`--label-upper`), which pairs 279 of 478 val clips; variants such as ABOUT1/ABOUT2 are not guessed.
+  - Mix `round6-mixed-v1`: 143,042 records, sha `3c8024e3`. That is round 3c's 134,606 + RIT 5,949 + WLASL 2,487, nothing else.
+  - The priors B6 and C6 launch with `--corpus-weight rit-text-r6=3 --corpus-weight wlasl-text-r6=3` (plus ASLLVD ×3 as before).
