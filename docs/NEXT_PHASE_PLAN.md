@@ -1961,3 +1961,28 @@ Each finding was verified by the reviewer with a numerical check or an exact der
 **Amendment 2 to round 7 (declared 15:02 UTC, before the round-7 pilot result):**
 1. The pilot runs every arm and the control on the fixed sampler. The control is re-scored, and that re-score is the paired reference.
 2. The BLEU condition of rule D becomes non-inferiority: the paired-bootstrap 95% lower bound of BLEU(arm) − BLEU(control), over the same resampled clips, must be above −0.5 BLEU. The lexicon condition is unchanged.
+
+## Identification test 1 result, and test 2 declared (2026-10-27, 15:35 UTC)
+
+**Test 1 result** (B6 step 20000, its 60 most frequent training words; real clips 0.925):
+
+| Condition | Own duration | Real duration |
+|---|---|---|
+| Pre-fix sampler, guidance 1.5 | 0.000 | 0.017 |
+| Fixed sampler, guidance 1.5 | 0.033 | 0.017 |
+| Guidance 1.0 | 0.000 | 0.000 |
+
+Word retrieval with zero loci equals the measured-loci result (top-1 0.672 / 0.750 / 0.906). **The guidance bug was real but not the main cause.** The prior reads its text, and the sampler matches teacher forcing exactly, so the failure lies in free-running generation, or in how the recogniser reads generated motion.
+
+**Test 2 (declared before its result): `exposure_diagnostic.py`** on B6 step 20000, the same 60 words, one real clip each, prompted with each record's own text. The recogniser reads six forms:
+- `real`: the real clip;
+- `recon_full`: its own codes decoded, in the generator's form;
+- `recon_masked`: the same, with the real clip's channel validity;
+- `onestep_sample` and `onestep_argmax`: each step drawn (or taken as the mode) from the prior given the real history and the text;
+- `free_run`: ordinary sampling at the real duration, guidance 1.5.
+
+**Reading.**
+1. If `recon_masked` is well above `recon_full` (for example by at least 0.2), the instrument misreads the generator's form. Grading then masks generated motion as real data is masked, declared before any re-score.
+2. If `recon_full` is itself low, no generator can pass through this tokenizer-to-instrument path, and the tokenizer is the bottleneck.
+3. If one-step samples read close to `recon_full` while `free_run` stays near 0, exposure bias (errors accumulating over the sampled history) is the cause. Round 7's corruption arms test exactly that; the next levers would be scheduled sampling or a coarser token rate.
+4. If one-step samples are also near 0, the prior's per-step distributions themselves lose the sign.
