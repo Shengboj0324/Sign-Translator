@@ -2126,7 +2126,7 @@ D7 (input corruption 1.0) at step 20000 against the re-scored control:
 - The working interpretation is now: **at one code step per frame, no step carries enough of the sign for the text to determine it.** The token rate is the lever, which is round 10 (t2x, t4x).
 - **Change of priority** (declared): as soon as a round-10 tokenizer passes its gates, its prior is trained with history dropout 0.5, the guard against copying that stays valid at a coarser rate. Rounds 8–9 still run to their declared pilots.
 
-## Root-cause analyses (2026-10-27, four independent agents) and round 11 (declared 19:55 UTC, before any round-11 result)
+## Root-cause analyses (2026-10-27, four independent agents) and round 11 (declared 19:54 UTC, before any round-11 result)
 
 **Mechanism (free-run trace; B6 step 20000, 60 training words, CPU; scripts kept with the agent's notes).**
 - **Text influence per step is small throughout,** and about equal under teacher forcing and in free runs.
