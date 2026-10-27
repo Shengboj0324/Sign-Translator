@@ -1771,3 +1771,17 @@ A corpus that fails stays out. If both fail, the round stops.
     - Labels are now matched by exact uppercase spelling (`--label-upper`), which pairs 279 of 478 val clips; variants such as ABOUT1/ABOUT2 are not guessed.
   - Mix `round6-mixed-v1`: 143,042 records, sha `3c8024e3`. That is round 3c's 134,606 + RIT 5,949 + WLASL 2,487, nothing else.
   - The priors B6 and C6 launch with `--corpus-weight rit-text-r6=3 --corpus-weight wlasl-text-r6=3` (plus ASLLVD ×3 as before).
+
+## Round 5 result, recorded (2026-10-27, 07:17 UTC): NOT PROMISING (rule D, instrument v2)
+
+The round-4 checkpoints at step 20000, re-measured with per-word hits. Meaning scores reproduce round 4 exactly (deterministic seeds).
+
+| Arm | Meaning BLEU | Lexicon top-5 | Paired difference vs control [95% CI] | Promising |
+|---|---|---|---|---|
+| Control (byte) | 1.406 | 0.0167 (5/300) | — | — |
+| MiniLM | 1.541 | 0.0133 | −0.0033 [−0.0167, 0.0100] | no |
+| flan-T5 | 1.666 | 0.0033 | −0.0133 [−0.0300, 0.0033] | no |
+
+- Neither arm reaches the +0.05 gain, and neither interval excludes 0; both meaning scores are at or above the control's.
+- The text-encoder lever is closed for this data.
+- Round 6 (declared 06:29 UTC, both priors training since 07:05–07:07) is the next test: more isolated signs, RIT v2 and WLASL.
