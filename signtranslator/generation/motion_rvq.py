@@ -450,6 +450,11 @@ class RVQPriorConfig:
     # the trainable text layers. None keeps the byte encoder (and every earlier prior's config and SHA).
     text_model: str | None = None
     text_model_revision: str | None = None
+    # round 7 (opt-in, training only): the previous-code inputs of each sequence are replaced by random codes at a
+    # rate drawn uniformly in [0, input_corruption] per sequence (T2M-GPT's corruption), so the prior cannot coast on
+    # motion continuity and must read the text. Round 6's audit: the text moved the prediction by about 0.01 nats.
+    # 0 keeps every earlier prior's config and SHA.
+    input_corruption: float = 0.
 
     def to_dict(self) -> dict:
         data = asdict(self)
@@ -457,6 +462,8 @@ class RVQPriorConfig:
         for key in ("text_model", "text_model_revision"):
             if data.get(key) is None:
                 data.pop(key, None)
+        if not data.get("input_corruption"):
+            data.pop("input_corruption", None)
         return data
 
     def sha256(self) -> str:
@@ -591,6 +598,12 @@ def rvq_prior_loss(model: RVQPrior, tokenizer: MotionRVQ, tokens, text_mask, mot
                                                    training_loci(config, loci, conditioned) if train else loci)
     start = torch.full_like(codes[:, :1], model.K)
     previous = torch.cat((start, codes[:, :-1]), 1)
+    if train and config.input_corruption > 0:          # round 7: corrupt the conditioning history, not the targets
+        rate = torch.rand(len(previous), 1, device=previous.device) * config.input_corruption
+        hit = torch.rand(previous.shape[:2], device=previous.device) < rate
+        hit[:, 0] = False                               # the start token stays
+        noise = torch.randint_like(previous, model.K)
+        previous = torch.where(hit[..., None], noise, previous)
     seconds = batch_seconds(motion).float()
     step_seconds = seconds[:, ::config.tokenizer.step][:, :codes.shape[1]]
     step_seconds = F.pad(step_seconds, (0, codes.shape[1] - step_seconds.shape[1]))

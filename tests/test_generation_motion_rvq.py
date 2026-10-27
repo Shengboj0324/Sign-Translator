@@ -291,3 +291,25 @@ def test_a_prior_with_a_frozen_pretrained_text_model_trains_generates_and_keeps_
     batch_out = generate_rvq_motion_batch(prior, tokenizer, ["ask him", "cut it"], fps=24., durations=[.5, .4], guidance=2.)
     assert len(batch_out) == 2 and all(o.channels["body"].valid.all() for o in batch_out)
     again = RVQPrior(config); again.load_state_dict(prior.state_dict())             # strict load without the LM
+
+
+def test_input_corruption_is_opt_in_training_only_and_keeps_old_config_shas():
+    from dataclasses import replace
+    states, tokenizer, prior = prior_setup()
+    assert "input_corruption" not in prior.config.to_dict()                     # earlier priors' SHAs unchanged
+    corrupted = RVQPrior(replace(prior.config, input_corruption=.5))
+    corrupted.load_state_dict(prior.state_dict())
+    assert corrupted.config.to_dict()["input_corruption"] == .5
+    batch = collate_multichannel(states)
+    tokens, mask = encode_texts(["ask him", "cut it"])
+    prior.eval(); corrupted.eval()
+    torch.manual_seed(1)
+    plain, _ = rvq_prior_loss(prior, tokenizer, tokens, mask, batch, train=False)
+    torch.manual_seed(1)
+    same, _ = rvq_prior_loss(corrupted, tokenizer, tokens, mask, batch, train=False)
+    torch.testing.assert_close(plain, same)                                     # evaluation never corrupts
+    torch.manual_seed(2)
+    a, _ = rvq_prior_loss(corrupted, tokenizer, tokens, mask, batch, train=True)
+    torch.manual_seed(2)
+    b, _ = rvq_prior_loss(prior, tokenizer, tokens, mask, batch, train=True)
+    assert not torch.isclose(a, b)                                              # training sees a corrupted history

@@ -154,6 +154,9 @@ def main(argv=None) -> int:
     parser.add_argument("--text-model", help="prior: a frozen pretrained text encoder (Hugging Face name) instead of the "
                                              "byte embedding (round 4)")
     parser.add_argument("--text-model-revision", help="its pinned revision (commit hash)")
+    parser.add_argument("--input-corruption", type=float, default=0.,
+                        help="rvq prior: replace previous-code inputs by random codes at a per-sequence rate in [0, this] "
+                             "(round 7: the prior must read the text; 0 = off)")
     parser.add_argument("--max-seconds", type=float, default=20.)
     parser.add_argument("--velocity-weight", action="append", default=[],
                         help="rvq tokenizer: CHANNEL=W (repeatable), per-channel velocity matching "
@@ -228,7 +231,8 @@ def main(argv=None) -> int:
             model = TokenPrior(config).to(device)
         else:
             config = RVQPriorConfig(tokenizer.config, temporal_layers=args.token_layers, depth_layers=args.depth_layers,
-                                    text_model=args.text_model, text_model_revision=args.text_model_revision, **common)
+                                    text_model=args.text_model, text_model_revision=args.text_model_revision,
+                                    input_corruption=args.input_corruption, **common)
             model = RVQPrior(config).to(device)
     kind = tokenizer_kind if args.stage == "tokenizer" else prior_kind
 
