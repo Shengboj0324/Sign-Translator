@@ -1682,3 +1682,9 @@ The owner pointed to five sources and approved MS-ASL. Each one's conditions, as
 - **MS-ASL:** `MS-ASL.zip` is in R2 with provenance. `scripts/acquire_msasl.py` (home download plus pod extraction of each labelled clip window) is ready. YouTube refused the very first home request with "Sign in to confirm you're not a bot" (02:10 UTC). By the no-circumvention rule the downloader stopped; the gate holds 2 h before any retry, and no cookies, sign-in or proxies are used.
 - **WLASL:** the YouTube subset faces the same refusal. The dictionary-site subset (about 16,000 instances on signingsavvy, handspeak, aslpro, spreadthesign and others) and the authors' pre-processed-video form both wait for the owner.
 - **Sem-Lex:** the form waits for the owner.
+- **WLASL dictionary sites** (owner-approved 2026-10-27, 02:14 UTC; C-UDA). `scripts/acquire_wlasl_sites.py` runs on the Mac: robots.txt is respected, each host gets one request every 3 s with an honest user agent, a host that keeps refusing is stopped, and nothing is circumvented.
+  - **Disallowed by robots.txt, so skipped:** handspeak.com (2,211) and signingsavvy.com (2,668).
+  - **Not fetched:** aslpro.com is Flash (1,736). aslsignbank.haskins.yale.edu fails its TLS certificate (hostname mismatch) and its paths are "protected_media" (1,071); certificate checks are not turned off.
+  - **Fetched:** the other seven hosts, about 8,260 instances.
+  - **Next:** `after_wlasl.sh` packs per-host zips into R2 with provenance and extracts them on one CPU pod (`runpod/fleet/extract_wlasl.sh`).
+  - `WLASL_v0.3.json` and `C-UDA-1.0.pdf` are in R2 with provenance.
