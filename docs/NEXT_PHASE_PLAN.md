@@ -1672,3 +1672,13 @@ The owner pointed to five sources and approved MS-ASL. Each one's conditions, as
 - Round 5 stays as declared (RIT only), so its result is not confounded.
 - The new sources are acquired and extracted now, in parallel, into private R2 prefixes with their terms in each manifest.
 - They enter the generator in a round 6 that is declared before any of its results. PopSign and MS-ASL clips are canonicalised per signer by the round-5 rule.
+
+**Acquisition status (2026-10-27, 02:12 UTC):**
+- **ASL-LEX 2.0:** `signdata.csv` and `signdataKEY.csv` are in R2 (`acquisition/2026-10-17-v1/asl-lex-2.0/`), with provenance, licence and both required citations.
+- **PopSign v1.0: probed and held.** One validation tar (zebra, 42 clips) is in R2 with provenance, and 8 clips were extracted.
+  - The phone selfie framing is a close-up: the face fills a 1944×2592 portrait frame, and the hands are at or beyond the bottom edge.
+  - With the upright-chest prior, forearms are tracked on 0–10 of 54–72 frames per clip and hands on 18–43%.
+  - The motion the generator must learn is largely out of frame. Bulk acquisition (~525 GB of training tars) is held, pending another use such as a hand-shape or face model. `scripts/acquire_popsign.py` and `runpod/fleet/acquire_popsign.sh` are ready.
+- **MS-ASL:** `MS-ASL.zip` is in R2 with provenance. `scripts/acquire_msasl.py` (home download plus pod extraction of each labelled clip window) is ready. YouTube refused the very first home request with "Sign in to confirm you're not a bot" (02:10 UTC). By the no-circumvention rule the downloader stopped; the gate holds 2 h before any retry, and no cookies, sign-in or proxies are used.
+- **WLASL:** the YouTube subset faces the same refusal. The dictionary-site subset (about 16,000 instances on signingsavvy, handspeak, aslpro, spreadthesign and others) and the authors' pre-processed-video form both wait for the owner.
+- **Sem-Lex:** the form waits for the owner.
