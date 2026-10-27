@@ -216,7 +216,10 @@ def mask_channels(state: MultichannelMotion, keep) -> MultichannelMotion:
 
 def load_sample(record: Mapping, kind: str, *, cache: ContentCache,
                 fetch: Callable[[str], bytes]) -> MultichannelMotion:
-    """Fetch, verify and decode one sample with every unadmitted channel masked."""
+    """Fetch, verify and decode one sample with every unadmitted channel masked.
+
+    A record with ``"mirror": true`` is returned left-right mirrored (``signtranslator.pose.mirror``, exact), after
+    masking: right-dominant canonical form without rewriting the stored state (round 5 amendment 4)."""
     usable = usable_channels(record, kind)
     if not usable:
         raise ValueError(f"{record.get('sign')}: no usable {kind} channels")
@@ -226,7 +229,11 @@ def load_sample(record: Mapping, kind: str, *, cache: ContentCache,
         path = Path(temporary) / "state.npz"
         path.write_bytes(data)
         state = MultichannelMotion.load(path, expected_sha256=part["state_sha256"])
-    return mask_channels(state, usable)
+    state = mask_channels(state, usable)
+    if record.get("mirror") is True:
+        from ..pose.mirror import mirror_state
+        state = mirror_state(state, sample_id=state.sample_id)
+    return state
 
 
 def performer_split(records: list[dict], kind: str = "skeleton") -> dict:

@@ -103,3 +103,20 @@ def test_face_and_blink_swap_sides_and_mirroring_twice_is_identity():
         np.testing.assert_allclose(twice.channels[name].values, channel.values, atol=1e-9, err_msg=name)
         np.testing.assert_array_equal(twice.channels[name].valid, channel.valid, err_msg=name)
         assert twice.channels[name].labels == channel.labels, name
+
+
+def test_load_sample_mirrors_flagged_records(tmp_path):
+    from signtranslator.data_engineering.corpus_manifest import ContentCache, load_sample
+    rng = np.random.default_rng(4)
+    state = _state(*_points(rng), rng)
+    digest = state.save(tmp_path / "s.npz")
+    blob = (tmp_path / "s.npz").read_bytes()
+    record = dict(sign="s", continuous=dict(status="converted", state_key="k", state_sha256=digest,
+                                            available_channels=["body", "left_hand", "right_hand", "face", "blink"]))
+    cache = ContentCache(tmp_path / "cache", max_bytes=1 << 30)
+    plain = load_sample(record, "continuous", cache=cache, fetch=lambda k: blob)
+    flipped = load_sample(dict(record, mirror=True), "continuous", cache=cache, fetch=lambda k: blob)
+    want = mirror_state(plain)
+    for name in ("body", "left_hand", "right_hand"):
+        np.testing.assert_allclose(flipped.channels[name].values, want.channels[name].values, atol=1e-12)
+        np.testing.assert_array_equal(flipped.channels[name].valid, want.channels[name].valid)

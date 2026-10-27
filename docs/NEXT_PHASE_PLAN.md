@@ -1646,3 +1646,12 @@ ASL Citizen motion is not in the generator.
   - the recogniser's real top-5 must be at least 0.30;
   - the tokenizer ratio of 0.8 stays.
   - If the gate fails, RIT does not enter the mix.
+
+**Round 5 amendment 4 (2026-10-27, 00:46 UTC, before any instrument result):**
+- **v3b trailed v2 at the same steps as well.** Validation top-5 was 0.286 at step 2000 and 0.446 at step 3000, against v2's 0.374 and 0.592.
+- **The trim, not the mirror, is the visible cost.** v2 scores 0.721 on 240 original val clips and 0.683 on the same clips trimmed and mirrored back. The trim takes the median clip from 60 to 41 frames.
+- **The instrument must read generated motion,** which keeps its rest before and after the sign. So trimming is the wrong domain for the recogniser. It stays only in the generator-quality flags.
+- **New instrument candidate: `sign-recognizer-v3c`.** v2's exact data and recipe, with the per-signer reflection only (no trim).
+  - Records keep their stored states and carry `"mirror": true` for every clip of a left-dominant signer (`scripts/build_mirror_flag_manifest.py`). `corpus_manifest.load_sample` mirrors those clips on load, after channel masking. A test checks that loading equals `mirror_state`.
+  - Validation and checks are unchanged (round 5 A).
+- **v3b is stopped and is not an instrument.** The instrument is v3c if it passes, otherwise v2.
