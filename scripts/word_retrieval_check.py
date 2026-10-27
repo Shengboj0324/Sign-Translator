@@ -54,6 +54,8 @@ def main(argv=None) -> int:
     p.add_argument("--corpus", action="append", required=True)
     p.add_argument("--clips", type=int, default=64)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--zero-loci", action="store_true", help="score every row with zero locus slots, the condition "
+                   "one-word generation uses (plan_loci of a single word is empty), instead of the clip's measured loci")
     p.add_argument("--device", default="cuda")
     p.add_argument("--output-key", required=True)
     args = p.parse_args(argv)
@@ -82,7 +84,8 @@ def main(argv=None) -> int:
     template = layout_template(manifest, "how2sign-two-view-text-v1", cache, store.get)
     data = TextMotionDataset(manifest, partition="train", cache=cache, fetch=store.get,
                              max_seconds=prior.config.tokenizer.motion.max_seconds, fps=24., template=template)
-    report = dict(checkpoint_key=args.checkpoint_key, mix_key=args.mix_key, clips=args.clips, seed=args.seed, corpora={})
+    report = dict(checkpoint_key=args.checkpoint_key, mix_key=args.mix_key, clips=args.clips, seed=args.seed,
+                  zero_loci=args.zero_loci, corpora={})
     for corpus in args.corpus:
         rng = random.Random(args.seed)
         by_word = {}
@@ -102,7 +105,8 @@ def main(argv=None) -> int:
             motion = collate_multichannel([state] * (n + 1))
             loci = None
             if prior.config.locus_conditioning:
-                loci = torch.as_tensor(np.stack([state_loci(state)] * (n + 1)), dtype=torch.float32).to(device)
+                slots = np.zeros_like(state_loci(state)) if args.zero_loci else state_loci(state)
+                loci = torch.as_tensor(np.stack([slots] * (n + 1)), dtype=torch.float32).to(device)
             tk, mk, mo = to_device((tokens, mask, motion, None), device)[:3]
             ll = rvq_sequence_log_likelihood(prior, tokenizer, tk, mk, mo, loci).double().cpu().numpy()
             scores[i], empties[i] = ll[:n], ll[n]
