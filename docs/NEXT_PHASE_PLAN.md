@@ -2281,3 +2281,16 @@ D7 (input corruption 1.0) at step 20000 against the re-scored control:
 - **Coverage of the R5 words.** 108 of the 150 have one-word training clips in `round10-mixed-v1` (median 5 clips).
 - HC9 hit 1 of 216 samples on those words, and 0 on the rest. Its free-run gain (0.133 on the 60 most frequent training words) did not reach words with few clips.
 - **For L11's pilot:** the R5 lexicon is mostly words seen as isolated signs about 5 times. It tests generalisation from few examples, not only memory.
+
+## Round 9 result, recorded (2026-10-27, 21:44 UTC): NOT PROMISING
+
+H9 at step 20000:
+
+| Measure | H9 | Control | Paired difference [95% CI] | Rule | Result |
+|---|---|---|---|---|---|
+| Lexicon top-5 | 0.0033 | 0.0167 | −0.0133 [−0.030, 0.0] | ≥ +0.05, CI above 0 | fail |
+| BLEU | 1.779 | 1.592 | +0.187 [−0.347, 0.711] | lower bound > −0.5 | pass |
+
+- With HC9, round 9 is not promising; both arms' checkpoints are kept.
+- HC9 resumes to step 40000 as the declared trend diagnostic (21:41 UTC).
+- Round 8 (S8) was stopped at step 14000 for round 11's slot.
