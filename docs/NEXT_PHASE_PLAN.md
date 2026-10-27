@@ -2335,7 +2335,7 @@ H9 at step 20000:
   - If L11c stops early, it is resumed from its newest checkpoint with `PATIENCE=0` (same run, config and manifest). Any later resume of L11 also uses `PATIENCE=0`.
   - Checkpoints are written every 2000 steps regardless, so the step-10000 and step-20000 checkpoints exist.
 
-## Round 10: t4x verdict (recorded 2026-10-27, 22:50 UTC): REJECTED (fidelity)
+## Round 10: t4x verdict (recorded 2026-10-27, 22:49 UTC): REJECTED (fidelity)
 
 Best checkpoint at step 37000; early stop at step 47000.
 
