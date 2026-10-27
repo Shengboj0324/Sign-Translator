@@ -2348,3 +2348,16 @@ Best checkpoint at step 37000; early stop at step 47000.
 - R2b round trip 2.78, above blank (1.86).
 - 6 Hz loses even more hand speed than 12 Hz, and gains cannot reach the band. No t4x retry is started.
 - The round-10 path continues with t2xc alone. The freed slot is held until L11's pilot decides its use.
+
+## Round 10: t2xc diverged; the coarse-tokenizer path is paused (recorded 2026-10-27, 22:52 UTC)
+
+- **t2xc** diverged at step about 10750; the "over 100 consecutive spikes" guard fired at step 10841.
+  - The velocity cap held the loss to about 116, against t2xb's 5.6 million.
+  - The network's head-translation output still blew up: that velocity term reached 1.2 × 10⁶ before the cap, and head-rotation velocity 73.
+- **Every from-scratch tokenizer of this family became unstable** between steps 9k and 13k: t2x at 13k–23k, t2xb at 8.9k, t2xc at 10.7k, round 3d's d4.
+  - Only d2 trained stably, because it was fine-tuned from s8.
+  - The instability is in the from-scratch dynamics (head-translation decoding), not in the loss form.
+- **Decision.**
+  - With L11 learning words on d2 (round 11 gate passed), the coarse-tokenizer path is paused, not abandoned.
+  - Its next form, if needed after L11's pilot: initialise the matching layers from d2, then fine-tune at the coarser rate, so it starts from a stable network as d2 did.
+  - No further round-10 pod is started now.
