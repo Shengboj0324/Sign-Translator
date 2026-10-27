@@ -1986,3 +1986,32 @@ Word retrieval with zero loci equals the measured-loci result (top-1 0.672 / 0.7
 2. If `recon_full` is itself low, no generator can pass through this tokenizer-to-instrument path, and the tokenizer is the bottleneck.
 3. If one-step samples read close to `recon_full` while `free_run` stays near 0, exposure bias (errors accumulating over the sampled history) is the cause. Round 7's corruption arms test exactly that; the next levers would be scheduled sampling or a coarser token rate.
 4. If one-step samples are also near 0, the prior's per-step distributions themselves lose the sign.
+
+## Identification test 2 result: the cause is exposure bias (recorded 2026-10-27, 15:44 UTC)
+
+B6 step 20000, 60 training words, recogniser v2:
+
+| Form | Top-5 | Top-1 | Hits / 60 |
+|---|---|---|---|
+| Real clip | 0.917 | 0.900 | 55 |
+| Own codes decoded, generator form | 0.883 | 0.817 | 53 |
+| Own codes decoded, masked like real | 0.933 | 0.900 | 56 |
+| One step from the real history, sampled | 0.817 | 0.633 | 49 |
+| One step from the real history, mode | 0.867 | 0.717 | 52 |
+| Free run (guidance 1.5) | 0.017 | 0.017 | 1 |
+
+**Reading 3 of the declaration applies.**
+- **The tokenizer is not the bottleneck:** reconstruction reads 0.883 against 0.917 for real clips.
+- **The recogniser reads the generator's form:** masked minus full is 0.05, below the declared 0.2, so grading stays as it is.
+- **The prior's per-step distributions keep the sign** when the history is real (0.82–0.87), even though only 8–11% of the individual codes match the real ones.
+- **Free-running sampling loses it** (0.017). The failure is exposure bias: errors accumulate over a sampled history of about 50 steps × 32 codes, which the model never saw in training.
+- **Per word:** 46 of 60 words are readable from the real history but lost in free run, and 1 survives.
+- Every content result since round 3 (R2b, R5, the training-word diagnostics) is explained by this.
+
+**What follows.**
+- Round 7 (input corruption, A7 and D7) is the direct test of the cause. Its step-20000 pilot is already declared.
+- **Early read, not gated:** `exposure_diagnostic.py` on A7 and D7 at step 10000. If their free-run form rises above B6's 0.017 while the one-step forms hold, corruption is working.
+- **If round 7 fails the pilot, the next within-architecture levers, in order:**
+  1. **Scheduled sampling:** part of the training history comes from the model's own one-step samples instead of random codes.
+  2. **A coarser autoregressive rate:** a tokenizer with time downsampling, so 4–8× fewer sequential steps per sign.
+  3. Both are training changes with the same architecture. Each is declared before use.
