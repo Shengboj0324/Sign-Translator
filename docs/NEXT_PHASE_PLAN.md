@@ -2361,3 +2361,16 @@ Best checkpoint at step 37000; early stop at step 47000.
   - With L11 learning words on d2 (round 11 gate passed), the coarse-tokenizer path is paused, not abandoned.
   - Its next form, if needed after L11's pilot: initialise the matching layers from d2, then fine-tune at the coarser rate, so it starts from a stable network as d2 did.
   - No further round-10 pod is started now.
+
+## Round 11 reads: L11 step 20000, and L11c's gate (recorded 2026-10-27, 23:25 UTC)
+
+| Arm and step | Words | Free run | One-step (sampled / mode) |
+|---|---|---|---|
+| L11, 20000 | 60 frequent | 0.70 (42) | 0.85 / 0.867 |
+| L11, 20000 | 108 R5 words with isolated clips | 0.574 (62); 0.333 at step 5000 | 0.75 / 0.861 |
+| L11c, 5000 | 60 frequent | 0.567 | 0.483 / 0.55 |
+| L11c, 6000 | 60 frequent | 0.683 | 0.55 / 0.55 |
+| **L11c, 10000** | 60 frequent | **0.80** (48) | 0.683 / 0.833 |
+
+- **L11c's gate (≥ 0.20 at step 10000): PASSED.** At equal steps it is ahead of L11 (0.80 against 0.667).
+- The stage-1-only history (HC9's effective part) adds to L11's recipe. L11c becomes the lead candidate, subject to its own step-20000 pilot.
