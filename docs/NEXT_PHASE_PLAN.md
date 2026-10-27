@@ -2062,3 +2062,16 @@ B6 step 20000, 60 training words, recogniser v2:
 - **Early read at step 10000, not gated:** `exposure_diagnostic.py`, free run against B6's 0.017.
 - **Pilot at step 20000:** rule D with amendment 2, against the re-scored control.
 - **Selection:** among the promising arms of rounds 7–9 by the highest lexicon difference (tie within 0.02 goes to the higher paired BLEU). The winner continues to 60000 steps and the full declared chain.
+
+## Round 7 pilot, A7, recorded (2026-10-27, 18:06 UTC): NOT PROMISING (rule D, amendment 2)
+
+A7 (input corruption 0.5) at step 20000 against the control re-scored on the fixed sampler:
+
+| Measure | A7 | Control | Paired difference [95% CI] | Rule | Result |
+|---|---|---|---|---|---|
+| Lexicon top-5 | 0.0033 | 0.0167 | −0.0133 [−0.0267, −0.0033] | ≥ +0.05, CI above 0 | fail |
+| BLEU | 2.119 | 1.592 | +0.527 [−0.121, 1.186] | lower bound > −0.5 | pass |
+
+- Real motion reads BLEU 4.089, blank 2.09. The BLEU gain only brings A7 to the blank level.
+- A7 stays stopped; its checkpoints are kept in R2.
+- This matches the step-10000 early read (free run 0.017): random corruption does not break the copycat shortcut. The coarse stages of the history survive it.
