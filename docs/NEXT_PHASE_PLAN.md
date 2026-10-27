@@ -2030,3 +2030,35 @@ B6 step 20000, 60 training words, recogniser v2:
 - **Pilot at step 20000:** round-5 rule D with amendment 2, i.e. lexicon +0.05 over the re-scored control with the paired bootstrap 95% interval excluding 0, and paired BLEU non-inferiority (lower bound > −0.5). The training-word diagnostic and the exposure diagnostic are reported beside it.
 
 **Selection.** If more than one of A7, D7 and S8 is promising, the one with the highest lexicon difference continues to 60000 steps and then the full declared chain. A tie within 0.02 goes to the higher paired BLEU.
+
+## Hold controls, the research diagnosis, and round 9 (recorded and declared 2026-10-27, 17:03 UTC, before any round-9 result)
+
+**Hold controls** (B6 step 20000, 60 training words, top-5). Each pair compares a real prefix followed by the model's continuation against the same prefix followed by a held pose:
+
+| Real prefix | Model continues | Held pose |
+|---|---|---|
+| 25% | 0.067 | 0.017 |
+| 50% | 0.650 | 0.517 |
+| 75% | 0.867 | 0.817 |
+
+- The model's continuations add only 0.05–0.13 over a held pose.
+- From a mostly-rest prefix, it cannot introduce the sign.
+- Coarse-only sampling (finer stages at their mode) gives 0.033.
+- **Round 7 early read at step 10000:** A7 free run 0.017, D7 0.033 (B6 0.017).
+
+**Research diagnosis** (`docs/research/exposure-bias-fixes-2026-10-27.md`; four literature reviews). The failure matches the **copycat shortcut**:
+- Wen et al. 2020, arXiv 2010.14876; ChauffeurNet, arXiv 1812.03079; acRNN freezing, arXiv 1707.05363; Progressive Transformers' drift, arXiv 2004.14874.
+- At 24 fps with all 32 codes of the previous frame as input, the history nearly determines the next frame, so the text matters only where history cannot predict: the onset of the sign.
+- Published discrete-token generators run at about 5 steps/s with ≤ 6 codes per step; ours runs at 768 codes/s.
+- The two cheapest fixes ranked highest are both training changes within the architecture:
+  1. hide whole history spans, so the model must start the sign from the text;
+  2. feed only the coarse residual stages back as history.
+
+**Round 9 arms.** B6's recipe exactly, each with a smoke run first:
+- **H9:** `--history-dropout 0.5`. Per sequence with probability 0.5, every history step before a uniformly random cut is replaced by the start code, as at generation's first step.
+- **HC9:** `--history-dropout 0.5 --history-stages 1`. The same, and the temporal transformer sums only stage 1 of each part of the previous step, in training and generation alike.
+
+**Checks, on the fixed sampler:**
+- **Early read at step 10000, not gated:** `exposure_diagnostic.py`, free run against B6's 0.017.
+- **Pilot at step 20000:** rule D with amendment 2, against the re-scored control.
+- **Selection:** among the promising arms of rounds 7–9 by the highest lexicon difference (tie within 0.02 goes to the higher paired BLEU). The winner continues to 60000 steps and the full declared chain.
