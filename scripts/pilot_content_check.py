@@ -36,6 +36,9 @@ def main(argv=None) -> int:
     p.add_argument("--guidance", type=float, default=1.5)
     p.add_argument("--clips", type=int, default=300)
     p.add_argument("--words", type=int, default=150)
+    p.add_argument("--word-set", choices=("r5", "dev"), default="r5",
+                   help="r5: the strict review's words (the first --words reliable glosses); dev: the next --words, "
+                        "disjoint from R5, for tuning sampling without touching the test words")
     p.add_argument("--device", default="cuda")
     p.add_argument("--recognizer-run", default="sign-recognizer-v2",
                    help="the lexicon instrument; its validation.json gives the reliable glosses (round 5: v3 if validated)")
@@ -89,7 +92,7 @@ def main(argv=None) -> int:
     train = [r for r in manifest["records"] if r.get("corpus") == "how2sign-two-view-text-v1" and r.get("partition") == "train"]
     vocab = {w for r in train for w in re.findall(r"[a-z]+", r["text"].lower())}
     words = sorted(g for g in validation["per_gloss"]["reliable_glosses"] if g.isalpha() and g.lower() in vocab and g in index)
-    words = words[:args.words]
+    words = words[:args.words] if args.word_set == "r5" else words[args.words:2 * args.words]
     states, y = [], []
     for k, g in enumerate(words):
         for s in range(2):
@@ -98,7 +101,7 @@ def main(argv=None) -> int:
     y = torch.tensor(y)
     hits = (logits_of(recogniser, states, args.device).topk(5, dim=1).indices == y[:, None]).any(1).float().numpy()
     blank_hits = (logits_of(recogniser, blanked(states), args.device).topk(5, dim=1).indices == y[:, None]).any(1).float().numpy()
-    lexicon = dict(words=len(words), samples=len(y), generated_top5=round(float(hits.mean()), 4),
+    lexicon = dict(words=len(words), word_set=args.word_set, samples=len(y), generated_top5=round(float(hits.mean()), 4),
                    blank_top5=round(float(blank_hits.mean()), 4), recognizer_run=args.recognizer_run,
                    per_word={g: int(hits[2 * k] + hits[2 * k + 1]) for k, g in enumerate(words)})
     print(json.dumps({"lexicon": lexicon}), flush=True)
