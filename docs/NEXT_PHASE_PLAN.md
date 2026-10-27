@@ -1824,3 +1824,20 @@ The B6 checkpoint at step 20000, 256 training clips per corpus: teacher-forced t
 - **This explains every content failure.** R2b is below blank, R5 is near 0, training words come out at 0.000 against 0.925 for real clips, more data did not help, and guidance helped only a little.
 - **Sampling is ruled out.** Real duration gave 0.025, oracle loci 0.025, temperature 0.7 gave 0.0125.
 - **Next: a training-procedure fix inside the current architecture,** as the owner asked. During training, a random fraction of the previous-code inputs is corrupted (the T2M-GPT strategy), so the prior cannot coast on continuity and must use the text. It is declared as round 7, with the text-use gain as its early check.
+
+## Round 7: make the prior read its text (declared 2026-10-27, 12:58 UTC, before any round-7 result)
+
+**Hypothesis** (from round 6's audit). The prior ignores the text because its previous codes already predict the next ones. Corrupting that history in training forces it to condition on the text. The architecture, data and instrument stay the same; only the training procedure changes.
+
+**Arms.** B6's recipe exactly: byte encoder, `round6-mixed-v1`, RIT and WLASL at weight 3, ASLLVD at weight 3, 60000 steps, locus conditioning, tokenizer d2 with its gains. Plus `--input-corruption`: each sequence's previous-code inputs are replaced by random codes at a rate drawn uniformly in [0, x].
+- **A7:** x = 0.5.
+- **D7:** x = 1.0.
+
+**Early check, at step 5000** (`text_use_check.py` on the training clips of RIT, WLASL, ASLLVD and How2Sign). An arm continues only if its text gain (empty-text CE minus text CE) is at least 0.10 nats on at least two of the three one-word corpora. B6 had 0.011–0.015. An arm that fails is stopped and its pod deleted.
+
+**Pilot, at step 20000.**
+- The round-5 D rule, unchanged: v2 lexicon on the R5 words, at least 0.05 above the control's, with the paired bootstrap 95% interval excluding 0, and meaning BLEU not below the control's.
+- The training-word diagnostic (`lexicon_diagnostic.py`) and the text gain are reported beside it, not gated.
+- The best promising arm continues to 60000 steps and then goes through the full declared chain.
+
+**If neither arm passes the early check or the pilot:** the next within-architecture lever, declared before use. Candidates: a stronger text pathway (more text layers or a larger text width), an auxiliary text–motion contrastive loss, or classifier-free guidance trained with a higher text-dropout rate.
