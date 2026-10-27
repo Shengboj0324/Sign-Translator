@@ -1803,3 +1803,8 @@ The round-4 checkpoints at step 20000, re-measured with per-word hits. Meaning s
   - Can the prior produce words it **was trained on**: the most frequent one-word training texts, read by v2?
   - Are its one-word durations in the range of real citation signs?
   - If trained words also fail, the fault is in how one-word conditioning is learned or sampled, not in vocabulary coverage, and the next lever targets that.
+- **Round 6 audit, first findings (2026-10-27, 12:20 UTC):**
+  - **B6 cannot sign its own training words.** On the 60 most frequent one-word training texts the recogniser knows, v2 reads real training clips at top-5 0.925, but B6's samples at 0.000 (own duration) and 0.017 (real duration). Durations match the real clips (median 2.15 s vs 2.20 s). So the lexicon failure is not vocabulary coverage, and not length.
+  - **Locus mismatch is ruled out for one-word prompts.** Motion-measured training loci are non-empty for only 2–7% of one-word clips, and the text-planned ones are empty.
+  - **Noted for later:** How2Sign sentences have text-planned loci on 52% of texts but motion-measured ones on 12%, a train/generation mismatch for sentences.
+  - **Running:** teacher-forced token loss with real vs empty text (does the prior condition on the word at all?), plus sampling with oracle loci and at temperature 0.7.
