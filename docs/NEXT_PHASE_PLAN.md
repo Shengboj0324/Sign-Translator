@@ -2334,3 +2334,17 @@ H9 at step 20000:
   - `round5_prior.sh` now takes `PATIENCE` (default 5, unchanged for earlier runs).
   - If L11c stops early, it is resumed from its newest checkpoint with `PATIENCE=0` (same run, config and manifest). Any later resume of L11 also uses `PATIENCE=0`.
   - Checkpoints are written every 2000 steps regardless, so the step-10000 and step-20000 checkpoints exist.
+
+## Round 10: t4x verdict (recorded 2026-10-27, 22:50 UTC): REJECTED (fidelity)
+
+Best checkpoint at step 37000; early stop at step 47000.
+
+| Gate | Result | Detail |
+|---|---|---|
+| Recognisability | pass | 0.78 against 0.817 real, ratio 0.955 |
+| Domain check, amendment-2 form | pass | |
+| Fidelity | fail | body speed 0.642; left hand speed 0.452, variation 0.582; right hand speed 0.46, variation 0.539 |
+
+- R2b round trip 2.78, above blank (1.86).
+- 6 Hz loses even more hand speed than 12 Hz, and gains cannot reach the band. No t4x retry is started.
+- The round-10 path continues with t2xc alone. The freed slot is held until L11's pilot decides its use.
