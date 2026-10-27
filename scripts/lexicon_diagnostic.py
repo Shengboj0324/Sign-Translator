@@ -36,6 +36,9 @@ def main(argv=None) -> int:
     p.add_argument("--part-temperature", default="body=1.1,left_hand=1.1,right_hand=1.1,face=1.0")
     p.add_argument("--recognizer-run", default="sign-recognizer-v2")
     p.add_argument("--device", default="cuda")
+    p.add_argument("--oracle-loci", action="store_true", help="also generate with the loci measured from a real training "
+                   "clip of the word (state_loci, as training sees them) instead of the text-planned ones")
+    p.add_argument("--part-temperature-alt", help="also generate at this per-part temperature (own duration)")
     p.add_argument("--output-key", required=True)
     args = p.parse_args(argv)
     import warnings
@@ -53,6 +56,10 @@ def main(argv=None) -> int:
         manifest = load_manifest(path, expected_sha256=args.mix_sha256)
     temperature = {k: float(v) for k, v in (x.split("=") for x in args.part_temperature.split(","))}
     _, _, sample = load_generator(store, args.checkpoint_key, args.mix_sha256, args.device, temperature=temperature)
+    alt_sample = None
+    if args.part_temperature_alt:
+        alt = {k: float(v) for k, v in (x.split("=") for x in args.part_temperature_alt.split(","))}
+        _, _, alt_sample = load_generator(store, args.checkpoint_key, args.mix_sha256, args.device, temperature=alt)
     recogniser, labels, _ = load_model(store, args.recognizer_run, args.device)
     index = {g: i for i, g in enumerate(labels)}
 
@@ -66,7 +73,9 @@ def main(argv=None) -> int:
             if label in index:
                 by_word[label].append(r)
     words = sorted(by_word, key=lambda w: (-len(by_word[w]), w))[:args.words]
+    from signtranslator.grammar_motion.loci_conditioning import state_loci
     real_states, real_y, gen_own, gen_dur, gen_y, rows = [], [], [], [], [], []
+    gen_oracle, gen_alt, nonempty = [], [], 0
     for k, w in enumerate(words):
         clips = by_word[w]
         secs = [float(c["continuous"]["seconds"]) for c in clips]
@@ -77,6 +86,14 @@ def main(argv=None) -> int:
         own = [post(resample_motion(sample(w.lower(), 24., None, args.guidance, 50, 9000 + 10 * k + s), 24.)) for s in range(2)]
         fixed = [post(resample_motion(sample(w.lower(), 24., median, args.guidance, 50, 9500 + 10 * k + s), 24.)) for s in range(2)]
         gen_own += own; gen_dur += fixed; gen_y += [index[w]] * 2
+        if args.oracle_loci:
+            first = load_state(store, clips[0]["continuous"]["state_key"], clips[0]["continuous"]["state_sha256"])
+            slots = state_loci(first); nonempty += int(np.abs(slots).sum() > 0)
+            gen_oracle += [post(resample_motion(sample(w.lower(), 24., median, args.guidance, 50, 9700 + 10 * k + s,
+                                                       loci=slots), 24.)) for s in range(2)]
+        if alt_sample is not None:
+            gen_alt += [post(resample_motion(alt_sample(w.lower(), 24., None, args.guidance, 50, 9900 + 10 * k + s), 24.))
+                        for s in range(2)]
         rows.append(dict(word=w, training_clips=len(clips), real_median_seconds=round(median, 3),
                          generated_seconds=[round(float(s.timestamps[-1] - s.timestamps[0]), 3) for s in own]))
 
@@ -93,6 +110,10 @@ def main(argv=None) -> int:
                   recognizer_run=args.recognizer_run,
                   real_top5=round(float(real_hits.mean()), 4), generated_own_top5=round(float(own_hits.mean()), 4),
                   generated_real_duration_top5=round(float(dur_hits.mean()), 4),
+                  generated_oracle_loci_top5=(round(float(top5(gen_oracle, gen_y).mean()), 4) if gen_oracle else None),
+                  oracle_loci_nonempty_words=(nonempty if args.oracle_loci else None),
+                  generated_alt_temperature_top5=(round(float(top5(gen_alt, gen_y).mean()), 4) if gen_alt else None),
+                  alt_temperature=args.part_temperature_alt,
                   real_median_seconds=round(float(np.median([r["real_median_seconds"] for r in rows])), 3),
                   generated_median_seconds=round(float(np.median(gen_s)), 3), per_word=rows)
     print(json.dumps({k: v for k, v in report.items() if k != "per_word"}), flush=True)

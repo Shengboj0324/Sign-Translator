@@ -71,10 +71,11 @@ def load_generator(store, key: str, manifest_sha256: str, device: str = "cpu", *
         tokenizer.load_state_dict(checkpoint["tokenizer_state"])
         prior.to(device).eval(), tokenizer.to(device).eval()
 
-        def sample(text, fps, seconds, guidance, steps, seed):
+        def sample(text, fps, seconds, guidance, steps, seed, loci=None):
             return generate_rvq_motion(prior, tokenizer, [text], fps=fps,    # seconds None: the predicted duration
                                        durations=None if seconds is None else [seconds], guidance=guidance,
-                                       temperature=temperature, top_k=top_k, seed=seed)[0]
+                                       temperature=temperature, top_k=top_k, seed=seed,  # loci None: planned from text
+                                       loci=None if loci is None else [loci])[0]
 
         def sample_batch(texts, fps, seconds, guidance, seed):
             from signtranslator.generation.motion_rvq import generate_rvq_motion_batch
