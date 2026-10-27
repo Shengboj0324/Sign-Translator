@@ -1711,3 +1711,23 @@ The owner pointed to five sources and approved MS-ASL. Each one's conditions, as
   | elementalaslconcepts | 161 |
 
   The downloader now rejects any payload without a video signature (`not_a_video`).
+
+**Round 5 instrument result (2026-10-27, 06:25 UTC): `sign-recognizer-v3c` fails a declared check, so v2 stays the instrument.**
+
+| Check | v3c | v2 | Rule |
+|---|---|---|---|
+| ASL Citizen val, top-5 (10,303 clips; v3c reads them mirrored) | 0.718 | 0.729 | ≥ 0.70: pass |
+| ASLLVD val signer, top-1 (411 clips) | **0.511** | 0.608 | ≥ 0.58: **fail** |
+| Blank / no hands / hands only, top-1 | 0.0003 / 0.012 / 0.240 | 0.0003 / 0.015 / 0.226 | v2's rules: pass |
+| Reliable glosses | 469 | 474 | — |
+| In-context ASLLRP, top-1 (diagnostic) | 0.063 | 0.083 | — |
+
+- Best checkpoint step 32000 (early stop at 40000). The pilot checks therefore read the round-4 checkpoints with v2.
+- **Audit: an anomaly.** ASLLVD signers are right-dominant (wrist-height check: all six signers), so a right-dominant ASL Citizen should have helped on ASLLVD, yet the cross-signer score fell 10 points. The leading hypothesis is that **reflecting a stored state is not the same as estimating a real right hand.**
+  - The mirror is exact on the stored rotations (`tests/test_pose_mirror.py`).
+  - But MediaPipe's hand and pose estimators are not mirror-equivariant: handedness-specific models, depth conventions. A mirrored left hand therefore carries the estimator's left-hand biases into the right-hand channel.
+  - v2 kept ASL Citizen and ASLLVD on their native sides, and v3, v3b and v3c all lagged it.
+- **Consequences:**
+  - (a) Generated motion is still graded by v2. Its bias, real left-dominant ASL Citizen, is a known limitation of R5, declared in round 5.
+  - (b) **Round 6 does not mirror generator data.** Signers whose dominant side is left are left out instead.
+  - (c) A cleaner right-dominant instrument would need re-estimation from horizontally flipped video, not mirrored states. ASL Citizen re-extraction on flipped frames is noted as a later option.
