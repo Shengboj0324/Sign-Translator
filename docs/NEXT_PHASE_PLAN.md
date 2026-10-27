@@ -1785,3 +1785,6 @@ The round-4 checkpoints at step 20000, re-measured with per-word hits. Meaning s
 - Neither arm reaches the +0.05 gain, and neither interval excludes 0; both meaning scores are at or above the control's.
 - The text-encoder lever is closed for this data.
 - Round 6 (declared 06:29 UTC, both priors training since 07:05–07:07) is the next test: more isolated signs, RIT v2 and WLASL.
+- **Round 6 pilot note (2026-10-27, 10:56 UTC, before any round-6 pilot number).** The first B6 pilot check stopped at load: the check was hard-wired to round 3c's manifest, and the round-6 priors are bound to `round6-mixed-v1`. It produced no numbers; the C6 check was stopped and its pod deleted before it ran.
+  - The check now takes the prior's training mix (`--mix-key/--mix-sha256`). Round 3c's and round 6's mixes yield the same 300 How2Sign validation clips and the same 150 R5 words (checked), so the arms stay comparable with the round-5 control file.
+  - Both checks were relaunched at 10:56 UTC.
