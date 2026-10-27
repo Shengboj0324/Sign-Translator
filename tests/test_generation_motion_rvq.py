@@ -456,3 +456,25 @@ def test_part_valid_loss_drops_the_codes_of_unobserved_parts_and_keeps_old_confi
     plain, _ = rvq_prior_loss(prior, tokenizer, tokens, mask, batch, train=False)
     kept, _ = rvq_prior_loss(masked, tokenizer, tokens, mask, batch, train=False)
     assert not torch.isclose(plain, kept) and torch.isfinite(kept)
+
+
+def test_velocity_cap_log_compresses_only_terms_above_it_and_keeps_old_shas():
+    torch.manual_seed(0)
+    states = [signer_state(s, frames=24, amplitude=.4) for s in range(2)]
+    batch = collate_multichannel(states)
+    weighted = small(states[0], velocity_weights={"right_hand": 1.})
+    assert "velocity_cap" not in weighted.to_dict()
+    capped = small(states[0], velocity_weights={"right_hand": 1.}, velocity_cap=1e-3)
+    assert MotionRVQConfig.from_dict(capped.to_dict()) == capped and capped.sha256() != weighted.sha256()
+    model = MotionRVQ(weighted)
+    twin = MotionRVQ(capped); twin.load_state_dict(model.state_dict())
+    model.eval(); twin.eval()
+    loss, terms = rvq_loss(model, batch, stages=3)
+    loss_c, terms_c = rvq_loss(twin, batch, stages=3)
+    v = terms["velocity_right_hand"]
+    torch.testing.assert_close(terms_c["velocity_right_hand"], v)              # the logged term is the raw value
+    assert float(v) > 1e-3
+    torch.testing.assert_close(loss - loss_c, v - 1e-3 * (1 + torch.log(v / 1e-3)), rtol=1e-4, atol=1e-6)
+    loose = MotionRVQ(small(states[0], velocity_weights={"right_hand": 1.}, velocity_cap=1e6))
+    loose.load_state_dict(model.state_dict()); loose.eval()
+    torch.testing.assert_close(rvq_loss(loose, batch, stages=3)[0], loss)      # below the cap: unchanged

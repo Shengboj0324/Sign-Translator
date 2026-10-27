@@ -90,10 +90,16 @@ class MotionRVQConfig:
     skeleton_weights: dict = field(default_factory=lambda: dict(position=1., velocity=.5, acceleration=.25))
     # round 3c (opt-in): per-channel velocity matching, {channel: weight}. Empty keeps the earlier tokenizers' loss.
     velocity_weights: dict = field(default_factory=dict)
+    # round 10 (opt-in): a velocity term above this value counts as cap * (1 + log(term / cap)): log-compressed, so one
+    # runaway channel cannot blow the update up (t2xb diverged at step 8900 when head-translation velocity, whose real
+    # energy is tiny, reached 1.9e7). 0 keeps every earlier tokenizer's loss and SHA.
+    velocity_cap: float = 0.
 
     def to_dict(self) -> dict:
         data = asdict(self)
         data["motion"] = self.motion.to_dict()
+        if not data.get("velocity_cap"):
+            data.pop("velocity_cap", None)
         if not data.get("velocity_weights"):          # absent when unused: earlier tokenizers' configs (and SHAs) unchanged
             data.pop("velocity_weights", None)
         if not data.get("codebook_follows_lr"):       # likewise
@@ -410,6 +416,9 @@ def rvq_loss(model: MotionRVQ, motion: MotionBatch, *, stages: int | None = None
                                            scale=getattr(model, f"velocity_scale_{name}", None))
             if value is not None:
                 terms[f"velocity_{name}"] = value.detach()
+                cap = getattr(config, "velocity_cap", 0.)
+                if cap > 0 and bool(value > cap):
+                    value = cap * (1. + torch.log(value / cap))
                 total = total + float(weight) * value.to(total.dtype)
     names = [p for p, _ in model.parts]
     z, zq = torch.stack([latents[p] for p in names]), torch.stack([quantized[p] for p in names])   # (P, B, K, D)

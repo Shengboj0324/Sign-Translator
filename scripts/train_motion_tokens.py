@@ -169,6 +169,8 @@ def main(argv=None) -> int:
                         help="rvq prior: the temporal transformer sees only the first n residual stages of each part "
                              "of the previous step (0 = all)")
     parser.add_argument("--max-seconds", type=float, default=20.)
+    parser.add_argument("--velocity-cap", type=float, default=0.,
+                        help="rvq tokenizer: log-compress any velocity term above this value (round 10; 0 = off)")
     parser.add_argument("--velocity-weight", action="append", default=[],
                         help="rvq tokenizer: CHANNEL=W (repeatable), per-channel velocity matching "
                              "(motion_rvq.velocity_matching_loss); round 3c: head_rotation, head_translation, hands, body")
@@ -213,7 +215,8 @@ def main(argv=None) -> int:
             config = MotionRVQConfig(motion, hidden=args.hidden, code_dim=args.code_dim, codebook=args.codebook,
                                      stages=args.stages, down_layers=args.down_layers, base_blocks=args.base_blocks,
                                      quantizer_dropout=args.quantizer_dropout, codebook_follows_lr=args.codebook_follows_lr,
-                                     velocity_weights={k: float(v) for k, v in (x.split("=", 1) for x in args.velocity_weight)})
+                                     velocity_weights={k: float(v) for k, v in (x.split("=", 1) for x in args.velocity_weight)},
+                                     velocity_cap=args.velocity_cap)
             model = MotionRVQ(config).to(device)
         tokenizer, tokenizer_state = None, None
     else:

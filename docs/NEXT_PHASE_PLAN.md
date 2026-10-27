@@ -2235,3 +2235,14 @@ D7 (input corruption 1.0) at step 20000 against the re-scored control:
 1. **Arm L11c** (new): L11's recipe plus `--history-stages 1`. It launches in the first pod slot freed after the H9/HC9 pilots. Its gate is the same as L11's: step 10000, free run ≥ 0.20 learnable, < 0.05 fails.
 2. **HC9 continues to step 40000** from its step-20000 checkpoint, whatever its pilot verdict says. This is a diagnostic of the trend, with exposure reads at steps 30000 and 40000, in the second freed slot. If its pilot is promising, the declared rule (continue to 60000) applies instead.
 3. **L11 continues unchanged,** as the control for the coarse history on trimmed, isolated-weighted data.
+
+## Round 10: t2xb diverged, and amendment 2, t2xc (recorded and declared 2026-10-27, 21:31 UTC, before any t2xc result)
+
+**t2xb: diverged at step 8900,** stopped by the "over 100 consecutive spikes" guard at step 8973.
+- The loss went from about 1.2 to 5.6 million, driven by the head-translation velocity term (1.9 × 10⁷). Face, head translation and root translation rose with it; body and hand losses stayed normal.
+- That term divides by the real head-translation motion energy, which is tiny, so decoder errors are amplified. Round 3c's s8v6 exploded in the same channels.
+- d2 survived with the same weight only because it was fine-tuned from s8, never trained from scratch.
+
+**Amendment 2: t2xc.**
+- **Recipe:** t2xb's recipe plus `--velocity-cap 4` (new, opt-in, tested). A velocity term above 4 counts as 4 · (1 + ln(term / 4)), so one channel's runaway is log-compressed and cannot blow up the update. Terms below the cap are unchanged (typical values are about 0.3–1).
+- **Run:** smoke first, then 60000 steps with the same gates, in t2xb's freed slot.
