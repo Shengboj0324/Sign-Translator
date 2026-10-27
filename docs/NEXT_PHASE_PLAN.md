@@ -2271,7 +2271,7 @@ D7 (input corruption 1.0) at step 20000 against the re-scored control:
 - These are training words, and the recogniser saw the ASLLVD training signers. The pilot on held-out R5 words, the real reference on held-out signers, and sentence BLEU are still needed.
 - The word set and real clips differ slightly from B6's (trimmed manifest).
 
-## Round 9 pilot, HC9, recorded (2026-10-27, 21:42 UTC): NOT PROMISING (rule D, amendment 2)
+## Round 9 pilot, HC9, recorded (2026-10-27, 21:41 UTC): NOT PROMISING (rule D, amendment 2)
 
 | Measure | HC9 | Control | Paired difference [95% CI] | Rule | Result |
 |---|---|---|---|---|---|
