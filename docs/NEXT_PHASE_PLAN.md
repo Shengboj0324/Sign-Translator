@@ -2270,3 +2270,14 @@ D7 (input corruption 1.0) at step 20000 against the re-scored control:
 **Cautions for the audit.**
 - These are training words, and the recogniser saw the ASLLVD training signers. The pilot on held-out R5 words, the real reference on held-out signers, and sentence BLEU are still needed.
 - The word set and real clips differ slightly from B6's (trimmed manifest).
+
+## Round 9 pilot, HC9, recorded (2026-10-27, 21:42 UTC): NOT PROMISING (rule D, amendment 2)
+
+| Measure | HC9 | Control | Paired difference [95% CI] | Rule | Result |
+|---|---|---|---|---|---|
+| Lexicon top-5 | 0.0033 | 0.0167 | −0.0133 [−0.0267, −0.0033] | ≥ +0.05, CI above 0 | fail |
+| BLEU | 1.32 | 1.592 | −0.272 [−0.834, 0.23] | lower bound > −0.5 | fail |
+
+- **Coverage of the R5 words.** 108 of the 150 have one-word training clips in `round10-mixed-v1` (median 5 clips).
+- HC9 hit 1 of 216 samples on those words, and 0 on the rest. Its free-run gain (0.133 on the 60 most frequent training words) did not reach words with few clips.
+- **For L11's pilot:** the R5 lexicon is mostly words seen as isolated signs about 5 times. It tests generalisation from few examples, not only memory.
