@@ -2106,3 +2106,22 @@ D7 (input corruption 1.0) at step 20000 against the re-scored control:
 
 - With A7, round 7 is not promising. Both arms stay stopped; their checkpoints are kept.
 - Rounds 8 (S8), 9 (H9, HC9) and 10 (t2x; t4x launched 18:21 UTC) continue as declared.
+
+## Early reads at step 10000, rounds 8–9 (recorded 2026-10-27, 19:29 UTC; not gated)
+
+`exposure_diagnostic.py` on the same 60 training words (B6 step 20000 for reference):
+
+| Arm | Free run | One step (sampled / mode) |
+|---|---|---|
+| B6 (step 20000) | 0.017 | 0.817 / 0.867 |
+| A7 | 0.017 | 0.700 / 0.817 |
+| D7 | 0.033 | 0.633 / 0.767 |
+| S8 (scheduled sampling 0.5) | 0.017 | 0.717 / 0.833 |
+| H9 (history dropout 0.5) | 0.000 | 0.667 / 0.800 |
+| HC9 (+ stage-1 history) | 0.033 | 0.517 / 0.667 |
+
+**Reading (not a verdict; the pilots at step 20000 decide).**
+- No training-procedure remedy moves the free run at step 10000.
+- The one-step forms are high for every arm. At 24 fps the next frame given the real previous one is mostly a small change, so a real history all but guarantees a readable decode. The one-step result therefore shows copying ability, not knowledge of the sign's trajectory.
+- The working interpretation is now: **at one code step per frame, no step carries enough of the sign for the text to determine it.** The token rate is the lever, which is round 10 (t2x, t4x).
+- **Change of priority** (declared): as soon as a round-10 tokenizer passes its gates, its prior is trained with history dropout 0.5, the guard against copying that stays valid at a coarser rate. Rounds 8–9 still run to their declared pilots.
