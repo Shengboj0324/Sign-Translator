@@ -2374,3 +2374,26 @@ Best checkpoint at step 37000; early stop at step 47000.
 
 - **L11c's gate (≥ 0.20 at step 10000): PASSED.** At equal steps it is ahead of L11 (0.80 against 0.667).
 - The stage-1-only history (HC9's effective part) adds to L11's recipe. L11c becomes the lead candidate, subject to its own step-20000 pilot.
+
+## Round 11 pilot, L11, recorded (2026-10-27, 23:41 UTC): NOT PROMISING (rule D, amendment 2): lexicon passed, BLEU failed
+
+| Measure | L11 | Control | Paired difference [95% CI] | Rule | Result |
+|---|---|---|---|---|---|
+| Lexicon top-5 (R5, 150 words × 2) | **0.4467** | 0.0167 | **+0.43 [0.36, 0.50]** | ≥ +0.05, CI above 0 | pass |
+| BLEU (300 How2Sign val clips) | 1.255 | 1.592 | −0.337 [−1.007, 0.281] | lower bound > −0.5 | fail |
+
+- **The word problem is solved in the pilot's own terms:** a 26-fold lexicon gain on the declared R5 words.
+- **Sentence meaning fell.** With one-word corpora at weight 60, sentences are a small share of training. Both arms are below the blank's BLEU (2.09; real 4.09), so this instrument sits at its floor. The rule stands as declared.
+- L11 stays stopped; its checkpoints are kept.
+
+## Round 12: keep the words, recover sentence meaning (declared 2026-10-27, 23:41 UTC, before L11c's pilot and any round-12 result)
+
+**Arms.** L11c's recipe (trimmed `round10-mixed-v1`, history dropout 0.5, stage-1 history, part-valid loss, tokenizer d2), smoke first:
+- **M12** (from scratch): one-word corpora (RIT, WLASL, ASLLVD) at weight **15** instead of 60, so sentences keep a larger share. `PATIENCE=0`. It launches now.
+- **F12** (warm start): initialised from L11c's step-20000 EMA weights (`--init-key`). It then trains at B6's weights (RIT and WLASL 3, ASLLVD 3) for 10000 steps, so it keeps the words learned under weight 60 while sentences return to their old share. `PATIENCE=0`. It launches when L11c's step-20000 checkpoint is in R2.
+
+**Pilots** (rule D with amendment 2, against the control re-scored on the fixed sampler):
+- M12 at step 20000; F12 at its step 10000.
+- `exposure_diagnostic.py` reported beside each (frequent and R5 words).
+
+**Selection.** Among the promising arms of rounds 11–12 (L11c included), the highest lexicon difference wins; a tie within 0.02 goes to the higher paired BLEU. The winner continues to 60000 steps, then the full declared chain (test-set exit gate, avatar).
