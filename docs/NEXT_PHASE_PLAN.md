@@ -2216,3 +2216,4 @@ D7 (input corruption 1.0) at step 20000 against the re-scored control:
 - **Damped hands:** velocity matching at 0.3 on body and both hands (round 3c's s8v used 1.0, which damped the hands).
 - **Run:** smoke first, then 60000 steps with patience 10, launched in t2x's freed slot.
 - **t4x continues as declared** (best validation still improving). t4xb is prepared and launches only by a further amendment.
+- **t2x amendment-2 domain check (20:34 UTC): passed** (YouTube-ASL ratios against the fixed reference: body 0.65, hands 0.72–0.74). t2x stays rejected on fidelity alone.
