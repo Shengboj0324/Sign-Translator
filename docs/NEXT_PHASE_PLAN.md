@@ -1912,3 +1912,52 @@ The shuffled control reads at chance in every case (top-1 0.00–0.03). **So the
 **Reading.**
 - If (1) or (2) is well above the pre-fix 0.000–0.017 (for example at least 0.15), the guidance bug was the main cause of the content failure. In that case every earlier pilot is re-scored with the fixed sampler, the control included, before any verdict is revised.
 - If both stay near 0 while retrieval stays high, the cause is in autoregressive sampling itself. The round-7 pilot (input corruption) then tests that.
+
+## Full code audit, recorded (2026-10-27, 15:02 UTC; six independent read-only reviews at 802219c–fe739b0)
+
+Each finding was verified by the reviewer with a numerical check or an exact derivation. Status: **fixed**, **test running**, or **queued** (with the stage that needs it).
+
+**Affects the generator or its grading now**
+1. **Guidance used an unseen empty-text input** (found by two reviewers). The unguided branch skipped the locus projection. **Fixed** (8664f5c); the identification test is running.
+2. **The prior learns "flat hand" codes for untracked frames.** `diffusion_targets` fills invalid cells with the neutral value, and `rvq_prior_loss` supervises every frame-valid token without a channel-validity check. Clips may lose a hand for up to 50% of frames under the round-6 filter, so the prior is taught to emit static identity hands there.
+   - **Queued** as the next training-procedure lever: mask each code's cross entropy by its part's validity.
+3. **Generated states are graded in a form the recogniser never saw.** `assemble_state` marks every trained channel valid in every frame. Real training clips have legs (and, in ASL Citizen, pelvis and chest) almost always invalid, which the recogniser reads as neutral.
+   - **Queued** as an instrument-parity check before any verdict: re-score generated motion with the channels masked as in real data.
+4. **The BLEU half of the pilot rule is a coin flip.** It compares point estimates (±0.5 BLEU noise), so an arm with equal meaning passes about half the time. **Amendment 2 below.**
+5. **The real reference is inflated.** The recogniser trained on the ASLLVD train signers, and the lexicon diagnostic's real clips come from the same partition. The held-out ASLLVD val signer reads 0.608 top-1 / 0.822 top-5, against 0.908–0.925 here.
+   - The real reference in future reports uses held-out clips.
+6. **`lexicon_diagnostic.py` prompts spaced texts without their spaces** ("thank you" becomes "thankyou").
+   - The pre-fix and identification runs share this bug, so they stay comparable. **Queued:** prompt with the record's own text.
+7. **Text-use measures mixed in an unseen input** (empty text with measured loci). `--zero-loci` was added; the information bound in amendment 1 is loose, but its conclusion stands (the gate needed about 170 nats per clip).
+
+**Data quality (queued for the next data rebuild)**
+8. **WLASL duplicates:** 827 URLs are shared by 1,838 instances; 804 of them carry different glosses, and 380 cross train and val/test. **Dedupe** by URL and state SHA, and drop multi-gloss videos.
+9. **Extraction can put one physical hand in both hand channels** (two ROI trackers locking on the same hand), more likely at `--hand-scale 1.8`. **Measure** how often first: frames where both assigned wrists coincide.
+10. **`--upright-chest` (ASL Citizen, MS-ASL) stores the arms against a chest frame it doesn't save.** Recogniser data only. **Fix** before MS-ASL extraction.
+11. **Mirrored ASL Citizen canonical states keep the unmirrored `available_channels`,** so loading masks the dominant hand. This was v3/v3c recogniser data; v2, the instrument, is unaffected. **Fix** before any v4.
+12. **Minor:** `english()` artefacts (trailing spaces, dropped "(1)" suffixes); `load_state` skips masking and mirroring; and the last frame after resampling is needlessly invalid.
+
+**Tokenizer and serving**
+13. **Serving crashes** on a v2 prior (decoder gains need `store.exists`). **Fix** before deployment.
+14. **Minor:**
+   - Unused codebook vectors decay toward zero late in training (no smoothing in mass division).
+   - Padding leaks into the last ~0.25 s of shorter clips through the conv receptive field.
+   - Blink gets no gradient beyond ±1.
+   - The phase input is one frame off between training and generation.
+
+**Avatar and grammar (queued for avatar v2)**
+15. **Forearm twist half-share flips by 180°** for twists in [−180°, −90°) (quaternion sign not fixed before atan2).
+16. **The face baseline (clip median) erases clause-long non-manual markers.** Use pooled baselines, as `nmm.py` already does.
+17. **The text planner counts pronoun tokens, not referents,** and treats complementizer "that" as deixis. This is a likely cause of the 52% vs 12% planned-vs-measured locus gap.
+18. **Minor:** the role-shift gaze is measured from the chest forward, not the camera; the left/right of face blendshapes is unverified.
+
+**Checked OK by the reviewers:**
+- **Pose maths:** rotation conversions and composition, mirroring (exact to 7e-16 against re-extraction), smoothing, unit conversions, and the body-frame handedness.
+- **Tokenizer:** the RVQ maths (residuals, straight-through estimator, EMA, quantizer dropout, masks), the part column partition, and normalisation round trips.
+- **Prior and sampling:** the sampler matches teacher forcing exactly (−295.9077 both ways), and the code order, CFG formula, EMA loading, LR schedule and resume are correct.
+- **Data:** corpus weighting, partitions, cache integrity, manifest SHAs, and locus slot conventions.
+- **Evaluation:** recogniser frame rate and label casing, the paired bootstrap, ranks, and corpus BLEU.
+
+**Amendment 2 to round 7 (declared 15:02 UTC, before the round-7 pilot result):**
+1. The pilot runs every arm and the control on the fixed sampler. The control is re-scored, and that re-score is the paired reference.
+2. The BLEU condition of rule D becomes non-inferiority: the paired-bootstrap 95% lower bound of BLEU(arm) − BLEU(control), over the same resampled clips, must be above −0.5 BLEU. The lexicon condition is unchanged.
