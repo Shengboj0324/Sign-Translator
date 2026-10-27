@@ -1731,3 +1731,35 @@ The owner pointed to five sources and approved MS-ASL. Each one's conditions, as
   - (a) Generated motion is still graded by v2. Its bias, real left-dominant ASL Citizen, is a known limitation of R5, declared in round 5.
   - (b) **Round 6 does not mirror generator data.** Signers whose dominant side is left are left out instead.
   - (c) A cleaner right-dominant instrument would need re-estimation from horizontally flipped video, not mirrored states. ASL Citizen re-extraction on flipped frames is noted as a later option.
+
+## Round 6: more isolated signs within their terms (declared 2026-10-27, 06:29 UTC, before any round-5 verdict or round-6 result)
+
+**Goal:** lexicon. Single words recognised clearly above the control at step 20000, as in round 5 D, with the same instrument: `sign-recognizer-v2`, the round-5 outcome.
+
+**Data.** Mix `round6-mixed-v1` = `round3c-mixed-v1` (unchanged) plus two corpora.
+- **RIT citation signs v2** (`rit-sign-manifest-v2`, 1.8-shoulder hand crops).
+- **WLASL dictionary-site clips** (`wlasl-sites-v1`, 6,381 clips, C-UDA; training split only).
+- Both enter as one-word records through the text builder: glosses → English, variant numbers dropped, at most 6 training clips per word. Each is sampled at weight 3, like ASLLVD.
+
+**No mirroring** (lesson of the v3c audit). A signer whose dominant side is left is left out.
+- **Dominant side:** RIT and WLASL are studio or dictionary video with both forearms in view, so each signer's side comes from raised-wrist height (`signer_dominance_motion.py`). RIT is already known: all 12 signers right.
+
+**Per-clip quality filter** for generator use, declared now. The corpus medians are already known (RIT v2: right hand 0.60, dominant hand 0.71; WLASL first two hosts: dominant hand 0.58–0.60), so the threshold is not blind. It is set before any model result.
+- Keep a clip if its right forearm (with the upper arm) is tracked on at least 0.5 of its frames **and** its right hand on at least 0.5.
+- This replaces round 5's corpus-level both-hands gate, which penalised one-handed signs.
+
+**Tokenizer check, per new corpus,** on its validation clips, before any prior trains:
+- the round trip keeps at least 0.8 of the real clips' v2 top-5;
+- the real clips' v2 top-5 is at least 0.30.
+
+A corpus that fails stays out. If both fail, the round stops.
+
+**Prior arms.** Round 4's recipe (60000 steps, locus conditioning, tokenizer d2 with its gains):
+- **B6:** the byte encoder.
+- **C6:** frozen flan-T5-base.
+- **Control:** round 4's control at step 20000 (byte, `round3c-mixed-v1`), read by v2 with per-word hits (round 5's file).
+
+**Decision at step 20000** (round 5 D's rule, unchanged):
+- An arm is promising if its lexicon top-5 is at least 0.05 above the control's, the paired-by-word bootstrap 95% interval excludes 0, and its meaning BLEU is not below the control's.
+- The best promising arm continues to 60000 steps and then goes through the full chain.
+- If neither is promising, the next lever comes from the within-architecture list: an auxiliary word-identity loss, one-word curriculum sampling, per-prompt guidance and duration. It is declared before use; there is no structural change, as the owner asked.
