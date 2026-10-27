@@ -75,6 +75,9 @@ def main(argv=None) -> int:
     parser.add_argument("--recognizer-run", default="sign-recognizer-v2")
     parser.add_argument("--gloss-map-key", help="Sign Bank -> ASL Citizen gloss map (validate_sign_recognizer.py's): "
                                                 "ASLLVD clips count only under a unique exact mapping")
+    parser.add_argument("--label-upper", action="store_true",
+                        help="labels are plain English words (WLASL): match the recogniser's gloss by exact uppercase "
+                             "spelling, spaces removed; no fuzzy or variant matching")
     parser.add_argument("--limit", type=int, default=300)
     parser.add_argument("--fps", type=float, default=24.)
     parser.add_argument("--min-ratio", type=float, default=.9)
@@ -82,6 +85,7 @@ def main(argv=None) -> int:
     parser.add_argument("--output-key")
     parser.add_argument("--gains-key", help="amendment 5: fit_tokenizer_gains.py output, applied to every round trip")
     args = parser.parse_args(argv)
+    global label_of
     import diagnose_tokenizer as dt
     from evaluate_text_to_motion import at_rate
     from train_text_to_motion import make_store
@@ -100,10 +104,12 @@ def main(argv=None) -> int:
             if m["method"] == "exact" and g in index:
                 for c in m["candidates"]:
                     to_citizen[c].add(g)
-        global label_of
         plain = label_of
         label_of = lambda r: (next(iter(to_citizen[plain(r)])) if len(to_citizen.get(plain(r), ())) == 1  # noqa: E731
                               else None)
+    if args.label_upper:
+        plain_upper = label_of
+        label_of = lambda r: (lambda g: g if g in index else None)((plain_upper(r) or "").upper().replace(" ", ""))  # noqa: E731
     pool = manifest["records"]
     if args.template_manifest:
         key, sha = args.template_manifest.rsplit("@", 1)
