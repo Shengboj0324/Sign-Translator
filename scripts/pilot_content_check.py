@@ -32,6 +32,9 @@ MIX_SHA = "004bf6596a2330ee5f840bfeef0d233174f63d0602f72465b6c28a21078d00fd"
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--checkpoint-key", required=True)
+    p.add_argument("--mix-key", default=MIX, help="the manifest the prior was trained on (its How2Sign validation and "
+                   "training records are the same in every mix that includes how2sign-two-view-text-v1)")
+    p.add_argument("--mix-sha256", default=MIX_SHA)
     p.add_argument("--part-temperature", default="body=1.1,left_hand=1.1,right_hand=1.1,face=1.0")
     p.add_argument("--guidance", type=float, default=1.5)
     p.add_argument("--clips", type=int, default=300)
@@ -58,10 +61,10 @@ def main(argv=None) -> int:
     from validate_sign_recognizer import load_model, logits_of
     store = R2Store(os.environ)
     with tempfile.TemporaryDirectory() as t:
-        path = Path(t) / "m.json"; path.write_bytes(store.get(MIX) + b"\n")
-        manifest = load_manifest(path, expected_sha256=MIX_SHA)
+        path = Path(t) / "m.json"; path.write_bytes(store.get(args.mix_key) + b"\n")
+        manifest = load_manifest(path, expected_sha256=args.mix_sha256)
     temperature = {k: float(v) for k, v in (x.split("=") for x in args.part_temperature.split(","))}
-    _, _, sample = load_generator(store, args.checkpoint_key, MIX_SHA, args.device, temperature=temperature)
+    _, _, sample = load_generator(store, args.checkpoint_key, args.mix_sha256, args.device, temperature=temperature)
 
     def post(s):
         s = smooth_rotation_channel(s, "head_rotation", .1)
@@ -77,7 +80,7 @@ def main(argv=None) -> int:
     for i in range(0, len(texts), 32):
         gens += [post(o) for o in sample.batch(texts[i:i + 32], 24., seconds[i:i + 32], args.guidance, 1000 + i)]
     kp = json.loads(store.get("training-runs/back-translator-kp2d-uwb-ft-v1/best.json"))["checkpoint_key"]
-    translator, kind = load_translator(store, kp, MIX_SHA)
+    translator, kind = load_translator(store, kp, MIX_SHA)  # the translator's own manifest (round 3c)
     translator = translator.to(torch.device(args.device))
     meaning = {}
     for name, states in (("generated", gens), ("real", refs), ("blank", blanked(refs))):
