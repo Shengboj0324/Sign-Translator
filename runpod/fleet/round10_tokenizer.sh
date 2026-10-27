@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# round10_tokenizer.sh — round 10 coarse tokenizers (declared 2026-10-27 18:10 UTC): round 3d's tokenizer stage and checks with DOWN and STAGES set by the candidate.
+# round10_tokenizer.sh — round 10 coarse tokenizers (declared 2026-10-27 18:09 UTC): round 3d's tokenizer stage and checks with DOWN and STAGES set by the candidate.
 # design", declared 2026-10-25 08:20 PDT before any round-3d result): train, then the domain, recognisability and
 # fidelity checks (fidelity with reliable-joint speeds and R2b on 1000 clips), each writing its JSON report. No prior
 # here and no waiting: the prior is launched separately once every candidate has its verdict (precedence: the passing

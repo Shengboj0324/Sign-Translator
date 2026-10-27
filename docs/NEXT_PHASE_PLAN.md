@@ -2076,7 +2076,7 @@ A7 (input corruption 0.5) at step 20000 against the control re-scored on the fix
 - A7 stays stopped; its checkpoints are kept in R2.
 - This matches the step-10000 early read (free run 0.017): random corruption does not break the copycat shortcut. The coarse stages of the history survive it.
 
-## Round 10: coarser tokenizers (declared 2026-10-27, 18:10 UTC, before any round-10 result)
+## Round 10: coarser tokenizers (declared 2026-10-27, 18:09 UTC, before any round-10 result)
 
 **Why** (research report, rank 4).
 - Every published discrete-token motion or sign generator runs at about 5 steps/s with ≤ 6 codes per step. Ours runs at 768 codes/s.
