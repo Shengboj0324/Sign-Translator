@@ -2094,3 +2094,15 @@ A7 (input corruption 0.5) at step 20000 against the control re-scored on the fix
 - **Learnability check first:** a smoke prior.
 - **Then a prior** on B6's recipe, with the best round 8 or 9 training option if one is promising.
 - **The same pilot** (rule D with amendment 2), and the exposure diagnostic's free-run form reported beside it.
+
+## Round 7 result, recorded (2026-10-27, 18:21 UTC): NOT PROMISING
+
+D7 (input corruption 1.0) at step 20000 against the re-scored control:
+
+| Measure | D7 | Control | Paired difference [95% CI] | Rule | Result |
+|---|---|---|---|---|---|
+| Lexicon top-5 | 0.0033 | 0.0167 | −0.0133 [−0.030, 0.0033] | ≥ +0.05, CI above 0 | fail |
+| BLEU | 2.03 | 1.592 | +0.437 [−0.381, 1.242] | lower bound > −0.5 | pass |
+
+- With A7, round 7 is not promising. Both arms stay stopped; their checkpoints are kept.
+- Rounds 8 (S8), 9 (H9, HC9) and 10 (t2x; t4x launched 18:21 UTC) continue as declared.
