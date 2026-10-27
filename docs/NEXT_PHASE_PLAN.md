@@ -2246,3 +2246,27 @@ D7 (input corruption 1.0) at step 20000 against the re-scored control:
 **Amendment 2: t2xc.**
 - **Recipe:** t2xb's recipe plus `--velocity-cap 4` (new, opt-in, tested). A velocity term above 4 counts as 4 · (1 + ln(term / 4)), so one channel's runaway is log-compressed and cannot blow up the update. Terms below the cap are unchanged (typical values are about 0.3–1).
 - **Run:** smoke first, then 60000 steps with the same gates, in t2xb's freed slot.
+
+## Round 11 early read, L11 step 5000 (recorded 2026-10-27, 21:33 UTC; not the gate)
+
+`exposure_diagnostic.py` on the 60 most frequent one-word training texts of `round10-mixed-v1` (trimmed clips), recogniser v2:
+
+| Form | Top-5 |
+|---|---|
+| Real | 0.933 |
+| Reconstruction | 0.917 |
+| Reconstruction, masked like real | 0.933 |
+| One-step (sampled / mode) | 0.583 / 0.667 |
+| **Free run** | **0.55** (33 of 60) |
+
+- B6's free run was 0.017.
+- **Free-run motion activity:** body 1.50, left hand 2.12, right hand 2.37, head 0.14. Real B6 words read 0.97 / 2.25 / 2.23 / 0.13, so the hands are fully articulated, not damped.
+
+**Reading.**
+- The word-to-trajectory mapping is learnable by this prior when one-word clips are trimmed to the sign, dominate the samples (weight 60), whole-history spans are hidden (dropout 0.5), and untracked parts carry no loss.
+- Free run is now *above* the one-step forms. The prior plans the sign from the text instead of continuing a history.
+- The step-10000 gate (≥ 0.20) decides formally.
+
+**Cautions for the audit.**
+- These are training words, and the recogniser saw the ASLLVD training signers. The pilot on held-out R5 words, the real reference on held-out signers, and sentence BLEU are still needed.
+- The word set and real clips differ slightly from B6's (trimmed manifest).
