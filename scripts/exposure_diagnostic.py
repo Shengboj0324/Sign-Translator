@@ -18,6 +18,9 @@ are the cause. Prompts use each record's own text. Writes one JSON report.
 ``--extra`` adds two free-run variants that locate the drift and test an inference-only lever:
 - ``prefix25`` / ``prefix50`` / ``prefix75``: the first 25/50/75% of the steps are the real codes, the rest is
   sampled (guidance ``--guidance``, generation's planned loci and empty-text branch);
+- ``hold25`` / ``hold50`` / ``hold75``: the control for the prefixes: the real codes up to the same step, then the
+  last real step's codes repeated (a held pose, no generated continuation). A prefix form only shows the model
+  continuing the sign where it reads above its hold form;
 - ``coarse_sampled``: free run where only the first residual stage of each part is sampled and the finer stages are
   their mode (their sampled noise otherwise enters every later step's history).
 """
@@ -94,6 +97,7 @@ def main(argv=None) -> int:
         s = smooth_rotation_channel(s, "head_rotation", .1)
         return smooth_vector_channel(s, "head_translation", .1) if "head_translation" in s.channels else s
 
+    @torch.no_grad()
     def decode(codes, frames, text):
         unit = tokenizer.decode_codes(codes, frames)
         raw = unit_to_raw(motion_config, unit.double())
@@ -188,6 +192,8 @@ def main(argv=None) -> int:
             for f in (.25, .5, .75):
                 k = int(round(f * frames))
                 forms[f"prefix{int(100 * f)}"].append(continue_from(text, codes[:, :k], frames, 9600 + 10 * n))
+                held = torch.cat((codes[:, :k], codes[:, k - 1:k].expand(-1, frames - k, -1)), 1)
+                forms[f"hold{int(100 * f)}"].append(decode(held, frames, text))
             forms["coarse_sampled"].append(continue_from(text, codes[:, :0], frames, 9800 + 10 * n, greedy_fine=True))
         y.append(index[w])
         rows.append(dict(word=w, text=text, frames=frames,
