@@ -2311,3 +2311,17 @@ H9 at step 20000:
 - **Differences from the pilot,** which decides:
   - The preview uses each clip's real duration, the record's own text, temperature 1.0 and guidance 1.5.
   - The pilot uses the predicted duration, per-part temperature, both samples per word, and all 150 words, including 42 with no isolated clip.
+
+## Round 11 gate, L11 step 10000 (recorded 2026-10-27, 22:04 UTC): PASSED (learnable)
+
+| Form | Step 5000 | Step 10000 |
+|---|---|---|
+| Real | 0.933 | 0.933 |
+| Reconstruction | 0.917 | 0.917 |
+| One-step (sampled / mode) | 0.583 / 0.667 | 0.733 / 0.783 |
+| **Free run** | 0.55 | **0.667** (40 of 60) |
+
+- The declared gate was ≥ 0.20, so it passes.
+- **Free-run activity at step 10000:** body 1.39, left hand 1.95, right hand 2.22 (real 0.97 / 2.25 / 2.23).
+- **Per round 11's declaration,** the recipe (trimmed one-word clips, one-word corpora at weight 60, history dropout 0.5, part-valid loss) is the round-10 prior recipe once a coarse tokenizer passes.
+- **L11 continues to its declared step-20000 pilot** (rule D with amendment 2, on the R5 words). The reference is the control re-scored on the fixed sampler. Promising means it continues to 60000 and then the full declared chain.
