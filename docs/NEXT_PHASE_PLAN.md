@@ -2326,7 +2326,7 @@ H9 at step 20000:
 - **Per round 11's declaration,** the recipe (trimmed one-word clips, one-word corpora at weight 60, history dropout 0.5, part-valid loss) is the round-10 prior recipe once a coarse tokenizer passes.
 - **L11 continues to its declared step-20000 pilot** (rule D with amendment 2, on the R5 words). The reference is the control re-scored on the fixed sampler. Promising means it continues to 60000 and then the full declared chain.
 
-## Round 11 amendment 3: no validation-loss early stopping for L11 and L11c (declared 2026-10-27, 22:47 UTC, before L11c's reads or either pilot)
+## Round 11 amendment 3: no validation-loss early stopping for L11 and L11c (declared 2026-10-27, 22:45 UTC, before L11c's reads or either pilot)
 
 - **The problem.** `round5_prior.sh` stops a prior after 5 validations without a new best validation loss. L11c's validation loss has not improved since step 3000; coarse-only history raises teacher-forced loss by design, as it did for HC9. So L11c would stop at step 8000, before its declared step-10000 read and step-20000 pilot.
 - **Why the rule does not fit.** Teacher-forced validation loss is not the selection measure for these arms: B6's was better than every arm's while it could not sign. Free run and the pilot decide.
