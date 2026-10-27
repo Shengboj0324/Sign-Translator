@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 def english(label: str) -> str | None:
     """The English word of an ASL Citizen gloss label, or None when it is not a dictionary word."""
+    label = label.strip().upper().replace(" ", "-")       # WLASL glosses are lowercase English ("thank you")
     if re.search(r"-(CA|CL)\b", label) or re.match(r"\d", label):
         return None
     base = re.sub(r"^\([^)]*\)", "", label.split("/")[0])      # "(1)CHEAT", "(elbow)CHEAT" -> "CHEAT"
