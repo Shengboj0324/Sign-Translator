@@ -2247,7 +2247,7 @@ D7 (input corruption 1.0) at step 20000 against the re-scored control:
 - **Recipe:** t2xb's recipe plus `--velocity-cap 4` (new, opt-in, tested). A velocity term above 4 counts as 4 · (1 + ln(term / 4)), so one channel's runaway is log-compressed and cannot blow up the update. Terms below the cap are unchanged (typical values are about 0.3–1).
 - **Run:** smoke first, then 60000 steps with the same gates, in t2xb's freed slot.
 
-## Round 11 early read, L11 step 5000 (recorded 2026-10-27, 21:33 UTC; not the gate)
+## Round 11 early read, L11 step 5000 (recorded 2026-10-27, 21:32 UTC; not the gate)
 
 `exposure_diagnostic.py` on the 60 most frequent one-word training texts of `round10-mixed-v1` (trimmed clips), recogniser v2:
 
