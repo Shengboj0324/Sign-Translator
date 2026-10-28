@@ -3122,3 +3122,24 @@ Real reads 4.09 and blank 2.09. Blank is the translator's text prior; every gene
 - It is judged by the same instruments against end-to-end.
 
 Round 14 (Sem-Lex words, the word lever) proceeds independently: compositional sentences need the word quality and coverage it raises.
+
+### Round 14 pre-check PASSED: the tokenizer on Sem-Lex (2026-10-28, 14:30 UTC; `scripts/tokenizer_domain_read.py`)
+
+**Sample:** 300 Sem-Lex val video states (33 signers, 256 glosses), F12's tokenizer (the d2 weights), read by v2 top-5.
+
+| Form | Top-5 |
+|---|---|
+| Real | 0.567 [0.513, 0.620] |
+| Reconstruction masked like real | 0.550 |
+| **Difference** | **−0.017 [−0.057, +0.023]** (bar −0.15: **pass**) |
+| Reconstruction with every channel valid | 0.097 (−0.47, against −0.22 to −0.31 on ASLLVD and RIT) |
+
+The last row is a v2 penalty on the "every channel valid" form, not lost content.
+
+**References:** ASLLVD −0.02 and RIT +0.01 on the masked difference.
+
+**Reconstruction error:**
+- Hands, face and head match the other corpora: hands 6.4–6.7°, head 0.9°.
+- **Chest and pelvis 20°**, against 5–6° on ASLLVD and RIT. That is the upright-root torso, a distribution the tokenizer has not seen. It does not affect the bar; recorded as a known gap.
+
+The tokenizer fine-tune is not needed. Round 14 proceeds to its manifest once the train extraction lands.
