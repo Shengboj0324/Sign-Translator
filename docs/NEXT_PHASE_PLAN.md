@@ -2820,3 +2820,21 @@ So the converted Sem-Lex states carry the signs. The left-dominant gap is a prop
 3. Converting all 91,148 clips on CPU pods to `states-learned-v1/`.
 4. A lexical manifest. Labels come from the ASL-LEX code; Sem-Lex test stays held out.
 5. A declared generator round on F12 plus Sem-Lex words, aimed at coverage of the 42 uncovered R5 words.
+
+### Arm flags decomposed on v2's own clips (2026-10-28, 09:25 UTC; 300 ASL Citizen val clips; our extraction, MediaPipe visibility)
+
+| Variant | v2 top-5 | Δ vs upright_chest only [95% CI] |
+|---|---|---|
+| upright_chest only | 0.740 | — |
+| + upright_root | 0.727 | −0.013 [−0.040, +0.010] |
+| + elbow_in_image | 0.603 | −0.137 [−0.177, −0.097] |
+| + both | 0.603 | −0.137 [−0.180, −0.093] |
+| inside-image visibility, no flags | 0.603 | −0.137 |
+
+**What each flag does.**
+- **upright_root** changes no arm frame; it only makes Pelvis and Chest valid. Its cost is not distinguishable from 0, so the convention is acceptable.
+- **The elbow gate** removes 47% of left and 23% of right upper-arm frames. It carries the whole cost.
+
+**Caveat.** v2 was trained on states that keep MediaPipe's out-of-image elbows. This measures how far the gate moves the convention, not how accurate those arms are.
+
+**Before the recovery re-solve: an accuracy test.** How2Sign crops with two-view truth, comparing arms whose elbow lies outside the crop against arms whose elbow lies inside. If they are within 5° at the median, the recovery keeps those arms (no elbow gate); otherwise it keeps the gate. The raw landmarks are stored, so either choice is a re-solve.
