@@ -3217,3 +3217,31 @@ Rule, variants and verdict are unchanged.
 - Round 14 uses only the re-solved states.
 
 **If not judged mirrored:** Sem-Lex enters as extracted, and round 6's rule stands: no mirroring; left-dominant signers are reported, not removed.
+
+### Sem-Lex handedness: verdict (recorded 2026-10-28, 18:16 UTC)
+
+**The declared test is void.** Its wrist-path dominance measure failed the reference check built into the rule.
+
+| Corpus | Right-dominant signers, path measure | Right-dominant, round-5 height cue |
+|---|---|---|
+| How2Sign | 1.00 | 0.90 |
+| **ASLLVD** | **0.20** (its signers were confirmed right-dominant in round 5) | 0.83 |
+| RIT | 0.58 | 1.00 |
+| YouTube-ASL | 0.09 | 0.68 |
+| **Sem-Lex** (val + train, 29 signers decided) | 0.138 | **0.03** |
+
+The path measure has the weakness round 5 found when it rejected wrist-speed measures, and it reads right-dominant references as left.
+
+**Decision.**
+- The instrument is round 5's validated height cue (the dominant hand is the one held higher). It passes every reference: How2Sign, ASLLVD and RIT are all above 0.6.
+- Applying the declared thresholds to it, Sem-Lex at 0.03 is **judged mirrored**.
+- This replacement was made **after** seeing both measures, and that is recorded here plainly. Two independent grounds support the verdict without it:
+  - a 97% left-dominant signer population is physically implausible; signers are 85–90% right-dominant;
+  - ASL Citizen, recorded on the same Boston University webcam platform, is known to be mirrored.
+
+**Action.** Sem-Lex is re-solved from horizontally flipped raw landmarks (`scripts/unmirror_semlex_states.py`) to `states-video-v1-unmirrored/`.
+- Test identity: the flipped solve equals `mirror_state` of the stored state, to 3e-13.
+- After the re-solve, the height cue must read Sem-Lex's right-dominant fraction **above 0.6**, or the corpus is held out of round 14.
+- v2 and the tokenizer pre-check are repeated on the same 300 val clips. v2 is reported only; the tokenizer bar is −0.15.
+
+**Caveat.** This is a reflection of MediaPipe's estimates on mirrored video, not a re-estimation from flipped pixels.
