@@ -150,6 +150,7 @@ def _dir(name):
 def env(tmp_path, monkeypatch):
     CALLS.clear()
     monkeypatch.setattr(vl, "extract_clip", fake_extract_clip)
+    monkeypatch.setattr(vl, "inference_method", lambda: "test-method")   # CI has no mediapipe
     monkeypatch.setattr(job, "MAX_MEMBER_BYTES", 4096)
     digest, meta_sha, pinned = build(tmp_path)
     monkeypatch.setattr(poses, "KNOWN_MISSING", pinned)
@@ -314,6 +315,7 @@ def test_refusals_at_start(tmp_path, monkeypatch):
 def test_unexpected_gaps_exit_4_and_a_wrong_stream_exits_3(tmp_path, monkeypatch):
     CALLS.clear()
     monkeypatch.setattr(vl, "extract_clip", fake_extract_clip)
+    monkeypatch.setattr(vl, "inference_method", lambda: "test-method")   # CI has no mediapipe
     monkeypatch.setattr(job, "MAX_MEMBER_BYTES", 4096)
     digest, meta_sha, pinned = build(tmp_path, pinned_missing=())
     monkeypatch.setattr(poses, "KNOWN_MISSING", pinned)
@@ -432,6 +434,7 @@ def test_the_real_video_archives_are_pinned_with_their_gaps():
 def test_joined_and_multi_member_archives_are_read_to_the_end(tmp_path, monkeypatch, layout):
     CALLS.clear()
     monkeypatch.setattr(vl, "extract_clip", fake_extract_clip)
+    monkeypatch.setattr(vl, "inference_method", lambda: "test-method")   # CI has no mediapipe
     monkeypatch.setattr(job, "MAX_MEMBER_BYTES", 4096)
     digest, meta_sha, pinned = build(tmp_path, layout=layout)
     monkeypatch.setattr(poses, "KNOWN_MISSING", pinned)
@@ -455,6 +458,7 @@ def test_a_short_or_malformed_archive_is_an_error_not_a_silent_end(tmp_path, mon
 
 def test_a_stream_that_differs_from_its_pin_exits_3(tmp_path, monkeypatch):
     monkeypatch.setattr(vl, "extract_clip", fake_extract_clip)
+    monkeypatch.setattr(vl, "inference_method", lambda: "test-method")   # CI has no mediapipe
     monkeypatch.setattr(job, "MAX_MEMBER_BYTES", 4096)
     digest, meta_sha, pinned = build(tmp_path, pin_digest="e" * 64)
     monkeypatch.setattr(poses, "KNOWN_MISSING", pinned)
