@@ -3400,3 +3400,34 @@ The gate's failing checks are hand speed (left and right, c01, c03, c05, pool) a
 - Generated hands move about 1.3–1.5× faster than real, a motion-statistics defect to fix. The composed forms are worse still, at about 3×, because isolated signs are compressed into fitted durations.
 
 **Next** (proposed above): round 14 (Sem-Lex words); then a re-declared round 15 stage 2 (ordering, timing, transitions). Hand speed is a named target for both: a declared check on generated hand speed against real.
+
+## Round 14 declared: Sem-Lex words (declared 2026-10-28, 20:31 UTC, before launch)
+
+**Data.**
+- **`semlex-text-v1`** (sha b02ee6ae…): built from the **un-mirrored** Sem-Lex video states. 19,067 train and 6,483 val records; 33 signers; 2,148 ASL-LEX codes; trimmed median 1.25 s.
+  - Filters: frame rate below 20 dropped 10,709; hand tracked below 0.3 dropped 8,549; 162 refused; 3,252 in pinned archive gaps.
+  - Trim side: 89% right after un-mirroring.
+- **`round14-mixed-v1`** (sha e3ee8982…, 167,674 records): `round10-mixed-v1` byte-identical, plus `semlex-text-v1`.
+- **R5 coverage:** 31 of the 42 uncovered words now have training clips (11 with ≥5). The lexicon ceiling rises from 0.72 to **0.927**. Still uncovered: ALPHABET, BOLT, FEBRUARY, FOND, FOURTH, FRAUD, FRINGE, ICE, INCREDIBLE, MASSAGE, MUMMY.
+
+**Arm W14.** F12's recipe with one change, the data.
+- Warm start from F12 step 60000; F12's tokenizer (d2 step 5000).
+- History dropout 0.5, stage-1 history, part-valid loss.
+- Corpus weights: asllvd 3, rit 3, wlasl 3, **semlex-text-v1 3**.
+- Batch 64, `PATIENCE=0`, smoke stage first.
+
+**Pilot at step 10000** (1000 BLEU clips, R5 list pinned to round10's vocabulary):
+- **Rule D with amendment 2** against the re-scored control.
+- **Replacing F12** needs both, against F12's step-60000 pilot (`round12/pilot-f12-step60000.json`):
+  - a lexicon difference with 95% lower bound **above 0**;
+  - a paired BLEU difference with lower bound above −0.5 (sentences non-inferior).
+
+**Reported beside it** (declared at 20:10):
+- the lexicon split into the 108 previously covered and 42 newly covered words;
+- the lexicon read as generated and as mirrored.
+
+**Afterwards:** W14 composed by round 15's composer, BLEU against end-to-end and against the 2.58 real-word oracle (report).
+
+**Known limits.**
+- v2 reads un-mirrored Sem-Lex at 0.153, so gains on the newly covered words may be under-read. That is why the mirrored read is reported.
+- Sem-Lex val shares signers with train.
