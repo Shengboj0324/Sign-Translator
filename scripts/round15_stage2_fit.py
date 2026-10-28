@@ -33,10 +33,12 @@ ever decides a train sign's mapping); unmapped glosses left out. The groundwork'
 pointing, reorder moves) and ``fit_timing`` on ASLLRP train only (``check_fit_records``).
 
 **Check on ASLLRP val** (``evaluate``): bag precision / recall / F1, entry WER and Kendall tau of the shared entries for
-the stage-1 rule (``compositional.select_words``, which reproduces the groundwork's ``rule_check``), the stage-2
-selection alone, selection + token operations, and the full model (+ moves), each against stage 1 with a paired
-bootstrap, on all of val and on its held-out sentences (val is signer-disjoint, but ASLLRP elicits the same English
-from several signers: ``val_heldout_sentences`` keeps the val utterances whose English is not a train sentence); the lexicon's per-tier precision; the threshold sensitivity (refits at other thresholds, reported only);
+the stage-1 rule (``compositional.select_words``), the stage-2 selection alone, selection + token operations, and the
+full model (+ moves), each against stage 1 with a paired bootstrap, on all of val and on its held-out sentences (val is
+signer-disjoint, but ASLLRP elicits the same English from several signers: ``val_heldout_sentences`` keeps the val
+utterances whose English, contractions split on both sides (``sentence_key``), is not a train sentence). The gold is
+per sign (``gloss_table``); the groundwork's ``rule_check`` is reproduced separately with its own per-gloss-type table
+(``groundwork_table``, ``reproduction_groundwork_rule_check``); the lexicon's per-tier precision; the threshold sensitivity (refits at other thresholds, reported only);
 and the timing model's error on val sign durations against a constant (train median) baseline.
 
 Writes the model (``--model-file``, write-once, local: it holds ASLLRP-derived statistics, research terms) and the
@@ -144,13 +146,14 @@ def build_lexicon(vocab, signbank_lexicon: dict, signbank: dict, asllex_rows, se
     """{English: {"entry", "tier", "votes"}} (module docstring). ``signbank``: Sign Bank gloss -> Counter(entry) and
     ``semlex``: ASL-LEX code -> Counter(entry), from ``asllrp_gloss_corpus.vocabulary_indices``."""
     own = _own_signs(signbank_lexicon, asllex_rows)
+    keys = cg.vocabulary_keys(vocab)
     votes = collections.defaultdict(collections.Counter)          # (word, tier) -> Counter(entry)
 
     def add(word, entry, tier, owner_names=()):
         word = " ".join(cg.tokens(word))                          # keyed as the selection splits ("can not")
         if not word or len(word) <= 1 or word == entry or word in vocab or word in STOP_WORDS or word in cg.POINTING:
             return
-        if word in cg.vocabulary_keys(vocab) or not cg.lexicon_allowed(word, entry):
+        if word in keys or not cg.lexicon_allowed(word, entry):
             return                                                # a contraction entry's own form; or a lost negation
         if word in own and word not in owner_names:
             return                                                # a sign of its own, not this one
@@ -312,12 +315,12 @@ def prepare(parsed, corpora=ISOLATED_CORPORA) -> dict:
     lexicon = build_lexicon(vocab, parsed["signbank_lexicon"], signbank, parsed["asllex"], semlex,
                             record_counts(manifest, vocab, corpora))
     train = [r for r in rows if r["partition"] == "train"]
-    seen = {" ".join(normalise(r["english"])) for r in train}
+    seen = {cg.sentence_key(r["english"]) for r in train}
     val = [r for r in rows if r["partition"] == "val"]
     return dict(vocab=vocab, table=table, records=records, join=join, lexicon=lexicon,
                 groundwork_table=groundwork_table(records, vocab, signbank, codes, semlex),
                 annotated=annotated_seconds(manifest, vocab), train=train, val=val,
-                val_heldout=[r for r in val if " ".join(normalise(r["english"])) not in seen])
+                val_heldout=[r for r in val if cg.sentence_key(r["english"]) not in seen])
 
 
 # ---- checks on ASLLRP val ----------------------------------------------------------------------------------------

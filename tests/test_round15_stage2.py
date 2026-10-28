@@ -794,6 +794,31 @@ def test_contraction_entries_stay_reachable():
     assert cg.apply_structure(cg.selection_rows("I can't go", vocab), model, vocab)[0] == ["go", "can't"]
 
 
+@pytest.mark.parametrize("text,literal,contracted,entry", [
+    ("You are happy", ["happy"], "You're happy", "you're"),         # "you" stays a pronoun (it points), no you're
+    ("I am happy", ["happy"], "I'm happy", "i'm"),
+    ("I will not go", ["not", "go"], "I won't go", "won't"),
+    ("Do not go", ["not", "go"], "Don't go", "don't"),
+])
+def test_split_forms_match_only_contracted_text(text, literal, contracted, entry):
+    vocab = {"you're": 1., "i'm": 1., "won't": 1., "don't": 1., "happy": 1., "go": 1., "not": 1.}
+    assert cg.selected(cg.selection_rows(text, vocab)) == literal          # as stage 1 on the split tokens
+    assert comp.select_words(text, vocab) == literal
+    assert entry in cg.selected(cg.selection_rows(contracted, vocab))
+    assert cg.selected(cg.selection_rows(contracted, vocab)) == comp.select_words(contracted, vocab)
+    assert cg.marked_tokens(contracted)[:2] != [(t, False) for t in cg.tokens(contracted)[:2]]
+
+
+def test_vocabulary_index_follows_in_place_changes():
+    vocab = {"can't": 1., "go": 1.}
+    assert cg.selected(cg.selection_rows("I can't go", vocab)) == ["can't", "go"]
+    del vocab["can't"]
+    vocab["don't"] = 1.
+    assert cg.selected(cg.selection_rows("I can't go", vocab)) == ["go"]
+    assert cg.selected(cg.selection_rows("I don't go", vocab)) == ["don't", "go"]
+    assert cg.sentence_key("I don't know") == cg.sentence_key("I do not know") == "i do not know"
+
+
 @pytest.mark.parametrize("fit_", ["pad", "scale"])
 def test_plan_equals_reference_even_with_many_signs(fit_):
     p = cg.plan_frames([.3] * 30, .1, .5, fit_)

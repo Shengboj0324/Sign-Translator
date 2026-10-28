@@ -8,8 +8,9 @@ utterance stops the fit). How2Sign sentences are never an input to a fit; they a
 - tokens are ``tokens``: ``compositional.normalise`` with contractions split (``don't`` -> do not, ``it's`` -> it 's,
   ``mother's`` -> mother 's; the groundwork's ``english_tokens``), so negations and possessed nouns are visible;
 - entries are matched greedily left to right, longest first, single letters never (as stage 1), against the vocabulary
-  (``vocabulary_keys``: an entry with an apostrophe is also keyed by its split form, so "can't", "don't know" stay
-  reachable) and, for spans that are not a vocabulary entry, the **lexicon** (``lexicon``: English -> vocabulary entry,
+  (an entry with an apostrophe is also keyed by its split form, matched only on text contracted the same way, so
+  "can't", "don't know" stay reachable while "can not", "you are", "I am" match literally, as in stage 1;
+  ``marked_tokens``) and, for spans that are not a vocabulary entry, the **lexicon** (``lexicon``: English -> vocabulary entry,
   built from the Sign Bank and ASL-LEX tables, ``scripts/round15_stage2_fit.py``; a key with a negation never maps to
   an entry without one, ``lexicon_allowed``); a token that starts no entry tries the
   inflection fallback (stage 1's ``inflection_candidates``) against the vocabulary, then against the lexicon;
@@ -115,20 +116,31 @@ _IRREGULAR_NOT = {"won't": ("will", "not"), "can't": ("can", "not"), "shan't": (
 
 # ---- tokens and stage-2 selection --------------------------------------------------------------------------------
 
-def tokens(text) -> list[str]:
-    """``normalise``d words with contractions split (the groundwork's ``english_tokens``, moved here unchanged)."""
+def marked_tokens(text) -> list[tuple[str, bool]]:
+    """``tokens`` with, for each token, whether it came from splitting a contraction ("can't" -> (can, True),
+    (not, True); "can not" -> (can, False), (not, False))."""
     out = []
     for t in normalise(text):
         if t in _IRREGULAR_NOT:
-            out += _IRREGULAR_NOT[t]
+            out += [(w, True) for w in _IRREGULAR_NOT[t]]
             continue
         for suffix, word in _CONTRACTIONS:
             if t.endswith(suffix) and len(t) > len(suffix):
-                out += [t[:-len(suffix)], word]
+                out += [(t[:-len(suffix)], True), (word, True)]
                 break
         else:
-            out.append(t)
+            out.append((t, False))
     return out
+
+
+def tokens(text) -> list[str]:
+    """``normalise``d words with contractions split (the groundwork's ``english_tokens``, moved here unchanged)."""
+    return [t for t, _ in marked_tokens(text)]
+
+
+def sentence_key(text) -> str:
+    """A sentence as one string with contractions split, so "don't know" and "do not know" are the same sentence."""
+    return " ".join(tokens(text))
 
 
 def _matchable(entry: str, table) -> bool:
@@ -138,20 +150,34 @@ def _matchable(entry: str, table) -> bool:
 _KEYS: dict = {}
 
 
+def _vocabulary_index(vocab):
+    """(contraction keys, longest key in words) of a vocabulary, cached on its content (``frozenset``), so a
+    vocabulary changed in place is re-indexed. Contraction keys: {split form: (entry, contraction marks)} of every
+    entry with an apostrophe whose split form differs ("can't" -> "can not", marks (True, True); "don't know" ->
+    "do not know", marks (True, True, False))."""
+    content = frozenset(vocab)
+    cached = _KEYS.get(content)
+    if cached is None:
+        contractions = {}
+        for e in sorted(content):
+            if "'" in e:
+                marked = marked_tokens(e)
+                split = " ".join(t for t, _ in marked)
+                if split != e and split not in contractions:
+                    contractions[split] = (e, tuple(m for _, m in marked))
+        longest = max([len(k.split(" ")) for k in content] + [len(k.split(" ")) for k in contractions], default=0)
+        if len(_KEYS) > 8:
+            _KEYS.clear()
+        cached = _KEYS[content] = (contractions, longest)
+    return cached
+
+
 def vocabulary_keys(vocab) -> dict:
-    """{key: entry} of the vocabulary as ``tokens`` writes text: every entry under itself and, for an entry with an
-    apostrophe, also under its split form ("can't" -> "can not", "don't know" -> "do not know"), so contraction
-    entries stay reachable after the split (an entry's own text wins a clash). Cached for the last vocabulary."""
-    cached = _KEYS.get("last")
-    if cached is not None and cached[0] is vocab and cached[1] == len(vocab):
-        return cached[2]
+    """{key: entry}: every entry under itself and every contraction entry also under its split form (the keys a span
+    of ``tokens`` can reach; the split form only on text that was contracted, ``selection_rows``)."""
     keys = {e: e for e in vocab}
-    for e in sorted(vocab):
-        if "'" in e:
-            split = " ".join(tokens(e))
-            if split != e and split not in keys:
-                keys[split] = e
-    _KEYS["last"] = (vocab, len(vocab), keys, max((len(k.split(" ")) for k in keys), default=0))
+    for split, (e, _) in _vocabulary_index(vocab)[0].items():
+        keys.setdefault(split, e)
     return keys
 
 
@@ -163,22 +189,28 @@ def lexicon_allowed(key: str, entry: str) -> bool:
 
 def selection_rows(text, vocab, lexicon=None, stop_words=STOP_WORDS) -> list[dict]:
     """Every token span of ``tokens(text)`` with its fate, in order: ``{"tokens", "text", "entry", "kind", "tier"}``
-    (module docstring). Vocabulary entries are matched under ``vocabulary_keys`` (contraction entries through their
-    split form). ``lexicon``: {English (``tokens`` words joined by a space): {"entry", "tier"}}; its keys are used
-    only where no vocabulary entry matches the same span, and never when the entry would lose a negation."""
-    keys = vocabulary_keys(vocab)
-    longest_key = _KEYS["last"][3]
+    (module docstring). Vocabulary entries are matched by their own text and, for a contraction entry, by its split
+    form only where the text was contracted the same way (the span's contraction marks equal the entry's: "can't go"
+    reaches can't, "can not go" does not). ``lexicon``: {English (``tokens`` words joined by a space): {"entry",
+    "tier"}}; its keys are used only where no vocabulary entry matches the same span, and never when the entry would
+    lose a negation."""
+    contractions, longest_key = _vocabulary_index(vocab)
     lexicon = {k: v for k, v in (lexicon or {}).items() if len(k) > 1 and v["entry"] in vocab
                and len(v["entry"]) > 1 and lexicon_allowed(k, v["entry"])}
-    toks = tokens(text)
+    marked = marked_tokens(text)
+    toks, marks = [t for t, _ in marked], tuple(m for _, m in marked)
     longest = max([longest_key] + [len(w.split(" ")) for w in lexicon])
     rows, p = [], 0
     while p < len(toks):
         for n in range(min(longest, len(toks) - p), 0, -1):
             span = " ".join(toks[p:p + n])
-            if _matchable(span, keys) and len(keys[span]) > 1:
-                entry, tier = keys[span], None
-                kind = "stop" if span in stop_words or entry in stop_words else "exact"
+            c = contractions.get(span)
+            if c is not None and c[1] == marks[p:p + n] and len(c[0]) > 1:
+                entry, tier = c[0], None                              # the contracted text's own entry
+                kind = "stop" if entry in stop_words else "exact"
+            elif _matchable(span, vocab):
+                entry, tier = span, None
+                kind = "stop" if span in stop_words else "exact"
             elif span not in stop_words and _matchable(span, lexicon):
                 kind, entry, tier = "lexicon", lexicon[span]["entry"], lexicon[span]["tier"]
                 if entry in stop_words:
@@ -275,10 +307,11 @@ def learned_links(records, vocab, lexicon, *, min_count: int) -> dict:
     Pass 1 scores every (token, entry) pair by its Dice coefficient over utterances (entry unexplained for the
     token); pass 2 credits, in each utterance, every unexplained entry to the one token that explains it best (the
     highest score; ties by name), so ``teacher`` -> teach is not also ``listen`` -> teach; a token may take several
-    entries (a compound). Links are counted once per distinct English sentence (ASLLRP elicits the same English from
+    entries (a compound). Links are counted once per distinct English sentence (``sentence_key``: contractions
+    split, so "don't" and "do not" are one sentence; ASLLRP elicits the same English from
     several signers); pairs linked in fewer than ``min_count`` distinct sentences are left out. Pointing entries and
     stop words are never learned, and pronouns learn nothing (they point, ``POINTING``)."""
-    parsed = [(" ".join(normalise(r["english"])), _utterance_tokens(r, vocab, lexicon)) for r in records]
+    parsed = [(sentence_key(r["english"]), _utterance_tokens(r, vocab, lexicon)) for r in records]
     names = proper_nouns(records)
     pair, n_tok, n_ent = collections.Counter(), collections.Counter(), collections.Counter()
     utterance_pairs = []
@@ -317,7 +350,7 @@ def _token_stats(records, vocab, lexicon, pointing, *, min_count: int, learned: 
     utterance: min(the token's occurrences, the gold count of the candidate the other tokens' defaults leave
     unexplained). ``sentences``: the distinct English sentences the token occurs in (``min_count`` gates on them)."""
     links = learned_links(records, vocab, lexicon, min_count=min_count)
-    parsed = [(" ".join(normalise(r["english"])), _utterance_tokens(r, vocab, lexicon)) for r in records]
+    parsed = [(sentence_key(r["english"]), _utterance_tokens(r, vocab, lexicon)) for r in records]
     stats = {}
     for sentence, (gold, occ, default, base) in parsed:
         for t, n in occ.items():
@@ -451,7 +484,7 @@ def fit_structure(train, vocab, lexicon=None, *, threshold: float = .5, min_coun
             pooled[p] = dict(op="insert" if rate >= threshold else "drop", n=n, rate=round(rate, 4))
     model = dict(tokens=actions, pointing=pooled, moves={})
     seqs = [(apply_structure(selection_rows(r["english"], vocab, lexicon), model, vocab, moves=False)[0], r["gold"],
-             " ".join(normalise(r["english"]))) for r in train]
+             sentence_key(r["english"])) for r in train]
     movable = {e for words in move_classes.values() for e in words}
     counts = collections.Counter(e for s, _, _ in seqs for e in set(s) if e in movable)
     moves, report = {}, {}
