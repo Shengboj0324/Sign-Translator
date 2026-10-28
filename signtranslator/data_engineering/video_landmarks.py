@@ -114,6 +114,7 @@ class ClipLandmarks:
     other_person: np.ndarray | None = None  # (T,) largest other person's shoulder width / the widest person's (0 when
                                             # alone), held between counted frames; None when people were not counted
     image_size: tuple[int, int] | None = None  # (width, height) of the decoded frames, pixels; None when not recorded
+                                               # or when it changed within the video
 
 
 def assign_hands(clip: ClipLandmarks) -> dict[str, tuple[np.ndarray, np.ndarray]]:
@@ -192,10 +193,14 @@ def solve_rotations(world: np.ndarray, visible_pose: np.ndarray,
     ``upright_root`` (needs ``upright_chest``) completes the chain on frames without hips. Without
     it, such a frame stores the arms against the chest's world frame while the pelvis and the
     chest are invalid, so the chest frame is saved nowhere (forward kinematics then puts every arm
-    joint at the origin). With it, on frames whose pelvis is invalid but whose upright chest is
-    valid, the pelvis holds the identity (the camera-upright root: the same prior as the upright
-    chest, extended to the root) and counts as valid. The chest's local rotation is then its
-    world frame. The arms, hands, fingers and legs are unchanged; frames with hips are unchanged.
+    joint at the origin). With it, a clip that has any frame whose pelvis is invalid but whose
+    upright chest is valid gets the camera-upright root on every frame: the pelvis holds the
+    identity (the same prior as the upright chest, extended to the root), valid wherever the
+    pelvis or the chest is, and the chest's local rotation is its world frame. The decision is
+    per clip, not per frame, so the stored pelvis and chest do not jump when the hips come and
+    go (the chest's world frame is the same either way). The legs, solved against the real
+    pelvis, are then invalid on every frame of that clip. The arms, hands and fingers are
+    unchanged, and a clip whose chest frames all have hips is unchanged.
     """
     if upright_root and not upright_chest:
         raise ValueError("upright_root needs upright_chest")
@@ -218,13 +223,19 @@ def solve_rotations(world: np.ndarray, visible_pose: np.ndarray,
     pelvis_ok &= visible[:, MID_HIP] & visible[:, MID_SHOULDER]
     chest_ok &= visible[:, MID_SHOULDER] & (True if upright_chest else visible[:, MID_HIP])
     body = solve_chain(points, {"Pelvis": (pelvis, pelvis_ok), "Chest": (chest, chest_ok)}, BODY_JOINTS, visible)
-    if upright_root:                       # after the chain solve: only the stored root changes
-        root = ~pelvis_ok & chest_ok
-        pelvis = np.where(root[:, None, None], np.eye(3), pelvis)
-        pelvis_ok = pelvis_ok | root
+    root = upright_root and bool((~pelvis_ok & chest_ok).any())   # per clip: some chest frame lacks hips
+    if root:                               # after the chain solve: only the stored root (and the legs) change
+        pelvis = np.broadcast_to(np.eye(3), pelvis.shape).copy()
+        pelvis_ok = pelvis_ok | chest_ok
     chest_local = np.einsum("tji,tjk->tik", pelvis, chest)
     rotations = {"Pelvis": (pelvis, pelvis_ok), "Chest": (chest_local, pelvis_ok & chest_ok)}
     rotations.update({j.name: (body[j.name][0], body[j.name][2]) for j in BODY_JOINTS})
+    if root:                               # the legs were solved against the real pelvis
+        for j in BODY_JOINTS:
+            if j.parent == "Pelvis" or any(j.parent == k.name and k.parent == "Pelvis" for k in BODY_JOINTS):
+                rotations[j.name] = (rotations[j.name][0], np.zeros_like(rotations[j.name][1]))
+    if upright_root:
+        rotations["_upright_root"] = (None, root)
     hand_rotations = {}
     for side, (hand_points, found) in hands.items():
         frame, ok = frame_from_axes(hand_points[:, 5] - hand_points[:, 17], hand_points[:, 9] - hand_points[:, 0])
@@ -265,6 +276,7 @@ def canonical_from_landmarks(clip: ClipLandmarks, *, sample_id: str, source_id: 
     rotations, hand_rotations = solve_rotations(world, visible_pose, hands, upright_chest=upright_chest,
                                                 elbow_in_image=elbow_in_image, pose_image=clip.pose_image,
                                                 upright_root=upright_root)
+    root_applied = bool(rotations.pop("_upright_root", (None, False))[1])
     hands = {side: (None, hands[side][1]) for side in hands}
     def rotation_channel(names, table):
         mats = np.stack([table[n][0] for n in names], axis=1)
@@ -315,7 +327,8 @@ def canonical_from_landmarks(clip: ClipLandmarks, *, sample_id: str, source_id: 
                   unavailable=sorted(n for n, c in channels.items() if not c.valid.any()))
     if upright_root:
         report["upright_root"] = True
-        report["upright_root_frames"] = int((rotations["Pelvis"][1] & ~(visible_pose[:, L_HIP] & visible_pose[:, R_HIP])).sum())
+        report["upright_root_applied"] = root_applied          # the clip's pelvis is the identity on every frame
+        report["upright_root_frames"] = int(rotations["Pelvis"][1].sum()) if root_applied else 0
     if elbow_in_image:
         inside = elbows_in_image(clip.pose_image)
         report["elbow_in_image"] = True
@@ -450,7 +463,7 @@ def extract_clip(video: Path, models: dict[str, Path], *, start_seconds: float =
         base_options=base(model_asset_path=str(models["pose_landmarker_heavy.task"])),
         running_mode=vision.RunningMode.IMAGE, num_poses=3)) if count_people_every > 0 else None
     other = 0.
-    rows, names, image_size = [], None, None
+    rows, names, sizes = [], None, set()
 
     def to_image(array):
         return mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(array))
@@ -476,10 +489,7 @@ def extract_clip(video: Path, models: dict[str, Path], *, start_seconds: float =
             rgb = frame.to_ndarray(format="rgb24")
             height, width = rgb.shape[:2]
             size = np.array([width, height], dtype=np.float64)
-            if image_size is None:
-                image_size = (int(width), int(height))
-            elif image_size != (int(width), int(height)):
-                raise ValueError("the frame size changed within the video")
+            sizes.add((int(width), int(height)))
             p = pose.detect_for_video(to_image(rgb), ms)
             row = dict(t=t, pose_found=bool(p.pose_world_landmarks), hw=[], hi=[])
             if counter is not None:
@@ -548,7 +558,7 @@ def extract_clip(video: Path, models: dict[str, Path], *, start_seconds: float =
         blendshapes=np.stack([r.get("bs", np.zeros(width_bs)) for r in rows]),
         blendshape_names=names or (), face_matrix=np.stack([r.get("fm", np.eye(4)) for r in rows]),
         face_found=np.array([r["face_found"] for r in rows]), roi=roi,
-        other_person=np.array([r["other"] for r in rows]) if counter is not None else None, image_size=image_size)
+        other_person=np.array([r["other"] for r in rows]) if counter is not None else None, image_size=next(iter(sizes)) if len(sizes) == 1 else None)   # None: the frame size changed
 
 
 def inference_method() -> str:

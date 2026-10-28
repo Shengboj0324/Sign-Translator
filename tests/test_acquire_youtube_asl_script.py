@@ -244,6 +244,11 @@ def test_arm_recovery_writes_beside_the_original_and_reports_the_recovery(monkey
     recovered = {k: store.get(k) for k in store.list("yt/arm-recovery-v1/")}
     assert acq.process("abcdefghijk", args, store, models=None)["status"] == "duplicate"
     assert {k: store.get(k) for k in store.list("yt/arm-recovery-v1/")} == recovered
+    # a report whose status this run retries is not final: the retried video converts and replaces it
+    store.put("yt/arm-recovery-v1/videos/abcdefghijk.json", json.dumps(dict(status="no_captions")).encode())
+    retry = types.SimpleNamespace(**vars(args), retry_status=["no_captions"])
+    assert acq.process("abcdefghijk", retry, store, models=None)["status"] == "converted"
+    assert acq.process("abcdefghijk", args, store, models=None)["status"] == "duplicate"   # not retried: final
     with pytest.raises(SystemExit):
         acq.apply_arm_recovery(types.SimpleNamespace(prefix="yt/arm-recovery-v1", arm_recovery=True))
     plain = types.SimpleNamespace(prefix="yt", arm_recovery=False)

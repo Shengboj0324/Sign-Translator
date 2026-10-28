@@ -198,6 +198,14 @@ ARM_RECOVERY_METHOD = ("; chest up axis from the camera vertical (upright prior)
                        "solved from the stored raw landmarks")
 
 
+def final_report(store, key: str, args) -> bool:
+    """Whether a stored video report exists and is final: its status is not one this run retries (``--retry-status``),
+    so a retried video is converted and its report replaced, while a converted one is never overwritten."""
+    if not store.exists(key):
+        return False
+    return json.loads(store.get(key)).get("status") not in set(getattr(args, "retry_status", None) or ())
+
+
 def apply_arm_recovery(args) -> None:
     """``--arm-recovery``: every key this run writes moves under ``<prefix>/arm-recovery-v1``; the original prefix
     is kept as ``args.original_prefix`` (read only, for the before/after comparison)."""
@@ -451,7 +459,7 @@ def process(video_id: str, args, store, models, gate=None, *, staged: bool = Fal
                              available_channels=[n for n, c in state.channels.items() if c.valid.any()],
                              **({} if part.other_person is None else
                                 dict(other_person_fraction=round(other_person_fraction(part), 3))), **extra))
-    if (staged or recovery) and store.exists(f"{args.prefix}/videos/{video_id}.json"):
+    if (staged or recovery) and final_report(store, f"{args.prefix}/videos/{video_id}.json", args):
         # another extractor converted this video meanwhile (a claim taken over before claims were refreshed): its
         # states and report stay as they are; overwriting them would desynchronise every manifest built from them
         return dict(video_id=video_id, status="duplicate", reason="converted by another extractor first")

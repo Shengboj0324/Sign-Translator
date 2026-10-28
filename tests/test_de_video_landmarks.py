@@ -260,7 +260,8 @@ def test_upright_root_keeps_the_chest_frame_without_hips():
             np.testing.assert_array_equal(body_new.valid[:, j], body_old.valid[:, j], err_msg=name)
     for name in ("left_hand", "right_hand", "face", "head_rotation"):
         np.testing.assert_array_equal(new.channels[name].values, old.channels[name].values)
-    assert report["upright_root"] and report["upright_root_frames"] == T and "upright_root" not in old_report
+    assert report["upright_root"] and report["upright_root_applied"] and report["upright_root_frames"] == T
+    assert "upright_root" not in old_report
     # the chest's stored local rotation is its upright world frame: forward kinematics recovers the shoulders
     joints, positions, _ = skeleton_positions(new)
     _, old_positions, _ = skeleton_positions(old)
@@ -275,7 +276,32 @@ def test_upright_root_keeps_the_chest_frame_without_hips():
     for name in with_hips.channels:
         np.testing.assert_array_equal(with_hips.channels[name].values, with_hips_root.channels[name].values)
         np.testing.assert_array_equal(with_hips.channels[name].valid, with_hips_root.channels[name].valid)
-    assert root_report["upright_root_frames"] == 0
+    assert not root_report["upright_root_applied"] and root_report["upright_root_frames"] == 0
+
+
+def test_upright_root_is_decided_per_clip_so_the_root_does_not_jump_when_hips_come_and_go():
+    visibility = clip().pose_visibility.copy()
+    visibility[3:, 23:] = 0.                                                   # hips seen on frames 0-2 only
+    c = replace(clip(), pose_visibility=visibility)
+    kw = dict(sample_id="s", source_id="src", source_sha256="a" * 64, clock_id="c", inference_method="test",
+              upright_chest=True)
+    old, _ = canonical_from_landmarks(c, **kw)
+    new, report = canonical_from_landmarks(c, upright_root=True, **kw)
+    labels = new.channels["body"].labels
+    get = lambda state, name: state.channels["body"].values[:, labels.index(name)]
+    ok = lambda state, name: state.channels["body"].valid[:, labels.index(name)]
+    matrix = lambda v: rotation_6d_to_matrix(torch.from_numpy(np.ascontiguousarray(v))).numpy()
+    assert report["upright_root_applied"] and ok(new, "Pelvis").all() and ok(new, "Chest").all()
+    np.testing.assert_allclose(get(new, "Pelvis"), np.tile([1., 0., 0., 0., 1., 0.], (T, 1)), atol=1e-12)
+    for name in ("LeftThigh", "LeftShin", "RightThigh", "RightShin"):            # solved against the real pelvis
+        assert ok(old, name)[:3].all() and not ok(new, name).any(), name
+    hips = ok(old, "Chest")                                                    # frames where the old chain is complete
+    assert hips[:3].all() and not hips[3:].any()
+    old_chest_world = matrix(get(old, "Pelvis")[hips]) @ matrix(get(old, "Chest")[hips])   # invalid rows are zero
+    np.testing.assert_allclose(matrix(get(new, "Chest")[hips]), old_chest_world, atol=1e-6)
+    for name in labels:
+        if name.endswith(("UpperArm", "Forearm", "Hand")):
+            np.testing.assert_array_equal(get(new, name), get(old, name), err_msg=name)
 
 
 def test_raw_landmarks_keep_the_frame_size():

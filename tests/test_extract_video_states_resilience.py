@@ -38,3 +38,9 @@ def test_quality_of_a_stored_state():
         head_rotation=channel(np.ones((t, 1)), ("Head",))))
     assert job.state_quality(state) == dict(frames=6, face_frames=6, left_hand_frames=0, right_hand_frames=3,
                                             arm_frames={"LeftForearm": 3, "RightForearm": 6}, quality_from_state=True)
+
+
+def test_upright_root_without_upright_chest_is_refused_before_any_work():
+    import pytest
+    with pytest.raises(SystemExit, match="needs --upright-chest"):
+        job.main(["--zip-key", "z", "--zip-sha256", "0" * 64, "--prefix", "p", "--models-dir", "m", "--upright-root"])

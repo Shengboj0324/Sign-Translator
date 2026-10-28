@@ -206,6 +206,8 @@ def main(argv=None) -> int:
                         help="hand crop side in shoulder widths (wide studio shots with small hands: 1.8; RIT, 2026-10-26)")
     parser.add_argument("--match", help="only clips whose file name matches this regular expression")
     args = parser.parse_args(argv)
+    if args.upright_root and not args.upright_chest:
+        raise SystemExit("--upright-root needs --upright-chest")
     if not 0 <= args.shard < args.shards:
         raise SystemExit("shard must be in [0, shards)")
     from signtranslator.data.text_motion_dataset import R2Store
