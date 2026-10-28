@@ -53,6 +53,9 @@ def build(root: Path, *, extra_members=()):
                  label="cat") for v in IDS + ["clipBADSHAPExxxxxxxx", "clipMISSINGFROMTAR00"]]
     rows.append(dict(video_id="clipVALSPLITxxxxxxxx", signer_id="8", duration="300", split="val", label_type="asllex",
                      label="dog"))
+    rows.append(dict(rows[0]))                                   # an exact repeat (the pinned CSV has 1,540)
+    rows.append(dict(rows[1], label="theater"))                  # a repeat that differs in label: still one duration
+    rows.append(dict(rows[1], split="val"))                      # listed in another split as well
     text = io.StringIO()
     writer = csv.DictWriter(text, fieldnames=list(rows[0]))
     writer.writeheader()
@@ -115,7 +118,9 @@ def test_converts_streams_and_reports(tmp_path, monkeypatch):
     assert "shape" in by["clipBADSHAPExxxxxxxx"]["reason"] and by["clipNOTINMETADATA000"]["reason"] == "not in the metadata"
     assert {m["name"] for m in report["unexpected_members"]} == {"../escape.npy", "test/sub/clip.npy"}
     assert report["completeness"] == dict(expected_in_shard=6, seen_in_shard=5, missing=["clipMISSINGFROMTAR00"],
-                                          missing_count=1)
+                                          missing_count=1, known_missing_count=0,
+                                          unexpected_missing=["clipMISSINGFROMTAR00"], unexpected_missing_count=1)
+    assert job.exit_code(report) == 4
     for v in IDS:
         r = by[v]
         path = tmp_path / r["state_key"]
@@ -218,13 +223,141 @@ def test_truncated_or_corrupt_pose_files_are_refusals(tmp_path):
 
 
 def test_exit_codes():
-    ok = dict(status_counts={"converted": 3}, completeness=dict(missing_count=0))
-    assert job.exit_code(ok) == 0
+    ok = dict(status_counts={"converted": 3}, completeness=dict(missing_count=2, unexpected_missing_count=0))
+    assert job.exit_code(ok) == 0                                 # known gaps only
     assert job.exit_code(dict(ok, status_counts={"error": 1})) == 2
     assert job.exit_code(dict(ok, status_counts={"failed": 1})) == 3
     assert job.exit_code(dict(ok, status_counts={"exists_different": 1, "error": 1})) == 3
-    assert job.exit_code(dict(ok, completeness=dict(missing_count=2))) == 3
-    assert job.exit_code(dict(ok, completeness=dict(missing_count=None))) == 0     # a smoke run checks no completeness
+    assert job.exit_code(dict(ok, completeness=dict(missing_count=2, unexpected_missing_count=1))) == 4
+    assert job.exit_code(dict(ok, status_counts={"error": 1},
+                              completeness=dict(unexpected_missing_count=1))) == 2   # rerun first
+    assert job.exit_code(dict(ok, completeness=dict(missing_count=None))) == 0     # a smoke run judges nothing
+    assert set(job.EXIT_CODES) == {0, 2, 3, 4}
+
+
+def test_pinned_known_gaps_do_not_fail_a_shard(tmp_path, monkeypatch):
+    digest, meta_sha = build(tmp_path)
+    pinned = tmp_path / "known.json"
+    pinned.write_text(json.dumps(dict(splits=dict(test=dict(archive_sha256=digest, missing=["clipMISSINGFROMTAR00"])))))
+    monkeypatch.setattr(job, "KNOWN_MISSING", pinned)
+    report = run(tmp_path, digest, meta_sha)
+    assert report["completeness"]["known_missing_count"] == 1 and report["completeness"]["unexpected_missing_count"] == 0
+    assert job.exit_code(report) == 0
+    pinned.write_text(json.dumps(dict(splits=dict(test=dict(archive_sha256="0" * 64, missing=["clipMISSINGFROMTAR00"])))))
+    assert job.known_missing("test", digest) == set()            # pinned for another archive: not applied
+
+
+def test_a_split_pinned_as_video_is_refused_at_start(tmp_path, monkeypatch):
+    digest, meta_sha = build(tmp_path)
+    pinned = tmp_path / "known.json"
+    pinned.write_text(json.dumps(dict(splits=dict(test=dict(archive_sha256=digest, format="webm", missing=None)))))
+    monkeypatch.setattr(job, "KNOWN_MISSING", pinned)
+    with pytest.raises(SystemExit, match="webm"):
+        run(tmp_path, digest, meta_sha)
+    assert job.known_missing("test", digest) == set() and job.archive_format("test", "0" * 64) is None
+
+
+def test_the_inventory_finds_gaps_and_formats(tmp_path):
+    import semlex_archive_inventory as inventory
+    digest, meta_sha = build(tmp_path)
+    store = job.make_store(f"dir:{tmp_path}")
+    metadata = job.load_metadata(store, f"{BASE}/data/semlex_metadata.csv", meta_sha)
+    found = inventory.inventory(store, "test", metadata)
+    assert found["format"] == "npy" and found["missing"] == ["clipMISSINGFROMTAR00"] and found["archive_sha256"] == digest
+    assert found["no_metadata_row"] == ["clipNOTINMETADATA000"]
+    video = io.BytesIO()
+    with tarfile.open(fileobj=video, mode="w:gz") as tar:
+        info = tarfile.TarInfo("./val/clipVALSPLITxxxxxxxx.webm")
+        info.size = 3
+        tar.addfile(info, io.BytesIO(b"abc"))
+    (tmp_path / BASE / "data/val.tar.gz").write_bytes(video.getvalue())
+    (tmp_path / BASE / "data/val.tar.gz.provenance.json").write_text(json.dumps(dict(
+        sha256=hashlib.sha256(video.getvalue()).hexdigest(), verified_by_r2_reread=True)))
+    found = inventory.inventory(store, "val", metadata)
+    assert found["format"] == "webm" and found["missing"] is None and found["pose_members"] == 0
+
+
+def test_the_pinned_inventory_matches_its_archives():
+    pinned = json.loads(job.KNOWN_MISSING.read_text())
+    test = pinned["splits"]["test"]
+    assert test["format"] == "npy" and len(test["missing"]) == 101 and test["archive_sha256"].startswith("729397ee")
+    assert all(pinned["splits"][s]["format"] != "npy" for s in ("val", "train") if s in pinned["splits"])
+
+
+def test_repeated_metadata_rows():
+    rows = [dict(video_id="a", split="train", duration="1000"), dict(video_id="a", split="val", duration="1000")]
+    assert job.split_duration(rows, "val") == (1000., None) and job.split_duration(rows, "test")[1] == "metadata split train"
+    assert job.split_duration([], "test") == (None, "not in the metadata")
+    clash = [dict(video_id="a", split="test", duration="1000"), dict(video_id="a", split="test", duration="1100")]
+    assert "conflicting" in job.split_duration(clash, "test")[1]
+
+
+def test_a_corrupt_write_is_failed_and_a_corrupt_object_is_never_present(tmp_path, monkeypatch):
+    from signtranslator.data.text_motion_dataset import DirectoryStore
+    store = DirectoryStore(tmp_path)
+
+    class Corrupting(DirectoryStore):
+        def __init__(self, root):
+            super().__init__(root)
+            self.s3, self.bucket = self, "b"
+
+        def _call(self, function):
+            return function()
+
+        def put_object(self, Bucket, Key, Body, Metadata, IfNoneMatch):
+            path = Path(self.root) / Key
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(Body[:-1] + b"!")                    # the store keeps different bytes
+
+    corrupting = Corrupting(tmp_path)
+    with pytest.raises(job.StoreCorruption):
+        job.put_once(corrupting, "k/state.npz", b"payload")
+    assert not job.transient(job.StoreCorruption("x"))
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    calls = []
+
+    def once(j):
+        calls.append(j)
+        raise job.StoreCorruption("R2 re-read mismatch")
+    monkeypatch.setattr(job, "_process_once", once)
+    assert job._process(("v", "test", b"", 1., "p"))["status"] == "failed" and len(calls) == 1
+    # the corrupt object left behind is reported as exists_different, never as already_present
+    assert job.put_once(store, "k/state.npz", b"payload", equivalent=job.same_state) == "exists_different"
+
+
+def test_an_existing_state_is_present_only_if_it_is_this_runs_state(tmp_path):
+    from dataclasses import replace
+    from signtranslator.data_engineering.semlex_pose import convert_array
+    array, *_ = semlex_array((640, 480))
+    state, _ = convert_array(array, 8000 / 30, fake_resources(), video_id="v", source_sha256="a" * 64,
+                             blendshape_model=FakeBlendshapes())
+    state.save(tmp_path / "a.npz")
+    nudged = replace(state, channels=dict(state.channels, face=replace(
+        state.channels["face"], values=np.where(state.channels["face"].valid[..., None],
+                                                state.channels["face"].values + 1e-9, 0.))))
+    nudged.save(tmp_path / "b.npz")
+    changed = replace(state, channels=dict(state.channels, face=replace(
+        state.channels["face"], values=np.where(state.channels["face"].valid[..., None],
+                                                state.channels["face"].values * .5, 0.))))
+    changed.save(tmp_path / "c.npz")
+    a, b, c = ((tmp_path / f"{n}.npz").read_bytes() for n in "abc")
+    assert job.same_state(a, a) == "bytes" and job.same_state(a, b) == "content" and job.same_state(a, c) is None
+    assert job.same_state(b"garbage", a) is None
+
+
+def test_resume_reconverts_and_checks_the_stored_state(tmp_path):
+    digest, meta_sha = build(tmp_path)
+    first = run(tmp_path, digest, meta_sha)
+    by = {r["video_id"]: r for r in first["results"]}
+    key = tmp_path / by[IDS[2]]["state_key"]
+    key.write_bytes(b"not a state")                              # a stored object that is not this run's state
+    second = run(tmp_path, digest, meta_sha)
+    again = {r["video_id"]: r for r in second["results"]}
+    assert again[IDS[0]]["status"] == "already_present" and again[IDS[0]]["state_sha256"] == by[IDS[0]]["state_sha256"]
+    bad = again[IDS[2]]
+    assert bad["status"] == "exists_different" and bad["state_sha256"] is None
+    assert bad["stored_sha256"] == hashlib.sha256(b"not a state").hexdigest() and bad["this_run_sha256"]
+    assert job.exit_code(second) == 3
 
 
 def test_the_default_is_the_pinned_bundle_and_prefixes_are_bundle_named(tmp_path):
@@ -244,6 +377,18 @@ def test_the_default_is_the_pinned_bundle_and_prefixes_are_bundle_named(tmp_path
         job.state_prefix(other)
     other.prefix = f"{BASE}/adapter-dev/experiment"
     assert job.state_prefix(other) == f"{BASE}/adapter-dev/experiment"
+    production = job.state_prefix(args)
+    other.prefix = production                                    # another bundle may not write under states-
+    with pytest.raises(SystemExit, match="exact production name"):
+        job.state_prefix(other)
+    other.prefix = f"{BASE}/states-something-else"
+    with pytest.raises(SystemExit, match="exact production name"):
+        job.state_prefix(other)
+    args.prefix = production + "/"                               # the pinned bundle at its exact name: allowed
+    assert job.state_prefix(args) == production
+    args.prefix = f"{BASE}/states-semlex-holistic-learned-world-v2-elsewhere"
+    with pytest.raises(SystemExit, match="exact production name"):
+        job.state_prefix(args)
     with pytest.raises(SystemExit, match="go together"):
         job.parse_args(["--split", "test", "--archive-sha256", digest, "--regressors-key", "k"])
     with pytest.raises(SystemExit, match="no regressor"):
@@ -265,6 +410,9 @@ def test_the_learned_path_loads_its_bundle_and_uses_the_generator_convention(tmp
     assert job._WORKER["learned"]["regressors"].sha256 == sha and job._WORKER["learned"]["flags"] == "generator"
     with pytest.raises(SystemExit, match="pinned"):                     # not the pinned bundle and no --prefix
         run(tmp_path, digest, meta_sha, "--regressors-key", key, "--regressors-sha256", sha, pseudo=False)
+    with pytest.raises(SystemExit, match="exact production name"):     # nor under a states- prefix
+        run(tmp_path, digest, meta_sha, "--regressors-key", key, "--regressors-sha256", sha, "--prefix",
+            f"{BASE}/states-semlex-holistic-learned-world-v2-{sha[:12]}", pseudo=False)
     prefix = f"{BASE}/adapter-dev/tiny"
     report = run(tmp_path, digest, meta_sha, "--regressors-key", key, "--regressors-sha256", sha, "--prefix", prefix,
                  pseudo=False)

@@ -136,3 +136,12 @@ def test_mixed_bundles_and_unverified_inputs_are_refused(tmp_path):
     lex.write_bytes(lex.read_bytes() + b"tampered,x,y,z\n")
     with pytest.raises(SystemExit, match="ASL-LEX"):
         job.main(argv)
+
+
+def test_repeated_metadata_rows_are_resolved():
+    row = dict(video_id="a", split="train", duration="1000", label_type="asllex", label="cat_3")
+    assert job.resolve_rows([row]) == (row, None)
+    assert job.resolve_rows([row, dict(row, label="theater")]) == (None, "skip:ambiguous_label")
+    assert job.resolve_rows([row, dict(row, split="val")]) == (row, "info:train_val_listing_kept_in_train")
+    assert job.resolve_rows([dict(row, split="test"), dict(row, split="val")]) == (None, "skip:test_and_other_split")
+    assert job.resolve_rows([row, dict(row, duration="1100")]) == (None, "skip:conflicting_durations")

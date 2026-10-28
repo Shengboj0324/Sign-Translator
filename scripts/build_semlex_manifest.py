@@ -20,6 +20,11 @@ corpora (``corpus_manifest.build_corpus_manifest``; records like ``rit-text-r6``
 **Partitions.** Sem-Lex's own splits, unchanged: train, val, test (held out). They share signers, so the split is
 recorded as not signer-disjoint, with the overlap. ``performer_sha256`` is the SHA-256 of ``semlex-signer:<id>``.
 
+**Repeated ids.** The metadata repeats 2,854 video ids (2,974 extra rows). Exact repeats collapse to one row. An id
+whose rows disagree on label type or label is skipped (``skip:ambiguous_label``); an id listed in train and val (995)
+is kept in train only (``info:train_val_listing_kept_in_train``); an id listed in test and in another split, or with
+rows that disagree on duration within its split, is skipped. Conversion results are matched by (id, split).
+
 **Filters** (each counted): no converted state (refused, failed, error or missing in the reports); below
 ``--min-fps``; a hand (either side) tracked on fewer than ``--min-hand`` of the frames; then the trim of
 ``build_trimmed_word_manifest.py`` (``sign_window``, the dominant wrist's active span on the state at 24 fps, the same
@@ -94,10 +99,28 @@ def latest_results(store, prefix: str) -> tuple[dict, list[str], set[str]]:
         report = json.loads(store.get(key))
         bundles.add(report.get("regressors_sha256"))
         for r in report["results"]:
-            previous = results.get(r["video_id"])
+            key_ = (r["video_id"], r.get("split"))
+            previous = results.get(key_)
             if r.get("state_sha256") or previous is None or not previous.get("state_sha256"):
-                results[r["video_id"]] = r
+                results[key_] = r
     return results, keys, bundles
+
+
+def resolve_rows(rows: list[dict]) -> tuple[dict | None, str | None]:
+    """One metadata row for a video id with (possibly) repeated rows, or (None, reason)."""
+    if len({(r["label_type"], r["label"]) for r in rows}) > 1:
+        return None, "skip:ambiguous_label"
+    splits = {r["split"] for r in rows}
+    if "test" in splits and len(splits) > 1:
+        return None, "skip:test_and_other_split"
+    note = None
+    if splits == {"train", "val"}:
+        rows, note = [r for r in rows if r["split"] == "train"], "info:train_val_listing_kept_in_train"
+    elif len(splits) > 1:
+        return None, "skip:conflicting_splits"
+    if len({r["duration"] for r in rows}) > 1:
+        return None, "skip:conflicting_durations"
+    return rows[0], note
 
 
 def trim_window(state, threshold: float, margin: float, min_tracked: float, min_seconds: float):
@@ -145,7 +168,13 @@ def build(store, args) -> tuple[dict, dict]:
         raise SystemExit(f"the reports name more than one regressor bundle: {sorted(bundles)}")
     counts = collections.Counter()
     records, signers_by_split = [], collections.defaultdict(set)
-    for video_id, row in sorted(metadata.items()):
+    for video_id, rows in sorted(metadata.items()):
+        row, why = resolve_rows(rows)
+        if row is None:
+            counts[why] += 1
+            continue
+        if why:
+            counts[why] += 1
         split = row["split"]
         counts[f"metadata:{row['label_type']}"] += 1
         if row["label_type"] == "asllex":
@@ -167,7 +196,7 @@ def build(store, args) -> tuple[dict, dict]:
             if row["label"].split(".")[0] in signbank_ids:
                 counts["info:signbank_mappable_through_asllex"] += 1
             continue
-        result = results.get(video_id)
+        result = results.get((video_id, split))
         if result is None:
             counts["drop:no_conversion_result"] += 1
             continue
