@@ -2904,3 +2904,45 @@ The independent adversarial review found no leakage, no pin mismatch and no regr
 Every generated form is above blank (0.002): it contains sign-like motion. None is above its own mismatched control.
 
 **Reading.** Generated sentences do not contain their sentence's words more than another sentence's. This agrees with BLEU at the blank's level. The sentence exposure diagnostic, under way, locates where the meaning is lost.
+
+### Sem-Lex gate v2 PASSED (recorded 2026-10-28, 10:21 UTC; agent branch 1c9c05ad + 8fdc4585, under its second independent review)
+
+**Regressors v2.**
+- **Inputs:** legacy MediaPipe Holistic (mediapipe 0.10.14, `model_complexity=1`, `refine_face_landmarks`). Its distributions match Sem-Lex closely on webcam framing:
+  - face z/x 0.748 against 0.742;
+  - hands 0.386 against 0.392;
+  - pose 1.84 against 1.88.
+- **Data:** 1,199 How2Sign crop pairs. **Signer 9 excluded.** Components: train 3, 4, 5, 8, 11; val 1 and 2.
+- **Bundle** sha 0953cd2c…
+- **Val errors** (median, degrees):
+
+| | Regressors v2 | Pseudo-world |
+|---|---|---|
+| Fingers | 8.8–11.1 | 24–29 |
+| Upper arms | 4.0–4.9 | — |
+| Forearms | 8.5–10.5 | — |
+
+**Gate v2** (300 ASL Citizen val clips):
+
+| Path | v2 top-5 | Paired vs (a) | Paired vs (b) |
+|---|---|---|---|
+| Legacy Holistic through regressors v2, generator convention | **0.760** | +0.033 [−0.017, +0.087] | +0.020 [−0.033, +0.073] |
+| (a) ours, upright chest + upright root | 0.727 | — | — |
+| (b) ours, upright chest only | 0.740 | — | — |
+
+Both lower bounds are above −0.05: **pass**.
+
+**Real Sem-Lex** under the same path (1,004 clips, ASL-LEX code mapping):
+- top-5 0.340 [0.313, 0.370], blank 0.004, mismatched 0.000;
+- right-dominant 0.50, left-dominant 0.23.
+
+All declared conditions are met, so **Sem-Lex is admitted**. Its lower reading against v2's home domain is no longer the conversion. It is dataset shift: signers and v2's mirror bias.
+
+**Rule incident.** While probing, a `pose_landmark_heavy.tflite` (mediapipe's own model, Google storage) was downloaded once. It ran on 11 frames, was deleted, and nothing from it was used. The runner now permits complexity 1 only.
+
+**Next:**
+1. Review verdict.
+2. Merge.
+3. Convert all 91,148 clips on a CPU pod to `states-semlex-holistic-learned-world-v2-0953cd2cb2b4/`.
+4. `build_semlex_manifest.py` (in progress).
+5. Declare round 14: F12 plus Sem-Lex words, against the 42 uncovered R5 words.
