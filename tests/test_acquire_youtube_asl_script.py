@@ -203,7 +203,7 @@ def test_arm_recovery_writes_beside_the_original_and_reports_the_recovery(monkey
     acq.apply_arm_recovery(args)
     assert args.prefix == "yt/arm-recovery-v1" and args.original_prefix == "yt"
     report = acq.process("abcdefghijk", args, store, models=None)
-    assert report["arm_recovery"] and report["upright_chest"] and report["elbow_in_image"]
+    assert report["arm_recovery"] and report["upright_chest"] and report["elbow_in_image"] is False
     assert report["inference_method"].startswith("test-method; chest up axis")
     seg = report["segments"][0]
     assert seg["state_key"] == "yt/arm-recovery-v1/states/abcdefghijk-0000.npz"
@@ -217,7 +217,7 @@ def test_arm_recovery_writes_beside_the_original_and_reports_the_recovery(monkey
     assert rec["forearm_fraction"]["original_solver"] == {"Left": 0., "Right": 0.}
     frames = len(vl.load_raw_landmarks(raw).times)
     in_frame = sum(1 for t in vl.load_raw_landmarks(raw).pose_image[:, 13, 1] if t <= 1.)
-    assert rec["forearm_fraction"]["after"] == {"Left": round(in_frame / frames, 4), "Right": 1.}
+    assert rec["forearm_fraction"]["after"] == {"Left": 1., "Right": 1.}      # no elbow gate: visible arms all kept
     assert rec["elbow_in_image_fraction"] == {"Left": round(in_frame / frames, 4), "Right": 1.}
     assert 0 < in_frame < frames
     assert rec["hands_unchanged"] and rec["hand_fraction"]["after"] == rec["hand_fraction"]["original_solver"] \
@@ -229,7 +229,7 @@ def test_arm_recovery_writes_beside_the_original_and_reports_the_recovery(monkey
     stored = MultichannelMotion.load(path, expected_sha256=seg["state_sha256"])
     again, _ = vl.canonical_from_landmarks(vl.load_raw_landmarks(raw), sample_id=seg["sample_id"], source_id="yt-test",
                                            source_sha256=report["video_sha256"], clock_id="c", inference_method="x",
-                                           upright_chest=True, elbow_in_image=True, upright_root=True)
+                                           upright_chest=True, upright_root=True)
     for name in stored.channels:
         np.testing.assert_array_equal(stored.channels[name].values, again.channels[name].values)
     assert report["upright_root"] and "upright root" in report["inference_method"]

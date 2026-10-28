@@ -2838,3 +2838,22 @@ So the converted Sem-Lex states carry the signs. The left-dominant gap is a prop
 **Caveat.** v2 was trained on states that keep MediaPipe's out-of-image elbows. This measures how far the gate moves the convention, not how accurate those arms are.
 
 **Before the recovery re-solve: an accuracy test.** How2Sign crops with two-view truth, comparing arms whose elbow lies outside the crop against arms whose elbow lies inside. If they are within 5° at the median, the recovery keeps those arms (no elbow gate); otherwise it keeps the gate. The raw landmarks are stored, so either choice is a re-solve.
+
+### Arm recovery: the elbow gate is dropped (decided 2026-10-28, 09:23 UTC, before any recovery data exists)
+
+**Measured against How2Sign two-view truth** (`scripts/elbow_outside_accuracy.py`, agent branch f4c8597c): 140 Sem-Lex-style and tighter crops, 16,876 frame-sides.
+
+| Frames | Upper arm | Forearm | Wrist frame |
+|---|---|---|---|
+| Elbow **outside** the frame, MediaPipe visibility ≥ 0.5 (what the gate removed) | 12.6° / 20.8° | 21.2° / 46.6° | 22.2° / 47.6° |
+| Elbow inside, visibility ≥ 0.5 | 13.5° / 26.4° | 29.6° / 43.2° | 23.7° / 168° |
+| Elbow inside, visibility < 0.5 | 18.3° | 36.7° | — |
+| Outside and invisible | — | p90 117° | — |
+
+Values are median / p90.
+
+- Accuracy holds even when the elbow is more than 0.3 of the frame height outside.
+- **The visibility threshold, not the image boundary, separates good arms from bad ones.**
+- On v2's own clips the gate costs 0.137 top-5 and the upright root about 0.
+
+**Recovery solve, now:** `upright_chest` + `upright_root` + MediaPipe visibility, with no `elbow_in_image`. The elbow-in-image fraction is still reported. Nothing had been written under `arm-recovery-v1/`; the test download was refused.

@@ -30,8 +30,12 @@ deletes each staged video. A staged video is a transient copy, kept only until i
 a chest built on both hips, so chest-up videos lost every arm frame. With the flag, every stage works under
 ``<prefix>/arm-recovery-v1/`` (staged videos, claims, states, video reports), never under the original keys, and the
 original run stays reproducible without the flag. The conversion then uses ``upright_chest=True``,
-``upright_root=True`` (frames without hips keep the chest frame, against an identity pelvis) and ``elbow_in_image=True`` (``video_landmarks.solve_rotations``: upper arm, forearm and wrist count only on frames whose
-elbow lies inside the image). Each cue also stores its raw MediaPipe landmarks
+``upright_root=True`` (frames without hips keep the chest frame, against an identity pelvis) and MediaPipe's own
+visibility rule for the arms, **without** the in-image elbow gate. Measured 2026-10-28 against How2Sign two-view truth
+(``scripts/elbow_outside_accuracy.py``): arms whose elbow MediaPipe places outside the frame are as accurate as in-frame
+ones (upper arm 12.6 deg median against 13.5, forearm 21.2 against 29.6), and on v2's own clips the gate costs 0.137
+top-5 while the upright root costs ~0; the visibility threshold is what removes inaccurate arms. The elbow-in-image
+fraction is still reported. Each cue also stores its raw MediaPipe landmarks
 (``<prefix>/arm-recovery-v1/landmarks/<id>-<cue>.npz``, ``video_landmarks.save_raw_landmarks``); the state is solved
 from exactly those stored landmarks, so re-solving them reproduces it. Each segment carries a ``recovery`` report:
 forearm-tracked fraction per side after, with the original solver on the same landmarks, and in the old stored state
@@ -194,7 +198,7 @@ def face_stats(state) -> tuple[float, float | None]:
 
 ARM_RECOVERY_DIR = "arm-recovery-v1"
 ARM_RECOVERY_METHOD = ("; chest up axis from the camera vertical (upright prior); pelvis the camera-upright identity on "
-                       "frames without hips (upright root); arms only on frames whose elbow lies inside the image; "
+                       "frames without hips (upright root); arms by MediaPipe visibility (no in-image elbow gate); "
                        "solved from the stored raw landmarks")
 
 
@@ -387,7 +391,7 @@ def drop_staged(video_id: str, args, store, video_key: str) -> None:
 
 def process(video_id: str, args, store, models, gate=None, *, staged: bool = False) -> dict:
     from signtranslator.data_engineering.video_landmarks import (
-        canonical_from_landmarks, extract_clip, inference_method, load_raw_landmarks, save_raw_landmarks)
+        canonical_from_landmarks, elbows_in_image, extract_clip, inference_method, load_raw_landmarks, save_raw_landmarks)
     with tempfile.TemporaryDirectory() as tmp:
         got = unstage(video_id, args, store, Path(tmp)) if staged else fetch(video_id, Path(tmp), args, gate)
         if got["status"] != "downloaded":
@@ -416,7 +420,7 @@ def process(video_id: str, args, store, models, gate=None, *, staged: bool = Fal
             state, report = canonical_from_landmarks(
                 part, sample_id=sample, source_id=args.source_id, source_sha256=video_sha,
                 clock_id=f"{args.source_id}:{sample}:pts", inference_method=method,
-                upright_chest=recovery, elbow_in_image=recovery, upright_root=recovery)
+                upright_chest=recovery, upright_root=recovery)
             if recovery:
                 original, _ = canonical_from_landmarks(   # the original solver on the same landmarks: the controlled before
                     part, sample_id=sample, source_id=args.source_id, source_sha256=video_sha,
@@ -432,14 +436,15 @@ def process(video_id: str, args, store, models, gate=None, *, staged: bool = Fal
                 before, why = None, f"original state unreadable: {type(error).__name__}: {error}"[:200]
             after, same = tracked_fractions(state), tracked_fractions(original)
             pose = max(int(part.pose_found.sum()), 1)
+            inside = elbows_in_image(part.pose_image)
+            elbow_frames = {s: int((inside[s] & part.pose_found).sum()) for s in inside}
             extra = dict(landmarks_key=landmarks_key, landmarks_sha256=hashlib.sha256(raw).hexdigest(),
                          recovery=dict(
                              forearm_fraction=dict(after=after["forearm"], original_solver=same["forearm"],
                                                    stored_before=before and before["forearm"]),
-                             elbow_in_image_fraction={s: round(n / len(part.times), 4)
-                                                      for s, n in report["elbow_in_image_frames"].items()},
+                             elbow_in_image_fraction={s: round(n / len(part.times), 4) for s, n in elbow_frames.items()},
                              elbow_in_image_fraction_of_pose_frames={s: round(n / pose, 4)
-                                                                     for s, n in report["elbow_in_image_frames"].items()},
+                                                                     for s, n in elbow_frames.items()},
                              hand_fraction=dict(after=after["hand"], original_solver=same["hand"],
                                                 stored_before=before and before["hand"]),
                              hands_unchanged=all(np.array_equal(state.channels[h].valid, original.channels[h].valid)
@@ -473,7 +478,7 @@ def process(video_id: str, args, store, models, gate=None, *, staged: bool = Fal
                 caption_seconds=caption_seconds,
                 cues=len(cues), segments=segments, refused=refused, inference_method=method,
                 **({} if not recovery else dict(arm_recovery=True, upright_chest=True, upright_root=True,
-                                                elbow_in_image=True, original_prefix=args.original_prefix)))
+                                                elbow_in_image=False, original_prefix=args.original_prefix)))
 
 
 def main(argv=None) -> int:
