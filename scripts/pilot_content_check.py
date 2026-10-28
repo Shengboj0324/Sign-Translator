@@ -29,6 +29,20 @@ MIX = "acquisition/2026-10-17-v1/youtube-asl-v1/round3c-mixed-v1/manifest.json"
 MIX_SHA = "004bf6596a2330ee5f840bfeef0d233174f63d0602f72465b6c28a21078d00fd"
 
 
+def validation_sentences(manifest, clips: int):
+    """The R2b-style sample: ``clips`` How2Sign validation records of the three validation signer groups, fixed seed."""
+    val = [r for r in manifest["records"] if r.get("corpus") == "how2sign-two-view-text-v1" and r.get("partition") == "val"
+           and r.get("signer_component") in {"c01", "c03", "c05"} and r.get("text")]
+    return random.Random(0).sample(val, min(clips, len(val)))
+
+
+def postprocess(s):
+    """The round-3e post-processing: head rotation and head translation smoothed over 0.1 s."""
+    from signtranslator.generation.postprocess import smooth_rotation_channel, smooth_vector_channel
+    s = smooth_rotation_channel(s, "head_rotation", .1)
+    return smooth_vector_channel(s, "head_translation", .1) if "head_translation" in s.channels else s
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--checkpoint-key", required=True)
@@ -53,7 +67,6 @@ def main(argv=None) -> int:
     import torch
     from signtranslator.data.text_motion_dataset import R2Store
     from signtranslator.data_engineering.corpus_manifest import load_manifest
-    from signtranslator.generation.postprocess import smooth_rotation_channel, smooth_vector_channel
     from signtranslator.pose.resample import resample_motion
     from evaluate_text_to_motion import at_rate, blanked, load_generator, load_state
     from score_back_translation import load_translator, translate
@@ -65,14 +78,9 @@ def main(argv=None) -> int:
         manifest = load_manifest(path, expected_sha256=args.mix_sha256)
     temperature = {k: float(v) for k, v in (x.split("=") for x in args.part_temperature.split(","))}
     _, _, sample = load_generator(store, args.checkpoint_key, args.mix_sha256, args.device, temperature=temperature)
-
-    def post(s):
-        s = smooth_rotation_channel(s, "head_rotation", .1)
-        return smooth_vector_channel(s, "head_translation", .1) if "head_translation" in s.channels else s
+    post = postprocess
     # meaning
-    val = [r for r in manifest["records"] if r.get("corpus") == "how2sign-two-view-text-v1" and r.get("partition") == "val"
-           and r.get("signer_component") in {"c01", "c03", "c05"} and r.get("text")]
-    val = random.Random(0).sample(val, min(args.clips, len(val)))
+    val = validation_sentences(manifest, args.clips)
     refs = [at_rate(load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]), 24.) for r in val]
     texts = [r["text"] for r in val]
     seconds = [float(s.timestamps[-1] - s.timestamps[0]) + 1 / 24. for s in refs]
