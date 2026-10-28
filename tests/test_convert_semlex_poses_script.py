@@ -274,7 +274,8 @@ def test_the_inventory_finds_gaps_and_formats(tmp_path):
     (tmp_path / BASE / "data/val.tar.gz.provenance.json").write_text(json.dumps(dict(
         sha256=hashlib.sha256(video.getvalue()).hexdigest(), verified_by_r2_reread=True)))
     found = inventory.inventory(store, "val", metadata)
-    assert found["format"] == "webm" and found["missing"] is None and found["pose_members"] == 0
+    assert found["format"] == "webm" and found["missing"] == ["clipAAAAAAAAAAAAAAA2"] and found["pose_members"] == 0
+    assert found["no_metadata_row"] == [] and found["other_split_row"] == []
 
 
 def test_the_pinned_inventory_matches_its_archives():
@@ -282,6 +283,10 @@ def test_the_pinned_inventory_matches_its_archives():
     test = pinned["splits"]["test"]
     assert test["format"] == "npy" and len(test["missing"]) == 101 and test["archive_sha256"].startswith("729397ee")
     assert all(pinned["splits"][s]["format"] != "npy" for s in ("val", "train") if s in pinned["splits"])
+    val, train = pinned["splits"]["val"], pinned["splits"]["train"]        # the video archives' gaps, pinned too
+    assert val["format"] == train["format"] == "webm" and val["archive_sha256"].startswith("6eca70a5")
+    assert len(val["missing"]) == val["metadata_ids_without_other_file"] == 14
+    assert len(train["missing"]) == train["metadata_ids_without_other_file"] == 3557
 
 
 def test_repeated_metadata_rows():

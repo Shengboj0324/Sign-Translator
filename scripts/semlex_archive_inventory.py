@@ -7,7 +7,10 @@ another split's. The output is the pinned ``semlex_known_missing.json`` next to 
 every split, so a long run keeps what it has.
 
 As found on 2026-10-28: ``test.tar.gz`` holds Holistic ``.npy`` pose files, but ``val.tar.gz`` and ``train.tar.gz``
-hold ``.webm`` *videos* (``./val/<id>.webm``), which the pose-file converter cannot read.
+hold ``.webm`` *videos* (``./val/<id>.webm``), which the pose-file converter cannot read
+(``extract_semlex_videos.py`` extracts them). ``missing`` lists the metadata ids of the split without a member of the
+archive's single format (``.npy`` or ``.webm``); it is None for an archive of mixed formats. Splits not named in
+``--splits`` keep their entries of an existing ``--output``.
 """
 from __future__ import annotations
 
@@ -23,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 
 NAME = re.compile(r"^(?:\./)?(test|val|train)/([A-Za-z0-9_-]{1,64})\.([A-Za-z0-9]{1,8})$")
+VIDEO_FORMATS = ("webm",)          # single-format video archives: their gaps are pinned too
 
 
 def inventory(store, split: str, metadata: dict) -> dict:
@@ -47,14 +51,15 @@ def inventory(store, split: str, metadata: dict) -> dict:
                 other_ids.add(match.group(2))
     expected = {v for v, rows in metadata.items() if any(r["split"] == split for r in rows)}
     form = "npy" if pose_ids and not other_ids else ("+".join(sorted(extensions)) or "empty")
+    members = pose_ids if form == "npy" else other_ids if form in VIDEO_FORMATS else None
     return dict(archive_key=key, archive_sha256=provenance["sha256"], format=form,
                 extensions=dict(sorted(extensions.items())), other_names=odd, pose_members=len(pose_ids),
-                missing=sorted(expected - pose_ids) if form == "npy" else None,
+                missing=sorted(expected - members) if members is not None else None,
                 expected_ids=len(expected), ids_with_other_files=len(other_ids),
                 ids_with_other_files_missing_from_metadata=len(other_ids - set(metadata)),
                 metadata_ids_without_other_file=len(expected - other_ids) if other_ids else None,
-                no_metadata_row=sorted(v for v in pose_ids if v not in metadata),
-                other_split_row=sorted(v for v in pose_ids if v in metadata and v not in expected))
+                no_metadata_row=sorted(v for v in (members or pose_ids) if v not in metadata),
+                other_split_row=sorted(v for v in (members or pose_ids) if v in metadata and v not in expected))
 
 
 def main(argv=None) -> int:
@@ -67,6 +72,10 @@ def main(argv=None) -> int:
     store = make_store(args.store)
     metadata = load_metadata(store, METADATA_KEY, METADATA_SHA256)
     out = dict(metadata_sha256=METADATA_SHA256, splits={})
+    if Path(args.output).exists():                       # keep the splits this run does not re-inventory
+        previous = json.loads(Path(args.output).read_text())
+        if previous.get("metadata_sha256") == METADATA_SHA256:
+            out["splits"].update(previous.get("splits", {}))
     for split in args.splits.split(","):
         s = out["splits"][split] = inventory(store, split, metadata)
         print(split, s["format"], s["extensions"], s["pose_members"], "pose files;",
