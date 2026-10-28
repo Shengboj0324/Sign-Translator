@@ -74,7 +74,6 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import replace
-import hashlib
 import json
 from pathlib import Path
 import re
@@ -87,6 +86,11 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 
+# the join, its helpers and the stop-word list live in the library since round 15 (moved unchanged)
+from signtranslator.generation.compositional import (  # noqa: E402
+    STOP_WORDS, _gram_schmidt, blend_channel, blend_values, concatenate, crossfade_frames, crossfade_weights,
+    join_overlaps, take_frames)
+
 FPS = 24.
 TRANSLATOR_RUN = "back-translator-kp2d-uwb-ft-v1"
 TRANSLATOR_WINDOW = 20.            # seconds: train_keypoints_to_text_t5.py --max-seconds default (training clips cut)
@@ -97,15 +101,6 @@ FITTED_SEED_BLOCK = 10_000_000     # fitted clip seed: word seed + FITTED_SEED_B
 FITTED_FLOOR = .3                  # seconds: the shortest conditioned word duration
 VARIANTS = ("all", "content", "recognizer")
 WORD = re.compile(r"[a-z0-9]+(?:'[a-z]+)*")
-# English function words ASL does not usually sign as separate lexical items. Modals (can, will, should...) are kept:
-# ASL signs them. Main-verb uses of have / do are dropped too (a known cost of a list).
-STOP_WORDS = frozenset({
-    "a", "an", "the",                                            # articles
-    "am", "is", "are", "was", "were", "be", "been", "being",     # be
-    "do", "does", "did",                                         # do
-    "have", "has", "had",                                        # have
-    "to", "of",
-})
 MOTION_KEYS = ("seconds", "seconds_over_reference", "wrist_speed", "hands_tracked", "wrist_spread", "over_window")
 
 CAVEATS = [
@@ -183,122 +178,6 @@ def shuffle_order(n: int, clip: int, variant_index: int) -> list[int]:
         p = [int(x) for x in rng.permutation(n)]
         if p != list(range(n)):
             return p
-
-
-def crossfade_frames(seconds: float, fps: float = FPS) -> int:
-    if seconds < 0:
-        raise ValueError("crossfade must be >= 0 seconds")
-    return int(round(seconds * fps))
-
-
-def join_overlaps(lengths, frames: int) -> list[int]:
-    """Overlap of each join: ``frames``, capped at half of either neighbour (so no clip is blended at both ends over
-    the same frame, and a clip of one frame is hard-cut)."""
-    return [min(frames, a // 2, b // 2) for a, b in zip(lengths[:-1], lengths[1:])]
-
-
-def crossfade_weights(n: int) -> np.ndarray:
-    """The second clip's weight on the n overlapping frames: (k + 1) / (n + 1)."""
-    return (np.arange(n, dtype=np.float64) + 1) / (n + 1)
-
-
-def _gram_schmidt(x: np.ndarray, eps: float = 1e-6):
-    """(orthonormalised 6D columns, degenerate mask) of (..., 6) values."""
-    a, b = x[..., 0:3], x[..., 3:6]
-    na = np.linalg.norm(a, axis=-1, keepdims=True)
-    a = a / np.clip(na, eps, None)
-    b = b - (a * b).sum(-1, keepdims=True) * a
-    nb = np.linalg.norm(b, axis=-1, keepdims=True)
-    b = b / np.clip(nb, eps, None)
-    return np.concatenate([a, b], -1), (na[..., 0] < eps) | (nb[..., 0] < eps)
-
-
-def blend_values(kind: str, a: np.ndarray, b: np.ndarray, alpha: np.ndarray) -> np.ndarray:
-    """(n, J, D) values on each channel's manifold: ``(1 - alpha) a + alpha b``, put back on the manifold; where that
-    degenerates (antipodal unit vectors or rotations) the endpoint with the larger weight. ``alpha``: (n,)."""
-    w = alpha.reshape(-1, *([1] * (a.ndim - 1)))
-    v = (1 - w) * a + w * b
-    if kind == "rotation_6d_columns":
-        v, bad = _gram_schmidt(v)
-    elif kind == "unit_vector":
-        n = np.linalg.norm(v, axis=-1, keepdims=True)
-        bad = n[..., 0] < 1e-6
-        v = v / np.clip(n, 1e-6, None)
-    else:
-        return np.clip(v, 0., 1.) if kind == "bounded_scalar" else v
-    nearer = np.where(w > .5, b, a)
-    return np.where(bad[..., None], nearer, v)
-
-
-def blend_channel(kind: str, ca, cb, alpha: np.ndarray) -> dict:
-    """values, valid, observed, confidence of the crossfade of two channels' overlapping frames (same shapes)."""
-    va, vb = ca.valid, cb.valid
-    w = alpha[:, None]
-    valid = va | vb
-    values = blend_values(kind, ca.values, cb.values, alpha)
-    values = np.where((va & ~vb)[..., None], ca.values, values)          # one side valid: that side, exactly
-    values = np.where((vb & ~va)[..., None], cb.values, values)
-    values = np.where(valid[..., None], values, 0.)
-    wa, wb = (1 - w) * va, w * vb
-    confidence = np.where(valid, (wa * ca.confidence + wb * cb.confidence) / np.where(valid, wa + wb, 1.), 0.)
-    observed = valid & (~va | ca.observed) & (~vb | cb.observed)
-    return dict(values=values, valid=valid, observed=observed, confidence=confidence)
-
-
-def concatenate(states, overlap: int, *, fps: float = FPS, sample_id: str = "compositional"):
-    """One state from ``states`` in order, joined by the overlap crossfade (module docstring)."""
-    from signtranslator.pose.multichannel import CHANNELS, MultichannelMotion
-    if not states:
-        raise ValueError("nothing to concatenate")
-    lengths = [len(s.timestamps) for s in states]
-    overlaps = join_overlaps(lengths, overlap)
-    total = sum(lengths) - sum(overlaps)
-    first = states[0]
-    channels = {}
-    for name, c0 in first.channels.items():
-        kind = CHANNELS[name][0]
-        group = [s.channels[name] for s in states]
-        for c in group[1:]:
-            for field in ("labels", "coordinate_frame", "units", "convention"):
-                if getattr(c, field) != getattr(c0, field):
-                    raise ValueError(f"{name}: clips differ in {field}")
-        parts = {k: [] for k in ("values", "valid", "observed", "confidence")}
-        for k, c in enumerate(group):
-            start = overlaps[k - 1] if k else 0
-            stop = lengths[k] - (overlaps[k] if k < len(group) - 1 else 0)
-            for f in parts:
-                parts[f].append(getattr(c, f)[start:stop])
-            if k < len(group) - 1 and overlaps[k]:
-                n, nxt = overlaps[k], group[k + 1]
-                tail = replace(c, values=c.values[-n:], valid=c.valid[-n:], observed=c.observed[-n:],
-                               confidence=c.confidence[-n:])
-                head = replace(nxt, values=nxt.values[:n], valid=nxt.valid[:n], observed=nxt.observed[:n],
-                               confidence=nxt.confidence[:n])
-                for f, v in blend_channel(kind, tail, head, crossfade_weights(n)).items():
-                    parts[f].append(v)
-        valid = np.concatenate(parts["valid"])
-        observed = np.concatenate(parts["observed"]) & valid
-        methods = [c.inference_method for c in group if c.inference_method]
-        method = methods[0] if methods else ("compositional crossfade" if (valid & ~observed).any() else None)
-        channels[name] = replace(
-            c0, values=np.where(valid[..., None], np.concatenate(parts["values"]), 0.).astype(c0.values.dtype),
-            valid=valid, observed=observed,
-            confidence=np.where(valid, np.concatenate(parts["confidence"]), 0.).astype(c0.confidence.dtype),
-            source_id=f"compositional:{c0.source_id}",
-            source_sha256=hashlib.sha256("|".join(c.source_sha256 for c in group).encode()).hexdigest(),
-            inference_method=method)
-        if len(valid) != total:
-            raise AssertionError("concatenation length")
-    timestamps = float(first.timestamps[0]) + np.arange(total, dtype=np.float64) / fps
-    return MultichannelMotion(timestamps, first.clock_id, sample_id, channels)
-
-
-def take_frames(state, index):
-    """The frames ``index`` (an index array) of ``state`` as a new state on a uniform 24 fps clock from its start."""
-    channels = {n: replace(c, values=c.values[index], valid=c.valid[index], observed=c.observed[index],
-                           confidence=c.confidence[index]) for n, c in state.channels.items()}
-    t = float(state.timestamps[0]) + np.arange(len(index), dtype=np.float64) / FPS
-    return replace(state, timestamps=t, channels=channels)
 
 
 def time_scale(state, frames: int, fps: float = FPS):

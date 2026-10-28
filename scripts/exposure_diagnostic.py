@@ -41,6 +41,10 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 
+# make_decode and continue_from live in the library since round 15 (moved unchanged; the compositional generator's
+# chained mode samples with continue_from)
+from signtranslator.generation.compositional import continue_from, make_decode  # noqa: E402,F401
+
 
 # The code paths below are shared with sentence_exposure_diagnostic.py (2026-10-28): lifted out of main() unchanged, so
 # the word and the sentence diagnostics sample, teacher-force, decode and post-process identically.
@@ -58,22 +62,6 @@ def make_post(gains):
     return post
 
 
-def make_decode(tokenizer, motion_config, post):
-    """``decode(codes (1, S, J), frames, text)``: the codes decoded and assembled as a generation (every trained channel
-    valid), then ``post``."""
-    import torch
-    from signtranslator.generation.text_to_motion import assemble_state, native_values, unit_to_raw
-
-    @torch.no_grad()
-    def decode(codes, frames, text):
-        unit = tokenizer.decode_codes(codes, frames)
-        raw = unit_to_raw(motion_config, unit.double())
-        native = native_values(motion_config, {key: v[0] for key, v in raw.items()})
-        return post(assemble_state(motion_config, text, native, frames, 24., "diag:0", "diag-clock",
-                                   method="motion_tokens_v2"))
-    return decode
-
-
 def masked_like(state, real):
     """``state`` with each channel's validity copied from ``real`` (instrument parity; zero payload where invalid)."""
     def mask(c, valid):
@@ -84,59 +72,6 @@ def masked_like(state, real):
                         real.channels[n].valid.shape == c.valid.shape else np.zeros_like(c.valid))
                 for n, c in state.channels.items()}
     return replace(state, channels=channels)
-
-
-def continue_from(prior, tokenizer, decode, text, prefix, count, seed, *, guidance, device, greedy_fine=False,
-                  temperature=None, return_codes=False):
-    """Free run of ``count`` steps after the real codes ``prefix`` (1, k, J), as ``generate_rvq_motion`` samples.
-
-    ``temperature`` (sentence diagnostic): None samples at 1, as the word diagnostic always has; a value or a mapping
-    part -> value divides the guided logits as ``generate_rvq_motion`` does (code j belongs to part j mod P). With
-    ``return_codes`` the (count, J) code sequence is returned with the state."""
-    import torch
-    from signtranslator.generation.motion_tokens import _empty_like
-    from signtranslator.generation.text_to_motion import PAD, empty_loci, encode_texts, generation_loci
-    P = len(tokenizer.parts)
-    per_code = None
-    if temperature is not None:
-        names = [part for part, _ in tokenizer.parts]
-        if isinstance(temperature, dict):
-            unknown = set(temperature) - set(names)
-            if unknown:
-                raise ValueError(f"unknown parts in temperature: {sorted(unknown)}")
-            per_code = [float(temperature.get(names[j % len(names)], 1.)) for j in range(prior.J)]
-        else:
-            per_code = [float(temperature)] * prior.J
-    with torch.no_grad():
-        config = prior.config
-        tk, mk = (t.to(device) for t in encode_texts([text]))
-        hid, _, mk = prior.encode(tk, mk, generation_loci(config, [text], None, device))
-        empty = _empty_like(tk[:1, :2])
-        e_hid, _, e_mask = prior.encode(empty, empty != PAD, empty_loci(config, device))
-        seconds_out = torch.tensor([count / 24.], device=device)
-        clock = (torch.arange(count, device=device, dtype=torch.float32) / 24.)[None]
-        g = torch.Generator().manual_seed(seed)
-        sequence = torch.cat((torch.full((1, 1, prior.J), prior.K, dtype=torch.long, device=device), prefix), 1)
-        for k in range(prefix.shape[1], count):
-            h = prior.temporal_states(hid, mk, sequence, clock[:, :k + 1], seconds_out)[:, -1]
-            h_free = (prior.temporal_states(e_hid, e_mask, sequence, clock[:, :k + 1], seconds_out)[:, -1]
-                      if guidance != 1. else None)
-            step_codes = torch.zeros((1, 0), dtype=torch.long, device=device)
-            for j in range(prior.J):
-                logits = prior.depth_logits(h, step_codes)[:, -1]
-                if h_free is not None:
-                    free = prior.depth_logits(h_free, step_codes)[:, -1]
-                    logits = free + guidance * (logits - free)
-                if per_code is not None:
-                    logits = logits / max(per_code[j], 1e-6)
-                if greedy_fine and j >= P:                          # stage >= 2 of every part: its mode
-                    choice = logits.argmax(-1, keepdim=True)
-                else:
-                    choice = torch.multinomial(torch.softmax(logits.float(), -1).cpu(), 1, generator=g).to(device)
-                step_codes = torch.cat((step_codes, choice), 1)
-            sequence = torch.cat((sequence, step_codes[:, None]), 1)
-        state = decode(sequence[:, 1:], count, text)
-    return (state, sequence[0, 1:].cpu()) if return_codes else state
 
 
 def teacher_forced(prior, tokenizer, motion_config, real, text, generator, device):

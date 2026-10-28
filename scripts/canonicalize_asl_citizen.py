@@ -40,21 +40,13 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 
+# side_tracks lives in the library since round 15 (moved unchanged; the compositional generator's rest trim uses it)
+from signtranslator.generation.compositional import side_tracks  # noqa: E402,F401
+
 SOURCE_KEY = "acquisition/2026-10-17-v1/derived/asl-citizen-v1/manifest-v1/manifest.json"
 SOURCE_SHA = "708af3a6748742c0ce8d147a984ef1de57abcec94da47ff0ce82391b067661a6"
 PREFIX = "acquisition/2026-10-17-v1/derived/asl-citizen-v1/canonical-v1"
 MARGIN_SECONDS, MIN_SECONDS, MIN_ARM, MIN_HAND = .2, .4, .7, .6
-
-
-def side_tracks(state):
-    """Per side: (forearm tracked (T,), hand tracked (T,)); the forearm needs its upper arm too."""
-    body = state.channels["body"]
-    labels = list(body.labels)
-    out = {}
-    for side in ("Left", "Right"):
-        arm = body.valid[:, labels.index(f"{side}Forearm")] & body.valid[:, labels.index(f"{side}UpperArm")]
-        out[side] = (arm, state.channels[f"{side.lower()}_hand"].valid.all(axis=1))
-    return out
 
 
 def canonicalize(state, trim: bool = True, side: str | None = None):

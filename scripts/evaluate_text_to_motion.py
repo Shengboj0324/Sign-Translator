@@ -91,6 +91,7 @@ def load_generator(store, key: str, manifest_sha256: str, device: str = "cpu", *
             sample.batch = lambda *a, **k: [apply_gains(o, gains) for o in plain_batch(*a, **k)]
             sample.decoder_gains = gains
             print(f"decoder gains applied: {gains}", flush=True)
+        sample.prior, sample.tokenizer = prior, tokenizer     # the loaded models (round 15: compositional generation)
         return "motion_tokens_v2", prior.config.tokenizer.motion.trained_channels, sample
     if checkpoint.get("kind") in ("motion_tokenizer", "motion_rvq_tokenizer"):
         raise SystemExit(f"{key} is a tokenizer, not a generator; evaluate its prior")

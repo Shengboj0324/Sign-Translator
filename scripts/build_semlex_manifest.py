@@ -124,28 +124,11 @@ def resolve_rows(rows: list[dict]) -> tuple[dict | None, str | None]:
 
 
 def trim_window(state, threshold: float, margin: float, min_tracked: float, min_seconds: float):
-    """``build_trimmed_word_manifest``'s rule on one state: (window, reason)."""
-    from signtranslator.generation.canonical_skeleton import skeleton_positions
+    """``build_trimmed_word_manifest``'s rule on one state, at 24 fps: (window, reason) (the rule lives in
+    ``signtranslator.generation.compositional`` since round 15, moved unchanged)."""
+    from signtranslator.generation.compositional import trim_window as rule
     from signtranslator.pose.resample import resample_motion
-    from build_trimmed_word_manifest import sign_window
-    from canonicalize_asl_citizen import side_tracks
-    served = resample_motion(state, 24.)
-    joints, pos, _ = skeleton_positions(served)
-    tracks = side_tracks(served)
-    best = None
-    for side in ("Right", "Left"):
-        ok = np.asarray(tracks[side][0], dtype=bool)
-        h = pos[:, joints.index(f"{side}Hand"), 1] - pos[:, joints.index(f"{side}Shoulder"), 1]
-        spread = float(np.ptp(h[ok])) if ok.any() else -1.
-        if best is None or spread > best[0]:
-            best = (spread, side, ok, h)
-    _, side, ok, h = best
-    if ok.mean() < min_tracked:
-        return None, "arm_untracked"
-    w = sign_window(h, ok, 24., threshold, margin)
-    if w is None or w[1] - w[0] < min_seconds:
-        return None, "no_sign_window"
-    return (round(w[0], 4), round(w[1], 4)), "trimmed"
+    return rule(resample_motion(state, 24.), threshold, margin, min_tracked, min_seconds)
 
 
 def build(store, args) -> tuple[dict, dict]:
