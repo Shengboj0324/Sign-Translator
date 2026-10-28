@@ -2434,7 +2434,7 @@ F12 (warm start from L11c step 20000, then 10000 steps at B6's corpus weights, h
 - The winner then runs the full declared chain: test-set exit gate, then avatar.
 - The round-13 sentence options (guided attention, alignment supervision) are held on a branch until their strict review is complete; they will be declared as a separate round on top of the winner.
 
-## Round 13 preparation: sentence fixes reviewed (recorded 2026-10-28, 03:28 UTC; the round is declared separately before any round-13 result)
+## Round 13 preparation: sentence fixes reviewed (recorded 2026-10-28, 03:27 UTC; the round is declared separately before any round-13 result)
 
 **Guided attention and alignment supervision** (fixes 2–3, on branch `round13-wip`, not yet on `main`):
 - Reviewed line by line; two design fixes:
