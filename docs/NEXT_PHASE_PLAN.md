@@ -2632,3 +2632,23 @@ No licence above permits commercial use or explicitly permits releasing a traine
 - Questions were sent to trustworthyaiprojects@nvidia.com at 06:00 UTC: cloud as a secure network, pose extraction versus "biometric processing", model weights, how far deletion reaches, individual eligibility, size, vocabulary and videos.
 
 **ASL Signbank:** a permission request was sent to Julie Hochgesang (Gallaudet) at 06:00 UTC. It covers downloading the public videos at a polite rate for non-commercial computational use, with attribution and no redistribution, and asks about an export and registration for the non-public signs. Downloads wait for her answer.
+
+### Arm recovery: code reviewed, list built, test armed (2026-10-28, 06:17 UTC)
+
+**Code.** Main e00b439 passed three independent adversarial reviews. The last found no confirmed defect, and flag-off output is byte-identical to before.
+
+**Upright root.** Clips without hips keep the chest frame against an identity pelvis.
+- The rule is applied per clip, so the stored root does not jump when the hips come and go.
+- Accepted trade-off: one frame that loses a hip switches the whole clip to the identity root and makes its legs invalid. Legs are not used for signing, and `upright_root_applied` marks these clips.
+
+**Other review fixes.**
+- The video report is the commit marker; the retry status is honoured.
+- A missing original state only empties the "before" figures.
+- Raw landmarks carry the frame size.
+
+**List.** `arm-recovery/ids-arm-untracked-v1.txt`: 830 videos with ≥ 30% of their round-10 cues dropped from round 13 (51,096 cues, 78.9 h), ordered by dropped seconds.
+
+**Test.** One video at 09:00 UTC on the Mac: `--stage all --arm-recovery --limit 1 --max-blocks 1` (`~/.sign-translator-ops/yt_recovery_test.sh`).
+- **Passes** if it converts, forearm-tracked "after" is clearly above "original solver" and "stored before", and the hands are unchanged.
+- **Then** the rest downloads at one video per 60 s through the gate, with extraction on CPU pods.
+- **On a refusal:** stop for the day.
