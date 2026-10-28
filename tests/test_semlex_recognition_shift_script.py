@@ -43,3 +43,28 @@ def test_scores_and_paired_differences():
     low, high = s["top5_ci_clips"]
     assert 0 <= low <= .6 <= high <= 1
     assert job.bootstrap(np.ones(10)) == [1., 1.]
+
+
+def test_flag_sets_change_only_their_own_joints():
+    from dataclasses import replace
+    from signtranslator.data_engineering.semlex_pose import holistic_clip
+    array, *_ = semlex_array((640, 470), frames=8)            # elbows near the bottom edge: some frames outside
+    clip, _ = holistic_clip(array, 8000 / 30, fake_resources(), image_size=(640, 470),
+                            blendshape_model=FakeBlendshapes(), pose_z_scale=1., hand_z_scale=1.)
+    visibility = np.ones((8, 33))
+    visibility[:, 23:] = 0.                                   # MediaPipe-style: hips unseen, elbows "visible"
+    clip = replace(clip, pose_visibility=visibility)
+    states = job.flag_states(clip, "c")
+    assert set(states) == set(job.FLAG_SETS)
+    root = job.body_changes(states["a_upright_chest"], states["b_plus_upright_root"])
+    assert root["Pelvis"]["added"] == 8 and all(root[j] == dict(reference=root[j]["reference"], removed=0, added=0,
+                                                                changed=0) for j in ("LeftUpperArm", "RightForearm"))
+    gate = job.body_changes(states["a_upright_chest"], states["c_plus_elbow_in_image"])
+    outside = ~((array[:, 478 + 13, :2] >= 0) & (array[:, 478 + 13, :2] <= 1)).all(-1)
+    assert outside.any() and gate["LeftUpperArm"]["removed"] == int(outside.sum()) and gate["Pelvis"]["added"] == 0
+    both = job.body_changes(states["a_upright_chest"], states["d_plus_both"])
+    assert both["LeftUpperArm"] == gate["LeftUpperArm"] and both["Pelvis"] == root["Pelvis"]
+    inside = job.inside_image_visibility(clip).pose_visibility
+    assert (inside[:, 23:25] == 0).all() and (inside[:, 13] == (~outside)).all()
+    vis = job.body_changes(states["a_upright_chest"], states["e_inside_image_visibility"])
+    assert vis["LeftUpperArm"]["removed"] == int(outside.sum())

@@ -24,6 +24,11 @@ With ``--regressors`` (learned image-to-world models, ``world_regressor``), also
 - ``learned_adapter_flags``: regressed points with the adapter's flags (upright root, elbow gate, inside-image);
 - swaps: ``ours_with_learned_hands``, ``ours_with_learned_body``, and ``ours+adapter_flags`` (flags only).
 
+Stage ``citizen-flags``: our extraction's landmarks on the same clips (MediaPipe's own visibility) solved under each
+flag set separately: (a) upright chest only (the corpus setting, the reference), (b) + upright root, (c) + elbow gate,
+(d) + both, (e) the inside-image visibility rule instead of MediaPipe's visibility, no other flag. v2 top-1/top-5 with
+paired differences against (a), and per body joint the frames each variant removes, adds or changes against (a).
+
 Stage ``semlex``: on Sem-Lex sample clips, (a) the label check: whether each clip's ASL-LEX label is the ASL-LEX
 entry behind v2's gloss (ASL Citizen's ``asl_lex_code``), and whether the Sem-Lex row's phonology columns equal ASL-LEX
 2.0's for that entry, on 30 top-5 misses (and 30 hits as a control); (b) mirror bias: each signer's dominant side
@@ -227,6 +232,90 @@ def citizen_score(args) -> dict:
     return out
 
 
+FLAG_SETS = {
+    "a_upright_chest": dict(upright_chest=True),
+    "b_plus_upright_root": dict(upright_chest=True, upright_root=True),
+    "c_plus_elbow_in_image": dict(upright_chest=True, elbow_in_image=True),
+    "d_plus_both": dict(upright_chest=True, upright_root=True, elbow_in_image=True),
+    "e_inside_image_visibility": dict(upright_chest=True),
+}
+
+
+def inside_image_visibility(clip):
+    """The clip with MediaPipe's pose visibility replaced by the adapter's rule (finite and inside the image)."""
+    from dataclasses import replace
+    xy = np.asarray(clip.pose_image)
+    inside = np.isfinite(xy).all(-1) & (xy >= 0).all(-1) & (xy <= 1).all(-1) & np.asarray(clip.pose_found)[:, None]
+    return replace(clip, pose_visibility=inside.astype(np.float64))
+
+
+def flag_states(clip, name: str):
+    """Canonical states of one clip under every flag set of ``FLAG_SETS``."""
+    from signtranslator.data_engineering.video_landmarks import canonical_from_landmarks
+    kw = dict(source_id="x", source_sha256="0" * 64, clock_id="x", inference_method="x")
+    out = {}
+    for variant, flags in FLAG_SETS.items():
+        source = inside_image_visibility(clip) if variant.startswith("e_") else clip
+        out[variant] = canonical_from_landmarks(source, sample_id=name, **flags, **kw)[0]
+    return out
+
+
+def body_changes(reference, other) -> dict:
+    """Per body joint: frames valid in ``reference`` but not ``other`` (removed), the reverse (added), and frames valid in
+    both whose stored rotation differs by more than 1e-6 (changed)."""
+    r, o = reference.channels["body"], other.channels["body"]
+    both = r.valid & o.valid
+    changed = both & (np.abs(r.values - o.values).max(-1) > 1e-6)
+    return {label: dict(reference=int(r.valid[:, j].sum()), removed=int((r.valid[:, j] & ~o.valid[:, j]).sum()),
+                        added=int((o.valid[:, j] & ~r.valid[:, j]).sum()), changed=int(changed[:, j].sum()))
+            for j, label in enumerate(r.labels)}
+
+
+def citizen_flags(args) -> dict:
+    import tempfile
+    import torch
+    from signtranslator.data_engineering.corpus_manifest import load_manifest
+    from signtranslator.pose.resample import resample_motion
+    from train_text_to_motion import make_store
+    from validate_semlex_adapter import load_npz
+    from validate_sign_recognizer import load_model
+    torch.set_num_threads(1)
+    store = make_store("r2")
+    with tempfile.TemporaryDirectory() as t:
+        path = Path(t) / "m.json"
+        path.write_bytes(store.get(CITIZEN_MANIFEST) + b"\n")
+        manifest = load_manifest(path, expected_sha256=CITIZEN_MANIFEST_SHA256)
+    records = {r["sign"]: r for r in manifest["records"]}
+    model, glosses, best = load_model(store, args.recognizer_run, "cpu")
+    index = {g: i for i, g in enumerate(glosses)}
+    variants = {name: [] for name in FLAG_SETS}
+    changes = {name: {} for name in FLAG_SETS if name != "a_upright_chest"}
+    labels, signers = [], []
+    for path in sorted(Path(args.out_dir).glob("*.npz")):
+        meta, clip, _ = load_npz(path)
+        record = records.get(meta["name"])
+        if record is None or record.get("partition") != "val" or record["gloss"]["label"] not in index:
+            continue
+        states = flag_states(clip, meta["name"])
+        for name, state in states.items():
+            variants[name].append(resample_motion(state, 24.))
+            if name in changes:
+                for label, c in body_changes(states["a_upright_chest"], state).items():
+                    total = changes[name].setdefault(label, dict(reference=0, removed=0, added=0, changed=0))
+                    for k, v in c.items():
+                        total[k] += v
+        labels.append(index[record["gloss"]["label"]])
+        signers.append(record["performer_sha256"][:12])
+    ranks = {name: ranks_of(model, states, labels) for name, states in variants.items()}
+    reference = ranks["a_upright_chest"]
+    arms = ("LeftUpperArm", "LeftForearm", "LeftHand", "RightUpperArm", "RightForearm", "RightHand", "Pelvis", "Chest")
+    return dict(run=args.recognizer_run, checkpoint=best["checkpoint_key"], clips=len(labels), signers=len(set(signers)),
+                frames_at_24fps=int(sum(len(s.timestamps) for s in variants["a_upright_chest"])),
+                scores={name: score(r, signers, None if name == "a_upright_chest" else reference)
+                        for name, r in ranks.items()},
+                body_changes_against_a_source_frames={name: {j: c[j] for j in arms} for name, c in changes.items()})
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 
 def norm(value: str) -> str:
@@ -404,7 +493,7 @@ def semlex_stage(args) -> dict:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument("stage", choices=("citizen-extract", "citizen-score", "semlex"))
+    p.add_argument("stage", choices=("citizen-extract", "citizen-score", "citizen-flags", "semlex"))
     p.add_argument("--videos", nargs="*", default=[])
     p.add_argument("--out-dir")
     p.add_argument("--npy-dir")
@@ -429,7 +518,7 @@ def main(argv=None) -> int:
             for r in pool.map(extract_one, [(v, args.out_dir, args.models_dir) for v in args.videos]):
                 print(json.dumps(r), flush=True)
         return 0
-    report = citizen_score(args) if args.stage == "citizen-score" else semlex_stage(args)
+    report = {"citizen-score": citizen_score, "citizen-flags": citizen_flags, "semlex": semlex_stage}[args.stage](args)
     Path(args.report).write_text(json.dumps(report, indent=1, sort_keys=True))
     print(json.dumps({k: v for k, v in report.items() if k not in ("clip_names", "labels")}, indent=1)[:8000])
     if "labels" in report:
