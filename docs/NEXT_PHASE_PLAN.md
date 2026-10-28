@@ -2652,3 +2652,13 @@ No licence above permits commercial use or explicitly permits releasing a traine
 - **Passes** if it converts, forearm-tracked "after" is clearly above "original solver" and "stored before", and the hands are unchanged.
 - **Then** the rest downloads at one video per 60 s through the gate, with extraction on CPU pods.
 - **On a refusal:** stop for the day.
+
+### Release scope and Sem-Lex follow-up (owner, 2026-10-28, 06:29 UTC)
+
+**Release scope.**
+- There will be no commercial use.
+- The model is published only as a public GitHub repository, with explanatory material, and is not otherwise shared.
+- Every data source we hold is included, each with its required citation and licence terms.
+- Licence compliance is settled before the model is finalised: consent limits (ASL Citizen is recognition-only), share-alike clauses (Sem-Lex, ASL Signbank), and the NVIDIA terms, if that data is used.
+
+**Sem-Lex follow-up** (same thread as the first request) sent at 06:29 UTC to Naomi Caselli, cc Lee Kezar's Gmail and USC addresses. It offers several ways to transfer the data: a Drive share, Box, Globus, OSF or a bucket, or a subset (isolated videos or pose files). It also offers to sign a data use agreement. The owner is also asking his professors for a route in.
