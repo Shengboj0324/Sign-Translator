@@ -2546,3 +2546,17 @@ Otherwise F12 stays the leader, and the round's result informs round 14 (alignme
 - Round 13's drop of arm-untracked clips stands.
 - Step B (inverse kinematics) cannot run on the stored states alone: without a valid chest, the shoulder and wrist positions are not stored. It is re-scoped to use the UWB 2D keypoints of the same videos (shoulders, elbows, wrists in the image), still to be assessed.
 - Scripts: `diagnose_youtube_arms.py`, `arm_recovery_trial.py`, `uwb_framing_check.py` (agent branch). Outputs in R2 under `youtube-asl-v1/arm-recovery/step-a-2026-10-28/`.
+
+## YouTube-ASL re-download approved (owner, 2026-10-28, 05:30 UTC)
+
+The owner approved re-downloading the arm-untracked YouTube-ASL videos (about 850), under the standing YouTube rules: home route, low rate, no sign-in, cookies, proxies or other circumvention.
+
+**Order:**
+1. **The extraction change, reviewed and tested before use.**
+   - `acquire_youtube_asl.py` and extraction run with `upright_chest`.
+   - An arm counts only on frames whose elbow lies inside the image.
+   - Raw MediaPipe landmarks are stored with every state (so later fixes are re-solves).
+2. **One test download after a cool-down,** at about 09:00 UTC, about 4 h after the 05:1x bot-check.
+   - If it passes: the rest at ≤ 150 videos/h, with extraction on pods. New states are written alongside the old ones, never overwriting.
+   - If it is bot-checked: stop for the day and retry the next day.
+3. **Recovered clips** enter a manifest only after a recovery report (forearm-tracked fraction, elbow-in-image fraction, unchanged hands) and a declaration.
