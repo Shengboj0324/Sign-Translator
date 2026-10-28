@@ -44,6 +44,8 @@ from dataclasses import asdict, dataclass, field
 import hashlib
 import json
 import math
+import re
+import unicodedata
 
 import torch
 from torch import nn
@@ -485,6 +487,15 @@ class RVQPriorConfig:
     # diffusion_targets, so without this the prior learns to emit "flat hand" codes there (2026-10-27 audit;
     # WLASL's untracked arm frames). False keeps every earlier prior's config and SHA.
     part_valid_loss: bool = False
+    # round 13 candidates against sentences that do not step through their text (opt-in, training only, text-conditioned
+    # rows only). guided_attention: weight of Tachibana et al.'s (2017, arXiv 1710.08969) guided-attention loss on the
+    # temporal decoder's cross-attention (see guided_attention_loss), width g = guided_attention_width.
+    # alignment_supervision: weight of a cross entropy pulling the layer-averaged cross-attention of each step toward the
+    # bytes of the word being signed there, on rows that carry per-frame word spans (see alignment_loss).
+    # 0 keeps every earlier prior's config and SHA (the width is dropped from the dict while the weight is 0).
+    guided_attention: float = 0.
+    guided_attention_width: float = .2
+    alignment_supervision: float = 0.
 
     def to_dict(self) -> dict:
         data = asdict(self)
@@ -492,7 +503,10 @@ class RVQPriorConfig:
         for key in ("text_model", "text_model_revision"):
             if data.get(key) is None:
                 data.pop(key, None)
-        for key in ("input_corruption", "scheduled_sampling", "history_dropout", "history_stages", "part_valid_loss"):
+        if not data.get("guided_attention"):
+            data.pop("guided_attention_width", None)
+        for key in ("input_corruption", "scheduled_sampling", "history_dropout", "history_stages", "part_valid_loss",
+                    "guided_attention", "alignment_supervision"):
             if not data.get(key):
                 data.pop(key, None)
         return data
@@ -519,6 +533,163 @@ def load_text_model(name: str, revision: str | None = None):
     return model, tokenizer
 
 
+def cross_attention_probabilities(attention: nn.MultiheadAttention, query: torch.Tensor, memory: torch.Tensor,
+                                  key_padding_mask: torch.Tensor | None) -> torch.Tensor:
+    """(B, S, L) head-averaged softmax weights of a batch-first ``attention`` (packed in-projection) from ``query``
+    (B, S, d) to ``memory`` (B, L, d), without attention dropout: what ``attention(query, memory, memory,
+    need_weights=True, average_attn_weights=True)`` returns in eval mode (tested). Padded keys get weight 0."""
+    d, H = attention.embed_dim, attention.num_heads
+    w, b = attention.in_proj_weight, attention.in_proj_bias
+    q = F.linear(query, w[:d], None if b is None else b[:d])
+    k = F.linear(memory, w[d:2 * d], None if b is None else b[d:2 * d])
+    B, S, L = q.shape[0], q.shape[1], k.shape[1]
+    q = q.reshape(B, S, H, d // H).transpose(1, 2)
+    k = k.reshape(B, L, H, d // H).transpose(1, 2)
+    scores = q @ k.transpose(-1, -2) / math.sqrt(d // H)                                  # (B, H, S, L)
+    if key_padding_mask is not None:
+        scores = scores.masked_fill(key_padding_mask[:, None, None], -math.inf)
+    return scores.softmax(-1).mean(1)
+
+
+class AttentionRecordingDecoderLayer(nn.TransformerDecoderLayer):
+    """``nn.TransformerDecoderLayer`` that, while ``record`` is set, also stores its cross-attention weights
+    (B, S, L) in ``cross_attention``. The layer's output is computed by the parent's unchanged code path (the
+    weights are a side computation from the same normalised input, query and key projections), so outputs are
+    bit-identical with or without recording, and the submodules and state_dict keys are the parent's: every
+    earlier checkpoint loads unchanged."""
+
+    record = False
+    cross_attention: torch.Tensor | None = None
+
+    def _mha_block(self, x, mem, attn_mask, key_padding_mask, is_causal=False):
+        if self.record:
+            if attn_mask is not None:
+                raise ValueError("attention recording supports key padding masks only")
+            self.cross_attention = cross_attention_probabilities(self.multihead_attn, x, mem, key_padding_mask)
+        return super()._mha_block(x, mem, attn_mask, key_padding_mask, is_causal)
+
+
+def _ranks(mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """(position index among the row's valid entries, count of valid entries per row) of a (B, L) mask."""
+    mask = mask.bool()
+    return (mask.long().cumsum(1) - 1).clamp_min(0), mask.sum(1)
+
+
+def guided_attention_weights(step_valid: torch.Tensor, text_valid: torch.Tensor, width: float = .2) -> torch.Tensor:
+    """(B, S, L) penalty W[t, n] = 1 − exp(−(n/(N−1) − t/(T−1))² / (2 g²)) after Tachibana et al. (2017), with t, n the
+    ranks of step t and text position n among the row's valid steps and valid text positions (T and N of them; a
+    single step or position counts as 0); 0 elsewhere.
+    All non-PAD memory positions count, BOS and EOS included: BOS (n = 0) anchors the start of the diagonal and EOS
+    (n = N − 1) its end, so a prior that steps through the text attends BOS at the first step and EOS at the last."""
+    t, T = _ranks(step_valid)
+    n, N = _ranks(text_valid)
+    # (T − 1) and (N − 1): the first step sits on BOS and the last step on EOS exactly (t/T, n/N left the end
+    # corner penalised by f(1/N − 1/T): 0.675 for N = 5, T = 2; 2026-10-28 adversarial review)
+    x = t.float() / (T - 1).clamp_min(1)[:, None].float()                                   # (B, S)
+    y = n.float() / (N - 1).clamp_min(1)[:, None].float()                                   # (B, L)
+    W = 1 - torch.exp(-(y[:, None, :] - x[:, :, None]) ** 2 / (2 * width ** 2))
+    return W * (step_valid.bool()[:, :, None] & text_valid.bool()[:, None, :])
+
+
+def guided_attention_loss(attention: torch.Tensor, step_valid: torch.Tensor, text_valid: torch.Tensor,
+                          width: float = .2) -> torch.Tensor:
+    """Expected penalty per step, Σ_n A[t, n]·W[t, n], averaged over the valid steps of every row and over layers
+    (in [0, 1]). ``attention``: (B, S, L) or (B, layers, S, L), each step's weights summing to 1 over the text.
+    Tachibana et al. average over all N·T pairs, which, with weights summing to 1 per step, scales the term by 1/N:
+    a 150-byte sentence would get a 25-fold weaker push than a 6-byte word. Averaging per step keeps the push the
+    same for every text length (2026-10-28 review)."""
+    if attention.dim() == 3:
+        attention = attention[:, None]
+    W = guided_attention_weights(step_valid, text_valid, width).to(attention.dtype)        # (B, S, L)
+    steps = step_valid.sum().clamp_min(1) * attention.shape[1]
+    return (attention * W[:, None]).sum() / steps
+
+
+def alignment_targets(word_spans: torch.Tensor, text_length: int) -> tuple[torch.Tensor, torch.Tensor]:
+    """(target (B, S, L) distribution, has-target (B, S) mask) from per-step word spans (B, S, 2) of text positions
+    [start, end) in the encoded (BOS-first) memory; rows/steps with start < 0 or an empty span have no target.
+    The target is uniform over the span's positions."""
+    start, end = word_spans[..., 0], word_spans[..., 1]
+    has = (start >= 0) & (end > start)
+    position = torch.arange(text_length, device=word_spans.device)
+    target = ((position >= start[..., None]) & (position < end[..., None]) & has[..., None]).float()
+    has = has & (target.sum(-1) > 0)                                       # spans cut off by truncation have none
+    return target / target.sum(-1, keepdim=True).clamp_min(1), has
+
+
+def alignment_loss(attention: torch.Tensor, word_spans: torch.Tensor, step_valid: torch.Tensor | None = None,
+                   eps: float = 1e-6) -> torch.Tensor | None:
+    """Cross entropy −Σ_n q[t, n] log Ā[t, n] of the layer-averaged cross-attention Ā (``attention`` (B, S, L) or
+    (B, layers, S, L)) against q = uniform over the bytes of the word signed at step t (``word_spans`` (B, S, 2), see
+    ``alignment_targets``), averaged over the steps that have a span (and are valid). Equals KL(q ‖ Ā) + H(q).
+    None when no step has a span (the caller adds nothing)."""
+    if attention.dim() == 4:
+        attention = attention.mean(1)
+    target, has = alignment_targets(word_spans, attention.shape[-1])
+    if step_valid is not None:
+        has = has & step_valid.bool()
+    if not bool(has.any()):
+        return None
+    per_step = -(target * (attention.clamp_min(0) + eps).log()).sum(-1)                   # (B, S)
+    return per_step[has].mean()
+
+
+def word_byte_spans(text: str, *, max_bytes: int = 256) -> list[tuple[int, int]]:
+    """[start, end) memory positions (BOS = position 0, as ``encode_texts``) of each whitespace-separated word of
+    ``text``, in the NFC-normalised, stripped UTF-8 bytes ``encode_texts`` encodes; words past the ``max_bytes``
+    truncation are cut back or (if wholly truncated) given as empty spans."""
+    data = unicodedata.normalize("NFC", text.strip()).encode("utf-8")
+    limit = max_bytes - 2
+    spans, offset = [], 0
+    for word in data.split():
+        start = data.index(word, offset)
+        offset = start + len(word)
+        spans.append((min(start, limit) + 1, min(offset, limit) + 1))
+    return spans
+
+
+def _word_key(word: str) -> str | None:
+    """Comparable base gloss of a text word: plan-line loci (``1>GIVE>2``) and annotation decoration removed;
+    None for plan-line marker brackets (``[yn``, ``]``), which no sign spans."""
+    from ..planning.asllrp_gloss import parse_surface_token
+    if word.startswith("[") or word == "]":
+        return None
+    word = re.sub(r"^\d+>", "", re.sub(r">\d+$", "", word))
+    return parse_surface_token(word).base
+
+
+def frame_word_spans(text: str, signs, timestamps, *, max_bytes: int = 256):
+    """(T, 2) int64 per-frame [start, end) memory positions of the text word being signed (−1, −1 where none).
+
+    ``signs``: the utterance's time-segmented signs in order, as (gloss label, start seconds, end seconds) relative
+    to the state's first frame (end inclusive of its last frame); ``timestamps``: the state's frame times (T,), after
+    any resampling. Text words (whitespace tokens of the text ``encode_texts`` encodes: a gloss line or a plan line)
+    are matched to signs by an order-preserving alignment of their base glosses (``difflib.SequenceMatcher``), so a
+    plan line whose surface-tier glosses differ from the segmented signs keeps only the agreeing ones; a frame inside
+    no matched sign has no span. See docs/research/alignment-supervision-design.md."""
+    import difflib
+    import numpy as np
+    from ..planning.asllrp_gloss import parse_surface_token
+    times = np.asarray(timestamps, dtype=np.float64)
+    times = times - times[0] if len(times) else times
+    out = np.full((len(times), 2), -1, dtype=np.int64)
+    words = [w.decode("utf-8", errors="ignore") for w in unicodedata.normalize("NFC", text.strip()).encode().split()]
+    spans = word_byte_spans(text, max_bytes=max_bytes)
+    keys = [_word_key(w) for w in words]
+    word_index = [i for i, k in enumerate(keys) if k is not None]
+    sign_keys = [parse_surface_token(label).base for label, _, _ in signs]
+    matcher = difflib.SequenceMatcher(a=[keys[i] for i in word_index], b=sign_keys, autojunk=False)
+    for block in matcher.get_matching_blocks():
+        for k in range(block.size):
+            start, end = spans[word_index[block.a + k]]
+            if end <= start:
+                continue
+            _, t0, t1 = signs[block.b + k]
+            inside = (times >= float(t0) - 1e-6) & (times <= float(t1) + 1e-6)
+            out[inside] = (start, end)
+    return out
+
+
 class RVQPrior(nn.Module):
     def __init__(self, config: RVQPriorConfig) -> None:
         super().__init__()
@@ -543,7 +714,7 @@ class RVQPrior(nn.Module):
         # code j of a step has its own embedding table (index K = "start" for the first step)
         self.code_embed = nn.Parameter(torch.randn(J, K + 1, d) * .02)
         self.time = nn.Linear(2 * d, d)
-        self.temporal = nn.TransformerDecoder(nn.TransformerDecoderLayer(
+        self.temporal = nn.TransformerDecoder(AttentionRecordingDecoderLayer(
             d, config.heads, config.feedforward, config.dropout, batch_first=True, norm_first=True),
             config.temporal_layers)
         self.depth_position = nn.Parameter(torch.randn(J, d) * .02)
@@ -590,8 +761,11 @@ class RVQPrior(nn.Module):
         j = torch.arange(self.J, device=codes.device)
         return self.code_embed[j, codes]
 
-    def temporal_states(self, hidden, text_mask, previous: torch.Tensor, seconds, duration):
-        """h_t for every step from the previous steps' codes ``previous`` (B, S, J) — start row first."""
+    def temporal_states(self, hidden, text_mask, previous: torch.Tensor, seconds, duration, *,
+                        return_attention: bool = False):
+        """h_t for every step from the previous steps' codes ``previous`` (B, S, J) — start row first. With
+        ``return_attention``, also every temporal layer's head-averaged cross-attention to the text (B, layers, S, L);
+        h is the same either way."""
         d = self.config.d_model
         phase = seconds / duration[:, None].clamp_min(1e-3)
         embedded = self._embed_codes(previous)                                 # (B, S, J, d); code j = q·P + p
@@ -600,7 +774,18 @@ class RVQPrior(nn.Module):
         x = embedded.sum(2) + self.time(torch.cat(
             (sinusoid(seconds, d, max_period=60.), sinusoid(phase, d, max_period=4.)), -1))
         causal = torch.triu(torch.ones(x.shape[1], x.shape[1], dtype=torch.bool, device=x.device), 1)
-        return self.temporal(x, hidden, tgt_mask=causal, memory_key_padding_mask=~text_mask)
+        if not return_attention:
+            return self.temporal(x, hidden, tgt_mask=causal, memory_key_padding_mask=~text_mask)
+        layers = list(self.temporal.layers)
+        for layer in layers:
+            layer.record = True
+        try:
+            h = self.temporal(x, hidden, tgt_mask=causal, memory_key_padding_mask=~text_mask)
+            attention = torch.stack([layer.cross_attention for layer in layers], 1)
+        finally:
+            for layer in layers:
+                layer.record, layer.cross_attention = False, None
+        return h, attention
 
     def depth_logits(self, h: torch.Tensor, codes_so_far: torch.Tensor) -> torch.Tensor:
         """Logits (N, n+1, K) of code positions 0..n given h (N, d) and the step's first n codes (N, n)."""
@@ -627,8 +812,14 @@ def part_code_weights(tokenizer: MotionRVQ, config: RVQPriorConfig, motion: Moti
 
 
 def rvq_prior_loss(model: RVQPrior, tokenizer: MotionRVQ, tokens, text_mask, motion: MotionBatch, loci=None, *,
-                   train: bool = True):
-    """Σ_j cross entropy of the frozen tokenizer's codes, plus the duration term (text dropped only if ``train``)."""
+                   train: bool = True, word_spans: torch.Tensor | None = None):
+    """Σ_j cross entropy of the frozen tokenizer's codes, plus the duration term (text dropped only if ``train``).
+
+    Opt-in attention terms (training only, text-conditioned rows only): ``guided_attention`` adds Tachibana et al.'s
+    guided-attention loss on the temporal decoder's cross-attention; ``alignment_supervision`` adds
+    ``alignment_loss`` against ``word_spans`` (B, T, 2): per *frame*, the [start, end) memory positions of the word
+    signed there (start < 0: none; see ``frame_word_spans``). Each step takes its first frame's span. Rows without
+    spans contribute nothing."""
     config = model.config
     with torch.no_grad():
         tokenizer.eval()
@@ -668,7 +859,15 @@ def rvq_prior_loss(model: RVQPrior, tokenizer: MotionRVQ, tokens, text_mask, mot
         hit[:, 0] = False                               # the start token stays
         noise = torch.randint_like(previous, model.K)
         previous = torch.where(hit[..., None], noise, previous)
-    h = model.temporal_states(hidden, text_mask, previous, step_seconds, duration)       # (B, S, d)
+    supervise = train and bool(conditioned.any()) and (config.guided_attention > 0 or (
+        config.alignment_supervision > 0 and word_spans is not None))
+    if supervise and config.text_model and config.alignment_supervision > 0 and word_spans is not None:
+        raise ValueError("alignment supervision needs the byte text encoder (word spans are byte positions)")
+    if supervise:
+        h, attention = model.temporal_states(hidden, text_mask, previous, step_seconds, duration,
+                                             return_attention=True)                    # (B, layers, S, L)
+    else:
+        h = model.temporal_states(hidden, text_mask, previous, step_seconds, duration)   # (B, S, d)
     target = codes[valid]                                                                  # (N, J)
     logits = model.depth_logits(h[valid], target[:, :-1])                                  # (N, J, K)
     if config.part_valid_loss:
@@ -686,6 +885,25 @@ def rvq_prior_loss(model: RVQPrior, tokenizer: MotionRVQ, tokens, text_mask, mot
         duration_term = F.smooth_l1_loss(log_duration[conditioned], target_duration[conditioned])
         terms["log_duration"] = float(duration_term.detach())
         total = total + config.duration_weight * duration_term
+    if supervise and config.guided_attention > 0:
+        # multi-word texts only (a space byte among the valid bytes): a monotonic sweep over the letters of one word has
+        # no meaning and would act against the word-level conditioning that rounds 11-12 established
+        # whitespace bytes (\t \n \v \f \r and space, as bytes.split()), tested on the byte input itself: with a
+        # pretrained text model text_mask is that model's tokenisation mask, of a different length
+        spaces = torch.isin(tokens, torch.tensor([9, 10, 11, 12, 13, 32], device=tokens.device))
+        rows = conditioned & (spaces & (tokens != PAD)).any(1)
+        if bool(rows.any()):
+            guided = guided_attention_loss(attention[rows], valid[rows], text_mask[rows], config.guided_attention_width)
+            terms["guided_attention"] = float(guided.detach())
+            total = total + config.guided_attention * guided
+    if supervise and config.alignment_supervision > 0 and word_spans is not None:
+        spans = word_spans.to(codes.device).long()[:, ::config.tokenizer.step][:, :codes.shape[1]]
+        spans = F.pad(spans, (0, 0, 0, codes.shape[1] - spans.shape[1]), value=-1)        # (B, S, 2)
+        rows = conditioned
+        aligned = alignment_loss(attention[rows], spans[rows], valid[rows])
+        if aligned is not None:
+            terms["alignment"] = float(aligned.detach())
+            total = total + config.alignment_supervision * aligned
     return total, terms
 
 
@@ -842,4 +1060,6 @@ def generate_rvq_motion_batch(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, f
 
 
 __all__ = ["PARTS", "MotionRVQConfig", "ResidualQuantizer", "MotionRVQ", "rvq_loss", "RVQPriorConfig", "RVQPrior",
-           "rvq_prior_loss", "generate_rvq_motion", "generate_rvq_motion_batch"]
+           "rvq_prior_loss", "generate_rvq_motion", "generate_rvq_motion_batch", "AttentionRecordingDecoderLayer",
+           "cross_attention_probabilities", "guided_attention_weights", "guided_attention_loss", "alignment_targets",
+           "alignment_loss", "word_byte_spans", "frame_word_spans"]
