@@ -2415,3 +2415,21 @@ Best checkpoint at step 37000; early stop at step 47000.
 - **The problem.** With 300 How2Sign val clips, the paired BLEU interval is about ±0.55 wide. An arm with exactly equal meaning would then need a point estimate of about +0.05 to clear the −0.5 margin, so the non-inferiority test has little power.
 - **The change.** Round-12 pilots (F12, M12) use `--clips 1000` for the meaning half, from the same fixed-seed val selection. The paired reference is the control re-scored on the same 1000 clips with the fixed sampler. The lexicon half and the margin are unchanged.
 - **Round 11's verdicts stand** as recorded at 300 clips; they are not re-tested.
+
+## Round 12 pilot, F12, recorded (2026-10-28, 03:21 UTC): PROMISING (rule D, amendment 2; round 12 amendment 1)
+
+F12 (warm start from L11c step 20000, then 10000 steps at B6's corpus weights, history dropout 0.5, stage-1 history, part-valid loss, trimmed `round10-mixed-v1`), at its step 10000:
+
+| Measure | F12 | Control | Paired difference [95% CI] | Rule | Result |
+|---|---|---|---|---|---|
+| Lexicon top-5 (R5, 150 words × 2) | **0.4267** | 0.0167 | **+0.41 [0.337, 0.48]** | ≥ +0.05, CI above 0 | pass |
+| BLEU (1000 How2Sign val clips) | **1.806** | 1.586 | **+0.22 [−0.155, 0.587]** | lower bound > −0.5 | pass |
+
+- **Exposure reads at step 10000:** frequent words 0.717; the 108 R5 words with isolated clips 0.620.
+- **The first arm to pass rule D.** It keeps most of L11c's words (lexicon 0.427 against L11c's 0.533) and recovers sentence meaning to the blank level (blank 1.859 on these clips; real 4.136). Sentence meaning is not yet above blank; that is the round-13 target.
+
+**Next (declared before M12's pilot):**
+- F12 resumes now from its step 10000 toward step 60000, as the provisional leader (`PATIENCE=0`).
+- M12's pilot (step 20000) is judged by the same rule. If M12 is promising with a lexicon difference more than 0.02 higher than F12's, M12 replaces F12 as the continued arm, and F12 stops with its checkpoints kept. Otherwise F12 continues.
+- The winner then runs the full declared chain: test-set exit gate, then avatar.
+- The round-13 sentence options (guided attention, alignment supervision) are held on a branch until their strict review is complete; they will be declared as a separate round on top of the winner.
