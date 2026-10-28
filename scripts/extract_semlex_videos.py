@@ -466,6 +466,37 @@ class Pool:
         return out
 
 
+class Watchdog:
+    """Whole-process watchdog (2026-10-28: a pass hung for 20 min in a blocked archive read, where the pool's own stall
+    check never runs). ``beat()`` marks progress (a member read, a clip finished, a trailing chunk hashed); when none
+    happens for ``limit`` seconds, ``fire`` runs (kill the workers, exit 1: the pod loop reruns the pass, which resumes
+    from the stored landmarks). The limit exceeds the pool's own stall check, so that recovery is tried first."""
+
+    def __init__(self, limit: float, fire, clock=time.monotonic):
+        self.limit, self.fire, self.clock = limit, fire, clock
+        self.last = clock()
+
+    def beat(self) -> None:
+        self.last = self.clock()
+
+    def expired(self) -> bool:
+        return self.clock() - self.last > self.limit
+
+    def start(self, every: float = 30., sleep=time.sleep) -> None:   # sleep bound at import: tests patch time.sleep
+        import threading
+
+        def loop():
+            while True:
+                try:
+                    sleep(every)
+                    if self.expired():
+                        self.fire()
+                        return
+                except Exception:  # noqa: BLE001 - the watchdog must never raise into the interpreter
+                    return
+        threading.Thread(target=loop, daemon=True, name="watchdog").start()
+
+
 # ------------------------------------------------------------------------------------------------------------- run
 
 def prefixes(smoke: bool) -> tuple[str, str]:
@@ -521,6 +552,15 @@ def run(args, *, models=None) -> dict:
         pool = Pool(args.workers, (args.store, args.models_dir), args.stall_seconds)
     results, seen, split_seen, unexpected = [], set(), set(), dict(count=0, first=[])
     total = submitted = 0
+
+    def fire():
+        print(f"WATCHDOG: no member read and no clip finished in {watchdog.limit:.0f} s: killing the workers and "
+              "exiting 1 (the pass is rerun and resumes)", flush=True)
+        if pool is not None:
+            pool._stop(pool.executor)
+        os._exit(1)
+    watchdog = Watchdog(args.stall_seconds + 600., fire)
+    watchdog.start()
     started = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")      # microseconds: one report per run
     clock = time.monotonic()
     stream_sha256 = stream_bytes = trailing = None
@@ -529,6 +569,7 @@ def run(args, *, models=None) -> dict:
         with stream:
             complete = True
             for index, video_id, payload in members(stream, args.split, unexpected):
+                watchdog.beat()
                 total += 1
                 split_seen.add(video_id)
                 if shard_of(video_id, args.shards) != args.shard:
@@ -556,6 +597,7 @@ def run(args, *, models=None) -> dict:
                 else:
                     pool.submit(job)
                     results += pool.collect(2 * args.workers)
+                    watchdog.beat()
                 if submitted % 500 == 0:
                     print(f"{submitted} clips of this shard submitted, {total} members read, "
                           f"{len(results)} done, {time.monotonic() - clock:.0f} s", flush=True)
@@ -566,8 +608,10 @@ def run(args, *, models=None) -> dict:
                 trailing = 0
                 while chunk := stream.read(1 << 20):   # anything after the last gzip member: hash every byte
                     trailing += len(chunk)
+                    watchdog.beat()
                 stream_sha256, stream_bytes = hashing.digest.hexdigest(), hashing.bytes
         if pool is not None:
+            watchdog.limit = float("inf")          # finish() bounds each quarantined clip by the pool's own stall time
             results += pool.finish()
     finally:
         if pool is not None:
