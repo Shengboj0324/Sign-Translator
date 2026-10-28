@@ -2433,3 +2433,27 @@ F12 (warm start from L11c step 20000, then 10000 steps at B6's corpus weights, h
 - M12's pilot (step 20000) is judged by the same rule. If M12 is promising with a lexicon difference more than 0.02 higher than F12's, M12 replaces F12 as the continued arm, and F12 stops with its checkpoints kept. Otherwise F12 continues.
 - The winner then runs the full declared chain: test-set exit gate, then avatar.
 - The round-13 sentence options (guided attention, alignment supervision) are held on a branch until their strict review is complete; they will be declared as a separate round on top of the winner.
+
+## Round 13 preparation: sentence fixes reviewed (recorded 2026-10-28, 03:28 UTC; the round is declared separately before any round-13 result)
+
+**Guided attention and alignment supervision** (fixes 2–3, on branch `round13-wip`, not yet on `main`):
+- Reviewed line by line; two design fixes:
+  - the penalty is averaged per step, so text length does not change its strength;
+  - it applies to multi-word texts only, so the word skill is untouched.
+- An independent adversarial review then verified:
+  - the attention probabilities match PyTorch's to 1.2e-7;
+  - outputs are bit-identical, with no random-number consumption;
+  - old checkpoints load strictly;
+  - validation and generation are unaffected.
+- Its three minor findings were fixed: the diagonal is anchored at both corners with (T − 1), (N − 1); the multi-word gate uses any whitespace byte; the gate is tested on the byte input, so a pretrained text model cannot crash it. 52 tests pass.
+- **Memory:** about 4.5 GB extra at batch 64, S 480, L 256. The first round-13 run is a smoke run that records peak GPU memory.
+- **Alignment supervision needs a manifest** with per-sign spans (ASLLRP utterance timings). It is not built yet, so the option is inactive.
+
+**Sentence cleaning and word spotting** (fixes 4–5, reviewed, on `main`):
+- `build_clean_sentence_manifest.py` cuts train-partition sentence clips to both wrists' active span ± 0.3 s and drops records with arms untracked (> 50% of frames), no activity, coverage < 0.4, or a words-per-second outlier (log scale, median ± 3 scaled MAD per corpus). Val and test are unchanged.
+- **Data decision, declared now:** arm-untracked YouTube-ASL sentence clips (about 60% of them in a 200-clip sample) are **dropped from generator training**.
+  - Their arms are filled with a neutral pose.
+  - Arms are under half of the body part's columns, so the part-valid loss still counts the body as observed and would teach that pose.
+- **Build:** pod job `round13-clean` writes `round13-mixed-v1`.
+- `sentence_word_spotting.py` is a **report-only** sentence instrument. Validation on 300 val sentences (reliable glosses): real 0.080 [0.054, 0.112], mismatched control 0.024, blank 0.005.
+- `pilot_content_check.py`'s selection and post-processing were factored out with identical behaviour (same filters, seed and smoothing).
