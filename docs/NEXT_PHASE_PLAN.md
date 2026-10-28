@@ -2604,3 +2604,31 @@ The research compared every ASL isolated-sign source we could find. Sources are 
 **Next step:** match the 42 uncovered R5 words against the Sem-Lex and Signbank vocabularies, using public files only, to project the coverage ceiling.
 
 No licence above permits commercial use or explicitly permits releasing a trained model. The first public build stays How2Sign plus ASLLRP (see the release licensing review).
+
+### Source decision, update (2026-10-28, 06:05 UTC)
+
+**Owner, 05:47 UTC:** new recipients are approved for data-access requests. Sem-Lex is not counted on: its public repo has not changed since 2023, despite the promised updates.
+
+**Coverage of the 42 uncovered R5 words** (public files only):
+- **ASL Signbank:** its public vocabulary has 25 of the 42 as exact glosses and 30 with probable matches. That lifts the lexicon ceiling from 0.72 to 0.887 (exact) or 0.92. About one citation clip per gloss.
+- **Only Sem-Lex** (or ASL Citizen, which is recognition-only) has BATHTUB, BRAIDS, BUN, CELERY, FRINGE, HAIRDRESSER, HANG, MASSAGE, MUMMY, NUMBERS, BOLT and OK.
+
+**NVIDIA ASL 1000, read in full** (github.com/NVIDIA/Trustworthy-AI, "ASL Developer Community"; 63 files, 8 commits from 2025-11-26 to 2026-10-23).
+- **The repo** is the annotation pipeline, Apache-2.0 for the code. It does the following:
+  - picks a few key frames per video by optical-flow minima;
+  - runs MediaPipe (legacy hands and pose, Tasks face) on those stills;
+  - sends 2D points to SuperAnnotate for human correction.
+- **The data** is under the NVIDIA Data License for ASL Project (2025-02-04).
+- **No data, glosses or splits are in the repo.** Videos are `<uid>_<unix time>.webm`. Their landmarks cannot feed our solver: there are no world landmarks, the coordinates are integer pixels, and off-image points are deleted silently. We would re-extract from the videos.
+- **The one sample frame** is a phone selfie with the elbows and hips out of frame. Expect heavy arm truncation; the elbow gate and upright root handle it, and the pass rate is to be measured on a sample.
+- **Terms.**
+  - §1 allows use "to advance access to technology for the Deaf community", with no non-commercial limit.
+  - Forbidden: redistribution (§2b), use that makes the data subject to an open-source licence (§2f), and identity or biometric use (§2d–e).
+  - §3 limits use to "your secure network", so cloud compute (Runpod, R2) needs confirmation.
+  - Data must be deleted on request (§5) or at termination (§12; 30 days' notice).
+  - Public statements beyond attribution need approval (§10).
+  - Delaware law.
+- **Access** is NVIDIA's gated form: a business email, an organisation, a use case, and accepting the licence. **The owner submits it.**
+- Questions were sent to trustworthyaiprojects@nvidia.com at 06:03 UTC: cloud as a secure network, pose extraction versus "biometric processing", model weights, how far deletion reaches, individual eligibility, size, vocabulary and videos.
+
+**ASL Signbank:** a permission request was sent to Julie Hochgesang (Gallaudet) at 06:03 UTC. It covers downloading the public videos at a polite rate for non-commercial computational use, with attribution and no redistribution, and asks about an export and registration for the non-public signs. Downloads wait for her answer.
