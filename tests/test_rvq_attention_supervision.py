@@ -262,3 +262,19 @@ def test_guided_attention_is_the_same_per_step_for_short_and_long_texts_and_skip
     torch.manual_seed(5)
     _, terms = rvq_prior_loss(guided, tokenizer, tokens, mask, batch, train=True)
     assert terms["guided_attention"] > 0
+
+
+def test_guided_attention_anchors_both_corners_and_detects_any_whitespace():
+    for N, T in ((5, 2), (9, 60), (200, 60)):
+        sv, tv = torch.ones(1, T, dtype=torch.bool), torch.ones(1, N, dtype=torch.bool)
+        W = guided_attention_weights(sv, tv)
+        assert float(W[0, 0, 0]) == 0. and float(W[0, -1, -1]) == 0.                # BOS first, EOS last, exactly
+        assert int(W[0, -1].argmin()) == N - 1
+    states, tokenizer, prior = prior_setup()
+    batch = collate_multichannel(states)
+    guided = RVQPrior(replace(prior.config, guided_attention=1.))
+    guided.load_state_dict(prior.state_dict())
+    tokens, mask = encode_texts(["ask\thim", "cut\nit"])
+    torch.manual_seed(5)
+    _, terms = rvq_prior_loss(guided, tokenizer, tokens, mask, batch, train=True)
+    assert terms["guided_attention"] > 0

@@ -576,14 +576,17 @@ def _ranks(mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
 
 def guided_attention_weights(step_valid: torch.Tensor, text_valid: torch.Tensor, width: float = .2) -> torch.Tensor:
-    """(B, S, L) penalty W[t, n] = 1 − exp(−(n/N − t/T)² / (2 g²)) of Tachibana et al. (2017), with t, n the ranks of
-    step t and text position n among the row's valid steps and valid text positions (T and N of them); 0 elsewhere.
+    """(B, S, L) penalty W[t, n] = 1 − exp(−(n/(N−1) − t/(T−1))² / (2 g²)) after Tachibana et al. (2017), with t, n the
+    ranks of step t and text position n among the row's valid steps and valid text positions (T and N of them; a
+    single step or position counts as 0); 0 elsewhere.
     All non-PAD memory positions count, BOS and EOS included: BOS (n = 0) anchors the start of the diagonal and EOS
     (n = N − 1) its end, so a prior that steps through the text attends BOS at the first step and EOS at the last."""
     t, T = _ranks(step_valid)
     n, N = _ranks(text_valid)
-    x = t.float() / T.clamp_min(1)[:, None].float()                                         # (B, S)
-    y = n.float() / N.clamp_min(1)[:, None].float()                                         # (B, L)
+    # (T − 1) and (N − 1): the first step sits on BOS and the last step on EOS exactly (t/T, n/N left the end
+    # corner penalised by f(1/N − 1/T): 0.675 for N = 5, T = 2; 2026-10-28 adversarial review)
+    x = t.float() / (T - 1).clamp_min(1)[:, None].float()                                   # (B, S)
+    y = n.float() / (N - 1).clamp_min(1)[:, None].float()                                   # (B, L)
     W = 1 - torch.exp(-(y[:, None, :] - x[:, :, None]) ** 2 / (2 * width ** 2))
     return W * (step_valid.bool()[:, :, None] & text_valid.bool()[:, None, :])
 
@@ -885,7 +888,10 @@ def rvq_prior_loss(model: RVQPrior, tokenizer: MotionRVQ, tokens, text_mask, mot
     if supervise and config.guided_attention > 0:
         # multi-word texts only (a space byte among the valid bytes): a monotonic sweep over the letters of one word has
         # no meaning and would act against the word-level conditioning that rounds 11-12 established
-        rows = conditioned & ((tokens == 32) & text_mask).any(1)
+        # whitespace bytes (\t \n \v \f \r and space, as bytes.split()), tested on the byte input itself: with a
+        # pretrained text model text_mask is that model's tokenisation mask, of a different length
+        spaces = torch.isin(tokens, torch.tensor([9, 10, 11, 12, 13, 32], device=tokens.device))
+        rows = conditioned & (spaces & (tokens != PAD)).any(1)
         if bool(rows.any()):
             guided = guided_attention_loss(attention[rows], valid[rows], text_mask[rows], config.guided_attention_width)
             terms["guided_attention"] = float(guided.detach())
