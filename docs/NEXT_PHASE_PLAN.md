@@ -3092,3 +3092,33 @@ Before Sem-Lex enters generator training, F12's tokenizer must carry Sem-Lex sig
 - **Bar:** recon_masked minus real must have a 95% lower bound above **−0.15**. For reference, R5 words on the existing corpora lose 0.08 (0.954 against 0.870).
 
 If it fails, a tokenizer fine-tune on the mixed corpus is declared before any prior round.
+
+### Compositional baseline, F12 step 10000 (recorded 2026-10-28, 14:19 UTC; 300 How2Sign val sentences; back-translation BLEU; report-only)
+
+Sentences composed from the prior's own isolated-word generations, with crossfaded joins. Paired differences [95% CI]:
+
+| Form | BLEU | vs another sentence's words | vs the same words shuffled | vs a deranged reference (chance) | vs end-to-end |
+|---|---|---|---|---|---|
+| End-to-end (pilot form) | 1.41 | — | — | +0.40 [−0.16, +0.97] | — |
+| **Recogniser words, durations fitted to the sentence** | **1.63** | **+0.69 [+0.18, +1.20]** | **+0.59 [+0.05, +1.14]** | **+0.75 [+0.17, +1.36]** | +0.22 [−0.28, +0.74] |
+| Recogniser words, unscaled (about 5× long) | 1.11 | +0.35 [−0.06, +0.73] | +0.37 [+0.06, +0.71] | +0.51 [+0.05, +0.94] | −0.30 |
+| Content words, fitted | 1.27 | +0.35 [+0.00, +0.72] | 0.00 | +0.48 [+0.05, +0.90] | −0.14 |
+| All words, fitted | 0.83 | +0.07 | −0.25 | 0.00 | −0.58 |
+
+Real reads 4.09 and blank 2.09. Blank is the translator's text prior; every generated form reads below it.
+
+**Reading.**
+- Composed from the words the prior knows, with durations fitted to the sentence, the motion carries **sentence-specific content in sentence order**: above another sentence's words, above the shuffled order and above chance.
+- End-to-end generation does not; this is also its first test against chance on these clips.
+- Function words without signs dilute the effect ("all" variant).
+- Absolute quality is still low: composed reads 1.63, against real 4.09.
+
+**This is the evidence the owner asked for before a structural change.** A word-level (compositional) path carries sentence meaning that the end-to-end prior does not.
+
+**Proposed round 15 (to be declared separately):** a compositional generator inside the same model family.
+- English text becomes a sequence of known signs (word selection and order learned, or from gloss annotations where they exist).
+- Each sign comes from the prior, with a fitted duration.
+- Learned transitions replace crossfades.
+- It is judged by the same instruments against end-to-end.
+
+Round 14 (Sem-Lex words, the word lever) proceeds independently: compositional sentences need the word quality and coverage it raises.
