@@ -3143,3 +3143,30 @@ The last row is a v2 penalty on the "every channel valid" form, not lost content
 - **Chest and pelvis 20°**, against 5–6° on ASLLVD and RIT. That is the upright-root torso, a distribution the tokenizer has not seen. It does not affect the bar; recorded as a known gap.
 
 The tokenizer fine-tune is not needed. Round 14 proceeds to its manifest once the train extraction lands.
+
+## Round 15 declared: a compositional generator, inference stage (declared 2026-10-28, 14:59 UTC; owner-approved structural change, 14:50 UTC)
+
+**Hypothesis.** Sentence meaning comes from composing signs the prior generates well in isolation. The compositional baseline showed sentence-specific, ordered content that end-to-end generation lacks.
+
+**Stage 1, inference only.** No new training; prior: F12 step 60000. Each variant generates the same 300 How2Sign val sentences as the pilot.
+- **Word selection, which must not use any evaluator:**
+  - keep words that have at least one isolated training clip in the prior's manifest (the training vocabulary, not the recogniser's);
+  - drop the declared stop-word list (articles, auxiliaries, "to", "of");
+  - keep English order.
+- **Durations** are fitted to the sentence, in proportion to each word's typical isolated duration, with a floor of 0.3 s.
+- **V1 crossfade:** each word generated independently; 4-frame crossfades.
+- **V2 chained:** each word generated with the previous word's generated codes as history (the prior's own continuation, as in the prefix forms). Co-articulation comes from the model, not a crossfade.
+- **V3 chained + rest trim:** V2, plus each word's leading and trailing rest frames trimmed by the dominant-wrist activity rule of `build_trimmed_word_manifest.py` before joining.
+
+**Measures,** against end-to-end generation on the same clips:
+- back-translation BLEU, paired;
+- controls: another sentence's words, the same words shuffled, and a deranged reference;
+- `sentence_word_spotting.py` against its mismatched control;
+- motion statistics: duration, wrist speed against real.
+
+**A variant is PROMISING when all three hold:**
+1. its paired BLEU against end-to-end has a 95% lower bound **above 0**;
+2. its BLEU against the mismatched-words control has a lower bound above 0;
+3. its word-spotting recall is above its mismatched control.
+
+**Next stage, if promising:** the best variant becomes stage 2, a trained composition (learned word selection and ordering, e.g. from ASLLRP gloss annotations, plus learned transitions), declared separately. Round 14's prior replaces F12 when it wins.
