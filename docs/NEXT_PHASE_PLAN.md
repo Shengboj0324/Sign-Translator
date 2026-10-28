@@ -3373,3 +3373,30 @@ Spotting recall: fitted oracle 0.515 against mismatched 0.128.
 | BLEU | 1.806 | 1.636 | −0.170 [−0.564, +0.192] |
 
 Training from step 10000 to 60000 changed neither measure resolvably: the plateau is confirmed. Round 14's arm is compared against \`round12/pilot-f12-step60000.json\`.
+
+## F12 declared chain verdict (recorded 2026-10-28, 20:30 UTC): FAIL; test partition untouched
+
+**Setting.** The gate selected guidance 2.0, temperatures 1.0 (face 0.9), head smoothing 0.1, damping 1, face calibration.
+
+| Rule | Generated | Real | Blank | Result |
+|---|---|---|---|---|
+| R1 retrieval R@3 | 0.266 [0.234, 0.295] | 0.294 | 0.094 | pass |
+| R2 text back-translation | 0.593 | 0.603 | 0.0 | pass |
+| **R2b 2D back-translation** | **2.18 [1.80, 2.52]** | 3.88 | 2.14 | **fail** (not above blank) |
+| R3 no copying | copy rate 0 | — | — | pass |
+| R4 length slices | hand speed 1.34–1.49× real in long clips | — | — | **fail** |
+| **R5 single-sign words** | **0.457 [0.40, 0.51]** | 0.987 | 0.0 | **pass** (round 3e: 0.0135) |
+| R7 smoothness (validation) | — | — | — | **fail** |
+| Exit gate | 79 of 95 checks | — | — | **fail** |
+
+The gate's failing checks are hand speed (left and right, c01, c03, c05, pool) and hand variation (c03).
+
+**Guard.** "R6 not run: validation rules failed (test partition left untouched)". The test partition was never read.
+
+**Reading.**
+- The end-to-end path is closed with this verdict.
+- Words pass R5, a large step from round 3e.
+- Sentences fail R2b, as the diagnostics predicted.
+- Generated hands move about 1.3–1.5× faster than real, a motion-statistics defect to fix. The composed forms are worse still, at about 3×, because isolated signs are compressed into fitted durations.
+
+**Next** (proposed above): round 14 (Sem-Lex words); then a re-declared round 15 stage 2 (ordering, timing, transitions). Hand speed is a named target for both: a declared check on generated hand speed against real.
