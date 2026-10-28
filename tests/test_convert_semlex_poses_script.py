@@ -178,3 +178,33 @@ def test_a_transient_failure_is_retried_then_reported_as_error(monkeypatch):
     monkeypatch.setattr(job, "_process_once", lambda j: (_ for _ in ()).throw(TimeoutError("slow")))
     assert job._process(("v", "test", b"", 1., "p")) == dict(video_id="v", split="test", status="error",
                                                             reason="TimeoutError: slow")
+
+
+def test_the_learned_path_loads_a_pinned_bundle_from_the_store(tmp_path):
+    import torch
+    from signtranslator.data_engineering import world_regressor as wr
+    digest, meta_sha = build(tmp_path)
+    torch.manual_seed(0)
+    bundle = wr.WorldRegressors(
+        hand={s: (wr.MLP(60, 63, width=16, depth=1).eval(), np.zeros(60, np.float32), np.ones(60, np.float32))
+              for s in ("Left", "Right")},
+        pose=(wr.MLP(79, 108, width=16, depth=1).eval(), np.zeros(79, np.float32), np.ones(79, np.float32)))
+    payload = bundle.save()
+    key = f"{BASE}/adapter-dev/bundle.pt"
+    (tmp_path / key).parent.mkdir(parents=True)
+    (tmp_path / key).write_bytes(payload)
+    sha = hashlib.sha256(payload).hexdigest()
+    with pytest.raises(SystemExit, match="regressors-sha256"):
+        job.parse_args(["--split", "test", "--archive-sha256", digest, "--regressors-key", key])
+    with pytest.raises(ValueError, match="SHA-256"):
+        job._init(f"dir:{tmp_path}", None, key, "0" * 64, fake_resources(), FakeBlendshapes())
+    job._init(f"dir:{tmp_path}", None, key, sha, fake_resources(), FakeBlendshapes())
+    assert job._WORKER["learned"]["regressors"].sha256 == sha and job._WORKER["learned"]["flags"] == "upright-chest"
+    args = job.parse_args(["--split", "test", "--archive-sha256", digest, "--metadata-sha256", meta_sha,
+                           "--store", f"dir:{tmp_path}", "--workers", "0", "--regressors-key", key,
+                           "--regressors-sha256", sha])
+    report = job.run(args, resources=fake_resources(), blendshape_model=FakeBlendshapes())
+    converted = [r for r in report["results"] if r["status"] == "converted"]
+    assert len(converted) == 4 and all(r["state_key"].startswith(f"{BASE}/states-learned-v1/test/") for r in converted)
+    assert all(r["world"] == f"learned:{sha}" and r["flags"] == "upright-chest" for r in converted)
+    assert report["regressors_sha256"] == sha

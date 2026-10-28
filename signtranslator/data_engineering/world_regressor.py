@@ -29,6 +29,11 @@ import torch
 from torch import nn
 
 FEATURES_VERSION = "world-regressor-features-v1"
+# The bundle that passed the declared gate (2026-10-28; scripts/semlex_recognition_shift.py, learned_gate):
+# trained on 8 How2Sign signers' Sem-Lex-framed crops (train 1, 3, 5, 8, 11; val 2, 4, 9), 30 epochs.
+WORLD_REGRESSORS_V1 = dict(
+    key="acquisition/2026-10-17-v1/sem-lex-mirror-v1/adapter-dev/world-regressors-v1/world-regressors-v1.pt",
+    sha256="2d17b7434a5360f850d5910c284ffee3ab040d9132933127e3a7ef6a1b3ce793")
 HAND_SCALE_Z = 1.5
 POSE_POINTS = 25                      # 0..24: face, shoulders, arms, hand points, hips
 HAND_BONES = tuple((a, b) for f in range(5) for a, b in zip((0, *range(1 + 4 * f, 4 + 4 * f)), range(1 + 4 * f, 5 + 4 * f))) \
@@ -170,5 +175,5 @@ def load_regressors(path: Path, expected_sha256: str | None = None) -> WorldRegr
     return WorldRegressors.load(Path(path).read_bytes(), expected_sha256=expected_sha256)
 
 
-__all__ = ["FEATURES_VERSION", "HAND_BONES", "POSE_BONES", "POSE_POINTS", "MLP", "WorldRegressors", "hand_features",
+__all__ = ["FEATURES_VERSION", "WORLD_REGRESSORS_V1", "HAND_BONES", "POSE_BONES", "POSE_POINTS", "MLP", "WorldRegressors", "hand_features",
            "hand_target", "hand_output_to_world", "pose_features", "pose_target", "direction_loss", "load_regressors"]

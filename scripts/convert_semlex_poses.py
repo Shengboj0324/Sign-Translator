@@ -13,6 +13,10 @@ results (state key and hash, source hash, frames, rate, aspect estimate, tracked
 shard's completeness against the metadata (ids of this split and shard that the archive lacks). Exit code 2 when any
 clip ended in ``error`` (transient store failure): run the shard again; it resumes.
 
+With ``--regressors-key`` (a ``world_regressor`` bundle in the store, pinned by ``--regressors-sha256``) the clips go
+through the learned path that passed the declared gate (regressed world points, the pose model's visibility head,
+upright chest only) and the states default to ``states-learned-v1/``; without it, the geometric pseudo-world adapter.
+
 Data files are untrusted: member names must match ``<split>/<id>.npy``, sizes are capped, ``.npy`` is read with
 ``allow_pickle=False``.
 """
@@ -42,6 +46,7 @@ BASE = "acquisition/2026-10-17-v1/sem-lex-mirror-v1"
 METADATA_KEY = f"{BASE}/data/semlex_metadata.csv"
 METADATA_SHA256 = "f4250b2877e738f028e4b9517922952a350ec8952e59d53ceabdd778938fc3c3"   # acquire_semlex_mirror.py
 PREFIX = f"{BASE}/states-v1"
+LEARNED_PREFIX = f"{BASE}/states-learned-v1"
 SPLITS = ("test", "val", "train")
 MAX_MEMBER_BYTES = 16 << 20
 MEMBER = re.compile(r"^(test|val|train)/([A-Za-z0-9_-]{1,64})\.npy$")
@@ -107,7 +112,8 @@ def load_metadata(store, key: str, expected_sha256: str) -> dict[str, dict]:
     return rows
 
 
-def _init(store_spec: str, models_dir: str | None, resources=None, blendshape_model=None):
+def _init(store_spec: str, models_dir: str | None, regressors_key: str | None = None,
+          regressors_sha256: str | None = None, resources=None, blendshape_model=None, regressors=None):
     from signtranslator.data_engineering.semlex_pose import BlendshapeModel, load_face_resources
     try:
         import torch
@@ -116,7 +122,12 @@ def _init(store_spec: str, models_dir: str | None, resources=None, blendshape_mo
         pass
     store = make_store(store_spec)
     resources = resources or load_face_resources(Path(models_dir) / "face_landmarker.task")
-    _WORKER.update(store=store, resources=resources, model=blendshape_model or BlendshapeModel(resources))
+    if regressors is None and regressors_key:
+        from signtranslator.data_engineering.world_regressor import WorldRegressors
+        regressors = WorldRegressors.load(store.get(regressors_key), expected_sha256=regressors_sha256)
+    _WORKER.update(store=store, resources=resources, model=blendshape_model or BlendshapeModel(resources),
+                   learned=dict(regressors=regressors, learned_visibility=True, flags="upright-chest")
+                   if regressors is not None else {})
 
 
 def tracked(state, report: dict) -> dict:
@@ -141,7 +152,8 @@ def _process_once(job) -> dict:
     try:
         array = load_pose_file(payload)
         state, report = convert_array(array, duration_ms, _WORKER["resources"], video_id=video_id,
-                                      source_sha256=source_sha256, blendshape_model=_WORKER["model"])
+                                      source_sha256=source_sha256, blendshape_model=_WORKER["model"],
+                                      **_WORKER["learned"])
     except Refusal as error:
         return dict(base, status="refused", reason=str(error)[:300])
     with tempfile.TemporaryDirectory() as temporary:
@@ -151,7 +163,7 @@ def _process_once(job) -> dict:
     status = {"written": "converted"}.get(outcome, outcome)
     return dict(base, status=status, state_key=key, state_sha256=digest, frames=report["frames"], fps=report["fps"],
                 aspect=report["aspect"], tracked=tracked(state, report), hand_assignment=report["hand_assignment"],
-                face_without_crop=report["face_without_crop"],
+                face_without_crop=report["face_without_crop"], world=report["world"], flags=report["flags"],
                 available_channels=sorted(n for n, c in state.channels.items() if c.valid.any()))
 
 
@@ -183,18 +195,19 @@ def members(stream, split: str, unexpected: list):
             yield match.group(2), handle.read()
 
 
-def run(args, *, resources=None, blendshape_model=None) -> dict:
+def run(args, *, resources=None, blendshape_model=None, regressors=None) -> dict:
     store = make_store(args.store)
     archive_key = args.archive_key or f"{BASE}/data/{args.split}.tar.gz"
     provenance = json.loads(store.get(archive_key + ".provenance.json"))
     if provenance.get("sha256") != args.archive_sha256 or not provenance.get("verified_by_r2_reread"):
         raise SystemExit("the archive is not the verified acquisition named by --archive-sha256")
     metadata = load_metadata(store, args.metadata_key, args.metadata_sha256)
-    prefix = args.prefix.rstrip("/")
+    prefix = (args.prefix or (LEARNED_PREFIX if args.regressors_key or regressors is not None else PREFIX)).rstrip("/")
     expected = {v for v, row in metadata.items() if row["split"] == args.split and shard_of(v, args.shards) == args.shard}
     inline = args.workers <= 0
-    initargs = (args.store, args.models_dir, resources, blendshape_model)
-    pool = None if inline else ProcessPoolExecutor(max_workers=args.workers, initializer=_init, initargs=initargs[:2])
+    initargs = (args.store, args.models_dir, args.regressors_key, args.regressors_sha256, resources, blendshape_model,
+                regressors)
+    pool = None if inline else ProcessPoolExecutor(max_workers=args.workers, initializer=_init, initargs=initargs[:4])
     if inline:
         _init(*initargs)
     results, pending, seen, unexpected, total = [], [], set(), [], 0
@@ -238,6 +251,8 @@ def run(args, *, resources=None, blendshape_model=None) -> dict:
     report = dict(schema_version=1, adapter="semlex-holistic-pseudo-world-v1", split=args.split, shard=args.shard,
                   shards=args.shards, archive_key=archive_key, archive_sha256=args.archive_sha256,
                   metadata_key=args.metadata_key, metadata_sha256=args.metadata_sha256, prefix=prefix,
+                  regressors_key=args.regressors_key, regressors_sha256=args.regressors_sha256
+                  or (regressors.sha256 if regressors is not None else None),
                   started=started, finished=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                   members_read=total, clips=len(results),
                   status_counts={s: sum(r["status"] == s for r in results) for s in statuses},
@@ -259,7 +274,9 @@ def parse_args(argv=None):
     parser.add_argument("--archive-key", help=f"default {BASE}/data/<split>.tar.gz")
     parser.add_argument("--metadata-key", default=METADATA_KEY)
     parser.add_argument("--metadata-sha256", default=METADATA_SHA256)
-    parser.add_argument("--prefix", default=PREFIX)
+    parser.add_argument("--prefix", help=f"default {PREFIX}, or {LEARNED_PREFIX} with --regressors-key")
+    parser.add_argument("--regressors-key", help="world_regressor bundle in the store: the learned (gated) path")
+    parser.add_argument("--regressors-sha256", help="required with --regressors-key")
     parser.add_argument("--store", default="r2", help="'r2' or 'dir:/path' (tests)")
     parser.add_argument("--models-dir", help="holds face_landmarker.task (pinned hash)")
     parser.add_argument("--shard", type=int, default=0)
@@ -272,6 +289,8 @@ def parse_args(argv=None):
         raise SystemExit("shard must be in [0, shards)")
     if not re.fullmatch(r"[0-9a-f]{64}", args.archive_sha256):
         raise SystemExit("--archive-sha256 must be a SHA-256 hex digest")
+    if args.regressors_key and not re.fullmatch(r"[0-9a-f]{64}", args.regressors_sha256 or ""):
+        raise SystemExit("--regressors-key needs --regressors-sha256")
     return args
 
 
