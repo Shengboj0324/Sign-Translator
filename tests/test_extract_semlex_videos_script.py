@@ -533,3 +533,19 @@ def test_a_real_pool_run_end_to_end(tmp_path, monkeypatch):
     by = {r["video_id"]: r for r in report["results"]}
     assert report["status_counts"] == {"refused": 4} and report["pool"]["restarts"] == 0
     assert "no person" in by[GOOD[0]]["reason"] and "video" in by["vidCORRUPTxxxxxxxxxx"]["reason"]
+
+
+def test_watchdog_fires_only_after_its_limit_without_a_beat():
+    import extract_semlex_videos as ex
+    now = [0.]
+    fired = []
+    dog = ex.Watchdog(100., lambda: fired.append(1), clock=lambda: now[0])
+    now[0] = 99.
+    assert not dog.expired()
+    dog.beat()
+    now[0] = 198.
+    assert not dog.expired()                     # 99 s after the beat
+    now[0] = 200.5
+    assert dog.expired()
+    dog.limit = float("inf")
+    assert not dog.expired()

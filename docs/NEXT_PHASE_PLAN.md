@@ -3195,3 +3195,25 @@ Rule, variants and verdict are unchanged.
   - Cross-attention sees word k only; guidance uses the empty text.
 - **Known:** V3's declared trim parameters (0.25 s margins, 0.5 s minimum window) cut almost nothing from 0.3–0.9 s segments, so V3 is close to V2. Its `frames_kept_fraction` is read before treating it as separate evidence.
 - **Report wording:** the "V2's first segment equals V1's first word" caveat is wrong. V1 conditions on fitted seconds, V2 on whole frames. They share seeds, not samples.
+
+### Round 14 data: Sem-Lex handedness (declared 2026-10-28, 18:01 UTC, before the measurement)
+
+**Finding.** In the stored Sem-Lex val video states, 32 of 33 signers track the left forearm more, the "left-dominant" pattern. About 85–90% of signers are right-dominant, so a corpus-wide 97% suggests the webcam recordings are horizontally **mirrored** (selfie view), as ASL Citizen's are. The generator's other corpora (How2Sign, YouTube-ASL, ASLLRP, RIT, WLASL) are not.
+
+**Test.** Measure per-signer dominance by the dominant wrist's motion (path length of the more active hand, not forearm tracking, which right-elbow visibility confounds).
+- Run it on Sem-Lex (val and train), on How2Sign, ASLLVD, RIT and YouTube-ASL samples, and on ASL Citizen (known mirrored, as a reference).
+- **Rule:** if Sem-Lex's right-dominant fraction is below 0.25 while How2Sign's and ASLLVD's are above 0.6, the corpus is judged mirrored.
+
+**If judged mirrored:**
+- Every Sem-Lex state is re-solved from its stored raw landmarks after a horizontal flip:
+  - image x becomes 1 − x and world x becomes −x;
+  - left and right pose indices are swapped, and the hand slots are swapped;
+  - the generator convention is kept.
+- States are written to a new prefix (`states-video-v1-unmirrored/`), and the manifest records `unmirrored: true`.
+- Verify:
+  - the dominance rule on the re-solved states;
+  - v2 recognition on a sample (v2 is mirror-biased, so this is reported, not gated);
+  - the tokenizer pre-check on the re-solved states.
+- Round 14 uses only the re-solved states.
+
+**If not judged mirrored:** Sem-Lex enters as extracted, and round 6's rule stands: no mirroring; left-dominant signers are reported, not removed.
