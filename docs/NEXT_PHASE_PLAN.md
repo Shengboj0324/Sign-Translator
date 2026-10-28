@@ -2547,7 +2547,7 @@ Otherwise F12 stays the leader, and the round's result informs round 14 (alignme
 - Step B (inverse kinematics) cannot run on the stored states alone: without a valid chest, the shoulder and wrist positions are not stored. It is re-scoped to use the UWB 2D keypoints of the same videos (shoulders, elbows, wrists in the image), still to be assessed.
 - Scripts: `diagnose_youtube_arms.py`, `arm_recovery_trial.py`, `uwb_framing_check.py` (agent branch). Outputs in R2 under `youtube-asl-v1/arm-recovery/step-a-2026-10-28/`.
 
-## YouTube-ASL re-download approved (owner, 2026-10-28, 05:30 UTC)
+## YouTube-ASL re-download approved (owner, 2026-10-28, 05:29 UTC)
 
 The owner approved re-downloading the arm-untracked YouTube-ASL videos (about 850), under the standing YouTube rules: home route, low rate, no sign-in, cookies, proxies or other circumvention.
 
