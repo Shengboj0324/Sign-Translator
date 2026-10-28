@@ -3472,3 +3472,40 @@ The gate's failing checks are hand speed (left and right, c01, c03, c05, pool) a
   - The comparison with L11c (lexicon 0.533, BLEU failed) is reported.
 - **If W14 is promising against the control but does not replace F12:** F12 stays leader. W14's covered/new split and mirrored read are examined before any round 14b, which is declared separately.
 - **If W14 is not promising:** stopped and deleted; diagnosis before anything else.
+
+### Round 14 pilot result, recorded (2026-10-28, 23:40 UTC): W14 is promising against the control but does NOT replace F12
+
+W14 is the F12 recipe initialised from F12 step 60000, trained on round14-mixed-v1 (adds un-mirrored Sem-Lex). This is its step-10000 checkpoint: 1,000 clips, the R5 150 words pinned to round10's vocabulary, recogniser v2.
+
+| Measure | W14 step 10000 | F12 step 60000 | Control |
+|---|---|---|---|
+| Lexicon top-5 (all 150 words) | 0.340 | 0.450 | 0.017 |
+| covered words (108, in the isolated corpora before round 14) | 0.463 | **0.616** | — |
+| uncovered words (42, newly covered by Sem-Lex) | 0.024 | 0.024 | — |
+| Lexicon, mirrored read (all words) | 0.200 | — | — |
+| mirrored read, covered / uncovered | 0.264 / 0.036 | — | — |
+| Sentence BLEU (1,000 clips) | 1.608 [1.32, 1.89] | 1.636 | 1.586 |
+
+Real clips score BLEU 4.136 and blank 1.859.
+
+**Rule D (against the control): PROMISING.**
+- Lexicon +0.323 [+0.26, +0.39].
+- Paired BLEU +0.02 [−0.30, +0.37], above the −0.5 margin.
+
+**Replacement rule (against F12 step 60000): NOT MET.**
+- Lexicon −0.110 [−0.163, −0.060]; the rule needs a lower bound above 0.
+- Paired BLEU −0.03 [−0.40, +0.34]; this part is met.
+
+**The paired per-subset comparison (`--per-subset`) did not run.** F12's step-60000 report predates the word split. The per-subset rows above are computed from both reports' per-word counts on the same 150 words. They are unpaired descriptive numbers, not a test.
+
+**Amendment 1 applies: F12 stays leader.** W14 is not resumed. F12 step 60000 is the word source for round 15 stage 2.
+
+**What the pilot shows.**
+- **Sem-Lex taught no measurable new words at step 10000.** On the 42 newly covered words, W14 reads exactly as F12, which never saw them: 0.024 (2 of 84 samples). The mirrored read is no better (0.036).
+- **Fine-tuning cost the old words:** covered words fell from F12's 0.616 to 0.463.
+- **Instrument caveat:** recogniser v2 reads real un-mirrored Sem-Lex at 0.153 (mirrored 0.567). A Sem-Lex-style sign may go unread even when it is correct, so the uncovered row cannot separate "not learned" from "not readable". The covered-word drop is measured on words the instrument reads well, so that part is real.
+
+**Next: a round 14 diagnosis, report-only, before any round 14b.** CPU and existing checkpoints only.
+1. Sem-Lex records of the 42 words: their text form against the pilot's prompt form, record counts, and their sampled share of training.
+2. The recogniser on real Sem-Lex clips of the 31 newly covered words, read un-mirrored and mirrored.
+3. Teacher-forced word retrieval of W14 against F12 on those words, separating "learned but unreadable" from "not learned".
