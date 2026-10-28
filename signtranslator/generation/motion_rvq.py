@@ -1000,13 +1000,14 @@ def generate_rvq_motion(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, fps: fl
 @torch.no_grad()
 def generate_rvq_motion_batch(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, fps: float, durations,
                               guidance: float = 1., temperature: float | dict = 1., top_k: int = 0, seed: int = 0,
-                              sample_prefix: str = "tokens-v2", loci=None):
+                              sample_prefix: str = "tokens-v2", loci=None, return_codes: bool = False):
     """``generate_rvq_motion`` for many texts at once: every step and every depth position is one batched call
     instead of one per text (evaluation sets of hundreds of clips are otherwise bound by Python and leave the GPU
     idle). Same model, same per-row duration, clock, guidance, temperatures and top-k; rows shorter than the longest
     are generated to the common length and cut back to their own. With ``top_k=1`` it returns exactly the
     per-text function's states (tested); with sampling, the random draws follow a different order, so individual
-    samples differ while their distribution does not."""
+    samples differ while their distribution does not. ``return_codes`` (sentence diagnostic) also returns each row's
+    sampled codes, (its step count, J) on the CPU, as ``(states, codes)``; the sampling is unchanged."""
     prior.eval(); tokenizer.eval()
     config = prior.config
     device = next(prior.parameters()).device
@@ -1056,6 +1057,8 @@ def generate_rvq_motion_batch(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, f
         native = native_values(config.tokenizer.motion, {key: v[0] for key, v in raw.items()})
         states.append(assemble_state(config.tokenizer.motion, text, native, frames[row], fps, f"{sample_prefix}:{row}",
                                      f"{sample_prefix}-clock", method="motion_tokens_v2"))
+    if return_codes:
+        return states, [sequence[row, 1:counts[row] + 1].cpu() for row in range(B)]
     return states
 
 
