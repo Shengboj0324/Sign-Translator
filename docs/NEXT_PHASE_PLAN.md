@@ -3334,3 +3334,33 @@ The references are unchanged: How2Sign 0.90, ASLLVD 0.83, RIT 1.0.
 - It splits the lexicon by the 108 previously covered R5 words and the 42 newly covered.
 - The declared rule uses the as-generated read, for comparability with every earlier round. The mirrored read and the split are reported beside it.
 - A recogniser trained on consistently oriented data (ASL Citizen un-mirrored, recognition-only, plus ASLLVD) is queued as the next instrument. It is validated per the instrument rules before it grades anything.
+
+### Oracle composition result (recorded 2026-10-28, 20:11 UTC; pinned rule of 19:46): reading **(ii), the generated words are the bottleneck**
+
+**Setup:** 300 sentences with round 15's exact word selection and timing, composed from **real** isolated-sign clips (one train clip per word, trimmed to its sign window; ASLLVD 44%, RIT 38%, WLASL 18%). Every input was checked against round 15's stored report; the instrument reproduces its stored end-to-end and real BLEU exactly.
+
+| Form | BLEU | vs end-to-end | vs generated crossfade | vs mismatched words | vs shuffled | vs chance |
+|---|---|---|---|---|---|---|
+| **Oracle, fitted** | **2.58** | **+1.16 [+0.48, +1.89]** | +1.19 [+0.60, +1.82] | +1.35 [+0.75, +1.96] | +1.07 [+0.52, +1.62] | +1.78 [+1.00, +2.52] |
+| Oracle, unscaled | 1.83 | +0.41 [−0.04, +0.91] | +0.44 [0.00, +0.91] | +1.10 [+0.71, +1.52] | +0.63 [+0.06, +1.14] | +0.92 [+0.40, +1.48] |
+
+The unscaled form is 2.5× reference length, and 24% of its sentences exceed the translator's 20 s window.
+
+References: real 4.09, blank 2.09, end-to-end 1.42, generated crossfade 1.39. The fitted oracle is not resolved above blank (+0.49 [−0.18, +1.18]).
+
+Spotting recall: fitted oracle 0.515 against mismatched 0.128.
+
+**Reading.**
+- BLEU can reward composition: real words composed with the same method score +1.16 above end-to-end.
+- The generated words are what hold composition back: they score 1.39 against 2.58 for real words.
+
+**Consequences.**
+1. **Round 14** (better and more words, Sem-Lex) is the direct lever for sentences as well as words.
+2. **Round 15 stage 2** (ASLLRP ordering, timing, transitions) is justified on top of word quality. A re-declaration is required before it starts, because stage 1's declared rule was not met.
+3. A round-14 prior is judged on composition too: generated crossfade or chained BLEU against the oracle's 2.58.
+
+**Limits of the oracle:**
+- a different signer at every word;
+- time compression of about 2.2×;
+- some real clips with untracked hands;
+- one draw per word.
