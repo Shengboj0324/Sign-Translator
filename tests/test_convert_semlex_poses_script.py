@@ -274,7 +274,8 @@ def test_the_inventory_finds_gaps_and_formats(tmp_path):
     (tmp_path / BASE / "data/val.tar.gz.provenance.json").write_text(json.dumps(dict(
         sha256=hashlib.sha256(video.getvalue()).hexdigest(), verified_by_r2_reread=True)))
     found = inventory.inventory(store, "val", metadata)
-    assert found["format"] == "webm" and found["missing"] is None and found["pose_members"] == 0
+    assert found["format"] == "webm" and found["missing"] == ["clipAAAAAAAAAAAAAAA2"] and found["pose_members"] == 0
+    assert found["no_metadata_row"] == [] and found["other_split_row"] == []
 
 
 def test_the_pinned_inventory_matches_its_archives():
@@ -282,6 +283,10 @@ def test_the_pinned_inventory_matches_its_archives():
     test = pinned["splits"]["test"]
     assert test["format"] == "npy" and len(test["missing"]) == 101 and test["archive_sha256"].startswith("729397ee")
     assert all(pinned["splits"][s]["format"] != "npy" for s in ("val", "train") if s in pinned["splits"])
+    val, train = pinned["splits"]["val"], pinned["splits"]["train"]        # the video archives' gaps, pinned too
+    assert val["format"] == train["format"] == "webm" and val["archive_sha256"].startswith("6eca70a5")
+    assert len(val["missing"]) == val["metadata_ids_without_other_file"] == 14
+    assert len(train["missing"]) == train["metadata_ids_without_other_file"] == 3557
 
 
 def test_repeated_metadata_rows():
@@ -427,3 +432,28 @@ def test_the_learned_path_loads_its_bundle_and_uses_the_generator_convention(tmp
     assert sha in method and "upright root" in method and "no elbow gate" in method and "visibility head" in method
     labels = state.channels["body"].labels
     assert state.channels["body"].valid[:, labels.index("Pelvis")].all()          # the root is stored (generator)
+
+
+def test_the_reader_never_stops_short_silently():
+    import gzip
+
+    def tar(names):
+        out = io.BytesIO()
+        with tarfile.open(fileobj=out, mode="w") as t:
+            for n in names:
+                info = tarfile.TarInfo(n)
+                info.size = 3
+                t.addfile(info, io.BytesIO(b"abc"))
+        return out.getvalue()
+    a, b = tar([f"test/a{k}.npy" for k in range(10)]), tar([f"test/b{k}.npy" for k in range(10)])
+    for payload in (gzip.compress(a + b), gzip.compress(a) + gzip.compress(b)):   # r|gz reads 10 of 20 of both
+        with job.read_tar(io.BytesIO(payload)) as archive:
+            names = [m.name for m in archive]
+            done = job.check_read_through(archive)
+        assert len(names) == 20 and done["decompressed_bytes"] == len(a) + len(b)
+    corrupt = bytearray(a + b)
+    corrupt[512 * 4 + 148] ^= 1                                          # a header checksum mid-archive
+    with pytest.raises(job.ArchiveError, match="invalid blocks"):
+        with job.read_tar(io.BytesIO(gzip.compress(bytes(corrupt)))) as archive:
+            list(archive)
+            job.check_read_through(archive)
