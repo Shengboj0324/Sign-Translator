@@ -3309,3 +3309,28 @@ Two explanations remain:
 **Reported beside it, always:**
 - The **unscaled** oracle (real durations) is reported next to the fitted one. If the fitted oracle reads (i) but the unscaled one is above end-to-end, the conclusion is "BLEU can reward composition at natural pace, not at the fitted pace", never (i) alone.
 - The oracle's own limits are stated with any reading: a different signer at every word, 2–3× time compression in the fitted form, untracked hands in some real clips, and one real clip reused for a repeated word.
+
+### Sem-Lex un-mirrored (recorded 2026-10-28, 20:10 UTC)
+
+**Re-solve:** all val and train states re-solved from flipped raw landmarks to `states-video-v1-unmirrored/`, exit 0.
+
+**Post-check (declared bar: above 0.6): PASS.** Right-dominant signers, before → after:
+
+| Measure | Before | After |
+|---|---|---|
+| Height cue | 0.03 | **0.97** (val 0.93, train 0.93) |
+| Wrist path | 0.14 | 1.00 |
+
+The references are unchanged: How2Sign 0.90, ASLLVD 0.83, RIT 1.0.
+
+**Tokenizer pre-check on the un-mirrored states:** pass. Recon masked minus real is +0.043 [+0.007, +0.080].
+
+**Instrument finding.**
+- v2 reads real un-mirrored Sem-Lex at **0.153** top-5 [0.113, 0.197], against 0.567 for the mirrored originals.
+- v2 learned most of its vocabulary from ASL Citizen's mirrored webcam video, so it reads mirrored signs far better. This is consistent with its known mirror bias and confirms the mirrored-corpus verdict.
+
+**Consequence for round 14** (declared here, before any round-14 result):
+- The pilot reads every generated word with v2 **as generated and as mirrored** (`mirror_state`), and reports both.
+- It splits the lexicon by the 108 previously covered R5 words and the 42 newly covered.
+- The declared rule uses the as-generated read, for comparability with every earlier round. The mirrored read and the split are reported beside it.
+- A recogniser trained on consistently oriented data (ASL Citizen un-mirrored, recognition-only, plus ASLLVD) is queued as the next instrument. It is validated per the instrument rules before it grades anything.
