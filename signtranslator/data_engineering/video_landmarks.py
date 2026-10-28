@@ -141,6 +141,54 @@ def assign_hands(clip: ClipLandmarks) -> dict[str, tuple[np.ndarray, np.ndarray]
     return out
 
 
+# MediaPipe pose-33 left/right pairs (eyes, ears, mouth corners, shoulders ... foot indices); 0 (nose) has none
+POSE_MIRROR_PAIRS = ((1, 4), (2, 5), (3, 6), (7, 8), (9, 10), (11, 12), (13, 14), (15, 16), (17, 18), (19, 20),
+                     (21, 22), (23, 24), (25, 26), (27, 28), (29, 30), (31, 32))
+
+
+def flip_landmarks(clip: ClipLandmarks) -> ClipLandmarks:
+    """The clip's landmarks as seen in the horizontally flipped video: a reflection of these estimates (not a
+    re-estimation on flipped pixels).
+
+    - pose: image x -> 1 - x and world x -> -x on frames with a pose; the left/right indices
+      (``POSE_MIRROR_PAIRS``) swap, with their visibility;
+    - hands: image x -> 1 - x and world x -> -x on found slots; the slots' order is reversed (a hand has no
+      left/right landmark indices, and ``assign_hands`` re-assigns sides by wrist proximity, which the reflection
+      preserves);
+    - face: blendshape scores swap their ``Left``/``Right`` pairs (names keep their positions); the transformation
+      matrix ``[[R, t], [0, 1]]`` becomes ``[[M R M, M t], [0, 1]]`` with ``M = diag(-1, 1, 1)`` (the canonical face
+      model is left-right symmetric), so the head rotation and translation mirror as ``pose.mirror`` mirrors them.
+
+    Padding (zeros on frames or slots without a detection) is left as it is, so flipping twice is the identity."""
+    order = np.arange(33)
+    for a, b in POSE_MIRROR_PAIRS:
+        order[a], order[b] = b, a
+    reflect = np.array([-1., 1., 1.])
+    pose_found = np.asarray(clip.pose_found, dtype=bool)
+    pose_image = np.array(clip.pose_image, dtype=np.float64)[:, order]
+    pose_image[pose_found, :, 0] = 1. - pose_image[pose_found, :, 0]
+    pose_world = np.array(clip.pose_world, dtype=np.float64)[:, order]
+    pose_world[pose_found] *= reflect
+    found = np.asarray(clip.hands_found, dtype=bool)[:, ::-1].copy()
+    hands_image = np.array(clip.hands_image, dtype=np.float64)[:, ::-1].copy()
+    hands_image[found, :, 0] = 1. - hands_image[found, :, 0]
+    hands_world = np.array(clip.hands_world, dtype=np.float64)[:, ::-1].copy()
+    hands_world[found] *= reflect
+    names = list(clip.blendshape_names)
+    from ..pose.mirror import swap_side
+    swap = [names.index(swap_side(n)) if swap_side(n) in names else k for k, n in enumerate(names)]
+    blendshapes = np.array(clip.blendshapes, dtype=np.float64)[:, swap] if names else np.array(clip.blendshapes)
+    m4 = np.diag([-1., 1., 1., 1.])
+    face_matrix = m4 @ np.array(clip.face_matrix, dtype=np.float64) @ m4
+    return ClipLandmarks(times=np.array(clip.times), pose_world=pose_world,
+                         pose_visibility=np.array(clip.pose_visibility)[:, order], pose_image=pose_image,
+                         pose_found=pose_found.copy(), hands_world=hands_world, hands_image=hands_image,
+                         hands_found=found, blendshapes=blendshapes, blendshape_names=tuple(names),
+                         face_matrix=face_matrix, face_found=np.array(clip.face_found), roi=clip.roi,
+                         other_person=None if clip.other_person is None else np.array(clip.other_person),
+                         image_size=clip.image_size)
+
+
 def _polar_rotation(matrices: np.ndarray) -> np.ndarray:
     """Nearest rotation (SVD polar factor) of each 3x3, determinant forced to +1."""
     u, _, vt = np.linalg.svd(matrices)
