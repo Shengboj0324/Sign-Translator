@@ -2781,3 +2781,42 @@ The single test video (T9C4QbZ7qOs) got YouTube's "Sign in to confirm you're not
 **Next attempt:** a single video again, about 24 h later (2026-10-29, 09:00 UTC or after).
 
 **Meanwhile, the route that needs no download.** Step B uses the UWB 2D keypoints of the same videos, which are already in R2. It meets the same representation question as Sem-Lex (image-based arms against our world-landmark arms). The learned image-to-world pose regressor now under test for Sem-Lex would serve both. Step B therefore waits for that regressor's declared gate.
+
+### Sem-Lex gate PASSED with learned world-landmark regressors (recorded 2026-10-28, 09:17 UTC; code under independent review, not yet on main)
+
+**Regressors.** Small MLPs learn MediaPipe Tasks world landmarks (hands per side, pose) and pose visibility from image landmarks.
+- Training data: paired outputs of our own trackers on 1,299 How2Sign clips cropped to Sem-Lex framing (199k pose and 292k hand frames).
+- Signers: only 8, all How2Sign. Train 1, 3, 5, 8, 11; val 2, 4, 9.
+- Bundle sha 2d17b743…
+
+**Val errors through our IK, against true world points:**
+
+| Joint | Regressor | Pseudo-world |
+|---|---|---|
+| Fingers | 7.5–9.3° median | 22–26° |
+| Upper arms | 2.3–2.6° | 18–23° |
+| Forearms | 3.7–4.8° | 12–18° |
+
+**Gate** (declared 08:21): v2 top-5 on the 300 ASL Citizen val clips, upright chest only and learned visibility.
+
+| Path | Top-5 | Paired difference vs ours |
+|---|---|---|
+| Regressors | 0.757 [0.71, 0.80] | +0.017 [−0.023, +0.053]: **pass** |
+| Ours | 0.740 | — |
+| Regressors with inside-image visibility | 0.593 | −0.147 |
+
+Caveat: the visibility choice was fixed after the earlier run had shown that the flags cost 0.14. The reviewer is asked to judge it.
+
+**Real Sem-Lex** (1,004 in-vocabulary clips, 9 signers, ASL-LEX code mapping):
+- top-5 0.364 [0.335, 0.394], top-1 0.198;
+- blank 0.004, mismatched 0.003;
+- right-dominant signers 0.543, left-dominant 0.237.
+
+So the converted Sem-Lex states carry the signs. The left-dominant gap is a property of v2, which is mirror-biased.
+
+**Before use:**
+1. The independent adversarial review.
+2. Decomposing the 0.14 flag cost: upright root against the elbow gate against inside-image visibility. This also decides the YouTube recovery flags.
+3. Converting all 91,148 clips on CPU pods to `states-learned-v1/`.
+4. A lexical manifest. Labels come from the ASL-LEX code; Sem-Lex test stays held out.
+5. A declared generator round on F12 plus Sem-Lex words, aimed at coverage of the 42 uncovered R5 words.
