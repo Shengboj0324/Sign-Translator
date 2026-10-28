@@ -10,6 +10,12 @@ Round 7 amendment 2 (2026-10-27): when both reports keep their per-clip translat
 and ``meaning.references``), the BLEU condition is paired non-inferiority instead: the 95% lower bound of
 BLEU(arm) - BLEU(control), over the same resampled clips, must be above ``--bleu-margin`` (-0.5). Comparing the two
 point estimates passed an equal-meaning arm only half of the time.
+
+Round 14 (optional, ``--per-subset``): when both reports carry ``lexicon_split`` (``pilot_content_check.py
+--word-split-key``) over the same subsets, the paired difference is also given within each subset (covered, newly
+covered) for every read both reports have (``lexicon``, and ``lexicon_mirrored`` with ``--mirrored-read``); the
+interval resamples words within the subset. Report-only: the rule above is unchanged, and without the flag the
+output is unchanged.
 """
 from __future__ import annotations
 
@@ -78,6 +84,37 @@ def verdict(arm_report: dict, control_report: dict, min_gain: float = .05, resam
                 instrument=arm_report["lexicon"]["recognizer_run"])
 
 
+READS = ("lexicon", "lexicon_mirrored")
+
+
+def per_subset_differences(arm_report: dict, control_report: dict, resamples: int = 10000, seed: int = 0) -> dict:
+    """{read: {subset: dict(words, difference, ci95, arm, control)}}: paired top-5 differences within each subset of the
+    word split, for every read both reports have; words are resampled within the subset."""
+    splits = [r.get("lexicon_split") for r in (arm_report, control_report)]
+    if not all(splits):
+        raise ValueError("both reports need lexicon_split (pilot_content_check.py --word-split-key)")
+    if splits[0]["words"] != splits[1]["words"]:
+        raise ValueError("the two reports split the words differently")
+    out = {}
+    for read in READS:
+        if read not in arm_report or read not in control_report:
+            continue
+        if arm_report[read]["recognizer_run"] != control_report[read]["recognizer_run"]:
+            raise ValueError(f"{read}: the arm and the control were read by different instruments")
+        arm, control = arm_report[read]["per_word"], control_report[read]["per_word"]
+        out[read] = {}
+        for subset, words in splits[0]["words"].items():
+            if not words:
+                out[read][subset] = dict(words=0, difference=None, ci95=None, arm=None, control=None)
+                continue
+            diff, (lo, hi) = paired_difference({w: arm[w] for w in words}, {w: control[w] for w in words},
+                                               resamples, seed)
+            out[read][subset] = dict(words=len(words), difference=round(diff, 4), ci95=[round(lo, 4), round(hi, 4)],
+                                     arm=round(sum(arm[w] for w in words) / (2 * len(words)), 4),
+                                     control=round(sum(control[w] for w in words) / (2 * len(words)), 4))
+    return out
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--arm-key", required=True)
@@ -85,13 +122,18 @@ def main(argv=None) -> int:
     p.add_argument("--min-gain", type=float, default=.05)
     p.add_argument("--resamples", type=int, default=10000)
     p.add_argument("--bleu-margin", type=float, default=-.5)
+    p.add_argument("--per-subset", action="store_true",
+                   help="round 14: also the paired difference within each subset of both reports' lexicon_split, for "
+                        "each read both have (report-only)")
     p.add_argument("--output-key")
     args = p.parse_args(argv)
     from signtranslator.data.text_motion_dataset import R2Store
     store = R2Store(os.environ)
-    out = verdict(json.loads(store.get(args.arm_key)), json.loads(store.get(args.control_key)), args.min_gain,
-                  args.resamples, args.bleu_margin)
+    arm, control = json.loads(store.get(args.arm_key)), json.loads(store.get(args.control_key))
+    out = verdict(arm, control, args.min_gain, args.resamples, args.bleu_margin)
     out.update(arm_key=args.arm_key, control_key=args.control_key)
+    if args.per_subset:
+        out["per_subset"] = per_subset_differences(arm, control, args.resamples)
     print(json.dumps(out))
     if args.output_key:
         store.put(args.output_key, json.dumps(out, indent=2).encode())

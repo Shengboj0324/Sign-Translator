@@ -15,6 +15,12 @@ Each channel's rule follows from how ``video_landmarks`` builds its frames:
 - **Translations** (root, head) negate x. **Gaze** swaps eyes and negates x.
 - **Face blendshapes and blinks** swap their ``Left``/``Right`` pairs; the others are unchanged.
 
+The How2Sign two-view states (``sapiens-two-view-swing-ik-y-up-v1``) are solved by the same swing IK
+(``video_landmarks.solve_rotations`` on ``two_view_states.rotation_inputs``) in camera 1's y-up frame, and
+``data.layout_adapter`` declares the two layouts equivalent, so the generators trained on the mixed corpora emit
+that convention and the same rules mirror it. Their translations are in the session world frame (camera-1 axes
+turned y-up, so x is lateral there too) and their gaze in the head rotation's frame, both mirrored by negating x.
+
 Validity, observation and confidence masks move with their values. ``tests/test_pose_mirror.py`` checks the
 result against forward kinematics: every mirrored joint position is ``M`` times its counterpart's.
 """
@@ -32,6 +38,7 @@ from .rotations import matrix_to_rotation_6d, rotation_6d_to_matrix
 M = np.diag([-1., 1., 1.])
 N = np.diag([1., 1., -1.])
 CONVENTION = "mediapipe-tasks-swing-ik-y-up-v1"
+CONVENTIONS = (CONVENTION, "sapiens-two-view-swing-ik-y-up-v1")     # the same swing IK (see the module docstring)
 _SIDE = re.compile(r"Left|Right")
 
 
@@ -67,8 +74,10 @@ def mirror_state(state: MultichannelMotion, *, sample_id: str | None = None) -> 
     """The state of the mirrored signer (see the module docstring for each channel's rule)."""
     ch = state.channels
     for name in ("body", "left_hand", "right_hand"):
-        if ch[name].valid.any() and ch[name].convention != CONVENTION:
-            raise ValueError(f"{name}: mirroring is defined for {CONVENTION}, not {ch[name].convention}")
+        if ch[name].valid.any() and ch[name].convention not in CONVENTIONS:
+            raise ValueError(f"{name}: mirroring is defined for {' and '.join(CONVENTIONS)}, not {ch[name].convention}")
+    if "contact" in ch and ch["contact"].valid.any():
+        raise ValueError("contact: mirroring has no rule for contact labels; refused rather than passed through")
     out = dict(ch)
     body = ch["body"]
     rules = {label: ((M, N) if label in ("LeftHand", "RightHand") else (M, M)) for label in body.labels}
@@ -103,4 +112,4 @@ def mirror_state(state: MultichannelMotion, *, sample_id: str | None = None) -> 
                               state.schema_version)
 
 
-__all__ = ["M", "N", "mirror_state", "swap_side"]
+__all__ = ["CONVENTIONS", "M", "N", "mirror_state", "swap_side"]
