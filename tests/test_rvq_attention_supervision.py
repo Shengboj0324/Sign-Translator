@@ -278,3 +278,16 @@ def test_guided_attention_anchors_both_corners_and_detects_any_whitespace():
     torch.manual_seed(5)
     _, terms = rvq_prior_loss(guided, tokenizer, tokens, mask, batch, train=True)
     assert terms["guided_attention"] > 0
+
+
+def test_prior_warm_start_accepts_training_only_differences_and_rejects_architecture_ones():
+    import importlib, sys as _sys
+    from pathlib import Path as _P
+    _sys.path.insert(0, str(_P(__file__).resolve().parents[1] / "scripts"))
+    train = importlib.import_module("train_motion_tokens")
+    _, _, prior = prior_setup()
+    base = prior.config.to_dict()
+    tuned = replace(prior.config, guided_attention=1., history_dropout=.5, part_valid_loss=True).to_dict()
+    assert train.prior_warm_start_compatible(base, tuned)
+    for change in (dict(history_stages=1), dict(d_model=prior.config.d_model * 2), dict(locus_conditioning=True)):
+        assert not train.prior_warm_start_compatible(base, replace(prior.config, **change).to_dict()), change

@@ -95,6 +95,19 @@ def corpus_sample_weights(records, weights: dict[str, float]) -> list[float]:
     return [float(weights.get(r.get("corpus"), 1.)) for r in records]
 
 
+# RVQ prior fields that only add or reshape training-loss terms: the network (and so its state_dict) is identical with any
+# value, so a warm start may change them (round 13: F12's weights with guided attention). history_stages, the text
+# model, locus/grammar conditioning and every size stay part of the comparison: they change the forward pass.
+PRIOR_TRAINING_ONLY = ("input_corruption", "scheduled_sampling", "history_dropout", "part_valid_loss", "guided_attention",
+                       "guided_attention_width", "alignment_supervision")
+
+
+def prior_warm_start_compatible(init_config: dict, config: dict) -> bool:
+    """A prior may warm-start from ``init_config`` when the two configs agree on everything but training-only fields."""
+    strip = lambda c: {k: v for k, v in c.items() if k not in PRIOR_TRAINING_ONLY}
+    return strip(init_config) == strip(config)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stage", choices=("tokenizer", "prior"), required=True)
@@ -299,7 +312,7 @@ def main(argv=None) -> int:
             if hashlib.sha256(payload).hexdigest() != args.init_sha256:
                 raise SystemExit("the --init-key checkpoint differs from --init-sha256")
             init = torch.load(io.BytesIO(payload), map_location=device, weights_only=False)
-            same = (init["config_sha256"] == config.sha256() if args.stage == "prior"
+            same = (prior_warm_start_compatible(init["config"], config.to_dict()) if args.stage == "prior"
                     else warm_start_compatible(init["config"], config.to_dict()))
             if init.get("kind") != kind or not same:
                 raise SystemExit("--init-key is a different kind or config")
