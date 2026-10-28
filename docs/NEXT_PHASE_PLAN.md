@@ -2700,3 +2700,21 @@ No licence above permits commercial use or explicitly permits releasing a traine
 2. **Pseudo-3D.** Body and hand points from image x, y and relative z, then the existing swing IK (`upright_chest` + `upright_root` + `elbow_in_image`).
 3. **Face.** Blendshapes from MediaPipe's blendshape model on the landmark subset it takes; head rotation by Procrustes to the canonical face.
 4. **Validation.** Compare against our own extraction on clips where both exist (none yet), or against ASL Citizen-style webcam clips. Then check recognisability with recogniser v2 on real Sem-Lex states (real vs blank), as the instrument rules require.
+
+### Round 13 amendment 1: the R5 word list is pinned (declared 2026-10-28, 08:01 UTC, before any round-13 lexicon result was read)
+
+**Defect.** `pilot_content_check.py` builds the R5 word list from the How2Sign training sentences of the arm's own manifest.
+- `round13-mixed-v1` dropped 2,018 How2Sign training sentences, so C13's list shares only 147 of the 150 words with the control's and F12's lists.
+- Each word's sample seeds depend on its position in the sorted list, so the samples after the first difference also differ.
+- The comparison script refused the pair ("the two reports must score the same words").
+- The meaning half is unaffected: validation sentences are unchanged in round 13, and the references are checked to be equal.
+
+**Fix.** New options:
+- `--vocab-mix-key` / `--vocab-mix-sha256`: the word list comes from `round10-mixed-v1` (sha ccfd10b8…), the manifest behind the control's and F12's lists. Their lists were checked to be identical (150 words).
+- `--meaning-from-key`: reuses the arm's own meaning half after checking it is the same checkpoint, clips, guidance, temperatures and references. Only the lexicon is recomputed.
+
+Default behaviour is unchanged. Both round-13 arms are re-scored this way into `round13/pilot-ARM-step10000-r5pinned.json` and judged by the declared rules, unchanged:
+- Rule D plus amendment 2 against the control;
+- the replacement test against F12's own pilot.
+
+The first reports stay in R2, but their lexicon halves are not used.

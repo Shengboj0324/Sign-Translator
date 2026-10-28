@@ -52,6 +52,12 @@ def main(argv=None) -> int:
     p.add_argument("--part-temperature", default="body=1.1,left_hand=1.1,right_hand=1.1,face=1.0")
     p.add_argument("--guidance", type=float, default=1.5)
     p.add_argument("--clips", type=int, default=300)
+    p.add_argument("--vocab-mix-key", help="the manifest whose How2Sign training sentences define the word list "
+                   "(default: --mix-key). Round 13 amendment 1: an arm trained on a cleaned manifest is scored on the "
+                   "words of the manifest its comparison reports used, so every report scores the same words")
+    p.add_argument("--vocab-mix-sha256")
+    p.add_argument("--meaning-from-key", help="reuse the meaning half of an earlier report of the same checkpoint and "
+                   "settings (checked) instead of recomputing it; the lexicon half is computed afresh")
     p.add_argument("--words", type=int, default=150)
     p.add_argument("--word-set", choices=("r5", "dev"), default="r5",
                    help="r5: the strict review's words (the first --words reliable glosses); dev: the next --words, "
@@ -80,30 +86,46 @@ def main(argv=None) -> int:
     _, _, sample = load_generator(store, args.checkpoint_key, args.mix_sha256, args.device, temperature=temperature)
     post = postprocess
     # meaning
-    val = validation_sentences(manifest, args.clips)
-    refs = [at_rate(load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]), 24.) for r in val]
-    texts = [r["text"] for r in val]
-    seconds = [float(s.timestamps[-1] - s.timestamps[0]) + 1 / 24. for s in refs]
-    gens = []
-    for i in range(0, len(texts), 32):
-        gens += [post(o) for o in sample.batch(texts[i:i + 32], 24., seconds[i:i + 32], args.guidance, 1000 + i)]
-    kp = json.loads(store.get("training-runs/back-translator-kp2d-uwb-ft-v1/best.json"))["checkpoint_key"]
-    translator, kind = load_translator(store, kp, MIX_SHA)  # the translator's own manifest (round 3c)
-    translator = translator.to(torch.device(args.device))
-    meaning = {}
-    for name, states in (("generated", gens), ("real", refs), ("blank", blanked(refs))):
-        hyps = translate(translator, kind, states)
-        point, ci = bleu_ci(hyps, texts)
-        meaning[name] = dict(bleu=point, ci95=ci, hypotheses=list(hyps))     # kept for the paired BLEU test (round 7)
-    meaning["references"] = list(texts)
-    meaning["above_blank"] = separated(meaning["generated"]["ci95"], meaning["blank"]["ci95"])
-    print(json.dumps({"meaning": {k: {f: v for f, v in m.items() if f != "hypotheses"} if isinstance(m, dict) else m
-                                  for k, m in meaning.items() if k != "references"}}), flush=True)
+    if args.meaning_from_key:   # round 13 amendment 1: the lexicon re-run keeps the arm's own meaning half
+        earlier = json.loads(store.get(args.meaning_from_key))
+        same = dict(checkpoint_key=args.checkpoint_key, clips=args.clips, guidance=args.guidance, part_temperature=temperature)
+        if {k: earlier.get(k) for k in same} != same:
+            raise SystemExit(f"--meaning-from-key: the earlier report used other settings: {({k: earlier.get(k) for k in same}, same)}")
+        meaning, texts = earlier["meaning"], earlier["meaning"]["references"]
+        if texts != [r["text"] for r in validation_sentences(manifest, args.clips)]:
+            raise SystemExit("--meaning-from-key: the earlier report translated other clips")
+    else:
+        val = validation_sentences(manifest, args.clips)
+        refs = [at_rate(load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]), 24.) for r in val]
+        texts = [r["text"] for r in val]
+        seconds = [float(s.timestamps[-1] - s.timestamps[0]) + 1 / 24. for s in refs]
+        gens = []
+        for i in range(0, len(texts), 32):
+            gens += [post(o) for o in sample.batch(texts[i:i + 32], 24., seconds[i:i + 32], args.guidance, 1000 + i)]
+        kp = json.loads(store.get("training-runs/back-translator-kp2d-uwb-ft-v1/best.json"))["checkpoint_key"]
+        translator, kind = load_translator(store, kp, MIX_SHA)  # the translator's own manifest (round 3c)
+        translator = translator.to(torch.device(args.device))
+        meaning = {}
+        for name, states in (("generated", gens), ("real", refs), ("blank", blanked(refs))):
+            hyps = translate(translator, kind, states)
+            point, ci = bleu_ci(hyps, texts)
+            meaning[name] = dict(bleu=point, ci95=ci, hypotheses=list(hyps))     # kept for the paired BLEU test (round 7)
+        meaning["references"] = list(texts)
+        meaning["above_blank"] = separated(meaning["generated"]["ci95"], meaning["blank"]["ci95"])
+        print(json.dumps({"meaning": {k: {f: v for f, v in m.items() if f != "hypotheses"} if isinstance(m, dict) else m
+                                      for k, m in meaning.items() if k != "references"}}), flush=True)
     # lexicon
     validation = json.loads(store.get(f"training-runs/{args.recognizer_run}/validation.json"))
     recogniser, labels, _ = load_model(store, args.recognizer_run, args.device)
     index = {g: i for i, g in enumerate(labels)}
-    train = [r for r in manifest["records"] if r.get("corpus") == "how2sign-two-view-text-v1" and r.get("partition") == "train"]
+    vocab_manifest = manifest
+    if args.vocab_mix_key:
+        if not args.vocab_mix_sha256:
+            raise SystemExit("--vocab-mix-key needs --vocab-mix-sha256")
+        with tempfile.TemporaryDirectory() as t:
+            path = Path(t) / "v.json"; path.write_bytes(store.get(args.vocab_mix_key) + b"\n")
+            vocab_manifest = load_manifest(path, expected_sha256=args.vocab_mix_sha256)
+    train = [r for r in vocab_manifest["records"] if r.get("corpus") == "how2sign-two-view-text-v1" and r.get("partition") == "train"]
     vocab = {w for r in train for w in re.findall(r"[a-z]+", r["text"].lower())}
     words = sorted(g for g in validation["per_gloss"]["reliable_glosses"] if g.isalpha() and g.lower() in vocab and g in index)
     words = words[:args.words] if args.word_set == "r5" else words[args.words:2 * args.words]
@@ -120,7 +142,9 @@ def main(argv=None) -> int:
                    per_word={g: int(hits[2 * k] + hits[2 * k + 1]) for k, g in enumerate(words)})
     print(json.dumps({"lexicon": lexicon}), flush=True)
     report = dict(checkpoint_key=args.checkpoint_key, part_temperature=temperature, guidance=args.guidance,
-                  clips=len(texts), meaning=meaning, lexicon=lexicon)
+                  clips=len(texts), meaning=meaning, lexicon=lexicon,
+                  **({"vocab_mix_key": args.vocab_mix_key} if args.vocab_mix_key else {}),
+                  **({"meaning_from_key": args.meaning_from_key} if args.meaning_from_key else {}))
     store.put(args.output_key, json.dumps(report, indent=2, sort_keys=True, default=float).encode())
     return 0
 
