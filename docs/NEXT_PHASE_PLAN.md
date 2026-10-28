@@ -3245,3 +3245,22 @@ The path measure has the weakness round 5 found when it rejected wrist-speed mea
 - v2 and the tokenizer pre-check are repeated on the same 300 val clips. v2 is reported only; the tokenizer bar is −0.15.
 
 **Caveat.** This is a reflection of MediaPipe's estimates on mirrored video, not a re-estimation from flipped pixels.
+
+### Round 15 stage 2, planned: sentence grammar learned from ASLLRP (recorded 2026-10-28, 18:23 UTC at the owner's request; runs only if stage 1 is PROMISING, and is declared in full before it starts)
+
+**Source:** ASLLRP continuous utterances, already in R2. About 1,600 sentences with English translations and time-aligned expert glosses, as signed, with non-manual markers.
+
+**Components:**
+1. **English to gloss sequence.**
+   - A pretrained text model fine-tuned on the ASLLRP English–gloss pairs.
+   - It predicts which signs to use and in what order, replacing stage 1's English-order, stop-word rule.
+   - The small corpus is the main risk, so rules plus learning are an option.
+2. **Gloss to vocabulary.** ASLLRP glosses are mapped to the generator's isolated-sign vocabulary through the ASL-LEX and Sign Bank identifiers we hold. Unmapped glosses fall back to the nearest English vocabulary entry or are skipped (counted).
+3. **Sentence timing.** Per-sign durations and pauses in sentences come from the time-aligned spans, not from isolated clips.
+4. **Non-manual grammar, later and optional.** ASLLRP marks negation, questions and topics. Face and head motion are conditioned on those markers.
+
+**Judged by** the same instruments against stage 1's best variant and end-to-end: paired BLEU with controls, word spotting.
+
+**Data limits.**
+- How2Sign's 30k sentences have no glosses, so they cannot teach ordering directly.
+- ASLLRP's signers and domain differ from How2Sign's, so the transfer is part of what is measured.
