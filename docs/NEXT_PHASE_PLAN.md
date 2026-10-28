@@ -2605,7 +2605,7 @@ The research compared every ASL isolated-sign source we could find. Sources are 
 
 No licence above permits commercial use or explicitly permits releasing a trained model. The first public build stays How2Sign plus ASLLRP (see the release licensing review).
 
-### Source decision, update (2026-10-28, 06:05 UTC)
+### Source decision, update (2026-10-28, 06:00 UTC)
 
 **Owner, 05:47 UTC:** new recipients are approved for data-access requests. Sem-Lex is not counted on: its public repo has not changed since 2023, despite the promised updates.
 
@@ -2629,6 +2629,6 @@ No licence above permits commercial use or explicitly permits releasing a traine
   - Public statements beyond attribution need approval (§10).
   - Delaware law.
 - **Access** is NVIDIA's gated form: a business email, an organisation, a use case, and accepting the licence. **The owner submits it.**
-- Questions were sent to trustworthyaiprojects@nvidia.com at 06:03 UTC: cloud as a secure network, pose extraction versus "biometric processing", model weights, how far deletion reaches, individual eligibility, size, vocabulary and videos.
+- Questions were sent to trustworthyaiprojects@nvidia.com at 06:00 UTC: cloud as a secure network, pose extraction versus "biometric processing", model weights, how far deletion reaches, individual eligibility, size, vocabulary and videos.
 
-**ASL Signbank:** a permission request was sent to Julie Hochgesang (Gallaudet) at 06:03 UTC. It covers downloading the public videos at a polite rate for non-commercial computational use, with attribution and no redistribution, and asks about an export and registration for the non-public signs. Downloads wait for her answer.
+**ASL Signbank:** a permission request was sent to Julie Hochgesang (Gallaudet) at 06:00 UTC. It covers downloading the public videos at a polite rate for non-commercial computational use, with attribution and no redistribution, and asks about an export and registration for the non-public signs. Downloads wait for her answer.
