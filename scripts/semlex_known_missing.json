@@ -4,6 +4,7 @@
   "test": {
    "archive_key": "acquisition/2026-10-17-v1/sem-lex-mirror-v1/data/test.tar.gz",
    "archive_sha256": "729397ee389fe603e497393f1d38660d5331e059bfc96d29b033c0e8a7924ae5",
+   "duplicate_names": 0,
    "expected_ids": 15660,
    "extensions": {
     "npy": 15559
@@ -118,11 +119,16 @@
    "no_metadata_row": [],
    "other_names": 0,
    "other_split_row": [],
-   "pose_members": 15559
+   "pose_members": 15559,
+   "read_through": {
+    "decompressed_bytes": 2861414400,
+    "zero_blocks": 12
+   }
   },
   "train": {
    "archive_key": "acquisition/2026-10-17-v1/sem-lex-mirror-v1/data/train.tar.gz",
    "archive_sha256": "fa1890fb79312f50eb1d5f60ef71a3fd52cb57342eb43a54c82bd814d7778547",
+   "duplicate_names": 0,
    "expected_ids": 55000,
    "extensions": {
     "webm": 51443
@@ -3693,11 +3699,16 @@
    "no_metadata_row": [],
    "other_names": 0,
    "other_split_row": [],
-   "pose_members": 0
+   "pose_members": 0,
+   "read_through": {
+    "decompressed_bytes": 23710361600,
+    "zero_blocks": 4
+   }
   },
   "val": {
    "archive_key": "acquisition/2026-10-17-v1/sem-lex-mirror-v1/data/val.tar.gz",
    "archive_sha256": "6eca70a5761f2bfeea5d4f58b1ed34431f2d1be39a20947f01a27e4a22516b90",
+   "duplicate_names": 0,
    "expected_ids": 18509,
    "extensions": {
     "webm": 18495
@@ -3725,7 +3736,11 @@
    "no_metadata_row": [],
    "other_names": 0,
    "other_split_row": [],
-   "pose_members": 0
+   "pose_members": 0,
+   "read_through": {
+    "decompressed_bytes": 8089466880,
+    "zero_blocks": 14
+   }
   }
  }
 }

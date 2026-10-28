@@ -6,16 +6,20 @@ of our other corpora, under the generator convention (docs/NEXT_PHASE_PLAN.md, 2
 (pose files only) is the held-out evaluation set and is refused here (``convert_semlex_poses.py`` converts it).
 
 **Pipeline.** One producer streams the split's archive from the object store member by member (sequential ranged reads
-through a buffered reader; the whole archive is read, nothing is seeked). Members of this shard (``crc32(video_id) %
-shards``) go through a bounded queue to a pool of worker processes; the producer waits while ``2 x workers`` clips are
-pending, so memory stays bounded whatever the archive's order. Each worker verifies the pinned MediaPipe models and
+through a buffered reader; the whole archive is read, nothing is seeked). The archive is read to its very end
+(``convert_semlex_poses.read_tar``: every gzip member with its CRC, past end-of-archive blocks; a short or malformed read
+is an error, never a silent end). Members of this shard (``crc32(video_id) % shards``) go through a bounded queue to a
+pool of worker processes; the producer waits while more than ``2 x workers`` clips are pending, so memory stays bounded
+whatever the archive's order. Each worker verifies the pinned MediaPipe models and
 probes the runtime once, then per clip writes the member's bytes to a temporary file and runs
 ``video_landmarks.extract_clip(video, models, roi=True)``.
 
 **Write-once outputs.**
 
 - Raw landmarks ``<landmarks prefix>/<split>/<video_id>.npz`` (``save_raw_landmarks``): every MediaPipe output, so a
-  later solver change is a re-solve, not a re-extraction.
+  later solver change is a re-solve, not a re-extraction, plus one array ``extractor_inference_method`` naming the
+  MediaPipe version and model hashes that produced them (a state solved from them, on any machine, carries that
+  method).
 - The state ``<states prefix>/<split>/<video_id>.npz``, solved from the **stored** landmarks (re-loaded with
   ``load_raw_landmarks``), so the stored landmarks reproduce it exactly. Generator convention:
   ``canonical_from_landmarks(..., upright_chest=True, upright_root=True)`` with MediaPipe's own visibility and **no**
@@ -31,11 +35,12 @@ otherwise, or ``resumed`` when only the landmarks had been written. Production: 
 
 **Status taxonomy** (per clip, as ``convert_semlex_poses.py``): ``converted``, ``resumed``, ``already_present``;
 ``refused`` (a data property: undecodable video, fewer than 8 frames, no person tracked, no metadata row of this split,
-conflicting metadata durations, duplicate member, member over the size cap); ``error`` (store or I/O failures, retried
+conflicting metadata durations, a repeated member name (the first copy is used), member over the size cap); ``error`` (store or I/O failures, retried
 with backoff in-run and still failing: run the shard again); ``failed`` (anything unexpected, a corrupt write or an
 undecodable stored object; not retried); ``exists_different``. A worker process that dies (memory, a crash in the
 runtime) or a pool that stops making progress for ``--stall-seconds`` is replaced and its pending clips resubmitted; a
-clip pending in two such breakdowns is run alone at the end, and is ``failed`` if it breaks a one-worker pool too.
+clip pending in two such breakdowns is run alone at the end, and is ``failed`` if it breaks a one-worker pool too;
+more than 20 breakdowns, or 5 in a row without a finished clip, stop the run.
 
 **Report** (one per run, ``<states prefix>/reports/<split>-shard-XXX-of-YYY-<UTC time>.json``): per clip the frames,
 measured frame rate and frame size against the metadata duration, forearm, upper-arm and hand tracked fractions per side,
@@ -70,7 +75,6 @@ import os
 from pathlib import Path
 import re
 import sys
-import tarfile
 import tempfile
 import time
 
@@ -82,8 +86,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import convert_semlex_poses as poses  # noqa: E402
 from convert_semlex_poses import (  # noqa: E402
-    BASE, METADATA_KEY, METADATA_SHA256, SMOKE_BASE, StoreCorruption, load_metadata, make_store, put_once, same_state,
-    shard_of, split_duration, transient)
+    BASE, METADATA_KEY, METADATA_SHA256, SMOKE_BASE, StoreCorruption, check_read_through, load_metadata, make_store,
+    put_once, read_tar, same_state, shard_of, split_duration, transient)
 from acquire_youtube_asl import ARM_RECOVERY_METHOD  # noqa: E402
 
 SPLITS = ("val", "train")
@@ -95,6 +99,9 @@ GENERATOR_METHOD = ARM_RECOVERY_METHOD   # upright chest + upright root, MediaPi
 MEMBER = re.compile(r"\A(?:\./)?(val|train)/([A-Za-z0-9_-]{1,64})\.webm\Z")   # \Z: no trailing newline
 MAX_MEMBER_BYTES = 64 << 20               # the largest of the first 100 val members is 2.4 MB (clips of at most 9 s)
 MIN_FRAMES = 8
+VIDEO_REFUSALS = ("the file has no video stream", "no frames in the requested window",   # extract_clip's own refusals
+                  "video presentation timestamps do not strictly increase", "blendshape categories changed")
+LANDMARKS_METHOD = "extractor_inference_method"   # an extra array in the raw landmarks: the MediaPipe that made them
 CONVENTION = dict(upright_chest=True, upright_root=True, visibility="mediapipe", elbow_in_image=False,
                   roi=True, hand_scale=.9, face_scale=.9)
 _WORKER: dict = {}
@@ -143,9 +150,11 @@ def open_archive(store, key: str, buffer: int = 8 << 20) -> tuple[io.BufferedRea
 def members(stream, split: str, unexpected: dict):
     """(index, video_id, payload or None) of the archive's ``<split>/<id>.webm`` members, in archive order; payload is
     None for a member over the size cap (its bytes are skipped, never read into memory). Other entries are counted in
-    ``unexpected`` (the first 50 listed); directories are ignored."""
+    ``unexpected`` (the first 50 listed); directories are ignored. The archive is read to its end (``read_tar``: every
+    gzip member, past end-of-archive blocks); a short or malformed read raises ``ArchiveError``, and a complete one
+    records ``unexpected["read_through"]``."""
     index = 0
-    with tarfile.open(fileobj=stream, mode="r|gz") as archive:
+    with read_tar(stream) as archive:
         for member in archive:
             if member.isdir():
                 continue
@@ -162,6 +171,7 @@ def members(stream, split: str, unexpected: dict):
             else:
                 yield index, match.group(2), archive.extractfile(member).read()
             index += 1
+        unexpected["read_through"] = check_read_through(archive)
 
 
 def pinned_split(split: str, archive_sha256: str) -> dict:
@@ -201,10 +211,30 @@ def extract(payload: bytes, models) -> "object":
         video.write_bytes(payload)
         try:
             return extract_clip(video, models, roi=True)
-        except (ValueError, av.error.FFmpegError) as error:          # unreadable, empty or non-monotonic video
+        except (ValueError, av.error.FFmpegError) as error:
             if isinstance(error, MemoryError):                       # av.error.MemoryError: the machine, not the clip
                 raise
+            if not isinstance(error, av.error.FFmpegError) and not str(error).startswith(VIDEO_REFUSALS):
+                raise                                                # another ValueError is a bug: failed, not refused
             raise Refusal(f"video: {type(error).__name__}: {error}"[:300]) from error
+
+
+def tag_landmarks(raw: bytes, method: str) -> bytes:
+    """``save_raw_landmarks`` bytes with the extractor's inference method added as one more array (``load_raw_landmarks``
+    reads only its own arrays, so the format stays readable as it is)."""
+    with np.load(io.BytesIO(raw), allow_pickle=False) as archive:
+        arrays = {name: archive[name] for name in archive.files}
+    if LANDMARKS_METHOD in arrays:
+        raise ValueError("raw landmarks already tagged")
+    arrays[LANDMARKS_METHOD] = np.array(method)
+    buffer = io.BytesIO()
+    np.savez_compressed(buffer, **arrays)
+    return buffer.getvalue()
+
+
+def landmarks_method(raw: bytes) -> str | None:
+    with np.load(io.BytesIO(raw), allow_pickle=False) as archive:
+        return str(archive[LANDMARKS_METHOD]) if LANDMARKS_METHOD in archive.files else None
 
 
 def check_clip(clip) -> None:
@@ -273,7 +303,7 @@ def _process_once(job) -> dict:
         except Refusal as error:
             return dict(base, status="refused", reason=str(error)[:300])
         extract_s = time.monotonic() - started
-        raw = save_raw_landmarks(clip)
+        raw = tag_landmarks(save_raw_landmarks(clip), _WORKER["method"])
         raw_outcome = put_once(store, raw_key, raw)
         if raw_outcome != "written":                # another run stored this clip's landmarks first: use those
             raw = store.get(raw_key)
@@ -285,7 +315,10 @@ def _process_once(job) -> dict:
         check_clip(clip)
     except Refusal as error:
         return dict(base, status="refused", reason=f"stored landmarks: {error}"[:300], landmarks_key=raw_key)
-    state, report = solve(clip, video_id, source_sha256, _WORKER["method"])
+    method = landmarks_method(raw)                  # the MediaPipe that extracted them, wherever this solve runs
+    if method is None:
+        raise StoreCorruption(f"stored landmarks {raw_key} carry no {LANDMARKS_METHOD}")
+    state, report = solve(clip, video_id, source_sha256, method)
     with tempfile.TemporaryDirectory() as temporary:
         path = Path(temporary) / "state.npz"
         digest = state.save(path)
@@ -323,9 +356,10 @@ def _process(job, attempts: int = 4) -> dict:
 # ---------------------------------------------------------------------------------------------------------- the pool
 
 class Pool:
-    """A process pool that survives dead workers and stalls: the pending clips of a broken pool are resubmitted to a
-    new one; a clip pending in two breakdowns is quarantined and run alone at the end (``failed`` if it breaks a
-    one-worker pool as well)."""
+    """A process pool that survives dead workers and stalls: the clips a broken pool had finished are kept, its other
+    pending clips are resubmitted to a new one; a clip pending in two breakdowns is quarantined and run alone at the end
+    (``failed`` if it breaks a one-worker pool as well). More than ``max_restarts`` breakdowns, or ``FRUITLESS`` in a
+    row without a finished clip, stop the run (exit 1; a rerun resumes): memory stays bounded."""
 
     FRUITLESS = 5          # consecutive breakdowns without a finished clip: the environment, not a clip (stop the job)
 
@@ -338,6 +372,7 @@ class Pool:
         self.crashes: dict = {}                    # job index -> breakdowns it was pending in
         self.quarantine: list = []
         self.restarts, self.breakdowns, self.fruitless = 0, [], 0
+        self.ready: list = []                      # results harvested from a broken pool
         self.executor = self._new(workers)
 
     def _new(self, workers: int) -> ProcessPoolExecutor:
@@ -345,9 +380,6 @@ class Pool:
                                    initargs=self.initargs)
 
     def submit(self, job) -> None:
-        if self.restarts > self.max_restarts:
-            self.quarantine.append(job)
-            return
         try:
             future = self.executor.submit(self.function, job)
         except BrokenProcessPool:                      # the pool broke while the producer was reading
@@ -359,7 +391,11 @@ class Pool:
     def collect(self, limit: int) -> list:
         """Results of finished clips, waiting while more than ``limit`` are pending."""
         out = []
-        while len(self.pending) > limit:
+        while len(self.pending) > limit or self.ready:
+            out += self.ready
+            self.ready = []
+            if len(self.pending) <= limit:
+                break
             done, _ = wait(list(self.pending), timeout=self.stall, return_when=FIRST_COMPLETED)
             if not done:
                 self._break(f"no clip finished in {self.stall:.0f} s")
@@ -377,7 +413,13 @@ class Pool:
         return out
 
     def _break(self, why: str) -> None:
-        jobs = list(self.pending.values())
+        jobs = []
+        for future, job in self.pending.items():         # keep what finished cleanly before the pool broke
+            if future.done() and not future.cancelled() and future.exception() is None:
+                self.ready.append(future.result())
+                self.fruitless = 0
+            else:
+                jobs.append(job)
         self.breakdowns.append(dict(reason=why, pending=len(jobs), at=time.strftime("%H:%M:%SZ", time.gmtime())))
         print(f"POOL BREAKDOWN ({why}): {len(jobs)} pending clips resubmitted", flush=True)
         self._stop(self.executor)
@@ -385,12 +427,14 @@ class Pool:
         if self.fruitless >= self.FRUITLESS:
             raise SystemExit(f"the worker pool broke {self.fruitless} times in a row without finishing a clip "
                              f"(last: {why}): the environment, not a clip")
+        if self.restarts >= self.max_restarts:
+            raise SystemExit(f"the worker pool broke {self.restarts + 1} times (last: {why}): stopped; a rerun resumes")
         self.pending = {}
         self.restarts += 1
         self.executor = self._new(self.workers)
         for job in jobs:
             self.crashes[job[0]] = self.crashes.get(job[0], 0) + 1
-            if self.crashes[job[0]] >= 2 or self.restarts > self.max_restarts:
+            if self.crashes[job[0]] >= 2:
                 self.quarantine.append(job)
             else:
                 self.submit(job)
@@ -479,7 +523,7 @@ def run(args, *, models=None) -> dict:
     total = submitted = 0
     started = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")      # microseconds: one report per run
     clock = time.monotonic()
-    stream_sha256 = stream_bytes = None
+    stream_sha256 = stream_bytes = trailing = None
     try:
         stream, hashing = open_archive(store, archive_key)
         with stream:
@@ -519,8 +563,9 @@ def run(args, *, models=None) -> dict:
                     complete = False
                     break
             if complete and not smoke:
-                while stream.read(1 << 20):          # the gzip trailer and padding: hash every byte of the object
-                    pass
+                trailing = 0
+                while chunk := stream.read(1 << 20):   # anything after the last gzip member: hash every byte
+                    trailing += len(chunk)
                 stream_sha256, stream_bytes = hashing.digest.hexdigest(), hashing.bytes
         if pool is not None:
             results += pool.finish()
@@ -542,7 +587,8 @@ def run(args, *, models=None) -> dict:
         members_read=total, clips=len(results),
         status_counts={s: sum(r["status"] == s for r in results) for s in statuses},
         archive_stream=dict(bytes=stream_bytes, sha256=stream_sha256,
-                            matches_pinned=None if stream_sha256 is None else stream_sha256 == args.archive_sha256),
+                            matches_pinned=None if stream_sha256 is None else stream_sha256 == args.archive_sha256,
+                            read_through=unexpected.get("read_through"), trailing_bytes=trailing),
         completeness=dict(poses.completeness(expected, seen, known, smoke=smoke),
                           split=None if smoke else dict(
                               expected=len(in_split), members=len(split_seen),
@@ -600,7 +646,8 @@ def parse_args(argv=None):
     parser.add_argument("--shard", type=int, default=0)
     parser.add_argument("--shards", type=int, default=1)
     parser.add_argument("--workers", type=int, default=os.cpu_count() or 1, help="0: extract in this process")
-    parser.add_argument("--limit", type=int, help="stop after this many clips of the shard (smoke runs)")
+    parser.add_argument("--limit", type=int, help="stop after this many members of the shard, refused ones included "
+                                                  "(smoke runs)")
     parser.add_argument("--match", help="only video ids matching this regular expression (smoke runs)")
     parser.add_argument("--stall-seconds", type=float, default=900.,
                         help="replace the pool when no clip finishes for this long")

@@ -3,7 +3,8 @@
 Streams each verified ``<split>.tar.gz`` once (the bytes are read through and discarded) and writes, per split: the
 archive SHA-256, the count of file members by extension, the member count in the converter's ``<split>/<id>.npy``
 form, the metadata ids of that split with no such member (``missing``), and the members with no metadata row or only
-another split's. The output is the pinned ``semlex_known_missing.json`` next to the converter; it is rewritten after
+another split's. The archive is read to its end (``read_tar``: every gzip member, past end-of-archive blocks, refusing a
+short read). The output is the pinned ``semlex_known_missing.json`` next to the converter; it is rewritten after
 every split, so a long run keeps what it has.
 
 As found on 2026-10-28: ``test.tar.gz`` holds Holistic ``.npy`` pose files, but ``val.tar.gz`` and ``train.tar.gz``
@@ -20,7 +21,6 @@ import json
 from pathlib import Path
 import re
 import sys
-import tarfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
@@ -30,13 +30,13 @@ VIDEO_FORMATS = ("webm",)          # single-format video archives: their gaps ar
 
 
 def inventory(store, split: str, metadata: dict) -> dict:
-    from convert_semlex_poses import BASE, MEMBER, open_stream
+    from convert_semlex_poses import BASE, MEMBER, check_read_through, open_stream, read_tar
     key = f"{BASE}/data/{split}.tar.gz"
     provenance = json.loads(store.get(key + ".provenance.json"))
     if not provenance.get("verified_by_r2_reread"):
         raise SystemExit(f"{key} is not a verified acquisition")
-    extensions, pose_ids, other_ids, odd = collections.Counter(), set(), set(), 0
-    with open_stream(store, key) as stream, tarfile.open(fileobj=stream, mode="r|gz") as archive:
+    extensions, pose_ids, other_ids, odd, duplicates = collections.Counter(), set(), set(), 0, 0
+    with open_stream(store, key) as stream, read_tar(stream) as archive:
         for member in archive:
             if not member.isfile():
                 continue
@@ -45,14 +45,15 @@ def inventory(store, split: str, metadata: dict) -> dict:
                 odd += 1
                 continue
             extensions[match.group(3).lower()] += 1
-            if MEMBER.match(member.name):
-                pose_ids.add(match.group(2))
-            else:
-                other_ids.add(match.group(2))
+            ids = pose_ids if MEMBER.match(member.name) else other_ids
+            duplicates += match.group(2) in ids
+            ids.add(match.group(2))
+        read_through = check_read_through(archive)      # never a silently short read (joined or multi-member archives)
     expected = {v for v, rows in metadata.items() if any(r["split"] == split for r in rows)}
     form = "npy" if pose_ids and not other_ids else ("+".join(sorted(extensions)) or "empty")
     members = pose_ids if form == "npy" else other_ids if form in VIDEO_FORMATS else None
-    return dict(archive_key=key, archive_sha256=provenance["sha256"], format=form,
+    return dict(archive_key=key, archive_sha256=provenance["sha256"], format=form, read_through=read_through,
+                duplicate_names=duplicates,
                 extensions=dict(sorted(extensions.items())), other_names=odd, pose_members=len(pose_ids),
                 missing=sorted(expected - members) if members is not None else None,
                 expected_ids=len(expected), ids_with_other_files=len(other_ids),

@@ -47,6 +47,7 @@ Data files are untrusted: member names must match ``<split>/<id>.npy``, sizes ar
 from __future__ import annotations
 
 import argparse
+import contextlib
 from datetime import datetime, timezone
 from concurrent.futures import ProcessPoolExecutor
 import csv
@@ -303,9 +304,63 @@ def _process(job, attempts: int = 4) -> dict:
             time.sleep(min(60., 2. * 2 ** attempt) * (.5 + random.random()))
 
 
+class ArchiveError(Exception):
+    """The archive was not read to its end as a well-formed tar: never a silent short read."""
+
+
+class _Counted(io.RawIOBase):
+    """A read-only view of the decompressed stream that counts its bytes."""
+
+    def __init__(self, raw):
+        self.raw, self.bytes = raw, 0
+
+    def readable(self):
+        return True
+
+    def readinto(self, buffer):
+        data = self.raw.read(len(buffer))
+        buffer[:len(data)] = data
+        self.bytes += len(data)
+        return len(data)
+
+
+class _ReadThrough(tarfile.TarFile):
+    """A stream reader that records every block ``ignore_zeros`` makes it skip."""
+
+    def _dbg(self, level, msg):
+        self.__dict__.setdefault("skipped", []).append(str(msg))
+        super()._dbg(level, msg)
+
+
+@contextlib.contextmanager
+def read_tar(stream, bufsize: int = 1 << 20):
+    """A sequential tar reader over a ``.tar.gz`` stream that does not stop short silently. ``tarfile``'s ``r|gz``
+    stops at the first end-of-archive marker (two tars joined), at the end of the first gzip member, and at a corrupt
+    header, all without an error. Here ``gzip.GzipFile`` decodes every gzip member and checks each CRC, ``ignore_zeros``
+    reads past end-of-archive blocks, and :func:`check_read_through` (after the last member) refuses anything but
+    zero blocks skipped, the decompressed stream read to its end and a block-aligned length."""
+    import gzip
+    counted = _Counted(gzip.GzipFile(fileobj=stream, mode="rb"))
+    with _ReadThrough.open(fileobj=counted, mode="r|", ignore_zeros=True, bufsize=bufsize) as archive:
+        archive.counted = counted
+        yield archive
+
+
+def check_read_through(archive) -> dict:
+    """After the last member of :func:`read_tar`: raise ``ArchiveError`` unless the read reached the end."""
+    rest = archive.counted.read(1 << 16)
+    skipped = archive.__dict__.get("skipped", [])
+    invalid = [m for m in skipped if not m.endswith("end of file header")]
+    if rest or invalid or archive.counted.bytes % tarfile.BLOCKSIZE:
+        raise ArchiveError(f"the archive was not read through: {len(rest)} bytes left, invalid blocks {invalid[:5]}, "
+                           f"{archive.counted.bytes} decompressed bytes")
+    return dict(decompressed_bytes=archive.counted.bytes, zero_blocks=len(skipped))
+
+
 def members(stream, split: str, unexpected: list):
-    """(video_id, payload) of the archive's ``<split>/<id>.npy`` members, in archive order."""
-    with tarfile.open(fileobj=stream, mode="r|gz") as archive:
+    """(video_id, payload) of the archive's ``<split>/<id>.npy`` members, in archive order (read to the end: an archive
+    that stops short raises ``ArchiveError``)."""
+    with read_tar(stream) as archive:
         for member in archive:
             if member.isdir():
                 continue
@@ -317,6 +372,7 @@ def members(stream, split: str, unexpected: list):
                 continue
             handle = archive.extractfile(member)
             yield match.group(2), handle.read()
+        check_read_through(archive)
 
 
 def run(args, *, resources=None, blendshape_model=None, regressors=None) -> dict:

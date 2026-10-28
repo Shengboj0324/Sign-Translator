@@ -432,3 +432,28 @@ def test_the_learned_path_loads_its_bundle_and_uses_the_generator_convention(tmp
     assert sha in method and "upright root" in method and "no elbow gate" in method and "visibility head" in method
     labels = state.channels["body"].labels
     assert state.channels["body"].valid[:, labels.index("Pelvis")].all()          # the root is stored (generator)
+
+
+def test_the_reader_never_stops_short_silently():
+    import gzip
+
+    def tar(names):
+        out = io.BytesIO()
+        with tarfile.open(fileobj=out, mode="w") as t:
+            for n in names:
+                info = tarfile.TarInfo(n)
+                info.size = 3
+                t.addfile(info, io.BytesIO(b"abc"))
+        return out.getvalue()
+    a, b = tar([f"test/a{k}.npy" for k in range(10)]), tar([f"test/b{k}.npy" for k in range(10)])
+    for payload in (gzip.compress(a + b), gzip.compress(a) + gzip.compress(b)):   # r|gz reads 10 of 20 of both
+        with job.read_tar(io.BytesIO(payload)) as archive:
+            names = [m.name for m in archive]
+            done = job.check_read_through(archive)
+        assert len(names) == 20 and done["decompressed_bytes"] == len(a) + len(b)
+    corrupt = bytearray(a + b)
+    corrupt[512 * 4 + 148] ^= 1                                          # a header checksum mid-archive
+    with pytest.raises(job.ArchiveError, match="invalid blocks"):
+        with job.read_tar(io.BytesIO(gzip.compress(bytes(corrupt)))) as archive:
+            list(archive)
+            job.check_read_through(archive)

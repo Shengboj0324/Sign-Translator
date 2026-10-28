@@ -79,7 +79,10 @@ def webm(kind: str, frames: int = 30, seed: int = 1) -> bytes:
     return f"{kind}:{frames}:{seed}".encode()
 
 
-def build(root: Path, *, members=None, pinned_missing=("vidMISSINGFROMTAR00",)):
+def build(root: Path, *, members=None, pinned_missing=("vidMISSINGFROMTAR00",), layout="one", pin_digest=None):
+    """Store with metadata, a val archive and its provenance and pins. ``layout``: one tar in one gzip member, ``joined``
+    (two tars concatenated, then gzipped) or ``multi`` (two gzip members); ``pin_digest`` pins another SHA-256 than
+    the archive's own (a stream that differs from its pin)."""
     rows = [dict(video_id=v, signer_id="7", duration="1000.0", split="val", label_type="asllex", label="cat")
             for v in GOOD + ["vidCORRUPTxxxxxxxxxx", "vidSHORTxxxxxxxxxxxx", "vidNOPOSExxxxxxxxxxx",
                              "vidMISSINGFROMTAR00", "vidBIGxxxxxxxxxxxxxx", "vidDUPxxxxxxxxxxxxxx"]]
@@ -107,21 +110,27 @@ def build(root: Path, *, members=None, pinned_missing=("vidMISSINGFROMTAR00",)):
                    ("../escape.webm", b"x"), ("./val/sub/clip.webm", b"x"), ("./val/clip.npy", b"x"),
                    ("./train/vidAAAAAAAAAAAAAAAA1.webm", b"x"), ("./val/" + "a" * 65 + ".webm", b"x"),
                    ("symlink", None)]
-    archive = io.BytesIO()
-    with tarfile.open(fileobj=archive, mode="w:gz") as tar:
-        tar.addfile(_dir("./val"))
-        for name, payload in members:
-            if payload is None:
-                info = tarfile.TarInfo("./val/vidLINKxxxxxxxxxxxxx.webm")
-                info.type, info.linkname = tarfile.SYMTYPE, "/etc/passwd"
-                tar.addfile(info)
-                continue
-            info = tarfile.TarInfo(name)
-            info.size = len(payload)
-            tar.addfile(info, io.BytesIO(payload))
-    payload = archive.getvalue()
+    def tar(part):
+        archive = io.BytesIO()
+        with tarfile.open(fileobj=archive, mode="w") as tar:
+            tar.addfile(_dir("./val"))
+            for name, payload in part:
+                if payload is None:
+                    info = tarfile.TarInfo("./val/vidLINKxxxxxxxxxxxxx.webm")
+                    info.type, info.linkname = tarfile.SYMTYPE, "/etc/passwd"
+                    tar.addfile(info)
+                    continue
+                info = tarfile.TarInfo(name)
+                info.size = len(payload)
+                tar.addfile(info, io.BytesIO(payload))
+        return archive.getvalue()
+    import gzip
+    half = len(members) // 2
+    payload = {"one": lambda: gzip.compress(tar(members)),
+               "joined": lambda: gzip.compress(tar(members[:half]) + tar(members[half:])),
+               "multi": lambda: gzip.compress(tar(members[:half])) + gzip.compress(tar(members[half:]))}[layout]()
     (root / BASE / "data/val.tar.gz").write_bytes(payload)
-    digest = hashlib.sha256(payload).hexdigest()
+    digest = pin_digest or hashlib.sha256(payload).hexdigest()
     (root / BASE / "data/val.tar.gz.provenance.json").write_text(json.dumps(dict(sha256=digest,
                                                                                verified_by_r2_reread=True)))
     pinned = root / "known.json"
@@ -170,8 +179,10 @@ def test_extracts_streams_and_reports(env):
     assert report["unexpected_member_count"] == 6
     assert not any(p.name == "escape.webm" for p in root.rglob("*"))   # member names never become paths
     # the whole archive was streamed and hashed against the pinned SHA-256
-    assert report["archive_stream"] == dict(bytes=(root / BASE / "data/val.tar.gz").stat().st_size, sha256=digest,
-                                            matches_pinned=True)
+    stream = report["archive_stream"]
+    assert stream["bytes"] == (root / BASE / "data/val.tar.gz").stat().st_size and stream["sha256"] == digest
+    assert stream["matches_pinned"] and stream["trailing_bytes"] == 0
+    assert stream["read_through"]["decompressed_bytes"] % 512 == 0 and stream["read_through"]["zero_blocks"] >= 2
     completeness = report["completeness"]
     assert completeness["expected_in_shard"] == 9 and completeness["missing"] == ["vidMISSINGFROMTAR00"]
     assert completeness["known_missing_count"] == 1 and completeness["unexpected_missing_count"] == 0
@@ -415,3 +426,110 @@ def test_the_real_video_archives_are_pinned_with_their_gaps():
         job.pinned_split("test", "729397ee389fe603e497393f1d38660d5331e059bfc96d29b033c0e8a7924ae5")
     fleet = (HERE.parent / "runpod/fleet/extract_semlex_videos.sh").read_text()
     assert val["archive_sha256"] in fleet and train["archive_sha256"] in fleet
+
+
+@pytest.mark.parametrize("layout", ["joined", "multi"])
+def test_joined_and_multi_member_archives_are_read_to_the_end(tmp_path, monkeypatch, layout):
+    CALLS.clear()
+    monkeypatch.setattr(vl, "extract_clip", fake_extract_clip)
+    monkeypatch.setattr(job, "MAX_MEMBER_BYTES", 4096)
+    digest, meta_sha, pinned = build(tmp_path, layout=layout)
+    monkeypatch.setattr(poses, "KNOWN_MISSING", pinned)
+    report = run(tmp_path, digest, meta_sha)
+    assert report["status_counts"] == {"converted": 4, "refused": 7} and report["unexpected_member_count"] == 6
+    assert report["completeness"]["unexpected_missing_count"] == 0 and report["archive_stream"]["matches_pinned"]
+    assert job.exit_code(report) == 0
+
+
+def test_a_short_or_malformed_archive_is_an_error_not_a_silent_end(tmp_path, monkeypatch):
+    import gzip
+    digest, meta_sha, pinned = build(tmp_path, members=[(f"./val/{v}.webm", webm("good", 30, 1)) for v in GOOD])
+    good = (tmp_path / BASE / "data/val.tar.gz").read_bytes()
+    plain = bytearray(gzip.decompress(good))
+    plain[512 * 3 + 148] ^= 0x11                       # the second member's header checksum: a corrupt header
+    assert len(list(job.members(io.BufferedReader(io.BytesIO(good)), "val", dict(count=0, first=[])))) == 3
+    for broken in (good[:-20], gzip.compress(bytes(plain)), good + b"trailing junk"):
+        with pytest.raises((poses.ArchiveError, EOFError, gzip.BadGzipFile)):
+            list(job.members(io.BufferedReader(io.BytesIO(broken)), "val", dict(count=0, first=[])))
+
+
+def test_a_stream_that_differs_from_its_pin_exits_3(tmp_path, monkeypatch):
+    monkeypatch.setattr(vl, "extract_clip", fake_extract_clip)
+    monkeypatch.setattr(job, "MAX_MEMBER_BYTES", 4096)
+    digest, meta_sha, pinned = build(tmp_path, pin_digest="e" * 64)
+    monkeypatch.setattr(poses, "KNOWN_MISSING", pinned)
+    report = run(tmp_path, "e" * 64, meta_sha)
+    assert report["archive_stream"]["matches_pinned"] is False and job.exit_code(report) == 3
+
+
+def test_resumed_states_carry_the_method_of_the_mediapipe_that_made_the_landmarks(env, monkeypatch):
+    root, digest, meta_sha = env
+    first = {r["video_id"]: r for r in run(root, digest, meta_sha, "--match", "AAA1$")["results"]}
+    raw = (root / first[GOOD[0]]["landmarks_key"]).read_bytes()
+    original = job.landmarks_method(raw)
+    assert original == vl.inference_method() + job.GENERATOR_METHOD
+    assert len(vl.load_raw_landmarks(raw).times) == 30                       # the format stays readable as it was
+    (root / first[GOOD[0]]["state_key"]).unlink()
+    monkeypatch.setattr(vl, "inference_method", lambda: "monocular estimate: another mediapipe")
+    again = run(root, digest, meta_sha, "--match", "AAA1$")["results"][0]
+    assert again["status"] == "resumed" and again["state_sha256"] == first[GOOD[0]]["state_sha256"]
+    state = MultichannelMotion.load(root / again["state_key"], expected_sha256=again["state_sha256"])
+    assert state.channels["body"].inference_method == original
+    with pytest.raises(ValueError):
+        job.tag_landmarks(raw, "twice")
+
+
+def test_only_extract_clips_own_value_errors_are_refusals(monkeypatch):
+    def bug(video, models, **kw):
+        raise ValueError("operands could not be broadcast together")
+    monkeypatch.setattr(vl, "extract_clip", bug)
+    with pytest.raises(ValueError, match="broadcast"):
+        job.extract(b"x", {})
+
+    def empty(video, models, **kw):
+        raise ValueError("no frames in the requested window")
+    monkeypatch.setattr(vl, "extract_clip", empty)
+    with pytest.raises(job.Refusal):
+        job.extract(b"x", {})
+
+
+def test_more_breakdowns_than_allowed_stop_the_run():
+    pool = job.Pool(1, (), 30., max_restarts=1, function=_fake_work, initializer=_fake_init)
+    try:
+        with pytest.raises(SystemExit, match="a rerun resumes"):
+            for k, name in enumerate(["a", "die", "b", "c", "die", "d", "e", "die"]):
+                pool.submit((k, name, "val"))
+                pool.collect(0)
+    finally:
+        pool._stop(pool.executor)
+
+
+MODELS = Path(os.path.expanduser("~/.sign-translator-ops/models"))
+
+
+@pytest.mark.skipif(not all((MODELS / n).exists() for n in vl.MODEL_SHA256), reason="needs the pinned MediaPipe models")
+def test_a_real_pool_run_end_to_end(tmp_path, monkeypatch):
+    """Spawned workers with the real models: a synthetic video without a person and an undecodable member are
+    refused, through the real pool, its back-pressure and its report."""
+    import av
+    video = tmp_path / "noise.webm"
+    with av.open(str(video), "w") as container:
+        stream = container.add_stream("libvpx-vp9", rate=30)
+        stream.width, stream.height, stream.pix_fmt = 64, 48, "yuv420p"
+        rng = np.random.default_rng(0)
+        for _ in range(10):
+            frame = av.VideoFrame.from_ndarray(rng.integers(0, 255, (48, 64, 3), dtype=np.uint8), format="rgb24")
+            for packet in stream.encode(frame):
+                container.mux(packet)
+        for packet in stream.encode():
+            container.mux(packet)
+    members = [(f"./val/{v}.webm", video.read_bytes()) for v in GOOD] + [("./val/vidCORRUPTxxxxxxxxxx.webm", b"junk")]
+    digest, meta_sha, pinned = build(tmp_path / "s", members=members, pinned_missing=None)
+    monkeypatch.setattr(poses, "KNOWN_MISSING", pinned)
+    args = job.parse_args(["--split", "val", "--archive-sha256", digest, "--metadata-sha256", meta_sha,
+                           "--store", f"dir:{tmp_path / 's'}", "--workers", "2", "--models-dir", str(MODELS),
+                           "--limit", "4"])
+    report = job.run(args)
+    by = {r["video_id"]: r for r in report["results"]}
+    assert report["status_counts"] == {"refused": 4} and report["pool"]["restarts"] == 0
+    assert "no person" in by[GOOD[0]]["reason"] and "video" in by["vidCORRUPTxxxxxxxxxx"]["reason"]
