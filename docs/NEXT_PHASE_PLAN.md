@@ -2751,3 +2751,25 @@ The first reports stay in R2, but their lexicon halves are not used.
 - They replace `pseudo_world` in the adapter. ASL Citizen is used only for the validation read (recognition use).
 
 **Also found.** The upright-root and elbow-gate flags alone cost v2 0.14 on its own domain. The recovered YouTube-ASL clips use these flags, so their declaration must address this convention shift. Option: one convention for every corpus.
+
+## Round 13 result, recorded (2026-10-28, 08:28 UTC): both arms PROMISING against the control; neither replaces F12
+
+Lexicon on the pinned R5 list (amendment 1); 1000-clip BLEU.
+
+| Arm | Lexicon | Δ vs control [95% CI] | BLEU | Paired BLEU vs control | Paired lexicon vs F12 | Paired BLEU vs F12 | Verdict |
+|---|---|---|---|---|---|---|---|
+| C13 (cleaned data) | 0.427 | +0.41 [0.34, 0.477] | 1.768 | +0.183 [−0.191, 0.563] | 0.000 [−0.047, 0.047] | −0.038 [−0.411, 0.318] | promising; does not replace F12 |
+| S13 (cleaned + guided attention) | 0.433 | +0.417 [0.347, 0.487] | 1.620 | +0.034 [−0.311, 0.404] | +0.007 [−0.037, 0.050] | −0.186 [−0.533, 0.172] | promising; does not replace F12 |
+
+Reference points: F12 at step 10000 scored 0.427 and 1.806; blank 1.859; real 4.136.
+
+**Reading.**
+- Neither the cleaned sentence data nor guided monotonic attention moved sentence meaning at 10k steps. Every generated BLEU is at or below the blank's, so the back-translator finds no sentence content in any arm.
+- Words are unchanged across arms, which is the non-inferiority the rule asked for.
+- The round-13 hypothesis is not supported at this length: neutral-filled training arms and the missing monotonic mechanism are not the binding cause.
+
+**F12 stays the leader** and continues to 60000. The S13 and C13 checkpoints stay in R2; their pods are deleted.
+
+**Next** (diagnosis before another training round):
+1. `sentence_word_spotting.py` on generated sentences from F12, C13 and S13, each against its own mismatched control (declared report).
+2. Where does sentence content fail? Generated duration and activity against real, per-word timing, and whether the content words of a sentence appear anywhere in its generated motion.
