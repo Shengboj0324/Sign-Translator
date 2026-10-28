@@ -3010,3 +3010,13 @@ That puts the states in exactly our representation. A new tar-streaming extracto
 **The test split** (pose files only) goes through the reviewed adapter path (regressors v2, generator convention). It is the held-out Sem-Lex evaluation set and never enters training.
 
 Merged to main: 72d3e45, the Sem-Lex adapter branch after two independent reviews.
+
+### Sem-Lex test split converted (2026-10-28, 11:38 UTC; held-out evaluation set)
+
+- **Setup:** one CPU pod, reviewed adapter (regressors v2, generator convention).
+- **Clips:** 15,418 converted and 141 refused, out of 15,559 members.
+- **Completeness:** the 101 pinned known gaps; none unexpected.
+- **Location:** `sem-lex-mirror-v1/states-semlex-holistic-learned-world-v2-0953cd2cb2b4/test/`. A 50-clip smoke run went first under `adapter-dev/smoke/`.
+- **Speed:** about 25 minutes of pod time, pod deleted.
+
+These states never enter training.
