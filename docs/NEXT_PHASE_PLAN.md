@@ -3473,7 +3473,7 @@ The gate's failing checks are hand speed (left and right, c01, c03, c05, pool) a
 - **If W14 is promising against the control but does not replace F12:** F12 stays leader. W14's covered/new split and mirrored read are examined before any round 14b, which is declared separately.
 - **If W14 is not promising:** stopped and deleted; diagnosis before anything else.
 
-### Round 14 pilot result, recorded (2026-10-28, 23:40 UTC): W14 is promising against the control but does NOT replace F12
+### Round 14 pilot result, recorded (2026-10-28, 23:37 UTC): W14 is promising against the control but does NOT replace F12
 
 W14 is the F12 recipe initialised from F12 step 60000, trained on round14-mixed-v1 (adds un-mirrored Sem-Lex). This is its step-10000 checkpoint: 1,000 clips, the R5 150 words pinned to round10's vocabulary, recogniser v2.
 
