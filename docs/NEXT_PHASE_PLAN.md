@@ -2506,7 +2506,7 @@ Median coverage is 1.0 for How2Sign and YouTube-ASL (they are signed throughout)
 
 Otherwise F12 stays the leader, and the round's result informs round 14 (alignment supervision, arm recovery).
 
-## Round 12 result, recorded (2026-10-28, 05:11 UTC): F12 and M12 PROMISING; F12 continues
+## Round 12 result, recorded (2026-10-28, 05:12 UTC): F12 and M12 PROMISING; F12 continues
 
 | Measure | M12 (step 20000) | Control | Paired difference [95% CI] | Rule | Result |
 |---|---|---|---|---|---|
