@@ -3463,3 +3463,12 @@ The gate's failing checks are hand speed (left and right, c01, c03, c05, pool) a
 4. **Selection matters more than order.** Against ASLLRP glosses, stage 1's rule has bag precision 0.46 and recall 0.41, while its shared entries are already in order.
 
 **Note.** Two tests in `test_speech_stage4_integration.py` fail with a single BLAS thread and pass with six. They are unrelated to this change and are recorded as a thread-sensitive flake to fix.
+
+### Round 14 amendment 1: what follows the pilot (declared 2026-10-28, 22:03 UTC, before W14's step-10000 checkpoint exists)
+
+- **If W14 replaces F12** (both conditions against F12's step-60000 pilot):
+  - W14 resumes from its step-10000 checkpoint toward step 60000 (same run, config and manifest; `PATIENCE=0`) as the leader.
+  - Its step-10000 checkpoint becomes the word source for round 15 stage 2 until the finished checkpoint exists.
+  - The comparison with L11c (lexicon 0.533, BLEU failed) is reported.
+- **If W14 is promising against the control but does not replace F12:** F12 stays leader. W14's covered/new split and mirrored read are examined before any round 14b, which is declared separately.
+- **If W14 is not promising:** stopped and deleted; diagnosis before anything else.
