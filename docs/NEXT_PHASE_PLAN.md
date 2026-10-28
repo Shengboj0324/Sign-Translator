@@ -2475,3 +2475,33 @@ About 60% of YouTube-ASL sentence clips have both hands tracked but no forearm t
 - Reconstructed frames are marked as inferred, not observed, so the masks still distinguish them.
 
 Neither step changes running training. Each is declared with its result before any generator trains on recovered data.
+
+## Cleaned sentence data recorded, and Round 13 declared: sentence meaning (2026-10-28, 04:57 UTC, before any round-13 result)
+
+**`round13-mixed-v1`** (sha 33a86eb9…, 86,008 records; train-partition sentences of `round10-mixed-v1` cleaned by `build_clean_sentence_manifest.py`; val and test unchanged):
+
+| Corpus | Trimmed and kept | Dropped: arms untracked | Dropped: other |
+|---|---|---|---|
+| YouTube-ASL | 46,366 | 53,215 (53%) | no activity 104, low coverage 140, rate outlier 59 |
+| How2Sign | 15,485 | 2,018 (11%) | no activity 258, low coverage 95, rate outlier 214 |
+| ASLLRP plan lines | 1,639 | — | 13 |
+
+Median coverage is 1.0 for How2Sign and YouTube-ASL (they are signed throughout) and 0.87 for ASLLRP.
+
+**Hypothesis.** Sentence meaning (F12: BLEU 1.81, about the blank's 1.86; real 4.14) is held down by:
+1. training sentences whose arms were neutral-filled;
+2. no mechanism that makes the prior step through the text in order.
+
+**Arms.** Both warm-start from F12's step-17000 EMA weights (sha 361697cd…), keep F12's options (history dropout 0.5, stage-1 history, part-valid loss, corpus weights 3), train on `round13-mixed-v1` at batch 48 (`PBATCH=48`, for guided attention's memory) with `PATIENCE=0`, and run a smoke stage first:
+- **S13:** plus `--guided-attention 1.0` (width 0.2; multi-word texts only; per-step averaged).
+- **C13:** without guided attention. It isolates the cleaned data's effect.
+
+**Pilot at each arm's step 10000.** Rule D with amendment 2 (1000 BLEU clips) against the re-scored control. Reported beside it:
+- exposure reads (frequent and R5 words);
+- `sentence_word_spotting.py` on the generated form, against its own mismatched control.
+
+**Replacing F12** needs, beyond being promising, both of these against F12's own pilot report:
+- a paired BLEU difference with its 95% lower bound **above 0** (an improvement, not only non-inferiority);
+- a lexicon difference whose lower bound is above −0.05 (words non-inferior).
+
+Otherwise F12 stays the leader, and the round's result informs round 14 (alignment supervision, arm recovery).
