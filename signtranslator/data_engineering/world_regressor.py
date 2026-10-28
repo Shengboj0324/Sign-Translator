@@ -34,6 +34,16 @@ FEATURES_VERSION = "world-regressor-features-v1"
 WORLD_REGRESSORS_V1 = dict(
     key="acquisition/2026-10-17-v1/sem-lex-mirror-v1/adapter-dev/world-regressors-v1/world-regressors-v1.pt",
     sha256="2d17b7434a5360f850d5910c284ffee3ab040d9132933127e3a7ef6a1b3ce793")
+# Superseded: v1 used How2Sign signer 9 (the generator's final-test signer) for validation and split signers 1 and 2
+# (shared source videos) across train and val, and it learned from Tasks image landmarks, not legacy Holistic.
+# v2 (2026-10-28): inputs are legacy MediaPipe Holistic (mediapipe 0.10.14, model_complexity 1, refined face) on the
+# same Sem-Lex-framed How2Sign crops, targets our Tasks world landmarks and visibility; train signers 3, 4, 5, 8, 11,
+# validation 1 and 2 (one source-video component); signer 9 excluded entirely; seed 0, 30 epochs. It passed gate v2
+# (docs/NEXT_PHASE_PLAN.md, 09:30 UTC) on 300 ASL Citizen val clips through legacy Holistic arrays.
+WORLD_REGRESSORS_V2 = dict(
+    key="acquisition/2026-10-17-v1/sem-lex-mirror-v1/adapter-dev/world-regressors-v2/world-regressors-v2.pt",
+    sha256="0953cd2cb2b48506808dff2d7199061eac3218ad555ea35327ff34edac3acab1")
+WORLD_REGRESSORS = WORLD_REGRESSORS_V2    # the pinned bundle the converter defaults to
 HAND_SCALE_Z = 1.5
 POSE_POINTS = 25                      # 0..24: face, shoulders, arms, hand points, hips
 HAND_BONES = tuple((a, b) for f in range(5) for a, b in zip((0, *range(1 + 4 * f, 4 + 4 * f)), range(1 + 4 * f, 5 + 4 * f))) \
@@ -175,5 +185,5 @@ def load_regressors(path: Path, expected_sha256: str | None = None) -> WorldRegr
     return WorldRegressors.load(Path(path).read_bytes(), expected_sha256=expected_sha256)
 
 
-__all__ = ["FEATURES_VERSION", "WORLD_REGRESSORS_V1", "HAND_BONES", "POSE_BONES", "POSE_POINTS", "MLP", "WorldRegressors", "hand_features",
+__all__ = ["FEATURES_VERSION", "WORLD_REGRESSORS", "WORLD_REGRESSORS_V1", "WORLD_REGRESSORS_V2", "HAND_BONES", "POSE_BONES", "POSE_POINTS", "MLP", "WorldRegressors", "hand_features",
            "hand_target", "hand_output_to_world", "pose_features", "pose_target", "direction_loss", "load_regressors"]

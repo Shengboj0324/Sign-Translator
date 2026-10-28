@@ -29,6 +29,12 @@ flag set separately: (a) upright chest only (the corpus setting, the reference),
 (d) + both, (e) the inside-image visibility rule instead of MediaPipe's visibility, no other flag. v2 top-1/top-5 with
 paired differences against (a), and per body joint the frames each variant removes, adds or changes against (a).
 
+Stage ``gate-v2`` (declared in docs/NEXT_PHASE_PLAN.md, 2026-10-28 09:30 UTC): legacy Holistic arrays of the same
+clips (``legacy_holistic_arrays.py``, full frames) converted through ``--regressors`` under the generator convention
+(upright chest, upright root, learned visibility, no elbow gate); v2's top-5 paired difference must have its 95%
+lower bound above -0.05 against (a) our path under upright chest + upright root and (b) our path with upright chest
+only. Also the hands-only and body-only swaps into (a).
+
 Stage ``semlex``: on Sem-Lex sample clips, (a) the label check: whether each clip's ASL-LEX label is the ASL-LEX
 entry behind v2's gloss (ASL Citizen's ``asl_lex_code``), and whether the Sem-Lex row's phonology columns equal ASL-LEX
 2.0's for that entry, on 30 top-5 misses (and 30 hits as a control); (b) mirror bias: each signer's dominant side
@@ -316,6 +322,80 @@ def citizen_flags(args) -> dict:
                 body_changes_against_a_source_frames={name: {j: c[j] for j in arms} for name, c in changes.items()})
 
 
+def gate_v2(args) -> dict:
+    import tempfile
+    import torch
+    from signtranslator.data_engineering.corpus_manifest import load_manifest
+    from signtranslator.data_engineering.semlex_pose import BlendshapeModel, Refusal, convert_array, load_face_resources
+    from signtranslator.data_engineering.video_landmarks import canonical_from_landmarks
+    from signtranslator.data_engineering.world_regressor import load_regressors
+    from signtranslator.pose.resample import resample_motion
+    from train_text_to_motion import make_store
+    from validate_semlex_adapter import load_npz
+    from validate_sign_recognizer import load_model
+    torch.set_num_threads(1)
+    store = make_store("r2")
+    with tempfile.TemporaryDirectory() as t:
+        path = Path(t) / "m.json"
+        path.write_bytes(store.get(CITIZEN_MANIFEST) + b"\n")
+        manifest = load_manifest(path, expected_sha256=CITIZEN_MANIFEST_SHA256)
+    records = {r["sign"]: r for r in manifest["records"]}
+    model, glosses, best = load_model(store, args.recognizer_run, "cpu")
+    index = {g: i for i, g in enumerate(glosses)}
+    resources = load_face_resources(Path(args.models_dir) / "face_landmarker.task")
+    blend = BlendshapeModel(resources)
+    regressors = load_regressors(Path(args.regressors), expected_sha256=args.regressors_sha256)
+    kw = dict(source_id="x", source_sha256="0" * 64, clock_id="x", inference_method="x")
+    variants = collections.defaultdict(list)
+    labels, signers, refused, misaligned = [], [], [], []
+    for path in sorted(Path(args.out_dir).glob("*.npz")):
+        meta, clip, _ = load_npz(path)
+        record = records.get(meta["name"])
+        if record is None or record.get("partition") != "val" or record["gloss"]["label"] not in index:
+            continue
+        legacy_path = Path(args.holistic_dir) / f"{meta['name']}.npz"
+        with np.load(legacy_path, allow_pickle=False) as z:
+            holistic = z["holistic"].copy()
+        if len(holistic) != len(clip.times):
+            misaligned.append(meta["name"])
+            continue
+        duration = len(holistic) * 1000. * float(np.median(np.diff(clip.times)))
+        try:
+            learned, _ = convert_array(holistic, duration, resources, video_id=meta["name"], source_sha256="0" * 64,
+                                       blendshape_model=blend, regressors=regressors, learned_visibility=True,
+                                       flags="generator")
+        except Refusal as error:
+            refused.append((meta["name"], str(error)))
+            continue
+        ours_a, _ = canonical_from_landmarks(clip, sample_id=meta["name"], upright_chest=True, upright_root=True, **kw)
+        ours_b, _ = canonical_from_landmarks(clip, sample_id=meta["name"], upright_chest=True, **kw)
+        states = {"learned_legacy_generator": learned, "ours_a_chest_root": ours_a, "ours_b_chest_only": ours_b,
+                  "ours_a_with_learned_hands": swap(ours_a, learned, HANDS),
+                  "ours_a_with_learned_body": swap(ours_a, learned, ("body",))}
+        for name, state in states.items():
+            variants[name].append(resample_motion(state, 24.))
+        labels.append(index[record["gloss"]["label"]])
+        signers.append(record["performer_sha256"][:12])
+    ranks = {name: ranks_of(model, s, labels) for name, s in variants.items()}
+    scores = {}
+    for name, r in ranks.items():
+        scores[name] = dict(score(r, signers),
+                            vs_a=score(r, signers, ranks["ours_a_chest_root"]),
+                            vs_b=score(r, signers, ranks["ours_b_chest_only"]))
+    gate = scores["learned_legacy_generator"]
+    passed_a = bool(gate["vs_a"]["top5_minus_ours_ci_clips"][0] > -.05)
+    passed_b = bool(gate["vs_b"]["top5_minus_ours_ci_clips"][0] > -.05)
+    return dict(run=args.recognizer_run, checkpoint=best["checkpoint_key"], clips=len(labels),
+                signers=len(set(signers)), regressors_sha256=regressors.sha256, refused=refused, misaligned=misaligned,
+                scores=scores,
+                gate=dict(rule="v2 top-5 paired difference: 95% lower bound > -0.05 against (a) and (b)",
+                          against_a=dict(difference=gate["vs_a"]["top5_minus_ours"],
+                                         ci=gate["vs_a"]["top5_minus_ours_ci_clips"], passed=passed_a),
+                          against_b=dict(difference=gate["vs_b"]["top5_minus_ours"],
+                                         ci=gate["vs_b"]["top5_minus_ours_ci_clips"], passed=passed_b),
+                          passed=passed_a and passed_b, regressors_sha256=regressors.sha256))
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 
 def norm(value: str) -> str:
@@ -365,7 +445,7 @@ def semlex_stage(args) -> dict:
     if args.regressors:
         from signtranslator.data_engineering.world_regressor import load_regressors
         learned_kw = dict(regressors=load_regressors(Path(args.regressors), expected_sha256=args.regressors_sha256),
-                          learned_visibility=True, flags="upright-chest")       # the gate path
+                          learned_visibility=True, flags=args.semlex_flags)
     items = []
     for path in sorted(Path(args.npy_dir).glob("*.npy")):
         row = meta.get(path.stem)
@@ -419,7 +499,8 @@ def semlex_stage(args) -> dict:
                         real_minus_mismatched_top5=dict(
                             difference=round(float((real < 5).mean() - (mismatched < 5).mean()), 4),
                             ci=bootstrap((real < 5).astype(float) - (mismatched < 5))))
-    out = dict(mapping=args.mapping, controls=out_controls, clips=len(items), signers=len(set(signers)), real=score(real, signers),
+    out = dict(mapping=args.mapping, controls=out_controls, flags=learned_kw.get("flags"),
+               regressors_sha256=learned_kw["regressors"].sha256 if learned_kw else None, clips=len(items), signers=len(set(signers)), real=score(real, signers),
                mirrored=score(mirrored, signers),
                mapping_disagreements=sum(it["name_gloss"] != it["code_gloss"] for it in items),
                mapping_disagreement_examples=[(it["row"]["label"], it["name_gloss"], it["code_gloss"]) for it in items
@@ -493,7 +574,8 @@ def semlex_stage(args) -> dict:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument("stage", choices=("citizen-extract", "citizen-score", "citizen-flags", "semlex"))
+    p.add_argument("stage", choices=("citizen-extract", "citizen-score", "citizen-flags", "gate-v2", "semlex"))
+    p.add_argument("--holistic-dir", help="gate-v2: legacy Holistic arrays (<clip>.npz) of the ASL Citizen clips")
     p.add_argument("--videos", nargs="*", default=[])
     p.add_argument("--out-dir")
     p.add_argument("--npy-dir")
@@ -503,6 +585,7 @@ def main(argv=None) -> int:
     p.add_argument("--recognizer-run", default="sign-recognizer-v2")
     p.add_argument("--regressors", help="world regressor bundle (world_regressor.WorldRegressors.save)")
     p.add_argument("--regressors-sha256")
+    p.add_argument("--semlex-flags", default="generator", help="semlex stage, learned path: solver convention")
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--mapping", choices=("name", "code"), default="code",
@@ -518,7 +601,8 @@ def main(argv=None) -> int:
             for r in pool.map(extract_one, [(v, args.out_dir, args.models_dir) for v in args.videos]):
                 print(json.dumps(r), flush=True)
         return 0
-    report = {"citizen-score": citizen_score, "citizen-flags": citizen_flags, "semlex": semlex_stage}[args.stage](args)
+    report = {"citizen-score": citizen_score, "citizen-flags": citizen_flags, "gate-v2": gate_v2,
+              "semlex": semlex_stage}[args.stage](args)
     Path(args.report).write_text(json.dumps(report, indent=1, sort_keys=True))
     print(json.dumps({k: v for k, v in report.items() if k not in ("clip_names", "labels")}, indent=1)[:8000])
     if "labels" in report:
