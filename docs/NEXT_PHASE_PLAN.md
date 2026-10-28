@@ -2561,7 +2561,7 @@ The owner approved re-downloading the arm-untracked YouTube-ASL videos (about 85
    - If it is bot-checked: stop for the day and retry the next day.
 3. **Recovered clips** enter a manifest only after a recovery report (forearm-tracked fraction, elbow-in-image fraction, unchanged hands) and a declaration.
 
-## Route to ≥ 80% word recognisability (noted 2026-10-28, 05:33 UTC; owner's target)
+## Route to ≥ 80% word recognisability (noted 2026-10-28, 05:31 UTC; owner's target)
 
 **Ceilings.**
 - 42 of the 150 R5 words have no one-word training clip, so with today's data the lexicon is capped at 108/150 = 0.72.
