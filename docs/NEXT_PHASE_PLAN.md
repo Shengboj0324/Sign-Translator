@@ -3170,3 +3170,18 @@ The tokenizer fine-tune is not needed. Round 14 proceeds to its manifest once th
 3. its word-spotting recall is above its mismatched control.
 
 **Next stage, if promising:** the best variant becomes stage 2, a trained composition (learned word selection and ordering, e.g. from ASLLRP gloss annotations, plus learned transitions), declared separately. Round 14's prior replaces F12 when it wins.
+
+### Round 15 amendment 1: word selection (declared 2026-10-28, 15:29 UTC, before any round-15 measurement)
+
+Fixed after the 3-clip smoke run of b775b5a9. All rules still use the training vocabulary only, never an evaluator.
+
+1. **Fingerspelled letters.** Single-letter vocabulary entries (ASLLVD's fingerspelled letters) are excluded from matching. Before this, "I" matched the letter I 52 times in the 300 sentences.
+2. **Inflection fallback.** A token not in the vocabulary is tried against these, in order, and the first that is a vocabulary entry is taken:
+   - the plural forms (-s, -es, -ies → -y);
+   - -ing (with and without a doubled consonant or a dropped e);
+   - -ed (the same variants).
+
+   No other mapping is added. Contractions and digits stay unmatched.
+3. **Selection statistics** are reported per variant: words per sentence, and the share matched by the fallback.
+
+Rule, variants and verdict are unchanged.
