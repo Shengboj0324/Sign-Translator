@@ -2409,3 +2409,9 @@ Best checkpoint at step 37000; early stop at step 47000.
 - **The best lexicon of any arm,** with the same failure mode as L11: sentence meaning a little below the control's, with both below blank.
 - **Round 11 is not promising.** L11c's checkpoints are kept; F12 starts from its step-20000 weights.
 - **Round 12 (F12, M12)** is the declared remedy for the BLEU condition.
+
+## Round 12 amendment 1: more sentence clips for the BLEU condition (declared 2026-10-28, 00:53 UTC, before any round-12 result)
+
+- **The problem.** With 300 How2Sign val clips, the paired BLEU interval is about ±0.55 wide. An arm with exactly equal meaning would then need a point estimate of about +0.05 to clear the −0.5 margin, so the non-inferiority test has little power.
+- **The change.** Round-12 pilots (F12, M12) use `--clips 1000` for the meaning half, from the same fixed-seed val selection. The paired reference is the control re-scored on the same 1000 clips with the fixed sampler. The lexicon half and the margin are unchanged.
+- **Round 11's verdicts stand** as recorded at 300 clips; they are not re-tested.
