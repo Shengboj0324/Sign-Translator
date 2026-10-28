@@ -49,13 +49,72 @@ def test_select_words_multiword_longest_first_and_stop_words():
 
 
 def test_select_words_drops_out_of_vocabulary_words():
-    assert comp.select_words("I cut onions, it's the dog's.", VOCAB) == ["i", "cut"]   # plural, contractions OOV
+    # "I" is the letter I (never matched), "onions" falls back to "onion", contractions and possessives stay OOV
+    assert comp.select_words("I cut onions, it's the dog's.", VOCAB) == ["cut", "onion"]
     assert comp.select_words("Nothing here matches", VOCAB) == []
     assert comp.select_words("", VOCAB) == [] and comp.select_words("dog", {}) == []
     # a sentence ending inside a multi-word entry falls back to the shorter entry
     assert comp.select_words("thank", VOCAB) == ["thank"] and comp.select_words("next", VOCAB) == ["next"]
     # a custom stop-word list
     assert comp.select_words("the dog", VOCAB, stop_words=frozenset({"dog"})) == ["the"]   # it replaces the default
+
+
+def test_single_letter_entries_are_never_matched():
+    vocab = {"i": 1., "b": 1., "go": 1., "a lot": 1., "x ray": 1.}
+    assert comp.select_words("I go, b", vocab) == ["go"]                     # letters never, stop word or not
+    assert comp.select_words("a lot of x-ray", vocab) == ["a lot", "x ray"]  # multi-word entries with letters stay
+    assert comp.select_words("as bs", vocab) == []                           # the fallback never reaches a letter
+    rows = comp.selection_details("I go", vocab)
+    assert [(r["tokens"], r["kind"]) for r in rows] == [(["i"], "unmatched"), (["go"], "exact")]
+
+
+def test_inflection_candidates_are_the_declared_forms_in_order():
+    assert comp.inflection_candidates("cats") == ["cat"]
+    assert comp.inflection_candidates("boxes") == ["boxe", "box"]
+    assert comp.inflection_candidates("babies") == ["babie", "babi", "baby"]  # -s, -es, -ies -> -y
+    assert comp.inflection_candidates("making") == ["mak", "make"]            # dropped e restored
+    assert comp.inflection_candidates("running") == ["runn", "run", "runne"]   # doubled consonant undoubled
+    assert comp.inflection_candidates("seeing") == ["see", "seee"]           # a doubled vowel is not undoubled
+    assert comp.inflection_candidates("stopped") == ["stopp", "stop", "stoppe"]
+    assert comp.inflection_candidates("used") == ["us", "use"]               # -ed after e: the token minus its d
+    assert comp.inflection_candidates("goes") == ["goe", "go"]
+    assert comp.inflection_candidates("ing") == [] and comp.inflection_candidates("red") == []
+    assert comp.inflection_candidates("dog") == [] and comp.inflection_candidates("it's") == []
+    assert comp.inflection_candidates("3s") == [] and comp.inflection_candidates("dogs'") == []
+
+
+def test_inflection_fallback_takes_the_first_vocabulary_hit():
+    assert comp.select_words("cookies", {"cookie": 1., "cooky": 1.}) == ["cookie"]   # -s before -ies
+    assert comp.select_words("cookies", {"cooky": 1.}) == ["cooky"]
+    assert comp.select_words("Running dogs stopped, making babies", {"run": 1., "dog": 1., "stop": 1., "make": 1.,
+                                                                     "baby": 1.}) == ["run", "dog", "stop", "make",
+                                                                                      "baby"]
+    assert comp.select_words("used", {"us": 1., "use": 1.}) == ["us"]       # the declared order, by spelling only
+    # exact entries first: an exact single word and a multi-word entry beat the fallback
+    assert comp.select_words("sing", {"sing": 1., "s": 1.}) == ["sing"]
+    assert comp.select_words("thank yous", {"thank you": 1., "thank": 1., "you": 1.}) == ["thank", "you"]
+    # no inflected multi-word matching: "going out" is "go" (fallback) then "out"
+    assert comp.select_words("going out", {"go": 1., "go out": 1., "out": 1.}) == ["go", "out"]
+    # a fallback onto a stop word is dropped as a stop word; stop-word tokens are never inflected
+    rows = comp.selection_details("doing has", {"do": 1., "ha": 1.})
+    assert [(r["tokens"], r["entry"], r["kind"]) for r in rows] == [(["doing"], "do", "stop"), (["has"], None, "stop")]
+    # contractions and digits stay unmatched; no other mapping (irregular forms)
+    assert comp.select_words("it's 3 cats went", {"it": 1., "three": 1., "cat": 1., "go": 1.}) == ["cat"]
+    rows = comp.selection_details("it's went", {"it": 1., "go": 1.})
+    assert [r["kind"] for r in rows] == ["unmatched", "unmatched"]
+
+
+def test_selection_statistics_shares():
+    vocab = {"cut": 1., "onion": 1., "thank you": 1., "go": 1.}
+    details = [comp.selection_details(t, vocab) for t in ("Cut the onions, thank you!", "The dogs", "going")]
+    stats = comp.selection_statistics(details)
+    # tokens: cut(exact) the(stop) onions(fallback) thank you(exact x2) | the(stop) dogs(unmatched) | going(fallback)
+    assert stats["sentences"] == 3 and stats["empty_sentences"] == 1 and stats["words_total"] == 4
+    assert stats["words_per_sentence_mean"] == pytest.approx(4 / 3, abs=1e-3) and stats["words_per_sentence_median"] == 1.
+    assert stats["fallback_words"] == 2 and stats["fallback_share"] == .5
+    assert stats["tokens"] == 8
+    assert stats["token_share"] == {"exact": .375, "fallback": .25, "stop": .25, "unmatched": .125}
+    assert comp.selection_statistics([])["words_per_sentence_mean"] is None
 
 
 def test_stop_words_are_the_declared_list():
@@ -396,6 +455,15 @@ def test_round15_end_to_end_on_a_tiny_prior(tmp_path, stubbed, capsys):
             assert row["chained_trim"]["frames"] == sum(s["kept"] for s in row["chained_trim"]["segments"])
             assert [s["word"] for s in row["chained"]["segments"]] == row["words"]
     assert report["selection"]["empty_sentences"] == sum(not r["words"] for r in report["per_clip"])
+    sel = report["selection"]
+    assert set(sel["per_variant"]) == set(variants)                         # amendment 1: per variant
+    for v in variants:
+        pv = sel["per_variant"][v]
+        assert pv["words_total"] == sum(len(r["words"]) for r in report["per_clip"])
+        assert pv["fallback_words"] == sum(len(r["fallback"]) for r in report["per_clip"])
+        assert set(pv["token_share"]) == {"exact", "fallback", "stop", "unmatched"}
+        assert sum(pv["token_share"].values()) == pytest.approx(1., abs=1e-3)
+    assert sel["token_share"]["stop"] > 0 and sel["token_share"]["unmatched"] > 0
     assert report["typical_seconds"]["cut"] == pytest.approx(14 / 24., abs=1e-4)
     assert "cumulative end of word k" in report["chain_design"]
     m = report["motion"]

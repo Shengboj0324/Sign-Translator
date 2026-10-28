@@ -7,7 +7,9 @@
 **Word selection** (``signtranslator.generation.compositional.select_words``, no evaluator): the training vocabulary is
 the English texts of the prior manifest's one-word train records (``--corpora``, default the isolated-sign corpora
 present in the manifest: asllvd-text-v1, rit-text-r6, wlasl-text-r6 and, when present, semlex-text-v1), matched
-greedily longest first, English order, the declared stop words dropped. Durations: ``fitted_durations``, each word's
+greedily longest first, never a single-letter entry, with the declared inflection fallback (-s/-es/-ies, -ing, -ed) for
+tokens that start no entry, English order, the declared stop words dropped (amendment 1, 15:29 UTC). The report's
+``selection`` (also per variant) gives words per sentence and the fallback, stop-word and unmatched shares. Durations: ``fitted_durations``, each word's
 typical duration the median trimmed ``continuous.seconds`` of its train records, floor 0.3 s.
 
 **Forms** (each back-translated by the pilot's instrument, ``back-translator-kp2d-uwb-ft-v1``, beam 4):
@@ -84,10 +86,11 @@ CAVEATS = [
     "Word order: composed forms sign English words in English order; How2Sign is interpreted from English and the "
     "translator was fine-tuned on it, so the English order may favour composed forms. V/shuffled measures how much of "
     "any gain is order.",
-    "Vocabulary: the training vocabulary holds the ASLLVD fingerspelled letters (i, a, t...): the English pronoun 'I' "
-    "matches the letter I's clips (reported: single_letter_words). Contractions and possessives (it's, don't, "
-    "mother's) and digits are out of vocabulary, as the corpora write none. Synonyms and inflections are not mapped "
-    "(going does not match go). Function words that have a sign (and, with, for, but) are kept.",
+    "Vocabulary (amendment 1): single-letter entries (ASLLVD's fingerspelled letters) are never matched, so the "
+    "pronoun 'I' is dropped. The inflection fallback maps by spelling only and can mislead (toes -> to, a stop word; a "
+    "noun plural onto a homograph verb); it is reported (fallback_share, per_clip selection). Contractions, "
+    "possessives (it's, don't, mother's) and digits stay out of vocabulary, as the corpora write none; irregular forms "
+    "(went, made) and synonyms are not mapped. Function words that have a sign (and, with, for, but) are kept.",
     "Durations: fitted words are short (the baseline's median was about 0.5 s for the content words) while the prior's "
     "isolated training clips are trimmed to about 1.7-2.0 s; words at the 0.3 s floor make a composition longer than "
     "its reference (reported).",
@@ -292,8 +295,8 @@ def main(argv=None) -> int:
     warnings.simplefilter("ignore")
     import torch
     from signtranslator.data_engineering.corpus_manifest import load_manifest
-    from signtranslator.generation.compositional import (STOP_WORDS, concatenate, crossfade_frames, select_words,
-                                                         training_vocabulary)
+    from signtranslator.generation.compositional import (KEPT, STOP_WORDS, concatenate, crossfade_frames,
+                                                         selection_details, selection_statistics, training_vocabulary)
     from compositional_baseline import (generate_end_to_end, hypothesis_length_ratio, motion_rows, shuffle_order,
                                         MOTION_KEYS)
     from evaluate_text_to_motion import at_rate, blanked, load_generator, load_state
@@ -324,7 +327,8 @@ def main(argv=None) -> int:
     refs = [at_rate(load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]), FPS) for r in val]
     seconds = [float(s.timestamps[-1] - s.timestamps[0]) + 1 / FPS for s in refs]
     blanks = blanked(refs)
-    selected = [select_words(t, vocab) for t in texts]
+    details = [selection_details(t, vocab) for t in texts]
+    selected = [[r["entry"] for r in rows if r["kind"] in KEPT] for rows in details]
     if max(len(w) for w in selected) > MAX_WORDS:
         raise SystemExit(f"a sentence selects more than {MAX_WORDS} words")
     if SEED_BASE + MAX_WORDS * n >= MISMATCHED_BLOCK:
@@ -357,8 +361,11 @@ def main(argv=None) -> int:
 
     forms = {"real": refs, "blank": blanks, "end_to_end": end_to_end}
     per_clip = [dict(sign=r["sign"], text=t, words=w, shuffled_order=o, mismatched_from=c,
+                     fallback=[[" ".join(x["tokens"]), x["entry"]] for x in rows_ if x["kind"] == "fallback"],
+                     unmatched=[x["tokens"][0] for x in rows_ if x["kind"] == "unmatched"],
                      frames_reference=len(ref.timestamps), frames_end_to_end=len(e.timestamps))
-                for r, t, w, o, c, ref, e in zip(val, texts, selected, orders, content_perm, refs, end_to_end)]
+                for r, t, w, o, c, ref, e, rows_ in zip(val, texts, selected, orders, content_perm, refs, end_to_end,
+                                                        details)]
     for v in variants:
         for c in CONTROLS:
             states = []
@@ -386,17 +393,24 @@ def main(argv=None) -> int:
     # selection and timing statistics
     counts = [len(w) for w in selected]
     tokens = [len(t.split()) for t in texts]
+    stats = selection_statistics(details)
+    fallback_pairs = collections.Counter((" ".join(x["tokens"]), x["entry"]) for rows in details for x in rows
+                                         if x["kind"] == "fallback")
     plans = {v: [d for i in range(n) if jobs[(v, "", i)] for d in jobs[(v, "", i)]["durations"]] for v in variants}
     words_flat = [w for ws in selected for w in ws]
     selection = dict(
         vocabulary_entries=len(vocab), vocabulary_multiword=sum(" " in w for w in vocab), corpora=present,
-        empty_sentences=int(sum(c == 0 for c in counts)), words_total=int(sum(counts)),
-        words_mean=round(float(np.mean(counts)), 3), words_median=float(np.median(counts)),
         words_per_whitespace_token=round(sum(counts) / max(sum(tokens), 1), 4),
         multiword_words=int(sum(" " in w for w in words_flat)),
         shuffle_unchanged=int(sum([w[k] for k in o] == w for w, o in zip(selected, orders) if w)),
-        single_letter_words=int(sum(len(w) == 1 for w in words_flat)),
-        most_common=collections.Counter(words_flat).most_common(30))
+        single_letter_words=int(sum(len(w) == 1 for w in words_flat)), **stats,
+        most_common=collections.Counter(words_flat).most_common(30),
+        fallback_most_common=[[t, e, c] for (t, e), c in fallback_pairs.most_common(30)],
+        unmatched_most_common=collections.Counter(x["tokens"][0] for rows in details for x in rows
+                                                  if x["kind"] == "unmatched").most_common(30))
+    # per variant (amendment 1): every variant signs the same selection; its mismatched-words control signs the
+    # deranged sentences' selections, which have the same statistics
+    selection["per_variant"] = {v: dict(stats) for v in variants}
     timing = {}
     for v in variants:
         main_states = forms[v]
@@ -515,7 +529,8 @@ def summary(report: dict, motion_keys) -> None:
     for name, m in report["motion"].items():
         print(f"  {name:28s} " + "  ".join(f"{m.get(k):7.3f}" if m.get(k) is not None else "    nan"
                                            for k in motion_keys), flush=True)
-    print(json.dumps(dict(selection={k: v for k, v in report["selection"].items() if k != "most_common"},
+    print(json.dumps(dict(selection={k: v for k, v in report["selection"].items()
+                                     if not k.endswith("most_common") and k != "per_variant"},
                           timing=report["timing"], seconds=report["seconds"])), flush=True)
     for v, d in report["verdicts"].items():
         print(f"VERDICT {v}: {d['verdict']}  (1) BLEU - end_to_end {ci(d['minus_end_to_end'])} "
