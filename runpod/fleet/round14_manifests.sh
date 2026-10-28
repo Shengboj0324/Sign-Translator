@@ -40,7 +40,9 @@ if exists $SKEY; then
   exists $SSUM || { echo "ALERT $SKEY is stored but $SSUM is not (an interrupted upload): investigate"; done_ 3; }
   python -c "import os; from signtranslator.data.text_motion_dataset import R2Store; s=R2Store(os.environ); open('$OUT/semlex.summary.json','wb').write(s.get('$SSUM'))" || done_ 1
 else
+  # UNMIRRORED=1: the re-solved states of runpod/fleet/unmirror_semlex_states.sh (only if Sem-Lex is judged mirrored)
   python scripts/build_semlex_manifest.py --source video --splits val,train --workers $W --wordlist $WORDS \
+    ${UNMIRRORED:+--states-prefix $SL/states-video-v1-unmirrored} \
     --coverage-mix $R10@$R10SHA --output $OUT/semlex-text-v1.json --summary $OUT/semlex.summary.json \
     --output-key $SKEY --summary-key $SSUM > $OUT/stage-semlex.log 2>&1
   s=$?; tail -5 $OUT/stage-semlex.log

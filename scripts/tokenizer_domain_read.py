@@ -321,6 +321,8 @@ def main(argv=None) -> int:
     p.add_argument("--cache-dir", required=True, help="local directory for checkpoints and verified states")
     p.add_argument("--output", required=True, help="local JSON report")
     p.add_argument("--output-key", help=f"also write the report once to the store (declared: {OUTPUT_KEY})")
+    p.add_argument("--states-prefix", help="read the same sampled clips from unmirror_semlex_states.py's states under "
+                   "this prefix instead (round 14 handedness amendment); each must re-solve the sampled extracted state")
     args = p.parse_args(argv)
     import torch
     torch.set_num_threads(1)
@@ -375,9 +377,21 @@ def main(argv=None) -> int:
     if run["conform_to_corpus"] != TEMPLATE_CORPUS:
         raise SystemExit(f"F12 conformed to {run['conform_to_corpus']}")
     template = layout_template(mix, TEMPLATE_CORPUS, content, store.get)
+    unmirrored = None
+    if args.states_prefix:                              # the same sample, from the re-solved (un-mirrored) states
+        from build_semlex_manifest import unmirror_results
+        unmirrored, um_read = unmirror_results(store, args.states_prefix.rstrip("/"), ("val",), require_all_shards=False)
+        report_meta += [dict(key=u["report"], sha256=u["sha256"], shard=u["shard"], unmirror=True) for u in um_read["used"]]
     records = []
     for video_id, _ in sample:
         r = eligible[video_id]["result"]
+        if unmirrored is not None:
+            u = unmirrored.get((video_id, "val"))
+            if u is None or u.get("status") not in ("converted", "already_present") or \
+                    u.get("source_state_sha256") != r["state_sha256"]:
+                raise SystemExit(f"{video_id}: no un-mirrored state of the sampled extracted state")
+            r = dict(r, state_key=u["state_key"], state_sha256=u["state_sha256"],
+                     available_channels=u["available_channels"])
         records.append(dict(sign=f"semlex-{video_id}", corpus="semlex-val-precheck", partition="val",
                             text=eligible[video_id]["gloss"].lower(),
                             continuous=dict(status="converted", state_key=r["state_key"], state_sha256=r["state_sha256"],
@@ -496,6 +510,7 @@ def main(argv=None) -> int:
         recognizer=dict(run=args.recognizer_run, checkpoint=best["checkpoint_key"], fps=24.),
         tokenizer=provenance, f12_manifest=dict(key=run["manifest_key"], sha256=run["manifest_sha256"]),
         reports=report_meta, mapping="ASL-LEX code -> ASL Citizen gloss (validate_semlex_videos.code_mapping)",
+        states_prefix=args.states_prefix.rstrip("/") if args.states_prefix else None, unmirrored=bool(args.states_prefix),
         sampling=dict(seed=args.seed, requested=args.clips, val_states=len(results), eligible=len(eligible),
                       eligible_signers=len({e["row"]["signer_id"] for e in eligible.values()}),
                       sampled=len(sample), skipped=dict(skipped), rule="signer_spread_sample (round-robin)"),

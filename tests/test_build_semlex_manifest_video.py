@@ -173,7 +173,7 @@ def _argv(tmp_path, meta_sha, mix_sha, val_sha, out="manifest.json", *extra, str
 def test_video_reports_reruns_and_crashed_pass(tmp_path, monkeypatch):
     meta_sha, states, mix_sha, val_sha = _store(tmp_path, monkeypatch)
     # a clip whose best result is still failed (S0[3]) stops the build: a rerun of its shard would recover it
-    with pytest.raises(SystemExit, match="without a final extraction result.*drop:extraction_failed"):
+    with pytest.raises(SystemExit, match="without a final extraction.*drop:extraction_failed"):
         job.main(_argv(tmp_path, meta_sha, mix_sha, val_sha, strict=True))
     assert not (tmp_path / "manifest.json").exists()
     assert job.main(_argv(tmp_path, meta_sha, mix_sha, val_sha)) == 0

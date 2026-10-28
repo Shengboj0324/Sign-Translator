@@ -21,6 +21,11 @@ Two sources (``--source``), one text mapping, one set of filters and one trim:
     extraction shard, or pass ``--allow-unfinished`` to drop them, counted), so the write-once manifest never loses
     clips a rerun would recover;
   - a metadata id of a built split with no result is a pinned archive gap (``semlex_known_missing.json``) or an error.
+  - ``--states-prefix states-video-v1-unmirrored``: the states come from ``unmirror_semlex_states.py`` (the
+    recordings judged mirrored, round 14's handedness test): per clip its latest final un-mirror result, which must
+    name exactly the extracted state the extraction reports name (``source_state_sha256``) and sit at its key; a
+    clip without one stops the build (``--allow-unfinished`` drops it). The manifest records ``unmirrored: true``
+    (top level and provenance) and each record's ``source.unmirrored``, extracted state key and SHA-256.
 
 **Text.**
 - ``asllex`` rows: the label is an ASL-LEX EntryID (``cat_3``); its row gives the Code and the LemmaID; the text is the
@@ -264,6 +269,53 @@ def video_results(store, prefix: str, splits, *, require_all_shards: bool = True
                 archives=archives, landmarks_prefixes=sorted({r.get("landmarks_prefix") for *_, r in used}),
                 known_missing=known, info=dict(sorted(info.items())))
     return results, read
+
+
+UNMIRROR_JOB = "semlex-unmirror-v1"
+
+
+def unmirror_results(store, prefix: str, splits, *, require_all_shards: bool = True) -> tuple[dict, dict]:
+    """``unmirror_semlex_states.py``'s results under ``prefix``: per (video id, split), the latest full (non-smoke)
+    report's final result (a state: ``converted``, ``already_present``), else its latest result; every shard of each
+    built split needs a report (except smoke builds). Two final results naming different states are refused."""
+    from convert_semlex_poses import shard_of
+    keys = sorted(k for k in store.list(f"{prefix}/reports/") if k.endswith(".json"))
+    used = []
+    for key in keys:
+        payload = store.get(key)
+        report = json.loads(payload)
+        if report.get("job") != UNMIRROR_JOB or report.get("states_prefix") != prefix:
+            raise SystemExit(f"{key}: not a {UNMIRROR_JOB} report for {prefix}")
+        if report.get("split") in splits and not report.get("smoke"):
+            used.append((report["started"], key, hashlib.sha256(payload).hexdigest(), report))
+    used.sort(key=lambda t: (t[0], t[1]))
+    shards = {}
+    for split in splits:
+        here = [r for *_, r in used if r["split"] == split]
+        counts = {r["shards"] for r in here}
+        if len(counts) > 1:
+            raise SystemExit(f"un-mirror reports of {split} name {len(counts)} shard counts")
+        n = counts.pop() if counts else None
+        missing = sorted(set(range(n)) - {r["shard"] for r in here}) if n else ["all"]
+        if missing and require_all_shards:
+            raise SystemExit(f"un-mirror split {split}: shard(s) {missing} have no report")
+        shards[split] = dict(shards=n, missing=missing)
+    results = {}
+    for _, key, _, report in used:
+        for r in report["results"]:
+            if shard_of(r["video_id"], report["shards"]) != report["shard"] or r.get("split") != report["split"]:
+                raise SystemExit(f"{key}: {r['video_id']} is not of this report's split and shard")
+            k = (r["video_id"], r["split"])
+            final = r.get("status") in ("converted", "already_present") and bool(r.get("state_sha256"))
+            previous = results.get(k)
+            prev_final = previous is not None and previous.get("status") in ("converted", "already_present") \
+                and bool(previous.get("state_sha256"))
+            if final and prev_final and previous["state_sha256"] != r["state_sha256"]:
+                raise SystemExit(f"{r['video_id']} ({r['split']}): two un-mirror reports name different states")
+            if final or not prev_final:
+                results[k] = dict(r, report=key)
+    return results, dict(used=[dict(report=k, sha256=s, split=r["split"], shard=r["shard"]) for _, k, s, r in used],
+                         shards=shards, method_suffixes=sorted({r.get("method_suffix") for *_, r in used}))
 
 
 def resolve_rows(rows: list[dict]) -> tuple[dict | None, str | None]:
@@ -514,7 +566,14 @@ def build(store, args) -> tuple[dict, dict]:
         if read["metadata_sha256"] != metadata_sha256:
             raise SystemExit(f"the reports were run on metadata {read['metadata_sha256']}, not {metadata_sha256}")
         report_hashes = {f"report:{u['report'].rsplit('/', 1)[-1]}": u["sha256"] for u in read["used"]}
+        unmirrored = bool(args.states_prefix) and args.states_prefix.rstrip("/") != args.prefix
+        if unmirrored:
+            args.states_prefix = args.states_prefix.rstrip("/")
+            um_results, um_read = unmirror_results(store, args.states_prefix, splits, require_all_shards=not args.limit)
+            report_hashes.update({f"report:unmirror:{u['report'].rsplit('/', 1)[-1]}": u["sha256"]
+                                  for u in um_read["used"]})
     else:
+        unmirrored = False
         from signtranslator.data_engineering.semlex_pose import LEARNED_ADAPTER
         results, report_keys, bundles = latest_results(store, args.prefix)
         bundles.discard(None)
@@ -570,6 +629,18 @@ def build(store, args) -> tuple[dict, dict]:
             continue
         if video and result["state_key"] != f"{args.prefix}/{split}/{video_id}.npz":
             raise SystemExit(f"{video_id}: the report names state {result['state_key']}")
+        if unmirrored:                                 # the re-solved state of exactly this extracted state
+            u = um_results.get((video_id, split))
+            if u is None or u.get("status") not in ("converted", "already_present") or not u.get("state_sha256"):
+                counts[f"drop:unmirror_{'missing' if u is None else u.get('status')}"] += 1
+                continue
+            if u.get("source_state_sha256") != result["state_sha256"] or \
+                    u["state_key"] != f"{args.states_prefix}/{split}/{video_id}.npz":
+                raise SystemExit(f"{video_id}: the un-mirrored state is not of the extracted state "
+                                 f"({u.get('source_state_sha256')} != {result['state_sha256']}) or not at its key")
+            result = dict(result, state_key=u["state_key"], state_sha256=u["state_sha256"],
+                          extracted_state_key=result["state_key"], extracted_state_sha256=result["state_sha256"],
+                          unmirror_report=u["report"], tracked=u.get("tracked") or result.get("tracked"))
         if args.limit and len(pending) >= args.limit:
             counts["smoke:beyond_limit"] += 1
             continue
@@ -578,9 +649,10 @@ def build(store, args) -> tuple[dict, dict]:
         raise SystemExit(f"{counts['drop:no_extraction_result']} metadata clips of the built splits have no result "
                          "in any report and are not pinned archive gaps")
     unfinished = {k: n for k, n in counts.items() if k in (
-        "drop:extraction_error", "drop:extraction_failed", "drop:extraction_exists_different")}
+        "drop:extraction_error", "drop:extraction_failed", "drop:extraction_exists_different") or
+        k.startswith("drop:unmirror_")}
     if video and unfinished and not args.limit and not args.allow_unfinished:
-        raise SystemExit(f"clips without a final extraction result: {unfinished}; rerun those extraction shards "
+        raise SystemExit(f"clips without a final extraction (or un-mirror) result: {unfinished}; rerun those shards "
                          "(they resume), or pass --allow-unfinished to drop them")
     cov_inputs = prepare_coverage(store, args)         # before the long pass: a bad pin fails in seconds
     params = dict(min_fps=args.min_fps, min_hand=args.min_hand, threshold=args.threshold, margin=args.margin,
@@ -603,6 +675,10 @@ def build(store, args) -> tuple[dict, dict]:
                           semlex_split=split, extraction=VIDEO_EXTRACTOR, video_sha256=result.get("source_sha256"),
                           landmarks_key=result.get("landmarks_key"), landmarks_sha256=result.get("landmarks_sha256"),
                           report=result["report"].rsplit("/", 1)[-1])
+            if unmirrored:
+                source.update(unmirrored=True, extracted_state_key=result["extracted_state_key"],
+                              extracted_state_sha256=result["extracted_state_sha256"],
+                              unmirror_report=result["unmirror_report"].rsplit("/", 1)[-1])
         else:
             from signtranslator.data_engineering.semlex_pose import LEARNED_ADAPTER
             source = dict(video_id=video_id, signer_id=row["signer_id"], label_type=row["label_type"],
@@ -637,7 +713,14 @@ def build(store, args) -> tuple[dict, dict]:
             states_prefix=args.prefix, landmarks_prefixes=read["landmarks_prefixes"],
             raw_landmarks_key="<landmarks prefix>/<split>/<video_id>.npz (each record's source.landmarks_key, "
                               "with its SHA-256)", archives=read["archives"], splits=list(splits),
-            test_split="held out: not in these video states and not in this manifest")
+            test_split="held out: not in these video states and not in this manifest", unmirrored=unmirrored)
+        if unmirrored:
+            manifest["provenance"].update(
+                states_prefix=args.states_prefix, extraction_states_prefix=args.prefix, unmirror_job=UNMIRROR_JOB,
+                unmirror_script="scripts/unmirror_semlex_states.py", unmirror_method_suffixes=um_read["method_suffixes"],
+                unmirror_reason="the recordings were judged mirrored (round 14 handedness test): each state is "
+                                "re-solved from its stored raw landmarks flipped horizontally")
+        manifest["unmirrored"] = unmirrored
     else:
         from signtranslator.data_engineering.semlex_pose import LEARNED_ADAPTER
         manifest["provenance"] = dict(citation=CITATION, mirror=MIRROR, adapter=LEARNED_ADAPTER,
@@ -668,6 +751,8 @@ def main(argv=None) -> int:
     p.add_argument("--store", default="r2", help="'r2' or 'dir:/path' (tests)")
     p.add_argument("--source", choices=("pose", "video"), default="pose")
     p.add_argument("--prefix", help="states prefix; default the pinned learned path (pose) or states-video-v1 (video)")
+    p.add_argument("--states-prefix", help="video: the un-mirrored states (unmirror_semlex_states.py's prefix) that "
+                   "replace the extracted ones; each must re-solve exactly the extracted state the reports name")
     p.add_argument("--splits", default=",".join(VIDEO_SPLITS), help="video: the splits to build (val, train)")
     p.add_argument("--metadata-key")
     p.add_argument("--metadata-sha256")

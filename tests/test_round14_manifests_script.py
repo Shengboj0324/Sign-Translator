@@ -18,7 +18,8 @@ def invocations(text: str) -> dict[str, set[str]]:
         while command.endswith("\\") and k + 1 < len(lines):
             k += 1
             command = command[:-1] + lines[k]
-        out.setdefault(m.group(1), set()).update(re.findall(r"(--[a-z][a-z0-9-]*)", command.split(m.group(1), 1)[1]))
+        own = command.split(m.group(1), 1)[1].split("|")[0]          # up to a pipe: later commands' flags are theirs
+        out.setdefault(m.group(1), set()).update(re.findall(r"(--[a-z][a-z0-9-]*)", own))
     return out
 
 
@@ -33,3 +34,15 @@ def test_round14_script_is_valid_and_its_flags_exist():
         missing = sorted(f for f in flags if f'"{f}"' not in source)
         assert not missing, (script, missing)
     assert "--source video" in text and "--splits val,train" in text and "--base $R10@$R10SHA" in text
+
+
+def test_unmirror_script_is_valid_and_its_flags_exist():
+    script = ROOT / "runpod/fleet/unmirror_semlex_states.sh"
+    subprocess.run(["bash", "-n", str(script)], check=True)
+    calls = invocations(script.read_text())
+    assert set(calls) == {"scripts/unmirror_semlex_states.py", "scripts/handedness_check.py",
+                          "scripts/tokenizer_domain_read.py"}
+    for name, flags in calls.items():
+        source = (ROOT / name).read_text()
+        missing = sorted(f for f in flags if f'"{f}"' not in source)
+        assert not missing, (name, missing)
