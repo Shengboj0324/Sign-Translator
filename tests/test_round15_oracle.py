@@ -166,12 +166,45 @@ def _row(e2e, gen):
                 minus_shuffled=_diff(.1), minus_mismatched=_diff(.1))
 
 
-def test_reading_applies_the_declared_rule():
+def test_reading_applies_the_pinned_rule():
     assert ro.reading(_row(0., 1.))["reading"] == "i"                           # lower bound <= 0: (i)
     assert ro.reading(_row(-.4, 1.))["text"] == ro.READING_I
-    assert ro.reading(_row(.2, .1))["reading"] == "ii"                          # both lower bounds above 0: (ii)
-    assert ro.reading(_row(.2, -.1))["reading"] == "neither"
-    assert ro.reading(_row(.2, 0.))["reading"] == "neither"
+    assert ro.reading(_row(.2, .1))["reading"] == "ii"                          # lower bound above 0: (ii)
+    r = ro.reading(_row(.2, -.1))                                               # the generated crossfade: secondary
+    assert r["reading"] == "ii" and r["secondary"]["above_generated_crossfade"] is False
+    assert ro.reading(_row(.2, .3))["secondary"]["above_generated_crossfade"] is True
+    for row in (_row(0., 1.), _row(.2, -.1)):                                   # an earlier row reads the same
+        assert ro.reading_of(dict(row, reading="neither"))["reading"] == ro.reading(row)["reading"]
+
+
+def test_conclusion_reports_the_unscaled_oracle_beside_the_fitted_one():
+    i, ii = ro.reading(_row(-.1, 0.)), ro.reading(_row(.1, 0.))
+    assert ro.conclusion(ii, i)["text"] == ro.READING_II
+    assert ro.conclusion(ii, ii)["text"] == ro.READING_II
+    assert ro.conclusion(i, i)["text"] == ro.READING_I
+    assert ro.conclusion(i, ii)["text"] == ro.NATURAL_PACE                      # never (i) alone
+    c = ro.conclusion(i, ii)
+    assert (c["fitted"], c["unscaled"]) == ("i", "ii") and "different signer" in c["limits"]
+
+
+def test_v1_plan_check_counts_mismatches_against_the_stored_rows():
+    rows = [dict(frames_reference=30, frames=dict(oracle=26),
+                 matched=dict(fitted=[.5, .75], clips=[dict(frames_fitted=12), dict(frames_fitted=18)])),
+            dict(frames_reference=20, frames=dict(oracle=20), matched=None)]
+    stored = [dict(frames_reference=30, crossfade=dict(empty=False, durations=[.5, .75], frames=26,
+                                                       segments=[dict(word="a", frames=12), dict(word="b", frames=18)])),
+              dict(frames_reference=20, crossfade=dict(empty=True, frames=20))]
+    check = ro.v1_plan_check(rows, stored)
+    assert check["clips"] == 2 and set(check["mismatches"].values()) == {0} and not check["examples"]
+    stored[0]["crossfade"]["segments"][1]["frames"] = 17
+    stored[0]["crossfade"]["durations"] = [.5, .7501]
+    stored[1]["frames_reference"] = 21
+    check = ro.v1_plan_check(rows, stored)
+    assert check["mismatches"] == dict(frames_reference=1, empty=0, durations=1, segment_frames=1, total_frames=0)
+    assert check["examples"] == [dict(clip=0, failed=["durations", "segment_frames"]),
+                                 dict(clip=1, failed=["frames_reference"])]
+    stored[1]["crossfade"]["empty"] = False                                     # V1 had words, the oracle none
+    assert ro.v1_plan_check(rows, stored)["mismatches"]["empty"] == 1
 
 
 def test_form_pairs_compare_each_oracle_to_both_references_and_its_controls():
@@ -261,7 +294,11 @@ def test_oracle_end_to_end_on_a_directory_store(tmp_path, stubbed, capsys):  # n
         if mm:
             assert mm["words"] == source["per_clip"][source["per_clip"][i]["mismatched_from"]]["words"]
     printed = capsys.readouterr().out
-    assert "READING reading:" in printed and "READING reading_unscaled:" in printed
+    assert "READINGS (pinned rule" in printed and "CONCLUSION:" in printed and "limits:" in printed
+    assert report["conclusion"]["text"] in (ro.READING_I, ro.READING_II, ro.NATURAL_PACE)
+    assert report["clip_choice"]["untrimmed_fetched"] == report["clip_choice"]["distinct_fetched"]   # no windows
+    assert report["clip_choice"]["untrimmed_pool_records"] == len(TRAIN)
+    assert set(report["v1_plan_check"]["mismatches"]) >= {"frames_reference", "empty"}
     with pytest.raises(SystemExit, match="refusing to overwrite"):           # write-once
         ro.main(argv)
     # deterministic: a second run reproduces every hypothesis
@@ -281,6 +318,13 @@ def test_oracle_end_to_end_on_a_directory_store(tmp_path, stubbed, capsys):  # n
     ("derangement", lambda r: r.update(words_derangement=r["words_derangement"][::-1])),
     ("overlap", lambda r: r["crossfade"].update(frames=3)),
     ("typical", lambda r: r["typical_seconds"].update({k: v + 1 for k, v in r["typical_seconds"].items()})),
+    ("sign", lambda r: r["per_clip"][2].update(sign="another-clip")),
+    ("shuffle", lambda r: r["per_clip"][next(i for i, c in enumerate(r["per_clip"]) if len(c["words"]) > 1)]
+     ["shuffled_order"].reverse()),
+    ("mismatched_from", lambda r: r["per_clip"][0].update(mismatched_from=0)),
+    ("reference_derangement", lambda r: r.update(reference_derangement=r["reference_derangement"][1:]
+                                                 + r["reference_derangement"][:1])),
+    ("clips", lambda r: r.update(clips=r["clips"] + 1)),
 ])
 def test_the_run_refuses_inputs_other_than_the_stored_reports(tmp_path, stubbed, field, change):  # noqa: F811
     store, sha, _ = build_store(tmp_path / "store", corpus="asllvd-text-v1", train_texts=TRAIN)

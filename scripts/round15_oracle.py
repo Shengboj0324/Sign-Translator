@@ -47,11 +47,17 @@ top-k and recogniser) on each oracle form against its mismatched control (the ne
 among them, as ratios to real. The stored report's spotting and motion of end_to_end and the generated crossfade are
 copied beside them.
 
-**Readings (declared):** (i) if ``oracle`` is NOT above end_to_end on paired BLEU (95% lower bound <= 0), BLEU cannot
-measure composition, and a sentence measure that can is needed before any structural round is judged; (ii) if it is
-well above, the generated words are the bottleneck (explanation a). "Well above" is read here as the lower bounds against
-both end_to_end and the generated crossfade above 0 (the generated crossfade differs from the oracle only in its
-words); above end_to_end but not resolved from the generated crossfade is reported as neither.
+**Readings (declared; rule pinned 2026-10-28 19:46 UTC, before the numbers):** "above end-to-end" means the paired BLEU
+difference oracle (fitted) minus end_to_end has its 95% lower bound above 0. (i) If it is not above, BLEU cannot reward
+composition at the fitted pace; (ii) if it is above, the generated words are the bottleneck. The comparison against the
+generated crossfade is secondary, never a reading. The unscaled oracle is always reported beside the fitted one: if the
+fitted oracle reads (i) but the unscaled one is above end_to_end, the conclusion is "BLEU can reward composition at
+natural pace, not at the fitted pace", never (i) alone (``conclusion``). The oracle's limits (``LIMITS``) are printed
+with any reading.
+
+**V1 plan check:** the oracle's planned durations and frames are checked against the stored report's V1 ``per_clip``
+rows (``frames_reference``, the crossfade durations, segment frames and total frames; ``v1_plan_check``) and the
+mismatch counts reported.
 
 Writes one JSON report to ``--output-key`` (or ``--output-file``; both write-once). No GPU: nothing is generated.
 """
@@ -80,11 +86,13 @@ CONTROLS = ("", "/shuffled", "/mismatched_words")
 STORED = {"end_to_end": "end_to_end", "generated_crossfade": "crossfade"}   # this report's name: the stored form
 BLOCKS = ("matched", "mismatched_words")
 
-READING_I = ("(i) the oracle composition is NOT above end-to-end on paired BLEU: BLEU cannot measure composition; a "
-             "sentence measure that can is needed before any structural round is judged.")
-READING_II = ("(ii) the oracle composition is well above end-to-end (and above the generated crossfade): the generated "
-              "words are the bottleneck (explanation a); round 14 (better words) is the lever.")
-READING_NEITHER = ("neither: the oracle is above end-to-end, but not resolved from the generated crossfade composition.")
+READING_I = ("(i) the oracle composition is NOT above end-to-end on paired BLEU: BLEU cannot reward composition at "
+             "this pace; a sentence measure that can is needed before any structural round is judged.")
+READING_II = ("(ii) the oracle composition is above end-to-end on paired BLEU: the generated words are the bottleneck "
+              "(explanation a); round 14 (better words) is the lever.")
+NATURAL_PACE = "BLEU can reward composition at natural pace, not at the fitted pace."
+LIMITS = ("a different signer at every word; 2-3x time compression in the fitted form; untracked hands in some real "
+          "clips; one real clip reused for a repeated word in a sentence")
 
 CAVEATS = [
     "Real clips are MediaPipe monocular estimates of isolated signers (ASLLVD, RIT, WLASL), conformed to the How2Sign "
@@ -195,17 +203,48 @@ def form_pairs() -> dict:
 
 
 def reading(row: dict) -> dict:
-    """The declared readings on the fitted oracle's BLEU row."""
+    """The pinned rule on one oracle form's BLEU row: (ii) when its paired difference to end_to_end has a 95% lower
+    bound above 0, else (i). The generated-crossfade comparison is carried as secondary, never a reading."""
     e2e, gen = row["minus_end_to_end"], row["minus_generated_crossfade"]
-    if e2e["ci95"][0] <= 0:
-        which, text = "i", READING_I
-    elif gen["ci95"][0] > 0:
-        which, text = "ii", READING_II
+    above = bool(e2e["ci95"][0] > 0)
+    return dict(reading="ii" if above else "i", text=READING_II if above else READING_I, above_end_to_end=above,
+                minus_end_to_end=e2e, minus_mismatched_words=row["minus_mismatched_words"],
+                minus_shuffled=row["minus_shuffled"], minus_deranged_reference=row["minus_mismatched"],
+                secondary=dict(minus_generated_crossfade=gen, above_generated_crossfade=bool(gen["ci95"][0] > 0)))
+
+
+def conclusion(fitted: dict, unscaled: dict) -> dict:
+    """The fitted reading with the unscaled one beside it (pinned rule): a fitted (i) with the unscaled oracle above
+    end_to_end concludes ``NATURAL_PACE``, never (i) alone."""
+    if fitted["reading"] == "ii":
+        text = READING_II
+    elif unscaled["above_end_to_end"]:
+        text = NATURAL_PACE
     else:
-        which, text = "neither", READING_NEITHER
-    return dict(reading=which, text=text, minus_end_to_end=e2e, minus_generated_crossfade=gen,
-                minus_mismatched_words=row["minus_mismatched_words"], minus_shuffled=row["minus_shuffled"],
-                minus_deranged_reference=row["minus_mismatched"])
+        text = READING_I
+    return dict(fitted=fitted["reading"], unscaled=unscaled["reading"], text=text, limits=LIMITS)
+
+
+def v1_plan_check(per_clip: list, stored_per_clip: list) -> dict:
+    """Mismatch counts of this run's matched plans against the stored report's V1 (crossfade) rows: the reference
+    frames, the planned durations (4 places, as stored), each word's frames against the generated segment's, and the
+    composed total frames against V1's."""
+    counts = collections.Counter()
+    examples = []
+    for i, (row, s) in enumerate(zip(per_clip, stored_per_clip)):
+        v1, m = s.get("crossfade") or {}, row.get("matched")
+        checks = dict(frames_reference=row["frames_reference"] == s.get("frames_reference"),
+                      empty=bool(v1.get("empty")) == (m is None))
+        if m is not None and not v1.get("empty"):
+            checks["durations"] = [round(d, 4) for d in m["fitted"]] == v1.get("durations")
+            checks["segment_frames"] = [c["frames_fitted"] for c in m["clips"]] == [x["frames"] for x in
+                                                                                   v1.get("segments", [])]
+            checks["total_frames"] = row["frames"]["oracle"] == v1.get("frames")
+        for k, ok in checks.items():
+            counts[k] += 0 if ok else 1
+        if not all(checks.values()) and len(examples) < 5:
+            examples.append(dict(clip=i, failed=[k for k, ok in checks.items() if not ok]))
+    return dict(clips=len(per_clip), mismatches=dict(counts), examples=examples)
 
 
 def check_pairing(stored: dict, val, texts, selected, vocab, reference_perm, content_perm, orders, overlap) -> None:
@@ -302,7 +341,7 @@ def main(argv=None) -> int:
     # the real word clips: prefetch every state (I/O threads), then load each as the training dataset does
     cache = ContentCache(Path(args.cache_dir), 8 * 2 ** 30)
     template = layout_template(manifest, TEMPLATE_CORPUS, cache, store.get)
-    records = {r["continuous"]["state_sha256"]: r for plan in plans.values() if plan for r in plan["records"]}
+    records = {r["sign"]: r for plan in plans.values() if plan for r in plan["records"]}
     with ThreadPoolExecutor(max(1, args.fetch_threads)) as pool:
         list(pool.map(lambda r: cache.get(r["continuous"]["state_key"], r["continuous"]["state_sha256"], store.get),
                       records.values()))
@@ -326,10 +365,9 @@ def main(argv=None) -> int:
                 continue
             loaded = {}
             for r in plan["records"]:
-                if r["continuous"]["state_sha256"] not in loaded:
-                    loaded[r["continuous"]["state_sha256"]] = word_clip(r, cache=cache, fetch=store.get,
-                                                                        template=template)
-            clips = [loaded[r["continuous"]["state_sha256"]] for r in plan["records"]]
+                if r["sign"] not in loaded:
+                    loaded[r["sign"]] = word_clip(r, cache=cache, fetch=store.get, template=template)
+            clips = [loaded[r["sign"]] for r in plan["records"]]
             for t in TIMINGS:
                 fitted = t == "oracle"
                 for c in suffixes:
@@ -423,6 +461,12 @@ def main(argv=None) -> int:
                                                                             for c, k in sorted(chosen.items())},
                        distinct_matched=len({c["sign"] for r in per_clip if r["matched"] for c in r["matched"]["clips"]}),
                        distinct_fetched=len(records),
+                       untrimmed_fetched=int(sum(r["continuous"].get("window_seconds") is None
+                                                 for r in records.values())),
+                       untrimmed_matched_occurrences=int(sum(c["window_seconds"] is None for r in per_clip
+                                                             if r["matched"] for c in r["matched"]["clips"])),
+                       untrimmed_pool_records=int(sum(r["continuous"].get("window_seconds") is None
+                                                      for pool in pools.values() for r in pool)),
                        pool_size_median=float(np.median([len(pools[w]) for ws in selected for w in ws]))
                        if any(selected) else None)
     clock["statistics"] = time.time()
@@ -440,12 +484,14 @@ def main(argv=None) -> int:
                    shuffle="compositional_baseline.shuffle_order(n, clip, 0)"),
         bootstrap=args.bootstrap, beam=4, references=texts, reference_derangement=reference_perm,
         words_derangement=content_perm, reproduction=reproduction, clip_choice=clips_stats, timing=timing,
+        v1_plan_check=v1_plan_check(per_clip, stored["per_clip"]),
         forms=scores, reading=reading(scores["oracle"]), reading_unscaled=reading(scores["oracle_unscaled"]),
         spotting=dict(windows=list(spot["windows"]), hop=spot["hop"], top_k=spot["top_k"], labels=len(labels),
                       scores=spotting),
         motion=motion, motion_ratio_to_real=motion_ratio,
         seconds={k: round(v - clock["start"], 1) for k, v in clock.items() if k != "start"},
         caveats=CAVEATS, per_clip=per_clip)
+    report["conclusion"] = conclusion(report["reading"], report["reading_unscaled"])
     for i, row in enumerate(per_clip):
         row["spotting"] = {name: spot_rows[name][i]["found"] for name in spot_rows}
     summary(report, MOTION_KEYS)
@@ -491,12 +537,36 @@ def summary(report: dict, motion_keys) -> None:
           flush=True)
     print(json.dumps(dict(clip_choice=report["clip_choice"], timing=report["timing"], seconds=report["seconds"])),
           flush=True)
-    for key in ("reading", "reading_unscaled"):
-        d = report[key]
-        print(f"READING {key}: {d['reading']}  oracle - end_to_end {ci(d['minus_end_to_end'])}; - generated crossfade "
-              f"{ci(d['minus_generated_crossfade'])}; - mismatched words {ci(d['minus_mismatched_words'])}; "
-              f"- shuffled {ci(d['minus_shuffled'])}; - deranged refs {ci(d['minus_deranged_reference'])}", flush=True)
-        print(f"  {d['text']}", flush=True)
+    if "v1_plan_check" in report:
+        print("V1 plan check (mismatches against the stored crossfade rows): "
+              + json.dumps(report["v1_plan_check"]["mismatches"]), flush=True)
+    print_readings(report)
+
+
+def print_readings(report: dict) -> None:
+    """The fitted and unscaled readings side by side under the pinned rule, the conclusion and the oracle's limits."""
+    def ci(d):
+        return f"{d['difference']:+.2f} [{d['ci95'][0]:+.2f}, {d['ci95'][1]:+.2f}]"
+    rows = [("reading", "fitted"), ("reading_unscaled", "unscaled")]
+    print("READINGS (pinned rule: (ii) when oracle - end_to_end has its 95% lower bound > 0, else (i))", flush=True)
+    print(f"  {'':34s}" + "".join(f"{label:>26s}" for _, label in rows), flush=True)
+    lines = [("reading", lambda d: reading_of(d)["reading"]), ("- end_to_end", lambda d: ci(d["minus_end_to_end"])),
+             ("- mismatched words", lambda d: ci(d["minus_mismatched_words"])),
+             ("- shuffled", lambda d: ci(d["minus_shuffled"])),
+             ("- deranged refs", lambda d: ci(d["minus_deranged_reference"])),
+             ("secondary: - generated crossfade",
+              lambda d: ci((d.get("secondary") or d)["minus_generated_crossfade"]))]
+    for label, get in lines:
+        print(f"  {label:34s}" + "".join(f"{get(report[k]):>26s}" for k, _ in rows), flush=True)
+    c = report.get("conclusion") or conclusion(*(reading_of(report[k]) for k, _ in rows))
+    print(f"CONCLUSION: {c['text']}", flush=True)
+    print(f"  limits: {c['limits']}", flush=True)
+
+
+def reading_of(d: dict) -> dict:
+    """A reading row under the pinned rule (also an earlier row, which carried a "neither" outcome)."""
+    above = bool(d["minus_end_to_end"]["ci95"][0] > 0)
+    return dict(d, reading="ii" if above else "i", above_end_to_end=above)
 
 
 if __name__ == "__main__":
