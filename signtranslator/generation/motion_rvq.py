@@ -590,13 +590,16 @@ def guided_attention_weights(step_valid: torch.Tensor, text_valid: torch.Tensor,
 
 def guided_attention_loss(attention: torch.Tensor, step_valid: torch.Tensor, text_valid: torch.Tensor,
                           width: float = .2) -> torch.Tensor:
-    """Mean of A[t, n]·W[t, n] over the valid (step, text position) pairs of every row and over layers (Tachibana
-    et al.'s 1/(NT) normalisation, pooled over the batch). ``attention``: (B, S, L) or (B, layers, S, L)."""
+    """Expected penalty per step, Σ_n A[t, n]·W[t, n], averaged over the valid steps of every row and over layers
+    (in [0, 1]). ``attention``: (B, S, L) or (B, layers, S, L), each step's weights summing to 1 over the text.
+    Tachibana et al. average over all N·T pairs, which, with weights summing to 1 per step, scales the term by 1/N:
+    a 150-byte sentence would get a 25-fold weaker push than a 6-byte word. Averaging per step keeps the push the
+    same for every text length (2026-10-28 review)."""
     if attention.dim() == 3:
         attention = attention[:, None]
     W = guided_attention_weights(step_valid, text_valid, width).to(attention.dtype)        # (B, S, L)
-    pairs = (step_valid.sum(1) * text_valid.sum(1)).sum().clamp_min(1) * attention.shape[1]
-    return (attention * W[:, None]).sum() / pairs
+    steps = step_valid.sum().clamp_min(1) * attention.shape[1]
+    return (attention * W[:, None]).sum() / steps
 
 
 def alignment_targets(word_spans: torch.Tensor, text_length: int) -> tuple[torch.Tensor, torch.Tensor]:
@@ -880,10 +883,13 @@ def rvq_prior_loss(model: RVQPrior, tokenizer: MotionRVQ, tokens, text_mask, mot
         terms["log_duration"] = float(duration_term.detach())
         total = total + config.duration_weight * duration_term
     if supervise and config.guided_attention > 0:
-        rows = conditioned
-        guided = guided_attention_loss(attention[rows], valid[rows], text_mask[rows], config.guided_attention_width)
-        terms["guided_attention"] = float(guided.detach())
-        total = total + config.guided_attention * guided
+        # multi-word texts only (a space byte among the valid bytes): a monotonic sweep over the letters of one word has
+        # no meaning and would act against the word-level conditioning that rounds 11-12 established
+        rows = conditioned & ((tokens == 32) & text_mask).any(1)
+        if bool(rows.any()):
+            guided = guided_attention_loss(attention[rows], valid[rows], text_mask[rows], config.guided_attention_width)
+            terms["guided_attention"] = float(guided.detach())
+            total = total + config.guided_attention * guided
     if supervise and config.alignment_supervision > 0 and word_spans is not None:
         spans = word_spans.to(codes.device).long()[:, ::config.tokenizer.step][:, :codes.shape[1]]
         spans = F.pad(spans, (0, 0, 0, codes.shape[1] - spans.shape[1]), value=-1)        # (B, S, 2)
