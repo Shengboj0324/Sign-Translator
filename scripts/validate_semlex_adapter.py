@@ -66,8 +66,9 @@ PARENT = {"Chest": "Pelvis", "LeftUpperArm": "Chest", "LeftForearm": "LeftUpperA
           "RightUpperArm": "Chest", "RightForearm": "RightUpperArm", "RightHand": "RightForearm"}
 
 
-def framing(video: Path, models: dict, aspect: float):
-    """Crop box (x0, y0, w, h) in source pixels giving Sem-Lex's framing at ``aspect``; None when it does not fit."""
+def framing(video: Path, models: dict, aspect: float, *, nose_y: float = NOSE_Y, shoulder_y: float = SHOULDER_Y):
+    """Crop box (x0, y0, w, h) in source pixels giving Sem-Lex's framing at ``aspect`` (nose and shoulder midpoint at
+    ``nose_y`` and ``shoulder_y`` of the crop height); None when it does not fit."""
     import av
     import mediapipe as mp
     vision, base = mp.tasks.vision, mp.tasks.BaseOptions
@@ -89,9 +90,9 @@ def framing(video: Path, models: dict, aspect: float):
     if len(noses) < 3:
         return None
     nose, mid = np.median(noses, 0), np.median(shoulders, 0)
-    height = int(round((mid[1] - nose[1]) / (SHOULDER_Y - NOSE_Y) / 2)) * 2
+    height = int(round((mid[1] - nose[1]) / (shoulder_y - nose_y) / 2)) * 2
     width = int(round(aspect * height / 2)) * 2
-    x0, y0 = int(round(mid[0] - width / 2)), int(round(mid[1] - SHOULDER_Y * height))
+    x0, y0 = int(round(mid[0] - width / 2)), int(round(mid[1] - shoulder_y * height))
     if height < 120 or x0 < 0 or y0 < 0 or x0 + width > size[0] or y0 + height > size[1]:
         return None
     return x0, y0, width, height
