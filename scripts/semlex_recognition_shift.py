@@ -15,6 +15,15 @@ Stage ``citizen-score``: v2 at 24 fps on, per clip,
 
 top-1/top-5 with bootstrap 95% intervals over clips and over signers, and paired differences against ``ours``.
 
+With ``--regressors`` (learned image-to-world models, ``world_regressor``), also the learned path:
+
+- ``learned_gate``: regressed world points, the pose model's visibility head, solved with the upright chest only
+  (the flags ``ours`` uses). **This is the gate path** (declared before it was scored, 2026-10-28): its paired top-5
+  difference against ``ours`` must have a 95% bootstrap lower bound above -0.05 (docs/NEXT_PHASE_PLAN.md, 08:21 UTC);
+- ``learned_inside_visibility``: the same with the inside-image visibility rule;
+- ``learned_adapter_flags``: regressed points with the adapter's flags (upright root, elbow gate, inside-image);
+- swaps: ``ours_with_learned_hands``, ``ours_with_learned_body``, and ``ours+adapter_flags`` (flags only).
+
 Stage ``semlex``: on Sem-Lex sample clips, (a) the label check: whether each clip's ASL-LEX label is the ASL-LEX
 entry behind v2's gloss (ASL Citizen's ``asl_lex_code``), and whether the Sem-Lex row's phonology columns equal ASL-LEX
 2.0's for that entry, on 30 top-5 misses (and 30 hits as a control); (b) mirror bias: each signer's dominant side
@@ -143,6 +152,10 @@ def citizen_score(args) -> dict:
     index = {g: i for i, g in enumerate(glosses)}
     resources = load_face_resources(Path(args.models_dir) / "face_landmarker.task")
     blend = BlendshapeModel(resources)
+    regressors = None
+    if args.regressors:
+        from signtranslator.data_engineering.world_regressor import load_regressors
+        regressors = load_regressors(Path(args.regressors), expected_sha256=args.regressors_sha256)
     cache = ContentCache(Path(tempfile.gettempdir()) / "sign-translator-cache", 2 * 2 ** 30)
     kw = dict(source_id="x", source_sha256="0" * 64, clock_id="x", inference_method="x")
     variants = collections.defaultdict(list)
@@ -171,7 +184,18 @@ def citizen_score(args) -> dict:
         reproduction.append(dict(same_frames=same_frames, **({n: float(np.abs(
             np.where(sb[n].valid[..., None], sb[n].values, 0) - np.where(sb[n].valid[..., None], ob[n].values, 0)).max())
             for n in ("body", "left_hand", "right_hand", "head_rotation") if sb[n].valid.any()} if same_frames else {})))
-        states = {"stored": stored, "ours": ours, "ours+adapter_flags": flags, "adapter": adapter,
+        learned = {}
+        if regressors is not None:
+            common = dict(video_id=meta["name"], source_sha256="0" * 64, blendshape_model=blend, regressors=regressors)
+            learned["learned_gate"] = convert_array(hol, duration, resources, learned_visibility=True,
+                                                    flags="upright-chest", **common)[0]
+            learned["learned_inside_visibility"] = convert_array(hol, duration, resources, flags="upright-chest",
+                                                                 **common)[0]
+            learned["learned_adapter_flags"] = convert_array(hol, duration, resources, flags="adapter", **common)[0]
+            learned["ours_with_learned_hands"] = swap(ours, learned["learned_gate"], HANDS)
+            learned["ours_with_learned_body"] = swap(ours, learned["learned_gate"], ("body",))
+            learned["learned_gate_with_our_hands"] = swap(learned["learned_gate"], ours, HANDS)
+        states = {**learned, "stored": stored, "ours": ours, "ours+adapter_flags": flags, "adapter": adapter,
                   "adapter_true_size": adapter_true,
                   "ours_with_adapter_hands": swap(ours, adapter, HANDS),
                   "adapter_with_our_hands": swap(adapter, ours, HANDS),
@@ -195,6 +219,11 @@ def citizen_score(args) -> dict:
     out["per_signer_top5"] = {s: {name: round(float((r[np.array(signers) == s] < 5).mean()), 4) for name, r in ranks.items()}
                               for s in sorted(set(signers))}
     out["clip_names"] = names
+    if regressors is not None:
+        gate = out["scores"]["learned_gate"]
+        out["gate"] = dict(path="learned_gate", rule="top-5 paired difference vs ours: 95% lower bound > -0.05",
+                           difference=gate["top5_minus_ours"], ci=gate["top5_minus_ours_ci_clips"],
+                           passed=bool(gate["top5_minus_ours_ci_clips"][0] > -.05), regressors_sha256=regressors.sha256)
     return out
 
 
@@ -243,6 +272,11 @@ def semlex_stage(args) -> dict:
     index = {g: i for i, g in enumerate(glosses)}
     resources = load_face_resources(Path(args.models_dir) / "face_landmarker.task")
     blend = BlendshapeModel(resources)
+    learned_kw = {}
+    if args.regressors:
+        from signtranslator.data_engineering.world_regressor import load_regressors
+        learned_kw = dict(regressors=load_regressors(Path(args.regressors), expected_sha256=args.regressors_sha256),
+                          learned_visibility=True, flags="upright-chest")       # the gate path
     items = []
     for path in sorted(Path(args.npy_dir).glob("*.npy")):
         row = meta.get(path.stem)
@@ -259,7 +293,8 @@ def semlex_stage(args) -> dict:
         array = np.load(io.BytesIO(data), allow_pickle=False)
         try:
             state, report = convert_array(array, float(row["duration"]), resources, video_id=path.stem,
-                                          source_sha256=hashlib.sha256(data).hexdigest(), blendshape_model=blend)
+                                          source_sha256=hashlib.sha256(data).hexdigest(), blendshape_model=blend,
+                                          **learned_kw)
         except Refusal:
             continue
         # side activity: tracked hand frames and mean image speed of each wrist block while tracked (per second)
@@ -275,7 +310,27 @@ def semlex_stage(args) -> dict:
     real, top5 = ranks_of(model, [it["state"] for it in items], labels, with_top5=True)
     mirrored = ranks_of(model, [mirror_state(it["state"], sample_id=it["state"].sample_id) for it in items], labels)
     signers = [it["row"]["signer_id"] for it in items]
-    out = dict(mapping=args.mapping, clips=len(items), signers=len(set(signers)), real=score(real, signers),
+    from evaluate_text_to_motion import blanked
+    blank = ranks_of(model, blanked([it["state"] for it in items]), labels)
+    # mismatched control: each clip scored against another sample clip's gloss (a seeded shuffle, never its own gloss)
+    shuffle = np.random.default_rng(args.seed)
+    other = np.array(labels)
+    for _ in range(100):
+        order = shuffle.permutation(len(labels))
+        if not (np.array(labels)[order] == np.array(labels)).any():
+            other = np.array(labels)[order]
+            break
+    else:
+        raise RuntimeError("no derangement of the labels found")
+    mismatched = ranks_of(model, [it["state"] for it in items], other.tolist())
+    path_name = "learned_gate" if learned_kw else "adapter"
+    out_controls = dict(path=path_name, blank=score(blank, signers), mismatched=score(mismatched, signers),
+                        real_minus_blank_top5=dict(difference=round(float((real < 5).mean() - (blank < 5).mean()), 4),
+                                                   ci=bootstrap((real < 5).astype(float) - (blank < 5))),
+                        real_minus_mismatched_top5=dict(
+                            difference=round(float((real < 5).mean() - (mismatched < 5).mean()), 4),
+                            ci=bootstrap((real < 5).astype(float) - (mismatched < 5))))
+    out = dict(mapping=args.mapping, controls=out_controls, clips=len(items), signers=len(set(signers)), real=score(real, signers),
                mirrored=score(mirrored, signers),
                mapping_disagreements=sum(it["name_gloss"] != it["code_gloss"] for it in items),
                mapping_disagreement_examples=[(it["row"]["label"], it["name_gloss"], it["code_gloss"]) for it in items
@@ -357,6 +412,8 @@ def main(argv=None) -> int:
     p.add_argument("--asllex-key", default="acquisition/2026-10-17-v1/asl-lex-2.0/signdata.csv")
     p.add_argument("--models-dir", default=os.path.expanduser("~/.sign-translator-ops/models"))
     p.add_argument("--recognizer-run", default="sign-recognizer-v2")
+    p.add_argument("--regressors", help="world regressor bundle (world_regressor.WorldRegressors.save)")
+    p.add_argument("--regressors-sha256")
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--mapping", choices=("name", "code"), default="code",

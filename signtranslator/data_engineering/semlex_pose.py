@@ -407,11 +407,16 @@ def holistic_clip(array: np.ndarray, duration_ms: float, resources: FaceResource
                   aspect: float | None = None, image_size: tuple[int, int] | None = None,
                   blendshape_model: BlendshapeModel | None = None, pose_z_scale: float = POSE_Z_SCALE,
                   hand_z_scale: float = HAND_Z_SCALE,
-                  visibility_margin: float = VISIBILITY_MARGIN) -> tuple[ClipLandmarks, dict]:
+                  visibility_margin: float = VISIBILITY_MARGIN, regressors=None,
+                  learned_visibility: bool = False) -> tuple[ClipLandmarks, dict]:
     """``ClipLandmarks`` (and a diagnostic dict) from one Holistic array of a clip lasting ``duration_ms``.
 
     ``image_size`` (pixels) fixes the aspect and the face crop exactly; otherwise ``aspect`` (W / H) or the face-mesh
-    estimate sets the aspect and the crop is rebuilt at a nominal height of ``NOMINAL_HEIGHT`` pixels."""
+    estimate sets the aspect and the crop is rebuilt at a nominal height of ``NOMINAL_HEIGHT`` pixels.
+
+    With ``regressors`` (:class:`world_regressor.WorldRegressors`) the pose and hand world points come from the learned
+    image-to-world models instead of ``pseudo_world`` (the depth gains are then unused), and with
+    ``learned_visibility`` the pose visibility is the pose model's visibility head instead of the inside-image rule."""
     values = check_array(array)
     frames = len(values)
     if not np.isfinite(duration_ms) or duration_ms <= 0:
@@ -482,10 +487,25 @@ def holistic_clip(array: np.ndarray, duration_ms: float, resources: FaceResource
         scores[face_found] = model(pixels)
     info.update(face_frames=int(face_found.sum()), face_without_crop=no_crop)
 
+    if regressors is None:
+        pose_world, hands_world = pseudo_world(pose, a, pose_z_scale), pseudo_world(hands, a, hand_z_scale)
+        info["world"] = "pseudo-world"
+    else:
+        pose_world, learned, ok = regressors.pose_world(pose, a)
+        pose_found = pose_found & ok
+        if learned_visibility:
+            visibility = learned * pose_found[:, None]
+        hands_world = np.zeros_like(hands)
+        for k, side in enumerate(("Left", "Right")):
+            world, ok = regressors.hands(hands[:, k], a, side)
+            hands_found[:, k] &= ok
+            hands_world[:, k] = np.where(hands_found[:, k, None, None], world, 0.)
+        info["world"] = f"learned:{regressors.sha256}"
+        info["learned_visibility"] = bool(learned_visibility)
     clip = ClipLandmarks(
-        times=times, pose_world=pseudo_world(pose, a, pose_z_scale), pose_visibility=visibility,
+        times=times, pose_world=pose_world, pose_visibility=visibility,
         pose_image=pose[..., :2].copy(), pose_found=pose_found,
-        hands_world=pseudo_world(hands, a, hand_z_scale), hands_image=hands[..., :2].copy(), hands_found=hands_found,
+        hands_world=hands_world, hands_image=hands[..., :2].copy(), hands_found=hands_found,
         blendshapes=scores, blendshape_names=BLENDSHAPE_NAMES if face_found.any() else (), face_matrix=matrices,
         face_found=face_found, roi=True, other_person=None, image_size=None)
     assigned = assign_hands(clip)          # canonical_from_landmarks repeats this exact call; here only to report it
@@ -503,35 +523,47 @@ def holistic_clip(array: np.ndarray, duration_ms: float, resources: FaceResource
     return clip, info
 
 
-def inference_method(info: dict) -> str:
+def inference_method(info: dict, flags: str = "adapter") -> str:
     aspect = info["aspect"]
+    learned = info.get("world", "pseudo-world").startswith("learned:")
+    world = (f"world landmarks from learned image-to-world regressors (bundle {info['world'][8:24]})" if learned else
+             f"pseudo-3D (x, y/a, k z), pose k={info['pose_z_scale']}, hand k={info['hand_z_scale']}")
+    visibility = ("the pose regressor's visibility head" if info.get("learned_visibility") else
+                  f"inside the image by a margin of {info['visibility_margin']}")
     return (f"Sem-Lex Benchmark MediaPipe Holistic landmarks (publisher's pose files; Holistic version not stated); "
-            f"{ADAPTER}: pseudo-3D (x, y/a, k z) with a={aspect['aspect']:.4f} ({aspect['method']}"
+            f"{ADAPTER}: {world}; aspect a={aspect['aspect']:.4f} ({aspect['method']}"
             + (f", snapped to {aspect['snapped_to']} from {aspect['raw']}" if aspect.get("snapped_to") else "")
-            + f"), pose k={info['pose_z_scale']}, hand k={info['hand_z_scale']}; visibility = inside the image"
-            + f" by a margin of {info['visibility_margin']}; "
+            + f"); visibility = {visibility}; "
             "face matrix by a port of MediaPipe's face geometry pipeline on the rebuilt ROI crop; blendshapes by "
             f"face_blendshapes.tflite of face_landmarker.task={MODEL_SHA256['face_landmarker.task'][:16]}; {CONVENTION}; "
-            "chest up axis from the camera vertical (upright prior); pelvis the camera-upright identity on frames "
-            "without hips (upright root); arms only on frames whose elbow lies inside the image; "
-            "values are fitted, not observed")
+            "chest up axis from the camera vertical (upright prior)"
+            + ("; pelvis the camera-upright identity on frames without hips (upright root); arms only on frames whose "
+               "elbow lies inside the image" if flags == "adapter" else "")
+            + "; values are fitted, not observed")
 
 
 def convert_array(array: np.ndarray, duration_ms: float, resources: FaceResources, *, video_id: str, source_sha256: str,
                   aspect: float | None = None, image_size: tuple[int, int] | None = None,
                   blendshape_model: BlendshapeModel | None = None, pose_z_scale: float = POSE_Z_SCALE,
-                  hand_z_scale: float = HAND_Z_SCALE, visibility_margin: float = VISIBILITY_MARGIN):
-    """Canonical state and report for one Sem-Lex clip (``Refusal`` when it cannot be converted)."""
+                  hand_z_scale: float = HAND_Z_SCALE, visibility_margin: float = VISIBILITY_MARGIN,
+                  regressors=None, learned_visibility: bool = False, flags: str = "adapter"):
+    """Canonical state and report for one Sem-Lex clip (``Refusal`` when it cannot be converted).
+
+    ``flags``: ``"adapter"`` solves with upright chest, upright root and the elbow gate (the declared adapter);
+    ``"upright-chest"`` with the upright chest only, as the ASL Citizen corpus was extracted."""
+    if flags not in ("adapter", "upright-chest"):
+        raise ValueError("flags must be 'adapter' or 'upright-chest'")
     clip, info = holistic_clip(array, duration_ms, resources, aspect=aspect, image_size=image_size,
                                blendshape_model=blendshape_model, pose_z_scale=pose_z_scale, hand_z_scale=hand_z_scale,
-                               visibility_margin=visibility_margin)
+                               visibility_margin=visibility_margin, regressors=regressors,
+                               learned_visibility=learned_visibility)
     if not clip.pose_found.any():
         raise Refusal("no frame has a pose")
     state, report = canonical_from_landmarks(
         clip, sample_id=video_id, source_id=SOURCE_ID, source_sha256=source_sha256,
-        clock_id=f"{SOURCE_ID}:{video_id}:uniform-over-duration", inference_method=inference_method(info),
-        upright_chest=True, elbow_in_image=True, upright_root=True)
-    return state, dict(report, **info)
+        clock_id=f"{SOURCE_ID}:{video_id}:uniform-over-duration", inference_method=inference_method(info, flags),
+        upright_chest=True, elbow_in_image=flags == "adapter", upright_root=flags == "adapter")
+    return state, dict(report, **info, flags=flags)
 
 
 def load_pose_file(payload: bytes) -> np.ndarray:
