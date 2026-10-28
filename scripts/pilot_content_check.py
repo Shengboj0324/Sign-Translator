@@ -10,10 +10,19 @@ applied by ``load_generator``):
 - **R5-style lexicon:** the strict review's R5 words (the recogniser's reliable glosses that occur as words in the
   How2Sign training sentences), two samples each at the generator's own duration, read by the recogniser: top-5.
 Writes one JSON report; comparing checkpoints at the same setting isolates the prior.
+
+Round 14 (docs/NEXT_PHASE_PLAN.md, "Sem-Lex un-mirrored"), both additions only, the ``lexicon`` block unchanged:
+- ``--mirrored-read``: every generated word state is also read mirrored (``pose.mirror.mirror_state``; each channel's
+  availability is checked to move with it), reported as ``lexicon_mirrored`` with the same fields. The recogniser
+  learned most of its vocabulary from mirrored webcam video, so it reads mirrored signs better.
+- ``--word-split-key``: a JSON partitioning the scored words into ``covered`` and ``uncovered`` (R5: one-word train
+  records in round10-mixed-v1's isolated corpora, 108 and 42); ``lexicon_split`` gives each subset's top-5 for every
+  read (``lexicon``, and ``lexicon_mirrored`` with ``--mirrored-read``).
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -21,6 +30,8 @@ import random
 import re
 import sys
 import tempfile
+
+import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
@@ -41,6 +52,78 @@ def postprocess(s):
     from signtranslator.generation.postprocess import smooth_rotation_channel, smooth_vector_channel
     s = smooth_rotation_channel(s, "head_rotation", .1)
     return smooth_vector_channel(s, "head_translation", .1) if "head_translation" in s.channels else s
+
+
+SPLIT_SUBSETS = ("covered", "uncovered")
+SIDE_CHANNEL = {"left_hand": "right_hand", "right_hand": "left_hand", "left_gaze": "right_gaze", "right_gaze": "left_gaze"}
+
+
+def available_channels(state) -> list[str]:
+    """The channels with at least one valid entry (what a manifest's ``available_channels`` records)."""
+    return sorted(n for n, c in state.channels.items() if c.valid.any())
+
+
+def check_mirrored_availability(state, mirrored) -> None:
+    """Raise unless every channel's validity and observation masks in ``mirrored`` are its counterpart's in ``state``
+    (left and right channels swapped, side-labelled entries swapped within a channel), so availability is mirrored
+    with the values: the defect of the mirrored ASL Citizen states, whose manifests kept the unmirrored
+    ``available_channels`` and so masked the dominant hand, cannot recur here."""
+    from signtranslator.pose.mirror import swap_side
+    for name, c in mirrored.channels.items():
+        src = state.channels[SIDE_CHANNEL.get(name, name)]
+        if not src.valid.any():
+            if c.valid.any() or c.observed.any():
+                raise ValueError(f"mirrored {name}: available, but its counterpart is not")
+            continue
+        labels = list(src.labels)
+        order = [labels.index(swap_side(l)) if swap_side(l) in labels else labels.index(l) for l in c.labels]
+        if not (np.array_equal(c.valid, src.valid[:, order]) and np.array_equal(c.observed, src.observed[:, order])):
+            raise ValueError(f"mirrored {name}: availability differs from its counterpart's")
+    want = sorted(SIDE_CHANNEL.get(n, n) for n in available_channels(state))
+    if available_channels(mirrored) != want:
+        raise ValueError(f"mirrored channels {available_channels(mirrored)} are not the mirror of {want}")
+
+
+def mirrored_read(state):
+    """The state as the mirrored signer, for the recogniser (sample id kept; availability checked)."""
+    from signtranslator.pose.mirror import mirror_state
+    out = mirror_state(state, sample_id=state.sample_id)
+    check_mirrored_availability(state, out)
+    return out
+
+
+def top5_hits(recogniser, states, y, device):
+    """Per-sample top-5 hits (0/1) of the recogniser against the labels ``y``."""
+    from validate_sign_recognizer import logits_of
+    return (logits_of(recogniser, states, device).topk(5, dim=1).indices == y[:, None]).any(1).float().numpy()
+
+
+def word_split(payload: bytes, words) -> dict:
+    """{subset: the scored words in it, in scoring order} from a split JSON; the subsets must partition ``words``."""
+    split = json.loads(payload)
+    if not isinstance(split, dict):
+        raise ValueError("word split: expected a JSON object")
+    lists = {k: split.get(k) for k in SPLIT_SUBSETS}
+    for k, v in lists.items():
+        if not isinstance(v, list) or not all(isinstance(w, str) for w in v) or len(set(v)) != len(v):
+            raise ValueError(f"word split: {k!r} must be a list of distinct words")
+    if set(lists["covered"]) & set(lists["uncovered"]):
+        raise ValueError("word split: a word is both covered and uncovered")
+    union = set(lists["covered"]) | set(lists["uncovered"])
+    if union != set(words):
+        raise ValueError(f"word split: the subsets must partition the scored words "
+                         f"({len(set(words) - union)} scored words unassigned, {len(union - set(words))} not scored)")
+    return {k: [w for w in words if w in set(v)] for k, v in lists.items()}
+
+
+def split_lexicon(words, hits, subsets: dict) -> dict:
+    """{subset: dict(words, samples, generated_top5)} of one read; ``hits`` holds two samples per word, in order."""
+    out = {}
+    for k, members in subsets.items():
+        rows = [2 * words.index(w) + s for w in members for s in range(2)]
+        out[k] = dict(words=len(members), samples=len(rows),
+                      generated_top5=round(float(hits[rows].mean()), 4) if rows else None)
+    return out
 
 
 def main(argv=None) -> int:
@@ -65,6 +148,12 @@ def main(argv=None) -> int:
     p.add_argument("--device", default="cuda")
     p.add_argument("--recognizer-run", default="sign-recognizer-v2",
                    help="the lexicon instrument; its validation.json gives the reliable glosses (round 5: v3 if validated)")
+    p.add_argument("--mirrored-read", action="store_true",
+                   help="round 14: also read every generated word state mirrored (pose.mirror.mirror_state); adds "
+                        "lexicon_mirrored, the lexicon block is unchanged")
+    p.add_argument("--word-split-key", help="round 14: JSON partitioning the scored words into 'covered' and "
+                   "'uncovered'; adds lexicon_split (each subset's top-5 for every read)")
+    p.add_argument("--word-split-sha256", help="the split JSON's SHA-256 (checked when given)")
     p.add_argument("--output-key", required=True)
     args = p.parse_args(argv)
     import warnings
@@ -79,12 +168,35 @@ def main(argv=None) -> int:
     from strict_prior_review import bleu_ci, separated
     from validate_sign_recognizer import load_model, logits_of
     store = R2Store(os.environ)
+    if args.word_split_sha256 and not args.word_split_key:
+        raise SystemExit("--word-split-sha256 needs --word-split-key")
+    if args.word_split_key:                            # round 14: fetched and checked before any generation
+        split_payload = store.get(args.word_split_key)
+        split_sha = hashlib.sha256(split_payload).hexdigest()
+        if args.word_split_sha256 and split_sha != args.word_split_sha256:
+            raise SystemExit(f"--word-split-key: SHA-256 {split_sha}, expected {args.word_split_sha256}")
     with tempfile.TemporaryDirectory() as t:
         path = Path(t) / "m.json"; path.write_bytes(store.get(args.mix_key) + b"\n")
         manifest = load_manifest(path, expected_sha256=args.mix_sha256)
     temperature = {k: float(v) for k, v in (x.split("=") for x in args.part_temperature.split(","))}
     _, _, sample = load_generator(store, args.checkpoint_key, args.mix_sha256, args.device, temperature=temperature)
     post = postprocess
+    # lexicon word list (round 14: drawn up before the meaning half, so a bad word split fails before any generation)
+    validation = json.loads(store.get(f"training-runs/{args.recognizer_run}/validation.json"))
+    recogniser, labels, _ = load_model(store, args.recognizer_run, args.device)
+    index = {g: i for i, g in enumerate(labels)}
+    vocab_manifest = manifest
+    if args.vocab_mix_key:
+        if not args.vocab_mix_sha256:
+            raise SystemExit("--vocab-mix-key needs --vocab-mix-sha256")
+        with tempfile.TemporaryDirectory() as t:
+            path = Path(t) / "v.json"; path.write_bytes(store.get(args.vocab_mix_key) + b"\n")
+            vocab_manifest = load_manifest(path, expected_sha256=args.vocab_mix_sha256)
+    train = [r for r in vocab_manifest["records"] if r.get("corpus") == "how2sign-two-view-text-v1" and r.get("partition") == "train"]
+    vocab = {w for r in train for w in re.findall(r"[a-z]+", r["text"].lower())}
+    words = sorted(g for g in validation["per_gloss"]["reliable_glosses"] if g.isalpha() and g.lower() in vocab and g in index)
+    words = words[:args.words] if args.word_set == "r5" else words[args.words:2 * args.words]
+    subsets = word_split(split_payload, words) if args.word_split_key else None
     # meaning
     if args.meaning_from_key:   # round 13 amendment 1: the lexicon re-run keeps the arm's own meaning half
         earlier = json.loads(store.get(args.meaning_from_key))
@@ -115,20 +227,6 @@ def main(argv=None) -> int:
         print(json.dumps({"meaning": {k: {f: v for f, v in m.items() if f != "hypotheses"} if isinstance(m, dict) else m
                                       for k, m in meaning.items() if k != "references"}}), flush=True)
     # lexicon
-    validation = json.loads(store.get(f"training-runs/{args.recognizer_run}/validation.json"))
-    recogniser, labels, _ = load_model(store, args.recognizer_run, args.device)
-    index = {g: i for i, g in enumerate(labels)}
-    vocab_manifest = manifest
-    if args.vocab_mix_key:
-        if not args.vocab_mix_sha256:
-            raise SystemExit("--vocab-mix-key needs --vocab-mix-sha256")
-        with tempfile.TemporaryDirectory() as t:
-            path = Path(t) / "v.json"; path.write_bytes(store.get(args.vocab_mix_key) + b"\n")
-            vocab_manifest = load_manifest(path, expected_sha256=args.vocab_mix_sha256)
-    train = [r for r in vocab_manifest["records"] if r.get("corpus") == "how2sign-two-view-text-v1" and r.get("partition") == "train"]
-    vocab = {w for r in train for w in re.findall(r"[a-z]+", r["text"].lower())}
-    words = sorted(g for g in validation["per_gloss"]["reliable_glosses"] if g.isalpha() and g.lower() in vocab and g in index)
-    words = words[:args.words] if args.word_set == "r5" else words[args.words:2 * args.words]
     states, y = [], []
     for k, g in enumerate(words):
         for s in range(2):
@@ -141,8 +239,25 @@ def main(argv=None) -> int:
                    blank_top5=round(float(blank_hits.mean()), 4), recognizer_run=args.recognizer_run,
                    per_word={g: int(hits[2 * k] + hits[2 * k + 1]) for k, g in enumerate(words)})
     print(json.dumps({"lexicon": lexicon}), flush=True)
+    extra, reads = {}, {"lexicon": hits}              # round 14: additions only; the lexicon block above is unchanged
+    if args.mirrored_read:
+        mirrored = [mirrored_read(st) for st in states]
+        m_hits, m_blank = top5_hits(recogniser, mirrored, y, args.device), top5_hits(recogniser, blanked(mirrored), y,
+                                                                                       args.device)
+        extra["lexicon_mirrored"] = dict(
+            words=len(words), word_set=args.word_set, samples=len(y), generated_top5=round(float(m_hits.mean()), 4),
+            blank_top5=round(float(m_blank.mean()), 4), recognizer_run=args.recognizer_run,
+            per_word={g: int(m_hits[2 * k] + m_hits[2 * k + 1]) for k, g in enumerate(words)},
+            mirror="signtranslator.pose.mirror.mirror_state",
+            available_channels=sorted({n for st in mirrored for n in available_channels(st)}))
+        reads["lexicon_mirrored"] = m_hits
+        print(json.dumps({"lexicon_mirrored": extra["lexicon_mirrored"]}), flush=True)
+    if args.word_split_key:
+        extra["lexicon_split"] = dict(key=args.word_split_key, sha256=split_sha, words=subsets,
+                                      **{read: split_lexicon(words, h, subsets) for read, h in reads.items()})
+        print(json.dumps({"lexicon_split": {k: v for k, v in extra["lexicon_split"].items() if k != "words"}}), flush=True)
     report = dict(checkpoint_key=args.checkpoint_key, part_temperature=temperature, guidance=args.guidance,
-                  clips=len(texts), meaning=meaning, lexicon=lexicon,
+                  clips=len(texts), meaning=meaning, lexicon=lexicon, **extra,
                   **({"vocab_mix_key": args.vocab_mix_key} if args.vocab_mix_key else {}),
                   **({"meaning_from_key": args.meaning_from_key} if args.meaning_from_key else {}))
     store.put(args.output_key, json.dumps(report, indent=2, sort_keys=True, default=float).encode())
