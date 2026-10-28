@@ -3264,3 +3264,36 @@ The path measure has the weakness round 5 found when it rejected wrist-speed mea
 **Data limits.**
 - How2Sign's 30k sentences have no glosses, so they cannot teach ordering directly.
 - ASLLRP's signers and domain differ from How2Sign's, so the transfer is part of what is measured.
+
+## Round 15 stage 1 result, recorded (2026-10-28, 19:28 UTC): NOT PROMISING by the declared rule
+
+**Setup:** F12 step 60000; 300 How2Sign val sentences; training-vocabulary word selection (9.07 words per sentence); fitted durations.
+
+| Variant | BLEU | vs end-to-end | vs mismatched words | vs shuffled | vs chance (deranged ref) | Spotting recall (mismatched) |
+|---|---|---|---|---|---|---|
+| End-to-end | 1.42 [0.97, 1.85] | — | — | — | +0.30 [−0.30, +0.86] | ≈0.03 (earlier round-13 report) |
+| V1 crossfade | 1.39 | −0.03 [−0.50, +0.43] | +0.23 [−0.22, +0.69] | +0.42 [+0.07, +0.76] | +0.48 [−0.03, +0.99] | **0.312** (0.090) |
+| **V2 chained** | 1.44 | +0.01 [−0.47, +0.53] | **+0.62 [+0.29, +0.97]** | **+0.36 [+0.03, +0.69]** | **+0.58 [+0.06, +1.10]** | **0.167** (0.060) |
+| V3 chained + trim | 1.37 | −0.05 [−0.50, +0.43] | +0.47 [+0.08, +0.85] | −0.04 | +0.50 [−0.01, +1.03] | 0.167 (0.063) |
+
+Real reads 4.09 and blank 2.09. Composed wrist speed is about 3× real (end-to-end 1.4×).
+
+**Verdict:** no variant passes rule (1), so none is promising, and stage 2 does not start on this result.
+
+**What the result does show.**
+- Composed sentences carry sentence-specific, ordered content: V2 is above every content control.
+- Their content words are found 3–10× above chance by spotting; end-to-end's are not.
+- Yet the back-translator scores them no higher than end-to-end.
+
+Two explanations remain:
+- (a) the generated words are not good enough to translate;
+- (b) the back-translator cannot reward word-by-word signing (English order, compressed isolated signs, no co-articulation) above end-to-end's text-prior-like output.
+
+**Next: an instrument check, report-only, declared now before it runs.** The **oracle composition** uses **real** isolated-sign clips of the same selected words:
+- one random train clip per word from the isolated corpora, trimmed by the manifest's sign window;
+- composed with the same crossfade and fitted timing (time-resampled to the fitted durations);
+- scored with the same BLEU, controls and spotting.
+
+**Readings:**
+- If real-word composition is **not** above end-to-end on paired BLEU, BLEU cannot measure composition. A sentence measure that can is needed before any structural round is judged.
+- If it **is** well above, the generated words are the bottleneck (explanation a), and round 14 (better words) is the lever.
