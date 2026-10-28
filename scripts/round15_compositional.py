@@ -112,8 +112,9 @@ CAVEATS = [
     "isolated-sign recogniser (v2) on windows; its labels never select words.",
     "Decoder gains are applied per clip about the clip mean: per word for V1 (as the pilot lexicon), once over the "
     "whole chain for V2/V3 (as end-to-end).",
-    "Sampling noise: one sample per word occurrence; V1, V2 and V3 share seeds (V2's first segment equals V1's first "
-    "word), so the variants' differences are paired.",
+    "Sampling noise: one sample per word occurrence; V1, V2 and V3 share seeds, so the variants' differences are "
+    "seed-paired, not sample-identical: V1 conditions each word on its fitted seconds, V2/V3 on whole frames (and the "
+    "decoder gains are applied per word for V1, over the chain for V2/V3). V2 and V3 share their first segment's codes.",
 ]
 
 
