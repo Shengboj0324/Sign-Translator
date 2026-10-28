@@ -2397,3 +2397,15 @@ Best checkpoint at step 37000; early stop at step 47000.
 - `exposure_diagnostic.py` reported beside each (frequent and R5 words).
 
 **Selection.** Among the promising arms of rounds 11–12 (L11c included), the highest lexicon difference wins; a tie within 0.02 goes to the higher paired BLEU. The winner continues to 60000 steps, then the full declared chain (test-set exit gate, avatar).
+
+## Round 11 pilot, L11c, recorded (2026-10-28, 00:51 UTC): NOT PROMISING (rule D, amendment 2): lexicon passed, BLEU failed
+
+| Measure | L11c | Control | Paired difference [95% CI] | Rule | Result |
+|---|---|---|---|---|---|
+| Lexicon top-5 (R5) | **0.5333** | 0.0167 | **+0.517 [0.443, 0.587]** | ≥ +0.05, CI above 0 | pass |
+| BLEU | 1.329 | 1.592 | −0.263 [−0.824, 0.298] | lower bound > −0.5 | fail |
+
+- **Step-20000 exposure reads:** frequent words free run 0.783 (one-step 0.833 / 0.85); the 108 R5 words with isolated clips 0.694 (L11 0.574).
+- **The best lexicon of any arm,** with the same failure mode as L11: sentence meaning a little below the control's, with both below blank.
+- **Round 11 is not promising.** L11c's checkpoints are kept; F12 starts from its step-20000 weights.
+- **Round 12 (F12, M12)** is the declared remedy for the BLEU condition.
