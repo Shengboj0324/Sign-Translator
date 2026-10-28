@@ -2718,3 +2718,36 @@ Default behaviour is unchanged. Both round-13 arms are re-scored this way into `
 - the replacement test against F12's own pilot.
 
 The first reports stay in R2, but their lexicon halves are not used.
+
+### Sem-Lex adapter: instrument-shift finding and the gate for its use (recorded 2026-10-28, 08:21 UTC)
+
+**Adapter (agent branch, not on main).** Against two-view ground truth it is as accurate as our own extraction, or better:
+- arms 13.2° median against 18.7–19.6°;
+- fingers 21.8° against 25.1°;
+- head rotation 0.05° from ours; blendshapes MAE 0.001;
+- aspect snapped correctly on 90 of 90 crops.
+
+**Recogniser v2 nearly fails on it.** Sem-Lex converted states read top-5 0.063, against 0.74 on v2's own domain. On 300 ASL Citizen val clips through the adapter (emulated Holistic arrays) v2 reads 0.14, against 0.74 for our path on the same clips: paired difference −0.60 [−0.66, −0.54].
+
+| Swap on the same clips | v2 top-5 |
+|---|---|
+| Ours with the adapter's hands | 0.23 |
+| The adapter with our hands | 0.56 |
+| Ours with the adapter's body | 0.55 |
+| Ours with only the upright-root and elbow-gate flags | 0.60 |
+| Face and head swapped | unchanged |
+
+**What explains the gap.**
+- **Data shift, about 0.08:**
+  - labels about 0: the corrected mapping goes through the ASL-LEX code, and 3.9% of clips had been on the wrong variant;
+  - mirror bias up to +0.02: four of nine signers are left-dominant;
+  - about 0.05 unexplained: legacy Holistic versus the Tasks models, the signers, and lower tracking.
+- **The rest is instrument shift.** The adapter's image-based hands and body are a different representation from our world-landmark states. A model, whether recogniser or generator, separates the two sharply.
+
+**Decision.** Sem-Lex enters no generator training until one representation serves both. Gate, declared before the experiment: a Holistic-to-our-states path must read **v2 top-5 on the same 300 ASL Citizen val clips with a paired difference against our path whose 95% lower bound is above −0.05**. Then Sem-Lex is converted through it, and v2 must read real Sem-Lex above blank and above its mismatched control.
+
+**Next experiment.** Learned world-landmark regressors.
+- Paired data comes from the Tasks trackers on How2Sign and YouTube-ASL videos: hand image landmarks (x, y, z) to hand world landmarks, and pose image to pose world, aspect-corrected and normalised.
+- They replace `pseudo_world` in the adapter. ASL Citizen is used only for the validation read (recognition use).
+
+**Also found.** The upright-root and elbow-gate flags alone cost v2 0.14 on its own domain. The recovered YouTube-ASL clips use these flags, so their declaration must address this convention shift. Option: one convention for every corpus.
