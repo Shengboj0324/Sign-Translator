@@ -3185,3 +3185,13 @@ Fixed after the 3-clip smoke run of b775b5a9. All rules still use the training v
 3. **Selection statistics** are reported per variant: words per sentence, and the share matched by the fallback.
 
 Rule, variants and verdict are unchanged.
+
+### Round 15: readings pinned before the run (recorded 2026-10-28, 15:54 UTC; independent review: fit to run)
+
+- **Rule (3).** "Word-spotting recall above its mismatched control" means the recall's 95% lower bound is above the control's upper bound, the reading `sentence_word_spotting.py` uses. This is strict; it can only make a variant look worse.
+- **Chained mode (V2, V3).** Word k continues from **all** earlier words' generated codes.
+  - The clock runs uniformly from 0 across segments.
+  - The duration input is the cumulative end of word k, so the phase reaches 1 at word k's end.
+  - Cross-attention sees word k only; guidance uses the empty text.
+- **Known:** V3's declared trim parameters (0.25 s margins, 0.5 s minimum window) cut almost nothing from 0.3–0.9 s segments, so V3 is close to V2. Its `frames_kept_fraction` is read before treating it as separate evidence.
+- **Report wording:** the "V2's first segment equals V1's first word" caveat is wrong. V1 conditions on fitted seconds, V2 on whole frames. They share seeds, not samples.
