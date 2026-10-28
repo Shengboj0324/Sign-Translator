@@ -3297,3 +3297,15 @@ Two explanations remain:
 **Readings:**
 - If real-word composition is **not** above end-to-end on paired BLEU, BLEU cannot measure composition. A sentence measure that can is needed before any structural round is judged.
 - If it **is** well above, the generated words are the bottleneck (explanation a), and round 14 (better words) is the lever.
+
+### Oracle composition: reading rule pinned (recorded 2026-10-28, 19:46 UTC, while the run is translating and before any of its numbers are seen)
+
+**Rule.**
+- **"Above end-to-end"** means the paired BLEU difference, oracle (fitted) minus end-to-end, has its 95% lower bound **above 0**.
+- **Reading (i).** If it is not above, BLEU cannot reward composition at the fitted pace.
+- **Reading (ii).** If it is above, the generated words are the bottleneck.
+- The script's extra "neither" outcome (oracle above end-to-end but not above the generated crossfade) is reported as a secondary comparison, not as a reading.
+
+**Reported beside it, always:**
+- The **unscaled** oracle (real durations) is reported next to the fitted one. If the fitted oracle reads (i) but the unscaled one is above end-to-end, the conclusion is "BLEU can reward composition at natural pace, not at the fitted pace", never (i) alone.
+- The oracle's own limits are stated with any reading: a different signer at every word, 2–3× time compression in the fitted form, untracked hands in some real clips, and one real clip reused for a repeated word.
