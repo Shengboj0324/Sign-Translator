@@ -3123,7 +3123,7 @@ Real reads 4.09 and blank 2.09. Blank is the translator's text prior; every gene
 
 Round 14 (Sem-Lex words, the word lever) proceeds independently: compositional sentences need the word quality and coverage it raises.
 
-### Round 14 pre-check PASSED: the tokenizer on Sem-Lex (2026-10-28, 14:30 UTC; `scripts/tokenizer_domain_read.py`)
+### Round 14 pre-check PASSED: the tokenizer on Sem-Lex (2026-10-28, 14:23 UTC; `scripts/tokenizer_domain_read.py`)
 
 **Sample:** 300 Sem-Lex val video states (33 signers, 256 glosses), F12's tokenizer (the d2 weights), read by v2 top-5.
 
