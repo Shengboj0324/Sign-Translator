@@ -152,6 +152,37 @@ def wrist_tracks(state):
     return heights, tracked
 
 
+_WORKER = {}
+
+
+def _init_worker(options: dict, template) -> None:
+    """Per-process (or, single-process, shared) state for ``_measure``: options, the layout template, a store and a
+    cache (each process opens its own R2 client)."""
+    import warnings
+    warnings.simplefilter("ignore")
+    from signtranslator.data.text_motion_dataset import R2Store
+    from signtranslator.data_engineering.corpus_manifest import ContentCache
+    _WORKER.update(options=options, template=template, store=R2Store(os.environ),
+                   cache=ContentCache(Path(tempfile.gettempdir()) / "sign-translator-cache", 16 * 2 ** 30))
+
+
+def _measure(record):
+    """(reason or None, measures, window or None, clip seconds) of one record, as the dataset serves it."""
+    from signtranslator.data.layout_adapter import conform
+    from signtranslator.data_engineering.corpus_manifest import load_sample
+    from evaluate_text_to_motion import at_rate
+    o, store, cache = _WORKER["options"], _WORKER["store"], _WORKER["cache"]
+    state = at_rate(conform(load_sample(record, "continuous", cache=cache, fetch=store.get), _WORKER["template"]), FPS)
+    heights, tracked = wrist_tracks(state)
+    frames = heights.shape[1]
+    untracked = float((~tracked.any(0)).mean()) if frames else 1.
+    active = active_frames(heights, tracked, o["threshold"], o["min_run"], o["rest_ceiling"], o["min_lift"])
+    span = signing_span(active, FPS, o["margin"])
+    reason, m = judge(untracked=untracked, span=span, frames=frames, words=word_count(record["text"]), fps=FPS,
+                      max_untracked=o["max_untracked"], min_seconds=o["min_seconds"], min_coverage=o["min_coverage"])
+    return reason, m, None if span is None else span[1], (frames - 1) / FPS if frames else 0.
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--manifest-key", required=True)
@@ -169,7 +200,8 @@ def main(argv=None) -> int:
     p.add_argument("--min-coverage", type=float, default=.4)
     p.add_argument("--rate-k", type=float, default=3.)
     p.add_argument("--rate-scale", choices=("log", "linear"), default="log")
-    p.add_argument("--workers", type=int, default=8, help="parallel R2 reads")
+    p.add_argument("--workers", type=int, default=8, help="threads, when --processes is 1")
+    p.add_argument("--processes", type=int, default=1, help="worker processes (the measurement is CPU-bound)")
     p.add_argument("--corpus-id")
     p.add_argument("--output-key")
     p.add_argument("--limit", type=int, help="first N candidate records per corpus only (a dry run; nothing is written)")
@@ -213,19 +245,15 @@ def main(argv=None) -> int:
         seen[corpus] += 1
         candidates.append(record)
 
-    def measure(record):
-        state = at_rate(conform(load_sample(record, "continuous", cache=cache, fetch=store.get), template), FPS)
-        heights, tracked = wrist_tracks(state)
-        frames = heights.shape[1]
-        untracked = float((~tracked.any(0)).mean()) if frames else 1.
-        active = active_frames(heights, tracked, args.threshold, args.min_run, args.rest_ceiling, args.min_lift)
-        span = signing_span(active, FPS, args.margin)
-        reason, m = judge(untracked=untracked, span=span, frames=frames, words=word_count(record["text"]), fps=FPS,
-                          max_untracked=args.max_untracked, min_seconds=args.min_seconds,
-                          min_coverage=args.min_coverage)
-        return reason, m, None if span is None else span[1], (frames - 1) / FPS if frames else 0.
-    with ThreadPoolExecutor(args.workers) as pool:
-        results = list(pool.map(measure, candidates))
+    if args.processes > 1:                          # the measurement is CPU-bound Python: processes, not threads
+        import multiprocessing
+        context = multiprocessing.get_context("spawn")
+        with context.Pool(args.processes, initializer=_init_worker, initargs=(vars(args), template)) as pool:
+            results = pool.map(_measure, candidates, chunksize=16)
+    else:
+        _init_worker(vars(args), template)
+        with ThreadPoolExecutor(args.workers) as pool:
+            results = list(pool.map(_measure, candidates))
 
     decided, rates, measures = {}, collections.defaultdict(dict), collections.defaultdict(list)
     for record, (reason, m, window, clip) in zip(candidates, results):
