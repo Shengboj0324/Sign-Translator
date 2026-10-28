@@ -3364,3 +3364,12 @@ Spotting recall: fitted oracle 0.515 against mismatched 0.128.
 - time compression of about 2.2×;
 - some real clips with untracked hands;
 - one draw per word.
+
+### F12 step 60000 pilot (2026-10-28, 20:14 UTC; pinned R5 words, 1000 BLEU clips): the comparator for round 14
+
+| Measure | Step 10000 | Step 60000 | Paired difference |
+|---|---|---|---|
+| Lexicon | 0.427 | 0.450 | +0.023 [−0.023, +0.070] |
+| BLEU | 1.806 | 1.636 | −0.170 [−0.564, +0.192] |
+
+Training from step 10000 to 60000 changed neither measure resolvably: the plateau is confirmed. Round 14's arm is compared against \`round12/pilot-f12-step60000.json\`.
