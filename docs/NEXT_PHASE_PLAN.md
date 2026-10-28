@@ -2980,3 +2980,33 @@ All declared conditions are met, so **Sem-Lex is admitted**. Its lower reading a
 - Combined with round 13 (cleaned data and guided attention: no change) and word spotting (no sentence words in generated motion), training-procedure fixes within this formulation have not moved sentences in four rounds.
 
 **Pending before any structural decision.** The compositional baseline (running) tests whether sentences composed from the prior's own isolated words carry meaning. That is the evidence the owner asked for before a structural change such as a word- or gloss-level path.
+
+### Sem-Lex: the train and val archives hold the original videos (declared 2026-10-28, 11:13 UTC)
+
+The archive inventory (`scripts/semlex_archive_inventory.py`, pinned in `semlex_known_missing.json`):
+
+| Archive | Contents | Metadata ids with no file |
+|---|---|---|
+| `test.tar.gz` | 15,559 Holistic `.npy` pose files | 101 |
+| `val.tar.gz` | **18,495 `.webm` videos** | 14 |
+| `train.tar.gz` | **51,443 `.webm` videos** | 3,557 |
+
+The metadata has 91,148 rows for 88,174 ids:
+- 1,540 rows repeat exactly;
+- 1,314 differ, of which 995 ids are listed in both train and val.
+
+**Path for train and val** (about 70k clips by Deaf signers): our own extraction on the videos, so **no adapter**.
+- `extract_clip` with ROI and raw landmarks stored (re-solve without re-extraction);
+- the generator convention: `upright_chest` + `upright_root` + MediaPipe visibility, no elbow gate;
+- a write-once state per clip.
+
+That puts the states in exactly our representation. A new tar-streaming extractor (`scripts/extract_semlex_videos.py`) runs sharded on CPU pods.
+
+**Before the scale run:**
+- tests;
+- a smoke shard;
+- v2 reading real val video states above blank and above a mismatched control, using the ASL-LEX code mapping and the same report form as gate v2.
+
+**The test split** (pose files only) goes through the reviewed adapter path (regressors v2, generator convention). It is the held-out Sem-Lex evaluation set and never enters training.
+
+Merged to main: 72d3e45, the Sem-Lex adapter branch after two independent reviews.
