@@ -156,3 +156,86 @@ def test_claims_are_exclusive_and_stale_ones_are_taken_over(tmp_path):
     acq.drop_staged("abcdefghijk", args, store, "yt/staged/abcdefghijk.mp4")
     assert store.list("yt/staged/") == []
 
+
+def _chest_up_clip(T=40):
+    """A chest-up signer: hips unseen; the left elbow leaves the bottom of the image in the second half."""
+    from signtranslator.data_engineering.video_landmarks import Y_UP, ClipLandmarks
+    rng = np.random.default_rng(5)
+    pose = rng.normal(scale=.05, size=(T, 33, 3))
+    for k, v in {11: [.2, .5, 0], 12: [-.2, .5, 0], 13: [.45, .4, .05], 14: [-.45, .35, .1], 15: [.6, .25, .2],
+                 16: [-.55, .2, .25], 23: [.1, 0, 0], 24: [-.1, 0, 0]}.items():
+        pose[:, k] = np.asarray(v) + .01 * rng.normal(size=(T, 3))
+    visibility = np.ones((T, 33)); visibility[:, 23:] = .1
+    image = np.full((T, 33, 2), .5)
+    image[:, 15], image[:, 16] = [.7, .6], [.3, .6]
+    image[T // 2:, 13] = [.7, 1.2]
+    hands_world = rng.normal(scale=.03, size=(T, 2, 21, 3)); hands_world[:, :, 9] += [0., -.08, 0.]
+    hands_image = np.zeros((T, 2, 21, 2)); hands_image[:, 0, 0] = [.31, .61]; hands_image[:, 1, 0] = [.69, .59]
+    names = ("_neutral", "eyeBlinkLeft", "eyeBlinkRight", *(f"bs{i}" for i in range(49)))
+    return ClipLandmarks(np.arange(T) / 10., pose @ Y_UP, visibility, image, np.ones(T, bool), hands_world, hands_image,
+                         np.ones((T, 2), bool), np.full((T, 52), .2), names, np.tile(np.eye(4), (T, 1, 1)),
+                         np.ones(T, bool), roi=True, other_person=np.zeros(T))
+
+
+def test_arm_recovery_writes_beside_the_original_and_reports_the_recovery(monkeypatch, tmp_path):
+    import hashlib
+    import json
+    from signtranslator.data.text_motion_dataset import DirectoryStore
+    import signtranslator.data_engineering.video_landmarks as vl
+    store = DirectoryStore(tmp_path / "store")
+
+    def fake_download(video_id, directory, *, max_height, allow_auto):
+        path = directory / f"{video_id}.mp4"; path.write_bytes(b"video")
+        return dict(status="downloaded", video=path, captions="WEBVTT\n\n00:00:00.500 --> 00:00:03.000\nHello there.\n",
+                    kind="manual", meta=dict(fps=10))
+    monkeypatch.setattr(acq, "download", fake_download)
+    monkeypatch.setattr(vl, "extract_clip", lambda *a, **k: _chest_up_clip())
+    monkeypatch.setattr(vl, "inference_method", lambda: "test-method")
+    common = dict(max_height=720, allow_auto_captions=False, min_seconds=1., max_seconds=20., pad=.2,
+                  count_people_every=12, source_id="yt-test")
+    original_args = types.SimpleNamespace(prefix="yt", **common)
+    original = acq.process("abcdefghijk", original_args, store, models=None)
+    assert "recovery" not in original["segments"][0] and "arm_recovery" not in original
+    store.put("yt/videos/abcdefghijk.json", json.dumps(original).encode())
+    original_bytes = {k: store.get(k) for k in store.list("yt/")}
+
+    args = types.SimpleNamespace(prefix="yt/", arm_recovery=True, **common)
+    acq.apply_arm_recovery(args)
+    assert args.prefix == "yt/arm-recovery-v1" and args.original_prefix == "yt"
+    report = acq.process("abcdefghijk", args, store, models=None)
+    assert report["arm_recovery"] and report["upright_chest"] and report["elbow_in_image"]
+    assert report["inference_method"].startswith("test-method; chest up axis")
+    seg = report["segments"][0]
+    assert seg["state_key"] == "yt/arm-recovery-v1/states/abcdefghijk-0000.npz"
+    assert seg["landmarks_key"] == "yt/arm-recovery-v1/landmarks/abcdefghijk-0000.npz"
+    raw = store.get(seg["landmarks_key"])
+    assert hashlib.sha256(raw).hexdigest() == seg["landmarks_sha256"]
+    assert hashlib.sha256(store.get(seg["state_key"])).hexdigest() == seg["state_sha256"]
+    assert {k: store.get(k) for k in original_bytes} == original_bytes          # the original keys are untouched
+    rec = seg["recovery"]
+    assert rec["forearm_fraction"]["stored_before"] == {"Left": 0., "Right": 0.}   # hips unseen: no chest, no arms
+    assert rec["forearm_fraction"]["original_solver"] == {"Left": 0., "Right": 0.}
+    frames = len(vl.load_raw_landmarks(raw).times)
+    in_frame = sum(1 for t in vl.load_raw_landmarks(raw).pose_image[:, 13, 1] if t <= 1.)
+    assert rec["forearm_fraction"]["after"] == {"Left": round(in_frame / frames, 4), "Right": 1.}
+    assert rec["elbow_in_image_fraction"] == {"Left": round(in_frame / frames, 4), "Right": 1.}
+    assert 0 < in_frame < frames
+    assert rec["hands_unchanged"] and rec["hand_fraction"]["after"] == rec["hand_fraction"]["original_solver"] \
+        == rec["hand_fraction"]["stored_before"] == {"Left": 1., "Right": 1.}
+    assert rec["stored_before_key"] == original["segments"][0]["state_key"] and rec["stored_before_missing"] is None
+    # re-solving the stored landmarks reproduces the stored state
+    from signtranslator.pose.multichannel import MultichannelMotion
+    path = tmp_path / "state.npz"; path.write_bytes(store.get(seg["state_key"]))
+    stored = MultichannelMotion.load(path, expected_sha256=seg["state_sha256"])
+    again, _ = vl.canonical_from_landmarks(vl.load_raw_landmarks(raw), sample_id=seg["sample_id"], source_id="yt-test",
+                                           source_sha256=report["video_sha256"], clock_id="c", inference_method="x",
+                                           upright_chest=True, elbow_in_image=True)
+    for name in stored.channels:
+        np.testing.assert_array_equal(stored.channels[name].values, again.channels[name].values)
+    # a second run never overwrites the recovery outputs either
+    assert acq.process("abcdefghijk", args, store, models=None)["status"] == "duplicate"
+    with pytest.raises(SystemExit):
+        acq.apply_arm_recovery(types.SimpleNamespace(prefix="yt/arm-recovery-v1", arm_recovery=True))
+    plain = types.SimpleNamespace(prefix="yt", arm_recovery=False)
+    acq.apply_arm_recovery(plain)
+    assert plain.prefix == "yt" and plain.original_prefix is None

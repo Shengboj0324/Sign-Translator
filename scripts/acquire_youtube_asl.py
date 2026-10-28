@@ -26,6 +26,17 @@ runs on the owner's Mac: it only fetches through the gate and stages each video 
 ``<prefix>/staged/``. ``--stage extract`` runs on CPU pods: it converts the staged videos, writes the reports, then
 deletes each staged video. A staged video is a transient copy, kept only until it is extracted.
 
+**Arm recovery (``--arm-recovery``, owner-approved re-download 2026-10-28).** The original pipeline solved the arms from
+a chest built on both hips, so chest-up videos lost every arm frame. With the flag, every stage works under
+``<prefix>/arm-recovery-v1/`` (staged videos, claims, states, video reports), never under the original keys, and the
+original run stays reproducible without the flag. The conversion then uses ``upright_chest=True`` and
+``elbow_in_image=True`` (``video_landmarks.solve_rotations``: upper arm, forearm and wrist count only on frames whose
+elbow lies inside the image). Each cue also stores its raw MediaPipe landmarks
+(``<prefix>/arm-recovery-v1/landmarks/<id>-<cue>.npz``, ``video_landmarks.save_raw_landmarks``); the state is solved
+from exactly those stored landmarks, so re-solving them reproduces it. Each segment carries a ``recovery`` report:
+forearm-tracked fraction per side after, with the original solver on the same landmarks, and in the old stored state
+(when the original report has the same cue); elbow-in-image fraction; hand-tracked fraction in the same three forms.
+
 Research-only data: the prefix is private; videos are never kept or redistributed, only the derived motion and the
 caption text with their provenance.
 """
@@ -181,6 +192,52 @@ def face_stats(state) -> tuple[float, float | None]:
     return float(ok.mean()), float(np.median(np.abs(yaw)))
 
 
+ARM_RECOVERY_DIR = "arm-recovery-v1"
+ARM_RECOVERY_METHOD = ("; chest up axis from the camera vertical (upright prior); arms only on frames whose elbow lies "
+                       "inside the image; solved from the stored raw landmarks")
+
+
+def apply_arm_recovery(args) -> None:
+    """``--arm-recovery``: every key this run writes moves under ``<prefix>/arm-recovery-v1``; the original prefix
+    is kept as ``args.original_prefix`` (read only, for the before/after comparison)."""
+    args.original_prefix = None
+    if getattr(args, "arm_recovery", False):
+        base = args.prefix.rstrip("/")
+        if base.endswith("/" + ARM_RECOVERY_DIR) or base == ARM_RECOVERY_DIR:
+            raise SystemExit(f"--prefix is the corpus prefix; --arm-recovery appends /{ARM_RECOVERY_DIR} itself")
+        args.original_prefix, args.prefix = base, f"{base}/{ARM_RECOVERY_DIR}"
+
+
+def tracked_fractions(state) -> dict:
+    """Per side: fraction of frames with the forearm valid and with any finger joint valid (hand tracked)."""
+    body = state.channels["body"]
+    forearm = {s: round(float(body.valid[:, body.labels.index(f"{s}Forearm")].mean()), 4) for s in ("Left", "Right")}
+    hand = {s: round(float(state.channels[f"{s.lower()}_hand"].valid.any(axis=1).mean()), 4) for s in ("Left", "Right")}
+    return dict(forearm=forearm, hand=hand)
+
+
+def stored_before(store, args, video_id: str, sample: str, cue: dict) -> tuple[dict | None, str | None]:
+    """Fractions of the original pipeline's stored state of the same cue (same sample id, times and text), or why
+    there is none."""
+    from signtranslator.pose.multichannel import MultichannelMotion
+    report_key = f"{args.original_prefix}/videos/{video_id}.json"
+    if not store.exists(report_key):
+        return None, "no original report"
+    old = json.loads(store.get(report_key))
+    match = [s for s in old.get("segments", []) if s.get("sample_id") == sample]
+    if not match:
+        return None, "cue not in the original report"
+    seg = match[0]
+    if (abs(seg["start"] - cue["start"]) > 1e-6 or abs(seg["end"] - cue["end"]) > 1e-6
+            or seg.get("text") != cue["text"]):
+        return None, "the original cue differs (captions changed)"
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "old.npz"
+        path.write_bytes(store.get(seg["state_key"]))
+        state = MultichannelMotion.load(path, expected_sha256=seg["state_sha256"])
+    return dict(state_key=seg["state_key"], **tracked_fractions(state)), None
+
+
 def download(video_id: str, directory: Path, *, max_height: int, allow_auto: bool) -> dict:
     """(video path, captions text, caption kind, metadata) or a status for an unavailable video."""
     import yt_dlp
@@ -320,7 +377,8 @@ def drop_staged(video_id: str, args, store, video_key: str) -> None:
 
 
 def process(video_id: str, args, store, models, gate=None, *, staged: bool = False) -> dict:
-    from signtranslator.data_engineering.video_landmarks import canonical_from_landmarks, extract_clip, inference_method
+    from signtranslator.data_engineering.video_landmarks import (
+        canonical_from_landmarks, extract_clip, inference_method, load_raw_landmarks, save_raw_landmarks)
     with tempfile.TemporaryDirectory() as tmp:
         got = unstage(video_id, args, store, Path(tmp)) if staged else fetch(video_id, Path(tmp), args, gate)
         if got["status"] != "downloaded":
@@ -333,19 +391,52 @@ def process(video_id: str, args, store, models, gate=None, *, staged: bool = Fal
             return dict(video_id=video_id, status="no_usable_cues", meta=got["meta"], caption_kind=got["kind"],
                         caption_seconds=caption_seconds)
         clip = extract_clip(got["video"], models, roi=True, count_people_every=args.count_people_every)
-    method = inference_method()
+    recovery = bool(getattr(args, "arm_recovery", False))
+    method = inference_method() + (ARM_RECOVERY_METHOD if recovery else "")
     segments, refused, pending = [], [], []   # states are written only after the duplicate check below
     for k, cue in enumerate(cues):
         part = slice_clip(clip, cue["start"] - args.pad, cue["end"] + args.pad)
         sample = f"{video_id}-{k:04d}"
         if part is None or len(part.times) < 8:
             refused.append(dict(cue=k, reason="too few frames")); continue
+        extra = {}
         try:
+            if recovery:
+                raw = save_raw_landmarks(part)
+                part = load_raw_landmarks(raw)        # solve from exactly the stored landmarks (reproducible)
             state, report = canonical_from_landmarks(
                 part, sample_id=sample, source_id=args.source_id, source_sha256=video_sha,
-                clock_id=f"{args.source_id}:{sample}:pts", inference_method=method)
+                clock_id=f"{args.source_id}:{sample}:pts", inference_method=method,
+                upright_chest=recovery, elbow_in_image=recovery)
+            if recovery:
+                original, _ = canonical_from_landmarks(   # the original solver on the same landmarks: the controlled before
+                    part, sample_id=sample, source_id=args.source_id, source_sha256=video_sha,
+                    clock_id=f"{args.source_id}:{sample}:pts", inference_method=inference_method())
         except ValueError as error:
             refused.append(dict(cue=k, reason=str(error)[:200])); continue
+        if recovery:
+            landmarks_key = f"{args.prefix}/landmarks/{sample}.npz"
+            pending.append((landmarks_key, raw))
+            try:
+                before, why = stored_before(store, args, video_id, sample, cue)
+            except (ValueError, KeyError, OSError) as error:   # an unreadable old state: no before, not no video
+                before, why = None, f"original state unreadable: {type(error).__name__}: {error}"[:200]
+            after, same = tracked_fractions(state), tracked_fractions(original)
+            pose = max(int(part.pose_found.sum()), 1)
+            extra = dict(landmarks_key=landmarks_key, landmarks_sha256=hashlib.sha256(raw).hexdigest(),
+                         recovery=dict(
+                             forearm_fraction=dict(after=after["forearm"], original_solver=same["forearm"],
+                                                   stored_before=before and before["forearm"]),
+                             elbow_in_image_fraction={s: round(n / len(part.times), 4)
+                                                      for s, n in report["elbow_in_image_frames"].items()},
+                             elbow_in_image_fraction_of_pose_frames={s: round(n / pose, 4)
+                                                                     for s, n in report["elbow_in_image_frames"].items()},
+                             hand_fraction=dict(after=after["hand"], original_solver=same["hand"],
+                                                stored_before=before and before["hand"]),
+                             hands_unchanged=all(np.array_equal(state.channels[h].valid, original.channels[h].valid)
+                                                 and np.array_equal(state.channels[h].values, original.channels[h].values)
+                                                 for h in ("left_hand", "right_hand")),
+                             stored_before_key=before and before["state_key"], stored_before_missing=why))
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "s.npz"
             digest = state.save(path)
@@ -358,16 +449,23 @@ def process(video_id: str, args, store, models, gate=None, *, staged: bool = Fal
                              median_abs_yaw_deg=(round(face_stats(state)[1], 1) if face_stats(state)[1] is not None else None),
                              available_channels=[n for n, c in state.channels.items() if c.valid.any()],
                              **({} if part.other_person is None else
-                                dict(other_person_fraction=round(other_person_fraction(part), 3)))))
+                                dict(other_person_fraction=round(other_person_fraction(part), 3))), **extra))
     if staged and store.exists(f"{args.prefix}/videos/{video_id}.json"):
         # another extractor converted this video meanwhile (a claim taken over before claims were refreshed): its
         # states and report stay as they are; overwriting them would desynchronise every manifest built from them
         return dict(video_id=video_id, status="duplicate", reason="converted by another extractor first")
+    if recovery:
+        if any(not key.startswith(f"{args.prefix}/") for key, _ in pending):
+            raise ValueError("arm recovery: a key outside the arm-recovery prefix")   # never the original states
+        if any(store.exists(key) for key, _ in pending):
+            return dict(video_id=video_id, status="duplicate", reason="arm-recovery outputs already present")
     for key, payload in pending:
         store.put(key, payload)
     return dict(video_id=video_id, status="converted", meta=got["meta"], caption_kind=got["kind"], video_sha256=video_sha,
                 caption_seconds=caption_seconds,
-                cues=len(cues), segments=segments, refused=refused, inference_method=method)
+                cues=len(cues), segments=segments, refused=refused, inference_method=method,
+                **({} if not recovery else dict(arm_recovery=True, upright_chest=True, elbow_in_image=True,
+                                                original_prefix=args.original_prefix)))
 
 
 def main(argv=None) -> int:
@@ -401,7 +499,11 @@ def main(argv=None) -> int:
     parser.add_argument("--shuffle-seed", type=int, help="visit the ids in this seeded random order (channel spread)")
     parser.add_argument("--retry-status", action="append", default=[],
                         help="reprocess videos whose stored report has this status (e.g. no_captions after a fix)")
+    parser.add_argument("--arm-recovery", action="store_true",
+                        help=f"re-extraction with the upright chest and in-image elbows, raw landmarks stored; every "
+                             f"stage (download too) reads and writes under <prefix>/{ARM_RECOVERY_DIR}/ only")
     args = parser.parse_args(argv)
+    apply_arm_recovery(args)
     from train_text_to_motion import make_store
     from signtranslator.data_engineering.video_landmarks import probe_runtime, verify_models
     store = make_store(args.store)

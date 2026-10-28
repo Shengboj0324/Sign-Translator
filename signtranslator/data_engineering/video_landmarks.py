@@ -147,9 +147,20 @@ def _polar_rotation(matrices: np.ndarray) -> np.ndarray:
     return u @ vt
 
 
+def elbows_in_image(pose_image: np.ndarray) -> dict[str, np.ndarray]:
+    """Per side, (T,) whether the pose's elbow image landmark lies inside the frame: ``0 <= x <= 1`` and
+    ``0 <= y <= 1`` in MediaPipe's normalised image coordinates (bounds included; non-finite is outside)."""
+    out = {}
+    for side, elbow in (("Left", L_ELBOW), ("Right", R_ELBOW)):
+        xy = np.asarray(pose_image)[:, elbow, :2]
+        out[side] = np.isfinite(xy).all(1) & (xy >= 0.).all(1) & (xy <= 1.).all(1)
+    return out
+
+
 def solve_rotations(world: np.ndarray, visible_pose: np.ndarray,
                     hands: dict[str, tuple[np.ndarray, np.ndarray]], *,
-                    upright_chest: bool = False) -> tuple[dict, dict]:
+                    upright_chest: bool = False, elbow_in_image: bool = False,
+                    pose_image: np.ndarray | None = None) -> tuple[dict, dict]:
     """Body and finger rotations from y-up 3D points in the MediaPipe pose-33 index layout.
 
     ``world`` is (T, 33, 3) with only the body indices used here required; ``visible_pose``
@@ -162,7 +173,28 @@ def solve_rotations(world: np.ndarray, visible_pose: np.ndarray,
     shoulders, keeps the chest's yaw and roll, and drops its lean; the arms (children of the
     chest) and the hands then solve wherever their own points are seen. The pelvis, the
     chest's rotation relative to it, and the legs stay invalid without the hips.
+
+    ``elbow_in_image`` (needs ``pose_image``, (T, 33, 2) normalised image coordinates) is for
+    framings that cut the arms: MediaPipe still places an elbow that is outside the image, often
+    with visibility >= 0.5, and that elbow is a guess. With it, a side's elbow counts as visible
+    only on frames where its image landmark lies inside the frame (``elbows_in_image``), on top
+    of the visibility rule. That gates exactly three joints per side, and nothing else:
+
+    - ``{Side}UpperArm`` (shoulder -> elbow bone),
+    - ``{Side}Forearm`` (elbow -> wrist bone; also a child of the upper arm),
+    - ``{Side}Hand`` (the wrist: the hand frame relative to the forearm's world frame).
+
+    Fingers (rooted at the palm frame), chest, pelvis and legs are untouched; the wrist and
+    shoulder landmarks are not position-gated. The default (False) leaves every output
+    bit-identical to the solver without the option.
     """
+    if elbow_in_image:
+        if pose_image is None or np.shape(pose_image)[:2] != np.shape(visible_pose)[:2]:
+            raise ValueError("elbow_in_image needs pose_image with the pose's (T, 33) layout")
+        inside = elbows_in_image(pose_image)
+        visible_pose = np.array(visible_pose, dtype=bool, copy=True)
+        visible_pose[:, L_ELBOW] &= inside["Left"]
+        visible_pose[:, R_ELBOW] &= inside["Right"]
     mid_hip = (world[:, L_HIP] + world[:, R_HIP]) / 2
     mid_shoulder = (world[:, L_SHOULDER] + world[:, R_SHOULDER]) / 2
     points = np.concatenate((world, mid_hip[:, None], mid_shoulder[:, None]), axis=1)
@@ -191,13 +223,19 @@ def solve_rotations(world: np.ndarray, visible_pose: np.ndarray,
 
 def canonical_from_landmarks(clip: ClipLandmarks, *, sample_id: str, source_id: str, source_sha256: str,
                              clock_id: str, inference_method: str, points: dict | None = None,
-                             frame: str = FRAME, upright_chest: bool = False) -> tuple[MultichannelMotion, dict]:
+                             frame: str = FRAME, upright_chest: bool = False,
+                             elbow_in_image: bool = False) -> tuple[MultichannelMotion, dict]:
     """Canonical state from a clip's landmarks.
 
     By default body and hands come from the clip's monocular world landmarks. Pass
     ``points`` = {"world": (T,33,3) y-up, "visible": (T,33), "hands": {side: ((T,21,3), (T,))}}
     to use other 3D points (for example two-view triangulation) while the face,
     head and blink channels still come from the clip.
+
+    ``upright_chest`` and ``elbow_in_image`` are passed to :func:`solve_rotations`; the elbow
+    gate reads the clip's own ``pose_image``. With ``elbow_in_image`` the report also carries
+    ``elbow_in_image_frames`` (per side, pose frames whose elbow lies inside the image); without
+    it the report is unchanged.
     """
     frames = len(clip.times)
     if points is None:
@@ -209,7 +247,8 @@ def canonical_from_landmarks(clip: ClipLandmarks, *, sample_id: str, source_id: 
         world, visible_pose, hands = points["world"], points["visible"], points["hands"]
         if world.shape[0] != frames:
             raise ValueError("3D points must share the clip's frames")
-    rotations, hand_rotations = solve_rotations(world, visible_pose, hands, upright_chest=upright_chest)
+    rotations, hand_rotations = solve_rotations(world, visible_pose, hands, upright_chest=upright_chest,
+                                                elbow_in_image=elbow_in_image, pose_image=clip.pose_image)
     hands = {side: (None, hands[side][1]) for side in hands}
     def rotation_channel(names, table):
         mats = np.stack([table[n][0] for n in names], axis=1)
@@ -258,7 +297,55 @@ def canonical_from_landmarks(clip: ClipLandmarks, *, sample_id: str, source_id: 
                   arm_frames={j: int(rotations[j][1].sum()) for j in ("LeftForearm", "RightForearm")},
                   upright_chest=upright_chest,
                   unavailable=sorted(n for n, c in channels.items() if not c.valid.any()))
+    if elbow_in_image:
+        inside = elbows_in_image(clip.pose_image)
+        report["elbow_in_image"] = True
+        report["elbow_in_image_frames"] = {side: int((inside[side] & clip.pose_found).sum()) for side in inside}
     return state, report
+
+
+RAW_LANDMARKS_SCHEMA = "mediapipe-raw-landmarks-v1"
+# float16 only where its resolution is far below the estimator's noise: metric world landmarks (|x| < 2 m: < 1 mm),
+# visibility and blendshape scores (in [0, 1]: < 5e-4). Image coordinates (a pixel at 1080p is ~5e-4 and the elbow
+# gate tests the exact 0/1 bounds) and the face matrix (centimetre translations) stay float32; times stay float64.
+_RAW_DTYPES = dict(times=np.float64, pose_world=np.float16, pose_visibility=np.float16, pose_image=np.float32,
+                   pose_found=bool, hands_world=np.float16, hands_image=np.float32, hands_found=bool,
+                   blendshapes=np.float16, face_matrix=np.float32, face_found=bool, other_person=np.float16)
+
+
+def save_raw_landmarks(clip: ClipLandmarks) -> bytes:
+    """The clip's per-frame MediaPipe outputs as compact ``.npz`` bytes: pose world landmarks, pose image landmarks
+    with visibility, both hand slots (world and image, with detection flags; the side assignment is redone from them
+    by :func:`assign_hands`), face blendshapes (with names) and transformation matrix, the people count when present.
+    :func:`load_raw_landmarks` returns a ``ClipLandmarks`` every solver accepts, so a later solver change is a
+    re-solve, not a re-extraction. Solve from the loaded copy to make the state reproducible from these bytes."""
+    import io
+    import json
+    arrays = {name: np.asarray(getattr(clip, name)).astype(dtype) for name, dtype in _RAW_DTYPES.items()
+              if getattr(clip, name) is not None}
+    arrays["blendshape_names"] = np.array(clip.blendshape_names, dtype=str)
+    arrays["metadata"] = np.array(json.dumps(dict(schema=RAW_LANDMARKS_SCHEMA, roi=bool(clip.roi),
+                                                  frames=int(len(clip.times))), sort_keys=True))
+    buffer = io.BytesIO()
+    np.savez_compressed(buffer, **arrays)
+    return buffer.getvalue()
+
+
+def load_raw_landmarks(payload: bytes, *, expected_sha256: str | None = None) -> ClipLandmarks:
+    """A ``ClipLandmarks`` from :func:`save_raw_landmarks` bytes (no pickle), floats widened to float64."""
+    import io
+    import json
+    if expected_sha256 is not None and hashlib.sha256(payload).hexdigest() != expected_sha256:
+        raise ValueError("raw landmarks: content SHA-256 differs from the recorded one")
+    with np.load(io.BytesIO(payload), allow_pickle=False) as archive:
+        metadata = json.loads(str(archive["metadata"]))
+        if metadata.get("schema") != RAW_LANDMARKS_SCHEMA:
+            raise ValueError(f"raw landmarks: unknown schema {metadata.get('schema')!r}")
+        values = {name: (archive[name].astype(bool) if dtype is bool else archive[name].astype(np.float64))
+                  for name, dtype in _RAW_DTYPES.items() if name in archive.files}
+        names = tuple(str(n) for n in archive["blendshape_names"])
+    return ClipLandmarks(blendshape_names=names, roi=bool(metadata["roi"]),
+                         other_person=values.pop("other_person", None), **values)
 
 
 def verify_models(directory: Path) -> dict[str, Path]:
@@ -444,4 +531,5 @@ def inference_method() -> str:
 
 
 __all__ = ["MODEL_SHA256", "MODEL_URLS", "ClipLandmarks", "square_crop", "probe_runtime", "solve_rotations", "BODY_LABELS", "BODY_JOINTS", "finger_joints",
-           "assign_hands", "canonical_from_landmarks", "verify_models", "extract_clip", "inference_method"]
+           "assign_hands", "canonical_from_landmarks", "verify_models", "extract_clip", "inference_method",
+           "elbows_in_image", "save_raw_landmarks", "load_raw_landmarks", "RAW_LANDMARKS_SCHEMA"]

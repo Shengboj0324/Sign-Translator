@@ -133,7 +133,8 @@ def state_quality(state) -> dict:
 
 
 def _process_once(job):
-    member, prefix, source_id, zip_sha256, upright_chest, hand_scale = job
+    member, prefix, source_id, zip_sha256, upright_chest, hand_scale, *rest = job
+    elbow_in_image = bool(rest and rest[0])
     from signtranslator.data_engineering.video_landmarks import canonical_from_landmarks, extract_clip, inference_method
     store, archive = _WORKER["store"], _WORKER["archive"]
     sample = Path(member).stem
@@ -159,9 +160,10 @@ def _process_once(job):
             clip = extract_clip(video, _WORKER["models"], roi=True, hand_scale=hand_scale)
             state, report = canonical_from_landmarks(
                 clip, sample_id=sample, source_id=source_id, source_sha256=hashlib.sha256(payload).hexdigest(),
-                clock_id=f"{source_id}:{sample}:pts", upright_chest=upright_chest,
+                clock_id=f"{source_id}:{sample}:pts", upright_chest=upright_chest, elbow_in_image=elbow_in_image,
                 inference_method=inference_method() + ("; chest up axis from the camera vertical (upright prior)"
-                                                        if upright_chest else ""))
+                                                        if upright_chest else "")
+                + ("; arms only on frames whose elbow lies inside the image" if elbow_in_image else ""))
             path = Path(temporary) / "state.npz"
             digest = state.save(path)
             store.put(key, path.read_bytes())
@@ -191,6 +193,9 @@ def main(argv=None) -> int:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--upright-chest", action="store_true",
                         help="framings cut above the hips: chest up axis from the camera vertical (solve_rotations)")
+    parser.add_argument("--elbow-in-image", action="store_true",
+                        help="framings that cut the arms: upper arm, forearm and wrist only on frames whose elbow image "
+                             "landmark lies inside the frame (solve_rotations)")
     parser.add_argument("--hand-scale", type=float, default=.9,
                         help="hand crop side in shoulder widths (wide studio shots with small hands: 1.8; RIT, 2026-10-26)")
     parser.add_argument("--match", help="only clips whose file name matches this regular expression")
@@ -208,7 +213,8 @@ def main(argv=None) -> int:
         members = [m for m in members if re.search(args.match, Path(m).name)]
     shard = [m for i, m in enumerate(members) if i % args.shards == args.shard][:args.limit]
     print(f"{len(members)} clips, shard {args.shard}/{args.shards}: {len(shard)}", flush=True)
-    jobs = [(m, args.prefix.rstrip("/"), args.source_id, args.zip_sha256, args.upright_chest, args.hand_scale) for m in shard]
+    jobs = [(m, args.prefix.rstrip("/"), args.source_id, args.zip_sha256, args.upright_chest, args.hand_scale,
+             args.elbow_in_image) for m in shard]
     results = []
     with ProcessPoolExecutor(max_workers=args.workers, initializer=_init,
                              initargs=(args.zip_key, args.models_dir)) as pool:
@@ -217,7 +223,7 @@ def main(argv=None) -> int:
             if i % 100 == 0:
                 print(f"{i}/{len(jobs)} {result['status']}", flush=True)
     report = dict(schema_version=1, zip_key=args.zip_key, zip_sha256=args.zip_sha256, shard=args.shard,
-                  upright_chest=args.upright_chest,
+                  upright_chest=args.upright_chest, **({"elbow_in_image": True} if args.elbow_in_image else {}),
                   shards=args.shards, clips=len(results),
                   status_counts={s: sum(r["status"] == s for r in results) for s in {r["status"] for r in results}},
                   results=results)
