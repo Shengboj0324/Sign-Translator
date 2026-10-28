@@ -2560,3 +2560,16 @@ The owner approved re-downloading the arm-untracked YouTube-ASL videos (about 85
    - If it passes: the rest at ≤ 150 videos/h, with extraction on pods. New states are written alongside the old ones, never overwriting.
    - If it is bot-checked: stop for the day and retry the next day.
 3. **Recovered clips** enter a manifest only after a recovery report (forearm-tracked fraction, elbow-in-image fraction, unchanged hands) and a declaration.
+
+## Route to ≥ 80% word recognisability (noted 2026-10-28, 05:33 UTC; owner's target)
+
+**Ceilings.**
+- 42 of the 150 R5 words have no one-word training clip, so with today's data the lexicon is capped at 108/150 = 0.72.
+- Real clips read 0.92–0.95, the instrument's practical ceiling.
+
+**Levers,** each declared as its own round when used:
+1. **Isolated-sign coverage** (the only way past 0.72): Sem-Lex (reply awaited), re-downloaded YouTube-ASL and WLASL-YouTube clips, MS-ASL videos (blocked so far), PopSign. ASL Citizen stays recognition-only by its consent.
+2. **Word emphasis without the sentence cost:** L11c's emphasis (lexicon 0.533) with F12's rebalancing, as a schedule or adapter.
+3. **Best-of-N selection with a checker independent of the grading recogniser:** the prior's own text likelihood, or a second recogniser.
+4. **Inference tuning** (guidance, temperature, duration), swept on the dev word set only.
+5. **Training to 60000 steps.**
