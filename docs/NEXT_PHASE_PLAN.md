@@ -3020,3 +3020,15 @@ Merged to main: 72d3e45, the Sem-Lex adapter branch after two independent review
 - **Speed:** about 25 minutes of pod time, pod deleted.
 
 These states never enter training.
+
+### Declared chain for F12 at step 60000: test-set guard (amendment, declared 2026-10-28, 11:59 UTC, before F12 reaches step 60000)
+
+F12 runs the full declared chain at step 60000, with the round-3e settings and the R5 list pinned per round 13 amendment 1:
+1. sampling sweep;
+2. post-processing grid;
+3. exit gate;
+4. strict review R1–R7.
+
+**Amendment.** R6, the test-set confirmation, runs only if the exit gate and every validation rule of the strict review pass (R1, R2, R2b, R3, R4, R5, R7). Otherwise the chain stops before reading any test data, and the verdict records "R6 not run: validation rules failed; test partition untouched".
+
+**Reason.** The sentence diagnostics of 2026-10-28 predict an R2b failure: back-translation of generated sentences is at the blank's level. Each read of the test partition spends its freshness, and a model that fails on validation gains nothing from a test read.
