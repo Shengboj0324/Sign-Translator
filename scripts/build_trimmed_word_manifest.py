@@ -27,18 +27,9 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 
+# the rule lives in the library since round 15 (moved unchanged; the compositional generator trims generated words with it)
+from signtranslator.generation.compositional import sign_window, trim_window  # noqa: E402,F401
 
-def sign_window(heights: np.ndarray, tracked: np.ndarray, fps: float, threshold: float, margin: float):
-    """(lo, hi) seconds from the first frame, or None when no frame is tracked."""
-    if not tracked.any():
-        return None
-    h = heights[tracked]
-    rest, peak = np.percentile(h, 10), np.percentile(h, 95)
-    active = np.flatnonzero(tracked & (heights > rest + threshold * (peak - rest)))
-    if not len(active):
-        return None
-    last = (len(heights) - 1) / fps
-    return max(active[0] / fps - margin, 0.), min(active[-1] / fps + margin, last)
 
 
 def main(argv=None) -> int:
@@ -59,8 +50,6 @@ def main(argv=None) -> int:
     from signtranslator.data.text_motion_dataset import R2Store, TextMotionDataset
     from signtranslator.data_engineering.corpus_manifest import (
         ContentCache, build_corpus_manifest, canonical_json, load_manifest)
-    from signtranslator.generation.canonical_skeleton import skeleton_positions
-    from canonicalize_asl_citizen import side_tracks
     from train_motion_tokens import layout_template
     store = R2Store(os.environ)
     with tempfile.TemporaryDirectory() as t:
@@ -86,23 +75,11 @@ def main(argv=None) -> int:
             why[f"{corpus}:not_served"] += 1; windows[record["sign"]] = None; continue
         ds, k = served[record["sign"]]
         _, state = ds[k]
-        joints, pos, _ = skeleton_positions(state)
-        tracks = side_tracks(state)
-        best = None
-        for side in ("Right", "Left"):
-            ok = np.asarray(tracks[side][0], dtype=bool)
-            h = pos[:, joints.index(f"{side}Hand"), 1] - pos[:, joints.index(f"{side}Shoulder"), 1]
-            spread = float(np.ptp(h[ok])) if ok.any() else -1.
-            if best is None or spread > best[0]:
-                best = (spread, side, ok, h)
-        _, side, ok, h = best
-        if ok.mean() < args.min_tracked:
-            why[f"{corpus}:arm_untracked"] += 1; windows[record["sign"]] = None; continue
-        w = sign_window(h, ok, 24., args.threshold, args.margin)
-        if w is None or w[1] - w[0] < args.min_seconds:
-            why[f"{corpus}:no_sign_window"] += 1; windows[record["sign"]] = None; continue
-        windows[record["sign"]] = (round(w[0], 4), round(w[1], 4))
-        lengths[corpus].append((w[1] - w[0], (len(h) - 1) / 24.))
+        w, reason = trim_window(state, args.threshold, args.margin, args.min_tracked, args.min_seconds)
+        if w is None:
+            why[f"{corpus}:{reason}"] += 1; windows[record["sign"]] = None; continue
+        windows[record["sign"]] = w
+        lengths[corpus].append((w[1] - w[0], (len(state.timestamps) - 1) / 24.))
         why[f"{corpus}:trimmed"] += 1
     summary = {c: dict(clips=len(v), median_window_seconds=round(float(np.median([a for a, _ in v])), 3),
                        median_clip_seconds=round(float(np.median([b for _, b in v])), 3)) for c, v in lengths.items()}
