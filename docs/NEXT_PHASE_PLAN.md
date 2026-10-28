@@ -3032,3 +3032,30 @@ F12 runs the full declared chain at step 60000, with the round-3e settings and t
 **Amendment.** R6, the test-set confirmation, runs only if the exit gate and every validation rule of the strict review pass (R1, R2, R2b, R3, R4, R5, R7). Otherwise the chain stops before reading any test data, and the verdict records "R6 not run: validation rules failed; test partition untouched".
 
 **Reason.** The sentence diagnostics of 2026-10-28 predict an R2b failure: back-translation of generated sentences is at the blank's level. Each read of the test partition spends its freshness, and a model that fails on validation gains nothing from a test read.
+
+### Sem-Lex video extraction launched (2026-10-28, 12:31 UTC; main 6349b27)
+
+**Extractor** (`scripts/extract_semlex_videos.py`): our own pipeline on the original videos, under the generator convention, with raw landmarks stored.
+- Its author's adversarial review found that Python's streaming tar reader stops silently on multi-member gzip or concatenated tars. A full-member, CRC-checked reader now refuses an incomplete read.
+- Re-reading all three archives with it gave unchanged member counts. The per-split gaps are pinned.
+
+**Smoke run** (300 val clips):
+- 298 states written; 2 refused (undecodable start).
+- Frame rate is variable (median 29.95 fps); frame size 640×480 for 96%.
+- Chest valid on every frame; the upright root applied on 299 clips.
+
+**v2 on 210 in-vocabulary val clips** (31 signers, ASL-LEX code mapping):
+
+| Path | Top-1 | Top-5 | Blank / mismatched |
+|---|---|---|---|
+| Video path | 0.333 [0.271, 0.400] | **0.552 [0.486, 0.619]** | 0 / 0 |
+| Gate-v2 adapter on the same videos | — | 0.576 | — |
+| Video minus adapter | — | −0.024 [−0.086, +0.033] | — |
+
+The two paths agree. Val reads higher than the earlier test sample (0.34), a difference between splits and signers.
+
+**Caveat on arms.** The dominant right forearm is tracked on 13% of frames (left 31%), because MediaPipe's elbow visibility falls below 0.5. Measured against two-view truth, those arms are the inaccurate ones (forearm median 49°), so dropping them stands.
+
+**Run:** 3 CPU pods × 32 vCPU, shards 0–2, 28 workers, val then train; about 1.5 h expected.
+
+**Then:** `build_semlex_manifest.py` over the val and train states. Test stays held out (its pose-file states are evaluation only). A declared round 14 follows.
