@@ -21,7 +21,7 @@ echo "STAGE prior $RUN $(date)"
 python scripts/train_motion_tokens.py --architecture rvq --stage prior --run $RUN \
   --manifest-key $MIX --manifest-sha256 $MSHA --tokenizer-key "$TOKKEY" --tokenizer-sha256 "$TSHA" \
   --tokenizer-manifest-sha256 $TMSHA --fps 24 --conform-to-corpus how2sign-two-view-text-v1 --steps $PSTEPS \
-  --lr 3e-4 --warmup 1000 --batch-size 64 --d-model 384 --feedforward 1536 --token-layers 6 --depth-layers 2 \
+  --lr 3e-4 --warmup 1000 --batch-size ${PBATCH:-64} --d-model 384 --feedforward 1536 --token-layers 6 --depth-layers 2 \
   --locus-conditioning --corpus-weight asllvd-text-v1=3 ${RIT_CORPUS:+--corpus-weight $RIT_CORPUS=3} ${EXTRA_WEIGHTS:-} ${TEXT_MODEL:+--text-model "$TEXT_MODEL"} --val-every $PEVERY --val-batches 32 \
   --checkpoint-every $((PEVERY * 2)) --patience ${PATIENCE:-5} --workers 10 --cache-bytes 107374182400 > /root/stage-prior-$RUN.log 2>&1
 s=$?; tail -3 /root/stage-prior-$RUN.log; upload "training-runs/$RUN/stage-prior.log" "/root/stage-prior-$RUN.log"
