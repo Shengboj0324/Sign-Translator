@@ -3077,3 +3077,9 @@ The two paths agree. Val reads higher than the earlier test sample (0.34), a dif
 - **Smoke first.** The chain runs with `F12_SMOKE=1` (toy sizes; a smoke review never reads test data), then in full.
 
 The launcher waits for three free pod slots (at most 5). Expected verdict about 18:00–20:00 UTC.
+
+### F12 training complete (2026-10-28, 12:54 UTC)
+
+- **Training:** F12 reached step 60000 (checkpoint in R2 at 12:47). Best validation loss 4.852 at step 44000.
+- **Pod:** stopped and deleted after its log was verified.
+- **Chain:** the declared chain started on the step-60000 checkpoint with its smoke run at 12:55 UTC.
