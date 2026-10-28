@@ -3509,3 +3509,45 @@ Real clips score BLEU 4.136 and blank 1.859.
 1. Sem-Lex records of the 42 words: their text form against the pilot's prompt form, record counts, and their sampled share of training.
 2. The recogniser on real Sem-Lex clips of the 31 newly covered words, read un-mirrored and mirrored.
 3. Teacher-forced word retrieval of W14 against F12 on those words, separating "learned but unreadable" from "not learned".
+
+## Round 15 stage 2 declared: ASLLRP-fitted grammar and sign-core timing (declared 2026-10-28, 23:38 UTC, before any How2Sign measurement of stage 2)
+
+**Why it runs although stage 1 was NOT PROMISING.** Stage 1's rule was not met. The oracle showed that composed real words score BLEU 2.58, +1.16 [+0.48, +1.89] above end-to-end, and the groundwork found that stage 1's word choice and timing differ from ASLLRP's. This is a separate, re-declared round.
+
+**Code.** `scripts/round15_stage2.py` and `signtranslator/generation/compositional_grammar.py` (main `e61e463`). Independent review: MERGE after two fix rounds.
+
+**Fixed inputs.**
+- **Prior:** F12 step 60000, the leader (round 14 did not replace it).
+- **Stage-2 model:** fitted on ASLLRP train only, with the F12 (round10) vocabulary. It is pinned with `--expect-model-sha256 42389ca48d48ac9923843557d66cd3e98c0faf0d5df54a3d5752ddb41f4e6f21`.
+- **ASLLRP val (report-only, recorded before this declaration):** stage-2 selection F1 0.631 against stage 1's 0.501, and 0.623 against 0.484 on the 357 held-out sentences. Order is not resolved. Wrist speed with real clips is 1.90× real ASLLRP.
+- **Data:** the 300 How2Sign val sentences, references, derangements and stage-1 selections of the stage-1 report. The comparators are stored: end-to-end, stage-1 chained, stage-1 crossfade and oracle stage 1.
+- **Defaults are not tuned:** core activity threshold 0.1, margin 0, gap at the model's ASLLRP median, guidance 1.5, the pilot's part temperatures.
+
+**Variants** (`--total-fit pad` is the rule's form; `scale` is reported only):
+- `core_chained` and `core_crossfade`, generated;
+- `oracle_stage2`: real clips at stage-2 timing and structure, report-only.
+
+**Rule** (`--rule bleu:end_to_end,bleu:mismatched_words,spotting`; stage 1's rule unchanged). A generated variant is PROMISING when all three hold:
+1. paired BLEU against end-to-end has a 95% lower bound above 0;
+2. paired BLEU against its mismatched-words control has a lower bound above 0;
+3. word-spotting recall's lower bound is above its mismatched control's upper bound.
+
+**Reported, not part of the rule:**
+- comparisons with stage-1 chained, stage-1 crossfade and oracle stage 1;
+- the `scale` fit;
+- the shuffled control.
+
+**Hand speed, a named check:** wrist speed against real. PASS at ≤ 1.5×, reported separately. It is expected to fail: real clips at stage-2 timing already read 1.9× on ASLLRP val.
+
+**Oracle stage 2 readings:**
+- Paired BLEU against oracle stage 1 with a lower bound above 0: the grammar and timing are rewarded with real words.
+- Not above: stage 2's gain, if any, must come from the generated words' timing alone.
+
+**Runs.**
+- Pod A (GPU): `core_chained`.
+- Pod B (GPU): `core_crossfade`.
+- Pod C (CPU): `oracle_stage2`, which also finds failures early.
+
+**Next.**
+- If a variant is PROMISING: the declared chain (sweep, gate, strict review R1–R7) on that composition.
+- If not: the diagnosis reads oracle stage 2 and the hand-speed check before anything else.
