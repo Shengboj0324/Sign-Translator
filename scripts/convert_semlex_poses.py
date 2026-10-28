@@ -10,12 +10,17 @@ every shard reads the whole archive but converts only its own members. The archi
 
 One JSON report per run: ``<prefix>/reports/<split>-shard-XXX-of-YYY-<UTC time>.json`` with status counts, per-clip
 results (state key and hash, source hash, frames, rate, aspect estimate, tracked fractions, refusal reasons), and the
-shard's completeness against the metadata (ids of this split and shard that the archive lacks). Exit code 2 when any
-clip ended in ``error`` (transient store failure): run the shard again; it resumes.
+shard's completeness against the metadata (ids of this split and shard that the archive lacks). Exit codes: 2 when any
+clip ended in ``error`` (a store or I/O failure, retried in-run; run the shard again and it resumes); 3 when any clip
+``failed`` (an unexpected error, not retried), a state key holds different bytes (``exists_different``) or metadata
+ids of this shard are missing from the archive.
 
-With ``--regressors-key`` (a ``world_regressor`` bundle in the store, pinned by ``--regressors-sha256``) the clips go
-through the learned path that passed the declared gate (regressed world points, the pose model's visibility head,
-upright chest only) and the states default to ``states-learned-v1/``; without it, the geometric pseudo-world adapter.
+**Path.** By default the pinned learned path: regressed world points and visibility from the pinned
+``world_regressor`` bundle (``WORLD_REGRESSORS``), solved under the generator convention (upright chest and upright
+root, no elbow gate), states under the bundle-named ``states-<adapter>-<sha12>/``. Another bundle needs an explicit
+``--prefix``. ``--pseudo-world`` selects the geometric pseudo-world instead (the inside-image visibility rule, the same
+convention, ``states-<pseudo adapter>/``). Smoke runs (``--limit`` or ``--match``) write under
+``adapter-dev/smoke/`` and may not use a production prefix.
 
 Data files are untrusted: member names must match ``<split>/<id>.npy``, sizes are capped, ``.npy`` is read with
 ``allow_pickle=False``.
@@ -45,8 +50,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 BASE = "acquisition/2026-10-17-v1/sem-lex-mirror-v1"
 METADATA_KEY = f"{BASE}/data/semlex_metadata.csv"
 METADATA_SHA256 = "f4250b2877e738f028e4b9517922952a350ec8952e59d53ceabdd778938fc3c3"   # acquire_semlex_mirror.py
-PREFIX = f"{BASE}/states-v1"
-LEARNED_PREFIX = f"{BASE}/states-learned-v1"
+SMOKE_BASE = f"{BASE}/adapter-dev/smoke"
+CONVENTION_FLAGS = "generator"
 SPLITS = ("test", "val", "train")
 MAX_MEMBER_BYTES = 16 << 20
 MEMBER = re.compile(r"^(test|val|train)/([A-Za-z0-9_-]{1,64})\.npy$")
@@ -125,9 +130,9 @@ def _init(store_spec: str, models_dir: str | None, regressors_key: str | None = 
     if regressors is None and regressors_key:
         from signtranslator.data_engineering.world_regressor import WorldRegressors
         regressors = WorldRegressors.load(store.get(regressors_key), expected_sha256=regressors_sha256)
+    path = dict(regressors=regressors, learned_visibility=True) if regressors is not None else {}
     _WORKER.update(store=store, resources=resources, model=blendshape_model or BlendshapeModel(resources),
-                   learned=dict(regressors=regressors, learned_visibility=True, flags="upright-chest")
-                   if regressors is not None else {})
+                   learned=dict(path, flags=CONVENTION_FLAGS))
 
 
 def tracked(state, report: dict) -> dict:
@@ -164,18 +169,34 @@ def _process_once(job) -> dict:
     return dict(base, status=status, state_key=key, state_sha256=digest, frames=report["frames"], fps=report["fps"],
                 aspect=report["aspect"], tracked=tracked(state, report), hand_assignment=report["hand_assignment"],
                 face_without_crop=report["face_without_crop"], world=report["world"], flags=report["flags"],
+                adapter=report["adapter"], regressors_sha256=report.get("regressors_sha256"),
                 available_channels=sorted(n for n, c in state.channels.items() if c.valid.any()))
 
 
+def transient(error: BaseException) -> bool:
+    """A store or I/O failure that another attempt may not meet (botocore, connection, timeout, OS-level I/O).
+    Data errors never reach here as such: unreadable pose files are ``Refusal`` in ``load_pose_file``."""
+    try:
+        from botocore.exceptions import BotoCoreError, ClientError
+        store_errors = (BotoCoreError, ClientError)
+    except ImportError:
+        store_errors = ()
+    return isinstance(error, (ConnectionError, TimeoutError, OSError, *store_errors))
+
+
 def _process(job, attempts: int = 4) -> dict:
-    """One clip; transient store failures are retried, and a clip that still fails is ``error`` (retried next run)."""
+    """One clip. Store and I/O failures are retried and, if they persist, reported as ``error`` (the next run retries
+    them); anything else is ``failed``, a terminal status that is not retried."""
     import random
     for attempt in range(attempts):
         try:
             return _process_once(job)
-        except Exception as error:  # noqa: BLE001 - conversion refusals are returned above; the rest are I/O
+        except Exception as error:  # noqa: BLE001 - classified below; refusals were returned above
+            reason = f"{type(error).__name__}: {error}"[:300]
+            if not transient(error):
+                return dict(video_id=job[0], split=job[1], status="failed", reason=reason)
             if attempt == attempts - 1:
-                return dict(video_id=job[0], split=job[1], status="error", reason=f"{type(error).__name__}: {error}"[:300])
+                return dict(video_id=job[0], split=job[1], status="error", reason=reason)
             time.sleep(min(60., 2. * 2 ** attempt) * (.5 + random.random()))
 
 
@@ -202,7 +223,7 @@ def run(args, *, resources=None, blendshape_model=None, regressors=None) -> dict
     if provenance.get("sha256") != args.archive_sha256 or not provenance.get("verified_by_r2_reread"):
         raise SystemExit("the archive is not the verified acquisition named by --archive-sha256")
     metadata = load_metadata(store, args.metadata_key, args.metadata_sha256)
-    prefix = (args.prefix or (LEARNED_PREFIX if args.regressors_key or regressors is not None else PREFIX)).rstrip("/")
+    prefix = state_prefix(args, regressors)
     expected = {v for v, row in metadata.items() if row["split"] == args.split and shard_of(v, args.shards) == args.shard}
     inline = args.workers <= 0
     initargs = (args.store, args.models_dir, args.regressors_key, args.regressors_sha256, resources, blendshape_model,
@@ -248,11 +269,15 @@ def run(args, *, resources=None, blendshape_model=None, regressors=None) -> dict
         if pool is not None:
             pool.shutdown()
     statuses = sorted({r["status"] for r in results})
-    report = dict(schema_version=1, adapter="semlex-holistic-pseudo-world-v1", split=args.split, shard=args.shard,
+    from signtranslator.data_engineering.semlex_pose import ADAPTER, LEARNED_ADAPTER
+    learned = not args.pseudo_world
+    report = dict(schema_version=2, adapter=LEARNED_ADAPTER if learned else ADAPTER, flags=CONVENTION_FLAGS,
+                  split=args.split, shard=args.shard,
                   shards=args.shards, archive_key=archive_key, archive_sha256=args.archive_sha256,
                   metadata_key=args.metadata_key, metadata_sha256=args.metadata_sha256, prefix=prefix,
-                  regressors_key=args.regressors_key, regressors_sha256=args.regressors_sha256
-                  or (regressors.sha256 if regressors is not None else None),
+                  regressors_key=args.regressors_key if learned else None,
+                  regressors_sha256=(regressors.sha256 if regressors is not None else args.regressors_sha256)
+                  if learned else None,
                   started=started, finished=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                   members_read=total, clips=len(results),
                   status_counts={s: sum(r["status"] == s for r in results) for s in statuses},
@@ -267,6 +292,33 @@ def run(args, *, resources=None, blendshape_model=None, regressors=None) -> dict
     return report
 
 
+def production_prefix(adapter: str, sha256: str | None) -> str:
+    return f"{BASE}/states-{adapter}" + (f"-{sha256[:12]}" if sha256 else "")
+
+
+def state_prefix(args, regressors=None) -> str:
+    """Where the states go: bundle-named for the learned path; smoke runs under adapter-dev/smoke/; a bundle other
+    than the pinned one, or a production prefix for a smoke run, is refused."""
+    from signtranslator.data_engineering.semlex_pose import ADAPTER, LEARNED_ADAPTER
+    from signtranslator.data_engineering.world_regressor import WORLD_REGRESSORS
+    if args.pseudo_world:
+        sha, adapter = None, ADAPTER
+    else:
+        sha, adapter = (regressors.sha256 if regressors is not None else args.regressors_sha256), LEARNED_ADAPTER
+    production = production_prefix(adapter, sha)
+    smoke = bool(args.limit or args.match)
+    pinned = args.pseudo_world or (sha == WORLD_REGRESSORS["sha256"]
+                                   and (regressors is not None or args.regressors_key == WORLD_REGRESSORS["key"]))
+    if args.prefix:
+        prefix = args.prefix.rstrip("/")
+        if smoke and prefix.startswith(f"{BASE}/states-"):
+            raise SystemExit("smoke runs (--limit, --match) may not write to a production states prefix")
+        return prefix
+    if not pinned:
+        raise SystemExit("a regressor bundle other than the pinned one needs an explicit --prefix")
+    return production.replace(f"{BASE}/", f"{SMOKE_BASE}/", 1) if smoke else production
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--split", choices=SPLITS, required=True)
@@ -274,9 +326,11 @@ def parse_args(argv=None):
     parser.add_argument("--archive-key", help=f"default {BASE}/data/<split>.tar.gz")
     parser.add_argument("--metadata-key", default=METADATA_KEY)
     parser.add_argument("--metadata-sha256", default=METADATA_SHA256)
-    parser.add_argument("--prefix", help=f"default {PREFIX}, or {LEARNED_PREFIX} with --regressors-key")
-    parser.add_argument("--regressors-key", help="world_regressor bundle in the store: the learned (gated) path")
-    parser.add_argument("--regressors-sha256", help="required with --regressors-key")
+    parser.add_argument("--prefix", help="default: states-<adapter>-<sha12> (smoke runs: under adapter-dev/smoke/)")
+    parser.add_argument("--regressors-key", help="world_regressor bundle in the store (default: the pinned one)")
+    parser.add_argument("--regressors-sha256", help="its SHA-256 (default: the pinned one)")
+    parser.add_argument("--pseudo-world", action="store_true",
+                        help="the geometric pseudo-world instead of the learned regressors")
     parser.add_argument("--store", default="r2", help="'r2' or 'dir:/path' (tests)")
     parser.add_argument("--models-dir", help="holds face_landmarker.task (pinned hash)")
     parser.add_argument("--shard", type=int, default=0)
@@ -289,8 +343,17 @@ def parse_args(argv=None):
         raise SystemExit("shard must be in [0, shards)")
     if not re.fullmatch(r"[0-9a-f]{64}", args.archive_sha256):
         raise SystemExit("--archive-sha256 must be a SHA-256 hex digest")
-    if args.regressors_key and not re.fullmatch(r"[0-9a-f]{64}", args.regressors_sha256 or ""):
-        raise SystemExit("--regressors-key needs --regressors-sha256")
+    from signtranslator.data_engineering.world_regressor import WORLD_REGRESSORS
+    if args.pseudo_world:
+        if args.regressors_key or args.regressors_sha256:
+            raise SystemExit("--pseudo-world takes no regressor bundle")
+    else:
+        if (args.regressors_key is None) != (args.regressors_sha256 is None):
+            raise SystemExit("--regressors-key and --regressors-sha256 go together")
+        if args.regressors_key is None:
+            args.regressors_key, args.regressors_sha256 = WORLD_REGRESSORS["key"], WORLD_REGRESSORS["sha256"]
+        if not re.fullmatch(r"[0-9a-f]{64}", args.regressors_sha256):
+            raise SystemExit("--regressors-sha256 must be a SHA-256 hex digest")
     return args
 
 
@@ -301,7 +364,14 @@ def main(argv=None) -> int:
     report = run(args)
     print(json.dumps(dict(report_key=report["report_key"], status_counts=report["status_counts"],
                           completeness={k: v for k, v in report["completeness"].items() if k != "missing"})))
-    return 2 if report["status_counts"].get("error") else 0
+    return exit_code(report)
+
+
+def exit_code(report: dict) -> int:
+    counts = report["status_counts"]
+    if counts.get("failed") or counts.get("exists_different") or report["completeness"].get("missing_count"):
+        return 3
+    return 2 if counts.get("error") else 0
 
 
 if __name__ == "__main__":

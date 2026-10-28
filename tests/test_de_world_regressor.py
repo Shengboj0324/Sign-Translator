@@ -115,3 +115,21 @@ def test_the_adapter_solves_the_regressed_world_points():
     assert "learned image-to-world" in state.channels["body"].inference_method
     with pytest.raises(ValueError):
         sp.convert_array(array, 1000. * T / 30, fake_resources(), flags="none", **kw)
+
+
+def test_learned_visibility_never_shows_leg_points_and_provenance_is_exact():
+    array, body, hands = semlex_array((640, 640))
+    visibility = np.ones((T, 33))                              # a head that calls every point visible
+    stub = TrueWorld(body, hands, visibility)
+    kw = dict(blendshape_model=FakeBlendshapes(), image_size=(640, 640))
+    clip, info = sp.holistic_clip(array, 1000. * T / 30, fake_resources(), regressors=stub, learned_visibility=True, **kw)
+    assert (clip.pose_visibility[:, 25:] == 0).all() and (clip.pose_visibility[:, :25] == 1).all()
+    assert info["adapter"] == sp.LEARNED_ADAPTER and info["regressors_sha256"] == "f" * 64
+    for flags, root, gate in (("generator", True, False), ("adapter", True, True), ("upright-chest", False, False)):
+        state, report = sp.convert_array(array, 1000. * T / 30, fake_resources(), regressors=stub,
+                                         learned_visibility=True, flags=flags, video_id="v", source_sha256="a" * 64,
+                                         **kw)
+        method = state.channels["body"].inference_method
+        assert ("(upright root)" in method) == root and ("(elbow gate)" in method) == gate, flags
+        assert ("no elbow gate" in method) == (not gate) and "f" * 64 in method
+        assert report["flags"] == flags and sp.LEARNED_ADAPTER in method

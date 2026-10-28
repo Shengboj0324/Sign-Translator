@@ -99,7 +99,14 @@ import numpy as np
 from .video_landmarks import (CONVENTION, L_SHOULDER, MODEL_SHA256, R_SHOULDER, ClipLandmarks, assign_hands,
                               canonical_from_landmarks)
 
-ADAPTER = "semlex-holistic-pseudo-world-v1"
+ADAPTER = "semlex-holistic-pseudo-world-v1"            # geometric pseudo-world (x, y/a, k z)
+LEARNED_ADAPTER = "semlex-holistic-learned-world-v2"   # learned image-to-world regressors (world_regressor)
+# Solver flags: "generator" is the one convention for every hip-less corpus (docs/NEXT_PHASE_PLAN.md, 2026-10-28
+# 09:30 UTC): upright chest and upright root, no elbow gate. "adapter" is the first declared adapter (with the elbow
+# gate); "upright-chest" is how the ASL Citizen corpus was extracted (no stored chest frame without hips).
+FLAGS = {"generator": dict(upright_chest=True, upright_root=True, elbow_in_image=False),
+         "adapter": dict(upright_chest=True, upright_root=True, elbow_in_image=True),
+         "upright-chest": dict(upright_chest=True, upright_root=False, elbow_in_image=False)}
 SOURCE_ID = "semlex_holistic_pose"
 POINTS = 553
 FACE = slice(0, 478)
@@ -430,7 +437,7 @@ def holistic_clip(array: np.ndarray, duration_ms: float, resources: FaceResource
     pose_found = _block_found(pose)
     hands_found = np.stack([_block_found(hands[:, k]) for k in range(2)], axis=1) & pose_found[:, None]
     face_detected = _block_found(face)
-    info = dict(adapter=ADAPTER, frames=frames, fps=round(fps, 3), pose_frames=int(pose_found.sum()),
+    info = dict(adapter=ADAPTER if regressors is None else LEARNED_ADAPTER, frames=frames, fps=round(fps, 3), pose_frames=int(pose_found.sum()),
                 face_detected_frames=int(face_detected.sum()),
                 holistic_hand_frames=dict(Left=int(hands_found[:, 0].sum()), Right=int(hands_found[:, 1].sum())),
                 partial_blocks=int(sum(int((np.isfinite(b).any(axis=(1, 2)) & ~np.isfinite(b).all(axis=(1, 2))).sum())
@@ -500,7 +507,10 @@ def holistic_clip(array: np.ndarray, duration_ms: float, resources: FaceResource
             world, ok = regressors.hands(hands[:, k], a, side)
             hands_found[:, k] &= ok
             hands_world[:, k] = np.where(hands_found[:, k, None, None], world, 0.)
+        visibility = np.array(visibility, dtype=np.float64)
+        visibility[:, 25:] = 0.                  # the regressors place no leg points (25..32 are zero): never visible
         info["world"] = f"learned:{regressors.sha256}"
+        info["regressors_sha256"] = regressors.sha256
         info["learned_visibility"] = bool(learned_visibility)
     clip = ClipLandmarks(
         times=times, pose_world=pose_world, pose_visibility=visibility,
@@ -523,22 +533,28 @@ def holistic_clip(array: np.ndarray, duration_ms: float, resources: FaceResource
     return clip, info
 
 
-def inference_method(info: dict, flags: str = "adapter") -> str:
+def inference_method(info: dict, flags: str = "generator") -> str:
+    """The state's provenance sentence: world source (with the full bundle SHA-256), visibility rule and solver flags
+    exactly as used."""
     aspect = info["aspect"]
     learned = info.get("world", "pseudo-world").startswith("learned:")
-    world = (f"world landmarks from learned image-to-world regressors (bundle {info['world'][8:24]})" if learned else
-             f"pseudo-3D (x, y/a, k z), pose k={info['pose_z_scale']}, hand k={info['hand_z_scale']}")
-    visibility = ("the pose regressor's visibility head" if info.get("learned_visibility") else
-                  f"inside the image by a margin of {info['visibility_margin']}")
+    world = (f"world landmarks from learned image-to-world regressors (bundle sha256 {info['world'][8:]})" if learned
+             else f"pseudo-3D (x, y/a, k z), pose k={info['pose_z_scale']}, hand k={info['hand_z_scale']}")
+    visibility = ("the pose regressor's visibility head (leg points never visible)" if info.get("learned_visibility")
+                  else f"finite and inside the image by a margin of {info['visibility_margin']}"
+                  + (" (leg points never visible)" if learned else ""))
+    chosen = FLAGS[flags]
     return (f"Sem-Lex Benchmark MediaPipe Holistic landmarks (publisher's pose files; Holistic version not stated); "
-            f"{ADAPTER}: {world}; aspect a={aspect['aspect']:.4f} ({aspect['method']}"
+            f"{info['adapter']}: {world}; aspect a={aspect['aspect']:.4f} ({aspect['method']}"
             + (f", snapped to {aspect['snapped_to']} from {aspect['raw']}" if aspect.get("snapped_to") else "")
             + f"); visibility = {visibility}; "
             "face matrix by a port of MediaPipe's face geometry pipeline on the rebuilt ROI crop; blendshapes by "
             f"face_blendshapes.tflite of face_landmarker.task={MODEL_SHA256['face_landmarker.task'][:16]}; {CONVENTION}; "
-            "chest up axis from the camera vertical (upright prior)"
-            + ("; pelvis the camera-upright identity on frames without hips (upright root); arms only on frames whose "
-               "elbow lies inside the image" if flags == "adapter" else "")
+            f"solver flags {flags}: chest up axis from the camera vertical (upright prior)"
+            + ("; pelvis the camera-upright identity on every frame of a clip with a hip-less chest frame (upright root)"
+               if chosen["upright_root"] else "; no upright root (the chest frame is stored only where both hips are seen)")
+            + ("; arms only on frames whose elbow lies inside the image (elbow gate)" if chosen["elbow_in_image"]
+               else "; no elbow gate")
             + "; values are fitted, not observed")
 
 
@@ -549,10 +565,12 @@ def convert_array(array: np.ndarray, duration_ms: float, resources: FaceResource
                   regressors=None, learned_visibility: bool = False, flags: str = "adapter"):
     """Canonical state and report for one Sem-Lex clip (``Refusal`` when it cannot be converted).
 
-    ``flags``: ``"adapter"`` solves with upright chest, upright root and the elbow gate (the declared adapter);
-    ``"upright-chest"`` with the upright chest only, as the ASL Citizen corpus was extracted."""
-    if flags not in ("adapter", "upright-chest"):
-        raise ValueError("flags must be 'adapter' or 'upright-chest'")
+    ``flags`` names a solver convention of ``FLAGS``: ``"generator"`` (upright chest and upright root, no elbow gate:
+    the convention for generator states), ``"adapter"`` (the first declared adapter: plus the elbow gate) or
+    ``"upright-chest"`` (as the ASL Citizen corpus was extracted). The default stays ``"adapter"`` so that this
+    function's earlier results reproduce; the converter passes its own convention."""
+    if flags not in FLAGS:
+        raise ValueError(f"flags must be one of {sorted(FLAGS)}")
     clip, info = holistic_clip(array, duration_ms, resources, aspect=aspect, image_size=image_size,
                                blendshape_model=blendshape_model, pose_z_scale=pose_z_scale, hand_z_scale=hand_z_scale,
                                visibility_margin=visibility_margin, regressors=regressors,
@@ -562,7 +580,7 @@ def convert_array(array: np.ndarray, duration_ms: float, resources: FaceResource
     state, report = canonical_from_landmarks(
         clip, sample_id=video_id, source_id=SOURCE_ID, source_sha256=source_sha256,
         clock_id=f"{SOURCE_ID}:{video_id}:uniform-over-duration", inference_method=inference_method(info, flags),
-        upright_chest=True, elbow_in_image=flags == "adapter", upright_root=flags == "adapter")
+        **FLAGS[flags])
     return state, dict(report, **info, flags=flags)
 
 
@@ -570,14 +588,14 @@ def load_pose_file(payload: bytes) -> np.ndarray:
     """A Sem-Lex ``.npy`` member's array (no pickle)."""
     try:
         array = np.load(io.BytesIO(payload), allow_pickle=False)
-    except ValueError as error:
-        raise Refusal(f"unreadable .npy: {error}") from error
+    except (ValueError, EOFError, OSError) as error:         # malformed or truncated bytes: the data, not the store
+        raise Refusal(f"unreadable .npy: {type(error).__name__}: {error}"[:300]) from error
     if not isinstance(array, np.ndarray):
         raise Refusal("the .npy holds no array")
     return array
 
 
-__all__ = ["ADAPTER", "SOURCE_ID", "FACE", "POSE", "LEFT_HAND", "RIGHT_HAND", "POINTS", "BLENDSHAPE_NAMES",
+__all__ = ["ADAPTER", "LEARNED_ADAPTER", "FLAGS", "SOURCE_ID", "FACE", "POSE", "LEFT_HAND", "RIGHT_HAND", "POINTS", "BLENDSHAPE_NAMES",
            "BLENDSHAPE_SUBSET", "STANDARD_ASPECTS", "Refusal", "FaceResources", "BlendshapeModel",
            "load_face_resources", "parse_geometry_metadata", "weighted_procrustes", "face_transform", "face_crop",
            "aspect_per_frame", "estimate_aspect", "pseudo_world", "check_array", "holistic_clip", "convert_array",
