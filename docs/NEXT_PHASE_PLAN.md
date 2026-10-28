@@ -2773,3 +2773,11 @@ Reference points: F12 at step 10000 scored 0.427 and 1.806; blank 1.859; real 4.
 **Next** (diagnosis before another training round):
 1. `sentence_word_spotting.py` on generated sentences from F12, C13 and S13, each against its own mismatched control (declared report).
 2. Where does sentence content fail? Generated duration and activity against real, per-word timing, and whether the content words of a sentence appear anywhere in its generated motion.
+
+### Arm-recovery test download refused (2026-10-28, 09:00 UTC)
+
+The single test video (T9C4QbZ7qOs) got YouTube's "Sign in to confirm you're not a bot" on the home connection, about 4 h after the previous refusal. Per the rules, YouTube stops for the day: no cookies, sign-in, proxies or other circumvention. Nothing was written under `arm-recovery-v1/`.
+
+**Next attempt:** a single video again, about 24 h later (2026-10-29, 09:00 UTC or after).
+
+**Meanwhile, the route that needs no download.** Step B uses the UWB 2D keypoints of the same videos, which are already in R2. It meets the same representation question as Sem-Lex (image-based arms against our world-landmark arms). The learned image-to-world pose regressor now under test for Sem-Lex would serve both. Step B therefore waits for that regressor's declared gate.
