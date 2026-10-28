@@ -96,7 +96,9 @@ def test_guided_attention_is_small_on_the_diagonal_and_large_on_the_anti_diagona
     anti = torch.zeros(1, S, N); anti[0, t, N - 1 - (t * N) // S] = 1
     low = float(guided_attention_loss(diagonal, step_valid, text_valid))
     high = float(guided_attention_loss(anti, step_valid, text_valid))
-    assert low < .005 and high > .04 and high > 10 * low
+    assert low < .05 and high > .6 and high > 10 * low                          # expected penalty per step, in [0, 1]
+    uniform = torch.full((1, S, N), 1. / N)
+    assert low < float(guided_attention_loss(uniform, step_valid, text_valid)) < high
     W = guided_attention_weights(step_valid, text_valid)
     assert float(W[0, 0, 0]) == 0. and float(W[0, 0, -1]) > .99                  # BOS free at the start, EOS far
     # padding (steps and bytes) changes nothing: ranks and counts are per row
@@ -235,3 +237,28 @@ def test_training_script_builds_the_options_and_threads_sign_spans(tmp_path, mon
     assert run["config"]["alignment_supervision"] == 1.
     log = json.loads((store / "training-runs/pri/log/step-00000002.json").read_text())
     assert all("train/guided_attention" in e and "train/alignment" in e for e in log)
+
+
+
+def test_guided_attention_is_the_same_per_step_for_short_and_long_texts_and_skips_one_word_texts():
+    # per-step averaging: a perfect diagonal costs the same small amount whatever the text length
+    for N in (8, 160):
+        S = 40
+        sv, tv = torch.ones(1, S, dtype=torch.bool), torch.ones(1, N, dtype=torch.bool)
+        t = torch.arange(S)
+        diag = torch.zeros(1, S, N); diag[0, t, (t * N) // S] = 1
+        anti = torch.zeros(1, S, N); anti[0, t, N - 1 - (t * N) // S] = 1
+        assert float(guided_attention_loss(diag, sv, tv)) < .05 and float(guided_attention_loss(anti, sv, tv)) > .6
+    # one-word texts carry no guided term (no space byte among the valid bytes); multi-word texts do
+    states, tokenizer, prior = prior_setup()
+    batch = collate_multichannel(states)
+    guided = RVQPrior(replace(prior.config, guided_attention=1.))
+    guided.load_state_dict(prior.state_dict())
+    tokens, mask = encode_texts(["ask", "cut"])
+    torch.manual_seed(5)
+    _, terms = rvq_prior_loss(guided, tokenizer, tokens, mask, batch, train=True)
+    assert "guided_attention" not in terms
+    tokens, mask = encode_texts(["ask him", "cut"])
+    torch.manual_seed(5)
+    _, terms = rvq_prior_loss(guided, tokenizer, tokens, mask, batch, train=True)
+    assert terms["guided_attention"] > 0
