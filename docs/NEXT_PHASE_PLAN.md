@@ -3059,3 +3059,21 @@ The two paths agree. Val reads higher than the earlier test sample (0.34), a dif
 **Run:** 3 CPU pods × 32 vCPU, shards 0–2, 28 workers, val then train; about 1.5 h expected.
 
 **Then:** `build_semlex_manifest.py` over the val and train states. Test stays held out (its pose-file states are evaluation only). A declared round 14 follows.
+
+### F12 chain merged and armed (recorded 2026-10-28, 12:37 UTC; main 5e2fc70; before F12's step-60000 checkpoint exists)
+
+**Chain** (`runpod/fleet/f12_chain.sh`, launcher `f12_chain_launch.sh`): round 3e's declared settings.
+1. **Sweep:** guidance 1, 1.5 and 2 × hand temperatures 1.0, 1.05 and 1.1 × face 0.9 and 1.0, on signer groups c01, c03 and c05 (val, 300 clips).
+2. **Post-processing grid:** head smoothing 0.1, 0.2 and 0.3 × damping 1, 0.8 and 0.6.
+3. **Exit gate:** `multi_signer_gate.py` against validation-only envelopes.
+4. **Strict review** `--validation-only` (R1–R5); then R7 on the validation states.
+5. **`r6_guard.py`:** R6 and R7-test run only if the gate, R1–R5 and R7 all pass (amendment of 11:59 UTC).
+
+**Declared deviations from round 3e:**
+- **Checkpoint.** F12's step-60000 checkpoint, not `best.json` (step 44000 by validation loss). Validation loss is not the selection measure for history-dropout arms.
+- **Manifest.** The arm's own manifest, round10-mixed-v1; How2Sign val/test/heldout records were verified identical to round3c-mixed-v1's.
+- **R5 words.** The pinned 150-word list (amendment 1 of round 13).
+- **Sampler.** The fixed sampler (8664f5c), so round 3e's guidance 1.5 and 2 cannot be reproduced exactly.
+- **Smoke first.** The chain runs with `F12_SMOKE=1` (toy sizes; a smoke review never reads test data), then in full.
+
+The launcher waits for three free pod slots (at most 5). Expected verdict about 18:00–20:00 UTC.
