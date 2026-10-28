@@ -2505,3 +2505,15 @@ Median coverage is 1.0 for How2Sign and YouTube-ASL (they are signed throughout)
 - a lexicon difference whose lower bound is above −0.05 (words non-inferior).
 
 Otherwise F12 stays the leader, and the round's result informs round 14 (alignment supervision, arm recovery).
+
+## Round 12 result, recorded (2026-10-28, 05:11 UTC): F12 and M12 PROMISING; F12 continues
+
+| Measure | M12 (step 20000) | Control | Paired difference [95% CI] | Rule | Result |
+|---|---|---|---|---|---|
+| Lexicon top-5 | 0.4333 | 0.0167 | +0.4167 [0.343, 0.49] | ≥ +0.05, CI above 0 | pass |
+| BLEU (1000 clips) | 1.658 | 1.586 | +0.072 [−0.266, 0.438] | lower bound > −0.5 | pass |
+
+- **M12 is promising.** Its exposure reads at step 20000: frequent words 0.733, R5-with-clips 0.565.
+- **Selection (declared tie rule).** M12's lexicon difference (+0.417) exceeds F12's (+0.410) by 0.007, under the 0.02 needed to replace F12. F12 also has the higher paired BLEU (+0.22 against +0.07).
+- **F12 remains the continued arm.** M12 stays stopped with its checkpoints kept.
+- **Round 12 closes with two promising arms.** The round-13 arms (S13, C13) warm-start from F12.
