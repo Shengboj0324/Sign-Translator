@@ -24,10 +24,16 @@ PARTITIONS = ("train", "val", "test")
 class TextMotionDataset(Dataset):
     def __init__(self, manifest: Mapping, *, partition: str, cache: ContentCache,
                  fetch: Callable[[str], bytes], max_seconds: float | None = None, fps: float | None = None,
-                 augment: Callable | None = None, template=None) -> None:
+                 augment: Callable | None = None, template=None, word_spans: bool = False,
+                 max_text_bytes: int = 256) -> None:
         """``fps``: resample every state whose median rate differs from it by more than 1%
         (``pose.resample.resample_motion``) - corpora are recorded at 24, 25-30 and 30 fps, and the tokenizers and
-        priors count time in frames. ``None`` keeps every state at its own rate."""
+        priors count time in frames. ``None`` keeps every state at its own rate.
+
+        ``word_spans`` (opt-in, alignment supervision): items become (text, state, spans), spans the (T, 2) per-frame
+        memory positions of the word being signed (``motion_rvq.frame_word_spans``) for records that carry
+        ``sign_spans`` — a list of ``{"gloss": label, "seconds": [start, end]}`` relative to the state's first frame
+        (docs/research/alignment-supervision-design.md) — and None for the others."""
         if partition not in PARTITIONS:
             raise ValueError(f"partition must be one of {PARTITIONS}")
         records = [r for r in manifest["records"]
@@ -36,6 +42,7 @@ class TextMotionDataset(Dataset):
             records = [r for r in records if r["continuous"].get("seconds", 0.) <= max_seconds]
         self.records, self.cache, self.fetch, self.fps, self.augment = records, cache, fetch, fps, augment
         self.template = template
+        self.word_spans, self.max_text_bytes = word_spans, max_text_bytes
 
     def __len__(self) -> int:
         return len(self.records)
@@ -54,20 +61,41 @@ class TextMotionDataset(Dataset):
             if abs(rate - self.fps) > .01 * self.fps:
                 from ..pose.resample import resample_motion
                 state = resample_motion(state, self.fps)
+        if self.word_spans:
+            spans = None
+            if record.get("sign_spans"):
+                from ..generation.motion_rvq import frame_word_spans
+                spans = frame_word_spans(record["text"], [(s["gloss"], *s["seconds"]) for s in record["sign_spans"]],
+                                         state.timestamps, max_bytes=self.max_text_bytes)
+            return record["text"], state, spans
         return record["text"], state
 
 
-def collate_text_motion(items, *, max_text_bytes: int = 256, loci: bool = False):
+def collate_text_motion(items, *, max_text_bytes: int = 256, loci: bool = False, word_spans: bool = False):
     """(tokens, mask, motion, texts) — plus (B, SLOT_WIDTH) referent-locus slots measured in each
-    state's own pointing (``grammar_motion.loci_conditioning.state_loci``) when ``loci``."""
-    texts, states = zip(*items)
+    state's own pointing (``grammar_motion.loci_conditioning.state_loci``) when ``loci``, and, last, when
+    ``word_spans`` (items (text, state, spans or None)), the (B, T, 2) int64 per-frame word spans padded with −1
+    (rows without spans are all −1)."""
+    if word_spans:
+        texts, states, spans = zip(*items)
+    else:
+        texts, states = zip(*items)
     tokens, mask = encode_texts(texts, max_bytes=max_text_bytes)
-    batch = (tokens, mask, collate_multichannel(states), list(texts))
+    motion = collate_multichannel(states)
+    batch = (tokens, mask, motion, list(texts))
     if loci:
         import numpy as np
         import torch
         from ..grammar_motion.loci_conditioning import state_loci
         batch = batch + (torch.as_tensor(np.stack([state_loci(s) for s in states]), dtype=torch.float32),)
+    if word_spans:
+        import torch
+        out = torch.full((len(states), motion.frame_valid.shape[1], 2), -1, dtype=torch.long)
+        for row, span in enumerate(spans):
+            if span is not None:
+                span = torch.as_tensor(span, dtype=torch.long)[:out.shape[1]]
+                out[row, :len(span)] = span
+        batch = batch + (out,)
     return batch
 
 

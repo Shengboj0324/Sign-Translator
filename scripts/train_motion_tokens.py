@@ -168,6 +168,14 @@ def main(argv=None) -> int:
     parser.add_argument("--history-stages", type=int, default=0,
                         help="rvq prior: the temporal transformer sees only the first n residual stages of each part "
                              "of the previous step (0 = all)")
+    parser.add_argument("--guided-attention", type=float, default=0.,
+                        help="rvq prior: weight of the guided-attention loss (Tachibana et al. 2017) on the temporal "
+                             "decoder's cross-attention to the text, toward a monotonic diagonal (round 13; 0 = off)")
+    parser.add_argument("--guided-attention-width", type=float, default=.2,
+                        help="rvq prior: its width g (fraction of the text and of the utterance)")
+    parser.add_argument("--alignment-supervision", type=float, default=0.,
+                        help="rvq prior: weight of the cross entropy pulling each step's cross-attention to the bytes "
+                             "of the word signed there, on records that carry sign_spans (round 13; 0 = off)")
     parser.add_argument("--max-seconds", type=float, default=20.)
     parser.add_argument("--velocity-cap", type=float, default=0.,
                         help="rvq tokenizer: log-compress any velocity term above this value (round 10; 0 = off)")
@@ -197,12 +205,13 @@ def main(argv=None) -> int:
     cache = ContentCache(Path(os.environ.get("SIGN_CACHE_DIR", tempfile.gettempdir())) / "sign-translator-cache",
                          args.cache_bytes)
     template = layout_template(manifest, args.conform_to_corpus, cache, store.get) if args.conform_to_corpus else None
+    word_spans = args.stage == "prior" and args.architecture != "vq" and args.alignment_supervision > 0
     train = TextMotionDataset(manifest, partition="train", cache=cache, fetch=store.get, max_seconds=args.max_seconds,
-                              fps=args.fps, template=template)
+                              fps=args.fps, template=template, word_spans=word_spans)
     if not len(train):
         raise SystemExit("the manifest has no training records")
     val = TextMotionDataset(manifest, partition="val", cache=cache, fetch=store.get, max_seconds=args.max_seconds,
-                            fps=args.fps, template=template)
+                            fps=args.fps, template=template, word_spans=word_spans)
     tokenizer_kind, prior_kind = kinds(args.architecture)
     if args.stage == "tokenizer":
         motion = TextToMotionConfig(bindings=channel_bindings_from_state(train[0][1]),
@@ -249,16 +258,24 @@ def main(argv=None) -> int:
                                     input_corruption=args.input_corruption,
                                     scheduled_sampling=args.scheduled_sampling, history_dropout=args.history_dropout,
                                     history_stages=args.history_stages, part_valid_loss=args.part_valid_loss,
-                                    **common)
+                                    guided_attention=args.guided_attention,
+                                    guided_attention_width=args.guided_attention_width,
+                                    alignment_supervision=args.alignment_supervision, **common)
             model = RVQPrior(config).to(device)
     kind = tokenizer_kind if args.stage == "tokenizer" else prior_kind
 
-    def loss_of(motion, tokens, mask, loci, train: bool):
+    def loss_of(motion, tokens, mask, loci, train: bool, spans=None):
         if args.stage == "tokenizer":
             return tokenizer_loss(model, motion) if args.architecture == "vq" else rvq_loss(model, motion)
         if args.architecture == "vq":
             return prior_loss(model, tokenizer, tokens, mask, motion, *loci)
-        return rvq_prior_loss(model, tokenizer, tokens, mask, motion, *loci, train=train)
+        return rvq_prior_loss(model, tokenizer, tokens, mask, motion, *loci, train=train, word_spans=spans)
+
+    def split_spans(batch):
+        """(batch without the per-frame word spans, the spans on the device or None)."""
+        if not word_spans:
+            return batch, None
+        return batch[:-1], batch[-1].to(device)
     optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=args.lr, weight_decay=.01)
     prefix = f"training-runs/{args.run}"
     step = 0
@@ -300,7 +317,8 @@ def main(argv=None) -> int:
                                         replacement=True, generator=torch.Generator().manual_seed(args.seed + step))
     loader = DataLoader(train, batch_size=args.batch_size, shuffle=sampler is None, sampler=sampler,
                         num_workers=args.workers,
-                        collate_fn=partial(collate_text_motion, loci=args.locus_conditioning and args.stage == "prior"),
+                        collate_fn=partial(collate_text_motion, loci=args.locus_conditioning and args.stage == "prior",
+                                           word_spans=word_spans),
                         generator=torch.Generator().manual_seed(args.seed + step),
                         persistent_workers=args.workers > 0, drop_last=True)
     log, started = [], time.monotonic()
@@ -311,7 +329,8 @@ def main(argv=None) -> int:
     val_batches = []
     if len(val):
         val_loader = DataLoader(val, batch_size=args.batch_size, shuffle=False, num_workers=0,
-                                collate_fn=partial(collate_text_motion, loci=args.locus_conditioning and args.stage == "prior"))
+                                collate_fn=partial(collate_text_motion, loci=args.locus_conditioning and args.stage == "prior",
+                                           word_spans=word_spans))
         for index, batch in enumerate(val_loader):
             if index >= args.val_batches:
                 break
@@ -326,6 +345,7 @@ def main(argv=None) -> int:
         with torch.no_grad(), torch.random.fork_rng(devices=[device] if device.type == "cuda" else []):
             torch.manual_seed(1234)
             for batch in val_batches:
+                batch, _ = split_spans(batch)
                 tokens_v, mask_v, motion_v, *loci_v = to_device(batch, device)
                 loss_v, terms_v = loss_of(motion_v, tokens_v, mask_v, loci_v, train=False)
                 for key, value in dict(loss=float(loss_v), **terms_v).items():
@@ -388,6 +408,7 @@ def main(argv=None) -> int:
         for batch in loader:
             if step >= args.steps:
                 break
+            batch, spans = split_spans(batch)
             tokens, mask, motion, *loci = to_device(batch, device)
             for group in optimizer.param_groups:
                 group["lr"] = lr_at(step, base=args.lr, warmup=args.warmup, total=args.steps)
@@ -396,7 +417,7 @@ def main(argv=None) -> int:
                 model.codebook_rate = 1. if step < args.warmup else optimizer.param_groups[0]["lr"] / args.lr
                 model.codebook_reseed = model.codebook_rate >= .25
             try:
-                loss, terms = loss_of(motion, tokens, mask, loci, train=True)
+                loss, terms = loss_of(motion, tokens, mask, loci, train=True, spans=spans)
                 optimizer.zero_grad(set_to_none=True)
                 loss.backward()
                 norm = torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
