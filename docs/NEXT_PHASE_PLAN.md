@@ -2517,3 +2517,32 @@ Otherwise F12 stays the leader, and the round's result informs round 14 (alignme
 - **Selection (declared tie rule).** M12's lexicon difference (+0.417) exceeds F12's (+0.410) by 0.007, under the 0.02 needed to replace F12. F12 also has the higher paired BLEU (+0.22 against +0.07).
 - **F12 remains the continued arm.** M12 stays stopped with its checkpoints kept.
 - **Round 12 closes with two promising arms.** The round-13 arms (S13, C13) warm-start from F12.
+
+## Arm recovery, step A result (recorded 2026-10-28, 05:27 UTC)
+
+**Root cause (pipeline, not detector).**
+- `solve_rotations` (`video_landmarks.py`) roots the upper arms at the chest, and without `upright_chest` the chest is valid only when **both hips** have visibility ≥ 0.5.
+- `acquire_youtube_asl.py` never passes `upright_chest`, unlike ASL Citizen, WLASL and MS-ASL. Finger channels are rooted at the palm, so hands survive.
+- **Evidence, 2,000 random states:**
+  - 54.6% arm-untracked, all with hands tracked on ≥ 50% of frames;
+  - arm validity follows chest validity (correlation 0.994);
+  - bimodal: 44% of clips at 0 and 37% at ≥ 90%;
+  - 82% of the variance lies between videos, so it is a property of the video or channel.
+- **Framing (UWB 2D keypoints).**
+  - In untracked videos the median hip sits at 1.26 × frame height (out of frame), against 0.98 in tracked videos.
+  - Both elbows are in frame on a median of 27% of frames, against 100%.
+
+**Best setting** (one staged video; corpus clips not measured): re-solve with `--upright-chest`, visibility 0.5, and accept an arm only on frames whose elbow lies inside the image.
+- Upright chest alone recovered 0.31 / 0.25 of frames on the two trial windows; adding visibility 0.3 gave 0.60 / 0.63.
+- 99–100% of those newly recovered arm frames had the elbow out of the image, so MediaPipe was guessing. Visibility 0.3 is therefore rejected.
+- The estimated ceiling is 60–68% of untracked clips.
+
+**Obstacle.** The pipeline stored neither the videos nor the raw landmarks, so the fix needs about 850 videos re-downloaded (about 80 h of cue windows).
+- The single download attempt from the home route was bot-checked by YouTube, and the attempt stopped at once (no circumvention). A third bot-check today, after MS-ASL's two.
+- Re-download needs the owner's OK and a later, polite retry window.
+- Whatever re-run happens should also store the raw landmarks, so that future fixes are re-solves.
+
+**Consequences.**
+- Round 13's drop of arm-untracked clips stands.
+- Step B (inverse kinematics) cannot run on the stored states alone: without a valid chest, the shoulder and wrist positions are not stored. It is re-scoped to use the UWB 2D keypoints of the same videos (shoulders, elbows, wrists in the image), still to be assessed.
+- Scripts: `diagnose_youtube_arms.py`, `arm_recovery_trial.py`, `uwb_framing_check.py` (agent branch). Outputs in R2 under `youtube-asl-v1/arm-recovery/step-a-2026-10-28/`.
