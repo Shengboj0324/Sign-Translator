@@ -3,6 +3,7 @@ operations (keep, map, insert IX, drop, reorder), the fit guard (ASLLRP train on
 and the frame plan, the sign-core cut and the rendering, the generated and real-clip material, the evaluation
 script's seeds, jobs, rule and an end-to-end run on a tiny prior with stub instruments."""
 import collections
+import random
 import csv
 import hashlib
 import io
@@ -175,7 +176,8 @@ def test_droppable_and_negation_guard():
     assert not cg.drops_negation("happy", "sad") and not cg.drops_negation(None, "happy")
     # a token whose every candidate would lose its negation keeps stage 1's behaviour
     assert cg._decide("nothing", 5, {"something": 5}, None, .5) == dict(op="none", entry=None, n=5, rate=0.)
-    assert cg._decide("not happy", 5, {"upset": 1, "happy": 5}, "upset", .5)["op"] == "keep"   # its own entry stays
+    # an entry (its own included) that loses the token's negation is never signed: "not happy" -> upset is refused
+    assert cg._decide("not happy", 5, {"upset": 5, "happy": 5}, "upset", .5) == dict(op="none", entry=None, n=5, rate=0.)
 
 
 # ---- metrics -------------------------------------------------------------------------------------------------------
@@ -201,7 +203,8 @@ def test_tau_and_metrics_reproduce_the_groundwork_rule_check():
              "XX": dict(tier=None, entries=())}
     groundwork = agc.rule_check(records, table, vocab)
     ours, _ = cg.sequence_metrics([comp.select_words(r["english"], vocab) for r in records],
-                                  [fit.gold_entries(r, table) for r in records])
+                                  [fit.gold_entries(r, {fit.sign_key(s): table[s["gloss"]] for s in r["signs"]})
+                                   for r in records])
     for k in ("bag_precision", "bag_recall", "entry_wer"):
         assert ours[k] == groundwork[k]
     assert ours["tau_mean"] == groundwork["shared_entry_order_kendall_tau"]["mean"]
@@ -618,7 +621,17 @@ def test_stage2_reads_a_model_file_and_refuses_a_tampered_one(tmp_path, stage2_s
     model, _ = fitted(tmp_path, sha)
     path = tmp_path / "model.json"
     path.write_text(json.dumps(model))
-    oracle_only = [a for a in argv if a not in ("--checkpoint-key", "prior.pt")]
+    assert argv[-4:] == ["--fit-min-count", "2", "--fit-move-min-count", "2"]
+    with pytest.raises(SystemExit):                                     # --fit-* flags with a model file: refused
+        r2.main(argv + ["--variants", "oracle_stage2", "--model-file", str(path), "--output-file",
+                        str(tmp_path / "f.json")])
+    oracle_only = [a for a in argv[:-4] if a not in ("--checkpoint-key", "prior.pt")]
+    other = dict(model, corpora=["asllvd-text-v1"])                     # a model of other corpora: refused
+    other["sha256"] = cg.model_sha256({k: v for k, v in other.items() if k != "sha256"})
+    (tmp_path / "other.json").write_text(json.dumps(other))
+    with pytest.raises(SystemExit, match="corpora"):
+        r2.main(oracle_only + ["--variants", "oracle_stage2", "--model-file", str(tmp_path / "other.json"),
+                               "--output-file", str(tmp_path / "c.json")])
     assert r2.main(oracle_only + ["--variants", "oracle_stage2", "--model-file", str(path), "--output-key",
                                   "reports/o.json"]) == 0
     report = json.loads(store.get("reports/o.json"))
@@ -666,7 +679,8 @@ def test_fit_script_end_to_end(tmp_path, stage2_store):
     assert fit.main(out) == 0
     model, report = json.loads((tmp_path / "m.json").read_text()), json.loads((tmp_path / "r.json").read_text())
     fit.check_model(model)
-    assert report["model_sha256"] == model["sha256"] and report["utterances"] == dict(train=24, val=1)
+    assert report["model_sha256"] == model["sha256"] and report["utterances"] == dict(train=24, val=1, val_heldout=1)
+    assert set(report["val_heldout_sentences"]) >= {"stage1", "stage2_full"}
     assert model["lexicon"] == {"blade": dict(entry="knife", tier="signbank_variant", votes=1),
                                 "mix": dict(entry="stir", tier="asllex_translation", votes=1)}
     assert set(report["val"]) >= {"stage1", "stage2_selection", "stage2_tokens", "stage2_full", "operations"}
@@ -730,3 +744,187 @@ def test_build_lexicon_tiers_conflicts_and_own_signs():
     assert "school" not in out                         # in the vocabulary (and a sign of its own besides)
     assert "kid" not in out                            # its ASL-LEX sign is not in the vocabulary
     assert "stir" not in out and "mix" not in out      # capitals are glosses, not translations
+    # a key with a negation never maps to an entry without one; keys are written split; contraction entries'
+    # split forms are the vocabulary's, never lexicon keys
+    rows2 = [dict(EntryID="like", LemmaID="like", Code="D", DominantTranslation="",
+                  SignBankEnglishTranslations="not like, enjoy"),
+             dict(EntryID="refuse", LemmaID="refuse", Code="E", DominantTranslation="",
+                  SignBankEnglishTranslations="won't, decline"),
+             dict(EntryID="can't", LemmaID="can't", Code="F", DominantTranslation="", SignBankEnglishTranslations="")]
+    out2 = fit.build_lexicon({"like": 1., "refuse": 1., "can't": 1., "cannot": 1.}, {"lexicon": {}}, {}, rows2, {},
+                             collections.Counter())
+    assert "not like" not in out2 and out2["enjoy"]["entry"] == "like"
+    assert "won't" not in out2 and "will not" not in out2                  # "will not" -> refuse loses the negation
+    assert "can not" not in out2
+
+
+# ---- the independent review's adversarial cases (2026-10-28, commit 45cd2d9) -------------------------------------------
+
+def test_val_occurrence_does_not_change_train_gold():
+    vocab = {"me": 1., "he": 1.}
+
+    def rec(part, occ):
+        return dict(id=part, collection="asllrp-continuous", partition=part, english="x", seconds=1.,
+                    signs=[dict(gloss="IX", occurrence=occ, sign_type="", category="index", start=0., end=.2)])
+    train = rec("train", "IX-3p")
+    alone = fit.fit_rows([train], fit.gloss_table([train], vocab, {}, {}, {}))[0]["gold"]
+    with_val = fit.fit_rows([train], fit.gloss_table([rec("val", "IX-1p"), train], vocab, {}, {}, {}))[0]["gold"]
+    assert alone == with_val == ["he"]
+    # the groundwork's per-type table is the one that depended on the first occurrence (kept for its reproduction)
+    assert fit.groundwork_table([rec("val", "IX-1p"), train], vocab, {}, {}, {})["IX"]["entries"] == ("me",)
+
+
+def test_lexicon_cannot_drop_negation():
+    vocab = {"not": 1., "like": 1.}
+    lex = {"not like": dict(entry="like", tier="asllex_translation")}
+    got = cg.selected(cg.selection_rows("I do not like it", vocab, lex))
+    assert got == ["not", "like"]
+    assert cg._decide("not like", 10, {"like": 10}, "like", .5)["entry"] != "like"
+    assert not cg.lexicon_allowed("nobody came", "come") and cg.lexicon_allowed("not like", "dislike not")
+
+
+def test_contraction_entries_stay_reachable():
+    vocab = {"can't": 1., "go": 1., "don't know": 1., "can": 1., "not": 1.}
+    s1 = comp.select_words("I can't go, I don't know", vocab)
+    s2 = cg.selected(cg.selection_rows("I can't go, I don't know", vocab))
+    assert s1 == ["can't", "go", "don't know"] and s2 == s1
+    assert cg.vocabulary_keys(vocab)["can not"] == "can't" and cg.vocabulary_keys(vocab)["do not know"] == "don't know"
+    # the entry stays negated and can move: a negation entry reached through its split form
+    model = dict(moves={"can't": "end"})
+    assert cg.apply_structure(cg.selection_rows("I can't go", vocab), model, vocab)[0] == ["go", "can't"]
+
+
+@pytest.mark.parametrize("fit_", ["pad", "scale"])
+def test_plan_equals_reference_even_with_many_signs(fit_):
+    p = cg.plan_frames([.3] * 30, .1, .5, fit_)
+    assert p["frames"] == 12 and p["overlong"] and p["truncated_signs"] == 18 and p["fit"] == "truncated"
+    assert p["cores"] == [1] * 12 + [0] * 18 and set(p["gaps"]) == {0}
+    clips = [full_state(k, frames=6) for k in range(30)]
+    state = comp.render(comp.parts_from_pieces([dict(state=c, lo=1, hi=4) for c in clips]), p)
+    assert len(state.timestamps) == 12
+    assert not cg.plan_frames([.3] * 3, .1, 2., fit_)["overlong"]
+
+
+def test_plan_equals_reference_random():
+    rng = random.Random(0)
+    for _ in range(3000):
+        n = rng.randint(1, 12)
+        t = [rng.uniform(.01, 2.) for _ in range(n)]
+        R = rng.uniform(n / 24., 15.)
+        for f in ("pad", "scale"):
+            p = cg.plan_frames(t, rng.uniform(0, .5), R, f, lead_share=rng.random())
+            assert p["frames"] == max(1, round(R * 24)) and min(p["cores"]) >= 1 and min(p["gaps"] or [0]) >= 0
+
+
+def test_f1_zero_not_none():
+    agg, _ = cg.sequence_metrics([["x"]], [["a"]])
+    assert agg["bag_f1"] == 0.
+
+
+def test_target_seconds_without_trimmed_ratio():
+    t = dict(sentence_seconds={}, annotated={}, ratio=.5, trimmed_over_annotated=None, floor=.1, ceiling=1.)
+    assert cg.target_seconds("rare", t, {"rare": 1.}) == (.1, "default")
+    assert cg.target_seconds("rare", dict(t, default_seconds=.25), {"rare": 1.}) == (.25, "default")
+
+
+def test_fit_timing_without_seconds():
+    import warnings
+    rows = [utt("x", [], k, seconds=None, timed=[("cut", "lexical", .2, .4), ("go", "lexical", .5, .8)])
+            for k in range(3)]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        t = cg.fit_timing(rows, {"cut": 1., "go": 1.}, {"cut": .5, "go": .5})
+    assert t["lead_share"] == .5 and t["lead_seconds"] is None and np.isfinite(t["gap"])
+    single = [utt("x", [], k, seconds=1., timed=[("cut", "lexical", .2, .4)]) for k in range(3)]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert cg.fit_timing(single, {"cut": 1.}, {"cut": .5})["gap"] == 0.
+
+
+def test_moves_are_a_permutation():
+    rng = random.Random(1)
+    words = ["a", "b", "what", "not", "ix", "finish"]
+    for _ in range(2000):
+        s = [rng.choice(words) for _ in range(rng.randint(0, 8))]
+        m = {w: rng.choice(cg.MOVES) for w in words}
+        assert sorted(cg.apply_moves(s, m)) == sorted(s)
+
+
+def test_tau_repeated_ix():
+    for seed in range(500):
+        rng = random.Random(seed)
+        g = [rng.choice(["ix", "go", "cut", "ix"]) for _ in range(rng.randint(2, 7))]
+        p = g[:]
+        rng.shuffle(p)
+        t = cg.tau_of(p, g)
+        assert t is None or -1 <= t <= 1
+    assert cg.tau_of(["ix", "ix"], ["ix", "ix"]) == 1.
+
+
+def test_allocate_property():
+    rng = random.Random(2)
+    for _ in range(3000):
+        n = rng.randint(1, 10)
+        L = [rng.uniform(0, 5) for _ in range(n)]
+        mins = [rng.randint(0, 2) for _ in range(n)]
+        total = rng.randint(sum(mins), sum(mins) + 60)
+        out = cg.allocate(L, total, mins)
+        assert sum(out) == total and all(o >= m for o, m in zip(out, mins))
+
+
+def test_render_edge_lengths():
+    clips = [full_state(k, frames=1 + k) for k in range(3)]
+    pieces = [dict(state=c, lo=0, hi=len(c.timestamps) - 1) for c in clips]
+    for R in (.05, .2, 1., 3.):
+        for f in ("pad", "scale", "none"):
+            plan = cg.plan_frames([.01, .5, .04], .04, R, f)
+            parts = comp.parts_from_pieces(pieces)
+            parts["transitions"] = [full_state(9, frames=1), None]
+            assert len(comp.render(parts, plan).timestamps) == plan["frames"]
+
+
+def test_wh_time_words_and_quantifiers_are_not_droppable():
+    for w in ("when", "before", "after", "then", "will", "all", "every", "each", "some", "any", "what", "now"):
+        assert not cg.droppable(w), w
+    assert not set(cg.DROPPABLE) & {w for ws in cg.MOVE_CLASSES.values() for w in ws}
+    assert {"nobody", "nowhere", "neither", "nor", "without"} <= cg.NEGATIONS
+
+
+def test_first_person_without_me():
+    vocab = {"ix": 1., "go": 1.}
+    rows = [utt(f"I go {k}", ["ix", "go"], k) for k in range(10)]
+    m = cg.fit_structure(rows, vocab, min_count=5)
+    assert cg.apply_structure(cg.selection_rows("I go", vocab), m, vocab)[0] == ["go"]
+
+
+def test_empty_inputs():
+    vocab = {"go": 1.}
+    assert cg.selection_rows("", vocab) == []
+    assert cg.apply_structure(cg.selection_rows("the a of", vocab), {}, vocab)[0] == []
+
+
+def test_token_decisions_count_distinct_sentences():
+    vocab = {"with": 1., "cut": 1.}
+    same = [utt("cut with care", ["cut"], k) for k in range(9)]                 # one sentence, nine signers
+    assert "with" not in cg.fit_structure(same, vocab, min_count=5)["tokens"]
+    distinct = [utt(f"cut with care {k}", ["cut"], k) for k in range(5)]
+    t = cg.fit_structure(distinct, vocab, min_count=5)["tokens"]
+    assert t["with"]["op"] == "drop" and t["with"]["sentences"] == 5
+
+
+def test_rule_comparisons_are_checked_before_any_work(tmp_path, stage2_store):
+    r2.check_rule(r2.parse_rule("bleu:end_to_end,bleu:mismatched,bleu:blank,spotting"), list(r2.VARIANTS))
+    with pytest.raises(ValueError, match="not compared with"):
+        r2.check_rule(r2.parse_rule("bleu:primary_fit"), ["core_chained"])        # only the extra fits have it
+    r2.check_rule(r2.parse_rule("bleu:stage1_chained"), ["core_chained"], ["scale"])
+    store, sha, s1, oracle, argv = stage2_store
+    calls = []
+    import evaluate_text_to_motion as etm
+    original = etm.load_generator
+    etm.load_generator = lambda *a, **k: calls.append(1) or original(*a, **k)
+    try:
+        with pytest.raises(SystemExit):
+            r2.main(argv + ["--rule", "bleu:oracle", "--output-file", str(tmp_path / "x.json")])
+    finally:
+        etm.load_generator = original
+    assert not calls and not (tmp_path / "x.json").exists()

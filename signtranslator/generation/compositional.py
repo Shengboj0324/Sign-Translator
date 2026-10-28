@@ -630,6 +630,8 @@ def render(parts: dict, plan: dict, *, sample_id: str = "compositional-stage2"):
         raise ValueError("the plan does not fit the parts")
     out = [lead_in(*parts["lead"], plan["lead"])] if plan["lead"] else []
     for k, core in enumerate(cores):
+        if not plan["cores"][k]:                        # an overlong sentence's truncated sign (its gap is 0 too)
+            continue
         out.append(time_scale(core, plan["cores"][k]))
         if k < len(cores) - 1 and plan["gaps"][k]:
             t = transitions[k]

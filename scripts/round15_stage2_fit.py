@@ -12,8 +12,10 @@ fits, ASLLRP val checks, the ASLLRP test partition is never read, and no How2Sig
   Bank lexicon ``derived/signbank-v1/lexicon.json`` (main entries and their variant labels) and ASL-LEX 2.0
   ``asl-lex-2.0/signdata.csv`` (EntryID, LemmaID, Code, DominantTranslation, SignBankEnglishTranslations).
 
-**Gold:** each utterance's gloss sequence mapped to vocabulary entries exactly as the groundwork's ``rule_check``
-(``map_sign`` per gloss type, tiers with index), unmapped glosses left out.
+**Gold:** each utterance's gloss sequence mapped to vocabulary entries by the groundwork's ``map_sign`` (tiers with
+index), every sign by its own gloss and occurrence (``gloss_table``: an index maps by its own person, and no val sign
+ever decides a train sign's mapping); unmapped glosses left out. The groundwork's per-gloss-type table
+(``groundwork_table``) is used only to reproduce its ``rule_check``.
 
 **Lexicon** (``build_lexicon``, selection beyond exact text; no ASLLRP sentence is read):
 - ``signbank_variant``: a variant label of a Sign Bank main entry whose sign is in the vocabulary (through the train
@@ -22,9 +24,10 @@ fits, ASLLRP val checks, the ASLLRP test partition is never read, and no How2Sig
 - ``asllex_dominant`` / ``asllex_translation``: the ASL-LEX DominantTranslation and the Signbank English translations
   of an ASL-LEX sign whose entry is in the vocabulary (Sem-Lex codes, else its EntryID / LemmaID text);
 - a word is never mapped onto another sign when it names a sign of its own (an ASL-LEX EntryID / LemmaID or a Sign
-  Bank main entry): it is a different sign the vocabulary lacks. Words in the vocabulary, stop words, single letters
-  and pronouns (the pointing rule's) are never keys. Conflicts: tier order, then votes, then the entry with more
-  train clips, then the name.
+  Bank main entry): it is a different sign the vocabulary lacks. Words in the vocabulary (under their split form
+  too), stop words, single letters and pronouns (the pointing rule's) are never keys, and a key with a negation never
+  maps to an entry without one ("not like" -> like). Keys are written as the selection splits text ("can not").
+  Conflicts: tier order, then votes, then the entry with more train clips, then the name.
 
 **Fit** (``fit_stage2``): ``compositional_grammar.fit_structure`` (keep / map / insert / drop per token, pooled
 pointing, reorder moves) and ``fit_timing`` on ASLLRP train only (``check_fit_records``).
@@ -32,7 +35,8 @@ pointing, reorder moves) and ``fit_timing`` on ASLLRP train only (``check_fit_re
 **Check on ASLLRP val** (``evaluate``): bag precision / recall / F1, entry WER and Kendall tau of the shared entries for
 the stage-1 rule (``compositional.select_words``, which reproduces the groundwork's ``rule_check``), the stage-2
 selection alone, selection + token operations, and the full model (+ moves), each against stage 1 with a paired
-bootstrap; the lexicon's per-tier precision; the threshold sensitivity (refits at other thresholds, reported only);
+bootstrap, on all of val and on its held-out sentences (val is signer-disjoint, but ASLLRP elicits the same English
+from several signers: ``val_heldout_sentences`` keeps the val utterances whose English is not a train sentence); the lexicon's per-tier precision; the threshold sensitivity (refits at other thresholds, reported only);
 and the timing model's error on val sign durations against a constant (train median) baseline.
 
 Writes the model (``--model-file``, write-once, local: it holds ASLLRP-derived statistics, research terms) and the
@@ -146,6 +150,8 @@ def build_lexicon(vocab, signbank_lexicon: dict, signbank: dict, asllex_rows, se
         word = " ".join(cg.tokens(word))                          # keyed as the selection splits ("can not")
         if not word or len(word) <= 1 or word == entry or word in vocab or word in STOP_WORDS or word in cg.POINTING:
             return
+        if word in cg.vocabulary_keys(vocab) or not cg.lexicon_allowed(word, entry):
+            return                                                # a contraction entry's own form; or a lost negation
         if word in own and word not in owner_names:
             return                                                # a sign of its own, not this one
         votes[(word, tier)][entry] += 1
@@ -190,8 +196,23 @@ def build_lexicon(vocab, signbank_lexicon: dict, signbank: dict, asllex_rows, se
 
 # ---- the ASLLRP side ---------------------------------------------------------------------------------------------
 
+def sign_key(sign: dict) -> tuple:
+    """What ``map_sign`` reads of a sign: its gloss, its occurrence label (an index's person) and its sign type."""
+    return sign["gloss"], sign.get("occurrence", ""), sign.get("sign_type", "")
+
+
 def gloss_table(records, vocab, signbank, codes, semlex) -> dict:
-    """{gloss: map_sign of its first occurrence}: the groundwork's table."""
+    """{sign_key: map_sign of that sign}: every sign mapped by its own gloss and occurrence, so no record's mapping
+    depends on another record (an index maps by its own person; a val occurrence never decides a train sign)."""
+    signs = {}
+    for r in records:
+        for s in r["signs"]:
+            signs.setdefault(sign_key(s), s)
+    return {k: agc.map_sign(s, vocab, signbank, codes, semlex) for k, s in sorted(signs.items())}
+
+
+def groundwork_table(records, vocab, signbank, codes, semlex) -> dict:
+    """{gloss: map_sign of its first occurrence}: the groundwork's table, used only to reproduce its rule_check."""
     first = {}
     for r in records:
         for s in r["signs"]:
@@ -200,8 +221,8 @@ def gloss_table(records, vocab, signbank, codes, semlex) -> dict:
 
 
 def gold_entries(record, table) -> list[str]:
-    return [e for s in record["signs"] if table[s["gloss"]]["tier"] in agc.WITH_INDEX
-            for e in table[s["gloss"]]["entries"]]
+    return [e for s in record["signs"] if table[sign_key(s)]["tier"] in agc.WITH_INDEX
+            for e in table[sign_key(s)]["entries"]]
 
 
 def fit_rows(records, table) -> list[dict]:
@@ -211,7 +232,7 @@ def fit_rows(records, table) -> list[dict]:
     for r in records:
         timed = []
         for s in r["signs"]:
-            m = table[s["gloss"]]
+            m = table[sign_key(s)]
             entry = m["entries"][0] if m["tier"] in agc.WITH_INDEX and len(m["entries"]) == 1 else None
             timed.append((entry, s["category"], s["start"], s["end"]))
         out.append(dict(id=r["id"], collection=r["collection"], partition=r["partition"], english=r["english"],
@@ -290,9 +311,13 @@ def prepare(parsed, corpora=ISOLATED_CORPORA) -> dict:
     rows = fit_rows(records, table)
     lexicon = build_lexicon(vocab, parsed["signbank_lexicon"], signbank, parsed["asllex"], semlex,
                             record_counts(manifest, vocab, corpora))
+    train = [r for r in rows if r["partition"] == "train"]
+    seen = {" ".join(normalise(r["english"])) for r in train}
+    val = [r for r in rows if r["partition"] == "val"]
     return dict(vocab=vocab, table=table, records=records, join=join, lexicon=lexicon,
-                annotated=annotated_seconds(manifest, vocab),
-                train=[r for r in rows if r["partition"] == "train"], val=[r for r in rows if r["partition"] == "val"])
+                groundwork_table=groundwork_table(records, vocab, signbank, codes, semlex),
+                annotated=annotated_seconds(manifest, vocab), train=train, val=val,
+                val_heldout=[r for r in val if " ".join(normalise(r["english"])) not in seen])
 
 
 # ---- checks on ASLLRP val ----------------------------------------------------------------------------------------
@@ -337,7 +362,10 @@ def timing_check(rows, model, vocab, const: float | None = None) -> dict:
 
 
 def evaluate(rows, model, vocab, *, boot: int = 1000) -> dict:
-    """The stage-1 rule and the stage-2 ablations on ``rows`` (module docstring)."""
+    """The stage-1 rule and the stage-2 ablations on ``rows`` (module docstring); ``{"utterances": 0}`` when no row
+    has a gold sequence."""
+    if not any(r["gold"] for r in rows):
+        return dict(utterances=0)
     gold = [r["gold"] for r in rows]
     lex, st = model["lexicon"], model["structure"]
     forms = {
@@ -410,6 +438,7 @@ def main(argv=None) -> int:
     constant = float(np.median([b - a for r in prep["train"] for e, c, a, b in r["timed"]
                                 if e is not None and a is not None and b is not None]))
     val = evaluate(prep["val"], model, vocab, boot=args.bootstrap)
+    val_heldout = evaluate(prep["val_heldout"], model, vocab, boot=args.bootstrap)
     train = evaluate(prep["train"], model, vocab, boot=200)
     sensitivity = {}
     overrides = [("threshold", float(x)) for x in args.sensitivity.split(",") if x] + [("learned", 0)]
@@ -419,17 +448,18 @@ def main(argv=None) -> int:
         sensitivity[f"{key}={value}"] = {k: {f: e[k][f] for f in SUMMARY} for k in ("stage2_tokens", "stage2_full")}
         sensitivity[f"{key}={value}"]["stage2_full"]["minus_stage1"] = {
             f: e["stage2_full"]["minus_stage1"][f] for f in ("bag_precision", "bag_recall", "bag_f1")}
-    reproduction = {part: {k: agc.rule_check([r for r in prep["records"] if r["partition"] == part], prep["table"],
-                                             vocab)[k] for k in ("bag_precision", "bag_recall", "entry_wer")}
+    reproduction = {part: {k: agc.rule_check([r for r in prep["records"] if r["partition"] == part],
+                                             prep["groundwork_table"], vocab)[k]
+                           for k in ("bag_precision", "bag_recall", "entry_wer")}
                     for part in ("train", "val")}
     report = dict(
         purpose="round 15 stage 2: grammar and timing fitted on ASLLRP train, checked on ASLLRP val (development "
                 "data; no How2Sign sentence read; ASLLRP test never read)",
         model_sha256=model["sha256"], inputs=model["inputs"], mix_key=args.mix_key, corpora=list(corpora),
         join=prep["join"], vocabulary_entries=len(vocab), parameters=params,
-        utterances=dict(train=len(prep["train"]), val=len(prep["val"])),
+        utterances=dict(train=len(prep["train"]), val=len(prep["val"]), val_heldout=len(prep["val_heldout"])),
         reproduction_groundwork_rule_check=reproduction,
-        val=val, train=train, sensitivity=sensitivity,
+        val=val, val_heldout_sentences=val_heldout, train=train, sensitivity=sensitivity,
         lexicon_precision=dict(train=lexicon_precision(prep["train"], vocab, prep["lexicon"]),
                                val=lexicon_precision(prep["val"], vocab, prep["lexicon"])),
         timing={k: v for k, v in model["timing"].items() if k not in ("sentence_seconds", "sentence_signs",

@@ -9,12 +9,15 @@ and checked clip by clip (``round15_oracle.check_pairing``); the stored oracle r
 
 **The stage-2 model** (``round15_stage2_fit.fit_model``): fitted at run time on ASLLRP *train* only (the How2Sign clips
 are read after it, and the fit refuses any record that is not an ASLLRP train utterance), or read from
-``--model-file`` and checked against its hash. ``--expect-model-sha256`` stops a run whose model is not the declared one.
+``--model-file`` and checked against its hash, vocabulary and corpora (``--fit-*`` flags are refused with a model
+file). ``--expect-model-sha256`` stops a run whose model is not the declared one.
 
 **Plan of a sentence** (``plan_clip``): the stage-2 selection and structure (``compositional_grammar.selection_rows``
 then ``apply_structure``: lexicon, keep / map / insert IX / drop, reorder moves), each entry's sentence-sign target
 (``target_seconds``) and its generation length (its typical isolated duration, the vocabulary's median trimmed
-seconds); frames by ``plan_frames`` with the model's gap and leading share and ``--total-fit``.
+seconds); frames by ``plan_frames`` with the model's gap and leading share and ``--total-fit`` (with pad or scale
+every rendered sentence has exactly its reference's frames; a sentence with more signs than frames is truncated and
+counted, ``timing.overlong_clips``).
 
 **Variants** (``--variants``):
 - ``core_crossfade``: each word generated alone at its typical isolated duration, cut to its sign core
@@ -42,8 +45,8 @@ against the mismatched control; motion statistics with wrist speed, as ratios to
 
 **Verdict:** ``--rule`` (declared by the owner): comma-separated checks per variant, each ``bleu:<comparison>[>x]``
 (the paired difference's 95% lower bound above x, default 0; comparison one of the form's ``minus_*`` keys) or
-``spotting`` (recall's lower bound above the mismatched control's upper bound). Without a rule the verdict is
-``UNDECLARED``.
+``spotting`` (recall's lower bound above the mismatched control's upper bound). Every comparison is checked against
+the variants' comparisons (``check_rule``) before anything is loaded. Without a rule the verdict is ``UNDECLARED``.
 
 Writes one JSON report (``--output-key`` or ``--output-file``, write-once).
 """
@@ -179,6 +182,19 @@ def parse_rule(rule: str | None) -> list[dict]:
     return checks
 
 
+def check_rule(checks, variants, extra_fits=()) -> None:
+    """Stop before any work unless every ``bleu:<comparison>`` of the rule is a comparison every variant's BLEU row
+    will carry: a label of ``form_pairs`` for it, ``mismatched`` (the deranged references) or ``blank``."""
+    pairs = form_pairs(variants, extra_fits)
+    for c in checks:
+        if c["kind"] != "bleu":
+            continue
+        for v in variants:
+            if c["pair"] not in set(pairs[v]) | {"mismatched", "blank"}:
+                raise ValueError(f"--rule: {v} is not compared with {c['pair']!r} (its comparisons: "
+                                 f"{', '.join(sorted(set(pairs[v]) | {'mismatched', 'blank'}))})")
+
+
 def verdict(checks, bleu_row: dict, spotting: dict, spotting_mismatched: dict) -> dict:
     """The declared rule on one variant; UNDECLARED without checks."""
     from strict_prior_review import separated
@@ -286,8 +302,8 @@ def main(argv=None) -> int:
     p.add_argument("--gap-seconds", type=float, help="the gap between signs (default: the model's ASLLRP median)")
     p.add_argument("--model-file", help="a fitted stage-2 model (round15_stage2_fit.py); default: fit it now")
     p.add_argument("--expect-model-sha256", help="stop unless the stage-2 model has this hash (the declared model)")
-    for k, v in DEFAULTS.items():
-        p.add_argument(f"--fit-{k.replace('_', '-')}", type=type(v), default=v)
+    for k, v in DEFAULTS.items():                                 # None: not given (the fit's default)
+        p.add_argument(f"--fit-{k.replace('_', '-')}", type=type(v), default=None, help=f"default {v}")
     p.add_argument("--rule", help="the declared verdict rule (module docstring); default: UNDECLARED")
     p.add_argument("--part-temperature", default="body=1.1,left_hand=1.1,right_hand=1.1,face=1.0")
     p.add_argument("--guidance", type=float, default=1.5)
@@ -315,6 +331,13 @@ def main(argv=None) -> int:
     if not fits or any(f not in TOTAL_FITS for f in fits) or len(set(fits)) != len(fits):
         p.error(f"--total-fit: distinct values from {','.join(TOTAL_FITS)}")
     checks = parse_rule(args.rule)
+    try:
+        check_rule(checks, variants, fits[1:])                    # before anything is loaded or generated
+    except ValueError as e:
+        p.error(str(e))
+    given = [k for k in DEFAULTS if getattr(args, f"fit_{k}") is not None]
+    if args.model_file and given:
+        p.error(f"--fit-* flags ({', '.join(given)}) cannot be given with --model-file (the file fixes the fit)")
     import warnings
     warnings.simplefilter("ignore")
     import torch
@@ -353,8 +376,11 @@ def main(argv=None) -> int:
         fit.check_model(model)
         if model.get("mix_key") != s1["mix_key"] or model["inputs"].get(s1["mix_key"]) != s1["mix_sha256"]:
             raise SystemExit("the stage-2 model was fitted on another vocabulary")
+        if list(model.get("corpora") or ()) != list(corpora):
+            raise SystemExit(f"the stage-2 model's corpora {model.get('corpora')} are not the run's {list(corpora)}")
     else:
-        params = {k: getattr(args, f"fit_{k}") for k in DEFAULTS}
+        params = {k: (DEFAULTS[k] if getattr(args, f"fit_{k}") is None else getattr(args, f"fit_{k}"))
+                  for k in DEFAULTS}
         model, _ = fit.fit_model(fit.agc._store(args.store), s1["mix_key"], s1["mix_sha256"], corpora, params)
     if args.expect_model_sha256 and model["sha256"] != args.expect_model_sha256:
         raise SystemExit(f"the stage-2 model is {model['sha256']}, not the declared {args.expect_model_sha256}")
@@ -522,14 +548,19 @@ def main(argv=None) -> int:
 
     timing = {}
     for v, rows in timing_rows.items():
-        comp = [r["core"] / r["planned"] for r in rows]
+        comp = [r["core"] / r["planned"] for r in rows if r["planned"]]       # truncated signs have no frames
         timing[v] = dict(core_frames_median=float(np.median([r["core"] for r in rows])),
                          planned_core_frames_median=float(np.median([r["planned"] for r in rows])),
-                         core_compression_median=round(float(np.median(comp)), 4),
-                         core_compression_p10_p90=[round(float(np.percentile(comp, q)), 4) for q in (10, 90)],
+                         core_compression_median=round(float(np.median(comp)), 4) if comp else None,
+                         core_compression_p10_p90=[round(float(np.percentile(comp, q)), 4) for q in (10, 90)]
+                         if comp else None,
                          core_reasons=dict(collections.Counter(r["reason"] for r in rows)),
                          sentence_fits=dict(collections.Counter(per_clip[i][v]["plan"]["fit"] for i in range(n)
                                                                 if v in per_clip[i])),
+                         overlong_clips=int(sum(per_clip[i][v]["plan"]["overlong"] for i in range(n)
+                                                if v in per_clip[i])),
+                         truncated_signs=int(sum(per_clip[i][v]["plan"]["truncated_signs"] for i in range(n)
+                                                 if v in per_clip[i])),
                          frames_over_reference_median=round(float(np.median(
                              [per_clip[i][v]["frames"] / per_clip[i]["frames_reference"] for i in range(n)
                               if v in per_clip[i]])), 4))
@@ -548,7 +579,8 @@ def main(argv=None) -> int:
         oracle_report_key=args.oracle_report_key, mix_key=s1["mix_key"], mix_sha256=s1["mix_sha256"],
         translator_run=s1["translator_run"], translator_key=kp, recognizer_run=recognizer_run,
         recognizer_checkpoint=best.get("checkpoint_key") if isinstance(best, dict) else None, clips=n,
-        variants=variants, total_fit=fits, core_rule=rule, gap_seconds=args.gap_seconds or model["timing"]["gap"],
+        variants=variants, total_fit=fits, core_rule=rule,
+        gap_seconds=model["timing"]["gap"] if args.gap_seconds is None else args.gap_seconds,
         guidance=args.guidance, part_temperature=temperature, rule=args.rule, rule_checks=checks,
         model_sha256=model["sha256"], model_parameters=model["parameters"],
         model_timing={k: v for k, v in model["timing"].items() if k not in ("sentence_seconds", "sentence_signs",

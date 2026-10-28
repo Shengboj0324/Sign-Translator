@@ -8,20 +8,23 @@ utterance stops the fit). How2Sign sentences are never an input to a fit; they a
 - tokens are ``tokens``: ``compositional.normalise`` with contractions split (``don't`` -> do not, ``it's`` -> it 's,
   ``mother's`` -> mother 's; the groundwork's ``english_tokens``), so negations and possessed nouns are visible;
 - entries are matched greedily left to right, longest first, single letters never (as stage 1), against the vocabulary
-  and, for spans that are not a vocabulary entry, the **lexicon** (``lexicon``: English word -> vocabulary entry, built
-  from the Sign Bank and ASL-LEX tables, ``scripts/round15_stage2_fit.py``); a token that starts no entry tries the
+  (``vocabulary_keys``: an entry with an apostrophe is also keyed by its split form, so "can't", "don't know" stay
+  reachable) and, for spans that are not a vocabulary entry, the **lexicon** (``lexicon``: English -> vocabulary entry,
+  built from the Sign Bank and ASL-LEX tables, ``scripts/round15_stage2_fit.py``; a key with a negation never maps to
+  an entry without one, ``lexicon_allowed``); a token that starts no entry tries the
   inflection fallback (stage 1's ``inflection_candidates``) against the vocabulary, then against the lexicon;
 - stop words (stage 1's list) are dropped as in stage 1. Row kinds: exact, fallback, lexicon, stop, unmatched.
 
 **Structure** (``apply_structure``), operations on the selected rows, fitted by ``fit_structure``:
-- **keep / map / insert / drop per English token** (``model["tokens"]``): for a token seen at least ``min_count`` times in
-  ASLLRP train, each candidate entry is scored by its hit rate: how often the utterance's gold contains it beyond what
+- **keep / map / insert / drop per English token** (``model["tokens"]``): for a token seen in at least ``min_count``
+  distinct English sentences of ASLLRP train (ASLLRP elicits the same English from several signers), each candidate
+  entry is scored by its hit rate (over occurrences): how often the utterance's gold contains it beyond what
   the other tokens' entries explain (``hits / n``). Candidates: the row's own entry; for a pronoun, the vocabulary's
   pointing sign (``POINTING``); and up to ``learned`` entries learned by co-occurrence with the token among the
   unexplained gold entries (``learned_links``: competitive linking, in at least ``min_count`` distinct sentences;
   ``children`` -> child, ``store`` -> sell; names and pronouns learn nothing). The best candidate is taken when its
-  rate is at least ``threshold``, never one that loses a negation of the token or of its entry ("not happy" ->
-  happy). Otherwise a closed-class token (``DROPPABLE``, or a
+  rate is at least ``threshold``, never one (the row's own entry included) that loses a negation of the token or of
+  its entry ("not happy" -> happy). Otherwise a closed-class token (``DROPPABLE``, or a
   pronoun) is dropped, and an open-class one keeps stage 1's behaviour: ASLLRP signs most such words another way (a
   classifier, fingerspelling, a synonym), which the vocabulary cannot reproduce, so dropping them would lose content.
   Rarer tokens keep stage 1's behaviour, except pronouns, which use their pointing class's pooled rate
@@ -31,7 +34,7 @@ utterance stops the fit). How2Sign sentences are never an input to a fit; they a
   non-first persons; IX-1p is a separate Sign Bank entry, so I / me map to ``me`` only when the vocabulary has it);
 - **reorder** (``model["moves"]``): an entry of a declared class (``MOVE_CLASSES``: WH-words, negation, time and aspect)
   moves to the front or the end of the sentence when that raises the mean Kendall tau against the gold order on
-  ASLLRP train by at least ``move_margin`` over at least ``move_min_count`` utterances; moves are stable (the moved
+  ASLLRP train by at least ``move_margin`` over at least ``move_min_count`` distinct sentences; moves are stable (the moved
   entries keep their relative order). Topic-first is not detectable from English text and is not attempted.
 
 **Timing** (``fit_timing``, ``target_seconds``): a sign's sentence duration is the median ASLLRP train sentence-sign
@@ -39,15 +42,17 @@ duration of its entry when the entry has at least ``min_signs`` timed train sign
 annotated length, ``ratio`` the median over train signs of (sentence span / the same entry's ASLLVD annotated sign
 span). The annotated length is the median ASLLVD annotated span (``source.frames`` at 60 fps) of the entry's train
 clips, else the entry's typical trimmed seconds / ``trimmed_over_annotated`` (the median, over ASLLVD entries, of
-trimmed clip over annotated span). Every target is clipped to [floor, ceiling] (train lexical sign-duration
-quantiles). The gap between signs is the median train gap; the leading share of padding the train ratio of leading
-to leading + trailing time.
+trimmed clip over annotated span; without that ratio, the train median lexical sign). Every target is clipped to
+[floor, ceiling] (train lexical sign-duration quantiles). The gap between signs is the median train gap; the leading
+share of padding the train ratio of leading to leading + trailing time (0.5 when no utterance duration is known).
 
 **Frame plan** (``plan_frames``): each core gets ``round(target x 24)`` frames (at least 1), each join ``round(gap x
 24)``; the sentence is then fitted to the reference: ``pad`` (shorter sentences are padded with the first word's
 approach and the last word's return, split by the leading share; longer ones are compressed uniformly to the
 reference), ``scale`` (cores and gaps scaled uniformly to the reference in both directions) or ``none`` (ASLLRP pace,
-whatever the length). ``allocate`` rounds a scaled plan to the exact total.
+whatever the length). ``allocate`` rounds a scaled plan to the exact total. With pad and scale the plan always has
+exactly the reference's frames; a sentence with more signs than reference frames is **overlong**: its first signs
+get one frame each and the rest are truncated (``overlong``, ``truncated_signs``; counted in the report).
 
 **Metrics** (``sequence_metrics``): bag precision / recall / F1 (micro, multiset intersection), entry WER and the
 Kendall tau of the shared entries' order, as the groundwork's ``rule_check``; ``paired_bootstrap`` for differences.
@@ -79,21 +84,26 @@ POINTING = {
     "i": "me", "me": "me",
 }
 POINTING_ENTRIES = frozenset(POINTING.values())
-# Closed-class English (the groundwork's word classes, with modals and a few determiners and adverbs): the only tokens
-# a fit may drop. An open-class word ASLLRP does not sign with our entry is usually signed another way (a classifier,
-# fingerspelling, a synonym), so it is kept or mapped, never dropped.
+# Closed-class English (the groundwork's word classes, with modals and a few adverbs): the only tokens a fit may
+# drop. An open-class word ASLLRP does not sign with our entry is usually signed another way (a classifier,
+# fingerspelling, a synonym), so it is kept or mapped, never dropped. WH-words, time words and quantifiers carry
+# content (and WH and time words can move, MOVE_CLASSES): never droppable.
 DROPPABLE = frozenset({
-    "do", "does", "did", "have", "has", "had", "will", "would", "shall", "can", "could", "should", "must", "may",
+    "do", "does", "did", "have", "has", "had", "would", "shall", "can", "could", "should", "must", "may",
     "might",                                                                                  # auxiliaries, modals
     "to", "of", "in", "on", "at", "for", "with", "from", "by", "about", "into", "as", "over", "up", "out", "off", "than",
-    "through", "around", "under", "after", "before",                                          # prepositions
-    "and", "or", "but", "so", "that", "because", "if", "when",                                # conjunctions
-    "some", "any", "all", "every", "each", "very", "just", "also", "too", "really", "then",   # determiners, adverbs
+    "through", "around", "under",                                                             # prepositions
+    "and", "or", "but", "so", "that", "because", "if",                                        # conjunctions
+    "very", "just", "also", "too", "really",                                                  # adverbs
     "'s",
 })
+NEGATIONS = frozenset({"not", "no", "never", "none", "nothing", "nobody", "nowhere", "neither", "nor", "without",
+                       "cannot", "can't", "don't", "won't", "neg"})
 MOVE_CLASSES = {
     "wh": ("what", "where", "who", "why", "how", "when", "which"),
-    "negation": ("not", "no", "none", "never", "nothing", "can't", "cannot", "don't", "won't"),
+    # vocabulary entries; contraction entries (can't, don't, won't) are reached through their split form
+    # (``vocabulary_keys``), so they can be selected and moved
+    "negation": ("not", "no", "none", "never", "nothing", "nobody", "can't", "cannot", "don't", "won't", "not yet"),
     "time": ("finish", "future", "will", "already", "later", "tomorrow", "yesterday", "today", "now", "before",
              "after", "past", "soon", "tonight", "recently", "ago", "then", "next"),
 }
@@ -125,20 +135,50 @@ def _matchable(entry: str, table) -> bool:
     return len(entry) > 1 and entry in table
 
 
+_KEYS: dict = {}
+
+
+def vocabulary_keys(vocab) -> dict:
+    """{key: entry} of the vocabulary as ``tokens`` writes text: every entry under itself and, for an entry with an
+    apostrophe, also under its split form ("can't" -> "can not", "don't know" -> "do not know"), so contraction
+    entries stay reachable after the split (an entry's own text wins a clash). Cached for the last vocabulary."""
+    cached = _KEYS.get("last")
+    if cached is not None and cached[0] is vocab and cached[1] == len(vocab):
+        return cached[2]
+    keys = {e: e for e in vocab}
+    for e in sorted(vocab):
+        if "'" in e:
+            split = " ".join(tokens(e))
+            if split != e and split not in keys:
+                keys[split] = e
+    _KEYS["last"] = (vocab, len(vocab), keys, max((len(k.split(" ")) for k in keys), default=0))
+    return keys
+
+
+def lexicon_allowed(key: str, entry: str) -> bool:
+    """A lexicon key maps to an entry only if the entry keeps every negation the key has ("not like" -> like
+    never)."""
+    return not drops_negation(key, entry)
+
+
 def selection_rows(text, vocab, lexicon=None, stop_words=STOP_WORDS) -> list[dict]:
     """Every token span of ``tokens(text)`` with its fate, in order: ``{"tokens", "text", "entry", "kind", "tier"}``
-    (module docstring). ``lexicon``: {English (normalised words joined by a space): {"entry", "tier"}}; its keys are
-    used only where no vocabulary entry matches the same span."""
-    lexicon = {k: v for k, v in (lexicon or {}).items() if _matchable(k, lexicon) and v["entry"] in vocab
-               and len(v["entry"]) > 1}
+    (module docstring). Vocabulary entries are matched under ``vocabulary_keys`` (contraction entries through their
+    split form). ``lexicon``: {English (``tokens`` words joined by a space): {"entry", "tier"}}; its keys are used
+    only where no vocabulary entry matches the same span, and never when the entry would lose a negation."""
+    keys = vocabulary_keys(vocab)
+    longest_key = _KEYS["last"][3]
+    lexicon = {k: v for k, v in (lexicon or {}).items() if len(k) > 1 and v["entry"] in vocab
+               and len(v["entry"]) > 1 and lexicon_allowed(k, v["entry"])}
     toks = tokens(text)
-    longest = max((len(w.split(" ")) for w in list(vocab) + list(lexicon)), default=0)
+    longest = max([longest_key] + [len(w.split(" ")) for w in lexicon])
     rows, p = [], 0
     while p < len(toks):
         for n in range(min(longest, len(toks) - p), 0, -1):
             span = " ".join(toks[p:p + n])
-            if _matchable(span, vocab):
-                kind, entry, tier = ("stop" if span in stop_words else "exact"), span, None
+            if _matchable(span, keys) and len(keys[span]) > 1:
+                entry, tier = keys[span], None
+                kind = "stop" if span in stop_words or entry in stop_words else "exact"
             elif span not in stop_words and _matchable(span, lexicon):
                 kind, entry, tier = "lexicon", lexicon[span]["entry"], lexicon[span]["tier"]
                 if entry in stop_words:
@@ -275,11 +315,11 @@ def _token_stats(records, vocab, lexicon, pointing, *, min_count: int, learned: 
     Candidates of a token: its default entry, its pointing sign (``pointing``) and up to ``learned`` entries learned
     by competitive linking (``learned_links``: ``children`` -> child, ``store`` -> sell). A candidate's hits in an
     utterance: min(the token's occurrences, the gold count of the candidate the other tokens' defaults leave
-    unexplained)."""
+    unexplained). ``sentences``: the distinct English sentences the token occurs in (``min_count`` gates on them)."""
     links = learned_links(records, vocab, lexicon, min_count=min_count)
-    parsed = [_utterance_tokens(r, vocab, lexicon) for r in records]
+    parsed = [(" ".join(normalise(r["english"])), _utterance_tokens(r, vocab, lexicon)) for r in records]
     stats = {}
-    for gold, occ, default, base in parsed:
+    for sentence, (gold, occ, default, base) in parsed:
         for t, n in occ.items():
             s = stats.get(t)
             if s is None:
@@ -289,16 +329,14 @@ def _token_stats(records, vocab, lexicon, pointing, *, min_count: int, learned: 
                 p = pointing.get(t)
                 if p and _matchable(p, vocab) and p not in cands:
                     cands.append(p)
-                s = stats[t] = dict(n=0, default=default[t], learned=lrn,
+                s = stats[t] = dict(n=0, default=default[t], learned=lrn, sentences=set(),
                                     hits=collections.Counter({c: 0 for c in cands}))
             unexplained = _unexplained(gold, base, default[t], n)
             s["n"] += n
+            s["sentences"].add(sentence)
             for c in s["hits"]:
                 s["hits"][c] += min(n, unexplained[c])
     return {t: s for t, s in stats.items() if s["hits"]}
-
-
-NEGATIONS = frozenset({"not", "no", "never", "none", "nothing", "cannot", "can't", "don't", "won't", "neg"})
 
 
 def drops_negation(default, candidate) -> bool:
@@ -309,10 +347,12 @@ def drops_negation(default, candidate) -> bool:
 
 def _decide(token, n, hits, default, threshold):
     """The token's operation: its best candidate when the hit rate reaches ``threshold`` (keep, map or insert; never
-    a map that loses a negation); otherwise drop when the token is droppable, else stage 1's behaviour (keep its
-    default, or none)."""
-    hits = {c: h for c, h in hits.items() if c == default or not (drops_negation(default, c)
-                                                                    or drops_negation(token, c))}
+    an entry, the default included, that loses a negation of the token or of the default); otherwise drop when the
+    token is droppable, else stage 1's behaviour (keep its default, or none when the default itself would lose the
+    token's negation)."""
+    if drops_negation(token, default):
+        default = None
+    hits = {c: h for c, h in hits.items() if not (drops_negation(default, c) or drops_negation(token, c))}
     best = max(hits, key=lambda c: (hits[c] / n, c == default, c)) if hits else None
     rate = hits[best] / n if hits else 0.
     if rate < threshold:
@@ -397,33 +437,39 @@ def fit_structure(train, vocab, lexicon=None, *, threshold: float = .5, min_coun
     pointing = POINTING if pointing is None else pointing
     move_classes = MOVE_CLASSES if move_classes is None else move_classes
     stats = _token_stats(train, vocab, lexicon, pointing, min_count=min_count, learned=learned)
-    actions = {t: dict(_decide(t, s["n"], s["hits"], s["default"], threshold), learned=s["learned"])
-               for t, s in sorted(stats.items()) if s["n"] >= min_count}
+    # a token is decided only when seen in at least min_count distinct English sentences (as the links are counted)
+    actions = {t: dict(_decide(t, s["n"], s["hits"], s["default"], threshold), learned=s["learned"],
+                       sentences=len(s["sentences"]))
+               for t, s in sorted(stats.items()) if len(s["sentences"]) >= min_count}
     pooled = {}
     for p in sorted({v for v in pointing.values() if _matchable(v, vocab)}):
         n = sum(s["n"] for t, s in stats.items() if pointing.get(t) == p)
         hits = sum(s["hits"][p] for t, s in stats.items() if pointing.get(t) == p)
-        if n >= min_count:
+        sentences = set().union(*[s["sentences"] for t, s in stats.items() if pointing.get(t) == p])
+        if len(sentences) >= min_count:
             rate = hits / n
             pooled[p] = dict(op="insert" if rate >= threshold else "drop", n=n, rate=round(rate, 4))
     model = dict(tokens=actions, pointing=pooled, moves={})
-    seqs = [(apply_structure(selection_rows(r["english"], vocab, lexicon), model, vocab, moves=False)[0], r["gold"])
-            for r in train]
+    seqs = [(apply_structure(selection_rows(r["english"], vocab, lexicon), model, vocab, moves=False)[0], r["gold"],
+             " ".join(normalise(r["english"]))) for r in train]
     movable = {e for words in move_classes.values() for e in words}
-    counts = collections.Counter(e for s, _ in seqs for e in set(s) if e in movable)
+    counts = collections.Counter(e for s, _, _ in seqs for e in set(s) if e in movable)
     moves, report = {}, {}
     for e, _ in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])):
         scores = {}
         for m in MOVES:
             trial = dict(moves, **({e: m} if m != "stay" else {}))
-            taus = [tau_of(_strip(apply_moves(s, trial)), _strip(g)) for s, g in seqs if e in s]
+            taus = [tau_of(_strip(apply_moves(s, trial)), _strip(g)) for s, g, _ in seqs if e in s]
             taus = [t for t in taus if t is not None]
             scores[m] = (float(np.mean(taus)) if taus else None, len(taus))
         n = scores["stay"][1]
+        # the gate counts distinct English sentences with a tau, as the token decisions do
+        distinct = len({x for s, g, x in seqs if e in s and tau_of(_strip(s), _strip(g)) is not None})
         best = max(MOVES, key=lambda m: (scores[m][0] if scores[m][0] is not None else -9, m == "stay"))
         gain = (scores[best][0] - scores["stay"][0]) if n else 0.
-        report[e] = dict(n=n, **{f"tau_{m}": round(v[0], 4) if v[0] is not None else None for m, v in scores.items()})
-        if best != "stay" and n >= move_min_count and gain >= move_margin:
+        report[e] = dict(n=n, sentences=distinct,
+                         **{f"tau_{m}": round(v[0], 4) if v[0] is not None else None for m, v in scores.items()})
+        if best != "stay" and distinct >= move_min_count and gain >= move_margin:
             moves[e] = best
     model["moves"] = moves
     model["move_scores"] = report
@@ -466,13 +512,17 @@ def fit_timing(train, typical, annotated, *, min_signs: int = 3, floor_q: float 
         raise ValueError("no timed train signs with an annotated isolated length")
     both = [e for e in annotated if e in typical and annotated[e] > 0]
     trimmed = float(np.median([typical[e] / annotated[e] for e in both])) if both else None
-    lead_m, trail_m = float(np.median(lead)), float(np.median(trail))
+    # no utterance duration known: no leading / trailing statistics, padding split evenly
+    lead_m, trail_m = (float(np.median(lead)), float(np.median(trail))) if lead else (None, None)
     return dict(
         ratio=round(float(np.median(ratios)), 4), ratio_signs=len(ratios),
         trimmed_over_annotated=round(trimmed, 4) if trimmed else None, trimmed_over_annotated_entries=len(both),
         floor=round(_q(lexical, floor_q), 4), ceiling=round(_q(lexical, ceiling_q), 4),
-        gap=round(float(np.median(gaps)), 4), lead_share=round(lead_m / (lead_m + trail_m), 4),
-        lead_seconds=round(lead_m, 4), trail_seconds=round(trail_m, 4), min_signs=min_signs,
+        gap=round(float(np.median(gaps)), 4) if gaps else 0.,
+        lead_share=round(lead_m / (lead_m + trail_m), 4) if lead_m is not None and lead_m + trail_m > 0 else .5,
+        lead_seconds=round(lead_m, 4) if lead_m is not None else None,
+        trail_seconds=round(trail_m, 4) if trail_m is not None else None, min_signs=min_signs,
+        default_seconds=round(float(np.median(lexical)), 4),
         quantiles=dict(floor=floor_q, ceiling=ceiling_q),
         sentence_seconds={e: round(float(np.median(v)), 4) for e, v in sorted(by_entry.items()) if len(v) >= min_signs},
         sentence_signs={e: len(v) for e, v in sorted(by_entry.items()) if len(v) >= min_signs},
@@ -481,13 +531,16 @@ def fit_timing(train, typical, annotated, *, min_signs: int = 3, floor_q: float 
 
 def target_seconds(entry: str, timing: dict, typical) -> tuple[float, str]:
     """(seconds, source) of one entry's sign in a sentence: its ASLLRP sentence median ("asllrp"), else ratio x its
-    ASLLVD annotated length ("annotated"), else ratio x typical / trimmed_over_annotated ("trimmed"); clipped."""
+    ASLLVD annotated length ("annotated"), else ratio x typical / trimmed_over_annotated ("trimmed"), else (no
+    trimmed ratio was fitted) the train median lexical sign duration ("default", the floor when absent); clipped."""
     if entry in timing["sentence_seconds"]:
         s, src = timing["sentence_seconds"][entry], "asllrp"
     elif entry in timing["annotated"]:
         s, src = timing["ratio"] * timing["annotated"][entry], "annotated"
-    else:
+    elif timing.get("trimmed_over_annotated"):
         s, src = timing["ratio"] * float(typical[entry]) / timing["trimmed_over_annotated"], "trimmed"
+    else:
+        s, src = float(timing.get("default_seconds") or timing["floor"]), "default"
     clipped = min(max(s, timing["floor"]), timing["ceiling"])
     return float(clipped), src + ("" if clipped == s else "_clipped")
 
@@ -529,12 +582,22 @@ def plan_frames(targets, gap_seconds: float, reference_seconds: float, total_fit
         pad = R - body
         lead = int(round(pad * lead_share))
         trail, fit = pad - lead, "padded"
+    elif total_fit in ("pad", "scale") and body != R and len(cores) > R:
+        # overlong: more signs than reference frames. The rendered length must still be the reference, so the
+        # first R signs get one frame each, no gaps, and the rest are truncated (cores of 0 frames, skipped by
+        # ``compositional.render``); flagged and counted.
+        cores, gaps = [1] * R + [0] * (len(cores) - R), [0] * len(gaps)
+        fit = "truncated"
     elif total_fit in ("pad", "scale") and body != R:
         scaled = allocate(cores + gaps, R, [1] * len(cores) + [0] * len(gaps))
         cores, gaps = scaled[:len(cores)], scaled[len(cores):]
         fit = "compressed" if R < body else "scaled"
+    frames = lead + sum(cores) + sum(gaps) + trail
+    if total_fit != "none" and frames != R:
+        raise AssertionError("the plan does not fill the reference")
     return dict(cores=cores, gaps=gaps, lead=lead, trail=trail, fit=fit, body_planned=body,
-                scale=round((sum(cores) + sum(gaps)) / body, 4), frames=lead + sum(cores) + sum(gaps) + trail)
+                scale=round((sum(cores) + sum(gaps)) / body, 4), frames=frames, overlong=fit == "truncated",
+                truncated_signs=int(sum(c == 0 for c in cores)))
 
 
 # ---- metrics -----------------------------------------------------------------------------------------------------
@@ -569,7 +632,8 @@ def aggregate(rows) -> dict:
     rc = tp / gold if gold else None
     return dict(utterances=len(rows), predicted_entries=pred, gold_entries=gold,
                 bag_precision=round(p, 4) if p is not None else None, bag_recall=round(rc, 4) if rc is not None else None,
-                bag_f1=round(2 * p * rc / (p + rc), 4) if p and rc else None,
+                bag_f1=(round(2 * p * rc / (p + rc), 4) if p + rc > 0 else 0.) if p is not None and rc is not None
+                else None,
                 entry_wer=round(edits / gold, 4) if gold else None,
                 tau_mean=_mean(taus), tau_median=round(float(np.median(taus)), 4) if taus else None,
                 tau_below_1_share=_mean([t < 1 - 1e-9 for t in taus]), tau_utterances=len(taus),
