@@ -2457,3 +2457,21 @@ F12 (warm start from L11c step 20000, then 10000 steps at B6's corpus weights, h
 - **Build:** pod job `round13-clean` writes `round13-mixed-v1`.
 - `sentence_word_spotting.py` is a **report-only** sentence instrument. Validation on 300 val sentences (reliable glosses): real 0.080 [0.054, 0.112], mismatched control 0.024, blank 0.005.
 - `pilot_content_check.py`'s selection and post-processing were factored out with identical behaviour (same filters, seed and smoothing).
+
+## Planned data work: recover YouTube-ASL arms (recorded 2026-10-28, 03:31 UTC; owner-approved; starts after round 13 is declared and launched)
+
+About 60% of YouTube-ASL sentence clips have both hands tracked but no forearm tracked. Round 13 drops them from generator training; these two steps aim to recover them.
+
+**Step A: why the forearms are missing.** On a sample of 200 arm-untracked clips:
+- check pose visibility scores, elbow and shoulder positions against the frame border (framing that cuts off the elbows), and detector settings;
+- re-extract 20 of them on a pod with alternative settings (lower pose visibility threshold, model complexity, full-frame pose instead of ROI);
+- **criterion:** forearms tracked on ≥ 50% of frames, with hands unchanged.
+- If a setting recovers most clips, all arm-untracked YouTube sentence clips are re-extracted on pods (states written alongside, never overwriting).
+
+**Step B: arms from inverse kinematics where re-extraction cannot help.**
+- The elbow is placed by two-joint IK from the tracked shoulder and wrist positions and the signer's bone lengths. It lies on the circle where the upper-arm and forearm spheres meet; the swivel angle is set by anatomical limits, defaulting to the nearest valid swivel toward the body.
+- Upper-arm and forearm rotations are derived from it, with the wrist rotation kept from the hand.
+- **Validation before use:** on clips whose arms *are* tracked, hide the arms and reconstruct them, then measure the error against the tracked arms (elbow position error, forearm direction error). Accept only with a declared bound (to be set from the measured distribution of tracked-arm jitter).
+- Reconstructed frames are marked as inferred, not observed, so the masks still distinguish them.
+
+Neither step changes running training. Each is declared with its result before any generator trains on recovered data.
