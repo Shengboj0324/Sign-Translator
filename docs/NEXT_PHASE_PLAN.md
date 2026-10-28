@@ -2890,3 +2890,17 @@ The independent adversarial review found no leakage, no pin mismatch and no regr
 - conversion of all 91,148 clips to a bundle-named prefix;
 - a lexical manifest (ASL-LEX code labels; Sem-Lex test held out);
 - a declared generator round.
+
+### Round 13 declared report: sentence word spotting (2026-10-28, 10:00 UTC; 300 How2Sign val sentences; v2, all labels, top-5)
+
+| Form | Recall | Against the next sentence's words (chance) | Above chance |
+|---|---|---|---|
+| Real | 0.074 [0.063, 0.086] | 0.051 [0.039, 0.063] | yes |
+| F12, step 10000 | 0.038 [0.031, 0.046] | 0.035 [0.027, 0.044] | **no** |
+| F12, step 30000 | 0.031 [0.024, 0.038] | 0.027 [0.020, 0.034] | **no** |
+| C13, step 10000 | 0.037 [0.030, 0.045] | 0.030 [0.021, 0.041] | **no** |
+| S13, step 10000 | 0.032 [0.026, 0.038] | 0.029 [0.022, 0.035] | **no** |
+
+Every generated form is above blank (0.002): it contains sign-like motion. None is above its own mismatched control.
+
+**Reading.** Generated sentences do not contain their sentence's words more than another sentence's. This agrees with BLEU at the blank's level. The sentence exposure diagnostic, under way, locates where the meaning is lost.
