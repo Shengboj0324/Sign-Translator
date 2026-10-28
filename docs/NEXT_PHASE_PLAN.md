@@ -3431,3 +3431,35 @@ The gate's failing checks are hand speed (left and right, c01, c03, c05, pool) a
 **Known limits.**
 - v2 reads un-mirrored Sem-Lex at 0.153, so gains on the newly covered words may be under-read. That is why the mirrored read is reported.
 - Sem-Lex val shares signers with train.
+
+### Round 15 stage 2 groundwork: ASLLRP measurements (recorded 2026-10-28, 21:16 UTC; measurement only, nothing trained)
+
+`scripts/asllrp_gloss_corpus.py` reads `signbank-v1/utterances.json` and `english-gloss-v1/pairs.json`. Test pairs were counted but not read.
+
+**Corpus.**
+- 1,652 train utterances (1,587 unique English) and 412 val; 7.5 glosses and 10.1 English words per utterance.
+- **Order:** 65% of utterances are in exact English order. 7.7% of aligned pairs are discordant.
+- **Dropped English:** articles 99%, copulas 98%, prepositions 81%, auxiliaries 79%, pronouns 49%.
+- **Signs with no English word:** 38%; indexes are 19% of all signs.
+
+**Gloss to generator vocabulary:** 74% of tokens map by Sign Bank ID, ASL-LEX code or name; 85% with the pronoun and fingerspelling tiers.
+
+**Timing.**
+- A sign in a sentence lasts **0.234 s** median; the gap between signs **0.167 s**; about 2.45 signs per second.
+- That is **0.385×** the same gloss's annotated isolated sign, and **0.138×** the trimmed isolated clips the generator learned, which run 2.8× longer than the sign itself.
+- Stage 1's fitted words (0.59–0.74 s) were slower than ASLLRP's pace. Its 3× wrist speed came from compressing whole trimmed clips, approach and rest included, not from the pace itself.
+
+**Domain.** ASLLRP English covers 24% of How2Sign val's word types (81% of tokens); How2Sign sentences are 19 words against ASLLRP's 10.
+
+**Design consequences for stage 2** (to be declared; recommendation: a hybrid).
+1. **Timing, the clearest lever.** Cut each generated word to its sign core (the active window) and place it at ASLLRP pacing: about 0.39× the annotated isolated length, with gaps of about 0.17 s. This also addresses hand speed.
+2. **Word choice stays rule-based** (the training-vocabulary matcher plus Sign Bank and ASL-LEX tables). 1,600 sentences cannot teach open-domain English-to-gloss.
+3. **A small structural model, or rules fitted on ASLLRP,** handles the rest:
+   - deletions (articles, copulas, prepositions, auxiliaries);
+   - index insertion;
+   - a few reorderings (FUTURE, FINISH and NOT placement, final WH-words, topics).
+
+   It acts on stage 1's mapped words: keep, drop, insert or reorder.
+4. **Selection matters more than order.** Against ASLLRP glosses, stage 1's rule has bag precision 0.46 and recall 0.41, while its shared entries are already in order.
+
+**Note.** Two tests in `test_speech_stage4_integration.py` fail with a single BLAS thread and pass with six. They are unrelated to this change and are recorded as a thread-sensitive flake to fix.
