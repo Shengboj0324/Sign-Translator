@@ -2857,3 +2857,36 @@ Values are median / p90.
 - On v2's own clips the gate costs 0.137 top-5 and the upright root about 0.
 
 **Recovery solve, now:** `upright_chest` + `upright_root` + MediaPipe visibility, with no `elbow_in_image`. The elbow-in-image fraction is still reported. Nothing had been written under `arm-recovery-v1/`; the test download was refused.
+
+### Sem-Lex: review findings, one generator convention, and gate v2 (declared 2026-10-28, 09:30 UTC, before any of the measurements below)
+
+The independent adversarial review found no leakage, no pin mismatch and no regressor math error. The learned channels match ours (hands swapped in −0.003, body +0.013). Defects found:
+
+1. **Convention (high).** The gated path (upright chest only) stores no chest frame on any Sem-Lex frame, which collapses forward kinematics for the generator's consumers.
+2. **Data errors retried as transient (medium).**
+3. **Resume not bound to the regressor bundle (medium).**
+4. **Other.** The converter defaults to pseudo-world; provenance labels are wrong; leg visibility can be "visible" with zero points.
+5. **Test-set hygiene.**
+   - The regressors used How2Sign signer 9, the generator's untouched final-test signer, for validation.
+   - Signers 1 and 2 share source videos but were split across train and val.
+6. **The gate was in-instrument.** The emulated arrays come from our own Tasks tracker, while Sem-Lex used legacy MediaPipe Holistic. So the legacy-Holistic shift is unmeasured, and Sem-Lex reads 0.364 where about 0.66 would be expected.
+
+**One convention for every hip-less corpus** (generator states): `upright_chest` + `upright_root` + visibility (MediaPipe's own, or the learned one for Sem-Lex), with **no** elbow gate.
+- This is the same rule as the YouTube recovery (09:23).
+- On v2's own clips, `upright_root` costs −0.013 [−0.040, +0.010].
+
+**Regressors v2.**
+- **Inputs:** legacy Holistic (`mediapipe.solutions.holistic`, the API Sem-Lex used, from a pinned older mediapipe in a separate venv) on the same How2Sign Sem-Lex-framed crops.
+- **Targets:** our Tasks world landmarks and visibility.
+- **Signers:** train and val by component (signers 1 and 2 together). **How2Sign signer 9 is excluded entirely.**
+- So the regressors learn the actual legacy-Holistic-to-our-states shift.
+
+**Gate v2.** On the same 300 ASL Citizen val clips, with **legacy Holistic** arrays converted through regressors v2 under the generator convention, v2's top-5 paired difference must have a 95% lower bound above −0.05 against:
+- (a) our path under the same convention;
+- (b) our path with upright chest only.
+
+**Then:**
+- the converter fixes (items 2–4 above);
+- conversion of all 91,148 clips to a bundle-named prefix;
+- a lexical manifest (ASL-LEX code labels; Sem-Lex test held out);
+- a declared generator round.
