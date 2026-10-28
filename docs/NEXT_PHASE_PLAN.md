@@ -3083,3 +3083,12 @@ The launcher waits for three free pod slots (at most 5). Expected verdict about 
 - **Training:** F12 reached step 60000 (checkpoint in R2 at 12:47). Best validation loss 4.852 at step 44000.
 - **Pod:** stopped and deleted after its log was verified.
 - **Chain:** the declared chain started on the step-60000 checkpoint with its smoke run at 12:55 UTC.
+
+### Round 14 pre-check: the tokenizer on Sem-Lex (declared 2026-10-28, 13:59 UTC, before any measurement)
+
+Before Sem-Lex enters generator training, F12's tokenizer must carry Sem-Lex signs.
+- **Clips:** about 300 random in-vocabulary clips of the Sem-Lex **val** video states (ASL-LEX code mapping).
+- **Measure:** v2 top-5 on real clips against tokenizer reconstruction (recon_full, plus recon_masked like real), paired by clip.
+- **Bar:** recon_masked minus real must have a 95% lower bound above **−0.15**. For reference, R5 words on the existing corpora lose 0.08 (0.954 against 0.870).
+
+If it fails, a tokenizer fine-tune on the mixed corpus is declared before any prior round.
