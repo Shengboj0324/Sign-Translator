@@ -319,6 +319,28 @@ def take_frames(state, index):
     return replace(state, timestamps=t, channels=channels)
 
 
+def time_scale(state, frames: int, fps: float = FPS):
+    """``state`` stretched or compressed in time to exactly ``frames`` frames at ``fps`` (``pose.resample``'s
+    interpolation on a stretched clock: the first and last frames are kept, everything between is interpolated).
+    Moved unchanged from ``scripts/compositional_baseline.py``."""
+    from ..pose.resample import resample_motion
+    T = len(state.timestamps)
+    if frames < 1:
+        raise ValueError("frames must be >= 1")
+    if T == frames:
+        return state
+    if frames == 1:
+        return take_frames(state, np.array([0]))
+    if T == 1:
+        state = take_frames(state, np.array([0, 0]))
+    t0 = float(state.timestamps[0])
+    stretched = replace(state, timestamps=t0 + np.linspace(0., (frames - 1) / fps, len(state.timestamps)))
+    out = resample_motion(stretched, fps)
+    if len(out.timestamps) != frames:
+        raise AssertionError(f"time_scale produced {len(out.timestamps)} frames, not {frames}")
+    return out
+
+
 # ---- the rest-trim rule (moved unchanged from scripts/build_trimmed_word_manifest.py) ------------------------------
 
 def side_tracks(state):
@@ -511,8 +533,169 @@ def compose(prior, tokenizer, words, durations, mode: str, seeds, *, guidance: f
     return state, dict(mode=mode, segments=rows, frames=int(codes.shape[0]), codes=codes)
 
 
+# ---- stage 2: sign cores at ASLLRP pacing (docs/NEXT_PHASE_PLAN.md, "Round 15 stage 2 groundwork", 21:16 UTC) ----
+
+CORE_MODES = ("core_crossfade", "core_chained")
+# the trimmed manifests' activity rule (threshold, tracked share) with margin 0 and a two-frame minimum window
+CORE_RULE = dict(threshold=TRIM["threshold"], margin=0., min_tracked=TRIM["min_tracked"], min_seconds=2 / FPS)
+
+
+def core_window(state, rule=None, fps: float = FPS) -> dict:
+    """The sign core of one word clip: the dominant wrist's active frames (``trim_window``'s rule: the side whose
+    tracked wrist height above its shoulder varies most; frames above rest + threshold x (peak - rest), rest and peak
+    the 10th and 95th percentiles of the tracked heights) widened by ``margin`` seconds (rounded to frames) and
+    clipped to the clip. ``{"lo", "hi"}`` inclusive frame indices, ``reason``, ``side`` and ``whole``: a clip the rule
+    cannot cut (arm tracked on fewer than ``min_tracked`` of its frames, no active frame, a window under
+    ``min_seconds``) is its own core, whole. Frames, not rounded seconds: with margin 0 the core is exactly the
+    active span."""
+    from .canonical_skeleton import skeleton_positions
+    rule = dict(CORE_RULE, **(rule or {}))
+    T = len(state.timestamps)
+    whole = dict(lo=0, hi=T - 1, side=None, whole=True)
+    joints, pos, _ = skeleton_positions(state)
+    tracks = side_tracks(state)
+    best = None
+    for side in ("Right", "Left"):
+        ok = np.asarray(tracks[side][0], dtype=bool)
+        h = pos[:, joints.index(f"{side}Hand"), 1] - pos[:, joints.index(f"{side}Shoulder"), 1]
+        spread = float(np.ptp(h[ok])) if ok.any() else -1.
+        if best is None or spread > best[0]:
+            best = (spread, side, ok, h)
+    _, side, ok, h = best
+    if ok.mean() < rule["min_tracked"]:
+        return dict(whole, reason="arm_untracked")
+    rest, peak = np.percentile(h[ok], 10), np.percentile(h[ok], 95)
+    active = np.flatnonzero(ok & (h > rest + rule["threshold"] * (peak - rest)))
+    if not len(active):
+        return dict(whole, reason="no_sign_window")
+    m = int(round(rule["margin"] * fps))
+    lo, hi = max(int(active[0]) - m, 0), min(int(active[-1]) + m, T - 1)
+    if hi - lo + 1 < max(1, int(round(rule["min_seconds"] * fps))):
+        return dict(whole, reason="short_window")
+    return dict(lo=lo, hi=hi, side=side, whole=False, reason="core")
+
+
+def bridge(a, b, frames: int):
+    """``frames`` frames from ``a``'s last frame to ``b``'s first, interpolated on each channel's manifold with the
+    crossfade's weights (k + 1) / (frames + 1) (``blend_channel``); never observed."""
+    from ..pose.multichannel import CHANNELS
+    tail = take_frames(a, np.full(frames, len(a.timestamps) - 1, dtype=int))
+    head = take_frames(b, np.zeros(frames, dtype=int))
+    channels = {}
+    for name, ca in tail.channels.items():
+        out = blend_channel(CHANNELS[name][0], ca, head.channels[name], crossfade_weights(frames))
+        out["observed"] = np.zeros_like(out["valid"])
+        out["values"] = out["values"].astype(ca.values.dtype)
+        out["confidence"] = out["confidence"].astype(ca.confidence.dtype)
+        method = ca.inference_method or ("compositional bridge" if out["valid"].any() else None)
+        channels[name] = replace(ca, inference_method=method, **out)
+    return replace(tail, channels=channels)
+
+
+def lead_in(state, lo: int, frames: int):
+    """``frames`` frames before a core starting at ``lo``: the clip's own approach (its last ``frames`` frames before
+    the core), held at its first frame when the approach is shorter (at the core's first frame when there is none)."""
+    pre = np.arange(lo)
+    hold = pre[0] if len(pre) else lo
+    idx = pre[-frames:] if len(pre) >= frames else np.concatenate([np.full(frames - len(pre), hold), pre])
+    return take_frames(state, idx.astype(int))
+
+
+def lead_out(state, hi: int, frames: int):
+    """``frames`` frames after a core ending at ``hi``: the clip's own return, held at its last frame when shorter."""
+    post = np.arange(hi + 1, len(state.timestamps))
+    hold = post[-1] if len(post) else hi
+    idx = post[:frames] if len(post) >= frames else np.concatenate([post, np.full(frames - len(post), hold)])
+    return take_frames(state, idx.astype(int))
+
+
+def parts_from_pieces(pieces, order=None) -> dict:
+    """The parts of a composition of independent word clips (``pieces``: ``{"state", "lo", "hi", ...}`` per word, in
+    sentence order) taken in ``order``: their cores, no generated transition (every join bridged), the first clip's
+    approach and the last clip's return as the padding sources."""
+    order = list(range(len(pieces))) if order is None else list(order)
+    ps = [pieces[k] for k in order]
+    return dict(cores=[take_frames(p["state"], np.arange(p["lo"], p["hi"] + 1)) for p in ps],
+                transitions=[None] * (len(ps) - 1), lead=(ps[0]["state"], ps[0]["lo"]),
+                trail=(ps[-1]["state"], ps[-1]["hi"]))
+
+
+def render(parts: dict, plan: dict, *, sample_id: str = "compositional-stage2"):
+    """One state from ``parts`` under a frame plan (``compositional_grammar.plan_frames``): the lead (the first word's
+    approach), each core time-resampled to its planned frames (``time_scale``: first and last frames kept), each join
+    the generated transition time-resampled to the gap's frames (bridged when there is none), then the trail (the
+    last word's return)."""
+    cores, transitions = parts["cores"], parts["transitions"]
+    if len(cores) != len(plan["cores"]) or len(plan["gaps"]) != len(cores) - 1:
+        raise ValueError("the plan does not fit the parts")
+    out = [lead_in(*parts["lead"], plan["lead"])] if plan["lead"] else []
+    for k, core in enumerate(cores):
+        out.append(time_scale(core, plan["cores"][k]))
+        if k < len(cores) - 1 and plan["gaps"][k]:
+            t = transitions[k]
+            out.append(time_scale(t, plan["gaps"][k]) if t is not None and len(t.timestamps)
+                       else bridge(core, cores[k + 1], plan["gaps"][k]))
+    if plan["trail"]:
+        out.append(lead_out(*parts["trail"], plan["trail"]))
+    state = concatenate(out, 0, sample_id=sample_id)
+    if len(state.timestamps) != plan["frames"]:
+        raise AssertionError("rendered length differs from the plan")
+    return state
+
+
+def compose_cores(prior, tokenizer, words, generate_seconds, mode: str, seeds, *, guidance: float, temperature, post,
+                  device=None, rule=None, text: str | None = None) -> dict:
+    """The generated material of one stage-2 composition (``render`` makes the sentence from it under any plan):
+    ``{"mode", "parts", "segments", "pieces" (core_crossfade), "codes" (core_chained)}``.
+
+    - ``core_crossfade``: each word generated independently at its typical isolated duration (``generate_word``, as the
+      pilot's lexicon samples a word), its core cut (``core_window``); joins bridged by interpolation.
+    - ``core_chained``: word k is the prior's continuation (``continue_from``, stage 1's chained sampler and clock) of
+      the kept codes of words 1..k-1, ``generate_seconds[k]`` long; its core is cut on the segment's decoded frames and
+      the codes after the core's end are dropped before word k + 1 continues (the last word keeps its return). The
+      kept codes are decoded once; the transition into core k (k > 1) is the prior's own frames between core k - 1's
+      end and core k's start, time-resampled to the gap; the lead is word 1's approach, the trail word n's return."""
+    import torch
+    if mode not in CORE_MODES:
+        raise ValueError(f"unknown mode {mode!r}")
+    if not words or len(words) != len(generate_seconds) or len(words) != len(seeds):
+        raise ValueError("compose_cores needs one duration and one seed per word, and at least one word")
+    device = device if device is not None else next(prior.parameters()).device
+    text = text if text is not None else " ".join(words)
+    frames = [word_frames(d) for d in generate_seconds]
+    if mode == "core_crossfade":
+        clips = [generate_word(prior, tokenizer, w, d, s, guidance=guidance, temperature=temperature, post=post)
+                 for w, d, s in zip(words, generate_seconds, seeds)]
+        pieces = [dict(state=c, **core_window(c, rule)) for c in clips]
+        rows = [dict(word=w, frames=len(c.timestamps), seed=s, lo=p["lo"], hi=p["hi"], reason=p["reason"])
+                for w, c, s, p in zip(words, clips, seeds, pieces)]
+        return dict(mode=mode, parts=parts_from_pieces(pieces), segments=rows, pieces=pieces)
+    if tokenizer.config.step != 1:
+        raise ValueError("chained composition assumes one token per frame (tokenizer step 1)")
+    decode = make_decode(tokenizer, prior.config.tokenizer.motion, post)
+    codes = torch.zeros((0, prior.J), dtype=torch.long)
+    rows = []
+    for k, (w, f, s) in enumerate(zip(words, frames, seeds)):
+        start = codes.shape[0]
+        chain, sequence = continue_from(prior, tokenizer, decode, w, codes[None].to(device), start + f, s,
+                                        guidance=guidance, device=device, temperature=temperature, return_codes=True)
+        c = core_window(take_frames(chain, np.arange(start, start + f)), rule)
+        keep = start + f if k == len(words) - 1 else start + c["hi"] + 1
+        rows.append(dict(word=w, frames=f, seed=s, clock_start=start / FPS, duration_input=(start + f) / FPS,
+                         start=start, lo=start + c["lo"], hi=start + c["hi"], kept=keep - start, reason=c["reason"]))
+        codes = sequence[:keep].cpu()
+    state = decode(codes[None].to(device), codes.shape[0], text)
+    state = replace(state, sample_id=f"compositional-{mode}:{text[:40]}")
+    cores = [take_frames(state, np.arange(r["lo"], r["hi"] + 1)) for r in rows]
+    transitions = [take_frames(state, np.arange(r["start"], r["lo"])) if r["lo"] > r["start"] else None
+                   for r in rows[1:]]
+    parts = dict(cores=cores, transitions=transitions, lead=(state, rows[0]["lo"]), trail=(state, rows[-1]["hi"]))
+    return dict(mode=mode, parts=parts, segments=rows, codes=codes)
+
+
 __all__ = ["FPS", "FLOOR", "MODES", "ISOLATED_CORPORA", "STOP_WORDS", "TRIM", "KEPT", "normalise",
            "training_vocabulary", "inflection_candidates", "selection_details", "select_words", "selection_statistics",
            "fitted_durations", "crossfade_frames", "join_overlaps", "crossfade_weights", "blend_values", "blend_channel",
            "concatenate", "take_frames", "side_tracks", "sign_window", "trim_window", "window_frames", "make_decode",
-           "continue_from", "word_frames", "generate_word", "compose"]
+           "continue_from", "word_frames", "generate_word", "compose", "time_scale", "CORE_MODES", "CORE_RULE",
+           "core_window", "bridge", "lead_in", "lead_out", "parts_from_pieces", "render", "compose_cores"]
