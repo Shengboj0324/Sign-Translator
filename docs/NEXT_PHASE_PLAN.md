@@ -2518,7 +2518,7 @@ Otherwise F12 stays the leader, and the round's result informs round 14 (alignme
 - **F12 remains the continued arm.** M12 stays stopped with its checkpoints kept.
 - **Round 12 closes with two promising arms.** The round-13 arms (S13, C13) warm-start from F12.
 
-## Arm recovery, step A result (recorded 2026-10-28, 05:27 UTC)
+## Arm recovery, step A result (recorded 2026-10-28, 05:26 UTC)
 
 **Root cause (pipeline, not detector).**
 - `solve_rotations` (`video_landmarks.py`) roots the upper arms at the chest, and without `upright_chest` the chest is valid only when **both hips** have visibility ≥ 0.5.
