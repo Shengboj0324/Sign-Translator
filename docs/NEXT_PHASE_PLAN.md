@@ -2946,3 +2946,37 @@ All declared conditions are met, so **Sem-Lex is admitted**. Its lower reading a
 3. Convert all 91,148 clips on a CPU pod to `states-semlex-holistic-learned-world-v2-0953cd2cb2b4/`.
 4. `build_semlex_manifest.py` (in progress).
 5. Declare round 14: F12 plus Sem-Lex words, against the 42 uncovered R5 words.
+
+### Sentence exposure diagnostic, F12 step 10000 (recorded 2026-10-28, 10:59 UTC; 300 How2Sign val sentences; back-translation BLEU [95% CI])
+
+| Form | BLEU |
+|---|---|
+| Real | 4.09 [3.16, 5.08] |
+| Tokenizer reconstruction | 3.88 [2.99, 4.86] (masked like real: 3.82) |
+| Blank | 2.09 [1.44, 2.74] |
+| One-step from the real history, sampled | **1.53** [1.08, 1.93] |
+| One-step from the real history, argmax | **1.73** [1.16, 2.26] |
+| Free run | 1.41 [1.00, 1.85] |
+| Real prefix 25 / 50 / 75%, then continued | 2.18 / 2.30 / 3.06 |
+| … prefix then blank | 2.28 / 2.95 / 3.21 |
+| … prefix then held | 2.02 / 2.90 / 3.24 |
+
+**Continued portions only.** The continuations never beat blank or hold:
+
+| Prefix | Prefix continuation | Free-run tail | Blank tail | Real tail |
+|---|---|---|---|---|
+| 25% | 1.19 | 1.46 | 1.00 | 2.99 |
+| 50% | 0.74 | 0.80 | 0.76 | 1.98 |
+
+**Codes.**
+- With the real history, the prior's sampled codes match the real codes on 3.5% of positions (stage 1: 16.8%).
+- Free-run code repetition is close to real: lag-1 0.29 against 0.37, distinct rows 0.99 against 0.93. It is not degenerate looping.
+
+**Reading.**
+- The tokenizer carries sentence meaning: its reconstruction reaches 95% of real.
+- The prior does not carry it, even teacher-forced. Next-step samples given the real history read below blank.
+- So the sentence failure is **not exposure bias or drift**. The prior's per-step predictions for sentences carry no sentence content. That is a text-conditioning failure at the sentence level.
+- For isolated words the same one-step reads work: 0.73–0.85 against real 0.95.
+- Combined with round 13 (cleaned data and guided attention: no change) and word spotting (no sentence words in generated motion), training-procedure fixes within this formulation have not moved sentences in four rounds.
+
+**Pending before any structural decision.** The compositional baseline (running) tests whether sentences composed from the prior's own isolated words carry meaning. That is the evidence the owner asked for before a structural change such as a word- or gloss-level path.
