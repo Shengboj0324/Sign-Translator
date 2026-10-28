@@ -2662,3 +2662,41 @@ No licence above permits commercial use or explicitly permits releasing a traine
 - Licence compliance is settled before the model is finalised: consent limits (ASL Citizen is recognition-only), share-alike clauses (Sem-Lex, ASL Signbank), and the NVIDIA terms, if that data is used.
 
 **Sem-Lex follow-up** (same thread as the first request) sent at 06:29 UTC to Naomi Caselli, cc Lee Kezar's Gmail and USC addresses. It offers several ways to transfer the data: a Drive share, Box, Globus, OSF or a bucket, or a subset (isolated videos or pose files). It also offers to sign a data use agreement. The owner is also asking his professors for a route in.
+
+### Sem-Lex pose files from a Hugging Face mirror (owner-provided, 2026-10-28, 06:53 UTC)
+
+**Mirror.** `tylerxia8/sem-lex-pilot-mirror`, pinned at revision bf340cbf. Four files, 34.05 GB: `semlex_metadata.csv` plus `train`/`val`/`test.tar.gz`.
+
+**Red flags.**
+- The account was created 3 minutes before the dataset, and the README is empty.
+- It is labelled Apache-2.0, which is **not** the publisher's licence. The data is used only under Sem-Lex's CC BY-NC-SA 4.0 terms, which the owner accepted on the publisher's form.
+
+**Why it is accepted as the publisher's data.**
+- The metadata has exactly 91,148 clips, the publisher's own README figure.
+  - 44 signer ids; 65,154 ASL-LEX labels (2,499 glosses), 6,192 SignBank labels (680 ids) and 19,802 free-text labels.
+  - The paper's phonological columns are present.
+  - Durations median 1.94 s (0.52–9.0 s).
+- Archive members are owned by `lee` and dated 2023-10-23, one `<video_id>.npy` per clip.
+- All 1,410 sampled members are in the metadata.
+- Completeness against the publisher's copy is checked after transfer, not assumed.
+
+**Content.** These are the announced "pose estimation files", **not videos**.
+- MediaPipe Holistic, (frames, 553, 3) float16, normalised image coordinates plus relative z, NaN when undetected, about 30 fps.
+- Point layout: face mesh 0–477 (with iris), pose 478–510, left hand 511–531, right hand 532–552.
+- No world landmarks, no blendshapes, no face matrix, no frame size.
+
+**Framing** (1,410 test clips): tight webcam framing.
+- The hips are never in the image and the shoulders sit at y ≈ 0.67.
+- An elbow is in the image on 38–44% of frames and a hand is detected on 33%.
+- Per clip, the median fraction of frames with an in-image elbow, wrist and a detected hand is 0.10. Only 23% of clips reach 30%.
+- Strong for handshape and location; the arms are often unsolvable under the elbow gate.
+
+**Coverage of the 42 uncovered R5 words:** 38 have clips, by exact label match (median 13 clips per ASL-LEX gloss). The 4 without are FOND, FRAUD, FRINGE and INCREDIBLE.
+
+**Transfer.** `scripts/acquisition/acquire_semlex_mirror.py` streams each file to R2 under `acquisition/2026-10-17-v1/sem-lex-mirror-v1/`. Every file's SHA-256 must equal the mirror's LFS id, and the stored object is re-read and re-hashed.
+
+**Before any training use: an adapter `semlex_pose -> MultichannelMotion`.** It needs its own design, review and declaration. Open problems:
+1. **Aspect ratio.** The frame size is unknown; estimate it per clip from face-mesh proportions against MediaPipe's canonical face model.
+2. **Pseudo-3D.** Body and hand points from image x, y and relative z, then the existing swing IK (`upright_chest` + `upright_root` + `elbow_in_image`).
+3. **Face.** Blendshapes from MediaPipe's blendshape model on the landmark subset it takes; head rotation by Procrustes to the canonical face.
+4. **Validation.** Compare against our own extraction on clips where both exist (none yet), or against ASL Citizen-style webcam clips. Then check recognisability with recogniser v2 on real Sem-Lex states (real vs blank), as the instrument rules require.
