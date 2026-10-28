@@ -229,13 +229,56 @@ def test_arm_recovery_writes_beside_the_original_and_reports_the_recovery(monkey
     stored = MultichannelMotion.load(path, expected_sha256=seg["state_sha256"])
     again, _ = vl.canonical_from_landmarks(vl.load_raw_landmarks(raw), sample_id=seg["sample_id"], source_id="yt-test",
                                            source_sha256=report["video_sha256"], clock_id="c", inference_method="x",
-                                           upright_chest=True, elbow_in_image=True)
+                                           upright_chest=True, elbow_in_image=True, upright_root=True)
     for name in stored.channels:
         np.testing.assert_array_equal(stored.channels[name].values, again.channels[name].values)
-    # a second run never overwrites the recovery outputs either
+    assert report["upright_root"] and "upright root" in report["inference_method"]
+    # the recovered arms have a complete chain: forward kinematics keeps the shoulders off the origin
+    from signtranslator.generation.canonical_skeleton import skeleton_positions
+    joints, positions, _ = skeleton_positions(stored)
+    assert np.linalg.norm(positions[:, joints.index("LeftShoulder")], axis=1).min() > .1
+    # leftovers of an interrupted run (recovery keys without a video report) are overwritten, not a dead end
+    assert acq.process("abcdefghijk", args, store, models=None)["status"] == "converted"
+    # once the recovery video report exists (the commit marker), a second run never overwrites the outputs
+    store.put("yt/arm-recovery-v1/videos/abcdefghijk.json", json.dumps(report).encode())
+    recovered = {k: store.get(k) for k in store.list("yt/arm-recovery-v1/")}
     assert acq.process("abcdefghijk", args, store, models=None)["status"] == "duplicate"
+    assert {k: store.get(k) for k in store.list("yt/arm-recovery-v1/")} == recovered
     with pytest.raises(SystemExit):
         acq.apply_arm_recovery(types.SimpleNamespace(prefix="yt/arm-recovery-v1", arm_recovery=True))
     plain = types.SimpleNamespace(prefix="yt", arm_recovery=False)
     acq.apply_arm_recovery(plain)
     assert plain.prefix == "yt" and plain.original_prefix is None
+
+
+def test_arm_recovery_survives_an_unreadable_original_state(monkeypatch, tmp_path):
+    """A missing or forbidden old state (R2 raises botocore's ClientError, not OSError) only empties the before."""
+    import json
+    from signtranslator.data.text_motion_dataset import DirectoryStore
+    import signtranslator.data_engineering.video_landmarks as vl
+    store = DirectoryStore(tmp_path / "store")
+
+    def fake_download(video_id, directory, *, max_height, allow_auto):
+        path = directory / f"{video_id}.mp4"; path.write_bytes(b"video")
+        return dict(status="downloaded", video=path, captions="WEBVTT\n\n00:00:00.500 --> 00:00:03.000\nHello there.\n",
+                    kind="manual", meta=dict(fps=10))
+    monkeypatch.setattr(acq, "download", fake_download)
+    monkeypatch.setattr(vl, "extract_clip", lambda *a, **k: _chest_up_clip())
+    monkeypatch.setattr(vl, "inference_method", lambda: "test-method")
+    common = dict(max_height=720, allow_auto_captions=False, min_seconds=1., max_seconds=20., pad=.2,
+                  count_people_every=12, source_id="yt-test")
+    original = acq.process("abcdefghijk", types.SimpleNamespace(prefix="yt", **common), store, models=None)
+    store.put("yt/videos/abcdefghijk.json", json.dumps(original).encode())
+
+    class ClientError(Exception):
+        pass
+    real_get = store.get
+    old_state = original["segments"][0]["state_key"]
+    monkeypatch.setattr(store, "get", lambda key: (_ for _ in ()).throw(ClientError("NoSuchKey")) if key == old_state
+                        else real_get(key))
+    args = types.SimpleNamespace(prefix="yt", arm_recovery=True, **common)
+    acq.apply_arm_recovery(args)
+    report = acq.process("abcdefghijk", args, store, models=None)
+    assert report["status"] == "converted"
+    rec = report["segments"][0]["recovery"]
+    assert rec["forearm_fraction"]["stored_before"] is None and "ClientError" in rec["stored_before_missing"]

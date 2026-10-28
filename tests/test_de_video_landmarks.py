@@ -233,3 +233,52 @@ def test_raw_landmarks_round_trip_and_re_solve():
     assert load_raw_landmarks(save_raw_landmarks(replace(c, other_person=None))).other_person is None
     with pytest.raises(ValueError):
         load_raw_landmarks(raw, expected_sha256="0" * 64)
+
+
+def test_upright_root_keeps_the_chest_frame_without_hips():
+    from signtranslator.generation.canonical_skeleton import skeleton_positions
+    visibility = clip().pose_visibility.copy()
+    visibility[:, 23:] = 0.                                                    # chest-up framing: no hips
+    c = replace(clip(), pose_visibility=visibility)
+    kw = dict(sample_id="s", source_id="src", source_sha256="a" * 64, clock_id="c", inference_method="test",
+              upright_chest=True)
+    old, old_report = canonical_from_landmarks(c, **kw)
+    new, report = canonical_from_landmarks(c, upright_root=True, **kw)
+    body_old, body_new = old.channels["body"], new.channels["body"]
+    labels = body_new.labels
+    valid = dict(zip(labels, body_new.valid.T))
+    assert valid["Pelvis"].all() and valid["Chest"].all()                      # the root chain is complete
+    assert not dict(zip(labels, body_old.valid.T))["Chest"].any()             # before: no chest was stored
+    for name in ("LeftThigh", "LeftShin", "RightThigh", "RightShin"):
+        assert not valid[name].any()                                           # legs stay unseen
+    k = labels.index("Pelvis")
+    np.testing.assert_allclose(body_new.values[:, k], np.tile([1., 0., 0., 0., 1., 0.], (T, 1)), atol=1e-12)
+    for name in labels:                                                        # arms (relative to the chest) unchanged
+        if name not in ("Pelvis", "Chest"):
+            j = labels.index(name)
+            np.testing.assert_array_equal(body_new.values[:, j], body_old.values[:, j], err_msg=name)
+            np.testing.assert_array_equal(body_new.valid[:, j], body_old.valid[:, j], err_msg=name)
+    for name in ("left_hand", "right_hand", "face", "head_rotation"):
+        np.testing.assert_array_equal(new.channels[name].values, old.channels[name].values)
+    assert report["upright_root"] and report["upright_root_frames"] == T and "upright_root" not in old_report
+    # the chest's stored local rotation is its upright world frame: forward kinematics recovers the shoulders
+    joints, positions, _ = skeleton_positions(new)
+    _, old_positions, _ = skeleton_positions(old)
+    shoulder = joints.index("LeftShoulder")
+    assert np.allclose(old_positions[:, shoulder], 0.)                         # the collapse this fixes
+    assert (np.linalg.norm(positions[:, shoulder], axis=1) > .1).all()
+    with pytest.raises(ValueError):
+        canonical_from_landmarks(c, **dict(kw, upright_chest=False), upright_root=True)
+    # frames with hips are untouched
+    with_hips, _ = canonical_from_landmarks(clip(), **kw)
+    with_hips_root, root_report = canonical_from_landmarks(clip(), upright_root=True, **kw)
+    for name in with_hips.channels:
+        np.testing.assert_array_equal(with_hips.channels[name].values, with_hips_root.channels[name].values)
+        np.testing.assert_array_equal(with_hips.channels[name].valid, with_hips_root.channels[name].valid)
+    assert root_report["upright_root_frames"] == 0
+
+
+def test_raw_landmarks_keep_the_frame_size():
+    from signtranslator.data_engineering.video_landmarks import load_raw_landmarks, save_raw_landmarks
+    assert load_raw_landmarks(save_raw_landmarks(replace(clip(), image_size=(1280, 720)))).image_size == (1280, 720)
+    assert load_raw_landmarks(save_raw_landmarks(clip())).image_size is None

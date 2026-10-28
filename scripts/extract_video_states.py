@@ -135,6 +135,7 @@ def state_quality(state) -> dict:
 def _process_once(job):
     member, prefix, source_id, zip_sha256, upright_chest, hand_scale, *rest = job
     elbow_in_image = bool(rest and rest[0])
+    upright_root = bool(len(rest) > 1 and rest[1])
     from signtranslator.data_engineering.video_landmarks import canonical_from_landmarks, extract_clip, inference_method
     store, archive = _WORKER["store"], _WORKER["archive"]
     sample = Path(member).stem
@@ -161,8 +162,10 @@ def _process_once(job):
             state, report = canonical_from_landmarks(
                 clip, sample_id=sample, source_id=source_id, source_sha256=hashlib.sha256(payload).hexdigest(),
                 clock_id=f"{source_id}:{sample}:pts", upright_chest=upright_chest, elbow_in_image=elbow_in_image,
+                upright_root=upright_root,
                 inference_method=inference_method() + ("; chest up axis from the camera vertical (upright prior)"
                                                         if upright_chest else "")
+                + ("; pelvis the camera-upright identity on frames without hips (upright root)" if upright_root else "")
                 + ("; arms only on frames whose elbow lies inside the image" if elbow_in_image else ""))
             path = Path(temporary) / "state.npz"
             digest = state.save(path)
@@ -196,6 +199,9 @@ def main(argv=None) -> int:
     parser.add_argument("--elbow-in-image", action="store_true",
                         help="framings that cut the arms: upper arm, forearm and wrist only on frames whose elbow image "
                              "landmark lies inside the frame (solve_rotations)")
+    parser.add_argument("--upright-root", action="store_true",
+                        help="with --upright-chest: frames without hips keep the chest frame against an identity pelvis "
+                             "(solve_rotations), so forward kinematics of the arms is complete")
     parser.add_argument("--hand-scale", type=float, default=.9,
                         help="hand crop side in shoulder widths (wide studio shots with small hands: 1.8; RIT, 2026-10-26)")
     parser.add_argument("--match", help="only clips whose file name matches this regular expression")
@@ -214,7 +220,7 @@ def main(argv=None) -> int:
     shard = [m for i, m in enumerate(members) if i % args.shards == args.shard][:args.limit]
     print(f"{len(members)} clips, shard {args.shard}/{args.shards}: {len(shard)}", flush=True)
     jobs = [(m, args.prefix.rstrip("/"), args.source_id, args.zip_sha256, args.upright_chest, args.hand_scale,
-             args.elbow_in_image) for m in shard]
+             args.elbow_in_image, args.upright_root) for m in shard]
     results = []
     with ProcessPoolExecutor(max_workers=args.workers, initializer=_init,
                              initargs=(args.zip_key, args.models_dir)) as pool:
@@ -224,6 +230,7 @@ def main(argv=None) -> int:
                 print(f"{i}/{len(jobs)} {result['status']}", flush=True)
     report = dict(schema_version=1, zip_key=args.zip_key, zip_sha256=args.zip_sha256, shard=args.shard,
                   upright_chest=args.upright_chest, **({"elbow_in_image": True} if args.elbow_in_image else {}),
+                  **({"upright_root": True} if args.upright_root else {}),
                   shards=args.shards, clips=len(results),
                   status_counts={s: sum(r["status"] == s for r in results) for s in {r["status"] for r in results}},
                   results=results)

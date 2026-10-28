@@ -29,8 +29,8 @@ deletes each staged video. A staged video is a transient copy, kept only until i
 **Arm recovery (``--arm-recovery``, owner-approved re-download 2026-10-28).** The original pipeline solved the arms from
 a chest built on both hips, so chest-up videos lost every arm frame. With the flag, every stage works under
 ``<prefix>/arm-recovery-v1/`` (staged videos, claims, states, video reports), never under the original keys, and the
-original run stays reproducible without the flag. The conversion then uses ``upright_chest=True`` and
-``elbow_in_image=True`` (``video_landmarks.solve_rotations``: upper arm, forearm and wrist count only on frames whose
+original run stays reproducible without the flag. The conversion then uses ``upright_chest=True``,
+``upright_root=True`` (frames without hips keep the chest frame, against an identity pelvis) and ``elbow_in_image=True`` (``video_landmarks.solve_rotations``: upper arm, forearm and wrist count only on frames whose
 elbow lies inside the image). Each cue also stores its raw MediaPipe landmarks
 (``<prefix>/arm-recovery-v1/landmarks/<id>-<cue>.npz``, ``video_landmarks.save_raw_landmarks``); the state is solved
 from exactly those stored landmarks, so re-solving them reproduces it. Each segment carries a ``recovery`` report:
@@ -193,8 +193,9 @@ def face_stats(state) -> tuple[float, float | None]:
 
 
 ARM_RECOVERY_DIR = "arm-recovery-v1"
-ARM_RECOVERY_METHOD = ("; chest up axis from the camera vertical (upright prior); arms only on frames whose elbow lies "
-                       "inside the image; solved from the stored raw landmarks")
+ARM_RECOVERY_METHOD = ("; chest up axis from the camera vertical (upright prior); pelvis the camera-upright identity on "
+                       "frames without hips (upright root); arms only on frames whose elbow lies inside the image; "
+                       "solved from the stored raw landmarks")
 
 
 def apply_arm_recovery(args) -> None:
@@ -407,7 +408,7 @@ def process(video_id: str, args, store, models, gate=None, *, staged: bool = Fal
             state, report = canonical_from_landmarks(
                 part, sample_id=sample, source_id=args.source_id, source_sha256=video_sha,
                 clock_id=f"{args.source_id}:{sample}:pts", inference_method=method,
-                upright_chest=recovery, elbow_in_image=recovery)
+                upright_chest=recovery, elbow_in_image=recovery, upright_root=recovery)
             if recovery:
                 original, _ = canonical_from_landmarks(   # the original solver on the same landmarks: the controlled before
                     part, sample_id=sample, source_id=args.source_id, source_sha256=video_sha,
@@ -419,7 +420,7 @@ def process(video_id: str, args, store, models, gate=None, *, staged: bool = Fal
             pending.append((landmarks_key, raw))
             try:
                 before, why = stored_before(store, args, video_id, sample, cue)
-            except (ValueError, KeyError, OSError) as error:   # an unreadable old state: no before, not no video
+            except Exception as error:  # noqa: BLE001 - an unreadable or missing old state (R2 ClientError too): no before, not no video
                 before, why = None, f"original state unreadable: {type(error).__name__}: {error}"[:200]
             after, same = tracked_fractions(state), tracked_fractions(original)
             pose = max(int(part.pose_found.sum()), 1)
@@ -450,22 +451,21 @@ def process(video_id: str, args, store, models, gate=None, *, staged: bool = Fal
                              available_channels=[n for n, c in state.channels.items() if c.valid.any()],
                              **({} if part.other_person is None else
                                 dict(other_person_fraction=round(other_person_fraction(part), 3))), **extra))
-    if staged and store.exists(f"{args.prefix}/videos/{video_id}.json"):
+    if (staged or recovery) and store.exists(f"{args.prefix}/videos/{video_id}.json"):
         # another extractor converted this video meanwhile (a claim taken over before claims were refreshed): its
         # states and report stay as they are; overwriting them would desynchronise every manifest built from them
         return dict(video_id=video_id, status="duplicate", reason="converted by another extractor first")
-    if recovery:
-        if any(not key.startswith(f"{args.prefix}/") for key, _ in pending):
-            raise ValueError("arm recovery: a key outside the arm-recovery prefix")   # never the original states
-        if any(store.exists(key) for key, _ in pending):
-            return dict(video_id=video_id, status="duplicate", reason="arm-recovery outputs already present")
+    # Under --arm-recovery the video report is the commit marker (checked just above): recovery keys that no report
+    # points to are leftovers of an interrupted run and are safe to overwrite; the prefix check keeps original keys out.
+    if recovery and any(not key.startswith(f"{args.prefix}/") for key, _ in pending):
+        raise ValueError("arm recovery: a key outside the arm-recovery prefix")   # never the original states
     for key, payload in pending:
         store.put(key, payload)
     return dict(video_id=video_id, status="converted", meta=got["meta"], caption_kind=got["kind"], video_sha256=video_sha,
                 caption_seconds=caption_seconds,
                 cues=len(cues), segments=segments, refused=refused, inference_method=method,
-                **({} if not recovery else dict(arm_recovery=True, upright_chest=True, elbow_in_image=True,
-                                                original_prefix=args.original_prefix)))
+                **({} if not recovery else dict(arm_recovery=True, upright_chest=True, upright_root=True,
+                                                elbow_in_image=True, original_prefix=args.original_prefix)))
 
 
 def main(argv=None) -> int:
@@ -565,6 +565,10 @@ def main(argv=None) -> int:
                     continue
             else:
                 report = process(video_id, args, store, models, gate)
+                if report["status"] == "duplicate":      # converted meanwhile: its report stays the one stored
+                    counts["duplicate"] = counts.get("duplicate", 0) + 1
+                    print(json.dumps(dict(video_id=video_id, status="duplicate")), flush=True)
+                    continue
         except Blocked as blocked:
             blocks += 1
             print(f"BLOCKED at video {n} ({video_id}) [{blocks}/{args.max_blocks}]: {blocked}", flush=True)

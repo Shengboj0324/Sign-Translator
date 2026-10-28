@@ -113,6 +113,7 @@ class ClipLandmarks:
     roi: bool = False            # face/hands came from crops; head translation is then unavailable
     other_person: np.ndarray | None = None  # (T,) largest other person's shoulder width / the widest person's (0 when
                                             # alone), held between counted frames; None when people were not counted
+    image_size: tuple[int, int] | None = None  # (width, height) of the decoded frames, pixels; None when not recorded
 
 
 def assign_hands(clip: ClipLandmarks) -> dict[str, tuple[np.ndarray, np.ndarray]]:
@@ -160,7 +161,7 @@ def elbows_in_image(pose_image: np.ndarray) -> dict[str, np.ndarray]:
 def solve_rotations(world: np.ndarray, visible_pose: np.ndarray,
                     hands: dict[str, tuple[np.ndarray, np.ndarray]], *,
                     upright_chest: bool = False, elbow_in_image: bool = False,
-                    pose_image: np.ndarray | None = None) -> tuple[dict, dict]:
+                    pose_image: np.ndarray | None = None, upright_root: bool = False) -> tuple[dict, dict]:
     """Body and finger rotations from y-up 3D points in the MediaPipe pose-33 index layout.
 
     ``world`` is (T, 33, 3) with only the body indices used here required; ``visible_pose``
@@ -187,7 +188,17 @@ def solve_rotations(world: np.ndarray, visible_pose: np.ndarray,
     Fingers (rooted at the palm frame), chest, pelvis and legs are untouched; the wrist and
     shoulder landmarks are not position-gated. The default (False) leaves every output
     bit-identical to the solver without the option.
+
+    ``upright_root`` (needs ``upright_chest``) completes the chain on frames without hips. Without
+    it, such a frame stores the arms against the chest's world frame while the pelvis and the
+    chest are invalid, so the chest frame is saved nowhere (forward kinematics then puts every arm
+    joint at the origin). With it, on frames whose pelvis is invalid but whose upright chest is
+    valid, the pelvis holds the identity (the camera-upright root: the same prior as the upright
+    chest, extended to the root) and counts as valid. The chest's local rotation is then its
+    world frame. The arms, hands, fingers and legs are unchanged; frames with hips are unchanged.
     """
+    if upright_root and not upright_chest:
+        raise ValueError("upright_root needs upright_chest")
     if elbow_in_image:
         if pose_image is None or np.shape(pose_image)[:2] != np.shape(visible_pose)[:2]:
             raise ValueError("elbow_in_image needs pose_image with the pose's (T, 33) layout")
@@ -207,6 +218,10 @@ def solve_rotations(world: np.ndarray, visible_pose: np.ndarray,
     pelvis_ok &= visible[:, MID_HIP] & visible[:, MID_SHOULDER]
     chest_ok &= visible[:, MID_SHOULDER] & (True if upright_chest else visible[:, MID_HIP])
     body = solve_chain(points, {"Pelvis": (pelvis, pelvis_ok), "Chest": (chest, chest_ok)}, BODY_JOINTS, visible)
+    if upright_root:                       # after the chain solve: only the stored root changes
+        root = ~pelvis_ok & chest_ok
+        pelvis = np.where(root[:, None, None], np.eye(3), pelvis)
+        pelvis_ok = pelvis_ok | root
     chest_local = np.einsum("tji,tjk->tik", pelvis, chest)
     rotations = {"Pelvis": (pelvis, pelvis_ok), "Chest": (chest_local, pelvis_ok & chest_ok)}
     rotations.update({j.name: (body[j.name][0], body[j.name][2]) for j in BODY_JOINTS})
@@ -224,7 +239,7 @@ def solve_rotations(world: np.ndarray, visible_pose: np.ndarray,
 def canonical_from_landmarks(clip: ClipLandmarks, *, sample_id: str, source_id: str, source_sha256: str,
                              clock_id: str, inference_method: str, points: dict | None = None,
                              frame: str = FRAME, upright_chest: bool = False,
-                             elbow_in_image: bool = False) -> tuple[MultichannelMotion, dict]:
+                             elbow_in_image: bool = False, upright_root: bool = False) -> tuple[MultichannelMotion, dict]:
     """Canonical state from a clip's landmarks.
 
     By default body and hands come from the clip's monocular world landmarks. Pass
@@ -232,7 +247,7 @@ def canonical_from_landmarks(clip: ClipLandmarks, *, sample_id: str, source_id: 
     to use other 3D points (for example two-view triangulation) while the face,
     head and blink channels still come from the clip.
 
-    ``upright_chest`` and ``elbow_in_image`` are passed to :func:`solve_rotations`; the elbow
+    ``upright_chest``, ``upright_root`` and ``elbow_in_image`` are passed to :func:`solve_rotations`; the elbow
     gate reads the clip's own ``pose_image``. With ``elbow_in_image`` the report also carries
     ``elbow_in_image_frames`` (per side, pose frames whose elbow lies inside the image); without
     it the report is unchanged.
@@ -248,7 +263,8 @@ def canonical_from_landmarks(clip: ClipLandmarks, *, sample_id: str, source_id: 
         if world.shape[0] != frames:
             raise ValueError("3D points must share the clip's frames")
     rotations, hand_rotations = solve_rotations(world, visible_pose, hands, upright_chest=upright_chest,
-                                                elbow_in_image=elbow_in_image, pose_image=clip.pose_image)
+                                                elbow_in_image=elbow_in_image, pose_image=clip.pose_image,
+                                                upright_root=upright_root)
     hands = {side: (None, hands[side][1]) for side in hands}
     def rotation_channel(names, table):
         mats = np.stack([table[n][0] for n in names], axis=1)
@@ -297,6 +313,9 @@ def canonical_from_landmarks(clip: ClipLandmarks, *, sample_id: str, source_id: 
                   arm_frames={j: int(rotations[j][1].sum()) for j in ("LeftForearm", "RightForearm")},
                   upright_chest=upright_chest,
                   unavailable=sorted(n for n, c in channels.items() if not c.valid.any()))
+    if upright_root:
+        report["upright_root"] = True
+        report["upright_root_frames"] = int((rotations["Pelvis"][1] & ~(visible_pose[:, L_HIP] & visible_pose[:, R_HIP])).sum())
     if elbow_in_image:
         inside = elbows_in_image(clip.pose_image)
         report["elbow_in_image"] = True
@@ -316,7 +335,8 @@ _RAW_DTYPES = dict(times=np.float64, pose_world=np.float16, pose_visibility=np.f
 def save_raw_landmarks(clip: ClipLandmarks) -> bytes:
     """The clip's per-frame MediaPipe outputs as compact ``.npz`` bytes: pose world landmarks, pose image landmarks
     with visibility, both hand slots (world and image, with detection flags; the side assignment is redone from them
-    by :func:`assign_hands`), face blendshapes (with names) and transformation matrix, the people count when present.
+    by :func:`assign_hands`), face blendshapes (with names) and transformation matrix, the people count when present,
+    and the frame size (``image_size``, in the metadata) when recorded.
     :func:`load_raw_landmarks` returns a ``ClipLandmarks`` every solver accepts, so a later solver change is a
     re-solve, not a re-extraction. Solve from the loaded copy to make the state reproducible from these bytes."""
     import io
@@ -325,7 +345,9 @@ def save_raw_landmarks(clip: ClipLandmarks) -> bytes:
               if getattr(clip, name) is not None}
     arrays["blendshape_names"] = np.array(clip.blendshape_names, dtype=str)
     arrays["metadata"] = np.array(json.dumps(dict(schema=RAW_LANDMARKS_SCHEMA, roi=bool(clip.roi),
-                                                  frames=int(len(clip.times))), sort_keys=True))
+                                                  frames=int(len(clip.times)),
+                                                  image_size=None if clip.image_size is None else
+                                                  [int(v) for v in clip.image_size]), sort_keys=True))
     buffer = io.BytesIO()
     np.savez_compressed(buffer, **arrays)
     return buffer.getvalue()
@@ -344,8 +366,10 @@ def load_raw_landmarks(payload: bytes, *, expected_sha256: str | None = None) ->
         values = {name: (archive[name].astype(bool) if dtype is bool else archive[name].astype(np.float64))
                   for name, dtype in _RAW_DTYPES.items() if name in archive.files}
         names = tuple(str(n) for n in archive["blendshape_names"])
+    size = metadata.get("image_size")
     return ClipLandmarks(blendshape_names=names, roi=bool(metadata["roi"]),
-                         other_person=values.pop("other_person", None), **values)
+                         other_person=values.pop("other_person", None),
+                         image_size=None if size is None else (int(size[0]), int(size[1])), **values)
 
 
 def verify_models(directory: Path) -> dict[str, Path]:
@@ -426,7 +450,7 @@ def extract_clip(video: Path, models: dict[str, Path], *, start_seconds: float =
         base_options=base(model_asset_path=str(models["pose_landmarker_heavy.task"])),
         running_mode=vision.RunningMode.IMAGE, num_poses=3)) if count_people_every > 0 else None
     other = 0.
-    rows, names = [], None
+    rows, names, image_size = [], None, None
 
     def to_image(array):
         return mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(array))
@@ -452,6 +476,10 @@ def extract_clip(video: Path, models: dict[str, Path], *, start_seconds: float =
             rgb = frame.to_ndarray(format="rgb24")
             height, width = rgb.shape[:2]
             size = np.array([width, height], dtype=np.float64)
+            if image_size is None:
+                image_size = (int(width), int(height))
+            elif image_size != (int(width), int(height)):
+                raise ValueError("the frame size changed within the video")
             p = pose.detect_for_video(to_image(rgb), ms)
             row = dict(t=t, pose_found=bool(p.pose_world_landmarks), hw=[], hi=[])
             if counter is not None:
@@ -520,7 +548,7 @@ def extract_clip(video: Path, models: dict[str, Path], *, start_seconds: float =
         blendshapes=np.stack([r.get("bs", np.zeros(width_bs)) for r in rows]),
         blendshape_names=names or (), face_matrix=np.stack([r.get("fm", np.eye(4)) for r in rows]),
         face_found=np.array([r["face_found"] for r in rows]), roi=roi,
-        other_person=np.array([r["other"] for r in rows]) if counter is not None else None)
+        other_person=np.array([r["other"] for r in rows]) if counter is not None else None, image_size=image_size)
 
 
 def inference_method() -> str:
