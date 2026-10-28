@@ -89,7 +89,7 @@ sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 # the join, its helpers and the stop-word list live in the library since round 15 (moved unchanged)
 from signtranslator.generation.compositional import (  # noqa: E402
     STOP_WORDS, _gram_schmidt, blend_channel, blend_values, concatenate, crossfade_frames, crossfade_weights,
-    join_overlaps, take_frames)
+    join_overlaps, take_frames, time_scale)
 
 FPS = 24.
 TRANSLATOR_RUN = "back-translator-kp2d-uwb-ft-v1"
@@ -178,27 +178,6 @@ def shuffle_order(n: int, clip: int, variant_index: int) -> list[int]:
         p = [int(x) for x in rng.permutation(n)]
         if p != list(range(n)):
             return p
-
-
-def time_scale(state, frames: int, fps: float = FPS):
-    """``state`` stretched or compressed in time to exactly ``frames`` frames at ``fps`` (``pose.resample``'s
-    interpolation on a stretched clock: the first and last frames are kept, everything between is interpolated)."""
-    from signtranslator.pose.resample import resample_motion
-    T = len(state.timestamps)
-    if frames < 1:
-        raise ValueError("frames must be >= 1")
-    if T == frames:
-        return state
-    if frames == 1:
-        return take_frames(state, np.array([0]))
-    if T == 1:
-        state = take_frames(state, np.array([0, 0]))
-    t0 = float(state.timestamps[0])
-    stretched = replace(state, timestamps=t0 + np.linspace(0., (frames - 1) / fps, len(state.timestamps)))
-    out = resample_motion(stretched, fps)
-    if len(out.timestamps) != frames:
-        raise AssertionError(f"time_scale produced {len(out.timestamps)} frames, not {frames}")
-    return out
 
 
 def frames_of(state) -> int:
