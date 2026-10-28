@@ -2573,3 +2573,34 @@ The owner approved re-downloading the arm-untracked YouTube-ASL videos (about 85
 3. **Best-of-N selection with a checker independent of the grading recogniser:** the prior's own text likelihood, or a second recogniser.
 4. **Inference tuning** (guidance, temperature, duration), swept on the dev word set only.
 5. **Training to 60000 steps.**
+
+## Isolated-sign data: the source decision (recorded 2026-10-28, 05:44 UTC; owner asked for quality-first research)
+
+The research compared every ASL isolated-sign source we could find. Sources are ranked for generator quality: Deaf or fluent signers, expert gloss labels, and arms in frame.
+
+1. **Sem-Lex** (Kezar et al. 2023, arXiv 2310.00196).
+   - 84,568 clips in the paper, 3,149 signs, 41 Deaf signers, glosses matched to ASL-LEX by trained labellers (kappa ≥ 0.7).
+   - Licence: CC BY-NC-SA 4.0. Participants consented to public sharing, which is not limited to recognition.
+   - Risks: filming conditions were uncontrolled (webcams at home), so clips are filtered by elbow and hand visibility on arrival. The share-alike clause applies to derived data.
+   - Status: the form was submitted (2026-10-27), but the download Drive is restricted to BU. The access email to the authors was sent the same day and the reply is awaited.
+2. **ASL Signbank** (aslsignbank.com).
+   - About 3,700 signs: studio citation forms by fluent models with expert ID-glosses. Usually one clip per sign.
+   - Licence: CC BY-NC-SA 4.0, reuse with citation. 2,848 signs are public; the rest need registration.
+   - Role: the reference form for words with few or no clips. It adds vocabulary, not signer diversity.
+   - Bulk machine-learning use is not covered by written terms. Public clips are used within the licence (non-commercial, attribution, polite rate, robots.txt respected); a bulk-use request to the maintainers needs the owner's OK, since it would go to a new recipient.
+3. **NVIDIA ASL 1000** (AWS Open Data; NVIDIA Data License, 2025-02-04).
+   - About 1,000 signs with MediaPipe landmarks corrected by people. Signers include learners.
+   - The terms are restrictive: use only "to advance access to technology for the Deaf community", no redistribution, deletion on request, and public statements need approval.
+   - Contact needs the owner's OK.
+
+**Optional:** 3D-LEX v1.0 (CC BY 4.0; 1,000 signs, Vicon motion capture plus gloves) as finger-shape ground truth. It needs retargeting.
+
+**Excluded:**
+- ASL Citizen: recognition-only, as before.
+- ASL-LEX videos: © ASL-LEX.
+- Spreadthesign: needs a licence.
+- Google ISLR: landmarks only, the same selfie set-up as PopSign.
+
+**Next step:** match the 42 uncovered R5 words against the Sem-Lex and Signbank vocabularies, using public files only, to project the coverage ceiling.
+
+No licence above permits commercial use or explicitly permits releasing a trained model. The first public build stays How2Sign plus ASLLRP (see the release licensing review).
