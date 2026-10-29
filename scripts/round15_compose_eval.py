@@ -17,6 +17,13 @@ Two subcommands. Both are write-once (``--output-key`` or ``--output-file``).
 - derangements are over all N clips (``--seed``: references; ``--seed`` + 1: the mismatched words), shuffle orders
   ``shuffle_order(n, clip, 0)``, word seeds ``round15_stage2.word_seeds`` by the global clip index: a clip's forms do not
   depend on the sharding;
+- **position, not identity:** word seeds, the oracle's real-clip draws (``choose_record`` by clip index), shuffle
+  orders and mismatched-words partners all follow a clip's *position* in the N-sample. A clip shared with the
+  300-clip runs sits at another position among the 1,000, so a ``--clips 1000`` run does not reproduce amendment 4 (or
+  any 300-clip report) clip for clip; a ``--clips 300`` run does (``validation_sentences(mix, 300)`` is the same
+  sample). The report states this (``indexing``);
+- the vocabulary's corpora default to ``compositional.isolated_corpora(eval mix)``: round 15's four for
+  round10-mixed-v1, so the default reproduces the declared stage-2 model 42389ca4;
 - **shards**: clip i belongs to shard ``(i // --block) % --shards``; translation runs per block of ``--block`` (32,
   the translator's batch) clips, so a sharded and an unsharded run translate identical batches. Each shard stores, per
   clip, every form's hypothesis, the spotting rows (own words and the next sentence's words) and the motion rows.
@@ -49,6 +56,9 @@ EVAL_MIX_SHA = "ccfd10b8961e95523ac7938c84261c89f22c8ae786af961908fbeba21fa5647a
 TRANSLATOR_RUN = "back-translator-kp2d-uwb-ft-v1"
 SPOT = dict(windows=(.6, .9, 1.2), hop=.1, top_k=5)
 CONTROLS = ("", "/shuffled", "/mismatched_words")
+INDEXING = ("word seeds, oracle real-clip draws, shuffle orders and mismatched-words partners follow each clip's position "
+            "in validation_sentences(mix, clips); a clip shared with a run of another --clips sits at another position, "
+            "so runs of different N are not paired clip for clip (a --clips 300 run reproduces the 300-clip reports)")
 SETTINGS = ("clips", "shards", "block", "seed", "mix_key", "mix_sha256", "corpora", "variants", "selection", "timing",
             "core_margin", "total_fit", "guidance", "part_temperature", "checkpoint_key", "generator_mix",
             "model_sha256", "translator_key", "recognizer_run", "recognizer_checkpoint")
@@ -100,6 +110,7 @@ def merge_partials(partials: list[dict]) -> dict:
     first = partials[0]
     for p in partials[1:]:
         diff = [k for k in SETTINGS if p["settings"].get(k) != first["settings"].get(k)]
+        diff += [k for k in ("texts", "signs") if p.get(k) != first.get(k)]
         if diff:
             raise SystemExit(f"shard {p['shard']} differs from shard {first['shard']} in {diff}")
     K, n = first["settings"]["shards"], first["settings"]["clips"]
@@ -135,7 +146,8 @@ def run(args) -> dict:
     import collections
     import torch
     from signtranslator.data_engineering.corpus_manifest import ContentCache, load_manifest
-    from signtranslator.generation.compositional import CORE_RULE, crossfade_frames, training_vocabulary
+    from signtranslator.generation.compositional import (CORE_RULE, crossfade_frames, isolated_corpora,
+                                                         training_vocabulary)
     from compositional_baseline import motion_rows, shuffle_order
     from evaluate_text_to_motion import at_rate, blanked, load_generator, load_state
     from pilot_content_check import MIX_SHA, validation_sentences
@@ -153,7 +165,8 @@ def run(args) -> dict:
     with tempfile.TemporaryDirectory() as t:
         path = Path(t) / "m.json"; path.write_bytes(store.get(args.mix_key) + b"\n")
         manifest = load_manifest(path, expected_sha256=args.mix_sha256)
-    corpora = tuple(c for c in args.corpora.split(",") if c)
+    corpora = (tuple(c for c in args.corpora.split(",") if c) if args.corpora
+               else isolated_corpora(manifest))               # round 15's four for the round10 mix
     vocab = training_vocabulary(manifest, corpora)
     generator_mix = dict(key=args.mix_key, sha256=args.mix_sha256, check=None)
     if args.generator_mix_key:
@@ -292,7 +305,7 @@ def run(args) -> dict:
                     part_temperature=temperature, checkpoint_key=args.checkpoint_key, generator_mix=generator_mix,
                     model_sha256=model["sha256"], translator_key=kp, recognizer_run=args.recognizer_run,
                     recognizer_checkpoint=best.get("checkpoint_key") if isinstance(best, dict) else None)
-    return dict(kind="round15-compose-eval-shard", shard=args.shard, settings=settings, texts=texts,
+    return dict(kind="round15-compose-eval-shard", shard=args.shard, settings=settings, texts=texts, indexing=INDEXING,
                 signs=[r["sign"] for r in val], reference_derangement=reference_perm, words_derangement=content_perm,
                 stage1_check=stage1_check, spot_labels=len(labels),
                 timing_counts=dict(collections.Counter(p[v]["fit"] for p in plans_out.values() for v in p)),
@@ -364,7 +377,7 @@ def merge(args, store) -> dict:
     verdicts = {v: r2.verdict(checks, scores[v], spotting[v]["recall"], spotting[f"{v}_mismatched"]["recall"])
                 for v in variants}
     overlong = {v: int(sum(bool((r["plans"].get(v) or {}).get("overlong")) for r in rows)) for v in variants}
-    return dict(kind="round15-compose-eval", settings=s, clips=n, references=texts, signs=merged["signs"],
+    return dict(kind="round15-compose-eval", settings=s, clips=n, references=texts, signs=merged["signs"], indexing=INDEXING,
                 shards=sorted(p["shard"] for p in partials), stage1_check=partials[0]["stage1_check"],
                 comparators=comparators, rule=args.rule, rule_checks=checks, bootstrap=args.bootstrap, forms=scores,
                 spotting=dict(windows=list(SPOT["windows"]), hop=SPOT["hop"], top_k=SPOT["top_k"], scores=spotting),
@@ -397,13 +410,13 @@ def _write(store, args, payload: dict) -> None:
 
 
 def main(argv=None) -> int:
-    from signtranslator.generation.compositional import ISOLATED_CORPORA
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = p.add_subparsers(dest="command", required=True)
     r = sub.add_parser("run", help="one shard")
     r.add_argument("--mix-key", default=EVAL_MIX, help="the evaluation mix (vocabulary, clips, stage-2 model)")
     r.add_argument("--mix-sha256", default=EVAL_MIX_SHA)
-    r.add_argument("--corpora", default=",".join(ISOLATED_CORPORA))
+    r.add_argument("--corpora", help="the isolated corpora of the vocabulary (default: compositional."
+                   "isolated_corpora of the evaluation mix, round 15's four for round10-mixed-v1)")
     r.add_argument("--clips", type=int, default=1000)
     r.add_argument("--shard", type=int, default=0)
     r.add_argument("--shards", type=int, default=1)

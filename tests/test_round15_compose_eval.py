@@ -46,6 +46,35 @@ def test_merge_requires_one_complete_run():
         ce.merge_partials([part(0, [0]), part(1, [2, 3])])
     with pytest.raises(SystemExit, match="differs"):
         ce.merge_partials([part(0, [0, 1]), part(1, [2, 3], seed=5)])
+    other = part(1, [2, 3])                                                   # same settings, other clips' texts
+    other["texts"] = ["x"]
+    with pytest.raises(SystemExit, match="texts"):
+        ce.merge_partials([part(0, [0, 1]), other])
+    other = dict(part(1, [2, 3]), signs=["s9"])
+    with pytest.raises(SystemExit, match="signs"):
+        ce.merge_partials([part(0, [0, 1]), other])
+
+
+def test_the_default_corpora_reproduce_the_declared_model(tmp_path, stage2_store):  # noqa: F811
+    """The vocabulary's corpora default to isolated_corpora(eval mix): round 15's four for a mix without the later
+    corpora (round10-mixed-v1), so the default run fits the declared model; ISOLATED_CORPORA (five since round 14b)
+    would record another corpus list and another hash."""
+    from signtranslator.generation.compositional import ISOLATED_CORPORA, ROUND15_CORPORA
+    store, sha, s1, oracle, argv = stage2_store
+    import round15_stage2_fit as fit
+    declared, _ = fit.fit_model(fit.agc._store(f"dir:{tmp_path / 'store'}"), "mix.json", sha, ROUND15_CORPORA)
+    five, _ = fit.fit_model(fit.agc._store(f"dir:{tmp_path / 'store'}"), "mix.json", sha, ISOLATED_CORPORA)
+    assert five["sha256"] != declared["sha256"]
+    args = [a for a in run_args(tmp_path, sha) if a not in ("--checkpoint-key", "prior.pt")]
+    args[args.index("core_crossfade,oracle_stage2")] = "oracle_stage2"
+    assert ce.main(args + ["--clips", "5", "--expect-model-sha256", declared["sha256"], "--output-key", "e/d.json"]) == 0
+    shard = json.loads(store.get("e/d.json"))
+    assert shard["settings"]["corpora"] == list(ROUND15_CORPORA)
+    assert shard["settings"]["model_sha256"] == declared["sha256"]
+    assert "position" in shard["indexing"]
+    assert ce.main(["merge", "--store", f"dir:{tmp_path / 'store'}", "--shard-keys", "e/d.json", "--bootstrap", "20",
+                    "--output-key", "e/dm.json"]) == 0
+    assert json.loads(store.get("e/dm.json"))["indexing"] == shard["indexing"]
 
 
 def test_check_stage1_report():
