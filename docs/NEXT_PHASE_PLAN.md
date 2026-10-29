@@ -3687,3 +3687,31 @@ Signer 38 (left-handed) is reported separately.
   - otherwise: unresolved.
 - **sign-fitted:** a lower bound above 0 counts as a WIN. A WIN is the condition for running the generated `core_chained` and `core_crossfade` at sign-fitted timing, under stage 2's rule unchanged, declared as amendment 2 before they run.
 - **Both:** the hand-speed check (≤ 1.5× real) is reported, and stage 2's rule verdicts are reported for information.
+
+### Sem-Lex flipped-video gate: FAILED as declared; orientation test re-declared (recorded 2026-10-29, 01:13 UTC)
+
+**Run:** 100 Sem-Lex val clips from 31 signers, extracted locally from horizontally flipped frames (`--hflip`, branch commit 8c8c522, not merged).
+
+| Measure | Flipped extraction | Un-mirrored states, same clips |
+|---|---|---|
+| F12, mirrored minus stored (nats per code, signer-clustered CI) | **+0.512 [+0.446, +0.581]**, stored better in 96/100: **pass** | −0.512, 2/100 |
+| Signers whose dominant slot is right (wrist height and path; signer 38 excluded) | **1 of 28: fail** | 27 of 29 |
+
+**Verdict: FAIL** by the declared rule; the second check is not met.
+
+**The diagnostic shows the handedness measure is unreliable here.**
+- MediaPipe's hand detections follow the pixel flip: the active image half mirrors in 50 of 53 decided clips.
+- The pose skeleton's busier, higher arm keeps the **same** slot across the flip in 57 of 75 decided clips.
+- So on Sem-Lex's framing, the slot measure tracks an estimator bias, not the signer's hand.
+- This also undermines the earlier "un-mirrored: 32 of 33 right-dominant", which used the same measure.
+- The likelihood check cannot decide handedness either, because mirroring confounds orientation with reflected estimates.
+
+**Re-declared orientation test**, decided now, before it is measured.
+
+It compares the two natural MediaPipe extractions of the same 100 clips: the original video (`states-video-v1`) and the flipped video. No reflection of estimates is involved.
+1. **F12 likelihood, flipped minus original** (part-valid nats per code, signer-clustered CI). F12's training data is dominated by How2Sign and YouTube-ASL, which are unmirrored camera video of mostly right-handed signers.
+2. **Pixel-space dominant side:** the image half of the more active MediaPipe hand detection, per signer, in:
+   - (i) Sem-Lex original video;
+   - (ii) a baseline of 100 YouTube-ASL train clips and 40 How2Sign val clips (signers c01/c03/c05).
+
+**Decision:** the flipped extraction is adopted when (1) has a lower bound above 0 **and** (2) shows Sem-Lex's original dominant side opposite to the baseline's majority side for at least 70% of decided signers. The original extraction is adopted when (1) has an upper bound below 0 **and** (2) shows the same side. Otherwise orientation stays unresolved, and no re-extraction runs.
