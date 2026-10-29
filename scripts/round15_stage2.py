@@ -51,7 +51,14 @@ only, ``V@fit``).
   ``gap_ratio``, 0.714), sign k weighs A_k and the transition between k and k + 1 weighs g (A_k + A_{k+1}) / 2; the
   reference's R frames are shared in proportion (``allocate``, at least one frame per sign); no padding, no ASLLRP
   pace. Transitions: generated (core_chained) or interpolated (core_crossfade, oracle_stage2).
-``--total-fit`` applies to asllrp only.
+``--total-fit``, ``--core-threshold`` and ``--gap-seconds`` apply to asllrp only.
+
+**Selection** (``--selection``): ``stage2`` (default) plans each sentence with the fitted selection and structure;
+``stage1`` takes exactly the stored stage-1 report's per-clip words (``per_clip[i].words``, verified against
+``compositional.selection_details`` by ``check_pairing``: no lexicon, maps, drops, IX or moves), in every timing mode
+(sign-fitted weights per entry as for stage 2). Its controls follow: /shuffled is stage 1's ``shuffle_order(n, clip,
+0)`` and /mismatched_words stage 1's own words derangement. ``--selection stage1 --timing stage1`` with
+``oracle_stage2`` is the stored oracle stage 1's composition exactly (same draws, durations, resampling and joins).
 
 **Comparators** (stored hypotheses, scored here with the same references and bootstrap): ``end_to_end``,
 ``stage1_chained``, ``stage1_crossfade`` (the stage-1 report) and ``oracle_stage1`` (the oracle report's fitted
@@ -130,9 +137,17 @@ def plan_clip(text, model, vocab) -> dict:
     from signtranslator.generation import compositional_grammar as cg
     rows = cg.selection_rows(text, vocab, model["lexicon"])
     entries, trace = cg.apply_structure(rows, model["structure"], vocab)
+    return plan_words(entries, model, vocab, rows=rows, trace=trace)
+
+
+def plan_words(entries, model, vocab, *, rows=(), trace=()) -> dict:
+    """The plan of a given entry sequence (stage 2's, or stage 1's selection as stored): each entry's ASLLRP target,
+    isolated annotated weight and generation seconds."""
+    from signtranslator.generation import compositional_grammar as cg
+    entries = list(entries)
     targets = [cg.target_seconds(e, model["timing"], vocab) for e in entries]
     weights = [cg.isolated_sign_seconds(e, model["timing"], vocab) for e in entries]
-    return dict(entries=entries, rows=rows, trace=trace, targets=[t for t, _ in targets],
+    return dict(entries=entries, rows=list(rows), trace=list(trace), targets=[t for t, _ in targets],
                 target_sources=[s for _, s in targets], generate=[float(vocab[e]) for e in entries],
                 weights=[w for w, _ in weights], weight_sources=[s for _, s in weights])
 
@@ -399,7 +414,10 @@ def main(argv=None) -> int:
                    "oracle timing on the stage-2 words) or sign-fitted (annotated sign cores filling the reference)")
     p.add_argument("--core-margin", type=float, help="seconds added either side of the core (default: 0 for asllrp, "
                    "0.1 for sign-fitted; not used by stage1)")
-    p.add_argument("--core-threshold", type=float, default=.1, help="the activity threshold (the manifests' 0.1)")
+    p.add_argument("--core-threshold", type=float, help="the activity threshold (asllrp only; default the "
+                   "manifests' 0.1)")
+    p.add_argument("--selection", default="stage2", help="stage2 (the fitted selection and structure) or stage1 "
+                   "(exactly the stored stage-1 report's per-clip words: no lexicon, maps, drops, IX or moves)")
     p.add_argument("--gap-seconds", type=float, help="the gap between signs (default: the model's ASLLRP median)")
     p.add_argument("--model-file", help="a fitted stage-2 model (round15_stage2_fit.py); default: fit it now")
     p.add_argument("--expect-model-sha256", help="stop unless the stage-2 model has this hash (the declared model)")
@@ -437,7 +455,12 @@ def main(argv=None) -> int:
         p.error("--total-fit applies to the asllrp timing only (stage1 and sign-fitted fill the reference themselves)")
     if args.timing == "stage1" and args.core_margin is not None:
         p.error("--core-margin does not apply to the stage1 timing (whole trimmed clips)")
+    if args.timing != "asllrp" and (args.core_threshold is not None or args.gap_seconds is not None):
+        p.error("--core-threshold and --gap-seconds apply to the asllrp timing only")
+    if args.selection not in ("stage2", "stage1"):
+        p.error("--selection: stage2 or stage1")
     margin = args.core_margin if args.core_margin is not None else (.1 if args.timing == "sign-fitted" else 0.)
+    threshold = .1 if args.core_threshold is None else args.core_threshold
     checks = parse_rule(args.rule)
     try:
         check_rule(checks, variants, fits[1:])                    # before anything is loaded or generated
@@ -510,14 +533,19 @@ def main(argv=None) -> int:
     refs = [at_rate(load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]), FPS) for r in val]
     seconds = [float(s.timestamps[-1] - s.timestamps[0]) + 1 / FPS for s in refs]
     blanks = blanked(refs)
-    plans = [plan_clip(t, model, vocab) for t in texts]
+    if args.timing == "sign-fitted" and not model["timing"].get("default_seconds"):
+        raise SystemExit("the stage-2 model has no default_seconds: the sign-fitted gap ratio is undefined")
+    if args.selection == "stage1":            # the stored stage-1 words (check_pairing verified them clip by clip)
+        plans = [plan_words(s1["per_clip"][i]["words"], model, vocab, rows=details[i]) for i in range(n)]
+    else:
+        plans = [plan_clip(t, model, vocab) for t in texts]
     orders = [shuffle_order(len(pl["entries"]), i, 0) for i, pl in enumerate(plans)]
     if max(len(pl["entries"]) for pl in plans) > MAX_WORDS:
         raise SystemExit(f"a sentence plans more than {MAX_WORDS} signs")
     overlap = crossfade_frames(float(s1["crossfade"]["seconds"]))            # stage 1's 4 frames
     jobs = plan_jobs(variants, plans, content_perm, orders, seconds=seconds, vocab=vocab, timing=args.timing,
                      overlap=overlap)
-    rule = dict(CORE_RULE, margin=margin, threshold=args.core_threshold)
+    rule = dict(CORE_RULE, margin=margin, threshold=threshold)
     fractions = fit.sign_fractions(manifest, vocab) if args.timing == "sign-fitted" else None
     mode_settings = dict(timing=args.timing, fractions=fractions, margin=margin)
     gen_keys = [k for k, j in jobs.items() if j is not None and k[0] in GENERATED]
@@ -690,7 +718,8 @@ def main(argv=None) -> int:
         oracle_report_key=args.oracle_report_key, mix_key=s1["mix_key"], mix_sha256=s1["mix_sha256"],
         translator_run=s1["translator_run"], translator_key=kp, recognizer_run=recognizer_run,
         recognizer_checkpoint=best.get("checkpoint_key") if isinstance(best, dict) else None, clips=n,
-        variants=variants, timing_mode=args.timing, core_margin=margin, total_fit=fits, core_rule=rule,
+        variants=variants, timing_mode=args.timing, selection_mode=args.selection, core_margin=margin, total_fit=fits,
+        core_rule=rule,
         sign_fractions=dict(all=fractions["all"], clips=fractions["clips"], entries=len(fractions["entries"]))
         if fractions else None,
         gap_seconds=model["timing"]["gap"] if args.gap_seconds is None else args.gap_seconds,
