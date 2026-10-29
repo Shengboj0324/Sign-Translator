@@ -4084,7 +4084,7 @@ Its spotting recall is also far lower (0.16 against 0.36): the prior's own trans
 
 **Cost:** about $8–12.
 
-### Recogniser v3 amendment 1: the ASL Citizen side check (declared 2026-10-29, 08:19 UTC, before training)
+### Recogniser v3 amendment 1: the ASL Citizen side check (declared 2026-10-29, 08:17 UTC, before training)
 
 **The declared 150-clip check ran** (`pixel-sides-v1.json`) after a first pod failed on a missing libEGL.
 - It measured 3–4 clips per signer: 21 of 33 signers image-left, **12 image-right**.
