@@ -3770,3 +3770,18 @@ Three measures agree:
 The one measure that pointed the other way was the skeleton-slot handedness measure. On this framing it tracks an estimator bias.
 
 **The four image-right signers** (11, 23, 46, 76) are **excluded** from round 14b's Sem-Lex corpus. Re-extracting them from flipped video (about $1–2, code on a branch) waits for its own review.
+
+### Round 15 stage 2 result: core_crossfade NOT PROMISING (recorded 2026-10-29, 01:44 UTC; `round15/stage2-crossfade-f12-step60000.json`)
+
+| Comparison | Pad (the rule's form) | Scale |
+|---|---|---|
+| BLEU | 1.30 | 1.52 |
+| Against end-to-end (rule 1) | −0.12 [−0.58, +0.33]: **fail** | +0.10 [−0.41, +0.67] |
+| Against mismatched words (rule 2) | +0.31 [−0.05, +0.69]: **fail** | — |
+| Against oracle stage 1 | −1.28 | — |
+| Against stage-1 crossfade | −0.09 | — |
+
+- **Rule 3 passes:** spotting recall 0.238 [0.216, 0.260] against mismatched 0.074.
+- **Hand-speed check: FAIL.** Wrist speed is 4.13× real; end-to-end is 1.42× and oracle stage 1 3.8×.
+
+**Verdict: NOT PROMISING**, as expected after oracle stage 2: the ASLLRP timing is the cause.
