@@ -4106,7 +4106,7 @@ Its spotting recall is also far lower (0.16 against 0.36): the prior's own trans
 
 **YouTube arm-recovery retry (recorded 2026-10-29, 09:02 UTC):** BLOCKED again at the first video ("Sign in to confirm you're not a bot"). The home route is stopped for the day, with no circumvention (no cookies, sign-in or proxies). This is the second day running. The next single-video retry is 2026-10-30 at or after 09:00 UTC. YouTube data is not on round 14b's or round 15's critical path.
 
-### Round 14b final pilot at step 30000 (recorded 2026-10-29, 09:30 UTC): F12 stays leader and word source
+### Round 14b final pilot at step 30000 (recorded 2026-10-29, 09:29 UTC): F12 stays leader and word source
 
 | Measure | W14b step 30000 | W14b step 10000 | F12 step 60000 |
 |---|---|---|---|
