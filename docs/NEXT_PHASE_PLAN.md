@@ -3715,3 +3715,28 @@ It compares the two natural MediaPipe extractions of the same 100 clips: the ori
    - (ii) a baseline of 100 YouTube-ASL train clips and 40 How2Sign val clips (signers c01/c03/c05).
 
 **Decision:** the flipped extraction is adopted when (1) has a lower bound above 0 **and** (2) shows Sem-Lex's original dominant side opposite to the baseline's majority side for at least 70% of decided signers. The original extraction is adopted when (1) has an upper bound below 0 **and** (2) shows the same side. Otherwise orientation stays unresolved, and no re-extraction runs.
+
+### Sem-Lex orientation test: UNRESOLVED (recorded 2026-10-29, 01:22 UTC); next, a per-signer measurement (declared now)
+
+**Results** (100 val clips, 31 signers; code on branch b6b6f66):
+1. **F12, flipped minus original extraction:** +0.035 [−0.030, +0.098], flipped better in 52 of 100. The two natural extractions are equally natural to F12.
+2. **Pixel-space active-hand side:**
+   - Sem-Lex original video: 48 clips image-left against 52 image-right; signers 13 left, 14 right, 4 tied.
+   - Baseline: UWB YouTube-ASL Clip Keypoint Dataset (MediaPipe Holistic 2D, 100 train channels), **image-left in 72 of 100**. That is what right-handed signers look like in unmirrored video, so the measure behaves there. How2Sign stores no image-space hands, so it was not used.
+   - The share of Sem-Lex signers opposite the baseline is 0.52, below the required 0.70.
+
+**Decision by the declared rule: unresolved. No re-extraction.**
+
+**The 50/50 split by signer suggests a cause:** Sem-Lex may mix mirrored and unmirrored recordings by signer or session, or mix handedness.
+
+Either way, the generator only needs right-dominant signing. ASL meaning does not change under a mirror, since left-handed signers mirror their signs. So the target becomes **per-signer dominance normalisation**: each signer is shown with the active hand on the image left, as in YouTube-ASL.
+
+**Next, report-only, CPU, no extraction:** the per-signer active-side fraction over **all** of each signer's val and train clips, from the stored original raw landmarks.
+
+**Decision rule (declared now):**
+- A signer is **decided** with at least 20 decided clips and at least 75% of them on one side.
+- Normalisation goes ahead if at least 80% of signers, holding at least 80% of clips, are decided. Then:
+  - signers on the image right are re-extracted from flipped video;
+  - signers on the image left keep `states-video-v1`;
+  - undecided signers are excluded from the Sem-Lex corpus.
+- Otherwise the per-clip side is too noisy to use, and Sem-Lex orientation stays unresolved.
