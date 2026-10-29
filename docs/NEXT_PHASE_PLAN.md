@@ -4018,3 +4018,35 @@ Hand speed is reported against the 1.5× bar.
 Its spotting recall is also far lower (0.16 against 0.36): the prior's own transitions dilute the words.
 
 **Crossfade at stage-1 selection and sign-fitted timing (1.85) is the composition carried forward.** The next lever is the word source (W14b at step 30000), then learned transitions in place of crossfades.
+
+### Instrument finding and the recogniser v3 plan (recorded 2026-10-29, 06:40 UTC; scoping only, nothing trained)
+
+**Finding: why the pilot's word check undercounts.** Orientation is not the main cause.
+- Recogniser v2 reads original Sem-Lex at 0.72 on the new words.
+- It fails on the generator's form, where every channel is valid:
+  - Sem-Lex tokenizer-decoded clips read **0.097 with every channel valid**, against 0.550 when masked like the real clip;
+  - ASLLVD and RIT drop 0.22–0.31 the same way.
+- **Cause:** on webcam framing the arms are almost never valid, so v2 learned those signs without arms.
+- **Effect:** the pilot lexicon undercounts generated words for Sem-Lex and ASL Citizen vocabulary.
+- **Also:** ASL Citizen is stored in the same frontal orientation as the others (316 clips checked), so no reflection is needed.
+
+**Recogniser v3 (to be declared before it trains):**
+- **Corpora:** ASL Citizen (recognition-only), ASLLVD, RIT, WLASL and `semlex-text-v2` train, all as stored.
+  - 4 Sem-Lex signers are held out.
+  - Image-right ASL Citizen signers are excluded after a pixel-side check.
+- **Augmentation:** tokenizer-decoded copies of the training clips in the pilot's all-valid form (p ≈ 0.5), plus random arm and torso invalidation.
+- **Labels:** v2's 2,731 glosses.
+- **Checkpoint selection:** on per-corpus val of real and decoded clips.
+- **Gates G1–G7, declared before it grades any generator:**
+  - blank and random-code reads at chance;
+  - per-corpus real reads at least v2's;
+  - Sem-Lex held-out signers ≥ 0.60;
+  - decoded-real reads ≥ 0.70 on the covered words and ≥ 0.60 on the uncovered;
+  - orientation consistency;
+  - per-gloss reliability: at least 100 of 150 R5 words, and at least 25 of the 42 uncovered;
+  - ASLLRP in-context ≥ 0.07.
+- If a gate fails, v2 stays.
+- The control, F12 and W14b are re-read with v3 before any comparison.
+- **Cost:** about $8–12 and 8–12 h.
+
+**Order:** code (with review) now. Training is declared after W14b's step-30000 verdict, which is still read with v2 as declared.
