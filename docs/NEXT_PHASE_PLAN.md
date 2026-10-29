@@ -4404,3 +4404,41 @@ The translator was trained on How2Sign continuous signing, so the composition ha
 - A knob set is **adopted for generated compositions** if its lower bound is above 0 **and** its content controls pass: against mismatched words, a lower bound above 0, and spotting above its mismatched control.
 - Wrist speed is reported against the 1.5× bar.
 - An adopted set is then run with generated words under M1's rule.
+
+## Round 15 amendment 8: the sentence refiner, real words first (declared 2026-10-29, 18:57 UTC, before any of it runs)
+
+**Code:** main `904cf22`. Independent review MERGE after two fix rounds. The hygiene was verified on the real manifest.
+
+**Pairs** (`round15/refiner-pairs-v1`):
+- **17,928 How2Sign TRAIN sentences.** Excluded:
+  - val (3,096), the official held-out set (3,019) and test (92, signer 9);
+  - 235 exact text matches and 126 near duplicates of non-train sentences (containment ≥ 0.8 of the smaller sentence and ≥ 0.6 of the larger, or Jaccard ≥ 0.8).
+- **K = 4 compositions per sentence:** real isolated TRAIN clips from ASLLVD, RIT, WLASL and Sem-Lex (no ASL Citizen), stage-1 selection, sign-fitted timing, crossfade. **No knobs** (amendment 7 is still open).
+- **Tokenizer:** d2.
+- **Selection set:** held-out train component c04 (268 sentences).
+
+**Refiner `sentence-refiner-r1`:**
+- Warm start from F12 step 60000, **with no text pathway.**
+- 8 epochs, batch 32, after a 20-step smoke run.
+- Checkpoint selected on c04 loss only.
+- Guidance 1.0 and the pilot's part temperatures. Nothing is tuned on val.
+
+**Evaluation:**
+- The real-word oracle on the 1,000 sentences, the same draws as the 2.17 oracle, refined: `--refiner-checkpoint-key <best>`, 4 GPU shards.
+- Spotting with `sign-recognizer-v3d`.
+
+**Rule** (`--refined-rule bleu:recon,bleu:mismatched_words,bleu:rest_only,spotting`, paired). The refiner is **adopted for generated compositions** only if all four hold:
+1. refined oracle minus oracle@recon (tokenizer round trip only): lower bound above 0;
+2. refined oracle minus refined mismatched words: lower bound above 0. This is the content control;
+3. refined oracle minus refined rest_only: lower bound above 0. This catches input-ignoring;
+4. spotting recall above its mismatched control.
+
+**Reported, deciding nothing:**
+- refined against the unrefined 2.17 oracle;
+- refined shuffled;
+- the memorisation diagnostics: best train-text BLEU and exact matches per form, and code 12-gram overlap against the train targets, with the real clips as baseline;
+- wrist speed.
+
+**If memorisation is clearly above the real baseline,** the result is treated as retrieval-like and **not** adopted, whatever BLEU shows. That reading is recorded with its numbers.
+
+**If adopted:** W14b's generated composition is refined under M1's rule.
