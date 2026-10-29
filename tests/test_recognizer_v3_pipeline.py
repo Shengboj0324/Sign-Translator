@@ -328,6 +328,43 @@ def test_v3_trains_on_every_corpus_selects_on_real_and_decoded_and_validates_g1_
         vsr.main(common + ["--output-key", "training-runs/v3/gates.json"])
     with pytest.raises(SystemExit, match="not a recogniser v3 run"):
         vsr.main(common[:3] + ["v2"] + common[4:])
+    # amendment 2: v2 on the same gate halves and held-out sets, real clips, G6's rule; G6' against the gate report
+    calib = ["--store", f"dir:{root}", "--run", "v3", "--g6-calibration", "--baseline-run", "v2", "--device", "cpu",
+             "--cache-dir", str(tmp_path / "ccache"), "--gates-key", "training-runs/v3/gates.json"]
+    with pytest.raises(SystemExit):
+        vsr.main(calib + ["--gates"])
+    gates_payload = (root / "training-runs/v3/gates.json").read_bytes()
+    tampered = json.loads(gates_payload)
+    tampered["per_set"]["gate:semlex-text-v2"]["clips"] += 1           # another read of the sets: refused
+    s.put("training-runs/v3/gates-other.json", json.dumps(tampered).encode())
+    with pytest.raises(SystemExit, match="clips"):
+        vsr.main(calib[:-1] + ["training-runs/v3/gates-other.json"])
+    assert not (root / "training-runs/v3/g6-calibration.json").exists()
+    assert vsr.main(calib + ["--output", str(tmp_path / "g6.json")]) == 0
+    calibration = json.loads((root / "training-runs/v3/g6-calibration.json").read_text())
+    assert calibration == json.loads((tmp_path / "g6.json").read_text())
+    v2 = calibration["v2"]
+    assert v2["forms"] == "real" and v2["r5_words"] == 3 and v2["uncovered_words"] == 1
+    assert v2["clips"] == sum(r["clips"] for r in sets.values())
+    assert set(v2["reliable_r5_words"]) <= set(GLOSSES) and len(v2["reliable_r5_words"]) == v2["r5_real"]
+    for name, row in calibration["per_set"].items():                # the gate run's own v2 reads, reproduced
+        assert row["clips"] == sets[name]["clips"] and row["v2_real_top1"] == pytest.approx(sets[name]["v2_real_top1"])
+    prime = calibration["g6_prime"]
+    assert prime["v3_r5_both"] == report["reliability"]["r5"] and prime["v2_r5_real"] == v2["r5_real"]
+    assert prime["passed"] == (report["reliability"]["r5"] >= v2["r5_real"]
+                               and report["reliability"]["uncovered"] >= v2["uncovered_real"])
+    assert calibration["gates"]["sha256"] == hashlib.sha256(gates_payload).hexdigest()
+    with pytest.raises(SystemExit, match="written once"):
+        vsr.main(calib)
+
+
+def test_g6_prime_needs_both_comparisons():
+    v3 = dict(r5=32, uncovered=7)
+    assert vsr.g6_prime(v3, dict(r5_real=32, uncovered_real=7))["passed"]                 # ties pass (>=)
+    assert not vsr.g6_prime(v3, dict(r5_real=33, uncovered_real=0))["passed"]
+    assert not vsr.g6_prime(v3, dict(r5_real=0, uncovered_real=8))["passed"]
+    out = vsr.g6_prime(v3, dict(r5_real=20, uncovered_real=3))
+    assert out["passed"] and out["overall_holds"] and out["uncovered_holds"] and "amendment 2" in out["rule"]
 
 
 def quantities(**over):
