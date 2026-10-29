@@ -4103,3 +4103,5 @@ Its spotting recall is also far lower (0.16 against 0.36): the prior's own trans
 - **Kept:** every other signer, including `6e36641a…` at 0.27 (just inside the rule), and three signers with fewer than 20 decided clips.
 - **How far off the small sample was:** the 150-clip check had named 12 signers; 9 of them were sampling noise.
 - **Retry:** the first 1,100-clip attempt (28 workers) lost a worker, probably to memory, and was re-run with 10 workers.
+
+**YouTube arm-recovery retry (recorded 2026-10-29, 09:03 UTC):** BLOCKED again at the first video ("Sign in to confirm you're not a bot"). The home route is stopped for the day, with no circumvention (no cookies, sign-in or proxies). This is the second day running. The next single-video retry is 2026-10-30 at or after 09:00 UTC. YouTube data is not on round 14b's or round 15's critical path.
