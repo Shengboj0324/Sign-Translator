@@ -1,5 +1,6 @@
 """Sem-Lex manifest builder, video path: per-shard extraction reports with reruns and a crashed pass, on a fake store."""
 import csv
+import dataclasses
 import hashlib
 import io
 import json
@@ -7,6 +8,7 @@ from pathlib import Path
 import sys
 import zlib
 
+import numpy as np
 import pytest
 
 HERE = Path(__file__).resolve().parent
@@ -364,3 +366,177 @@ def test_corpus_id_and_signer_exclusion(tmp_path, monkeypatch):
             job.main(_argv(tmp_path, meta_sha, mix_sha, val_sha, "x.json", *extra))
     assert not (tmp_path / "x.json").exists()
     assert job.parse_signers("76, 11,46,23") == ("11", "23", "46", "76") and job.parse_signers(None) == ()
+
+
+# ---- round 14b: the hand-evidence trim side -------------------------------------------------------------------------
+
+def _raw_clip(times, right=(10, 20), left=(4, 10)):
+    """Raw landmarks with the state's frame times: shoulders at image y 0.5; each wrist at y 0.9 (rest, below the
+    frame's lower part) except y 0.4 on its active frames [a, b)."""
+    from signtranslator.data_engineering.video_landmarks import ClipLandmarks
+    T = len(times)
+    image = np.zeros((T, 33, 2))
+    image[:, [11, 12], 1] = .5
+    image[:, [15, 16], 1] = .9
+    for wrist, span in ((16, right), (15, left)):
+        if span:
+            image[span[0]:span[1], wrist, 1] = .4
+    return ClipLandmarks(times=np.asarray(times, dtype=np.float64), pose_world=np.zeros((T, 33, 3)),
+                         pose_visibility=np.ones((T, 33)), pose_image=image, pose_found=np.ones(T, bool),
+                         hands_world=np.zeros((T, 2, 21, 3)), hands_image=np.zeros((T, 2, 21, 2)),
+                         hands_found=np.zeros((T, 2), bool), blendshapes=np.zeros((T, 52)),
+                         blendshape_names=tuple(f"b{i}" for i in range(52)), face_matrix=np.zeros((T, 4, 4)),
+                         face_found=np.ones(T, bool))
+
+
+def test_image_window_follows_sign_window_on_the_image_wrist_height():
+    times = 10. + np.arange(30) / 30.                                # a 30 fps clip starting at t = 10 s
+    clip = _raw_clip(times)
+    w, reason = job.image_window(clip, "Right", 10., .1, .25, .3, .5)
+    assert reason == "trimmed" and w == (round(10 / 30 - .25, 4), round(19 / 30 + .25, 4))
+    w, reason = job.image_window(clip, "Left", 10., .1, .25, .3, .5)  # frames 4-9: 4/30 - 0.25 clips to 0
+    assert reason == "trimmed" and w == (0., round(9 / 30 + .25, 4))
+    w, reason = job.image_window(clip, "Left", 10., .1, .0, .3, .5)  # 0.17 s of activity, no margin: too short
+    assert (w, reason) == (None, "no_sign_window")
+    flat = _raw_clip(times, right=None)
+    assert job.image_window(flat, "Right", 10., .1, .25, .3, .5) == (None, "no_sign_window")
+    lost = dataclasses.replace(clip, pose_found=np.arange(30) < 6)   # a pose on 20% of the frames
+    assert job.image_window(lost, "Right", 10., .1, .25, .3, .5) == (None, "pose_untracked")
+    end = _raw_clip(times, right=(20, 30))                            # the margin is clipped to the last frame
+    assert job.image_window(end, "Right", 10., .1, .25, .3, .5)[0][1] == round(29 / 30, 4)
+
+
+def test_hand_evidence_scores_and_signer_majority():
+    from tests.test_generation_signing_space import signer_state
+    state = signer_state(4, frames=20, amplitude=.4)
+    ev = job.hand_evidence(state)
+    assert ev["Right"]["detected"] == ev["Left"]["detected"] == 1. and ev["Right"]["articulation"] > 0
+    assert ev["Right"]["score"] == pytest.approx(ev["Right"]["detected"] * ev["Right"]["articulation"], abs=1e-6)
+    channels = dict(state.channels)
+    hand = channels["left_hand"]
+    valid = hand.valid.copy()
+    valid[::2] = False                                                # the left hand on every other frame
+    channels["left_hand"] = dataclasses.replace(hand, values=np.where(valid[..., None], hand.values, 0.), valid=valid,
+                                                observed=hand.observed & valid,
+                                                confidence=np.where(valid, hand.confidence, 0.))
+    ev = job.hand_evidence(dataclasses.replace(state, channels=channels))
+    assert ev["Left"]["detected"] == .5 and ev["Left"]["articulation"] == 0. and ev["Left"]["score"] == 0.
+    assert job.evidence_side(ev) == "Right"
+    e = lambda r, l: {"Right": dict(score=r, detected=1.), "Left": dict(score=l, detected=1.)}
+    assert job.evidence_side(e(0., 0.)) is None and job.evidence_side(e(1., 1.)) == "Right"
+    sides = job.signer_sides({"1": [e(1, 2), e(1, 2), e(3, 1)], "2": [e(5, 1), e(1, 2)], "3": [e(1, 1), e(0, 0)],
+                              "4": [e(1, 3), e(2, 1)]})
+    assert sides["1"] == dict(side="Left", Right=1, Left=2, none=0, score_Right=5, score_Left=5)
+    assert sides["2"]["side"] == "Right"                              # a tie: the larger summed score
+    assert sides["3"]["side"] == "Right" and sides["3"]["none"] == 1  # all tied: Right
+    assert sides["4"]["side"] == "Left"
+
+
+def _with_raw(tmp_path, *, right_signers=("8",), spans=None):
+    """Raw landmark files for every stored state (the state's frame times), the reports re-pointed at their hashes.
+    ``spans``: video id -> (right, left) active frames."""
+    from signtranslator.data_engineering.video_landmarks import save_raw_landmarks
+    from signtranslator.pose.multichannel import MultichannelMotion
+    spans = spans or {}
+    for path in sorted((tmp_path / PREFIX / "reports").glob("*.json")):
+        report = json.loads(path.read_text())
+        for r in report["results"]:
+            if not r.get("state_key") or not r.get("state_sha256"):
+                continue
+            try:
+                state = MultichannelMotion.load(tmp_path / r["state_key"], expected_sha256=r["state_sha256"])
+            except ValueError:                        # the crashed pass's wrong state hash (an unused report)
+                continue
+            payload = save_raw_landmarks(_raw_clip(state.timestamps, *spans.get(r["video_id"], ((10, 20), (4, 10)))))
+            (tmp_path / r["landmarks_key"]).parent.mkdir(parents=True, exist_ok=True)
+            (tmp_path / r["landmarks_key"]).write_bytes(payload)
+            r["landmarks_sha256"] = hashlib.sha256(payload).hexdigest()
+        path.write_text(json.dumps(report))
+
+
+def test_hand_evidence_trim_side(tmp_path, monkeypatch):
+    """--trim-side hand-evidence: the signer's majority articulating slot, the window on that side's image wrist
+    height, the chosen hand's detection floor; the old rule is the default and unchanged."""
+    meta_sha, states, mix_sha, val_sha = _store(tmp_path, monkeypatch)
+    assert job.main(_argv(tmp_path, meta_sha, mix_sha, val_sha, "old.json")) == 0        # before the raw files
+    _with_raw(tmp_path)
+
+    argv = _argv(tmp_path, meta_sha, mix_sha, val_sha, "new.json", "--corpus-id", "semlex-text-v2",
+                 "--trim-side", "hand-evidence")
+    assert job.main(argv) == 0
+    summary = json.loads((tmp_path / "new.json.summary.json").read_text())
+    new = load_manifest(tmp_path / "new.json", expected_sha256=summary["manifest_sha256"])
+    old = json.loads((tmp_path / "old.json").read_text())
+    rule = summary["trim_side_rule"]
+    assert new["trim"]["side_rule"] == "hand-evidence" and new["trim"]["min_hand"] == .2
+    assert "side_rule" not in old["trim"] and "trim_side_rule" not in json.loads(
+        (tmp_path / "old.json.summary.json").read_text())
+    # every record's side is its signer's, the signer's side is the majority of its clips' articulating slots
+    signers = rule["signers"]
+    assert new["trim"]["signer_sides"] == {k: v["side"] for k, v in signers.items()}
+    from signtranslator.pose.multichannel import MultichannelMotion
+    from signtranslator.pose.resample import resample_motion
+    for r in new["records"]:
+        q = r["quality"]
+        assert q["trim_side"] == signers[r["source"]["signer_id"]]["side"]
+        state = MultichannelMotion.load(tmp_path / r["continuous"]["state_key"],
+                                        expected_sha256=r["continuous"]["state_sha256"])
+        ev = job.hand_evidence(resample_motion(state, 24.))
+        assert q["hand_evidence"] == ev and q["clip_side"] == job.evidence_side(ev)
+        # the window: sign_window's rule on the chosen side's image wrist (Right: frames 10-19, Left: 4-9)
+        expect, why = job.image_window(_raw_clip(state.timestamps), q["trim_side"], float(state.timestamps[0]),
+                                       .1, .25, .3, .5)
+        assert why == "trimmed" and r["continuous"]["window_seconds"] == list(expect)
+        assert r["continuous"]["seconds"] == round(expect[1] - expect[0] + 1 / 24., 4)
+    decided = rule["clip_side_agrees_with_signer_side"]
+    assert decided["clips"] == sum(v["Right"] + v["Left"] for v in signers.values())
+    assert rule["clips_examined"] == sum(v["Right"] + v["Left"] + v["none"] for v in signers.values())
+    assert sum(rule["outcomes"].values()) == rule["clips_examined"]
+    assert rule["old_rule"]["side_agrees_with_clip_side"]["clips"] == decided["clips"]
+    assert summary["counts"]["kept:train"] + summary["counts"]["kept:val"] == len(new["records"])
+    # the old rule's own trims are not this rule's: old arm_untracked clips are kept now (the pose is found)
+    assert len(new["records"]) >= len(old["records"]) and summary["counts"].get("trim:trimmed") == len(new["records"])
+    # refusals, before anything is read: a floor outside [0, 1]; the rule without the video extraction
+    with pytest.raises(SystemExit, match=r"\[0, 1\]"):
+        job.main(argv + ["--trim-min-hand", "1.5"])
+    pose = list(argv)
+    pose[3] = "pose"
+    with pytest.raises(SystemExit, match="--source video"):
+        job.main(pose)
+    with pytest.raises(SystemExit, match="--states-prefix"):
+        job.main(argv + ["--states-prefix", f"{BASE}/states-video-v1-unmirrored"])
+
+
+def test_hand_evidence_side_is_the_signers_and_a_rarely_detected_chosen_hand_is_dropped():
+    """apply_hand_evidence: a clip takes its signer's side even when its own slot differs; a clip whose chosen hand
+    is detected on fewer than min_hand of its frames is dropped, never kept untrimmed."""
+    ev = lambda r, l, dr=1., dl=1.: {"Right": dict(detected=dr, articulation=1., score=r),
+                                     "Left": dict(detected=dl, articulation=1., score=l)}
+    win = lambda: {"Right": dict(window=[.1, .9], reason="trimmed"), "Left": dict(window=[.2, .8], reason="trimmed")}
+
+    def out(e):
+        return dict(outcome="evidence", evidence=e, clip_side=job.evidence_side(e), windows=win(),
+                    old_rule=dict(window=[0., 1.], reason="trimmed", side="Left"), available=["body"], clip_seconds=1.)
+    pending = [(dict(signer_id=s), None, None, None) for s in ("1", "1", "1", "2", "2", "3")]
+    outcomes = [out(ev(2, 1)), out(ev(2, 1)), out(ev(1, 2)),             # signer 1: Right by 2 to 1
+                out(ev(1, 2, dl=.1)), out(ev(1, 3)),                     # signer 2: Left; its first Left hand at 10%
+                dict(outcome="drop:fps_below_min")]                      # not examined: untouched
+    rule = job.apply_hand_evidence(pending, outcomes, .2)
+    assert [o.get("side") for o in outcomes] == ["Right", "Right", "Right", "Left", "Left", None]
+    assert outcomes[2]["window"] == [.1, .9] and outcomes[2]["outcome"] == "trim:trimmed"      # signer's, not its own
+    assert outcomes[3]["outcome"] == "trim:chosen_hand_detected_below_min" and outcomes[3]["window"] is None
+    assert outcomes[4]["window"] == [.2, .8] and outcomes[5] == dict(outcome="drop:fps_below_min")
+    assert rule["clips_examined"] == 5 and rule["signer_side"] == {"Left": 1, "Right": 1}
+    assert rule["clip_side_agrees_with_signer_side"] == dict(clips=5, agree=4, fraction=.8)
+    assert rule["outcomes"] == {"trim:chosen_hand_detected_below_min": 1, "trim:trimmed": 4}
+    assert rule["old_rule"]["side_agrees_with_clip_side"]["agree"] == 3                  # old side Left throughout
+    assert rule["both_rules_trimmed"]["clips"] == 4 and rule["clip_side"] == {"Left": 3, "Right": 2}
+
+
+def test_hand_evidence_refuses_raw_landmarks_of_other_frames(tmp_path, monkeypatch):
+    meta_sha, _, mix_sha, val_sha = _store(tmp_path, monkeypatch)
+    _with_raw(tmp_path)
+    key = next((tmp_path / LANDMARKS).rglob("*.npz"))
+    key.write_bytes(key.read_bytes() + b"x")
+    with pytest.raises(SystemExit, match="raw landmark bytes differ"):
+        job.main(_argv(tmp_path, meta_sha, mix_sha, val_sha, "m.json", "--trim-side", "hand-evidence"))

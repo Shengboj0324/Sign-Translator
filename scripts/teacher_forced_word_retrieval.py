@@ -28,7 +28,8 @@ gain over the empty text and its NLL per part-valid code; **paired** checkpoint 
 mean rank, NLL per part-valid code), with word-clustered and clip bootstrap intervals; per word; every clip's ranks and
 part-valid candidate scores.
 
-**Hygiene.** Only val records of the named corpora are read, plus the trainer's layout template (the first How2Sign
+**Hygiene.** The two checkpoints must share their tokenizer (its state's hash; refused otherwise: other codes make
+the per-clip pairing meaningless). Only val records of the named corpora are read, plus the trainer's layout template (the first How2Sign
 *train* record). No test or held-out partition is read, and no How2Sign clip other than the template (How2Sign signer
 9, the generator's final-test signer, is in no partition this reads). The output is written once (``--output-key``,
 refused if it exists, checked before any scoring; and/or ``--output-file``). GPU (``--device cuda``) or CPU.
@@ -337,6 +338,10 @@ def main(argv=None) -> int:
                                        r.get("corpus") == args.semlex_corpus and r.get("partition") == "train")
     checkpoint = load_prior(store, args.checkpoint_key, args.checkpoint_sha256, device)
     comparison = load_prior(store, args.compare_checkpoint_key, args.compare_checkpoint_sha256, device)
+    if checkpoint[2]["tokenizer_state_sha256"] != comparison[2]["tokenizer_state_sha256"]:
+        raise SystemExit(f"the checkpoints' tokenizers differ ({checkpoint[2]['tokenizer_state_sha256'][:12]} vs "
+                         f"{comparison[2]['tokenizer_state_sha256'][:12]}): their codes, and so their retrieval "
+                         "scores, are not comparable clip for clip")
     models = dict(checkpoint=checkpoint, comparison=comparison)
     with tempfile.TemporaryDirectory() as t:
         cache = ContentCache(Path(args.cache_dir or t), 8 * 2 ** 30)
@@ -398,7 +403,7 @@ def main(argv=None) -> int:
                                                                          sign=template_record.get("sign"),
                                                                          partition=template_record.get("partition"))),
         checkpoints={role: m[2] for role, m in models.items()},
-        same_tokenizer=checkpoint[2]["tokenizer_state_sha256"] == comparison[2]["tokenizer_state_sha256"],
+        same_tokenizer=True,                           # refused otherwise (above)
         parameters=dict(candidates=args.candidates, order_seed=args.order_seed, seed=args.seed,
                         covered_per_word=args.covered_per_word, per_word=args.per_word, bootstrap=args.bootstrap,
                         max_seconds=args.max_seconds, limit=args.limit or None, device=str(device), fps=24.,

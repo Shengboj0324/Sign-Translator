@@ -55,6 +55,29 @@ its report before use. The trim's side is per clip and symmetric (the side whose
 shoulder varies most); it is the only use of a skeleton-slot side, and nothing depends on whether the states were
 un-mirrored. The per-signer "left by forearm tracking" counts of the summary are reported only.
 
+**Trim side, hand evidence** (``--trim-side hand-evidence``, video only; round 14b; the default ``wrist-height-spread``
+is the rule above, unchanged, and makes ``semlex-text-v1``). On the original Sem-Lex extraction the old rule fails: the
+dominant (Right) elbow is usually out of the webcam frame, so its forearm is untracked while its hand is detected, and
+the old rule falls to the lower, non-dominant arm or to ``arm_untracked`` (independent review, 2026-10-29: 220 val
+clips, arm_untracked 46%, trim side = articulating slot 58%). What changes, and only this:
+- **side:** per clip, each hand slot's score = the fraction of frames with the hand detected x its finger-articulation
+  energy (mean frame-to-frame change of the hand channel's values over consecutive detected frames), on the state at
+  24 fps; the clip's articulating slot is the higher score (Right on a tie; none when both are 0). The side used is the
+  **signer's** majority articulating slot over their examined clips (tie: the larger summed score, then Right). Per
+  clip and per signer choices and their agreement are in the summary (``trim_side_rule``) and each record's quality;
+- **heights:** the side's wrist **image** height above its shoulder (raw MediaPipe pose, normalised image y, up
+  positive; landmarks 16/12 for Right, 15/11 for Left), on every frame with a pose (out-of-frame wrists as MediaPipe
+  places them), instead of the skeleton wrist height on forearm-tracked frames. The raw landmarks are hashed against
+  the report and must hold exactly the state's frames; the window is on their frame times (the state's), not on the
+  state resampled to 24 fps;
+- **tracked:** the pose (not the forearm) must be found on at least ``--min-tracked`` of the frames
+  (``trim:pose_untracked`` otherwise);
+- **drop:** a clip whose chosen hand is detected on fewer than ``--trim-min-hand`` (0.2) of its frames is dropped
+  (``trim:chosen_hand_detected_below_min``).
+Unchanged: rest = 10th and peak = 95th percentile of the heights, active = above rest + ``--threshold`` x (peak - rest),
+first to last active frame +- ``--margin`` clipped to the clip, ``--min-seconds``, ``continuous.seconds`` = window +
+1/24. The old rule's window and side are computed too and compared in the summary.
+
 **Corpus id and signer exclusion** (round 14b, docs/NEXT_PHASE_PLAN.md "Sem-Lex per-signer sides"): ``--corpus-id``
 (default ``semlex-text-v1``, so a default build is byte-identical to earlier ones) names the manifest, its records'
 ``corpus`` and the licence prefix. ``--exclude-signers 11,23,46,76`` with ``--exclude-reason`` drops every metadata clip
@@ -393,6 +416,79 @@ def dominant_side(state) -> str:
     return best[1]
 
 
+SPREAD, HAND_EVIDENCE = "wrist-height-spread", "hand-evidence"
+TRIM_SIDE_RULES = (SPREAD, HAND_EVIDENCE)
+SIDES = ("Right", "Left")                           # tie order: Right first, as trim_window's strict comparison
+
+
+def hand_evidence(state) -> dict:
+    """Per side of a state (at 24 fps): the fraction of frames whose hand is detected (every hand joint valid, as
+    ``side_tracks``), the finger-articulation energy (mean L2 norm of the frame-to-frame change of the hand channel's
+    values, over pairs of consecutive detected frames; 0 without such a pair) and their product, the score."""
+    out = {}
+    for side in SIDES:
+        channel = state.channels[f"{side.lower()}_hand"]
+        ok = np.asarray(channel.valid, dtype=bool).all(axis=1)
+        values = np.asarray(channel.values, dtype=np.float64).reshape(len(ok), -1)
+        pairs = ok[1:] & ok[:-1]
+        energy = float(np.linalg.norm(np.diff(values, axis=0)[pairs], axis=1).mean()) if pairs.any() else 0.
+        detected = float(ok.mean()) if len(ok) else 0.
+        out[side] = dict(detected=round(detected, 4), articulation=round(energy, 6), score=round(detected * energy, 6))
+    return out
+
+
+def evidence_side(evidence: dict) -> str | None:
+    """The clip's articulating slot: the side with the higher score (Right on a tie), None when both are 0."""
+    if max(evidence[s]["score"] for s in SIDES) <= 0:
+        return None
+    return max(SIDES, key=lambda s: evidence[s]["score"])           # max keeps the first (Right) on a tie
+
+
+def signer_sides(clips: dict) -> dict:
+    """{signer: dict(side, Right, Left, none, score_Right, score_Left)}: each signer's majority articulating slot
+    over their clips (``clips``: signer -> list of evidence dicts); a tie goes to the larger summed score, then Right."""
+    out = {}
+    for signer, evidences in clips.items():
+        votes = collections.Counter(evidence_side(e) for e in evidences)
+        sums = {s: sum(e[s]["score"] for e in evidences) for s in SIDES}
+        if votes["Right"] != votes["Left"]:
+            side = "Right" if votes["Right"] > votes["Left"] else "Left"
+        else:
+            side = "Left" if sums["Left"] > sums["Right"] else "Right"
+        out[signer] = dict(side=side, Right=votes["Right"], Left=votes["Left"], none=votes[None],
+                           score_Right=round(sums["Right"], 6), score_Left=round(sums["Left"], 6))
+    return out
+
+
+POSE_POINTS = {"Left": (11, 15), "Right": (12, 16)}   # MediaPipe pose (shoulder, wrist) of each state slot
+
+
+def image_window(clip, side: str, t0: float, threshold: float, margin: float, min_tracked: float, min_seconds: float):
+    """The hand-evidence rule's window on one side: ``sign_window``'s rule (rest = 10th, peak = 95th percentile of
+    the height; active = frames above rest + threshold x (peak - rest); first to last active frame, +- margin,
+    clipped to the clip) on the side's wrist **image** height above its shoulder (normalised image y, up positive)
+    over the frames with a pose (out-of-frame wrists included, as MediaPipe places them), on the raw landmarks' own
+    frame times (those of the state) from ``t0``, the state's first frame. (window, reason): reason "trimmed",
+    "pose_untracked" (pose on fewer than ``min_tracked`` of the frames) or "no_sign_window"."""
+    shoulder, wrist = POSE_POINTS[side]
+    found = np.asarray(clip.pose_found, dtype=bool)
+    image = np.asarray(clip.pose_image, dtype=np.float64)
+    heights = image[:, shoulder, 1] - image[:, wrist, 1]
+    found &= np.isfinite(heights)
+    if not len(found) or found.mean() < min_tracked:
+        return None, "pose_untracked"
+    times = np.asarray(clip.times, dtype=np.float64) - t0
+    h = heights[found]
+    rest, peak = np.percentile(h, 10), np.percentile(h, 95)
+    active = np.flatnonzero(found & (heights > rest + threshold * (peak - rest)))
+    if not len(active):
+        return None, "no_sign_window"
+    lo, hi = max(float(times[active[0]]) - margin, 0.), min(float(times[active[-1]]) + margin, float(times[-1]))
+    if hi - lo < min_seconds:
+        return None, "no_sign_window"
+    return (round(lo, 4), round(hi, 4)), "trimmed"
+
+
 def _init_worker(store_spec: str) -> None:
     import warnings
     warnings.simplefilter("error")
@@ -409,7 +505,7 @@ def examine(task: tuple) -> dict:
     """One clip: the state fetched and hashed against its report, decoded; frames, frame rate over the metadata
     duration, hand fraction, then (if both filters pass) the trim window, the untrimmed length and the dominant side."""
     from signtranslator.pose.multichannel import MultichannelMotion
-    state_key, state_sha256, duration_ms, p = task
+    state_key, state_sha256, duration_ms, p = task[:4]
     payload = _WORKER["store"].get(state_key)
     if hashlib.sha256(payload).hexdigest() != state_sha256:
         raise StateMismatch(f"{state_key}: state bytes differ from the report")
@@ -426,6 +522,8 @@ def examine(task: tuple) -> dict:
     out["hand_fraction"] = round(float(hand), 4)
     if hand < p["min_hand"]:
         return dict(out, outcome="drop:hand_tracked_below_min")
+    if p.get("trim_side", SPREAD) == HAND_EVIDENCE:
+        return examine_hand_evidence(state, task[4], task[5], p, out)
     window, reason = trim_window(state, p["threshold"], p["margin"], p["min_tracked"], p["min_seconds"])
     out.update(outcome=f"trim:{reason}", window=None if window is None else list(window))
     if window is not None:
@@ -433,6 +531,85 @@ def examine(task: tuple) -> dict:
                    clip_seconds=round(float(state.timestamps[-1] - state.timestamps[0]), 4),
                    side=dominant_side(state))
     return out
+
+
+def examine_hand_evidence(state, landmarks_key: str, landmarks_sha256: str, p: dict, out: dict) -> dict:
+    """The hand-evidence rule's per-clip part: both sides' evidence (on the state at 24 fps) and image windows (on the
+    clip's raw landmarks, hashed against the report and checked to hold the state's frames), and the old rule's
+    window and side for comparison. The side is chosen per signer afterwards (``apply_hand_evidence``)."""
+    from signtranslator.data_engineering.video_landmarks import load_raw_landmarks
+    from signtranslator.pose.resample import resample_motion
+    if not landmarks_key or not landmarks_sha256:
+        raise StateMismatch(f"{state.sample_id}: the report names no raw landmarks (needed by --trim-side "
+                            f"{HAND_EVIDENCE})")
+    raw = _WORKER["store"].get(landmarks_key)
+    if hashlib.sha256(raw).hexdigest() != landmarks_sha256:
+        raise StateMismatch(f"{landmarks_key}: raw landmark bytes differ from the report")
+    clip = load_raw_landmarks(raw)
+    if len(clip.times) != len(state.timestamps) or not np.allclose(clip.times, state.timestamps, rtol=0, atol=1e-6):
+        raise StateMismatch(f"{landmarks_key}: the raw landmarks' frames are not the state's")
+    t0 = float(state.timestamps[0])
+    windows = {}
+    for side in SIDES:
+        w, reason = image_window(clip, side, t0, p["threshold"], p["margin"], p["min_tracked"], p["min_seconds"])
+        windows[side] = dict(window=None if w is None else list(w), reason=reason)
+    old, old_reason = trim_window(state, p["threshold"], p["margin"], p["min_tracked"], p["min_seconds"])
+    evidence = hand_evidence(resample_motion(state, 24.))
+    return dict(out, outcome="evidence", evidence=evidence, clip_side=evidence_side(evidence), windows=windows,
+                old_rule=dict(window=None if old is None else list(old), reason=old_reason, side=dominant_side(state)),
+                available=sorted(n for n, c in state.channels.items() if c.valid.any()),
+                clip_seconds=round(float(state.timestamps[-1] - state.timestamps[0]), 4))
+
+
+def apply_hand_evidence(pending: list, outcomes: list, min_hand: float) -> dict:
+    """Choose each clip's side as its signer's majority articulating slot (over the signer's examined clips), then
+    its window on that side, in place: ``outcome`` becomes ``trim:<reason>``, or ``trim:chosen_hand_detected_below_min``
+    (dropped) when the chosen hand is detected on fewer than ``min_hand`` of the frames. Returns the summary block."""
+    clips = collections.defaultdict(list)
+    for (row, *_), out in zip(pending, outcomes):
+        if out["outcome"] == "evidence":
+            clips[row["signer_id"]].append(out["evidence"])
+    sides = signer_sides(clips)
+    for (row, *_), out in zip(pending, outcomes):
+        if out["outcome"] != "evidence":
+            continue
+        side = sides[row["signer_id"]]["side"]
+        out["side"] = side
+        if out["evidence"][side]["detected"] < min_hand:
+            out.update(outcome="trim:chosen_hand_detected_below_min", window=None)
+        else:
+            out.update(outcome=f"trim:{out['windows'][side]['reason']}", window=out["windows"][side]["window"])
+    examined = [(row, out) for (row, *_), out in zip(pending, outcomes) if "evidence" in out]
+    decided = [(row, out) for row, out in examined if out["clip_side"] is not None]
+    agree = sum(out["clip_side"] == out["side"] for _, out in decided)
+    old_agree = sum(out["old_rule"]["side"] == out["clip_side"] for _, out in decided)
+
+    def seconds(w):
+        return w[1] - w[0] + 1 / 24. if w else None
+    both = [out for _, out in examined if out.get("window") and out["old_rule"]["window"]]
+    return dict(
+        rule=("hand-evidence: per clip, each hand slot's detected fraction x finger-articulation energy (state at 24 "
+              "fps); the side is the signer's majority slot over their clips (tie: larger summed score, then Right); "
+              "the window is sign_window's rule on that side's wrist image height above its shoulder (raw pose, "
+              "frames with a pose); a clip whose chosen hand is detected on fewer than min_hand of its frames is "
+              "dropped"), min_hand=min_hand,
+        clips_examined=len(examined), clip_side=dict(sorted(collections.Counter(
+            str(out["clip_side"]) for _, out in examined).items())),
+        signer_side=dict(sorted(collections.Counter(s["side"] for s in sides.values()).items())),
+        signers={k: sides[k] for k in sorted(sides, key=lambda s: (len(s), s))},
+        clip_side_agrees_with_signer_side=dict(clips=len(decided), agree=agree,
+                                               fraction=round(agree / len(decided), 4) if decided else None),
+        chosen_side=dict(sorted(collections.Counter(out["side"] for _, out in examined).items())),
+        outcomes=dict(sorted(collections.Counter(out["outcome"] for _, out in examined).items())),
+        old_rule=dict(
+            reasons=dict(sorted(collections.Counter(out["old_rule"]["reason"] for _, out in examined).items())),
+            side=dict(sorted(collections.Counter(out["old_rule"]["side"] for _, out in examined).items())),
+            side_agrees_with_clip_side=dict(clips=len(decided), agree=old_agree,
+                                            fraction=round(old_agree / len(decided), 4) if decided else None),            trimmed_seconds=quantiles(seconds(out["old_rule"]["window"]) for _, out in examined
+                                      if out["old_rule"]["window"])),
+        trimmed_seconds=quantiles(seconds(out["window"]) for _, out in examined if out.get("window")),
+        both_rules_trimmed=dict(clips=len(both), new_seconds=quantiles(seconds(o["window"]) for o in both),
+                                old_seconds=quantiles(seconds(o["old_rule"]["window"]) for o in both)))
 
 
 def examine_all(tasks: list, store_spec: str, workers: int) -> list[dict]:
@@ -694,8 +871,15 @@ def build(store, args) -> tuple[dict, dict]:
     cov_inputs = prepare_coverage(store, args)         # before the long pass: a bad pin fails in seconds
     params = dict(min_fps=args.min_fps, min_hand=args.min_hand, threshold=args.threshold, margin=args.margin,
                   min_tracked=args.min_tracked, min_seconds=args.min_seconds)
-    tasks = [(res["state_key"], res["state_sha256"], float(row["duration"]), params) for row, _, _, res in pending]
+    evidence_rule = args.trim_side == HAND_EVIDENCE
+    if evidence_rule:
+        params.update(trim_side=HAND_EVIDENCE)
+        tasks = [(res["state_key"], res["state_sha256"], float(row["duration"]), params, res.get("landmarks_key"),
+                  res.get("landmarks_sha256")) for row, _, _, res in pending]
+    else:                                              # the old rule's tasks, unchanged
+        tasks = [(res["state_key"], res["state_sha256"], float(row["duration"]), params) for row, _, _, res in pending]
     outcomes = examine_all(tasks, args.store, args.workers)
+    side_rule = apply_hand_evidence(pending, outcomes, args.trim_min_hand) if evidence_rule else None
     records, examined, signers_by_split = [], {}, collections.defaultdict(set)
     for (row, text, gloss, result), out in zip(pending, outcomes):
         counts[out["outcome"]] += 1
@@ -708,6 +892,9 @@ def build(store, args) -> tuple[dict, dict]:
             quality.update(measured_fps=result.get("fps"), duration_ratio=result.get("duration_ratio"),
                            image_size=result.get("image_size"), upright_root_applied=result.get("upright_root_applied"),
                            forearm_tracked=(result.get("tracked") or {}).get("forearm"))
+            if evidence_rule:                          # the hand-evidence rule's choice, per record
+                quality.update(trim_side=out["side"], clip_side=out["clip_side"],
+                               hand_evidence={s: out["evidence"][s] for s in SIDES})
             source = dict(video_id=video_id, signer_id=row["signer_id"], label_type=row["label_type"],
                           semlex_split=split, extraction=VIDEO_EXTRACTOR, video_sha256=result.get("source_sha256"),
                           landmarks_key=result.get("landmarks_key"), landmarks_sha256=result.get("landmarks_sha256"),
@@ -766,6 +953,9 @@ def build(store, args) -> tuple[dict, dict]:
                                  "(peak - rest)) +- margin (build_trimmed_word_manifest.sign_window)",
                             threshold=args.threshold, margin=args.margin, min_tracked=args.min_tracked,
                             min_seconds=args.min_seconds)
+    if evidence_rule:                                  # recorded only under the new rule: a default build is unchanged
+        manifest["trim"].update(rule=side_rule["rule"], side_rule=HAND_EVIDENCE, min_hand=args.trim_min_hand,
+                                signer_sides={k: v["side"] for k, v in side_rule["signers"].items()})
     manifest["filters"] = dict(min_fps=args.min_fps, min_hand=args.min_hand, counts=dict(sorted(counts.items())))
     exclusion = None
     if excluded:                                       # recorded only when given: a default build is unchanged
@@ -789,6 +979,8 @@ def build(store, args) -> tuple[dict, dict]:
         summary["corpus_id"] = args.corpus_id
     if exclusion is not None:
         summary["excluded_signers"] = exclusion
+    if side_rule is not None:
+        summary["trim_side_rule"] = side_rule
     if video:
         summary["reports"] = {k: read[k] for k in ("used", "ignored", "shards", "inference_methods", "archives")}
     else:
@@ -806,6 +998,11 @@ def main(argv=None) -> int:
     p.add_argument("--exclude-signers", help="Sem-Lex signer ids whose clips are dropped, comma-separated (round 14b: "
                    "the image-right signers 11,23,46,76); counted in the summary with --exclude-reason")
     p.add_argument("--exclude-reason", help="why --exclude-signers are dropped (required with it; recorded)")
+    p.add_argument("--trim-side", choices=TRIM_SIDE_RULES, default=SPREAD, help=f"the trim's side rule: {SPREAD} "
+                   f"(default, the rule of semlex-text-v1) or {HAND_EVIDENCE} (video only; round 14b, see the module "
+                   "docstring)")
+    p.add_argument("--trim-min-hand", type=float, default=.2, help=f"{HAND_EVIDENCE}: drop a clip whose chosen hand "
+                   "is detected on fewer than this fraction of its frames")
     p.add_argument("--prefix", help="states prefix; default the pinned learned path (pose) or states-video-v1 (video)")
     p.add_argument("--states-prefix", help="video: the un-mirrored states (unmirror_semlex_states.py's prefix) that "
                    "replace the extracted ones; each must re-solve exactly the extracted state the reports name")
@@ -840,6 +1037,11 @@ def main(argv=None) -> int:
     args.exclude_signers = parse_signers(args.exclude_signers)
     if bool(args.exclude_signers) != bool((args.exclude_reason or "").strip()):
         raise SystemExit("--exclude-signers and --exclude-reason go together")
+    if args.trim_side == HAND_EVIDENCE and (args.source != "video" or args.states_prefix):
+        raise SystemExit(f"--trim-side {HAND_EVIDENCE} reads the extraction's raw landmarks: --source video, and "
+                         "not with --states-prefix (un-mirrored states)")
+    if not 0 <= args.trim_min_hand <= 1:
+        raise SystemExit("--trim-min-hand must be in [0, 1]")
     import warnings
     warnings.simplefilter("error")
     from signtranslator.data_engineering.corpus_manifest import canonical_json

@@ -78,8 +78,8 @@ def test_read_split_refuses_overlap_and_repeats():
 
 # ---- the score ----------------------------------------------------------------------------------------------------
 
-def tiny(seed):
-    torch.manual_seed(0)
+def tiny(seed, tokenizer_seed=0):
+    torch.manual_seed(tokenizer_seed)
     state = signer_state(0, frames=16, amplitude=.4)
     tokenizer = MotionRVQ(small(state, down_layers=0)).eval()
     torch.manual_seed(seed)
@@ -166,8 +166,8 @@ def build_store(root: Path):
     store.put("mix.json", payload)
     split = json.dumps(SPLIT).encode()
     store.put("split.json", split)
-    for name, seed in (("a.pt", 1), ("b.pt", 2)):
-        tokenizer, prior = tiny(seed)
+    for name, seed, tseed in (("a.pt", 1, 0), ("b.pt", 2, 0), ("c.pt", 3, 5)):     # c: another tokenizer
+        tokenizer, prior = tiny(seed, tseed)
         buffer = io.BytesIO()
         torch.save(dict(kind="motion_rvq_prior", config=prior.config.to_dict(), model=prior.state_dict(), ema=None,
                         tokenizer_state=tokenizer.state_dict(), step=seed), buffer)
@@ -245,6 +245,8 @@ def test_refusals(tmp_path):
         tf.main(argv(root, mix_sha, split_sha, *out, "--checkpoint-sha256", "0" * 64))
     with pytest.raises(SystemExit, match="the mix lacks"):
         tf.main(argv(root, mix_sha, split_sha, *out, "--semlex-corpus", "semlex-text-v3"))
+    with pytest.raises(SystemExit, match="tokenizers differ"):                  # codes not comparable: refused
+        tf.main(argv(root, mix_sha, split_sha, *out, comparison="c.pt"))
     with pytest.raises(SystemExit, match="the split has 6 words"):
         tf.main(argv(root, mix_sha, split_sha, *out, "--candidates", "7"))
     with pytest.raises(SystemExit):

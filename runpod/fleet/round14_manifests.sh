@@ -11,6 +11,8 @@
 #   CORPUS_ID (default semlex-text-v1): the Sem-Lex manifest's id; it is written to sem-lex-mirror-v1/$CORPUS_ID/.
 #   MIX_ID (default round14-mixed-v1) and MKEY (default youtube-asl-v1/$MIX_ID/manifest.json): the mix.
 #   EXCLUDE_SIGNERS (default none) with EXCLUDE_REASON (a default is given): Sem-Lex signers whose clips are dropped.
+#   TRIM_SIDE: the trim's side rule (build_semlex_manifest.py --trim-side); wrist-height-spread for semlex-text-v1
+#   (round 14's, the only one it allows), hand-evidence by default for any other CORPUS_ID (round 14b review).
 #   UNMIRRORED=1 (default unset): the re-solved states of runpod/fleet/unmirror_semlex_states.sh (withdrawn, 2026-10-29).
 #   Round 14b (docs/NEXT_PHASE_PLAN.md "Sem-Lex per-signer sides", the original states-video-v1, image-right signers
 #   excluded): CORPUS_ID=semlex-text-v2 MIX_ID=round14b-mixed-v1 EXCLUDE_SIGNERS=11,23,46,76
@@ -42,7 +44,14 @@ PARAM_ERROR=
   PARAM_ERROR="CORPUS_ID $CORPUS_ID needs its own MIX_ID (round14-mixed-v1 holds semlex-text-v1)"
 [ -n "$EXCLUDE_SIGNERS" ] && [ "$CORPUS_ID" = semlex-text-v1 ] && \
   PARAM_ERROR="EXCLUDE_SIGNERS needs a new CORPUS_ID (semlex-text-v1 is round 14's, built without exclusion)"
+# the trim's side rule: semlex-text-v1 keeps its own (wrist-height-spread); a new corpus uses hand-evidence
+if [ "$CORPUS_ID" = semlex-text-v1 ]; then TRIM_SIDE=${TRIM_SIDE:-wrist-height-spread}; else TRIM_SIDE=${TRIM_SIDE:-hand-evidence}; fi
+[ "$CORPUS_ID" = semlex-text-v1 ] && [ "$TRIM_SIDE" != wrist-height-spread ] && \
+  PARAM_ERROR="TRIM_SIDE $TRIM_SIDE needs a new CORPUS_ID (semlex-text-v1 is round 14's wrist-height-spread trim)"
+[[ $TRIM_SIDE =~ ^(wrist-height-spread|hand-evidence)$ ]] || PARAM_ERROR="TRIM_SIDE $TRIM_SIDE is not a trim side rule"
+[ "$TRIM_SIDE" = hand-evidence ] && [ -n "${UNMIRRORED:-}" ] && PARAM_ERROR="TRIM_SIDE hand-evidence reads the original extraction: not with UNMIRRORED"
 SEMLEX_EXTRA=()
+[ "$TRIM_SIDE" = hand-evidence ] && SEMLEX_EXTRA+=(--trim-side hand-evidence)
 [ -n "${UNMIRRORED:-}" ] && SEMLEX_EXTRA+=(--states-prefix $SL/states-video-v1-unmirrored)
 [ -n "$EXCLUDE_SIGNERS" ] && SEMLEX_EXTRA+=(--exclude-signers "$EXCLUDE_SIGNERS" --exclude-reason "$EXCLUDE_REASON")
 MIXLOG=stage-${MIX_ID%-mixed-v1}-mix                    # round14-mixed-v1 -> stage-round14-mix (round 14's log name)
@@ -68,9 +77,9 @@ if exists $SKEY; then
   echo "stored: $SKEY (not rebuilt)"
   exists $SSUM || { echo "ALERT $SKEY is stored but $SSUM is not (an interrupted upload): investigate"; done_ 3; }
   python -c "import os; from signtranslator.data.text_motion_dataset import R2Store; s=R2Store(os.environ); open('$OUT/semlex.summary.json','wb').write(s.get('$SSUM'))" || done_ 1
-  # the stored manifest must be the one these settings build: the same excluded signers (none by default)
-  python -c "import json,sys; s=json.load(open(sys.argv[1])); got=(s.get('excluded_signers') or {}).get('signers') or []; want=sorted([x for x in sys.argv[2].split(',') if x], key=int); sys.exit(0 if got == want else f'stored summary excludes {got}, these settings {want}')" \
-    "$OUT/semlex.summary.json" "$EXCLUDE_SIGNERS" || { echo "ALERT $SKEY was built with other excluded signers"; done_ 3; }
+  # the stored manifest must be the one these settings build: the same excluded signers (none by default) and trim rule
+  python -c "import json,sys; s=json.load(open(sys.argv[1])); got=((s.get('excluded_signers') or {}).get('signers') or [], 'hand-evidence' if s.get('trim_side_rule') else 'wrist-height-spread'); want=(sorted([x for x in sys.argv[2].split(',') if x], key=int), sys.argv[3]); sys.exit(0 if got == want else f'stored summary has (excluded, trim side) {got}, these settings {want}')" \
+    "$OUT/semlex.summary.json" "$EXCLUDE_SIGNERS" "$TRIM_SIDE" || { echo "ALERT $SKEY was built with other settings"; done_ 3; }
 else
   python scripts/build_semlex_manifest.py --source video --splits val,train --workers $W --wordlist $WORDS \
     --corpus-id $CORPUS_ID ${SEMLEX_EXTRA[@]+"${SEMLEX_EXTRA[@]}"} \
@@ -103,6 +112,14 @@ python - "$OUT/semlex.summary.json" <<'EOF'
 import json, sys
 s = json.load(open(sys.argv[1]))
 print("FILTERS", json.dumps(s["counts"], sort_keys=True))
+if s.get("trim_side_rule"):
+    t = s["trim_side_rule"]
+    print("TRIM SIDE (hand-evidence): clips", t["clips_examined"], "clip side", json.dumps(t["clip_side"]), "signer side",
+          json.dumps(t["signer_side"]), "clip = signer side", json.dumps(t["clip_side_agrees_with_signer_side"]),
+          "outcomes", json.dumps(t["outcomes"]))
+    print("  old rule: reasons", json.dumps(t["old_rule"]["reasons"]), "side = clip side",
+          json.dumps(t["old_rule"]["side_agrees_with_clip_side"]), "trimmed s", json.dumps(t["old_rule"]["trimmed_seconds"]))
+    print("  new rule trimmed s", json.dumps(t["trimmed_seconds"]))
 if s.get("excluded_signers"):
     e = s["excluded_signers"]
     print("EXCLUDED signers", e["signers"], "clips", e["metadata_clips"], json.dumps(e["metadata_clips_by_signer"]),
