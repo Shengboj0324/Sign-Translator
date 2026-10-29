@@ -4523,7 +4523,7 @@ If r2 is adopted, the next run is W14b's generated composition, refined, under M
 
 Chain: `r15_a9.sh`.
 
-### Round 15 amendment 8 result: refiner r1 NOT adopted (recorded 2026-10-29, 23:58 UTC)
+### Round 15 amendment 8 result: refiner r1 NOT adopted (recorded 2026-10-29, 23:54 UTC)
 
 Real-word oracle, 1,000 How2Sign val sentences, refiner `sentence-refiner-r1` step 250 (SHA-256 `fc9cf85e…`), recogniser v3, paired bootstrap:
 
