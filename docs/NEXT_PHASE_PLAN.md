@@ -4443,7 +4443,7 @@ The translator was trained on How2Sign continuous signing, so the composition ha
 
 **If adopted:** W14b's generated composition is refined under M1's rule.
 
-### Round 15 amendment 7 result, all knobs together (recorded 2026-10-29, 20:22 UTC): NOT adopted, the knobs hurt
+### Round 15 amendment 7 result, all knobs together (recorded 2026-10-29, 20:19 UTC): NOT adopted, the knobs hurt
 
 **Run:** the real-word oracle on the 1,000 sentences with space normalisation, minimum-jerk bridges and core tightening.
 
@@ -4460,4 +4460,4 @@ The translator was trained on How2Sign continuous signing, so the composition ha
 **Reading:**
 - Together the knobs make hands faster and BLEU lower. A likely cause is minimum-jerk bridges that match the boundary velocities of compressed cores, so they overshoot.
 - Spotting is marginally higher (0.456 against the oracle's 0.449).
-- The single-knob runs (space, jerk, tight) attribute the effect. They are waiting for CPU capacity: Runpod CPU supply is exhausted (20:20 UTC).
+- The single-knob runs (space, jerk, tight) attribute the effect. They are waiting for CPU capacity: Runpod CPU supply is exhausted (about 20:15 UTC).
