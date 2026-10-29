@@ -12,8 +12,14 @@ is fixed by s alone (``batch_items``: a seeded permutation per epoch, and per se
 seeded by epoch and sentence), so a resumed run sees exactly the batches an uninterrupted one would.
 
 **Checkpoint selection** on the held-out train signers only (``split: selection``, every one of their K inputs, fixed
-order, ``--val-every``): teacher-forced loss of the EMA weights, without source or history dropout, the lowest written
-to ``best.json``. No How2Sign val clip, BLEU or other evaluator is read.
+order, ``--val-every``): the loss of the EMA weights (teacher-forced under r1's history; under r2's no history, the
+loss refining itself has), without source or history dropout, the lowest written
+to ``best.json``. No How2Sign val clip, BLEU or other evaluator is read. Each validation also reports the loss with
+every source replaced by the empty one (``selection/empty_loss``) and the difference (``selection/source_gain``,
+empty minus with-source: what the composition is worth to the refiner; under r1 it is read with the true target
+history, so it understates what the source is worth when refining); a fresh run validates its warm start first
+(step 0, logged with ``kind: initial`` and in run.json as ``initial_validation``, never a checkpoint). ``--history none`` trains the r2
+refiner (no target history; ``refiner`` module docstring).
 
 **Length** is declared in epochs (``--epochs``, default 8, at most ``--max-epochs`` 10: each epoch shows every
 training sentence once, with one of its K inputs): steps = ceil(epochs x training pairs / batch). ``--steps`` overrides
@@ -130,6 +136,8 @@ def main(argv=None) -> int:
     p.add_argument("--source-layers", type=int, help="default: the prior's text layers")
     p.add_argument("--source-dropout", type=float, default=.1)
     p.add_argument("--history-dropout", type=float, help="default: the prior's (F12: 0.5)")
+    p.add_argument("--history", choices=("teacher", "none"), default="teacher",
+                   help="teacher: r1's teacher-forced target history; none: r2, no target history")
     p.add_argument("--val-every", type=int, default=250)
     p.add_argument("--val-items", type=int, default=0, help="selection items scored (0: all, every input)")
     p.add_argument("--checkpoint-every", type=int, default=500)
@@ -171,7 +179,8 @@ def main(argv=None) -> int:
     if tokenizer_digest != index["config"]["tokenizer_digest"]:
         raise SystemExit("the pairs were tokenized with another tokenizer than the prior's")
     config = RefinerConfig.from_prior(RVQPriorConfig.from_dict(init["config"]), source_layers=args.source_layers,
-                                      source_dropout=args.source_dropout, history_dropout=args.history_dropout)
+                                      source_dropout=args.source_dropout, history_dropout=args.history_dropout,
+                                      history=args.history)
     model = SentenceRefiner(config).to(device)
     pairs = load_pairs(store, index, args.fetch_threads)
     train = [x for x in pairs if x["split"] == "train"]
@@ -246,22 +255,33 @@ def main(argv=None) -> int:
     best = json.loads(store.get(f"{prefix}/best.json")) if store.exists(f"{prefix}/best.json") else None
 
     def validate() -> dict:
-        """Mean teacher-forced terms of the EMA weights on the selection items (no dropout of any kind)."""
+        """Mean loss terms of the EMA weights on the selection items (no dropout of any kind)."""
         live = ema.swap(model)
         model.eval()
         totals, count = {}, 0
         with torch.no_grad():
             for b in range(0, len(val_rows), args.batch_size):
                 rows = val_rows[b:b + args.batch_size]
-                loss, terms = refiner_loss(model, *collate(rows, model.K, device), train=False)
-                for key, value in dict(loss=float(loss), **terms).items():
+                batch = collate(rows, model.K, device)
+                loss, terms = refiner_loss(model, *batch, train=False)
+                empty, _ = refiner_loss(model, *batch, train=False, empty_source=True)
+                for key, value in dict(loss=float(loss), empty_loss=float(empty), **terms).items():
                     totals[key] = totals.get(key, 0.) + float(value) * len(rows)
                 count += len(rows)
         ema.restore(model, live)
         model.train()
-        return {f"selection/{k}": v / max(count, 1) for k, v in totals.items()}
+        out = {f"selection/{k}": v / max(count, 1) for k, v in totals.items()}
+        out["selection/source_gain"] = out["selection/empty_loss"] - out["selection/loss"]
+        return out
 
     log, started = list(log_prefix), time.monotonic()
+    if step == 0:                          # the warm start's own selection terms (a fresh run only)
+        initial = validate()
+        log.append(dict(step=0, kind="initial", **initial))
+        print(json.dumps(dict(step=0, **initial)), flush=True)
+        run = json.loads(store.get(f"{prefix}/run.json"))
+        run["initial_validation"] = initial
+        store.put(f"{prefix}/run.json", json.dumps(run, indent=2, sort_keys=True).encode())
 
     def checkpoint(metrics):
         nonlocal best

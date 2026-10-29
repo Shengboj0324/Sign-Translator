@@ -96,6 +96,153 @@ def test_loss_trains_and_sampling_keeps_the_input_length_and_its_seed():
     states[0].validate()
 
 
+def test_history_none_reads_no_target_history_and_refines_every_step_at_once():
+    """r2 (round 15 amendment 9): the decoder input is the start code at every step, in the loss and when refining;
+    r1's configuration (and its SHA-256) is unchanged by the new field."""
+    tokenizer, prior = f12_like()
+    r1 = rf.RefinerConfig.from_prior(prior.config)
+    assert r1.history == "teacher" and "history" not in r1.to_dict()
+    legacy = dict(r1.to_dict())
+    assert rf.RefinerConfig.from_dict(legacy) == r1                           # an r1 checkpoint's config loads
+    config = rf.RefinerConfig.from_prior(prior.config, history="none", source_dropout=0.)
+    assert config.to_dict()["history"] == "none" and config.sha256() != r1.sha256()
+    assert rf.RefinerConfig.from_dict(json.loads(json.dumps(config.to_dict()))) == config
+    with pytest.raises(ValueError, match="history must be"):
+        rf.RefinerConfig.from_prior(prior.config, history="free")
+    assert config.history_dropout == 0                                       # nothing to drop, so none recorded
+    with pytest.raises(ValueError, match="history_dropout must be 0"):
+        rf.RefinerConfig.from_prior(prior.config, history="none", history_dropout=.5)
+    torch.manual_seed(0)
+    a, b = (rf.tokenize_state(tokenizer, signer_state(s, frames=18, amplitude=.4)) for s in (1, 2))
+    source, mask = rf.pad_sources(rf.SentenceRefiner(config), [a["codes"]], "cpu")
+    target = b["codes"][None].clone()
+    valid = torch.ones((1, 18), dtype=torch.bool)
+    valid[0, 5] = False
+    changed = target.clone()
+    changed[0, 5] = (changed[0, 5] + 1) % prior.K                             # step 5 is only ever read as history
+    for history, same in (("none", True), ("teacher", False)):
+        model = rf.SentenceRefiner(rf.RefinerConfig.from_prior(prior.config, history=history, source_dropout=0.))
+        model.warm_start(prior.state_dict())
+        model.eval()
+        one, _ = rf.refiner_loss(model, source, mask, target, valid, train=False)
+        two, _ = rf.refiner_loss(model, source, mask, changed, valid, train=False)
+        assert torch.isclose(one, two).item() is same, history
+    # the empty-source loss is the dropped-row loss: the composition replaced, the clock kept
+    model = rf.SentenceRefiner(config)
+    model.warm_start(prior.state_dict())
+    model.eval()
+    with_source, _ = rf.refiner_loss(model, source, mask, target, valid, train=False)
+    kept = source.clone(), mask.clone()
+    empty, _ = rf.refiner_loss(model, source, mask, target, valid, train=False, empty_source=True)
+    assert torch.equal(source, kept[0]) and torch.equal(mask, kept[1])      # the caller's tensors are not touched
+    with torch.no_grad():                                                     # by hand: one start-code position,
+        e_codes, e_mask = model.empty_source(1, "cpu")                        # the clock on the source's 18 steps
+        h = model.prior.temporal_states(model.encode_source(e_codes, e_mask), e_mask, model.no_history(1, 18, "cpu"),
+                                        model.clock(18, "cpu"), torch.tensor([18 * model.step / rf.FPS]))
+        gold = target[valid]
+        logits = model.prior.depth_logits(h[valid], gold[:, :-1])
+        by_hand = torch.nn.functional.cross_entropy(logits.reshape(-1, model.K), gold.reshape(-1))
+    assert not torch.isclose(with_source, empty) and torch.isclose(empty, by_hand)
+    # a padded row scores in a batch as it scores alone (token-weighted), and nothing leaks between rows
+    pair = [a["codes"], b["codes"][:11]]
+    batch_source, batch_mask = rf.pad_sources(model, pair, "cpu")
+    batch_target = torch.stack([b["codes"], torch.cat((a["codes"][:11], torch.zeros_like(a["codes"][11:])))])
+    batch_valid = torch.stack([torch.ones(18, dtype=torch.bool), torch.arange(18) < 11])
+    together_loss, _ = rf.refiner_loss(model, batch_source, batch_mask, batch_target, batch_valid, train=False)
+    alone_losses = [rf.refiner_loss(model, *rf.pad_sources(model, [pair[r]], "cpu"),
+                                    batch_target[r:r + 1, :len(pair[r])], batch_valid[r:r + 1, :len(pair[r])],
+                                    train=False)[0] for r in (0, 1)]
+    assert torch.isclose(together_loss, (alone_losses[0] * 18 + alone_losses[1] * 11) / 29, atol=1e-6)
+    # refining: the input's length, seeded, in range; greedy draws do not depend on the batch a source shares
+    sources = [a["codes"], a["codes"][:7]]
+    one = rf.refine_codes(model, sources, guidance=1.5, temperature={"body": 1.1}, seed=4)
+    two = rf.refine_codes(model, sources, guidance=1.5, temperature={"body": 1.1}, seed=4)
+    assert [x.shape for x in one] == [(18, model.J), (7, model.J)]
+    assert all(torch.equal(x, y) for x, y in zip(one, two))
+    assert ((one[0] >= 0) & (one[0] < model.K)).all()
+    together = rf.refine_codes(model, sources, temperature=1e-6, guidance=1.5)
+    alone = [rf.refine_codes(model, [s], temperature=1e-6, guidance=1.5)[0] for s in sources]
+    assert all(torch.equal(x, y) for x, y in zip(together, alone))
+    # greedy refined codes, scored as the target of a mixed-length batch, are every step's argmax (accuracy 1)
+    greedy_pair = rf.refine_codes(model, pair, temperature=1e-6)
+    g_target = torch.stack([greedy_pair[0], torch.cat((greedy_pair[1], torch.zeros((7, model.J), dtype=torch.long)))])
+    _, terms = rf.refiner_loss(model, batch_source, batch_mask, g_target, batch_valid, train=False)
+    assert terms["token_accuracy"] == 1.
+    # the r2 path computes the states once per branch (never the step-by-step loop)
+    calls, original = [], model.prior.temporal_states
+    model.prior.temporal_states = lambda *x, **k: calls.append(1) or original(*x, **k)
+    try:
+        rf.refine_codes(model, sources, guidance=1.5, seed=1)
+        assert len(calls) == 2
+        calls.clear()
+        rf.refine_codes(model, sources, seed=1)
+        assert len(calls) == 1
+    finally:
+        del model.prior.temporal_states
+    # the refined steps are the argmax of the loss path's own logits (training and refining read the same inputs)
+    with torch.no_grad():
+        memory = model.encode_source(source, mask)
+        h = model.prior.temporal_states(memory, mask, model.no_history(1, 18, "cpu"), model.clock(18, "cpu"),
+                                        mask.sum(1).float() * model.step / rf.FPS)[0]
+        greedy = rf.refine_codes(model, [a["codes"]], temperature=1e-6)[0]
+        logits = model.prior.depth_logits(h, greedy[:, :-1])
+    assert torch.equal(logits.argmax(-1), greedy)
+
+
+def _r1_refine_codes(model, sources, *, guidance, temperature, top_k, seed):
+    """r1's step-by-step sampler as it stood before r2 (commit 6a3d920), kept verbatim as the golden reference."""
+    import math
+    prior = model.prior
+    codes, mask = rf.pad_sources(model, sources, "cpu")
+    B, L = mask.shape
+    memory = model.encode_source(codes, mask)
+    if guidance != 1.:
+        e_codes, e_mask = model.empty_source(1, "cpu")
+        empty = model.encode_source(e_codes, e_mask).expand(B, -1, -1)
+        empty_mask = e_mask.expand(B, -1)
+    lengths = mask.sum(1).float()
+    duration = lengths * model.step / rf.FPS
+    clock = model.clock(L, "cpu").expand(B, -1)
+    names = [part for part, _ in model.config.prior.tokenizer.part_slices()]
+    per_code = rf._per_code(temperature, names, model.J)
+    generator = torch.Generator().manual_seed(seed)
+    sequence = torch.full((B, 1, model.J), model.K, dtype=torch.long)
+    for k in range(L):
+        h = prior.temporal_states(memory, mask, sequence, clock[:, :k + 1], duration)[:, -1]
+        h_free = (prior.temporal_states(empty, empty_mask, sequence, clock[:, :k + 1], duration)[:, -1]
+                  if guidance != 1. else None)
+        step_codes = torch.zeros((B, 0), dtype=torch.long)
+        for j in range(model.J):
+            logits = prior.depth_logits(h, step_codes)[:, -1]
+            if h_free is not None:
+                free = prior.depth_logits(h_free, step_codes)[:, -1]
+                logits = free + guidance * (logits - free)
+            logits = logits / max(per_code[j], 1e-6)
+            if top_k:
+                threshold = logits.topk(top_k, dim=-1).values[:, -1:]
+                logits = logits.masked_fill(logits < threshold, -math.inf)
+            choice = torch.multinomial(torch.softmax(logits.float(), -1).cpu(), 1, generator=generator)
+            step_codes = torch.cat((step_codes, choice), 1)
+        sequence = torch.cat((sequence, step_codes[:, None]), 1)
+    return [sequence[r, 1:int(lengths[r]) + 1] for r in range(B)]
+
+
+def test_r1_sampling_is_unchanged_by_the_r2_refactor():
+    tokenizer, prior = f12_like()
+    torch.manual_seed(0)
+    model = rf.SentenceRefiner(rf.RefinerConfig.from_prior(prior.config))
+    model.warm_start(prior.state_dict())
+    model.eval()
+    a = rf.tokenize_state(tokenizer, signer_state(1, frames=18, amplitude=.4))
+    sources = [a["codes"], a["codes"][:9]]
+    for kw in (dict(guidance=1.5, temperature={"body": 1.1}, top_k=5, seed=3),
+               dict(guidance=1., temperature=.8, top_k=0, seed=0)):
+        with torch.no_grad():
+            golden = _r1_refine_codes(model, sources, **kw)
+        now = rf.refine_codes(model, sources, **kw)
+        assert all(torch.equal(x, y) for x, y in zip(now, golden)), kw
+
+
 def test_pair_files_are_deterministic_and_checked():
     arrays = dict(target_codes=np.arange(12, dtype=np.int16).reshape(4, 3), target_valid=np.array([1, 1, 0, 1], bool),
                   source_codes_0=np.zeros((4, 3), np.int16))
@@ -390,7 +537,10 @@ def test_end_to_end_build_train_refine(tmp_path, refiner_store):
         tr.main(train + ["--epochs", "12", "--run", "too-long"])
     best = json.loads(store.get("training-runs/refiner-test/best.json"))
     assert best["checkpoint_key"].startswith("training-runs/refiner-test/checkpoints/step-0000000")
-    assert set(best["validation"]) >= {"selection/loss", "selection/tokens"}
+    assert set(best["validation"]) >= {"selection/loss", "selection/tokens", "selection/empty_loss",
+                                       "selection/source_gain"}
+    v0 = run["initial_validation"]                                        # the warm start, validated first
+    assert v0["selection/source_gain"] == pytest.approx(v0["selection/empty_loss"] - v0["selection/loss"])
     ckpt = "training-runs/refiner-test/checkpoints/step-00000002.pt"
     saved = torch.load(io.BytesIO(store.get(ckpt)), map_location="cpu", weights_only=False)
     assert saved["kind"] == rf.KIND and saved["step"] == 2 and saved["tokenizer_key"] == TOKKEY
@@ -402,7 +552,7 @@ def test_end_to_end_build_train_refine(tmp_path, refiner_store):
     (tmp_path / "store" / ckpt).unlink()                                    # interrupted after step 1
     assert tr.main(train + ["--steps", "2"]) == 0                          # resumes at step 1
     log = json.loads(store.get("training-runs/refiner-test/log/step-00000002.json"))
-    assert [e["step"] for e in log] == [1, 2]                             # the log is kept across the resume
+    assert [e["step"] for e in log] == [0, 1, 2]               # the log (warm start first) is kept across the resume
     resumed = torch.load(io.BytesIO(store.get(ckpt)), map_location="cpu", weights_only=False)
     first = torch.load(io.BytesIO(final), map_location="cpu", weights_only=False)
     assert all(torch.equal(resumed["model"][k], first["model"][k]) for k in first["model"])   # the same step 2
@@ -457,6 +607,22 @@ def test_end_to_end_build_train_refine(tmp_path, refiner_store):
         ce.main(merge + ["--shard-keys", "e/plain.json", "--output-key", "e/m3.json"])
     with pytest.raises(SystemExit, match="pinned"):
         ce.main(common[:-1] + ["0" * 64, "--output-key", "e/bad.json"])
+    # r2 (--history none): trained, resumable configuration recorded, and refined inside the compose evaluation
+    assert tr.main(train + ["--steps", "2", "--run", "refiner-r2-test", "--history", "none"]) == 0
+    r2 = "training-runs/refiner-r2-test/checkpoints/step-00000002.pt"
+    model, _, meta = rf.load_refiner(store, r2)
+    assert model.config.history == "none" and meta["config_sha256"] == model.config.sha256()
+    with pytest.raises(SystemExit, match="another configuration"):     # r1's flags cannot resume an r2 run
+        tr.main(train + ["--steps", "2", "--run", "refiner-r2-test"])
+    r2_args = [a if a != ckpt else r2 for a in common[:-1]] + [hashlib.sha256(store.get(r2)).hexdigest()]
+    assert ce.main(r2_args + ["--refiner-temperature", "0.7", "--output-key", "e/r2.json"]) == 0
+    r2_shard = json.loads(store.get("e/r2.json"))
+    assert {f"{v}@refined", f"{v}/rest_only@refined"} <= set(r2_shard["clips"][0]["hypotheses"])
+    assert r2_shard["settings"]["refiner"]["checkpoint_key"] == r2
+    assert r2_shard["settings"]["refiner"]["temperature"] == {"body": .7, "left_hand": .7, "right_hand": .7,
+                                                              "face": .7}
+    assert whole["settings"]["refiner"]["temperature"] == {"body": 1.1, "left_hand": 1.1, "right_hand": 1.1,
+                                                           "face": 1.}                # default: --part-temperature
 
 
 def test_a_forbidden_record_that_reaches_the_builder_stops_it(tmp_path, refiner_store, monkeypatch):

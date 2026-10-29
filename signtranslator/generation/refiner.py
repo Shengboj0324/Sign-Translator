@@ -26,6 +26,14 @@ step (the prior's factorisation), where the target's part was observed when ``pa
 use the source); ``source_dropout``: a row's source replaced by the empty source (one start-code position), so
 ``refine_codes`` can guide (``guidance`` != 1) against it, as the prior guides against the empty text.
 
+**History** (``history``, round 15 amendment 9). ``"teacher"`` (r1): the temporal decoder reads the target's previous
+steps, teacher-forced in training (with history dropout) and the refiner's own samples when refining, as the prior.
+``"none"`` (r2): the decoder's input is the start code at every step, in training and when refining alike, so every
+step's state comes from the encoded source and the clock only; the depth transformer still samples a step's codes in
+order. No sampled step feeds a later one, so training and refining see the same inputs (no exposure bias), the loss
+cannot be lowered from the target's own history (r1's selection loss rose from the first validation, 2026-10-29), and
+all steps are refined in one batched pass.
+
 **Pairs** (``pack_pair`` / ``unpack_pair``): one deterministic binary file per sentence (a JSON header, then the raw
 arrays in name order), so a rebuild writes identical bytes and the index can pin each file's SHA-256.
 """
@@ -51,6 +59,7 @@ PAIR_SCHEMA = "refiner-pairs-v1"
 PAIR_MAGIC = b"RFPAIR1\n"
 # the prior's text-side modules, removed from the refiner (it is conditioned on the composition only)
 TEXT_MODULES = ("embed", "grammar", "loci", "text_encoder", "duration")
+HISTORIES = ("teacher", "none")
 
 
 @dataclass(frozen=True)
@@ -60,10 +69,19 @@ class RefinerConfig:
     source_dropout: float = .1
     history_dropout: float = .5
     part_valid_loss: bool = True
+    history: str = "teacher"                # "teacher" (r1) or "none" (r2; module docstring)
+
+    def __post_init__(self) -> None:
+        if self.history not in HISTORIES:
+            raise ValueError(f"history must be one of {HISTORIES}, not {self.history!r}")
+        if self.history == "none" and self.history_dropout != 0:
+            raise ValueError("history 'none' reads no history: history_dropout must be 0")
 
     def to_dict(self) -> dict:
         data = asdict(self)
         data["prior"] = self.prior.to_dict()
+        if data["history"] == "teacher":     # r1's configs (and their SHA-256) predate the field
+            del data["history"]
         return data
 
     def sha256(self) -> str:
@@ -82,6 +100,8 @@ class RefinerConfig:
         kw = dict(source_layers=prior.text_layers, history_dropout=prior.history_dropout,
                   part_valid_loss=prior.part_valid_loss)
         kw.update({k: v for k, v in overrides.items() if v is not None})
+        if kw.get("history") == "none" and overrides.get("history_dropout") is None:
+            kw["history_dropout"] = 0.          # nothing to drop (an explicit non-zero rate is refused)
         return cls(prior, **kw)
 
 
@@ -146,6 +166,10 @@ class SentenceRefiner(nn.Module):
             torch.cat((sinusoid(seconds, d, max_period=60.), sinusoid(phase, d, max_period=4.)), -1))
         return self.source_encoder(x, src_key_padding_mask=~mask)
 
+    def no_history(self, rows: int, length: int, device) -> torch.Tensor:
+        """(rows, length, J) start codes: the decoder input of every step under ``history="none"``."""
+        return torch.full((rows, length, self.J), self.K, dtype=torch.long, device=device)
+
     def empty_source(self, rows: int, device) -> tuple[torch.Tensor, torch.Tensor]:
         """(codes (rows, 1, J) of start codes, mask (rows, 1) True): the source a dropped row trains with."""
         return (torch.full((rows, 1, self.J), self.K, dtype=torch.long, device=device),
@@ -153,26 +177,31 @@ class SentenceRefiner(nn.Module):
 
 
 def refiner_loss(model: SentenceRefiner, source, source_mask, target, target_valid, target_part=None, *,
-                 train: bool = True):
+                 train: bool = True, empty_source: bool = False):
     """(loss, terms) of target codes (B, S, J) at valid steps ``target_valid`` (B, S) given source codes (B, L, J)
     with ``source_mask`` (B, L). ``target_part`` (B, S, P): the target's observed parts (the part-valid loss).
-    Training only: source dropout and history dropout (the config's rates)."""
+    Training only: source dropout and history dropout (the config's rates). ``empty_source``: every row's source
+    replaced by the empty source, as a dropped row (the clock keeps the source's length): the loss without the
+    composition, which the trainer reports next to the loss with it (how much the source is used)."""
     config, prior = model.config, model.prior
     B, S, J = target.shape
     device = target.device
     # the clock's duration is the source's length, as in refine_codes (a pair's input has its target's length)
     duration = source_mask.sum(1).float() * model.step / FPS
-    if train and config.source_dropout > 0:
-        drop = torch.rand(B, device=device) < config.source_dropout
+    if empty_source or (train and config.source_dropout > 0):
+        drop = (torch.ones(B, dtype=torch.bool, device=device) if empty_source
+                else torch.rand(B, device=device) < config.source_dropout)
         if bool(drop.any()):
             source, source_mask = source.clone(), source_mask.clone()
             source[drop] = model.K
             source_mask[drop] = False
             source_mask[drop, 0] = True
     memory = model.encode_source(source, source_mask)
-    start = torch.full_like(target[:, :1], model.K)
-    previous = torch.cat((start, target[:, :-1]), 1)
-    if train and config.history_dropout > 0:                # the prior's round-9 history dropout, unchanged
+    if config.history == "none":                            # r2: no target history, in training as when refining
+        previous = model.no_history(B, S, device)
+    else:
+        previous = torch.cat((torch.full_like(target[:, :1], model.K), target[:, :-1]), 1)
+    if config.history == "teacher" and train and config.history_dropout > 0:   # the prior's round-9 history dropout
         drop = torch.rand(B, device=device) < config.history_dropout
         cut = (torch.rand(B, device=device) * S).long() + 1
         hidden = (torch.arange(S, device=device)[None] < cut[:, None]) & drop[:, None]
@@ -221,7 +250,9 @@ def refine_codes(model: SentenceRefiner, sources, *, guidance: float = 1., tempe
                  top_k: int = 0, seed: int = 0) -> list[torch.Tensor]:
     """Sampled target codes, one (L_i, J) sequence per source (L_i, J): the input's length, every step and depth
     position one batched call, as ``generate_rvq_motion_batch`` samples (guidance against the empty source,
-    per-part temperatures, top-k; rows shorter than the longest are sampled to the common length and cut back)."""
+    per-part temperatures, top-k; rows shorter than the longest are sampled to the common length and cut back).
+    Under ``history="none"`` every step's state is computed at once and the depth positions are sampled for all
+    steps together (no step depends on another's codes; the draws come in another order than r1's)."""
     model.eval()
     prior = model.prior
     device = next(model.parameters()).device
@@ -238,12 +269,10 @@ def refine_codes(model: SentenceRefiner, sources, *, guidance: float = 1., tempe
     names = [part for part, _ in model.config.prior.tokenizer.part_slices()]
     per_code = _per_code(temperature, names, model.J)
     generator = torch.Generator().manual_seed(seed)
-    sequence = torch.full((B, 1, model.J), model.K, dtype=torch.long, device=device)
-    for k in range(L):
-        h = prior.temporal_states(memory, mask, sequence, clock[:, :k + 1], duration)[:, -1]
-        h_free = (prior.temporal_states(empty, empty_mask, sequence, clock[:, :k + 1], duration)[:, -1]
-                  if guidance != 1. else None)
-        step_codes = torch.zeros((B, 0), dtype=torch.long, device=device)
+
+    def sample(h, h_free):
+        """(N, J) codes of N states, depth position by depth position."""
+        step_codes = torch.zeros((h.shape[0], 0), dtype=torch.long, device=device)
         for j in range(model.J):
             logits = prior.depth_logits(h, step_codes)[:, -1]
             if h_free is not None:
@@ -255,7 +284,22 @@ def refine_codes(model: SentenceRefiner, sources, *, guidance: float = 1., tempe
                 logits = logits.masked_fill(logits < threshold, -math.inf)
             choice = torch.multinomial(torch.softmax(logits.float(), -1).cpu(), 1, generator=generator).to(device)
             step_codes = torch.cat((step_codes, choice), 1)
-        sequence = torch.cat((sequence, step_codes[:, None]), 1)
+        return step_codes
+
+    if model.config.history == "none":
+        previous = model.no_history(B, L, device)
+        h = prior.temporal_states(memory, mask, previous, clock, duration)                # (B, L, d)
+        h_free = (prior.temporal_states(empty, empty_mask, previous, clock, duration)
+                  if guidance != 1. else None)
+        codes = sample(h.reshape(B * L, -1), None if h_free is None else h_free.reshape(B * L, -1))
+        codes = codes.reshape(B, L, model.J)
+        return [codes[r, :int(lengths[r])].cpu() for r in range(B)]
+    sequence = torch.full((B, 1, model.J), model.K, dtype=torch.long, device=device)
+    for k in range(L):
+        h = prior.temporal_states(memory, mask, sequence, clock[:, :k + 1], duration)[:, -1]
+        h_free = (prior.temporal_states(empty, empty_mask, sequence, clock[:, :k + 1], duration)[:, -1]
+                  if guidance != 1. else None)
+        sequence = torch.cat((sequence, sample(h, h_free)[:, None]), 1)
     return [sequence[r, 1:int(lengths[r]) + 1].cpu() for r in range(B)]
 
 

@@ -50,7 +50,8 @@ Space normalisation needs word pieces (core_crossfade, oracle_stage2); none of t
 **--refiner-checkpoint-key** (the sentence refiner, ``signtranslator.generation.refiner``; ``--refiner-sha256`` pins
 it): after composition, every rendered form of every variant (the main form, /shuffled, /mismatched_words and the
 new control /rest_only) is tokenized with the refiner's own tokenizer, refined (``refine_codes``: the input's length,
-``--refiner-guidance`` against the empty source, ``--part-temperature``, one batch per global block with seed
+``--refiner-guidance`` against the empty source, ``--refiner-temperature`` (default: ``--part-temperature``; one
+number for every part, or the same part list), one batch per global block with seed
 ``REFINE_SEED`` + block, so every form of a clip shares its random numbers and shards equal the unsharded run) and
 decoded as a generation (the tokenizer's accepted gains, the generator's post-processing): ``<form>@refined``.
 ``<variant>@recon`` (the main form tokenized and decoded, not refined) separates the tokenizer's round trip from the
@@ -397,8 +398,12 @@ def run(args) -> dict:
         refiner, rtok, rmeta = load_refiner(store, args.refiner_checkpoint_key, args.refiner_sha256, args.device)
         target_index, index_meta = load_target_index(store, rmeta["target_index_key"], rmeta["target_index_sha256"])
         rpost = make_post(accepted_decoder_gains(store, rmeta["tokenizer_key"]))
+        r_temperature = temperature if args.refiner_temperature is None else (
+            {k: float(v) for k, v in (x.split("=") for x in args.refiner_temperature.split(","))}
+            if "=" in args.refiner_temperature else {k: float(args.refiner_temperature) for k in temperature})
         refiner_info = dict(checkpoint_key=args.refiner_checkpoint_key, sha256=rmeta["sha256"], step=rmeta["step"],
                             tokenizer_key=rmeta["tokenizer_key"], guidance=args.refiner_guidance,
+                            temperature=r_temperature,
                             seed_base=REFINE_SEED, target_index_key=rmeta["target_index_key"],
                             target_index_sha256=rmeta["target_index_sha256"])
 
@@ -421,7 +426,7 @@ def run(args) -> dict:
                 for group in blocks(mine, args.block):
                     states, codes, inputs = refine_states(
                         refiner, rtok, [forms[name][i] for i in group], seed=REFINE_SEED + group[0] // args.block,
-                        guidance=args.refiner_guidance, temperature=temperature, post=rpost, device=args.device,
+                        guidance=args.refiner_guidance, temperature=r_temperature, post=rpost, device=args.device,
                         recon=recon, return_codes=True)
                     out.update(zip(group, states))
                     if c == "" and not recon:            # the refined codes and the refiner's input codes
@@ -685,6 +690,8 @@ def main(argv=None) -> int:
                    "(<form>@refined; adds the /rest_only control and <variant>@recon)")
     r.add_argument("--refiner-sha256", help="pin the refiner checkpoint")
     r.add_argument("--refiner-guidance", type=float, default=1., help="the refiner's guidance against the empty source")
+    r.add_argument("--refiner-temperature", help="the refiner's sampling temperature: one number for every part or "
+                   "part=value,...; default: --part-temperature")
     m = sub.add_parser("merge", help="combine the shards and score")
     m.add_argument("--shard-keys", default="")
     m.add_argument("--shard-files")
