@@ -4097,7 +4097,7 @@ Its spotting recall is also far lower (0.16 against 0.36): the prior's own trans
 - Every other signer is kept as stored, including undecided signers.
 - Training waits for this result. Nothing else in the declaration changes.
 
-**Recogniser v3 amendment 1 result (recorded 2026-10-29, 08:52 UTC).**
+**Recogniser v3 amendment 1 result (recorded 2026-10-29, 08:51 UTC).**
 - **Run:** `pixel-sides-v2.json`, 1,100 clips, 1,069 decided, 41 signers, about 28 per signer. Image-left 660, image-right 409.
 - **Excluded under the declared rule** (at least 20 decided clips and at least 75% image-right): signers `50501487…`, `a8bb3781…` and `5b691ec7…`. Their image-left shares are 0.21–0.24.
 - **Kept:** every other signer, including `6e36641a…` at 0.27 (just inside the rule), and three signers with fewer than 20 decided clips.
