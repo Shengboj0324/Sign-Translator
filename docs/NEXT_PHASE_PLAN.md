@@ -4461,3 +4461,16 @@ The translator was trained on How2Sign continuous signing, so the composition ha
 - Together the knobs make hands faster and BLEU lower. A likely cause is minimum-jerk bridges that match the boundary velocities of compressed cores, so they overshoot.
 - Spotting is marginally higher (0.456 against the oracle's 0.449).
 - The single-knob runs (space, jerk, tight) attribute the effect. They are waiting for CPU capacity: Runpod CPU supply is exhausted (about 20:15 UTC).
+
+### Round 15 amendment 6 result: self-reranking (recorded 2026-10-29, 20:33 UTC): NOT adopted, small and unresolved gain
+
+**Run:** best of 4 samples per word by the prior's own PMI, on the 300 development sentences, paired against the N=1 runs.
+
+| Prior | N=4 BLEU | N=1 BLEU | Paired difference | Wrist speed |
+|---|---|---|---|---|
+| F12 (decides) | 2.025 | 1.853 | +0.17 [−0.37, +0.70] | 2.52× |
+| W14b (reported) | 2.352 | 2.195 | +0.16 [−0.30, +0.66] | 2.52× |
+
+- **Merge note:** the merge ran without an end-to-end comparator, because the stored pilot reports cover 1,000 clips, not these 300. The declared paired test against N=1 is unaffected.
+- **Rule:** F12's lower bound is not above 0, so reranking is **not adopted.**
+- **Reading:** both priors move by about +0.16, consistently, but 300 sentences cannot resolve an effect this size at about 4× the generation cost. If it is revisited, it needs the 1,000-sentence set, declared separately.
