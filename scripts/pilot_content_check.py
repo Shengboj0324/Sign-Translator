@@ -18,6 +18,11 @@ Round 14 (docs/NEXT_PHASE_PLAN.md, "Sem-Lex un-mirrored"), both additions only, 
 - ``--word-split-key``: a JSON partitioning the scored words into ``covered`` and ``uncovered`` (R5: one-word train
   records in round10-mixed-v1's isolated corpora, 108 and 42); ``lexicon_split`` gives each subset's top-5 for every
   read (``lexicon``, and ``lexicon_mirrored`` with ``--mirrored-read``).
+
+Recogniser v3 (docs/NEXT_PHASE_PLAN.md, "Instrument finding and the recogniser v3 plan"), an addition only:
+``--word-list-key`` / ``--word-list-sha256`` score exactly a pinned word list (``pinned_words``; the round-14 R5 split
+``round14/r5-word-split.json`` gives the 150 R5 words), so a new instrument's own reliable glosses cannot change the
+words; the report records the list's key and SHA-256 under ``word_list``. Without it the list is derived as before.
 """
 from __future__ import annotations
 
@@ -116,6 +121,29 @@ def word_split(payload: bytes, words) -> dict:
     return {k: [w for w in words if w in set(v)] for k, v in lists.items()}
 
 
+def pinned_words(payload: bytes, index, expected: int) -> list[str]:
+    """The pinned word list (``--word-list-key``): a JSON list, an object with ``words`` (both in their own order), or
+    a covered/uncovered split (their sorted union, the R5 order). Every word must be a label of the recogniser and
+    distinct, and the list must hold ``--words`` words, so nothing is silently dropped or added."""
+    data = json.loads(payload)
+    if isinstance(data, list):
+        words = data
+    elif isinstance(data, dict) and "words" in data:
+        words = data["words"]
+    elif isinstance(data, dict) and all(k in data for k in SPLIT_SUBSETS):
+        words = sorted(set(data["covered"]) | set(data["uncovered"]))
+    else:
+        raise ValueError("word list: expected a JSON list, an object with 'words', or a covered/uncovered split")
+    if not all(isinstance(w, str) for w in words) or len(set(words)) != len(words):
+        raise ValueError("word list: the words must be distinct strings")
+    missing = [w for w in words if w not in index]
+    if missing:
+        raise ValueError(f"word list: {len(missing)} words are not labels of the recogniser (e.g. {missing[:5]})")
+    if len(words) != expected:
+        raise ValueError(f"word list: {len(words)} words, but --words is {expected}")
+    return list(words)
+
+
 def split_lexicon(words, hits, subsets: dict) -> dict:
     """{subset: dict(words, samples, generated_top5)} of one read; ``hits`` holds two samples per word, in order."""
     out = {}
@@ -154,6 +182,11 @@ def main(argv=None) -> int:
     p.add_argument("--word-split-key", help="round 14: JSON partitioning the scored words into 'covered' and "
                    "'uncovered'; adds lexicon_split (each subset's top-5 for every read)")
     p.add_argument("--word-split-sha256", help="the split JSON's SHA-256 (checked when given)")
+    p.add_argument("--word-list-key", help="recogniser v3: score exactly this pinned word list (a JSON list, an object "
+                   "with 'words', or a covered/uncovered split, read as their sorted union) instead of deriving it from "
+                   "the recogniser's reliable glosses, so a new instrument cannot change the R5 words; needs "
+                   "--word-list-sha256")
+    p.add_argument("--word-list-sha256")
     p.add_argument("--output-key", required=True)
     args = p.parse_args(argv)
     import warnings
@@ -170,6 +203,15 @@ def main(argv=None) -> int:
     store = R2Store(os.environ)
     if args.word_split_sha256 and not args.word_split_key:
         raise SystemExit("--word-split-sha256 needs --word-split-key")
+    if bool(args.word_list_key) != bool(args.word_list_sha256):
+        raise SystemExit("--word-list-key and --word-list-sha256 go together (the list is pinned)")
+    if args.word_list_key and args.word_set != "r5":
+        raise SystemExit("--word-list-key pins the R5 words; --word-set dev cannot be combined with it")
+    if args.word_list_key:                             # pinned before any generation
+        list_payload = store.get(args.word_list_key)
+        list_sha = hashlib.sha256(list_payload).hexdigest()
+        if list_sha != args.word_list_sha256:
+            raise SystemExit(f"--word-list-key: SHA-256 {list_sha}, expected {args.word_list_sha256}")
     if args.word_split_key:                            # round 14: fetched and checked before any generation
         split_payload = store.get(args.word_split_key)
         split_sha = hashlib.sha256(split_payload).hexdigest()
@@ -182,7 +224,8 @@ def main(argv=None) -> int:
     _, _, sample = load_generator(store, args.checkpoint_key, args.mix_sha256, args.device, temperature=temperature)
     post = postprocess
     # lexicon word list (round 14: drawn up before the meaning half, so a bad word split fails before any generation)
-    validation = json.loads(store.get(f"training-runs/{args.recognizer_run}/validation.json"))
+    validation = (None if args.word_list_key else      # a pinned list needs no reliable-gloss list
+                  json.loads(store.get(f"training-runs/{args.recognizer_run}/validation.json")))
     recogniser, labels, _ = load_model(store, args.recognizer_run, args.device)
     index = {g: i for i, g in enumerate(labels)}
     vocab_manifest = manifest
@@ -194,8 +237,11 @@ def main(argv=None) -> int:
             vocab_manifest = load_manifest(path, expected_sha256=args.vocab_mix_sha256)
     train = [r for r in vocab_manifest["records"] if r.get("corpus") == "how2sign-two-view-text-v1" and r.get("partition") == "train"]
     vocab = {w for r in train for w in re.findall(r"[a-z]+", r["text"].lower())}
-    words = sorted(g for g in validation["per_gloss"]["reliable_glosses"] if g.isalpha() and g.lower() in vocab and g in index)
-    words = words[:args.words] if args.word_set == "r5" else words[args.words:2 * args.words]
+    if args.word_list_key:
+        words = pinned_words(list_payload, index, args.words)
+    else:
+        words = sorted(g for g in validation["per_gloss"]["reliable_glosses"] if g.isalpha() and g.lower() in vocab and g in index)
+        words = words[:args.words] if args.word_set == "r5" else words[args.words:2 * args.words]
     subsets = word_split(split_payload, words) if args.word_split_key else None
     # meaning
     if args.meaning_from_key:   # round 13 amendment 1: the lexicon re-run keeps the arm's own meaning half
@@ -259,6 +305,8 @@ def main(argv=None) -> int:
     report = dict(checkpoint_key=args.checkpoint_key, part_temperature=temperature, guidance=args.guidance,
                   clips=len(texts), meaning=meaning, lexicon=lexicon, **extra,
                   **({"vocab_mix_key": args.vocab_mix_key} if args.vocab_mix_key else {}),
+                  **({"word_list": dict(key=args.word_list_key, sha256=list_sha, words=len(words))}
+                     if args.word_list_key else {}),
                   **({"meaning_from_key": args.meaning_from_key} if args.meaning_from_key else {}))
     store.put(args.output_key, json.dumps(report, indent=2, sort_keys=True, default=float).encode())
     return 0
