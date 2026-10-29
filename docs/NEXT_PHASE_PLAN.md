@@ -3882,7 +3882,7 @@ Hand speed is reported against the 1.5× bar.
 
 **Stage 2 as declared is complete:** neither generated variant is promising. The open question is amendment 2, stage-1 words at sign-fitted timing, which is running.
 
-### Round 14b data built; oracle-stage-1 reproduction exact (recorded 2026-10-29, 03:24 UTC)
+### Round 14b data built; oracle-stage-1 reproduction exact (recorded 2026-10-29, 03:22 UTC)
 
 **`semlex-text-v2`** (sha 771fe15a…):
 - **Kept:** 26,698 train and 9,124 val records, 29 signers each. Round 14's v1 had 19,067 and 6,483.
