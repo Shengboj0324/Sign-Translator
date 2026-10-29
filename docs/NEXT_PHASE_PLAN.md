@@ -3867,7 +3867,7 @@ Hand speed is reported against the 1.5× bar.
   - uncovered words 0.000 [−0.036, +0.036].
 - **Watcher:** `~/.sign-translator-ops/pilot_w14b.sh STEP` is armed for step 10000. It runs the pilot and the teacher-forced retrieval on one GPU pod while training continues.
 
-### Round 15 stage 2 result: core_chained NOT PROMISING (recorded 2026-10-29, 03:04 UTC; `round15/stage2-chained-f12-step60000.json`)
+### Round 15 stage 2 result: core_chained NOT PROMISING (recorded 2026-10-29, 03:02 UTC; `round15/stage2-chained-f12-step60000.json`)
 
 | Comparison | Pad | Scale |
 |---|---|---|
