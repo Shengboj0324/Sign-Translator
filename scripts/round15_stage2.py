@@ -332,7 +332,7 @@ def sign_core(word, state, *, fractions, margin):
 
 
 def generate_job(sample, job: dict, *, guidance: float, temperature, rule: dict, timing: str = "asllrp",
-                 fractions=None, margin: float = .1):
+                 fractions=None, margin: float = .1, rerank: int = 1):
     """The generated material of one job with the loaded generator, post-processed as the pilot
     (``exposure_diagnostic.make_post``): ``compose_cores`` for the asllrp and sign-fitted timings (the sign-fitted
     cores by ``sign_core``), stage 1's ``compose`` (crossfade or chained, at the job's fitted durations) for the
@@ -342,6 +342,8 @@ def generate_job(sample, job: dict, *, guidance: float, temperature, rule: dict,
     from exposure_diagnostic import make_post
     post = make_post(sample.decoder_gains)
     if timing == "stage1":
+        if rerank != 1:
+            raise ValueError("rerank applies to the asllrp and sign-fitted timings' core_crossfade only")
         mode = STAGE1_MODES[job["mode"]]
         state, info = compose(sample.prior, sample.tokenizer, job["words"], job["durations"], mode, job["seeds"],
                               guidance=guidance, temperature=temperature, post=post, crossfade=job["overlap"])
@@ -349,7 +351,7 @@ def generate_job(sample, job: dict, *, guidance: float, temperature, rule: dict,
                     segments=info["segments"])
     cores = partial(sign_core, fractions=fractions, margin=margin) if timing == "sign-fitted" else None
     out = compose_cores(sample.prior, sample.tokenizer, job["words"], job["generate"], job["mode"], job["seeds"],
-                        guidance=guidance, temperature=temperature, post=post, rule=rule, cores=cores)
+                        guidance=guidance, temperature=temperature, post=post, rule=rule, cores=cores, rerank=rerank)
     out.pop("codes", None)
     return out
 

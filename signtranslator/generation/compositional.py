@@ -670,7 +670,7 @@ def render(parts: dict, plan: dict, *, sample_id: str = "compositional-stage2"):
 
 
 def compose_cores(prior, tokenizer, words, generate_seconds, mode: str, seeds, *, guidance: float, temperature, post,
-                  device=None, rule=None, text: str | None = None, cores=None) -> dict:
+                  device=None, rule=None, text: str | None = None, cores=None, rerank: int = 1) -> dict:
     """The generated material of one stage-2 composition (``render`` makes the sentence from it under any plan):
     ``{"mode", "parts", "segments", "pieces" (core_crossfade), "codes" (core_chained)}``.
 
@@ -683,7 +683,9 @@ def compose_cores(prior, tokenizer, words, generate_seconds, mode: str, seeds, *
       end and core k's start, time-resampled to the gap; the lead is word 1's approach, the trail word n's return.
 
     ``cores``: an optional ``(word, clip) -> {"lo", "hi", "reason", ...}`` replacing ``core_window`` (the sign-fitted
-    timing's annotated-sign windows, ``fraction_window``)."""
+    timing's annotated-sign windows, ``fraction_window``). ``rerank`` > 1 (core_crossfade only): each word is the best
+    of that many samples by the prior's own teacher-forced PMI (``rerank.rerank_word``; sample 0 is the word's seed,
+    so 1 is the plain generation); the segment rows carry the seeds, scores and chosen index."""
     import torch
     if mode not in CORE_MODES:
         raise ValueError(f"unknown mode {mode!r}")
@@ -692,12 +694,21 @@ def compose_cores(prior, tokenizer, words, generate_seconds, mode: str, seeds, *
     device = device if device is not None else next(prior.parameters()).device
     text = text if text is not None else " ".join(words)
     frames = [word_frames(d) for d in generate_seconds]
+    if rerank < 1 or (rerank > 1 and mode != "core_crossfade"):
+        raise ValueError("rerank applies to core_crossfade (independently generated words) only")
     if mode == "core_crossfade":
-        clips = [generate_word(prior, tokenizer, w, d, s, guidance=guidance, temperature=temperature, post=post)
-                 for w, d, s in zip(words, generate_seconds, seeds)]
+        if rerank > 1:                       # the best of n samples by the prior's own PMI (``rerank.rerank_word``)
+            from .rerank import rerank_word
+            picked = [rerank_word(prior, tokenizer, w, d, s, rerank, guidance=guidance, temperature=temperature,
+                                  post=post) for w, d, s in zip(words, generate_seconds, seeds)]
+            clips, reranks = [c for c, _ in picked], [info for _, info in picked]
+        else:
+            clips = [generate_word(prior, tokenizer, w, d, s, guidance=guidance, temperature=temperature, post=post)
+                     for w, d, s in zip(words, generate_seconds, seeds)]
+            reranks = [None] * len(words)
         pieces = [dict(state=c, **(cores(w, c) if cores else core_window(c, rule))) for w, c in zip(words, clips)]
-        rows = [dict(word=w, frames=len(c.timestamps), seed=s, lo=p["lo"], hi=p["hi"], reason=p["reason"])
-                for w, c, s, p in zip(words, clips, seeds, pieces)]
+        rows = [dict(word=w, frames=len(c.timestamps), seed=s, lo=p["lo"], hi=p["hi"], reason=p["reason"],
+                     **({"rerank": r} if r else {})) for w, c, s, p, r in zip(words, clips, seeds, pieces, reranks)]
         return dict(mode=mode, parts=parts_from_pieces(pieces), segments=rows, pieces=pieces)
     if tokenizer.config.step != 1:
         raise ValueError("chained composition assumes one token per frame (tokenizer step 1)")
