@@ -156,16 +156,30 @@ class ContentCache:
         return self.directory / sha256
 
     def size(self) -> int:
-        return sum(p.stat().st_size for p in self.directory.iterdir() if _is_sha(p.name))
+        total = 0
+        for p in self.directory.iterdir():
+            if _is_sha(p.name):
+                try:
+                    total += p.stat().st_size
+                except FileNotFoundError:            # evicted by another thread or process sharing the directory
+                    pass
+        return total
 
     def get(self, key: str, sha256: str, fetch: Callable[[str], bytes]) -> bytes:
         path = self._path(sha256)
         if path.is_file() and not path.is_symlink():
-            data = path.read_bytes()
-            if hashlib.sha256(data).hexdigest() == sha256:
-                os.utime(path)
+            try:
+                data = path.read_bytes()
+            except FileNotFoundError:            # evicted by another thread or process: a cache miss
+                data = None
+            if data is not None and hashlib.sha256(data).hexdigest() == sha256:
+                try:
+                    os.utime(path)
+                except FileNotFoundError:        # evicted after the read; the bytes are verified
+                    pass
                 return data
-            path.unlink()  # corrupted at rest: refetch rather than trust it
+            if data is not None:
+                path.unlink(missing_ok=True)     # corrupted at rest: refetch rather than trust it
         data = fetch(key)
         self.fetches += 1
         if not isinstance(data, bytes) or hashlib.sha256(data).hexdigest() != sha256:
@@ -183,14 +197,24 @@ class ContentCache:
         return data
 
     def _evict(self, *, keep: Path) -> None:
-        entries = sorted((p for p in self.directory.iterdir() if _is_sha(p.name) and p != keep),
-                         key=lambda p: p.stat().st_mtime_ns)
+        stats = []
+        for p in self.directory.iterdir():
+            if _is_sha(p.name) and p != keep:
+                try:
+                    st = p.stat()
+                except FileNotFoundError:            # evicted concurrently
+                    continue
+                stats.append((st.st_mtime_ns, st.st_size, p))
+        stats.sort(key=lambda t: t[0])
         total = self.size()                      # the true size: other processes may share the directory
-        for entry in entries:
+        for _, size, entry in stats:
             if total <= self.max_bytes:
                 break
-            total -= entry.stat().st_size
-            entry.unlink()
+            try:
+                entry.unlink()
+            except FileNotFoundError:                # already removed by another thread or process
+                pass
+            total -= size
         self._total = total
 
 
