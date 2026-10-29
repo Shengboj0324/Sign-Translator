@@ -3866,3 +3866,18 @@ Hand speed is reported against the 1.5× bar.
   - covered words −0.153 [−0.222, −0.083];
   - uncovered words 0.000 [−0.036, +0.036].
 - **Watcher:** `~/.sign-translator-ops/pilot_w14b.sh STEP` is armed for step 10000. It runs the pilot and the teacher-forced retrieval on one GPU pod while training continues.
+
+### Round 15 stage 2 result: core_chained NOT PROMISING (recorded 2026-10-29, 03:04 UTC; `round15/stage2-chained-f12-step60000.json`)
+
+| Comparison | Pad | Scale |
+|---|---|---|
+| BLEU | 1.60 | 1.29 |
+| Against end-to-end (rule 1) | +0.17 [−0.42, +0.78]: **fail** | −0.14 |
+| Against mismatched words (rule 2) | +0.32 [−0.10, +0.79]: **fail** | — |
+| Against shuffled | +0.37 [−0.20, +0.96] | — |
+| Against stage-1 chained | +0.16 | — |
+
+- **Rule 3 passes:** spotting 0.124 [0.104, 0.143] against 0.060.
+- **Hand speed:** wrist 2.69× real, **fail**.
+
+**Stage 2 as declared is complete:** neither generated variant is promising. The open question is amendment 2, stage-1 words at sign-fitted timing, which is running.
