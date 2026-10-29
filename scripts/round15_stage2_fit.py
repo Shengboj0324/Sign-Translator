@@ -114,14 +114,21 @@ def annotated_seconds(manifest, vocab) -> dict:
     return {e: float(statistics.median(v)) for e, v in sorted(spans.items())}
 
 
-ASLLVD_CONTEXT = 50 / agc.ASLLVD_FPS           # seconds of context either side of every ASLLVD clip's annotated sign
+ASLLVD_CONTEXT_FRAMES = 50                     # frames (60 fps) of context either side of an ASLLVD clip's sign
+ASLLVD_CONTEXT = ASLLVD_CONTEXT_FRAMES / agc.ASLLVD_FPS
+
+
+def asllvd_context_seconds(start_frame: int) -> float:
+    """The context before an ASLLVD clip's annotated sign: 50 frames, or fewer when the sign starts within the full
+    video's first 50 frames (the clip cannot start before frame 0): min(50, f0) / 60."""
+    return min(ASLLVD_CONTEXT_FRAMES, max(int(start_frame), 0)) / agc.ASLLVD_FPS
 
 
 def record_sign_fraction(record) -> tuple[float, float] | None:
     """Where an ASLLVD clip's annotated sign lies in the clip the prior trained on (the trimmed window): (start,
-    end) as fractions of the window. The clip starts 50 frames (0.833 s at 60 fps) before the annotated sign
-    (``source.frames``) and the window keeps ``continuous.window_seconds`` of it. None for other corpora, a missing
-    annotation or a sign outside the window."""
+    end) as fractions of the window. The clip starts min(50, f0) frames (at most 0.833 s at 60 fps) before the
+    annotated sign (``source.frames`` = [f0, f1]) and the window keeps ``continuous.window_seconds`` of it. None for
+    other corpora, a missing annotation or a sign outside the window."""
     if record.get("corpus") != "asllvd-text-v1":
         return None
     f = (record.get("source") or {}).get("frames")
@@ -130,7 +137,7 @@ def record_sign_fraction(record) -> tuple[float, float] | None:
         return None
     lo, hi = c.get("window_seconds") or (0., c.get("seconds") or 0.)
     length = hi - lo
-    start = ASLLVD_CONTEXT - lo
+    start = asllvd_context_seconds(f[0]) - lo
     end = start + (f[1] - f[0] + 1) / agc.ASLLVD_FPS
     if length <= 0 or end <= 0 or start >= length:
         return None

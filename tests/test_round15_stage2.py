@@ -1017,7 +1017,7 @@ def test_record_sign_fraction_and_sign_fractions():
     assert fit.record_sign_fraction(dict(r, corpus="rit-text-r6")) is None
     assert fit.record_sign_fraction(dict(r, source={})) is None
     assert fit.record_sign_fraction(rec("x", "cut", [100, 129], [1.4, 1.6])) is None     # sign before the window
-    manifest = dict(records=[r, rec("b", "cut", [100, 159], [.5, 2.]), rec("c", "go", [0, 29], [.6, 1.6]),
+    manifest = dict(records=[r, rec("b", "cut", [100, 159], [.5, 2.]), rec("c", "go", [100, 129], [.6, 1.6]),
                              rec("d", "cut", [0, 29], [.5, 1.75], partition="val")])
     f = fit.sign_fractions(manifest, {"cut": 1., "go": 1.})
     assert set(f["records"]) == {"a", "b", "c"} and f["clips"] == 3             # train only
@@ -1135,3 +1135,90 @@ def test_timing_flags_are_checked(tmp_path, stage2_store):
         with pytest.raises(SystemExit):
             r2.main(base + extra)
     assert not (tmp_path / "o.json").exists()
+
+
+# ---- --selection stage1 (2026-10-29: stage 1's words with any timing) ------------------------------------------------
+
+def capture_translations(monkeypatch):
+    """Record every state list the scripts translate, in call order (wrapping the stub translator)."""
+    import score_back_translation
+    seen, inner = [], score_back_translation.translate
+
+    def recording(model, kind, states):
+        seen.append(list(states))
+        return inner(model, kind, states)
+    monkeypatch.setattr(score_back_translation, "translate", recording)
+    return seen
+
+
+def test_stage1_selection_and_timing_reproduce_oracle_stage1(tmp_path, stage2_store, monkeypatch):
+    import scripts.round15_oracle as ro
+    store, sha, s1, oracle, argv = stage2_store
+    seen = capture_translations(monkeypatch)
+    assert ro.main(["--source-report-key", "source.json", "--store", f"dir:{tmp_path / 'store'}", "--bootstrap", "30",
+                    "--cache-dir", str(tmp_path / "cache"), "--threads", "1", "--output-key", "reports/ro.json"]) == 0
+    stage1_states = seen[2:5]                                  # oracle, oracle/shuffled, oracle/mismatched_words
+    del seen[:]
+    oracle_only = [a for a in argv if a not in ("--checkpoint-key", "prior.pt")]
+    assert r2.main(oracle_only + ["--variants", "oracle_stage2", "--selection", "stage1", "--timing", "stage1",
+                                  "--output-key", "reports/s1s1.json"]) == 0
+    ours = seen[2:5]                                           # oracle_stage2 and its two controls
+    for a_list, b_list in zip(stage1_states, ours):
+        assert len(a_list) == len(b_list) == 5
+        for a, b in zip(a_list, b_list):
+            np.testing.assert_array_equal(a.timestamps, b.timestamps)
+            for name in a.channels:
+                np.testing.assert_array_equal(a.channels[name].values, b.channels[name].values)
+                np.testing.assert_array_equal(a.channels[name].valid, b.channels[name].valid)
+    stored = json.loads(store.get("reports/ro.json"))["forms"]
+    report = json.loads(store.get("reports/s1s1.json"))
+    for name, theirs in (("oracle_stage2", "oracle"), ("oracle_stage2/shuffled", "oracle/shuffled"),
+                         ("oracle_stage2/mismatched_words", "oracle/mismatched_words")):
+        assert report["forms"][name]["hypotheses"] == stored[theirs]["hypotheses"]
+        assert report["forms"][name]["bleu"] == stored[theirs]["bleu"]
+    assert report["selection_mode"] == "stage1"
+    for i, row in enumerate(report["per_clip"]):
+        assert row["entries"] == s1["per_clip"][i]["words"] and row["trace"] == []
+
+
+def test_stage1_selection_in_the_other_timings(tmp_path, stage2_store):
+    store, sha, s1, oracle, argv = stage2_store
+    oracle_only = [a for a in argv if a not in ("--checkpoint-key", "prior.pt")]
+    for timing in ("sign-fitted", "asllrp"):
+        assert r2.main(oracle_only + ["--variants", "oracle_stage2", "--selection", "stage1", "--timing", timing,
+                                      "--output-key", f"reports/s1-{timing}.json"]) == 0
+        report = json.loads(store.get(f"reports/s1-{timing}.json"))
+        perm = s1["words_derangement"]
+        for i, row in enumerate(report["per_clip"]):
+            assert row["entries"] == s1["per_clip"][i]["words"]
+            assert row["shuffled_order"] == s1["per_clip"][i]["shuffled_order"]
+            assert row["mismatched_from"] == perm[i]
+            if "oracle_stage2" in row and timing == "sign-fitted":
+                assert row["oracle_stage2"]["plan"]["frames"] == row["frames_reference"]
+    with pytest.raises(SystemExit):
+        r2.main(oracle_only + ["--variants", "oracle_stage2", "--selection", "stage3", "--output-file",
+                               str(tmp_path / "x.json")])
+
+
+def test_review_nits_of_6d4ec53(tmp_path, stage2_store):
+    store, sha, s1, oracle, argv = stage2_store
+    base = [a for a in argv if a not in ("--checkpoint-key", "prior.pt")] + ["--variants", "oracle_stage2",
+                                                                               "--output-file", str(tmp_path / "o.json")]
+    for extra in (["--timing", "sign-fitted", "--core-threshold", ".2"], ["--timing", "stage1", "--gap-seconds", "0"],
+                  ["--timing", "sign-fitted", "--gap-seconds", ".1"]):
+        with pytest.raises(SystemExit):
+            r2.main(base + extra)
+    # a model without default_seconds cannot run the sign-fitted timing
+    model, _ = fitted(tmp_path, sha)
+    del model["timing"]["default_seconds"]
+    model["sha256"] = cg.model_sha256({k: v for k, v in model.items() if k != "sha256"})
+    (tmp_path / "m.json").write_text(json.dumps(model))
+    no_fit = [a for a in base if a not in ("--fit-min-count", "--fit-move-min-count", "2")]
+    with pytest.raises(SystemExit, match="default_seconds"):
+        r2.main(no_fit + ["--timing", "sign-fitted", "--model-file", str(tmp_path / "m.json")])
+    assert not (tmp_path / "o.json").exists()
+    # ASLLVD context: a sign starting at full-video frame 17 has only 17 frames of context
+    rec = dict(corpus="asllvd-text-v1", source=dict(frames=[17, 46]), continuous=dict(window_seconds=[0., 1.25]))
+    a, b = fit.record_sign_fraction(rec)
+    assert a == pytest.approx((17 / 60) / 1.25) and b == pytest.approx((17 / 60 + 30 / 60) / 1.25)
+    assert fit.asllvd_context_seconds(80) == pytest.approx(50 / 60) and fit.asllvd_context_seconds(0) == 0.
