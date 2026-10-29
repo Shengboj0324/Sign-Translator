@@ -64,8 +64,8 @@ sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 
 import asllrp_gloss_corpus as agc  # noqa: E402
 from signtranslator.generation import compositional_grammar as cg  # noqa: E402
-from signtranslator.generation.compositional import (ISOLATED_CORPORA, STOP_WORDS, normalise, select_words,  # noqa: E402
-                                                     training_vocabulary)
+from signtranslator.generation.compositional import (ISOLATED_CORPORA, STOP_WORDS, isolated_corpora, normalise,  # noqa: E402
+                                                     select_words, training_vocabulary)
 
 ACQ = "acquisition/2026-10-17-v1/"
 KEYS = dict(utterances=ACQ + "derived/signbank-v1/utterances.json",
@@ -307,10 +307,13 @@ def fit_stage2(train_rows, vocab, lexicon, annotated, parameters=None) -> dict:
                 train_utterances=len(train_rows))
 
 
-def fit_model(store, mix_key: str, mix_sha256: str, corpora=ISOLATED_CORPORA, parameters=None) -> tuple[dict, dict]:
+def fit_model(store, mix_key: str, mix_sha256: str, corpora=None, parameters=None) -> tuple[dict, dict]:
     """(model with its ``sha256``, the prepared tables): the inputs read and checked, the model fitted on ASLLRP
-    train only. The evaluation run calls exactly this, so a model pinned by its hash is reproduced bit for bit."""
+    train only. The evaluation run calls exactly this, so a model pinned by its hash is reproduced bit for bit.
+    ``corpora`` None: ``compositional.isolated_corpora`` of the mix (round 15's four for every mix before round 14b,
+    so the recorded list, and the model's hash, are unchanged)."""
     parsed, shas = load_inputs(store, mix_key, mix_sha256)
+    corpora = tuple(corpora) if corpora else isolated_corpora(parsed["manifest"])
     prep = prepare(parsed, corpora)
     model = fit_stage2(prep["train"], prep["vocab"], prep["lexicon"], prep["annotated"], parameters)
     model.update(inputs=dict(sorted(shas.items())), corpora=list(corpora), mix_key=mix_key)
@@ -473,7 +476,7 @@ def main(argv=None) -> int:
     ap.add_argument("--store", default="r2", help="r2, or dir:<path> (read-only either way)")
     ap.add_argument("--mix-key", required=True, help="the prior's training mix (its vocabulary)")
     ap.add_argument("--mix-sha256", required=True)
-    ap.add_argument("--corpora", default=",".join(ISOLATED_CORPORA))
+    ap.add_argument("--corpora", help="comma-separated (default compositional.isolated_corpora of the mix)")
     for k, v in DEFAULTS.items():
         ap.add_argument(f"--{k.replace('_', '-')}", type=type(v), default=v)
     ap.add_argument("--sensitivity", default="0.3,0.7", help="other thresholds, refitted and reported only")
@@ -485,7 +488,7 @@ def main(argv=None) -> int:
         if Path(path).exists():
             raise SystemExit(f"refusing to overwrite {path}")
     store = agc._store(args.store)
-    corpora = tuple(c for c in args.corpora.split(",") if c)
+    corpora = tuple(c for c in (args.corpora or "").split(",") if c) or None
     params = {k: getattr(args, k) for k in DEFAULTS}
     model, prep = fit_model(store, args.mix_key, args.mix_sha256, corpora, params)
     vocab = prep["vocab"]
@@ -509,7 +512,7 @@ def main(argv=None) -> int:
     report = dict(
         purpose="round 15 stage 2: grammar and timing fitted on ASLLRP train, checked on ASLLRP val (development "
                 "data; no How2Sign sentence read; ASLLRP test never read)",
-        model_sha256=model["sha256"], inputs=model["inputs"], mix_key=args.mix_key, corpora=list(corpora),
+        model_sha256=model["sha256"], inputs=model["inputs"], mix_key=args.mix_key, corpora=list(model["corpora"]),
         join=prep["join"], vocabulary_entries=len(vocab), parameters=params,
         utterances=dict(train=len(prep["train"]), val=len(prep["val"]), val_heldout=len(prep["val_heldout"])),
         reproduction_groundwork_rule_check=reproduction,

@@ -146,6 +146,20 @@ def test_vocabulary_indices_use_train_records_ids_and_exact_citizen_codes_only()
     assert set(semlex) == {"B_02_029", "C_01_001"}
 
 
+def test_semlex_text_v2_records_map_by_asl_lex_code_as_v1_records_do():
+    """Round 14b's semlex-text-v2 is read exactly as semlex-text-v1 (its ASL-LEX codes index its entries)."""
+    v1 = [iso_record("semlex-text-v1", "win", code="B_02_029"), iso_record("asllvd-text-v1", "allow", "ALLOW")]
+    v2 = [dict(r, corpus="semlex-text-v2") if r["corpus"] == "semlex-text-v1" else r for r in v1]
+    out = []
+    for records in (v1, v2):
+        manifest = dict(records=records)
+        vocab = agc.training_vocabulary(manifest, agc.isolated_corpora(manifest))
+        assert set(vocab) == {"allow", "win"}
+        out.append(agc.vocabulary_indices(manifest, vocab, dict(mapping={})))
+    assert out[0] == out[1] and out[1][3] == {"B_02_029": collections.Counter(win=1)}
+    assert agc.SEMLEX_CORPORA == ("semlex-text-v1", "semlex-text-v2")
+
+
 def utterance(source, number, glosses_frames, frames, collection="asllrp-continuous"):
     return dict(collection=collection, source=source, utterance=number, utterance_video=f"{number}.mp4", frames=frames,
                 signs=[dict(gloss=g, variant=g, occurrence=o, sign_type="Lexical Signs", frames=f)

@@ -11,7 +11,8 @@ trained and nothing is generated, so no number here is a stage-2 result.
   partition (val Jonathan, test Ben, train the others);
 - the generator's training mix ``round14-mixed-v1`` (``--mix-key`` / ``--mix-sha256``): the isolated-sign vocabulary and
   each word's typical isolated duration (``compositional.training_vocabulary``: the one-word train records of
-  asllvd-text-v1, rit-text-r6, wlasl-text-r6 and semlex-text-v1, median trimmed ``continuous.seconds``), the records'
+  asllvd-text-v1, rit-text-r6, wlasl-text-r6 and semlex-text-v1, plus round 14b's semlex-text-v2 when the mix holds it
+  (``compositional.isolated_corpora``), median trimmed ``continuous.seconds``), the records'
   Sign Bank glosses (ASLLVD, RIT) and ASL-LEX codes (Sem-Lex), and the How2Sign val English;
 - ``derived/signbank-v1/asl-citizen-gloss-map.json``: Sign Bank main entry -> ASL-LEX code, through the ASL Citizen
   glosses whose map method is ``exact`` (the only direct label match);
@@ -85,7 +86,7 @@ from build_asllrp_gloss_manifest import signer as signer_of  # noqa: E402
 from build_citizen_text_manifest import english as gloss_english  # noqa: E402
 from signtranslator.generation.citation_stitch import lookup_names  # noqa: E402
 from signtranslator.generation.compositional import (ISOLATED_CORPORA, STOP_WORDS, inflection_candidates,  # noqa: E402
-                                                     normalise, select_words, training_vocabulary)
+                                                     isolated_corpora, normalise, select_words, training_vocabulary)
 
 ACQ = "acquisition/2026-10-17-v1/"
 FPS = {"asllrp-continuous": 30000 / 1001, "rit-sentences": 60000 / 1001}
@@ -94,6 +95,7 @@ READ_PARTITIONS = ("train", "val")
 H2S_CORPUS = "how2sign-two-view-text-v1"
 SIGNBANK_CORPORA = ("asllvd-text-v1", "rit-text-r6")
 SEMLEX_CORPUS = "semlex-text-v1"
+SEMLEX_CORPORA = (SEMLEX_CORPUS, "semlex-text-v2")     # round 14b's manifest (original extraction) is read alike
 STAGE1_FITTED_PLAN = (0.65, 0.74)          # the brief's figure for round 15's fitted word durations (median, seconds)
 STRICT = ("signbank_id", "asl_lex_code", "name", "name_compound")
 WITH_INDEX = STRICT + ("index_rule",)
@@ -363,7 +365,7 @@ def vocabulary_indices(manifest: dict, vocab: dict, citizen_map: dict):
                                           collections.defaultdict(collections.Counter))
     for r in manifest["records"]:
         corpus = r.get("corpus")
-        if corpus not in SIGNBANK_CORPORA + (SEMLEX_CORPUS,) or r.get("partition") != "train" or not r.get("text"):
+        if corpus not in SIGNBANK_CORPORA + SEMLEX_CORPORA or r.get("partition") != "train" or not r.get("text"):
             continue
         if not usable_channels(r, "continuous"):
             continue
@@ -379,7 +381,7 @@ def vocabulary_indices(manifest: dict, vocab: dict, citizen_map: dict):
             frames = (r.get("source") or {}).get("frames")
             if corpus == "asllvd-text-v1" and frames and len(frames) == 2 and frames[1] >= frames[0]:
                 signbank_seconds[gloss["label"]]["asllvd-annotated-sign"].append((frames[1] - frames[0] + 1) / ASLLVD_FPS)
-        elif corpus == SEMLEX_CORPUS and gloss.get("asl_lex_code"):
+        elif corpus in SEMLEX_CORPORA and gloss.get("asl_lex_code"):
             semlex[gloss["asl_lex_code"]][entry] += 1
     codes = collections.defaultdict(set)
     for m in (citizen_map.get("mapping") or {}).values():
@@ -785,7 +787,8 @@ def main(argv=None) -> int:
     ap.add_argument("--citizen-map-key", default=ACQ + "derived/signbank-v1/asl-citizen-gloss-map.json")
     ap.add_argument("--mix-key", default=ACQ + "youtube-asl-v1/round14-mixed-v1/manifest.json")
     ap.add_argument("--mix-sha256", required=True)
-    ap.add_argument("--corpora", default=",".join(ISOLATED_CORPORA), help="the isolated corpora of the vocabulary")
+    ap.add_argument("--corpora", help="the isolated corpora of the vocabulary, comma-separated (default "
+                    "compositional.isolated_corpora of the mix: round 15's four, plus semlex-text-v2 when present)")
     ap.add_argument("--stage1-report-key", help="round 15 stage 1's stored report (its fitted durations)")
     ap.add_argument("--output-file", required=True, help="the JSON report (write-once)")
     ap.add_argument("--corpus-file", help="the local JSON corpus (write-once; ASLLRP terms: never upload or share)")
@@ -806,7 +809,7 @@ def main(argv=None) -> int:
     stage1 = json.loads(payloads["stage1_report"]) if "stage1_report" in payloads else None
 
     records, join = build_corpus(utterances, pairs)
-    corpora = tuple(c for c in args.corpora.split(",") if c)
+    corpora = tuple(c for c in (args.corpora or "").split(",") if c) or isolated_corpora(manifest)
     vocab = training_vocabulary(manifest, corpora)
     signbank, signbank_seconds, codes, semlex = vocabulary_indices(manifest, vocab, citizen_map)
     glosses = sorted({s["gloss"] for r in records for s in r["signs"]})
