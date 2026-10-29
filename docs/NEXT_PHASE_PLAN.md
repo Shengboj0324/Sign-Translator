@@ -4019,7 +4019,7 @@ Its spotting recall is also far lower (0.16 against 0.36): the prior's own trans
 
 **Crossfade at stage-1 selection and sign-fitted timing (1.85) is the composition carried forward.** The next lever is the word source (W14b at step 30000), then learned transitions in place of crossfades.
 
-### Instrument finding and the recogniser v3 plan (recorded 2026-10-29, 06:40 UTC; scoping only, nothing trained)
+### Instrument finding and the recogniser v3 plan (recorded 2026-10-29, 06:37 UTC; scoping only, nothing trained)
 
 **Finding: why the pilot's word check undercounts.** Orientation is not the main cause.
 - Recogniser v2 reads original Sem-Lex at 0.72 on the new words.
