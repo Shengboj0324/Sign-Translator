@@ -3931,3 +3931,21 @@ With real words, sign-fitted timing is the better composition at equal BLEU.
 **Rule:** stage 2's, unchanged (`bleu:end_to_end,bleu:mismatched_words,spotting`).
 - **Reported:** comparisons with stage-1 chained (1.44) and stage-1 crossfade (1.39), and the hand-speed check (≤ 1.5×).
 - **If a variant is PROMISING:** it becomes the composition for the declared chain, and it is re-run with W14b's words if W14b meets its word-source rule.
+
+## Owner directive: the 2.55 milestone (recorded 2026-10-29, 03:36 UTC)
+
+**The architecture stays as it is:** text-to-motion generation and composition, no retrieval of real clips at inference. The owner declined the hybrid option.
+
+**Milestone M1, sentence BLEU ≥ 2.55 from generated words.** The real-word composition ceiling measured tonight is 2.55–2.58.
+
+**Measured on** the 300 How2Sign val sentences of the round-15 reports, with the same back-translator.
+
+**Met when all hold:**
+- the point estimate is ≥ 2.55;
+- paired BLEU against end-to-end has a lower bound above 0;
+- stage 2's content controls pass (mismatched words, spotting);
+- it is confirmed on a fresh 1,000-sentence val draw before it is claimed.
+
+Hand speed is reported against the 1.5× bar.
+
+**After M1:** evaluation in realistic translation scenarios, then human sign reviewers. Whether the 3.8 BLEU target is still needed is decided from that evaluation. Until M1, every round is chosen for its expected effect on generated word quality and composition.
