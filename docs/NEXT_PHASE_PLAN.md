@@ -4243,7 +4243,7 @@ The calibration (v2's numbers) is reported whatever the outcome.
 
 **Under amendment 2, `sign-recognizer-v3d` (step 12000) is the word instrument from now on.** Earlier v2 numbers stay as recorded.
 
-## Recogniser v3 amendment 3: re-reading the priors with v3 (declared 2026-10-29, 13:55 UTC, before the re-reads)
+## Recogniser v3 amendment 3: re-reading the priors with v3 (declared 2026-10-29, 13:53 UTC, before the re-reads)
 
 **Re-reads:** one GPU pod, lexicon only. Each reuses the meaning (BLEU) half of its stored 1,000-clip pilot through `--meaning-from-key`, with the pinned 150-word list (`--word-list-key` round14/r5-word-split.json) and the word split. The four priors:
 1. the control (round12 fixed-config c1000);
