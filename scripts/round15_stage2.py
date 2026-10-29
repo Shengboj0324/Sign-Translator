@@ -206,9 +206,34 @@ def plan_jobs(variants, plans, content_perm, orders, *, seconds=None, vocab=None
 
 
 def render_form(material, job, reference_seconds, model, *, timing: str, total_fit: str = "pad", order=None,
-                gap_seconds=None, sample_id: str = "round15-stage2"):
+                gap_seconds=None, sample_id: str = "round15-stage2", space=None, bridge: str = "linear"):
     """(state, plan) of one composition from its material under a timing mode (module docstring). ``order``
-    reorders a pieces-based composition's matched words (/shuffled); a chained shuffled form is its own job."""
+    reorders a pieces-based composition's matched words (/shuffled); a chained shuffled form is its own job.
+    ``space`` (``{"stats", "target"}``): the word clips are put in one signing space first
+    (``composition_space.space_normalise``; pieces-based compositions only; its info joins the plan as ``space``);
+    ``bridge``: ``linear`` or ``minimum-jerk`` (``compositional.render``). Both are off by default."""
+    if space is not None or bridge != "linear":
+        if timing == "stage1":
+            raise ValueError("space normalisation and minimum-jerk bridges apply to the asllrp and sign-fitted timings")
+        if space is not None and material.get("pieces") is None:
+            raise ValueError("space normalisation needs pieces (core_crossfade, oracle_stage2)")
+        from signtranslator.generation import compositional_grammar as cg
+        from signtranslator.generation.compositional import parts_from_pieces, render
+        from signtranslator.generation.composition_space import space_normalise
+        idx = list(range(len(job["words"]))) if order is None else list(order)
+        info = None
+        if space is not None:
+            pieces, info = space_normalise([material["pieces"][k] for k in idx], space["stats"],
+                                           target=space["target"])
+            parts = parts_from_pieces(pieces)
+        else:
+            parts = material["parts"] if order is None else parts_from_pieces(material["pieces"], idx)
+        if timing == "sign-fitted":
+            plan = cg.fitted_plan([job["weights"][k] for k in idx], cg.gap_ratio(model["timing"]), reference_seconds)
+        else:
+            plan = frame_plan([job["targets"][k] for k in idx], reference_seconds, model, total_fit, gap_seconds)
+        state = render(parts, plan, sample_id=sample_id, bridge_mode=bridge)
+        return state, dict(plan, **({"space": info} if info else {}), bridge=bridge)
     from signtranslator.generation import compositional_grammar as cg
     from signtranslator.generation.compositional import concatenate, parts_from_pieces, render, word_frames
     from round15_oracle import compose_clips
@@ -322,17 +347,22 @@ def verdict(checks, bleu_row: dict, spotting: dict, spotting_mismatched: dict) -
 STAGE1_MODES = {"core_crossfade": "crossfade", "core_chained": "chained", "oracle_stage2": "crossfade"}
 
 
-def sign_core(word, state, *, fractions, margin):
+def sign_core(word, state, *, fractions, margin, tighten: bool = False):
     """The sign-fitted core of a clip without its own annotation (every generated clip): the annotated sign's median
     position in the word's ASLLVD train clips (``fractions["entries"]``), else in all of them (``fractions["all"]``),
-    widened by ``margin`` seconds (``compositional.fraction_window``)."""
-    from signtranslator.generation.compositional import fraction_window
+    widened by ``margin`` seconds (``compositional.fraction_window``). ``tighten``: cut again by the activity rule
+    inside that window (``composition_space.tighten_window``, the rule's margin the same ``margin``; never extends)."""
+    from signtranslator.generation.compositional import CORE_RULE, fraction_window
     frac = fractions["entries"].get(word)
-    return fraction_window(state, frac or fractions["all"], margin, reason="entry" if frac else "all")
+    window = fraction_window(state, frac or fractions["all"], margin, reason="entry" if frac else "all")
+    if tighten:
+        from signtranslator.generation.composition_space import tighten_window
+        window = tighten_window(state, window, dict(CORE_RULE, margin=margin))
+    return window
 
 
 def generate_job(sample, job: dict, *, guidance: float, temperature, rule: dict, timing: str = "asllrp",
-                 fractions=None, margin: float = .1, rerank: int = 1):
+                 fractions=None, margin: float = .1, rerank: int = 1, tighten: bool = False):
     """The generated material of one job with the loaded generator, post-processed as the pilot
     (``exposure_diagnostic.make_post``): ``compose_cores`` for the asllrp and sign-fitted timings (the sign-fitted
     cores by ``sign_core``), stage 1's ``compose`` (crossfade or chained, at the job's fitted durations) for the
@@ -349,7 +379,7 @@ def generate_job(sample, job: dict, *, guidance: float, temperature, rule: dict,
                               guidance=guidance, temperature=temperature, post=post, crossfade=job["overlap"])
         return dict(mode=job["mode"], timing="stage1", state=state, clips=info.get("clips"),
                     segments=info["segments"])
-    cores = partial(sign_core, fractions=fractions, margin=margin) if timing == "sign-fitted" else None
+    cores = partial(sign_core, fractions=fractions, margin=margin, tighten=tighten) if timing == "sign-fitted" else None
     out = compose_cores(sample.prior, sample.tokenizer, job["words"], job["generate"], job["mode"], job["seeds"],
                         guidance=guidance, temperature=temperature, post=post, rule=rule, cores=cores, rerank=rerank)
     out.pop("codes", None)
@@ -399,7 +429,7 @@ def run_jobs(sample, jobs: list, settings: dict, *, workers: int = 1, worker_arg
 
 
 def oracle_material(job, clip: int, pools, *, loaded: dict, load, rule, timing: str = "asllrp", fractions=None,
-                    margin: float = .1) -> dict:
+                    margin: float = .1, tighten: bool = False) -> dict:
     """Real clips of a job's words (``choose_record`` in the job's block: the stage-1 oracle's draw for the same
     clip and word), cut to their cores like ``core_crossfade``: the activity window (asllrp), the clip's own
     annotated sign when it has one (ASLLVD: ``round15_stage2_fit.record_sign_fraction``), else ``sign_core``
@@ -418,12 +448,13 @@ def oracle_material(job, clip: int, pools, *, loaded: dict, load, rule, timing: 
         elif timing == "sign-fitted":
             own = record_sign_fraction(r)
             window = (fraction_window(state, own, margin, reason="annotated") if own else
-                      sign_core(w, state, fractions=fractions, margin=margin))
+                      sign_core(w, state, fractions=fractions, margin=margin, tighten=tighten))
         else:
             window = core_window(state, rule)
         pieces.append(dict(state=state, **window))
     rows = [dict(word=w, frames=len(p["state"].timestamps), sign=r["sign"], corpus=r["corpus"], lo=p["lo"],
-                 hi=p["hi"], reason=p["reason"]) for w, r, p in zip(job["words"], records, pieces)]
+                 hi=p["hi"], reason=p["reason"], **({"tightened": p["tightened"]} if "tightened" in p else {}))
+            for w, r, p in zip(job["words"], records, pieces)]
     return dict(mode="oracle_stage2", parts=parts_from_pieces(pieces), segments=rows, pieces=pieces)
 
 
