@@ -3669,7 +3669,7 @@ Signer 38 (left-handed) is reported separately.
 - ASLLRP's structure kept.
 - Oracle first, generated only if the oracle beats oracle stage 1.
 
-### Round 15 stage 2 amendment 1: two oracle timing runs (declared 2026-10-29, 01:13 UTC, before either runs)
+### Round 15 stage 2 amendment 1: two oracle timing runs (declared 2026-10-29, 01:05 UTC, before either runs)
 
 **Code:** `--timing` modes (main, merged; independent review MERGE). The default `asllrp` is unchanged, so the running generated pods keep their declared meaning. The 3 review nits are recorded for a follow-up; none blocks these runs:
 - the ASLLVD context assumption for signs near the video start;
