@@ -4474,3 +4474,20 @@ The translator was trained on How2Sign continuous signing, so the composition ha
 - **Merge note:** the merge ran without an end-to-end comparator, because the stored pilot reports cover 1,000 clips, not these 300. The declared paired test against N=1 is unaffected.
 - **Rule:** F12's lower bound is not above 0, so reranking is **not adopted.**
 - **Reading:** both priors move by about +0.16, consistently, but 300 sentences cannot resolve an effect this size at about 4× the generation cost. If it is revisited, it needs the 1,000-sentence set, declared separately.
+
+## Round 15 amendment 8: training observation (2026-10-29, 22:20 UTC, before the refined oracle's verdict)
+
+`sentence-refiner-r1` ran for 8 epochs (4,201 steps) and finished at 22:19 UTC. Its selection loss (teacher-forced EMA, held-out train signers, component c04) **rose monotonically from the first validation:**
+
+| Step | 250 | 1,000 | 2,000 | 3,000 | 4,201 |
+|---|---|---|---|---|---|
+| Selection loss | 4.270 | 4.305 | 4.358 | 4.384 | 4.393 |
+| Stage-1 accuracy | 0.486 | 0.482 | 0.476 | 0.474 | 0.473 |
+
+- The training loss stayed flat, at about 4.78 at step 1,000 and 4.75 at step 4,000 (with history dropout 0.5). best.json is therefore step 250, close to the F12 warm start.
+- **Reading:** the refiner did not learn to use the composed input; it only drifted from its initialisation. There was no step-0 validation, so how much step 250 improves on the warm start itself is unknown.
+- The declared evaluation runs unchanged on step 250. The rule decides adoption; this observation does not.
+- If the rule fails, the candidate causes, to be tested before any second run, are:
+  - learning rate 1e-4 too high for a warm start;
+  - the source encoder unused, measured as the selection loss with the source zeroed;
+  - pair noise from K=4 compositions with stage-1 selection.
