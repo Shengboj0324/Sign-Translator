@@ -3996,3 +3996,25 @@ Hand speed is reported against the 1.5× bar.
 - Covered words lost 0.074 against W14's 0.153.
 - BLEU is the highest of any pilot (1.75).
 - New words are learned: teacher-forced 0.30 against F12's 0.17.
+
+### Round 15 amendment 3 result: core_chained (recorded 2026-10-29, 06:31 UTC)
+
+| Measure | Value |
+|---|---|
+| BLEU | 1.43 |
+| Against end-to-end | +0.01 [−0.68, +0.71]: **fail** |
+| Against mismatched words | +0.43 [−0.25, +1.13]: **fail** |
+| Spotting | 0.158 against 0.059: pass |
+| Order | 0.80 |
+| Wrist speed | 2.71× |
+
+**Verdict: NOT PROMISING.**
+
+**Chaining (the prior continuing from the previous word's codes) is consistently weaker than crossfade:**
+- stage 1: 1.44 against 1.39;
+- stage 2: 1.60 against 1.30;
+- amendment 3: 1.43 against 1.85.
+
+Its spotting recall is also far lower (0.16 against 0.36): the prior's own transitions dilute the words.
+
+**Crossfade at stage-1 selection and sign-fitted timing (1.85) is the composition carried forward.** The next lever is the word source (W14b at step 30000), then learned transitions in place of crossfades.
