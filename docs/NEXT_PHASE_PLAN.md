@@ -3806,3 +3806,17 @@ The one measure that pointed the other way was the skeleton-slot handedness meas
 - **Hand speed:** 2.35×, the best composed form so far, but still above the 1.5× bar.
 
 **Inference:** the best known pieces are stage 1's word selection (no ASLLRP structure) and sign-fitted timing; they have not been tried together.
+
+### Round 15 stage 2 amendment 2: stage-1 words at sign-fitted timing (declared 2026-10-29, 02:35 UTC, before it runs)
+
+**Code:** `--selection stage1` (merged; independent review MERGE) uses the stored stage-1 report's per-clip words exactly: no lexicon, maps, drops, IX or moves. The controls use stage 1's own shuffle order and words derangement.
+
+**Runs:** two CPU pods, `--variants oracle_stage2`, with the declared model 42389ca4, the same 300 sentences and the same rule string.
+1. **`--selection stage1 --timing sign-fitted --core-margin 0.1`:** the untried combination.
+2. **`--selection stage1 --timing stage1`:** a reproduction check. It must give oracle stage 1's BLEU of 2.581, and the stored states are compared. If it does not reproduce, run 1 is void.
+
+**Reading for run 1,** on paired BLEU against oracle stage 1 (2.58):
+- a lower bound above 0 is a **WIN**;
+- a WIN is the condition for generated `core_chained` and `core_crossfade` at `--selection stage1 --timing sign-fitted`, under stage 2's rule unchanged, declared as amendment 3 before they run.
+
+Hand speed is reported against the 1.5× bar.
