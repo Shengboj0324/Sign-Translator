@@ -4154,7 +4154,7 @@ Its spotting recall is also far lower (0.16 against 0.36): the prior's own trans
 
 Hand speed is reported.
 
-### Round 15 amendment 4 result (recorded 2026-10-29, 11:53 UTC): W14b's words give the first PROMISING generated composition
+### Round 15 amendment 4 result (recorded 2026-10-29, 11:52 UTC): W14b's words give the first PROMISING generated composition
 
 **Setup:** core_crossfade, stage-1 selection, sign-fitted timing, W14b step 30000. The generator mix is round14b; the containment check passed (142,124 records).
 
