@@ -4105,3 +4105,32 @@ Its spotting recall is also far lower (0.16 against 0.36): the prior's own trans
 - **Retry:** the first 1,100-clip attempt (28 workers) lost a worker, probably to memory, and was re-run with 10 workers.
 
 **YouTube arm-recovery retry (recorded 2026-10-29, 09:02 UTC):** BLOCKED again at the first video ("Sign in to confirm you're not a bot"). The home route is stopped for the day, with no circumvention (no cookies, sign-in or proxies). This is the second day running. The next single-video retry is 2026-10-30 at or after 09:00 UTC. YouTube data is not on round 14b's or round 15's critical path.
+
+### Round 14b final pilot at step 30000 (recorded 2026-10-29, 09:30 UTC): F12 stays leader and word source
+
+| Measure | W14b step 30000 | W14b step 10000 | F12 step 60000 |
+|---|---|---|---|
+| Lexicon (150 words) | 0.390 | 0.400 | 0.450 |
+| covered | 0.532 | 0.542 | 0.616 |
+| uncovered | 0.024 | 0.036 | 0.024 |
+| Sentence BLEU (1,000 clips) | **1.786** [1.50, 2.07] | 1.752 | 1.636 |
+| Teacher-forced top-5, uncovered (133 clips, 27 words) | **0.353** | 0.301 | 0.165 |
+| Teacher-forced top-5, covered (64 clips) | 0.375 | 0.375 | 0.391 |
+
+**Rules, as declared** (instrument: recogniser v2):
+
+| Rule | Check | Result | Met? |
+|---|---|---|---|
+| 1 | Rule D against the control | lexicon +0.373 [+0.303, +0.443] | yes: PROMISING |
+| 2 | Replaces F12 | lexicon −0.060 [−0.107, −0.013] | **no** |
+| 2 | (paired BLEU) | +0.15 [−0.17, +0.49] | — |
+| 3 | Word source: uncovered teacher-forced | **+0.188 [+0.051, +0.317]** | yes |
+| 3 | Word source: covered teacher-forced | −0.016 [−0.109, +0.078] | **no** (bound −0.05) |
+| 3 | Word source: covered lexicon | −0.083 [−0.148, −0.023] | **no** (bound −0.10) |
+
+**Decision: F12 stays leader and word source.**
+
+**What round 14b established:**
+1. **Sem-Lex words are learned:** teacher-forced retrieval of the new words beats F12, resolved at step 30000.
+2. **End-to-end BLEU is the best of any prior** (1.79), but not resolved against F12.
+3. **The covered-word lexicon read by v2 is lower** (−0.08). The instrument finding (v2 misreads the all-valid generated form, with arms that webcam corpora lack) makes this read suspect. The comparison is repeated with recogniser v3 if v3 passes its gates. That would be a new, declared comparison, not a change to this verdict.
