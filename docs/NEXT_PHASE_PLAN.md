@@ -4218,7 +4218,7 @@ Hand speed is reported.
 
 **Reading:** G6 requires top-1 ≥ 0.8 over at least 3 clips, per word, pooled over the gate halves only. The 100/150 bar was set without measuring v2 on the same sets, so it may be unreachable for any recogniser.
 
-## Recogniser v3 amendment 2: calibrating G6 against v2 (declared 2026-10-29, 13:02 UTC, before v2 is measured)
+## Recogniser v3 amendment 2: calibrating G6 against v2 (declared 2026-10-29, 13:00 UTC, before v2 is measured)
 
 **Measurement:** v2 is measured on the same gate halves and held-out sets by the same rule (top-1 ≥ 0.8 over at least 3 clips), on real clips.
 
