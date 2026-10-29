@@ -4262,3 +4262,31 @@ The calibration (v2's numbers) is reported whatever the outcome.
   - the covered-word v3 lexicon has a lower bound above −0.10: reported.
 
 **If W14b replaces F12 under v3,** it becomes the leader for end-to-end generation.
+
+### Recogniser v3 amendment 3 result (recorded 2026-10-29, 14:52 UTC): with v3, W14b still does not replace F12
+
+**v3 lexicon** (pinned 150 R5 words, 1,000-clip pilots, meaning reused):
+
+| Prior | Lexicon | covered (108) | uncovered (42) |
+|---|---|---|---|
+| Control | 0.007 | — | — |
+| F12 step 60000 | **0.637** | 0.875 | 0.024 |
+| W14 step 10000 | 0.563 | 0.745 | 0.095 |
+| W14b step 30000 | 0.583 | 0.782 | 0.071 |
+
+**Rules, re-applied:**
+- **Rule D (W14b against the control): PROMISING.** Lexicon +0.577 [+0.503, +0.650].
+- **Replacement (W14b against F12): NOT met.**
+  - Lexicon −0.053 [−0.097, −0.010].
+  - Covered −0.093 [−0.144, −0.042].
+  - Uncovered +0.048 [−0.012, +0.131].
+- **F12 stays the end-to-end leader.**
+
+**What the re-read settles:**
+1. **The covered-word loss is real.** W14b's −0.09 on covered words holds under both instruments, v2 and v3.
+2. **New words are learned but not produced in free run.**
+   - v3 reads real decoded Sem-Lex new words at 0.87 (G4).
+   - W14b knows them teacher-forced (+0.19).
+   - Yet its free-run samples of the uncovered words read only 0.07.
+   - So the gap is generation, not the instrument: the same exposure problem found for words in round 7, now on the new vocabulary.
+3. **v3 reads every prior higher than v2** (F12 0.45 → 0.64). Earlier v2 numbers stay as recorded and are not comparable.
