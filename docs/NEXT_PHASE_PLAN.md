@@ -3594,3 +3594,43 @@ This agrees with the voided wrist-path handedness measure ("not mirrored"), and 
 1. **Orientation:** Sem-Lex in its original extracted orientation (`states-video-v1`), gated before training by F12's likelihood and v2's stored-against-mirrored read.
 2. **Training:** a warm start from F12 step 60000 at a low peak learning rate (about 1e-4, short warmup), with Sem-Lex at weight 1–2, trained past 10k steps.
 3. **Pilot additions:** part-valid teacher-forced retrieval, and the decoded-real ceiling for each word subset.
+
+### Round 14 diagnosis: the orientation claim is REFUTED by independent verification (recorded 2026-10-29, 00:42 UTC)
+
+The diagnosis's numbers reproduce, and a line-by-line review found no bug that changes them. Its interpretation does not hold.
+
+**F12 likelihood, fresh sample** (mirrored minus stored, nats per code; positive means stored fits better):
+
+| Corpus | n | Mirrored − stored | Clips fit better as stored |
+|---|---|---|---|
+| Sem-Lex val | 40 | −0.40 | 1/40 |
+| How2Sign val (signers c01/c03/c05) | 40 | **+0.06** (across the three signers, [−0.06, +0.14]) | 26/40 |
+| ASLLVD | 40 | +0.77 | 40/40 |
+| RIT | 20 | +0.67 | 20/20 |
+| WLASL | 20 | +0.87 | 20/20 |
+| YouTube-ASL | 60 | +0.48 | 60/60 |
+
+The large preference appears only in corpora extracted with MediaPipe. It holds whichever hand a clip's motion favours, and mirroring the face alone (no handedness content) already shows it.
+
+**Conclusion:** F12 has learned what natural, unreflected MediaPipe estimates look like. It has not learned a handedness convention.
+
+**Physical handedness** (the state slot that is raised and moves more):
+- How2Sign: the right slot, 39–40 of 40.
+- ASLLVD: right, 15/15.
+- Sem-Lex un-mirrored: right for 32 of 33 signers; about 4 signers use the left slot, roughly the natural left-handed rate.
+- Of Sem-Lex's two orientations, the un-mirrored one is consistent with How2Sign and ASLLVD. The original would make about 88% of signers left-dominant.
+
+**What stands:**
+- W14 learned the new words (teacher-forced +0.37).
+- The pilot's free-run read of them is capped near zero by the instrument.
+- Recogniser v2 learned these words from ASL Citizen, which is recorded on the same mirrored-webcam platform as Sem-Lex, so its preference is confounded.
+
+**What changes:** the un-mirrored states have the right handedness but are *reflected MediaPipe estimates*. They are about 0.35 nats per code off-distribution on hands and body, which also explains the shift in sampled style.
+
+**The fix this supports:** re-extract Sem-Lex from horizontally flipped video. MediaPipe then estimates a natural right-handed image. Going back to `states-video-v1` would make Sem-Lex left-handed and is rejected.
+
+**Next, a declared gate before any re-extraction at scale.** Extract about 100 Sem-Lex val clips from flipped frames (on CPU). They pass when both hold:
+- F12 fits them better as stored than mirrored, by a lower bound above 0, like the other MediaPipe corpora;
+- their wrist-height and wrist-path dominant slot is right for at least 80% of signers.
+
+Signer 38 (left-handed) is reported separately.
