@@ -4491,3 +4491,34 @@ The translator was trained on How2Sign continuous signing, so the composition ha
   - learning rate 1e-4 too high for a warm start;
   - the source encoder unused, measured as the selection loss with the source zeroed;
   - pair noise from K=4 compositions with stage-1 selection.
+
+## Round 15 amendment 9: sentence refiner r2, no target history (declared 2026-10-29, 23:21 UTC, before it runs and before r1's merged verdict)
+
+**Why.** Refiner r1 learned nothing from the composed input, and refined content was lost: on shards 0 and 1 (512 sentences, unofficial), oracle 2.14, @recon 1.82, @refined 1.56, rest_only@refined 1.65.
+- r1's temporal decoder reads the target's own history: teacher-forced in training, its own samples when refining. The per-step loss is therefore met from the history rather than the source, and refining inherits the prior's free-running drift.
+- r2 (`--history none`, code f2406fd; independent review: approve with fixes, all applied) feeds the decoder the start code at every step, in training and when refining alike. Every step's state then comes from the encoded source and the clock only, so training and refining read the same inputs. The depth transformer still samples each step's 32 codes in order.
+
+**Run `sentence-refiner-r2`:**
+- Same pairs (index `365ae9a6…3760`) and the same F12 step-60000 warm start as r1.
+- `--history none` (history dropout 0), 8 epochs, batch 32, lr 1e-4, warmup 500, source dropout 0.1, seed 0.
+- Validation every 250 steps on the held-out train signers. Each validation reports `selection/empty_loss` and `selection/source_gain`, and the warm start is validated first (`initial_validation`). A 20-step smoke run comes first.
+
+**Training gate,** read before any evaluation runs. Both must hold:
+- best.json's `selection/source_gain` ≥ 0.05 nats;
+- its selection loss is below the warm start's.
+
+Otherwise r2 is recorded NOT PROMISING and is not evaluated.
+
+**Evaluation:** amendment 8's design unchanged: the real-word oracle on the 1,000 sentences, 4 GPU shards, `--refined-rule bleu:recon,bleu:mismatched_words,bleu:rest_only,spotting`, paired, recogniser v3. Two settings are fixed now:
+- the refiner samples at temperature 0.7 for every part (`--refiner-temperature 0.7`, guidance 1). Steps are sampled independently given the source, so the training temperature risks mode-mixing between neighbouring steps;
+- a **jitter guard** is added.
+
+**Rule.** r2 is adopted for generated compositions only if all hold:
+- the four checks of amendment 8;
+- the guard: the mean wrist speed of `oracle_stage2@refined` is at most 1.25 × that of `oracle_stage2@recon`, from the merged report's per-form motion reads.
+
+Wrist speed relative to real motion is also reported against the 1.5× bar.
+
+If r2 is adopted, the next run is W14b's generated composition, refined, under M1's rule.
+
+Chain: `r15_a9.sh`.
