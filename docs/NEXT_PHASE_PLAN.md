@@ -4083,3 +4083,16 @@ Its spotting recall is also far lower (0.16 against 0.36): the prior's own trans
 **If all pass:** the control, F12 step 60000, W14 and W14b are re-read with v3 on the pinned 150-word list before any comparison uses it. Earlier rounds' v2 numbers stay as recorded.
 
 **Cost:** about $8–12.
+
+### Recogniser v3 amendment 1: the ASL Citizen side check (declared 2026-10-29, 08:19 UTC, before training)
+
+**The declared 150-clip check ran** (`pixel-sides-v1.json`) after a first pod failed on a missing libEGL.
+- It measured 3–4 clips per signer: 21 of 33 signers image-left, **12 image-right**.
+- At 3–4 clips per signer this is the sampling noise seen on Sem-Lex, where a 100-clip sample said 50/50 and the full data said 30 of 34 image-left.
+- Excluding 12 signers on that evidence would remove about a third of ASL Citizen. **It is not applied.**
+
+**Replacement rule:**
+- The same measure on **1,100 clips**, about 33 per signer (`pixel-sides-v2.json`).
+- A signer is **excluded only if** they have at least 20 decided clips and at least 75% of them are image-right.
+- Every other signer is kept as stored, including undecided signers.
+- Training waits for this result. Nothing else in the declaration changes.
