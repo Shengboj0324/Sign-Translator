@@ -4442,3 +4442,22 @@ The translator was trained on How2Sign continuous signing, so the composition ha
 **If memorisation is clearly above the real baseline,** the result is treated as retrieval-like and **not** adopted, whatever BLEU shows. That reading is recorded with its numbers.
 
 **If adopted:** W14b's generated composition is refined under M1's rule.
+
+### Round 15 amendment 7 result, all knobs together (recorded 2026-10-29, 20:22 UTC): NOT adopted, the knobs hurt
+
+**Run:** the real-word oracle on the 1,000 sentences with space normalisation, minimum-jerk bridges and core tightening.
+
+| Measure | Result |
+|---|---|
+| BLEU | 1.90 |
+| Paired against the 2.17 oracle | **−0.27 [−0.54, −0.02]** |
+| Against mismatched words | +0.82 [+0.54, +1.08] |
+| Spotting | 0.456 against 0.095 |
+| Wrist speed | **3.03×**, against 2.26× without knobs |
+
+**Rule:** not met, since the lower bound is below 0.
+
+**Reading:**
+- Together the knobs make hands faster and BLEU lower. A likely cause is minimum-jerk bridges that match the boundary velocities of compressed cores, so they overshoot.
+- Spotting is marginally higher (0.456 against the oracle's 0.449).
+- The single-knob runs (space, jerk, tight) attribute the effect. They are waiting for CPU capacity: Runpod CPU supply is exhausted (20:20 UTC).
