@@ -3668,3 +3668,22 @@ Signer 38 (left-handed) is reported separately.
 - Durations fitted to the sentence, as in oracle stage 1.
 - ASLLRP's structure kept.
 - Oracle first, generated only if the oracle beats oracle stage 1.
+
+### Round 15 stage 2 amendment 1: two oracle timing runs (declared 2026-10-29, 01:13 UTC, before either runs)
+
+**Code:** `--timing` modes (main, merged; independent review MERGE). The default `asllrp` is unchanged, so the running generated pods keep their declared meaning. The 3 review nits are recorded for a follow-up; none blocks these runs:
+- the ASLLVD context assumption for signs near the video start;
+- unused flags not refused;
+- the gap-ratio fallback.
+
+**Runs:** two CPU pods, `--variants oracle_stage2` only. Both use the declared model 42389ca4, the same 300 sentences and the same rule string.
+1. **`--timing stage1`:** stage-2 words and structure at stage 1's oracle timing (whole trimmed clips, fitted durations, 4-frame crossfades). This isolates the structure effect.
+2. **`--timing sign-fitted --core-margin 0.1`:** annotated-sign cores. Durations and transitions are shared over the reference in proportion to isolated sign length, with transitions at g = 0.714, no padding and no ASLLRP pace. On ASLLRP val with real clips, wrist speed is 1.14× real.
+
+**Readings, each on paired BLEU against oracle stage 1 (2.58):**
+- **stage1 timing:**
+  - lower bound above 0: structure helps;
+  - upper bound below 0: structure hurts;
+  - otherwise: unresolved.
+- **sign-fitted:** a lower bound above 0 counts as a WIN. A WIN is the condition for running the generated `core_chained` and `core_crossfade` at sign-fitted timing, under stage 2's rule unchanged, declared as amendment 2 before they run.
+- **Both:** the hand-speed check (≤ 1.5× real) is reported, and stage 2's rule verdicts are reported for information.
