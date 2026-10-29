@@ -3786,7 +3786,7 @@ The one measure that pointed the other way was the skeleton-slot handedness meas
 
 **Verdict: NOT PROMISING**, as expected after oracle stage 2: the ASLLRP timing is the cause.
 
-### Round 15 stage 2 amendment 1 results (recorded 2026-10-29, 02:31 UTC; real words, 300 How2Sign val sentences)
+### Round 15 stage 2 amendment 1 results (recorded 2026-10-29, 02:29 UTC; real words, 300 How2Sign val sentences)
 
 | Oracle form | BLEU | Against oracle stage 1 (2.58) | Against end-to-end | Against shuffled | Wrist speed |
 |---|---|---|---|---|---|
