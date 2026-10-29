@@ -4153,3 +4153,27 @@ Its spotting recall is also far lower (0.16 against 0.36): the prior's own trans
 3. **M1 check:** BLEU ≥ 2.55 and the remaining M1 conditions. Any claim needs the 1,000-sentence confirmation.
 
 Hand speed is reported.
+
+### Round 15 amendment 4 result (recorded 2026-10-29, 11:53 UTC): W14b's words give the first PROMISING generated composition
+
+**Setup:** core_crossfade, stage-1 selection, sign-fitted timing, W14b step 30000. The generator mix is round14b; the containment check passed (142,124 records).
+
+| Comparison | Result |
+|---|---|
+| BLEU | **2.195**, the best generated result of the project |
+| Against end-to-end F12 (rule 1) | **+0.77 [+0.11, +1.52]**: pass |
+| Against mismatched words (rule 2) | **+1.07 [+0.39, +1.79]**: pass |
+| Spotting (rule 3) | 0.355 [0.331, 0.380] against 0.063, order 0.87: pass |
+| Against oracle stage 1, real words (2.58) | −0.39 [−0.96, +0.14]: **not resolved** |
+| Against shuffled | +0.36 [−0.26, +0.98] |
+| Wrist speed | 2.56× (hand-speed check fails) |
+
+**Stage 2's rule: PROMISING**, the first generated composition to pass all three checks.
+
+**The word-source decision, as declared:** paired against F12's crossfade (1.85), +0.34 [−0.26, +0.99]. The lower bound is not above 0, so **F12 formally stays the word source**. W14b's composition passes the absolute rule and F12's does not.
+
+**M1 (≥ 2.55):** not met. The gap is 0.36. This generated composition is not statistically distinguishable from the real-word oracle on 300 sentences.
+
+**Next, to be declared:**
+1. A larger paired evaluation of W14b against F12 on the pilot's 1,000 sentences, which also narrows the ±0.5 BLEU intervals.
+2. The word-quality levers toward M1.
