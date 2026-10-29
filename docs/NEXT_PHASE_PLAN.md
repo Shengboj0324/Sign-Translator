@@ -4199,3 +4199,33 @@ Hand speed is reported.
 2. **M1:** if either composition has BLEU ≥ 2.55, a lower bound above 0 against end-to-end, and the content controls passing, M1 is met on this 1,000-sentence set. This counts as the "1,000-sentence confirmation", with the caveat that the set overlaps the development set in 289 sentences.
 
 Hand speed is reported.
+
+### Recogniser v3 gates (recorded 2026-10-29, 13:02 UTC): G6 fails, so v2 stays
+
+`training-runs/sign-recognizer-v3d/gates.json` uses checkpoint step 12000 (early stop at 20000). The gate halves and held-out signers are unread by selection.
+
+| Gate | Measured | Pass? |
+|---|---|---|
+| G1 | highest blank or random-code top-1: 0.003 | pass |
+| G2 | v3 minus v2 top-1, worst set: +0.027 | pass |
+| G3 | Sem-Lex held-out signers, real top-5: 0.796 | pass |
+| G4 | decoded top-5: covered 0.899 (572 clips), uncovered 0.874 (167), Sem-Lex 0.822 (v2 read decoded Sem-Lex at 0.097) | pass |
+| G5 | smallest stored-minus-mirrored lower bound: +0.30 | pass |
+| G6 | words reliable on both forms: **32 of 150**, and 7 of the 42 uncovered (the gate needs 100 and 25) | **FAIL** |
+| G7 | ASLLRP in-context top-1: 0.207 (v2 0.083) | pass |
+
+**Verdict as declared: v2 stays the instrument.**
+
+**Reading:** G6 requires top-1 ≥ 0.8 over at least 3 clips, per word, pooled over the gate halves only. The 100/150 bar was set without measuring v2 on the same sets, so it may be unreachable for any recogniser.
+
+## Recogniser v3 amendment 2: calibrating G6 against v2 (declared 2026-10-29, 13:02 UTC, before v2 is measured)
+
+**Measurement:** v2 is measured on the same gate halves and held-out sets by the same rule (top-1 ≥ 0.8 over at least 3 clips), on real clips.
+
+**Re-declared G6** (G6′), replacing G6 only if both of these hold:
+1. v3's count of R5 words reliable on both real and decoded clips is at least v2's count of R5 words reliable on real clips;
+2. among the 42 uncovered words, the same comparison holds.
+
+**Result:** v3 passes amendment 2 if G6′ holds; G1–G5 and G7 already pass. Otherwise v2 stays.
+
+The calibration (v2's numbers) is reported whatever the outcome.
