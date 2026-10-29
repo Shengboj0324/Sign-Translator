@@ -400,7 +400,8 @@ def run(args) -> dict:
         rpost = make_post(accepted_decoder_gains(store, rmeta["tokenizer_key"]))
         r_temperature = temperature if args.refiner_temperature is None else (
             {k: float(v) for k, v in (x.split("=") for x in args.refiner_temperature.split(","))}
-            if "=" in args.refiner_temperature else {k: float(args.refiner_temperature) for k in temperature})
+            if "=" in args.refiner_temperature else {k: float(args.refiner_temperature)
+                                                     for k, _ in refiner.config.prior.tokenizer.part_slices()})
         refiner_info = dict(checkpoint_key=args.refiner_checkpoint_key, sha256=rmeta["sha256"], step=rmeta["step"],
                             tokenizer_key=rmeta["tokenizer_key"], guidance=args.refiner_guidance,
                             temperature=r_temperature,
