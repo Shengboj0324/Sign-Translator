@@ -1,0 +1,12 @@
+# Reviewer data never enters the repo (OPERATOR_GUIDE.md §6). Only the blank templates are tracked.
+returned/
+answers/
+consent_signed/
+recordings/
+key/
+key.json
+*.returned.csv
+*_filled.csv
+*-filled.csv
+reviewer_codes*
+passphrases*
