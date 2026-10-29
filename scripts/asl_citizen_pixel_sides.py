@@ -87,8 +87,15 @@ def group_sides(rows, group: str = "signer") -> dict:
     for g, sides in sorted(by.items()):
         left, right = sides.count("image_left"), sides.count("image_right")
         out[g] = dict(side="image_left" if left > right else "image_right" if right > left else None,
-                      image_left=left, image_right=right, undecided=sides.count(None))
+                      clips=len(sides), image_left=left, image_right=right, undecided=sides.count(None))
     return out
+
+
+def quantiles(values) -> dict | None:
+    """min / median / max of per-signer clip counts (a side decided on few clips is weak evidence)."""
+    if not values:
+        return None
+    return dict(min=int(min(values)), median=float(np.median(values)), max=int(max(values)))
 
 
 def exclusion_spec(signers: dict, corpus: str = CORPUS) -> str | None:
@@ -187,6 +194,9 @@ def main(argv=None) -> int:
                    **{h: sum(r["side"] == h for r in rows) for h in HALVES},
                    undecided=sum(r["status"] == "measured" and r["side"] is None for r in rows)),
         signers=dict(total=len(signers), decided=len(decided),
+                     sampled_clips_per_signer=dict(sorted(collections.Counter(r["performer_sha256"][:PREFIX_DIGITS]
+                                                                              for r in records).items())),
+                     measured_clips_per_signer=quantiles([v["clips"] for v in signers.values()]),
                      image_left=sum(v["side"] == "image_left" for v in decided.values()),
                      image_right=sum(v["side"] == "image_right" for v in decided.values())),
         per_signer=signers, image_right_signers=sorted(s for s, v in signers.items() if v["side"] == "image_right"),

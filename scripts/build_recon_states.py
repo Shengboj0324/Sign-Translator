@@ -166,11 +166,9 @@ def process(job, prefix: str, attempts: int = 4) -> dict:
     """One record, transient failures retried; a record that still fails is ``error`` (rerun the shard)."""
     import random
     for attempt in range(attempts):
-        try:
-            return process_once(job, prefix, **_WORKER)
-        except (ValueError, KeyError) as error:          # the record itself: conform or decode refused it
-            return entry_of(job, status="refused", reason=f"{type(error).__name__}: {error}"[:300])
-        except Exception as error:  # noqa: BLE001 - the store's or the network's
+        try:                                            # refusals are returned by process_once itself; anything
+            return process_once(job, prefix, **_WORKER)  # raised here is the store's or the network's
+        except Exception as error:  # noqa: BLE001
             if attempt == attempts - 1:
                 return entry_of(job, status="error", reason=f"{type(error).__name__}: {error}"[:300])
             time.sleep(min(60., 2. * 2 ** attempt) * (.5 + random.random()))
@@ -196,9 +194,21 @@ def process_once(job, prefix, *, store, tokenizer, motion, post, device, templat
             path.write_bytes(payload)
             frames = len(MultichannelMotion.load(path, expected_sha256=sha).timestamps)
         return entry_of(job, status="already_present", recon_key=key, recon_sha256=sha, frames=frames)
-    served = serve(job, template, cache=cache, fetch=store.get)
-    text = job.get("text") or (job.get("gloss") or {}).get("label") or job["sign"]
-    recon = decode_state(served, tokenizer, motion, post, text=str(text), device=device)
+    part = job["continuous"]
+    data = store.get(part["state_key"])                 # transient failures raise here and are retried
+    if hashlib.sha256(data).hexdigest() != part["state_sha256"]:
+        raise IOError(f"{part['state_key']}: fetched bytes differ from the manifest's SHA-256")
+
+    def fetched(key):
+        if key != part["state_key"]:
+            raise IOError(f"{key}: unexpected fetch")
+        return data
+    try:                                                # from the verified bytes on: the record's own outcome
+        served = serve(job, template, cache=cache, fetch=fetched)
+        text = job.get("text") or (job.get("gloss") or {}).get("label") or job["sign"]
+        recon = decode_state(served, tokenizer, motion, post, text=str(text), device=device)
+    except (ValueError, KeyError) as error:             # conform, load or decode refused the clip
+        return entry_of(job, status="refused", reason=f"{type(error).__name__}: {error}"[:300])
     recon = replace(recon, sample_id=f"recon:{job['corpus']}:{job['sign']}")
     payload, sha = state_bytes(recon)
     if store.exists(key):                               # another pass wrote it meanwhile: keep what is there

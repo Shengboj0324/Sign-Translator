@@ -10,8 +10,12 @@ given as ``KEY@SHA:MAPPING[:WEIGHT]`` and each mapped into that label space exac
   <-> ASL Citizen gloss map (ASLLVD, RIT; recogniser v2's rule, ``train_sign_recognizer.with_extra_corpus``);
 - ``upper``: the record's ``gloss.label`` upper-cased is a label, spelled exactly (WLASL).
 
-Partitions: ``train`` stays ``train``; ``val`` becomes ``val:<corpus>``; every clip (train or val) of a held-out signer
-(``--holdout-signers corpus:id,id``) becomes ``holdout:<corpus>``; excluded signers (``--exclude-signers``) are dropped.
+Partitions: ``train`` stays ``train``; ``val`` is split into ``select:<corpus>`` (checkpoint selection) and
+``gate:<corpus>`` (the instrument gates; ``split_validation``: signer-disjoint halves where the corpus validates on
+two or more signers); every clip (train or val) of a held-out signer (``--holdout-signers corpus:id,id``) becomes
+``holdout:<corpus>``; excluded signers (``--exclude-signers``) are dropped. A corpus with source video URLs (WLASL)
+loses multi-label videos, training clips whose video is also a test or validation clip, and glosses recorded with
+several variants (``video_hygiene``), each drop counted.
 The ``test`` and ``heldout_official`` partitions are dropped before anything else and never reach a dataset, and no
 How2Sign signer-9 record (component ``c00``, the generator's final-test signer) may be loaded: ``check_loadable`` is the
 hard guard, applied when the data are assembled and again on every load.
@@ -194,6 +198,7 @@ def assemble(corpora, labels, *, holdout: Mapping | None = None, exclude: Mappin
     records, used = [], collections.defaultdict(set)
     counts = collections.defaultdict(collections.Counter)
     for (manifest, spec, mapper), name in zip(corpora, names):
+        video_drops = video_hygiene(manifest["records"])
         for r in manifest["records"]:
             c = counts[name]
             partition = r.get("partition")
@@ -209,6 +214,9 @@ def assemble(corpora, labels, *, holdout: Mapping | None = None, exclude: Mappin
             if hit is not None:
                 used[(name, "exclude")].add(hit)
                 c["drop:excluded_signer"] += 1
+                continue
+            if r.get("sign") in video_drops:
+                c[f"drop:{video_drops[r['sign']]}"] += 1
                 continue
             label = mapper(r)
             if label is None:
@@ -233,12 +241,86 @@ def assemble(corpora, labels, *, holdout: Mapping | None = None, exclude: Mappin
             missing = set(ids) - used[(corpus, name)]
             if missing:
                 raise ValueError(f"--{name} {corpus}: no record of signer(s) {sorted(missing)}")
+    val_split = split_validation(records)
     summary = dict(corpora={name: dict(spec.to_dict(), counts=dict(sorted(counts[name].items())))
                             for name, (_, spec, _) in zip(names, corpora)},
                    holdout={c: list(v) for c, v in holdout.items()}, exclude={c: list(v) for c, v in exclude.items()},
-                   whole_clip=sorted(whole_clip),
+                   whole_clip=sorted(whole_clip), val_split=val_split,
                    partitions=dict(sorted(collections.Counter(r["partition"] for r in records).items())))
     return records, summary
+
+
+def video_hygiene(records) -> dict[str, str]:
+    """{sign: reason} of the clips a corpus with source video URLs (WLASL) must not contribute, decided from every
+    record's metadata (all partitions; no state is read):
+    - ``video_multi_label``: every clip of a video whose clips carry two or more glosses;
+    - ``train_video_in_test_or_val``: a training clip whose video also gives a test or validation clip;
+    - ``gloss_with_variants``: every clip of a gloss recorded with more than one ``variation_id`` (the upper-case
+      spelling cannot tell the variants apart).
+    Corpora without ``source.url`` / ``gloss.variation_id`` are untouched."""
+    by_url = collections.defaultdict(list)
+    variants = collections.defaultdict(set)
+    for r in records:
+        url = (r.get("source") or {}).get("url")
+        if url:
+            by_url[url].append(r)
+        g = r.get("gloss") or {}
+        if "variation_id" in g:
+            variants[g.get("label")].add(g["variation_id"])
+    drops = {}
+    multi_variant = {label for label, v in variants.items() if len(v) > 1}
+    for r in records:
+        if (r.get("gloss") or {}).get("label") in multi_variant:
+            drops[r["sign"]] = "gloss_with_variants"
+    for url, rs in by_url.items():
+        if len({(r.get("gloss") or {}).get("label") for r in rs}) > 1:
+            for r in rs:
+                drops.setdefault(r["sign"], "video_multi_label")
+        elif any(r.get("partition") in ("test", "val") for r in rs):
+            for r in rs:
+                if r.get("partition") == "train":
+                    drops.setdefault(r["sign"], "train_video_in_test_or_val")
+    return drops
+
+
+def _half_of(text: str) -> int:
+    return int(hashlib.sha256(text.encode()).hexdigest(), 16) % 2
+
+
+def split_validation(records: list[dict]) -> dict:
+    """Split every ``val:<corpus>`` partition, in place, into ``select:<corpus>`` (checkpoint selection) and
+    ``gate:<corpus>`` (the instrument gates), so no gate reads the clips the checkpoint was chosen on. Signer-disjoint
+    when the corpus's validation has two or more signers: signers in the order of SHA-256("<corpus>\\n<signer>"),
+    each given to the half with fewer clips so far (ties: select). With one validation signer (ASLLVD, RIT) the clips
+    are split by SHA-256("<corpus>\\n<sign>") parity, which is clip-disjoint only (recorded). Returns the split."""
+    by = collections.defaultdict(lambda: collections.defaultdict(list))
+    for r in records:
+        if r["partition"].startswith("val:"):
+            by[r["partition"][4:]][signer_of(r) or "unknown"].append(r)
+    out = {}
+    for corpus, signers in sorted(by.items()):
+        halves = {"select": [], "gate": []}
+        if len(signers) >= 2:
+            order = sorted(signers, key=lambda s: hashlib.sha256(f"{corpus}\n{s}".encode()).hexdigest())
+            clips = {"select": 0, "gate": 0}
+            for s in order:
+                half = "select" if clips["select"] <= clips["gate"] else "gate"
+                halves[half].append(s)
+                clips[half] += len(signers[s])
+                for r in signers[s]:
+                    r["partition"] = f"{half}:{corpus}"
+            mode = "signer-disjoint"
+        else:
+            for rs in signers.values():
+                for r in rs:
+                    half = "select" if _half_of(f"{corpus}\n{r['sign']}") == 0 else "gate"
+                    r["partition"] = f"{half}:{corpus}"
+            halves = {h: sorted(signers) for h in halves}
+            mode = "clip-disjoint (one validation signer)"
+        out[corpus] = dict(mode=mode, **{h: dict(signers=[str(s)[:16] for s in sorted(halves[h], key=str)],
+                                                 clips=sum(r["partition"] == f"{h}:{corpus}" for rs in signers.values()
+                                                           for r in rs)) for h in halves})
+    return out
 
 
 def load_digest(record: Mapping) -> str:

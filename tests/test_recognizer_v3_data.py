@@ -94,10 +94,11 @@ def test_assembly_partitions_holds_out_and_excludes_signers_and_never_keeps_test
                                    whole_clip=["sem"])
     by = {r["sign"]: r for r in records}
     assert set(by) == {"c1", "c2", "s1", "s2", "s3", "s4"}          # c3 test, c4 excluded, s5 unmapped, s6 heldout
-    assert by["c1"]["partition"] == "train" and by["c2"]["partition"] == "val:cit"
+    assert by["c1"]["partition"] == "train" and by["c2"]["partition"] in ("select:cit", "gate:cit")
     assert by["s1"]["partition"] == by["s2"]["partition"] == "holdout:sem"     # train and val clips of signer 11
     assert by["s1"]["source_partition"] == "train" and by["s2"]["source_partition"] == "val"
-    assert by["s3"]["partition"] == "train" and by["s4"]["partition"] == "val:sem"
+    assert by["s3"]["partition"] == "train" and by["s4"]["partition"] in ("select:sem", "gate:sem")
+    assert summary["val_split"]["sem"]["mode"].startswith("clip-disjoint")    # one validation signer
     assert by["s1"]["gloss"]["label"] == "BOOK" and by["s1"]["gloss"]["source_label"] == "book"
     assert "window_seconds" not in by["s1"]["continuous"]           # --whole-clip
     assert by["s3"]["_weight"] == 2. and by["c1"]["_weight"] == 1.
@@ -107,6 +108,46 @@ def test_assembly_partitions_holds_out_and_excludes_signers_and_never_keeps_test
     assert summary["corpora"]["sem"]["counts"]["drop:unmapped_label"] == 1
     for r in records:
         rc.check_loadable(r)
+
+
+def test_validation_halves_are_signer_disjoint_balanced_deterministic_and_recorded():
+    records = [dict(rec(f"v{s}{i}", "BOOK", f"val:c", performer=s * 64), corpus="c")
+               for s, n in zip("12345678", (5, 1, 3, 3, 2, 4, 1, 1)) for i in range(n)]
+    records.append(dict(rec("t", "BOOK", "train"), corpus="c"))
+    out = rc.split_validation(records)["c"]
+    halves = {h: {r["performer_sha256"] for r in records if r["partition"] == f"{h}:c"} for h in ("select", "gate")}
+    assert not halves["select"] & halves["gate"] and len(halves["select"] | halves["gate"]) == 8
+    assert out["mode"] == "signer-disjoint" and out["select"]["clips"] + out["gate"]["clips"] == 20
+    assert abs(out["select"]["clips"] - out["gate"]["clips"]) <= 5           # greedy balance: within the largest signer
+    assert records[-1]["partition"] == "train"
+    again = [dict(r, partition="val:c") if r["partition"] != "train" else dict(r) for r in reversed(records)]
+    rc.split_validation(again)
+    assert {r["sign"]: r["partition"] for r in again} == {r["sign"]: r["partition"] for r in records}  # order-free
+    one = [dict(rec(f"o{i}", "BOOK", "val:d", performer="9" * 64), corpus="d") for i in range(40)]
+    split = rc.split_validation(one)["d"]
+    assert split["mode"].startswith("clip-disjoint") and 0 < split["select"]["clips"] < 40
+
+
+def test_video_hygiene_drops_shared_multi_label_and_variant_videos_only():
+    def w(sign, label, partition, url, variation=0):
+        return dict(rec(sign, label, partition), gloss=dict(label=label, variation_id=variation), source=dict(url=url))
+    records = [w("a1", "book", "train", "u1"), w("a2", "cat", "train", "u1"),            # one video, two glosses
+               w("b1", "dog", "train", "u2"), w("b2", "dog", "test", "u2"),              # train video also in test
+               w("c1", "dog", "train", "u3"), w("c2", "dog", "val", "u3"),               # ... also in val
+               w("d1", "eat", "train", "u4"), w("d2", "eat", "val", "u5", 1),            # a gloss with two variants
+               w("e1", "fly", "train", "u6"), w("e2", "fly", "val", "u7"),
+               w("f1", "go", "train", "u8"), w("f2", "go", "train", "u8")]               # same gloss twice: kept
+    drops = rc.video_hygiene(records)
+    assert drops == {"a1": "video_multi_label", "a2": "video_multi_label", "b1": "train_video_in_test_or_val",
+                     "c1": "train_video_in_test_or_val", "d1": "gloss_with_variants", "d2": "gloss_with_variants"}
+    assert rc.video_hygiene([rec("x", "BOOK")]) == {}                                     # no URLs: untouched
+    labels = {"DOG", "FLY", "GO", "BOOK", "CAT", "EAT"}
+    wl = dict(corpus_id="wl", records=records)
+    kept, summary = rc.assemble([(wl, rc.CorpusSpec("w.json", SHA, "upper"), rc.label_mapper("upper", labels))], labels)
+    counts = summary["corpora"]["wl"]["counts"]
+    assert counts["drop:video_multi_label"] == 2 and counts["drop:train_video_in_test_or_val"] == 2
+    assert counts["drop:gloss_with_variants"] == 2 and counts["drop:test_partition"] == 1
+    assert sorted(r["sign"] for r in kept) == ["c2", "e1", "e2", "f1", "f2"]
 
 
 def test_assembly_refuses_unknown_corpora_signers_and_conflicts():

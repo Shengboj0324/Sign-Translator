@@ -24,17 +24,21 @@ made after seeing the numbers.
 
 **Recogniser v3 (``--gates``;** docs/NEXT_PHASE_PLAN.md, "Instrument finding and the recogniser v3 plan"). The run's
 ``run.json`` defines the data (``train_sign_recognizer.build_v3_data``, checked against its ``data_sha256``); every
-``val:<corpus>`` and ``holdout:<corpus>`` set is read by v3 and by ``--baseline-run`` (v2) as **real** clips, their
+``gate:<corpus>`` set (the validation half never used for checkpoint selection) and ``holdout:<corpus>`` set is read by v3 and by ``--baseline-run`` (v2) as **real** clips, their
 **decoded** copies (the run's ``build_recon_states.py`` index) and **mirrored** (``pose.mirror``, availability checked),
 with **controls** (blank: only the duration; no hands; random code: uniformly random tokenizer codes decoded in the
 generated form, one clip per real clip and of its length). **Per-gloss reliability** (v2's rule, top-1 >= ``--reliable``
 over >= ``--min-clips`` clips) is pooled over the sets, on real and on decoded clips; the **ASLLRP in-context** read is
 v2's diagnostic. The report gives the gate quantities G1-G7 exactly as the plan declares them (``GATE_TEXT``), each with
 its threshold as a parameter (``GATE_DEFAULTS``), and a PASS/FAIL table; v3 is usable only if every gate passes.
-Where the plan gives no number, the parameter's default says how the gate is read: G1 "at chance" is v2's declared
-blank rule (top-1 <= 2%) for both controls; G2 compares top-1 per set; G3 and G4 read top-5 (the lexicon's read);
-G5 "orientation consistency" requires the stored read above the mirrored read (top-5) in every set, since every corpus
-is stored in the generator's orientation; G6 counts a word reliable on both real and decoded clips.
+Where the plan gives no number, the parameter's default says how the gate is read (independent review, 2026-10-29):
+G1 "at chance" is per set, for both controls: top-1 <= max(the set's majority-class share, 3/classes) and top-5 <=
+max(the share of its five most frequent classes, 15/classes); G2 compares top-1 per set; G3 and G4 read top-5 (the
+lexicon's read), G4 pooled over covered and uncovered words and per corpus (``--g4-corpus-min``, default Sem-Lex
+decoded top-5 >= 0.50 over its gate half and held-out signers), with every set's decoded read reported; G5
+"orientation consistency" requires, in every set, the bootstrap 95% lower bound of the paired stored-minus-mirrored
+top-5 above 0, since every corpus is stored in the generator's orientation; G6 counts a word reliable on both real
+and decoded clips.
 """
 from __future__ import annotations
 
@@ -251,9 +255,11 @@ GATE_TEXT = {
     "G6": "per-gloss reliability: at least 100 of 150 R5 words, and at least 25 of the 42 uncovered",
     "G7": "ASLLRP in-context ≥ 0.07",
 }
-GATE_DEFAULTS = dict(g1_max_top1=.02, g2_metric="top1", g2_margin=0., g3_corpus="semlex-text-v2", g3_metric="top5",
-                     g3_min=.60, g4_metric="top5", g4_covered_min=.70, g4_uncovered_min=.60, g5_metric="top5",
-                     g5_min_difference=0., g6_min_r5=100, g6_min_uncovered=25, g6_forms="both", g7_min_top1=.07)
+GATE_DEFAULTS = dict(g1_top1_floor_classes=3, g1_top5_floor_classes=15, g2_metric="top1", g2_margin=0.,
+                     g3_corpus="semlex-text-v2", g3_metric="top5", g3_min=.60, g4_metric="top5", g4_covered_min=.70,
+                     g4_uncovered_min=.60, g4_corpus_min={"semlex-text-v2": .50}, g5_metric="top5",
+                     g5_min_lower_bound=0., g6_min_r5=100, g6_min_uncovered=25, g6_forms="both", g7_min_top1=.07)
+GATE_SETS = ("gate:", "holdout:")     # the gates read the gate halves and the held-out signers, never the select halves
 WORD_SPLIT_KEY = "acquisition/2026-10-17-v1/youtube-asl-v1/round14/r5-word-split.json"
 WORD_SPLIT_SHA256 = "676f56cbbaa9bac08f0bc305027807827f982cd4c242de03f7891323e723102a"
 CONTINUOUS_MANIFEST = ("acquisition/2026-10-17-v1/derived/asllrp-dai2-v1/gloss-manifest-v1/manifest.json",
@@ -271,8 +277,12 @@ def add_gate_arguments(parser) -> None:
     g.add_argument("--seed", type=int, default=0, help="the random-code control's codes")
     g.add_argument("--output", help="also write the report to this local file")
     g.add_argument("--cache-dir", help="content cache directory (default: the temporary directory)")
-    g.add_argument("--g1-max-top1", type=float, default=GATE_DEFAULTS["g1_max_top1"],
-                   help="G1 'at chance': blank and random-code top-1 at most this (v2's declared blank rule, 2%%)")
+    g.add_argument("--g1-top1-floor-classes", type=int, default=GATE_DEFAULTS["g1_top1_floor_classes"],
+                   help="G1 'at chance', per set: blank and random-code top-1 <= max(the set's majority-class share, "
+                        "this many classes / class count)")
+    g.add_argument("--g1-top5-floor-classes", type=int, default=GATE_DEFAULTS["g1_top5_floor_classes"],
+                   help="G1, per set: top-5 <= max(the share of the set's five most frequent classes, this many "
+                        "classes / class count)")
     g.add_argument("--g2-metric", choices=("top1", "top5"), default=GATE_DEFAULTS["g2_metric"])
     g.add_argument("--g2-margin", type=float, default=GATE_DEFAULTS["g2_margin"],
                    help="G2: every set's v3 real read at least v2's minus this")
@@ -282,14 +292,31 @@ def add_gate_arguments(parser) -> None:
     g.add_argument("--g4-metric", choices=("top1", "top5"), default=GATE_DEFAULTS["g4_metric"])
     g.add_argument("--g4-covered-min", type=float, default=GATE_DEFAULTS["g4_covered_min"])
     g.add_argument("--g4-uncovered-min", type=float, default=GATE_DEFAULTS["g4_uncovered_min"])
+    g.add_argument("--g4-corpus-min", action="append", metavar="CORPUS=MIN",
+                   help="G4 per corpus: that corpus's decoded read (gate half and held-out signers) at least MIN; "
+                        "repeated; default semlex-text-v2=0.5")
     g.add_argument("--g5-metric", choices=("top1", "top5"), default=GATE_DEFAULTS["g5_metric"])
-    g.add_argument("--g5-min-difference", type=float, default=GATE_DEFAULTS["g5_min_difference"],
-                   help="G5: in every set, the stored read minus the mirrored read must exceed this")
+    g.add_argument("--g5-min-lower-bound", type=float, default=GATE_DEFAULTS["g5_min_lower_bound"],
+                   help="G5: in every set, the bootstrap 95%% lower bound of the paired per-clip stored-minus-mirrored "
+                        "read must exceed this")
     g.add_argument("--g6-min-r5", type=int, default=GATE_DEFAULTS["g6_min_r5"])
     g.add_argument("--g6-min-uncovered", type=int, default=GATE_DEFAULTS["g6_min_uncovered"])
     g.add_argument("--g6-forms", choices=("both", "real", "decoded"), default=GATE_DEFAULTS["g6_forms"],
                    help="G6: a word counts when reliable on real and decoded clips (both), or on one form")
     g.add_argument("--g7-min-top1", type=float, default=GATE_DEFAULTS["g7_min_top1"])
+
+
+def parse_corpus_minima(items) -> dict:
+    """``--g4-corpus-min CORPUS=MIN`` (repeated) -> {corpus: min}; None gives the default (Sem-Lex 0.5)."""
+    if not items:
+        return dict(GATE_DEFAULTS["g4_corpus_min"])
+    out = {}
+    for item in items:
+        corpus, _, value = item.partition("=")
+        if not corpus or not value:
+            raise SystemExit(f"--g4-corpus-min {item!r}: expected CORPUS=MIN")
+        out[corpus] = float(value)
+    return out
 
 
 def ranks_from_logits(logits, labels) -> "np.ndarray":
@@ -321,11 +348,19 @@ def evaluate_gates(q: dict, t: dict) -> list[dict]:
     def gate(gid, measured, rule, ok):
         out.append(dict(gate=gid, plan=GATE_TEXT[gid], measured=measured, rule=rule, passed=bool(ok)))
 
-    c = q["controls"]
-    gate("G1", f"blank top-1 {c['blank_top1']}, random-code top-1 {c['random_code_top1']} (chance {c['chance_top1']})",
-         f"both <= {t['g1_max_top1']}",
-         c["blank_top1"] is not None and c["random_code_top1"] is not None
-         and c["blank_top1"] <= t["g1_max_top1"] and c["random_code_top1"] <= t["g1_max_top1"])
+    classes = q["classes"]
+    above = []
+    for n, s in sorted(q["per_set"].items()):
+        bound1 = max(s["majority_top1"], t["g1_top1_floor_classes"] / classes)
+        bound5 = max(s["majority_top5"], t["g1_top5_floor_classes"] / classes)
+        for form in ("blank", "random_code"):
+            v1, v5 = s[f"{form}_top1"], s[f"{form}_top5"]
+            if v1 is None or v5 is None or v1 > bound1 or v5 > bound5:
+                above.append(f"{n} {form} {v1}/{v5} > {round(bound1, 4)}/{round(bound5, 4)}")
+    worst = max(((s[f"{f}_top1"] or 0.) for s in q["per_set"].values() for f in ("blank", "random_code")), default=None)
+    gate("G1", f"highest blank/random-code top-1 {worst}" + (f"; above chance: {above}" if above else ""),
+         f"per set, top-1 <= max(majority share, {t['g1_top1_floor_classes']}/{classes}) and top-5 <= "
+         f"max(top-5-class share, {t['g1_top5_floor_classes']}/{classes})", bool(q["per_set"]) and not above)
     m = t["g2_metric"]
     rows = {n: (s[f"real_{m}"], s[f"v2_real_{m}"]) for n, s in q["per_set"].items()}
     short = {n: (a, b) for n, (a, b) in rows.items() if a is None or b is None or a < b - t["g2_margin"]}
@@ -336,19 +371,22 @@ def evaluate_gates(q: dict, t: dict) -> list[dict]:
     name = f"holdout:{t['g3_corpus']}"
     value = (q["per_set"].get(name) or {}).get(f"real_{t['g3_metric']}")
     gate("G3", f"{name} real {t['g3_metric']} {value}", f">= {t['g3_min']}", value is not None and value >= t["g3_min"])
+    m4 = t["g4_metric"]
     cov, unc = q["decoded_words"]["covered"], q["decoded_words"]["uncovered"]
-    gate("G4", f"decoded {t['g4_metric']}: covered {cov[t['g4_metric']]} ({cov['clips']} clips), uncovered "
-               f"{unc[t['g4_metric']]} ({unc['clips']} clips)",
-         f"covered >= {t['g4_covered_min']}, uncovered >= {t['g4_uncovered_min']}",
-         cov[t["g4_metric"]] is not None and unc[t["g4_metric"]] is not None
-         and cov[t["g4_metric"]] >= t["g4_covered_min"] and unc[t["g4_metric"]] >= t["g4_uncovered_min"])
+    corpus_reads = {c: (q["decoded_by_corpus"].get(c) or {}).get(m4) for c in t["g4_corpus_min"]}
+    corpus_short = sorted(c for c, v in corpus_reads.items() if v is None or v < t["g4_corpus_min"][c])
+    gate("G4", f"decoded {m4}: covered {cov[m4]} ({cov['clips']} clips), uncovered {unc[m4]} ({unc['clips']} clips); "
+               f"per corpus {corpus_reads}",
+         f"covered >= {t['g4_covered_min']}, uncovered >= {t['g4_uncovered_min']}, per corpus >= {t['g4_corpus_min']}",
+         cov[m4] is not None and unc[m4] is not None and cov[m4] >= t["g4_covered_min"]
+         and unc[m4] >= t["g4_uncovered_min"] and not corpus_short)
     m5 = t["g5_metric"]
-    diffs = {n: (None if s[f"real_{m5}"] is None or s[f"mirrored_{m5}"] is None
-                 else round(s[f"real_{m5}"] - s[f"mirrored_{m5}"], 4)) for n, s in q["per_set"].items()}
-    bad = sorted(n for n, d in diffs.items() if d is None or not d > t["g5_min_difference"])
-    gate("G5", f"stored - mirrored {m5}, smallest {min((d for d in diffs.values() if d is not None), default=None)}"
-               + (f"; not above: {bad}" if bad else ""),
-         f"every set's stored {m5} - mirrored {m5} > {t['g5_min_difference']}", bool(diffs) and not bad)
+    lows = {n: (s.get(f"real_minus_mirrored_{m5}_ci") or [None])[0] for n, s in q["per_set"].items()}
+    bad = sorted(n for n, lo in lows.items() if lo is None or not lo > t["g5_min_lower_bound"])
+    gate("G5", f"stored - mirrored {m5}, smallest 95% lower bound "
+               f"{min((v for v in lows.values() if v is not None), default=None)}" + (f"; not above: {bad}" if bad else ""),
+         f"every set's paired stored - mirrored {m5}: 95% lower bound > {t['g5_min_lower_bound']}",
+         bool(lows) and not bad)
     r = q["reliability"]
     gate("G6", f"reliable ({t['g6_forms']}): {r['r5']} of {r['r5_words']} R5 words, {r['uncovered']} of "
                f"{r['uncovered_words']} uncovered",
@@ -385,6 +423,7 @@ def gates_main(args) -> int:
     from semlex_recognition_shift import bootstrap
     from signtranslator.generation.compositional import make_decode
     import train_sign_recognizer as trainer
+    args.g4_corpus_min = parse_corpus_minima(args.g4_corpus_min)
     store = make_store(args.store)
     if args.output_key and store.exists(args.output_key):
         raise SystemExit(f"{args.output_key} exists: the gate report is written once")
@@ -425,7 +464,9 @@ def gates_main(args) -> int:
     kw = dict(labels=index, cache=cache, fetch=store.get, min_hand_fraction=targs.min_hand_fraction, fps=fps,
               template=template, hand_fraction_fallback=True)
     manifest = dict(records=records)
-    names = sorted({r["partition"] for r in records if r["partition"].startswith(("val:", "holdout:"))})
+    names = sorted({r["partition"] for r in records if r["partition"].startswith(GATE_SETS)})
+    if not any(n.startswith("gate:") for n in names):
+        raise SystemExit("the run's data have no gate halves (select/gate split): not a recogniser v3 data definition")
 
     def ranks(net, states, y):
         return ranks_from_logits(logits_of(net, states, device), y)
@@ -489,11 +530,22 @@ def gates_main(args) -> int:
         for f, r in forms.items():
             for k in (1, 5):
                 row[f"{f}_top{k}"] = read(r, k)
+        frequency = sorted(collections.Counter(y).values(), reverse=True)
+        row["majority_top1"] = round(frequency[0] / len(y), 6)          # G1: a constant guess's top-1 / top-5
+        row["majority_top5"] = round(sum(frequency[:5]) / len(y), 6)
+        for k in (1, 5):                                                # G5: paired per clip, bootstrap over clips
+            diff = (forms["real"] < k).astype(np.float64) - (forms["mirrored"] < k)
+            row[f"real_minus_mirrored_top{k}"] = round(float(diff.mean()), 4)
+            row[f"real_minus_mirrored_top{k}_ci"] = bootstrap(diff)
+        corpus = name.split(":", 1)[1]
+        row["corpus"] = corpus
         per_set[name] = row
         pooled["y"] += y
         pooled["real"] += forms["real"].tolist()
         pooled["y_dec"] += y_dec
         pooled["decoded"] += forms["decoded"].tolist()
+        pooled[f"y_dec:{corpus}"] += y_dec
+        pooled[f"decoded:{corpus}"] += forms["decoded"].tolist()
         for f in ("blank", "random_code", "no_hands"):
             pooled[f] += forms[f].tolist()
         print(json.dumps({name: {k: v for k, v in row.items() if k != "forms"}}), flush=True)
@@ -502,19 +554,27 @@ def gates_main(args) -> int:
                     blank_top1=read(pooled["blank"], 1), blank_top5=read(pooled["blank"], 5),
                     random_code_top1=read(pooled["random_code"], 1), random_code_top5=read(pooled["random_code"], 5),
                     no_hands_top1=read(pooled["no_hands"], 1), no_hands_top5=read(pooled["no_hands"], 5))
-    decoded_words = {}
-    for subset, words in (("covered", covered), ("uncovered", uncovered)):
-        mask = np.isin(y_dec, [index[w] for w in words])
-        r = np.asarray(pooled["decoded"])[mask]
-        decoded_words[subset] = dict(clips=int(mask.sum()), words_read=int(len(set(y_dec[mask].tolist()))),
-                                     words=len(words), top1=read(r, 1), top5=read(r, 5))
+    def word_reads(yd, rd):
+        yd, rd, out = np.asarray(yd), np.asarray(rd), {}
+        for subset, words in (("covered", covered), ("uncovered", uncovered)):
+            mask = np.isin(yd, [index[w] for w in words]) if len(yd) else np.zeros(0, bool)
+            r = rd[mask] if len(rd) else rd
+            out[subset] = dict(clips=int(mask.sum()), words_read=int(len(set(yd[mask].tolist()))) if len(yd) else 0,
+                               words=len(words), top1=read(r, 1), top5=read(r, 5))
+        return out
+    decoded_words = word_reads(y_dec, pooled["decoded"])
+    corpora_read = sorted({s["corpus"] for s in per_set.values()})
+    decoded_by_corpus = {c: dict(clips=len(pooled[f"decoded:{c}"]), top1=read(pooled[f"decoded:{c}"], 1),
+                                 top5=read(pooled[f"decoded:{c}"], 5),
+                                 words=word_reads(pooled[f"y_dec:{c}"], pooled[f"decoded:{c}"]))
+                         for c in corpora_read}
     rule = dict(threshold=args.reliable, min_clips=args.min_clips)
     real_ok = reliable_classes(y_all, pooled["real"], **rule)
     dec_ok = reliable_classes(y_dec, pooled["decoded"], **rule)
     counted = {"both": real_ok & dec_ok, "real": real_ok, "decoded": dec_ok}[args.g6_forms]
     r5 = {index[w] for w in covered | uncovered}
-    reliability = dict(rule=f"top-1 >= {args.reliable} over >= {args.min_clips} clips, pooled over every val and "
-                            f"holdout set", forms=args.g6_forms, r5_words=len(r5), uncovered_words=len(uncovered),
+    reliability = dict(rule=f"top-1 >= {args.reliable} over >= {args.min_clips} clips, pooled over every gate-half "
+                            f"and holdout set", forms=args.g6_forms, r5_words=len(r5), uncovered_words=len(uncovered),
                        r5=len(counted & r5), uncovered=len(counted & {index[w] for w in uncovered}),
                        r5_real=len(real_ok & r5), r5_decoded=len(dec_ok & r5), reliable_real=len(real_ok),
                        reliable_decoded=len(dec_ok), reliable_both=len(real_ok & dec_ok),
@@ -537,8 +597,9 @@ def gates_main(args) -> int:
                       blank_top1=read(ranks(model, blanked(segments), labels_c), 1))
     del segments
     thresholds = {k: getattr(args, k) for k in GATE_DEFAULTS}
-    quantities = dict(controls=controls, per_set=per_set, decoded_words=decoded_words, reliability=reliability,
-                      in_context_top1=in_context["top1"])
+    quantities = dict(classes=len(glosses), controls=controls, per_set=per_set, decoded_words=decoded_words,
+                      decoded_by_corpus=decoded_by_corpus, reliability=reliability, in_context_top1=in_context["top1"],
+                      val_split=summary.get("val_split"))
     gates = evaluate_gates(quantities, thresholds)
     report = dict(run=args.run, checkpoint=best["checkpoint_key"], step=best["step"], data_sha256=digest,
                   baseline=dict(run=args.baseline_run, checkpoint=base_best["checkpoint_key"]),

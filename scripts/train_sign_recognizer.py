@@ -23,7 +23,9 @@ line is unchanged and gives the same data, random streams and records):
   ``--recon-p``; coverage below ``--recon-min-coverage`` of the training clips stops the run.
 - ``--validity-dropout``: the probability of random arm / torso invalidation in ``augment_sign`` (with ``--augment``).
 - **Selection:** the mean over corpora of validation top-1 on the real clips and on their decoded copies (up to
-  ``--val-clips`` per corpus and form; the decoded set is the real set's clips that have a copy).
+  ``--val-clips`` per corpus and form; the decoded set is the real set's clips that have a copy), on the
+  ``select:`` half of each corpus's validation only; the ``gate:`` half (``recognizer_corpora.split_validation``,
+  signer-disjoint where possible, recorded in run.json) is never read here and is left to the gates.
 - **Guard:** no test-partition record and no How2Sign signer-9 record reaches a dataset (``check_loadable``, at
   assembly and on every load; it raises).
 """
@@ -185,6 +187,8 @@ def build_v3_data(store, args, cache, prefix):
         raise SystemExit(str(error))
     recon = None
     if args.recon_prefix:
+        if not args.conform_template:
+            raise SystemExit("--recon-prefix needs --conform-template: decoded copies are in the generator's layout")
         if not args.recon_index_sha256:
             raise SystemExit("--recon-prefix needs --recon-index-sha256 (the index is pinned)")
         payload = store.get(f"{args.recon_prefix.rstrip('/')}/index.json")
@@ -312,7 +316,7 @@ def main(argv=None) -> int:
     train_ids = keep(train)
     if v3_on:
         val_sets = v3_validation_sets(manifest, kw, keep, args)
-        val_ids = [i for name, sets in val_sets.items() if name.startswith("val:") for i in sets["real"][1]]
+        val_ids = [i for name, sets in val_sets.items() if name.startswith("select:") for i in sets["real"][1]]
     else:
         val = GlossMotionDataset(manifest, partition="val", **kw)
         cross = GlossMotionDataset(manifest, partition="cross_val", **kw)
@@ -346,7 +350,7 @@ def main(argv=None) -> int:
                 recognizer_v3=True, data=summary, data_sha256=data_sha256, train_records=len(train_ids),
                 val_records={name: len(s["real"][1]) for name, s in val_sets.items()},
                 decoded_val_records={name: len(s["decoded"][1]) if s["decoded"] else 0 for name, s in val_sets.items()},
-                selection="mean over corpora of val top-1, real and decoded clips"),
+                selection="mean over corpora of select-half val top-1, real and decoded clips (gate halves unread)"),
                 indent=2, sort_keys=True, default=str).encode())
         else:
             recorded = {k: v for k, v in vars(args).items() if k not in V3_DEFAULTS}   # v2's run.json, unchanged
@@ -406,7 +410,7 @@ def main(argv=None) -> int:
         if metrics and (best is None or metrics[score_key] > best[best_field]):
             best = dict(checkpoint_key=key, step=step, validation=metrics, **{best_field: metrics[score_key]})
             if v3_on:
-                best["selection"] = "mean over corpora of val top-1, real and decoded clips"
+                best["selection"] = "mean over corpora of select-half val top-1, real and decoded clips (gate halves unread)"
             store.put(f"{prefix}/best.json", json.dumps(best, indent=2, sort_keys=True).encode())
 
     model.train()
@@ -448,11 +452,11 @@ def main(argv=None) -> int:
 
 
 def v3_validation_sets(manifest, kw, keep, args) -> dict:
-    """{set name: dict(real=(dataset, ids), decoded=(dataset, ids) or None)} for every ``val:<corpus>`` and
+    """{set name: dict(real=(dataset, ids), decoded=(dataset, ids) or None)} for every ``select:<corpus>`` and
     ``holdout:<corpus>`` partition: up to ``--val-clips`` clips each (seed 1234), the decoded set being those clips'
     decoded copies (validation clips have copies when the index covers them)."""
     names = sorted({r["partition"] for r in manifest["records"]
-                    if r["partition"].startswith(("val:", "holdout:"))})
+                    if r["partition"].startswith(("select:", "holdout:"))})
     sets = {}
     for name in names:
         real = GlossMotionDataset(manifest, partition=name, **kw)
@@ -471,7 +475,7 @@ def v3_validation_sets(manifest, kw, keep, args) -> dict:
 
 
 def v3_metrics(model, val_sets, device, args) -> dict:
-    """Per set and form loss / top-1 / top-5; ``select/score``: the mean of the ``val:`` sets' real and decoded top-1
+    """Per set and form loss / top-1 / top-5; ``select/score``: the mean of the ``select:`` sets' real and decoded top-1
     (held-out signers are reported only)."""
     metrics, scores = {}, []
     for name, sets in val_sets.items():
@@ -484,7 +488,7 @@ def v3_metrics(model, val_sets, device, args) -> dict:
             out = evaluate(model, batches, device)
             for k, v in out.items():
                 metrics[f"{name}/{form}/{k.split('/', 1)[1]}"] = v
-            if name.startswith("val:"):
+            if name.startswith("select:"):
                 scores.append(out["val/top1"])
     metrics["select/score"] = float(np.mean(scores))
     return metrics

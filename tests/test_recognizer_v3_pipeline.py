@@ -97,7 +97,8 @@ def world(tmp_path, monkeypatch):
         for g in GLOSSES:
             cit.append(record(s, f"c{signer}{g}", g, "train", performer=signer * 64, code=w["codes"][g]))
     for g in GLOSSES:
-        cit.append(record(s, f"cv{g}", g, "val", performer="5" * 64, code=w["codes"][g]))
+        for signer in ("5", "b"):                                     # two validation signers: signer-disjoint halves
+            cit.append(record(s, f"cv{signer}{g}", g, "val", performer=signer * 64, code=w["codes"][g]))
         cit.append(record(s, f"ct{g}", g, "test", performer="6" * 64, code=w["codes"][g]))
     w["cit"] = s.manifest("cit.json", "asl-citizen-video-estimate-v1", cit)
     sem = []
@@ -110,7 +111,7 @@ def world(tmp_path, monkeypatch):
                               code=w["codes"][g], signer=signer, quality=q))
     w["sem"] = s.manifest("sem.json", "semlex-text-v2", sem)
     lvd = [record(s, f"l{g}", g + "-SB", "train", performer="8" * 64) for g in GLOSSES]
-    lvd += [record(s, f"lv{g}", g + "-SB", "val", performer="9" * 64) for g in GLOSSES]
+    lvd += [record(s, f"lv{p}{g}", g + "-SB", "val", performer=p * 64) for g in GLOSSES for p in "9f"]
     lvd += [record(s, f"lt{g}", g + "-SB", "test", performer="a" * 64) for g in GLOSSES]
     w["lvd"] = s.manifest("lvd.json", "asllvd-dai2-signs-v1", lvd)
     s.put("map.json", json.dumps(dict(mapping={g: dict(method="exact", candidates=[g + "-SB"]) for g in GLOSSES}))
@@ -161,9 +162,9 @@ def test_recon_states_are_sharded_write_once_resumable_and_never_read_test(world
     index = json.loads((root / "recon/index.json").read_text())
     signs = {e["sign"] for e in index["entries"]}
     assert not any(s.startswith(("ct", "lt")) for s in signs)       # test partitions never decoded
-    assert len(signs) == 12 + 3 + 18 + 6 and index["status_counts"] == {"converted": 39}
+    assert len(signs) == 12 + 6 + 18 + 3 + 6 and index["status_counts"] == {"converted": 45}
     state_files = sorted((root / "recon/states").glob("*.npz"))
-    assert len(state_files) == 39
+    assert len(state_files) == 45
     before = {p.name: p.stat().st_mtime_ns for p in state_files}
     assert build(world, shard=0, shards=2) == 0                      # the shard has its index: skipped
     assert "shard done" in capsys.readouterr().out
@@ -262,16 +263,24 @@ def test_v3_trains_on_every_corpus_selects_on_real_and_decoded_and_validates_g1_
     run = json.loads((root / "training-runs/v3/run.json").read_text())
     assert run["recognizer_v3"] and run["labels"] == list(GLOSSES)
     parts = run["data"]["partitions"]
-    assert parts["holdout:semlex-text-v2"] == 6 and parts["val:semlex-text-v2"] == 6
+    corpora = ("asl-citizen-video-estimate-v1", "semlex-text-v2", "asllvd-dai2-signs-v1")
+    assert parts["holdout:semlex-text-v2"] == 6
+    assert all(parts[f"select:{c}"] == parts[f"gate:{c}"] == 3 for c in corpora)   # two signers each: 3 + 3
+    assert not any(p.startswith("val:") for p in parts)
     assert parts["train"] == 9 + 6 + 3                                # citizen minus signer 4, Sem-Lex 12 and 13, ASLLVD
-    assert set(run["val_records"]) == {"val:asl-citizen-video-estimate-v1", "val:semlex-text-v2",
-                                       "val:asllvd-dai2-signs-v1", "holdout:semlex-text-v2"}
+    split = run["data"]["val_split"]
+    for c in corpora:
+        assert split[c]["mode"] == "signer-disjoint" and not set(split[c]["select"]["signers"]) & set(
+            split[c]["gate"]["signers"])
+    assert set(run["val_records"]) == {f"select:{c}" for c in corpora} | {"holdout:semlex-text-v2"}
     assert run["data"]["recon"]["train_coverage"] == 1.
     best = json.loads((root / "training-runs/v3/best.json").read_text())
     v = best["validation"]
-    expected = np.mean([v[f"val:{c}/{f}/top1"] for c in ("asl-citizen-video-estimate-v1", "semlex-text-v2",
-                                                          "asllvd-dai2-signs-v1") for f in ("real", "decoded")])
+    expected = np.mean([v[f"select:{c}/{f}/top1"] for c in corpora for f in ("real", "decoded")])
     assert best["select_score"] == pytest.approx(expected) and "holdout:semlex-text-v2/real/top1" in v
+    assert not any(k.startswith("gate:") for k in v)                 # selection never reads the gate halves
+    with pytest.raises(SystemExit, match="--conform-template"):
+        trainer.main([a for a in v3_args(world, index_sha, "bad3") if a != world["template"] and a != "--conform-template"])
     ck = torch.load(io.BytesIO((root / best["checkpoint_key"]).read_bytes()), weights_only=False)
     assert ck["data_sha256"] == run["data_sha256"]
     assert trainer.main(v3_args(world, index_sha)) == 0             # resumes: same config, data and checkpoints
@@ -302,11 +311,16 @@ def test_v3_trains_on_every_corpus_selects_on_real_and_decoded_and_validates_g1_
     assert report["verdict"] in ("v3 usable as the instrument", "v2 stays")
     assert report["all_gates_pass"] == all(g["passed"] for g in report["gates"])
     sets = report["per_set"]
-    assert set(sets) == set(run["val_records"])
+    assert set(sets) == {f"gate:{c}" for c in corpora} | {"holdout:semlex-text-v2"}   # never a select half
     for row in sets.values():
         for form in ("real", "v2_real", "mirrored", "blank", "no_hands", "random_code", "decoded", "v2_decoded"):
             assert row[f"{form}_top5"] is not None
-        assert row["decoded_clips"] == row["clips"]
+        assert row["decoded_clips"] == row["clips"] and 0 < row["majority_top1"] <= row["majority_top5"] <= 1
+        assert len(row["real_minus_mirrored_top5_ci"]) == 2
+    assert set(report["decoded_by_corpus"]) == set(corpora)
+    assert report["decoded_by_corpus"]["semlex-text-v2"]["clips"] == sets["gate:semlex-text-v2"]["clips"] + 6
+    assert report["thresholds"]["g4_corpus_min"] == {"semlex-text-v2": .5}
+    assert report["val_split"] == run["data"]["val_split"]
     assert report["in_context_asllrp"]["clips"] == 3
     assert report["reliability"]["r5_words"] == 3 and report["reliability"]["uncovered_words"] == 1
     assert report["controls"]["clips"] == sum(r["clips"] for r in sets.values())
@@ -317,10 +331,15 @@ def test_v3_trains_on_every_corpus_selects_on_real_and_decoded_and_validates_g1_
 
 
 def quantities(**over):
-    q = dict(controls=dict(blank_top1=.0, random_code_top1=.001, chance_top1=.001),
-             per_set={"val:a": dict(real_top1=.6, v2_real_top1=.5, real_top5=.8, mirrored_top5=.4),
-                      "holdout:semlex-text-v2": dict(real_top1=.5, v2_real_top1=.5, real_top5=.7, mirrored_top5=.3)},
+    base = dict(majority_top1=.004, majority_top5=.015, blank_top1=0., blank_top5=.002, random_code_top1=.001,
+                random_code_top5=.003)
+    q = dict(classes=2731,
+             per_set={"gate:a": dict(base, real_top1=.6, v2_real_top1=.5, real_top5=.8, mirrored_top5=.4,
+                                     real_minus_mirrored_top5_ci=[.3, .5]),
+                      "holdout:semlex-text-v2": dict(base, real_top1=.5, v2_real_top1=.5, real_top5=.7,
+                                                     mirrored_top5=.3, real_minus_mirrored_top5_ci=[.2, .6])},
              decoded_words=dict(covered=dict(top5=.75, clips=10), uncovered=dict(top5=.65, clips=5)),
+             decoded_by_corpus={"semlex-text-v2": dict(top5=.55, clips=9), "a": dict(top5=.9, clips=4)},
              reliability=dict(r5=120, r5_words=150, uncovered=30, uncovered_words=42), in_context_top1=.08)
     for k, v in over.items():
         q[k] = v
@@ -331,32 +350,50 @@ def test_each_gate_reads_its_declared_quantity_and_threshold():
     t = dict(vsr.GATE_DEFAULTS)
     assert all(g["passed"] for g in vsr.evaluate_gates(quantities(), t))
     fails = lambda q: [g["gate"] for g in vsr.evaluate_gates(q, t) if not g["passed"]]  # noqa: E731
-    assert fails(quantities(controls=dict(blank_top1=.03, random_code_top1=0., chance_top1=.001))) == ["G1"]
-    assert fails(quantities(controls=dict(blank_top1=0., random_code_top1=.021, chance_top1=.001))) == ["G1"]
-    worse = quantities()
-    worse["per_set"]["val:a"]["real_top1"] = .49
-    assert fails(worse) == ["G2"]
-    low = quantities()
-    low["per_set"]["holdout:semlex-text-v2"]["real_top5"] = .59
-    assert fails(low) == ["G3"]
+
+    def setting(name, **values):
+        q = quantities()
+        q["per_set"][name].update(values)
+        return q
+    # G1, per set: top-1 <= max(majority share, 3/2731), top-5 <= max(five-class share, 15/2731)
+    assert fails(setting("gate:a", blank_top1=.004)) == [] and fails(setting("gate:a", blank_top1=.0041)) == ["G1"]
+    assert fails(setting("gate:a", random_code_top5=.015)) == [] and fails(setting("gate:a", random_code_top5=.016)) == ["G1"]
+    tiny = setting("gate:a", majority_top1=.0001, majority_top5=.0002)
+    assert fails(dict(tiny, per_set={**tiny["per_set"], "gate:a": dict(tiny["per_set"]["gate:a"], blank_top1=3 / 2731,
+                                                                         blank_top5=15 / 2731)})) == []   # the floors
+    assert fails(setting("gate:a", blank_top1=.0011, majority_top1=.0001)) == ["G1"]             # 3/2731 = .0010985
+    assert fails(setting("holdout:semlex-text-v2", random_code_top1=.02)) == ["G1"]   # pooled .01 would hide it
+    assert fails(setting("gate:a", blank_top5=None)) == ["G1"]
+    assert fails(setting("gate:a", real_top1=.49)) == ["G2"]
+    assert fails(setting("holdout:semlex-text-v2", real_top5=.59)) == ["G3"]
     missing = quantities()
     del missing["per_set"]["holdout:semlex-text-v2"]
     assert fails(missing) == ["G3"]
     assert fails(quantities(decoded_words=dict(covered=dict(top5=.69, clips=1), uncovered=dict(top5=.9, clips=1)))) == ["G4"]
     assert fails(quantities(decoded_words=dict(covered=dict(top5=.9, clips=1), uncovered=dict(top5=.59, clips=1)))) == ["G4"]
-    tie = quantities()
-    tie["per_set"]["val:a"]["mirrored_top5"] = .8                     # stored must be strictly above mirrored
-    assert fails(tie) == ["G5"]
+    assert fails(quantities(decoded_by_corpus={"semlex-text-v2": dict(top5=.49, clips=9)})) == ["G4"]   # per corpus
+    assert fails(quantities(decoded_by_corpus={})) == ["G4"]                                          # not read: fail
+    assert fails(dict(quantities(), decoded_by_corpus={"semlex-text-v2": dict(top5=.5, clips=9)})) == []
+    assert [g["gate"] for g in vsr.evaluate_gates(quantities(), dict(t, g4_corpus_min={"a": .95})) if not g["passed"]] \
+        == ["G4"]
+    assert fails(setting("gate:a", real_minus_mirrored_top5_ci=[0., .4])) == ["G5"]   # the lower bound must exceed 0
+    assert fails(setting("gate:a", real_minus_mirrored_top5_ci=[.001, .4])) == []
+    assert fails(setting("gate:a", real_minus_mirrored_top5_ci=None)) == ["G5"]
     assert fails(quantities(reliability=dict(r5=99, r5_words=150, uncovered=30, uncovered_words=42))) == ["G6"]
     assert fails(quantities(reliability=dict(r5=100, r5_words=150, uncovered=24, uncovered_words=42))) == ["G6"]
     assert fails(quantities(in_context_top1=.069)) == ["G7"] and fails(quantities(in_context_top1=None)) == ["G7"]
     edge = quantities(reliability=dict(r5=100, r5_words=150, uncovered=25, uncovered_words=42), in_context_top1=.07)
     assert fails(edge) == []                                           # the declared bounds are inclusive
-    assert "| G1 |" in vsr.gate_table(vsr.evaluate_gates(quantities(), t)) and "PASS" in vsr.gate_table(
-        vsr.evaluate_gates(quantities(), t))
+    table = vsr.gate_table(vsr.evaluate_gates(quantities(), t))
+    assert "| G1 |" in table and "PASS" in table
     assert vsr.GATE_DEFAULTS["g3_min"] == .6 and vsr.GATE_DEFAULTS["g4_covered_min"] == .7
     assert vsr.GATE_DEFAULTS["g4_uncovered_min"] == .6 and vsr.GATE_DEFAULTS["g6_min_r5"] == 100
     assert vsr.GATE_DEFAULTS["g6_min_uncovered"] == 25 and vsr.GATE_DEFAULTS["g7_min_top1"] == .07
+    assert vsr.parse_corpus_minima(None) == {"semlex-text-v2": .5}
+    assert vsr.parse_corpus_minima(["a=0.4", "b=.6"]) == {"a": .4, "b": .6}
+    with pytest.raises(SystemExit):
+        vsr.parse_corpus_minima(["a"])
+
 
 
 def test_ranks_and_reliable_classes():

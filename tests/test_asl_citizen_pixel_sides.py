@@ -42,8 +42,11 @@ def test_signer_majority_and_the_exclusion_spec():
             dict(signer="d" * 64, side=None)]
     sides = job.group_sides(rows)
     assert sides["a" * 64]["side"] == "image_right" and sides["b" * 64]["side"] == "image_left"
-    assert sides["c" * 64]["side"] is None and sides["d" * 64] == dict(side=None, image_left=0, image_right=0,
+    assert sides["c" * 64]["side"] is None and sides["d" * 64] == dict(side=None, clips=1, image_left=0, image_right=0,
                                                                        undecided=1)
+    assert sides["a" * 64]["clips"] == 3
+    assert job.quantiles([v["clips"] for v in sides.values()]) == dict(min=1, median=1.5, max=3)
+    assert job.quantiles([]) is None
     assert job.exclusion_spec(sides) == f"{job.CORPUS}:{'a' * 16}"
     assert job.exclusion_spec(job.group_sides(rows[3:5])) is None
     from signtranslator.generation.recognizer_corpora import parse_signer_specs, signer_matches
