@@ -3771,7 +3771,7 @@ The one measure that pointed the other way was the skeleton-slot handedness meas
 
 **The four image-right signers** (11, 23, 46, 76) are **excluded** from round 14b's Sem-Lex corpus. Re-extracting them from flipped video (about $1–2, code on a branch) waits for its own review.
 
-### Round 15 stage 2 result: core_crossfade NOT PROMISING (recorded 2026-10-29, 01:44 UTC; `round15/stage2-crossfade-f12-step60000.json`)
+### Round 15 stage 2 result: core_crossfade NOT PROMISING (recorded 2026-10-29, 01:42 UTC; `round15/stage2-crossfade-f12-step60000.json`)
 
 | Comparison | Pad (the rule's form) | Scale |
 |---|---|---|
