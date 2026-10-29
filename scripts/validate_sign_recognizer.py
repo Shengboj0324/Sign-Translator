@@ -640,6 +640,21 @@ G6_PRIME = ("G6': v3's R5 words reliable on both real and decoded clips >= v2's 
             "2026-10-29 13:00 UTC)")
 
 
+def gate_rule(text: str) -> tuple[float, int]:
+    """(threshold, min clips) of a gate report's G6 rule text (``top-1 >= 0.8 over >= 3 clips, ...``)."""
+    import re
+    match = re.match(r"top-1 >= ([0-9.]+) over >= (\d+) clips", text or "")
+    if not match:
+        raise SystemExit(f"cannot read the gate report's G6 rule {text!r}")
+    return float(match[1]), int(match[2])
+
+
+def same_read(hits: int, recorded_top1: float, clips: int, tolerance: int = 1) -> bool:
+    """Whether ``hits`` top-1 hits over ``clips`` is the recorded read (rounded to 4 decimals) within ``tolerance``
+    clips: a GPU and a CPU run may break a near-tie differently."""
+    return abs(hits - recorded_top1 * clips) <= tolerance + 5e-5 * clips
+
+
 def g6_prime(v3: dict, v2: dict) -> dict:
     """The amendment-2 verdict from v3's gate-report reliability (both forms) and v2's real-clip counts."""
     overall = v3["r5"] >= v2["r5_real"]
@@ -673,6 +688,10 @@ def g6_calibration_main(args) -> int:
         raise SystemExit(f"{gates_key} is not {args.run}'s gate report with G6 read on both forms")
     if gates["baseline"]["run"] != args.baseline_run:
         raise SystemExit(f"the gate report's baseline is {gates['baseline']['run']}, not {args.baseline_run}")
+    rule = gate_rule(gates["reliability"]["rule"])
+    if rule != (args.reliable, args.min_clips):
+        raise SystemExit(f"--reliable {args.reliable} / --min-clips {args.min_clips} differ from the gate report's G6 "
+                         f"rule {rule}")
     device = torch.device("cuda" if args.device == "auto" and torch.cuda.is_available() else
                           ("cpu" if args.device == "auto" else args.device))
     cache = ContentCache(Path(args.cache_dir or tempfile.gettempdir()) / "sign-translator-cache", 8 * 2 ** 30)
@@ -714,8 +733,13 @@ def g6_calibration_main(args) -> int:
         ranks = ranks_from_logits(logits_of(baseline, states, device), y)
         del states
         reported = gates["per_set"][name].get("v2_real_top1")
+        hits = int((np.asarray(ranks) < 1).sum())
+        if reported is None or not same_read(hits, reported, len(ids)):
+            raise SystemExit(f"{name}: v2 reads top-1 {hits}/{len(ids)} here, the gate report {reported} (more than "
+                             "one clip apart: not the same read)")
         per_set[name] = dict(clips=len(ids), v2_real_top1=read(ranks, 1), v2_real_top5=read(ranks, 5),
-                             gate_report_v2_real_top1=reported)
+                             gate_report_v2_real_top1=reported,
+                             v2_top1_hits=hits, gate_report_v2_top1_hits=int(round(reported * len(ids))))
         pooled_y += y
         pooled_ranks += ranks.tolist()
         print(json.dumps({name: per_set[name]}), flush=True)

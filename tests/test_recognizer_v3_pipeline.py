@@ -339,6 +339,17 @@ def test_v3_trains_on_every_corpus_selects_on_real_and_decoded_and_validates_g1_
     s.put("training-runs/v3/gates-other.json", json.dumps(tampered).encode())
     with pytest.raises(SystemExit, match="clips"):
         vsr.main(calib[:-1] + ["training-runs/v3/gates-other.json"])
+    moved = json.loads(gates_payload)
+    row = moved["per_set"]["gate:semlex-text-v2"]
+    row["v2_real_top1"] = round(min(1., row["v2_real_top1"] + 2 / row["clips"]), 4) if row["v2_real_top1"] < .5 \
+        else round(row["v2_real_top1"] - 2 / row["clips"], 4)             # two clips apart: another read
+    s.put("training-runs/v3/gates-moved.json", json.dumps(moved).encode())
+    with pytest.raises(SystemExit, match="not the same read"):
+        vsr.main(calib[:-1] + ["training-runs/v3/gates-moved.json"])
+    with pytest.raises(SystemExit, match="G6 rule"):
+        vsr.main(calib + ["--min-clips", "4"])
+    with pytest.raises(SystemExit, match="G6 rule"):
+        vsr.main(calib + ["--reliable", "0.75"])
     assert not (root / "training-runs/v3/g6-calibration.json").exists()
     assert vsr.main(calib + ["--output", str(tmp_path / "g6.json")]) == 0
     calibration = json.loads((root / "training-runs/v3/g6-calibration.json").read_text())
@@ -356,6 +367,18 @@ def test_v3_trains_on_every_corpus_selects_on_real_and_decoded_and_validates_g1_
     assert calibration["gates"]["sha256"] == hashlib.sha256(gates_payload).hexdigest()
     with pytest.raises(SystemExit, match="written once"):
         vsr.main(calib)
+
+
+def test_the_g6_rule_is_read_from_the_report_and_reads_match_within_one_clip():
+    assert vsr.gate_rule("top-1 >= 0.8 over >= 3 clips, pooled over every gate-half and holdout set") == (.8, 3)
+    with pytest.raises(SystemExit):
+        vsr.gate_rule("something else")
+    clips = 2619
+    recorded = round(1287 / clips, 4)                                   # 0.4914, as a report stores it
+    assert vsr.same_read(1287, recorded, clips) and vsr.same_read(1288, recorded, clips)
+    assert vsr.same_read(1286, recorded, clips) and not vsr.same_read(1289, recorded, clips)
+    assert not vsr.same_read(1285, recorded, clips)
+    assert vsr.same_read(0, 0., 3) and vsr.same_read(1, 0., 3) and not vsr.same_read(2, 0., 3)
 
 
 def test_g6_prime_needs_both_comparisons():
