@@ -4355,3 +4355,36 @@ Real sentences read 4.14 and blank 1.86. Wrist speed of the oracle: 2.26×.
 - The 2.55–2.58 "ceiling" was the 300-sentence development set's value, about 0.4 high against the larger set.
 - **M1's numeric target (≥ 2.55) rested on that 300-sentence ceiling.** On the confirmation set the ceiling of the whole composition approach is about 2.2. Reaching 2.55 therefore needs composition itself to improve beyond real isolated clips (transitions, co-articulation, sentence prosody), not better words.
 - The target is the owner's directive. Its basis is recorded here for the owner; the number is not changed.
+
+### Next lever after the oracle finding: composition beyond joining isolated signs (recorded 2026-10-29, 17:40 UTC; design, nothing run)
+
+**Why composition itself is the limit.** On the 1,000 sentences:
+- the real-word oracle is only +0.31 above blank;
+- word order barely registers (+0.02 against shuffled);
+- about 40% of frames are linear bridges between signs.
+
+The translator was trained on How2Sign continuous signing, so the composition has to read like that: reduced forms, one signing space, How2Sign's pace.
+
+**ASLLRP transition data** (train, read-only): 1,652 utterances, 10,818 timed adjacent sign pairs, median gap 0.167 s. The val signer (Jonathan) has 2,696 pairs.
+
+**Ranked options** (the scoping report's estimates, with wide uncertainty):
+1. **Sentence refiner,** trained on How2Sign train.
+   - **Inputs:** sentences composed from real isolated train clips (stage-1 selection, sign-fitted timing; no ASL Citizen, no signer 9, no val or test), 4 clip draws per sentence.
+   - **Target:** the real sentence's tokenizer codes.
+   - **Model:** warm-started from F12, conditioned on the composition's codes.
+   - **Estimate:** +0.2 to +0.8. **Risks:** it could collapse into the text-free prior, or score by matching style.
+   - **Cost:** about $8–14. It is a learned stage within the compositional path.
+2. **Space and pace normalisation plus minimum-jerk bridges** (no training, How2Sign train statistics). Estimate +0.0 to +0.15; large hand-speed gain. Cost under $1.
+3. **Learned ASLLRP transitions.** Estimate +0.0 to +0.1; out-of-distribution joins.
+4. **Hand-shape co-articulation.** Estimate +0.0 to +0.1.
+5. **Rest frames inside RIT and WLASL cores,** whose windows come from the median sign position. Tighten with the activity rule. Cheap; folded into 2.
+6. Retrieval of continuous segments is **not** pursued (declined by the owner) and would contaminate the measure.
+
+**Order:**
+- Code for 2+5 and for 1 is built and reviewed in parallel.
+- Each is declared before it runs, oracle first: real words on the 1,000 sentences, paired against the 2.17 oracle.
+- **The refiner's rule** (from the design, to be declared with its run). It is adopted only if all four hold:
+  1. refined oracle against the unrefined oracle: lower bound above 0;
+  2. against the refined mismatched-words input: lower bound above 0;
+  3. against a refined rest-only input of the same length (catches collapse into the prior): lower bound above 0;
+  4. v3 spotting above its mismatched control.
