@@ -3967,3 +3967,32 @@ Hand speed is reported against the 1.5× bar.
 **Anomaly:** the shuffled control scores *higher* (2.20). Main minus shuffled is −0.34 [−1.05, +0.34], not resolved. For real words the order mattered (+0.78 [+0.30, +1.25]); for generated crossfade pieces it does not show. At these BLEU levels, 300 sentences give intervals of about ±0.5, so the instrument cannot resolve order effects for generated words.
 
 **Toward M1 (2.55):** the gap from generated to real words at this timing is now 0.70 (2.55 against 1.85), down from about 1.15 at stage-1 timing. W14b's words are the next lever. core_chained is still running.
+
+### Round 14b pilot at step 10000 (recorded 2026-10-29, 06:14 UTC): rule D PROMISING, so training continues to step 30000
+
+| Measure | W14b step 10000 | W14 step 10000 | F12 step 60000 | Control |
+|---|---|---|---|---|
+| Lexicon top-5 (R5 150 words) | **0.400** | 0.340 | 0.450 | 0.017 |
+| covered (108 words) | **0.542** | 0.463 | 0.616 | — |
+| uncovered (42 words) | 0.036 | 0.024 | 0.024 | — |
+| Sentence BLEU (1,000 clips) | **1.752** [1.45, 2.08] | 1.608 | 1.636 | 1.586 |
+| Teacher-forced top-5, uncovered (133 Sem-Lex val clips, 27 words) | **0.301** | — | 0.165 | chance 0.102 |
+| Teacher-forced top-5, covered (64 clips) | 0.375 | — | 0.391 | chance 0.102 |
+
+**Rule 1 (rule D against the control): PROMISING.**
+- Lexicon +0.383 [+0.313, +0.453].
+- BLEU +0.17 [−0.18, +0.52], above the −0.5 margin.
+- So W14b continues to step 30000, as declared.
+
+**At step 10000, for information only** (rules 2 and 3 decide at step 30000):
+- **Replacement:** lexicon against F12 −0.050 [−0.097, −0.003], not met. Paired BLEU +0.12 [−0.24, +0.49].
+- **Word-source rule, none of its three parts met:**
+  - uncovered teacher-forced retrieval +0.135 [−0.017, +0.278], lower bound just below 0;
+  - covered teacher-forced retrieval −0.016 [−0.094, +0.063];
+  - covered lexicon −0.074 [−0.139, −0.009].
+- **Likelihood:** W14b's per-code NLL is lower than F12's on both sets, −0.07 nats per code on covered and −0.51 on uncovered.
+
+**Against W14:** better on every measure.
+- Covered words lost 0.074 against W14's 0.153.
+- BLEU is the highest of any pilot (1.75).
+- New words are learned: teacher-forced 0.30 against F12's 0.17.
