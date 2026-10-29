@@ -3968,7 +3968,7 @@ Hand speed is reported against the 1.5× bar.
 
 **Toward M1 (2.55):** the gap from generated to real words at this timing is now 0.70 (2.55 against 1.85), down from about 1.15 at stage-1 timing. W14b's words are the next lever. core_chained is still running.
 
-### Round 14b pilot at step 10000 (recorded 2026-10-29, 06:14 UTC): rule D PROMISING, so training continues to step 30000
+### Round 14b pilot at step 10000 (recorded 2026-10-29, 06:12 UTC): rule D PROMISING, so training continues to step 30000
 
 | Measure | W14b step 10000 | W14 step 10000 | F12 step 60000 | Control |
 |---|---|---|---|---|
