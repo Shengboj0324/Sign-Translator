@@ -3900,7 +3900,7 @@ Hand speed is reported against the 1.5× bar.
 
 **Amendment 2's reproduction check: exact.** `--selection stage1 --timing stage1` gives BLEU 2.581, and all 300 hypotheses are identical to the stored oracle stage 1 for the main form and both controls. Run 1 of amendment 2 (sign-fitted) is therefore valid.
 
-### Round 15 stage 2 amendment 2 result (recorded 2026-10-29, 03:28 UTC): stage-1 words at sign-fitted timing ties oracle stage 1 with half its hand speed
+### Round 15 stage 2 amendment 2 result (recorded 2026-10-29, 03:27 UTC): stage-1 words at sign-fitted timing ties oracle stage 1 with half its hand speed
 
 | Real-word form | BLEU | Against oracle stage 1 | Against end-to-end | Against shuffled | Spotting (mismatched) | Order | Wrist speed |
 |---|---|---|---|---|---|---|---|
@@ -3916,7 +3916,7 @@ Hand speed is reported against the 1.5× bar.
 - Order matters to BLEU.
 - Hands move at 57% of oracle stage 1's wrist speed, for the same BLEU.
 
-## Round 15 stage 2 amendment 3: generated words at sign-fitted timing (declared 2026-10-29, 03:28 UTC, openly after amendment 2's result)
+## Round 15 stage 2 amendment 3: generated words at sign-fitted timing (declared 2026-10-29, 03:27 UTC, openly after amendment 2's result)
 
 **Justification.** Amendment 2's win condition (BLEU above oracle stage 1) was not met. The run is declared on two other grounds:
 1. **Equal BLEU with real words and much more natural motion.** Hand speed is a named target. Wrist speed is 2.18× against 3.8×.
