@@ -4292,3 +4292,44 @@ The calibration (v2's numbers) is reported whatever the outcome.
 3. **v3 reads every prior higher than v2** (F12 0.45 → 0.64). Earlier v2 numbers stay as recorded and are not comparable.
 
 **Real-word ceiling on the 1,000 sentences (declared 2026-10-29, 15:00 UTC; report-only):** `round15_compose_eval.py --variants oracle_stage2`. It uses real isolated clips at stage-1 selection with sign-fitted timing, the same settings as amendment 5, on one CPU pod. The amendment-5 compositions are read against it. It gates nothing.
+
+### Round 15 amendment 5 result (recorded 2026-10-29, 16:04 UTC): both compositions PROMISING on 1,000 sentences; F12 formally stays word source; M1 not yet met
+
+**1,000 How2Sign val sentences:** core_crossfade, stage-1 selection, sign-fitted timing. `round15/eval1000/{f12-step60000,w14b-step30000}.json`.
+
+| | F12 words | W14b words |
+|---|---|---|
+| BLEU | 2.120 | **2.306** |
+| Against its own end-to-end | +0.48 [+0.09, +0.85] | **+0.52 [+0.17, +0.88]** |
+| Against mismatched words | +1.02 [+0.65, +1.35] | +1.20 [+0.84, +1.54] |
+| Against blank | +0.26 [−0.11, +0.65] | **+0.45 [+0.06, +0.86]** |
+| Against shuffled | +0.23 [−0.08, +0.53] | **+0.30 [+0.01, +0.62]** |
+| Spotting (mismatched) | — | 0.335 (0.073) |
+| Wrist speed | 2.67× | 2.64× |
+
+**Stage 2's rule: both PROMISING.**
+
+**W14b is the first generated system:**
+- **above blank,** with a resolved lower bound;
+- **with resolved word order,** above shuffled.
+
+**Decision 1 (declared):** W14b against F12, paired, is +0.19 [−0.07, +0.48]. The lower bound is not above 0, so **F12 formally stays the composition word source.** W14b is numerically ahead on both the 300-sentence and the 1,000-sentence sets.
+
+**Decision 2, M1 (≥ 2.55):** not met. The best is 2.31, a gap of 0.24.
+
+## Round 15 amendment 6: self-reranking on the 300 development sentences (declared 2026-10-29, 16:04 UTC, before it runs)
+
+**Run:** `round15_compose_eval.py --clips 300 --rerank 4`, core_crossfade, stage-1 selection, sign-fitted timing.
+- Model 42389ca4.
+- **Priors:**
+  - F12 step 60000, the declared word source;
+  - W14b step 30000, reported in parallel.
+- Each prior runs in 2 GPU shards.
+- `--clips 300` reproduces the 300-sentence reports clip for clip, so the N=1 comparators are amendment 3 (F12, 1.853) and amendment 4 (W14b, 2.195).
+
+**Comparison:** paired BLEU (`paired_bleu_difference`, 2,000 resamples, seed 0) of N=4 against N=1 on identical references, plus stage 2's rule.
+
+**Decision:**
+- Reranking is **adopted** for the composition if F12's N=4 minus N=1 has a lower bound above 0.
+- W14b's difference is reported and decides nothing.
+- If adopted, the 1,000-sentence run at N=4 (the M1 test) is declared next.
