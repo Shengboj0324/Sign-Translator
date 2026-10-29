@@ -6,7 +6,9 @@
 How2Sign signer 9 and records of unknown component excluded (``recognizer_corpora.is_how2sign_test_signer``) and every
 kept record passed through ``recognizer_corpora.check_loadable`` (never a test or held-out record, never signer 9)
 before it is read; a train sentence whose normalised English is also a How2Sign val, test or held-out sentence is
-excluded too, so no evaluation reference is ever a target. Sentences without usable continuous channels, without a
+excluded too, so no evaluation reference is ever a target, and so is one *near* any of them (``NearDuplicates``:
+Jaccard >= ``--near-duplicate`` 0.8 on normalised tokens, or containment >= 0.8 when the smaller sentence has at least
+``--containment-min-tokens`` 4 tokens; drops counted by reason). Sentences without usable continuous channels, without a
 stage-1 word or longer than ``--max-seconds`` are skipped and counted.
 
 **Selection signers.** The train components named by ``--selection-components``, or by default the smallest train
@@ -27,6 +29,9 @@ The split is part of the configuration (``config.json``).
   annotated sign cores plus the margin, the reference's frames shared in proportion to the signs' isolated annotated
   durations and the stage-2 model's gap ratio (the model pinned by ``--expect-model-sha256``, fitted on ASLLRP train
   only, or ``--model-file``); joins interpolated;
+- the composition knobs of ``round15_compose_eval.py`` (``--space-normalise``, ``--bridge``, ``--tighten-cores``; off
+  by default, recorded in ``config.json``), so the training inputs can match the evaluated compositions; the
+  composition is one function, ``compose_input``, the evaluation's own calls (parity tested);
 - the clips and the sentence are served as the prior's training dataset serves them (``build_recon_states.serve``:
   usable channels, trim window, conformed to the template, 24 fps).
 
@@ -81,13 +86,51 @@ def normalised_text(text) -> str:
     return " ".join(normalise(text))
 
 
-def sentence_jobs(manifest, corpus: str = SENTENCE_CORPUS) -> tuple[list[dict], collections.Counter]:
+class NearDuplicates:
+    """Normalised token sets of the held-out (non-train) sentences, and whether a train sentence is too close to one:
+    Jaccard >= ``threshold``, or containment |A n B| / min(|A|, |B|) >= ``threshold`` when the smaller set has at
+    least ``min_tokens`` tokens (shorter sentences, "thank you", would otherwise match every sentence containing
+    them; they are caught by Jaccard)."""
+
+    def __init__(self, texts, threshold: float = .8, min_tokens: int = 4):
+        from signtranslator.generation.compositional import normalise
+        self.normalise, self.threshold, self.min_tokens = normalise, threshold, min_tokens
+        self.sets = [frozenset(normalise(t)) for t in texts]
+        self.sizes = np.array([len(x) for x in self.sets], dtype=np.int64)
+        postings = collections.defaultdict(list)
+        for j, x in enumerate(self.sets):
+            for w in x:
+                postings[w].append(j)
+        self.postings = {w: np.asarray(v, dtype=np.int64) for w, v in postings.items()}
+
+    def reason(self, text) -> str | None:
+        """None, or "jaccard" / "containment" (the first that reaches the threshold)."""
+        a = frozenset(self.normalise(text))
+        lists = [self.postings[w] for w in a if w in self.postings]
+        if not a or not lists:
+            return None
+        inter = np.bincount(np.concatenate(lists), minlength=len(self.sets))
+        hit = inter > 0
+        i, b = inter[hit], self.sizes[hit]
+        if (i / (len(a) + b - i) >= self.threshold).any():
+            return "jaccard"
+        small = np.minimum(len(a), b)
+        if ((small >= self.min_tokens) & (i / np.maximum(small, 1) >= self.threshold)).any():
+            return "containment"
+        return None
+
+
+def sentence_jobs(manifest, corpus: str = SENTENCE_CORPUS, *, near: float = .8,
+                  min_tokens: int = 4) -> tuple[list[dict], collections.Counter]:
     """(the train sentences that may become pairs, sorted by (sign, state hash); counts of every exclusion). See the
-    module docstring; every kept record has passed ``check_loadable``."""
+    module docstring; every kept record has passed ``check_loadable``. A train sentence near any non-train sentence
+    of the corpus (``NearDuplicates``: val, test, held-out; Jaccard or containment >= ``near`` on normalised tokens)
+    is dropped too and counted by reason."""
     from signtranslator.data_engineering.corpus_manifest import usable_channels
     from signtranslator.generation.recognizer_corpora import check_loadable, is_how2sign_test_signer
     held = {normalised_text(r.get("text")) for r in manifest["records"] if r.get("corpus") == corpus
             and (r.get("partition") != "train" or r.get("source_partition", "train") != "train")} - {""}
+    duplicates = NearDuplicates(sorted(held), near, min_tokens)
     jobs, counts, seen = [], collections.Counter(), set()
     for r in manifest["records"]:
         if r.get("corpus") != corpus:
@@ -104,6 +147,10 @@ def sentence_jobs(manifest, corpus: str = SENTENCE_CORPUS) -> tuple[list[dict], 
             continue
         if normalised_text(r["text"]) in held:
             counts["text_in_val_or_test"] += 1
+            continue
+        close = duplicates.reason(r["text"])
+        if close:
+            counts[f"near_val_or_test:{close}"] += 1
             continue
         if not usable_channels(r, "continuous"):
             counts["no_usable_channels"] += 1
@@ -231,11 +278,32 @@ def entry_of(job, **fields) -> dict:
                 signer_component=job["signer_component"], **fields)
 
 
+def composition_job(plan) -> dict:
+    """The oracle_stage2 job of a plan (``round15_stage2.plan_jobs``' fields that the sign-fitted rendering reads)."""
+    return dict(mode="oracle_stage2", words=list(plan["entries"]), generate=list(plan["generate"]),
+                targets=list(plan["targets"]), weights=list(plan["weights"]), seeds=[], block="matched", overlap=4,
+                durations=[None] * len(plan["entries"]))
+
+
+def compose_input(composition, records, seconds, *, context, load, sample_id) -> tuple:
+    """(state, frame plan, material) of one composed input: exactly ``round15_compose_eval``'s oracle_stage2 form
+    (``round15_stage2.oracle_material`` and ``render_form``, sign-fitted, the same knobs) on the given records
+    (tested: ``test_refiner.test_pair_composition_is_the_evaluation_form``)."""
+    import round15_stage2 as r2
+    from signtranslator.generation.compositional import CORE_RULE
+    c = context
+    material = r2.oracle_material(composition, 0, c["pools"], loaded=c["loaded"], load=load,
+                                  rule=dict(CORE_RULE, margin=c["margin"]), timing="sign-fitted",
+                                  fractions=c["fractions"], margin=c["margin"], tighten=c["tighten"], records=records)
+    state, fp = r2.render_form(material, composition, seconds, c["model"], timing="sign-fitted", sample_id=sample_id,
+                               space=c["space"], bridge=c["bridge"])
+    return state, fp, material
+
+
 def build_pair(job, *, context, fetch, load) -> tuple[bytes | None, dict]:
     """(pair bytes or None, entry fields) of one sentence: stage-1 words, K sign-fitted real-word compositions fitted
     to the served sentence, all tokenized. None with a status when the sentence is skipped."""
     import round15_stage2 as r2
-    from signtranslator.generation.compositional import CORE_RULE
     from signtranslator.generation.refiner import pack_pair, pair_arrays, tokenize_state
     from build_recon_states import serve
     from round15_compose_eval import stage1_selection
@@ -249,21 +317,14 @@ def build_pair(job, *, context, fetch, load) -> tuple[bytes | None, dict]:
     seconds = float(target.timestamps[-1] - target.timestamps[0]) + 1 / FPS
     if seconds > c["max_seconds"]:
         return None, dict(status="too_long", frames=frames)
-    plan = r2.plan_words(words, c["model"], c["vocab"], rows=details)
-    composition = dict(mode="oracle_stage2", words=list(plan["entries"]), generate=list(plan["generate"]),
-                       targets=list(plan["targets"]), weights=list(plan["weights"]), seeds=[], block="matched",
-                       overlap=4, durations=[None] * len(plan["entries"]))
-    rule = dict(CORE_RULE, margin=c["margin"])
+    composition = composition_job(r2.plan_words(words, c["model"], c["vocab"], rows=details))
     sources, inputs = [], []
     for k in range(c["k"]):
         records = draw_records(c["pools"], job, k, composition["words"])
         for r in records:
             check_word_record(r, c["corpora"])
-        material = r2.oracle_material(composition, 0, c["pools"], loaded=c["loaded"], load=load, rule=rule,
-                                      timing="sign-fitted", fractions=c["fractions"], margin=c["margin"],
-                                      records=records)
-        state, fp = r2.render_form(material, composition, seconds, c["model"], timing="sign-fitted",
-                                   sample_id=f"refiner-pair:{job['sign']}:{k}")
+        state, fp, material = compose_input(composition, records, seconds, context=c, load=load,
+                                            sample_id=f"refiner-pair:{job['sign']}:{k}")
         if len(state.timestamps) != frames:
             raise ValueError(f"composition {k} has {len(state.timestamps)} frames, the sentence {frames}")
         sources.append(tokenize_state(c["tokenizer"], state))
@@ -375,6 +436,15 @@ def main(argv=None) -> int:
     p.add_argument("--k", type=int, default=4, help="composed inputs per sentence")
     p.add_argument("--core-margin", type=float, default=.1)
     p.add_argument("--max-seconds", type=float, default=20.)
+    p.add_argument("--near-duplicate", type=float, default=.8, help="drop train sentences whose normalised tokens "
+                   "have Jaccard or containment >= this with a val/test/held-out sentence")
+    p.add_argument("--containment-min-tokens", type=int, default=4)
+    p.add_argument("--space-normalise", default="off", choices=("off", "sentence", "how2sign"),
+                   help="the composition knob of round15_compose_eval (training inputs match the evaluation's)")
+    p.add_argument("--space-stats-key")
+    p.add_argument("--space-stats-sha256")
+    p.add_argument("--bridge", default="linear", choices=("linear", "minimum-jerk"))
+    p.add_argument("--tighten-cores", action="store_true")
     p.add_argument("--selection-components", help="comma-separated train components held out for checkpoint "
                    "selection (default: the smallest components holding --selection-share of the sentences)")
     p.add_argument("--selection-share", type=float, default=.05)
@@ -390,6 +460,8 @@ def main(argv=None) -> int:
         p.error("--shard must be in [0, --shards)")
     if args.k < 1 or not 0 < args.selection_share < 1:
         p.error("--k >= 1 and 0 < --selection-share < 1")
+    if (args.space_normalise != "off") != bool(args.space_stats_key and args.space_stats_sha256):
+        p.error("--space-normalise needs --space-stats-key and --space-stats-sha256 (and they need it)")
     import warnings
     warnings.simplefilter("ignore")
     import torch
@@ -450,7 +522,13 @@ def main(argv=None) -> int:
     template_bytes, template_digest = state_bytes(load_sample(t_record, "continuous",
                                                               cache=ContentCache(cache_dir / "content", 4 * 2 ** 30),
                                                               fetch=store.get))
-    jobs, counts = sentence_jobs(manifest)
+    space = None
+    if args.space_normalise != "off":                     # How2Sign train statistics, pinned by their hash
+        payload = store.get(args.space_stats_key)
+        if hashlib.sha256(payload).hexdigest() != args.space_stats_sha256:
+            raise SystemExit(f"{args.space_stats_key} does not match --space-stats-sha256")
+        space = dict(stats=json.loads(payload)["statistics"], target=args.space_normalise)
+    jobs, counts = sentence_jobs(manifest, near=args.near_duplicate, min_tokens=args.containment_min_tokens)
     given = [c for c in (args.selection_components or "").split(",") if c]
     selection = selection_components(jobs, args.selection_share, given or None)
     del manifest
@@ -460,6 +538,10 @@ def main(argv=None) -> int:
                   tokenizer_digest=digest, prior_checkpoint_key=args.prior_checkpoint_key, model_sha256=model["sha256"],
                   selection="stage1", timing="sign-fitted", core_margin=args.core_margin, k=args.k,
                   max_seconds=args.max_seconds, fps=FPS, selection_components=selection,
+                  near_duplicate=args.near_duplicate, containment_min_tokens=args.containment_min_tokens,
+                  knobs=dict(space_normalise=args.space_normalise, bridge=args.bridge, tighten_cores=args.tighten_cores,
+                             space_stats=dict(key=args.space_stats_key, sha256=args.space_stats_sha256)
+                             if space else None),
                   selection_share=None if given else args.selection_share,
                   template=dict(corpus=TEMPLATE_CORPUS, sign=t_record["sign"],
                                 state_sha256=t_record["continuous"]["state_sha256"], digest=template_digest),
@@ -483,6 +565,7 @@ def main(argv=None) -> int:
                    tokenizer_config=tokenizer.config.to_dict(), tokenizer_weights=weights, tokenizer_digest=digest,
                    template_bytes=template_bytes, template_state_digest=template_digest, vocab=vocab, pools=pools,
                    corpora=corpora, model=model, fractions=fractions, k=args.k, margin=args.core_margin,
+                   space=space, bridge=args.bridge, tighten=args.tighten_cores,
                    max_seconds=args.max_seconds, selection=selection, config_sha256=config_sha)
     context_path = cache_dir / f"context-{config_sha}.pkl"
     with open(context_path, "wb") as stream:

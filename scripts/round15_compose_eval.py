@@ -56,10 +56,25 @@ decoded as a generation (the tokenizer's accepted gains, the generator's post-pr
 ``<variant>@recon`` (the main form tokenized and decoded, not refined) separates the tokenizer's round trip from the
 refinement. **/rest_only** (only with a refiner): the same plan and frames with every word clip replaced by its own
 first frame (its rest before the sign) held for the clip's length (``rest_material``; core_chained: the chain's first
-frame), so a refiner that ignores its input and signs from its own prior (collapse) is caught: the refined rest-only
-form then reads as well as the refined composition. Spotting is also scored on ``<variant>@refined``; the merge's
-``--refined-rule`` is the declared rule of the refined forms, whose comparisons are ``unrefined`` (the same form
-unrefined), ``recon``, ``mismatched_words``, ``rest_only``, ``shuffled`` (all refined) and ``end_to_end``.
+frame). With ``--space-normalise`` the held clips are normalised like the composition's (a static pose has no
+excursion, so its scale stays 1); with ``--tighten-cores`` the cores are cut from the original clips, then held.
+
+**What each refined control tests.** ``/mismatched_words@refined`` (another sentence's words, refined) is the
+*content* control: a refinement that reads as well from the wrong words did not carry this sentence's content.
+``/rest_only@refined`` only detects *input-ignoring* (collapse into the prior: a refiner that signs from its own prior
+reads as well from rest poses); passing it says nothing about content. ``@recon`` (the input tokenized and decoded) is
+the comparator of the refinement itself: refined minus recon is the refiner's effect, refined minus unrefined adds the
+tokenizer's round trip (reported, not the rule). Spotting is also scored on ``<variant>@refined``. The merge's
+``--refined-rule`` is the declared rule of the refined forms; the design's rule is ``REFINED_RULE``
+(``bleu:recon,bleu:mismatched_words,bleu:rest_only,spotting``); comparisons available: ``recon``, ``unrefined``,
+``mismatched_words``, ``rest_only``, ``shuffled`` (all refined), ``end_to_end``. It refuses spotting read with any
+recogniser but ``INSTRUMENT`` (sign-recognizer-v3d).
+
+**Memorisation (report-only, with a refiner):** each shard reads the refined codes, the refiner's input codes and the
+real clips' codes against the refiner's training targets (``memorisation.CodeIndex``, the index its trainer wrote);
+the merge reads the hypotheses of real, unrefined, @recon, @refined, /rest_only@refined and /mismatched_words@refined
+against How2Sign train texts (best sentence BLEU, exact matches; ``memorisation.TextIndex``). ``real`` is the chance
+level of both.
 
 **merge** (CPU): the shards' partial reports (all of 0..K-1, the same settings and clips, disjoint and complete) are
 combined in clip order and scored as ``round15_stage2`` scores: corpus BLEU with the pilot's bootstrap, paired
@@ -98,6 +113,8 @@ SETTINGS = ("clips", "shards", "block", "seed", "mix_key", "mix_sha256", "corpor
             "tighten_cores", "space_stats", "refiner")
 REST_ONLY = "/rest_only"
 REFINED, RECON = "@refined", "@recon"
+INSTRUMENT = "sign-recognizer-v3d"   # the spotting instrument of the refined rule (recogniser v3 amendment 2)
+REFINED_RULE = "bleu:recon,bleu:mismatched_words,bleu:rest_only,spotting"     # the design's rule (review of a1bdda3)
 REFINE_SEED = 30_000_000             # refinement of global block b: REFINE_SEED + b, the same for every form
 
 
@@ -374,23 +391,36 @@ def run(args) -> dict:
             forms[f"{v}{c}"] = states
     refiner_info = None
     if refining:                     # every composed form refined, per global block (module docstring)
-        from signtranslator.generation.refiner import load_refiner, refine_states
+        from signtranslator.generation.refiner import load_refiner, load_target_index, refine_states, tokenize_state
         from evaluate_text_to_motion import accepted_decoder_gains
         from exposure_diagnostic import make_post
         refiner, rtok, rmeta = load_refiner(store, args.refiner_checkpoint_key, args.refiner_sha256, args.device)
+        target_index, index_meta = load_target_index(store, rmeta["target_index_key"], rmeta["target_index_sha256"])
         rpost = make_post(accepted_decoder_gains(store, rmeta["tokenizer_key"]))
         refiner_info = dict(checkpoint_key=args.refiner_checkpoint_key, sha256=rmeta["sha256"], step=rmeta["step"],
                             tokenizer_key=rmeta["tokenizer_key"], guidance=args.refiner_guidance,
-                            seed_base=REFINE_SEED)
+                            seed_base=REFINE_SEED, target_index_key=rmeta["target_index_key"],
+                            target_index_sha256=rmeta["target_index_sha256"])
+
+        def nearest(codes):
+            q = target_index.query(codes)
+            return dict(q, nearest=None if q["nearest"] is None else index_meta["signs"][q["nearest"]])
+        # report-only memorisation read (module docstring); the real clips' codes are the chance level
+        memorised = {i: {"real": nearest(tokenize_state(rtok, refs[i], args.device)["codes"])} for i in mine}
         for v in variants:
             for c, recon in [(c, False) for c in controls] + [("", True)]:
                 name = f"{v}{c}"
                 out = {}
                 for group in blocks(mine, args.block):
-                    states = refine_states(refiner, rtok, [forms[name][i] for i in group],
-                                           seed=REFINE_SEED + group[0] // args.block, guidance=args.refiner_guidance,
-                                           temperature=temperature, post=rpost, device=args.device, recon=recon)
+                    states, codes, inputs = refine_states(
+                        refiner, rtok, [forms[name][i] for i in group], seed=REFINE_SEED + group[0] // args.block,
+                        guidance=args.refiner_guidance, temperature=temperature, post=rpost, device=args.device,
+                        recon=recon, return_codes=True)
                     out.update(zip(group, states))
+                    if c == "" and not recon:            # the refined codes and the refiner's input codes
+                        for i, out_codes, in_codes in zip(group, codes, inputs):
+                            memorised[i][f"{v}{REFINED}"] = nearest(out_codes)
+                            memorised[i][v] = nearest(in_codes)
                 forms[f"{name}{RECON if recon else REFINED}"] = out
                 print(f"{'reconstructed' if recon else 'refined'} {name} ({time.time() - clock['start']:.0f} s)",
                       flush=True)
@@ -430,6 +460,7 @@ def run(args) -> dict:
                          shuffled_order=orders[i], mismatched_from=content_perm[i], frames_reference=len(refs[i].timestamps),
                          plans=plans_out[i], hypotheses={name: hyps[name][i] for name in forms},
                          spotting={v: spot[v][i] for v in spot},
+                         **({"memorisation_codes": memorised[i]} if refining else {}),
                          motion={name: motion[name][i] for name in motion},
                          rerank={v: {block: [s.get("rerank") for s in material[(v, c, i)]["segments"]]
                                      for block, c in (("matched", ""), ("mismatched_words", "/mismatched_words"))
@@ -464,6 +495,32 @@ def run(args) -> dict:
 
 
 # ---- merge ---------------------------------------------------------------------------------------------------------
+
+def train_texts(store, settings) -> list[str]:
+    """The How2Sign train texts of the evaluation mix (the refiner's training sentences are among them)."""
+    from signtranslator.data_engineering.corpus_manifest import load_manifest
+    from round15_oracle import TEMPLATE_CORPUS
+    with tempfile.TemporaryDirectory() as t:
+        path = Path(t) / "m.json"
+        path.write_bytes(store.get(settings["mix_key"]) + b"\n")
+        manifest = load_manifest(path, expected_sha256=settings["mix_sha256"])
+    return [r["text"] for r in manifest["records"] if r.get("corpus") == TEMPLATE_CORPUS
+            and r.get("partition") == "train" and r.get("text")]
+
+
+def memorisation_report(store, settings, rows, hyps, variants) -> dict:
+    """Report-only memorisation reads (``signtranslator.generation.memorisation``): each listed form's hypotheses
+    against How2Sign train texts (best sentence BLEU, exact matches) and the shards' code n-gram reads against the
+    refiner's training targets; ``real`` (val clips the refiner never saw) is the chance level of both."""
+    from signtranslator.generation.memorisation import TextIndex, code_summary
+    index = TextIndex(train_texts(store, settings))
+    names = ["real"] + [f for v in variants for f in (v, f"{v}{RECON}", f"{v}{REFINED}", f"{v}{REST_ONLY}{REFINED}",
+                                                       f"{v}/mismatched_words{REFINED}")]
+    codes = list(rows[0].get("memorisation_codes") or {})
+    return dict(train_texts=len(index.tokens), text={n: index.summary(hyps[n]) for n in names if n in hyps},
+                codes={n: code_summary([r["memorisation_codes"][n] for r in rows]) for n in codes},
+                note="report-only; real is the chance level (val clips, never in the refiner's training)")
+
 
 def merge(args, store) -> dict:
     from round15_compositional import paired_recall
@@ -507,6 +564,9 @@ def merge(args, store) -> dict:
     refined = bool(s.get("refiner"))
     if args.refined_rule and not refined:
         raise SystemExit("--refined-rule: these shards were not refined (no --refiner-checkpoint-key)")
+    if args.refined_rule and s.get("recognizer_run") != INSTRUMENT:
+        raise SystemExit(f"--refined-rule: spotting must be read with {INSTRUMENT} (the instrument since recogniser v3 "
+                         f"amendment 2), not {s.get('recognizer_run')}")
     checks, refined_checks = r2.parse_rule(args.rule), r2.parse_rule(args.refined_rule)
     pairs = form_pairs(variants, paired, refined=refined)
     for flag, cs, names in (("--rule", checks, variants),
@@ -540,8 +600,9 @@ def merge(args, store) -> dict:
     overlong = {v: int(sum(bool((r["plans"].get(v) or {}).get("overlong")) for r in rows)) for v in variants}
     return dict(kind="round15-compose-eval", settings=s, clips=n, references=texts, signs=merged["signs"], indexing=INDEXING,
                 shards=sorted(p["shard"] for p in partials), stage1_check=partials[0]["stage1_check"],
-                comparators=comparators, rule=args.rule, rule_checks=checks, refined_rule=args.refined_rule,
-                refined_rule_checks=refined_checks, refiner=s.get("refiner"), bootstrap=args.bootstrap, forms=scores,
+                comparators=comparators, rule=args.rule, rule_checks=checks, bootstrap=args.bootstrap, forms=scores,
+                **(dict(refined_rule=args.refined_rule, refined_rule_checks=refined_checks, refiner=s["refiner"],
+                        memorisation=memorisation_report(store, s, rows, hyps, variants)) if refined else {}),
                 spotting=dict(windows=list(SPOT["windows"]), hop=SPOT["hop"], top_k=SPOT["top_k"], scores=spotting),
                 motion=motion, motion_ratio_to_real=motion_ratio, verdicts=verdicts, overlong_clips=overlong,
                 **merge_core_counts(partials),
@@ -623,8 +684,8 @@ def main(argv=None) -> int:
     m.add_argument("--end-to-end-report", help="a pilot report of the same clips: its meaning.generated hypotheses")
     m.add_argument("--paired-with", help="another merged report on the same clips")
     m.add_argument("--rule")
-    m.add_argument("--refined-rule", help="the declared rule of the refined forms (<variant>@refined), e.g. "
-                   "bleu:unrefined,bleu:mismatched_words,bleu:rest_only,spotting")
+    m.add_argument("--refined-rule", help="the declared rule of the refined forms (<variant>@refined); the "
+                   f"design's: {REFINED_RULE}")
     m.add_argument("--bootstrap", type=int, default=1000)
     for q in (r, m):
         q.add_argument("--store", default="r2", help="r2, or dir:/path (tests)")

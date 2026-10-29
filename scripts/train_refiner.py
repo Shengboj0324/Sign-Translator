@@ -15,6 +15,14 @@ seeded by epoch and sentence), so a resumed run sees exactly the batches an unin
 order, ``--val-every``): teacher-forced loss of the EMA weights, without source or history dropout, the lowest written
 to ``best.json``. No How2Sign val clip, BLEU or other evaluator is read.
 
+**Length** is declared in epochs (``--epochs``, default 8, at most ``--max-epochs`` 10: each epoch shows every
+training sentence once, with one of its K inputs): steps = ceil(epochs x training pairs / batch). ``--steps`` overrides
+it for smoke runs only and must stay within ``--max-epochs``; run.json records both.
+
+**Memorisation index:** the stage-1 code n-grams of every training target (``memorisation.CodeIndex``), written once
+to ``target-index.bin`` (deterministic bytes, its SHA-256 in run.json and every checkpoint) for the evaluation's
+report-only memorisation read.
+
 **Store layout** (as ``train_motion_tokens.py``): ``training-runs/<run>/checkpoints/step-XXXXXXXX.pt`` (the newest is
 resumed and must match the configuration and the pairs' index), ``log/step-XXXXXXXX.json``, ``best.json`` and
 ``run.json``. A checkpoint carries the tokenizer's weights, so it fully defines the refiner.
@@ -111,7 +119,9 @@ def main(argv=None) -> int:
     p.add_argument("--init-key", default=INIT_KEY)
     p.add_argument("--init-sha256", default=INIT_SHA256)
     p.add_argument("--run", required=True)
-    p.add_argument("--steps", type=int, default=20_000)
+    p.add_argument("--epochs", type=float, default=8., help="the declared length: steps = ceil(epochs x pairs / batch)")
+    p.add_argument("--max-epochs", type=float, default=10.)
+    p.add_argument("--steps", type=int, help="smoke runs: this many steps instead (within --max-epochs)")
     p.add_argument("--batch-size", type=int, default=32)
     p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--warmup", type=int, default=500)
@@ -120,9 +130,12 @@ def main(argv=None) -> int:
     p.add_argument("--source-layers", type=int, help="default: the prior's text layers")
     p.add_argument("--source-dropout", type=float, default=.1)
     p.add_argument("--history-dropout", type=float, help="default: the prior's (F12: 0.5)")
-    p.add_argument("--val-every", type=int, default=1000)
+    p.add_argument("--val-every", type=int, default=250)
     p.add_argument("--val-items", type=int, default=0, help="selection items scored (0: all, every input)")
-    p.add_argument("--checkpoint-every", type=int, default=2000)
+    p.add_argument("--checkpoint-every", type=int, default=500)
+    p.add_argument("--index-ngram", type=int, default=12, help="memorisation index: steps per code n-gram")
+    p.add_argument("--index-max-df", type=float, default=.01, help="memorisation index: n-grams in more than this "
+                   "share of the targets are left out")
     p.add_argument("--fetch-threads", type=int, default=16)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--device", default="auto")
@@ -166,12 +179,32 @@ def main(argv=None) -> int:
     if not train or not selection:
         raise SystemExit(f"{len(train)} training and {len(selection)} selection pairs: both are needed")
     K = index["config"]["k"]
+    if not 0 < args.epochs <= args.max_epochs:
+        raise SystemExit(f"--epochs {args.epochs}: must be in (0, --max-epochs {args.max_epochs}]")
+    steps = args.steps if args.steps is not None else math.ceil(args.epochs * len(train) / args.batch_size)
+    epochs = steps * args.batch_size / len(train)
+    if steps < 1 or epochs > args.max_epochs:
+        raise SystemExit(f"{steps} steps are {epochs:.2f} epochs: more than --max-epochs {args.max_epochs}")
     val_rows = [(x, k) for x in selection for k in range(K)]
     if args.val_items:
         val_rows = val_rows[:args.val_items]
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=.01)
     prefix = f"training-runs/{args.run}"
-    step, resumed_ema = 0, None
+    step, resumed_ema, log_prefix = 0, None, []
+    # the memorisation index of the training targets (written once; identical bytes on every resume)
+    from signtranslator.generation.memorisation import CodeIndex
+    from signtranslator.generation.refiner import pack_pair
+    P = len(config.prior.tokenizer.part_slices())
+    arrays, meta = CodeIndex.build([x["target"] for x in train], parts=P, codebook=model.K, n=args.index_ngram,
+                                   max_df=args.index_max_df).to_arrays()
+    target_index = pack_pair(arrays, dict(meta, signs=[x["sign"] for x in train], pairs_index_sha256=index_sha))
+    target_index_key = f"{prefix}/target-index.bin"
+    target_index_sha = hashlib.sha256(target_index).hexdigest()
+    if store.exists(target_index_key):
+        if store.get(target_index_key) != target_index:
+            raise SystemExit(f"{target_index_key} exists with other contents")
+    else:
+        store.put(target_index_key, target_index)
     checkpoints = sorted(k for k in store.list(f"{prefix}/checkpoints/") if k.endswith(".pt"))
     if checkpoints:
         state = torch.load(io.BytesIO(store.get(checkpoints[-1])), map_location=device, weights_only=False)
@@ -182,6 +215,10 @@ def main(argv=None) -> int:
         optimizer.load_state_dict(state["optimizer"])
         resumed_ema, step = state.get("ema"), state["step"]
         torch.set_rng_state(state["torch_rng"].cpu())
+        if device.type == "cuda" and state.get("cuda_rng") is not None:
+            torch.cuda.set_rng_state_all([t.cpu() for t in state["cuda_rng"]])
+        logs = sorted(k for k in store.list(f"{prefix}/log/") if k.endswith(".json"))
+        log_prefix = json.loads(store.get(logs[-1])) if logs else []
         print(f"resumed {checkpoints[-1]} at step {step}", flush=True)
     else:
         loaded = model.warm_start({k: v.to(device) for k, v in (init.get("ema") or init["model"]).items()})
@@ -190,7 +227,9 @@ def main(argv=None) -> int:
             kind=KIND, config=config.to_dict(), config_sha256=config.sha256(), init_key=args.init_key,
             init_sha256=args.init_sha256, pairs_index_key=index_key, pairs_index_sha256=index_sha, args=vars(args),
             train_pairs=len(train), selection_pairs=len(selection), selection_items=len(val_rows),
-            selection_components=index["config"]["selection_components"], warm_start=loaded),
+            selection_components=index["config"]["selection_components"], warm_start=loaded, steps=steps,
+            epochs=round(epochs, 4), declared_epochs=args.epochs if args.steps is None else None,
+            target_index_key=target_index_key, target_index_sha256=target_index_sha),
             indent=2, sort_keys=True).encode())
     del init
     ema = WeightEMA(model, args.ema_decay)
@@ -215,14 +254,18 @@ def main(argv=None) -> int:
         model.train()
         return {f"selection/{k}": v / max(count, 1) for k, v in totals.items()}
 
-    log, started = [], time.monotonic()
+    log, started = list(log_prefix), time.monotonic()
 
     def checkpoint(metrics):
         nonlocal best
         buffer = io.BytesIO()
         torch.save(dict(kind=KIND, model=model.state_dict(), ema=ema.state_dict(model),
                         optimizer=optimizer.state_dict(), step=step, validation=metrics,
-                        torch_rng=torch.get_rng_state(), config=config.to_dict(), config_sha256=config.sha256(),
+                        torch_rng=torch.get_rng_state(),
+                        cuda_rng=torch.cuda.get_rng_state_all() if device.type == "cuda" else None,
+                        target_index_key=target_index_key, target_index_sha256=target_index_sha,
+                        epoch=round(step * args.batch_size / len(train), 4), config=config.to_dict(),
+                        config_sha256=config.sha256(),
                         tokenizer_state=tokenizer_state, tokenizer_digest=tokenizer_digest,
                         tokenizer_key=index["config"]["tokenizer_key"], pairs_index_key=index_key,
                         pairs_index_sha256=index_sha, init_key=args.init_key, init_sha256=args.init_sha256), buffer)
@@ -235,10 +278,10 @@ def main(argv=None) -> int:
             store.put(f"{prefix}/best.json", json.dumps(best, indent=2, sort_keys=True).encode())
 
     model.train()
-    while step < args.steps:
+    while step < steps:
         rows = [(train[i], k) for i, k in batch_items(step, len(train), args.batch_size, K, args.seed)]
         for group in optimizer.param_groups:
-            group["lr"] = lr_at(step, base=args.lr, warmup=args.warmup, total=args.steps)
+            group["lr"] = lr_at(step, base=args.lr, warmup=args.warmup, total=steps)
         loss, terms = refiner_loss(model, *collate(rows, model.K, device), train=True)
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
@@ -253,17 +296,17 @@ def main(argv=None) -> int:
                      **{f"train/{k}": v for k, v in terms.items()})
         log.append(entry)
         metrics = None
-        if step % args.val_every == 0 or step == args.steps:
+        if step % args.val_every == 0 or step == steps:
             metrics = validate()
             entry.update(metrics)
             print(json.dumps({k: v for k, v in entry.items() if k == "step" or k.startswith("selection/")}),
                   flush=True)
             if (best is None or metrics["selection/loss"] < best["selection_loss"]) \
-                    and step % args.checkpoint_every != 0 and step != args.steps:
+                    and step % args.checkpoint_every != 0 and step != steps:
                 checkpoint(metrics)            # a new best between regular checkpoints is kept too
         if step % 50 == 0 or step == 1:
             print(json.dumps(entry), flush=True)
-        if step % args.checkpoint_every == 0 or step == args.steps:
+        if step % args.checkpoint_every == 0 or step == steps:
             checkpoint(metrics if metrics is not None else validate())
     return 0
 

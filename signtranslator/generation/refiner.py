@@ -282,16 +282,19 @@ def tokenize_state(tokenizer: MotionRVQ, state, device="cpu") -> dict:
 
 @torch.no_grad()
 def refine_states(model: SentenceRefiner, tokenizer: MotionRVQ, states, *, seed: int, guidance: float = 1.,
-                  temperature: float | dict = 1., top_k: int = 0, post=None, device="cpu", recon: bool = False):
+                  temperature: float | dict = 1., top_k: int = 0, post=None, device="cpu", recon: bool = False,
+                  return_codes: bool = False):
     """Each state tokenized (``tokenize_state``), refined (``refine_codes``, one batch, ``seed``) and decoded as a
     generation at its own frame count (``compositional.make_decode``, then ``post``: the generator's
-    post-processing). ``recon``: decoded from the input's own codes, no refinement (the tokenizer round trip)."""
+    post-processing). ``recon``: decoded from the input's own codes, no refinement (the tokenizer round trip).
+    ``return_codes``: ``(states, output codes, input codes)``, codes on the CPU."""
     from .compositional import make_decode
     decode = make_decode(tokenizer, model.config.prior.tokenizer.motion, post or (lambda s: s))
-    codes = [tokenize_state(tokenizer, s, device)["codes"] for s in states]
-    if not recon:
-        codes = refine_codes(model, codes, guidance=guidance, temperature=temperature, top_k=top_k, seed=seed)
-    return [decode(c[None].to(device), len(s.timestamps), "refined") for c, s in zip(codes, states)]
+    inputs = [tokenize_state(tokenizer, s, device)["codes"] for s in states]
+    codes = inputs if recon else refine_codes(model, inputs, guidance=guidance, temperature=temperature, top_k=top_k,
+                                              seed=seed)
+    out = [decode(c[None].to(device), len(s.timestamps), "refined") for c, s in zip(codes, states)]
+    return (out, codes, inputs) if return_codes else out
 
 
 def state_dict_digest(state: dict) -> str:
@@ -352,6 +355,17 @@ def pair_arrays(target: dict, sources: list[dict]) -> dict:
 
 # ---- checkpoints -------------------------------------------------------------------------------------------------
 
+def load_target_index(store, key: str, sha256: str):
+    """The training targets' code n-gram index (``memorisation.CodeIndex``) a refiner checkpoint names, hash-checked;
+    with its targets' sentence ids (``signs``)."""
+    from .memorisation import CodeIndex
+    payload = store.get(key)
+    if hashlib.sha256(payload).hexdigest() != sha256:
+        raise SystemExit(f"{key} differs from the SHA-256 its refiner checkpoint records")
+    arrays, meta = unpack_pair(payload)
+    return CodeIndex.from_arrays(arrays, meta), meta
+
+
 def load_refiner(store, key: str, sha256: str | None = None, device="cpu"):
     """(refiner with its EMA weights, its tokenizer, the checkpoint's metadata) of a refiner checkpoint;
     ``sha256`` pins the file."""
@@ -368,11 +382,12 @@ def load_refiner(store, key: str, sha256: str | None = None, device="cpu"):
     if state_dict_digest(tokenizer.state_dict()) != saved["tokenizer_digest"]:
         raise SystemExit(f"{key}: its tokenizer weights differ from their recorded digest")
     meta = {k: saved.get(k) for k in ("step", "tokenizer_key", "tokenizer_digest", "pairs_index_key",
-                                      "pairs_index_sha256", "init_key", "init_sha256", "config_sha256")}
+                                      "pairs_index_sha256", "init_key", "init_sha256", "config_sha256",
+                                      "target_index_key", "target_index_sha256")}
     meta["sha256"] = hashlib.sha256(payload).hexdigest()
     return model.to(device).eval(), tokenizer.to(device).eval().requires_grad_(False), meta
 
 
 __all__ = ["FPS", "KIND", "PAIR_SCHEMA", "RefinerConfig", "SentenceRefiner", "refiner_loss", "refine_codes",
            "pad_sources", "tokenize_state", "refine_states", "state_dict_digest", "pack_pair", "unpack_pair",
-           "pair_arrays", "load_refiner"]
+           "pair_arrays", "load_refiner", "load_target_index"]

@@ -134,11 +134,19 @@ def test_sentence_jobs_keep_only_train_sentences_of_readable_signers():
         h2s("nine2", "nine two", source=dict(signer_id="9")),
         h2s("moved", "moved", source_partition="test"),
         h2s("held", "held out", "heldout_official"), h2s("empty", "?!"),
+        h2s("v2", "Show you how to stir it", "val", "c03"),
+        h2s("near", "cut the onion in half now"),                            # Jaccard 5/6 with a val sentence
+        h2s("within", "today I will show you how to stir it slowly"),        # contains a 6-token val sentence
+        h2s("short", "cut the onion"),                                       # inside a val sentence, but 3 tokens
         dict(h2s("x", "other corpus"), corpus="asllvd-text-v1"))]
     jobs, counts = bp.sentence_jobs(dict(records=records))
-    assert [r["sign"] for r in jobs] == ["a", "b"]
+    assert [r["sign"] for r in jobs] == ["a", "b", "short"]
+    assert counts["near_val_or_test:jaccard"] == 1 and counts["near_val_or_test:containment"] == 1
+    loose = bp.sentence_jobs(dict(records=records), near=.9, min_tokens=6)[0]
+    assert [r["sign"] for r in loose] == ["a", "b", "near", "short"]
+    assert "within" in {r["sign"] for r in bp.sentence_jobs(dict(records=records), min_tokens=7)[0]}
     assert counts["signer9_or_unknown_component"] == 3 and counts["text_in_val_or_test"] == 1
-    assert counts["not_train:train/test"] == 1 and counts["no_text"] == 1 and counts["train_sentences"] == 2
+    assert counts["not_train:train/test"] == 1 and counts["no_text"] == 1 and counts["train_sentences"] == 3
     with pytest.raises(SystemExit, match="twice"):
         bp.sentence_jobs(dict(records=records[:1] * 2))
 
@@ -352,7 +360,13 @@ def test_end_to_end_build_train_refine(tmp_path, refiner_store):
     assert tr.main(train + ["--steps", "2"]) == 0
     run = json.loads(store.get("training-runs/refiner-test/run.json"))
     assert run["train_pairs"] == 5 and run["selection_pairs"] == 2 and run["selection_items"] == 4
-    assert run["selection_components"] == ["c04"]
+    assert run["selection_components"] == ["c04"] and run["steps"] == 2 and run["epochs"] == .8
+    assert run["declared_epochs"] is None and run["target_index_sha256"] == hashlib.sha256(
+        store.get("training-runs/refiner-test/target-index.bin")).hexdigest()
+    with pytest.raises(SystemExit, match="max-epochs"):
+        tr.main(train + ["--steps", "40", "--run", "too-long"])
+    with pytest.raises(SystemExit, match="max-epochs"):
+        tr.main(train + ["--epochs", "12", "--run", "too-long"])
     best = json.loads(store.get("training-runs/refiner-test/best.json"))
     assert best["checkpoint_key"].startswith("training-runs/refiner-test/checkpoints/step-0000000")
     assert set(best["validation"]) >= {"selection/loss", "selection/tokens"}
@@ -361,11 +375,12 @@ def test_end_to_end_build_train_refine(tmp_path, refiner_store):
     assert saved["kind"] == rf.KIND and saved["step"] == 2 and saved["tokenizer_key"] == TOKKEY
     assert tr.main(train + ["--steps", "3"]) == 0                          # resumes at step 2
     log = json.loads(store.get("training-runs/refiner-test/log/step-00000003.json"))
-    assert [e["step"] for e in log] == [3]
+    assert [e["step"] for e in log] == [1, 2, 3]                          # the log is kept across the resume
     # refine inside the compose evaluation: oracle_stage2 and its controls, /rest_only, @recon
     common = ["run", "--mix-key", "rmix.json", "--mix-sha256", sha, "--store", f"dir:{tmp_path / 'store'}",
               "--device", "cpu", "--cache-dir", str(tmp_path / "cache"), "--variants", "oracle_stage2", "--block", "2",
-              "--core-margin", "0.1", "--clips", "5", "--refiner-checkpoint-key", ckpt, "--refiner-sha256",
+              "--core-margin", "0.1", "--clips", "5", "--recognizer-run", "sign-recognizer-v3d",
+              "--refiner-checkpoint-key", ckpt, "--refiner-sha256",
               hashlib.sha256(store.get(ckpt)).hexdigest()]
     assert ce.main(common + ["--output-key", "e/whole.json"]) == 0
     for s in (0, 1):
@@ -377,7 +392,8 @@ def test_end_to_end_build_train_refine(tmp_path, refiner_store):
             f"{v}/mismatched_words@refined"} <= forms
     assert set(whole["clips"][0]["spotting"]) == {v, f"{v}@refined"}
     assert whole["settings"]["refiner"]["checkpoint_key"] == ckpt
-    rule = "bleu:unrefined,bleu:mismatched_words,bleu:rest_only,spotting"
+    rule = ce.REFINED_RULE
+    assert rule.split(",")[0] == "bleu:recon"
     merge = ["merge", "--store", f"dir:{tmp_path / 'store'}", "--bootstrap", "20", "--refined-rule", rule]
     assert ce.main(merge + ["--shard-keys", "e/whole.json", "--output-key", "e/m1.json"]) == 0
     assert ce.main(merge + ["--shard-keys", "e/p1.json,e/p0.json", "--output-key", "e/m2.json"]) == 0
@@ -388,8 +404,21 @@ def test_end_to_end_build_train_refine(tmp_path, refiner_store):
     assert {"minus_unrefined", "minus_recon", "minus_mismatched_words", "minus_rest_only", "minus_shuffled"} <= set(row)
     d = m1["verdicts"][f"{v}@refined"]
     assert d["verdict"] in ("PROMISING", "NOT PROMISING") and set(d["checks"]) == {
-        "bleu_vs_unrefined_lower_above_0", "bleu_vs_mismatched_words_lower_above_0", "bleu_vs_rest_only_lower_above_0",
+        "bleu_vs_recon_lower_above_0", "bleu_vs_mismatched_words_lower_above_0", "bleu_vs_rest_only_lower_above_0",
         "spotting_recall_above_mismatched"}
+    # memorisation (report-only): text reads of the listed forms, code reads with the real clips as chance level
+    mem = m1["memorisation"]
+    assert {"real", v, f"{v}@recon", f"{v}@refined", f"{v}/rest_only@refined"} <= set(mem["text"])
+    assert set(mem["codes"]) == {"real", v, f"{v}@refined"} and mem["train_texts"] == 12
+    for row in mem["text"].values():
+        assert row["n"] == 5 and 0 <= row["mean_best_bleu"] <= 100 and 0 <= row["exact_match_rate"] <= 1
+    assert mem == m2["memorisation"]
+    # the refined rule reads spotting with recogniser v3 only
+    shard = json.loads(store.get("e/whole.json"))
+    shard["settings"]["recognizer_run"] = "sign-recognizer-v2"
+    store.put("e/v2.json", json.dumps(shard).encode())
+    with pytest.raises(SystemExit, match="sign-recognizer-v3d"):
+        ce.main(merge + ["--shard-keys", "e/v2.json", "--output-key", "e/m4.json"])
     assert m1["refiner"]["sha256"] == hashlib.sha256(store.get(ckpt)).hexdigest()
     # refusals: a refined rule on unrefined shards; a refiner that is not the pinned file
     plain = [a for a in common[:-4]] + ["--output-key", "e/plain.json"]
@@ -422,10 +451,141 @@ def test_a_forbidden_record_that_reaches_the_builder_stops_it(tmp_path, refiner_
     monkeypatch.setattr(round15_oracle, "word_pools", original)
     original_jobs = bp.sentence_jobs
     for bad in ("nine", "unknown", "tst", "clip20"):                    # signer 9, unknown component, test, val
-        def jobs(manifest, bad=bad):
-            kept, counts = original_jobs(manifest)
+        def jobs(manifest, bad=bad, **kw):
+            kept, counts = original_jobs(manifest, **kw)
             return [records[bad]] + kept, counts
         monkeypatch.setattr(bp, "sentence_jobs", jobs)
         with pytest.raises(bp.HygieneError):
             bp.main(build_args(tmp_path, sha, tsha, f"poison-{bad}"))
         assert not store.exists(bp.pair_key(f"poison-{bad}", records[bad]))
+
+
+# ---- memorisation diagnostics, composition parity, knobs -------------------------------------------------------------
+
+def test_memorisation_reads():
+    from signtranslator.generation import memorisation as mz
+    assert mz.sentence_bleu("cut the onion now".split(), "cut the onion now".split()) == pytest.approx(100.)
+    assert mz.sentence_bleu("salt".split(), "cut the onion".split()) == 0.
+    assert 0 < mz.sentence_bleu("cut the salt".split(), "cut the onion now".split()) < 100
+    index = mz.TextIndex(["Cut the onion now.", "Add some salt", "stir it slowly"], candidates=2)
+    assert index.nearest("cut the onion now .") == dict(best_bleu=100., nearest=0, exact=True)
+    near = index.nearest("add the salt")
+    assert near["nearest"] == 1 and not near["exact"] and 0 < near["best_bleu"] < 100
+    assert index.nearest("zebra")["best_bleu"] == 0.
+    summary = index.summary(["cut the onion now .", "zebra"])
+    assert summary["exact_match_rate"] == .5 and summary["n"] == 2
+    rng = np.random.default_rng(0)
+    targets = [rng.integers(0, 32, size=(40, 12)) for _ in range(6)]
+    rest = np.zeros((30, 12), dtype=np.int64)
+    targets += [np.concatenate([rest, t]) for t in targets[:2]]               # a rest pose shared by targets 6, 7
+    codes = mz.CodeIndex.build(targets, parts=4, codebook=32, n=6, max_df=.2)
+    hit = codes.query(targets[3])
+    assert hit["max_containment"] == 1. and hit["nearest"] == 3 and hit["seen_fraction"] == 1.
+    miss = codes.query(rng.integers(0, 32, size=(40, 12)))
+    assert miss["max_containment"] < .1
+    assert codes.query(rest)["ngrams"] == 0                                    # common n-grams are not evidence
+    assert codes.query(targets[0][:3])["max_containment"] is None              # shorter than n
+    again = mz.CodeIndex.from_arrays(*rf.unpack_pair(rf.pack_pair(*codes.to_arrays())))
+    assert again.query(targets[3]) == hit
+    assert mz.code_summary([hit, miss, codes.query(rest)])["without_ngrams"] == 1
+
+
+def eval_context(tmp_path, store, sha, *, space=None, bridge="linear", tighten=False):
+    """The pair builder's composition context on the fixture, built as its main builds it."""
+    from signtranslator.data_engineering.corpus_manifest import ContentCache
+    from signtranslator.generation.compositional import isolated_corpora, training_vocabulary
+    from round15_oracle import TEMPLATE_CORPUS, word_clip, word_pools
+    from train_motion_tokens import layout_template
+    with tempfile.TemporaryDirectory() as t:
+        path = Path(t) / "m.json"
+        path.write_bytes(store.get("rmix.json") + b"\n")
+        manifest = load_manifest(path, expected_sha256=sha)
+    corpora = isolated_corpora(manifest)
+    vocab = training_vocabulary(manifest, corpora)
+    model, _ = fit.fit_model(fit.agc._store(f"dir:{tmp_path / 'store'}"), "rmix.json", sha, corpora)
+    cache = ContentCache(tmp_path / "pcache", 2 ** 28)
+    template = layout_template(manifest, TEMPLATE_CORPUS, cache, store.get)
+    context = dict(pools=word_pools(manifest, corpora), loaded={}, model=model, vocab=vocab,
+                   fractions=fit.sign_fractions(manifest, vocab), margin=.1, tighten=tighten, space=space,
+                   bridge=bridge)
+    load = lambda r: word_clip(r, cache=cache, fetch=store.get, template=template)  # noqa: E731
+    return manifest, context, load
+
+
+def test_pair_composition_is_the_evaluation_form(tmp_path, refiner_store):
+    """build_pair's composition (compose_input) equals round15_compose_eval's oracle_stage2 form (its jobs from
+    plan_jobs, oracle_material by the oracle's draws, render_form) for the same records, with and without knobs."""
+    import round15_stage2 as r2
+    import scripts.round15_space_stats as ss
+    from scripts.pilot_content_check import validation_sentences
+    from signtranslator.generation.compositional import CORE_RULE
+    from round15_oracle import choose_record
+    store, sha, _, _ = refiner_store
+    assert ss.main(["--mix-key", "mix.json", "--mix-sha256", hashlib.sha256(store.get("mix.json")).hexdigest(),
+                    "--store", f"dir:{tmp_path / 'store'}", "--output-key", "stats.json"]) == 0   # no signer 9 there
+    stats = json.loads(store.get("stats.json"))["statistics"]
+    for knobs in (dict(), dict(space=dict(stats=stats, target="sentence"), bridge="minimum-jerk", tighten=True)):
+        manifest, context, load = eval_context(tmp_path, store, sha, **knobs)
+        val = validation_sentences(manifest, 5)
+        details, words = ce.stage1_selection([r["text"] for r in val], context["vocab"])
+        plans = [r2.plan_words(w, context["model"], context["vocab"], rows=d) for w, d in zip(words, details)]
+        seconds = [1.2 + .1 * i for i in range(len(val))]
+        jobs = r2.plan_jobs(["oracle_stage2"], plans, [1, 2, 3, 4, 0], [list(range(len(p["entries"]))) for p in plans],
+                            seconds=seconds, vocab=context["vocab"], timing="sign-fitted", overlap=4)
+        compared = 0
+        for i, plan in enumerate(plans):
+            job = jobs[("oracle_stage2", "", i)]
+            if job is None:
+                continue
+            material = r2.oracle_material(job, i, context["pools"], loaded={}, load=load,
+                                          rule=dict(CORE_RULE, margin=.1), timing="sign-fitted",
+                                          fractions=context["fractions"], margin=.1, tighten=context["tighten"])
+            theirs, plan_theirs = r2.render_form(material, job, seconds[i], context["model"], timing="sign-fitted",
+                                                 total_fit="pad", sample_id="x", space=context["space"],
+                                                 bridge=context["bridge"])
+            records = [choose_record(context["pools"], i, w, "matched") for w in job["words"]]
+            ours, plan_ours, _ = bp.compose_input(bp.composition_job(plan), records, seconds[i], context=context,
+                                                  load=load, sample_id="x")
+            assert plan_ours == plan_theirs and len(ours.timestamps) == len(theirs.timestamps)
+            for name, c in theirs.channels.items():
+                np.testing.assert_array_equal(ours.channels[name].values, c.values)
+                np.testing.assert_array_equal(ours.channels[name].valid, c.valid)
+            compared += 1
+        assert compared >= 3
+
+
+def test_knobs_reach_the_pairs_and_the_rest_only_control(tmp_path, refiner_store):
+    """The composition knobs are recorded in the pairs' configuration and change the inputs; the refined evaluation
+    with every knob on renders /rest_only (static poses under space normalisation) without a warning."""
+    import scripts.round15_space_stats as ss
+    store, sha, tsha, psha = refiner_store
+    assert ss.main(["--mix-key", "mix.json", "--mix-sha256", hashlib.sha256(store.get("mix.json")).hexdigest(),
+                    "--store", f"dir:{tmp_path / 'store'}", "--output-key", "stats.json"]) == 0   # no signer 9 there
+    ssha = hashlib.sha256(store.get("stats.json")).hexdigest()
+    knobs = ["--space-normalise", "sentence", "--space-stats-key", "stats.json", "--space-stats-sha256", ssha,
+             "--bridge", "minimum-jerk", "--tighten-cores"]
+    with pytest.raises(SystemExit):
+        bp.main(build_args(tmp_path, sha, tsha, "pk", "--space-normalise", "sentence"))
+    assert bp.main(build_args(tmp_path, sha, tsha, "pk", *knobs)) == 0
+    assert bp.main(build_args(tmp_path, sha, tsha, "pk", "--merge")) == 0
+    assert bp.main(build_args(tmp_path, sha, tsha, "p0")) == 0
+    assert bp.main(build_args(tmp_path, sha, tsha, "p0", "--merge")) == 0
+    k, plain = json.loads(store.get("pk/index.json")), json.loads(store.get("p0/index.json"))
+    assert k["config"]["knobs"] == dict(space_normalise="sentence", bridge="minimum-jerk", tighten_cores=True,
+                                        space_stats=dict(key="stats.json", sha256=ssha))
+    assert plain["config"]["knobs"]["space_normalise"] == "off" and plain["config"]["near_duplicate"] == .8
+    a = {e["sign"]: e.get("pair_sha256") for e in k["entries"] if e["status"] == "converted"}
+    b = {e["sign"]: e.get("pair_sha256") for e in plain["entries"] if e["status"] == "converted"}
+    assert a.keys() == b.keys() and all(a[s] != b[s] for s in a)
+    train = ["--store", f"dir:{tmp_path / 'store'}", "--pairs-prefix", "pk", "--init-key", "f12.pt", "--init-sha256",
+             psha, "--run", "refiner-knobs", "--batch-size", "2", "--steps", "1", "--device", "cpu"]
+    assert tr.main(train) == 0
+    ckpt = "training-runs/refiner-knobs/checkpoints/step-00000001.pt"
+    run = ["run", "--mix-key", "rmix.json", "--mix-sha256", sha, "--store", f"dir:{tmp_path / 'store'}", "--device",
+           "cpu", "--cache-dir", str(tmp_path / "cache"), "--variants", "oracle_stage2", "--block", "2",
+           "--core-margin", "0.1", "--clips", "5", "--recognizer-run", "sign-recognizer-v3d",
+           "--refiner-checkpoint-key", ckpt, *knobs, "--output-key", "e/knobs.json"]
+    assert ce.main(run) == 0
+    shard = json.loads(store.get("e/knobs.json"))
+    assert shard["settings"]["space_normalise"] == "sentence" and shard["settings"]["refiner"]["checkpoint_key"] == ckpt
+    assert {"oracle_stage2/rest_only", "oracle_stage2/rest_only@refined"} <= set(shard["clips"][0]["hypotheses"])
