@@ -28,6 +28,15 @@ Two subcommands. Both are write-once (``--output-key`` or ``--output-file``).
   the translator's batch) clips, so a sharded and an unsharded run translate identical batches. Each shard stores, per
   clip, every form's hypothesis, the spotting rows (own words and the next sentence's words) and the motion rows.
 
+**--rerank N** (default 1: unchanged): each core_crossfade word is the best of N samples by the prior's own
+teacher-forced PMI, log p(codes | word) - log p(codes | empty text) per code (``signtranslator.generation.rerank``;
+sample 0 is the word's existing seed, sample k seed + k x 10^8, so N = 1 reproduces the plain run exactly). Only the
+prior scores; no recogniser, back-translator or other evaluator enters the choice. Each shard row records, per word,
+the N seeds, scores and the chosen index (``rerank``, for the matched and mismatched-words compositions; /shuffled
+reorders the matched words). Not for core_chained or the stage1 timing.
+
+**oracle_stage2** (``--variants oracle_stage2``, no checkpoint, CPU): the real-word ceiling on the same clips.
+
 **merge** (CPU): the shards' partial reports (all of 0..K-1, the same settings and clips, disjoint and complete) are
 combined in clip order and scored as ``round15_stage2`` scores: corpus BLEU with the pilot's bootstrap, paired
 differences (``score_forms``) of each variant against its controls and the other variants, against ``end_to_end``
@@ -60,7 +69,7 @@ INDEXING = ("word seeds, oracle real-clip draws, shuffle orders and mismatched-w
             "in validation_sentences(mix, clips); a clip shared with a run of another --clips sits at another position, "
             "so runs of different N are not paired clip for clip (a --clips 300 run reproduces the 300-clip reports)")
 SETTINGS = ("clips", "shards", "block", "seed", "mix_key", "mix_sha256", "corpora", "variants", "selection", "timing",
-            "core_margin", "total_fit", "guidance", "part_temperature", "checkpoint_key", "generator_mix",
+            "rerank", "core_margin", "total_fit", "guidance", "part_temperature", "checkpoint_key", "generator_mix",
             "model_sha256", "translator_key", "recognizer_run", "recognizer_checkpoint")
 
 
@@ -223,7 +232,7 @@ def run(args) -> dict:
     if gen_keys:
         _, _, sample = load_generator(store, args.checkpoint_key, generator_mix["sha256"], args.device,
                                       temperature=temperature)
-        settings = dict(guidance=args.guidance, temperature=temperature, rule=rule, **mode)
+        settings = dict(guidance=args.guidance, temperature=temperature, rule=rule, rerank=args.rerank, **mode)
         worker = (args.store, args.checkpoint_key, generator_mix["sha256"], args.device, temperature,
                   max(1, torch.get_num_threads() // max(args.word_workers, 1)))
         results = r2.run_jobs(sample, [jobs[k] for k in gen_keys], settings, workers=args.word_workers,
@@ -298,10 +307,15 @@ def run(args) -> dict:
                          shuffled_order=orders[i], mismatched_from=content_perm[i], frames_reference=len(refs[i].timestamps),
                          plans=plans_out[i], hypotheses={name: hyps[name][i] for name in forms},
                          spotting={v: spot[v][i] for v in variants},
-                         motion={name: motion[name][i] for name in motion}))
+                         motion={name: motion[name][i] for name in motion},
+                         rerank={v: {block: [s.get("rerank") for s in material[(v, c, i)]["segments"]]
+                                     for block, c in (("matched", ""), ("mismatched_words", "/mismatched_words"))
+                                     if (v, c, i) in material}
+                                 for v in variants if v in r2.GENERATED} if args.rerank > 1 else None))
     settings = dict(clips=n, shards=args.shards, block=args.block, seed=args.seed, mix_key=args.mix_key,
                     mix_sha256=args.mix_sha256, corpora=list(corpora), variants=variants, selection=args.selection,
-                    timing=args.timing, core_margin=margin, total_fit=args.total_fit, guidance=args.guidance,
+                    timing=args.timing, core_margin=margin, rerank=args.rerank, total_fit=args.total_fit,
+                    guidance=args.guidance,
                     part_temperature=temperature, checkpoint_key=args.checkpoint_key, generator_mix=generator_mix,
                     model_sha256=model["sha256"], translator_key=kp, recognizer_run=args.recognizer_run,
                     recognizer_checkpoint=best.get("checkpoint_key") if isinstance(best, dict) else None)
@@ -438,6 +452,8 @@ def main(argv=None) -> int:
     r.add_argument("--recognizer-run", default="sign-recognizer-v2")
     r.add_argument("--device", default="cuda")
     r.add_argument("--word-workers", type=int, default=1)
+    r.add_argument("--rerank", type=int, default=1, help="samples per word, the best kept by the prior's own "
+                   "teacher-forced PMI (signtranslator.generation.rerank; 1: unchanged; core_crossfade only)")
     r.add_argument("--cache-dir", default=str(Path(tempfile.gettempdir()) / "sign-translator-cache"))
     m = sub.add_parser("merge", help="combine the shards and score")
     m.add_argument("--shard-keys", default="")
@@ -472,6 +488,8 @@ def main(argv=None) -> int:
             p.error("--generator-mix-key and --generator-mix-sha256 go together")
         if args.timing != "asllrp" and args.total_fit != "pad":
             p.error("--total-fit applies to the asllrp timing only")
+        if args.rerank < 1 or (args.rerank > 1 and (args.timing == "stage1" or "core_chained" in variants)):
+            p.error("--rerank >= 1; above 1 only for core_crossfade with the asllrp or sign-fitted timing")
         if args.timing == "stage1" and args.core_margin is not None:
             p.error("--core-margin does not apply to the stage1 timing")
         if not 0 <= args.shard < args.shards or args.block < 1:

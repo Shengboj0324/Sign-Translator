@@ -937,7 +937,7 @@ def rvq_sequence_log_likelihood(model: RVQPrior, tokenizer: MotionRVQ, tokens, t
 @torch.no_grad()
 def generate_rvq_motion(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, fps: float, guidance: float = 1.,
                         temperature: float | dict = 1., top_k: int = 0, seed: int = 0, durations=None,
-                        sample_prefix: str = "tokens-v2", loci=None):
+                        sample_prefix: str = "tokens-v2", loci=None, return_codes: bool = False):
     """Generated canonical states (observed=False, zero confidence) from sampled residual codes.
 
     ``temperature`` is one value or a mapping part -> value (parts of ``tokenizer.parts``;
@@ -945,6 +945,9 @@ def generate_rvq_motion(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, fps: fl
     temperatures let the hands sample more freely than the face, whose head-rotation codes
     carry the headshakes (v2b + loci at T = 1.2: hands within the articulation gate, headshake
     rate 3.0× the reference).
+
+    ``return_codes`` also returns each row's sampled codes, (its step count, J) on the CPU, as ``(states, codes)``;
+    the sampling is unchanged.
     """
     prior.eval(); tokenizer.eval()
     config = prior.config
@@ -965,7 +968,7 @@ def generate_rvq_motion(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, fps: fl
         per_code = [float(temperature.get(names[j % len(names)], 1.)) for j in range(prior.J)]
     else:
         per_code = [float(temperature)] * prior.J
-    states = []
+    states, sampled = [], []
     for row, text in enumerate(texts):
         frames = max(int(round(float(seconds_out[row]) * fps)), 1)
         count = math.ceil(frames / config.tokenizer.step)
@@ -994,7 +997,8 @@ def generate_rvq_motion(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, fps: fl
         native = native_values(config.tokenizer.motion, {key: v[0] for key, v in raw.items()})
         states.append(assemble_state(config.tokenizer.motion, text, native, frames, fps, f"{sample_prefix}:{row}",
                                      f"{sample_prefix}-clock", method="motion_tokens_v2"))
-    return states
+        sampled.append(sequence[0, 1:].cpu())
+    return (states, sampled) if return_codes else states
 
 
 @torch.no_grad()
