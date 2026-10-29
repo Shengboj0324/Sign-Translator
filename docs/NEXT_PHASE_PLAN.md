@@ -3785,3 +3785,24 @@ The one measure that pointed the other way was the skeleton-slot handedness meas
 - **Hand-speed check: FAIL.** Wrist speed is 4.13× real; end-to-end is 1.42× and oracle stage 1 3.8×.
 
 **Verdict: NOT PROMISING**, as expected after oracle stage 2: the ASLLRP timing is the cause.
+
+### Round 15 stage 2 amendment 1 results (recorded 2026-10-29, 02:31 UTC; real words, 300 How2Sign val sentences)
+
+| Oracle form | BLEU | Against oracle stage 1 (2.58) | Against end-to-end | Against shuffled | Wrist speed |
+|---|---|---|---|---|---|
+| Stage-2 words, stage-1 timing | 1.69 | **−0.90 [−1.48, −0.28]** | +0.26 [−0.27, +0.84] | +0.19 | 3.97× |
+| Stage-2 words, sign-fitted timing | **2.11** | −0.47 [−1.19, +0.24] | **+0.69 [+0.17, +1.30]** | **+0.57 [+0.09, +1.05]** | **2.35×** |
+| *(earlier)* Stage-2 words, ASLLRP timing, pad | 1.57 | −1.01 | +0.14 | +0.23 | 3.73× |
+| *(earlier)* Oracle stage 1 (stage-1 words and timing) | 2.58 | — | +1.16 | — | 3.8× |
+
+**Readings, as declared:**
+1. **Stage-1 timing: the structure HURTS.** Paired upper bound below 0. Spotting recall is 0.375 and order 0.86, so the words and their order are present; the back-translator rewards stage 1's English-like selection over the ASLLRP structure (drops, inserted IX, maps).
+2. **Sign-fitted timing: NOT a win.** The lower bound is not above 0. So, as declared, the generated sign-fitted runs (amendment 2) do **not** start.
+
+**Also observed (not a verdict):**
+- **Stage 2's rule:** sign-fitted is the first oracle form to pass it: above end-to-end, above mismatched words (+0.92 [+0.36, +1.52]), spotting 0.336 against 0.065.
+- **Order:** it is the first composed form whose order matters to BLEU (against shuffled, lower bound above 0).
+- **Timing effect, holding stage-2 words fixed:** sign-fitted 2.11 against stage-1 timing 1.69.
+- **Hand speed:** 2.35×, the best composed form so far, but still above the 1.5× bar.
+
+**Inference:** the best known pieces are stage 1's word selection (no ASLLRP structure) and sign-fitted timing; they have not been tried together.
