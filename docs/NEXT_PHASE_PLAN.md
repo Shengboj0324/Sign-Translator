@@ -4333,3 +4333,25 @@ The calibration (v2's numbers) is reported whatever the outcome.
 - Reranking is **adopted** for the composition if F12's N=4 minus N=1 has a lower bound above 0.
 - W14b's difference is reported and decides nothing.
 - If adopted, the 1,000-sentence run at N=4 (the M1 test) is declared next.
+
+### Real-word ceiling on the 1,000 sentences (recorded 2026-10-29, 17:31 UTC; report-only): generated composition has reached it
+
+`round15/eval1000/oracle-stage2.json`: real isolated clips, stage-1 selection, sign-fitted timing, on the same 1,000 sentences as amendment 5.
+
+| Form | BLEU | Against end-to-end F12 (1.64) | Against shuffled |
+|---|---|---|---|
+| **Real-word oracle** | **2.17** | +0.53 [+0.19, +0.90] | +0.02 [−0.28, +0.33] |
+| W14b composition | 2.31 | +0.52 against W14b's own end-to-end (1.79) | +0.30 [+0.01, +0.62] |
+| F12 composition | 2.12 | +0.48 | +0.23 |
+
+Real sentences read 4.14 and blank 1.86. Wrist speed of the oracle: 2.26×.
+
+**Paired against the real-word oracle on the same clips:**
+- W14b composition: +0.14 [−0.22, +0.48];
+- F12 composition: −0.05 [−0.38, +0.27].
+
+**Reading:**
+- On the 1,000 sentences, **generated composition is statistically indistinguishable from composing real recorded signs.** W14b is numerically above it.
+- The 2.55–2.58 "ceiling" was the 300-sentence development set's value, about 0.4 high against the larger set.
+- **M1's numeric target (≥ 2.55) rested on that 300-sentence ceiling.** On the confirmation set the ceiling of the whole composition approach is about 2.2. Reaching 2.55 therefore needs composition itself to improve beyond real isolated clips (transitions, co-articulation, sentence prosody), not better words.
+- The target is the owner's directive. Its basis is recorded here for the owner; the number is not changed.
