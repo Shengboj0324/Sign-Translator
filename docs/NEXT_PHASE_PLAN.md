@@ -4134,3 +4134,22 @@ Its spotting recall is also far lower (0.16 against 0.36): the prior's own trans
 1. **Sem-Lex words are learned:** teacher-forced retrieval of the new words beats F12, resolved at step 30000.
 2. **End-to-end BLEU is the best of any prior** (1.79), but not resolved against F12.
 3. **The covered-word lexicon read by v2 is lower** (−0.08). The instrument finding (v2 misreads the all-valid generated form, with arms that webcam corpora lack) makes this read suspect. The comparison is repeated with recogniser v3 if v3 passes its gates. That would be a new, declared comparison, not a change to this verdict.
+
+## Round 15 amendment 4: W14b's words in the carried-forward composition (declared 2026-10-29, 09:42 UTC, before it runs)
+
+**Why:** M1 is a composition BLEU target. Round 14b's word-source rule rested on recogniser v2's lexicon, which the instrument finding makes suspect. This amendment tests W14b's words directly on M1's own measure.
+
+**Run:** one GPU pod.
+- Composition: `core_crossfade`, `--selection stage1 --timing sign-fitted --core-margin 0.1`.
+- Model 42389ca4; the same 300 sentences.
+- **Prior: W14b step 30000** (`training-runs/tokens-rvq-d0b-prior-r14b-w14b/checkpoints/step-00030000.pt`).
+- The rule string is stage 2's, unchanged.
+
+**Readings:**
+1. **Stage 2's rule:** against end-to-end F12, against mismatched words, and spotting.
+2. **The decision:** paired BLEU against amendment 3's F12 crossfade (1.85), on the same 300 clips and references, with `compare_pilot_lexicon.paired_bleu_difference` (2,000 resamples, seed 0).
+   - **W14b becomes the composition word source** if the lower bound is above 0.
+   - Otherwise F12 stays the word source.
+3. **M1 check:** BLEU ≥ 2.55 and the remaining M1 conditions. Any claim needs the 1,000-sentence confirmation.
+
+Hand speed is reported.
