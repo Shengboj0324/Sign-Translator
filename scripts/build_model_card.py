@@ -35,7 +35,7 @@ CITATIONS = {
                "https://dai.cs.rutgers.edu/dai/s/signbank."),
     "ASL Citizen": "Desai et al., ASL Citizen: A Community-Sourced Dataset for Advancing Isolated Sign Language Recognition, NeurIPS 2023 Datasets.",
     "YouTube-ASL": "Uthus, Tanzer, Georg, YouTube-ASL: A Large-Scale, Open-Domain American Sign Language-English Parallel Corpus, NeurIPS 2023 (arXiv:2306.15162).",
-    "YouTube-SL-25": "Tanzer & Zhang, YouTube-SL-25: A Large-Scale, Open-Domain Multilingual Sign Language Parallel Corpus, 2024.",
+    "YouTube-SL-25": "Tanzer & Zhang, YouTube-SL-25: A Large-Scale, Open-Domain Multilingual Sign Language Parallel Corpus, 2024 (arXiv:2407.11144; includes YouTube-ASL).",
     "MediaPipe": "Lugaresi et al., MediaPipe: A Framework for Building Perception Pipelines, 2019.",
     "T5": "Chung et al., Scaling Instruction-Finetuned Language Models (Flan-T5), 2022.",
 }
@@ -52,6 +52,20 @@ ASLLRP_ATTRIBUTION = (
     "signing corpus and the RIT sentence collection) as its DAI page specifies. *This wording awaits ASLLRP's review "
     "before distribution.*")
 
+
+# guidance from the YouTube-ASL / YouTube-SL-25 authors (Manfred Georg, Google), email of 2026-10-29 22:02 UTC; the
+# authors stated it is practical guidance, not legal advice
+YOUTUBE_ASL_GUIDANCE = (
+    "**YouTube-ASL / YouTube-SL-25 terms (authors' guidance, 2026-10-29).** The video-ID lists and annotations of "
+    "YouTube-ASL and YouTube-SL-25 are released under CC BY 4.0; the underlying videos and captions remain subject to "
+    "the YouTube Terms of Service. A build trained on them may release its weights with attribution, but no raw "
+    "videos, captions or full extracted feature sets are distributed with them. Cite Uthus, Tanzer and Georg (2023), "
+    "arXiv:2306.15162, and/or Tanzer and Zhang (2024), arXiv:2407.11144 (YouTube-SL-25 includes YouTube-ASL). The "
+    "authors note that the corpora's domain variance (many signers, recording set-ups and registers) can reduce "
+    "generation consistency, that the static YouTube splits are unstable as videos are removed (How2Sign and "
+    "FLEURS-ASL are the stable benchmarks), and that this guidance is practical, not legal advice.")
+YOUTUBE_ABSENT_NOTE = ("*This release contains no YouTube-ASL data; the terms above apply to any later build "
+                       "that does.*")
 
 def cite(name: str) -> str | None:
     return next((v for k, v in CITATIONS.items() if k.lower() in name.lower()), None)
@@ -89,7 +103,10 @@ def card(release: dict, reports: dict) -> str:
              "- **Not** a replacement for a qualified interpreter. **Not** for medical, legal, emergency or other "
              "safety-critical communication. **Not** for identifying signers.", "",
              "## Training data and licences", "",
-             ASLLRP_ATTRIBUTION]
+             ASLLRP_ATTRIBUTION, "",
+             YOUTUBE_ASL_GUIDANCE
+             + ("" if any("youtube" in c["name"].lower() for c in release["provenance"]) else " " + YOUTUBE_ABSENT_NOTE),
+             ""]
     rows = [(c["name"], c["licence"], "yes" if c["research_only"] else "no", "yes" if c.get("non_commercial") else "no",
              c.get("permission") or "-", cite(c["name"]) or "-") for c in release["provenance"]]
     lines += [table(rows, ("Corpus", "Licence / terms", "Research only", "Non-commercial", "Release permission",
@@ -141,7 +158,11 @@ def card(release: dict, reports: dict) -> str:
               "- Spatial grammar (placing referents in signing space) is weak: the planner's locus head is at the "
               "per-gloss baseline.",
               "- Fingerspelling, name signs and classifier constructions are under-represented.",
-              "- Trained mostly on How2Sign instructional signing; other registers and dialects are less covered.", "",
+              "- Trained mostly on How2Sign instructional signing; other registers and dialects are less covered.",
+              "- Signer demographics and regional variants are skewed towards the signers who appear in the source "
+              "corpora (few signers in How2Sign; web video for YouTube-ASL builds).",
+              "- A research artifact: it is **not** ready for accessibility deployment without evaluation with Deaf "
+              "and Hard of Hearing users.", "",
               "## Ethical considerations",
               "- Built with and for Deaf signers' review; outputs must be presented as machine-generated.",
               "- Training videos belong to their signers and creators; no video, keypoints or captions are released.", ""]
