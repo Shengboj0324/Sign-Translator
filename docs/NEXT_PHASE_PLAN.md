@@ -3740,3 +3740,33 @@ Either way, the generator only needs right-dominant signing. ASL meaning does no
   - signers on the image left keep `states-video-v1`;
   - undecided signers are excluded from the Sem-Lex corpus.
 - Otherwise the per-clip side is too noisy to use, and Sem-Lex orientation stays unresolved.
+
+### Sem-Lex per-signer sides: UNRESOLVED by the declared rule; orientation decided on three agreeing measures (recorded 2026-10-29, 01:40 UTC)
+
+**Measurement:** every val and train clip's original landmarks, 69,763 clips. 67,533 clips (97%) have a decided side.
+
+**Rule result:**
+- 14 of 34 signers are decided (0.41; the rule needs 0.80).
+- The decided signers hold 0.49 of the clips (the rule needs 0.80).
+- **Unresolved** as declared.
+
+**Why the rule misses.** The rule requires 75% agreement within a signer. The same measure gives 0.72 on the natural YouTube-ASL baseline itself, so many natural signers sit at 0.70–0.74.
+
+**What the full data shows:**
+- **Most signers look like natural video.** 30 of 34 signers lean image-left, mostly 0.54–0.87, like YouTube-ASL's natural, mostly right-handed video.
+- **Four signers are firmly image-right,** at about 0.22: 11, 23, 46 and 76, with 5,075 clips.
+- **The 100-clip "50/50" was sampling noise.**
+- **Each signer's side is stable** between val and train and between the first and second half of their clips (no session field exists).
+
+**Decision, made openly after these results** (as the height-cue decision was):
+- **Round 14b uses the original extraction `states-video-v1`.**
+- **The un-mirroring of round 14 is withdrawn as an error.** It reflected natural, correctly oriented estimates.
+
+Three measures agree:
+1. **Pixel space:** original Sem-Lex shows the active hand where natural right-handed video does (30 of 34 signers).
+2. **Recogniser v2** reads the original orientation 0.72, against 0.34 for the un-mirrored one.
+3. **F12** fits the original states better than the un-mirrored ones (−0.40 to −0.51 nats per code for the un-mirrored).
+
+The one measure that pointed the other way was the skeleton-slot handedness measure. On this framing it tracks an estimator bias.
+
+**The four image-right signers** (11, 23, 46, 76) are **excluded** from round 14b's Sem-Lex corpus. Re-extracting them from flipped video (about $1–2, code on a branch) waits for its own review.
