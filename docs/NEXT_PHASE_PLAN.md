@@ -3820,3 +3820,42 @@ The one measure that pointed the other way was the skeleton-slot handedness meas
 - a WIN is the condition for generated `core_chained` and `core_crossfade` at `--selection stage1 --timing sign-fitted`, under stage 2's rule unchanged, declared as amendment 3 before they run.
 
 Hand speed is reported against the 1.5× bar.
+
+## Round 14b declared: Sem-Lex in its original orientation with hand-evidence trimming (declared 2026-10-29, 02:47 UTC, before its data is built)
+
+**Code:** main `bf5de55`. Independent review MERGE after two fix rounds. The stage-2 model hash 42389ca4 reproduces on the merged code.
+
+**Data:**
+- **`semlex-text-v2`** comes from the original extraction `states-video-v1`, with no un-mirroring.
+  - Signers 11, 23, 46 and 76 are excluded.
+  - Trimming uses `--trim-side hand-evidence`. The side is the signer's majority articulating hand slot; the window is cut on that wrist's image height, with out-of-frame or unseen wrists counted as rest; clips whose chosen hand is detected on fewer than 20% of frames are dropped.
+  - Smoke run, 200 clips: 125 of 133 kept; 0.77 agreement with the articulating slot, against 0.53 for the old rule; median trimmed 1.23 s.
+- **`round14b-mixed-v1`** = `round10-mixed-v1` (F12's mix, byte-identical) + `semlex-text-v2`.
+- **Built** on a CPU pod with `CORPUS_ID=semlex-text-v2 MIX_ID=round14b-mixed-v1 EXCLUDE_SIGNERS=11,23,46,76 runpod/fleet/round14_manifests.sh`. Both SHA-256s are recorded when built.
+- **Known:** Sem-Lex trimmed clips are about 0.5 s shorter than ASLLVD's, RIT's and WLASL's, because its source clips are cut close to the sign. The prior is conditioned on duration.
+- **Recorded correction:** the round-14 "fps bug" was withdrawn by its reviewer. v1's windows were in real seconds.
+
+**Training: W14b.**
+- Initialised from F12 step 60000 (sha 99b235d3…), with F12's recipe: history dropout 0.5, part-valid loss, history stages 1, corpus weight 3 for RIT, WLASL and ASLLVD.
+- **Changes from W14:**
+  - Sem-Lex at weight **2**;
+  - peak learning rate **1e-4** with a **200**-step warmup;
+  - **30000** steps (`PSTEPS_FULL=30000`, `PATIENCE=0`);
+  - a 300-step smoke run first.
+- The tokenizer is d2 step 5000.
+
+**Pilots at step 10000 and step 30000.** The training pod keeps running during the step-10000 pilot. Each pilot runs on a separate GPU pod:
+- `pilot_content_check.py`: the R5 150 words pinned to round10's vocabulary; the word split; 1,000-clip BLEU; no mirrored read.
+- **Plus** `teacher_forced_word_retrieval.py`, W14b against F12 step 60000.
+
+**Rules:**
+1. **Rule D against the control:** unchanged.
+2. **W14b replaces F12 as the leader** (the same rule W14 failed): its lexicon against F12 step 60000 has a lower bound above 0, and its paired BLEU a lower bound above −0.5.
+3. **W14b becomes the word source for round 15 compositions** (an alternative path, declared now). All three must hold:
+   - teacher-forced retrieval of the uncovered (Sem-Lex) words against F12 has a lower bound above 0;
+   - teacher-forced retrieval of the covered words against F12 has a lower bound above −0.05;
+   - the covered-word lexicon against F12 has a lower bound above −0.10.
+
+**Decisions:**
+- **Step 10000:** if rule 1 fails, W14b is stopped. Otherwise training continues to step 30000.
+- **Step 30000:** rules 2 and 3 decide. If neither passes, F12 stays leader and the word source.
