@@ -4388,3 +4388,19 @@ The translator was trained on How2Sign continuous signing, so the composition ha
   2. against the refined mismatched-words input: lower bound above 0;
   3. against a refined rest-only input of the same length (catches collapse into the prior): lower bound above 0;
   4. v3 spotting above its mismatched control.
+
+## Round 15 amendment 7: composition knobs, real words first (declared 2026-10-29, 18:02 UTC, before they run)
+
+**Code:** main `ca22855`. Independent review MERGE after one fix round.
+- **Space normalisation:** right-hand centroid plus excursion scaled to How2Sign train (stats `space-stats-how2sign-train-v2.json`, sha da257977). There is no torso correction.
+- **Minimum-jerk bridges.**
+- **Core tightening** for windows taken from the median sign position.
+
+**Runs:** the real-word oracle on the 1,000 sentences, the same settings and draws as the 2.17 oracle, on CPU pods.
+1. `knobs-all`: `--space-normalise sentence --bridge minimum-jerk --tighten-cores`. It runs first, while the reranking pods hold the GPU slots.
+2. `space`, `jerk`, `tight`, each alone. They run after, to attribute the effect.
+
+**Rule** (paired BLEU against the 2.17 oracle, `--paired-with`):
+- A knob set is **adopted for generated compositions** if its lower bound is above 0 **and** its content controls pass: against mismatched words, a lower bound above 0, and spotting above its mismatched control.
+- Wrist speed is reported against the 1.5× bar.
+- An adopted set is then run with generated words under M1's rule.
