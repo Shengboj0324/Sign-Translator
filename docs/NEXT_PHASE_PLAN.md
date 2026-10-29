@@ -4290,3 +4290,5 @@ The calibration (v2's numbers) is reported whatever the outcome.
    - Yet its free-run samples of the uncovered words read only 0.07.
    - So the gap is generation, not the instrument: the same exposure problem found for words in round 7, now on the new vocabulary.
 3. **v3 reads every prior higher than v2** (F12 0.45 → 0.64). Earlier v2 numbers stay as recorded and are not comparable.
+
+**Real-word ceiling on the 1,000 sentences (declared 2026-10-29, 15:00 UTC; report-only):** `round15_compose_eval.py --variants oracle_stage2`. It uses real isolated clips at stage-1 selection with sign-fitted timing, the same settings as amendment 5, on one CPU pod. The amendment-5 compositions are read against it. It gates nothing.
