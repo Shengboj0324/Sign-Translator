@@ -4356,7 +4356,7 @@ Real sentences read 4.14 and blank 1.86. Wrist speed of the oracle: 2.26×.
 - **M1's numeric target (≥ 2.55) rested on that 300-sentence ceiling.** On the confirmation set the ceiling of the whole composition approach is about 2.2. Reaching 2.55 therefore needs composition itself to improve beyond real isolated clips (transitions, co-articulation, sentence prosody), not better words.
 - The target is the owner's directive. Its basis is recorded here for the owner; the number is not changed.
 
-### Next lever after the oracle finding: composition beyond joining isolated signs (recorded 2026-10-29, 17:40 UTC; design, nothing run)
+### Next lever after the oracle finding: composition beyond joining isolated signs (recorded 2026-10-29, 17:38 UTC; design, nothing run)
 
 **Why composition itself is the limit.** On the 1,000 sentences:
 - the real-word oracle is only +0.31 above blank;
