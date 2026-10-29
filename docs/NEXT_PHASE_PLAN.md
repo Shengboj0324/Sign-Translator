@@ -4177,3 +4177,25 @@ Hand speed is reported.
 **Next, to be declared:**
 1. A larger paired evaluation of W14b against F12 on the pilot's 1,000 sentences, which also narrows the ±0.5 BLEU intervals.
 2. The word-quality levers toward M1.
+
+## Round 15 amendment 5: the 1,000-sentence paired composition evaluation (declared 2026-10-29, 12:06 UTC, before it runs)
+
+**Code:** `scripts/round15_compose_eval.py` (main; independent review MERGE after one fix round).
+- It uses the pilot's 1,000 How2Sign val sentences, `validation_sentences(round10 mix, 1000)`.
+- **Overlap with stage 1:** 289 of stage 1's 300 sentences are among them. Seeds follow sample position, so the overlap is not clip-for-clip with amendment 4.
+
+**Composition:** `core_crossfade`, `--selection stage1 --timing sign-fitted --core-margin 0.1`. Model 42389ca4 is pinned.
+
+**Runs:** each prior in 4 GPU shards.
+- F12 step 60000.
+- W14b step 30000, with the round14b generator mix.
+
+**End-to-end comparators:** each prior's own 1,000-clip pilot hypotheses (F12 1.636, W14b 1.786). Their references are verified identical in order.
+
+**Rule:** stage 2's rule (`bleu:end_to_end,bleu:mismatched_words,spotting`), applied to each prior's composition against its own end-to-end.
+
+**Decisions:**
+1. **W14b becomes the composition word source** if paired BLEU against F12's composition on these 1,000 sentences has a lower bound above 0. **This supersedes amendment 4's unresolved 300-sentence reading.**
+2. **M1:** if either composition has BLEU ≥ 2.55, a lower bound above 0 against end-to-end, and the content controls passing, M1 is met on this 1,000-sentence set. This counts as the "1,000-sentence confirmation", with the caveat that the set overlaps the development set in 289 sentences.
+
+Hand speed is reported.
