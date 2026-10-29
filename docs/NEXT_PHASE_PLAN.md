@@ -4522,3 +4522,30 @@ Wrist speed relative to real motion is also reported against the 1.5× bar.
 If r2 is adopted, the next run is W14b's generated composition, refined, under M1's rule.
 
 Chain: `r15_a9.sh`.
+
+### Round 15 amendment 8 result: refiner r1 NOT adopted (recorded 2026-10-29, 23:58 UTC)
+
+Real-word oracle, 1,000 How2Sign val sentences, refiner `sentence-refiner-r1` step 250 (SHA-256 `fc9cf85e…`), recogniser v3, paired bootstrap:
+
+| Form | BLEU | Wrist speed / real |
+|---|---|---|
+| oracle_stage2 (unrefined) | 2.17 | 2.26× |
+| oracle_stage2@recon | 1.90 | 2.33× |
+| **oracle_stage2@refined** | **1.62** [1.34, 1.91] | 1.45× |
+| shuffled@refined | 1.71 | 1.45× |
+| mismatched_words@refined | 1.41 | 1.45× |
+| rest_only@refined | 1.61 | 1.44× |
+| end-to-end F12 | 1.64 | — |
+
+Paired differences for @refined:
+
+| Against | Difference [95% CI] |
+|---|---|
+| unrefined | −0.55 [−0.89, −0.21] |
+| @recon | −0.28 [−0.62, +0.06] |
+| mismatched_words@refined | +0.21 [−0.13, +0.55] |
+| rest_only@refined | +0.01 [−0.33, +0.37] |
+
+- **Rule:** all four checks fail, so r1 is **not adopted**.
+- **Reading:** the refined output does not depend on its input. It scores the same whether the input carries the sentence's words, another sentence's words or rest frames, so the refiner writes a generic, slower sentence (1.45× real against 2.26×). This confirms the training observation: under teacher forcing the history carries the loss, and the source is ignored.
+- Amendment 9 (r2, no target history) is already declared and training.
