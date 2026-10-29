@@ -39,6 +39,12 @@ decoded top-5 >= 0.50 over its gate half and held-out signers), with every set's
 "orientation consistency" requires, in every set, the bootstrap 95% lower bound of the paired stored-minus-mirrored
 top-5 above 0, since every corpus is stored in the generator's orientation; G6 counts a word reliable on both real
 and decoded clips.
+
+**G6 calibrated on v2 (``--g6-calibration``;** recogniser v3 amendment 2, 2026-10-29 13:00 UTC). ``--baseline-run``
+(v2) is read on exactly the clips ``--run``'s gate report read (its gate halves and held-out sets, recorded split,
+label space and conform template; every set's clip count is checked against the report), real clips only, by G6's
+rule; G6' passes when v3's both-forms R5 count is at least v2's real-clip R5 count, overall and among the uncovered
+words. The report (v2's counts and reliable glosses, G6') is written once to ``training-runs/<run>/g6-calibration.json``.
 """
 from __future__ import annotations
 
@@ -164,8 +170,12 @@ def main(argv=None) -> int:
                         help="ASLLVD partitions for the cross-domain check; only those the recogniser never trained on")
     add_gate_arguments(parser)
     args = parser.parse_args(argv)
+    if args.gates and args.g6_calibration:
+        parser.error("--gates and --g6-calibration are separate runs")
     if args.gates:
         return gates_main(args)
+    if args.g6_calibration:
+        return g6_calibration_main(args)
     missing = [f"--{k.replace('_', '-')}" for k in ("citizen_manifest_key", "citizen_manifest_sha256",
                                                      "asllvd_manifest_key", "asllvd_manifest_sha256", "output_key")
                if not getattr(args, k)]
@@ -270,6 +280,10 @@ def add_gate_arguments(parser) -> None:
     g = parser.add_argument_group("recogniser v3 gates (--gates; docs/NEXT_PHASE_PLAN.md, recogniser v3 plan)")
     g.add_argument("--gates", action="store_true", help="validate a recogniser v3 run (its run.json defines the "
                    "corpora) and report gates G1-G7 with a PASS/FAIL table")
+    g.add_argument("--g6-calibration", action="store_true", help="amendment 2: read --baseline-run on --run's gate "
+                   "halves and held-out sets (real clips) by G6's reliability rule and decide G6' against --run's "
+                   "stored gate report (--gates-key)")
+    g.add_argument("--gates-key", help="--g6-calibration: the v3 gate report (default training-runs/<run>/gates.json)")
     g.add_argument("--baseline-run", default="sign-recognizer-v2", help="G2's reference instrument")
     g.add_argument("--word-split-key", default=WORD_SPLIT_KEY, help="the R5 words split into covered / uncovered")
     g.add_argument("--word-split-sha256", default=WORD_SPLIT_SHA256)
@@ -618,6 +632,143 @@ def gates_main(args) -> int:
     print(json.dumps(dict(verdict=report["verdict"], sha256=hashlib.sha256(payload).hexdigest())), flush=True)
     return 0
 
+
+# ------------------------------------------------------------------ recogniser v3 amendment 2: G6 calibrated on v2
+
+G6_PRIME = ("G6': v3's R5 words reliable on both real and decoded clips >= v2's R5 words reliable on real clips, "
+            "overall and among the uncovered words (docs/NEXT_PHASE_PLAN.md, recogniser v3 amendment 2, "
+            "2026-10-29 13:00 UTC)")
+
+
+def gate_rule(text: str) -> tuple[float, int]:
+    """(threshold, min clips) of a gate report's G6 rule text (``top-1 >= 0.8 over >= 3 clips, ...``)."""
+    import re
+    match = re.match(r"top-1 >= ([0-9.]+) over >= (\d+) clips", text or "")
+    if not match:
+        raise SystemExit(f"cannot read the gate report's G6 rule {text!r}")
+    return float(match[1]), int(match[2])
+
+
+def same_read(hits: int, recorded_top1: float, clips: int, tolerance: int = 1) -> bool:
+    """Whether ``hits`` top-1 hits over ``clips`` is the recorded read (rounded to 4 decimals) within ``tolerance``
+    clips: a GPU and a CPU run may break a near-tie differently."""
+    return abs(hits - recorded_top1 * clips) <= tolerance + 5e-5 * clips
+
+
+def g6_prime(v3: dict, v2: dict) -> dict:
+    """The amendment-2 verdict from v3's gate-report reliability (both forms) and v2's real-clip counts."""
+    overall = v3["r5"] >= v2["r5_real"]
+    uncovered = v3["uncovered"] >= v2["uncovered_real"]
+    return dict(rule=G6_PRIME, v3_r5_both=v3["r5"], v2_r5_real=v2["r5_real"], v3_uncovered_both=v3["uncovered"],
+                v2_uncovered_real=v2["uncovered_real"], overall_holds=overall, uncovered_holds=uncovered,
+                passed=overall and uncovered)
+
+
+def g6_calibration_main(args) -> int:
+    """Amendment 2: ``--baseline-run`` (v2) read on exactly the clips v3's gate report read for G6 (the run's gate
+    halves and held-out sets, its recorded validation split, label space and conform template), real clips only, by
+    G6's rule (top-1 >= ``--reliable`` over >= ``--min-clips`` clips, pooled); then G6' against the stored gate report.
+    Every set's clip count must equal the gate report's (the same records), and the run's data definition must give
+    its recorded data SHA-256 and validation split. Written once."""
+    import argparse
+    import hashlib
+    from concurrent.futures import ThreadPoolExecutor
+    from signtranslator.data_engineering.corpus_manifest import ContentCache
+    from signtranslator.generation.sign_recognizer import GlossMotionDataset
+    import train_sign_recognizer as trainer
+    store = make_store(args.store)
+    prefix = f"training-runs/{args.run}"
+    output_key = args.output_key or f"{prefix}/g6-calibration.json"
+    if store.exists(output_key):
+        raise SystemExit(f"{output_key} exists: the calibration is written once")
+    gates_key = args.gates_key or f"{prefix}/gates.json"
+    gates_payload = store.get(gates_key)
+    gates = json.loads(gates_payload)
+    if gates.get("run") != args.run or gates["reliability"].get("forms") != "both":
+        raise SystemExit(f"{gates_key} is not {args.run}'s gate report with G6 read on both forms")
+    if gates["baseline"]["run"] != args.baseline_run:
+        raise SystemExit(f"the gate report's baseline is {gates['baseline']['run']}, not {args.baseline_run}")
+    rule = gate_rule(gates["reliability"]["rule"])
+    if rule != (args.reliable, args.min_clips):
+        raise SystemExit(f"--reliable {args.reliable} / --min-clips {args.min_clips} differ from the gate report's G6 "
+                         f"rule {rule}")
+    device = torch.device("cuda" if args.device == "auto" and torch.cuda.is_available() else
+                          ("cpu" if args.device == "auto" else args.device))
+    cache = ContentCache(Path(args.cache_dir or tempfile.gettempdir()) / "sign-translator-cache", 8 * 2 ** 30)
+    run = json.loads(store.get(f"{prefix}/run.json"))
+    if not run.get("recognizer_v3"):
+        raise SystemExit(f"{args.run} is not a recogniser v3 run")
+    targs = argparse.Namespace(**{**trainer.V3_DEFAULTS, **run["args"]})
+    records, labels, summary, template, digest = trainer.build_v3_data(store, targs, cache, prefix)
+    if digest != run["data_sha256"] or digest != gates["data_sha256"]:
+        raise SystemExit("the run's data definition no longer gives the data its gates read")
+    if summary["val_split"] != run["data"]["val_split"] or summary["val_split"] != gates.get("val_split"):
+        raise SystemExit("the validation split differs from the run's recorded split")
+    baseline, base_glosses, base_best = load_model(store, args.baseline_run, device)
+    if base_glosses != labels:
+        raise SystemExit("the baseline's labels differ from the run's label space")
+    index = {g: i for i, g in enumerate(labels)}
+    split_payload = store.get(gates["word_split"]["key"])
+    if hashlib.sha256(split_payload).hexdigest() != gates["word_split"]["sha256"]:
+        raise SystemExit("the word split differs from the one the gates read")
+    split = json.loads(split_payload)
+    r5 = {index[w] for w in set(split["covered"]) | set(split["uncovered"])}
+    uncovered = {index[w] for w in split["uncovered"]}
+    kw = dict(labels=index, cache=cache, fetch=store.get, min_hand_fraction=targs.min_hand_fraction,
+              fps=targs.fps or None, template=template, hand_fraction_fallback=True)
+    manifest = dict(records=records)
+    names = sorted({r["partition"] for r in records if r["partition"].startswith(GATE_SETS)})
+    if set(names) != set(gates["per_set"]):
+        raise SystemExit(f"the sets {names} are not the gate report's {sorted(gates['per_set'])}")
+    per_set, pooled_y, pooled_ranks = {}, [], []
+    for name in names:
+        dataset = GlossMotionDataset(manifest, partition=name, **kw)
+        ids = [i for i, r in enumerate(dataset.records) if r["continuous"].get("seconds", 0.) <= targs.max_seconds]
+        if len(ids) != gates["per_set"][name]["clips"]:
+            raise SystemExit(f"{name}: {len(ids)} clips, the gate report read {gates['per_set'][name]['clips']} "
+                             "(a gate run with --max-clips cannot be calibrated)")
+        y = [index[dataset.records[i]["gloss"]["label"]] for i in ids]
+        with ThreadPoolExecutor(16) as pool:
+            states = [item[1] for item in pool.map(dataset.__getitem__, ids)]
+        ranks = ranks_from_logits(logits_of(baseline, states, device), y)
+        del states
+        reported = gates["per_set"][name].get("v2_real_top1")
+        hits = int((np.asarray(ranks) < 1).sum())
+        if reported is None or not same_read(hits, reported, len(ids)):
+            raise SystemExit(f"{name}: v2 reads top-1 {hits}/{len(ids)} here, the gate report {reported} (more than "
+                             "one clip apart: not the same read)")
+        per_set[name] = dict(clips=len(ids), v2_real_top1=read(ranks, 1), v2_real_top5=read(ranks, 5),
+                             gate_report_v2_real_top1=reported,
+                             v2_top1_hits=hits, gate_report_v2_top1_hits=int(round(reported * len(ids))))
+        pooled_y += y
+        pooled_ranks += ranks.tolist()
+        print(json.dumps({name: per_set[name]}), flush=True)
+    reliable = reliable_classes(pooled_y, pooled_ranks, threshold=args.reliable, min_clips=args.min_clips)
+    v2 = dict(run=args.baseline_run, checkpoint=base_best["checkpoint_key"], forms="real",
+              rule=f"top-1 >= {args.reliable} over >= {args.min_clips} clips, pooled over every gate-half and holdout "
+                   "set", clips=len(pooled_y), r5_words=len(r5), uncovered_words=len(uncovered),
+              r5_real=len(reliable & r5), uncovered_real=len(reliable & uncovered), reliable_real=len(reliable),
+              reliable_r5_words=sorted(labels[i] for i in reliable & r5),
+              reliable_uncovered_words=sorted(labels[i] for i in reliable & uncovered),
+              reliable_glosses_real=sorted(labels[i] for i in reliable))
+    verdict = g6_prime(gates["reliability"], v2)
+    others = [g for g in gates["gates"] if g["gate"] != "G6"]
+    report = dict(run=args.run, declared=G6_PRIME, gates=dict(key=gates_key,
+                                                              sha256=hashlib.sha256(gates_payload).hexdigest()),
+                  data_sha256=digest, val_split=summary["val_split"], word_split=gates["word_split"],
+                  v2=v2, v3=dict(r5_both=gates["reliability"]["r5"], uncovered_both=gates["reliability"]["uncovered"],
+                                 r5_real=gates["reliability"].get("r5_real"),
+                                 r5_decoded=gates["reliability"].get("r5_decoded")),
+                  per_set=per_set, g6_prime=verdict, other_gates_pass=all(g["passed"] for g in others),
+                  verdict=("v3 usable as the instrument (amendment 2)" if verdict["passed"]
+                           and all(g["passed"] for g in others) else "v2 stays"))
+    payload = json.dumps(report, indent=1, sort_keys=True, default=float).encode()
+    if args.output:
+        Path(args.output).write_bytes(payload)
+    store.put(output_key, payload)
+    print(json.dumps(dict(g6_prime=verdict, verdict=report["verdict"], key=output_key,
+                          sha256=hashlib.sha256(payload).hexdigest())), flush=True)
+    return 0
 
 
 if __name__ == "__main__":
