@@ -4229,3 +4229,36 @@ Hand speed is reported.
 **Result:** v3 passes amendment 2 if G6′ holds; G1–G5 and G7 already pass. Otherwise v2 stays.
 
 The calibration (v2's numbers) is reported whatever the outcome.
+
+### Recogniser v3 amendment 2 result (recorded 2026-10-29, 13:55 UTC): G6′ PASSES, so v3 becomes the instrument
+
+**Calibration** (`training-runs/sign-recognizer-v3d/g6-calibration.json`): v2 was read on the same 9,633 gate-half and held-out clips. Its per-set top-1 reproduces the gate report's.
+
+| | v2, reliable on real clips | v3, reliable on both forms |
+|---|---|---|
+| R5 words | 25 | **32** |
+| Uncovered words | 5 | **7** |
+
+**G6′ holds** on both counts, and G1–G5 and G7 already passed.
+
+**Under amendment 2, `sign-recognizer-v3d` (step 12000) is the word instrument from now on.** Earlier v2 numbers stay as recorded.
+
+## Recogniser v3 amendment 3: re-reading the priors with v3 (declared 2026-10-29, 13:55 UTC, before the re-reads)
+
+**Re-reads:** one GPU pod, lexicon only. Each reuses the meaning (BLEU) half of its stored 1,000-clip pilot through `--meaning-from-key`, with the pinned 150-word list (`--word-list-key` round14/r5-word-split.json) and the word split. The four priors:
+1. the control (round12 fixed-config c1000);
+2. F12 step 60000;
+3. W14 step 10000;
+4. W14b step 30000.
+
+**Rules re-applied with v3,** unchanged otherwise:
+- **Rule D** for W14b against the control.
+- **Round 14b's replacement rule** (W14b against F12):
+  - the v3 lexicon has a lower bound above 0;
+  - the stored paired BLEU (+0.15 [−0.17, +0.49]) is above −0.5.
+- **Round 14b's word-source rule.** All three parts must hold:
+  - uncovered teacher-forced +0.19 [+0.05, +0.32]: already met;
+  - covered teacher-forced −0.02 [−0.11, +0.08] against a −0.05 bound: **not met**, and it does not depend on the recogniser. So the word-source rule cannot pass on re-read; the composition word source is decided by amendment 5 (1,000 sentences) instead.
+  - the covered-word v3 lexicon has a lower bound above −0.10: reported.
+
+**If W14b replaces F12 under v3,** it becomes the leader for end-to-end generation.
