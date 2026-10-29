@@ -258,3 +258,42 @@ def test_the_split_must_partition_the_scored_words_and_its_subsets_average_to_th
     parts = pcc.split_lexicon(r5, np.r_[np.ones(216), np.zeros(84)], split)
     assert parts == {"covered": dict(words=108, samples=216, generated_top5=1.),
                      "uncovered": dict(words=42, samples=84, generated_top5=0.)}
+
+
+def test_a_pinned_word_list_scores_exactly_its_words_and_adds_only_its_record(pilot):
+    """Recogniser v3: --word-list-key pins the words; the R5 split read as a list gives the default words, so the
+    report is the default one plus ``word_list``; the reliable-gloss list is then not read at all."""
+    store, run = pilot
+    default = json.loads(run())
+    split_sha = hashlib.sha256(store.get("split.json")).hexdigest()
+    (store.root / "training-runs/sign-recognizer-v2/validation.json").unlink()   # a new instrument has no v2 list
+    pinned = json.loads(run("--word-list-key", "split.json", "--word-list-sha256", split_sha, output="reports/pin.json"))
+    assert pinned["word_list"] == dict(key="split.json", sha256=split_sha, words=12)
+    assert {k: v for k, v in pinned.items() if k != "word_list"} == default
+    reordered = list(reversed(WORDS))
+    store.put("list.json", json.dumps(dict(words=reordered)).encode())
+    other = json.loads(run("--word-list-key", "list.json", "--word-list-sha256",
+                           hashlib.sha256(store.get("list.json")).hexdigest(), output="reports/rev.json"))
+    assert list(other["lexicon"]["per_word"]) == sorted(reordered) and other["lexicon"]["words"] == 12
+
+
+def test_a_pinned_word_list_is_checked_before_anything_runs(pilot):
+    store, run = pilot
+    store.put("list.json", json.dumps(WORDS).encode())
+    sha = hashlib.sha256(store.get("list.json")).hexdigest()
+    with pytest.raises(SystemExit, match="SHA-256"):
+        run("--word-list-key", "list.json", "--word-list-sha256", "0" * 64)
+    with pytest.raises(SystemExit, match="go together"):
+        run("--word-list-key", "list.json")
+    with pytest.raises(SystemExit, match="dev"):
+        run("--word-list-key", "list.json", "--word-list-sha256", sha, "--word-set", "dev")
+    index = {w: i for i, w in enumerate(LABELS)}
+    assert pcc.pinned_words(json.dumps(WORDS).encode(), index, 12) == WORDS
+    with pytest.raises(ValueError, match="not labels"):
+        pcc.pinned_words(json.dumps(WORDS[:11] + ["ZEBRA"]).encode(), index, 12)
+    with pytest.raises(ValueError, match="--words"):
+        pcc.pinned_words(json.dumps(WORDS[:11]).encode(), index, 12)
+    with pytest.raises(ValueError, match="distinct"):
+        pcc.pinned_words(json.dumps(WORDS[:11] + ["ASK"]).encode(), index, 12)
+    with pytest.raises(ValueError, match="expected"):
+        pcc.pinned_words(json.dumps(dict(x=1)).encode(), {}, 12)
