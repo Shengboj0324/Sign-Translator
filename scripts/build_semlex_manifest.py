@@ -66,10 +66,13 @@ clips, arm_untracked 46%, trim side = articulating slot 58%). What changes, and 
   **signer's** majority articulating slot over their examined clips (tie: the larger summed score, then Right). Per
   clip and per signer choices and their agreement are in the summary (``trim_side_rule``) and each record's quality;
 - **heights:** the side's wrist **image** height above its shoulder (raw MediaPipe pose, normalised image y, up
-  positive; landmarks 16/12 for Right, 15/11 for Left), on every frame with a pose (out-of-frame wrists as MediaPipe
-  places them), instead of the skeleton wrist height on forearm-tracked frames. The raw landmarks are hashed against
-  the report and must hold exactly the state's frames; the window is on their frame times (the state's), not on the
-  state resampled to 24 fps;
+  positive; landmarks 16/12 for Right, 15/11 for Left), on every frame with a pose, instead of the skeleton wrist
+  height on forearm-tracked frames. A frame whose wrist is not in frame (image x or y outside [0, 1], or its pose
+  visibility below 0.5) is at rest: its height is the lower of the clip's lowest in-frame height and that of a wrist
+  on the frame's lower edge (MediaPipe's guessed positions
+  below the frame otherwise jitter across the threshold and stretch the window over the clip); a clip whose wrist is
+  never in frame is ``trim:wrist_never_in_frame``. The raw landmarks are hashed against the report and must hold
+  exactly the state's frames; the window is on their frame times (the state's real rate, about 30 fps for Sem-Lex);
 - **tracked:** the pose (not the forearm) must be found on at least ``--min-tracked`` of the frames
   (``trim:pose_untracked`` otherwise);
 - **drop:** a clip whose chosen hand is detected on fewer than ``--trim-min-hand`` (0.2) of its frames is dropped
@@ -461,22 +464,34 @@ def signer_sides(clips: dict) -> dict:
 
 
 POSE_POINTS = {"Left": (11, 15), "Right": (12, 16)}   # MediaPipe pose (shoulder, wrist) of each state slot
+WRIST_VISIBILITY = .5                                  # below: the wrist is not seen (its position is a guess)
 
 
 def image_window(clip, side: str, t0: float, threshold: float, margin: float, min_tracked: float, min_seconds: float):
     """The hand-evidence rule's window on one side: ``sign_window``'s rule (rest = 10th, peak = 95th percentile of
     the height; active = frames above rest + threshold x (peak - rest); first to last active frame, +- margin,
     clipped to the clip) on the side's wrist **image** height above its shoulder (normalised image y, up positive)
-    over the frames with a pose (out-of-frame wrists included, as MediaPipe places them), on the raw landmarks' own
-    frame times (those of the state) from ``t0``, the state's first frame. (window, reason): reason "trimmed",
-    "pose_untracked" (pose on fewer than ``min_tracked`` of the frames) or "no_sign_window"."""
+    over the frames with a pose, on the raw landmarks' own frame times (those of the state, its real rate) from
+    ``t0``, the state's first frame. A frame whose wrist is **not in frame** (image x or y outside [0, 1], or pose
+    visibility of the wrist below ``WRIST_VISIBILITY`` = 0.5) is at rest: before the percentiles its height is set to
+    the lower of the clip's lowest in-frame height and the height of a wrist on the frame's lower edge (the lowest
+    over the clip's frames), so MediaPipe's guessed out-of-frame positions never cross the threshold, and a wrist seen
+    only while signing still has a rest below it. (window, reason): reason "trimmed", "pose_untracked" (no pose, or a pose on fewer than ``min_tracked``
+    of the frames), "wrist_never_in_frame" or "no_sign_window"."""
     shoulder, wrist = POSE_POINTS[side]
     found = np.asarray(clip.pose_found, dtype=bool)
     image = np.asarray(clip.pose_image, dtype=np.float64)
     heights = image[:, shoulder, 1] - image[:, wrist, 1]
     found &= np.isfinite(heights)
-    if not len(found) or found.mean() < min_tracked:
+    if not found.any() or found.mean() < min_tracked:
         return None, "pose_untracked"
+    xy = image[:, wrist]
+    inside = found & (np.asarray(clip.pose_visibility, dtype=np.float64)[:, wrist] >= WRIST_VISIBILITY) & \
+        (xy >= 0.).all(axis=1) & (xy <= 1.).all(axis=1)
+    if not inside.any():
+        return None, "wrist_never_in_frame"
+    bottom = float((image[found, shoulder, 1] - 1.).min())               # a wrist on the frame's lower edge
+    heights = np.where(inside, heights, min(float(heights[inside].min()), bottom))   # out of frame or unseen: rest
     times = np.asarray(clip.times, dtype=np.float64) - t0
     h = heights[found]
     rest, peak = np.percentile(h, 10), np.percentile(h, 95)
@@ -587,6 +602,11 @@ def apply_hand_evidence(pending: list, outcomes: list, min_hand: float) -> dict:
     def seconds(w):
         return w[1] - w[0] + 1 / 24. if w else None
     both = [out for _, out in examined if out.get("window") and out["old_rule"]["window"]]
+
+    def fractions(windows) -> dict:
+        """The windows' share of their clips (window span over the clip's span): quantiles and the share >= 0.9."""
+        f = [(w[1] - w[0]) / c for w, c in windows if c > 0]
+        return dict(quantiles(f) or {}, at_least_0_9=round(float(np.mean(np.array(f) >= .9)), 4) if f else None)
     return dict(
         rule=("hand-evidence: per clip, each hand slot's detected fraction x finger-articulation energy (state at 24 "
               "fps); the side is the signer's majority slot over their clips (tie: larger summed score, then Right); "
@@ -608,6 +628,10 @@ def apply_hand_evidence(pending: list, outcomes: list, min_hand: float) -> dict:
                                             fraction=round(old_agree / len(decided), 4) if decided else None),            trimmed_seconds=quantiles(seconds(out["old_rule"]["window"]) for _, out in examined
                                       if out["old_rule"]["window"])),
         trimmed_seconds=quantiles(seconds(out["window"]) for _, out in examined if out.get("window")),
+        window_fraction_of_clip=fractions((out["window"], out["clip_seconds"]) for _, out in examined
+                                          if out.get("window")),
+        old_rule_window_fraction_of_clip=fractions((out["old_rule"]["window"], out["clip_seconds"])
+                                                   for _, out in examined if out["old_rule"]["window"]),
         both_rules_trimmed=dict(clips=len(both), new_seconds=quantiles(seconds(o["window"]) for o in both),
                                 old_seconds=quantiles(seconds(o["old_rule"]["window"]) for o in both)))
 

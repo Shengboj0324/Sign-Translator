@@ -406,6 +406,41 @@ def test_image_window_follows_sign_window_on_the_image_wrist_height():
     assert job.image_window(end, "Right", 10., .1, .25, .3, .5)[0][1] == round(29 / 30, 4)
 
 
+def test_image_window_treats_out_of_frame_and_unseen_wrists_as_rest():
+    times = np.arange(30) / 30.
+    clip = _raw_clip(times)
+    image, vis = clip.pose_image.copy(), clip.pose_visibility.copy()
+    # MediaPipe's guesses below the frame jitter: y in 1.05..1.6 at rest, some *above* the in-frame rest height
+    rng = np.random.default_rng(0)
+    rest = [k for k in range(30) if not 10 <= k < 20]
+    image[rest, 16, 1] = rng.uniform(1.05, 1.6, len(rest))
+    image[[2, 27], 16, 1] = .3                         # two high guesses, but unseen (visibility 0.1)
+    vis[[2, 27], 16] = .1
+    image[5, 16, 0] = -.2                              # one guess left of the frame
+    image[5, 16, 1] = .2
+    jitter = dataclasses.replace(clip, pose_image=image, pose_visibility=vis)
+    assert job.image_window(jitter, "Right", 0., .1, .25, .3, .5) == job.image_window(clip, "Right", 0., .1, .25, .3, .5)
+    w, _ = job.image_window(jitter, "Right", 0., .1, .25, .3, .5)
+    assert w == (round(10 / 30 - .25, 4), round(19 / 30 + .25, 4))   # not stretched to frames 2-27
+    never = dataclasses.replace(clip, pose_visibility=np.zeros_like(vis))
+    assert job.image_window(never, "Right", 0., .1, .25, .3, .5) == (None, "wrist_never_in_frame")
+    # --min-tracked 0 with no pose at all: refused as untracked, not a crash
+    none = dataclasses.replace(clip, pose_found=np.zeros(30, bool))
+    assert job.image_window(none, "Right", 0., .1, .25, 0., .5) == (None, "pose_untracked")
+
+
+def test_image_window_is_in_real_seconds_at_any_frame_rate():
+    """The window is on the clip's own timestamps: the same 0.4-0.8 s sign gives the same window at 24, 25 and 30 fps
+    (to a frame), and a 30 fps clip is never read as 24 fps (which would put the sign at 0.5-1.0 s)."""
+    out = {}
+    for fps in (24., 25., 30., 29.97):
+        times = 3. + np.arange(int(2 * fps)) / fps          # 2 s from t = 3 s
+        a, b = int(np.ceil(.4 * fps)), int(np.floor(.8 * fps)) + 1
+        out[fps], _ = job.image_window(_raw_clip(times, right=(a, b), left=None), "Right", 3., .1, .25, .3, .5)
+        assert abs(out[fps][0] - (.4 - .25)) <= 1 / fps + 1e-9 and abs(out[fps][1] - (.8 + .25)) <= 1 / fps + 1e-9
+    assert abs(out[30.][1] - ((int(np.floor(.8 * 30)) / 24.) + .25)) > .15     # what an index / 24 reading would give
+
+
 def test_hand_evidence_scores_and_signer_majority():
     from tests.test_generation_signing_space import signer_state
     state = signer_state(4, frames=20, amplitude=.4)
