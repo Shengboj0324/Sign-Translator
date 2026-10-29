@@ -3551,3 +3551,46 @@ Real clips score BLEU 4.136 and blank 1.859.
 **Next.**
 - If a variant is PROMISING: the declared chain (sweep, gate, strict review R1–R7) on that composition.
 - If not: the diagnosis reads oracle stage 2 and the hand-speed check before anything else.
+
+### Round 14 diagnosis, recorded (2026-10-29, 00:33 UTC; report-only, CPU; `round14/diagnosis-w14.json`)
+
+**Summary:** W14 learned the new words, but the pilot cannot see them. The likely cause is upstream: the "un-mirrored" Sem-Lex states appear to be the mirror image of every other corpus. Independent verification is running; nothing trains on this until it is confirmed.
+
+**Ruled out:**
+- **Text mismatch:** all 31 newly covered words' Sem-Lex texts equal the pilot's prompts.
+- **Filtering:** 19,067 of 19,067 records pass the trainer.
+
+**Few samples:**
+- Median of 27 draws per new word in 10k steps, against 375 per covered word in F12's run.
+- 8 of the 31 words have a single record.
+- The learning rate restarted at a near-peak 3e-4.
+
+**Instrument (recogniser v2, top-5):**
+
+| Clips | n | As stored | Mirrored |
+|---|---|---|---|
+| Real Sem-Lex val, new words | 107 | 0.336 | 0.720 |
+| Real covered isolated val | 99 | 0.737 | 0.404 |
+| Tokenizer-decoded real Sem-Lex, the pilot's form | 107 | 0.009 | 0.271 |
+
+The last row is the ceiling the pilot could ever show for the new words.
+
+**Model (teacher-forced retrieval, 49 candidates, observed parts only; chance 0.102):**
+
+| Clips | W14 | F12 | W14 − F12 |
+|---|---|---|---|
+| Sem-Lex val, new words | 0.579 | 0.206 | +0.374 [0.128, 0.577] |
+| Covered isolated val | 0.391 | 0.391 | 0.00 [−0.11, 0.11] |
+
+Teacher-forced, the covered words are kept (one-step 0.78 against 0.84, paired −0.06 [−0.16, 0.02]). So the free-run drop from 0.616 to 0.463 is a change in the sampled style, not forgetting.
+
+**Orientation:**
+- F12 never saw Sem-Lex. It fits 107 of 107 stored Sem-Lex val clips better mirrored (+0.54 nats per code [0.50, 0.59]), and 64 of 64 ASLLVD/RIT/WLASL clips better as stored.
+- W14 now fits 78% of those covered clips better mirrored, so it has partly taken on the flipped handedness.
+
+This agrees with the voided wrist-path handedness measure ("not mirrored"), and contradicts the height cue that the un-mirroring followed.
+
+**Proposed round 14b** (declared separately, after verification):
+1. **Orientation:** Sem-Lex in its original extracted orientation (`states-video-v1`), gated before training by F12's likelihood and v2's stored-against-mirrored read.
+2. **Training:** a warm start from F12 step 60000 at a low peak learning rate (about 1e-4, short warmup), with Sem-Lex at weight 1–2, trained past 10k steps.
+3. **Pilot additions:** part-valid teacher-forced retrieval, and the decoded-real ceiling for each word subset.
