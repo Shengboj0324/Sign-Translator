@@ -3860,7 +3860,7 @@ Hand speed is reported against the 1.5× bar.
 - **Step 10000:** if rule 1 fails, W14b is stopped. Otherwise training continues to step 30000.
 - **Step 30000:** rules 2 and 3 decide. If neither passes, F12 stays leader and the word source.
 
-**Round 14b pilot mechanics (recorded 2026-10-29, 02:55 UTC).**
+**Round 14b pilot mechanics (recorded 2026-10-29, 02:51 UTC).**
 - **F12 split report:** F12's step-60000 pilot report predates the word split. A copy, `round14/pilot-f12-step60000-with-split.json`, carries `lexicon_split` from `round14/r5-word-split.json` (sha 676f56cb), with every `per_word` count unchanged. It is the comparison report for round 14b's per-subset test.
 - **W14's paired per-subset result,** now computed:
   - covered words −0.153 [−0.222, −0.083];
