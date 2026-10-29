@@ -4050,3 +4050,36 @@ Its spotting recall is also far lower (0.16 against 0.36): the prior's own trans
 - **Cost:** about $8–12 and 8–12 h.
 
 **Order:** code (with review) now. Training is declared after W14b's step-30000 verdict, which is still read with v2 as declared.
+
+## Recogniser v3 declared: `sign-recognizer-v3d` (declared 2026-10-29, 07:49 UTC, before any of it runs)
+
+**Code:** main `4aac1fd`. Independent review MERGE after one fix round. The v2 path is byte-identical, and no hygiene leaks were found.
+
+**Pipeline:**
+1. ASL Citizen pixel-side check (CPU). Image-right signers are excluded from training.
+2. Tokenizer-decoded copies of every train and val clip, in the pilot's all-valid form: F12's tokenizer d2 step 5000, 4 shards on CPU pods, merged into a pinned index.
+3. Training on one L40S, 3–5 h:
+   - **Corpora:** ASL Citizen (recognition-only; label space), `semlex-text-v2` (by ASL-LEX code), RIT and ASLLVD (by Sign Bank), WLASL (upper-case, with the video-hygiene drops).
+   - **Held-out Sem-Lex signers:** 35, 54, 59 and 63.
+   - **Training settings:** `--recon-p 0.5`, `--validity-dropout 0.3`, `--augment`, conformed to F12's layout.
+   - **Not used:** no class weighting, and corpus weights at 1.
+   - **Checkpoint selection:** on the selection halves only.
+4. Gates (`validate_sign_recognizer.py --gates --g4-corpus-min semlex-text-v2=0.5`).
+
+**Gates,** all of which must pass, read on the gate halves and held-out signers:
+
+| Gate | Requirement |
+|---|---|
+| G1 | blank and random-code reads at chance, per set (top-1 ≤ max(majority share, 3/2731), top-5 ≤ max(top-5 share, 15/2731)) |
+| G2 | real reads: ASL Citizen top-5 ≥ 0.70; ASLLVD top-1 ≥ 0.58; RIT and WLASL top-5 no more than 0.03 below v2 |
+| G3 | Sem-Lex held-out signers top-5 ≥ 0.60, and paired against v2 on the uncovered words with a lower bound above 0 |
+| G4 | decoded-real top-5: ≥ 0.70 on the 108 covered words and ≥ 0.60 on the 42 uncovered; per corpus, decoded minus real lower bound ≥ −0.10; **Sem-Lex decoded ≥ 0.50** |
+| G5 | stored minus mirrored, bootstrap lower bound above 0 in every set |
+| G6 | at least 100 of 150 R5 words, and at least 25 of the 42 uncovered, reliable on both real and decoded clips |
+| G7 | ASLLRP in-context top-1 ≥ 0.07 |
+
+**If any gate fails, v2 remains the instrument.**
+
+**If all pass:** the control, F12 step 60000, W14 and W14b are re-read with v3 on the pinned 150-word list before any comparison uses it. Earlier rounds' v2 numbers stay as recorded.
+
+**Cost:** about $8–12.
