@@ -4,7 +4,8 @@ option 2). Computed once, written once, pinned by its SHA-256 in every run that 
 
 **Clips:** How2Sign *train* records of the evaluation mix only (``corpus == how2sign-two-view-text-v1`` and ``partition
 == train``; the manifest's val, test and held-out partitions are never read, and How2Sign's signer 9, the final-test
-signer, is in none of the train records: any record whose ``signer`` field names 9 stops the run), with usable
+signer, is in none of the train records: ``recognizer_corpora.check_loadable`` stops the run on a record of
+``signer_component`` c00 (signer 9), an unknown component or a source signer_id of 9), with usable
 continuous channels, sorted by sign id, ``--clips`` of them drawn with ``random.Random(--seed)``. Each state is read at
 24 fps as the evaluation reads states (``evaluate_text_to_motion.load_state``, ``at_rate``).
 
@@ -36,12 +37,15 @@ EVAL_MIX_SHA = "ccfd10b8961e95523ac7938c84261c89f22c8ae786af961908fbeba21fa5647a
 def train_sample(manifest, clips: int, seed: int) -> list[dict]:
     """The How2Sign train records the statistics read (module docstring)."""
     from signtranslator.data_engineering.corpus_manifest import usable_channels
+    from signtranslator.generation.recognizer_corpora import check_loadable
     pool = []
     for r in manifest["records"]:
         if r.get("corpus") != CORPUS or r.get("partition") != "train":
             continue
-        if str(r.get("signer", "")).strip() in ("9", "signer9", "signer_9"):
-            raise SystemExit(f"{r.get('sign')}: a train record of How2Sign signer 9")
+        try:                                    # the repository's guard: signer_component c00 (signer 9), an unknown
+            check_loadable(r)                   # component, or a source signer_id of 9 is never read
+        except RuntimeError as e:
+            raise SystemExit(f"How2Sign signer 9 guard: {e}") from None
         if usable_channels(r, "continuous"):
             pool.append(r)
     pool.sort(key=lambda r: r["sign"])

@@ -80,7 +80,7 @@ def test_space_normalise_is_rigid_per_word_and_meets_the_sentence_targets():
     ps = pieces()
     out, info = cs.space_normalise(ps)
     side = info["side"]
-    assert info["scale"] == 1. and len(info["torso_correction_degrees"]) == 3
+    assert side == "Right" and info["scale"] == 1. and set(info["wrist_speeds"]) == {"Left", "Right"}
     dirs = []
     for p, q in zip(ps, out):
         w0, ok0 = cs.wrist_from_shoulder(p["state"], side)
@@ -92,11 +92,13 @@ def test_space_normalise_is_rigid_per_word_and_meets_the_sentence_targets():
         dirs.append(cs._unit(cs._unit(w1[q["lo"]:q["hi"] + 1]).mean(0)))
     for d in dirs[1:]:                                                    # every word's centroid on the same direction
         np.testing.assert_allclose(d, dirs[0], atol=1e-6)
-    torsos = [cs.chordal_mean(cs.torso(q["state"])[0][q["lo"]:q["hi"] + 1]) for q in out]
-    for t in torsos[1:]:
-        np.testing.assert_allclose(t, torsos[0], atol=1e-6)
+    # the torso and the head are untouched (no torso correction: the head channels are in the face camera frame)
+    for p, q in zip(ps, out):
+        np.testing.assert_array_equal(cs.torso(p["state"])[0], cs.torso(q["state"])[0])
+        for name in ("head_rotation", "head_translation"):
+            np.testing.assert_array_equal(p["state"].channels[name].values, q["state"].channels[name].values)
     # cores, non-body channels and the other arm are untouched
-    other = "Left" if side == "Right" else "Right"
+    other = "Left"
     for p, q in zip(ps, out):
         assert (p["lo"], p["hi"]) == (q["lo"], q["hi"])
         np.testing.assert_array_equal(p["state"].channels["right_hand"].values, q["state"].channels["right_hand"].values)
@@ -108,8 +110,8 @@ def test_space_normalise_scales_the_excursion_to_the_statistics():
     ps = pieces()
     _, base = cs.space_normalise(ps)
     target = base["current_rms_angle"] if base["current_rms_angle"] else .3
-    stats = dict(rms_angle=.8 * cs.space_normalise(ps, dict(rms_angle=1., direction={}, torso=[1, 0, 0, 0, 1, 0]))[1]
-                 ["current_rms_angle"], direction={}, torso=[1, 0, 0, 0, 1, 0])
+    stats = dict(rms_angle=.8 * cs.space_normalise(ps, dict(rms_angle=1., direction={}))[1]["current_rms_angle"],
+                 direction={})
     out, info = cs.space_normalise(ps, stats)
     assert info["scale"] == pytest.approx(.8, abs=1e-6) and target is not None
     side = info["side"]
@@ -122,11 +124,12 @@ def test_space_normalise_scales_the_excursion_to_the_statistics():
 
 def test_space_normalise_how2sign_target():
     ps = pieces()
-    stats = dict(rms_angle=.2, direction={"Left": [0., -1., 0.], "Right": [0., -1., 0.]},
-                 torso=cs.to_6d(np.eye(3)).tolist())
+    target = cs._unit(np.array([.1, -.6, .8]))
+    stats = dict(rms_angle=.2, direction={"Right": target.tolist()})
     out, info = cs.space_normalise(ps, stats, target="how2sign")
-    T = cs.chordal_mean(cs.torso(out[0]["state"])[0][out[0]["lo"]:out[0]["hi"] + 1])
-    np.testing.assert_allclose(T, np.eye(3), atol=1e-6)
+    for q in out:                                                          # with the excursion scaled about it
+        w, _ = cs.wrist_from_shoulder(q["state"], "Right")
+        assert cs._unit(cs._unit(w[q["lo"]:q["hi"] + 1]).mean(0)) @ target > .99
 
 
 def test_minimal_rotation_and_chordal_mean():
@@ -173,10 +176,15 @@ def test_space_stats_script_reads_how2sign_train_only(tmp_path, stage2_store):  
     with pytest.raises(SystemExit, match="refusing"):
         ss.main(["--mix-key", "mix.json", "--mix-sha256", sha, "--store", f"dir:{tmp_path / 'store'}",
                  "--output-file", str(out)])
-    bad = dict(manifest)
-    bad["records"] = manifest["records"] + [dict(manifest["records"][0], sign="s9", signer="9")]
-    with pytest.raises(SystemExit, match="signer 9"):
-        ss.train_sample(bad, 10, 0)
+    assert report["statistics"]["side"] == "Right" and set(report["statistics"]["direction"]) == {"Right"}
+    # the signer-9 guard fires on How2Sign's own field (signer_component c00), on an unknown component and on a
+    # source signer_id of 9
+    first = next(r for r in manifest["records"] if r["corpus"] == ss.CORPUS and r["partition"] == "train")
+    for change in (dict(signer_component="c00"), dict(signer_component=None),
+                   dict(source=dict(first.get("source") or {}, signer_id=9))):
+        bad = dict(manifest, records=manifest["records"] + [dict(first, sign="s9", **change)])
+        with pytest.raises(SystemExit, match="signer 9"):
+            ss.train_sample(bad, 10, 0)
 
 
 def test_compose_eval_knobs(tmp_path, stage2_store):  # noqa: F811

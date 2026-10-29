@@ -5,18 +5,27 @@ training; deterministic; every knob off by default (the composition path is then
 **Space normalisation** (``space_normalise``) works on the canonical rotations, in the chest frame of the forward
 kinematics (``canonical_skeleton``: nominal bone lengths, the wrist at shoulder + R_upper (0.28 rest_upper) + R_upper
 R_fore (0.25 rest_fore)), per word clip of a composition:
-1. **torso**: the word's mean torso orientation M_k (the chordal mean of Pelvis x Chest over its core's valid frames)
-   is moved to the target M* (the chordal mean over the sentence's cores, or How2Sign train's): every frame's Pelvis
-   rotation is pre-multiplied by M* M_k^T, so the word's own torso motion is kept;
-2. **dominant-hand centroid**: on the sentence's dominant side (the side whose wrist height in the chest frame varies
-   most over the cores), the word's mean shoulder-to-wrist direction m_k is rotated onto the target m* (the normalised
-   mean over the sentence's cores, or How2Sign train's) by the minimal rotation Q_k, applied to the upper arm in the
-   chest frame (the whole arm turns rigidly about the shoulder: the word's hand trajectory keeps its shape);
-3. **excursion**: the sentence's RMS angle of the dominant wrist direction about m* (over its cores, after step 2) is
+1. **dominant-hand centroid**: on the **right** arm, the word's mean shoulder-to-wrist direction m_k is rotated onto the
+   target m* (the normalised mean over the sentence's cores, or How2Sign train's) by the minimal rotation Q_k, applied
+   to the upper arm in the chest frame (the whole arm turns rigidly about the shoulder: the word's hand trajectory
+   keeps its shape);
+2. **excursion**: the sentence's RMS angle of the right wrist direction about m* (over its cores, after step 1) is
    scaled to How2Sign train's median clip RMS angle (``stats``): each frame's direction is turned along its great
    circle from m* by (s - 1) x its angle, s = target / current clipped to ``scale_clip``.
-Steps 1-2 use the sentence's own targets with ``target="sentence"`` and How2Sign train's with ``target="how2sign"``;
-step 3 always needs the statistics (``space_statistics``, from How2Sign *train* clips only).
+Step 1 uses the sentence's own target with ``target="sentence"`` and How2Sign train's with ``target="how2sign"``; step 2
+always needs the statistics (``space_statistics``, from How2Sign *train* clips only).
+
+**The dominant side is the right one, always** (``DOMINANT``). The states are right-dominant by construction: the
+corpus loader mirrors left-handed records (``corpus_manifest.load_sample``), How2Sign's signers are right-dominant
+and so is the generator. A per-clip cue does not work: the wrist-height range picked the left arm in about a third of
+How2Sign train clips, because the non-dominant wrist moves as much in two-handed signs. Each side's wrist speed is
+reported as a diagnostic only (``wrist_speeds``), never used.
+
+**No torso correction.** Rotating the torso (Pelvis) would turn the arms and shoulders but not the head channels,
+which live in MediaPipe's face-geometry camera frame (``head_rotation``, ``head_translation`` in metres from the
+camera); the head-torso relation would shift, and rotating the head consistently needs the hips' position in that
+camera frame, which the canonical state does not hold. So the torso is left as recorded; the torso orientation in the
+statistics is a diagnostic.
 
 **Minimum-jerk bridges** (``minimum_jerk_bridge``): the frames between two cores follow the quintic with the cores'
 boundary values and velocities (per-frame differences of the resampled cores' last two and first two frames) and zero
@@ -114,18 +123,22 @@ def _unit(v: np.ndarray) -> np.ndarray:
     return v / np.clip(np.linalg.norm(v, axis=-1, keepdims=True), 1e-12, None)
 
 
-def dominant_side(states_and_frames) -> str:
-    """The side whose wrist height (chest frame) varies most over the given (state, frame indices) pairs."""
-    best = None
+DOMINANT = "Right"                    # the states are right-dominant by construction (module docstring)
+
+
+def wrist_speeds(states_and_frames) -> dict:
+    """Diagnostic only: each side's mean wrist speed (chest frame, metres per frame) over the given (state, frame
+    indices) pairs, on consecutive valid frames."""
+    out = {}
     for side in SIDES:
-        h = []
+        steps = []
         for state, idx in states_and_frames:
             p, ok = wrist_from_shoulder(state, side)
-            h += list(p[idx][ok[idx], 1])
-        spread = float(np.ptp(h)) if h else -1.
-        if best is None or spread > best[0]:
-            best = (spread, side)
-    return best[1]
+            idx = np.asarray(idx)
+            both = ok[idx[1:]] & ok[idx[:-1]] & (np.diff(idx) == 1)
+            steps += list(np.linalg.norm(p[idx[1:]] - p[idx[:-1]], axis=-1)[both])
+        out[side] = round(float(np.mean(steps)), 6) if steps else None
+    return out
 
 
 def rms_angle(directions: np.ndarray, centre: np.ndarray) -> float:
@@ -139,32 +152,36 @@ def rms_angle(directions: np.ndarray, centre: np.ndarray) -> float:
 # ---- How2Sign train statistics -------------------------------------------------------------------------------------
 
 def clip_statistics(state) -> dict | None:
-    """One clip's dominant side, mean dominant direction, RMS excursion angle and mean torso; None when the clip's
-    dominant arm or torso is never valid."""
+    """One clip's right-arm mean direction and RMS excursion angle, with its mean torso and both wrists' speeds as
+    diagnostics; None when the right arm is never valid."""
     frames = np.arange(len(state.timestamps))
-    side = dominant_side([(state, frames)])
-    p, ok = wrist_from_shoulder(state, side)
-    T, tok = torso(state)
-    if not ok.any() or not tok.any():
+    p, ok = wrist_from_shoulder(state, DOMINANT)
+    if not ok.any():
         return None
     u = _unit(p[ok])
     m = _unit(u.mean(0))
-    return dict(side=side, direction=m.tolist(), rms_angle=rms_angle(u, m), torso=to_6d(chordal_mean(T[tok])).tolist())
+    T, tok = torso(state)
+    return dict(side=DOMINANT, direction=m.tolist(), rms_angle=rms_angle(u, m),
+                torso=to_6d(chordal_mean(T[tok])).tolist() if tok.any() else None,
+                wrist_speeds=wrist_speeds([(state, frames)]))
 
 
 def space_statistics(rows: list[dict]) -> dict:
-    """How2Sign train targets from ``clip_statistics`` rows: the median RMS excursion angle, per dominant side the
-    normalised mean direction, and the chordal mean torso."""
+    """How2Sign train targets from ``clip_statistics`` rows: the median right-arm RMS excursion angle and the
+    normalised mean right-arm direction; diagnostics: the chordal-mean torso (not applied) and the median wrist speed
+    of each side."""
     rows = [r for r in rows if r]
     if not rows:
-        raise ValueError("no clip with a valid dominant arm and torso")
-    direction = {}
-    for side in SIDES:
-        d = [r["direction"] for r in rows if r["side"] == side]
-        direction[side] = _unit(np.mean(d, 0)).round(6).tolist() if d else None
-    return dict(clips=len(rows), rms_angle=round(float(np.median([r["rms_angle"] for r in rows])), 6),
-                direction=direction, sides={s: sum(r["side"] == s for r in rows) for s in SIDES},
-                torso=to_6d(chordal_mean(_matrices(np.asarray([r["torso"] for r in rows])))).round(6).tolist())
+        raise ValueError("no clip with a valid right arm")
+    torsos = [r["torso"] for r in rows if r.get("torso")]
+    speeds = {s: [r["wrist_speeds"][s] for r in rows if (r.get("wrist_speeds") or {}).get(s) is not None]
+              for s in SIDES}
+    return dict(clips=len(rows), side=DOMINANT, rms_angle=round(float(np.median([r["rms_angle"] for r in rows])), 6),
+                direction={DOMINANT: _unit(np.mean([r["direction"] for r in rows], 0)).round(6).tolist()},
+                diagnostics=dict(
+                    torso_not_applied=to_6d(chordal_mean(_matrices(np.asarray(torsos)))).round(6).tolist()
+                    if torsos else None,
+                    wrist_speed_median={s: round(float(np.median(v)), 6) if v else None for s, v in speeds.items()}))
 
 
 # ---- normalisation of a composition's word clips -------------------------------------------------------------------
@@ -189,25 +206,8 @@ def space_normalise(pieces, stats: dict | None = None, *, target: str = "sentenc
     if target == "how2sign" and not stats:
         raise ValueError("the how2sign target needs the statistics")
     cores = [np.arange(p["lo"], p["hi"] + 1) for p in pieces]
-    # 1. torso
-    torsos = [torso(p["state"]) for p in pieces]
-    pooled = [T[idx][ok[idx]] for (T, ok), idx in zip(torsos, cores)]
-    if target == "how2sign":
-        M_star = _matrices(np.asarray(stats["torso"]))
-    else:
-        M_star = chordal_mean(np.concatenate(pooled)) if sum(len(x) for x in pooled) else np.eye(3)
-    out, torso_angles = [], []
-    for p, (T, ok), idx, sel in zip(pieces, torsos, cores, pooled):
-        if not len(sel):
-            out.append(dict(p)); torso_angles.append(0.)
-            continue
-        C = M_star @ chordal_mean(sel).T
-        torso_angles.append(float(np.degrees(np.arccos(np.clip((np.trace(C) - 1) / 2, -1., 1.)))))
-        body, index = _body(p["state"])
-        P = _matrices(body.values[:, index["Pelvis"]])
-        out.append(dict(p, state=_set_body(p["state"], {"Pelvis": C @ P})))
-    # 2. the dominant-hand centroid
-    side = dominant_side([(p["state"], idx) for p, idx in zip(out, cores)])
+    out, side = [dict(p) for p in pieces], DOMINANT
+    # 1. the dominant (right) hand's centroid
     arms = [wrist_from_shoulder(p["state"], side) for p in out]
     dirs = [_unit(w[idx][ok[idx]]) for (w, ok), idx in zip(arms, cores)]
     if target == "how2sign" and stats["direction"].get(side):
@@ -215,7 +215,7 @@ def space_normalise(pieces, stats: dict | None = None, *, target: str = "sentenc
     else:
         m_star = _unit(np.concatenate(dirs).mean(0)) if sum(len(d) for d in dirs) else None
     Q = [minimal_rotation(_unit(d.mean(0)), m_star) if len(d) and m_star is not None else np.eye(3) for d in dirs]
-    # 3. the excursion
+    # 2. the excursion
     scale, current = 1., None
     if stats and m_star is not None:
         aligned = np.concatenate([d @ q.T for d, q in zip(dirs, Q) if len(d)]) if any(len(d) for d in dirs) else []
@@ -237,7 +237,7 @@ def space_normalise(pieces, stats: dict | None = None, *, target: str = "sentenc
         final.append(dict(p, state=_set_body(p["state"], {f"{side}UpperArm": G @ Ru})))
     info = dict(side=side, target=target, scale=round(scale, 4),
                 current_rms_angle=round(current, 6) if current is not None else None,
-                torso_correction_degrees=[round(a, 3) for a in torso_angles],
+                wrist_speeds=wrist_speeds([(p["state"], idx) for p, idx in zip(pieces, cores)]),
                 centroid_rotation_degrees=[round(float(np.degrees(np.arccos(np.clip((np.trace(q) - 1) / 2, -1, 1)))),
                                                  3) for q in Q])
     return final, info
@@ -317,5 +317,6 @@ def tighten_window(state, window: dict, rule=None) -> dict:
 
 
 __all__ = ["SIDES", "SCALE_CLIP", "TARGETS", "TIGHTEN_REASONS", "to_6d", "chordal_mean", "axis_angle",
-           "minimal_rotation", "wrist_from_shoulder", "torso", "dominant_side", "rms_angle", "clip_statistics",
+           "minimal_rotation", "wrist_from_shoulder", "torso", "DOMINANT", "wrist_speeds", "rms_angle",
+           "clip_statistics",
            "space_statistics", "space_normalise", "quintic", "minimum_jerk_bridge", "tighten_window"]
