@@ -405,8 +405,15 @@ def run(args) -> dict:
         def nearest(codes):
             q = target_index.query(codes)
             return dict(q, nearest=None if q["nearest"] is None else index_meta["signs"][q["nearest"]])
-        # report-only memorisation read (module docstring); the real clips' codes are the chance level
-        memorised = {i: {"real": nearest(tokenize_state(rtok, refs[i], args.device)["codes"])} for i in mine}
+        # report-only memorisation read (module docstring); the real clips' codes are the chance level, read from
+        # the references served as the training targets are (build_recon_states.serve: usable channels, window,
+        # conformed to the template, 24 fps)
+        from build_recon_states import serve
+        r_cache = ContentCache(Path(args.cache_dir), 8 * 2 ** 30)
+        r_template = layout_template(manifest, TEMPLATE_CORPUS, r_cache, store.get)
+        memorised = {i: {"real": nearest(tokenize_state(rtok, serve(val[i], r_template, cache=r_cache,
+                                                                    fetch=store.get), args.device)["codes"])}
+                     for i in mine}
         for v in variants:
             for c, recon in [(c, False) for c in controls] + [("", True)]:
                 name = f"{v}{c}"

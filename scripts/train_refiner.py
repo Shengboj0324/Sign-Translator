@@ -211,14 +211,21 @@ def main(argv=None) -> int:
         if state.get("kind") != KIND or state["config_sha256"] != config.sha256() \
                 or state["pairs_index_sha256"] != index_sha or state["init_sha256"] != args.init_sha256:
             raise SystemExit("the newest checkpoint was trained with another configuration, pairs or warm start")
+        declared = json.loads(store.get(f"{prefix}/run.json"))
+        now = dict(steps=steps, declared_epochs=args.epochs if args.steps is None else None,
+                   batch_size=args.batch_size)
+        before = dict(steps=declared.get("steps"), declared_epochs=declared.get("declared_epochs"),
+                      batch_size=(declared.get("args") or {}).get("batch_size"))
+        if now != before:
+            raise SystemExit(f"resuming with {now}, but the run was declared with {before} (run.json)")
         model.load_state_dict(state["model"])
         optimizer.load_state_dict(state["optimizer"])
         resumed_ema, step = state.get("ema"), state["step"]
         torch.set_rng_state(state["torch_rng"].cpu())
         if device.type == "cuda" and state.get("cuda_rng") is not None:
             torch.cuda.set_rng_state_all([t.cpu() for t in state["cuda_rng"]])
-        logs = sorted(k for k in store.list(f"{prefix}/log/") if k.endswith(".json"))
-        log_prefix = json.loads(store.get(logs[-1])) if logs else []
+        log_key = f"{prefix}/log/step-{step:08d}.json"          # the log written with the resumed checkpoint
+        log_prefix = [e for e in json.loads(store.get(log_key)) if e["step"] <= step] if store.exists(log_key) else []
         print(f"resumed {checkpoints[-1]} at step {step}", flush=True)
     else:
         loaded = model.warm_start({k: v.to(device) for k, v in (init.get("ema") or init["model"]).items()})

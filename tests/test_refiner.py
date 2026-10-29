@@ -142,6 +142,7 @@ def test_sentence_jobs_keep_only_train_sentences_of_readable_signers():
     jobs, counts = bp.sentence_jobs(dict(records=records))
     assert [r["sign"] for r in jobs] == ["a", "b", "short"]
     assert counts["near_val_or_test:jaccard"] == 1 and counts["near_val_or_test:containment"] == 1
+    assert [r["sign"] for r in bp.sentence_jobs(dict(records=records), larger=.7)[0]] == ["a", "b", "short", "within"]
     loose = bp.sentence_jobs(dict(records=records), near=.9, min_tokens=6)[0]
     assert [r["sign"] for r in loose] == ["a", "b", "near", "short"]
     assert "within" in {r["sign"] for r in bp.sentence_jobs(dict(records=records), min_tokens=7)[0]}
@@ -149,6 +150,26 @@ def test_sentence_jobs_keep_only_train_sentences_of_readable_signers():
     assert counts["not_train:train/test"] == 1 and counts["no_text"] == 1 and counts["train_sentences"] == 3
     with pytest.raises(SystemExit, match="twice"):
         bp.sentence_jobs(dict(records=records[:1] * 2))
+
+
+def test_near_duplicates_need_the_overlap_to_cover_the_larger_sentence():
+    """Review of 36247fb: containment of a short held-out phrase ("what do you see") in a long train sentence is not
+    a near-duplicate; edited copies of held-out sentences still are."""
+    held = ["What do you see?", "Today we are going to talk about how to tie a fly.",
+            "Make sure you keep the knife sharp at all times.", "This is the best way to cut the onion in half.",
+            "Hold the brush lightly between your thumb and finger.", "We'll start by mixing the flour and the sugar."]
+    near = bp.NearDuplicates(held)
+    for text in ("So now what do you see in this picture here, look at it closely.",   # contains a 4-token phrase
+                 "What do you see now?",                                               # 4/5: Jaccard .8 -> caught
+                 "I want to show you how to tie a knot."):
+        assert (near.reason(text) is None) == (text != "What do you see now?"), text
+    edited = ["Today we're going to talk about how to tie a fly",                  # contraction
+              "Make sure you keep your knife sharp at all times!",                 # one word changed
+              "This is the best way to cut an onion in half",                      # article changed
+              "Hold the brush lightly between your thumb and your finger.",        # one word added
+              "We will start by mixing the flour and sugar."]                      # one dropped, one expanded
+    assert all(near.reason(t) for t in edited), [t for t in edited if not near.reason(t)]
+    assert bp.NearDuplicates(held, larger=0.).reason("So now what do you see in this picture here") == "containment"
 
 
 def test_selection_components_hold_out_the_smallest_train_signers():
@@ -373,9 +394,18 @@ def test_end_to_end_build_train_refine(tmp_path, refiner_store):
     ckpt = "training-runs/refiner-test/checkpoints/step-00000002.pt"
     saved = torch.load(io.BytesIO(store.get(ckpt)), map_location="cpu", weights_only=False)
     assert saved["kind"] == rf.KIND and saved["step"] == 2 and saved["tokenizer_key"] == TOKKEY
-    assert tr.main(train + ["--steps", "3"]) == 0                          # resumes at step 2
-    log = json.loads(store.get("training-runs/refiner-test/log/step-00000003.json"))
-    assert [e["step"] for e in log] == [1, 2, 3]                          # the log is kept across the resume
+    with pytest.raises(SystemExit, match="declared"):                     # a resume must keep the declared length
+        tr.main(train + ["--steps", "3"])
+    with pytest.raises(SystemExit, match="declared"):
+        tr.main(train + ["--steps", "2", "--batch-size", "1"])
+    final = store.get(ckpt)
+    (tmp_path / "store" / ckpt).unlink()                                    # interrupted after step 1
+    assert tr.main(train + ["--steps", "2"]) == 0                          # resumes at step 1
+    log = json.loads(store.get("training-runs/refiner-test/log/step-00000002.json"))
+    assert [e["step"] for e in log] == [1, 2]                             # the log is kept across the resume
+    resumed = torch.load(io.BytesIO(store.get(ckpt)), map_location="cpu", weights_only=False)
+    first = torch.load(io.BytesIO(final), map_location="cpu", weights_only=False)
+    assert all(torch.equal(resumed["model"][k], first["model"][k]) for k in first["model"])   # the same step 2
     # refine inside the compose evaluation: oracle_stage2 and its controls, /rest_only, @recon
     common = ["run", "--mix-key", "rmix.json", "--mix-sha256", sha, "--store", f"dir:{tmp_path / 'store'}",
               "--device", "cpu", "--cache-dir", str(tmp_path / "cache"), "--variants", "oracle_stage2", "--block", "2",

@@ -7,8 +7,10 @@ How2Sign signer 9 and records of unknown component excluded (``recognizer_corpor
 kept record passed through ``recognizer_corpora.check_loadable`` (never a test or held-out record, never signer 9)
 before it is read; a train sentence whose normalised English is also a How2Sign val, test or held-out sentence is
 excluded too, so no evaluation reference is ever a target, and so is one *near* any of them (``NearDuplicates``:
-Jaccard >= ``--near-duplicate`` 0.8 on normalised tokens, or containment >= 0.8 when the smaller sentence has at least
-``--containment-min-tokens`` 4 tokens; drops counted by reason). Sentences without usable continuous channels, without a
+Jaccard >= ``--near-duplicate`` 0.8 on normalised tokens, or containment >= 0.8 of the smaller sentence when it has
+at least ``--containment-min-tokens`` 4 tokens *and* the overlap is at least ``--containment-larger`` 0.6 of the
+larger one's tokens, so a long sentence that merely contains a short phrase such as "what do you see" is kept; drops
+counted by reason). Sentences without usable continuous channels, without a
 stage-1 word or longer than ``--max-seconds`` are skipped and counted.
 
 **Selection signers.** The train components named by ``--selection-components``, or by default the smallest train
@@ -89,12 +91,13 @@ def normalised_text(text) -> str:
 class NearDuplicates:
     """Normalised token sets of the held-out (non-train) sentences, and whether a train sentence is too close to one:
     Jaccard >= ``threshold``, or containment |A n B| / min(|A|, |B|) >= ``threshold`` when the smaller set has at
-    least ``min_tokens`` tokens (shorter sentences, "thank you", would otherwise match every sentence containing
-    them; they are caught by Jaccard)."""
+    least ``min_tokens`` tokens and |A n B| / max(|A|, |B|) >= ``larger`` (shorter sentences, "thank you", would
+    otherwise match every sentence containing them, and a short held-out phrase every long train sentence around it,
+    "what do you see": review of 36247fb, 3,950 of 18,054 train sentences)."""
 
-    def __init__(self, texts, threshold: float = .8, min_tokens: int = 4):
+    def __init__(self, texts, threshold: float = .8, min_tokens: int = 4, larger: float = .6):
         from signtranslator.generation.compositional import normalise
-        self.normalise, self.threshold, self.min_tokens = normalise, threshold, min_tokens
+        self.normalise, self.threshold, self.min_tokens, self.larger = normalise, threshold, min_tokens, larger
         self.sets = [frozenset(normalise(t)) for t in texts]
         self.sizes = np.array([len(x) for x in self.sets], dtype=np.int64)
         postings = collections.defaultdict(list)
@@ -114,14 +117,15 @@ class NearDuplicates:
         i, b = inter[hit], self.sizes[hit]
         if (i / (len(a) + b - i) >= self.threshold).any():
             return "jaccard"
-        small = np.minimum(len(a), b)
-        if ((small >= self.min_tokens) & (i / np.maximum(small, 1) >= self.threshold)).any():
+        small, large = np.minimum(len(a), b), np.maximum(len(a), b)
+        if ((small >= self.min_tokens) & (i / np.maximum(small, 1) >= self.threshold)
+                & (i / large >= self.larger)).any():
             return "containment"
         return None
 
 
 def sentence_jobs(manifest, corpus: str = SENTENCE_CORPUS, *, near: float = .8,
-                  min_tokens: int = 4) -> tuple[list[dict], collections.Counter]:
+                  min_tokens: int = 4, larger: float = .6) -> tuple[list[dict], collections.Counter]:
     """(the train sentences that may become pairs, sorted by (sign, state hash); counts of every exclusion). See the
     module docstring; every kept record has passed ``check_loadable``. A train sentence near any non-train sentence
     of the corpus (``NearDuplicates``: val, test, held-out; Jaccard or containment >= ``near`` on normalised tokens)
@@ -130,7 +134,7 @@ def sentence_jobs(manifest, corpus: str = SENTENCE_CORPUS, *, near: float = .8,
     from signtranslator.generation.recognizer_corpora import check_loadable, is_how2sign_test_signer
     held = {normalised_text(r.get("text")) for r in manifest["records"] if r.get("corpus") == corpus
             and (r.get("partition") != "train" or r.get("source_partition", "train") != "train")} - {""}
-    duplicates = NearDuplicates(sorted(held), near, min_tokens)
+    duplicates = NearDuplicates(sorted(held), near, min_tokens, larger)
     jobs, counts, seen = [], collections.Counter(), set()
     for r in manifest["records"]:
         if r.get("corpus") != corpus:
@@ -439,6 +443,8 @@ def main(argv=None) -> int:
     p.add_argument("--near-duplicate", type=float, default=.8, help="drop train sentences whose normalised tokens "
                    "have Jaccard or containment >= this with a val/test/held-out sentence")
     p.add_argument("--containment-min-tokens", type=int, default=4)
+    p.add_argument("--containment-larger", type=float, default=.6, help="containment also needs the overlap to be "
+                   "this share of the larger sentence's tokens")
     p.add_argument("--space-normalise", default="off", choices=("off", "sentence", "how2sign"),
                    help="the composition knob of round15_compose_eval (training inputs match the evaluation's)")
     p.add_argument("--space-stats-key")
@@ -528,7 +534,8 @@ def main(argv=None) -> int:
         if hashlib.sha256(payload).hexdigest() != args.space_stats_sha256:
             raise SystemExit(f"{args.space_stats_key} does not match --space-stats-sha256")
         space = dict(stats=json.loads(payload)["statistics"], target=args.space_normalise)
-    jobs, counts = sentence_jobs(manifest, near=args.near_duplicate, min_tokens=args.containment_min_tokens)
+    jobs, counts = sentence_jobs(manifest, near=args.near_duplicate, min_tokens=args.containment_min_tokens,
+                                 larger=args.containment_larger)
     given = [c for c in (args.selection_components or "").split(",") if c]
     selection = selection_components(jobs, args.selection_share, given or None)
     del manifest
@@ -539,6 +546,7 @@ def main(argv=None) -> int:
                   selection="stage1", timing="sign-fitted", core_margin=args.core_margin, k=args.k,
                   max_seconds=args.max_seconds, fps=FPS, selection_components=selection,
                   near_duplicate=args.near_duplicate, containment_min_tokens=args.containment_min_tokens,
+                  containment_larger=args.containment_larger,
                   knobs=dict(space_normalise=args.space_normalise, bridge=args.bridge, tighten_cores=args.tighten_cores,
                              space_stats=dict(key=args.space_stats_key, sha256=args.space_stats_sha256)
                              if space else None),
