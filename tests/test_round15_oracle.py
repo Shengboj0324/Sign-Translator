@@ -236,7 +236,7 @@ def source_report(store, sha, *, clips=5, tamper=None):
     spot = {f"{f}{s}": dict(recall=dict(mean=.1, ci95=[.05, .15], n=5), order=dict(mean=None, ci95=None, n=0))
             for f in ("real", "end_to_end", "crossfade") for s in ("", "_mismatched")}
     report = dict(
-        mix_key="mix.json", mix_sha256=sha, corpora=list(comp.ISOLATED_CORPORA), clips=len(texts),
+        mix_key="mix.json", mix_sha256=sha, corpora=list(comp.isolated_corpora(manifest)), clips=len(texts),
         seeds=dict(reference_derangement=0, words_derangement=1), crossfade=dict(seconds=.15, frames=4),
         references=texts, reference_derangement=perm, words_derangement=words_perm,
         typical_seconds={w: round(vocab[w], 4) for ws in selected for w in ws},

@@ -143,6 +143,22 @@ def test_training_vocabulary_is_the_train_one_word_texts_with_median_seconds():
     assert comp.training_vocabulary(manifest, ("asllvd-text-v1",)) == {"dog": 1.5, "thank you": 1.}
 
 
+def test_semlex_text_v2_is_accepted_and_older_manifests_keep_round_15s_corpora():
+    """Round 14b's semlex-text-v2 counts as isolated; a manifest without it gets round 15's four corpora, so every
+    report and stage-2 model that records the list is unchanged."""
+    assert "semlex-text-v2" in comp.ISOLATED_CORPORA and comp.ISOLATED_CORPORA[:4] == comp.ROUND15_CORPORA
+    assert comp.ROUND15_CORPORA == ("asllvd-text-v1", "rit-text-r6", "wlasl-text-r6", "semlex-text-v1")
+    old = dict(records=[_record("asllvd-text-v1", "train", "dog", 1.5), _record("semlex-text-v1", "train", "cat", 1.)])
+    assert comp.isolated_corpora(old) == comp.ROUND15_CORPORA
+    assert comp.training_vocabulary(old) == comp.training_vocabulary(old, comp.ROUND15_CORPORA) == {"cat": 1., "dog": 1.5}
+    new = dict(records=[_record("asllvd-text-v1", "train", "dog", 1.5), _record("semlex-text-v2", "train", "ice", .8),
+                        _record("semlex-text-v2", "val", "fall", .9)])
+    assert comp.isolated_corpora(new) == comp.ROUND15_CORPORA + ("semlex-text-v2",)
+    assert comp.training_vocabulary(new) == {"dog": 1.5, "ice": .8}
+    assert comp.training_vocabulary(new, comp.isolated_corpora(new)) == {"dog": 1.5, "ice": .8}
+    assert comp.training_vocabulary(new, comp.ROUND15_CORPORA) == {"dog": 1.5}
+
+
 # ---- fitted durations --------------------------------------------------------------------------------------------
 
 def test_fitted_durations_share_the_total_by_typical_duration_with_a_floor():

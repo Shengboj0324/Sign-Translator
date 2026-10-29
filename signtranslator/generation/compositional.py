@@ -60,7 +60,19 @@ import numpy as np
 FPS = 24.
 FLOOR = .3                         # seconds: the shortest fitted word duration (declared)
 MODES = ("crossfade", "chained", "chained_trim")
-ISOLATED_CORPORA = ("asllvd-text-v1", "rit-text-r6", "wlasl-text-r6", "semlex-text-v1")
+# round 15's isolated-sign corpora, the list its reports and its stage-2 model record (``isolated_corpora``)
+ROUND15_CORPORA = ("asllvd-text-v1", "rit-text-r6", "wlasl-text-r6", "semlex-text-v1")
+# accepted since: round 14b's Sem-Lex manifest (the original extraction, image-right signers excluded)
+LATER_CORPORA = ("semlex-text-v2",)
+ISOLATED_CORPORA = ROUND15_CORPORA + LATER_CORPORA
+
+
+def isolated_corpora(manifest) -> tuple[str, ...]:
+    """The default isolated corpora of ``manifest``: round 15's four, plus each later corpus the manifest holds. A
+    manifest without the later corpora (every manifest before round 14b) gets exactly round 15's list, so the
+    reports and models that record the list are unchanged."""
+    present = {r.get("corpus") for r in manifest["records"]}
+    return ROUND15_CORPORA + tuple(c for c in LATER_CORPORA if c in present)
 # English function words ASL does not usually sign as separate lexical items (the compositional baseline's list,
 # declared for round 15). Modals (can, will, should...) are kept: ASL signs them.
 STOP_WORDS = frozenset({
@@ -711,7 +723,8 @@ def compose_cores(prior, tokenizer, words, generate_seconds, mode: str, seeds, *
     return dict(mode=mode, parts=parts, segments=rows, codes=codes)
 
 
-__all__ = ["FPS", "FLOOR", "MODES", "ISOLATED_CORPORA", "STOP_WORDS", "TRIM", "KEPT", "normalise",
+__all__ = ["FPS", "FLOOR", "MODES", "ISOLATED_CORPORA", "ROUND15_CORPORA", "LATER_CORPORA", "isolated_corpora",
+           "STOP_WORDS", "TRIM", "KEPT", "normalise",
            "training_vocabulary", "inflection_candidates", "selection_details", "select_words", "selection_statistics",
            "fitted_durations", "crossfade_frames", "join_overlaps", "crossfade_weights", "blend_values", "blend_channel",
            "concatenate", "take_frames", "side_tracks", "sign_window", "trim_window", "window_frames", "make_decode",

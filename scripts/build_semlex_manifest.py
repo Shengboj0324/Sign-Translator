@@ -51,7 +51,16 @@ rows that disagree on duration within its split, is skipped. Results are matched
 over the metadata duration); a hand (either side) tracked on fewer than ``--min-hand`` of the frames; then the trim of
 ``build_trimmed_word_manifest.py`` (``sign_window``, the dominant wrist's active span on the state at 24 fps, the same
 dominant-side and tracked-arm rules, recorded as ``continuous.window_seconds``). Every state's bytes are hashed against
-its report before use.
+its report before use. The trim's side is per clip and symmetric (the side whose tracked wrist height above its
+shoulder varies most); it is the only use of a skeleton-slot side, and nothing depends on whether the states were
+un-mirrored. The per-signer "left by forearm tracking" counts of the summary are reported only.
+
+**Corpus id and signer exclusion** (round 14b, docs/NEXT_PHASE_PLAN.md "Sem-Lex per-signer sides"): ``--corpus-id``
+(default ``semlex-text-v1``, so a default build is byte-identical to earlier ones) names the manifest, its records'
+``corpus`` and the licence prefix. ``--exclude-signers 11,23,46,76`` with ``--exclude-reason`` drops every metadata clip
+of those signers in the built splits before its text, result or state is read (``drop:signer_excluded``); the signers,
+reason and per-signer, per-split clip counts are recorded in the summary (``excluded_signers``) and the manifest's
+``filters.exclude_signers``. An id with no clip in the built splits stops the build.
 
 **Coverage** of the R5 words, by ``exposure_diagnostic.py``'s matching rule (a record's text, upper-cased with spaces
 removed, equals the word), on *train* records. ``--coverage-mix KEY@SHA`` derives the 150 words from that mix
@@ -98,10 +107,19 @@ RECOGNIZER_VALIDATION = ("training-runs/sign-recognizer-v2/validation.json@"
                          "a23117eca843c520b84ed6d66fe885f9952a8c3cdd0abe87cc5ac5981d98ee05")
 ONE_WORD_CORPORA = ("asllvd-text-v1", "rit-text-r6", "wlasl-text-r6")
 CORPUS_ID = "semlex-text-v1"
-LICENCE = ("semlex-text-v1: Sem-Lex Benchmark (Kezar et al. 2023, arXiv 2310.00196), CC BY-NC-SA 4.0 (the "
-           "publisher's terms, accepted by the owner): research, non-commercial, attribution, share-alike; obtained "
-           "from the Hugging Face mirror tylerxia8/sem-lex-pilot-mirror (labelled Apache-2.0, which is not the licence); "
-           "text from ASL-LEX 2.0 lemmas (CC BY 4.0); private store, no redistribution")
+CORPUS_ID_PATTERN = re.compile(r"semlex-text-v[0-9]+")
+LICENCE_TERMS = ("Sem-Lex Benchmark (Kezar et al. 2023, arXiv 2310.00196), CC BY-NC-SA 4.0 (the "
+                 "publisher's terms, accepted by the owner): research, non-commercial, attribution, share-alike; "
+                 "obtained from the Hugging Face mirror tylerxia8/sem-lex-pilot-mirror (labelled Apache-2.0, which is "
+                 "not the licence); text from ASL-LEX 2.0 lemmas (CC BY 4.0); private store, no redistribution")
+
+
+def licence(corpus_id: str = CORPUS_ID) -> str:
+    """The manifest's licence string, prefixed with its corpus id (a mix joins these per corpus)."""
+    return f"{corpus_id}: {LICENCE_TERMS}"
+
+
+LICENCE = licence(CORPUS_ID)
 CITATION = ("Kezar, L., Thomason, J., Caselli, N., Sehyr, Z., Pontecorvi, E. (2023). The Sem-Lex Benchmark: Modeling "
             "ASL Signs and Their Phonemes. arXiv:2310.00196")
 MIRROR = "huggingface.co/datasets/tylerxia8/sem-lex-pilot-mirror@bf340cbfc4522ecc4dcd0fc247e33c4cb3498275"
@@ -115,6 +133,16 @@ class StateMismatch(Exception):
 
 def performer(signer_id: str) -> str:
     return hashlib.sha256(f"semlex-signer:{signer_id}".encode()).hexdigest()
+
+
+def parse_signers(spec: str | None) -> tuple[str, ...]:
+    """``--exclude-signers``: distinct Sem-Lex signer ids (digits), comma-separated; returned sorted numerically."""
+    if not spec:
+        return ()
+    ids = [s.strip() for s in spec.split(",")]
+    if any(not re.fullmatch(r"[0-9]+", s) for s in ids) or len(set(ids)) != len(ids):
+        raise SystemExit(f"--exclude-signers {spec!r}: expected distinct numeric signer ids, comma-separated")
+    return tuple(sorted(ids, key=int))
 
 
 def asllex_text(lemma: str) -> str:
@@ -583,6 +611,8 @@ def build(store, args) -> tuple[dict, dict]:
         report_hashes = {f"report:{k.rsplit('/', 1)[-1]}": hashlib.sha256(store.get(k)).hexdigest()
                          for k in report_keys}
     counts = collections.Counter(read["info"] if read else {})
+    excluded = set(args.exclude_signers)
+    excluded_clips = collections.defaultdict(collections.Counter)    # signer -> split -> metadata clips dropped
     pending = []                                       # (row, text, gloss, result) for clips with a stored state
     for video_id, rows in sorted(metadata.items()):
         row, why = resolve_rows(rows)
@@ -594,6 +624,10 @@ def build(store, args) -> tuple[dict, dict]:
         split = row["split"]
         if split not in splits:
             counts[f"skip:{split}_split_not_built" + ("_held_out" if split == "test" else "")] += 1
+            continue
+        if row["signer_id"] in excluded:               # before its text, result or state is looked at
+            counts["drop:signer_excluded"] += 1
+            excluded_clips[row["signer_id"]][split] += 1
             continue
         counts[f"metadata:{row['label_type']}"] += 1
         if row["label_type"] == "asllex":
@@ -645,6 +679,9 @@ def build(store, args) -> tuple[dict, dict]:
             counts["smoke:beyond_limit"] += 1
             continue
         pending.append((row, text, gloss, result))
+    if excluded - set(excluded_clips):
+        raise SystemExit(f"--exclude-signers: signer(s) {sorted(excluded - set(excluded_clips), key=int)} have no "
+                         f"metadata clip in the built splits {list(splits)} (a wrong id?)")
     if video and counts["drop:no_extraction_result"] and not args.limit:
         raise SystemExit(f"{counts['drop:no_extraction_result']} metadata clips of the built splits have no result "
                          "in any report and are not pinned archive gaps")
@@ -686,7 +723,7 @@ def build(store, args) -> tuple[dict, dict]:
                           regressors_sha256=result.get("regressors_sha256"))
         sign = f"semlex-{video_id}"
         records.append(dict(
-            sign=sign, corpus=CORPUS_ID, partition=split, text=text, gloss=gloss,
+            sign=sign, corpus=args.corpus_id, partition=split, text=text, gloss=gloss,
             performer_sha256=performer(row["signer_id"]), quality=quality, source=source,
             continuous=dict(status="converted", state_key=result["state_key"], state_sha256=result["state_sha256"],
                             available_channels=out["available"], window_seconds=window,
@@ -703,8 +740,8 @@ def build(store, args) -> tuple[dict, dict]:
                  counts={p: sum(r["partition"] == p for r in records) for p in ("train", "val", "test")})
     inputs = {"semlex_metadata": metadata_sha256, "asl_lex_signdata": asllex_sha, "english_wordlist": wordlist_sha}
     inputs.update(report_hashes)
-    manifest = build_corpus_manifest(corpus_id=CORPUS_ID, inputs=inputs, records=records, split=split)
-    manifest["license"] = LICENCE
+    manifest = build_corpus_manifest(corpus_id=args.corpus_id, inputs=inputs, records=records, split=split)
+    manifest["license"] = licence(args.corpus_id)
     if video:
         manifest["provenance"] = dict(
             citation=CITATION, mirror=MIRROR, source="video_extraction", extractor=VIDEO_EXTRACTOR,
@@ -730,6 +767,16 @@ def build(store, args) -> tuple[dict, dict]:
                             threshold=args.threshold, margin=args.margin, min_tracked=args.min_tracked,
                             min_seconds=args.min_seconds)
     manifest["filters"] = dict(min_fps=args.min_fps, min_hand=args.min_hand, counts=dict(sorted(counts.items())))
+    exclusion = None
+    if excluded:                                       # recorded only when given: a default build is unchanged
+        exclusion = dict(signers=list(args.exclude_signers), reason=args.exclude_reason,
+                         performer_sha256={s: performer(s) for s in args.exclude_signers},
+                         metadata_clips=sum(sum(c.values()) for c in excluded_clips.values()),
+                         metadata_clips_by_signer={s: dict(sorted(excluded_clips[s].items()))
+                                                   for s in args.exclude_signers},
+                         rule="every metadata clip of these signers in the built splits is dropped before its text, "
+                              "result or state is read (counted as drop:signer_excluded)")
+        manifest["filters"]["exclude_signers"] = exclusion
     if args.limit:
         manifest["smoke"] = dict(limit=args.limit, note="a smoke build: the first clips with a state only")
     cov = None
@@ -738,6 +785,10 @@ def build(store, args) -> tuple[dict, dict]:
         cov = dict(coverage(r5, uncovered, records, before), **meta)
     summary = dict(source=args.source, counts=dict(sorted(counts.items())), coverage=cov, records=len(records),
                    split=split, describe=describe(records, examined, splits if video else ("train", "val", "test")))
+    if args.corpus_id != CORPUS_ID:
+        summary["corpus_id"] = args.corpus_id
+    if exclusion is not None:
+        summary["excluded_signers"] = exclusion
     if video:
         summary["reports"] = {k: read[k] for k in ("used", "ignored", "shards", "inference_methods", "archives")}
     else:
@@ -750,6 +801,11 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--store", default="r2", help="'r2' or 'dir:/path' (tests)")
     p.add_argument("--source", choices=("pose", "video"), default="pose")
+    p.add_argument("--corpus-id", default=CORPUS_ID, help=f"the manifest's corpus id, the records' corpus and the "
+                   f"licence prefix (default {CORPUS_ID}; round 14b: semlex-text-v2)")
+    p.add_argument("--exclude-signers", help="Sem-Lex signer ids whose clips are dropped, comma-separated (round 14b: "
+                   "the image-right signers 11,23,46,76); counted in the summary with --exclude-reason")
+    p.add_argument("--exclude-reason", help="why --exclude-signers are dropped (required with it; recorded)")
     p.add_argument("--prefix", help="states prefix; default the pinned learned path (pose) or states-video-v1 (video)")
     p.add_argument("--states-prefix", help="video: the un-mirrored states (unmirror_semlex_states.py's prefix) that "
                    "replace the extracted ones; each must re-solve exactly the extracted state the reports name")
@@ -779,6 +835,11 @@ def main(argv=None) -> int:
     p.add_argument("--output-key", help="also upload the manifest here (refused if the key exists)")
     p.add_argument("--summary-key", help="also upload the summary here (refused if the key exists)")
     args = p.parse_args(argv)
+    if not CORPUS_ID_PATTERN.fullmatch(args.corpus_id):
+        raise SystemExit(f"--corpus-id {args.corpus_id!r}: expected semlex-text-v<N>")
+    args.exclude_signers = parse_signers(args.exclude_signers)
+    if bool(args.exclude_signers) != bool((args.exclude_reason or "").strip()):
+        raise SystemExit("--exclude-signers and --exclude-reason go together")
     import warnings
     warnings.simplefilter("error")
     from signtranslator.data_engineering.corpus_manifest import canonical_json

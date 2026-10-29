@@ -322,3 +322,45 @@ def test_video_uploads_once(tmp_path, monkeypatch):
     assert (tmp_path / "m.json").read_bytes() == stored + b"\n" and summary["manifest_key"] == out_key
     with pytest.raises(SystemExit, match="refusing to overwrite"):
         job.main(_argv(tmp_path, meta_sha, mix_sha, val_sha, "m2.json", "--output-key", out_key))
+
+
+def test_corpus_id_and_signer_exclusion(tmp_path, monkeypatch):
+    """Round 14b: --corpus-id names the records and the licence; --exclude-signers drops every clip of those signers
+    (counted, with the reason); every other record is the default build's."""
+    meta_sha, _, mix_sha, val_sha = _store(tmp_path, monkeypatch)
+    assert job.main(_argv(tmp_path, meta_sha, mix_sha, val_sha, "v1.json")) == 0
+    v1 = json.loads((tmp_path / "v1.json").read_text())
+    assert v1["corpus_id"] == "semlex-text-v1" and v1["license"] == job.LICENCE
+    assert v1["license"].startswith("semlex-text-v1: Sem-Lex Benchmark") and "exclude_signers" not in v1["filters"]
+    assert "corpus_id" not in json.loads((tmp_path / "v1.json.summary.json").read_text())
+    reason = "image-right signers (test)"
+    assert job.main(_argv(tmp_path, meta_sha, mix_sha, val_sha, "v2.json", "--corpus-id", "semlex-text-v2",
+                          "--exclude-signers", "9,7", "--exclude-reason", reason)) == 0
+    summary = json.loads((tmp_path / "v2.json.summary.json").read_text())
+    v2 = load_manifest(tmp_path / "v2.json", expected_sha256=summary["manifest_sha256"])
+    assert v2["corpus_id"] == "semlex-text-v2" and v2["license"] == job.licence("semlex-text-v2")
+    assert v2["license"] == v1["license"].replace("semlex-text-v1: ", "semlex-text-v2: ", 1)
+    assert {r["corpus"] for r in v2["records"]} == {"semlex-text-v2"}
+    assert not {r["source"]["signer_id"] for r in v2["records"]} & {"7", "9"}
+    kept = [dict(r, corpus="semlex-text-v2") for r in v1["records"] if r["source"]["signer_id"] not in ("7", "9")]
+    assert kept and v2["records"] == kept
+    # counted: VAL[1] (signer 9, val); GAP, the ten S0 clips and three CAT5 clips (signer 7, train); test not built
+    ex = summary["excluded_signers"]
+    assert summary["counts"]["drop:signer_excluded"] == 15 == ex["metadata_clips"]
+    assert ex["signers"] == ["7", "9"] and ex["reason"] == reason and summary["corpus_id"] == "semlex-text-v2"
+    assert ex["metadata_clips_by_signer"] == {"7": {"train": 14}, "9": {"val": 1}}
+    assert ex["performer_sha256"]["7"] == job.performer("7") and v2["filters"]["exclude_signers"] == ex
+    # excluded before their results are read: S0[3]'s failed extraction and GAP's archive gap are not counted
+    assert "drop:extraction_failed" not in summary["counts"]
+    assert "drop:not_in_archive_pinned_gap" not in summary["counts"]
+    assert summary["describe"]["val"]["records"] == 1 and summary["coverage"]["clips_per_word"]["CAT"] == 2
+    # refusals: a signer with no clip in the built splits, a reason without signers (or the reverse), bad ids
+    for extra, match in ((["--exclude-signers", "7,99", "--exclude-reason", reason], r"signer\(s\) \['99'\]"),
+                         (["--exclude-signers", "7"], "go together"), (["--exclude-reason", reason], "go together"),
+                         (["--exclude-signers", "7,7", "--exclude-reason", reason], "distinct numeric"),
+                         (["--exclude-signers", "s7", "--exclude-reason", reason], "distinct numeric"),
+                         (["--corpus-id", "semlex-v2"], "expected semlex-text-v<N>")):
+        with pytest.raises(SystemExit, match=match):
+            job.main(_argv(tmp_path, meta_sha, mix_sha, val_sha, "x.json", *extra))
+    assert not (tmp_path / "x.json").exists()
+    assert job.parse_signers("76, 11,46,23") == ("11", "23", "46", "76") and job.parse_signers(None) == ()

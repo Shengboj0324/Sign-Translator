@@ -261,14 +261,15 @@ def run_jobs(sample, jobs: list, settings: dict, *, workers: int = 1, worker_arg
 # ---- the run -----------------------------------------------------------------------------------------------------
 
 def main(argv=None) -> int:
-    from signtranslator.generation.compositional import ISOLATED_CORPORA, MODES
+    from signtranslator.generation.compositional import MODES, isolated_corpora
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--checkpoint-key", required=True)
     p.add_argument("--mix-key", required=True, help="the manifest the prior was trained on (its vocabulary)")
     p.add_argument("--mix-sha256", required=True)
     p.add_argument("--clips", type=int, default=300)
     p.add_argument("--variants", default=",".join(MODES))
-    p.add_argument("--corpora", default=",".join(ISOLATED_CORPORA), help="the isolated-sign corpora of the vocabulary")
+    p.add_argument("--corpora", help="the isolated-sign corpora of the vocabulary, comma-separated (default "
+                   "compositional.isolated_corpora of the manifest: round 15's four, plus semlex-text-v2 when present)")
     p.add_argument("--part-temperature", default="body=1.1,left_hand=1.1,right_hand=1.1,face=1.0")
     p.add_argument("--guidance", type=float, default=1.5)
     p.add_argument("--crossfade", type=float, default=.15, help="seconds of overlap at each crossfade join (V1)")
@@ -291,7 +292,7 @@ def main(argv=None) -> int:
     variants = [v for v in args.variants.split(",") if v]
     if not variants or any(v not in MODES for v in variants) or len(set(variants)) != len(variants):
         p.error(f"--variants: distinct names from {','.join(MODES)}")
-    corpora = tuple(c for c in args.corpora.split(",") if c)
+    corpora = tuple(c for c in (args.corpora or "").split(",") if c)     # empty: the manifest's default, below
     import warnings
     warnings.simplefilter("ignore")
     import torch
@@ -315,6 +316,7 @@ def main(argv=None) -> int:
     with tempfile.TemporaryDirectory() as t:
         path = Path(t) / "m.json"; path.write_bytes(store.get(args.mix_key) + b"\n")
         manifest = load_manifest(path, expected_sha256=args.mix_sha256)
+    corpora = corpora or isolated_corpora(manifest)
     vocab = training_vocabulary(manifest, corpora)
     if not vocab:
         raise SystemExit(f"the manifest has no train records of {corpora}: no training vocabulary")
