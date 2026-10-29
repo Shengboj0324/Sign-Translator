@@ -644,11 +644,20 @@ def parts_from_pieces(pieces, order=None) -> dict:
                 trail=(ps[-1]["state"], ps[-1]["hi"]))
 
 
-def render(parts: dict, plan: dict, *, sample_id: str = "compositional-stage2"):
+BRIDGES = ("linear", "minimum-jerk")
+
+
+def render(parts: dict, plan: dict, *, sample_id: str = "compositional-stage2", bridge_mode: str = "linear"):
     """One state from ``parts`` under a frame plan (``compositional_grammar.plan_frames``): the lead (the first word's
     approach), each core time-resampled to its planned frames (``time_scale``: first and last frames kept), each join
     the generated transition time-resampled to the gap's frames (bridged when there is none), then the trail (the
-    last word's return)."""
+    last word's return). ``bridge_mode``: ``linear`` (``bridge``, the default and the declared runs') or
+    ``minimum-jerk`` (``composition_space.minimum_jerk_bridge`` between the *resampled* cores, so the boundary
+    velocities are the rendered ones)."""
+    if bridge_mode not in BRIDGES:
+        raise ValueError(f"bridge_mode must be one of {BRIDGES}")
+    if bridge_mode != "linear":
+        return _render_minimum_jerk(parts, plan, sample_id=sample_id)
     cores, transitions = parts["cores"], parts["transitions"]
     if len(cores) != len(plan["cores"]) or len(plan["gaps"]) != len(cores) - 1:
         raise ValueError("the plan does not fit the parts")
@@ -661,6 +670,35 @@ def render(parts: dict, plan: dict, *, sample_id: str = "compositional-stage2"):
             t = transitions[k]
             out.append(time_scale(t, plan["gaps"][k]) if t is not None and len(t.timestamps)
                        else bridge(core, cores[k + 1], plan["gaps"][k]))
+    if plan["trail"]:
+        out.append(lead_out(*parts["trail"], plan["trail"]))
+    state = concatenate(out, 0, sample_id=sample_id)
+    if len(state.timestamps) != plan["frames"]:
+        raise AssertionError("rendered length differs from the plan")
+    return state
+
+
+def _render_minimum_jerk(parts: dict, plan: dict, *, sample_id: str):
+    """``render`` with minimum-jerk bridges: the kept cores are resampled first, each bridged join then runs from one
+    resampled core's end to the next kept core's start."""
+    from .composition_space import minimum_jerk_bridge
+    cores, transitions = parts["cores"], parts["transitions"]
+    if len(cores) != len(plan["cores"]) or len(plan["gaps"]) != len(cores) - 1:
+        raise ValueError("the plan does not fit the parts")
+    kept = [k for k in range(len(cores)) if plan["cores"][k]]
+    scaled = {k: time_scale(cores[k], plan["cores"][k]) for k in kept}
+    out = [lead_in(*parts["lead"], plan["lead"])] if plan["lead"] else []
+    for n, k in enumerate(kept):
+        out.append(scaled[k])
+        if k < len(cores) - 1 and plan["gaps"][k]:
+            t = transitions[k]
+            nxt = kept[n + 1] if n + 1 < len(kept) else None
+            if t is not None and len(t.timestamps):
+                out.append(time_scale(t, plan["gaps"][k]))
+            elif nxt is not None:
+                out.append(minimum_jerk_bridge(scaled[k], scaled[nxt], plan["gaps"][k]))
+            else:
+                out.append(bridge(scaled[k], scaled[k], plan["gaps"][k]))
     if plan["trail"]:
         out.append(lead_out(*parts["trail"], plan["trail"]))
     state = concatenate(out, 0, sample_id=sample_id)
@@ -708,6 +746,7 @@ def compose_cores(prior, tokenizer, words, generate_seconds, mode: str, seeds, *
             reranks = [None] * len(words)
         pieces = [dict(state=c, **(cores(w, c) if cores else core_window(c, rule))) for w, c in zip(words, clips)]
         rows = [dict(word=w, frames=len(c.timestamps), seed=s, lo=p["lo"], hi=p["hi"], reason=p["reason"],
+                     **({"tightened": p["tightened"]} if "tightened" in p else {}),
                      **({"rerank": r} if r else {})) for w, c, s, p, r in zip(words, clips, seeds, pieces, reranks)]
         return dict(mode=mode, parts=parts_from_pieces(pieces), segments=rows, pieces=pieces)
     if tokenizer.config.step != 1:
@@ -740,5 +779,5 @@ __all__ = ["FPS", "FLOOR", "MODES", "ISOLATED_CORPORA", "ROUND15_CORPORA", "LATE
            "fitted_durations", "crossfade_frames", "join_overlaps", "crossfade_weights", "blend_values", "blend_channel",
            "concatenate", "take_frames", "side_tracks", "sign_window", "trim_window", "window_frames", "make_decode",
            "continue_from", "word_frames", "generate_word", "compose", "time_scale", "CORE_MODES", "CORE_RULE",
-           "core_window", "fraction_window", "bridge", "lead_in", "lead_out", "parts_from_pieces", "render",
+           "core_window", "fraction_window", "bridge", "lead_in", "lead_out", "parts_from_pieces", "render", "BRIDGES",
            "compose_cores"]

@@ -37,6 +37,16 @@ reorders the matched words). Not for core_chained or the stage1 timing.
 
 **oracle_stage2** (``--variants oracle_stage2``, no checkpoint, CPU): the real-word ceiling on the same clips.
 
+**Composition knobs** (``signtranslator.generation.composition_space``; each independently switchable, all off by
+default, and then nothing in the run or its report changes):
+- ``--space-normalise sentence|how2sign``: one signing space per sentence (torso and dominant-hand centroid moved to
+  the sentence's mean or How2Sign train's, hand excursion scaled to How2Sign train's), with the statistics of
+  ``scripts/round15_space_stats.py`` pinned by ``--space-stats-key`` / ``--space-stats-sha256``;
+- ``--bridge minimum-jerk``: quintic bridges matching the cores' boundary values and velocities;
+- ``--tighten-cores`` (sign-fitted): median-position cores (``entry`` / ``all``) cut again by the activity rule inside
+  their window, never extended; the shard and merged reports count them (``core_counts``).
+Space normalisation needs word pieces (core_crossfade, oracle_stage2); none of the knobs applies to the stage1 timing.
+
 **merge** (CPU): the shards' partial reports (all of 0..K-1, the same settings and clips, disjoint and complete) are
 combined in clip order and scored as ``round15_stage2`` scores: corpus BLEU with the pilot's bootstrap, paired
 differences (``score_forms``) of each variant against its controls and the other variants, against ``end_to_end``
@@ -70,7 +80,8 @@ INDEXING = ("word seeds, oracle real-clip draws, shuffle orders and mismatched-w
             "so runs of different N are not paired clip for clip (a --clips 300 run reproduces the 300-clip reports)")
 SETTINGS = ("clips", "shards", "block", "seed", "mix_key", "mix_sha256", "corpora", "variants", "selection", "timing",
             "rerank", "core_margin", "total_fit", "guidance", "part_temperature", "checkpoint_key", "generator_mix",
-            "model_sha256", "translator_key", "recognizer_run", "recognizer_checkpoint")
+            "model_sha256", "translator_key", "recognizer_run", "recognizer_checkpoint", "space_normalise", "bridge",
+            "tighten_cores", "space_stats")
 
 
 # ---- pure logic --------------------------------------------------------------------------------------------------
@@ -137,6 +148,22 @@ def merge_partials(partials: list[dict]) -> dict:
                 signs=first["signs"])
 
 
+def merge_core_counts(partials) -> dict:
+    """{"core_counts": summed over the shards} when the shards recorded them (a knob was on), else {}."""
+    import collections
+    parts = [p["core_counts"] for p in partials if p.get("core_counts")]
+    if not parts:
+        return {}
+    out = {}
+    for v in parts[0]:
+        reasons = collections.Counter()
+        for p in parts:
+            reasons.update(p[v]["reasons"])
+        out[v] = dict(reasons=dict(reasons), **{k: int(sum(p[v][k] for p in parts))
+                                                for k in ("tightened_cores", "tightened_frames", "cores")})
+    return {"core_counts": out}
+
+
 def form_pairs(variants, paired=()) -> dict:
     pairs = {}
     for v in variants:
@@ -198,6 +225,13 @@ def run(args) -> dict:
         raise SystemExit(f"the stage-2 model is {model['sha256']}, not the declared {args.expect_model_sha256}")
     if args.timing == "sign-fitted" and not model["timing"].get("default_seconds"):
         raise SystemExit("the stage-2 model has no default_seconds: the sign-fitted gap ratio is undefined")
+    space = None
+    if args.space_normalise != "off":           # How2Sign train statistics, pinned by their hash
+        import hashlib
+        payload = store.get(args.space_stats_key)
+        if hashlib.sha256(payload).hexdigest() != args.space_stats_sha256:
+            raise SystemExit(f"{args.space_stats_key} does not match --space-stats-sha256")
+        space = dict(stats=json.loads(payload)["statistics"], target=args.space_normalise)
 
     val = validation_sentences(manifest, args.clips)
     n = len(val)
@@ -223,7 +257,8 @@ def run(args) -> dict:
     margin = args.core_margin if args.core_margin is not None else (.1 if args.timing == "sign-fitted" else 0.)
     rule = dict(CORE_RULE, margin=margin)
     fractions = fit.sign_fractions(manifest, vocab) if args.timing == "sign-fitted" else None
-    mode = dict(timing=args.timing, fractions=fractions, margin=margin)
+    mode = dict(timing=args.timing, fractions=fractions, margin=margin, tighten=args.tighten_cores)
+    knobs_on = args.space_normalise != "off" or args.bridge != "linear" or args.tighten_cores
     temperature = {k: float(v) for k, v in (x.split("=") for x in args.part_temperature.split(","))}
     gen_keys = [k for k, j in jobs.items() if j is not None and k[0] in r2.GENERATED]
     print(f"shard {args.shard}/{args.shards}: {len(mine)} of {n} clips; model {model['sha256'][:12]}; "
@@ -269,9 +304,13 @@ def run(args) -> dict:
                 source = material[(v, "", i)] if reordered else material[(v, c, i)]
                 states[i], fp = r2.render_form(source, job, seconds[i], model, timing=args.timing,
                                                total_fit=args.total_fit, order=orders[i] if reordered else None,
-                                               sample_id=f"round15-eval-{v}{c}:{i}")
+                                               sample_id=f"round15-eval-{v}{c}:{i}", space=space, bridge=args.bridge)
                 if c == "":
                     plans_out[i][v] = dict(frames=fp["frames"], fit=fp["fit"], overlong=fp["overlong"])
+                    if knobs_on:
+                        plans_out[i][v].update(space=fp.get("space"), bridge=args.bridge, cores=[
+                            {k2: s.get(k2) for k2 in ("reason", "lo", "hi", "tightened")}
+                            for s in material[(v, c, i)]["segments"]])
             forms[f"{v}{c}"] = states
     # translate per global block (the unsharded run's batches)
     kp = json.loads(store.get(f"training-runs/{TRANSLATOR_RUN}/best.json"))["checkpoint_key"]
@@ -319,7 +358,19 @@ def run(args) -> dict:
                     part_temperature=temperature, checkpoint_key=args.checkpoint_key, generator_mix=generator_mix,
                     model_sha256=model["sha256"], translator_key=kp, recognizer_run=args.recognizer_run,
                     recognizer_checkpoint=best.get("checkpoint_key") if isinstance(best, dict) else None)
-    return dict(kind="round15-compose-eval-shard", shard=args.shard, settings=settings, texts=texts, indexing=INDEXING,
+    core_counts = None
+    if knobs_on:                                 # recorded only when a knob is on (default reports are unchanged)
+        settings.update(space_normalise=args.space_normalise, bridge=args.bridge, tighten_cores=args.tighten_cores,
+                        space_stats=dict(key=args.space_stats_key, sha256=args.space_stats_sha256) if space else None)
+        core_counts = {}
+        for v in variants:
+            segs = [s for i in mine for c in ("", "/mismatched_words") if (v, c, i) in material
+                    for s in material[(v, c, i)]["segments"]]
+            core_counts[v] = dict(reasons=dict(collections.Counter(s.get("reason") for s in segs)),
+                                  tightened_cores=int(sum(bool(s.get("tightened")) for s in segs)),
+                                  tightened_frames=int(sum(s.get("tightened") or 0 for s in segs)),
+                                  cores=len(segs))
+    return dict(kind="round15-compose-eval-shard", **({"core_counts": core_counts} if core_counts else {}), shard=args.shard, settings=settings, texts=texts, indexing=INDEXING,
                 signs=[r["sign"] for r in val], reference_derangement=reference_perm, words_derangement=content_perm,
                 stage1_check=stage1_check, spot_labels=len(labels),
                 timing_counts=dict(collections.Counter(p[v]["fit"] for p in plans_out.values() for v in p)),
@@ -396,6 +447,7 @@ def merge(args, store) -> dict:
                 comparators=comparators, rule=args.rule, rule_checks=checks, bootstrap=args.bootstrap, forms=scores,
                 spotting=dict(windows=list(SPOT["windows"]), hop=SPOT["hop"], top_k=SPOT["top_k"], scores=spotting),
                 motion=motion, motion_ratio_to_real=motion_ratio, verdicts=verdicts, overlong_clips=overlong,
+                **merge_core_counts(partials),
                 per_clip=[{k: r[k] for k in ("clip", "sign", "entries", "stage1_words", "plans")} for r in rows])
 
 
@@ -447,6 +499,15 @@ def main(argv=None) -> int:
     r.add_argument("--timing", default="sign-fitted", choices=("asllrp", "stage1", "sign-fitted"))
     r.add_argument("--core-margin", type=float)
     r.add_argument("--total-fit", default="pad", choices=("pad", "scale", "none"))
+    r.add_argument("--space-normalise", default="off", choices=("off", "sentence", "how2sign"),
+                   help="one signing space per sentence (composition_space.space_normalise): torso and dominant-hand "
+                        "centroid to the sentence's mean (sentence) or How2Sign train's (how2sign), excursion scaled "
+                        "to How2Sign train's; needs --space-stats-key/--space-stats-sha256")
+    r.add_argument("--space-stats-key", help="How2Sign train statistics (scripts/round15_space_stats.py)")
+    r.add_argument("--space-stats-sha256")
+    r.add_argument("--bridge", default="linear", choices=("linear", "minimum-jerk"))
+    r.add_argument("--tighten-cores", action="store_true", help="cut median-position cores (entry/all) again by "
+                   "the activity rule inside their window (sign-fitted timing)")
     r.add_argument("--part-temperature", default="body=1.1,left_hand=1.1,right_hand=1.1,face=1.0")
     r.add_argument("--guidance", type=float, default=1.5)
     r.add_argument("--recognizer-run", default="sign-recognizer-v2")
@@ -488,6 +549,14 @@ def main(argv=None) -> int:
             p.error("--generator-mix-key and --generator-mix-sha256 go together")
         if args.timing != "asllrp" and args.total_fit != "pad":
             p.error("--total-fit applies to the asllrp timing only")
+        if args.space_normalise != "off" and not (args.space_stats_key and args.space_stats_sha256):
+            p.error("--space-normalise needs --space-stats-key and --space-stats-sha256")
+        if (args.space_normalise != "off" or args.bridge != "linear") and args.timing == "stage1":
+            p.error("--space-normalise and --bridge minimum-jerk apply to the asllrp and sign-fitted timings")
+        if args.space_normalise != "off" and "core_chained" in variants:
+            p.error("--space-normalise needs word pieces (core_crossfade, oracle_stage2)")
+        if args.tighten_cores and args.timing != "sign-fitted":
+            p.error("--tighten-cores applies to the sign-fitted timing (its median-position cores)")
         if args.rerank < 1 or (args.rerank > 1 and (args.timing == "stage1" or "core_chained" in variants)):
             p.error("--rerank >= 1; above 1 only for core_crossfade with the asllrp or sign-fitted timing")
         if args.timing == "stage1" and args.core_margin is not None:
