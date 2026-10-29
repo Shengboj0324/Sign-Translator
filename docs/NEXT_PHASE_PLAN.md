@@ -3997,7 +3997,7 @@ Hand speed is reported against the 1.5× bar.
 - BLEU is the highest of any pilot (1.75).
 - New words are learned: teacher-forced 0.30 against F12's 0.17.
 
-### Round 15 amendment 3 result: core_chained (recorded 2026-10-29, 06:31 UTC)
+### Round 15 amendment 3 result: core_chained (recorded 2026-10-29, 06:29 UTC)
 
 | Measure | Value |
 |---|---|
