@@ -3949,3 +3949,21 @@ With real words, sign-fitted timing is the better composition at equal BLEU.
 Hand speed is reported against the 1.5× bar.
 
 **After M1:** evaluation in realistic translation scenarios, then human sign reviewers. Whether the 3.8 BLEU target is still needed is decided from that evaluation. Until M1, every round is chosen for its expected effect on generated word quality and composition.
+
+### Round 15 amendment 3 result: core_crossfade at stage-1 words and sign-fitted timing (recorded 2026-10-29, 05:32 UTC)
+
+| Measure | Value |
+|---|---|
+| BLEU | **1.85**, the best generated composition so far |
+| Against end-to-end (rule 1) | +0.43 [−0.10, +1.01]: **fail** (lower bound just below 0) |
+| Against mismatched words (rule 2) | +0.66 [+0.16, +1.14]: pass |
+| Spotting (rule 3) | 0.361 [0.334, 0.385] against 0.065, order 0.89: pass |
+| Against stage-1 crossfade | +0.46 [−0.04, +1.00] |
+| Against oracle stage 1 | −0.73 |
+| Wrist speed | 2.62× real: hand-speed check **fails** |
+
+**Verdict: NOT PROMISING**, missing by rule 1 only.
+
+**Anomaly:** the shuffled control scores *higher* (2.20). Main minus shuffled is −0.34 [−1.05, +0.34], not resolved. For real words the order mattered (+0.78 [+0.30, +1.25]); for generated crossfade pieces it does not show. At these BLEU levels, 300 sentences give intervals of about ±0.5, so the instrument cannot resolve order effects for generated words.
+
+**Toward M1 (2.55):** the gap from generated to real words at this timing is now 0.70 (2.55 against 1.85), down from about 1.15 at stage-1 timing. W14b's words are the next lever. core_chained is still running.
