@@ -4230,7 +4230,7 @@ Hand speed is reported.
 
 The calibration (v2's numbers) is reported whatever the outcome.
 
-### Recogniser v3 amendment 2 result (recorded 2026-10-29, 13:55 UTC): G6′ PASSES, so v3 becomes the instrument
+### Recogniser v3 amendment 2 result (recorded 2026-10-29, 13:53 UTC): G6′ PASSES, so v3 becomes the instrument
 
 **Calibration** (`training-runs/sign-recognizer-v3d/g6-calibration.json`): v2 was read on the same 9,633 gate-half and held-out clips. Its per-set top-1 reproduces the gate report's.
 
