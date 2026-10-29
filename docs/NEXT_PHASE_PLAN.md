@@ -3635,7 +3635,7 @@ The large preference appears only in corpora extracted with MediaPipe. It holds 
 
 Signer 38 (left-handed) is reported separately.
 
-### Round 15 stage 2: oracle stage 2 result, recorded (2026-10-29, 00:58 UTC; report-only; `round15/stage2-oracle-f12-vocab.json`)
+### Round 15 stage 2: oracle stage 2 result, recorded (2026-10-29, 00:53 UTC; report-only; `round15/stage2-oracle-f12-vocab.json`)
 
 **Setup:** real isolated clips of the stage-2 words, with stage-2 structure and timing, on the 300 How2Sign val sentences. Every stored comparator reproduces exactly; real clips reproduce 298 of 300.
 
