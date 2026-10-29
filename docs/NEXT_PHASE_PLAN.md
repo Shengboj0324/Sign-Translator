@@ -3634,3 +3634,37 @@ The large preference appears only in corpora extracted with MediaPipe. It holds 
 - their wrist-height and wrist-path dominant slot is right for at least 80% of signers.
 
 Signer 38 (left-handed) is reported separately.
+
+### Round 15 stage 2: oracle stage 2 result, recorded (2026-10-29, 00:58 UTC; report-only; `round15/stage2-oracle-f12-vocab.json`)
+
+**Setup:** real isolated clips of the stage-2 words, with stage-2 structure and timing, on the 300 How2Sign val sentences. Every stored comparator reproduces exactly; real clips reproduce 298 of 300.
+
+| Form | BLEU | Paired against oracle stage 1 (2.58) | Against end-to-end (1.42) |
+|---|---|---|---|
+| Oracle stage 2, pad (the rule's fit) | 1.57 [1.11, 2.03] | **−1.01 [−1.64, −0.45]** | +0.14 [−0.44, +0.75] |
+| Oracle stage 2, scale | 1.85 | −0.73 [−1.36, −0.12] | +0.43 [−0.19, +1.09] |
+
+**Content controls, pad:**
+- Against mismatched words: +0.59 [+0.02, +1.11].
+- Against shuffled: +0.23 [−0.20, +0.64].
+- Spotting recall 0.333 against mismatched 0.103.
+- Spotting order 0.81.
+
+**Motion:**
+- Wrist speed 3.73× real, against stage 1's about 3×.
+- Cores are cut at a median of 30 frames and compressed **5.9×** to a median 0.20 s target.
+- 264 of 300 sentences are padded with rest at the end.
+
+**Reading (declared): not above oracle stage 1.** With real words, the stage-2 grammar and timing are not rewarded; they are clearly penalised.
+
+**Diagnosis from the numbers:**
+1. **The timing is the cause.** ASLLRP-pace targets (0.20 s per sign) applied to activity cores that also contain the raise and return (1.8× the sign) give signs about 4× too fast, then idle padding. The scale fit, which spreads the same pieces over the sentence, recovers +0.28 [+0.01, +0.61] but stays below stage 1.
+2. **Selection and structure are not shown to hurt.** Spotting recall (0.333) is at stage-1 crossfade's level (0.312), with high order agreement.
+
+**The generated variants keep running as declared.** Both are expected to be NOT PROMISING.
+
+**Next, after them:** a timing redesign, declared before it runs.
+- Tighter cores: the annotated sign portion, not the activity window.
+- Durations fitted to the sentence, as in oracle stage 1.
+- ASLLRP's structure kept.
+- Oracle first, generated only if the oracle beats oracle stage 1.
