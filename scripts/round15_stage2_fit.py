@@ -114,6 +114,50 @@ def annotated_seconds(manifest, vocab) -> dict:
     return {e: float(statistics.median(v)) for e, v in sorted(spans.items())}
 
 
+ASLLVD_CONTEXT = 50 / agc.ASLLVD_FPS           # seconds of context either side of every ASLLVD clip's annotated sign
+
+
+def record_sign_fraction(record) -> tuple[float, float] | None:
+    """Where an ASLLVD clip's annotated sign lies in the clip the prior trained on (the trimmed window): (start,
+    end) as fractions of the window. The clip starts 50 frames (0.833 s at 60 fps) before the annotated sign
+    (``source.frames``) and the window keeps ``continuous.window_seconds`` of it. None for other corpora, a missing
+    annotation or a sign outside the window."""
+    if record.get("corpus") != "asllvd-text-v1":
+        return None
+    f = (record.get("source") or {}).get("frames")
+    c = record.get("continuous") or {}
+    if not f or len(f) != 2 or f[1] < f[0]:
+        return None
+    lo, hi = c.get("window_seconds") or (0., c.get("seconds") or 0.)
+    length = hi - lo
+    start = ASLLVD_CONTEXT - lo
+    end = start + (f[1] - f[0] + 1) / agc.ASLLVD_FPS
+    if length <= 0 or end <= 0 or start >= length:
+        return None
+    return max(start / length, 0.), min(end / length, 1.)
+
+
+def sign_fractions(manifest, vocab) -> dict:
+    """The annotated sign's position in the trimmed clips: per ASLLVD train record (``records``, by sign id), per
+    vocabulary entry (``entries``: the median start and end of its ASLLVD train records) and over all of them
+    (``all``), for the sign-fitted timing's cores (generated clips and clips without an annotation use their entry's,
+    else ``all``)."""
+    records, per_entry = {}, collections.defaultdict(list)
+    for r in manifest["records"]:
+        if r.get("partition") != "train" or not r.get("text"):
+            continue
+        frac = record_sign_fraction(r)
+        e = " ".join(normalise(r["text"]))
+        if frac is None or e not in vocab:
+            continue
+        records[r["sign"]] = frac
+        per_entry[e].append(frac)
+    med = lambda v: (round(float(np.median([a for a, _ in v])), 4), round(float(np.median([b for _, b in v])), 4))  # noqa: E731
+    pooled = [x for v in per_entry.values() for x in v]
+    return dict(records=records, entries={e: med(v) for e, v in sorted(per_entry.items())},
+                all=med(pooled) if pooled else (0., 1.), clips=len(pooled))
+
+
 def _own_signs(signbank_lexicon: dict, asllex_rows) -> set[str]:
     """English names that are signs of their own: Sign Bank main entries and ASL-LEX EntryIDs / LemmaIDs."""
     own = set()

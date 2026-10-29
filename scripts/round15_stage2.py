@@ -35,6 +35,24 @@ stage-1 words derangement, fitted to this clip's reference; seeds and draws in t
 entry reads as its blank clip. Further ``--total-fit`` values render the same generated material again (main form
 only, ``V@fit``).
 
+**Timing modes** (``--timing``; the words and structure are stage 2's in every mode):
+- ``asllrp`` (default, the declared run): as above.
+- ``stage1``: round 15 stage 1's timing exactly. Durations ``round15_compositional.plan_durations``: word k gets
+  max(0.3 s, T_total x t_k / sum t), t_k its typical isolated (trimmed) duration and T_total the reference duration
+  (plus (n - 1) x 4 frames of crossfade overlap for core_crossfade and oracle_stage2). core_crossfade generates each
+  word at its fitted duration and joins them with the 4-frame crossfade (stage 1's V1); core_chained is stage 1's
+  chained mode (V2) at its durations; oracle_stage2 time-resamples each whole trimmed real clip to its fitted frames
+  and crossfades them (the stage-1 oracle's composition). Isolates the structure effect against oracle stage 1.
+- ``sign-fitted``: cores are the annotated sign window plus ``--core-margin`` (default 0.1 s): a real ASLLVD clip's
+  own annotation (its 0.833 s context and window offset, ``record_sign_fraction``), otherwise (generated words, RIT
+  and WLASL clips) the median position of the annotated sign in the word's ASLLVD train clips, else in all of them
+  (``sign_fractions``; about 0.275-0.65 of the trimmed clip). Frames by ``compositional_grammar.fitted_plan``: with
+  A_k the sign's isolated annotated seconds (``isolated_sign_seconds``) and g = ASLLRP gap / ASLLRP sign (median,
+  ``gap_ratio``, 0.714), sign k weighs A_k and the transition between k and k + 1 weighs g (A_k + A_{k+1}) / 2; the
+  reference's R frames are shared in proportion (``allocate``, at least one frame per sign); no padding, no ASLLRP
+  pace. Transitions: generated (core_chained) or interpolated (core_crossfade, oracle_stage2).
+``--total-fit`` applies to asllrp only.
+
 **Comparators** (stored hypotheses, scored here with the same references and bootstrap): ``end_to_end``,
 ``stage1_chained``, ``stage1_crossfade`` (the stage-1 report) and ``oracle_stage1`` (the oracle report's fitted
 oracle, 2.58); ``real`` and ``blank`` are translated afresh (reproduction reported).
@@ -113,8 +131,17 @@ def plan_clip(text, model, vocab) -> dict:
     rows = cg.selection_rows(text, vocab, model["lexicon"])
     entries, trace = cg.apply_structure(rows, model["structure"], vocab)
     targets = [cg.target_seconds(e, model["timing"], vocab) for e in entries]
+    weights = [cg.isolated_sign_seconds(e, model["timing"], vocab) for e in entries]
     return dict(entries=entries, rows=rows, trace=trace, targets=[t for t, _ in targets],
-                target_sources=[s for _, s in targets], generate=[float(vocab[e]) for e in entries])
+                target_sources=[s for _, s in targets], generate=[float(vocab[e]) for e in entries],
+                weights=[w for w, _ in weights], weight_sources=[s for _, s in weights])
+
+
+def stage1_durations(variant, words, vocab, reference_seconds, overlap) -> list[float]:
+    """Stage 1's fitted durations of a job (``round15_compositional.plan_durations``: in proportion to the words'
+    typical isolated durations, 0.3 s floor, crossfade joins' overlap added for crossfade and the oracle)."""
+    from round15_compositional import plan_durations
+    return plan_durations(STAGE1_MODES[variant], words, vocab, reference_seconds, overlap) if words else []
 
 
 def frame_plan(targets, reference_seconds, model, total_fit, gap_seconds=None) -> dict:
@@ -124,9 +151,22 @@ def frame_plan(targets, reference_seconds, model, total_fit, gap_seconds=None) -
                        t["lead_share"])
 
 
-def plan_jobs(variants, plans, content_perm, orders) -> dict:
-    """{(variant, control, clip): job (mode, words, generate seconds, targets, seeds, order) or None}. Pieces-based
-    variants (core_crossfade, oracle_stage2) reorder their matched pieces for /shuffled: no job of their own."""
+PER_WORD = ("words", "generate", "targets", "weights", "durations", "seeds")
+
+
+def plan_jobs(variants, plans, content_perm, orders, *, seconds=None, vocab=None, timing: str = "asllrp",
+              overlap: int = 4) -> dict:
+    """{(variant, control, clip): job (mode, words, generate seconds, targets, weights, stage-1 durations, seeds,
+    block) or None}. Pieces-based variants (core_crossfade, oracle_stage2) reorder their matched pieces for
+    /shuffled: no job of their own. With the stage1 timing (``seconds`` and ``vocab`` given) every job carries stage
+    1's fitted durations for its clip's reference (mismatched words: this clip's reference, as stage 1)."""
+    def job(v, plan, i, seeds, block):
+        out = dict(mode=v, words=list(plan["entries"]), generate=list(plan["generate"]),
+                   targets=list(plan["targets"]), weights=list(plan.get("weights") or [1.] * len(plan["entries"])),
+                   seeds=seeds, block=block, overlap=overlap)
+        out["durations"] = (stage1_durations(v, out["words"], vocab, seconds[i], overlap) if timing == "stage1"
+                            else [None] * len(out["words"]))
+        return out
     jobs = {}
     for v in variants:
         for i, plan in enumerate(plans):
@@ -134,19 +174,41 @@ def plan_jobs(variants, plans, content_perm, orders) -> dict:
             if not words:
                 jobs[(v, "", i)] = jobs[(v, "/shuffled", i)] = None
             else:
-                s = word_seeds(i, len(words))
-                jobs[(v, "", i)] = dict(mode=v, words=list(words), generate=list(plan["generate"]),
-                                        targets=list(plan["targets"]), seeds=s, block="matched")
+                matched = jobs[(v, "", i)] = job(v, plan, i, word_seeds(i, len(words)), "matched")
                 o = orders[i]
                 jobs[(v, "/shuffled", i)] = None if v != "core_chained" else dict(
-                    mode=v, words=[words[k] for k in o], generate=[plan["generate"][k] for k in o],
-                    targets=[plan["targets"][k] for k in o], seeds=[s[k] for k in o], block="matched")
+                    matched, **{k: [matched[k][j] for j in o] for k in PER_WORD})
             other = plans[content_perm[i]]
-            jobs[(v, "/mismatched_words", i)] = dict(
-                mode=v, words=list(other["entries"]), generate=list(other["generate"]),
-                targets=list(other["targets"]), seeds=word_seeds(i, len(other["entries"]), mismatched=True),
-                block="mismatched_words") if other["entries"] else None
+            jobs[(v, "/mismatched_words", i)] = job(v, other, i, word_seeds(i, len(other["entries"]), mismatched=True),
+                                                    "mismatched_words") if other["entries"] else None
     return jobs
+
+
+def render_form(material, job, reference_seconds, model, *, timing: str, total_fit: str = "pad", order=None,
+                gap_seconds=None, sample_id: str = "round15-stage2"):
+    """(state, plan) of one composition from its material under a timing mode (module docstring). ``order``
+    reorders a pieces-based composition's matched words (/shuffled); a chained shuffled form is its own job."""
+    from signtranslator.generation import compositional_grammar as cg
+    from signtranslator.generation.compositional import concatenate, parts_from_pieces, render, word_frames
+    from round15_oracle import compose_clips
+    idx = list(range(len(job["words"]))) if order is None else list(order)
+    if timing == "stage1":
+        frames = [word_frames(job["durations"][k]) for k in idx]
+        if material.get("pieces") is not None:                  # real clips: time-resampled to the fitted frames
+            state = compose_clips([material["pieces"][k]["state"] for k in idx], frames, job["overlap"], fitted=True,
+                                  sample_id=sample_id)
+        elif material.get("clips") is not None:                 # generated words at their fitted durations
+            state = concatenate([material["clips"][k] for k in idx], job["overlap"], sample_id=sample_id)
+        else:
+            state = material["state"]
+        return state, dict(fit="stage1", frames=len(state.timestamps), overlong=False, truncated_signs=0,
+                           durations=[round(job["durations"][k], 4) for k in idx], cores=frames, gaps=[])
+    parts = material["parts"] if order is None else parts_from_pieces(material["pieces"], idx)
+    if timing == "sign-fitted":
+        plan = cg.fitted_plan([job["weights"][k] for k in idx], cg.gap_ratio(model["timing"]), reference_seconds)
+    else:
+        plan = frame_plan([job["targets"][k] for k in idx], reference_seconds, model, total_fit, gap_seconds)
+    return render(parts, plan, sample_id=sample_id), plan
 
 
 def form_pairs(variants, extra_fits=()) -> dict:
@@ -215,13 +277,37 @@ def verdict(checks, bleu_row: dict, spotting: dict, spotting_mismatched: dict) -
 
 # ---- generation --------------------------------------------------------------------------------------------------
 
-def generate_job(sample, job: dict, *, guidance: float, temperature, rule: dict):
-    """The generated material of one job (``compose_cores``) with the loaded generator, post-processed as the pilot
-    (``exposure_diagnostic.make_post``)."""
-    from signtranslator.generation.compositional import compose_cores
+STAGE1_MODES = {"core_crossfade": "crossfade", "core_chained": "chained", "oracle_stage2": "crossfade"}
+
+
+def sign_core(word, state, *, fractions, margin):
+    """The sign-fitted core of a clip without its own annotation (every generated clip): the annotated sign's median
+    position in the word's ASLLVD train clips (``fractions["entries"]``), else in all of them (``fractions["all"]``),
+    widened by ``margin`` seconds (``compositional.fraction_window``)."""
+    from signtranslator.generation.compositional import fraction_window
+    frac = fractions["entries"].get(word)
+    return fraction_window(state, frac or fractions["all"], margin, reason="entry" if frac else "all")
+
+
+def generate_job(sample, job: dict, *, guidance: float, temperature, rule: dict, timing: str = "asllrp",
+                 fractions=None, margin: float = .1):
+    """The generated material of one job with the loaded generator, post-processed as the pilot
+    (``exposure_diagnostic.make_post``): ``compose_cores`` for the asllrp and sign-fitted timings (the sign-fitted
+    cores by ``sign_core``), stage 1's ``compose`` (crossfade or chained, at the job's fitted durations) for the
+    stage1 timing."""
+    from functools import partial
+    from signtranslator.generation.compositional import compose, compose_cores
     from exposure_diagnostic import make_post
+    post = make_post(sample.decoder_gains)
+    if timing == "stage1":
+        mode = STAGE1_MODES[job["mode"]]
+        state, info = compose(sample.prior, sample.tokenizer, job["words"], job["durations"], mode, job["seeds"],
+                              guidance=guidance, temperature=temperature, post=post, crossfade=job["overlap"])
+        return dict(mode=job["mode"], timing="stage1", state=state, clips=info.get("clips"),
+                    segments=info["segments"])
+    cores = partial(sign_core, fractions=fractions, margin=margin) if timing == "sign-fitted" else None
     out = compose_cores(sample.prior, sample.tokenizer, job["words"], job["generate"], job["mode"], job["seeds"],
-                        guidance=guidance, temperature=temperature, post=make_post(sample.decoder_gains), rule=rule)
+                        guidance=guidance, temperature=temperature, post=post, rule=rule, cores=cores)
     out.pop("codes", None)
     return out
 
@@ -268,18 +354,30 @@ def run_jobs(sample, jobs: list, settings: dict, *, workers: int = 1, worker_arg
     return out
 
 
-def oracle_material(job, clip: int, pools, *, loaded: dict, load, rule) -> dict:
+def oracle_material(job, clip: int, pools, *, loaded: dict, load, rule, timing: str = "asllrp", fractions=None,
+                    margin: float = .1) -> dict:
     """Real clips of a job's words (``choose_record`` in the job's block: the stage-1 oracle's draw for the same
-    clip and word), cut to their cores like ``core_crossfade``."""
-    from signtranslator.generation.compositional import core_window, parts_from_pieces
+    clip and word), cut to their cores like ``core_crossfade``: the activity window (asllrp), the clip's own
+    annotated sign when it has one (ASLLVD: ``round15_stage2_fit.record_sign_fraction``), else ``sign_core``
+    (sign-fitted); whole trimmed clips for the stage1 timing."""
+    from signtranslator.generation.compositional import core_window, fraction_window, parts_from_pieces
     from round15_oracle import choose_record
+    from round15_stage2_fit import record_sign_fraction
     records = [choose_record(pools, clip, w, job["block"]) for w in job["words"]]
     pieces = []
-    for r in records:
+    for w, r in zip(job["words"], records):
         if r["sign"] not in loaded:
             loaded[r["sign"]] = load(r)
         state = loaded[r["sign"]]
-        pieces.append(dict(state=state, **core_window(state, rule)))
+        if timing == "stage1":
+            window = dict(lo=0, hi=len(state.timestamps) - 1, reason="whole")
+        elif timing == "sign-fitted":
+            own = record_sign_fraction(r)
+            window = (fraction_window(state, own, margin, reason="annotated") if own else
+                      sign_core(w, state, fractions=fractions, margin=margin))
+        else:
+            window = core_window(state, rule)
+        pieces.append(dict(state=state, **window))
     rows = [dict(word=w, frames=len(p["state"].timestamps), sign=r["sign"], corpus=r["corpus"], lo=p["lo"],
                  hi=p["hi"], reason=p["reason"]) for w, r, p in zip(job["words"], records, pieces)]
     return dict(mode="oracle_stage2", parts=parts_from_pieces(pieces), segments=rows, pieces=pieces)
@@ -297,7 +395,10 @@ def main(argv=None) -> int:
     p.add_argument("--variants", default=",".join(VARIANTS))
     p.add_argument("--total-fit", default="pad", help="pad, scale or none; more than one (comma-separated) renders "
                    "the same material again for the main forms (the first is the primary)")
-    p.add_argument("--core-margin", type=float, default=0., help="seconds added either side of the active window")
+    p.add_argument("--timing", default="asllrp", help="asllrp (the declared stage-2 timing), stage1 (stage 1's "
+                   "oracle timing on the stage-2 words) or sign-fitted (annotated sign cores filling the reference)")
+    p.add_argument("--core-margin", type=float, help="seconds added either side of the core (default: 0 for asllrp, "
+                   "0.1 for sign-fitted; not used by stage1)")
     p.add_argument("--core-threshold", type=float, default=.1, help="the activity threshold (the manifests' 0.1)")
     p.add_argument("--gap-seconds", type=float, help="the gap between signs (default: the model's ASLLRP median)")
     p.add_argument("--model-file", help="a fitted stage-2 model (round15_stage2_fit.py); default: fit it now")
@@ -326,10 +427,17 @@ def main(argv=None) -> int:
         p.error(f"--variants: distinct names from {','.join(VARIANTS)}")
     if any(v in GENERATED for v in variants) and not args.checkpoint_key:
         p.error("--checkpoint-key is required for generated variants")
-    from signtranslator.generation.compositional_grammar import TOTAL_FITS
+    from signtranslator.generation.compositional_grammar import TIMINGS, TOTAL_FITS
     fits = [f for f in args.total_fit.split(",") if f]
     if not fits or any(f not in TOTAL_FITS for f in fits) or len(set(fits)) != len(fits):
         p.error(f"--total-fit: distinct values from {','.join(TOTAL_FITS)}")
+    if args.timing not in TIMINGS:
+        p.error(f"--timing: one of {', '.join(TIMINGS)}")
+    if args.timing != "asllrp" and fits != ["pad"]:
+        p.error("--total-fit applies to the asllrp timing only (stage1 and sign-fitted fill the reference themselves)")
+    if args.timing == "stage1" and args.core_margin is not None:
+        p.error("--core-margin does not apply to the stage1 timing (whole trimmed clips)")
+    margin = args.core_margin if args.core_margin is not None else (.1 if args.timing == "sign-fitted" else 0.)
     checks = parse_rule(args.rule)
     try:
         check_rule(checks, variants, fits[1:])                    # before anything is loaded or generated
@@ -406,8 +514,12 @@ def main(argv=None) -> int:
     orders = [shuffle_order(len(pl["entries"]), i, 0) for i, pl in enumerate(plans)]
     if max(len(pl["entries"]) for pl in plans) > MAX_WORDS:
         raise SystemExit(f"a sentence plans more than {MAX_WORDS} signs")
-    jobs = plan_jobs(variants, plans, content_perm, orders)
-    rule = dict(CORE_RULE, margin=args.core_margin, threshold=args.core_threshold)
+    overlap = crossfade_frames(float(s1["crossfade"]["seconds"]))            # stage 1's 4 frames
+    jobs = plan_jobs(variants, plans, content_perm, orders, seconds=seconds, vocab=vocab, timing=args.timing,
+                     overlap=overlap)
+    rule = dict(CORE_RULE, margin=margin, threshold=args.core_threshold)
+    fractions = fit.sign_fractions(manifest, vocab) if args.timing == "sign-fitted" else None
+    mode_settings = dict(timing=args.timing, fractions=fractions, margin=margin)
     gen_keys = [k for k, j in jobs.items() if j is not None and k[0] in GENERATED]
     print(f"{n} clips; stage-2 model {model['sha256'][:12]}; {sum(len(pl['entries']) for pl in plans)} signs planned "
           f"(stage 1: {sum(len(w) for w in selected1)}); {len(gen_keys)} generated compositions, "
@@ -418,7 +530,7 @@ def main(argv=None) -> int:
     if gen_keys:
         _, _, sample = load_generator(store, args.checkpoint_key, s1["mix_sha256"], args.device,
                                       temperature=temperature)
-        settings = dict(guidance=args.guidance, temperature=temperature, rule=rule)
+        settings = dict(guidance=args.guidance, temperature=temperature, rule=rule, **mode_settings)
         worker = (args.store, args.checkpoint_key, s1["mix_sha256"], args.device, temperature,
                   max(1, torch.get_num_threads() // max(args.word_workers, 1)))
         results = run_jobs(sample, [jobs[k] for k in gen_keys], settings, workers=args.word_workers,
@@ -437,7 +549,7 @@ def main(argv=None) -> int:
         load = lambda r: word_clip(r, cache=cache, fetch=store.get, template=template)    # noqa: E731
         for k, j in jobs.items():
             if j is not None and k[0] == "oracle_stage2" and k[1] != "/shuffled":
-                material[k] = oracle_material(j, k[2], pools, loaded=loaded, load=load, rule=rule)
+                material[k] = oracle_material(j, k[2], pools, loaded=loaded, load=load, rule=rule, **mode_settings)
     clock["oracle"] = time.time()
 
     # render every form
@@ -459,21 +571,20 @@ def main(argv=None) -> int:
                 if job is None:
                     states.append(blanks[i])
                     continue
-                if c == "/shuffled" and v != "core_chained":
-                    o = orders[i]
-                    parts = parts_from_pieces(material[(v, "", i)]["pieces"], o)
-                    targets = [job["targets"][k] for k in o]
-                else:
-                    parts, targets = material[key]["parts"], job["targets"]
-                fp = frame_plan(targets, seconds[i], model, fits[0], args.gap_seconds)
-                states.append(render(parts, fp, sample_id=f"round15-stage2-{v}{c}:{i}"))
+                reordered = c == "/shuffled" and v != "core_chained"
+                source = material[(v, "", i)] if reordered else material[key]
+                state, fp = render_form(source, job, seconds[i], model, timing=args.timing, total_fit=fits[0],
+                                        order=orders[i] if reordered else None, gap_seconds=args.gap_seconds,
+                                        sample_id=f"round15-stage2-{v}{c}:{i}")
+                states.append(state)
                 if c == "":
                     segs = material[key]["segments"]
                     per_clip[i][v] = dict(frames=fp["frames"], plan=fp, segments=[
                         {k2: v2 for k2, v2 in s.items() if k2 != "seed"} for s in segs])
                     for s, f in zip(segs, fp["cores"]):
-                        timing_rows[v].append(dict(core=s["hi"] - s["lo"] + 1, planned=f, reason=s["reason"],
-                                                   fit=fp["fit"]))
+                        if "lo" in s:                                  # stage1 timing: whole clips, no core
+                            timing_rows[v].append(dict(core=s["hi"] - s["lo"] + 1, planned=f, reason=s["reason"],
+                                                       fit=fp["fit"]))
             forms[f"{v}{c}"] = states
         for f in fits[1:]:
             forms[f"{v}@{f}"] = [blanks[i] if jobs[(v, "", i)] is None else
@@ -579,7 +690,9 @@ def main(argv=None) -> int:
         oracle_report_key=args.oracle_report_key, mix_key=s1["mix_key"], mix_sha256=s1["mix_sha256"],
         translator_run=s1["translator_run"], translator_key=kp, recognizer_run=recognizer_run,
         recognizer_checkpoint=best.get("checkpoint_key") if isinstance(best, dict) else None, clips=n,
-        variants=variants, total_fit=fits, core_rule=rule,
+        variants=variants, timing_mode=args.timing, core_margin=margin, total_fit=fits, core_rule=rule,
+        sign_fractions=dict(all=fractions["all"], clips=fractions["clips"], entries=len(fractions["entries"]))
+        if fractions else None,
         gap_seconds=model["timing"]["gap"] if args.gap_seconds is None else args.gap_seconds,
         guidance=args.guidance, part_temperature=temperature, rule=args.rule, rule_checks=checks,
         model_sha256=model["sha256"], model_parameters=model["parameters"],

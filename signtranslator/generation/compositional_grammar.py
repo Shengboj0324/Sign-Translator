@@ -55,6 +55,12 @@ whatever the length). ``allocate`` rounds a scaled plan to the exact total. With
 exactly the reference's frames; a sentence with more signs than reference frames is **overlong**: its first signs
 get one frame each and the rest are truncated (``overlong``, ``truncated_signs``; counted in the report).
 
+**Timing modes** (``TIMINGS``; ``scripts/round15_stage2.py --timing``): ``asllrp`` is the declared stage-2 timing above
+(activity cores at ASLLRP sign targets, gaps, the sentence padded or scaled to the reference). ``stage1`` is round 15
+stage 1's timing on the stage-2 words (whole trimmed clips, ``compositional.fitted_durations`` with the 0.3 s floor,
+4-frame crossfades). ``sign-fitted`` cuts each word to its annotated sign window and fills the reference exactly
+(``fitted_plan``: weights ``isolated_sign_seconds``, transitions ``gap_ratio`` x the mean of their two signs).
+
 **Metrics** (``sequence_metrics``): bag precision / recall / F1 (micro, multiset intersection), entry WER and the
 Kendall tau of the shared entries' order, as the groundwork's ``rule_check``; ``paired_bootstrap`` for differences.
 """
@@ -633,6 +639,48 @@ def plan_frames(targets, gap_seconds: float, reference_seconds: float, total_fit
                 truncated_signs=int(sum(c == 0 for c in cores)))
 
 
+TIMINGS = ("asllrp", "stage1", "sign-fitted")
+
+
+def isolated_sign_seconds(entry: str, timing: dict, typical) -> tuple[float, str]:
+    """(seconds, source) of an entry's *isolated annotated* sign: the median ASLLVD annotated span of its train clips
+    ("annotated"), else its typical trimmed seconds / trimmed_over_annotated ("trimmed"), else the train median
+    lexical sentence sign ("default"). No ASLLRP pace and no clipping: the sign-fitted timing's weights."""
+    if entry in timing["annotated"]:
+        return float(timing["annotated"][entry]), "annotated"
+    if timing.get("trimmed_over_annotated"):
+        return float(typical[entry]) / timing["trimmed_over_annotated"], "trimmed"
+    return float(timing.get("default_seconds") or timing["floor"]), "default"
+
+
+def gap_ratio(timing: dict) -> float:
+    """ASLLRP's transition length relative to its signs: the median train gap over the median train lexical sign
+    (0.1668 / 0.2336 = 0.714 for the F12 model)."""
+    return float(timing["gap"]) / float(timing.get("default_seconds") or timing["floor"])
+
+
+def fitted_plan(weights, gap_ratio_: float, reference_seconds: float, fps: float = FPS) -> dict:
+    """The sign-fitted frame plan: the sentence filled exactly, no padding. Sign k weighs ``A_k`` (its isolated
+    annotated seconds, ``isolated_sign_seconds``); the transition between signs k and k + 1 weighs
+    ``gap_ratio x (A_k + A_{k+1}) / 2``. With W the sum of all weights and R = round(reference x 24) frames, sign k gets
+    about R A_k / W frames and the transition R gap_ratio (A_k + A_{k+1}) / 2 / W (``allocate``: exact total R, at
+    least one frame per sign); more signs than frames: truncated as ``plan_frames`` does."""
+    if not weights:
+        raise ValueError("no signs to plan")
+    n = len(weights)
+    gaps_w = [gap_ratio_ * (a + b) / 2 for a, b in zip(weights[:-1], weights[1:])]
+    R = max(1, int(round(reference_seconds * fps)))
+    if n > R:
+        cores, gaps, fit = [1] * R + [0] * (n - R), [0] * (n - 1), "truncated"
+    else:
+        out = allocate(list(weights) + gaps_w, R, [1] * n + [0] * (n - 1))
+        cores, gaps, fit = out[:n], out[n:], "fitted"
+    body = sum(weights) + sum(gaps_w)
+    return dict(cores=cores, gaps=gaps, lead=0, trail=0, fit=fit, body_planned=round(body * fps, 2),
+                scale=round(R / (body * fps), 4) if body else None, frames=sum(cores) + sum(gaps),
+                overlong=fit == "truncated", truncated_signs=int(sum(c == 0 for c in cores)))
+
+
 # ---- metrics -----------------------------------------------------------------------------------------------------
 
 def levenshtein(a, b) -> int:
@@ -728,5 +776,6 @@ def median(values):
 __all__ = ["ASLLRP_COLLECTIONS", "LEXICON_TIERS", "KEPT2", "TOTAL_FITS", "POINTING", "POINTING_ENTRIES", "DROPPABLE",
            "NEGATIONS", "MOVE_CLASSES", "MOVES", "droppable", "drops_negation", "proper_nouns", "learned_links", "tokens",
            "selection_rows", "selected", "check_fit_records", "tau_of", "apply_moves", "apply_structure",
-           "fit_structure", "fit_timing", "target_seconds", "allocate", "plan_frames", "levenshtein",
+           "fit_structure", "fit_timing", "target_seconds", "allocate", "plan_frames", "levenshtein", "TIMINGS",
+           "isolated_sign_seconds", "gap_ratio", "fitted_plan",
            "utterance_counts", "aggregate", "sequence_metrics", "paired_bootstrap", "model_sha256", "median"]
