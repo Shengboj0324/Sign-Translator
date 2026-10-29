@@ -3881,3 +3881,21 @@ Hand speed is reported against the 1.5× bar.
 - **Hand speed:** wrist 2.69× real, **fail**.
 
 **Stage 2 as declared is complete:** neither generated variant is promising. The open question is amendment 2, stage-1 words at sign-fitted timing, which is running.
+
+### Round 14b data built; oracle-stage-1 reproduction exact (recorded 2026-10-29, 03:24 UTC)
+
+**`semlex-text-v2`** (sha 771fe15a…):
+- **Kept:** 26,698 train and 9,124 val records, 29 signers each. Round 14's v1 had 19,067 and 6,483.
+- **Trimmed seconds:** median 1.22 (p10 0.87, p90 1.91).
+- **Dropped:**
+  - signers excluded: 5,313 clips;
+  - chosen hand detected below 20%: 3,055;
+  - wrist never in frame: 394;
+  - frame rate below the minimum: 10,607;
+  - hand tracked below the minimum: 7,872.
+- **Trim side:** every signer's majority articulating slot is **Right**, so the chosen side is Right on all 39,332 examined clips. Clip-level agreement with the signer's side is 0.73. The old rule picked Left on 23,411 clips and was `arm_untracked` on 17,558.
+- **R5 coverage:** 36 of the 42 uncovered words now have at least one train clip, and 18 have at least five. Ceiling 0.72 → 0.96.
+
+**`round14b-mixed-v1`:** sha 710a3941dce4abf099a336705203a719f441c8cac5847b0e59ed7679d515eb7d. W14b training starts from it.
+
+**Amendment 2's reproduction check: exact.** `--selection stage1 --timing stage1` gives BLEU 2.581, and all 300 hypotheses are identical to the stored oracle stage 1 for the main form and both controls. Run 1 of amendment 2 (sign-fitted) is therefore valid.
