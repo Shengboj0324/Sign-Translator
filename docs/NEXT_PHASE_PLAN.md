@@ -3899,3 +3899,35 @@ Hand speed is reported against the 1.5× bar.
 **`round14b-mixed-v1`:** sha 710a3941dce4abf099a336705203a719f441c8cac5847b0e59ed7679d515eb7d. W14b training starts from it.
 
 **Amendment 2's reproduction check: exact.** `--selection stage1 --timing stage1` gives BLEU 2.581, and all 300 hypotheses are identical to the stored oracle stage 1 for the main form and both controls. Run 1 of amendment 2 (sign-fitted) is therefore valid.
+
+### Round 15 stage 2 amendment 2 result (recorded 2026-10-29, 03:28 UTC): stage-1 words at sign-fitted timing ties oracle stage 1 with half its hand speed
+
+| Real-word form | BLEU | Against oracle stage 1 | Against end-to-end | Against shuffled | Spotting (mismatched) | Order | Wrist speed |
+|---|---|---|---|---|---|---|---|
+| **Stage-1 words, sign-fitted** | **2.55** | −0.03 [−0.57, +0.51] | **+1.13 [+0.51, +1.76]** | **+0.78 [+0.30, +1.25]** | **0.449** (0.091) | 0.89 | **2.18×** |
+| Oracle stage 1 (stage-1 words and timing) | 2.58 | — | +1.16 | — | — | — | 3.8× |
+| Stage-2 words, sign-fitted | 2.11 | −0.47 | +0.69 | +0.57 | 0.336 | 0.83 | 2.35× |
+
+**Reading as declared: NOT a win.** The lower bound against oracle stage 1 is not above 0, so amendment 3 is not triggered by amendment 2's rule.
+
+**It passes stage 2's rule:**
+- against end-to-end, against mismatched words (+1.30 [+0.75, +1.81]), and on spotting.
+- It has the highest spotting recall of any composed form.
+- Order matters to BLEU.
+- Hands move at 57% of oracle stage 1's wrist speed, for the same BLEU.
+
+## Round 15 stage 2 amendment 3: generated words at sign-fitted timing (declared 2026-10-29, 03:28 UTC, openly after amendment 2's result)
+
+**Justification.** Amendment 2's win condition (BLEU above oracle stage 1) was not met. The run is declared on two other grounds:
+1. **Equal BLEU with real words and much more natural motion.** Hand speed is a named target. Wrist speed is 2.18× against 3.8×.
+2. **Stronger content signals:** spotting 0.449 against 0.333, and order agreement 0.89.
+
+With real words, sign-fitted timing is the better composition at equal BLEU.
+
+**Runs:** two GPU pods.
+- F12 step 60000, the declared model 42389ca4, `--selection stage1 --timing sign-fitted --core-margin 0.1`.
+- Variants: `core_chained` on one pod, `core_crossfade` on the other.
+
+**Rule:** stage 2's, unchanged (`bleu:end_to_end,bleu:mismatched_words,spotting`).
+- **Reported:** comparisons with stage-1 chained (1.44) and stage-1 crossfade (1.39), and the hand-speed check (≤ 1.5×).
+- **If a variant is PROMISING:** it becomes the composition for the declared chain, and it is re-run with W14b's words if W14b meets its word-source rule.
