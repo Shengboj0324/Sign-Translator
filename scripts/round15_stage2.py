@@ -429,15 +429,19 @@ def run_jobs(sample, jobs: list, settings: dict, *, workers: int = 1, worker_arg
 
 
 def oracle_material(job, clip: int, pools, *, loaded: dict, load, rule, timing: str = "asllrp", fractions=None,
-                    margin: float = .1, tighten: bool = False) -> dict:
+                    margin: float = .1, tighten: bool = False, records=None) -> dict:
     """Real clips of a job's words (``choose_record`` in the job's block: the stage-1 oracle's draw for the same
     clip and word), cut to their cores like ``core_crossfade``: the activity window (asllrp), the clip's own
     annotated sign when it has one (ASLLVD: ``round15_stage2_fit.record_sign_fraction``), else ``sign_core``
-    (sign-fitted); whole trimmed clips for the stage1 timing."""
+    (sign-fitted); whole trimmed clips for the stage1 timing. ``records``: one given record per word instead of the
+    oracle's draws (the refiner's training pairs, ``build_refiner_pairs.draw_records``)."""
     from signtranslator.generation.compositional import core_window, fraction_window, parts_from_pieces
     from round15_oracle import choose_record
     from round15_stage2_fit import record_sign_fraction
-    records = [choose_record(pools, clip, w, job["block"]) for w in job["words"]]
+    if records is None:
+        records = [choose_record(pools, clip, w, job["block"]) for w in job["words"]]
+    elif len(records) != len(job["words"]):
+        raise ValueError("one record per word")
     pieces = []
     for w, r in zip(job["words"], records):
         if r["sign"] not in loaded:
