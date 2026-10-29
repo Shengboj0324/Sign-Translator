@@ -3950,7 +3950,7 @@ Hand speed is reported against the 1.5× bar.
 
 **After M1:** evaluation in realistic translation scenarios, then human sign reviewers. Whether the 3.8 BLEU target is still needed is decided from that evaluation. Until M1, every round is chosen for its expected effect on generated word quality and composition.
 
-### Round 15 amendment 3 result: core_crossfade at stage-1 words and sign-fitted timing (recorded 2026-10-29, 05:32 UTC)
+### Round 15 amendment 3 result: core_crossfade at stage-1 words and sign-fitted timing (recorded 2026-10-29, 05:31 UTC)
 
 | Measure | Value |
 |---|---|
