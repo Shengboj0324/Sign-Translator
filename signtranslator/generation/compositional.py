@@ -575,6 +575,18 @@ def core_window(state, rule=None, fps: float = FPS) -> dict:
     return dict(lo=lo, hi=hi, side=side, whole=False, reason="core")
 
 
+def fraction_window(state, fraction, margin: float = .1, fps: float = FPS, reason: str = "annotated") -> dict:
+    """The core of a clip whose sign occupies the ``fraction`` (start, end) of its duration D (T frames / fps): frames
+    from ceil((start D - margin) fps) to floor((end D + margin) fps), clipped to the clip, at least one frame."""
+    T = len(state.timestamps)
+    D = T / fps
+    a, b = float(fraction[0]), float(fraction[1])
+    lo = max(0, int(np.ceil((a * D - margin) * fps - 1e-9)))
+    hi = min(T - 1, int(np.floor((b * D + margin) * fps + 1e-9)))
+    lo = min(lo, T - 1)
+    return dict(lo=lo, hi=max(hi, lo), side=None, whole=lo == 0 and hi >= T - 1, reason=reason)
+
+
 def bridge(a, b, frames: int):
     """``frames`` frames from ``a``'s last frame to ``b``'s first, interpolated on each channel's manifold with the
     crossfade's weights (k + 1) / (frames + 1) (``blend_channel``); never observed."""
@@ -646,7 +658,7 @@ def render(parts: dict, plan: dict, *, sample_id: str = "compositional-stage2"):
 
 
 def compose_cores(prior, tokenizer, words, generate_seconds, mode: str, seeds, *, guidance: float, temperature, post,
-                  device=None, rule=None, text: str | None = None) -> dict:
+                  device=None, rule=None, text: str | None = None, cores=None) -> dict:
     """The generated material of one stage-2 composition (``render`` makes the sentence from it under any plan):
     ``{"mode", "parts", "segments", "pieces" (core_crossfade), "codes" (core_chained)}``.
 
@@ -656,7 +668,10 @@ def compose_cores(prior, tokenizer, words, generate_seconds, mode: str, seeds, *
       the kept codes of words 1..k-1, ``generate_seconds[k]`` long; its core is cut on the segment's decoded frames and
       the codes after the core's end are dropped before word k + 1 continues (the last word keeps its return). The
       kept codes are decoded once; the transition into core k (k > 1) is the prior's own frames between core k - 1's
-      end and core k's start, time-resampled to the gap; the lead is word 1's approach, the trail word n's return."""
+      end and core k's start, time-resampled to the gap; the lead is word 1's approach, the trail word n's return.
+
+    ``cores``: an optional ``(word, clip) -> {"lo", "hi", "reason", ...}`` replacing ``core_window`` (the sign-fitted
+    timing's annotated-sign windows, ``fraction_window``)."""
     import torch
     if mode not in CORE_MODES:
         raise ValueError(f"unknown mode {mode!r}")
@@ -668,7 +683,7 @@ def compose_cores(prior, tokenizer, words, generate_seconds, mode: str, seeds, *
     if mode == "core_crossfade":
         clips = [generate_word(prior, tokenizer, w, d, s, guidance=guidance, temperature=temperature, post=post)
                  for w, d, s in zip(words, generate_seconds, seeds)]
-        pieces = [dict(state=c, **core_window(c, rule)) for c in clips]
+        pieces = [dict(state=c, **(cores(w, c) if cores else core_window(c, rule))) for w, c in zip(words, clips)]
         rows = [dict(word=w, frames=len(c.timestamps), seed=s, lo=p["lo"], hi=p["hi"], reason=p["reason"])
                 for w, c, s, p in zip(words, clips, seeds, pieces)]
         return dict(mode=mode, parts=parts_from_pieces(pieces), segments=rows, pieces=pieces)
@@ -681,7 +696,8 @@ def compose_cores(prior, tokenizer, words, generate_seconds, mode: str, seeds, *
         start = codes.shape[0]
         chain, sequence = continue_from(prior, tokenizer, decode, w, codes[None].to(device), start + f, s,
                                         guidance=guidance, device=device, temperature=temperature, return_codes=True)
-        c = core_window(take_frames(chain, np.arange(start, start + f)), rule)
+        segment = take_frames(chain, np.arange(start, start + f))
+        c = cores(w, segment) if cores else core_window(segment, rule)
         keep = start + f if k == len(words) - 1 else start + c["hi"] + 1
         rows.append(dict(word=w, frames=f, seed=s, clock_start=start / FPS, duration_input=(start + f) / FPS,
                          start=start, lo=start + c["lo"], hi=start + c["hi"], kept=keep - start, reason=c["reason"]))
@@ -700,4 +716,5 @@ __all__ = ["FPS", "FLOOR", "MODES", "ISOLATED_CORPORA", "STOP_WORDS", "TRIM", "K
            "fitted_durations", "crossfade_frames", "join_overlaps", "crossfade_weights", "blend_values", "blend_channel",
            "concatenate", "take_frames", "side_tracks", "sign_window", "trim_window", "window_frames", "make_decode",
            "continue_from", "word_frames", "generate_word", "compose", "time_scale", "CORE_MODES", "CORE_RULE",
-           "core_window", "bridge", "lead_in", "lead_out", "parts_from_pieces", "render", "compose_cores"]
+           "core_window", "fraction_window", "bridge", "lead_in", "lead_out", "parts_from_pieces", "render",
+           "compose_cores"]

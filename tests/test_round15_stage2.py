@@ -714,7 +714,11 @@ def test_timing_check_on_asllrp_val_utterances(tmp_path, stage2_store, capsys):
                     "--output-file", str(out)]) == 0
     report = json.loads(out.read_text())
     assert report["utterances"] == 3 and set(report["motion"]) == {"real", "stage1_oracle", "stage2_oracle@pad",
-                                                                   "stage2_oracle@scale", "stage2_oracle@none"}
+                                                                   "stage2_oracle@scale", "stage2_oracle@none",
+                                                                   "stage2_words@stage1_timing",
+                                                                   "stage2_oracle@sign_fitted"}
+    assert report["motion"]["stage2_oracle@sign_fitted"]["seconds_over_reference"] == 1.
+    assert report["sign_fitted"]["margin"] == .1 and report["sign_fitted"]["reasons"]
     assert report["motion_ratio_to_real"]["real"]["wrist_speed"] == 1.
     assert report["motion"]["stage2_oracle@pad"]["seconds_over_reference"] == 1.
     assert report["motion"]["stage2_oracle@none"]["seconds_over_reference"] < 1.
@@ -953,3 +957,181 @@ def test_rule_comparisons_are_checked_before_any_work(tmp_path, stage2_store):
     finally:
         etm.load_generator = original
     assert not calls and not (tmp_path / "x.json").exists()
+
+
+# ---- timing modes (2026-10-29: stage1 and sign-fitted beside the declared asllrp) ------------------------------------
+
+TIMING = dict(annotated={"cut": .5}, trimmed_over_annotated=2.5, default_seconds=.25, floor=.17, gap=.2,
+              sentence_seconds={}, ratio=.4, ceiling=.47, lead_share=.4)
+
+
+def test_isolated_sign_seconds_and_gap_ratio():
+    typical = {"cut": 2., "go": 1.5}
+    assert cg.isolated_sign_seconds("cut", TIMING, typical) == (.5, "annotated")
+    assert cg.isolated_sign_seconds("go", TIMING, typical) == (pytest.approx(.6), "trimmed")
+    assert cg.isolated_sign_seconds("go", dict(TIMING, trimmed_over_annotated=None), typical) == (.25, "default")
+    assert cg.gap_ratio(TIMING) == pytest.approx(.8)
+
+
+def test_fitted_plan_fills_the_reference_in_proportion():
+    p = cg.fitted_plan([.5, .3, .2], .8, 2.)                                  # R = 48 frames
+    # weights .5 .3 .2 and transitions .8 (.5+.3)/2 = .32, .8 (.3+.2)/2 = .2: W = 1.52
+    W = 1. + .32 + .2
+    assert p["frames"] == 48 and p["lead"] == p["trail"] == 0 and p["fit"] == "fitted" and not p["overlong"]
+    assert sum(p["cores"]) + sum(p["gaps"]) == 48
+    for got, w in zip(p["cores"] + p["gaps"], [.5, .3, .2, .32, .2]):
+        assert abs(got - 48 * w / W) < 1
+    assert cg.fitted_plan([.5], .8, 1.)["cores"] == [24] and cg.fitted_plan([.5], .8, 1.)["gaps"] == []
+    t = cg.fitted_plan([.3] * 10, .7, .25)                                     # 6 frames for 10 signs
+    assert t["overlong"] and t["frames"] == 6 and t["cores"] == [1] * 6 + [0] * 4 and t["truncated_signs"] == 4
+    rng = random.Random(3)
+    for _ in range(2000):
+        n = rng.randint(1, 10)
+        R = rng.uniform(.05, 12.)
+        q = cg.fitted_plan([rng.uniform(.05, 1.) for _ in range(n)], rng.uniform(0, 1.5), R)
+        assert q["frames"] == max(1, round(R * 24))
+    with pytest.raises(ValueError):
+        cg.fitted_plan([], .7, 1.)
+
+
+def test_fraction_window_frames():
+    s = full_state(0, frames=48)                                              # D = 2 s
+    w = comp.fraction_window(s, (.25, .75), 0.)
+    assert (w["lo"], w["hi"]) == (12, 36)
+    w = comp.fraction_window(s, (.25, .75), .1)                               # 0.1 s = 2.4 frames either side
+    assert (w["lo"], w["hi"]) == (10, 38)
+    w = comp.fraction_window(s, (0., 1.), .5)
+    assert (w["lo"], w["hi"]) == (0, 47) and w["whole"]
+    w = comp.fraction_window(s, (.99, .995), 0.)
+    assert w["lo"] <= w["hi"] <= 47
+
+
+def test_record_sign_fraction_and_sign_fractions():
+    def rec(sign, text, frames, window, corpus="asllvd-text-v1", partition="train"):
+        return dict(sign=sign, text=text, corpus=corpus, partition=partition, source=dict(frames=frames),
+                    continuous=dict(window_seconds=window, seconds=window[1] - window[0]))
+    # a 0.5 s sign (30 frames at 60 fps) starting 0.833 s into the clip; window [0.5, 1.75]
+    r = rec("a", "cut", [100, 129], [.5, 1.75])
+    a, b = fit.record_sign_fraction(r)
+    assert a == pytest.approx((50 / 60 - .5) / 1.25) and b == pytest.approx((50 / 60 - .5 + .5) / 1.25)
+    assert fit.record_sign_fraction(dict(r, corpus="rit-text-r6")) is None
+    assert fit.record_sign_fraction(dict(r, source={})) is None
+    assert fit.record_sign_fraction(rec("x", "cut", [100, 129], [1.4, 1.6])) is None     # sign before the window
+    manifest = dict(records=[r, rec("b", "cut", [100, 159], [.5, 2.]), rec("c", "go", [0, 29], [.6, 1.6]),
+                             rec("d", "cut", [0, 29], [.5, 1.75], partition="val")])
+    f = fit.sign_fractions(manifest, {"cut": 1., "go": 1.})
+    assert set(f["records"]) == {"a", "b", "c"} and f["clips"] == 3             # train only
+    assert f["entries"]["cut"][0] == pytest.approx(np.median([(50 / 60 - .5) / 1.25, (50 / 60 - .5) / 1.5]), abs=1e-4)
+    assert set(f["entries"]) == {"cut", "go"} and len(f["all"]) == 2
+
+
+def test_stage1_timing_jobs_and_the_stage1_oracle_composition():
+    import scripts.round15_compositional as r15
+    import scripts.round15_oracle as ro
+    vocab = {"cut": 1.2, "onion": .9, "go": 1.5}
+    plans = [dict(entries=["cut", "onion", "go"], generate=[1.2, .9, 1.5], targets=[.2, .3, .25], weights=[.5, .4, .6]),
+             dict(entries=["go"], generate=[1.5], targets=[.25], weights=[.6])]
+    jobs = r2.plan_jobs(list(r2.VARIANTS), plans, [1, 0], [[2, 0, 1], [0]], seconds=[3., 2.], vocab=vocab,
+                        timing="stage1", overlap=4)
+    for v in r2.VARIANTS:
+        mode = "crossfade" if v != "core_chained" else "chained"
+        assert jobs[(v, "", 0)]["durations"] == r15.plan_durations(mode, ["cut", "onion", "go"], vocab, 3., 4)
+        assert jobs[(v, "/mismatched_words", 0)]["durations"] == r15.plan_durations(mode, ["go"], vocab, 3., 4)
+    d = jobs[("core_chained", "", 0)]["durations"]
+    assert jobs[("core_chained", "/shuffled", 0)]["durations"] == [d[2], d[0], d[1]]
+    # the oracle in stage1 timing is the stage-1 oracle's composition of the whole clips, in any order
+    clips = [full_state(k, frames=14 + k) for k in range(3)]
+    material = dict(pieces=[dict(state=c, lo=0, hi=len(c.timestamps) - 1) for c in clips], segments=[])
+    job = jobs[("oracle_stage2", "", 0)]
+    frames = [comp.word_frames(x) for x in job["durations"]]
+    for order in (None, [2, 0, 1]):
+        state, plan = r2.render_form(material, job, 3., {"timing": TIMING}, timing="stage1", order=order)
+        idx = order or [0, 1, 2]
+        expected = ro.compose_clips([clips[k] for k in idx], [frames[k] for k in idx], 4, fitted=True)
+        np.testing.assert_allclose(state.channels["root_translation"].values,
+                                   expected.channels["root_translation"].values)
+        assert plan["fit"] == "stage1" and plan["frames"] == len(state.timestamps)
+    # generated crossfade material: the clips concatenated with the crossfade
+    gen = dict(clips=clips, state=None, segments=[])
+    state, _ = r2.render_form(gen, job, 3., {"timing": TIMING}, timing="stage1", order=[1, 2, 0])
+    expected = comp.concatenate([clips[1], clips[2], clips[0]], 4)
+    np.testing.assert_allclose(state.channels["root_translation"].values, expected.channels["root_translation"].values)
+
+
+def test_sign_fitted_render_fills_the_reference():
+    clips = [full_state(k, frames=24) for k in range(3)]
+    fractions = dict(entries={"cut": (.25, .75)}, all=(.3, .6))
+    pieces = [dict(state=c, **r2.sign_core(w, c, fractions=fractions, margin=.1)) for w, c in
+              zip(["cut", "go", "cut"], clips)]
+    assert [p["reason"] for p in pieces] == ["entry", "all", "entry"]
+    assert (pieces[0]["lo"], pieces[0]["hi"]) == (4, 20) and (pieces[1]["lo"], pieces[1]["hi"]) == (5, 16)
+    material = dict(pieces=pieces, parts=comp.parts_from_pieces(pieces), segments=[])
+    job = dict(words=["cut", "go", "cut"], weights=[.5, .3, .5], targets=[.2, .2, .2], durations=[None] * 3)
+    for order in (None, [2, 1, 0]):
+        state, plan = r2.render_form(material, job, 2.5, {"timing": TIMING}, timing="sign-fitted", order=order)
+        assert len(state.timestamps) == plan["frames"] == 60 and plan["lead"] == 0
+
+
+def test_generated_material_in_each_timing():
+    tokenizer, prior = tiny_prior(locus_conditioning=True, history_stages=1)
+
+    class Sample:
+        pass
+    sample = Sample()
+    sample.prior, sample.tokenizer, sample.decoder_gains = prior, tokenizer, None
+    import exposure_diagnostic
+    real_post = exposure_diagnostic.make_post
+    exposure_diagnostic.make_post = lambda gains: IDENTITY
+    try:
+        job = dict(mode="core_crossfade", words=["cut", "go"], generate=[.5, .4], seeds=[3, 4], durations=[.3, .35],
+                   overlap=4)
+        m1 = r2.generate_job(sample, job, guidance=1.5, temperature=TEMPERATURE, rule=None, timing="stage1")
+        state, info = comp.compose(prior, tokenizer, ["cut", "go"], [.3, .35], "crossfade", [3, 4], guidance=1.5,
+                                   temperature=TEMPERATURE, post=IDENTITY, crossfade=4)
+        np.testing.assert_allclose(m1["state"].channels["root_translation"].values,
+                                   state.channels["root_translation"].values)              # stage 1's V1 exactly
+        fractions = dict(entries={"cut": (.25, .75)}, all=(.3, .6))
+        for mode in ("core_crossfade", "core_chained"):
+            m2 = r2.generate_job(sample, dict(job, mode=mode), guidance=1.5, temperature=TEMPERATURE, rule=None,
+                                 timing="sign-fitted", fractions=fractions, margin=.1)
+            assert all(s["reason"] in ("entry", "all") for s in m2["segments"])
+            state2, plan = r2.render_form(m2, dict(job, weights=[.5, .3], targets=[.2, .2]), 1.5,
+                                          {"timing": TIMING}, timing="sign-fitted")
+            assert len(state2.timestamps) == plan["frames"] == 36
+        m3 = r2.generate_job(sample, dict(job, mode="core_chained"), guidance=1.5, temperature=TEMPERATURE,
+                             rule=None, timing="stage1")
+        assert m3["clips"] is None and len(m3["state"].timestamps) == sum(comp.word_frames(d) for d in [.3, .35])
+    finally:
+        exposure_diagnostic.make_post = real_post
+
+
+@pytest.mark.parametrize("timing", ["stage1", "sign-fitted"])
+def test_oracle_runs_in_each_new_timing(tmp_path, stage2_store, timing):
+    store, sha, s1, oracle, argv = stage2_store
+    oracle_only = [a for a in argv if a not in ("--checkpoint-key", "prior.pt")]
+    assert r2.main(oracle_only + ["--variants", "oracle_stage2", "--timing", timing, "--output-key",
+                                  f"reports/{timing}.json"]) == 0
+    report = json.loads(store.get(f"reports/{timing}.json"))
+    assert report["timing_mode"] == timing and list(report["forms"])[2:5] == [
+        "oracle_stage2", "oracle_stage2/shuffled", "oracle_stage2/mismatched_words"]
+    for row in report["per_clip"]:
+        if "oracle_stage2" not in row:
+            continue
+        plan = row["oracle_stage2"]["plan"]
+        if timing == "sign-fitted":
+            assert plan["frames"] == row["frames_reference"] and plan["lead"] == plan["trail"] == 0
+            assert report["core_margin"] == .1
+        else:
+            assert plan["fit"] == "stage1" and len(plan["durations"]) == len(row["entries"])
+    assert report["motion"]["oracle_stage2"]["wrist_speed"] is not None
+
+
+def test_timing_flags_are_checked(tmp_path, stage2_store):
+    store, sha, s1, oracle, argv = stage2_store
+    base = [a for a in argv if a not in ("--checkpoint-key", "prior.pt")] + ["--variants", "oracle_stage2",
+                                                                               "--output-file", str(tmp_path / "o.json")]
+    for extra in (["--timing", "stage2"], ["--timing", "stage1", "--total-fit", "pad,scale"],
+                  ["--timing", "sign-fitted", "--total-fit", "scale"], ["--timing", "stage1", "--core-margin", ".1"]):
+        with pytest.raises(SystemExit):
+            r2.main(base + extra)
+    assert not (tmp_path / "o.json").exists()

@@ -11,6 +11,7 @@ as in training and in the oracle). Writes a JSON report (``--output-file``, writ
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 from pathlib import Path
 import random
@@ -35,6 +36,7 @@ def main(argv=None) -> int:
     p.add_argument("--total-fit", default="pad,scale,none")
     p.add_argument("--core-threshold", type=float, default=.1)
     p.add_argument("--core-margin", type=float, default=0.)
+    p.add_argument("--sign-margin", type=float, default=.1, help="the sign-fitted cores' margin (seconds)")
     p.add_argument("--store", default="r2")
     p.add_argument("--cache-dir", default=str(Path(tempfile.gettempdir()) / "sign-translator-cache"))
     p.add_argument("--output-file", required=True)
@@ -79,7 +81,11 @@ def main(argv=None) -> int:
             loaded[r["sign"]] = word_clip(r, cache=cache, fetch=store.get, template=template)
         return loaded[r["sign"]]
 
-    forms = {name: [] for name in ["real", "stage1_oracle"] + [f"stage2_oracle@{f}" for f in fits]}
+    from round15_stage2 import oracle_material, render_form, stage1_durations
+    fractions = fit.sign_fractions(manifest, vocab)
+    forms = {name: [] for name in ["real", "stage1_oracle"] + [f"stage2_oracle@{f}" for f in fits]
+             + ["stage2_words@stage1_timing", "stage2_oracle@sign_fitted"]}
+    sign_rows = []
     refs, rows = [], []
     for i, r in enumerate(val):
         real = word_clip(r, cache=cache, fetch=store.get, template=template)
@@ -99,6 +105,16 @@ def main(argv=None) -> int:
         for f in fits:
             fp = frame_plan(plan["targets"], seconds, model, f)
             forms[f"stage2_oracle@{f}"].append(render(parts_from_pieces(pieces), fp))
+        job = dict(words=plan["entries"], targets=plan["targets"], weights=plan["weights"], block="matched",
+                   overlap=4, durations=stage1_durations("oracle_stage2", plan["entries"], vocab, seconds, 4))
+        for timing, name in (("stage1", "stage2_words@stage1_timing"), ("sign-fitted", "stage2_oracle@sign_fitted")):
+            m = oracle_material(job, i, pools, loaded={}, load=clip, rule=None, timing=timing, fractions=fractions,
+                                margin=args.sign_margin)
+            state, fp = render_form(m, job, seconds, model, timing=timing)
+            forms[name].append(state)
+            if timing == "sign-fitted":
+                sign_rows += [dict(core=s["hi"] - s["lo"] + 1, planned=f, reason=s["reason"])
+                              for s, f in zip(m["segments"], fp["cores"]) if f]
         rows.append(dict(sign=r["sign"], words1=len(words1), entries=len(plan["entries"]),
                          core_frames=[p["hi"] - p["lo"] + 1 for p in pieces],
                          planned=frame_plan(plan["targets"], seconds, model, fits[0])["cores"]))
@@ -112,6 +128,12 @@ def main(argv=None) -> int:
                   motion=motion, motion_ratio_to_real=ratio,
                   core_compression=dict(median=round(float(np.median(comp_ratio)), 4),
                                         p10_p90=[round(float(np.percentile(comp_ratio, q)), 4) for q in (10, 90)]),
+                  sign_fitted=dict(margin=args.sign_margin, fractions_all=fractions["all"],
+                                   core_compression_median=round(float(np.median(
+                                       [x["core"] / x["planned"] for x in sign_rows])), 4) if sign_rows else None,
+                                   core_frames_median=float(np.median([x["core"] for x in sign_rows]))
+                                   if sign_rows else None,
+                                   reasons=dict(collections.Counter(x["reason"] for x in sign_rows))),
                   signs_per_utterance=dict(stage1=float(np.mean([x["words1"] for x in rows])),
                                            stage2=float(np.mean([x["entries"] for x in rows]))),
                   clips_loaded=len(loaded), per_utterance=rows)
@@ -119,9 +141,10 @@ def main(argv=None) -> int:
         json.dump(report, stream, indent=1, default=float)
     keys = ("seconds_over_reference", "wrist_speed", "hands_tracked", "wrist_spread")
     for name in forms:
-        print(f"{name:24s} " + "  ".join(f"{k} {motion[name].get(k):.3f} ({ratio[name].get(k):.2f}x)"
+        print(f"{name:28s} " + "  ".join(f"{k} {motion[name].get(k):.3f} ({ratio[name].get(k):.2f}x)"
                                         for k in keys if motion[name].get(k) is not None), flush=True)
-    print(json.dumps(dict(core_compression=report["core_compression"], signs=report["signs_per_utterance"],
+    print(json.dumps(dict(core_compression=report["core_compression"], sign_fitted=report["sign_fitted"],
+                          signs=report["signs_per_utterance"],
                           utterances=len(rows))), flush=True)
     return 0
 
