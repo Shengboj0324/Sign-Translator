@@ -3552,7 +3552,7 @@ Real clips score BLEU 4.136 and blank 1.859.
 - If a variant is PROMISING: the declared chain (sweep, gate, strict review R1–R7) on that composition.
 - If not: the diagnosis reads oracle stage 2 and the hand-speed check before anything else.
 
-### Round 14 diagnosis, recorded (2026-10-29, 00:33 UTC; report-only, CPU; `round14/diagnosis-w14.json`)
+### Round 14 diagnosis, recorded (2026-10-29, 00:30 UTC; report-only, CPU; `round14/diagnosis-w14.json`)
 
 **Summary:** W14 learned the new words, but the pilot cannot see them. The likely cause is upstream: the "un-mirrored" Sem-Lex states appear to be the mirror image of every other corpus. Independent verification is running; nothing trains on this until it is confirmed.
 
