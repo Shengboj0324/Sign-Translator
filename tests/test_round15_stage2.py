@@ -1222,3 +1222,73 @@ def test_review_nits_of_6d4ec53(tmp_path, stage2_store):
     a, b = fit.record_sign_fraction(rec)
     assert a == pytest.approx((17 / 60) / 1.25) and b == pytest.approx((17 / 60 + 30 / 60) / 1.25)
     assert fit.asllvd_context_seconds(80) == pytest.approx(50 / 60) and fit.asllvd_context_seconds(0) == 0.
+
+
+# ---- the generator's own mix (2026-10-29, amendment 4: W14b trained on round14b-mixed-v1) -----------------------------
+
+def generator_store(store, *, change=None):
+    """A generator mix = the evaluation mix plus an extra record (optionally one evaluation record changed), and the
+    same prior re-saved as trained on it; returns its sha."""
+    from signtranslator.data_engineering.corpus_manifest import canonical_json
+    manifest = json.loads(store.get("mix.json"))
+    extra = dict(manifest["records"][1], sign="semlex-extra", corpus="semlex-text-v2", text="stir")
+    manifest["records"].append(extra)
+    if change:
+        change(manifest)
+    payload = canonical_json(manifest)
+    store.put("gmix.json", payload)
+    gsha = hashlib.sha256(payload).hexdigest()
+    checkpoint = torch.load(io.BytesIO(store.get("prior.pt")), map_location="cpu", weights_only=False)
+    checkpoint["manifest_sha256"] = gsha
+    buffer = io.BytesIO()
+    torch.save(checkpoint, buffer)
+    store.put("prior_g.pt", buffer.getvalue())
+    return gsha
+
+
+def test_check_generator_mix_requires_every_evaluation_record_unchanged():
+    ev = dict(records=[dict(sign="a", text="cut"), dict(sign="b", text="go")])
+    out = r2.check_generator_mix(ev, dict(records=ev["records"] + [dict(sign="c", text="new")]))
+    assert out == dict(evaluation_records=2, generator_records=3, generator_only=1)
+    with pytest.raises(SystemExit, match="b \\(changed\\)"):
+        r2.check_generator_mix(ev, dict(records=[dict(sign="a", text="cut"), dict(sign="b", text="went")]))
+    with pytest.raises(SystemExit, match="b \\(absent\\)"):
+        r2.check_generator_mix(ev, dict(records=[dict(sign="a", text="cut")]))
+    twice = dict(records=ev["records"] + ev["records"][:1])                 # a repeated record must be repeated
+    with pytest.raises(SystemExit):
+        r2.check_generator_mix(twice, ev)
+
+
+def test_a_prior_of_another_mix_runs_on_the_evaluation_mix(tmp_path, stage2_store):
+    store, sha, s1, oracle, argv = stage2_store
+    gsha = generator_store(store)
+    base = [a for a in argv if a != "prior.pt"]
+    base = [a if a != "--checkpoint-key" else a for a in base]
+    k = base.index("--checkpoint-key")
+    run = base[:k + 1] + ["prior_g.pt"] + base[k + 1:] + ["--variants", "core_crossfade", "--selection", "stage1",
+                                                          "--timing", "sign-fitted", "--core-margin", "0.1"]
+    with pytest.raises(SystemExit, match="different manifest"):            # default: the evaluation mix's sha
+        r2.main(run + ["--output-file", str(tmp_path / "x.json")])
+    with pytest.raises(SystemExit):                                         # the two flags go together
+        r2.main(run + ["--generator-mix-key", "gmix.json", "--output-file", str(tmp_path / "x.json")])
+    assert r2.main(run + ["--generator-mix-key", "gmix.json", "--generator-mix-sha256", gsha, "--output-key",
+                          "reports/g.json"]) == 0
+    report = json.loads(store.get("reports/g.json"))
+    assert report["generator_mix"] == dict(key="gmix.json", sha256=gsha, check=dict(
+        evaluation_records=len(json.loads(store.get("mix.json"))["records"]),
+        generator_records=len(json.loads(store.get("mix.json"))["records"]) + 1, generator_only=1))
+    assert report["mix_key"] == "mix.json" and report["mix_sha256"] == sha
+    # the same weights through the evaluation mix give the same compositions: the generator mix only gates loading
+    same = argv + ["--variants", "core_crossfade", "--selection", "stage1", "--timing", "sign-fitted",
+                   "--core-margin", "0.1", "--output-key", "reports/e.json"]
+    assert r2.main(same) == 0
+    plain = json.loads(store.get("reports/e.json"))
+    assert plain["generator_mix"] == dict(key="mix.json", sha256=sha, check=None)
+    for name in ("core_crossfade", "core_crossfade/shuffled", "core_crossfade/mismatched_words"):
+        assert report["forms"][name]["hypotheses"] == plain["forms"][name]["hypotheses"]
+    # an evaluation record changed in the generator's mix: refused before anything is generated
+    gsha2 = generator_store(store, change=lambda m: m["records"][1].update(text="changed"))
+    with pytest.raises(SystemExit, match="not in the generator's mix"):
+        r2.main(run + ["--generator-mix-key", "gmix.json", "--generator-mix-sha256", gsha2, "--output-file",
+                       str(tmp_path / "y.json")])
+    assert not (tmp_path / "y.json").exists()

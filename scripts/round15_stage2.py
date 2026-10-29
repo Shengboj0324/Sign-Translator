@@ -53,6 +53,12 @@ only, ``V@fit``).
   pace. Transitions: generated (core_chained) or interpolated (core_crossfade, oracle_stage2).
 ``--total-fit``, ``--core-threshold`` and ``--gap-seconds`` apply to asllrp only.
 
+**Generator mix** (``--generator-mix-key`` / ``--generator-mix-sha256``): a prior trained on another manifest than the
+evaluation mix (the stage-1 report's) is loaded against that manifest's hash, after ``check_generator_mix`` has
+verified that every evaluation-mix record is in it byte-identically. The vocabulary, selection, timing and the stage-2
+model stay on the evaluation mix; the report records both mixes. Without the flags the prior must have been trained
+on the evaluation mix, as before.
+
 **Selection** (``--selection``): ``stage2`` (default) plans each sentence with the fitted selection and structure;
 ``stage1`` takes exactly the stored stage-1 report's per-clip words (``per_clip[i].words``, verified against
 ``compositional.selection_details`` by ``check_pairing``: no lexicon, maps, drops, IX or moves), in every timing mode
@@ -242,6 +248,27 @@ def form_pairs(variants, extra_fits=()) -> dict:
     return pairs
 
 
+def check_generator_mix(evaluation: dict, generator: dict) -> dict:
+    """Stop unless every record of the evaluation mix is in the generator's mix byte-identically (the same record,
+    sign id included, as canonical JSON; repeated records counted): the prior was then trained on every record the
+    evaluation reads, unchanged. Returns the counts."""
+    from collections import Counter
+    from signtranslator.data_engineering.corpus_manifest import canonical_json
+    have = Counter(canonical_json(r) for r in generator["records"])
+    need = Counter(canonical_json(r) for r in evaluation["records"])
+    missing = need - have
+    if missing:
+        by_sign = {r.get("sign") for r in generator["records"]}
+        examples = []
+        for r in evaluation["records"]:
+            if canonical_json(r) in missing and len(examples) < 5:
+                examples.append(f"{r.get('sign')} ({'changed' if r.get('sign') in by_sign else 'absent'})")
+        raise SystemExit(f"{sum(missing.values())} evaluation-mix records are not in the generator's mix "
+                         f"byte-identically: {', '.join(examples)}")
+    return dict(evaluation_records=sum(need.values()), generator_records=sum(have.values()),
+                generator_only=sum((have - need).values()))
+
+
 _CHECK = re.compile(r"^(?:bleu:(?P<pair>[a-z0-9_]+)(?:>(?P<x>-?[0-9.]+))?|(?P<spot>spotting))$")
 
 
@@ -405,6 +432,10 @@ def main(argv=None) -> int:
     from round15_stage2_fit import DEFAULTS
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--checkpoint-key", help="the prior (required unless only oracle_stage2 runs)")
+    p.add_argument("--generator-mix-key", help="the manifest the prior was trained on, when it is not the evaluation "
+                   "mix (every evaluation-mix record must be in it byte-identically; vocabulary, selection and timing "
+                   "stay on the evaluation mix)")
+    p.add_argument("--generator-mix-sha256")
     p.add_argument("--stage1-report-key", default=STAGE1_REPORT)
     p.add_argument("--oracle-report-key", default=ORACLE_REPORT)
     p.add_argument("--variants", default=",".join(VARIANTS))
@@ -445,6 +476,8 @@ def main(argv=None) -> int:
         p.error(f"--variants: distinct names from {','.join(VARIANTS)}")
     if any(v in GENERATED for v in variants) and not args.checkpoint_key:
         p.error("--checkpoint-key is required for generated variants")
+    if bool(args.generator_mix_key) != bool(args.generator_mix_sha256):
+        p.error("--generator-mix-key and --generator-mix-sha256 go together")
     from signtranslator.generation.compositional_grammar import TIMINGS, TOTAL_FITS
     fits = [f for f in args.total_fit.split(",") if f]
     if not fits or any(f not in TOTAL_FITS for f in fits) or len(set(fits)) != len(fits):
@@ -498,6 +531,14 @@ def main(argv=None) -> int:
     with tempfile.TemporaryDirectory() as t:
         path = Path(t) / "m.json"; path.write_bytes(store.get(s1["mix_key"]) + b"\n")
         manifest = load_manifest(path, expected_sha256=s1["mix_sha256"])
+    generator_mix = dict(key=s1["mix_key"], sha256=s1["mix_sha256"], check=None)
+    if args.generator_mix_key:                       # the prior's own manifest: a superset of the evaluation mix
+        with tempfile.TemporaryDirectory() as t:
+            path = Path(t) / "g.json"; path.write_bytes(store.get(args.generator_mix_key) + b"\n")
+            generator_manifest = load_manifest(path, expected_sha256=args.generator_mix_sha256)
+        generator_mix = dict(key=args.generator_mix_key, sha256=args.generator_mix_sha256,
+                             check=check_generator_mix(manifest, generator_manifest))
+        del generator_manifest
     corpora = tuple(s1["corpora"])
     vocab = training_vocabulary(manifest, corpora)
 
@@ -556,10 +597,10 @@ def main(argv=None) -> int:
     temperature = {k: float(v) for k, v in (x.split("=") for x in args.part_temperature.split(","))}
     material = {}
     if gen_keys:
-        _, _, sample = load_generator(store, args.checkpoint_key, s1["mix_sha256"], args.device,
+        _, _, sample = load_generator(store, args.checkpoint_key, generator_mix["sha256"], args.device,
                                       temperature=temperature)
         settings = dict(guidance=args.guidance, temperature=temperature, rule=rule, **mode_settings)
-        worker = (args.store, args.checkpoint_key, s1["mix_sha256"], args.device, temperature,
+        worker = (args.store, args.checkpoint_key, generator_mix["sha256"], args.device, temperature,
                   max(1, torch.get_num_threads() // max(args.word_workers, 1)))
         results = run_jobs(sample, [jobs[k] for k in gen_keys], settings, workers=args.word_workers,
                            worker_args=worker, progress=lambda k: print(
@@ -716,6 +757,7 @@ def main(argv=None) -> int:
     report = dict(
         round=15, stage=2, checkpoint_key=args.checkpoint_key, stage1_report_key=args.stage1_report_key,
         oracle_report_key=args.oracle_report_key, mix_key=s1["mix_key"], mix_sha256=s1["mix_sha256"],
+        generator_mix=generator_mix,
         translator_run=s1["translator_run"], translator_key=kp, recognizer_run=recognizer_run,
         recognizer_checkpoint=best.get("checkpoint_key") if isinstance(best, dict) else None, clips=n,
         variants=variants, timing_mode=args.timing, selection_mode=args.selection, core_margin=margin, total_fit=fits,
