@@ -5371,3 +5371,46 @@ Same 1,000 clips, instrument v1. Real 4.136 and blank 1.859 reproduce exactly. A
 - The end-to-end autoregressive route at 24 Hz is not moved by data volume, by on-policy rollout (round 16), or by plan codes (round 17).
 
 **Decision (as declared): the composition path is the focus.** Its leader is W14b composition, 2.31; milestone M1 is 2.55. The UWB lever is closed too (gate v2, 18:40). The next round is designed for the composition path, from its own record (rounds 14–15), and declared before anything trains.
+
+## Round 20: composition v2, the method to M1 (declared 2026-10-30, 19:09 UTC; evaluation only, NO training)
+
+**Owner rule (2026-10-30, about 18:50 UTC):** no training launches unless research plus a local simulation or mathematical study shows a higher chance of beating the previous round. Round 20 trains nothing: it generates from existing checkpoints and evaluates. Every lever is first proven on a separate development set, with real-clip oracles and cheap reads.
+
+**Evidence base** (research report `reports/Sign production breakthrough methods.md`; composition design analysis 19:05 UTC):
+- **Word forms:** W14b composition reads 2.306 [1.999, 2.635] on the 1,000. Composing **real** isolated clips of the same words, with the same timing, reads 2.17. So better isolated word forms alone cannot reach 2.55; the 300-set oracle of 2.55 read about 0.4 high.
+- **Coverage:** 34% of the sentences' tokens are unmatched (you 507, it 298, your 224, so, this, I …). The vocabulary came from round10, which has no Sem-Lex. With the generator's own round14b vocabulary (6,150 entries), unmatched tokens fall to 18%. Read directly as text, the selected words score BLEU 4.8 with round10's vocabulary against 18.0 with round14b's: the instrument can only credit words that are signed.
+- **Translator loops:** the back-translator falls into repetition loops on 51% of composed inputs (77% of long ones), against 24% for real signing. That puts its output at 1.68× the reference length.
+- **Speed:** composed wrist speed is 2.64× real, and ASLLRP continuous signs last 0.385× their isolated forms.
+- **Literature:**
+  - continuous-form dictionary signs doubled stitching BLEU (arXiv 2405.07663: 3.12 → 6.67);
+  - learned junction timing gave +22% (arXiv 2401.04730);
+  - recogniser-chosen instances gave +6.9% relative;
+  - our own best-of-4 self-rerank gave +0.16 (not resolved).
+
+**Sets:**
+- **D20 (development):** 500 How2Sign val sentences drawn with `random.Random(20)` from the c01/c03/c05 clips outside the 1,000 and the 300, excluding any text shared with the 1,000.
+- **C20 (confirmation):** a further disjoint 1,000 from the remainder, untouched until an M1 claim.
+- **The 1,000** is never used for selection.
+
+**Selection metric on D20:** paired BLEU, plus the per-sentence log-likelihood of the reference under the back-translator minus its likelihood from blank. That metric tracks Deaf raters about twice as well as BLEU-4 (Spearman 0.42 vs 0.21, arXiv 2510.07453). A lever is adopted only if both point estimates improve on D20.
+
+**Phase A (D20; real-clip oracles on CPU, then cheap generated reads):**
+- **A1, vocabulary:** real-word oracle with round10 vs round14b vocabulary. Sem-Lex-only entries use the activity core, not ASLLVD's median fraction.
+- **A2, word source:** real-word oracle from **continuous** forms (ASLLRP gloss-aligned segments where available, else isolated) vs isolated only. This is a headroom read only, never a shipped retrieval system.
+- **A3, timing:** continuous-pace retiming (ASLLRP sign and gap durations), velocity-bounded bridges and a global tempo sweep {0.8, 1.0, 1.25, 1.5}× slower. Run on the A1 winner's oracle.
+- **A4, best-of-N:** cache one generated sign per entry, chosen as the best of N ∈ {4, 8, 16} by recogniser **v3d**'s probability of the target label. Entries without a v3d label fall back to the prior's own score. v3d spotting is then circular, so v2 spotting is the guard.
+- **A5, prior:** R16 step 10000 against W14b on word-level v3d reads of the D20 vocabulary.
+- **A6, Butterworth low-pass:** {off, 6 Hz}.
+- **Report-only:** a predicted-duration variant. Every current form uses the reference clip's duration, which deployment cannot.
+
+**Phase B (the 1,000, nothing tuned):** one stacked arm made of every Phase-A lever adopted on D20, against the stored W14b composition (same references and seeds). Rule, all must hold:
+- paired BLEU lower bound > 0 against W14b composition (2.306);
+- paired BLEU lower bounds > 0 against its own other-sentence words and its own end-to-end;
+- v2 spotting recall paired against W14b composition: lower bound > −0.02;
+- wrist speed reported (against 2.64×).
+
+**M1** is claimed only if the Phase B arm's point estimate is ≥ 2.55 on the 1,000 **and** ≥ 2.55 on C20 (fresh).
+
+**If no lever improves D20:** composition on this instrument is capped near its oracle. M1 needs the structural 3.8 track (pretrained text encoder, masked decoding with durations, instrument v2), which goes to the owner with this evidence.
+
+**Process:** branch `round20` (D20/C20 builder, vocabulary switch with the activity core, continuous-form oracle, retiming options, v3d cache rerank, likelihood metric, Butterworth option) → tests → independent review → Phase A on CPU/GPU evaluation pods → Phase B.
