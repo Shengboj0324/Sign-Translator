@@ -5168,3 +5168,22 @@ Targets are our arm directions on hips-visible frames.
 **Circularity control.** The targets and the gate's reference share the Tasks pipeline. Rows 2, 3 and 4 above, and the lifter-val minus held-out gap, are the controls, and they are reported.
 
 **Process:** branch `uwb-lifter-v2` → tests → independent review → CPU pods (pairs about 1 h, crops, training 1–2 h, gate 1–2 h) → gate v2 verdict. Conversion only if every gating row passes.
+
+### UWB lifter v2, amendment 1 (declared 2026-10-30, 11:51 UTC, before review and before anything runs)
+
+Settles the build's open choices (branch `uwb-lifter-v2` ad3c102):
+1. **Validity rows** (hand agreement, forearm agreement, UWB-only) are judged on `lifter[head]`, the rule conversion would use. The accuracy rows stay on `inside` common frames. `inside`'s validity values are reported only.
+2. **Pose-arm selection:** the lifter-val mean of the upper-arm and forearm medians. It is not forearm-only, which could trade upper-arm accuracy away.
+3. **Training choices fixed now:**
+   - the from-scratch arm uses lr 1e-3;
+   - one epoch is one pass over the larger source;
+   - the validity head trains 15 epochs at lr 1e-3, with threshold grid 0.02–0.98 plus 1.01;
+   - tight crops: 40 clips per How2Sign training signer, at 4:3 and 16:9.
+4. **Data handling:**
+   - videos without a `channel_id` are dropped everywhere;
+   - under `head`, points 11–16 follow the head and every other point uses `inside`.
+5. **Additional gating rows:**
+   - the v1 reference must be the xy2 bundle on the identical held-out sample;
+   - the pairs index and the bundle's training report must name the same split.
+   - Either missing makes the gate not evaluable.
+6. **Pooled lag:** averaged per-pair cost curves over the lags every pair scored. A video with no common lag counts as outside ±1.
