@@ -14,10 +14,15 @@ declared differences:
   ``--recon-prefix`` / ``--recon-index-sha256`` (a ``build_recon_states.py`` index, pinned), the clip's tokenizer (d2)
   round-trip copy under the same text with probability ``--recon-p`` (default 0.4). No control input is ever
   trained on.
-- **Selection** on held-out *train* data, never How2Sign val: ``--select`` roles (default How2Sign c04 and the fixed
-  ``--monitor-clips`` YouTube monitor clips). ``--select-on gap`` (default, declared): BLEU(real) − BLEU(blank) on the
-  pooled selection set, so a stronger text prior is not rewarded; ``real``: real BLEU (not the declared criterion).
-  Held-out STEM participants are read too, reported only.
+- **Selection** on held-out *train* data, never How2Sign val: ``--select`` roles (default How2Sign c04 and the
+  ``--monitor-clips`` YouTube monitor clips: 536, all of them, amendment 1). ``--select-on gap`` (default, declared):
+  BLEU(real) − BLEU(blank) on the pooled selection set, so a stronger text prior is not rewarded; ``real``: real BLEU
+  (not the declared criterion). Held-out STEM participants are read too, reported only. Selection decodes greedily
+  (beam 1, for speed) but reads every clip at full length, as the acceptance does (which decodes with beam 4); both
+  are recorded in ``run.json`` (``selection.decoding``). Training clips are cut to ``--max-seconds``.
+- **2M-Flores must be given** (``--corpus`` of a cross-domain manifest): its records are never trained on, but its
+  sentences are always removed from the training text; without it the run is refused.
+- ``run.json`` records the effective sampling proportions by mass (corpus weight x training clips, normalised).
 - **Checkpoints** hold tensors and JSON-like values only (``state_to_text_t5.load_checkpoint`` reads them with
   ``weights_only=True``) and carry the licence tag.
 """
@@ -98,6 +103,18 @@ def selection_metrics(model, sets: dict, device) -> dict:
     return out
 
 
+def sampling_mass(records) -> dict:
+    """{corpus: clips, weight, mass_share}: the effective sampling proportions (weight x clips, normalised)."""
+    rows = {}
+    for r in records:
+        row = rows.setdefault(r["corpus"], dict(clips=0, weight=float(r["_weight"]), mass=0.))
+        row["clips"] += 1
+        row["mass"] += float(r["_weight"])
+    total = sum(row["mass"] for row in rows.values()) or 1.
+    return {c: dict(clips=row["clips"], weight=row["weight"], mass_share=round(row["mass"] / total, 4))
+            for c, row in sorted(rows.items())}
+
+
 def load_store_manifest(store, key: str, sha: str):
     from signtranslator.data_engineering.corpus_manifest import load_manifest
     with tempfile.TemporaryDirectory() as t:
@@ -138,6 +155,9 @@ def assemble_data(store, args):
     corpora = [(loaded[(s.key, s.sha256)], s) for s in specs]
     records, summary = bt.assemble(corpora, monitor_clips=args.monitor_clips)
     del corpora, loaded
+    if not any(r["_role"] == bt.CROSSDOMAIN for r in records):
+        raise SystemExit("give the 2M-Flores (cross-domain) manifest as a --corpus: its sentences must be removed from "
+                         "the training text (it is never trained on)")
     if args.limit:                                     # tests and smoke runs: the first LIMIT records of each role
         by_role = {}
         for r in records:
@@ -230,10 +250,10 @@ def main(argv=None, *, build_model=build) -> int:
                              d_model=args.d_model, heads=args.heads, encoder_layers=args.encoder_layers,
                              feedforward=args.feedforward, dropout=args.dropout, downsample=args.downsample,
                              max_tokens=args.max_tokens)
-    common = dict(cache=cache, fetch=store.get, max_seconds=args.max_seconds)
+    common = dict(cache=cache, fetch=store.get)
     train = StateTextDataset(bt.records_of(records, bt.TRAIN), config, training=True, augment=not args.no_augment,
                              recon_p=args.recon_p if recon else 0., validity_dropout=args.validity_dropout,
-                             face_dropout=args.face_dropout, **common)
+                             face_dropout=args.face_dropout, max_seconds=args.max_seconds, **common)
     if len(train) < args.batch_size:
         raise SystemExit("at least one full training batch is needed")
 
@@ -245,7 +265,7 @@ def main(argv=None, *, build_model=build) -> int:
             return None
 
         def batches(blank):
-            ds = StateTextDataset(rs, config, training=False, blank=blank, **common)
+            ds = StateTextDataset(rs, config, training=False, blank=blank, max_seconds=None, **common)   # full length
             return list(DataLoader(ds, batch_size=args.batch_size, collate_fn=collate_keypoints))
         return batches(False), batches(True)
     sets = {}
@@ -259,6 +279,8 @@ def main(argv=None, *, build_model=build) -> int:
     print(json.dumps(dict(train=len(train), roles=summary["roles"],
                           sets={k: sum(len(b[1]) for b in v[0]) for k, v in sets.items()})), flush=True)
     data_sha = bt.data_digest(records)
+    sampling = sampling_mass(train.records)
+    print(json.dumps(dict(sampling=sampling)), flush=True)
     prefix = f"training-runs/{args.run}"
     checkpoints = [k for k in store.list(f"{prefix}/checkpoints/") if k.endswith(".pt")]
     model = build_model(config, pretrained=not checkpoints).to(device)
@@ -277,7 +299,11 @@ def main(argv=None, *, build_model=build) -> int:
     else:
         store.put(f"{prefix}/run.json", json.dumps(dict(
             kind=KIND, config=config.to_dict(), config_sha256=config.sha256(), data_sha256=data_sha, licence=LICENCE,
-            data=summary, recon=recon, selection=dict(roles=selection_roles, criterion=args.select_on),
+            data=summary, recon=recon, sampling=sampling,
+            selection=dict(roles=selection_roles, criterion=args.select_on,
+                           decoding=dict(selection=dict(beam=1, max_seconds=None), training_max_seconds=args.max_seconds,
+                                         acceptance=dict(beam=4, max_seconds=None),
+                                         note="selection decodes greedily for speed; both read full-length clips")),
             args=vars(args), train_clips=len(train)), indent=2, sort_keys=True, default=str).encode())
     sampler = WeightedRandomSampler(train.weights(), num_samples=len(train), replacement=True,
                                     generator=torch.Generator().manual_seed(args.seed + step))

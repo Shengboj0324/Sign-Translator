@@ -211,6 +211,14 @@ def test_val_c00_crossdomain_and_selection_records_are_refused_in_training():
         bt.check_loadable_bt(dict(record("n", component="c00"), _role=bt.TRAIN), training=False)
     with pytest.raises(RuntimeError):                                    # a forged role is caught
         bt.check_loadable_bt(dict(record("v", partition="val", component="c01"), _role=bt.TRAIN), training=True)
+    renamed = dict(record("r", partition="train", component="c02"), source_partition="val")   # a renamed val record
+    assert bt.role_of(renamed, bt.HOW2SIGN) is None
+    with pytest.raises(RuntimeError):
+        bt.check_loadable_bt(dict(renamed, _role=bt.TRAIN), training=True)
+    yt = dict(record("yr", corpus="youtube-asl-v1", partition="train"), source_partition="monitor")
+    with pytest.raises(RuntimeError):
+        bt.check_loadable_bt(dict(yt, _role=bt.TRAIN), training=True)
+    assert bt.MONITOR_CLIPS == 536
     assert bt.role_of(record("t", partition="test", component="c00"), bt.HOW2SIGN) is None
     assert bt.role_of(dict(record("o", partition="heldout_official"), signer_component=None), bt.HOW2SIGN) is None
     from signtranslator.data.state_text_dataset import StateTextDataset
@@ -235,7 +243,9 @@ def mixed_manifest(n_monitor=6):
     y = [record(f"y{k}", corpus="youtube-asl-v1") for k in range(5)]
     y += [record(f"m{k}", corpus="youtube-asl-v1", partition="monitor") for k in range(n_monitor)]
     y.append(record("asl0", corpus="asllvd-text-v1"))
-    return dict(records=h + y)
+    f = [record(f"fl{k}", corpus="2m-flores-asl-v1", partition="crossdomain",
+                text=f"oil spill number {k} closed the pipeline near the pump station") for k in range(2)]
+    return dict(records=h + y + f)
 
 
 def test_assemble_assigns_roles_drops_evaluation_text_and_samples_the_monitor():
@@ -323,25 +333,48 @@ def test_paired_gap_kendall_and_gates():
     assert not v.gate_g6(dict(groups, c05=dict(real_minus_blank=dict(difference=.1, ci95=[-.2, .4]))))["pass"]
 
 
-def test_g5_needs_reproduction_and_keeps_every_resolved_sign():
+def test_g5_reads_both_instruments_on_the_same_samples_and_only_reports_reproduction():
     import validate_state_back_translator as v
     refs = [f"put the pan on the stove and wait {k} minutes" for k in range(40)]
     good = list(refs)
     mid = [r if k % 2 else "put the pan" for k, r in enumerate(refs)]
     bad = ["hello" for _ in refs]
     v1 = dict(real=good, W14b=mid, R16=mid, R16C=bad, composition=mid, blank=bad)
-    forms = {f: dict(v1_stored=h, v2=h, reproduced=True) for f, h in v1.items()}
+    forms = {f: dict(v1_stored=["stored"] * 40, v1_rerun=h, v2=h, reproduced=False) for f, h in v1.items()}
     reread = dict(references=refs, forms=forms)
-    g5 = v.gate_g5(reread, refs)
+    g5 = v.gate_g5(reread, refs)                 # orderings on v1_rerun vs v2; nothing reproduced the stored reads
     o = g5["orderings"]
-    assert g5["pass"] and o["bleu_v1"] == o["bleu_v2"] and o["kendall_tau"] == round(v.kendall_tau(o["bleu_v1"],
-                                                                                                   o["bleu_v1"]), 4)
-    flipped = dict(forms, R16C=dict(v1_stored=bad, v2=good, reproduced=True))       # v2 reverses a resolved order
-    assert not v.gate_g5(dict(references=refs, forms=flipped), refs)["pass"]
-    unrepro = dict(forms, W14b=dict(forms["W14b"], reproduced=False))
-    assert v.gate_g5(dict(references=refs, forms=unrepro), refs)["pass"] is False
+    assert g5["pass"] is True and o["bleu_v1"] == o["bleu_v2"] and o["kendall_tau"] == v.kendall_tau(o["bleu_v1"],
+                                                                                                   o["bleu_v1"])
+    assert g5["reproduced_stored_v1_diagnostic"] == {f: False for f in forms}
+    flipped = dict(forms, R16C=dict(forms["R16C"], v2=good))             # v2 reverses an order v1 resolved
+    assert v.gate_g5(dict(references=refs, forms=flipped), refs)["pass"] is False
+    stored_only = dict(forms, R16C=dict(forms["R16C"], v1_stored=good))  # the stored reads never decide
+    assert v.gate_g5(dict(references=refs, forms=stored_only), refs)["pass"] is True
     assert v.gate_g5(dict(references=refs, forms={k: x for k, x in forms.items() if k != "composition"}),
                      refs)["pass"] is None
+    no_rerun = dict(forms, composition={k: x for k, x in forms["composition"].items() if k != "v1_rerun"})
+    assert v.gate_g5(dict(references=refs, forms=no_rerun), refs)["missing_forms"] == ["composition"]
+
+
+def test_gates_decide_on_unrounded_values():
+    import validate_state_back_translator as v
+    tiny = dict(difference=.01, ci95=[.0004, .02])                       # 0.000 once rounded to 3 decimals
+    assert v.gate_g6({g: dict(real_minus_blank=tiny) for g in v.GROUPS})["pass"]
+    flores = dict(real=dict(ci95=[1., 2.]), blank=dict(ci95=[0., 1.]), mismatched=dict(ci95=[0., 1.]),
+                  real_minus_blank=tiny, real_minus_mismatched=tiny)
+    assert v.gate_g4(flores)["pass"]
+    assert v.gate_g2(4.55, (2.2774, 6.))["pass"] and not v.gate_g2(4.5499, (3., 6.))["pass"]
+    assert v.gate_g1(dict(bleu=6.2, ci95=[4.1364, 7.]))["pass"] and not v.gate_g1(dict(bleu=6.1999, ci95=[5., 7.]))["pass"]
+    refs = [f"the cat sat on the mat number {k}" for k in range(30)]
+    a = [r if k % 3 else "a cat" for k, r in enumerate(refs)]
+    from compare_pilot_lexicon import paired_bleu_difference
+    d, ci = paired_bleu_difference(a, ["the dog"] * 30, refs)
+    assert v.paired(a, ["the dog"] * 30, refs) == dict(difference=d, ci95=list(ci))             # not rounded
+    from strict_prior_review import bleu_ci
+    point, ci = v.bleu_ci_raw(a, refs)
+    assert [round(point, 3), [round(x, 3) for x in ci]] == list(bleu_ci(a, refs))              # bleu_ci's draws
+    assert v.rounded(dict(x=[.123456, "s"], y=1)) == dict(x=[.1235, "s"], y=1)
 
 
 # ---- re-reading the arms ------------------------------------------------------------------------------------------
@@ -365,14 +398,19 @@ def test_reread_regenerates_with_the_pilots_blocks_and_seeds_and_checks_reproduc
     settings = dict(variants=["core_crossfade"], clips=2, translator_key="v1.pt", seed=0)
     stored = dict(settings=settings, references=texts, signs=["a", "b"],
                   forms=dict(core_crossfade=dict(hypotheses=["h1", "h2"])))
-    v2 = dict(stored, settings=dict(settings, translator_key="v2.pt"),
-              forms=dict(core_crossfade=dict(hypotheses=["g1", "g2"])))
-    comp = rr.composition_forms(stored, stored, v2, texts, "v2.pt")
-    assert comp["reproduced"] and comp["v2"] == ["g1", "g2"]
+    extra = dict(key="v2.pt", sha256="f" * 64, forms=dict(core_crossfade=dict(hypotheses=["g1", "g2"])))
+    rerun = dict(stored, settings=dict(settings, extra_translators=[dict(run="bt", key="v2.pt", sha256="f" * 64)]),
+                 extra_translators=dict(bt=extra))
+    comp = rr.composition_forms(stored, rerun, texts, "bt", "v2.pt", "f" * 64)
+    assert comp["reproduced"] and comp["v1_rerun"] == ["h1", "h2"] and comp["v2"] == ["g1", "g2"]
     with pytest.raises(SystemExit):                                      # other settings
-        rr.composition_forms(stored, stored, dict(v2, settings=dict(v2["settings"], seed=1)), texts, "v2.pt")
+        rr.composition_forms(stored, dict(rerun, settings=dict(rerun["settings"], seed=1)), texts, "bt", "v2.pt",
+                             "f" * 64)
     with pytest.raises(SystemExit):                                      # read by another checkpoint
-        rr.composition_forms(stored, stored, v2, texts, "other.pt")
+        rr.composition_forms(stored, rerun, texts, "bt", "other.pt", "f" * 64)
+    with pytest.raises(SystemExit):                                      # not read by the instrument in that run
+        rr.composition_forms(stored, dict(rerun, extra_translators={}), texts, "bt", "v2.pt", "f" * 64)
+    assert "v2" not in rr.composition_forms(stored, None, texts, "bt", "v2.pt", "f" * 64)
     assert rr.parse_arms(None) == rr.ARMS and rr.parse_arms(["A=k"]) == {"A": "k"}
     with pytest.raises(SystemExit):
         rr.pilot_settings(dict(plan={"x": 1}, checkpoint_key="k", part_temperature={}, guidance=1, clips=1))
@@ -425,7 +463,8 @@ def test_a_tiny_end_to_end_run_trains_selects_on_the_gap_and_the_scorer_reads_it
         return original(self, key)
     monkeypatch.setattr(type(store), "get", spy)
     argv = ["--store", f"dir:{tmp_path / 'store'}", "--corpus", f"mix.json@{sha}:3:{bt.HOW2SIGN}",
-            "--corpus", f"mix.json@{sha}:1:youtube-asl-v1", "--template", f"mix.json@{sha}:{bt.HOW2SIGN}",
+            "--corpus", f"mix.json@{sha}:1:youtube-asl-v1", "--corpus", f"mix.json@{sha}:1:2m-flores-asl-v1",
+            "--template", f"mix.json@{sha}:{bt.HOW2SIGN}",
             "--run", "bt", "--steps", "4", "--batch-size", "2", "--val-every", "2", "--checkpoint-every", "2",
             "--workers", "0", "--warmup", "1", "--d-model", "32", "--heads", "4", "--encoder-layers", "1",
             "--feedforward", "64", "--max-tokens", "16", "--t5-name", "tiny", "--monitor-clips", "4", "--recon-p", "0",
@@ -438,7 +477,12 @@ def test_a_tiny_end_to_end_run_trains_selects_on_the_gap_and_the_scorer_reads_it
     assert best["validation"]["pooled"]["clips"] == 3 + 4
     run = json.loads((root / "training-runs/bt/run.json").read_text())
     assert run["data"]["roles"][bt.TRAIN] == 8 + 5 and run["licence"].startswith("Trained on How2Sign")
-    never = {f"states/{s}.npz" for s in ("v0", "v1", "v2", "x0", "o0", "t-dup", "t-near", "t-sel", "asl0")}
+    assert run["data"]["roles"][bt.CROSSDOMAIN] == 2
+    assert run["sampling"] == {bt.HOW2SIGN: dict(clips=8, weight=3., mass_share=round(24 / 29, 4)),
+                               "youtube-asl-v1": dict(clips=5, weight=1., mass_share=round(5 / 29, 4))}
+    assert run["selection"]["decoding"]["selection"] == dict(beam=1, max_seconds=None)
+    never = {f"states/{s}.npz" for s in ("v0", "v1", "v2", "x0", "o0", "t-dup", "t-near", "t-sel", "asl0", "fl0",
+                                           "fl1")}
     assert not never & set(fetched), never & set(fetched)                # val, test, c00, dropped: never read
     from signtranslator.generation.state_to_text_t5 import load_checkpoint, load_model
     payload = (root / best["checkpoint_key"]).read_bytes()
@@ -457,6 +501,12 @@ def test_a_tiny_end_to_end_run_trains_selects_on_the_gap_and_the_scorer_reads_it
     out = sbt.translate(loaded, kind, [h2s_state(1, 15), mono_state(2, 9), blank(h2s_state(3, 11))], beam=1)
     assert len(out) == 3 and all(isinstance(t, str) for t in out)
     assert out == sbt.translate(model, kind, [h2s_state(1, 15), mono_state(2, 9), blank(h2s_state(3, 11))], beam=1)
+    # without the cross-domain manifest the run is refused (its sentences must always be filtered)
+    at = argv.index(f"mix.json@{sha}:1:2m-flores-asl-v1")
+    no_flores = [a if a != "bt" else "bt-noflores" for a in argv[:at - 1] + argv[at + 1:]]
+    assert "2m-flores-asl-v1" not in " ".join(no_flores) and no_flores.count("--corpus") == 2
+    with pytest.raises(SystemExit, match="2M-Flores"):
+        trainer.main(no_flores, build_model=tiny_build)
     # resume refuses other data
     argv2 = [a if a != f"mix.json@{sha}:3:{bt.HOW2SIGN}" else f"mix.json@{sha}:2:{bt.HOW2SIGN}" for a in argv]
     with pytest.raises(SystemExit):
@@ -646,6 +696,9 @@ def test_the_acceptance_reads_every_form_and_judges_the_gates(tmp_path, monkeypa
     assert report["controls"]["median_frames"] in range(20, 40)
     with pytest.raises(SystemExit):                                       # the checkpoint is pinned
         v.main([a if a != pins["v2"] else "0" * 64 for a in argv[:-1]] + ["other.json"])
+    with pytest.raises(SystemExit, match="written once"):
+        v.main(argv)
+    assert set(report["long_clips"]) == {"over_20s", "up_to_20s"} and report["long_clips"]["over_20s"]["clips"] == 0
 
 
 def test_reread_reproduces_v1_then_reads_v2_and_feeds_g3_and_g5(tmp_path, monkeypatch):
@@ -699,4 +752,63 @@ def test_reread_reproduces_v1_then_reads_v2_and_feeds_g3_and_g5(tmp_path, monkey
     assert reread["forms"]["blank"]["reproduced"] and reread["forms"]["real"]["reproduced"]
     assert all(len(reread["forms"][f]["v2"]) == 6 for f in ("W14b", "R16", "R16C", "real", "blank"))
     g5 = v.gate_g5(reread, texts)
-    assert g5["pass"] is False and g5["missing_forms"] == ["composition"]
+    assert g5["pass"] is not True and g5["missing_forms"] == ["composition"]
+    assert g5["reproduced_stored_v1_diagnostic"]["R16C"] is False             # reported, never decisive
+    assert set(g5["orderings"]["forms"]) == {"W14b", "R16", "R16C", "real", "blank"}
+    with pytest.raises(SystemExit, match="written once"):
+        rr.main(["--store", f"dir:{tmp_path / 'store'}", "--translator-key", "v2.pt", "--translator-sha256", pins["v2"],
+                 "--composition-stored", "", "--output-key", "reread.json"])
+
+
+# ---- one composition run read by two instruments ---------------------------------------------------------------------
+
+from tests.test_round15_stage2 import stage2_store, generator_store  # noqa: E402,F401  (fixtures)
+from tests.test_round15_compositional import stubbed  # noqa: E402,F401
+
+
+def test_the_composition_is_read_by_both_instruments_in_one_run(tmp_path, stage2_store, monkeypatch):  # noqa: F811
+    import score_back_translation as sbt_plain
+    import scripts.score_back_translation as sbt_pkg
+    import scripts.round15_compose_eval as ce
+    from tests.test_round15_compose_eval import run_args
+    store, sha, s1, oracle, argv = stage2_store
+    for module in (sbt_plain, sbt_pkg):
+        stub = module.translate                                          # the fixture's stub translator
+        monkeypatch.setattr(module, "translate", lambda m, kind, states, _stub=stub, **k:
+                            [h + (" v2" if kind == "v2-kind" else "") for h in _stub(m, kind, states, **k)])
+        monkeypatch.setattr(module, "load_translator_run", lambda store, run, sha_: (torch.nn.Identity(), "v2-kind", "v2.pt",
+                                                                                    "e" * 64))
+    clips = ["--clips", "4", "--stage1-report-key", "source.json"]
+    assert ce.main(run_args(tmp_path, sha, *clips, "--output-key", "e/plain.json")) == 0
+    assert ce.main(run_args(tmp_path, sha, *clips, "--also-translator-run", "bt", "--output-key", "e/both.json")) == 0
+    plain, both = json.loads(store.get("e/plain.json")), json.loads(store.get("e/both.json"))
+    assert "extra_translators" not in plain["settings"] and all("extra_hypotheses" not in r for r in plain["clips"])
+    assert both["settings"]["extra_translators"] == [dict(run="bt", key="v2.pt", sha256="e" * 64)]
+    for a, b in zip(plain["clips"], both["clips"]):                     # the same states, read twice
+        assert a["hypotheses"] == b["hypotheses"]
+        assert b["extra_hypotheses"]["bt"] == {k: h + " v2" for k, h in a["hypotheses"].items()}
+    common = ["merge", "--store", f"dir:{tmp_path / 'store'}", "--bootstrap", "20"]
+    assert ce.main(common + ["--shard-keys", "e/plain.json", "--output-key", "e/pm.json"]) == 0
+    assert ce.main(common + ["--shard-keys", "e/both.json", "--output-key", "e/bm.json"]) == 0
+    pm, bm = json.loads(store.get("e/pm.json")), json.loads(store.get("e/bm.json"))
+    assert "extra_translators" not in pm
+    assert bm["extra_translators"]["bt"]["forms"]["core_crossfade"]["hypotheses"] == \
+        [h + " v2" for h in pm["forms"]["core_crossfade"]["hypotheses"]]
+    assert {k: v for k, v in bm.items() if k not in ("extra_translators", "settings")} == \
+        {k: v for k, v in pm.items() if k != "settings"}
+
+
+def test_a_translator_run_is_sha_checked_and_loaded_weights_only(tmp_path, monkeypatch):
+    import score_back_translation as sbt
+    store, pins = acceptance_store(tmp_path, monkeypatch)
+    store.put("training-runs/v2run/best.json", json.dumps(dict(checkpoint_key="v2.pt",
+                                                               checkpoint_sha256=pins["v2"])).encode())
+    model, kind, key, sha = sbt.load_translator_run(store, "v2run", "f" * 64)
+    assert kind == "states" and key == "v2.pt" and sha == pins["v2"]
+    store.put("training-runs/bad/best.json", json.dumps(dict(checkpoint_key="v2.pt", checkpoint_sha256="0" * 64)).encode())
+    with pytest.raises(SystemExit):
+        sbt.load_translator_run(store, "bad", "f" * 64)
+    calls = []                                                           # a run without the SHA field: v1's path
+    monkeypatch.setattr(sbt, "load_translator", lambda store_, key_, sha_: calls.append(key_) or ("m", "keypoints"))
+    assert sbt.load_translator_run(store, "back-translator-kp2d-uwb-ft-v1", "f" * 64) == ("m", "keypoints", "bt.pt", None)
+    assert calls == ["bt.pt"]

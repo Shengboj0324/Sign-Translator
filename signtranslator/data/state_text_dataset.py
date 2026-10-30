@@ -10,7 +10,8 @@
 3. conformed to the template layouts (``layout_adapter.conform``);
 4. with ``augment``, ``sign_recognizer.augment_sign`` (speed 0.8-1.25, trim up to 10% at each end, face dropout,
    ``validity_dropout`` of arm/torso joint groups), drawn from a per-process generator;
-5. resampled to the configuration's rate, featurised (``data.state_features``) and cut to ``max_seconds``.
+5. resampled to the configuration's rate, featurised (``data.state_features``) and cut to ``max_seconds`` (None: the
+   whole clip, as the acceptance reads it).
 
 No control input (blank, static, mismatched) is ever served with a special target: every item is a real clip, or its
 round-trip copy, with its own English. ``blank`` (selection and reports only; refused with ``training``) serves the
@@ -41,7 +42,7 @@ def _rng():
 class StateTextDataset(Dataset):
     def __init__(self, records, config, *, cache, fetch: Callable[[str], bytes], training: bool,
                  augment: bool = False, recon_p: float = 0., validity_dropout: float = 0., face_dropout: float = .2,
-                 speed=(.8, 1.25), trim: float = .1, max_seconds: float = 20., blank: bool = False) -> None:
+                 speed=(.8, 1.25), trim: float = .1, max_seconds: float | None = 20., blank: bool = False) -> None:
         if not 0. <= recon_p <= 1.:
             raise ValueError("recon_p must lie in [0, 1]")
         if (augment or recon_p) and not training:
@@ -55,7 +56,7 @@ class StateTextDataset(Dataset):
         self.config, self.cache, self.fetch, self.training = config, cache, fetch, training
         self.augment, self.recon_p, self.validity_dropout = augment, float(recon_p), float(validity_dropout)
         self.face_dropout, self.speed, self.trim = face_dropout, tuple(speed), trim
-        self.max_frames = int(max_seconds * config.fps)
+        self.max_frames = None if max_seconds is None else int(max_seconds * config.fps)   # None: full length
         self.blank = bool(blank)
         self.template = layout_template(config)
 

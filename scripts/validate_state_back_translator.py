@@ -17,7 +17,10 @@ read as the pilot reads them: ``load_state``, 24 fps). Every form is read by the
 Report-only: ``shuffled_chunks`` (each clip's 0.5 s chunks in a random order) and, per form, the length ratio
 (hypothesis words / reference words).
 
-**Bootstrap:** single forms ``strict_prior_review.bleu_ci`` (1,000 resamples, seed 0); every paired difference
+**Every gate is decided on unrounded values**; the stored report is rounded to 4 decimals afterwards. Clips longer
+than 20 s (the training cut; selection reads them in full, greedily) are reported separately (``long_clips``).
+
+**Bootstrap:** single forms ``strict_prior_review.bleu_ci``'s draws (1,000 resamples, seed 0); every paired difference
 ``compare_pilot_lexicon.paired_bleu_difference`` (2,000 resamples of clips, seed 0); the gap over the strongest
 control (``paired_gap``) resamples the same clips the same way and takes the maximum control in each resample.
 
@@ -30,9 +33,10 @@ control (``paired_gap``) resamples the same clips the same way and takes the max
   least 0.8 x real.
 - **G4 cross-domain:** 2M-Flores (``--flores-manifest``) real above its own blank and mismatched controls (paired
   lower bounds > 0; the unpaired interval separation is reported too).
-- **G5 ranking:** from ``--reread-key``: every arm's re-generation reproduced v1's stored hypotheses; every ordering
-  of W14b, R16, R16C, composition, real and blank that v1 resolved (paired CI excluding 0) keeps its sign under v2
-  (the point difference); Kendall's tau of the six BLEUs reported.
+- **G5 ranking** (amendment 1, 09:56 UTC): from ``--reread-key``, W14b, R16, R16C, composition, real and blank are
+  read by both v1 and v2 on the same regenerated samples (``v1_rerun`` and ``v2``); every ordering v1 resolves on those
+  samples (paired CI excluding 0) keeps its sign under v2 (the point difference); Kendall's tau of the six BLEUs
+  reported. Exact reproduction of v1's stored pilot hypotheses is reported as a diagnostic, not required.
 - **G6 per-signer:** each How2Sign val signer group (c01, c03, c05) reads real above blank (paired lower bound > 0).
 
 The test partitions and How2Sign signer 9 are never read.
@@ -149,18 +153,43 @@ def paired_gap(real, controls: dict, refs, resamples: int = 2000, seed: int = 0)
 
 
 def paired(a, b, refs) -> dict:
+    """``compare_pilot_lexicon.paired_bleu_difference``, unrounded (gates decide on these; the report is rounded)."""
     from compare_pilot_lexicon import paired_bleu_difference
     d, (lo, hi) = paired_bleu_difference(a, b, refs)
-    return dict(difference=round(d, 3), ci95=[round(lo, 3), round(hi, 3)])
+    return dict(difference=float(d), ci95=[float(lo), float(hi)])
+
+
+def bleu_ci_raw(hyps, refs, *, seed: int = 0, n: int | None = None):
+    """``strict_prior_review.bleu_ci`` (the same draws: ``default_rng(seed)``, ``BOOT`` resamples, percentiles), without
+    its rounding to 3 decimals."""
+    from signtranslator.generation.motion_to_text import corpus_bleu
+    from strict_prior_review import BOOT
+    rng = np.random.default_rng(seed)
+    point = corpus_bleu(hyps, refs)["bleu"]
+    vals = []
+    for _ in range(BOOT if n is None else n):
+        idx = rng.integers(0, len(hyps), len(hyps))
+        vals.append(corpus_bleu([hyps[i] for i in idx], [refs[i] for i in idx])["bleu"])
+    return float(point), [float(np.percentile(vals, 2.5)), float(np.percentile(vals, 97.5))]
 
 
 def form_row(hyps, refs) -> dict:
     from signtranslator.generation.motion_to_text import corpus_bleu
-    from strict_prior_review import bleu_ci
-    point, ci = bleu_ci(hyps, refs)
+    point, ci = bleu_ci_raw(hyps, refs)
     b = corpus_bleu(hyps, refs)
-    return dict(bleu=point, ci95=ci, length_ratio=round(b["hypothesis_length"] / max(b["reference_length"], 1), 4),
+    return dict(bleu=point, ci95=ci, length_ratio=b["hypothesis_length"] / max(b["reference_length"], 1),
                 hypotheses=list(hyps))
+
+
+def rounded(value, digits: int = 4):
+    """The report's copy of ``value`` with every float rounded (gates were decided on the unrounded values)."""
+    if isinstance(value, float):
+        return round(value, digits)
+    if isinstance(value, dict):
+        return {k: rounded(v, digits) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [rounded(v, digits) for v in value]
+    return value
 
 
 def kendall_tau(a, b) -> float:
@@ -175,12 +204,12 @@ def kendall_tau(a, b) -> float:
 # ---- gates ----------------------------------------------------------------------------------------------------
 
 def gate_g1(real: dict) -> dict:
-    return dict(real=real["bleu"], ci95=real["ci95"], need=dict(real=G1_REAL, ci_low_above=V1_REAL),
+    return dict(real=real["bleu"], ci95=list(real["ci95"]), need=dict(real=G1_REAL, ci_low_above=V1_REAL),
                 **{"pass": bool(real["bleu"] >= G1_REAL and real["ci95"][0] > V1_REAL)})
 
 
 def gate_g2(gap: float, ci, halfwidth=None) -> dict:
-    out = dict(gap=round(gap, 3), ci95=[round(ci[0], 3), round(ci[1], 3)], controls=list(GAP_CONTROLS),
+    out = dict(gap=float(gap), ci95=[float(ci[0]), float(ci[1])], controls=list(GAP_CONTROLS),
                need=dict(gap=G2_GAP, ci_low_above=V1_GAP), **{"pass": bool(gap >= G2_GAP and ci[0] > V1_GAP)})
     if halfwidth:
         out["resolution"] = halfwidth
@@ -190,7 +219,7 @@ def gate_g2(gap: float, ci, halfwidth=None) -> dict:
 def gate_g3(arms: dict | None, round_trip: dict, real: dict) -> dict:
     """``arms``: {arm: paired(arm, real)} (None: not evaluated)."""
     trip_ok = bool(round_trip["bleu"] >= G3_ROUND_TRIP * real["bleu"])
-    out = dict(round_trip=dict(bleu=round_trip["bleu"], need=round(G3_ROUND_TRIP * real["bleu"], 3), **{"pass": trip_ok}))
+    out = dict(round_trip=dict(bleu=round_trip["bleu"], need=G3_ROUND_TRIP * real["bleu"], **{"pass": trip_ok}))
     if arms is None:
         return dict(out, arms=None, **{"pass": False if not trip_ok else None})
     below = {a: dict(d, below_real=bool(d["ci95"][1] < 0)) for a, d in arms.items()}
@@ -226,8 +255,8 @@ def orderings(v1: dict, v2: dict, refs) -> dict:
                                      v2_resolved=bool(d2["ci95"][0] > 0 or d2["ci95"][1] < 0))
     s1 = [corpus_bleu(v1[f], refs)["bleu"] for f in names]
     s2 = [corpus_bleu(v2[f], refs)["bleu"] for f in names]
-    return dict(forms=names, bleu_v1=[round(x, 3) for x in s1], bleu_v2=[round(x, 3) for x in s2],
-                kendall_tau=round(kendall_tau(s1, s2), 4), pairs=pairs, all_resolved_kept=kept)
+    return dict(forms=names, bleu_v1=s1, bleu_v2=s2, kendall_tau=kendall_tau(s1, s2), pairs=pairs,
+                all_resolved_kept=kept)
 
 
 def gate_g5(reread: dict | None, refs) -> dict:
@@ -235,12 +264,13 @@ def gate_g5(reread: dict | None, refs) -> dict:
         return {"pass": None, "reason": "no --reread-key"}
     if reread["references"] != list(refs):
         raise SystemExit("--reread-key translated other clips")
-    forms = reread["forms"]
+    forms = {f: x for f, x in reread["forms"].items() if x.get("v1_rerun") is not None and x.get("v2") is not None}
     missing = [f for f in RANKED if f not in forms]
-    reproduced = {f: bool(forms[f].get("reproduced")) for f in forms}
-    order = orderings({f: forms[f]["v1_stored"] for f in forms}, {f: forms[f]["v2"] for f in forms}, refs)
-    failed = not all(reproduced.values()) or not order["all_resolved_kept"]
-    return dict(missing_forms=missing, reproduced=reproduced, orderings=order,
+    reproduced = {f: x.get("reproduced") for f, x in reread["forms"].items()}     # diagnostic only (amendment 1)
+    order = orderings({f: forms[f]["v1_rerun"] for f in forms}, {f: forms[f]["v2"] for f in forms}, refs)
+    failed = not order["all_resolved_kept"]
+    return dict(missing_forms=missing, reproduced_stored_v1_diagnostic=reproduced, orderings=order,
+                read="v1 and v2 on the same regenerated samples (v1_rerun against v2)",
                 **{"pass": False if failed else (None if missing else True)})
 
 
@@ -254,19 +284,19 @@ def gate_g6(groups: dict) -> dict:
 
 def resolution(reread: dict | None, gap_v2: float, refs) -> dict | None:
     """G2's report: the gap over the W14b - R16C paired half-width, v2 against v1."""
-    if reread is None or not all(f in reread["forms"] for f in ("W14b", "R16C", "real", "blank")):
+    if reread is None or not all(reread["forms"].get(f, {}).get("v1_rerun") for f in ("W14b", "R16C", "real", "blank")):
         return None
     from signtranslator.generation.motion_to_text import corpus_bleu
     forms = reread["forms"]
     out = {}
-    for name, key, gap in (("v1", "v1_stored", None), ("v2", "v2", gap_v2)):
+    for name, key, gap in (("v1", "v1_rerun", None), ("v2", "v2", gap_v2)):
         d = paired(forms["W14b"][key], forms["R16C"][key], refs)
         half = (d["ci95"][1] - d["ci95"][0]) / 2
         if gap is None:
             gap = corpus_bleu(forms["real"][key], refs)["bleu"] - corpus_bleu(forms["blank"][key], refs)["bleu"]
-        out[name] = dict(w14b_minus_r16c=d, halfwidth=round(half, 3), gap=round(gap, 3),
-                         gap_over_halfwidth=round(gap / half, 3) if half > 0 else None)
-    out["note"] = "v1's gap is real - blank (its declared 2.277); v2's is G2's gap over max(blank, static, mismatched)"
+        out[name] = dict(w14b_minus_r16c=d, halfwidth=half, gap=gap, gap_over_halfwidth=gap / half if half > 0 else None)
+    out["note"] = ("both on the regenerated samples; v1's gap is real - blank (as its declared 2.277), v2's is G2's gap "
+                   "over max(blank, static, mismatched)")
     return out
 
 
@@ -355,6 +385,8 @@ def main(argv=None) -> int:
     from train_state_to_text_t5 import load_store_manifest
     from train_text_to_motion import make_store
     store = make_store(args.store)
+    if store.exists(args.output_key):
+        raise SystemExit(f"{args.output_key} exists: the acceptance is written once")
     device = torch.device("cuda" if args.device == "auto" and torch.cuda.is_available() else
                           ("cpu" if args.device == "auto" else args.device))
     try:
@@ -392,6 +424,13 @@ def main(argv=None) -> int:
             group_rows[g] = dict(clips=len(idx), real=form_row([hyps["real"][i] for i in idx], t)["bleu"],
                                  blank=form_row([hyps["blank"][i] for i in idx], t)["bleu"],
                                  real_minus_blank=paired([hyps["real"][i] for i in idx], [hyps["blank"][i] for i in idx], t))
+    seconds = [len(r.timestamps) / FPS for r in refs]
+    long_clips = {}
+    for part, idx in (("over_20s", [i for i, x in enumerate(seconds) if x > 20.]),
+                      ("up_to_20s", [i for i, x in enumerate(seconds) if x <= 20.])):
+        t = [texts[i] for i in idx]
+        long_clips[part] = dict(clips=len(idx), **({f: form_row([hyps[f][i] for i in idx], t)["bleu"]
+                                                     for f in ("real", "blank")} if idx else {}))
     arms = None
     if reread is not None:
         if reread["references"] != texts:
@@ -412,9 +451,9 @@ def main(argv=None) -> int:
                   translator_sha256=args.translator_sha256, run=saved.get("run"), step=saved.get("step"),
                   licence=saved.get("licence"), mix_key=args.mix_key, mix_sha256=args.mix_sha256, clips=len(texts),
                   beam=args.beam, controls=info, references=texts, signer_components=groups, forms=rows,
-                  paired=paired_rows, gates=gates, verdicts=verdicts, complete=complete,
+                  paired=paired_rows, gates=gates, verdicts=verdicts, complete=complete, long_clips=long_clips,
                   **{"pass": bool(complete and all(verdicts.values()))}, flores=flores, limit=args.limit or None)
-    store.put(args.output_key, json.dumps(report, indent=1, sort_keys=True, default=float).encode())
+    store.put(args.output_key, json.dumps(rounded(report), indent=1, sort_keys=True, default=float).encode())
     print(json.dumps(dict(forms={k: (v["bleu"], v["ci95"], v["length_ratio"]) for k, v in rows.items()},
                           gap=(round(gap, 3), gap_ci), verdicts=verdicts, complete=complete,
                           **{"pass": report["pass"]})), flush=True)

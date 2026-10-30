@@ -1,6 +1,7 @@
-"""Instrument v2, gate G5 (and G3's arms): re-generate the declared arms with the pilots' seeds, show that instrument
-v1 reproduces its stored hypotheses, then read the same generations with instrument v2 (docs/NEXT_PHASE_PLAN.md,
-"Instrument v2: design and declared gates": "Re-generation must first reproduce v1's stored hypotheses").
+"""Instrument v2, gate G5 (and G3's arms): re-generate the declared arms with the pilots' seeds and read the same
+generations with instrument v1 and instrument v2 (docs/NEXT_PHASE_PLAN.md, "Instrument v2: design and declared gates",
+and its amendment 1, 09:56 UTC: both instruments read the same regenerated samples; reproducing v1's stored pilot
+hypotheses is a reported diagnostic).
 
 **Pilot arms** (``--arm NAME=REPORT_KEY``, default W14b, R16 and R16C on the 1,000 clips): each stored pilot report
 (``pilot_content_check.py``) gives the prior checkpoint, part temperatures, guidance, clip count, the references and
@@ -8,22 +9,27 @@ v1's hypotheses. The generations are redone exactly as the pilot's meaning half 
 ``validation_sentences(--mix-key, clips)`` (their texts must equal the report's references), each at its reference
 duration, ``sample.batch`` over blocks of 32 with seed 1000 + block start, the round-3e post-processing. v1 (its
 ``best.json`` checkpoint, read by ``score_back_translation.translate`` with the pilot's defaults) must give the
-stored hypotheses: ``reproduced`` is exact equality on every clip. The same states are then read by v2.
+stored hypotheses (``reproduced``, exact equality on every clip: a diagnostic). The same states are then read
+by v2.
 
 **Real and blank:** the reference clips and their blank control, read by v1 (against the first arm report's stored
 ``real`` / ``blank`` hypotheses) and by v2.
 
 **Composition** (W14b's round-15 composition): its generation is ``round15_compose_eval.py run``'s, sharded on GPUs, so
-it is re-run by that script (same settings) twice and merged: once with the default translator (v1;
-``--composition-v1-rerun``) and once with ``--translator-run back-translator-state-t5-v1`` (``--composition-v2``).
-``--composition-stored`` is the declared merged report. The v1 re-run's hypotheses of the variant must equal the
-stored ones; settings must agree except the translator checkpoint.
+it is re-run by that script with the stored run's settings plus ``--also-translator-run back-translator-state-t5-v1``,
+and merged (``--composition-rerun``): v1 and v2 read the very same generated states in one run. ``--composition-stored``
+is the declared merged report; settings must agree (the extra translator aside).
+
+**G5 (amendment 1, 09:56 UTC):** the orderings are judged on the re-generated samples read by both instruments
+(``v1_rerun`` against ``v2``). Exact reproduction of the stored v1 hypotheses (``reproduced``, ``matches``) is reported
+as a diagnostic only (GPU kernels may differ); regeneration runs on the pilots' GPU type where available.
 
 **What the stored reports do not hold** (supplied here, and checked where possible): the pilot reports omit the
 generator mix (``--mix-key``: round14b-mixed-v1 for these arms; ``load_generator`` refuses a checkpoint trained on
 another mix, and the clip texts must match the references), the code version, the device and library versions
-(CUDA kernels may differ across GPUs). Only the exact-equality check shows the regeneration is faithful; a mismatch is
-reported clip by clip (``matches``) and fails G5.
+(CUDA kernels may differ across GPUs). The exact-equality diagnostic shows whether the regeneration matched the
+pilots; a mismatch is reported clip by clip (``matches``). It does not decide G5, which reads both instruments on the
+same new samples.
 """
 from __future__ import annotations
 
@@ -78,8 +84,12 @@ def reproduction(rerun, stored) -> dict:
                 clips=len(stored), first_mismatches=[i for i, (a, b) in enumerate(zip(rerun, stored)) if a != b][:10])
 
 
-def composition_forms(stored: dict, v1: dict | None, v2: dict | None, texts, translator_key: str) -> dict:
-    """The composition's hypotheses (stored, v1 re-run, v2) from merged ``round15_compose_eval`` reports."""
+def composition_forms(stored: dict, rerun: dict | None, texts, run: str, translator_key: str,
+                      translator_sha256: str) -> dict:
+    """The composition's hypotheses from merged ``round15_compose_eval`` reports: ``v1_stored`` (the declared run),
+    and from ONE re-run that read the same generated states with both instruments (``--also-translator-run``):
+    ``v1_rerun`` (its main translator, v1) and ``v2`` (its extra translator ``run``). Settings must equal the stored
+    run's (the extra translator aside); reproduction of the stored hypotheses is a diagnostic."""
     variants = stored["settings"]["variants"]
     if len(variants) != 1:
         raise SystemExit(f"--composition-stored: one variant expected, found {variants}")
@@ -87,24 +97,21 @@ def composition_forms(stored: dict, v1: dict | None, v2: dict | None, texts, tra
     if stored["references"] != texts:
         raise SystemExit("--composition-stored translated other clips")
     out = dict(variant=variant, v1_stored=list(stored["forms"][variant]["hypotheses"]))
-    for name, report in (("v1_rerun", v1), ("v2", v2)):
-        if report is None:
-            continue
-        if report["references"] != texts or report.get("signs") != stored.get("signs"):
-            raise SystemExit(f"--composition-{name.replace('_', '-')}: other clips")
-        diff = sorted(k for k in set(stored["settings"]) | set(report["settings"])
-                      if k != "translator_key" and stored["settings"].get(k) != report["settings"].get(k))
-        if diff:
-            raise SystemExit(f"--composition-{name.replace('_', '-')}: settings differ from the stored run in {diff}")
-        if name == "v1_rerun" and report["settings"]["translator_key"] != stored["settings"]["translator_key"]:
-            raise SystemExit("--composition-v1-rerun was not read by v1")
-        if name == "v2" and report["settings"]["translator_key"] != translator_key:
-            raise SystemExit("--composition-v2 was not read by this instrument checkpoint")
-        out[name] = list(report["forms"][variant]["hypotheses"])
-    if "v1_rerun" in out:
-        out.update(reproduction(out["v1_rerun"], out["v1_stored"]))
-    else:
-        out.update(reproduced=False, matches=None, note="no --composition-v1-rerun: reproduction not shown")
+    if rerun is None:
+        return out
+    if rerun["references"] != texts or rerun.get("signs") != stored.get("signs"):
+        raise SystemExit("--composition-rerun: other clips")
+    keys = (set(stored["settings"]) | set(rerun["settings"])) - {"extra_translators"}
+    diff = sorted(k for k in keys if stored["settings"].get(k) != rerun["settings"].get(k))
+    if diff:
+        raise SystemExit(f"--composition-rerun: settings differ from the stored run in {diff}")
+    extra = (rerun.get("extra_translators") or {}).get(run)
+    if extra is None:
+        raise SystemExit(f"--composition-rerun did not also read with {run} (--also-translator-run)")
+    if extra["key"] != translator_key or extra["sha256"] != translator_sha256:
+        raise SystemExit("--composition-rerun was read by another instrument checkpoint")
+    out.update(v1_rerun=list(rerun["forms"][variant]["hypotheses"]), v2=list(extra["forms"][variant]["hypotheses"]))
+    out.update(reproduction(out["v1_rerun"], out["v1_stored"]))
     return out
 
 
@@ -118,8 +125,10 @@ def main(argv=None) -> int:
     p.add_argument("--mix-sha256", default=GEN_MIX_SHA)
     p.add_argument("--arm", action="append", help="NAME=PILOT_REPORT_KEY (repeated; default W14b, R16, R16C)")
     p.add_argument("--composition-stored", default=COMPOSITION)
-    p.add_argument("--composition-v1-rerun", help="merged round15_compose_eval report: the same run, read by v1")
-    p.add_argument("--composition-v2", help="merged round15_compose_eval report: the same run, read by v2")
+    p.add_argument("--composition-rerun", help="merged round15_compose_eval report of the stored run's settings, read "
+                   "by v1 and (--also-translator-run) by the instrument: both read the same generated states")
+    p.add_argument("--instrument-run", default="back-translator-state-t5-v1",
+                   help="the instrument's run name in the composition re-run's extra_translators")
     p.add_argument("--limit", type=int, default=0, help="smoke runs: the first LIMIT clips (a multiple of 32)")
     p.add_argument("--device", default="cuda")
     p.add_argument("--output-key", required=True)
@@ -134,6 +143,8 @@ def main(argv=None) -> int:
     from train_state_to_text_t5 import load_store_manifest
     from train_text_to_motion import make_store
     store = make_store(args.store)
+    if store.exists(args.output_key):
+        raise SystemExit(f"{args.output_key} exists: the re-read is written once")
     arms = parse_arms(args.arm)
     reports = {name: json.loads(store.get(key)) for name, key in arms.items()}
     settings = {name: pilot_settings(r) for name, r in reports.items()}
@@ -187,21 +198,20 @@ def main(argv=None) -> int:
     missing = {}
     if args.composition_stored and not args.limit:
         stored = json.loads(store.get(args.composition_stored))
-        v1r = json.loads(store.get(args.composition_v1_rerun)) if args.composition_v1_rerun else None
-        v2r = json.loads(store.get(args.composition_v2)) if args.composition_v2 else None
-        comp = composition_forms(stored, v1r, v2r, texts, args.translator_key)
+        rerun = json.loads(store.get(args.composition_rerun)) if args.composition_rerun else None
+        comp = composition_forms(stored, rerun, texts, args.instrument_run, args.translator_key,
+                                 args.translator_sha256)
         if "v2" in comp:
-            forms["composition"] = dict(comp, source=dict(stored=args.composition_stored,
-                                                          v1_rerun=args.composition_v1_rerun, v2=args.composition_v2))
+            forms["composition"] = dict(comp, source=dict(stored=args.composition_stored, rerun=args.composition_rerun))
         else:
-            missing["composition"] = "no --composition-v2 report"
+            missing["composition"] = "no --composition-rerun report"
     else:
         missing["composition"] = "not read (--limit or no --composition-stored)"
     report = dict(kind="instrument-v2-reread", translator_key=args.translator_key,
                   translator_sha256=args.translator_sha256, instrument_run=saved.get("run"), v1_run=args.v1_run,
                   v1_checkpoint_key=v1_key, mix_key=args.mix_key, mix_sha256=args.mix_sha256, clips=n,
                   references=texts, arms=arms, forms=forms, missing=missing, limit=args.limit or None,
-                  reproduced={k: v["reproduced"] for k, v in forms.items()})
+                  reproduced={k: v.get("reproduced") for k, v in forms.items()})
     store.put(args.output_key, json.dumps(report, indent=1, sort_keys=True).encode())
     print(json.dumps(dict(reproduced=report["reproduced"], missing=missing)), flush=True)
     return 0

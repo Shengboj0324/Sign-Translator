@@ -13,7 +13,7 @@ corpus and partition (``role_of``):
 | | ``val`` (c01, c03, c05) | ``val:how2sign`` (the gates' clips; never loaded by the trainer) |
 | | ``test``, ``heldout_official``, component c00 (signer 9) or unknown | never read (dropped unread / refused) |
 | ``youtube-asl-*`` | ``train`` | ``train`` |
-| | ``monitor`` (channel-disjoint) | ``select:youtube-monitor`` (a fixed sample of ``monitor_clips``) |
+| | ``monitor`` (channel-disjoint) | ``select:youtube-monitor`` (a fixed sample of ``monitor_clips``, 536: all) |
 | ``asl-stem-wiki*`` | ``train`` | ``train`` |
 | | ``holdout`` (4 participants) | ``holdout:asl-stem-wiki`` (reported only) |
 | ``2m-flores*`` | any | ``crossdomain:2m-flores`` (G4 only; refused by the trainer) |
@@ -50,7 +50,7 @@ SELECT_H2S, SELECT_YT = "select:how2sign-c04", "select:youtube-monitor"
 VAL_H2S = "val:how2sign"
 HOLDOUT_STEM = "holdout:asl-stem-wiki"
 CROSSDOMAIN = "crossdomain:2m-flores"
-MONITOR_CLIPS = 1000
+MONITOR_CLIPS = 536        # amendment 1 (09:56 UTC): youtube-asl-v1 holds 536 monitor clips, all of them selected
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -104,6 +104,8 @@ def role_of(record: Mapping, name: str) -> str | None:
     fam = family(name)
     if partition in FORBIDDEN_PARTITIONS or record.get("source_partition") in FORBIDDEN_PARTITIONS:
         return None
+    if record.get("source_partition") not in (None, partition):
+        return None                                    # a record renamed from another partition is not read
     if fam == "flores":
         return CROSSDOMAIN
     if fam == "how2sign":
@@ -130,7 +132,8 @@ def check_loadable_bt(record: Mapping, *, training: bool) -> None:
     """Hard guard (not an ``assert``): raise unless ``record`` may be read; with ``training``, unless it may be trained
     on. Every read: never a test or held-out-official record, never How2Sign signer 9 or an unknown How2Sign
     component (``recognizer_corpora.check_loadable``). Training: only role ``train``, never a How2Sign val record or a
-    How2Sign component other than c02, never a cross-domain (2M-Flores) or held-out record."""
+    How2Sign component other than c02, never a record whose ``source_partition`` is not train (a renamed record), never a
+    cross-domain (2M-Flores) or held-out record."""
     check_loadable(record)
     name = record.get("corpus") or ""
     role = record.get("_role")
@@ -145,6 +148,9 @@ def check_loadable_bt(record: Mapping, *, training: bool) -> None:
                                        or record.get("signer_component") not in HOW2SIGN_TRAIN_COMPONENTS):
         raise RuntimeError(f"{record.get('sign')}: How2Sign {record.get('partition')} "
                            f"{record.get('signer_component')} may never be trained on (only train c02)")
+    if record.get("source_partition") not in (None, "train"):
+        raise RuntimeError(f"{record.get('sign')}: renamed from partition {record.get('source_partition')!r}; only "
+                           "records whose source partition is train may be trained on")
     if role != TRAIN:
         raise RuntimeError(f"{record.get('sign')}: role {role!r} may never be trained on")
 

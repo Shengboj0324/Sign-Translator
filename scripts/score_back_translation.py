@@ -56,6 +56,28 @@ def load_translator(store, key: str, manifest_sha256: str):
     return model.eval(), WordVocabulary(saved["vocabulary"]["words"])
 
 
+def load_translator_run(store, run: str, manifest_sha256: str):
+    """(model, kind, checkpoint key, checkpoint SHA-256 or None) of a run's ``best.json`` checkpoint (instrument v2's
+    ``--translator-run``). A best.json that records ``checkpoint_sha256`` (``train_state_to_text_t5.py`` writes it) is
+    an instrument-v2 run: the payload is checked against that SHA-256 and loaded weights-only
+    (``state_to_text_t5.load_model``). Any other run is loaded by ``load_translator`` exactly as before."""
+    import hashlib
+    best = json.loads(store.get(f"training-runs/{run}/best.json"))
+    key = best["checkpoint_key"]
+    if not best.get("checkpoint_sha256"):
+        model, kind = load_translator(store, key, manifest_sha256)
+        return model, kind, key, None
+    from signtranslator.generation.state_to_text_t5 import load_model
+    payload = store.get(key)
+    if hashlib.sha256(payload).hexdigest() != best["checkpoint_sha256"]:
+        raise SystemExit(f"{key}: SHA-256 differs from {run}'s best.json")
+    try:
+        model, _ = load_model(payload, expected_sha256=best["checkpoint_sha256"])
+    except ValueError as error:
+        raise SystemExit(f"{key}: {error}")
+    return model, "states", key, best["checkpoint_sha256"]
+
+
 @torch.no_grad()
 def translate(model, vocabulary, states, *, beam: int = 4, batch: int = 32) -> list[str]:
     from signtranslator.data.multichannel import collate_multichannel

@@ -324,8 +324,12 @@ def main(argv=None) -> int:
             if args.oracle_plan:
                 oracle_gens += [post(o) for o in sample.batch_with_plans(texts[i:i + 32], 24., seconds[i:i + 32],
                                                                          args.guidance, 1000 + i, plans[i:i + 32])]
-        kp = json.loads(store.get(f"training-runs/{args.translator_run}/best.json"))["checkpoint_key"]
-        translator, kind = load_translator(store, kp, MIX_SHA)  # the translator's own manifest (round 3c)
+        if args.translator_run == TRANSLATOR_RUN:      # v1: exactly the declared path
+            kp = json.loads(store.get(f"training-runs/{args.translator_run}/best.json"))["checkpoint_key"]
+            translator, kind = load_translator(store, kp, MIX_SHA)  # the translator's own manifest (round 3c)
+        else:                                          # instrument v2: SHA-checked, weights-only
+            from score_back_translation import load_translator_run
+            translator, kind, kp, _ = load_translator_run(store, args.translator_run, MIX_SHA)
         translator = translator.to(torch.device(args.device))
         meaning = {}
         reads = (("real", refs), ("blank", blanked(refs))) if args.oracle_only else \
