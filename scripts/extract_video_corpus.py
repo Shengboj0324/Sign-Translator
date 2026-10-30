@@ -13,6 +13,11 @@ work by a hash of the path. Videos are fetched to a temporary file and deleted a
 2M-Flores is 1080p at 60 fps, about five times the landmarking work for no gain at the generator's 24 fps; the
 setting is recorded in each report and in the inference method.
 
+**Zip mode** (``--zip-key``): the videos are members of one stored zip (ASL STEM Wiki), read by ranged GETs without
+unpacking; ``--zip-metadata`` is the member holding the CSV, ``--file-column`` its file-name column and
+``--member-prefix`` the members' directory. Each record's split is ``--group-column``'s value (e.g. the participant),
+so a downstream manifest can hold out whole signers; reports go under ``<out>/videos/<group>/<stem>.json``.
+
     python scripts/extract_video_corpus.py --source acquisition/2026-10-30-v1/2m-flores-asl \
         --metadata data/dev/metadata.csv --metadata data/devtest/metadata.csv \
         --out acquisition/2026-10-30-v1/2m-flores-asl/extract-v1 --source-id 2m-flores-asl --models-dir /root/work/models
@@ -32,6 +37,30 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
+
+
+_ZIP = {}
+
+
+def zip_of(store, key: str):
+    """One ranged-read ZipFile per process (the central directory is read once)."""
+    if key not in _ZIP:
+        from build_uwb_keypoint_shards import open_zip
+        _ZIP[key] = open_zip(store, key)
+    return _ZIP[key]
+
+
+def zip_jobs_of(store, args) -> list[dict]:
+    z = zip_of(store, args.zip_key)
+    names = {i.filename: i for i in z.infolist()}
+    jobs = []
+    for row in csv.DictReader(io.StringIO(z.read(args.zip_metadata).decode("utf-8"))):
+        member = args.member_prefix + row[args.file_column]
+        if member not in names:
+            raise SystemExit(f"{member} is listed in {args.zip_metadata} but not in the zip")
+        jobs.append(dict(split=row[args.group_column], stem=Path(row[args.file_column]).stem, key=member, sha256=None,
+                         member_crc=names[member].CRC, fields={k: v for k, v in row.items() if k != args.file_column}))
+    return jobs
 
 
 def jobs_of(store, source: str, metadata: list[str]) -> list[dict]:
@@ -66,7 +95,15 @@ def convert(job: dict, args) -> dict:
     report = dict(base=base, source_key=job["key"], source_sha256=job["sha256"], **job["fields"])
     with tempfile.TemporaryDirectory() as tmp:
         video = Path(tmp) / Path(job["key"]).name
-        payload = store.get(job["key"])
+        if args.zip_key:
+            import zlib
+            payload = zip_of(store, args.zip_key).read(job["key"])
+            if zlib.crc32(payload) & 0xFFFFFFFF != job["member_crc"]:
+                raise SystemExit(f"{job['key']}: CRC differs from the zip directory")
+            job = dict(job, sha256=hashlib.sha256(payload).hexdigest())
+            report.update(source_key=f"{args.zip_key}!{job['key']}", source_sha256=job["sha256"])
+        else:
+            payload = store.get(job["key"])
         if job["sha256"] and hashlib.sha256(payload).hexdigest() != job["sha256"]:
             raise SystemExit(f"{job['key']}: SHA-256 differs from the index")
         video.write_bytes(payload)
@@ -111,8 +148,13 @@ def convert(job: dict, args) -> dict:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument("--source", required=True)
-    p.add_argument("--metadata", action="append", required=True)
+    p.add_argument("--source", help="prefix written by acquire_hf_dataset.py (INDEX.json, files/...)")
+    p.add_argument("--metadata", action="append", help="metadata CSVs under the source's files/")
+    p.add_argument("--zip-key", help="zip mode: the stored zip holding the videos")
+    p.add_argument("--zip-metadata", help="zip mode: the member holding the metadata CSV")
+    p.add_argument("--file-column", default="file_name")
+    p.add_argument("--member-prefix", default="")
+    p.add_argument("--group-column", help="zip mode: the column used as each record's split (e.g. participant)")
     p.add_argument("--out", required=True)
     p.add_argument("--source-id", required=True)
     p.add_argument("--models-dir", required=True)
@@ -125,7 +167,14 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     from signtranslator.data.text_motion_dataset import R2Store
     store = R2Store(os.environ)
-    jobs = jobs_of(store, args.source, args.metadata)
+    if args.zip_key:
+        if not (args.zip_metadata and args.group_column):
+            raise SystemExit("zip mode needs --zip-metadata and --group-column")
+        jobs = zip_jobs_of(store, args)
+    else:
+        if not (args.source and args.metadata):
+            raise SystemExit("--source and --metadata are required (or zip mode)")
+        jobs = jobs_of(store, args.source, args.metadata)
     jobs = [j for j in jobs if int(hashlib.sha256(j["key"].encode()).hexdigest(), 16) % args.shards == args.shard]
     if args.limit:
         jobs = jobs[:args.limit]
