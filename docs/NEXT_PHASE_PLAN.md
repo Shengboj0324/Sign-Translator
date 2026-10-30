@@ -4881,3 +4881,16 @@ P17's plan-only BLEU and the oracle–generated gap are reported beside it.
 **Sequencing:**
 - PT may train once the review fixes land and are re-reviewed.
 - P17 and D17 wait for the UWB gate result, per the owner's O4 decision.
+
+### Round 17 gates, amendment 1 (declared 2026-10-30, 06:22 UTC, before anything trains; second review of a8f6da9)
+
+- **Plan following** (replaces "≥ 70%"). A detail prior ignoring its plan already scores about 0.66 from clip duration alone (BLEU's brevity penalty): blank at A's duration reads 0.6605 [0.631, 0.688]; real clips read 0.757. So both must hold:
+  - the paired difference, A-plan-with-no-text minus blank-at-A's-duration on the same pairs, has a lower bound > 0;
+  - the A-plan rate ≥ blank + 0.5 × (real − blank).
+  - The bootstrap resamples unordered pairs.
+- **P17 text gain:** measured in **nats per second** (the summed part-weighted gain per clip divided by its seconds), not per code. The bar stays ≥ 2× W14b's text gain in nats per second.
+- **Plan-only route:** gated on `plan_route_minus_blank` with a lower bound > 0, and the script's own blank must reproduce 1.859. It samples with its own seeds, which differ from the arms' pilot draw.
+- **Oracle precondition:** `meaning_oracle_plan` minus R16C's generated BLEU, paired, lower bound > 0. It is computed by a comparison option added for this purpose.
+- **PT stability:** "perplexity" means the mean per-batch stage-1 perplexity on validation. The dead-code re-seed rate comes from a counter persisted in checkpoints.
+- **Sampling:** the plan-corruption samples are drawn at guidance 1 and temperature 1; the pilot samples P17 at guidance 1.5 and part temperature 1.1. Declared, not changed.
+- The builder's report must restate exactly these gates before any training.
