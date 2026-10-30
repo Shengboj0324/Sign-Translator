@@ -114,13 +114,29 @@ train)
   T="python scripts/train_uwb_lifter_v2.py"
   COMMON="--split-file $W/split.json --yt-pairs $W/yt --h2s-pairs $W/pairs --h2s-legacy $W/legacy-pairs \
     --crops $W/crops --crops-legacy $W/legacy --init-bundle $W/xy2.pt --init-sha256 $XY2_SHA --seed 0"
-  export TORCH_THREADS=$(( N / 3 > 0 ? N / 3 : 1 ))
-  $T pose $COMMON --epochs 15 --lr 3e-4 --out $W/out/pose-ft.pt --report $W/out/pose-ft.json > $W/out/pose-ft.log 2>&1 & A=$!
-  $T pose $COMMON --from-scratch --epochs 30 --lr 1e-3 --out $W/out/pose-scratch.pt --report $W/out/pose-scratch.json \
-    > $W/out/pose-scratch.log 2>&1 & B=$!
-  $T pose $COMMON --finetune-hands --epochs 15 --lr 3e-4 --out $W/out/pose-ft-hands.pt --report $W/out/pose-ft-hands.json \
-    > $W/out/pose-ft-hands.log 2>&1 & C=$!
-  wait $A; wait $B; wait $C
+  # Pose arms run one after another by default: each holds every YouTube frame in memory. PARALLEL_ARMS=1 runs the three
+  # together (size the pod's memory for 3x one arm's peak RSS, which each arm prints and records in its report).
+  ARMS=("pose-ft --epochs 15 --lr 3e-4" "pose-scratch --from-scratch --epochs 30 --lr 1e-3"
+        "pose-ft-hands --finetune-hands --epochs 15 --lr 3e-4")
+  if [ "${PARALLEL_ARMS:-0}" = 1 ]; then
+    export TORCH_THREADS=$(( N / 3 > 0 ? N / 3 : 1 )); PIDS=()
+    for A in "${ARMS[@]}"; do
+      read NAME FLAGS <<< "$A"
+      $T pose $COMMON $FLAGS --out $W/out/$NAME.pt --report $W/out/$NAME.json > $W/out/$NAME.log 2>&1 & PIDS+=($!)
+    done
+    for P in "${PIDS[@]}"; do wait $P; done
+  else
+    export TORCH_THREADS=$N
+    for A in "${ARMS[@]}"; do
+      read NAME FLAGS <<< "$A"
+      $T pose $COMMON $FLAGS --out $W/out/$NAME.pt --report $W/out/$NAME.json 2>&1 | tee $W/out/$NAME.log
+    done
+  fi
+  for A in "${ARMS[@]}"; do
+    read NAME FLAGS <<< "$A"
+    python -c "import json,sys; r=json.load(open(sys.argv[1])); print(sys.argv[2], 'peak RSS', r['peak_rss_mb'], 'MB')" \
+      $W/out/$NAME.json $NAME
+  done
   $T select --reports $W/out/pose-ft.json $W/out/pose-scratch.json --out $W/out/selection.json
   CHOSEN=$(python -c "import json,sys; s=json.load(open(sys.argv[1])); print(['pose-ft','pose-scratch'][s['chosen']])" $W/out/selection.json)
   export TORCH_THREADS=$N

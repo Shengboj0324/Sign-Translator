@@ -20,8 +20,9 @@ Declared in docs/NEXT_PHASE_PLAN.md, "UWB lifter v2 and gate v2: declared" (2026
   predicted and our directions, beside the init bundle's on the same frames. How2Sign validation signers 1 and 2 and
   signer 9 are never read (1 and 2 are gate v2's How2Sign controls; 9 is the generator's final-test signer).
 
-``select`` — the arm with the lower lifter-val **forearm** median (ties to the fine-tuned arm). Selection reads only
-lifter-val.
+``select`` — the arm with the lower lifter-val **mean of the upper-arm and forearm medians** (amendment 1, 2026-10-30
+11:51 UTC: not forearm-only, which could trade upper-arm accuracy away; ties to the fine-tuned arm). Selection reads
+only lifter-val.
 
 ``validity`` — the validity head on the selected bundle: an MLP (256 x 2) on ``world_regressor.validity_features``
 (xy-v2 pose features, image x, y and outside distance of points 11..16) -> 6 point logits; masked BCE, batches 50/50 of
@@ -376,6 +377,13 @@ def write_once(path: str, payload: bytes) -> None:
         stream.write(payload)
 
 
+def peak_rss_mb() -> float:
+    """This process's peak resident set size in MB (ru_maxrss: kilobytes on Linux, bytes on macOS)."""
+    import resource
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return round(peak / (2 ** 20 if sys.platform == "darwin" else 2 ** 10), 1)
+
+
 def run_pose(args) -> int:
     init = load_bundle(args.init_bundle, args.init_sha256)
     if init.features != wr.FEATURES_XY2 or init.validity is not None:
@@ -437,26 +445,35 @@ def run_pose(args) -> int:
                   lifter_val=dict(pose=pose_val_errors(model, mean, std, xv, dv, vv),
                                   init_pose=pose_val_errors(init.pose[0], init.pose[1], init.pose[2], xv, dv, vv),
                                   hands=hand_report or None),
-                  bundle_sha256=hashlib.sha256(payload).hexdigest())
+                  bundle_sha256=hashlib.sha256(payload).hexdigest(), peak_rss_mb=peak_rss_mb())
     Path(args.report).write_text(json.dumps(report, indent=1, sort_keys=True))
     print(json.dumps(report["lifter_val"]["pose"]), flush=True)
+    print(f"peak RSS {report['peak_rss_mb']} MB ({report['arm']}, hands {report['settings']['hands']})", flush=True)
     print("bundle", report["bundle_sha256"])
     return 0
 
 
+def selection_score(report: dict) -> float:
+    """Amendment 1: the lifter-val mean of the upper-arm and forearm medians (degrees)."""
+    pose = report["lifter_val"]["pose"]
+    return (pose["upper_arms"]["median"] + pose["forearms"]["median"]) / 2
+
+
 def select(reports: list[dict]) -> dict:
-    """The arm with the lowest lifter-val forearm median (ties: the fine-tuned arm, then the first given)."""
+    """The arm with the lowest lifter-val mean of the upper-arm and forearm medians (ties: the fine-tuned arm, then
+    the first given)."""
     rows = []
     for k, r in enumerate(reports):
         if r.get("stage") != "pose" or r["settings"]["hands"] != "frozen (xy2)":
             raise SystemExit(f"report {k}: only pose arms with frozen hands are selected between")
-        rows.append((r["lifter_val"]["pose"]["forearms"]["median"], r["arm"] != "fine-tuned from xy2", k))
+        rows.append((selection_score(r), r["arm"] != "fine-tuned from xy2", k))
     if len({r["split_sha256"] for r in reports}) != 1:
         raise SystemExit("the arms were scored on different splits")
     chosen = min(rows)[2]
     return dict(chosen=chosen, bundle_sha256=reports[chosen]["bundle_sha256"], arm=reports[chosen]["arm"],
-                rule="lowest lifter-val forearm median (ties: the fine-tuned arm)",
-                candidates=[dict(arm=r["arm"], bundle_sha256=r["bundle_sha256"],
+                rule="lowest lifter-val mean of the upper-arm and forearm medians (ties: the fine-tuned arm); "
+                     "amendment 1, 2026-10-30 11:51 UTC",
+                candidates=[dict(arm=r["arm"], bundle_sha256=r["bundle_sha256"], score=round(selection_score(r), 4),
                                  lifter_val=r["lifter_val"]["pose"]) for r in reports])
 
 

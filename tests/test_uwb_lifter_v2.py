@@ -484,9 +484,10 @@ def test_trainer_pose_select_and_validity_end_to_end(tmp_path):
     assert trainer.main(["select", "--reports", str(tmp_path / "ft.json"), str(tmp_path / "scratch.json"),
                          "--out", str(tmp_path / "selection.json")]) == 0
     selection = json.loads((tmp_path / "selection.json").read_text())
-    medians = [json.loads((tmp_path / f"{n}.json").read_text())["lifter_val"]["pose"]["forearms"]["median"]
-               for n in ("ft", "scratch")]
-    assert selection["chosen"] == (0 if medians[0] <= medians[1] else 1)
+    scores = [trainer.selection_score(json.loads((tmp_path / f"{n}.json").read_text())) for n in ("ft", "scratch")]
+    assert selection["chosen"] == (0 if scores[0] <= scores[1] else 1)
+    assert [c["score"] for c in selection["candidates"]] == [round(x, 4) for x in scores]
+    assert ft["peak_rss_mb"] > 0
     with pytest.raises(SystemExit, match="frozen hands"):
         trainer.select([ft, hands])
     chosen = ("ft", "scratch")[selection["chosen"]]
@@ -511,6 +512,22 @@ def test_trainer_pose_select_and_validity_end_to_end(tmp_path):
         trainer.load_youtube(yt, *gate.load_split(None, str(tmp_path / "other.json")), "train")
     with pytest.raises(SystemExit, match="only train and lifter_val"):
         trainer.load_youtube(yt, *gate.load_split(None, str(tmp_path / "split.json")), "held_out")
+
+
+def test_arm_selection_uses_the_mean_of_upper_arm_and_forearm_medians():
+    """Amendment 1: forearm-only would pick the arm that trades upper arms away; the mean does not."""
+    def arm(name, upper, fore):
+        return dict(stage="pose", arm=name, settings=dict(hands="frozen (xy2)"), split_sha256="s", bundle_sha256=name,
+                    lifter_val=dict(pose=dict(upper_arms=dict(median=upper), forearms=dict(median=fore))))
+    ft, scratch = arm("fine-tuned from xy2", 8., 12.), arm("from-scratch", 14., 11.)
+    out = trainer.select([ft, scratch])
+    assert out["chosen"] == 0 and [c["score"] for c in out["candidates"]] == [10., 12.5]
+    assert trainer.select([scratch, ft])["chosen"] == 1
+    tie = arm("from-scratch", 9., 11.)                                     # mean 10: tie goes to the fine-tuned arm
+    assert trainer.select([tie, ft])["chosen"] == 1
+    assert trainer.select([arm("from-scratch", 8., 11.9), ft])["chosen"] == 0
+    with pytest.raises(SystemExit, match="different splits"):
+        trainer.select([ft, dict(scratch, split_sha256="t")])
 
 
 # ----------------------------------------------------------------------------------------------------------------------

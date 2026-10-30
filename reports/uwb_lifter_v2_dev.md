@@ -57,7 +57,7 @@ Each refusal is counted by reason.
 - One epoch is one pass over the larger source.
 - Hands stay frozen. `--finetune-hands` is the comparison arm and is never selected.
 
-**Selection:** the arm with the lowest lifter-val forearm median; a tie goes to the fine-tuned arm.
+**Selection** (amendment 1, 11:51 UTC): the arm with the lowest lifter-val mean of the upper-arm and forearm medians; a tie goes to the fine-tuned arm.
 
 **Validity head:**
 - MLP(68 → 256 × 2 → 6), masked BCE, 50/50 batches of YouTube train frames and tight crops, 15 epochs at lr 1e-3.
@@ -104,7 +104,9 @@ Run warning-strict (`-W error`, `OMP_NUM_THREADS=1`):
 - related UWB suites, with the new tests included: 105 passed;
 - full suite (4,081 tests collected): exit 0, no failures.
 
-## Interpretations and deviations (to ratify)
+## Interpretations and deviations
+
+Amendment 1 (2026-10-30, 11:51 UTC) settled these. It confirmed items 1–10 below except the selection metric, which it changed (see Training).
 
 1. **Videos without a `channel_id`** are dropped everywhere, as the development videos are. No channel can hold them out.
 2. **Rule `head`:** points 11–16 come from the head. Every other point uses `inside`.
@@ -121,7 +123,7 @@ Run warning-strict (`-W error`, `OMP_NUM_THREADS=1`):
    - A video with no common lag counts as outside ±1.
    - A video whose common lags lack 0 counts as an offender.
 8. **Not declared, chosen here:**
-   - pose-arm selection metric: the lifter-val forearm median;
+   - pose-arm selection metric: superseded by amendment 1, which uses the mean of the upper-arm and forearm medians;
    - the scratch arm's lr: 1e-3;
    - the epoch definition: one pass over the larger source;
    - the validity head's epochs and lr;
@@ -158,5 +160,5 @@ The downstream phase adds that row and writes the final verdict.
 ## Risks not covered by tests
 
 - **The crops phase has never run on a pod.** It installs legacy Holistic (Python 3.11, mediapipe 0.10.14) in a uv venv and needs all three Tasks models in `/root/work/models`.
-- **Memory in the train phase:** it runs the three pose arms in parallel, each holding every YouTube frame. Size the pod's memory for that.
+- **Memory in the train phase:** the three pose arms run one after another by default. `PARALLEL_ARMS=1` runs them together. Each arm prints its peak RSS and records it in its report (`peak_rss_mb`), so the pod can be sized from a first run.
 - **Outside-frame tar layouts:** the script locates the directories by content, because the tars' layouts are not recorded.
