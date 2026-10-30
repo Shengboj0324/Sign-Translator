@@ -154,6 +154,24 @@ def convert(job: dict, args) -> dict:
     return report
 
 
+def auto_workers(per_worker_gb: float = 2.5) -> int:
+    """Workers that fit this container: CPUs minus two, and its cgroup memory limit at ``per_worker_gb`` each (a pod
+    may come up with fewer CPUs and less memory than asked; too many workers get OOM-killed and break the pool)."""
+    cpus = max(1, (os.cpu_count() or 2) - 2)
+    limit = None
+    for path in ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
+        try:
+            raw = Path(path).read_text().strip()
+            if raw.isdigit() and int(raw) < 1 << 50:
+                limit = int(raw) / 2 ** 30
+                break
+        except OSError:
+            continue
+    if limit is None:
+        limit = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 2 ** 30
+    return max(1, min(cpus, int(limit // per_worker_gb)))
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--source", help="prefix written by acquire_hf_dataset.py (INDEX.json, files/...)")
@@ -166,7 +184,7 @@ def main(argv=None) -> int:
     p.add_argument("--out", required=True)
     p.add_argument("--source-id", required=True)
     p.add_argument("--models-dir", required=True)
-    p.add_argument("--workers", type=int, default=8)
+    p.add_argument("--workers", default="8", help="a number, or 'auto' (auto_workers: CPUs and cgroup memory)")
     p.add_argument("--shard", type=int, default=0)
     p.add_argument("--shards", type=int, default=1)
     p.add_argument("--limit", type=int)
@@ -186,7 +204,8 @@ def main(argv=None) -> int:
     jobs = [j for j in jobs if int(hashlib.sha256(j["key"].encode()).hexdigest(), 16) % args.shards == args.shard]
     if args.limit:
         jobs = jobs[:args.limit]
-    print(f"{len(jobs)} videos (shard {args.shard}/{args.shards})", flush=True)
+    args.workers = auto_workers() if args.workers == "auto" else int(args.workers)
+    print(f"{len(jobs)} videos (shard {args.shard}/{args.shards}), {args.workers} workers", flush=True)
     counts = {}
     with ProcessPoolExecutor(args.workers) as pool:
         futures = [pool.submit(convert, j, args) for j in jobs]
