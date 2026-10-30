@@ -96,8 +96,16 @@ def convert(job: dict, args) -> dict:
     with tempfile.TemporaryDirectory() as tmp:
         video = Path(tmp) / Path(job["key"]).name
         if args.zip_key:
-            import zlib
-            payload = zip_of(store, args.zip_key).read(job["key"])
+            import time as _time, zlib
+            for attempt in range(5):               # transient TLS/HTTP errors on ranged reads: reopen and retry
+                try:
+                    payload = zip_of(store, args.zip_key).read(job["key"])
+                    break
+                except Exception:
+                    _ZIP.pop(args.zip_key, None)
+                    if attempt == 4:
+                        raise
+                    _time.sleep(5 * (attempt + 1))
             if zlib.crc32(payload) & 0xFFFFFFFF != job["member_crc"]:
                 raise SystemExit(f"{job['key']}: CRC differs from the zip directory")
             job = dict(job, sha256=hashlib.sha256(payload).hexdigest())
@@ -183,12 +191,16 @@ def main(argv=None) -> int:
     with ProcessPoolExecutor(args.workers) as pool:
         futures = [pool.submit(convert, j, args) for j in jobs]
         for n, future in enumerate(as_completed(futures), 1):
-            r = future.result()
+            try:
+                r = future.result()
+            except Exception as error:  # noqa: BLE001 - one video's transient failure must not end the run
+                r = dict(status="failed")                # no report written: the next run retries it
+                print(f"FAILED one video: {type(error).__name__}: {str(error)[:160]}", flush=True)
             counts[r["status"]] = counts.get(r["status"], 0) + 1
             if n % 50 == 0 or n == len(jobs):
                 print(f"{n}/{len(jobs)} {counts}", flush=True)
     print(f"EXTRACTED {counts}", flush=True)
-    return 0
+    return 3 if counts.get("failed") else 0           # failed videos have no report: a rerun picks them up
 
 
 if __name__ == "__main__":
