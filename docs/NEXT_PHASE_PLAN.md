@@ -5334,3 +5334,23 @@ From real R2 metadata, before any conversion, with amendment 2 applied (`reports
    - R16C trained on two YouTube records equal to a pilot reference, plus one How2Sign val text. R19 drops all three.
    - R19 adds "So lets get started!", which matches a pilot reference once apostrophes are ignored, and "Thats fine." (a How2Sign evaluation text).
    - `EvalIndex` treats "lets" ≠ "let's"; folding apostrophes and Unicode quotes is a fix for future builds. R19 is not rebuilt for it.
+
+## UWB lifter v2 gate result, recorded (2026-10-30, 18:40 UTC): FAIL, so the UWB lever closes
+
+Gate v2 on the held-out channels: 5,821 pairs, 12 per video, split `27c35505…`, bundle `1799740f…`, with xy2 as reference on the identical sample. Verdict `lifter-v2/gate/files/gate-verdict-v2-without-downstream.json`.
+
+**Improved:**
+- forearm median 12.10° → 11.11° (relative 1.69× → 1.34×, now passing);
+- upper arms 5.83°;
+- hand agreement 0.91 / 0.91; forearm agreement 0.96 / 0.89;
+- mirror 0.028.
+
+**Failing gating rows (9):**
+- **wrists:** 18.62° (v1 14.96°; bar 15); CI upper 21.07; relative 1.77×; every stratum. Hands were frozen, but the pose regressor's wrist direction regressed.
+- **How2Sign non-inferiority, forearms:** +1.11° (bar 0.5°).
+- **Truth anchor, right:** 30.28° (bar 29.07°).
+- **UWB-only valid, right:** 0.111 (bar 0.10). The right validity head is degenerate (threshold 0.02, always valid).
+- **Chest-up survival:** left 0.081 and right 0.011, neither admissible.
+- **Timing (pooled):** 0.767 (bar 0.9), with 11 videos whose lag beyond ±1 beats lag 0. **xy2 reads identically, 0.767**, so the timing gap is a property of the data pairing, not of either lifter.
+
+**Decision (as declared):** no conversion, and round 18b does not run. The UWB lift does not meet the declared bars. Its accuracy trade-off (forearms better, wrists worse) and the lifter-independent timing gap would each need new work for uncertain gain. Combined with round 18's 7.4k-record finding, **the UWB data lever is closed** for this phase.
