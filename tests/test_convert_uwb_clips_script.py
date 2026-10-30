@@ -262,3 +262,16 @@ def test_margin_visibility_is_recorded_in_the_states(tmp_path):
     clip = partial["clips"][0]
     state = MultichannelMotion.load(tmp_path / clip["state_key"], expected_sha256=clip["state_sha256"])
     assert "extended by 0.25 of its size" in state.channels["body"].inference_method
+
+
+def test_near_duplicates_are_judged_by_the_summed_cover_of_selected_cues():
+    base = dict(status="converted", clip_id="u", video_id="vidA", text="Some text", eval_leak=False,
+                eval_index_sha256="a" * 64, our_video=True, our_channel_id="chanA", duplicate_of_our_video=False,
+                duplicate_of_our_cue=None, partition="train",
+                our_cue_overlaps=[dict(sample_id="vidA-0001", cover=.3, iou=.25),
+                                  dict(sample_id="vidA-0002", cover=.3, iou=.25)])
+    both = [our_record("vidA-0001"), our_record("vidA-0002")]
+    kept, why = select_training_records([base], eval_index_sha256="a" * 64, our_records=both)
+    assert kept == [] and why == {"near_duplicate_of_our_cue": 1}               # 0.3 + 0.3 >= 0.5
+    kept, why = select_training_records([base], eval_index_sha256="a" * 64, our_records=both[:1])
+    assert [r["clip_id"] for r in kept] == ["u"]                                # one selected cue covers only 0.3

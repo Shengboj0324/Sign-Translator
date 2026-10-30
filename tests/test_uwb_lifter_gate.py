@@ -90,6 +90,19 @@ def test_the_time_grid_needs_half_the_clips():
     assert sparse["fps"] is None and sparse["grid"]["hits"] == 8 and sparse["refused"]
 
 
+def test_arm_distance_bins_a_bone_by_its_farther_end():
+    data, *_ = uwb_clip_json(size=(1280, 720))
+    clip = uk.parse_clip(data, "v.000000-000007")
+    counts = gate.arm_distance_counts(clip)
+    xy = clip.pose / [1280, 720]
+    for side, (shoulder, elbow, wrist) in gate.ARM_POINTS.items():
+        d_fore = np.maximum(gate.outside_distance(xy[:, elbow], 16 / 9), gate.outside_distance(xy[:, wrist], 16 / 9))
+        d_upper = np.maximum(gate.outside_distance(xy[:, shoulder], 16 / 9), gate.outside_distance(xy[:, elbow], 16 / 9))
+        assert counts[side]["Forearm"]["inside"] == int((d_fore == 0).sum())
+        assert counts[side]["UpperArm"]["inside"] == int((d_upper == 0).sum())
+        assert sum(counts[side]["Forearm"].values()) == len(xy)
+
+
 def test_overlap_table_counts_unpaired_near_duplicates_and_marks_untimed_videos():
     fps = 25.
     cues = [dict(start=10., end=14., text="a", sample_id="v-0000"), dict(start=14., end=20., text="b", sample_id="v-0001")]
@@ -364,7 +377,8 @@ def test_main_estimates_rates_pairs_cues_and_evaluates_from_a_store(tmp_path):
     assert all(p["status"] == "evaluated" and p["fps"] == fps for p in report["pairs"])
     written = json.loads(table_path.read_text())
     assert written["drift_checked"] is True and written["drift"] == {video: "unchecked"} and written["fps"] == {video: fps}
-    assert summary["uwb_elbow_distance"]["Left"]["frames"] > 0
+    assert summary["uwb_arm_distance"]["Left"]["Forearm"]["frames"] > 0
+    assert set(summary["uwb_arm_distance"]["Right"]) == {"Forearm", "UpperArm"}
     excluded = tmp_path / "exclude.txt"
     excluded.write_text(f"# smoke videos\n{video}\n")
     assert gate.main(common + bundle + ["--visibility", "inside", "--exclude-videos", str(excluded),

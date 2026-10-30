@@ -1,4 +1,4 @@
-# UWB 2D-to-world lifter: development report (2026-10-30, 02:50 UTC; review fixes 03:30 UTC; re-review fixes 04:30 UTC)
+# UWB 2D-to-world lifter: development report (2026-10-30, 02:50 UTC; review fixes 03:30 UTC; re-review fixes 04:30 UTC; final-review fixes 05:30 UTC)
 
 Branch `uwb-lifter` (from main `ab7df81`). Nothing ran on a pod; no training beyond a local smoke; R2 was read, and
 written only under `scratch/uwb-lifter-dev/`.
@@ -130,7 +130,7 @@ Median / p90 in degrees against our own Tasks-extracted states, on each method's
 The independent review of `e186d62` approved with fixes and blocked conversion and training until items 1–4 were
 fixed.
 
-**Tests:** 49 UWB lifter tests after the re-review fixes (46 at 6625c83). The whole suite passes under `python -W error -m pytest`, as CI runs it: 3,969 passed.
+**Tests:** 52 UWB lifter tests after the final-review fixes (49 at 4c67724, 46 at 6625c83). The whole suite passes under `python -W error -m pytest`, as CI runs it: 3,972 passed.
 
 Status of every item:
 
@@ -264,7 +264,7 @@ Status of every item:
 7. **Outside-frame check.**
    - Defaults are exactly {learned, inside, margin:0.1, margin:0.25}.
    - It reports per side, per bone (upper arm, forearm) and per elbow bin (inside, 0–0.1, 0.1–0.3, > 0.3 frame heights): survival, and the kept frames' median and p90 ungated lifter error, each with a by-video 95% CI upper bound (1,000 resamples).
-   - UWB-weighted survival uses UWB's own elbow-distance distribution. The gate now reports it in `summary.uwb_elbow_distance`; dev weights came from 300 random clips of videos we never extracted: elbow inside on 74% (left) / 77% (right), 0–0.1 out on 17% / 15%, 0.1–0.3 on 7%, > 0.3 on 1%. The weighting covers only bins with ≥ 200 frames and reports the UWB weight covered.
+   - UWB-weighted survival uses UWB's own elbow-distance distribution. The gate reports it (since the final-review fixes: per bone, `summary.uwb_arm_distance`); dev weights came from 300 random clips of videos we never extracted: elbow inside on 74% (left) / 77% (right), 0–0.1 out on 17% / 15%, 0.1–0.3 on 7%, > 0.3 on 1%. The weighting covers only bins with ≥ 200 frames and reports the UWB weight covered.
    - **Inputs:** legacy MediaPipe Holistic 0.10.14 (model complexity 1, refined face), run locally on the same crop boxes of signers 1 and 2. All 56 crops used legacy inputs; none fell back to Tasks. Arrays: `scratch/uwb-lifter-dev/legacy-val.tar`, sha256 `77ac7d757230eb784388ba5877f3b4c66db5122ce12b256a8dae6c006992401a`.
    - Results with the xy2 smoke bundle, 12 videos, 6,364 frame-sides. Median / p90 is the kept forearm error, by-video CI upper in brackets.
 
@@ -283,6 +283,56 @@ Status of every item:
      - Ratios against MediaPipe are meaningless on the right: MediaPipe Tasks itself keeps 0.5% of right forearms on these crops. That is the source of the learned head's right-arm loss.
    - The proposed "chest-up survival ≥ 80% of MediaPipe's" is not well defined on this truth set: the denominator is near zero on the right, and inside-frame framings are missing.
    - Next step: add How2Sign crops with the elbows inside (a wider framing, nose at 0.2 and shoulders at 0.45), so that UWB's dominant bin has truth.
+
+## Final-review fixes (2026-10-30, final review of 4c67724: APPROVE WITH FIXES)
+
+1. **Bones binned by their farther end.**
+   - The outside-frame check bins each forearm by max(elbow, wrist) distance outside the frame and each upper arm by max(shoulder, elbow). A bone's swing joint needs both ends (`video_landmarks.BODY_JOINTS`).
+   - MediaPipe's keep decision follows the bone's chain: shoulder and elbow for the upper arm, plus the wrist for the forearm.
+   - Each rule's keep decision is that bone's validity in the rule's state.
+   - The gate's UWB distribution is now per bone (`summary.uwb_arm_distance`). On 300 clips of videos we never extracted, with the forearm both ends in frame:
+     - forearm inside on 64% (left) / 75% (right), out by 0–0.1 on 17% / 15%, 0.1–0.3 on 10% / 7%, > 0.3 on 9% / 4%;
+     - upper arm inside on 74% / 77%.
+2. **Anchor and the declared selection.**
+   - **Anchor:** the ungated lifter's error on the **full How2Sign frames** of the same signers (shape `full`, legacy Holistic inputs, run locally on the full frames), on frames where shoulder, elbow and wrist are all in view. It reports median and p90 per side and bone, with by-video 95% intervals.
+   - Per rule, side, bone and bin (crops only), it reports:
+     - frames and survival;
+     - kept frames and videos;
+     - kept median and p90, each with its CI upper bound;
+     - `admitted`: the rule keeps ≥ 5% of the bin;
+     - `unmeasured`: under 200 kept frames or under 5 videos.
+   - UWB-weighted survival uses the covered bins, with coverage.
+   - **Selection, as declared:**
+     - A rule is admissible iff, for every side, bone and admitted bin, the CI-upper kept median ≤ anchor median + 3° and the CI-upper kept p90 ≤ anchor p90 + 5°. Unmeasured counts as a fail.
+     - The admissible rule with the largest UWB-weighted forearm survival (mean of the sides) is chosen; rules within 2 points go to the more conservative (inside < margin:0.1 < margin:0.25 < learned).
+     - `learned` is chosen only conditional on the YouTube gate's validity: all-frame forearm agreement ≥ 0.85 per side and UWB-only valid ≤ 10%.
+     - If no rule is admissible, `inside`.
+   - Dev run, xy2 smoke bundle: 12 videos, 68 clips (all legacy inputs), 15,452 frame-side-bone rows. Report: `scratch/uwb-lifter-dev/2026-10-30-outside-frame-xy2-smoke-v3.json`, sha256 `2edda1dc5c435f41758693236366785a99f79e6e3a8878dea528f63d27e1c5e6`.
+   - Anchor (median / p90 [by-video median CI]):
+
+| Side | Upper arm | Forearm |
+|---|---|---|
+| Left (460 frames, 11 videos) | 11.4 / 16.8 [10.1, 12.5] | 28.3 / 67.0 [22.6, 36.6] |
+| Right (474 frames, 11 videos) | 9.5 / 20.2 [5.7, 15.4] | 32.0 / 40.7 [28.2, 34.1] |
+
+   - The smoke bundle's forearm error is large even with the arm in full view (about 30°). A full-data bundle should lower the anchor; the bars are relative to it.
+   - Selection result: **no rule admissible, so `inside` (the declared fallback)**. Every rule fails on unmeasured admitted bins, because these crops are thin where UWB's frames are:
+     - left elbow-and-wrist-inside forearm frames: none;
+     - right inside forearm frames: 74 (65 kept by `inside`, 3 videos);
+     - right upper arm under `inside`: 182 kept frames in 5 videos.
+   - `margin:0.1` and `margin:0.25` also fail the p90 bar on the left upper arm: CI upper 22.6–22.8° against 21.75°.
+   - UWB-weighted forearm survival (left / right) over the covered bins, which hold only 19% / 25% of UWB's forearm weight:
+
+     | Rule | Left | Right |
+     |---|---|---|
+     | `margin:0.25` | 0.39 | 0.82 |
+     | `margin:0.1` | 0.00 | 0.57 |
+     | `learned` | 0.60 | 0.03 |
+     | MediaPipe | 0.46 | 0.01 |
+
+   - A real decision needs truth crops with the arm in view (wider How2Sign framings) and the full-data bundle. The script then decides mechanically.
+3. **Summed covers.** `uwb_manifest` drops a UWB clip when the selected cues' covers **sum** to ≥ 0.5, or when a selected cue is its IoU ≥ 0.5 pair. It is tested: two selected cues covering 0.3 each drop the clip; one alone keeps it.
+4. **Known residual (recorded here and in `uwb_manifest`).** UWB stores no channel ids, so a UWB-only video (one we never extracted) from one of our **monitor** channels keeps UWB's partition (usually `train`). Our channel-disjoint monitor split holds for our videos and for UWB clips of our videos, not for other uploads of a monitor channel. With `monitor_share` 0.01 (18 of our 2,605 videos are monitor), the exposure is small but not zero.
 
 ### Proposed gate (to be declared by the coordinator)
 
@@ -371,7 +421,10 @@ The UWB weights come from the gate report:
 python scripts/uwb_outside_frame_accuracy.py --crop-dirs ofd/val ofd/val-tight --two-view-dir ofd/twoview \
   --legacy-dir legacy-val --require-legacy --uwb-weights gate-xy2-v1.json \
   --regressors world-regressors-xy2-v1.pt --regressors-sha256 <sha> --report outside-frame-xy2-v1.json
+# report["selection"]["chosen"] is the rule to declare (learned only with its YouTube-gate condition met)
 ```
+
+Use `scratch/uwb-lifter-dev/legacy-val-v2.tar` (sha256 `b131e878a8a7a48e9ccf41f2e35de3d8d71e56f37535e7ab270cf6ef0da058fb`) for `legacy-val/`. It adds the full-frame arrays that the anchor needs; `legacy-val.tar` holds the crops only.
 
 The overlap table (v2), if regenerated, needs every video (no `--videos`):
 

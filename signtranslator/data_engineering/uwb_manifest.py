@@ -13,14 +13,19 @@ in a selected manifest record**. Ours is preferred only where our cue is actuall
 dropped by our own manifests, e.g. arm-untracked ones), so the decision is made here, against ``our_records`` (the
 records of the YouTube manifests the build also uses), not at conversion time:
 
-- a timed video: the clip is dropped when a *selected* cue of ours is its pair (IoU >= 0.5) or covers at least
-  ``max_cover`` of the clip's span (``our_cue_overlaps``: near-duplicates the one-to-one pairing misses);
+- a timed video: the clip is dropped when a *selected* cue of ours is its pair (IoU >= 0.5) or when the *selected*
+  cues together cover at least ``max_cover`` of the clip's span (the covers of ``our_cue_overlaps`` summed: a clip
+  split across two of our cues is as much a duplicate as one inside a single cue);
 - a video we hold but could not time (``duplicate_of_our_video``): every clip is dropped when any cue of that video
   is selected, since which one overlaps is unknown.
 
 **Partition.** For a video we extracted, the partition is read from our manifest records of that video, else of its
 channel (our split is channel-disjoint); a clip of our video whose channel has no selected record of ours is dropped
 (``our_partition_unknown``) rather than re-hashed. Other clips keep UWB's train/dev split (``train``/``monitor``).
+
+**Known residual.** UWB stores no channel ids, so a UWB-only video (one we never extracted) from one of our monitor
+channels keeps UWB's partition (usually ``train``): our channel-disjoint monitor split is guaranteed for our videos
+and for UWB clips of our videos, not for other uploads of a monitor channel.
 """
 from __future__ import annotations
 
@@ -88,8 +93,9 @@ def select_training_records(records, *, eval_index_sha256: str, our_records, eva
             if r["duplicate_of_our_cue"] in selected:
                 why["duplicate_of_our_cue"] += 1
                 continue
-            if any(o["sample_id"] in selected and (o.get("cover", 0.) >= max_cover or o.get("iou", 0.) >= .5)
-                   for o in r["our_cue_overlaps"]):
+            covered = sum(o.get("cover", 0.) for o in r["our_cue_overlaps"] if o["sample_id"] in selected)
+            if covered >= max_cover or any(o["sample_id"] in selected and o.get("iou", 0.) >= .5
+                                           for o in r["our_cue_overlaps"]):
                 why["near_duplicate_of_our_cue"] += 1
                 continue
             if video in by_video:

@@ -549,15 +549,24 @@ def lag_drift(rows: list[tuple[float, int]], *, min_cues: int = DRIFT_MIN_CUES,
     return round(float(np.polyfit(t, lag, 1)[0] * 60.), 3)
 
 
-def elbow_distance_counts(uwb_clip) -> dict:
-    """{side: {bin: frames}} of the elbow's distance outside the UWB frame (frame heights) on its pose frames."""
+ARM_POINTS = {"Left": (11, 13, 15), "Right": (12, 14, 16)}      # shoulder, elbow, wrist
+
+
+def arm_distance_counts(uwb_clip) -> dict:
+    """{side: {bone: {bin: frames}}} on the clip's pose frames: a bone's distance outside the UWB frame (frame
+    heights) is the larger of its two end points' (forearm: elbow and wrist; upper arm: shoulder and elbow), since the
+    swing joint of a bone needs both ends."""
     from signtranslator.data_engineering.uwb_keypoints import _found
     found = _found(uwb_clip.pose)
     xy = uwb_clip.pose[found] / np.array([uwb_clip.width, uwb_clip.height], dtype=np.float64)
     out = {}
-    for side, elbow in (("Left", 13), ("Right", 14)):
-        d = outside_distance(xy[:, elbow], uwb_clip.aspect)
-        out[side] = {name: int(((d == 0) if hi == 0 else ((d > lo) & (d <= hi))).sum()) for name, lo, hi in ELBOW_BINS}
+    for side, (shoulder, elbow, wrist) in ARM_POINTS.items():
+        dist = {k: outside_distance(xy[:, k], uwb_clip.aspect) for k in (shoulder, elbow, wrist)}
+        out[side] = {}
+        for bone, (a, b) in (("Forearm", (elbow, wrist)), ("UpperArm", (shoulder, elbow))):
+            d = np.maximum(dist[a], dist[b])
+            out[side][bone] = {name: int(((d == 0) if hi == 0 else ((d > lo) & (d <= hi))).sum())
+                               for name, lo, hi in ELBOW_BINS}
     return out
 
 
@@ -690,13 +699,15 @@ def summarise(results: list[dict], *, primary: str | None = None, resamples: int
     summary["drift_status"] = {v: ("unchecked" if drifts.get(v) is None else
                                    "dropped" if abs(drifts[v]) > DRIFT_LIMIT else "ok")
                                for v in sorted({r["video_id"] for r in ok})}
-    elbows = collections.defaultdict(collections.Counter)
+    arms = collections.defaultdict(collections.Counter)
     for r in ok:
-        for side, bins in r.get("elbow_distance", {}).items():
-            elbows[side].update(bins)
-    summary["uwb_elbow_distance"] = {side: dict(frames=sum(c.values()), share={name: round(c[name] / max(sum(c.values()), 1), 4)
-                                                                                for name, *_ in ELBOW_BINS})
-                                     for side, c in sorted(elbows.items())}
+        for side, bones in r.get("arm_distance", {}).items():
+            for bone, bins in bones.items():
+                arms[(side, bone)].update(bins)
+    summary["uwb_arm_distance"] = {}
+    for (side, bone), c in sorted(arms.items()):
+        summary["uwb_arm_distance"].setdefault(side, {})[bone] = dict(
+            frames=sum(c.values()), share={name: round(c[name] / max(sum(c.values()), 1), 4) for name, *_ in ELBOW_BINS})
     summary["inputs"] = input_summary(ok, input_names)
     summary["refusals"] = dict(collections.Counter(r.get("reason", "?")[:60] for r in results
                                                    if r.get("status") != "evaluated"))
@@ -881,7 +892,7 @@ def _evaluate(job: dict) -> dict:
         result = evaluate_pair(ours, states, clip, job["fps"], args.max_lag, head=args.head == "affine",
                                cap=args.max_values_per_pair, lag_margin=args.lag_margin)
         result["inputs"] = input_sample(_WORKER["regressors"], clip, seed=zlib_seed(job["clip_id"]))
-        result["elbow_distance"] = elbow_distance_counts(clip)
+        result["arm_distance"] = arm_distance_counts(clip)
     except (uk.Refusal, ValueError, KeyError) as error:
         return dict(base, status="refused", reason=f"{type(error).__name__}: {error}"[:200])
     return dict(base, status="evaluated", member_sha256=sha, **result)
