@@ -4810,7 +4810,7 @@ Every item holds before a result is reported:
 
 **Owner decision (2026-10-30, 04:39 UTC), O4:** design the rank-4 retokenisation now (2–4× temporal downsampling with coarse plan codes), design and tests only. **No training until the UWB data result.** The UWB 4×-data test stays the first discriminator.
 
-## Round 17 design: coarse plan codes over the 24 Hz tokenizer (rank-4 variant; design only, written 2026-10-30, 04:50 UTC)
+## Round 17 design: coarse plan codes over the 24 Hz tokenizer (rank-4 variant; design only, written 2026-10-30, 04:39 UTC)
 
 **Why this form and not a coarser tokenizer.** Rounds 10–11 already tried temporal downsampling of the tokenizer itself, and it failed:
 - t2x (12 Hz) and t4x (6 Hz) were rejected on fidelity: hand speed 0.45 and body 0.64 of real.
