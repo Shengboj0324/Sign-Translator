@@ -4958,7 +4958,7 @@ Report-only: shuffled 0.5 s chunks; length ratio per form.
 - **Selection = c04 + 1,000 fixed YouTube monitor-channel clips.**
 - Nothing else changes.
 
-## Round 17 plan tokenizer result, recorded (2026-10-30, 09:41 UTC): PT FAILS (two declared gates)
+## Round 17 plan tokenizer result, recorded (2026-10-30, 09:40 UTC): PT FAILS (two declared gates)
 
 `plan-vq-v1`: 20,000 steps, ended 09:08 UTC on pod aogie6aibvebtq. The declared checkpoint is step 20,000.
 
