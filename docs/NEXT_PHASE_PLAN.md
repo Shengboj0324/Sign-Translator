@@ -4953,7 +4953,7 @@ Report-only: shuffled 0.5 s chunks; length ratio per form.
 
 **Process:** build on branch `instrument-v2`, with unit tests (featurisation round trip; the validity mask survives conform; a val or c00 record is refused in training; controls are built at the reference duration), then an independent review before any pod trains.
 
-**Instrument v2 clarification (2026-10-30, 09:14 UTC, before any code).** The design names How2Sign c04 both as training data and as selection data; selection must be disjoint from training. Resolved:
+**Instrument v2 clarification (2026-10-30, 09:11 UTC, before any code).** The design names How2Sign c04 both as training data and as selection data; selection must be disjoint from training. Resolved:
 - How2Sign **training = c02 only**.
 - **Selection = c04 + 1,000 fixed YouTube monitor-channel clips.**
 - Nothing else changes.
