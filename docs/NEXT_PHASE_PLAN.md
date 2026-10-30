@@ -5059,3 +5059,47 @@ P17 and D17 still wait for the UWB gate result.
   - hand speed 0.47 / 0.44.
 
 So v1's shortfall is hand dynamics and sentence content, not word identity. PT-v2 targets exactly that.
+
+## UWB lifter gate result, recorded (2026-10-30, 11:00 UTC): FAIL, so no conversion
+
+Inputs:
+- the rerun of the declared gate (`lifter-v1/gate-rerun/gate-xy2-v1.json`): 12,113 evaluated pairs from 2,450 videos, 70 development videos excluded, xy2 bundle `02a90e4f…`, visibility `inside`, 2,000 resamples;
+- the verdict (`scripts/uwb_gate_verdict.py`, merged 0694b0e) at `gate-rerun/gate-verdict-v1-without-downstream.json` and `reports/uwb_gate_verdict_v1.md`.
+
+The 22 booleans recomputed against `proposal_check` show 0 disagreements.
+
+**Failing gating rows:**
+
+| Row | Value | Bar |
+|---|---|---|
+| Forearms relative to How2Sign val | **1.69×** (YouTube 12.10° against the bundle's 7.17°) | ≤ 1.6× |
+| UWB-only valid, right | **0.1006** | ≤ 0.10 |
+| Chest-up forearm survival, left | **0**: `inside` drops every out-of-frame point by construction. The right side is unmeasurable (MediaPipe keeps only 18 frames) | ≥ 0.8 × MediaPipe |
+| \|lag\| ≤ 1 on arm-aligned pairs | **0.727** | ≥ 0.9 |
+
+**Passing rows:**
+- every absolute accuracy bar: medians upper arms 9.56°, forearms 12.10°, wrists 14.96°, fingers 14.79°, every CI upper bound within bar + 1°; p90 upper arms 20.5°, forearms 37.2°;
+- the upper-arm, wrist and finger relative bars;
+- global offset (gain 1.07° and 0.11°);
+- every gated stratum;
+- hand agreement 0.90 / 0.90; forearm agreement 0.95 / 0.89; UWB-only left 0.044;
+- mirror-better 0.020.
+
+**Not evaluated:**
+- **Downstream:** not run, because the gate fails on four rows whatever it shows.
+- **Stream-mismatch stratum:** reported and excluded as declared. It reads badly (wrists 71.9°).
+
+**Reading.** The lifted arms are accurate in absolute terms but carry a YouTube domain gap on forearms. `inside` cannot keep chest-up forearms.
+
+The lag row needs a diagnosis before a fix:
+- over all pairs, 9,916 of 12,113 have lag 0;
+- on the arm-aligned subset, the tails pile up at ±6, the search limit. That looks like alignment failure on low-motion arms rather than true timing error.
+- The drift run (12 pairs per video) on the rerun pod continues for that diagnosis.
+
+**Consequence (owner's O4 decision).** The UWB 4×-data test cannot run on lifter v1, so round 17 proceeds: PT-v2 arms are training. P17 and D17 follow PT-v2's verdict.
+
+**Next fix for the UWB lever** (a separate development stage, declared before it trains): lifter v2 adapted to YouTube.
+- Train the z-free regressor on UWB 2D against our own Tasks states on overlapping cues of training videos only.
+- The gate's videos stay held out.
+- This targets the forearm domain gap, the right-hand UWB-only rate and out-of-frame forearms.
+- The lag measurement is diagnosed first.
