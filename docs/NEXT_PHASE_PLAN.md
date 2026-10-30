@@ -5003,3 +5003,45 @@ Settles the build's open questions (branch `instrument-v2` 86b8fca):
 6. **Data phase:** runs after STEM Wiki extraction completes (it builds the manifest once).
 
 UWB-lifted pretraining stays out unless the lifter gate passes.
+
+## Round 17 PT-v2: declared (2026-10-30, 10:17 UTC, before anything retrains)
+
+**Evidence** (diagnostics job, `reference-perplexity-d2.json`): d2's own stage-1 perplexity on the same 32 validation batches, plan-matched every 4th step.
+
+| Part | d2 | plan-vq-v1 | ratio |
+|---|---|---|---|
+| Body | 162.7 | 175.4 | 1.08× |
+| Face | 147.0 | 200.2 | 1.36× |
+| Left hand | 63.9 | 55.9 | 0.87× |
+| Right hand | 110.4 | 78.3 | **0.71×** |
+
+At every step d2 reads left 64.6 and right 114.6.
+
+- **The ≥ 128 bar was miscalibrated:** the 24 Hz tokenizer the plan summarises is itself below it on both hands.
+- **The right hand is a real loss** (0.71× d2), consistent with the damped hand speed (0.43×) and the content shortfall (0.795×).
+- **plan-vq-v1 stays FAIL** on the content gate regardless.
+
+**Stability gate, recalibrated for PT-v2 only:**
+- stage-1 val perplexity ≥ 0.8 × d2's (plan-matched) per part: body ≥ 130.2, face ≥ 117.6, left hand ≥ 51.1, right hand ≥ 88.3;
+- an absolute floor of 32 against collapse;
+- re-seed and divergence gates unchanged.
+
+The content gates (round-trip BLEU ≥ 0.8 × d2 with lower bound above blank; recogniser ≥ 0.9 × real) are **unchanged**.
+
+**Two arms** (same data, weights, d2, hidden 256, code dim 64, codebook 512, 20k steps, batch 64; each differs from v1 only as listed):
+
+| Arm | Window | Pooling | Plan stages | Rate | Why |
+|---|---|---|---|---|---|
+| PT-v2a | 4 | learned | 3 | 6 Hz | Keeps 4× downsampling. Learned pooling can select a window's salient steps instead of averaging them; the third stage adds capacity for hands |
+| PT-v2b | 2 | mean | 2 | 12 Hz | 2× downsampling, still in the owner's 2–4× range. Halves the averaging that damps hand motion |
+
+**Checkpoint:** each arm's gates are read on its **best-validation-loss checkpoint** (`best.json`), decided now. In v1, validation loss rose after step 10k.
+
+**Choosing:**
+- If both arms pass every PT gate, **PT-v2a** leads, because the stronger compression is the point of rank 4.
+- If only one passes, it leads.
+- If neither passes, the plan-code route at 2–4× is not viable as specified. That is reported, with O4's alternatives re-opened, and nothing downstream runs.
+
+**Job fix:** every gate instrument runs and is stored even when an earlier one exits non-zero. In v1, the fidelity script's exit 4 skipped recognisability under `set -e`. A missing measurement means not evaluable, never pass.
+
+P17 and D17 still wait for the UWB gate result.
