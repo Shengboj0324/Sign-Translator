@@ -70,3 +70,21 @@ def test_main_writes_the_verdict_and_exits_0_4_or_2(tmp_path, capsys):
     assert "R18-VERDICT PASS" in capsys.readouterr().out
     assert run("pass16", "fail14") == 4 and json.loads(out.read_text())["verdict"] == "FAIL"
     assert run("bad", "pass14") == 2 and json.loads(out.read_text())["verdict"] == "NOT EVALUABLE"
+
+
+def test_the_r19_arm_uses_its_own_keys_rule_text_and_marker(tmp_path, capsys):
+    ckpt = "training-runs/tokens-rvq-d0b-prior-r19-refresh/checkpoints/step-00010000.pt"
+    key = "acquisition/2026-10-17-v1/youtube-asl-v1/round19/pilot-r19.json"
+    files = {}
+    for name, value in [("pilot", pilot(checkpoint_key=ckpt)), ("r16c", comparison(v.R16C_PILOT, .01, 0., arm_key=key)),
+                        ("w14b", comparison(v.W14B_PILOT, -.01, 0., arm_key=key))]:
+        files[name] = tmp_path / f"{name}.json"
+        files[name].write_text(json.dumps(value))
+    out = tmp_path / "verdict.json"
+    assert v.main(["--arm-pilot", str(files["pilot"]), "--vs-r16c", str(files["r16c"]), "--vs-w14b", str(files["w14b"]),
+                   "--arm-key", key, "--checkpoint-key", ckpt, "--arm", "R19", "--out", str(out)]) == 4
+    d = json.loads(out.read_text())
+    assert d["arm_name"] == "R19" and "Round 19" in d["rule"] and "+77%" in d["next"]
+    assert "R19-VERDICT FAIL" in capsys.readouterr().out
+    with pytest.raises(ValueError, match="one of"):
+        v.verdict(pilot(), comparison(v.R16C_PILOT, .1, 0.), comparison(v.W14B_PILOT, .1, 0.), arm="R20")

@@ -1,4 +1,5 @@
-"""Round 18 verdict (docs/NEXT_PHASE_PLAN.md "Round 18: the UWB 4x-data test", declared 2026-10-30 13:03 UTC), from
+"""Round 18 / 19 verdict (docs/NEXT_PHASE_PLAN.md "Round 18: the UWB 4x-data test", declared 2026-10-30 13:03 UTC;
+"Round 19: refresh our own YouTube data", 14:16 UTC, the same rule; ``--arm R19``), from
 the two paired comparisons ``compare_pilot_lexicon.py`` writes for the arm's pilot:
 
 - against R16C (``round16/pilot-r16c.json``, run with ``--per-subset``) and
@@ -74,8 +75,21 @@ def check_comparison(name: str, cmp: dict, arm_key: str, control_key: str) -> No
         raise NotEvaluable(f"{name}: " + "; ".join(problems))
 
 
+ROUNDS = {   # arm name -> (rule reference, what follows a pass, what follows a fail)
+    "R18": ("docs/NEXT_PHASE_PLAN.md, Round 18 (declared 2026-10-30 13:03 UTC): all three rows must pass",
+            "a declared longer run on the same mix",
+            "more data at this scale does not fix end-to-end; the composition path (M1 2.55) is the focus"),
+    "R19": ("docs/NEXT_PHASE_PLAN.md, Round 19 (declared 2026-10-30 14:16 UTC): all three rows must pass",
+            "more of our own data helps end-to-end: the declared longer run, then round 18b (UWB-only videos)",
+            "data volume at this scale (+77% YouTube) is not the lever for end-to-end; the composition path is the focus"),
+}
+
+
 def verdict(pilot: dict, vs_r16c: dict, vs_w14b: dict, *, arm_key: str = ARM_PILOT,
-            checkpoint_key: str = ARM_CHECKPOINT) -> dict:
+            checkpoint_key: str = ARM_CHECKPOINT, arm: str = "R18") -> dict:
+    if arm not in ROUNDS:
+        raise ValueError(f"arm {arm!r}: one of {sorted(ROUNDS)}")
+    rule, if_pass, if_fail = ROUNDS[arm]
     check_pilot(pilot, checkpoint_key)
     check_comparison("vs R16C", vs_r16c, arm_key, R16C_PILOT)
     check_comparison("vs W14b", vs_w14b, arm_key, W14B_PILOT)
@@ -91,7 +105,7 @@ def verdict(pilot: dict, vs_r16c: dict, vs_w14b: dict, *, arm_key: str = ARM_PIL
     blank = (meaning.get("blank") or {}).get("bleu")
     return dict(
         verdict="PASS" if all(r["passes"] for r in rows) else "FAIL", rows=rows,
-        rule="docs/NEXT_PHASE_PLAN.md, Round 18 (declared 2026-10-30 13:03 UTC): all three rows must pass",
+        arm_name=arm, rule=rule,
         arm=dict(pilot_key=arm_key, checkpoint_key=pilot["checkpoint_key"], bleu=meaning["generated"]["bleu"],
                  bleu_ci95=meaning["generated"].get("ci95"), lexicon_top5=pilot["lexicon"]["generated_top5"]),
         controls=dict(r16c=dict(pilot_key=R16C_PILOT, **vs_r16c["control"]),
@@ -101,8 +115,7 @@ def verdict(pilot: dict, vs_r16c: dict, vs_w14b: dict, *, arm_key: str = ARM_PIL
                       arm_above_blank=meaning.get("above_blank"), lexicon_vs_w14b=dict(
                           difference=vs_w14b["difference"], ci95=vs_w14b["ci95"]),
                       per_subset_vs_r16c=vs_r16c.get("per_subset")),
-        next=("a declared longer run on the same mix" if all(r["passes"] for r in rows) else
-              "more data at this scale does not fix end-to-end; the composition path (M1 2.55) is the focus"))
+        next=if_pass if all(r["passes"] for r in rows) else if_fail)
 
 
 def load(spec: str, store) -> dict:
@@ -116,6 +129,7 @@ def main(argv=None) -> int:
     p.add_argument("--vs-w14b", required=True, help="compare_pilot_lexicon.py output, arm vs W14b")
     p.add_argument("--arm-key", default=ARM_PILOT, help="the arm pilot's store key the comparisons must name")
     p.add_argument("--checkpoint-key", default=ARM_CHECKPOINT)
+    p.add_argument("--arm", default="R18", choices=sorted(ROUNDS), help="the round's arm (its rule text and marker)")
     p.add_argument("--out", required=True)
     args = p.parse_args(argv)
     store = None
@@ -124,7 +138,7 @@ def main(argv=None) -> int:
         store = R2Store(os.environ)
     try:
         out = verdict(load(args.arm_pilot, store), load(args.vs_r16c, store), load(args.vs_w14b, store),
-                      arm_key=args.arm_key, checkpoint_key=args.checkpoint_key)
+                      arm_key=args.arm_key, checkpoint_key=args.checkpoint_key, arm=args.arm)
     except NotEvaluable as error:
         out = dict(verdict="NOT EVALUABLE", reason=str(error))
         Path(args.out).write_text(json.dumps(out, indent=1))
@@ -137,7 +151,7 @@ def main(argv=None) -> int:
     rep = out["reported"]
     print(f"arm BLEU {out['arm']['bleu']} (blank {rep['blank_bleu']}, real {rep['real_bleu']}); "
           f"lexicon {out['arm']['lexicon_top5']}")
-    print(f"R18-VERDICT {out['verdict']}")
+    print(f"{args.arm}-VERDICT {out['verdict']}")
     return 0 if out["verdict"] == "PASS" else 4
 
 
