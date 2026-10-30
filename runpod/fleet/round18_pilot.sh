@@ -48,12 +48,32 @@ else
     || { echo "ALERT the pilot failed"; done_ 1; }
 fi
 [ "${SMOKE:-0}" = 1 ] && { echo "SMOKE pilot written to $OUTKEY"; done_ 0; }
-D=/root/r18-verdict; mkdir -p $D
-python scripts/compare_pilot_lexicon.py --arm-key $OUTKEY --control-key $O/round16/pilot-r16c.json --per-subset --output-key $O/round18/compare-r18-vs-r16c.json 2>&1 | grep -v Warning | tail -1 | tee $D/vs-r16c.json | sed 's/^/R18-VS-R16C /'
-python scripts/compare_pilot_lexicon.py --arm-key $OUTKEY --control-key $O/v3read/pilot-w14b-step30000-v3d.json --output-key $O/round18/compare-r18-vs-w14b.json 2>&1 | grep -v Warning | tail -1 | tee $D/vs-w14b.json | sed 's/^/R18-VS-W14B /'
-python scripts/round18_verdict.py --arm-pilot $OUTKEY --vs-r16c $O/round18/compare-r18-vs-r16c.json \
-  --vs-w14b $O/round18/compare-r18-vs-w14b.json --arm-key $OUTKEY --checkpoint-key $CKPT --out $D/verdict-r18.json
+# comparisons and verdict: run into local files (each status checked), the verdict reads those files, and every
+# output key is written once (an existing compare or verdict key refuses the run before anything is computed)
+set -o pipefail
+D=/root/r18-verdict; rm -rf $D && mkdir -p $D
+for k in compare-r18-vs-r16c.json compare-r18-vs-w14b.json verdict-r18.json; do
+  exists $O/round18/$k && { echo "ALERT $O/round18/$k exists: refusing to overwrite"; done_ 2; }
+done
+python -c "import os,sys; from signtranslator.data.text_motion_dataset import R2Store; open(sys.argv[2],'wb').write(R2Store(os.environ).get(sys.argv[1]))" \
+  $OUTKEY $D/pilot-r18.json || { echo "ALERT the pilot report could not be read"; done_ 1; }
+python scripts/compare_pilot_lexicon.py --arm-key $OUTKEY --control-key $O/round16/pilot-r16c.json --per-subset \
+  2> $D/vs-r16c.err | tail -1 > $D/vs-r16c.json || { echo "ALERT compare vs R16C failed"; tail -3 $D/vs-r16c.err; done_ 1; }
+python scripts/compare_pilot_lexicon.py --arm-key $OUTKEY --control-key $O/v3read/pilot-w14b-step30000-v3d.json \
+  2> $D/vs-w14b.err | tail -1 > $D/vs-w14b.json || { echo "ALERT compare vs W14b failed"; tail -3 $D/vs-w14b.err; done_ 1; }
+sed 's/^/R18-VS-R16C /' $D/vs-r16c.json; sed 's/^/R18-VS-W14B /' $D/vs-w14b.json
+python scripts/round18_verdict.py --arm-pilot $D/pilot-r18.json --vs-r16c $D/vs-r16c.json --vs-w14b $D/vs-w14b.json \
+  --arm-key $OUTKEY --checkpoint-key $CKPT --out $D/verdict-r18.json
 s=$?
-python -c "import os,sys; from signtranslator.data.text_motion_dataset import R2Store; R2Store(os.environ).put(sys.argv[1], open(sys.argv[2],'rb').read())" \
-  $O/round18/verdict-r18.json $D/verdict-r18.json || { echo "ALERT the verdict was not stored"; done_ 1; }
+[ $s = 0 ] || [ $s = 4 ] || [ $s = 2 ] || { echo "ALERT the verdict failed (status $s)"; done_ 1; }
+python - $O/round18 $D <<'PY' || { echo "ALERT the comparisons or the verdict were not stored"; done_ 1; }
+import os, sys
+from signtranslator.data.text_motion_dataset import R2Store
+s, prefix, d = R2Store(os.environ), sys.argv[1], sys.argv[2]
+for local, key in (("vs-r16c.json", "compare-r18-vs-r16c.json"), ("vs-w14b.json", "compare-r18-vs-w14b.json"),
+                   ("verdict-r18.json", "verdict-r18.json")):
+    if s.exists(f"{prefix}/{key}"):
+        sys.exit(f"{prefix}/{key} exists")
+    s.put(f"{prefix}/{key}", open(f"{d}/{local}", "rb").read())
+PY
 done_ $s

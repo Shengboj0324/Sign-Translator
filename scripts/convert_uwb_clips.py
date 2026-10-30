@@ -67,8 +67,8 @@ sys.path[:0] = [str(ROOT), str(Path(__file__).resolve().parent)]
 PREFIX = "acquisition/2026-10-17-v1/youtube-asl-uwb-keypoints-v1"
 TRANSLATIONS = (("YT.translations.train.json", "train"), ("YT.translations.dev.json", "monitor"))
 EVAL_PARTITIONS = ("val", "test", "heldout_official")
-RUN_ONLY = ("limit", "video", "max_units")
-STREAM_MATCH = .002                                  # uwb_lifter_gate.stratum_of: |fps / meta_fps - 1| below it          # settings that restrict a run but never change a converted clip
+RUN_ONLY = ("limit", "video", "max_units")          # settings that restrict a run but never change a converted clip
+STREAM_MATCH = .002                                  # uwb_lifter_gate.stratum_of: a stream matches below |fps / meta - 1|
 _WORKER: dict = {}
 
 

@@ -7,7 +7,8 @@
 #   BUNDLE_KEY=.. BUNDLE_SHA=.. round18_convert.sh SHARD SHARDS     one shard (resumable: finished units are skipped)
 #   round18_convert.sh merge                                         after every shard: index.json, refused unless complete
 #   BUNDLE_SHA=.. [DRY_RUN=1] round18_convert.sh manifest            after merge: build_round18_manifest.py ->
-#                       round18-mixed-v1 (+ lifter-v2/youtube-asl-uwb-lifted-v2/manifest.json); prints MANIFEST_SHA=
+#                       round18-mixed-v1 (+ lifter-v2/youtube-asl-uwb-lifted-v2/manifest.json); prints MANIFEST_SHA=;
+#                       exit 5 with ROUND18-NO-MEANINGFUL-GAIN when fewer than 20,000 lifted records remain (nothing written)
 #   BUNDLE_KEY=.. BUNDLE_SHA=.. DRY_RUN=1 round18_convert.sh 0 1     count the units and check every pinned input only
 #
 # BUNDLE_KEY / BUNDLE_SHA: the lifter-v2 chain's bundle (uwb_lifter_v2.sh train: lifter-v2/train/files/
@@ -42,7 +43,7 @@ if [ "$MODE" = manifest ]; then           # after merge: round18-mixed-v1 (write
     --expect-bundle-sha $BUNDLE_SHA --expect-visibility head --expect-fps-sources estimated \
     --expect-fps-table-sha ${FPS#*@} --expect-stream-check-sha ${STREAM#*@} --expect-overlap-sha ${OVERLAP#*@} \
     ${DRY_RUN:+--dry-run} 2>&1 | tee /root/r18-manifest.log
-  s=${PIPESTATUS[0]}
+  s=${PIPESTATUS[0]}   # 5: ROUND18-NO-MEANINGFUL-GAIN (< 20,000 lifted records; amendment 2: round 18 is not trained)
   python -c "import os,sys; from signtranslator.data.text_motion_dataset import R2Store; R2Store(os.environ).put(sys.argv[1], open(sys.argv[2],'rb').read())" \
     "$OUT/logs/manifest-$(date -u +%Y%m%dT%H%M%SZ).log" /root/r18-manifest.log || true
   done_ $s
@@ -78,10 +79,18 @@ if s.exists(sys.argv[1]):
 PY
 case $? in 0) ;; 3) echo "ALERT shard $SHARD of $SHARDS already finished ($OUT/shards): refusing to rerun"; done_ 3 ;; *) done_ 1 ;; esac
 N=$(python -c "import os
-cpus = len(os.sched_getaffinity(0)) - 2
+cpus = len(os.sched_getaffinity(0))
+try:                                             # the cgroup v2 CPU quota (cpu.max: '<quota> <period>' or 'max ...')
+    quota, period = open('/sys/fs/cgroup/cpu.max').read().split()
+    cpus = min(cpus, int(quota) // int(period)) if quota != 'max' else cpus
+except (OSError, ValueError):
+    try:                                         # cgroup v1
+        quota = int(open('/sys/fs/cgroup/cpu/cpu.cfs_quota_us').read())
+        if quota > 0: cpus = min(cpus, quota // int(open('/sys/fs/cgroup/cpu/cpu.cfs_period_us').read()))
+    except (OSError, ValueError): pass
 try: mem = int(open('/sys/fs/cgroup/memory.max').read()) / 2**30
 except (OSError, ValueError): mem = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES') / 2**30
-print(max(1, min(30, cpus, int(mem // 2))))")   # not nproc (it honours OMP_NUM_THREADS=1); 2 GB per worker
+print(max(1, min(30, cpus - 2, int(mem // 2))))")   # not nproc (it honours OMP_NUM_THREADS=1); 2 GB per worker
 [ -s /root/work/models/face_landmarker.task ] || { echo "ALERT /root/work/models/face_landmarker.task missing (blendshapes)"; done_ 2; }
 echo "round 18 conversion shard $SHARD/$SHARDS, bundle $BUNDLE_KEY ($BUNDLE_SHA), workers $N, out $OUT $(date -u +%FT%TZ)"
 python scripts/convert_uwb_clips.py --out-prefix $OUT --regressors "$BUNDLE_KEY" --regressors-sha256 "$BUNDLE_SHA" \
