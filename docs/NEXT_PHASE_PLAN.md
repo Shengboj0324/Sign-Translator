@@ -4618,7 +4618,7 @@ If R16 passes, the next round tunes the block length and rate. If it fails while
 
 Chain: `r16_chain.sh`.
 
-### Round 15 amendment 7 result, single knobs (recorded 2026-10-30, 00:33 UTC): none adopted
+### Round 15 amendment 7 result, single knobs (recorded 2026-10-30, 00:31 UTC): none adopted
 
 Each knob was run alone on the 1,000-sentence real-word oracle. The paired difference is against the unrefined oracle, 2.17.
 
