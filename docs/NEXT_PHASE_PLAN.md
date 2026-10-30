@@ -5317,3 +5317,20 @@ From real R2 metadata, before any conversion, with amendment 2 applied (`reports
 - v3 lexicon lower bound > −0.05 against R16C.
 
 **If R19 passes:** more of our own data helps end-to-end, and the next steps are the declared longer run plus round 18b, the UWB-only videos. **If it fails at +77%:** data volume at this scale is not the lever for end-to-end, and the composition path is the focus.
+
+### Round 19, amendment 1 (declared 2026-10-30, 15:14 UTC, from the independent review; before anything trains)
+
+1. **Dilution confound, so two arms.** Under the unchanged corpus weights, YouTube growth lowers How2Sign's sampling share from 8.56% to 6.32% (frames 13.6% to 9.0%) and the lexical corpora's from 42.4% to 31.3%. Those are the corpora the pilot measures.
+   - **R19:** natural proportions, as declared.
+   - **R19w:** the same, plus `--corpus-weight youtube-asl-v1=0.5767` (99,887 / 173,202), so every non-YouTube record keeps R16C's exact per-step sampling probability. It tests YouTube diversity at R16C's YouTube mass.
+   - Both use R16C's recipe otherwise, the same pilot and the same rule.
+2. **Reading:**
+   - If R19w passes, more YouTube diversity helps.
+   - If only R19 passes, the YouTube mass itself helps.
+   - If both pass, the leader is the higher point paired BLEU against R16C.
+   - If R19 fails and R19w passes, dilution harms.
+   - If both fail, more YouTube data at this scale does not fix end-to-end in 10k steps.
+3. **Leak note** (recorded, at most about 3 of 1,000 clips):
+   - R16C trained on two YouTube records equal to a pilot reference, plus one How2Sign val text. R19 drops all three.
+   - R19 adds "So lets get started!", which matches a pilot reference once apostrophes are ignored, and "Thats fine." (a How2Sign evaluation text).
+   - `EvalIndex` treats "lets" ≠ "let's"; folding apostrophes and Unicode quotes is a fix for future builds. R19 is not rebuilt for it.
