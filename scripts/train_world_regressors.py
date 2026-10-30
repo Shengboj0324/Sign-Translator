@@ -13,6 +13,20 @@ visibility: a pose frame needs both poses, a hand frame both hands of that pose 
 ``HAND_MATCH`` (normalised image units) so that both trackers see the same hand. How2Sign signer 9 (the generator's
 final-test signer) is refused outright. The report records the training settings, a manifest of every pairs file and
 legacy file used (SHA-256, signer, split) and the bundle SHA-256.
+
+With ``--features xy`` (``world_regressor.FEATURES_XY``, for 2D-only sources such as the UWB YouTube-ASL keypoints) the
+same pairs train z-free models: the inputs' z (Tasks or legacy Holistic) is dropped by the feature functions, which
+read only ``x, y``; targets, losses and the validation metrics are unchanged. The geometric baseline is then the
+pseudo-world with zero depth (``(x, y / a, 0)``: the only geometric reading of 2D points), and a ``--baseline-bundle``
+(e.g. regressors v2) is scored on its own feature version, i.e. *with* the z this variant gives up. Default ``v1``
+leaves every output of earlier runs unchanged.
+
+``--features xy2`` (``FEATURES_XY2``) drops the xy-v1 pose context (absolute crop framing), so the pose model and its
+visibility head cannot read the frame. ``--augment-framing K`` adds K re-framed copies of every *training* pose frame:
+the image points (in image widths) are scaled by ``s`` (log-uniform in ``AUGMENT_SCALE``), placed with the shoulder
+midpoint uniform in ``AUGMENT_MIDPOINT`` of the new frame, whose shape is drawn from ``AUGMENT_ASPECTS``; world and
+visibility targets are unchanged. For xy-v1 it spreads the context inputs over full-frame framings; for xy-v2 the
+features are invariant, so it changes nothing (and is refused as a no-op). Validation frames are never augmented.
 """
 from __future__ import annotations
 
@@ -89,19 +103,45 @@ def load_pairs(directory: Path, legacy_dir: Path | None = None, manifest: list |
     return hands, pose, skipped
 
 
-def hand_arrays(chunks):
+FEATURES = {"v1": wr.FEATURES_VERSION, "xy": wr.FEATURES_XY, "xy2": wr.FEATURES_XY2}
+AUGMENT_SCALE = (.3, 1.2)                  # person size relative to the crop it was collected in
+AUGMENT_MIDPOINT = ((.2, .8), (.1, .7))    # shoulder midpoint x (widths), y (heights) in the new frame
+AUGMENT_ASPECTS = (16 / 9, 4 / 3, 1., 9 / 16)
+
+
+def augment_framing(chunks: list, copies: int, seed: int) -> list:
+    """``copies`` re-framed versions of every pose chunk (see the module docstring); targets unchanged."""
+    rng = np.random.default_rng(seed)
+    out = []
+    for c in chunks:
+        q = np.array(c["image"], dtype=np.float64)
+        q[..., 1] /= c["aspect"]                                    # image widths
+        mid = (q[:, 11, :2] + q[:, 12, :2]) / 2
+        for _ in range(copies):
+            n = len(q)
+            aspect = rng.choice(AUGMENT_ASPECTS)
+            scale = np.exp(rng.uniform(*np.log(AUGMENT_SCALE), n))
+            target = np.stack((rng.uniform(*AUGMENT_MIDPOINT[0], n), rng.uniform(*AUGMENT_MIDPOINT[1], n) / aspect), -1)
+            moved = q.copy()
+            moved[..., :2] = (q[..., :2] - mid[:, None]) * scale[:, None, None] + target[:, None]
+            moved[..., 1] *= aspect                                 # back to normalised image y
+            out.append(dict(c, image=moved, aspect=float(aspect), augmented=True))
+    return out
+
+
+def hand_arrays(chunks, features: str = wr.FEATURES_VERSION):
     xs, ys, rot, world, image, aspect = [], [], [], [], [], []
     for c in chunks:
-        x, r, _, ok = wr.hand_features(c["image"], c["aspect"])
+        x, r, _, ok = wr.FEATURE_FUNCTIONS[features][0](c["image"], c["aspect"])
         xs.append(x[ok]); ys.append(wr.hand_target(c["world"][ok], r[ok]).reshape(ok.sum(), -1)); rot.append(r[ok])
         world.append(c["world"][ok]); image.append(c["image"][ok]); aspect.append(np.full(ok.sum(), c["aspect"]))
     return [np.concatenate(v) for v in (xs, ys, rot, world, image, aspect)]
 
 
-def pose_arrays(chunks):
+def pose_arrays(chunks, features: str = wr.FEATURES_VERSION):
     xs, ys, vis, world, image, aspect = [], [], [], [], [], []
     for c in chunks:
-        x, ok = wr.pose_features(c["image"], c["aspect"])
+        x, ok = wr.FEATURE_FUNCTIONS[features][1](c["image"], c["aspect"])
         xs.append(x[ok]); ys.append(wr.pose_target(c["world"][ok]).reshape(ok.sum(), -1)); vis.append(c["vis"][ok])
         world.append(c["world"][ok]); image.append(c["image"][ok]); aspect.append(np.full(ok.sum(), c["aspect"]))
     return [np.concatenate(v) for v in (xs, ys, vis, world, image, aspect)]
@@ -190,6 +230,10 @@ def main(argv=None) -> int:
     p.add_argument("--epochs", type=int, default=40)
     p.add_argument("--direction-weight", type=float, default=1.)
     p.add_argument("--max-val-frames", type=int, default=30000)
+    p.add_argument("--features", choices=sorted(FEATURES), default="v1",
+                   help="v1: (x, y/a, z) inputs (bundles v1, v2); xy: z-free inputs for 2D-only sources; xy2: z-free "
+                        "and framing-invariant (no pose context)")
+    p.add_argument("--augment-framing", type=int, default=0, help="re-framed copies of every training pose frame")
     p.add_argument("--out", required=True, help="model bundle path (written once)")
     p.add_argument("--report", required=True)
     args = p.parse_args(argv)
@@ -197,6 +241,10 @@ def main(argv=None) -> int:
     warnings.simplefilter("error")
     torch.set_num_threads(1)
     from signtranslator.data_engineering.semlex_pose import HAND_Z_SCALE, POSE_Z_SCALE, pseudo_world
+    features = FEATURES[args.features]
+    if args.augment_framing and features in (wr.FEATURES_VERSION, wr.FEATURES_XY2):
+        raise SystemExit(f"--augment-framing changes nothing a {features!r} model reads; use it with --features xy")
+    pose_k, hand_k = (POSE_Z_SCALE, HAND_Z_SCALE) if features == wr.FEATURES_VERSION else (0., 0.)
     val_signers = set(args.val_signers.split(","))
     if val_signers & set(EXCLUDED_SIGNERS):
         raise SystemExit("signer 9 may not be read, so it cannot validate either")
@@ -211,24 +259,30 @@ def main(argv=None) -> int:
                   train_signers=sorted({c["signer"] for c in pose} - val_signers), excluded_signers=list(EXCLUDED_SIGNERS),
                   settings=dict(epochs=args.epochs, seed=args.seed, direction_weight=args.direction_weight, lr=1e-3,
                                 batch=2048, width=512, depth=3, optimizer="AdamW(weight_decay=1e-4), OneCycleLR",
-                                hand_match=HAND_MATCH, features=wr.FEATURES_VERSION),
+                                hand_match=HAND_MATCH, features=features),
                   skipped=skipped, pairs_manifest=manifest,
                   baseline_bundle_sha256=baseline.sha256 if baseline else None, hand={}, pose={})
+    if features != wr.FEATURES_VERSION:                 # v1 reports stay exactly as before
+        report["pseudo_world_depth_gains"] = dict(pose=pose_k, hand=hand_k)
+    if args.augment_framing:
+        report["settings"]["augment_framing"] = dict(copies=args.augment_framing, scale=list(AUGMENT_SCALE),
+                                                     midpoint=[list(v) for v in AUGMENT_MIDPOINT],
+                                                     aspects=[round(a, 4) for a in AUGMENT_ASPECTS])
     rng = np.random.default_rng(args.seed)
     models = {}
     for side in ("Left", "Right"):
-        train = hand_arrays([c for c in hands[side] if c["signer"] not in val_signers])
-        val = hand_arrays([c for c in hands[side] if c["signer"] in val_signers])
+        train = hand_arrays([c for c in hands[side] if c["signer"] not in val_signers], features)
+        val = hand_arrays([c for c in hands[side] if c["signer"] in val_signers], features)
         model = fit(train[0], train[1], bones=wr.HAND_BONES, points=21, epochs=args.epochs,
                     direction_weight=args.direction_weight, seed=args.seed, log=f"hand {side}")
         models[side] = model
         keep = rng.permutation(len(val[0]))[:args.max_val_frames]
-        regressors = wr.WorldRegressors(hand={side: model}, pose=None)
+        regressors = wr.WorldRegressors(hand={side: model}, pose=None, features=features)
         image, aspect, world = val[4][keep], val[5][keep], val[3][keep]
         predicted = np.concatenate([regressors.hands(image[aspect == a], a, side)[0] for a in np.unique(aspect)])
         order = np.concatenate([np.flatnonzero(aspect == a) for a in np.unique(aspect)])
         world, image, aspect = world[order], image[order], aspect[order]
-        pseudo = np.concatenate([pseudo_world(image[aspect == a], a, HAND_Z_SCALE) for a in np.unique(aspect)])
+        pseudo = np.concatenate([pseudo_world(image[aspect == a], a, hand_k) for a in np.unique(aspect)])
         truth = world - world[:, :1]
         fr, palm = finger_errors(truth, predicted, side)
         fb, palm_b = finger_errors(truth, pseudo - pseudo[:, :1], side)
@@ -240,11 +294,14 @@ def main(argv=None) -> int:
             fo, palm_o = finger_errors(truth, other, side)
             report["hand"][side]["baseline_bundle"] = dict(fingers=stat(fo), palm=stat(palm_o))
         print(side, json.dumps(report["hand"][side]), flush=True)
-    train = pose_arrays([c for c in pose if c["signer"] not in val_signers])
-    val = pose_arrays([c for c in pose if c["signer"] in val_signers])
+    train_chunks = [c for c in pose if c["signer"] not in val_signers]
+    if args.augment_framing:
+        train_chunks = train_chunks + augment_framing(train_chunks, args.augment_framing, args.seed)
+    train = pose_arrays(train_chunks, features)
+    val = pose_arrays([c for c in pose if c["signer"] in val_signers], features)
     pose_model = fit(train[0], train[1], bones=wr.POSE_BONES, points=wr.POSE_POINTS, vis=train[2],
                      epochs=args.epochs, direction_weight=args.direction_weight, seed=args.seed, log="pose")
-    regressors = wr.WorldRegressors(hand=models, pose=pose_model)
+    regressors = wr.WorldRegressors(hand=models, pose=pose_model, features=features)
     payload = regressors.save()                     # written before the evaluation, so a reporting error loses nothing
     with open(args.out, "xb") as stream:
         stream.write(payload)
@@ -257,7 +314,7 @@ def main(argv=None) -> int:
     predicted = np.concatenate([o[0] for o in outs])
     predicted_vis = np.concatenate([o[1] for o in outs])
     image, aspect, world, vis = image[order], aspect[order], world[order], vis[order]
-    pseudo = np.concatenate([pseudo_world(image[aspect == a], a, POSE_Z_SCALE) for a in np.unique(aspect)])
+    pseudo = np.concatenate([pseudo_world(image[aspect == a], a, pose_k) for a in np.unique(aspect)])
     visible = vis >= .5
     regressed = arm_errors(world, predicted, visible)
     pseudo_errors = arm_errors(world, pseudo, visible)
