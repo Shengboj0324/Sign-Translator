@@ -48,11 +48,22 @@ def test_plan_tokenizer_plan_prior_and_plan_conditioned_prior_train_hand_off_by_
         tpt.main(plan_args[:plan_args.index(tok_sha)] + ["0" * 64] + plan_args[plan_args.index(tok_sha) + 1:]
                  + ["--steps", "2"])
     assert tpt.main(plan_args + ["--steps", "2"]) == 0
+    # the dead-code re-seed counter is persisted and cumulative across resumes (gates amendment 1)
+    first = store / "training-runs/plan/checkpoints/step-00000002.pt"
+    state = torch.load(io.BytesIO(first.read_bytes()), weights_only=False)
+    assert set(state["reseeded"]) == {"body", "face"}
+    state["reseeded"]["body"] += 1000
+    torch.save(state, first)
     assert tpt.main(plan_args + ["--steps", "4"]) == 0                          # resumes at step 2
+    resumed = torch.load(io.BytesIO((store / "training-runs/plan/checkpoints/step-00000004.pt").read_bytes()),
+                         weights_only=False)
+    assert resumed["reseeded"]["body"] >= state["reseeded"]["body"] >= 1000
     log = json.loads((store / "training-runs/plan/log/step-00000004.json").read_text())
     assert [e["step"] for e in log] == [3, 4]
-    assert {"val/latent_relative", "val/motion", "fidelity/plan/body_speed_ratio",
+    assert {"val/latent_relative", "val/motion", "val/stage1_perplexity_body", "stability/reseeded_body",
+            "stability/reseed_fraction_per_1k_body", "fidelity/plan/body_speed_ratio",
             "fidelity/tokenizer/body_speed_ratio"} <= set(log[-1])
+    assert log[-1]["stability/reseeded_body"] >= 1000
     best = json.loads((store / "training-runs/plan/best.json").read_text())
     assert best["checkpoint_key"].startswith("training-runs/plan/checkpoints/")
     with pytest.raises(SystemExit, match="different config"):
@@ -167,7 +178,9 @@ def test_plan_tokenizer_plan_prior_and_plan_conditioned_prior_train_hand_off_by_
                           "--manifest-key", "manifest.json", "--manifest-sha256", digest, "--partition", "train",
                           "--conform-to-corpus", "", "--batch-size", "3", "--batches", "2", "--output-key", out]) == 0
         report = json.loads((store / out).read_text())
-        assert {"text_gain", "text_gain_stage1", "tokens"} <= set(report) and report["batches"] == 1
+        assert {"text_gain_nats_per_second", "text_gain_nats_per_second_pooled", "text_gain_stage1_nats_per_second",
+                "text_gain_nats_per_code", "tokens_true_text"} <= set(report) and report["batches"] == 1
+        assert report["clips"] == 3 and report["text_gain_nats_per_second"]["clips"] == 3
     with pytest.raises(SystemExit, match="SHA-256 differs"):
         diag.main(["text-gain", *common, "--checkpoint-key", pp_key, "--checkpoint-sha256", "0" * 64,
                    "--manifest-key", "manifest.json", "--manifest-sha256", digest, "--output-key", "x.json"])
@@ -181,9 +194,15 @@ def test_plan_tokenizer_plan_prior_and_plan_conditioned_prior_train_hand_off_by_
     fake = lambda batch: reads.append(len(batch)) or [texts[i % len(texts)] for i in range(len(batch))]
     pins = ["--plan-tokenizer-key", plan_key, "--plan-tokenizer-sha256", plan_sha, "--mix-key", "manifest.json",
             "--mix-sha256", digest]
-    assert diag.main(["plan-route", *common, "--checkpoint-key", pp_key, "--checkpoint-sha256", pp_sha, *pins,
-                      "--output-key", "diag/plan-route.json"], translate_fn=fake) == 0
+    route_args = ["plan-route", *common, "--checkpoint-key", pp_key, "--checkpoint-sha256", pp_sha, *pins]
+    assert diag.main(route_args + ["--output-key", "diag/plan-route.json"], translate_fn=fake) == 4   # blank ≠ 1.859
     route = json.loads((store / "diag/plan-route.json").read_text())
+    assert route["blank_check"]["reproduced"] is False and route["gate"]["passes"] is False
+    measured = route["blank"]["bleu"]
+    assert diag.main(route_args + ["--expected-blank", str(measured), "--output-key", "diag/plan-route.json"],
+                     translate_fn=fake) == 0
+    route = json.loads((store / "diag/plan-route.json").read_text())
+    assert route["blank_check"]["reproduced"] is True and route["seed"] == 0
     assert {"plan_route", "plan_round_trip", "real", "blank", "plan_route_minus_blank",
             "plan_route_minus_plan_round_trip"} <= set(route) and route["clips"] == 4
     with pytest.raises(SystemExit, match="needs a plan prior"):
@@ -192,6 +211,9 @@ def test_plan_tokenizer_plan_prior_and_plan_conditioned_prior_train_hand_off_by_
     assert diag.main(["plan-following", *common, "--checkpoint-key", detail_key, "--checkpoint-sha256",
                       sha(store / detail_key), *pins, "--output-key", "diag/following.json"], translate_fn=fake) == 0
     following = json.loads((store / "diag/following.json").read_text())
-    assert following["pairs"] == [[0, 1], [2, 3], [1, 0], [3, 2]]
-    for name in ("empty_text", "other_text", "real"):
-        assert following[name]["pairs"] == 4 and 0 <= following[name]["rate"] <= 1
+    assert following["pairs"] == [[0, 1], [2, 3]] and following["pairing"] == "consecutive"
+    for name in ("a_plan_no_text", "blank", "real", "a_plan_b_text"):
+        assert following[name]["pairs"] == 2 and following[name]["directions"] == 4 and 0 <= following[name]["rate"] <= 1
+    blank, real = following["blank"]["rate"], following["real"]["rate"]
+    assert following["gate"]["threshold"] == pytest.approx(blank + .5 * (real - blank), abs=1e-4)
+    assert "difference" in following["a_plan_minus_blank"] and isinstance(following["gate"]["passes"], bool)

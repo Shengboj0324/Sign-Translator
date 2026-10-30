@@ -656,7 +656,7 @@ def test_the_latent_loss_reads_only_observed_parts_and_the_codebook_diagnostics_
     loss, terms = plan_tokenizer_loss(plan, tokenizer, batch)
     assert torch.isfinite(loss)
     for p in plan.parts:
-        assert 1. <= float(terms[f"perplexity_{p}"]) <= plan.config.codebook and f"reseeded_{p}" in terms
+        assert 1. <= float(terms[f"stage1_perplexity_{p}"]) <= plan.config.codebook and f"reseeded_{p}" in terms
     q = plan.quantizers["body"]
     before = q.reseeded
     with torch.no_grad():
@@ -694,11 +694,77 @@ def test_plan_only_states_decode_plans_through_the_tokenizers_decoder():
         decode_plan_states(plan, tokenizer, [plans[0][:1]], ["x"], fps=24., durations=seconds[:1])
 
 
-def test_sentence_retrieval_scores_own_over_other():
+def test_sentence_retrieval_pairs_and_intervals_resample_unordered_pairs():
     diag = script("round17_diagnostics")
     assert diag.sentence_bleu("the cat sat", "the cat sat") == pytest.approx(1.)
     assert diag.sentence_bleu("", "the cat") == 0. and diag.sentence_bleu("dog", "the cat") == 0.
     assert 0 < diag.sentence_bleu("the cat ran", "the cat sat") < 1
-    r = diag.retrieval(["the cat sat", "a dog ran", "x"], ["the cat sat", "a dog ran", "y"],
-                       ["a dog ran", "the cat sat", "z"])
-    assert r["rate"] == pytest.approx((1 + 1 + .5) / 3, abs=1e-4) and r["pairs"] == 3 and r["ci95"][0] <= r["rate"] <= r["ci95"][1]
+    h = diag.hits(["the cat sat", "a dog ran", "x"], ["the cat sat", "a dog ran", "y"], ["a dog ran", "the cat sat", "z"])
+    assert h.tolist() == [1., 1., .5]
+    # pairing: consecutive, or neighbours in duration within 10%
+    assert diag.make_pairs([1, 2, 3, 4, 5], "consecutive") == [(0, 1), (2, 3)]
+    assert diag.make_pairs([1., 5., 1.05, 5.4, 9.], "duration") == [(0, 2), (1, 3)]
+    assert diag.make_pairs([1., 1.2, 1.4], "duration") == []
+    # a pair's two directions stay together: a pair whose directions are (1, 0) contributes 0.5, never 0 or 1 alone
+    split = np.array([[1., 0.]] * 50)
+    r = diag.pair_rate(split)
+    assert r["rate"] == .5 and r["ci95"] == [.5, .5] and r["pairs"] == 50 and r["directions"] == 100
+    a, b = np.array([[1., 1.], [1., 0.], [0., 1.]]), np.array([[0., 1.], [1., 0.], [0., 0.]])
+    d = diag.paired_rate_difference(a, b)
+    assert d["difference"] == pytest.approx((.5 + 0 + .5) / 3, abs=1e-4) and d["ci95"][0] <= d["difference"] <= d["ci95"][1]
+    assert diag.blank_check(1.8594, 1.859)["reproduced"] and not diag.blank_check(1.861, 1.859)["reproduced"]
+
+
+@pytest.mark.parametrize("variant", ["plain", "part_valid", "detail", "plan_prior"])
+def test_per_clip_nats_sum_to_the_losses_teacher_forced_tokens(variant):
+    """Text gain per second rests on per-clip summed losses; they must add up to the prior's own loss."""
+    diag = script("round17_diagnostics")
+    from signtranslator.generation.plan_codes import PLAN_PRIOR_KIND
+    states, tokenizer, base = prior_setup()
+    batch = collate_multichannel(states)
+    tokens, mask = encode_texts(["ask him", "cut it"])
+    plan = PlanVQ(plan_config(tokenizer)).eval()
+    if variant == "plain":
+        prior, kind = base, "motion_rvq_prior"
+    elif variant == "part_valid":
+        prior, kind = RVQPrior(replace(base.config, part_valid_loss=True)), "motion_rvq_prior"
+    elif variant == "detail":
+        prior, kind = wake(warm(base, planned(base, plan, part_valid_loss=True))), "motion_rvq_prior"
+    else:
+        prior, kind = plan_prior_of(tokenizer, plan, part_valid_loss=True), PLAN_PRIOR_KIND
+    prior.eval()
+    nats, nats1, weight = diag.row_nats(prior, tokenizer, plan, kind, tokens, mask, batch)
+    if kind == PLAN_PRIOR_KIND:
+        _, terms = plan_prior_loss(prior, tokenizer, plan, tokens, mask, batch, train=False)
+    else:
+        _, terms = rvq_prior_loss(prior, tokenizer, tokens, mask, batch, train=False,
+                                  **({"plan_tokenizer": plan} if prior.config.plan_window else {}))
+    assert nats.shape == (2,) and bool((weight > 0).all())
+    assert float(nats.sum() / weight.sum()) == pytest.approx(terms["tokens"], rel=1e-5)
+    assert bool((nats1 <= nats + 1e-6).all())
+    batches = [(tokens, mask, batch, ["ask him", "cut it"])]
+    out = diag.text_gain(prior, tokenizer, plan, kind, batches, torch.device("cpu"))
+    assert out["clips"] == 2 and set(out["text_gain_nats_per_second"]) == {"mean", "ci95", "clips"}
+    from signtranslator.generation.text_to_motion import utterance_duration
+    shuffled, _, _ = diag.row_nats(prior, tokenizer, plan, kind, tokens.roll(1, 0), mask.roll(1, 0), batch)
+    per_second = ((shuffled - nats).double() / utterance_duration(batch).double()).mean()
+    assert out["text_gain_nats_per_second"]["mean"] == pytest.approx(float(per_second), abs=1e-4)
+
+
+def test_the_oracle_precondition_compares_oracle_plans_with_the_controls_generated_bleu():
+    cpl = script("compare_pilot_lexicon")
+    refs = [f"the cat sat number {i}" for i in range(40)]
+    good = [r for r in refs]
+    bad = ["nothing here"] * 40
+    arm = dict(meaning=dict(references=refs, generated=dict(bleu=1., hypotheses=bad)),
+               meaning_oracle_plan=dict(bleu=99., hypotheses=good))
+    control = dict(meaning=dict(references=refs, generated=dict(bleu=1., hypotheses=bad)))
+    out = cpl.oracle_precondition(arm, control, resamples=200)
+    assert out["oracle_precondition"]["passes"] and out["oracle_precondition"]["ci95"][0] > 0
+    swapped = dict(arm, meaning_oracle_plan=dict(bleu=0., hypotheses=bad))
+    assert not cpl.oracle_precondition(swapped, dict(meaning=dict(references=refs, generated=dict(bleu=99., hypotheses=good))),
+                                       resamples=200)["oracle_precondition"]["passes"]
+    with pytest.raises(ValueError, match="different references"):
+        cpl.oracle_precondition(arm, dict(meaning=dict(references=refs[::-1], generated=dict(bleu=1., hypotheses=bad))))
+    with pytest.raises(ValueError, match="no meaning_oracle_plan"):
+        cpl.oracle_precondition(control, control)

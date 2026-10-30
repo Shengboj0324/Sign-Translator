@@ -385,14 +385,15 @@ def plan_tokenizer_loss(plan: PlanVQ, tokenizer: MotionRVQ, motion: MotionBatch,
     seen = torch.zeros(P, config.codebook + 1, dtype=torch.bool, device=codes.device).scatter_(1, first, True)
     for p, count in zip(plan.parts, seen[:, :config.codebook].sum(1).unbind()):
         terms[f"codes_used_{p}"] = count
-    # stage-1 perplexity per part over the valid plan steps (exp of the code distribution's entropy; codebook size =
-    # every code equally used) and the dead codes re-seeded so far in this process
+    # stage-1 perplexity per part over this batch's valid plan steps (exp of the code distribution's entropy; codebook
+    # size = every code equally used; averaged over the validation batches it is the declared "mean per-batch stage-1
+    # perplexity on validation") and the dead codes re-seeded so far (the trainer restores the count on resume)
     counts = torch.zeros(P, config.codebook + 1, device=codes.device).scatter_add_(1, first, torch.ones_like(first,
                                                                                                          dtype=torch.float))
     freq = counts[:, :config.codebook] / counts[:, :config.codebook].sum(1, keepdim=True).clamp_min(1.)
     perplexity = torch.exp(-(freq * freq.clamp_min(1e-12).log()).sum(1))
     for k, p in enumerate(plan.parts):
-        terms[f"perplexity_{p}"] = perplexity[k]
+        terms[f"stage1_perplexity_{p}"] = perplexity[k]
         terms[f"reseeded_{p}"] = float(plan.quantizers[p].reseeded)
     return total + config.commitment * commitment.to(total.dtype), terms
 

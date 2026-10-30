@@ -1,8 +1,10 @@
-# Round 17 plan codes: development report (2026-10-30, 05:12 UTC; review fixes 05:48 UTC)
+# Round 17 plan codes: development report (2026-10-30, 05:12 UTC; review fixes 05:48 UTC; second-review fixes 06:40 UTC)
 
 Branch `round17-plan` (from main `8374bd8`, the round 17 design). This implements the design in
 docs/NEXT_PHASE_PLAN.md, "Round 17 design: coarse plan codes over the 24 Hz tokenizer". The first commit (c37036b) was
-reviewed independently (APPROVE WITH FIXES); the fixes are in the section "Review fixes" and throughout.
+reviewed independently (APPROVE WITH FIXES); the fixes are in the section "Review fixes" and throughout. The second
+review (of a8f6da9) found the remaining defects in gate measurement; they are fixed in "Second-review fixes", and the
+gates section restates exactly the declared gates (docs/NEXT_PHASE_PLAN.md on main, 7f06613 and amendment 1 16d2e00).
 
 **What ran:**
 - No pods ran, and nothing was written to R2.
@@ -18,12 +20,13 @@ reviewed independently (APPROVE WITH FIXES); the fixes are in the section "Revie
 | Plan tokenizer `PlanVQ` / `PlanVQConfig`: per-part window encoders over d2's continuous latents, masked mean or learned pooling, residual EMA VQ, shared upsampling decoder; loss, checkpoints, `encode_plan`, `reconstruct`, `oracle_plans`, `decode_plan_states` (plan-only route) | `signtranslator/generation/plan_codes.py` |
 | Plan conditioning of the RVQ prior: opt-in config fields (incl. the plan tokenizer's config SHA and plan corruption), `PlanReader`, `empty_plan`, `teacher_forced_plan_samples`, the plan threaded through the loss, rollout, likelihood and generation; plan-less behaviour unchanged | `signtranslator/generation/motion_rvq.py` |
 | Plan prior `PlanPriorConfig` (an `RVQPrior` over plan steps), `plan_prior_loss`, text warm start `copy_text_encoder`, `generate_plan_codes_batch`, two-stage `generate_plan_detail_batch` | `signtranslator/generation/plan_codes.py` |
-| Plan tokenizer training CLI (store/manifest/resume/EMA/best conventions; frozen d2 pinned by key and SHA; fidelity diagnostic; perplexity and re-seed counts) | `scripts/train_plan_tokenizer.py` |
+| Plan tokenizer training CLI (store/manifest/resume/EMA/best conventions; frozen d2 pinned by key and SHA; fidelity diagnostic; mean per-batch stage-1 perplexity on validation; dead-code re-seeds persisted in checkpoints and their rate per 1k steps) | `scripts/train_plan_tokenizer.py` |
 | `--stage plan-prior`; `--plan-tokenizer-key/--plan-tokenizer-sha256`, `--plan-dropout`, `--plan-corruption*`, `--no-plan-memory`, `--init-text-key`; plan-less warm start (`plan_warm_start`); validation `tokens_no_plan`, `plan_gain`, `plan_gain_stage1` | `scripts/train_motion_tokens.py` |
 | Two-stage evaluation: `load_generator(..., plan=...)`, `load_plan_prior` (every checkpoint SHA-pinned and cross-checked), `batch_with_plans` | `scripts/evaluate_text_to_motion.py` |
-| Pilot flags `--plan-prior-key/--plan-prior-sha256/--plan-tokenizer-key/--plan-tokenizer-sha256`, `--plan-temperature`, `--plan-guidance`, `--oracle-plan` (adds `meaning_oracle_plan` and the paired `oracle_gap`). The default is unchanged | `scripts/pilot_content_check.py` |
+| Pilot flags `--plan-prior-key/--plan-prior-sha256/--plan-tokenizer-key/--plan-tokenizer-sha256`, `--plan-temperature`, `--plan-guidance`, `--oracle-plan` (adds `meaning_oracle_plan` and the paired `oracle_gap`), `--oracle-only` (the oracle read alone, before the arm's pilot). The default is unchanged | `scripts/pilot_content_check.py` |
+| Oracle precondition: `--oracle-precondition` (a report's `meaning_oracle_plan` against a control's generated BLEU, paired on identical references) | `scripts/compare_pilot_lexicon.py` |
 | Fidelity hooks `--plan-tokenizer-key/--plan-tokenizer-sha256`: the round trip decodes the plan-reconstructed latents; d2 pinned by the SHA of `--tokenizer-key`'s bytes; the fidelity report adds d2's own round trip of the same clips (ratios, BLEU, paired plan − d2 BLEU) | `scripts/tokenizer_fidelity_check.py`, `scripts/tokenizer_recognisability_check.py` |
-| Diagnostics: `plan-route`, `text-gain`, `plan-following` | `scripts/round17_diagnostics.py` |
+| Gate measurements: `plan-route` (with its blank check), `text-gain` (nats per second), `plan-following` (blank-controlled, pairs resampled) | `scripts/round17_diagnostics.py` |
 | Tests | `tests/test_generation_plan_codes.py` (30), `tests/test_train_plan_tokenizer_script.py` (1, end to end) |
 
 ## Review fixes (review of c37036b)
@@ -36,11 +39,23 @@ reviewed independently (APPROVE WITH FIXES); the fixes are in the section "Revie
 | 3 | No test that the detail follows the plan | `round17_diagnostics.py plan-following` (oracle plan of A, (i) no text, (ii) B's text; back-translation retrieval of A over B, rate with CI, real ceiling) and `plan_gain` / `plan_gain_stage1` (nats/code) at every validation |
 | 2 | No content measure for the plan round trip | The fidelity report (with a plan) holds d2's own round trip of the same clips: `r2b.tokenizer_round_trip`, `tokenizer_ratios`, `plan_minus_tokenizer_bleu` (paired, CI). Report-only |
 | 7 MINOR | Latent loss counted untracked parts (neutral fill) | Relative latent error over each part's observed steps only (`part_step_observed`, `part_code_weights`' rule per step) |
-| 8 | No codebook health diagnostics | Stage-1 perplexity per part and dead-code re-seeds per part (`ResidualQuantizer.reseeded`, a non-saved counter) in every training and validation log |
+| 8 | No codebook health diagnostics | Stage-1 perplexity per part and dead-code re-seeds per part (`ResidualQuantizer.reseeded`) in every training and validation log; persisted in checkpoints since the second review |
 | 9 | d2 not pinned in the hooks | Both instruments pass the SHA of `--tokenizer-key`'s bytes to `load_plan_tokenizer`, which refuses a plan built on other d2 bytes |
 | 13 | Private torch API | `detect_is_causal_mask`: torch's `_detect_is_causal_mask` if importable, else the same rule (equality with the square-subsequent mask in the mask's dtype; for a bool mask that counts the bool causal mask as causal, as torch does). Tested against torch for bool, float and non-causal masks |
 | 15 | `upsample_windows` unused; `check_plan_pair` ignored the plan tokenizer | The plan decoder upsamples with `upsample_windows`. The detail config records `plan_tokenizer` (the plan tokenizer's config SHA-256, required); `check_plan_pair` refuses a plan prior over another plan tokenizer. The checkpoints' plan-tokenizer *weights* SHAs are still cross-checked by `load_plan_prior` |
 | 6 | d2's own padding leak | Noted below; d2 is not changed |
+
+## Second-review fixes (review of a8f6da9)
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | Plan following had no duration control and resampled directions as independent rows | `plan-following` adds **blank at A's duration** on the same directions; reports `a_plan_minus_blank` (paired, CI) and `gate.threshold` = blank + 0.5 × (real − blank); every interval resamples unordered pairs (a pair's two directions together). `--pairing duration` (neighbours within 10% in duration) is a second read. The "chance 0.5" wording is gone: duration alone reads about 0.66 |
+| 2 | Text gain per code | `text-gain` reports **nats per second** (each clip's summed part-weighted gain over its duration, mean over clips with a CI over clips), pooled nats per second, and nats per code. Per-clip sums add up to the prior's own loss (tested) |
+| 3 | No oracle precondition instrument | `compare_pilot_lexicon.py --oracle-precondition`: `meaning_oracle_plan` minus the control's generated BLEU, paired on identical references. The pilot's `--oracle-only` runs the oracle read alone, so the precondition is judged before the arm's pilot |
+| 4 | Gate section held stale proposals | Rewritten below: exactly the declared gates (7f06613 + amendment 1) |
+| 5 | Re-seed counter not persisted; perplexity ill-named | `reseeded` saved in every plan tokenizer checkpoint and restored on resume (cumulative, tested); logged as `stability/reseeded_<part>` and `stability/reseed_fraction_per_1k_<part>`. The term is `stage1_perplexity_<part>`; its validation value is the mean per-batch stage-1 perplexity on validation |
+| 6 | Plan route's blank unchecked | `plan-route` reports `plan_route_minus_blank` (paired) and `blank_check` (its blank against 1.859, exit 4 when not reproduced); its seed series is documented. Its blank read was run locally on the 1,000 pilot clips (see "Checked against the real models") |
+| 7 | Corruption sampling undocumented | The plan-corruption samples are drawn at guidance 1 and temperature 1; the pilot samples P17 at guidance 1.5 and part temperature 1.1. Declared, not changed; noted in the config and below |
 
 **d2's own padding leak (finding 6, not changed).** d2 has no masking: its encoder's convolutions (4 full-rate residual blocks) see the neutral-filled padded frames of a batch, so the latents of the last few valid frames of a short clip differ between batched and alone. This holds for every prior since round 3 (their training targets) and for the plan tokenizer's inputs. The plan tokenizer itself is now padding-independent given its inputs. Training batches and the diagnostics' one-clip encodings (`oracle_plans`, round trips) therefore see slightly different d2 latents at clip ends.
 
@@ -69,6 +84,8 @@ reviewed independently (APPROVE WITH FIXES); the fixes are in the section "Revie
 - Its untrained teacher-forced loss on real plans is 6.38 (ln 512 = 6.24).
 
 **Two-stage generation** with the real d2, plan prior and detail prior: 1.0 s and 0.75 s gave 24 and 18 frames, plans of 6 and 5 steps, and detail codes of (24, 32) and (18, 32).
+
+**The plan route's blank reproduces 1.859** (second-review fix 6). `round17_diagnostics.py`'s own clip loading (`pilot_clips`: the pilot's fixed sample from round14b-mixed-v1), blanking and back-translator, run locally on CPU (R2 read-only) on the 1,000 clips: BLEU **1.859 [1.537, 2.175]**, `blank_check.reproduced` true, with references identical (same order) to `round16/pilot-r16c.json`, whose blank is 1.859.
 
 **Earlier configs are unchanged** (re-run after the fixes). The new code was compared with the original `motion_rvq.py` (8374bd8) on every run config stored in R2:
 - **53 rvq-prior and 47 rvq-tokenizer configs:** identical `to_dict()` and SHA-256.
@@ -161,6 +178,7 @@ reviewed independently (APPROVE WITH FIXES); the fixes are in the section "Revie
     - plan prior with the text warm start → plan-conditioned detail prior warm-started from the plan-less one (zero-init message, `tokens_no_plan`/`plan_gain`/`plan_gain_stage1` logged, resume) → `load_generator` with the pinned pair (refusals for a missing plan, a plan-less detail and a wrong pin; deterministic batches; predicted duration; fixed-plan batches);
     - plan corruption from random codes and from the trained plan prior (refusals; P17 pinned in the checkpoint; resume under another P17 refused);
     - `round17_diagnostics.py`: `text-gain` for the plan-less prior, the plan prior and the detail prior; `plan-route` and `plan-following` (back-translation replaced by a stand-in).
+  - Second-review additions: pairing, pair-resampled intervals, paired rate difference and blank check; per-clip nats equal the loss's tokens (plain, part-valid, detail, plan prior) and the per-second text gain; the oracle precondition; the pilot's oracle and oracle-only modes (stub fixture); the persisted re-seed counter across a resume; plan-route's blank check and plan-following's gate fields end to end.
 - **Run:** `OMP_NUM_THREADS=1 nice ~/.venvs/sign-translator/bin/python -W error -m pytest -q`; results in the commit message.
 
 ## Pod commands (prepared, not launched)
@@ -200,7 +218,7 @@ python scripts/train_plan_tokenizer.py --run plan-vq-v1 --manifest-key $MIX --ma
   --val-every 1000 --val-batches 32 --checkpoint-every 2000 --fidelity-clips 64
 P=training-runs/plan-vq-v1/checkpoints/step-00020000.pt; PSHA=$(sha $P)
 ```
-**Produces (S1):** in `training-runs/plan-vq-v1/log/*.json` and `best.json`: per validation `val/loss`, `val/latent_relative`, `val/motion`, `val/codes_used_<part>`, `val/perplexity_<part>`; per step `train/reseeded_<part>`; per checkpoint `fidelity/plan/*` and `fidelity/tokenizer/*` (64 clips, all joints, report-only). A non-finite loss stops the run before any save.
+**Produces (PT stability):** in `training-runs/plan-vq-v1/log/*.json`: per validation `val/stage1_perplexity_<part>` (the mean per-batch stage-1 perplexity on validation), `stability/reseeded_<part>` (cumulative, persisted in each checkpoint as `reseeded`) and `stability/reseed_fraction_per_1k_<part>`; also `val/loss`, `val/latent_relative`, `val/motion`, `val/codes_used_<part>`; per checkpoint `fidelity/plan/*` and `fidelity/tokenizer/*` (64 clips, all joints, report-only). A non-finite loss stops the run before any save (no divergence).
 
 The gate instruments use d2's own acceptance settings, with the plan hook. Exit status 4 is a verdict, not an error. The plan gates read the reports' numbers, below.
 ```bash
@@ -214,10 +232,10 @@ python scripts/tokenizer_recognisability_check.py --manifest-key $TMIX --manifes
   --plan-tokenizer-key $P --plan-tokenizer-sha256 $PSHA --limit 300 --device cuda \
   --output-key $O/round17/plan-recognisability-plan-vq-v1.json
 ```
-**Produces:**
-- **F1:** `plan-fidelity-plan-vq-v1.json` → `ratios.left_hand_speed_ratio`, `ratios.right_hand_speed_ratio` (plan round trip, reliable joints) and `tokenizer_ratios` (d2 alone, same clips).
-- **C1 (report-only, fix 2):** the same report → `r2b.round_trip` (plan), `r2b.tokenizer_round_trip` (d2), `r2b.real`, `r2b.blank`, and `plan_minus_tokenizer_bleu` (paired, CI).
-- **F2:** `plan-recognisability-plan-vq-v1.json` → `real.top5`, `round_trip.top5`, `ratio`, `pass`.
+**Produces (PT content):**
+- `plan-recognisability-plan-vq-v1.json` → `real.top5`, `round_trip.top5`, `ratio` (gate: `ratio` ≥ 0.9).
+- `plan-fidelity-plan-vq-v1.json` → `r2b.round_trip.bleu` (plan) and `r2b.tokenizer_round_trip.bleu` (d2, same clips) (gate: plan ≥ 0.8 × d2); `r2b.round_trip.ci95[0]` against `r2b.blank.ci95[1]` (gate: the plan's lower bound above blank); `plan_minus_tokenizer_bleu` (paired, reported).
+- Report-only: `ratios.*_speed_ratio` (plan round trip, reliable joints) and `tokenizer_ratios`. The script's own `pass` is d2's acceptance rule, not a round-17 gate.
 
 ### (b) Plan prior `tokens-plan-prior-r17-p17`
 
@@ -235,9 +253,9 @@ python scripts/train_motion_tokens.py --architecture rvq --stage plan-prior --ru
   --patience 0
 PP=training-runs/tokens-plan-prior-r17-p17/checkpoints/step-00030000.pt; PPSHA=$(sha $PP)
 ```
-**Produces:** `val/tokens`, `val/stage1_tokens`, `val/token_accuracy` per validation (the plan prior's teacher-forced fit).
+**Produces:** `val/tokens`, `val/stage1_tokens`, `val/token_accuracy` per validation (the plan prior's teacher-forced fit; reported).
 
-P17 diagnostics (fix 5), with W14b's text gain for reference:
+P17 gate measurements, with W14b's text gain as the reference:
 ```bash
 for K in "$PP $PPSHA p17" "$W14B $W14BSHA w14b"; do set -- $K
   python scripts/round17_diagnostics.py text-gain --checkpoint-key $1 --checkpoint-sha256 $2 --manifest-key $MIX \
@@ -246,8 +264,8 @@ python scripts/round17_diagnostics.py plan-route --checkpoint-key $PP --checkpoi
   --plan-tokenizer-key $P --plan-tokenizer-sha256 $PSHA $DIAG --output-key $O/round17/plan-route-p17.json
 ```
 **Produces:**
-- **T1:** `text-gain-p17.json` and `text-gain-w14b.json` → `text_gain` and `text_gain_stage1` (nats/code, mean and CI over 32 batches).
-- **R1:** `plan-route-p17.json` → BLEU of `plan_route`, `plan_round_trip`, `real`, `blank`; `plan_route_minus_blank` and `plan_route_minus_plan_round_trip` (paired, CI).
+- **P17 (a):** `text-gain-p17.json` and `text-gain-w14b.json` → `text_gain_nats_per_second.mean` (gate: P17 ≥ 2 × W14b), with its CI over clips; `text_gain_nats_per_second_pooled`, `text_gain_nats_per_code` and the stage-1 values are reported.
+- **P17 (b):** `plan-route-p17.json` → `plan_route_minus_blank.ci95[0]` (gate: > 0) and `blank_check.reproduced` (gate: the script's blank reproduces 1.859; exit status 4 otherwise); `gate.passes` combines both. Also `plan_route`, `plan_round_trip`, `real`, `blank` BLEU and `plan_route_minus_plan_round_trip`. Its plans are drawn with seeds 0 + i per 32-clip block, independent of the pilots' draw.
 
 ### (c) Detail priors: D17 (true plans) and D17-PC (plan corruption from P17)
 
@@ -268,23 +286,38 @@ DPC=training-runs/tokens-rvq-d0b-prior-r17-d17pc/checkpoints/step-00010000.pt; D
 - Each log must show `plan modules zero-initialised (41 tensors)` and `initialised from …w14b…`.
 - Equivalent through the fleet script: `round5_prior.sh` with R16C's environment and `EXTRA_WEIGHTS` = R16C's plus the plan flags above. Its leading `--corpus-weight asllvd-text-v1=3` repeats a weight already given.
 
-**Produces (I1):** per validation `val/plan_gain` and `val/plan_gain_stage1` (nats/code: empty-plan minus true-plan teacher-forced loss, same codes, 32 fixed batches, EMA weights), with `val/tokens`, `val/tokens_no_plan`, `val/stage1_tokens_no_plan`; D17-PC also logs `train/plan_corrupted`.
+**Produces (D17 informativeness):** per validation `val/plan_gain` (nats/code: empty-plan minus true-plan teacher-forced loss, same codes, 32 fixed batches, EMA weights; gate: ≥ 0.05 by step 4000) and `val/plan_gain_stage1` (reported), with `val/tokens`, `val/tokens_no_plan`, `val/stage1_tokens_no_plan`; D17-PC also logs `train/plan_corrupted`. The corruption samples are P17's teacher-forced draws at guidance 1 and temperature 1 (the pilot samples P17 at guidance 1.5 and part temperature 1.1; declared).
 
 ### (d) Diagnostics and pilots
 
-Plan following and text gain of each detail arm (fix 3, fix 5):
+Plan following of each detail arm (the declared gate), plus its text gain (reported):
 ```bash
 for K in "$D $DSHA d17" "$DPC $DPCSHA d17pc"; do set -- $K
   python scripts/round17_diagnostics.py plan-following --checkpoint-key $1 --checkpoint-sha256 $2 \
     --plan-tokenizer-key $P --plan-tokenizer-sha256 $PSHA $DIAG --output-key $O/round17/plan-following-$3.json
+  python scripts/round17_diagnostics.py plan-following --pairing duration --checkpoint-key $1 --checkpoint-sha256 $2 \
+    --plan-tokenizer-key $P --plan-tokenizer-sha256 $PSHA $DIAG --output-key $O/round17/plan-following-$3-duration.json
   python scripts/round17_diagnostics.py text-gain --checkpoint-key $1 --checkpoint-sha256 $2 --manifest-key $MIX \
     --manifest-sha256 $MSHA --batches 32 --batch-size 64 --device cuda --output-key $O/round17/text-gain-$3.json; done
 ```
-**Produces:**
-- **P1:** `plan-following-<arm>.json` → `empty_text.rate`, `other_text.rate`, `real.rate` (each with CI, 1,000 directed pairs; chance 0.5).
-- **T1:** `text-gain-<arm>.json` → `text_gain`, `text_gain_stage1`.
+**Produces (D17 plan following):** `plan-following-<arm>.json` (500 unordered pairs, 1,000 directions) → `a_plan_minus_blank.ci95[0]` (gate: > 0), `a_plan_no_text.rate` against `gate.threshold` = blank + 0.5 × (real − blank) (gate: ≥), with `blank.rate`, `real.rate` and `a_plan_b_text.rate` (reported); `gate.passes` combines both. The `-duration` report is the second read (duration-matched pairs). The reviewer measured blank 0.6605 [0.631, 0.688] and real 0.757 on the pilots, so the threshold is near 0.709.
 
-Pilots. Same 1,000 clips, instruments and pins as R16 (`r16_pilots.sh`); each pilot also reads its oracle plan:
+Oracle precondition, before the arm's pilot (oracle read only, then the paired comparison with R16C):
+```bash
+PCMD="python scripts/pilot_content_check.py --mix-key $MIX --mix-sha256 $MSHA \
+  --vocab-mix-key $O/round10-mixed-v1/manifest.json --vocab-mix-sha256 ccfd10b8961e95523ac7938c84261c89f22c8ae786af961908fbeba21fa5647a \
+  --word-split-key $O/round14/r5-word-split.json --word-split-sha256 676f56cbbaa9bac08f0bc305027807827f982cd4c242de03f7891323e723102a \
+  --word-list-key $O/round14/r5-word-split.json --word-list-sha256 676f56cbbaa9bac08f0bc305027807827f982cd4c242de03f7891323e723102a \
+  --recognizer-run sign-recognizer-v3d --clips 1000 \
+  --plan-prior-key $PP --plan-prior-sha256 $PPSHA --plan-tokenizer-key $P --plan-tokenizer-sha256 $PSHA"
+for A in "$D r17" "$DPC r17pc"; do set -- $A
+  $PCMD --checkpoint-key $1 --oracle-plan --oracle-only --output-key $O/round17/oracle-$2.json
+  python scripts/compare_pilot_lexicon.py --oracle-precondition --arm-key $O/round17/oracle-$2.json \
+    --control-key $O/round16/pilot-r16c.json --output-key $O/round17/oracle-precondition-$2.json; done
+```
+**Produces (D17 oracle precondition and oracle wrist speed):** `oracle-precondition-<arm>.json` → `oracle_precondition.ci95[0]` (gate: > 0, else that arm's pilot is skipped); `oracle-<arm>.json` → `oracle_wrist_speed_gate.wrist_speed_over_real` (gate: within [0.8, 1.5]; measured as rounds 15–16's wrist speed relative to real, the back-translator's normalised 2D view) with `oracle_motion_ratio_to_real` (every statistic, reported).
+
+Pilots, only for arms whose preconditions passed. Same 1,000 clips, instruments and pins as R16 (`r16_pilots.sh`); each also reads its oracle plan again, for the oracle–generated gap:
 ```bash
 PCMD="python scripts/pilot_content_check.py --mix-key $MIX --mix-sha256 $MSHA \
   --vocab-mix-key $O/round10-mixed-v1/manifest.json --vocab-mix-sha256 ccfd10b8961e95523ac7938c84261c89f22c8ae786af961908fbeba21fa5647a \
@@ -292,8 +325,8 @@ PCMD="python scripts/pilot_content_check.py --mix-key $MIX --mix-sha256 $MSHA \
   --word-list-key $O/round14/r5-word-split.json --word-list-sha256 676f56cbbaa9bac08f0bc305027807827f982cd4c242de03f7891323e723102a \
   --recognizer-run sign-recognizer-v3d --clips 1000 --oracle-plan \
   --plan-prior-key $PP --plan-prior-sha256 $PPSHA --plan-tokenizer-key $P --plan-tokenizer-sha256 $PSHA"
-$PCMD --checkpoint-key $D --output-key $O/round17/pilot-r17.json
-$PCMD --checkpoint-key $DPC --output-key $O/round17/pilot-r17pc.json
+$PCMD --oracle-plan --checkpoint-key $D --output-key $O/round17/pilot-r17.json
+$PCMD --oracle-plan --checkpoint-key $DPC --output-key $O/round17/pilot-r17pc.json
 # on the Mac, paired:
 for A in r17 r17pc; do
   python scripts/compare_pilot_lexicon.py --arm-key $O/round17/pilot-$A.json --control-key $O/round16/pilot-r16c.json --per-subset --output-key $O/round17/compare-$A-vs-r16c.json
@@ -301,67 +334,71 @@ for A in r17 r17pc; do
 python scripts/compare_pilot_lexicon.py --arm-key $O/round17/pilot-r17pc.json --control-key $O/round17/pilot-r17.json --output-key $O/round17/compare-r17pc-vs-r17.json
 ```
 **Produces:**
-- **Pilot rule inputs:** `compare-<arm>-vs-r16c.json` and `compare-<arm>-vs-w14b.json` → `bleu_paired.difference`/`ci95`, lexicon `difference`/`ci95`.
-- **O1 (report-only):** `pilot-<arm>.json` → `meaning.generated` (the arm), `meaning_oracle_plan`, `oracle_gap` (paired oracle − generated, CI), `plan.oracle.length_adjusted`.
+- **R17 rule:** `compare-<arm>-vs-r16c.json` → `bleu_paired.ci95[0]` (> 0) and lexicon `ci95[0]` (> −0.05); `compare-<arm>-vs-w14b.json` → `bleu_paired.ci95[0]` (> 0).
+- Reported beside it: `pilot-<arm>.json` → `oracle_gap` (paired oracle − generated, CI); P17's plan-only BLEU from `plan-route-p17.json`; `compare-r17pc-vs-r17.json` (the two arms paired).
 
-## Proposed declared gates (for the owner, before anything runs)
+## Declared gates (restated exactly: docs/NEXT_PHASE_PLAN.md on main, 7f06613 "Round 17: declared gates" and 16d2e00 "Round 17 gates, amendment 1")
 
-### Plan tokenizer `plan-vq-v1`
+Each stage runs only if the previous stage passes. All measures are on How2Sign val unless stated.
 
-All on its final step-20000 checkpoint.
+**Plan tokenizer (PT):**
+- **Content:** recogniser v2 ASLLVD top-5 on plan-round-trip motion ≥ 0.9 × real. Plan round-trip back-translation BLEU ≥ 0.8 × d2's own round trip on the same clips, with its lower bound above blank.
+- **Stability:**
+  - stage-1 perplexity ≥ 128 per part, where "perplexity" means the mean per-batch stage-1 perplexity on validation (amendment 1);
+  - dead-code re-seeds < 1% of the codebook per 1k steps after step 10k, the rate coming from a counter persisted in checkpoints (amendment 1);
+  - no divergence through 20k steps.
+- **Report-only:** plan round-trip hand speed (decoded from continuous latents, a path generation never uses).
 
-| Gate | Requirement | Instrument |
+**Plan prior (P17):** all must hold.
+- **(a) Text use:** teacher-forced text gain (shuffled-text loss − true-text loss) ≥ 2× W14b's same measure, measured in **nats per second** (the summed part-weighted gain per clip divided by its seconds), not per code (amendment 1).
+- **(b) Plan-only route:** P17 samples → plan decode → d2 → back-translation on the 1,000 clips, gated on `plan_route_minus_blank` with a lower bound > 0; the script's own blank must reproduce 1.859. It samples with its own seeds, which differ from the arms' pilot draw (amendment 1; replaces "BLEU lower bound > 1.859").
+- If (b) fails, the detail prior cannot rescue it and **the pilot is not run.**
+
+**Detail prior (D17):** warm-started from W14b.
+- **Arms:** plan dropout, plus a declared corruption arm (half the rows have a fraction r ~ U(0, 0.5) of plan steps replaced by P17 teacher-forced samples). The corruption samples are drawn at guidance 1 and temperature 1; the pilot samples P17 at guidance 1.5 and part temperature 1.1 (declared, not changed; amendment 1).
+- **Informativeness:** `plan_gain` ≥ 0.05 nats/code by step 4000. The stage-1 gain is reported.
+- **Plan following** (amendment 1, replacing "≥ 70%"): both must hold:
+  - the paired difference, A-plan-with-no-text minus blank-at-A's-duration on the same pairs, has a lower bound > 0;
+  - the A-plan rate ≥ blank + 0.5 × (real − blank).
+  - The bootstrap resamples unordered pairs.
+- **Oracle precondition** (amendment 1): `meaning_oracle_plan` minus R16C's generated BLEU, paired, lower bound > 0, computed by the comparison option added for this purpose (`compare_pilot_lexicon.py --oracle-precondition`). Otherwise the route cannot work and the pilot is skipped. The oracle-plan pilot is diagnostic only, never the declared metric.
+- **Oracle-plan detail generations:** wrist speed within [0.8, 1.5] × real.
+
+**Round-17 pilot (R17):** generated plan → D17, 1,000 clips. All must hold:
+- paired BLEU lower bound > 0 against R16C;
+- paired BLEU lower bound > 0 against W14b;
+- v3 lexicon lower bound > −0.05 against R16C.
+
+P17's plan-only BLEU and the oracle–generated gap are reported beside it.
+
+**Sequencing:**
+- PT may train once the review fixes land and are re-reviewed.
+- P17 and D17 wait for the UWB gate result, per the owner's O4 decision.
+
+### Where each gate is measured
+
+| Gate | Command (section) | Report field |
 |---|---|---|
-| **F1 Fidelity: hand speed** | `left_hand_speed_ratio` ≥ 0.80 and `right_hand_speed_ratio` ≥ 0.80. Reliable joints, plan round trip against real, 1,000 How2Sign val clips. d2's own ratios on the same clips are reported beside them (`tokenizer_ratios`) | `tokenizer_fidelity_check.py --plan-tokenizer-key` |
-| **F2 Fidelity: recognition** | Plan round-trip top-5 ≥ 0.9 × real top-5. ASLLVD val, 300 clips, recogniser v2 (the instrument d2 was accepted with), gloss map as d2's run. The script's `ratio` and `pass` | `tokenizer_recognisability_check.py --plan-tokenizer-key` |
-| **I1 Informativeness** | Each detail arm's `val/plan_gain` > 0 at every validation from step 2000 to step 10000. `val/plan_gain_stage1` reported beside it | the arm's training log |
-| **S1 Stability** | 20,000 steps with no non-finite loss and every checkpoint written. Validation loss at step 20000 ≤ 1.05 × its value at step 10000. Stage-1 codes used per part on validation ≥ 64 of 512 | the run's log and checkpoints |
+| PT content: recognition | (a) `tokenizer_recognisability_check.py` | `ratio` ≥ 0.9 |
+| PT content: BLEU | (a) `tokenizer_fidelity_check.py` | `r2b.round_trip.bleu` ≥ 0.8 × `r2b.tokenizer_round_trip.bleu`; `r2b.round_trip.ci95[0]` > `r2b.blank.ci95[1]` |
+| PT stability | (a) `train_plan_tokenizer.py` log | `val/stage1_perplexity_<part>` ≥ 128; `stability/reseed_fraction_per_1k_<part>` < 0.01 at every validation after step 10000; the run reaches step 20000 without a non-finite loss |
+| PT report-only | (a) `tokenizer_fidelity_check.py` | `ratios.*_speed_ratio` |
+| P17 (a) | (b) `round17_diagnostics.py text-gain` | `text_gain_nats_per_second.mean` (P17) ≥ 2 × the same (W14b) |
+| P17 (b) | (b) `round17_diagnostics.py plan-route` | `plan_route_minus_blank.ci95[0]` > 0 and `blank_check.reproduced` |
+| D17 informativeness | (c) training log | `val/plan_gain` ≥ 0.05 at the step-4000 validation |
+| D17 plan following | (d) `round17_diagnostics.py plan-following` | `a_plan_minus_blank.ci95[0]` > 0 and `a_plan_no_text.rate` ≥ `gate.threshold` |
+| D17 oracle precondition | (d) `compare_pilot_lexicon.py --oracle-precondition` | `oracle_precondition.ci95[0]` > 0 |
+| D17 oracle wrist speed | (d) `pilot_content_check.py --oracle-plan --oracle-only` | `oracle_wrist_speed_gate.wrist_speed_over_real` in [0.8, 1.5] |
+| R17 | (d) `compare_pilot_lexicon.py` | `bleu_paired.ci95[0]` > 0 against R16C and W14b; lexicon `ci95[0]` > −0.05 against R16C |
 
-**Reported, not gating:**
-- **C1 content:** the plan round trip's R2b BLEU beside d2's on the same 1,000 clips, and the paired plan − d2 difference;
-- body and head speed and variation ratios;
-- stage-1 perplexity and re-seed counts per part;
-- the training-time fidelity diagnostic (64 clips, all joints).
-
-**Ordering:**
-- If F1 or F2 fails, no prior is trained on this plan. The report names the failing gate and the next lever (`--pooling learned`, 3 stages, or W = 2).
-- I1 is judged when a detail arm has trained. An arm that fails I1 is not adopted, whatever its pilot reads.
-
-### P17 diagnostics (report-only, read before the pilots)
-
-- **T1:** `text_gain` of P17 against W14b's. A plan prior whose text gain is not clearly above W14b's carries no more text than the end-to-end prior did.
-- **R1:** the plan-only route's BLEU against blank and against the plan round trip. Plan-route near blank: the plan prior does not produce content-bearing plans.
-
-### Round 17 pilot
-
-**Arms:** R17 = P17 → D17 → d2, and R17-PC = P17 → D17-PC → d2.
-
-**Matched control:** R16C. It is W14b + 10,000 steps with the same manifest, weights, history dropout and stages, part-valid loss, lr and warmup. The only differences from the arms are the plan conditioning, plan dropout (and corruption), and the plan prior. Its pilot `round16/pilot-r16c.json` exists.
-
-**Rule, per arm:** an arm becomes the end-to-end leader only if all of these hold:
-1. paired BLEU arm − R16C has a 95% lower bound > 0;
-2. paired BLEU arm − W14b step 30000 (`v3read/pilot-w14b-step30000-v3d.json`) has a lower bound > 0;
-3. v3 lexicon arm − R16C has a lower bound > −0.05 (no trading words for BLEU);
-4. I1 holds for the arm.
-
-If both arms pass, the leader is R17-PC when its paired BLEU against R17 (`compare-r17pc-vs-r17.json`) has a lower bound > 0, otherwise R17 (the simpler arm).
-
-**Also reported:**
-- each arm's point BLEU against blank (1.859), W14b's composition (2.31) and M1 (2.55);
-- wrist speed relative to real against the 1.5× bar;
-- **O1:** `oracle_gap` (oracle − generated plan, paired):
-  - large gap: the plan prior is the bottleneck;
-  - no gap with the oracle read near R16C: the detail prior does not follow the plan, or the plan carries no sentence content;
-- **P1:** plan-following retrieval rates. `empty_text.rate` near 0.5 means the detail does not follow its plan.
-
-The error-discovery checklist of "Road to 3.8" applies to every verdict.
+Not declared, and so not gates: the hand-speed thresholds, "plan_gain > 0 at every validation", the "≥ 64 codes" stability bar and the tie-break between the two arms proposed in earlier versions of this report. The declaration does not say how a passing corruption arm and a passing plain arm are ranked; that needs the owner before the pilots.
 
 ## Risks and open points
 
 - **Learning rate of the new modules.** The plan modules start at zero and train at W14b's continuation rate (1e-4, warmup 200). If `val/plan_gain` stays near 0 by step 2000, the most likely cause is this rate, not the plan. A per-group learning rate is not implemented, deliberately: it would be a declared change.
-- **Teacher forcing hides the plan's value.** With the real history, the next step at 24 Hz is nearly determined, so I1 may show a small gain even when the plan helps free running. I1 is a necessary check, not the success criterion; the pilot decides. P1 measures plan following under free running.
+- **Teacher forcing hides the plan's value.** With the real history, the next step at 24 Hz is nearly determined, so the informativeness gain may be small even when the plan helps free running. Plan following measures it under free running.
 - **Teacher-forced corruption is not free running.** D17-PC's corrupting plans are P17's one-step samples from the true plan history. They are closer to generated plans than true plans are, but they do not drift as a free-running plan can.
-- **The plan prior's temporal stack is new.** At 6 Hz and 30,000 steps it is the least-tested piece. T1 and R1 are read before the pilots.
+- **The plan prior's temporal stack is new.** At 6 Hz and 30,000 steps it is the least-tested piece. Its gates (a) and (b) are read before the detail priors' pilots.
 - **Dropout and exactness.** Warm-start exactness is bit-level in evaluation and in RNG-free training. Under dropout 0.1 the random stream shifts (see "Exactness scope").
 - **d2's padding leak** (finding 6) is unchanged and affects every prior since round 3.
 - **Pre-existing.** Eight stored prior configs whose recorded SHA the original code does not reproduce. This branch leaves them unchanged.

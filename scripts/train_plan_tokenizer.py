@@ -12,6 +12,11 @@ frozen tokenizer is named by ``--tokenizer-key`` with its SHA-256 (and the manif
 newest is resumed and must match the configuration, manifest and tokenizer; every ``--val-every`` steps the EMA
 weights are scored on fixed validation batches and the best is recorded in ``best.json``.
 
+**Stability measures** (declared gates, amendment 1): ``val/stage1_perplexity_<part>`` is the mean per-batch stage-1
+perplexity on validation; ``stability/reseeded_<part>`` the cumulative dead-code re-seeds (persisted in every checkpoint
+as ``reseeded`` and restored on resume) and ``stability/reseed_fraction_per_1k_<part>`` the re-seeds since the previous
+validation as a fraction of the codebook per 1,000 steps.
+
 **Fidelity diagnostic** (``--fidelity-clips N``, at every checkpoint): N validation clips (How2Sign first) are passed
 through the frozen tokenizer alone and through the plan (the decoder given the latents decoded from the plan codes),
 and both are compared with the real clips on the frames the clips observe (``motion_metrics.compare``): speed and
@@ -166,6 +171,8 @@ def main(argv=None) -> int:
         model.load_state_dict(state["model"])
         optimizer.load_state_dict(state["optimizer"])
         resumed_ema, step = state.get("ema"), state["step"]
+        for part, count in (state.get("reseeded") or {}).items():   # cumulative across resumes (gates amendment 1)
+            model.quantizers[part].reseeded = int(count)
         torch.set_rng_state(state["torch_rng"].cpu())
         print(f"resumed {checkpoints[-1]} at step {step}", flush=True)
     else:
@@ -249,6 +256,7 @@ def main(argv=None) -> int:
         payload = plan_checkpoint_bytes(model, tokenizer_state, tokenizer_key=args.tokenizer_key,
                                         tokenizer_sha256=args.tokenizer_sha256, manifest_sha256=args.manifest_sha256,
                                         extra=dict(ema=ema.state_dict(model), optimizer=optimizer.state_dict(), step=step,
+                                                   reseeded={p: int(model.quantizers[p].reseeded) for p in model.parts},
                                                    validation=metrics, torch_rng=torch.get_rng_state(),
                                                    tokenizer_manifest_sha256=args.tokenizer_manifest_sha256
                                                    or args.manifest_sha256))
@@ -260,6 +268,7 @@ def main(argv=None) -> int:
         uploader.submit(items)
 
     model.train()
+    last_reseed = (step, {part: int(model.quantizers[part].reseeded) for part in model.parts})
     while step < args.steps:
         for batch in loader:
             if step >= args.steps:
@@ -289,6 +298,15 @@ def main(argv=None) -> int:
             metrics = None
             if due_validation:
                 metrics = validate()
+                # stability (declared): dead-code re-seeds since the last validation, as a fraction of the codebook per
+                # 1k steps, from the persisted cumulative counter
+                for part in model.parts:
+                    count = int(model.quantizers[part].reseeded)
+                    metrics[f"stability/reseeded_{part}"] = count
+                    if last_reseed is not None and step > last_reseed[0]:
+                        metrics[f"stability/reseed_fraction_per_1k_{part}"] = (
+                            (count - last_reseed[1][part]) / config.codebook * 1000 / (step - last_reseed[0]))
+                last_reseed = (step, {part: int(model.quantizers[part].reseeded) for part in model.parts})
                 entry.update(metrics)
                 print(json.dumps({k: v for k, v in entry.items() if k == "step" or "/" in k and not k.startswith("train/")}),
                       flush=True)

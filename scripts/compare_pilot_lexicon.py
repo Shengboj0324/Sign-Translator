@@ -87,6 +87,28 @@ def verdict(arm_report: dict, control_report: dict, min_gain: float = .05, resam
 READS = ("lexicon", "lexicon_mirrored")
 
 
+def oracle_precondition(arm_report: dict, control_report: dict, resamples: int = 2000) -> dict:
+    """Round 17 oracle-plan precondition (gates amendment 1): the arm report's ``meaning_oracle_plan`` (the detail
+    prior given each clip's own plan; ``pilot_content_check.py --oracle-plan``) minus the control report's generated
+    BLEU, paired over the same clips. The two reports must hold identical references in the same order. Passes when
+    the 95% lower bound is above 0."""
+    oracle = arm_report.get("meaning_oracle_plan")
+    if not oracle or "hypotheses" not in oracle:
+        raise ValueError("the arm report has no meaning_oracle_plan (run the pilot with --oracle-plan)")
+    control = control_report["meaning"]
+    if "hypotheses" not in control.get("generated", {}):
+        raise ValueError("the control report has no generated hypotheses")
+    if arm_report["meaning"]["references"] != control["references"]:
+        raise ValueError("the two reports translated different references")
+    diff, (lo, hi) = paired_bleu_difference(oracle["hypotheses"], control["generated"]["hypotheses"],
+                                            control["references"], resamples)
+    return dict(oracle_precondition=dict(difference=round(diff, 3), ci95=[round(lo, 3), round(hi, 3)],
+                                         passes=bool(lo > 0), clips=len(control["references"])),
+                arm=dict(oracle_bleu=oracle["bleu"],
+                         generated_bleu=arm_report["meaning"].get("generated", {}).get("bleu")),   # None: --oracle-only
+                control=dict(bleu=control["generated"]["bleu"]))
+
+
 def per_subset_differences(arm_report: dict, control_report: dict, resamples: int = 10000, seed: int = 0) -> dict:
     """{read: {subset: dict(words, difference, ci95, arm, control)}}: paired top-5 differences within each subset of the
     word split, for every read both reports have; words are resampled within the subset."""
@@ -125,11 +147,23 @@ def main(argv=None) -> int:
     p.add_argument("--per-subset", action="store_true",
                    help="round 14: also the paired difference within each subset of both reports' lexicon_split, for "
                         "each read both have (report-only)")
+    p.add_argument("--oracle-precondition", action="store_true",
+                   help="round 17: compare the arm report's meaning_oracle_plan (pilot --oracle-plan) with the control's "
+                        "generated BLEU, paired over identical references; nothing else is compared")
     p.add_argument("--output-key")
     args = p.parse_args(argv)
     from signtranslator.data.text_motion_dataset import R2Store
     store = R2Store(os.environ)
     arm, control = json.loads(store.get(args.arm_key)), json.loads(store.get(args.control_key))
+    if args.oracle_precondition:
+        if args.per_subset:
+            raise SystemExit("--per-subset does not apply to --oracle-precondition")
+        out = dict(oracle_precondition(arm, control, min(args.resamples, 2000)), arm_key=args.arm_key,
+                   control_key=args.control_key)
+        print(json.dumps(out))
+        if args.output_key:
+            store.put(args.output_key, json.dumps(out, indent=2).encode())
+        return 0
     out = verdict(arm, control, args.min_gain, args.resamples, args.bleu_margin)
     out.update(arm_key=args.arm_key, control_key=args.control_key)
     if args.per_subset:

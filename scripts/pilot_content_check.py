@@ -209,8 +209,15 @@ def main(argv=None) -> int:
                         "(the plan tokenizer's codes of the real clip, the same seeds), read as meaning_oracle_plan, with "
                         "the paired BLEU gap oracle minus generated (oracle_gap). The arm's own meaning and lexicon halves "
                         "are unchanged. An upper bound on what the plan route can carry, never an arm's result")
+    p.add_argument("--oracle-only", action="store_true",
+                   help="round 17 (declared sequencing): with --oracle-plan, read only the oracle-plan generations (plus "
+                        "real and blank) and stop: no plan-prior generation, no lexicon. The oracle precondition "
+                        "(compare_pilot_lexicon.py --oracle-precondition against R16C) is judged on this report before "
+                        "the arm's pilot runs")
     p.add_argument("--output-key", required=True)
     args = p.parse_args(argv)
+    if args.oracle_only and not args.oracle_plan:
+        raise SystemExit("--oracle-only needs --oracle-plan")
     plan_args = (args.plan_prior_key, args.plan_prior_sha256, args.plan_tokenizer_key, args.plan_tokenizer_sha256)
     if any(plan_args) and not all(plan_args):
         raise SystemExit("--plan-prior-key, --plan-prior-sha256, --plan-tokenizer-key and --plan-tokenizer-sha256 go "
@@ -307,7 +314,8 @@ def main(argv=None) -> int:
             print(json.dumps({"oracle_plan": plan["oracle"]}), flush=True)
         oracle_gens = []
         for i in range(0, len(texts), 32):
-            gens += [post(o) for o in sample.batch(texts[i:i + 32], 24., seconds[i:i + 32], args.guidance, 1000 + i)]
+            if not args.oracle_only:
+                gens += [post(o) for o in sample.batch(texts[i:i + 32], 24., seconds[i:i + 32], args.guidance, 1000 + i)]
             if args.oracle_plan:
                 oracle_gens += [post(o) for o in sample.batch_with_plans(texts[i:i + 32], 24., seconds[i:i + 32],
                                                                          args.guidance, 1000 + i, plans[i:i + 32])]
@@ -315,24 +323,44 @@ def main(argv=None) -> int:
         translator, kind = load_translator(store, kp, MIX_SHA)  # the translator's own manifest (round 3c)
         translator = translator.to(torch.device(args.device))
         meaning = {}
-        for name, states in (("generated", gens), ("real", refs), ("blank", blanked(refs))):
+        reads = (("real", refs), ("blank", blanked(refs))) if args.oracle_only else \
+            (("generated", gens), ("real", refs), ("blank", blanked(refs)))
+        for name, states in reads:
             hyps = translate(translator, kind, states)
             point, ci = bleu_ci(hyps, texts)
             meaning[name] = dict(bleu=point, ci95=ci, hypotheses=list(hyps))     # kept for the paired BLEU test (round 7)
         meaning["references"] = list(texts)
-        meaning["above_blank"] = separated(meaning["generated"]["ci95"], meaning["blank"]["ci95"])
+        if not args.oracle_only:
+            meaning["above_blank"] = separated(meaning["generated"]["ci95"], meaning["blank"]["ci95"])
         if args.oracle_plan:                           # round 17 (review fix 4): the oracle read and the paired gap
             from compare_pilot_lexicon import paired_bleu_difference
             hyps = translate(translator, kind, oracle_gens)
             point, ci = bleu_ci(hyps, texts)
             extra_meaning["meaning_oracle_plan"] = dict(bleu=point, ci95=ci, hypotheses=list(hyps))
-            gap, (low, high) = paired_bleu_difference(hyps, meaning["generated"]["hypotheses"], texts)
-            extra_meaning["oracle_gap"] = dict(difference=round(gap, 3), ci95=[round(low, 3), round(high, 3)],
-                                               meaning="oracle plan minus the plan prior's plan, paired over the clips")
-            print(json.dumps({"meaning_oracle_plan": dict(bleu=point, ci95=ci), "oracle_gap": extra_meaning["oracle_gap"]}),
-                  flush=True)
+            # the declared D17 gate "oracle-plan detail generations: wrist speed within [0.8, 1.5] x real", measured as
+            # rounds 15-16 measured wrist speed relative to real (the back-translator's normalised 2D view)
+            from compositional_baseline import motion_rows
+            from sentence_exposure_diagnostic import mean_statistics, ratio_to
+            ratio = ratio_to(mean_statistics(motion_rows(oracle_gens, refs, 24.)),
+                             mean_statistics(motion_rows(refs, refs, 24.)))
+            speed = ratio.get("wrist_speed")
+            extra_meaning["oracle_motion_ratio_to_real"] = ratio
+            extra_meaning["oracle_wrist_speed_gate"] = dict(
+                wrist_speed_over_real=speed, band=[.8, 1.5],
+                passes=bool(speed is not None and .8 <= speed <= 1.5))
+            if not args.oracle_only:
+                gap, (low, high) = paired_bleu_difference(hyps, meaning["generated"]["hypotheses"], texts)
+                extra_meaning["oracle_gap"] = dict(difference=round(gap, 3), ci95=[round(low, 3), round(high, 3)],
+                                                   meaning="oracle plan minus the plan prior's plan, paired over the clips")
+            print(json.dumps({"meaning_oracle_plan": dict(bleu=point, ci95=ci),
+                              "oracle_gap": extra_meaning.get("oracle_gap")}), flush=True)
         print(json.dumps({"meaning": {k: {f: v for f, v in m.items() if f != "hypotheses"} if isinstance(m, dict) else m
                                       for k, m in meaning.items() if k != "references"}}), flush=True)
+    if args.oracle_only:                               # round 17: the oracle read alone, before the arm's pilot
+        report = dict(checkpoint_key=args.checkpoint_key, part_temperature=temperature, guidance=args.guidance,
+                      clips=len(texts), meaning=meaning, oracle_only=True, plan=dict(plan), **extra_meaning)
+        store.put(args.output_key, json.dumps(report, indent=2, sort_keys=True, default=float).encode())
+        return 0
     # lexicon
     states, y = [], []
     for k, g in enumerate(words):

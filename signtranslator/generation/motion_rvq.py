@@ -532,7 +532,9 @@ class RVQPriorConfig:
     # plan_corruption (training only, review fix 4): with this probability per sequence, a rate r ~ U(0,
     # plan_corruption_max) of its valid plan steps is replaced by the plan prior's teacher-forced samples
     # (plan_corruption_source "prior": one gradient-free plan-prior pass per batch over the true plan) or by uniform
-    # random codes ("random"), so the detail prior learns to follow plans like the ones it will be given. 0 keeps every
+    # random codes ("random"), so the detail prior learns to follow plans like the ones it will be given. The samples are
+    # drawn at guidance 1 (the text-conditioned logits, no guidance) and temperature 1, while the pilot samples the plan
+    # prior at guidance 1.5 and part temperature 1.1 (declared, round 17 gates amendment 1). 0 keeps every
     # plan-conditioned config's dict (the other two fields are dropped while it is 0).
     plan_window: int = 0
     plan_codes: int = 0

@@ -297,3 +297,50 @@ def test_a_pinned_word_list_is_checked_before_anything_runs(pilot):
         pcc.pinned_words(json.dumps(WORDS[:11] + ["ASK"]).encode(), index, 12)
     with pytest.raises(ValueError, match="expected"):
         pcc.pinned_words(json.dumps(dict(x=1)).encode(), {}, 12)
+
+
+def test_round17_oracle_plan_reads_and_the_oracle_only_mode(pilot, monkeypatch):
+    """Round 17: with the plan pins the pilot passes them to the generator; --oracle-plan adds the oracle read and the
+    paired gap and leaves the arm's halves as they were; --oracle-only reads the oracle alone (no plan-prior
+    generation, no lexicon), and compare_pilot_lexicon's oracle precondition reads that report against a control."""
+    store, run = pilot
+    import evaluate_text_to_motion as etm
+    import signtranslator.generation.plan_codes as pc
+    import compare_pilot_lexicon as cpl
+    seen = {}
+
+    def loader(store_, key, sha, device, temperature=None, plan=None):
+        seen["plan"] = plan
+
+        def with_plans(texts, fps, seconds, guidance, seed, plans):
+            DRAWN.append("oracle")
+            assert len(plans) == len(texts)
+            return [generated_state(f"{t}|o{seed + i}", frames=int(round(d * fps)))
+                    for i, (t, d) in enumerate(zip(texts, seconds))]
+        stub_sample.batch_with_plans = with_plans
+        return "stub", (), stub_sample
+    monkeypatch.setattr(etm, "load_generator", loader)
+    monkeypatch.setattr(pc, "load_plan_tokenizer", lambda payload, sha, device=None: (None, None, {}))
+    monkeypatch.setattr(pc, "oracle_plans", lambda plan, tok, refs, seconds, fps: ([torch.zeros(1, 8)] * len(refs), 0))
+    for key in ("pp.pt", "pt.pt"):
+        store.put(key, b"x")
+    pins = ["--plan-prior-key", "pp.pt", "--plan-prior-sha256", "a" * 64, "--plan-tokenizer-key", "pt.pt",
+            "--plan-tokenizer-sha256", "b" * 64]
+    default = json.loads(run(*pins, output="reports/r17.json"))
+    assert seen["plan"]["prior_key"] == "pp.pt" and "meaning_oracle_plan" not in default
+    DRAWN.clear()
+    full = json.loads(run(*pins, "--oracle-plan", output="reports/r17-oracle.json"))
+    assert {"meaning_oracle_plan", "oracle_gap"} <= set(full) and full["plan"]["oracle"] == dict(clips=3, length_adjusted=0)
+    assert full["meaning"]["generated"] == default["meaning"]["generated"] and full["lexicon"] == default["lexicon"]
+    DRAWN.clear()
+    only = json.loads(run(*pins, "--oracle-plan", "--oracle-only", output="reports/r17-oracle-only.json"))
+    assert only["oracle_only"] is True and "lexicon" not in only and "generated" not in only["meaning"]
+    assert DRAWN == ["oracle"] and only["meaning_oracle_plan"] == full["meaning_oracle_plan"]
+    gate = only["oracle_wrist_speed_gate"]
+    assert gate["band"] == [.8, 1.5] and gate["wrist_speed_over_real"] == only["oracle_motion_ratio_to_real"]["wrist_speed"]
+    assert isinstance(gate["passes"], bool)
+    out = cpl.oracle_precondition(only, default, resamples=100)
+    assert out["oracle_precondition"]["clips"] == 3 and out["oracle_precondition"]["difference"] == 0.
+    with pytest.raises(SystemExit, match="--oracle-only needs --oracle-plan"):
+        pcc.main(["--checkpoint-key", "prior.pt", "--mix-key", "mix.json", "--output-key", "x.json", *pins,
+                  "--oracle-only"])
