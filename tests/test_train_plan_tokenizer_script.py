@@ -28,6 +28,7 @@ def sha(path: Path) -> str:
 
 def test_plan_tokenizer_plan_prior_and_plan_conditioned_prior_train_hand_off_by_hash_and_generate(tmp_path, monkeypatch,
                                                                                                     capsys):
+    """End to end on a tiny store, with the review fixes: plan corruption arms and the round-17 diagnostics."""
     monkeypatch.setenv("SIGN_CACHE_DIR", str(tmp_path / "cache"))
     digest = store_with_manifest(tmp_path / "store")
     store = tmp_path / "store"
@@ -97,7 +98,7 @@ def test_plan_tokenizer_plan_prior_and_plan_conditioned_prior_train_hand_off_by_
     assert saved["config"]["plan_window"] == 4 and saved["config"]["plan_dropout"] == .5
     assert saved["plan_tokenizer_sha256"] == plan_sha and saved["plan_tokenizer_state"] is not None
     logged = json.loads((store / "training-runs/detail/log/step-00000002.json").read_text())
-    assert {"val/tokens_no_plan", "val/plan_gain"} <= set(logged[-1])                  # the informativeness measure
+    assert {"val/tokens_no_plan", "val/plan_gain", "val/plan_gain_stage1"} <= set(logged[-1])   # informativeness
     assert tmt.main(detail + ["--run", "detail", "--steps", "4"]) == 0                    # resumes under the same plan
     with pytest.raises(SystemExit, match="plan-tokenizer-key"):
         tmt.main(prior + ["--stage", "prior", "--run", "x", "--plan-dropout", "0.5"])
@@ -127,6 +128,70 @@ def test_plan_tokenizer_plan_prior_and_plan_conditioned_prior_train_hand_off_by_
     first = sample.batch_with_plans(["a dog runs", "rain falls"], 24., [.5, .3], 1.5, 0, fixed)
     second = sample.batch_with_plans(["a dog runs", "rain falls"], 24., [.5, .3], 1.5, 0, fixed)
     assert all((a.channels["body"].values == b.channels["body"].values).all() for a, b in zip(first, second))
-    # the plan's fidelity instruments accept the plan tokenizer only over its own tokenizer
     _, _, plain_sample = ev.load_generator(ds, plain_key, digest)
     assert getattr(plain_sample, "plan_prior", None) is None
+
+    # review fix 4: plan corruption, from random codes and from the plan prior's teacher-forced samples
+    pp_sha = sha(store / pp_key)
+    with pytest.raises(SystemExit, match="plan-corruption-prior-key"):
+        tmt.main(detail + ["--run", "c-bad", "--plan-corruption", "0.5"])
+    with pytest.raises(SystemExit, match="plan-corruption-prior-key"):
+        tmt.main(detail + ["--run", "c-bad", "--plan-corruption", "0.5", "--plan-corruption-source", "random",
+                           "--plan-corruption-prior-key", pp_key, "--plan-corruption-prior-sha256", pp_sha])
+    assert tmt.main(detail + ["--run", "c-random", "--plan-corruption", "1", "--plan-corruption-max", "1",
+                              "--plan-corruption-source", "random"]) == 0
+    assert tmt.main(detail + ["--run", "c-prior", "--plan-corruption", "1", "--plan-corruption-max", "1",
+                              "--plan-corruption-prior-key", pp_key, "--plan-corruption-prior-sha256", pp_sha]) == 0
+    for run in ("c-random", "c-prior"):
+        saved = torch.load(io.BytesIO((store / f"training-runs/{run}/checkpoints/step-00000002.pt").read_bytes()),
+                           weights_only=False)
+        assert saved["config"]["plan_corruption"] == 1. and saved["config"]["plan_tokenizer"] == plan.config.sha256()
+        logged = json.loads((store / f"training-runs/{run}/log/step-00000002.json").read_text())
+        assert any("train/plan_corrupted" in e for e in logged)
+    assert saved["plan_corruption_prior_sha256"] == pp_sha
+    with pytest.raises(SystemExit, match="not a plan prior over this plan tokenizer"):
+        tmt.main(detail + ["--run", "c-bad", "--plan-corruption", "1", "--plan-corruption-prior-key", plain_key,
+                           "--plan-corruption-prior-sha256", plain_sha])
+    assert tmt.main(prior + ["--stage", "plan-prior", "--run", "pp2", *with_plan, "--seed", "1"]) == 0
+    pp2 = "training-runs/pp2/checkpoints/step-00000002.pt"
+    with pytest.raises(SystemExit, match="different config or manifest"):       # resume under another plan prior
+        tmt.main(detail + ["--run", "c-prior", "--steps", "4", "--plan-corruption", "1", "--plan-corruption-max", "1",
+                           "--plan-corruption-prior-key", pp2, "--plan-corruption-prior-sha256", sha(store / pp2)])
+
+    # review fix 5 and 3: the round-17 diagnostics (back-translation replaced by a stand-in)
+    diag = load("round17_diagnostics")
+    common = ["--store", f"dir:{store}", "--device", "cpu", "--part-temperature", "body=1.1,face=1.0"]   # 2 parts here
+    for key in (plain_key, pp_key, detail_key):
+        out = f"diag/text-gain-{key.split('/')[1]}.json"
+        assert diag.main(["text-gain", *common, "--checkpoint-key", key, "--checkpoint-sha256", sha(store / key),
+                          "--manifest-key", "manifest.json", "--manifest-sha256", digest, "--partition", "train",
+                          "--conform-to-corpus", "", "--batch-size", "3", "--batches", "2", "--output-key", out]) == 0
+        report = json.loads((store / out).read_text())
+        assert {"text_gain", "text_gain_stage1", "tokens"} <= set(report) and report["batches"] == 1
+    with pytest.raises(SystemExit, match="SHA-256 differs"):
+        diag.main(["text-gain", *common, "--checkpoint-key", pp_key, "--checkpoint-sha256", "0" * 64,
+                   "--manifest-key", "manifest.json", "--manifest-sha256", digest, "--output-key", "x.json"])
+    from evaluate_text_to_motion import load_state
+    manifest = json.loads((store / "manifest.json").read_text())
+    states = [load_state(ds, r["continuous"]["state_key"], r["continuous"]["state_sha256"]) for r in manifest["records"]]
+    texts = [r["text"] for r in manifest["records"]]
+    seconds = [float(st.timestamps[-1] - st.timestamps[0]) + 1 / 24. for st in states]
+    monkeypatch.setattr(diag, "pilot_clips", lambda store_, args: (texts, states, seconds))
+    reads = []
+    fake = lambda batch: reads.append(len(batch)) or [texts[i % len(texts)] for i in range(len(batch))]
+    pins = ["--plan-tokenizer-key", plan_key, "--plan-tokenizer-sha256", plan_sha, "--mix-key", "manifest.json",
+            "--mix-sha256", digest]
+    assert diag.main(["plan-route", *common, "--checkpoint-key", pp_key, "--checkpoint-sha256", pp_sha, *pins,
+                      "--output-key", "diag/plan-route.json"], translate_fn=fake) == 0
+    route = json.loads((store / "diag/plan-route.json").read_text())
+    assert {"plan_route", "plan_round_trip", "real", "blank", "plan_route_minus_blank",
+            "plan_route_minus_plan_round_trip"} <= set(route) and route["clips"] == 4
+    with pytest.raises(SystemExit, match="needs a plan prior"):
+        diag.main(["plan-route", *common, "--checkpoint-key", detail_key, "--checkpoint-sha256", sha(store / detail_key),
+                   *pins, "--output-key", "x.json"], translate_fn=fake)
+    assert diag.main(["plan-following", *common, "--checkpoint-key", detail_key, "--checkpoint-sha256",
+                      sha(store / detail_key), *pins, "--output-key", "diag/following.json"], translate_fn=fake) == 0
+    following = json.loads((store / "diag/following.json").read_text())
+    assert following["pairs"] == [[0, 1], [2, 3], [1, 0], [3, 2]]
+    for name in ("empty_text", "other_text", "real"):
+        assert following[name]["pairs"] == 4 and 0 <= following[name]["rate"] <= 1

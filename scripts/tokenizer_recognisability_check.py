@@ -139,8 +139,14 @@ def main(argv=None) -> int:
     cfg = model.config.motion
     plan = None
     if args.plan_tokenizer_key:
+        import hashlib
         from signtranslator.generation.plan_codes import load_plan_tokenizer
-        plan, _, saved_plan = load_plan_tokenizer(store.get(args.plan_tokenizer_key), args.plan_tokenizer_sha256)
+        tokenizer_sha = hashlib.sha256(store.get(args.tokenizer_key)).hexdigest()   # the plan must read these bytes
+        try:
+            plan, _, saved_plan = load_plan_tokenizer(store.get(args.plan_tokenizer_key), args.plan_tokenizer_sha256,
+                                                      tokenizer_sha256=tokenizer_sha)
+        except ValueError as error:
+            raise SystemExit(f"--plan-tokenizer-key: {error}")
         if saved_plan["tokenizer_key"] != args.tokenizer_key:
             raise SystemExit(f"the plan tokenizer reads {saved_plan['tokenizer_key']}, not --tokenizer-key")
     real = [at_rate(conform(load_sample(r, "continuous", cache=cache, fetch=store.get), template), args.fps) for r in records]

@@ -28,7 +28,8 @@ Round 17 (docs/NEXT_PHASE_PLAN.md, "Round 17 design"), additions only: with ``--
 ``--plan-tokenizer-key`` (each with its SHA-256, checked against the detail checkpoint's own pins), ``--checkpoint-key``
 is a plan-conditioned detail prior and every sample is two-stage: plan prior, then detail prior, then the tokenizer's
 decoder (``--plan-temperature``/``--plan-guidance`` for the plan sampler; by default the detail's). The report records
-the pins under ``plan``. ``--oracle-plan`` (diagnostic) gives the meaning half each reference clip's own plan.
+the pins under ``plan``. ``--oracle-plan`` (diagnostic) also generates the meaning half from each reference clip's own
+plan: ``meaning_oracle_plan`` and the paired gap ``oracle_gap`` (oracle minus generated), the arm's halves unchanged.
 """
 from __future__ import annotations
 
@@ -204,10 +205,10 @@ def main(argv=None) -> int:
                    "--part-temperature)")
     p.add_argument("--plan-guidance", type=float, help="round 17: the plan sampler's guidance (default: --guidance)")
     p.add_argument("--oracle-plan", action="store_true",
-                   help="round 17 diagnostic: the meaning half generates the detail from each reference clip's own plan "
-                        "(the plan tokenizer's codes of the real clip) instead of the plan prior's; the lexicon half is "
-                        "unchanged (single words have no reference clip). An upper bound on what the plan can carry, "
-                        "never an arm's result")
+                   help="round 17 diagnostic: the meaning half is also generated from each reference clip's own plan "
+                        "(the plan tokenizer's codes of the real clip, the same seeds), read as meaning_oracle_plan, with "
+                        "the paired BLEU gap oracle minus generated (oracle_gap). The arm's own meaning and lexicon halves "
+                        "are unchanged. An upper bound on what the plan route can carry, never an arm's result")
     p.add_argument("--output-key", required=True)
     args = p.parse_args(argv)
     plan_args = (args.plan_prior_key, args.plan_prior_sha256, args.plan_tokenizer_key, args.plan_tokenizer_sha256)
@@ -281,6 +282,7 @@ def main(argv=None) -> int:
         words = words[:args.words] if args.word_set == "r5" else words[args.words:2 * args.words]
     subsets = word_split(split_payload, words) if args.word_split_key else None
     # meaning
+    extra_meaning = {}
     if args.meaning_from_key:   # round 13 amendment 1: the lexicon re-run keeps the arm's own meaning half
         earlier = json.loads(store.get(args.meaning_from_key))
         same = dict(checkpoint_key=args.checkpoint_key, clips=args.clips, guidance=args.guidance, part_temperature=temperature,
@@ -303,13 +305,12 @@ def main(argv=None) -> int:
             plans, adjusted = oracle_plans(plan_vq, plan_tok, refs, seconds, 24.)
             plan["oracle"] = dict(clips=len(plans), length_adjusted=adjusted)
             print(json.dumps({"oracle_plan": plan["oracle"]}), flush=True)
+        oracle_gens = []
         for i in range(0, len(texts), 32):
+            gens += [post(o) for o in sample.batch(texts[i:i + 32], 24., seconds[i:i + 32], args.guidance, 1000 + i)]
             if args.oracle_plan:
-                out = sample.batch_with_plans(texts[i:i + 32], 24., seconds[i:i + 32], args.guidance, 1000 + i,
-                                              plans[i:i + 32])
-            else:
-                out = sample.batch(texts[i:i + 32], 24., seconds[i:i + 32], args.guidance, 1000 + i)
-            gens += [post(o) for o in out]
+                oracle_gens += [post(o) for o in sample.batch_with_plans(texts[i:i + 32], 24., seconds[i:i + 32],
+                                                                         args.guidance, 1000 + i, plans[i:i + 32])]
         kp = json.loads(store.get("training-runs/back-translator-kp2d-uwb-ft-v1/best.json"))["checkpoint_key"]
         translator, kind = load_translator(store, kp, MIX_SHA)  # the translator's own manifest (round 3c)
         translator = translator.to(torch.device(args.device))
@@ -320,6 +321,16 @@ def main(argv=None) -> int:
             meaning[name] = dict(bleu=point, ci95=ci, hypotheses=list(hyps))     # kept for the paired BLEU test (round 7)
         meaning["references"] = list(texts)
         meaning["above_blank"] = separated(meaning["generated"]["ci95"], meaning["blank"]["ci95"])
+        if args.oracle_plan:                           # round 17 (review fix 4): the oracle read and the paired gap
+            from compare_pilot_lexicon import paired_bleu_difference
+            hyps = translate(translator, kind, oracle_gens)
+            point, ci = bleu_ci(hyps, texts)
+            extra_meaning["meaning_oracle_plan"] = dict(bleu=point, ci95=ci, hypotheses=list(hyps))
+            gap, (low, high) = paired_bleu_difference(hyps, meaning["generated"]["hypotheses"], texts)
+            extra_meaning["oracle_gap"] = dict(difference=round(gap, 3), ci95=[round(low, 3), round(high, 3)],
+                                               meaning="oracle plan minus the plan prior's plan, paired over the clips")
+            print(json.dumps({"meaning_oracle_plan": dict(bleu=point, ci95=ci), "oracle_gap": extra_meaning["oracle_gap"]}),
+                  flush=True)
         print(json.dumps({"meaning": {k: {f: v for f, v in m.items() if f != "hypotheses"} if isinstance(m, dict) else m
                                       for k, m in meaning.items() if k != "references"}}), flush=True)
     # lexicon
@@ -358,7 +369,7 @@ def main(argv=None) -> int:
                   **({"word_list": dict(key=args.word_list_key, sha256=list_sha, words=len(words))}
                      if args.word_list_key else {}),
                   **({"meaning_from_key": args.meaning_from_key} if args.meaning_from_key else {}),
-                  **({"plan": {k: v for k, v in plan.items()}} if plan else {}))
+                  **({"plan": {k: v for k, v in plan.items()}} if plan else {}), **extra_meaning)
     store.put(args.output_key, json.dumps(report, indent=2, sort_keys=True, default=float).encode())
     return 0
 

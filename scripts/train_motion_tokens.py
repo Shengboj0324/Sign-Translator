@@ -24,6 +24,9 @@ every prior checkpoint, so one prior checkpoint fully defines the generator.
   ``--plan-dropout``; validation also reports ``tokens_no_plan`` and ``plan_gain`` (the informativeness measure: the
   same codes under the empty plan). ``--init-key`` may name a plan-less prior of the same config (W14b): the plan
   modules then start at zero, so the warm-started prior equals it at step 0 (``plan_warm_start``).
+  ``--plan-corruption`` (review fix 4) replaces part of some rows' plans by the plan prior's teacher-forced samples
+  (``--plan-corruption-prior-key``, SHA-pinned and recorded) or by random codes; validation also reports
+  ``plan_gain_stage1``.
 - ``--stage plan-prior``: the text -> plan-code prior (kind ``motion_plan_prior``); ``--init-text-key`` copies the
   text encoder of an rvq prior (W14b).
 Both store the plan tokenizer's key, SHA-256, config and weights in every checkpoint.
@@ -113,7 +116,8 @@ def corpus_sample_weights(records, weights: dict[str, float]) -> list[float]:
 # model, locus/grammar conditioning and every size stay part of the comparison: they change the forward pass.
 PRIOR_TRAINING_ONLY = ("input_corruption", "scheduled_sampling", "history_dropout", "part_valid_loss", "guided_attention",
                        "guided_attention_width", "alignment_supervision", "rollout_blocks", "rollout_min", "rollout_max",
-                       "rollout_onset", "rollout_guidance", "rollout_temperature", "plan_dropout")
+                       "rollout_onset", "rollout_guidance", "rollout_temperature", "plan_dropout", "plan_corruption",
+                       "plan_corruption_max", "plan_corruption_source")
 
 
 def prior_warm_start_compatible(init_config: dict, config: dict) -> bool:
@@ -243,6 +247,16 @@ def main(argv=None) -> int:
                         help="the manifest the plan tokenizer was trained on, when it is not --manifest-sha256")
     parser.add_argument("--plan-dropout", type=float, default=0.,
                         help="round 17 detail prior: probability a sequence trains with the empty plan (0 = off)")
+    parser.add_argument("--plan-corruption", type=float, default=0.,
+                        help="round 17 detail prior (review fix 4): probability a sequence's plan is partly replaced "
+                             "(0 = off)")
+    parser.add_argument("--plan-corruption-max", type=float, default=.5,
+                        help="the largest fraction of a corrupted sequence's plan steps replaced (rate ~ U(0, this))")
+    parser.add_argument("--plan-corruption-source", choices=("prior", "random"), default="prior",
+                        help="prior: the plan prior's teacher-forced samples (--plan-corruption-prior-key); random: "
+                             "uniform codes")
+    parser.add_argument("--plan-corruption-prior-key", help="the trained plan prior (P17) checkpoint for --plan-corruption")
+    parser.add_argument("--plan-corruption-prior-sha256", help="its SHA-256")
     parser.add_argument("--no-plan-memory", dest="plan_memory", action="store_false",
                         help="round 17 detail prior: only the step-rate plan input, no plan cross-attention readers")
     parser.add_argument("--init-text-key", help="round 17 plan prior: copy the text encoder (embedding, projections, "
@@ -273,6 +287,13 @@ def main(argv=None) -> int:
         raise SystemExit("--plan-tokenizer-key needs an rvq prior stage and --plan-tokenizer-sha256")
     if args.plan_dropout and not (args.stage == "prior" and args.plan_tokenizer_key):
         raise SystemExit("--plan-dropout is for the plan-conditioned detail prior (--stage prior --plan-tokenizer-key)")
+    if args.plan_corruption and not (args.stage == "prior" and args.plan_tokenizer_key):
+        raise SystemExit("--plan-corruption is for the plan-conditioned detail prior")
+    corruption_from_prior = args.plan_corruption > 0 and args.plan_corruption_source == "prior"
+    if corruption_from_prior != bool(args.plan_corruption_prior_key) or (
+            bool(args.plan_corruption_prior_key) != bool(args.plan_corruption_prior_sha256)):
+        raise SystemExit("--plan-corruption with source prior needs --plan-corruption-prior-key and "
+                         "--plan-corruption-prior-sha256 (and they need it)")
     if args.init_text_key and (args.stage != "plan-prior" or not args.init_text_sha256):
         raise SystemExit("--init-text-key is for --stage plan-prior and needs --init-text-sha256")
     store = make_store(args.store)
@@ -296,7 +317,7 @@ def main(argv=None) -> int:
     tokenizer_kind, prior_kind = kinds(args.architecture)
     if args.stage == "plan-prior":
         prior_kind = PLAN_PRIOR_KIND
-    plan, plan_state = None, None                   # round 17: the frozen plan tokenizer
+    plan, plan_state, corruption_prior = None, None, None    # round 17: the frozen plan tokenizer (and plan prior)
     if args.stage == "tokenizer":
         motion = TextToMotionConfig(bindings=channel_bindings_from_state(train[0][1]),
                                     trained_channels=tuple(args.trained_channels.split(",")), max_seconds=args.max_seconds)
@@ -342,6 +363,17 @@ def main(argv=None) -> int:
             if plan.config.tokenizer.sha256() != tokenizer.config.sha256():
                 raise SystemExit("--plan-tokenizer-key reads another tokenizer config than --tokenizer-key")
             plan_state = plan.state_dict()
+        if args.plan_corruption_prior_key:             # review fix 4: the frozen plan prior that corrupts plans
+            payload = store.get(args.plan_corruption_prior_key)
+            if hashlib.sha256(payload).hexdigest() != args.plan_corruption_prior_sha256:
+                raise SystemExit("the --plan-corruption-prior-key checkpoint differs from its SHA-256")
+            source = torch.load(io.BytesIO(payload), map_location="cpu", weights_only=False)
+            if (source.get("kind") != PLAN_PRIOR_KIND or source.get("plan_tokenizer_sha256") != args.plan_tokenizer_sha256
+                    or source.get("tokenizer_sha256") != args.tokenizer_sha256):
+                raise SystemExit("--plan-corruption-prior-key is not a plan prior over this plan tokenizer and tokenizer")
+            corruption_prior = RVQPrior(PlanPriorConfig.from_dict(source["config"]))
+            corruption_prior.load_state_dict(source.get("ema") or source["model"])
+            corruption_prior.to(device).eval().requires_grad_(False)
         common = dict(d_model=args.d_model, heads=args.heads, text_layers=args.text_layers, feedforward=args.feedforward,
                       dropout=args.dropout, cfg_dropout=args.cfg_dropout, grammar_features=args.grammar_features,
                       locus_conditioning=args.locus_conditioning)
@@ -351,8 +383,11 @@ def main(argv=None) -> int:
         else:
             # round 17: the plan prior's "tokenizer" is the plan tokenizer; the detail prior gains the plan fields
             plan_fields = (dict(plan_window=plan.config.window, plan_codes=plan.config.codes_per_step,
-                                plan_codebook=plan.config.codebook, plan_memory=args.plan_memory,
-                                plan_dropout=args.plan_dropout) if plan is not None and args.stage == "prior" else {})
+                                plan_codebook=plan.config.codebook, plan_tokenizer=plan.config.sha256(),
+                                plan_memory=args.plan_memory, plan_dropout=args.plan_dropout,
+                                plan_corruption=args.plan_corruption, plan_corruption_max=args.plan_corruption_max,
+                                plan_corruption_source=args.plan_corruption_source)
+                           if plan is not None and args.stage == "prior" else {})
             config_class = PlanPriorConfig if args.stage == "plan-prior" else RVQPriorConfig
             config = config_class(plan.config if args.stage == "plan-prior" else tokenizer.config,
                                     temporal_layers=args.token_layers, depth_layers=args.depth_layers,
@@ -379,7 +414,7 @@ def main(argv=None) -> int:
         if args.stage == "plan-prior":
             return plan_prior_loss(model, tokenizer, plan, tokens, mask, motion, *loci, train=train, word_spans=spans)
         return rvq_prior_loss(model, tokenizer, tokens, mask, motion, *loci, train=train, word_spans=spans,
-                              **({"plan_tokenizer": plan} if plan_detail else {}))
+                              **({"plan_tokenizer": plan, "plan_prior": corruption_prior} if plan_detail else {}))
 
     def split_spans(batch):
         """(batch without the per-frame word spans, the spans on the device or None)."""
@@ -394,7 +429,8 @@ def main(argv=None) -> int:
         state = torch.load(io.BytesIO(store.get(checkpoints[-1])), map_location=device, weights_only=False)
         if (state.get("kind") != kind or state["config_sha256"] != config.sha256()
                 or state["manifest_sha256"] != args.manifest_sha256
-                or state.get("plan_tokenizer_sha256") != args.plan_tokenizer_sha256):
+                or state.get("plan_tokenizer_sha256") != args.plan_tokenizer_sha256
+                or state.get("plan_corruption_prior_sha256") != args.plan_corruption_prior_sha256):
             raise SystemExit("the newest checkpoint was trained with a different config or manifest")
         model.load_state_dict(state["model"])
         optimizer.load_state_dict(state["optimizer"])
@@ -479,8 +515,11 @@ def main(argv=None) -> int:
                 if plan_detail:                # round 17 informativeness: the same codes without the plan
                     _, empty_v = rvq_prior_loss(model, tokenizer, tokens_v, mask_v, motion_v, *loci_v, train=False,
                                                 plan_tokenizer=plan, plan_mode="empty")
+                    # nats per code, all codes and the stage-1 codes (review fix 3)
                     terms_v = dict(terms_v, tokens_no_plan=empty_v["tokens"],
-                                   plan_gain=empty_v["tokens"] - terms_v["tokens"])
+                                   plan_gain=empty_v["tokens"] - terms_v["tokens"],
+                                   stage1_tokens_no_plan=empty_v["stage1_tokens"],
+                                   plan_gain_stage1=empty_v["stage1_tokens"] - terms_v["stage1_tokens"])
                 for key, value in dict(loss=float(loss_v), **terms_v).items():
                     totals[key] = totals.get(key, 0.) + float(value)
                 count += 1
@@ -519,7 +558,10 @@ def main(argv=None) -> int:
                         tokenizer_key=args.tokenizer_key, tokenizer_sha256=args.tokenizer_sha256,
                         **(dict(plan_tokenizer_key=args.plan_tokenizer_key, plan_tokenizer_sha256=args.plan_tokenizer_sha256,
                                 plan_tokenizer_config=plan.config.to_dict(), plan_tokenizer_state=plan_state)
-                           if plan is not None else {})), buffer)
+                           if plan is not None else {}),
+                        **(dict(plan_corruption_prior_key=args.plan_corruption_prior_key,
+                                plan_corruption_prior_sha256=args.plan_corruption_prior_sha256)
+                           if args.plan_corruption_prior_key else {})), buffer)
         key = f"{prefix}/checkpoints/step-{step:08d}.pt"
         items = [(key, buffer.getvalue()), (f"{prefix}/log/step-{step:08d}.json", json.dumps(log, sort_keys=True).encode())]
         if metrics and (best is None or metrics["val/loss"] < best["val_loss"]):

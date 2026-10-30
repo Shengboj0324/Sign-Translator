@@ -105,7 +105,8 @@ def pool_windows(x: torch.Tensor, valid: torch.Tensor, window: int, scores: torc
 
 
 def upsample_windows(y: torch.Tensor, window: int, steps: int) -> torch.Tensor:
-    """(B, steps, C) per-step features from plan-step features (B, S_plan, C): step t takes plan step t // W."""
+    """(B, steps, C) per-step features from plan-step features (B, S_plan, C): step t takes plan step t // W. The plan
+    decoder upsamples with it; the detail prior's plan input uses the same rule as an index (t // W)."""
     if y.shape[1] * window < steps:
         raise ValueError(f"{y.shape[1]} plan steps of {window} cannot cover {steps} steps")
     return y.repeat_interleave(window, dim=1)[:, :steps]
@@ -198,9 +199,19 @@ class PlanVQ(nn.Module):
 
     @staticmethod
     def _conv(module, x: torch.Tensor, valid: torch.Tensor) -> torch.Tensor:
-        """``module`` over (B, L, C) with invalid positions zeroed before it (padding-independent outputs)."""
+        """``module`` (one convolution or one residual block) over (B, L, C) with invalid positions zeroed before it,
+        so its outputs at valid positions do not depend on the padding."""
         x = torch.where(valid[..., None], x, torch.zeros_like(x))
         return module(x.transpose(1, 2)).transpose(1, 2)
+
+    @classmethod
+    def _stack(cls, blocks: nn.Sequential, x: torch.Tensor, valid: torch.Tensor) -> torch.Tensor:
+        """A stack of residual blocks, re-masking before every block: a block's outputs at invalid positions are
+        not zero, so masking only the stack's input lets the padding reach valid positions from the second block on
+        (review of c37036b: max |Δz| = 16 at blocks = 2)."""
+        for block in blocks:
+            x = cls._conv(block, x, valid)
+        return x
 
     def encode(self, latents: dict, valid: torch.Tensor) -> tuple[dict, torch.Tensor]:
         """(part -> (B, S_plan, code_dim) continuous plan latents, (B, S_plan) plan valid) of the frozen tokenizer's
@@ -208,10 +219,10 @@ class PlanVQ(nn.Module):
         out, plan_valid = {}, None
         for p in self.parts:
             x = self._conv(self.encoder_in[p], latents[p], valid)
-            x = self._conv(self.encoder_steps[p], x, valid)
+            x = self._stack(self.encoder_steps[p], x, valid)
             scores = self._conv(self.pool_score[p], x, valid)[..., 0] if self.config.pooling == "learned" else None
             pooled, plan_valid = pool_windows(x, valid, self.config.window, scores)
-            pooled = self._conv(self.encoder_plan[p], pooled, plan_valid)
+            pooled = self._stack(self.encoder_plan[p], pooled, plan_valid)
             out[p] = self._conv(self.encoder_out[p], pooled, plan_valid)
         return out, plan_valid
 
@@ -237,11 +248,11 @@ class PlanVQ(nn.Module):
         """part -> (B, steps, D) per-step latents of the tokenizer from the plan latents (B, S_plan, code_dim)."""
         x = torch.cat([quantized[p] for p in self.parts], -1)
         x = self._conv(self.decoder_in, x, plan_valid)
-        x = self._conv(self.decoder_plan, x, plan_valid)
-        W = self.config.window
-        x = x.repeat_interleave(W, dim=1) + self.window_position.repeat(x.shape[1], 1)[None]
-        step_valid = plan_valid.repeat_interleave(W, dim=1)
-        x = self._conv(self.decoder_steps, x, step_valid)
+        x = self._stack(self.decoder_plan, x, plan_valid)
+        W, n = self.config.window, x.shape[1]
+        x = upsample_windows(x, W, n * W) + self.window_position.repeat(n, 1)[None]
+        step_valid = upsample_windows(plan_valid[..., None], W, n * W)[..., 0]
+        x = self._stack(self.decoder_steps, x, step_valid)
         x = self._conv(self.decoder_out, x, step_valid)[:, :steps]
         D = self.config.tokenizer.code_dim
         return {p: x[..., k * D:(k + 1) * D] for k, p in enumerate(self.parts)}
@@ -315,16 +326,31 @@ def decoded_motion_loss(tokenizer: MotionRVQ, reconstruction: torch.Tensor, moti
     return total, terms
 
 
-def relative_latent_error(reconstruction: dict, latents: dict, valid: torch.Tensor) -> torch.Tensor:
-    """Mean over parts of Σ_valid ‖ẑ − z‖² / Σ_valid ‖z − z̄‖² (z̄: the part's mean latent over the valid steps, the
-    denominator detached): 1 = predicting the mean, 0 = exact."""
-    m = valid[..., None].to(next(iter(latents.values())).dtype)
-    count = m.sum().clamp_min(1.)
+@torch.no_grad()
+def part_step_observed(tokenizer: MotionRVQ, motion: MotionBatch) -> dict:
+    """part -> (B, S) bool: the tokenizer steps at which the part was observed (``part_code_weights``' rule: at least
+    half of the part's unit columns valid in one of the step's frames). Untracked parts are filled with the neutral
+    pose by ``diffusion_targets``; their latents encode the fill, not motion."""
+    observed = diffusion_valid(tokenizer.config.motion, motion)
+    return {part: tokenizer.token_valid(observed[..., getattr(tokenizer, f"columns_{part}")].float().mean(-1) >= .5)
+            for part, _ in tokenizer.parts}
+
+
+def relative_latent_error(reconstruction: dict, latents: dict, valid) -> torch.Tensor:
+    """Mean over parts of Σ_m ‖ẑ − z‖² / Σ_m ‖z − z̄‖² over each part's mask m (z̄: the part's mean latent over m, the
+    denominator detached): 1 = predicting the mean, 0 = exact. ``valid`` is one (B, S) mask for every part or a
+    part -> (B, S) mask (the steps where the part was observed); parts without a masked step are left out."""
     out = []
     for p, z in latents.items():
+        m = (valid[p] if isinstance(valid, dict) else valid)[..., None].to(z.dtype)
+        count = m.sum()
+        if float(count) == 0:
+            continue
         mean = (z * m).sum((0, 1)) / count
         energy = (((z - mean) ** 2) * m).sum().detach()
         out.append((((reconstruction[p] - z) ** 2) * m).sum() / (energy + 1e-12))
+    if not out:
+        return sum(r.sum() for r in reconstruction.values()) * 0.
     return torch.stack(out).mean()
 
 
@@ -338,7 +364,8 @@ def plan_tokenizer_loss(plan: PlanVQ, tokenizer: MotionRVQ, motion: MotionBatch,
     reconstruction, z, quantized, codes, plan_valid = plan(latents, valid, stages)
     terms = {}
     total = torch.zeros((), dtype=torch.float64, device=valid.device)
-    latent = relative_latent_error(reconstruction, latents, valid)
+    observed = part_step_observed(tokenizer, motion)              # (review fix 7) observed steps of each part only
+    latent = relative_latent_error(reconstruction, latents, {p: valid & observed[p] for p in plan.parts})
     terms["latent_relative"] = latent.detach()
     if config.latent_weight:
         total = total + config.latent_weight * latent.to(total.dtype)
@@ -358,6 +385,15 @@ def plan_tokenizer_loss(plan: PlanVQ, tokenizer: MotionRVQ, motion: MotionBatch,
     seen = torch.zeros(P, config.codebook + 1, dtype=torch.bool, device=codes.device).scatter_(1, first, True)
     for p, count in zip(plan.parts, seen[:, :config.codebook].sum(1).unbind()):
         terms[f"codes_used_{p}"] = count
+    # stage-1 perplexity per part over the valid plan steps (exp of the code distribution's entropy; codebook size =
+    # every code equally used) and the dead codes re-seeded so far in this process
+    counts = torch.zeros(P, config.codebook + 1, device=codes.device).scatter_add_(1, first, torch.ones_like(first,
+                                                                                                         dtype=torch.float))
+    freq = counts[:, :config.codebook] / counts[:, :config.codebook].sum(1, keepdim=True).clamp_min(1.)
+    perplexity = torch.exp(-(freq * freq.clamp_min(1e-12).log()).sum(1))
+    for k, p in enumerate(plan.parts):
+        terms[f"perplexity_{p}"] = perplexity[k]
+        terms[f"reseeded_{p}"] = float(plan.quantizers[p].reseeded)
     return total + config.commitment * commitment.to(total.dtype), terms
 
 
@@ -522,7 +558,9 @@ def generate_plan_codes_batch(plan_prior: RVQPrior, texts, *, fps: float, durati
 
 
 def check_plan_pair(plan_prior: RVQPrior, detail_prior: RVQPrior) -> None:
-    """Refuse a plan prior and a detail prior that do not share the plan layout and the detail tokenizer."""
+    """Refuse a plan prior and a detail prior that do not share the plan layout, the plan tokenizer (its config
+    SHA-256, which the detail config records) and the detail tokenizer. The checkpoints' plan-tokenizer *weights*
+    (their SHA-256) are compared where the checkpoints are loaded (``evaluate_text_to_motion.load_plan_prior``)."""
     plan_config, detail = plan_prior.config.tokenizer, detail_prior.config
     if not isinstance(plan_prior.config, PlanPriorConfig) or not detail.plan_window:
         raise ValueError("expected a plan prior and a plan-conditioned detail prior")
@@ -531,6 +569,8 @@ def check_plan_pair(plan_prior: RVQPrior, detail_prior: RVQPrior) -> None:
         raise ValueError("the plan prior's plan layout differs from the detail prior's")
     if plan_config.tokenizer.sha256() != detail.tokenizer.sha256():
         raise ValueError("the plan prior and the detail prior read different tokenizers")
+    if plan_config.sha256() != detail.plan_tokenizer:
+        raise ValueError("the plan prior and the detail prior were built on different plan tokenizers")
 
 
 @torch.no_grad()
@@ -565,6 +605,30 @@ def generate_plan_detail_batch(plan_prior: RVQPrior, detail_prior: RVQPrior, tok
         states, codes = out
         return states, ([p.cpu() for p in plans], codes)
     return out
+
+
+@torch.no_grad()
+def decode_plan_states(plan: PlanVQ, tokenizer: MotionRVQ, plans, texts, *, fps: float, durations,
+                       sample_prefix: str = "plan-route"):
+    """Canonical states decoded from plan codes alone (no detail prior): each plan (n, P·Q) -> the plan decoder's
+    per-step latents -> the frozen tokenizer's decoder, at round(duration · fps) frames. With the plan prior's plans
+    this is the plan-only route (what the plan carries by itself); with a clip's own plan, its plan round trip."""
+    plan.eval(); tokenizer.eval()
+    device = next(tokenizer.parameters()).device
+    states = []
+    for row, (codes, text, seconds) in enumerate(zip(plans, texts, durations)):
+        frames = max(int(round(float(min(max(seconds, 1 / fps), 60.)) * fps)), 1)
+        steps = math.ceil(frames / tokenizer.config.step)
+        codes = codes.to(device)[None]
+        if codes.shape[1] != plan_steps(steps, plan.config.window):
+            raise ValueError(f"plan {row}: {codes.shape[1]} plan steps for {steps} steps")
+        latents = plan.decode_codes(codes, torch.ones(codes.shape[:2], dtype=torch.bool, device=device), steps)
+        unit = tokenizer.decode_latents(latents, frames)
+        raw = unit_to_raw(tokenizer.config.motion, unit.double())
+        native = native_values(tokenizer.config.motion, {key: v[0] for key, v in raw.items()})
+        states.append(assemble_state(tokenizer.config.motion, text, native, frames, fps, f"{sample_prefix}:{row}",
+                                     f"{sample_prefix}-clock", method="motion_plan_codes"))
+    return states
 
 
 @torch.no_grad()

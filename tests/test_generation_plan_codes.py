@@ -43,7 +43,7 @@ def plan_config(tokenizer, **kw):
 def planned(prior, plan, **kw):
     """The plan-conditioned version of ``prior``'s config over ``plan``'s layout."""
     return replace(prior.config, plan_window=plan.config.window, plan_codes=plan.config.codes_per_step,
-                   plan_codebook=plan.config.codebook, **kw)
+                   plan_codebook=plan.config.codebook, plan_tokenizer=plan.config.sha256(), **kw)
 
 
 def warm(prior, config):
@@ -98,25 +98,50 @@ def test_windows_pool_and_upsample_with_ragged_lengths():
         upsample_windows(y, W, 10)
 
 
-def test_plan_codes_of_a_clip_do_not_depend_on_the_batch_or_its_padding():
+@pytest.mark.parametrize("blocks", [1, 2])
+@pytest.mark.parametrize("pooling", ["mean", "learned"])
+def test_plan_codes_of_a_clip_do_not_depend_on_the_batch_or_its_padding(blocks, pooling):
+    """Review of c37036b, fix 1: with two residual blocks per stack the padding leaked into valid positions (masking
+    only the stack's input); every block is now re-masked. The continuous plan latents, the codes and the
+    reconstruction of a clip are the same alone and in a padded batch, whatever the padding holds."""
     torch.manual_seed(0)
     _, tokenizer, _ = prior_setup()
-    plan = PlanVQ(plan_config(tokenizer, window=3, pooling="learned")).eval()
+    plan = PlanVQ(plan_config(tokenizer, window=3, pooling=pooling, blocks=blocks))
+    wake_all(plan)
+    plan = plan.double().eval()                      # float64: rounding far below any leak (the leak was up to 1e5 here)
     D = tokenizer.config.code_dim
-    latents = {p: torch.randn(2, 11, D) for p in plan.parts}
+    latents = {p: torch.randn(2, 11, D, dtype=torch.float64) for p in plan.parts}
     valid = torch.arange(11)[None] < torch.tensor([[11], [5]])
     codes, plan_valid = plan.encode_latents(latents, valid)
     assert codes.shape == (2, 4, plan.config.codes_per_step) and plan_valid.sum(1).tolist() == [4, 2]
     alone = {p: v[1:, :5] for p, v in latents.items()}
     codes1, valid1 = plan.encode_latents(alone, valid[1:, :5])
     assert torch.equal(codes1[0], codes[1, :2]) and valid1.all()
+    z, _ = plan.encode(latents, valid)
+    z1, _ = plan.encode(alone, valid[1:, :5])
+    garbage = {p: torch.where(valid[..., None], v, torch.full_like(v, 1e3)) for p, v in latents.items()}
+    zg, _ = plan.encode(garbage, valid)
     rec = plan.reconstruct(latents, valid)
     rec1 = plan.reconstruct(alone, valid[1:, :5])
     for p in plan.parts:
+        torch.testing.assert_close(z1[p][0], z[p][1, :2], rtol=1e-9, atol=1e-7)     # the continuous plan latents
+        torch.testing.assert_close(zg[p][plan_valid], z[p][plan_valid], rtol=1e-9, atol=1e-7)
         assert rec[p].shape == (2, 11, D)
-        torch.testing.assert_close(rec1[p][0], rec[p][1, :5])              # valid steps: the same reconstruction
-    garbage = {p: torch.where(valid[..., None], v, torch.full_like(v, 1e3)) for p, v in latents.items()}
+        torch.testing.assert_close(rec1[p][0], rec[p][1, :5], rtol=1e-9, atol=1e-7)  # valid steps: the same
     assert torch.equal(plan.encode_latents(garbage, valid)[0], codes)    # padded steps are never read
+    if blocks == 2:                                  # the test sees the reviewed defect: masking only a stack's input
+        plan._stack = lambda stack, x, mask: PlanVQ._conv(stack, x, mask)
+        with torch.no_grad():
+            leaked, batched = plan.encode(alone, valid[1:, :5])[0], plan.encode(latents, valid)[0]
+        assert max(float((leaked[p][0] - batched[p][1, :2]).abs().max()) for p in plan.parts) > 1e-3
+
+
+def wake_all(module, scale=.5, seed=0):
+    """Random weights of a noticeable size everywhere (a zero-initialised position table hides leaks)."""
+    g = torch.Generator().manual_seed(seed)
+    with torch.no_grad():
+        for p in module.parameters():
+            p.copy_(torch.randn(p.shape, generator=g) * scale / max(1, p.shape[-1]) ** .5 * 3)
 
 
 def test_plan_codes_are_stage_major_and_decode_from_codes_equals_the_forward_path():
@@ -225,7 +250,7 @@ def test_plan_conditioning_is_opt_in_and_leaves_every_earlier_config_and_network
     with pytest.raises(ValueError, match="plan_window"):
         replace(prior.config, plan_dropout=.5)
     with pytest.raises(ValueError, match="plan conditioning needs"):
-        replace(prior.config, plan_window=2, plan_codes=0, plan_codebook=16)
+        replace(prior.config, plan_window=2, plan_codes=0, plan_codebook=16, plan_tokenizer="x")
     with pytest.raises(ValueError, match="not plan-conditioned"):
         rvq_prior_loss(prior, tokenizer, *encode_texts(["a", "b"]), collate_multichannel(prior_setup()[0]),
                        plan_tokenizer=plan)
@@ -384,7 +409,7 @@ def test_the_plan_prior_learns_plan_codes_and_its_config_round_trips():
     assert again == config and again.sha256() == config.sha256() and config.tokenizer.step == 2 * tokenizer.config.step
     assert prior.J == plan.config.codes_per_step and prior.K == plan.config.codebook
     with pytest.raises(ValueError, match="not plan-conditioned"):
-        replace(config, plan_window=2, plan_codes=8, plan_codebook=16)
+        replace(config, plan_window=2, plan_codes=8, plan_codebook=16, plan_tokenizer="x")
     batch = collate_multichannel(states)
     tokens, mask = encode_texts(["ask him", "cut it"])
     codes, plan_valid = encode_plan(plan, tokenizer, batch)
@@ -526,3 +551,154 @@ def test_oracle_plans_are_each_clips_own_plan_fitted_to_the_generated_steps():
     out = generate_plan_detail_batch(plan_prior_of(tokenizer, plan), detail, tokenizer, ["ask him", "cut it"], fps=24.,
                                      durations=seconds, plans=plans, seed=0)
     assert [len(o.timestamps) for o in out] == [len(s.timestamps) for s in states]
+
+
+def test_the_causal_mask_detection_matches_the_decoders_and_its_fallback():
+    from signtranslator.generation.motion_rvq import _causal_mask_rule, detect_is_causal_mask
+    from torch.nn.modules.transformer import _detect_is_causal_mask
+    for size in (1, 4, 7):
+        bool_mask = torch.triu(torch.ones(size, size, dtype=torch.bool), 1)
+        float_mask = torch.triu(torch.full((size, size), float("-inf")), 1)
+        other = bool_mask.clone(); other[0, 0] = True
+        for mask in (bool_mask, float_mask, other, torch.zeros(size, size, dtype=torch.bool)):
+            assert detect_is_causal_mask(mask, size) == _detect_is_causal_mask(mask, None, size) == \
+                _causal_mask_rule(mask, size)
+    assert detect_is_causal_mask(torch.triu(torch.ones(4, 4, dtype=torch.bool), 1), 4) is True
+    assert _causal_mask_rule(None, 3) is False and _causal_mask_rule(torch.ones(3, 4, dtype=torch.bool), 3) is False
+
+
+def test_plan_corruption_is_opt_in_training_only_and_replaces_a_fraction_of_plan_steps():
+    from signtranslator.generation.motion_rvq import teacher_forced_plan_samples
+    states, tokenizer, base = prior_setup()
+    plan = PlanVQ(plan_config(tokenizer)).eval()
+    off = planned(base, plan, plan_dropout=.2)
+    assert not {"plan_corruption", "plan_corruption_max", "plan_corruption_source"} & set(off.to_dict())
+    on = planned(base, plan, plan_corruption=1., plan_corruption_max=1., plan_corruption_source="random")
+    assert RVQPriorConfig.from_dict(json.loads(json.dumps(on.to_dict()))) == on
+    with pytest.raises(ValueError, match="plan corruption needs"):
+        planned(base, plan, plan_corruption=.5, plan_corruption_source="oracle")
+    with pytest.raises(ValueError, match="need plan_window"):
+        replace(base.config, plan_corruption=.5)
+    # zero-initialised: corruption changes nothing (its draws come after every other draw, before plan dropout)
+    batch = collate_multichannel(states * 2)
+    tokens, mask = encode_texts(["ask him", "cut it", "go now", "give"])
+    model = warm(base, on).train()
+    base.train()
+    torch.manual_seed(4); a, _ = rvq_prior_loss(base, tokenizer, tokens, mask, batch, train=True)
+    torch.manual_seed(4); b, terms = rvq_prior_loss(model, tokenizer, tokens, mask, batch, train=True, plan_tokenizer=plan)
+    assert torch.equal(a, b) and 0 < terms["plan_corrupted"] <= 1
+    # which steps change: only valid plan steps of selected rows; evaluation never corrupts
+    wake(model)
+    seen, original = [], model.temporal_states
+    model.temporal_states = lambda h, m, prev, *x, **k: seen.append(k["plan"]) or original(h, m, prev, *x, **k)
+    latents, step_valid, _ = tokenizer_latents(tokenizer, batch)
+    true_codes, true_valid = plan.encode_latents(latents, step_valid)
+    rvq_prior_loss(model, tokenizer, tokens, mask, batch, train=False, plan_tokenizer=plan)
+    assert torch.equal(seen[-1][0], true_codes)
+    changed = []
+    for seed in range(5):
+        torch.manual_seed(seed)
+        rvq_prior_loss(model, tokenizer, tokens, mask, batch, train=True, plan_tokenizer=plan)
+        codes, valid = seen[-1]
+        assert torch.equal(valid, true_valid)
+        changed.append(float((codes != true_codes).any(-1).float().mean()))
+    assert 0 < np.mean(changed) < 1
+    # the plan prior's source: its teacher-forced samples, at the corrupted steps only
+    prior = plan_prior_of(tokenizer, plan).eval()
+    with torch.no_grad():
+        prior.heads_bias.zero_(); prior.heads_bias[:, 3] = 1e4                 # a plan prior that always says code 3
+    drawn = teacher_forced_plan_samples(prior, tokens, mask, None, true_codes, true_valid, batch)
+    assert drawn.shape == true_codes.shape and bool((drawn == 3).all()) and not prior.training
+    from_prior = RVQPrior(planned(base, plan, plan_corruption=1., plan_corruption_max=1.))
+    from_prior.load_state_dict(model.state_dict())
+    from_prior.temporal_states = lambda h, m, prev, *x, **k: seen.append(k["plan"]) or original(h, m, prev, *x, **k)
+    from_prior.train()
+    with pytest.raises(ValueError, match="needs plan_prior"):
+        rvq_prior_loss(from_prior, tokenizer, tokens, mask, batch, train=True, plan_tokenizer=plan)
+    torch.manual_seed(1)
+    rvq_prior_loss(from_prior, tokenizer, tokens, mask, batch, train=True, plan_tokenizer=plan, plan_prior=prior)
+    codes, _ = seen[-1]
+    moved = codes != true_codes
+    assert bool(moved.any()) and bool((codes[moved] == 3).all())
+
+
+def test_stage1_tokens_is_the_stage_1_codes_cross_entropy():
+    states, tokenizer, base = prior_setup()
+    batch = collate_multichannel(states)
+    tokens, mask = encode_texts(["ask him", "cut it"])
+    base.eval()
+    _, terms = rvq_prior_loss(base, tokenizer, tokens, mask, batch, train=False)
+    seen, original = [], base.depth_logits
+    base.depth_logits = lambda h, c: seen.append((original(h, c), c)) or seen[-1][0]
+    rvq_prior_loss(base, tokenizer, tokens, mask, batch, train=False)
+    logits, prefix = seen[-1]
+    P = len(tokenizer.parts)
+    unit = __import__("signtranslator.generation.text_to_motion", fromlist=["x"]).diffusion_targets(tokenizer.config.motion, batch)
+    codes = tokenizer.quantize(tokenizer.encode(unit))[1][tokenizer.token_valid(batch.frame_valid)]
+    expected = torch.nn.functional.cross_entropy(logits[:, :P].reshape(-1, base.K), codes[:, :P].reshape(-1))
+    assert abs(terms["stage1_tokens"] - float(expected.detach())) < 1e-6
+
+
+def test_the_latent_loss_reads_only_observed_parts_and_the_codebook_diagnostics_are_logged():
+    from signtranslator.generation.plan_codes import part_step_observed
+    states, tokenizer, _ = prior_setup()
+    batch = collate_multichannel(states)
+    observed = part_step_observed(tokenizer, batch)
+    assert not bool(observed["face"].any()) and bool(observed["body"].any())    # the test states track no face
+    torch.manual_seed(0)
+    plan = PlanVQ(plan_config(tokenizer))
+    latents = {p: torch.randn(2, 4, 3) for p in ("a", "b")}
+    rec = {p: v + 1. for p, v in latents.items()}
+    only_a = relative_latent_error(rec, latents, {"a": torch.ones(2, 4, dtype=torch.bool),
+                                                  "b": torch.zeros(2, 4, dtype=torch.bool)})
+    z = latents["a"]
+    torch.testing.assert_close(only_a, (torch.ones_like(z) ** 2).sum() / ((z - z.mean((0, 1))) ** 2).sum())
+    loss, terms = plan_tokenizer_loss(plan, tokenizer, batch)
+    assert torch.isfinite(loss)
+    for p in plan.parts:
+        assert 1. <= float(terms[f"perplexity_{p}"]) <= plan.config.codebook and f"reseeded_{p}" in terms
+    q = plan.quantizers["body"]
+    before = q.reseeded
+    with torch.no_grad():
+        q.code_mass[0, :5] = 0.                                                # five dead codes, never assigned
+        q.codes[0, :5] = 1e6
+    x = torch.randn(10, plan.config.code_dim)
+    _, idx, inputs = q(x)
+    q.update(inputs, idx, torch.ones(10, dtype=torch.bool))
+    assert q.reseeded >= before + 5 and "reseeded" not in str(q.state_dict().keys())
+
+
+def test_a_detail_prior_records_its_plan_tokenizer_and_a_pair_must_share_it():
+    _, tokenizer, base = prior_setup()
+    plan = PlanVQ(plan_config(tokenizer))
+    detail = warm(base, planned(base, plan))
+    check_plan_pair(plan_prior_of(tokenizer, plan), detail)
+    other = PlanVQ(plan_config(tokenizer, hidden=24))                         # same layout, another plan tokenizer
+    with pytest.raises(ValueError, match="different plan tokenizers"):
+        check_plan_pair(plan_prior_of(tokenizer, other), detail)
+    with pytest.raises(ValueError, match="plan tokenizer's config SHA-256"):
+        replace(base.config, plan_window=2, plan_codes=8, plan_codebook=16)
+
+
+def test_plan_only_states_decode_plans_through_the_tokenizers_decoder():
+    from signtranslator.generation.plan_codes import decode_plan_states, oracle_plans
+    states, tokenizer, _ = prior_setup()
+    plan = PlanVQ(plan_config(tokenizer)).eval()
+    seconds = [len(s.timestamps) / 24. for s in states]
+    plans, _ = oracle_plans(plan, tokenizer, states, seconds, 24.)
+    out = decode_plan_states(plan, tokenizer, plans, ["ask him", "cut it"], fps=24., durations=seconds)
+    for o, s in zip(out, states):
+        o.validate()
+        assert len(o.timestamps) == len(s.timestamps)
+    with pytest.raises(ValueError, match="plan steps"):
+        decode_plan_states(plan, tokenizer, [plans[0][:1]], ["x"], fps=24., durations=seconds[:1])
+
+
+def test_sentence_retrieval_scores_own_over_other():
+    diag = script("round17_diagnostics")
+    assert diag.sentence_bleu("the cat sat", "the cat sat") == pytest.approx(1.)
+    assert diag.sentence_bleu("", "the cat") == 0. and diag.sentence_bleu("dog", "the cat") == 0.
+    assert 0 < diag.sentence_bleu("the cat ran", "the cat sat") < 1
+    r = diag.retrieval(["the cat sat", "a dog ran", "x"], ["the cat sat", "a dog ran", "y"],
+                       ["a dog ran", "the cat sat", "z"])
+    assert r["rate"] == pytest.approx((1 + 1 + .5) / 3, abs=1e-4) and r["pairs"] == 3 and r["ci95"][0] <= r["rate"] <= r["ci95"][1]

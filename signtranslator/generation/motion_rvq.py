@@ -151,6 +151,7 @@ class ResidualQuantizer(nn.Module):
         self.register_buffer("codes", torch.randn(stages, codebook, dim) * .1)
         self.register_buffer("code_mass", torch.ones(stages, codebook))
         self.register_buffer("code_sum", self.codes.clone())
+        self.reseeded = 0          # dead codes re-seeded by update() in this process (a diagnostic, not saved)
 
     @staticmethod
     def _nearest(x: torch.Tensor, codes: torch.Tensor) -> torch.Tensor:
@@ -191,6 +192,7 @@ class ResidualQuantizer(nn.Module):
             self.codes[q].copy_(self.code_sum[q] / self.code_mass[q].clamp_min(1e-5)[:, None])
             dead = self.code_mass[q] < 1e-3
             if bool(dead.any()):
+                self.reseeded += int(dead.sum())
                 pick = torch.randint(len(x), (int(dead.sum()),), device=x.device)
                 self.codes[q][dead] = x[pick]
                 self.code_sum[q][dead] = x[pick]
@@ -441,7 +443,9 @@ def rvq_loss(model: MotionRVQ, motion: MotionBatch, *, stages: int | None = None
 
 
 # round 17: the plan-conditioning fields of RVQPriorConfig (all absent from the dict of a plan-less prior)
-PLAN_FIELDS = ("plan_window", "plan_codes", "plan_codebook", "plan_memory", "plan_dropout")
+PLAN_FIELDS = ("plan_window", "plan_codes", "plan_codebook", "plan_tokenizer", "plan_memory", "plan_dropout",
+               "plan_corruption", "plan_corruption_max", "plan_corruption_source")
+PLAN_CORRUPTION_SOURCES = ("prior", "random")
 
 
 @dataclass(frozen=True)
@@ -523,11 +527,22 @@ class RVQPriorConfig:
     # a cross-attention reader after every temporal layer (zero-initialised output) sees the whole plan. plan_dropout
     # (training only): the probability that a sequence's plan is replaced by the empty plan. 0 keeps every earlier
     # prior's config, SHA and network (the plan fields are dropped from the dict while plan_window is 0).
+    # plan_tokenizer: the plan tokenizer's config SHA-256 (PlanVQConfig.sha256()), so a plan prior and a detail prior
+    # can be checked to share one plan layout and tokenizer (check_plan_pair); required when plan_window > 0.
+    # plan_corruption (training only, review fix 4): with this probability per sequence, a rate r ~ U(0,
+    # plan_corruption_max) of its valid plan steps is replaced by the plan prior's teacher-forced samples
+    # (plan_corruption_source "prior": one gradient-free plan-prior pass per batch over the true plan) or by uniform
+    # random codes ("random"), so the detail prior learns to follow plans like the ones it will be given. 0 keeps every
+    # plan-conditioned config's dict (the other two fields are dropped while it is 0).
     plan_window: int = 0
     plan_codes: int = 0
     plan_codebook: int = 0
+    plan_tokenizer: str = ""
     plan_memory: bool = True
     plan_dropout: float = 0.
+    plan_corruption: float = 0.
+    plan_corruption_max: float = .5
+    plan_corruption_source: str = "prior"
 
     def __post_init__(self) -> None:
         if self.rollout_blocks:
@@ -536,12 +551,17 @@ class RVQPriorConfig:
                 raise ValueError("rollout blocks need 0 < rollout_blocks <= 1, 1 <= rollout_min <= rollout_max, "
                                  "0 <= rollout_onset <= 1 and a positive guidance and temperature")
         if self.plan_window:
-            if not (self.plan_window >= 1 and self.plan_codes >= 1 and self.plan_codebook >= 2
+            if not (self.plan_window >= 1 and self.plan_codes >= 1 and self.plan_codebook >= 2 and self.plan_tokenizer
                     and 0 <= self.plan_dropout <= 1):
-                raise ValueError("plan conditioning needs plan_window >= 1, plan_codes >= 1, plan_codebook >= 2 and "
-                                 "0 <= plan_dropout <= 1")
-        elif self.plan_codes or self.plan_codebook or self.plan_dropout:
-            raise ValueError("plan_codes, plan_codebook and plan_dropout need plan_window > 0")
+                raise ValueError("plan conditioning needs plan_window >= 1, plan_codes >= 1, plan_codebook >= 2, the "
+                                 "plan tokenizer's config SHA-256 and 0 <= plan_dropout <= 1")
+            if not (0 <= self.plan_corruption <= 1 and 0 < self.plan_corruption_max <= 1
+                    and self.plan_corruption_source in PLAN_CORRUPTION_SOURCES):
+                raise ValueError(f"plan corruption needs 0 <= plan_corruption <= 1, 0 < plan_corruption_max <= 1 and a "
+                                 f"source in {PLAN_CORRUPTION_SOURCES}")
+        elif self.plan_codes or self.plan_codebook or self.plan_dropout or self.plan_tokenizer or self.plan_corruption:
+            raise ValueError("plan_codes, plan_codebook, plan_tokenizer, plan_dropout and plan_corruption need "
+                             "plan_window > 0")
 
     def to_dict(self) -> dict:
         data = asdict(self)
@@ -561,8 +581,12 @@ class RVQPriorConfig:
         if not data.get("plan_window"):                    # round 17: absent when off, so earlier SHAs are unchanged
             for key in PLAN_FIELDS:
                 data.pop(key, None)
-        elif not data.get("plan_dropout"):
-            data.pop("plan_dropout", None)
+        else:
+            if not data.get("plan_dropout"):
+                data.pop("plan_dropout", None)
+            if not data.get("plan_corruption"):
+                for key in ("plan_corruption", "plan_corruption_max", "plan_corruption_source"):
+                    data.pop(key, None)
         return data
 
     def sha256(self) -> str:
@@ -645,6 +669,26 @@ class PlanReader(nn.Module):
         y = self.attention(self.norm(x) + query_position, memory, memory, key_padding_mask=padding,
                            need_weights=False)[0]
         return x + self.dropout(y)
+
+
+def detect_is_causal_mask(mask: torch.Tensor, size: int) -> bool:
+    """What ``nn.TransformerDecoder.forward`` passes its layers as ``tgt_is_causal`` for ``mask`` (torch's private
+    ``_detect_is_causal_mask(mask, None, size)``), so the round-17 layer loop calls the layers exactly as the decoder
+    does. Falls back to the same rule if the private API moves: equality with the square-subsequent mask built in
+    the mask's own dtype (-inf above the diagonal; for a bool mask that is True above it, so a bool causal mask counts
+    as causal)."""
+    try:
+        from torch.nn.modules.transformer import _detect_is_causal_mask
+    except ImportError:
+        return _causal_mask_rule(mask, size)
+    return _detect_is_causal_mask(mask, None, size)
+
+
+def _causal_mask_rule(mask: torch.Tensor | None, size: int) -> bool:
+    if mask is None:
+        return False
+    causal = torch.triu(torch.full((size, size), float("-inf"), device=mask.device, dtype=mask.dtype), diagonal=1)
+    return tuple(mask.shape) == tuple(causal.shape) and bool((mask == causal).all())
 
 
 def _ranks(mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -899,7 +943,6 @@ class RVQPrior(nn.Module):
         states equal the plan-less prior's bit for bit (tested)."""
         if plan is None:
             raise ValueError("a plan-conditioned prior needs plan codes (RVQPrior.empty_plan for none)")
-        from torch.nn.modules.transformer import _detect_is_causal_mask
         codes, valid = plan
         W, S, d = self.config.plan_window, x.shape[1], self.config.d_model
         if codes.dim() != 3 or codes.shape[-1] != self.config.plan_codes or valid.shape != codes.shape[:2]:
@@ -918,7 +961,7 @@ class RVQPrior(nn.Module):
             padding = ~valid.bool()
             padding[:, 0] = False                       # never a fully masked row (no NaN, which 0 · NaN would keep)
         layers = list(self.temporal.layers)
-        is_causal = _detect_is_causal_mask(causal, None, S)
+        is_causal = detect_is_causal_mask(causal, S)
         if return_attention:
             for layer in layers:
                 layer.record = True
@@ -1028,7 +1071,7 @@ def rollout_history(model: RVQPrior, tokens, loci, conditioned, previous, step_s
 
 def rvq_prior_loss(model: RVQPrior, tokenizer: MotionRVQ, tokens, text_mask, motion: MotionBatch, loci=None, *,
                    train: bool = True, word_spans: torch.Tensor | None = None, plan_tokenizer=None, plan=None,
-                   plan_mode: str = "true", targets=None):
+                   plan_mode: str = "true", targets=None, plan_prior=None):
     """Σ_j cross entropy of the frozen tokenizer's codes, plus the duration term (text dropped only if ``train``).
 
     Round 17. A plan-conditioned prior reads the true plan of the batch: ``plan`` = (codes, valid) as given, or
@@ -1037,7 +1080,12 @@ def rvq_prior_loss(model: RVQPrior, tokenizer: MotionRVQ, tokens, text_mask, mot
     sequence's plan by the empty plan with that probability (drawn after every other draw of this function; rows
     holding a rollout block keep their plan, under which the block was drawn). ``targets`` = (codes (B, S, J), valid
     (B, S), part weights (N, J) or None) replaces the tokenizer's codes: the plan prior's targets are plan codes
-    (``plan_codes.plan_prior_loss``).
+    (``plan_codes.plan_prior_loss``). ``plan_corruption`` (training only; see the config) draws after the other
+    draws and before plan dropout; with source "prior" it needs ``plan_prior`` (the frozen plan prior, which reads the
+    rows' own texts and loci before text dropout). Rows holding a rollout block are not corrupted.
+
+    ``stage1_tokens`` (a reported term, computed without gradient) is the cross entropy of the stage-1 codes alone,
+    weighted as ``tokens``.
 
     Opt-in attention terms (training only, text-conditioned rows only): ``guided_attention`` adds Tachibana et al.'s
     guided-attention loss on the temporal decoder's cross-attention; ``alignment_supervision`` adds
@@ -1046,6 +1094,7 @@ def rvq_prior_loss(model: RVQPrior, tokenizer: MotionRVQ, tokens, text_mask, mot
     spans contribute nothing."""
     config = model.config
     target_weight = None
+    source_tokens, source_mask = tokens, text_mask              # before text dropout (the plan prior reads these)
     if targets is None:
         with torch.no_grad():
             tokenizer.eval()
@@ -1110,6 +1159,24 @@ def rvq_prior_loss(model: RVQPrior, tokenizer: MotionRVQ, tokens, text_mask, mot
         hit[:, 0] = False                               # the start token stays
         noise = torch.randint_like(previous, model.K)
         previous = torch.where(hit[..., None], noise, previous)
+    if train and config.plan_window and config.plan_corruption > 0:  # review fix 4: plans like generated ones
+        plan_codes, plan_valid = plan_kw["plan"]
+        B = len(previous)
+        rows = torch.rand(B, device=previous.device) < config.plan_corruption
+        if rolled is not None:
+            rows = rows & ~rolled.any(1)
+        rate = torch.rand(B, device=previous.device) * config.plan_corruption_max
+        hit = (torch.rand(plan_codes.shape[:2], device=previous.device) < rate[:, None]) & rows[:, None] & plan_valid
+        if bool(hit.any()):
+            if config.plan_corruption_source == "random":
+                other = torch.randint_like(plan_codes, config.plan_codebook)
+            else:
+                if plan_prior is None:
+                    raise ValueError("plan corruption from the plan prior needs plan_prior=")
+                other = teacher_forced_plan_samples(plan_prior, source_tokens, source_mask, loci, plan_codes, plan_valid,
+                                                    motion)
+            plan_kw = {"plan": (torch.where(hit[..., None], other, plan_codes), plan_valid)}
+        rollout_terms["plan_corrupted"] = float(hit.sum()) / max(float(plan_valid.sum()), 1.)
     if train and config.plan_window and config.plan_dropout > 0:     # round 17: whole plans hidden
         dropped = torch.rand(len(previous), device=previous.device) < config.plan_dropout
         if rolled is not None:
@@ -1135,12 +1202,21 @@ def rvq_prior_loss(model: RVQPrior, tokenizer: MotionRVQ, tokens, text_mask, mot
     else:
         cross = F.cross_entropy(logits.reshape(-1, model.K), target.reshape(-1))
     accuracy = (logits.argmax(-1) == target).float()
+    with torch.no_grad():                                       # reported only: the stage-1 codes' cross entropy
+        P = len(tokenizer.parts)
+        first = F.cross_entropy(logits[:, :P].reshape(-1, model.K), target[:, :P].reshape(-1), reduction="none")
+        if config.part_valid_loss:
+            w1 = weight[:, :P].reshape(-1)
+            stage1 = (first * w1).sum() / w1.sum().clamp_min(1.)
+        else:
+            stage1 = first.mean()
     if rolled is not None and bool((rolled & valid).any()):   # the steps that read the prior's own output
         on = rolled[valid]
         own = F.cross_entropy(logits[on].reshape(-1, model.K), target[on].reshape(-1))
         rollout_terms.update(rollout_tokens=float(own.detach()), rollout_accuracy=float(accuracy[on].mean()))
     terms = {"tokens": float(cross.detach()), "token_accuracy": float(accuracy.mean()),
-             "stage1_accuracy": float(accuracy[:, :len(tokenizer.parts)].mean()), **rollout_terms}
+             "stage1_accuracy": float(accuracy[:, :len(tokenizer.parts)].mean()), "stage1_tokens": float(stage1),
+             **rollout_terms}
     total = cross
     if bool(conditioned.any()):
         target_duration = utterance_duration(motion).log().to(log_duration.dtype)
@@ -1167,6 +1243,32 @@ def rvq_prior_loss(model: RVQPrior, tokenizer: MotionRVQ, tokens, text_mask, mot
             terms["alignment"] = float(aligned.detach())
             total = total + config.alignment_supervision * aligned
     return total, terms
+
+
+@torch.no_grad()
+def teacher_forced_plan_samples(plan_prior: RVQPrior, tokens, text_mask, loci, codes: torch.Tensor,
+                                valid: torch.Tensor, motion: MotionBatch, temperature: float = 1.) -> torch.Tensor:
+    """(B, S_plan, J_plan) plan codes drawn from a plan prior under teacher forcing: one gradient-free pass in eval mode
+    over the true plan ``codes`` (start row first, as its training), every code drawn from p(c_t^j | c_t^{<j} true,
+    c_{<t} true, text) at ``temperature``. Invalid plan steps are drawn too (never read). The plan prior's mode is
+    restored."""
+    was_training = plan_prior.training
+    plan_prior.eval()
+    try:
+        locus = loci if plan_prior.config.locus_conditioning else None
+        hidden, _, mask = plan_prior.encode(tokens, text_mask, locus)
+        start = torch.full_like(codes[:, :1], plan_prior.K)
+        previous = torch.cat((start, codes[:, :-1]), 1)
+        seconds = batch_seconds(motion).float()
+        step_seconds = seconds[:, ::plan_prior.config.tokenizer.step][:, :codes.shape[1]]
+        step_seconds = F.pad(step_seconds, (0, codes.shape[1] - step_seconds.shape[1]))
+        duration = (seconds * motion.frame_valid).amax(1)
+        h = plan_prior.temporal_states(hidden, mask, previous, step_seconds, duration)
+        logits = plan_prior.depth_logits(h.reshape(-1, h.shape[-1]), codes.reshape(-1, plan_prior.J)[:, :-1])
+        probs = torch.softmax(logits.float() / temperature, -1).reshape(-1, plan_prior.K)
+        return torch.multinomial(probs, 1).reshape(codes.shape)
+    finally:
+        plan_prior.train(was_training)
 
 
 @torch.no_grad()
@@ -1392,7 +1494,7 @@ def generate_rvq_motion_batch(prior: RVQPrior, tokenizer: MotionRVQ, texts, *, f
     return states
 
 
-__all__ = ["PARTS", "PLAN_FIELDS", "PlanReader", "sample_code_sequence", "padded_plan", "part_temperatures",
+__all__ = ["PARTS", "PLAN_FIELDS", "teacher_forced_plan_samples", "detect_is_causal_mask", "PlanReader", "sample_code_sequence", "padded_plan", "part_temperatures",
            "MotionRVQConfig", "ResidualQuantizer", "MotionRVQ", "rvq_loss", "RVQPriorConfig", "RVQPrior",
            "rvq_prior_loss", "generate_rvq_motion", "generate_rvq_motion_batch", "AttentionRecordingDecoderLayer",
            "cross_attention_probabilities", "guided_attention_weights", "guided_attention_loss", "alignment_targets",
