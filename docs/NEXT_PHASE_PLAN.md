@@ -5287,3 +5287,33 @@ From the build (branch `round18` c7befa3):
    - the pilot comparisons use pipefail, read local files and refuse overwrites;
    - the conversion worker count also respects the cgroup CPU quota;
    - R16C's and R18's code bundle commits are recorded.
+
+### Round 18 expected-count result, recorded (2026-10-30, 14:16 UTC): no meaningful gain, so R18 will not train
+
+From real R2 metadata, before any conversion, with amendment 2 applied (`reports/round18_dev.md`, branch merged afae719):
+- 200,737 candidate clips; 96,640 survive deduplication.
+- Most are cues our own filters rejected: channel cap 18,329; too fast 11,405; face not visible 5,637; others.
+- **45,897 are cues our filters keep but the round14b snapshot lacks.**
+- The lifter-addressable remainder is **7,449 records (7.7 h)**: 7,416 rejected for hands not visible, 33 never extracted. That is below the 20k floor, so the manifest stage exits `ROUND18-NO-MEANINGFUL-GAIN`.
+
+**Reading:** for the 2,509 videos we downloaded, UWB adds almost nothing our own extraction lacks. Its value is the ~8.5k videos we never downloaded (round 18b), which needs a frame-rate estimator first. Lifter v2's gate still runs: it decides whether round 18b can use the lifter at all.
+
+## Round 19: refresh our own YouTube data (declared 2026-10-30, 14:16 UTC, before anything is built)
+
+**Finding:** our extraction reports (now 2,922 videos) hold **75,982 cues (117 h) that pass our YouTube manifest filters but are not in round14b**, because the snapshot predates them. Their states exist (20 of 20 sampled). That is about 77% more YouTube data, with no lifter and no new download.
+
+**Data:**
+- Rebuild the YouTube component with the round14b YouTube builder and **exactly its settings**: the same filters, channel cap, monitor split and evaluation-text filter, including round14b's own val/test texts and cleaned-text leaks.
+- Rebuild the mix with the round14b mixed builder and exactly its other components and weights, giving `round19-mixed-v1`.
+- **Hard requirements:** every non-YouTube record is byte-identical to round14b's; the 1,000 pilot clips and the validation prefixes are unchanged; every state is SHA-verified by prefetch (the duplicate-overwrite rule).
+
+**Arm R19:** W14b step 30000 plus 10,000 steps with R16C's exact recipe on `round19-mixed-v1`. The smoke recipe hash must match R16C's.
+
+**Control:** R16C. Same pilot: 1,000 clips, instrument v1, v3d lexicon with the r5 word list, seeds.
+
+**Rule** (as R16 and R18):
+- paired BLEU lower bound > 0 against R16C;
+- paired BLEU lower bound > 0 against W14b;
+- v3 lexicon lower bound > −0.05 against R16C.
+
+**If R19 passes:** more of our own data helps end-to-end, and the next steps are the declared longer run plus round 18b, the UWB-only videos. **If it fails at +77%:** data volume at this scale is not the lever for end-to-end, and the composition path is the focus.
