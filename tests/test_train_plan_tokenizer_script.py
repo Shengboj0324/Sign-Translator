@@ -217,3 +217,35 @@ def test_plan_tokenizer_plan_prior_and_plan_conditioned_prior_train_hand_off_by_
     blank, real = following["blank"]["rate"], following["real"]["rate"]
     assert following["gate"]["threshold"] == pytest.approx(blank + .5 * (real - blank), abs=1e-4)
     assert "difference" in following["a_plan_minus_blank"] and isinstance(following["gate"]["passes"], bool)
+
+
+def test_reference_perplexity_only_measures_the_tokenizer_and_stores_nothing(tmp_path, monkeypatch, capsys):
+    """--reference-perplexity-only: the frozen tokenizer's stage-1 perplexity on the validation batches, by the plan's
+    formula (exp of the entropy of the valid positions' codes), at every step and every window-th step; no run."""
+    monkeypatch.setenv("SIGN_CACHE_DIR", str(tmp_path / "cache"))
+    digest = store_with_manifest(tmp_path / "store")
+    store = tmp_path / "store"
+    tmt, tpt = load("train_motion_tokens"), load("train_plan_tokenizer")
+    data = ["--store", f"dir:{store}", "--manifest-key", "manifest.json", "--manifest-sha256", digest,
+            "--batch-size", "2", "--warmup", "1", "--checkpoint-every", "2", "--workers", "0"]
+    assert tmt.main(data + ["--trained-channels", "body,head_rotation,face", "--architecture", "rvq", "--stage",
+                            "tokenizer", "--run", "tok", "--hidden", "16", "--code-dim", "8", "--codebook", "16",
+                            "--stages", "2", "--down-layers", "0", "--base-blocks", "1", "--steps", "2"]) == 0
+    tok_key = "training-runs/tok/checkpoints/step-00000002.pt"
+    capsys.readouterr()
+    assert tpt.main(data + ["--run", "plan", "--tokenizer-key", tok_key, "--tokenizer-sha256", sha(store / tok_key),
+                            "--window", "4", "--val-batches", "1", "--reference-perplexity-only"]) == 0
+    out = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    values = out["reference_stage1_perplexity"]
+    assert set(values) == {f"{k}_{p}" for k in ("every_step", "every_4th_step") for p in ("body", "face")}
+    assert all(1. <= v <= 16. for v in values.values()) and out["codebook"] == 16 and out["batches"] == 1
+    assert not (store / "training-runs/plan").exists()
+
+
+def test_stage1_perplexity_formula():
+    tpt = load("train_plan_tokenizer")
+    codes = torch.tensor([[0, 1, 2, 3, 9, 9]])
+    valid = torch.tensor([[True, True, True, True, False, False]])
+    assert tpt.stage1_perplexity(codes, valid, 16) == pytest.approx(4.)
+    assert tpt.stage1_perplexity(torch.zeros(1, 5, dtype=torch.long), torch.ones(1, 5, dtype=torch.bool), 16) == \
+        pytest.approx(1.)

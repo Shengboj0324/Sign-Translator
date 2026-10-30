@@ -52,7 +52,7 @@ from signtranslator.data.text_motion_dataset import TextMotionDataset, collate_t
 from signtranslator.data_engineering.corpus_manifest import ContentCache, load_manifest  # noqa: E402
 from signtranslator.generation.motion_rvq import MotionRVQ, MotionRVQConfig  # noqa: E402
 from signtranslator.generation.plan_codes import (  # noqa: E402
-    PLAN_KIND, PlanVQ, PlanVQConfig, plan_checkpoint_bytes, plan_tokenizer_loss,
+    PLAN_KIND, PlanVQ, PlanVQConfig, plan_checkpoint_bytes, plan_tokenizer_loss, tokenizer_latents,
 )
 from signtranslator.training.weight_ema import WeightEMA  # noqa: E402
 from train_motion_tokens import corpus_sample_weights, layout_template  # noqa: E402
@@ -79,6 +79,34 @@ def fidelity(plan: PlanVQ, tokenizer: MotionRVQ, states, fps: float) -> dict:
             res = compare([observed_like(t, r) for t, r in zip(trips, states)], states, channels)
         out[name] = {f"{c}_{k}": round(float(res[c][k]), 4) for c in channels for k in ("speed_ratio", "variation_ratio")}
     return out
+
+
+def stage1_perplexity(codes: torch.Tensor, valid: torch.Tensor, codebook: int) -> float:
+    """exp(entropy) of the stage-1 code distribution over the valid positions: ``plan_tokenizer_loss``'s formula."""
+    counts = torch.bincount(codes[valid].reshape(-1), minlength=codebook)[:codebook].double()
+    freq = counts / counts.sum().clamp_min(1.)
+    return float(torch.exp(-(freq * freq.clamp_min(1e-12).log()).sum()))
+
+
+@torch.no_grad()
+def reference_perplexity(tokenizer: MotionRVQ, batches, device, window: int) -> dict:
+    """The frozen tokenizer's own mean per-batch stage-1 perplexity per part on ``batches`` (the plan's declared
+    stability measure, applied to the tokenizer it summarises): at every step, and at every ``window``-th step (the
+    plan's number of positions per batch, since perplexity grows with the sample count)."""
+    names = [part for part, _ in tokenizer.parts]
+    sums = {f"{k}_{p}": 0. for k in ("every_step", f"every_{window}th_step") for p in names}
+    for batch in batches:
+        motion = to_device(batch, device)[2]
+        latents, valid, _ = tokenizer_latents(tokenizer, motion)
+        _, grid, _ = tokenizer.quantize(latents)                     # (B, K, Q·P), j = q·P + p: stage 1 is j < P
+        sub = torch.zeros_like(valid)
+        sub[:, ::window] = True
+        for k, p in enumerate(names):
+            sums[f"every_step_{p}"] += stage1_perplexity(grid[..., k], valid, tokenizer.config.codebook)
+            sums[f"every_{window}th_step_{p}"] += stage1_perplexity(grid[..., k], valid & sub,
+                                                                    tokenizer.config.codebook)
+    return dict(reference_stage1_perplexity={k: round(v / max(len(batches), 1), 1) for k, v in sums.items()},
+                batches=len(batches), codebook=tokenizer.config.codebook)
 
 
 def main(argv=None) -> int:
@@ -121,6 +149,9 @@ def main(argv=None) -> int:
     parser.add_argument("--cache-bytes", type=int, default=8 * 2 ** 30)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--device", default="auto")
+    parser.add_argument("--reference-perplexity-only", action="store_true",
+                        help="print the frozen tokenizer's own stage-1 perplexity per part on the validation batches "
+                             "(every step, and every --window-th step) and exit; nothing trains or is stored")
     args = parser.parse_args(argv)
     if args.device == "mps":
         raise SystemExit("MPS is refused: it miscomputes rotation operations at batch scale")
@@ -175,7 +206,7 @@ def main(argv=None) -> int:
             model.quantizers[part].reseeded = int(count)
         torch.set_rng_state(state["torch_rng"].cpu())
         print(f"resumed {checkpoints[-1]} at step {step}", flush=True)
-    else:
+    elif not args.reference_perplexity_only:                       # a measurement is not a run: nothing is stored
         store.put(f"{prefix}/run.json", json.dumps(dict(kind=PLAN_KIND, config=config.to_dict(),
                                                         config_sha256=config.sha256(), manifest_key=args.manifest_key,
                                                         manifest_sha256=args.manifest_sha256, args=vars(args),
@@ -202,6 +233,9 @@ def main(argv=None) -> int:
             if index >= args.val_batches:
                 break
             val_batches.append(batch)
+    if args.reference_perplexity_only:
+        print(json.dumps(reference_perplexity(tokenizer, val_batches, device, args.window)), flush=True)
+        return 0
     fidelity_states = []
     if args.fidelity_clips:
         if args.fidelity_clips < 2:
