@@ -1,27 +1,33 @@
 """Visibility rules for the UWB lifter, measured on How2Sign two-view truth with arms cut by the frame (local, CPU).
 
-The question (review of e186d62, item 1): YouTube framings cut the arms, so a visibility rule decides how many arm
-frames survive. Which rule keeps arms that are accurate, and how many does it keep compared with MediaPipe's own
-visibility?
+The question (reviews of e186d62 and 6625c83, item 1): YouTube framings cut the arms, so a visibility rule decides how
+many arm frames survive. Which rule keeps arms that are accurate, and how many does it keep compared with MediaPipe's
+own visibility, weighted the way UWB's frames are actually cut?
 
 **Data** (the ``elbow_outside_accuracy.py`` set): How2Sign val front clips with How2Sign two-view states (the truth),
 cropped to Sem-Lex framing (``validate_semlex_adapter.py``: 4:3, 16:9, 1:1) and to tighter crops (nose at 0.30,
-shoulders at 0.80 of the height), whose stored Tasks image landmarks stand in for UWB's 2D points (pixels = normalised
-x size; a Tasks-vs-Holistic difference remains). Only ``--signers`` are read (default How2Sign 1 and 2: the regressors'
-validation signers, never trained on); **signer 9 (the generator's final-test signer) is refused outright**.
+shoulders at 0.80 of the height). **Inputs**: legacy MediaPipe Holistic 0.10.14 (``legacy_holistic_arrays.py`` run on
+the same crop boxes; ``--legacy-dir``, preferred: UWB's own kind of landmarks) where an array of the crop exists with
+the crop's frame count, otherwise the crop's stored Tasks image landmarks; every row records which input it used.
+Only ``--signers`` are read (default How2Sign 1 and 2: the regressors' validation signers, never trained on);
+**signer 9 (the generator's final-test signer) is refused outright**.
 
 **Per crop**, the lifter (``uwb_keypoints.convert_clip``, generator flags) runs once per rule and once with every
 point visible (``all``: the ungated arm). Per two-view frame and side:
 
-- the elbow's distance outside the crop (frame heights; 0 inside), from the crop's image landmarks;
-- MediaPipe's own keep decision: shoulder, elbow and wrist visibility >= 0.5 (our extraction's rule on that crop);
+- the elbow's distance outside the crop (frame heights; 0 inside), from the input's own image points;
+- MediaPipe's keep decision: Tasks shoulder, elbow and wrist visibility >= 0.5 (our extraction's rule on that crop);
 - each rule's keep decision (the forearm is valid in that rule's state);
 - the ungated lifter's errors against the two-view state: upper arm and forearm directions, wrist (palm) frame.
 
-**Report per rule**: survival (kept share) overall, inside and outside the frame, and relative to MediaPipe's survival
-(the proposed gate asks >= 80% on chest-up framings); median / p90 errors of the frames it keeps and of those it
-drops, inside and outside, and by distance outside (0-0.1, 0.1-0.3, > 0.3 frame heights). MediaPipe's rule is scored
-the same way for reference.
+**Report** per rule and for MediaPipe, per side and per bone (upper arm, forearm), per elbow bin (inside, outside by
+0-0.1, 0.1-0.3, > 0.3 frame heights): survival, and the kept frames' median and p90 error of the ungated lifter, each
+with the upper bound of a 95% interval from resampling videos. **UWB-weighted survival**: the per-bin survivals
+weighted by UWB's own elbow-distance distribution (``--uwb-weights``: ``uwb_lifter_gate.py``'s
+``summary.uwb_elbow_distance``, or ``{side: {bin: share}}``), against MediaPipe's survival weighted the same way, over
+the bins with at least ``--min-bin-frames`` frames; ``covered`` says how much of UWB's weight those bins hold. These
+crops cut the elbow on 97% of frames while UWB's elbow is inside the frame on about 75%, so the inside bin is thin and
+the weighted survival must be read with its coverage.
 """
 from __future__ import annotations
 
@@ -37,9 +43,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 
 SIDES = {"Left": (11, 13, 15), "Right": (12, 14, 16)}          # shoulder, elbow, wrist (BlazePose)
+BONES = ("UpperArm", "Forearm")
 QUANTITIES = ("UpperArm", "Forearm", "Hand")
-DISTANCE_BINS = ((0., .1), (.1, .3), (.3, np.inf))
+BINS = (("inside", 0., 0.), ("0-0.1", 0., .1), ("0.1-0.3", .1, .3), ("0.3-inf", .3, np.inf))
+DEFAULT_RULES = "learned,inside,margin:0.1,margin:0.25"
 EXCLUDED_SIGNERS = ("9",)
+LEGACY_INPUT = "legacy-holistic-0.10.14"
+TASKS_INPUT = "tasks-image"
 
 
 def signer_of(name: str) -> str | None:
@@ -47,18 +57,44 @@ def signer_of(name: str) -> str | None:
     return match.group(1) if match else None
 
 
-def uwb_clip_from_landmarks(clip, size, name: str):
-    """A ``UwbClip`` holding a ``ClipLandmarks``' image points in pixels (NaN where not detected); no face."""
+def bin_of(distance: float) -> str:
+    for name, lo, hi in BINS:
+        if (distance == 0 if hi == 0 else lo < distance <= hi):
+            return name
+    return BINS[-1][0]
+
+
+def uwb_clip_from_points(pose_xy, hands_xy, found_pose, found_hands, size, name: str):
+    """A ``UwbClip`` from normalised image points (pixels = normalised x size; NaN where not detected); no face."""
     from signtranslator.data_engineering.uwb_keypoints import UwbClip
     width, height = int(size[0]), int(size[1])
     scale = np.array([width, height], dtype=np.float64)
-    frames = len(clip.times)
-    pose = np.where(clip.pose_found[:, None, None], np.asarray(clip.pose_image)[..., :2] * scale, np.nan)
+    frames = len(pose_xy)
+    pose = np.where(found_pose[:, None, None], np.asarray(pose_xy, dtype=np.float64)[..., :2] * scale, np.nan)
     hands = np.full((frames, 2, 21, 2), np.nan)
-    for k in range(min(2, clip.hands_found.shape[1])):
-        hands[:, k] = np.where(clip.hands_found[:, k, None, None], clip.hands_image[:, k] * scale, np.nan)
+    for k in range(min(2, hands_xy.shape[1])):
+        hands[:, k] = np.where(found_hands[:, k, None, None], np.asarray(hands_xy[:, k], dtype=np.float64)[..., :2] * scale,
+                               np.nan)
     return UwbClip(clip_id=f"{name}.000000-{frames - 1:06d}", video_id=name, first=0, last=frames - 1, width=width,
                    height=height, pose=pose, hands=hands, face=np.full((frames, 478, 2), np.nan))
+
+
+def input_points(meta, clip, legacy_dir: Path | None):
+    """(pose (T, 33, 2), hands (T, 2, 21, 2), pose found, hands found, input name) of a crop: legacy Holistic when its
+    array exists with the crop's frame count and size, else the crop's Tasks image landmarks."""
+    if legacy_dir is not None:
+        path = Path(legacy_dir) / f"{meta['name']}.npz"
+        if path.exists():
+            with np.load(path, allow_pickle=False) as z:
+                holistic, size = z["holistic"].astype(np.float64), z["size"].tolist()
+            if len(holistic) == len(clip.times) and list(size) == list(meta["size"]):
+                pose = holistic[:, 478:511, :2]
+                hands = np.stack((holistic[:, 511:532, :2], holistic[:, 532:553, :2]), axis=1)
+                found_pose = np.isfinite(pose).all((1, 2))
+                found_hands = np.isfinite(hands).all((2, 3))
+                return np.nan_to_num(pose), np.nan_to_num(hands), found_pose, found_hands, LEGACY_INPUT
+    return (np.asarray(clip.pose_image)[..., :2], np.asarray(clip.hands_image)[..., :2],
+            np.asarray(clip.pose_found, bool), np.asarray(clip.hands_found, bool), TASKS_INPUT)
 
 
 def outside_distance(xy: np.ndarray, aspect: float) -> np.ndarray:
@@ -81,14 +117,15 @@ def lifted_world(state):
     return out
 
 
-def clip_rows(meta, clip, truth_state, frames, regressors, rules) -> list[dict]:
-    """One row per (two-view frame, side): distance outside, MediaPipe's and each rule's keep decision, ungated
-    lifter errors (NaN where the lifter or the truth has no value)."""
+def clip_rows(meta, clip, truth_state, frames, regressors, rules, legacy_dir=None) -> list[dict]:
+    """One row per (two-view frame, side): input, distance outside, MediaPipe's and each rule's keep decision,
+    ungated lifter errors (NaN where the lifter or the truth has no value)."""
     from signtranslator.data_engineering import uwb_keypoints as uk
     from validate_semlex_adapter import angles, direction_angles
     from elbow_outside_accuracy import truth_world
     size = meta["size"]
-    uwb = uwb_clip_from_landmarks(clip, size, meta["name"])
+    pose_xy, hands_xy, found_pose, found_hands, source = input_points(meta, clip, legacy_dir)
+    uwb = uwb_clip_from_points(pose_xy, hands_xy, found_pose, found_hands, size, meta["name"])
     fps = 1. / float(np.median(np.diff(clip.times)))
     common = dict(source_sha256="0" * 64, fps_source="measured", regressors=regressors)
     ungated = lifted_world(uk.convert_clip(uwb, fps, visibility="all", **common)[0])
@@ -100,7 +137,7 @@ def clip_rows(meta, clip, truth_state, frames, regressors, rules) -> list[dict]:
     aspect = size[0] / size[1]
     rows = []
     for side, (shoulder, elbow, wrist) in SIDES.items():
-        distance = outside_distance(np.asarray(clip.pose_image)[frames, elbow], aspect)
+        distance = outside_distance(pose_xy[frames, elbow], aspect)
         vis = np.asarray(clip.pose_visibility)[frames][:, [shoulder, elbow, wrist]]
         mediapipe = (vis >= .5).all(1) & np.asarray(clip.pose_found)[frames]
         errors = {}
@@ -110,39 +147,87 @@ def clip_rows(meta, clip, truth_state, frames, regressors, rules) -> list[dict]:
             fn = direction_angles if q != "Hand" else angles
             errors[q] = np.where(ok[frames] & true_ok, fn(value[frames], true_value), np.nan)
         for t in range(len(frames)):
-            if not clip.pose_found[frames[t]]:
+            if not found_pose[frames[t]]:
                 continue
-            rows.append(dict(video=meta["video"], clip=meta["name"], side=side, distance=float(distance[t]),
-                             mediapipe=bool(mediapipe[t]), **{f"rule:{r}": bool(kept[r][side][frames[t]]) for r in rules},
+            rows.append(dict(video=meta["video"], clip=meta["name"], side=side, input=source,
+                             distance=float(distance[t]), bin=bin_of(float(distance[t])), mediapipe=bool(mediapipe[t]),
+                             **{f"rule:{r}": bool(kept[r][side][frames[t]]) for r in rules},
                              **{q: float(errors[q][t]) for q in QUANTITIES}))
     return rows
 
 
-def stat(v) -> dict:
-    v = np.asarray([x for x in v if np.isfinite(x)], dtype=np.float64)
-    if not len(v):
+def _bootstrap_upper(rows: list[dict], quantity: str, q: float, draws: int, seed: int = 0) -> float | None:
+    """Upper bound of the 95% interval of the ``q``-th percentile of ``quantity``, resampling videos."""
+    videos = sorted({r["video"] for r in rows})
+    by = {v: np.array([r[quantity] for r in rows if r["video"] == v and np.isfinite(r[quantity])]) for v in videos}
+    by = {v: a for v, a in by.items() if len(a)}
+    if len(by) < 2 or draws <= 0:
+        return None
+    keys = sorted(by)
+    rng = np.random.default_rng(seed)
+    values = [np.percentile(np.concatenate([by[keys[k]] for k in rng.integers(0, len(keys), len(keys))]), q)
+              for _ in range(draws)]
+    return round(float(np.percentile(values, 97.5)), 2)
+
+
+def kept_stats(rows: list[dict], key: str, bone: str, draws: int) -> dict:
+    sel = [r for r in rows if r[key] and np.isfinite(r[bone])]
+    if not sel:
         return dict(n=0)
-    return dict(n=int(len(v)), median=round(float(np.median(v)), 2), p90=round(float(np.percentile(v, 90)), 2))
+    v = np.array([r[bone] for r in sel])
+    return dict(n=len(v), median=round(float(np.median(v)), 2), p90=round(float(np.percentile(v, 90)), 2),
+                median_ci_upper=_bootstrap_upper(sel, bone, 50, draws),
+                p90_ci_upper=_bootstrap_upper(sel, bone, 90, draws), videos=len({r["video"] for r in sel}))
 
 
-def rule_summary(rows: list[dict], key: str, reference: str = "mediapipe") -> dict:
-    """Survival and the accuracy of kept and dropped frames for one keep decision."""
-    def part(sel):
-        if not sel:
-            return dict(frames=0)
-        keep = [r for r in sel if r[key]]
-        drop = [r for r in sel if not r[key]]
-        out = dict(frames=len(sel), kept=len(keep), survival=round(len(keep) / len(sel), 4),
-                   kept_errors={q: stat([r[q] for r in keep]) for q in QUANTITIES},
-                   dropped_errors={q: stat([r[q] for r in drop]) for q in QUANTITIES})
-        ref = sum(r[reference] for r in sel)
-        out["survival_vs_mediapipe"] = round(len(keep) / ref, 4) if ref else None
-        return out
-    inside = [r for r in rows if r["distance"] == 0]
-    outside = [r for r in rows if r["distance"] > 0]
-    return dict(all=part(rows), elbow_inside=part(inside), elbow_outside=part(outside),
-                outside_by_distance={f"{lo}-{hi}": part([r for r in outside if lo < r["distance"] <= hi])
-                                     for lo, hi in DISTANCE_BINS})
+def decision_summary(rows: list[dict], key: str, draws: int) -> dict:
+    """Per side and bin: frames, survival, and the kept frames' error statistics per bone."""
+    out = {}
+    for side in SIDES:
+        out[side] = {}
+        for name, *_ in (("all",), *BINS):
+            sel = [r for r in rows if r["side"] == side and (name == "all" or r["bin"] == name)]
+            if not sel:
+                out[side][name] = dict(frames=0)
+                continue
+            out[side][name] = dict(frames=len(sel), survival=round(float(np.mean([r[key] for r in sel])), 4),
+                                   kept={bone: kept_stats(sel, key, bone, draws) for bone in BONES})
+    return out
+
+
+def uwb_weights(spec: str | None) -> dict | None:
+    """{side: {bin: share}} from a gate report (``summary.uwb_elbow_distance``) or a plain mapping."""
+    if not spec:
+        return None
+    data = json.loads(Path(spec).read_text())
+    if "summary" in data:
+        data = data["summary"]["uwb_elbow_distance"]
+    out = {}
+    for side, entry in data.items():
+        if side not in SIDES or not isinstance(entry, dict):
+            continue
+        shares = entry.get("share", entry)
+        total = sum(shares.get(name, 0.) for name, *_ in BINS)
+        out[side] = {name: shares.get(name, 0.) / total for name, *_ in BINS} if total else None
+    return out
+
+
+def weighted_survival(summary: dict, weights: dict | None, min_frames: int = 1) -> dict | None:
+    """Per side: survival per bin weighted by UWB's bin shares, over the bins this data supports (>= ``min_frames``
+    frames), renormalised; ``covered`` is the UWB weight those bins hold (a low value means the truth set does not
+    represent UWB's framing and the weighted figure is not evidence)."""
+    if not weights:
+        return None
+    out = {}
+    for side, w in weights.items():
+        if not w or side not in summary:
+            continue
+        cells = summary[side]
+        used = {name: share for name, share in w.items() if cells.get(name, {}).get("frames", 0) >= min_frames}
+        total = sum(used.values())
+        out[side] = dict(survival=round(sum(share * cells[name]["survival"] for name, share in used.items()) / total, 4)
+                         if total else None, covered=round(total, 4), bins=sorted(used))
+    return out
 
 
 def analyse(args, regressors=None) -> dict:
@@ -168,6 +253,7 @@ def analyse(args, regressors=None) -> dict:
             meta, clip, _ = load_npz(path)
             (full.__setitem__(meta["video"], clip) if meta["shape"] == "full" else crops.append((meta, clip)))
     rows = []
+    legacy_dir = Path(args.legacy_dir) if getattr(args, "legacy_dir", None) else None
     for meta, clip in crops:
         key = meta["video"].replace("-rgb_front.mp4", "")
         entry, mf = index.get(key), full.get(meta["video"])
@@ -179,30 +265,51 @@ def analyse(args, regressors=None) -> dict:
         if frames is None:
             skipped.append(meta["name"])
             continue
-        rows.extend(clip_rows(meta, clip, truth, frames, regressors, rules))
-    report = dict(regressors_sha256=regressors.sha256, features=regressors.features, signers=sorted(signers),
-                  rules=rules, crops=len(crops) - len(skipped), skipped=skipped, rows=len(rows),
-                  videos=len({r["video"] for r in rows}), mediapipe=rule_summary(rows, "mediapipe"),
-                  by_rule={rule: rule_summary(rows, f"rule:{rule}") for rule in rules})
-    return report
+        rows.extend(clip_rows(meta, clip, truth, frames, regressors, rules, legacy_dir))
+    inputs = {}
+    for r in rows:
+        inputs.setdefault(r["input"], set()).add(r["clip"])
+    if getattr(args, "require_legacy", False) and set(inputs) - {LEGACY_INPUT}:
+        raise SystemExit(f"--require-legacy: {len(inputs.get(TASKS_INPUT, ()))} crops have no legacy Holistic array")
+    weights = uwb_weights(getattr(args, "uwb_weights", None))
+    draws = getattr(args, "bootstrap", 1000)
+    decisions = {"mediapipe": "mediapipe", **{rule: f"rule:{rule}" for rule in rules}}
+    by_decision = {name: decision_summary(rows, key, draws) for name, key in decisions.items()}
+    min_frames = getattr(args, "min_bin_frames", 200)
+    weighted = {name: weighted_survival(s, weights, min_frames) for name, s in by_decision.items()}
+    relative = None
+    if weights and weighted.get("mediapipe"):
+        base = {side: v["survival"] for side, v in weighted["mediapipe"].items()}
+        relative = {name: {side: (round(v["survival"] / base[side], 4) if base.get(side) and v["survival"] is not None
+                                  else None) for side, v in (w or {}).items()} for name, w in weighted.items()}
+    return dict(regressors_sha256=regressors.sha256, features=regressors.features, signers=sorted(signers),
+                rules=rules, inputs={k: len(v) for k, v in inputs.items()}, crops=len(crops) - len(skipped),
+                skipped=skipped, rows=len(rows), videos=len({r["video"] for r in rows}), bootstrap_draws=draws,
+                uwb_weights=weights, uwb_weighted_survival=weighted, uwb_weighted_survival_vs_mediapipe=relative,
+                by_decision=by_decision)
 
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--crop-dirs", nargs="+", required=True, help="validate_semlex_adapter / elbow_outside_accuracy crops")
     p.add_argument("--two-view-dir", required=True)
+    p.add_argument("--legacy-dir", help="legacy Holistic 0.10.14 arrays of the crops (<crop name>.npz), preferred")
+    p.add_argument("--require-legacy", action="store_true", help="refuse when any crop lacks a legacy array")
     p.add_argument("--regressors", required=True)
     p.add_argument("--regressors-sha256", required=True)
-    p.add_argument("--rules", default="learned,inside,margin:0.1,margin:0.25,margin:0.5")
+    p.add_argument("--rules", default=DEFAULT_RULES)
     p.add_argument("--signers", default="1,2", help="How2Sign signers read (the regressors' validation signers)")
+    p.add_argument("--uwb-weights", help="gate report (summary.uwb_elbow_distance) or {side: {bin: share}}")
+    p.add_argument("--bootstrap", type=int, default=1000)
+    p.add_argument("--min-bin-frames", type=int, default=200, help="bins with fewer frames do not enter the weighting")
     p.add_argument("--report", required=True)
     args = p.parse_args(argv)
     import torch
     torch.set_num_threads(1)
     report = analyse(args)
     Path(args.report).write_text(json.dumps(report, indent=1, sort_keys=True))
-    print(json.dumps(dict(rows=report["rows"], videos=report["videos"], mediapipe=report["mediapipe"]["all"],
-                          by_rule={r: v["all"] for r, v in report["by_rule"].items()}), indent=1))
+    print(json.dumps({k: report[k] for k in ("rows", "videos", "inputs", "uwb_weighted_survival",
+                                             "uwb_weighted_survival_vs_mediapipe")}, indent=1))
     return 0
 
 

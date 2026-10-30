@@ -22,10 +22,14 @@ process, after every shard) checks that all unit reports share one settings fing
   text is checked with ``build_youtube_asl_manifest.EvalIndex`` against every val/test/heldout sentence (exact or >= 0.8
   5-gram Jaccard); ``eval_leak`` and the index's SHA-256 are stored per clip and counted per unit. States are still
   written: ``uwb_manifest.select_training_records`` refuses unchecked records and drops the leaks.
-- **Overlap with our own YouTube states** (``--overlap-table``, required: ``uwb_lifter_gate.py --overlap-table-out``):
-  a clip paired with one of our cues (IoU >= 0.5) carries ``duplicate_of_our_cue`` (our sample id; the manifest keeps
-  ours), and every clip of a video we extracted takes our channel-hashed ``partition`` (``our_partition``), so a
-  channel never straddles train and monitor; ``uwb_partition`` keeps UWB's own.
+- **Overlap with our own YouTube states** (``--overlap-table``, required: ``uwb_lifter_gate.py --overlap-table-out``,
+  schema ``uwb-overlap-table-v2``): every clip records ``our_video`` and ``our_channel_id``; a clip paired with one of
+  our cues (IoU >= 0.5) carries ``duplicate_of_our_cue`` (our sample id), every clip overlapping our cues carries
+  ``our_cue_overlaps`` (sample id, cover, IoU: near-duplicates the pairing misses), and every clip of a video we hold
+  but could not time carries ``duplicate_of_our_video``. Nothing is dropped here: whether ours is preferred is decided
+  at manifest-build time against the cues our manifests actually select (``uwb_manifest.select_training_records``),
+  which also reads the partition of our videos from our manifest records. ``partition`` here is UWB's own
+  (``uwb_partition``); the hashed ``our_partition`` is informational.
 - Clock: ``(first + j) / fps``. The fps is the video's entry in ``--fps-table`` (``fps_source`` = ``estimated``) or
   ``--fps`` (default 30, ``fps_source`` = ``assumed``: 27% of the videos we could estimate are not 30/29.97 fps).
 - State: ``<out>/states/<clip id>.npz``, solver flags ``generator`` (upright chest and root, no elbow gate),
@@ -103,11 +107,12 @@ def load_fps_table(spec: str | None, store) -> tuple[dict, str | None]:
 
 
 def load_overlap_table(spec: str, store) -> tuple[dict, str]:
-    """The gate's ``uwb-overlap-table-v1``: {"clips": {clip id: {our_sample_id, iou}}, "videos": {id: {partition}}}."""
+    """The gate's ``uwb-overlap-table-v2``: {"clips": {clip id: {our_sample_id, iou, overlaps}}, "videos": {id: {
+    channel_id, dedup, partition, ...}}} (v1 had no near-duplicate overlaps or channels and is refused)."""
     payload, sha = load_spec(spec, store, "--overlap-table")
     data = json.loads(payload)
-    if not isinstance(data, dict) or data.get("schema") != "uwb-overlap-table-v1":
-        raise SystemExit("--overlap-table: not a uwb-overlap-table-v1 file")
+    if not isinstance(data, dict) or data.get("schema") != "uwb-overlap-table-v2":
+        raise SystemExit("--overlap-table: not a uwb-overlap-table-v2 file (regenerate with uwb_lifter_gate.py)")
     return dict(clips=data["clips"], videos=data["videos"]), sha
 
 
@@ -201,11 +206,12 @@ def clip_context(clip_id: str, video_id: str) -> dict:
     from signtranslator.data_engineering.uwb_keypoints import LICENCE
     text, uwb_partition = _WORKER["texts"].get(clip_id, (None, None))
     ours = _WORKER["overlap"]["videos"].get(video_id)
-    pair = _WORKER["overlap"]["clips"].get(clip_id)
-    return dict(text=text, uwb_partition=uwb_partition, our_video=ours is not None,
-                our_partition=ours and ours.get("partition"),
-                partition=(ours.get("partition") if ours else uwb_partition),
-                duplicate_of_our_cue=pair and pair.get("our_sample_id"), our_cue_iou=pair and pair.get("iou"),
+    pair = _WORKER["overlap"]["clips"].get(clip_id) or {}
+    return dict(text=text, uwb_partition=uwb_partition, partition=uwb_partition, our_video=ours is not None,
+                our_channel_id=ours and ours.get("channel_id"), our_partition=ours and ours.get("partition"),
+                duplicate_of_our_video=bool(ours and ours.get("dedup") == "whole-video"),
+                duplicate_of_our_cue=pair.get("our_sample_id"), our_cue_iou=pair.get("iou"),
+                our_cue_overlaps=pair.get("overlaps", []),
                 eval_leak=None if not text else bool(_WORKER["eval_index"].leaks(text)),
                 eval_index_sha256=_WORKER["args"].eval_index_sha256, licence=LICENCE)
 
@@ -293,6 +299,9 @@ def convert_unit(unit: dict) -> dict:
     checks = dict(eval_leak=sum(bool(r.get("eval_leak")) for r in converted),
                   no_text=sum(not r.get("text") for r in converted),
                   duplicate_of_our_cue=sum(bool(r.get("duplicate_of_our_cue")) for r in converted),
+                  duplicate_of_our_video=sum(bool(r.get("duplicate_of_our_video")) for r in converted),
+                  near_duplicate_unpaired=sum(bool(r.get("our_cue_overlaps")) and not r.get("duplicate_of_our_cue")
+                                              for r in converted),
                   our_video=sum(bool(r.get("our_video")) for r in converted),
                   partitions=dict(collections.Counter(r.get("partition") for r in converted)))
     report = dict(zip=unit["zip"], chunk=unit["chunk"], members=len(unit["members"]), counts=dict(counts),
@@ -306,8 +315,21 @@ def convert_unit(unit: dict) -> dict:
     return dict(key=key, status="written", counts=dict(counts), checks=checks)
 
 
+def count_units(store, prefix: str, chunk: int) -> int:
+    """How many units the source zips make at ``chunk`` members per unit (central directories only)."""
+    from build_uwb_keypoint_shards import open_zip
+    total = 0
+    for key in sorted(k for k in store.list(prefix.rstrip("/") + "/") if re.search(r"raw_keypoints_\d+\.zip$", k)):
+        with open_zip(store, key) as archive:
+            members = sum(i.filename.endswith(".json") for i in archive.infolist())
+        total += -(-members // chunk)
+    return total
+
+
 def merge_index(store, out_prefix: str, units_total: int | None = None) -> dict:
-    """``<out>/index.json`` from every finished unit report; refuses when the units disagree on settings."""
+    """``<out>/index.json`` from every finished unit report; refuses when the units disagree on settings (each unit's
+    fingerprint is recomputed from its recorded settings, never trusted). ``complete`` is true when every unit of the
+    source zips is finished."""
     from signtranslator.data_engineering.uwb_keypoints import ADAPTER, LICENCE
     keys = sorted(k for k in store.list(f"{out_prefix}/reports/") if re.search(r"chunk-\d+\.json$", k))
     counts, fps_sources, checks = collections.Counter(), collections.Counter(), collections.Counter()
@@ -319,15 +341,21 @@ def merge_index(store, out_prefix: str, units_total: int | None = None) -> dict:
         c = part.get("checks", {})
         checks.update({k: v for k, v in c.items() if k != "partitions"})
         partitions.update(c.get("partitions", {}))
-        fp = part.get("settings_fingerprint") or fingerprint(part.get("settings") or {})
+        fp = fingerprint(part.get("settings") or {})
+        if part.get("settings_fingerprint") not in (None, fp):
+            raise SystemExit(f"{key}: the recorded settings fingerprint does not match its settings")
         fingerprints[fp].append(key)
         units.append(dict(key=key, settings_fingerprint=fp, counts=part["counts"]))
     if len(fingerprints) > 1:
         raise SystemExit("unit reports disagree on settings: "
                          + json.dumps({fp: v[:3] + (["..."] if len(v) > 3 else []) for fp, v in fingerprints.items()}))
     settings_used = json.loads(store.get(keys[0]))["settings"] if keys else None
+    if units_total is None and settings_used:
+        units_total = count_units(store, settings_used["prefix"], settings_used["chunk_size"])
     index = dict(corpus_id="youtube-asl-uwb-keypoints-v1", adapter=ADAPTER, licence=LICENCE,
-                 units_total=units_total, units_finished=len(keys), counts=dict(counts), fps_sources=dict(fps_sources),
+                 units_total=units_total, units_finished=len(keys),
+                 complete=bool(units_total) and len(keys) == units_total and len(fingerprints) == 1,
+                 counts=dict(counts), fps_sources=dict(fps_sources),
                  checks=dict(checks), partitions=dict(partitions), settings=settings_used,
                  settings_fingerprint=next(iter(fingerprints), None), units=units)
     store.put(f"{out_prefix}/index.json", json.dumps(index, indent=1, sort_keys=True).encode())
@@ -368,7 +396,8 @@ def main(argv=None) -> int:
     store = make_store(args.store)
     if args.merge_index:
         index = merge_index(store, args.out_prefix)
-        print(json.dumps({k: index[k] for k in ("units_finished", "counts", "checks", "settings_fingerprint")}))
+        print(json.dumps({k: index[k] for k in ("units_finished", "units_total", "complete", "counts", "checks",
+                                                "settings_fingerprint")}))
         return 0
     if not 0 <= args.shard < args.shards:
         raise SystemExit("--shard must lie in [0, --shards)")
@@ -416,6 +445,12 @@ def main(argv=None) -> int:
                           overlap_videos=len(overlap["videos"]), eval_sentences=sentences)), flush=True)
     if args.dry_run:
         return 0
+    finished = sorted(k for k in store.list(f"{args.out_prefix}/reports/") if re.search(r"chunk-\d+\.json$", k))
+    if finished:                               # pre-flight: one existing report must carry this run's settings
+        differ = settings_difference(json.loads(store.get(finished[0])).get("settings"), settings(args))
+        if differ:
+            print(json.dumps(dict(status="settings-mismatch", key=finished[0], differ=differ)), flush=True)
+            return 2
     texts = translations(store, args.prefix)
     results = []
     with Pool(max(1, min(args.workers, len(mine))), initializer=_init,

@@ -1,4 +1,4 @@
-# UWB 2D-to-world lifter: development report (2026-10-30, 02:50 UTC; review fixes 03:30 UTC)
+# UWB 2D-to-world lifter: development report (2026-10-30, 02:50 UTC; review fixes 03:30 UTC; re-review fixes 04:30 UTC)
 
 Branch `uwb-lifter` (from main `ab7df81`). Nothing ran on a pod; no training beyond a local smoke; R2 was read, and
 written only under `scratch/uwb-lifter-dev/`.
@@ -130,7 +130,7 @@ Median / p90 in degrees against our own Tasks-extracted states, on each method's
 The independent review of `e186d62` approved with fixes and blocked conversion and training until items 1–4 were
 fixed.
 
-**Tests:** 46 UWB lifter tests. The whole suite passes under `python -W error -m pytest`, as CI runs it: 3,966 passed.
+**Tests:** 49 UWB lifter tests after the re-review fixes (46 at 6625c83). The whole suite passes under `python -W error -m pytest`, as CI runs it: 3,969 passed.
 
 Status of every item:
 
@@ -195,6 +195,8 @@ Status of every item:
      - The 79 videos we hold but could not time are marked `whole-video`: all their UWB clips count as duplicates.
      - The converter (`--overlap-table`, required) stores `duplicate_of_our_cue`, `our_cue_iou`, `our_partition`, `uwb_partition`, and `partition` (ours wins for our videos). The selection helper drops the duplicates.
    - Table: `scratch/uwb-lifter-dev/uwb-overlap-table-v1.json`, sha256 `645bc6459d2679a633fd4f4845cbf66b6c05cee1a052d0ea00188fa4af32a7f9`.
+   - **Superseded** by the re-review fixes below: v1 had no near-duplicate overlaps, `whole-video` was never read, and
+     the dedup and partition are now decided at manifest-build time.
 6. **Gate method (major).**
    - Done:
      - `--exclude-videos reports/uwb_gate_smoke_videos.txt` lists all 70 videos any development run touched.
@@ -222,6 +224,65 @@ Status of every item:
    - Dev smoke:
      - |lag| ≤ 1 on 70% of arm-aligned pairs. The lag minimum is shallow, so this criterion may need the margin raised or the signal changed.
      - Lag 0 dominates for both frame-count classes.
+
+## Re-review fixes (2026-10-30, re-review of 6625c83: APPROVE WITH FIXES)
+
+1. **`whole-video` is now applied, and unpaired clips are counted (major).**
+   - Every clip of a video we hold but could not time carries `duplicate_of_our_video`.
+   - Every clip records `our_video`, `our_channel_id` and `our_cue_overlaps`: our cues overlapping it, with cover (intersection / clip span) and IoU, up to 3 with cover ≥ 0.05.
+   - The overlap table is now `uwb-overlap-table-v2` and the converter refuses v1. Per video it gives the paired, unpaired and unpaired-but-overlapping counts.
+   - Real data (2,605 of our videos; 218,651 UWB clips of them):
+     - 212,291 paired;
+     - **3,953 unpaired** in timed videos, of which 560 overlap one of our cues with cover ≥ 0.05;
+     - 79 untimed videos holding **2,407 clips**, all `duplicate_of_our_video`.
+   - The largest unpaired counts per video are 171, 168, 116 (43 of them overlapping), 77 and 58.
+   - Table: `scratch/uwb-lifter-dev/uwb-overlap-table-v2.json`, sha256 `c617a2af0e696591f8b47bc8f1e02fda44a84d77dc2aad3d20167aeed0cfd6d3`.
+2. **Dedup at manifest-build time (major, design).**
+   - `uwb_manifest.select_training_records(records, eval_index_sha256=..., our_records=...)` takes the records of our YouTube manifests that the same build uses. It drops a UWB clip only when the cue of ours it duplicates is **selected**:
+     - its pair (IoU ≥ 0.5), or a selected cue covering ≥ 50% of its span;
+     - for an untimed video, any selected cue of that video.
+   - So a UWB clip is kept where our cue was dropped, for example the 51k arm-untracked cues.
+   - The partition of our videos is **read from our manifest records**: the video's records, else its channel's (our split is channel-disjoint). A clip of our video whose channel has no selected record is dropped (`our_partition_unknown`), never re-hashed.
+   - The converter no longer overrides `partition`. It keeps UWB's own, and the hashed `our_partition` is informational.
+   - Tests cover our cue selected vs not selected, near-duplicates, untimed videos, channel fallback and unknown partitions.
+3. **Selection hardening (minor).**
+   - `eval_index_sha256` is a required keyword.
+   - Partitions outside {train, monitor} are refused, ours and UWB's alike, as are our records putting one video or channel in two partitions.
+   - With the builder's `EvalIndex`, a stale `eval_leak=False` on leaking text is refused.
+   - Test: a leaked clip never reaches the selection output.
+4. **Index and resume (minor).**
+   - `--merge-index` recomputes each unit's fingerprint from its recorded settings and refuses a mismatch with the stored one.
+   - It computes `units_total` from the source zips and sets `complete`.
+   - Every run checks one existing unit report against its settings before converting anything (exit 2).
+5. **Drift (minor).**
+   - A drift is measured only from ≥ 8 arm-aligned cues spanning ≥ 3 minutes. Otherwise the video is `unchecked` and keeps its rate.
+   - The fps table carries per-video `drift` (ok / dropped / unchecked) and the rule.
+   - With `--pairs-per-video 5` almost every video is `unchecked`. A drift check needs `--pairs-per-video 12` or more (see the commands).
+6. **Input z (note).**
+   - `summary.inputs` reports p99 and median |z| for every input.
+   - `proposal_check` shows it as `inputs_diagnostic` (max p99 |z|, the reference 4), not as a pass/fail item.
+7. **Outside-frame check.**
+   - Defaults are exactly {learned, inside, margin:0.1, margin:0.25}.
+   - It reports per side, per bone (upper arm, forearm) and per elbow bin (inside, 0–0.1, 0.1–0.3, > 0.3 frame heights): survival, and the kept frames' median and p90 ungated lifter error, each with a by-video 95% CI upper bound (1,000 resamples).
+   - UWB-weighted survival uses UWB's own elbow-distance distribution. The gate now reports it in `summary.uwb_elbow_distance`; dev weights came from 300 random clips of videos we never extracted: elbow inside on 74% (left) / 77% (right), 0–0.1 out on 17% / 15%, 0.1–0.3 on 7%, > 0.3 on 1%. The weighting covers only bins with ≥ 200 frames and reports the UWB weight covered.
+   - **Inputs:** legacy MediaPipe Holistic 0.10.14 (model complexity 1, refined face), run locally on the same crop boxes of signers 1 and 2. All 56 crops used legacy inputs; none fell back to Tasks. Arrays: `scratch/uwb-lifter-dev/legacy-val.tar`, sha256 `77ac7d757230eb784388ba5877f3b4c66db5122ce12b256a8dae6c006992401a`.
+   - Results with the xy2 smoke bundle, 12 videos, 6,364 frame-sides. Median / p90 is the kept forearm error, by-video CI upper in brackets.
+
+| Rule | Side | Survival (all) | 0–0.1 (n 508 / 846) | 0.1–0.3 (n 1,055 / 846) | > 0.3 (n 1,574 / 1,292) | Kept forearm, all |
+|---|---|---|---|---|---|---|
+| MediaPipe | L / R | 0.286 / 0.007 | 0.11 / 0.01 | 0.63 / 0.00 | 0.12 / 0.00 | 22.1 / 53.8 [26.8 / 109] · 50.1 / 71.2 |
+| `learned` | L / R | 0.421 / 0.024 | 0.12 / 0.03 | 0.72 / 0.03 | 0.33 / 0.01 | 22.3 / 40.3 [25.7 / 47.8] · 35.0 / 44.7 |
+| `inside` | L / R | 0.000 / 0.023 | 0 / 0 | 0 / 0 | 0 / 0 | – · 32.2 / 42.0 |
+| `margin:0.1` | L / R | 0.020 / 0.226 | 0.12 / 0.74 | 0 / 0.00 | 0 / 0 | 28.6 / 45.3 · 33.7 / 41.8 |
+| `margin:0.25` | L / R | 0.208 / 0.475 | 0.16 / 0.78 | 0.55 / 0.84 | 0 / 0.01 | 23.0 / 44.8 [30.6 / 61.6] · 32.4 / 42.8 [34.7 / 48.9] |
+
+   - Upper-arm kept medians are 8–13° for every rule.
+   - **Coverage limits:**
+     - These crops put the elbow inside on only 45 (left) / 198 (right) frame-sides. The bins with ≥ 200 frames cover only **26% / 23% of UWB's weight**.
+     - UWB-weighted survival over the covered bins: MediaPipe 0.26 / 0.005, `learned` 0.31 / 0.03, `margin:0.1` 0.08 / 0.48, `margin:0.25` 0.27 / 0.77.
+     - Ratios against MediaPipe are meaningless on the right: MediaPipe Tasks itself keeps 0.5% of right forearms on these crops. That is the source of the learned head's right-arm loss.
+   - The proposed "chest-up survival ≥ 80% of MediaPipe's" is not well defined on this truth set: the denominator is near zero on the right, and inside-frame framings are missing.
+   - Next step: add How2Sign crops with the elbows inside (a wider framing, nose at 0.2 and shoulders at 0.45), so that UWB's dominant bin has truth.
 
 ### Proposed gate (to be declared by the coordinator)
 
@@ -291,20 +352,28 @@ smoke videos excluded. It also writes the drift-checked fps table:
 python scripts/uwb_lifter_gate.py --regressors <key of world-regressors-xy2-v1.pt> --regressors-sha256 <sha> \
   --visibility <declared rule, e.g. margin:0.25> --candidate-visibility learned,inside,margin:0.1,margin:0.25 \
   --exclude-videos reports/uwb_gate_smoke_videos.txt --videos 0 --pairs-per-video 5 --head affine \
-  --workers 30 --out gate-xy2-v1.json --fps-table-out uwb-fps-table-v3.json
+  --workers 30 --out gate-xy2-v1.json
 # the same with the xy-aug bundle if both are candidates (declare which is primary before running)
+# drift check for the fps table (needs >= 8 arm-aligned cues over >= 3 min per video; the lifter is irrelevant here):
+python scripts/uwb_lifter_gate.py --regressors <key> --regressors-sha256 <sha> --visibility <declared rule> \
+  --candidate-visibility "" --exclude-videos reports/uwb_gate_smoke_videos.txt --videos 0 --pairs-per-video 12 \
+  --workers 30 --out gate-drift.json --fps-table-out uwb-fps-table-v3.json
 ```
 
-Then run the outside-frame check (seconds). Its data is in `scratch/uwb-lifter-dev/outside-frame-data.tar`, sha256
-`598ab2ce80f05d663cdb1a0805fb4c56e412ff5708e76810c886d9eb028cc1a3`; extract it to `ofd/`:
+Then run the outside-frame check (minutes). Its data is in:
+
+- `scratch/uwb-lifter-dev/outside-frame-data.tar` (sha256 `598ab2ce80f05d663cdb1a0805fb4c56e412ff5708e76810c886d9eb028cc1a3`), extracted to `ofd/`;
+- `scratch/uwb-lifter-dev/legacy-val.tar` (sha256 `77ac7d757230eb784388ba5877f3b4c66db5122ce12b256a8dae6c006992401a`), extracted beside it.
+
+The UWB weights come from the gate report:
 
 ```bash
 python scripts/uwb_outside_frame_accuracy.py --crop-dirs ofd/val ofd/val-tight --two-view-dir ofd/twoview \
-  --regressors world-regressors-xy2-v1.pt --regressors-sha256 <sha> \
-  --rules learned,inside,margin:0.1,margin:0.25,margin:0.5 --report outside-frame-xy2-v1.json
+  --legacy-dir legacy-val --require-legacy --uwb-weights gate-xy2-v1.json \
+  --regressors world-regressors-xy2-v1.pt --regressors-sha256 <sha> --report outside-frame-xy2-v1.json
 ```
 
-The overlap table, if regenerated, needs every video (no `--videos`):
+The overlap table (v2), if regenerated, needs every video (no `--videos`):
 
 ```bash
 python scripts/uwb_lifter_gate.py --fps-only --overlap-table-out uwb-overlap-table-v2.json --out fps-only.json
@@ -319,7 +388,7 @@ ACQ=acquisition/2026-10-17-v1
 python scripts/convert_uwb_clips.py --out-prefix $ACQ/youtube-asl-uwb-keypoints-v1/states-xy2-v1 \
   --regressors <key> --regressors-sha256 <sha> --visibility <declared rule> \
   --fps-table <key of the drift-checked table>@<sha> \
-  --overlap-table scratch/uwb-lifter-dev/uwb-overlap-table-v1.json@645bc6459d2679a633fd4f4845cbf66b6c05cee1a052d0ea00188fa4af32a7f9 \
+  --overlap-table scratch/uwb-lifter-dev/uwb-overlap-table-v2.json@c617a2af0e696591f8b47bc8f1e02fda44a84d77dc2aad3d20167aeed0cfd6d3 \
   --eval-manifest $ACQ/derived/full-v1/how2sign-text-manifest-v1/manifest.json@<sha> \
   --eval-manifest $ACQ/derived/asllrp-dai2-v1/plan-manifest-v2/manifest.json@<sha> \
   --face blendshapes --head none --shard $I --shards 8 --workers 30
@@ -329,4 +398,6 @@ python scripts/convert_uwb_clips.py --out-prefix $ACQ/youtube-asl-uwb-keypoints-
 
 - Rerunning a shard with the same settings resumes it.
 - Any other settings on a finished unit exit 2.
-- Training manifests must select records through `uwb_manifest.select_training_records`.
+- Training manifests must select records through `uwb_manifest.select_training_records(records,
+  eval_index_sha256=<the converter's index SHA>, our_records=<the YouTube manifest records of the same build>,
+  eval_index=<the builder's EvalIndex>)`. This applies the dedup against our selected cues and reads our partitions.
