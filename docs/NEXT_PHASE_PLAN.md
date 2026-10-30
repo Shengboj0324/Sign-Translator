@@ -4633,3 +4633,79 @@ Each knob was run alone on the 1,000-sentence real-word oracle. The paired diffe
 - **Rule:** no lower bound is above 0, so **no knob is adopted.**
 - **Speed:** no knob brings wrist speed towards the 1.5× bar. Only tightened cores matches the oracle's own 2.26×, while space normalisation and minimum-jerk raise it.
 - **Correction:** earlier notes read the knobs' speeds against the all-knobs figure (3.03×). The right reference is the oracle's own 2.26×.
+
+## Road to 3.8: data assessment and decision tree (written 2026-10-30, 01:51 UTC, before round 16's verdict)
+
+### Where we stand (1,000 How2Sign val sentences, back-translator unchanged)
+
+| Form | BLEU | Position on the blank-to-real scale |
+|---|---|---|
+| Real recorded signing | 4.136 | 100% |
+| Target | 3.8 | 85% |
+| W14b composition | 2.31 | 20%; the real-word oracle 2.17 is composition's ceiling |
+| Blank motion | 1.859 | 0% |
+| W14b end-to-end | 1.786 | **below blank** |
+
+Composition cannot reach 3.8 (amendments 5–9). **Only end-to-end generation can, and it currently carries no measurable sentence content.**
+
+### Data sufficiency: an assessment, not a guarantee
+
+**Generator training mix today** (`round14b-mixed-v1`, 177,946 records), training records per corpus:
+
+| Corpus | Training records |
+|---|---|
+| YouTube-ASL | 99,918 |
+| Sem-Lex | 26,698 |
+| How2Sign | 18,289 |
+| RIT | 5,295 |
+| ASLLVD | 5,155 |
+| ASLLRP | 1,652 |
+| WLASL | 1,045 |
+
+**Continuous sentences are How2Sign (about 18k) plus YouTube-ASL (about 100k cues).** The YouTube cues are an estimated ~16% of YouTube-ASL's roughly 610k captions (the caption count is recalled from the paper, not checked here).
+
+**Arriving:**
+- **YouTube-ASL remainder**, about 84% of its captions, plus **6,118 extra videos** (OpenASL new, YouTube-SL-25 new ASL), through the home route from 09:00 UTC. It is rate-limited by YouTube's bot checks: days to weeks.
+- **2M-Flores:** about 2k sentences, held out first.
+- **SignAvatars:** better 3D targets for How2Sign.
+- **ASL STEM Wiki:** instruments only.
+
+**Verdict:**
+1. The data is **sufficient to test the training fixes** now in progress. The measured failure is free-running drift, not data scarcity: teacher-forced word retrieval is 0.67–0.91, and one-step samples read 0.82–0.87.
+2. It is **probably not sufficient for 3.8.** Sign-to-English translation improves sharply with YouTube-ASL scale over How2Sign alone (YouTube-ASL paper, recalled). A generator reaching 85% of real will very likely need the full YouTube corpus.
+3. **The decisive data lever is the YouTube remainder.** Its pace is set by YouTube, not by us. The home route therefore runs continuously from 09:00 UTC, and every finished batch is folded into the next training mix.
+
+### Round 16 outcomes and the decision each one triggers (declared before its verdict)
+
+"Δ" below is a paired BLEU difference on the 1,000 clips, with its 95% CI.
+
+| # | Outcome | Reading | Decision |
+|---|---|---|---|
+| O1 | R16 passes, and its point BLEU ≥ 2.3 | rollout fixes drift; end-to-end overtakes composition | R16 becomes the leader. **R17:** longer blocks (to 48), rate 1.0, a dropout-matched control to remove the declared confound; then retrain on the grown YouTube mix |
+| O2 | R16 passes, BLEU < 2.3 | the right direction, too small | adopt; **R17** as in O1; in parallel, prepare the tokenizer option (rank 4) for the owner's decision |
+| O3 | R16 fails, R16C beats W14b (Δ lower bound > 0) | more training helps; rollout does not | **continue R16C longer** on the grown mix; record rollout as not adopted |
+| O4 | both fail (no Δ lower bound > 0), R16 within noise | the AR prior at 24 steps/s × 32 codes cannot start or sustain sentences | **propose rank 4 to the owner** (structural): retokenise at 4× temporal downsampling with coarse plan codes; evidence: rounds 7–16 |
+| O5 | R16 significantly worse than R16C (Δ upper bound < 0) | rollout harms, or a defect | **error hunt first:** rolled-step accuracy trend, rollout exactness on the real checkpoint, the dropout confound arm; then O4 |
+| O6 | R16 lexicon below R16C (lower bound < −0.05) while BLEU passes | it traded words for fluency | not adopted, per the rule; R17 adds the word loss weight on rolled steps |
+
+**Risk across all outcomes:** the back-translator is weak (real signing reads only 4.14) and noisy. A ±0.3 Δ is near the 1,000-clip resolution.
+
+### Two parallel tracks that do not wait for the verdict
+
+1. **Data:** the YouTube home route from 09:00 UTC; extraction on CPU pods; 2M-Flores extraction (running); SignAvatars ingestion; every new state SHA-verified before training (the duplicate-overwrite rule).
+2. **Instrument (owner decision needed):** a stronger back-translator trained on How2Sign, YouTube-ASL and ASL STEM Wiki (instruments may use STEM Wiki). It would cut the noise that makes ±0.3 unreadable.
+   - **But changing the instrument changes what "3.8" means.** The proposal: restate the target as **85% of the way from blank to real on the instrument in use**.
+   - The current instrument stays frozen for every comparison already declared.
+
+### Error-discovery checklist for every verdict
+
+Every item holds before a result is reported:
+1. real > blank on the same run, with the same references in both reports;
+2. paired, never unpaired;
+3. per-subset and lexicon reads;
+4. wrist speed and motion statistics;
+5. training-curve anomalies (validation loss, rolled-step terms);
+6. the code bundle a pod ran matches the commit the declaration names;
+7. empty or failed jobs caught by checking outputs, not exit codes;
+8. an independent review before any adoption;
+9. every number logged to memory.
