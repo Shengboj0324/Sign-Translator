@@ -4957,3 +4957,30 @@ Report-only: shuffled 0.5 s chunks; length ratio per form.
 - How2Sign **training = c02 only**.
 - **Selection = c04 + 1,000 fixed YouTube monitor-channel clips.**
 - Nothing else changes.
+
+## Round 17 plan tokenizer result, recorded (2026-10-30, 09:41 UTC): PT FAILS (two declared gates)
+
+`plan-vq-v1`: 20,000 steps, ended 09:08 UTC on pod aogie6aibvebtq. The declared checkpoint is step 20,000.
+
+| Gate | Result | Bar | Verdict |
+|---|---|---|---|
+| Stage-1 perplexity on val, body / face | 175.4 / 200.2 | ≥ 128 | pass |
+| Stage-1 perplexity on val, left / right hand | **55.9 / 78.3** | ≥ 128 | **FAIL** (plateau since about step 6k) |
+| Dead-code re-seeds per 1k after step 10k | 0.0 (all parts) | < 1% | pass |
+| Divergence | none | none | pass |
+| Plan round-trip BLEU vs d2's own round trip | **2.676 vs 3.365 = 0.795×** | ≥ 0.8× | **FAIL** (by 0.005×). Real 4.136, blank 1.859: above blank |
+| Recogniser ratio | not run: the fidelity script's exit 4 ended the job under `set -e` | ≥ 0.9 | not measured |
+
+**Report-only:**
+- Plan round-trip speed ratios: body 0.63 (0.48 all joints), left hand 0.47, right hand 0.43, head 1.03.
+- The d2 tokenizer alone reads 0.69, 0.86 and 0.82, so the plan halves hand speed.
+- Validation loss is lowest at step 10k (1.604), rising to 1.631 at 20k.
+
+**Reading.** Mean pooling over 4 steps, with 2 stages per part, keeps 54% of d2's above-blank content, (2.676 − 1.859) / (3.365 − 1.859), and damps hand motion. The plan's own docstring predicts the damping.
+
+**Decision.** P17 and D17 do not run on plan-vq-v1. A diagnostics job measures, without changing this verdict:
+- d2's own stage-1 perplexity per part on the same validation batches, to check whether ≥ 128 is reachable for hands at all;
+- the skipped recognisability check;
+- report-only fidelity at step 10k.
+
+**PT-v2 is declared, with reasons, before anything retrains.**
