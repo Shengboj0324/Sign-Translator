@@ -16,7 +16,7 @@ Branch `uwb-lifter-v2` (from main 4db7a96). Binding spec: `docs/NEXT_PHASE_PLAN.
 | Rule `head` accepted; `--tight-summary` | `scripts/uwb_outside_frame_accuracy.py` |
 | `--gate-version 2` with the declared rows | `scripts/uwb_gate_verdict.py` |
 | Pod phases | `runpod/fleet/uwb_lifter_v2.sh` |
-| Tests (20) | `tests/test_uwb_lifter_v2.py` |
+| Tests (25) | `tests/test_uwb_lifter_v2.py` |
 
 ### Split
 
@@ -52,7 +52,7 @@ Each refusal is counted by reason.
 - **Fine-tuned:** starts from xy2 (its normalisation is kept), 15 epochs at lr 3e-4.
 - **From scratch:** 30 epochs at lr 1e-3.
 - Batches are 50/50:
-  - How2Sign: v2 pairs of signers 3, 4, 5, 8, 11, plus the training signers' tight crops, with the original loss.
+  - How2Sign: v2 pairs of signers 3, 4, 5, 8, 11, with the original loss. The tight crops do not enter the pose regressor (amendment 2); they train only the validity head.
   - YouTube: the train part, with 1 − cos on the 4 arm bones and the shoulder line.
 - One epoch is one pass over the larger source.
 - Hands stay frozen. `--finetune-hands` is the comparison arm and is never selected.
@@ -64,25 +64,32 @@ Each refusal is counted by reason.
 - Thresholds are set per side on lifter-val, over every frame where our chest is valid. A side's forearm counts as kept when its shoulder, elbow and wrist all reach the threshold.
 - The threshold maximises agreement subject to UWB-only ≤ 0.07. Ties go to the higher threshold. A grid value of 1.01 keeps nothing, so the constraint can always be met.
 
-**Signers:** signer 9 and How2Sign val signers 1 and 2 are refused by name before anything is read.
+**Signers:**
+- Signer 9 is refused by name before any of its files is read.
+- The v2 pairs files of How2Sign val signers 1 and 2 are read by `load_pairs` with the rest, then filtered out before training.
+- Crops of signers 1, 2 or any non-training signer are refused by name.
 
 ### Gate v2 verdict (`--gate-version 2`)
 
 **Kept from gate v1:**
 - every v1 bar;
 - the accuracy, relative, offset and strata rows on `lifter[inside]` common frames;
-- the mirror row and the downstream row.
+- the mirror row;
+- the downstream row, which now reads `lifter[head]` states, the conversion rule (amendment 2). It runs with `uwb_downstream_check.py --visibility head`, and the verdict checks that rule.
 
 **New rows:**
 - **Setup:** `inside`; the v1 candidate set; `head` as a secondary method; the declared v2 bundle; 12 pairs per video; 2,000 resamples; 70 development videos excluded; lag curves present; the declared split.
 - **Population:** every gated video is held out; the split is disjoint by channel and by video; the pairs index and the bundle's training report are both on this split.
-- **v1 reference:** must be present and on an identical sample. Its medians and its pooled-lag value are reported beside v2's.
-- **How2Sign non-inferiority:** v2 ≤ v1 + 0.5° per group, each side measured on ≥ 200 values from ≥ 5 videos.
-- **Truth anchor:** ≤ 28.2° (left) and ≤ 29.1° (right).
-- **Chest-up survival of `head`.**
+- **v1 reference:** must be present, with the same evaluated pairs and every gate setting the same except the bundle and `head` as secondary (amendment 2). Its medians and its pooled-lag value are reported beside v2's.
+- **How2Sign non-inferiority:** per group, v2's How2Sign-val median ≤ v1's + 0.5°. Both medians of a group must be measured on ≥ 200 values from ≥ 5 videos.
+- **Truth anchor:** ≤ v1's anchors, read unrounded from v1's pinned selection report (`lifter-v1/selection/outside-frame-xy2-v1.json`, sha `3e26180a…`): 28.24° left, 29.07° right (amendment 2). A test checks that xy2 passes its own anchor.
+- **Chest-up survival of `head`:** see item 5 below.
 - **Pooled-lag timing.**
 
-**Reported only:** head-kept accuracy, and the held-out minus lifter-val gaps.
+**Reported only:**
+- a 95% interval clustered by channel (2,000 resamples of channels) beside each gated by-video interval (amendment 2);
+- head-kept accuracy;
+- the held-out minus lifter-val gaps.
 
 **Cross-check:** only the proposal_check keys whose rows keep their v1 definition on the same method (accuracy, offset, strata, mirror, drift).
 
@@ -100,9 +107,9 @@ Three tests pin the rest:
 ## Tests
 
 Run warning-strict (`-W error`, `OMP_NUM_THREADS=1`):
-- `tests/test_uwb_lifter_v2.py`: 20 passed (after amendment 1);
-- related UWB suites, with the new tests included: 106 passed (after merging main 4245dc1);
-- full suite (4,081 tests collected): exit 0, no failures.
+- `tests/test_uwb_lifter_v2.py`: 25 passed (after amendment 2);
+- related UWB suites, with the new tests included: 111 passed (after merging main af4174d);
+- full suite: 4,090 passed (after amendment 2).
 
 ## Interpretations and deviations
 
@@ -116,12 +123,15 @@ Amendment 1 (2026-10-30, 11:51 UTC) settled these. It confirmed items 1–10 bel
    - It reads tight crops only (`--tight-summary`) and the cell for out-of-frame forearms, i.e. distance > 0.
    - MediaPipe counts as measured at ≥ 200 kept frames from ≥ 5 videos, as in v1's ruling.
    - Admissibility uses the amendment-1 rule on those crops.
-6. **v1 reference** is a gating setup row. The verdict is not-evaluable unless the reference is xy2, on the same split and settings, with the identical (video, clip) sample.
+   - When MediaPipe is unmeasured, amendment 2 sets the fallback:
+     - `head` must keep **more** out-of-frame forearms than `inside`, and must admit at least one measured outside bin; otherwise the row is not-evaluable, never pass.
+     - An inadmissible `head` fails, as declared.
+6. **v1 reference** is a gating setup row. The verdict is not-evaluable unless the reference is xy2 with every gate setting the same: split, prefixes, head, excluded videos, text matches and the rest. Only the bundle, `head` as secondary, workers, output and members cache may differ. The sample must also be identical, both the (video, clip) pairs and which of them were evaluated.
 7. **Pooled lag:**
    - The pooled curve is the mean of the per-pair median curves over the lags that every pair scored.
    - Ties go to the smaller |lag|, then the earlier lag.
    - A video with no common lag counts as outside ±1.
-   - A video whose common lags lack 0 counts as an offender.
+   - Offenders are counted only among videos whose pooled lag lies beyond ±1. Such a video is an offender when its pooled lag beats lag 0 by more than 2°, or when its common lags lack 0.
 8. **Not declared, chosen here:**
    - pose-arm selection metric: superseded by amendment 1, which uses the mean of the upper-arm and forearm medians;
    - the scratch arm's lr: 1e-3;
@@ -160,5 +170,29 @@ The downstream phase adds that row and writes the final verdict.
 ## Risks not covered by tests
 
 - **The crops phase has never run on a pod.** It installs legacy Holistic (Python 3.11, mediapipe 0.10.14) in a uv venv and needs all three Tasks models in `/root/work/models`.
-- **Memory in the train phase:** the three pose arms run one after another by default. `PARALLEL_ARMS=1` runs them together. Each arm prints its peak RSS and records it in its report (`peak_rss_mb`), so the pod can be sized from a first run.
+- **Memory in the train phase:** the two primary pose arms run one after another by default. `PARALLEL_ARMS=1` runs them together. Each arm prints its peak RSS and records it in its report (`peak_rss_mb`), so the pod can be sized from a first run.
+- **Hands comparison:** it runs after selection and after the validity head. A failure is recorded in `pose-ft-hands.FAILED` and does not stop the primary pipeline.
 - **Outside-frame tar layouts:** the script locates the directories by content, because the tars' layouts are not recorded.
+
+## Independent review of 0ec5362 and amendment 2 (2026-10-30, 12:03 UTC)
+
+Verdict: APPROVE WITH FIXES. Main af4174d is merged.
+
+1. **Chest-up fallback:** `head` must keep more out-of-frame forearms than `inside` and admit ≥ 1 measured outside bin, otherwise not-evaluable. An inadmissible `head` fails. The review's vacuous pass is now a test.
+2. **Downstream on `head`:** `uwb_downstream_check.py --visibility head` records `visibility` and `gate_visibility`. `downstream_rows(expected_visibility="head")` makes an `inside` read not-evaluable. The pod's downstream phase passes `head`.
+3. **Crops removed from the pose arms:** `pose` no longer accepts `--crops`, and the crops docstring is fixed. The crops train only the validity head.
+4. **Truth-anchor bars** are read unrounded from v1's pinned report (SHA-checked, `--outside-frame-v1`). xy2 passes its own anchor.
+5. **Channel-clustered 95% intervals:** in split runs the gate carries each pair's channel and adds `median_ci95_by_channel` to the primary common-frame medians. The verdict reports them beside the by-video intervals. Expected composition (amendment 2): 160 held-out channels including 8 monitor channels, 507 videos, 38,610 candidate pairs, split SHA `27c35505…`. The split phase flags a different SHA.
+6. **Thresholds refused below 500 chest-valid lifter-val frames per side.**
+7. **v1 reference identity:** every gate setting and the evaluated pair sets must match.
+8. **Pod script:**
+   - the chosen `.pt` is checked against `selection.json`'s SHA;
+   - `uv venv` runs only if no venv exists;
+   - the legacy Holistic model SHAs (`check-models`, against the venv that produced the v2 legacy pairs) are checked in the crops and train phases;
+   - the hands comparison runs after selection, and its failure is non-fatal and recorded.
+9. **Wording:**
+   - offenders are only videos whose pooled lag is beyond ±1;
+   - non-inferiority is per group;
+   - signers 1 and 2 are read, then filtered out.
+
+The review's adversarial file now fails on findings 1, 4 and 6, as intended. Its cases are branch tests (`test_review_adversarial_cases` and the threshold-floor test). Gate v1 and verdict v1 remain byte-identical to main on the synthetic store.

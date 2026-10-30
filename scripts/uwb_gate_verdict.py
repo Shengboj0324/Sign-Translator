@@ -47,13 +47,16 @@ New rows: setup (inside, the gate v1 candidate rules, head as a secondary method
 video, 2,000 resamples, 70 development videos excluded, lag curves, the declared split); **population** (every gated
 video held out, the split disjoint by channel and video, the pairs index and the bundle's training report on this
 split); **v1 reference** (the xy2 bundle on the identical sample: gating as a setup row, not-evaluable unless present and
-identical; its medians reported); **How2Sign non-inferiority** (v2's How2Sign-val median per group <= v1's + 0.5 deg);
-**truth anchor** (full-frame two-view forearm median <= 28.2 left / 29.1 right); **chest-up survival of head** (tight
-crops of signers 1 and 2, out-of-frame forearms: >= 0.8x MediaPipe where it keeps >= 200 frames from >= 5 videos,
-else >= inside's survival and head admissible); **timing** redefined (mirror unchanged; pooled lag per video with >= 3
-arm-aligned stream-match pairs within 1 for >= 90% of videos, and no video gaining > 2 deg over lag 0 beyond 1; v1's
-value reported). Reported: head-kept accuracy, held-out minus lifter-val gaps, diagnostics. Only proposal_check keys
-whose rows keep their gate v1 definition on the same method are cross-checked.
+identical: same evaluated pairs and every gate setting; its medians reported); **How2Sign non-inferiority** (per
+group, v2's How2Sign-val median <= v1's + 0.5 deg); **truth anchor** (full-frame two-view forearm median <= v1's,
+read unrounded from v1's pinned selection report: 28.24 left / 29.07 right); **chest-up survival of head** (tight crops
+of signers 1 and 2, out-of-frame forearms: >= 0.8x MediaPipe where it keeps >= 200 frames from >= 5 videos; else head
+must keep more than inside, admit >= 1 measured outside bin (otherwise not-evaluable) and be admissible (otherwise
+fail)); **timing** redefined (mirror unchanged; pooled lag per video with >= 3 arm-aligned stream-match pairs within 1
+for >= 90% of videos, and no video whose pooled lag lies beyond 1 gaining > 2 deg over lag 0; v1's value reported);
+**downstream** on ``lifter[head]`` states (the conversion rule). Reported: channel-clustered 95% intervals beside the
+by-video ones, head-kept accuracy, held-out minus lifter-val gaps, diagnostics. Amendments 1 (11:51 UTC) and 2 (12:03
+UTC). Only proposal_check keys whose rows keep their gate v1 definition on the same method are cross-checked.
 """
 from __future__ import annotations
 
@@ -356,7 +359,8 @@ def timing_rows(e: dict, summary: dict, pairs: list | None = None) -> list[dict]
                             from_pairs=len(aligned) or None))]
 
 
-def downstream_rows(downstream: dict | None, gate_sha: str | None, report: dict | None = None) -> list[dict]:
+def downstream_rows(downstream: dict | None, gate_sha: str | None, report: dict | None = None,
+                    expected_visibility: str | None = None) -> list[dict]:
     """The row recomputed from the downstream report's reads and differences (its recorded status is never trusted):
     pooled and UWB-dev reads, the dev size rule and the refusal rule (``uwb_downstream_check.combined_verdict``);
     not-evaluable when it read another gate report, bundle or rule, or another bootstrap count."""
@@ -371,7 +375,8 @@ def downstream_rows(downstream: dict | None, gate_sha: str | None, report: dict 
     report = report or {}
     checks = [("gate report", downstream.get("gate_report_sha256"), gate_sha),
               ("bundle", downstream.get("regressors_sha256"), report.get("regressors_sha256")),
-              ("visibility rule", downstream.get("visibility"), (report.get("settings") or {}).get("visibility")),
+              ("visibility rule", downstream.get("visibility"),
+               expected_visibility or (report.get("settings") or {}).get("visibility")),
               ("bootstrap resamples", downstream.get("bootstrap"), SAMPLE["bootstrap"])]
     for name, theirs, ours in checks:
         if theirs != ours:
@@ -534,8 +539,13 @@ def markdown(rows: list[dict], verdict: str, check: dict) -> str:
 V2_DECLARATION = ("docs/NEXT_PHASE_PLAN.md: UWB lifter v2 and gate v2: declared (2026-10-30, 11:12 UTC); every gate v1 "
                   "bar unchanged (declared selection and gate 03:34 UTC, amendment 1 03:59, owner 04:02)")
 V2 = dict(pairs_per_video=12, candidates="learned,inside,margin:0.1,margin:0.25", secondary="head",
-          h2s_noninferiority=.5, truth_anchor=dict(Left=28.2, Right=29.1), pooled_lag_share=.90, pooled_lag_min_pairs=3,
-          pooled_lag_bound=1, pooled_lag_gain=2., chest_up_survival=.80)
+          h2s_noninferiority=.5, truth_anchor_declared=dict(Left=28.2, Right=29.1), pooled_lag_share=.90,
+          pooled_lag_min_pairs=3, pooled_lag_bound=1, pooled_lag_gain=2., chest_up_survival=.80, conversion_rule="head",
+          outside_bins=("0-0.1", "0.1-0.3", "0.3-inf"))
+# Amendment 2 (12:03 UTC): the truth-anchor bars are v1's unrounded anchors from its pinned selection report
+V1_OUTSIDE_FRAME = dict(key="acquisition/2026-10-17-v1/youtube-asl-uwb-keypoints-v1/lifter-v1/selection/"
+                            "outside-frame-xy2-v1.json",
+                        sha256="3e26180a5f6510f68adecb5bbb3d977aa03d469f29930dac38919d8533590555")
 HEAD = "lifter[head]"
 
 
@@ -619,6 +629,15 @@ def _sample(report: dict) -> set:
     return {(p.get("video_id"), p.get("clip_id")) for p in report.get("pairs", [])}
 
 
+def _evaluated(report: dict) -> set:
+    return {(p.get("video_id"), p.get("clip_id")) for p in report.get("pairs", []) if p.get("status") == "evaluated"}
+
+
+# gate settings that may differ between the v2 run and its v1 reference (amendment 2: every other setting must match)
+V1_REFERENCE_MAY_DIFFER = frozenset(("regressors", "regressors_sha256", "secondary_visibility", "out", "workers",
+                                     "members_cache"))
+
+
 def v1_reference_rows(report: dict, v1: dict | None) -> list[dict]:
     """The xy2 bundle on the identical held-out sample: a gating setup row (not-evaluable unless present and identical)
     and its accuracy medians beside v2's (reported)."""
@@ -626,9 +645,7 @@ def v1_reference_rows(report: dict, v1: dict | None) -> list[dict]:
     if v1 is None:
         return [row("v1 reference", rid, None, bar, NA, detail=dict(reason="no v1 reference report given"))]
     s, s1 = report.get("settings", {}), v1.get("settings", {})
-    same = ("visibility", "candidate_visibility", "pairs_per_video", "bootstrap", "seed", "max_lag", "lag_margin",
-            "max_values_per_pair", "videos", "lag_curves")
-    differs = [k for k in same if s.get(k) != s1.get(k)]
+    differs = sorted(k for k in set(s) | set(s1) if k not in V1_REFERENCE_MAY_DIFFER and s.get(k) != s1.get(k))
     problems = []
     if v1.get("regressors_sha256") != BUNDLE_SHA256:
         problems.append(f"bundle {v1.get('regressors_sha256')} is not xy2")
@@ -636,8 +653,12 @@ def v1_reference_rows(report: dict, v1: dict | None) -> list[dict]:
         problems.append("another split")
     if differs:
         problems.append(f"settings differ: {differs}")
+    if sorted(v1.get("excluded_videos", [])) != sorted(report.get("excluded_videos", [])):
+        problems.append("other excluded videos")
     if _sample(v1) != _sample(report):
         problems.append(f"another sample ({len(_sample(v1))} pairs against {len(_sample(report))})")
+    elif _evaluated(v1) != _evaluated(report):
+        problems.append(f"other evaluated pairs ({len(_evaluated(v1))} against {len(_evaluated(report))})")
     out = [row("v1 reference", rid, len(_sample(v1)), bar, NA if problems else PASS,
                detail=dict(reason="; ".join(problems) or None))]
     e2 = report["summary"]["methods"][report["summary"]["primary"]]
@@ -685,19 +706,29 @@ def h2s_noninferiority_rows(h2s: dict | None, h2s_v1: dict | None, bundle: str |
     return out
 
 
-def truth_anchor_rows(outside: dict | None, bundle: str | None) -> list[dict]:
+def truth_anchor_rows(outside: dict | None, bundle: str | None, outside_v1: dict | None = None) -> list[dict]:
     """Full-frame two-view forearm error of the v2 bundle (the ungated lifter on full How2Sign frames with the whole
-    arm in view: ``uwb_outside_frame_accuracy.anchor``) <= v1's 28.2 deg (left) / 29.1 deg (right)."""
+    arm in view: ``uwb_outside_frame_accuracy.anchor``) <= v1's, per side. The bars are read unrounded from v1's pinned
+    selection report (amendment 2: 28.24 left, 29.07 right; the declaration wrote 28.2 and 29.1)."""
     reason = None if outside is not None else "no outside-frame report of the v2 bundle given"
     if not reason and outside.get("regressors_sha256") != bundle:
         reason = f"outside-frame report of bundle {outside.get('regressors_sha256')}, the gate ran {bundle}"
+    if not reason and outside_v1 is None:
+        reason = "no v1 outside-frame report given (the bars: lifter-v1/selection/outside-frame-xy2-v1.json)"
+    if not reason and outside_v1.get("regressors_sha256") != BUNDLE_SHA256:
+        reason = f"the v1 outside-frame report is of bundle {outside_v1.get('regressors_sha256')}, not xy2"
     out = []
-    for side, bar in V2["truth_anchor"].items():
+    for side in ("Left", "Right"):
         a = {} if reason else (outside.get("anchor") or {}).get(side, {}).get("Forearm", {})
+        b = {} if reason else (outside_v1.get("anchor") or {}).get(side, {}).get("Forearm", {})
         value = a.get("median") if a.get("n") else None
-        out.append(row("Truth anchor", f"full_frame_forearm_median.{side}<={bar}", value, bar, at_most(value, bar),
-                       rounded="outside-frame report, 2 dp", detail=dict(n=a.get("n"), videos=a.get("videos"),
-                                                                         ci95=a.get("median_ci95"), reason=reason)))
+        bar = b.get("median") if b.get("n") else None
+        why = reason or (None if bar is not None else f"v1's {side} forearm anchor is unmeasured")
+        status = NA if why else at_most(value, bar)
+        out.append(row("Truth anchor", f"full_frame_forearm_median.{side}<=v1", value, bar, status,
+                       rounded="outside-frame reports, 2 dp", detail=dict(
+                           n=a.get("n"), videos=a.get("videos"), ci95=a.get("median_ci95"), reason=why,
+                           v1=dict(n=b.get("n"), median=bar), declared_rounded=V2["truth_anchor_declared"][side])))
     return out
 
 
@@ -738,10 +769,20 @@ def chest_up_head_rows(outside: dict | None, bundle: str | None) -> list[dict]:
                 status = at_least(value, V2["chest_up_survival"])
                 detail["branch"] = "MediaPipe measured: ratio"
             else:
-                value, bar = head["survival"], f">= inside's survival ({inside.get('survival')}) and head admissible"
-                status = PASS if (inside.get("survival") is not None and value >= inside["survival"]
-                                  and admissible) else FAIL
-                detail["branch"] = f"MediaPipe keeps {mp_frames} frames from {mp_videos} videos: inside and admissibility"
+                # amendment 2: head must keep MORE than inside and admit >= 1 measured outside bin, else not-evaluable;
+                # an inadmissible head fails (the declaration's admissibility)
+                cells = ((tight.get("by_decision") or {}).get("head") or {}).get(side, {}).get("Forearm", {})
+                admitted = [b for b in V2["outside_bins"] if (cells.get(b) or {}).get("admitted")
+                            and not (cells.get(b) or {}).get("unmeasured")]
+                value = head["survival"]
+                bar = f"> inside's survival ({inside.get('survival')}), >= 1 admitted measured outside bin, admissible"
+                beats = inside.get("survival") is not None and value > inside["survival"]
+                status = FAIL if admissible is False else PASS if (admissible and beats and admitted) else NA
+                detail.update(branch=f"MediaPipe keeps {mp_frames} frames from {mp_videos} videos: inside, admitted "
+                                     "bins and admissibility", admitted_measured_outside_bins=admitted)
+                if status == NA:
+                    detail["reason"] = ("head keeps no more out-of-frame forearms than inside" if not beats
+                                        else "head admits no measured outside bin")
         out.append(row("Chest-up survival (head)", f"chest_up_head_forearm_survival.{side}", value, bar, status,
                        rounded="ratio or value of 4-dp survivals (uwb_outside_frame_accuracy)", detail=detail))
     return out
@@ -796,11 +837,26 @@ def lifter_val_gap_rows(report: dict, pose_report: dict | None) -> list[dict]:
     return out
 
 
+def channel_ci_rows(e: dict) -> list[dict]:
+    """Amendment 2 (reported): beside every gated by-video interval, the 95% interval of the median clustered by
+    channel (2,000 resamples of channels; ``uwb_lifter_gate.summarise`` with channels)."""
+    out = []
+    for g, bar in BARS["median"].items():
+        s = e["common"].get(g, {})
+        ci = s.get("median_ci95_by_channel")
+        out.append(row("Accuracy, medians", f"channel_ci.median.{g}", ci and ci[1], f"reported (gating: by-video "
+                       f"{(s.get('median_ci95_by_video') or [None, None])[1]} <= {bar + BARS['ci_slack']})", "reported",
+                       gating=False, rounded=ROUNDED_2DP,
+                       detail=dict(ci95_by_channel=ci, ci95_by_video=s.get("median_ci95_by_video"),
+                                   reason=None if ci else "no channel interval in the gate summary")))
+    return out
+
+
 def build_rows_v2(report: dict, *, v1: dict | None = None, h2s: dict | None = None, h2s_v1: dict | None = None,
                   downstream: dict | None = None, outside: dict | None = None, split: dict | None = None,
                   split_sha: str | None = None, pairs_index: dict | None = None, training: dict | None = None,
                   pose_report: dict | None = None, bundle_sha: str | None = None,
-                  gate_sha: str | None = None) -> list[dict]:
+                  gate_sha: str | None = None, outside_v1: dict | None = None) -> list[dict]:
     summary = report["summary"]
     primary = summary["primary"]
     if primary not in summary["methods"]:
@@ -811,10 +867,10 @@ def build_rows_v2(report: dict, *, v1: dict | None = None, h2s: dict | None = No
     rows = setup_rows_v2(report, bundle_sha, split_sha)
     rows += population_rows(report, split, split_sha, pairs_index, training, bundle_sha)
     rows += v1_reference_rows(report, v1)
-    rows += accuracy_rows(e)
+    rows += accuracy_rows(e) + channel_ci_rows(e)
     rows += relative_rows(e, h2s, bundle, primary, settings.get("candidate_visibility"))
     rows += h2s_noninferiority_rows(h2s, h2s_v1, bundle, primary, settings.get("candidate_visibility"))
-    rows += truth_anchor_rows(outside, bundle) + offset_rows(e) + strata_rows(summary)
+    rows += truth_anchor_rows(outside, bundle, outside_v1) + offset_rows(e) + strata_rows(summary)
     if HEAD in summary["methods"]:
         rows += [dict(r, note=f"method {HEAD}") for r in _strip_proposal(validity_core_rows(summary["methods"][HEAD]))]
     else:
@@ -826,7 +882,7 @@ def build_rows_v2(report: dict, *, v1: dict | None = None, h2s: dict | None = No
     rows += [mc] + pooled_lag_rows(report.get("pairs"))
     if v1 is not None:
         rows += pooled_lag_rows(v1.get("pairs"), gating=False, prefix="v1_reference.")
-    rows += downstream_rows(downstream, gate_sha, report)
+    rows += downstream_rows(downstream, gate_sha, report, expected_visibility=V2["conversion_rule"])
     if HEAD in summary["methods"]:
         rows += _secondary(accuracy_rows(dict(summary["methods"][HEAD], common=summary["methods"][HEAD]["own"])),
                            "head_kept")
@@ -845,9 +901,12 @@ def main_v2(args, store) -> int:
     pairs_index, pi_sha = load(store, args.pairs_index)
     training, tr_sha = load(store, args.training_report)
     pose_report, pr_sha = load(store, args.pose_report)
+    outside_v1, of1_sha = load(store, args.outside_frame_v1)
+    if outside_v1 is not None and of1_sha != V1_OUTSIDE_FRAME["sha256"]:
+        raise SystemExit(f"--outside-frame-v1: SHA-256 {of1_sha} is not the pinned {V1_OUTSIDE_FRAME['sha256']}")
     rows = build_rows_v2(report, v1=v1, h2s=h2s, h2s_v1=h2s_v1, downstream=downstream, outside=outside, split=split,
                          split_sha=split_sha, pairs_index=pairs_index, training=training, pose_report=pose_report,
-                         bundle_sha=args.bundle_sha256, gate_sha=gate_sha)
+                         bundle_sha=args.bundle_sha256, gate_sha=gate_sha, outside_v1=outside_v1)
     check = cross_check(rows, report["summary"])
     verdict = overall(rows, check)
     out = dict(gate_version=2, verdict=verdict, rows=rows, cross_check=check, bars=BARS, bars_v2=V2,
@@ -856,7 +915,8 @@ def main_v2(args, store) -> int:
                            how2sign_val=[args.how2sign_val, h2s_sha], how2sign_val_v1=[args.how2sign_val_v1, h2s_v1_sha],
                            downstream=[args.downstream, ds_sha], outside_frame=[args.outside_frame, of_sha],
                            split_file=[args.split_file, split_sha], pairs_index=[args.pairs_index, pi_sha],
-                           training_report=[args.training_report, tr_sha], pose_report=[args.pose_report, pr_sha]),
+                           training_report=[args.training_report, tr_sha], pose_report=[args.pose_report, pr_sha],
+                           outside_frame_v1=[args.outside_frame_v1, of1_sha]),
                declaration=V2_DECLARATION)
     return finish(args, store, out, rows, verdict, check)
 
@@ -896,9 +956,10 @@ def main(argv=None) -> int:
     v2.add_argument("--training-report", help="train_uwb_lifter_v2.py validity report (the gated bundle's)")
     v2.add_argument("--pose-report", help="train_uwb_lifter_v2.py pose report of the selected arm (lifter-val)")
     v2.add_argument("--bundle-sha256", help="the declared v2 bundle's SHA-256")
+    v2.add_argument("--outside-frame-v1", help="v1's pinned selection report (truth-anchor bars), SHA-checked")
     args = p.parse_args(argv)
     v2_only = [a for a in ("v1_reference", "how2sign_val_v1", "split_file", "pairs_index", "training_report",
-                           "pose_report", "bundle_sha256") if getattr(args, a)]
+                           "pose_report", "bundle_sha256", "outside_frame_v1") if getattr(args, a)]
     if args.gate_version == 1 and v2_only:
         raise SystemExit(f"--{v2_only[0].replace('_', '-')} is a gate v2 input (--gate-version 2)")
     from train_text_to_motion import make_store

@@ -8,8 +8,8 @@ Declared in docs/NEXT_PHASE_PLAN.md, "UWB lifter v2 and gate v2: declared" (2026
   fine-tuned ``--epochs 15`` at ``--lr 3e-4``; ``--from-scratch``: the comparison arm, a new MLP with the same shape
   (normalisation from its training inputs), 30 epochs at the original recipe's 1e-3;
 - **batches 50/50**: How2Sign (the v2 pairs of training signers 3, 4, 5, 8, 11 with their legacy Holistic inputs, as
-  ``train_world_regressors.load_pairs``, plus the training signers' tight crops: Tasks world and visibility targets),
-  with the original loss of ``train_world_regressors.fit`` (position MSE + ``1 - cos`` on ``POSE_BONES`` + visibility
+  ``train_world_regressors.load_pairs``; the tight crops do **not** enter the pose regressor: amendment 2, they train
+  only the validity head), with the original loss of ``train_world_regressors.fit`` (position MSE + ``1 - cos`` on ``POSE_BONES`` + visibility
   BCE); and YouTube (the **train** part of the lifter-v2 pairs, ``build_uwb_lifter_pairs.py``): ``1 - cos`` between the
   predicted and our bone directions on the four arm bones and the shoulder line, where ours is valid. One epoch is one
   pass over the larger source; the other is cycled. AdamW (weight decay 1e-4), OneCycleLR, seed 0, batch 2048;
@@ -17,8 +17,10 @@ Declared in docs/NEXT_PHASE_PLAN.md, "UWB lifter v2 and gate v2: declared" (2026
   fine-tuned the same way (How2Sign hand pairs, original loss; YouTube: ``1 - cos`` on our 15 finger bone directions
   in the camera frame, turned into the model's in-plane frame);
 - **lifter-val** (the split's lifter-val part, never trained on) scores the arm: per bone group the angle between the
-  predicted and our directions, beside the init bundle's on the same frames. How2Sign validation signers 1 and 2 and
-  signer 9 are never read (1 and 2 are gate v2's How2Sign controls; 9 is the generator's final-test signer).
+  predicted and our directions, beside the init bundle's on the same frames. How2Sign signer 9 (the generator's
+  final-test signer) is refused before any file of it is read; the v2 pairs files of validation signers 1 and 2 (gate
+  v2's How2Sign controls) are read by ``load_pairs`` with the rest and filtered out before training (crops of 1, 2 or
+  any non-training signer are refused by name).
 
 ``select`` — the arm with the lower lifter-val **mean of the upper-arm and forearm medians** (amendment 1, 2026-10-30
 11:51 UTC: not forearm-only, which could trade upper-arm accuracy away; ties to the fine-tuned arm). Selection reads
@@ -29,8 +31,8 @@ only lifter-val.
 YouTube train frames (labels: elbow = our upper arm valid, wrist = our forearm valid where the upper arm is, on frames
 where our chest is valid; shoulders unlabelled) and the tight crops (Tasks visibility >= 0.5 on points 11..16), 15
 epochs at 1e-3. **Thresholds per side on lifter-val**: on frames where our chest is valid, a side's forearm is kept when
-shoulder, elbow and wrist all reach the threshold (as the solver chains them); the threshold maximises agreement with
-our forearm validity subject to UWB-only <= 0.07 (ties to the higher threshold; a threshold above 1 keeps nothing, so
+shoulder, elbow and wrist all reach the threshold (as the solver chains them); refused below 500 such frames per side
+(amendment 2); the threshold maximises agreement with our forearm validity subject to UWB-only <= 0.07 (ties to the higher threshold; a threshold above 1 keeps nothing, so
 the constraint can always be met). The head is attached (``WorldRegressors.validity``) and the bundle written once.
 """
 from __future__ import annotations
@@ -59,6 +61,7 @@ XY2_BUNDLE = dict(key="acquisition/2026-10-17-v1/youtube-asl-uwb-keypoints-v1/li
 YT_BONES = ((11, 13), (13, 15), (12, 14), (14, 16), (12, 11))     # the pairs' ARM_TARGETS order; (12, 11): right -> left
 BONE_GROUPS = dict(upper_arms=(0, 2), forearms=(1, 3), shoulder_line=(4,))
 UWB_ONLY_MAX = .07
+MIN_THRESHOLD_FRAMES = 500           # amendment 2: chest-valid lifter-val frames per side the thresholds need
 THRESHOLDS = tuple(np.round(np.arange(.02, .99, .01), 2)) + (1.01,)
 VALIDITY_SHAPE = dict(width=256, depth=2)
 SIDE_POINTS = {"Left": (0, 2, 4), "Right": (1, 3, 5)}        # columns of points (11..16): shoulder, elbow, wrist
@@ -339,7 +342,8 @@ def masked_bce(out, labels, mask):
 
 
 def choose_thresholds(probability: np.ndarray, forearm_ours: np.ndarray, chest: np.ndarray,
-                      uwb_only_max: float = UWB_ONLY_MAX, grid=THRESHOLDS) -> dict:
+                      uwb_only_max: float = UWB_ONLY_MAX, grid=THRESHOLDS,
+                      min_frames: int = MIN_THRESHOLD_FRAMES) -> dict:
     """Per side: the threshold maximising agreement between the head's forearm (shoulder, elbow and wrist all >= t)
     and ours, on frames where our chest is valid, subject to UWB-only <= ``uwb_only_max`` (ties: the higher t).
     ``probability``: (N, 6) for points 11..16; ``forearm_ours``: (N, 2) Left, Right."""
@@ -347,7 +351,10 @@ def choose_thresholds(probability: np.ndarray, forearm_ours: np.ndarray, chest: 
     for k, side in enumerate(("Left", "Right")):
         p = probability[chest][:, list(SIDE_POINTS[side])].min(1)
         ours = forearm_ours[chest][:, k].astype(bool)
-        n = max(len(ours), 1)
+        if len(ours) < min_frames:
+            raise ValueError(f"validity thresholds: {len(ours)} chest-valid lifter-val frames on the {side} side "
+                             f"(at least {min_frames} needed)")
+        n = len(ours)
         curve, best = [], None
         for t in grid:
             kept = p >= t
@@ -389,16 +396,15 @@ def run_pose(args) -> int:
     if init.features != wr.FEATURES_XY2 or init.validity is not None:
         raise SystemExit("the init bundle must be an xy2 bundle without a validity head")
     split, split_sha = load_split_file(args.split_file)
-    manifest, crop_manifest = [], []
+    manifest = []
     hands_h2s, pose_h2s = how2sign_chunks(Path(args.h2s_pairs), Path(args.h2s_legacy), manifest)
-    crops = load_crops(Path(args.crops), Path(args.crops_legacy), crop_manifest) if args.crops else []
     from train_world_regressors import hand_arrays, pose_arrays
-    h2s = pose_arrays(pose_h2s + crops, wr.FEATURES_XY2)
+    h2s = pose_arrays(pose_h2s, wr.FEATURES_XY2)            # the v2 pairs only: crops train the validity head alone
     yt_train = load_youtube(Path(args.yt_pairs), split, split_sha, "train", hands=args.finetune_hands)
     yt_val = load_youtube(Path(args.yt_pairs), split, split_sha, "lifter_val", hands=args.finetune_hands)
     xt, dt, vt, _ = youtube_pose_arrays(yt_train)
     xv, dv, vv, video_v = youtube_pose_arrays(yt_val)
-    print(json.dumps(dict(how2sign_frames=len(h2s[0]), crop_chunks=len(crops), youtube_train_frames=len(xt),
+    print(json.dumps(dict(how2sign_frames=len(h2s[0]), youtube_train_frames=len(xt),
                           lifter_val_frames=len(xv))), flush=True)
     if args.from_scratch:
         torch.manual_seed(args.seed)
@@ -437,7 +443,7 @@ def run_pose(args) -> int:
                                 optimizer="AdamW(weight_decay=1e-4), OneCycleLR", hands="fine-tuned" if
                                 args.finetune_hands else "frozen (xy2)", youtube_bones=[list(b) for b in YT_BONES]),
                   split_sha256=split_sha, train_signers=list(TRAIN_SIGNERS), never_read=list(NEVER_READ),
-                  how2sign_pairs_manifest=manifest, crops_manifest=crop_manifest,
+                  how2sign_pairs_manifest=manifest,
                   youtube=dict(train_frames=int(len(xt)), lifter_val_frames=int(len(xv)),
                                lifter_val_videos=int(len(set(video_v.tolist()))),
                                shards=yt_train["shards"]),
@@ -510,7 +516,11 @@ def run_validity(args) -> int:
                                validity=(model, mean, std, {"Left": 1.01, "Right": 1.01}))
     probability, _ = by_aspect(lambda im, a: probe.point_validity(im, a), yt_val["pose"], yt_val["aspect"])
     chest = yt_val["chest_valid"].astype(bool)          # every frame the gate's forearm row counts
-    chosen = choose_thresholds(probability, yt_val["forearm_valid"], chest, args.uwb_only_max)
+    try:
+        chosen = choose_thresholds(probability, yt_val["forearm_valid"], chest, args.uwb_only_max,
+                                   min_frames=args.min_threshold_frames)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     thresholds = {side: chosen[side]["threshold"] for side in ("Left", "Right")}
     final = wr.WorldRegressors(hand=bundle.hand, pose=bundle.pose, features=bundle.features,
                                validity=(model, mean, std, thresholds))
@@ -542,8 +552,6 @@ def main(argv=None) -> int:
     pose.add_argument("--yt-pairs", required=True, help="local directory of the lifter-v2 pairs (pairs-index.json)")
     pose.add_argument("--h2s-pairs", required=True, help="the v2 world pairs (collect_world_pairs.py)")
     pose.add_argument("--h2s-legacy", required=True, help="their legacy Holistic arrays")
-    pose.add_argument("--crops", help="the training signers' tight crops (uwb_lifter_v2_crops.py)")
-    pose.add_argument("--crops-legacy", help="their legacy Holistic arrays")
     pose.add_argument("--init-bundle", required=True)
     pose.add_argument("--init-sha256", default=XY2_BUNDLE["sha256"])
     pose.add_argument("--from-scratch", action="store_true", help="the comparison arm")
@@ -569,6 +577,7 @@ def main(argv=None) -> int:
     val.add_argument("--batch", type=int, default=2048)
     val.add_argument("--seed", type=int, default=0)
     val.add_argument("--uwb-only-max", type=float, default=UWB_ONLY_MAX)
+    val.add_argument("--min-threshold-frames", type=int, default=MIN_THRESHOLD_FRAMES, help="per side (amendment 2)")
     val.add_argument("--out", required=True)
     val.add_argument("--report", required=True)
     args = p.parse_args(argv)
@@ -576,8 +585,6 @@ def main(argv=None) -> int:
     warnings.simplefilter("error")
     torch.set_num_threads(int(os.environ.get("TORCH_THREADS", "1")))
     if args.stage == "pose":
-        if bool(args.crops) != bool(args.crops_legacy):
-            raise SystemExit("--crops and --crops-legacy go together")
         args.epochs = args.epochs or (30 if args.from_scratch else 15)
         args.lr = args.lr or (1e-3 if args.from_scratch else 3e-4)
         return run_pose(args)

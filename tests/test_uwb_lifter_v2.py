@@ -394,8 +394,33 @@ def test_thresholds_maximise_agreement_subject_to_uwb_only():
         assert uwb_only <= .07 and chosen[side]["agreement"] == round(agreement, 4)
         assert all(score(u)[0] <= agreement + 1e-12 for u in trainer.THRESHOLDS if score(u)[1] <= .07)
         assert chosen[side]["frames"] == chest.sum()
-    never = trainer.choose_thresholds(np.ones((50, 6)), np.zeros((50, 2), bool), np.ones(50, bool))
+    never = trainer.choose_thresholds(np.ones((600, 6)), np.zeros((600, 2), bool), np.ones(600, bool))
     assert never["Left"]["threshold"] == 1.01 and never["Left"]["uwb_only"] == 0.
+
+
+def test_thresholds_are_refused_below_500_chest_valid_frames_per_side():
+    """Review finding 6: no chest-valid frame (or too few) used to give a threshold silently."""
+    with pytest.raises(ValueError, match="0 chest-valid"):
+        trainer.choose_thresholds(np.zeros((10, 6)), np.zeros((10, 2), bool), np.zeros(10, bool))
+    chest = np.zeros(1000, bool)
+    chest[:499] = True
+    with pytest.raises(ValueError, match="499 chest-valid"):
+        trainer.choose_thresholds(np.zeros((1000, 6)), np.zeros((1000, 2), bool), chest)
+    chest[499] = True
+    assert trainer.choose_thresholds(np.zeros((1000, 6)), np.zeros((1000, 2), bool), chest)["Left"]["frames"] == 500
+
+
+def test_thresholds_respect_the_cap_and_prefer_the_higher_on_ties():
+    rng = np.random.default_rng(0)
+    n = 5000
+    ours = rng.random((n, 2)) < .6
+    p = np.clip(ours[:, [0, 1, 0, 1, 0, 1]] * .6 + rng.random((n, 6)) * .4, 0, 1)
+    out = trainer.choose_thresholds(p, ours, np.ones(n, bool))
+    for s in ("Left", "Right"):
+        feasible = [c for c in out[s]["curve"] if c["uwb_only"] <= .07]
+        best = max(c["agreement"] for c in feasible)
+        assert out[s]["uwb_only"] <= .07 and out[s]["agreement"] == best
+        assert out[s]["threshold"] == max(c["threshold"] for c in feasible if c["agreement"] == best)
 
 
 def _write_h2s_pairs(directory, legacy_dir, name, signer, seed):
@@ -445,6 +470,16 @@ def test_signer_9_and_validation_signers_are_never_read(tmp_path):
         trainer.how2sign_chunks(p, legacy, [])
 
 
+def test_crops_legacy_models_must_match_the_v2_pairs():
+    crops.check_models(json.loads(json.dumps(crops.LEGACY_MODELS)))
+    other = json.loads(json.dumps(crops.LEGACY_MODELS))
+    other["models"]["pose_landmark/pose_landmark_full.tflite"] = "0" * 64
+    with pytest.raises(SystemExit, match="pose_landmark_full"):
+        crops.check_models(other)
+    with pytest.raises(SystemExit, match="mediapipe"):
+        crops.check_models(dict(crops.LEGACY_MODELS, mediapipe="0.10.21"))
+
+
 def test_trainer_pose_select_and_validity_end_to_end(tmp_path):
     common = build_store(tmp_path / "s")
     split_sha = crafted_split(tmp_path / "split.json")
@@ -464,8 +499,10 @@ def test_trainer_pose_select_and_validity_end_to_end(tmp_path):
     (tmp_path / "xy2.pt").write_bytes(payload)
     sha = hashlib.sha256(payload).hexdigest()
     base = ["pose", "--split-file", str(tmp_path / "split.json"), "--yt-pairs", str(yt), "--h2s-pairs", str(h2s),
-            "--h2s-legacy", str(legacy), "--crops", str(c), "--crops-legacy", str(cl), "--init-bundle",
-            str(tmp_path / "xy2.pt"), "--init-sha256", sha, "--epochs", "1", "--batch", "64"]
+            "--h2s-legacy", str(legacy), "--init-bundle", str(tmp_path / "xy2.pt"), "--init-sha256", sha,
+            "--epochs", "1", "--batch", "64"]
+    with pytest.raises(SystemExit):                          # amendment 2: the crops never reach the pose regressor
+        trainer.main(base + ["--crops", str(c), "--out", str(tmp_path / "x.pt"), "--report", str(tmp_path / "x.json")])
     for name, extra in (("ft", []), ("scratch", ["--from-scratch"]), ("hands", ["--finetune-hands"])):
         assert trainer.main(base + extra + ["--out", str(tmp_path / f"{name}.pt"),
                                             "--report", str(tmp_path / f"{name}.json")]) == 0
@@ -474,7 +511,7 @@ def test_trainer_pose_select_and_validity_end_to_end(tmp_path):
     assert {m["signer"] for m in ft["how2sign_pairs_manifest"]} == {"h2s-1", "h2s-3", "h2s-5"}
     assert ft["youtube"]["train_frames"] > 0 and ft["youtube"]["lifter_val_frames"] > 0
     assert ft["lifter_val"]["pose"]["forearms"]["n"] > 0 and ft["lifter_val"]["init_pose"]["forearms"]["n"] > 0
-    assert {m["signer"] for m in ft["crops_manifest"]} == {"h2s-3", "h2s-8"}
+    assert "crops_manifest" not in ft and ft["how2sign_frames"] == 24          # the two training-signer pairs only
     tuned = wr.WorldRegressors.load((tmp_path / "ft.pt").read_bytes(), expected_sha256=ft["bundle_sha256"])
     for side in ("Left", "Right"):                         # hands frozen: the xy2 hands exactly
         for a, b in zip(tuned.hand[side][0].state_dict().values(), init.hand[side][0].state_dict().values()):
@@ -495,6 +532,9 @@ def test_trainer_pose_select_and_validity_end_to_end(tmp_path):
     args = ["validity", "--split-file", str(tmp_path / "split.json"), "--yt-pairs", str(yt), "--crops", str(c),
             "--crops-legacy", str(cl), "--bundle", str(tmp_path / f"{chosen}.pt"), "--bundle-sha256", chosen_sha,
             "--epochs", "2", "--batch", "64", "--out", str(tmp_path / "final.pt"), "--report", str(tmp_path / "v.json")]
+    with pytest.raises(SystemExit, match="at least 500 needed"):            # amendment 2: the frame floor
+        trainer.main(args)
+    args[-4:-4] = ["--min-threshold-frames", "50"]                          # the tiny synthetic lifter-val
     assert trainer.main(args) == 0
     report = json.loads((tmp_path / "v.json").read_text())
     final = wr.WorldRegressors.load((tmp_path / "final.pt").read_bytes(), expected_sha256=report["bundle_sha256"])
@@ -502,6 +542,7 @@ def test_trainer_pose_select_and_validity_end_to_end(tmp_path):
     for side in ("Left", "Right"):
         assert report["lifter_val"][side]["uwb_only"] <= .07
     assert report["frames"]["youtube_train"] > 0 and report["frames"]["crops"] == 24
+    assert {m["signer"] for m in report["crops_manifest"]} == {"h2s-3", "h2s-8"}
     with pytest.raises(FileExistsError):
         trainer.main(args)
     with pytest.raises(SystemExit, match="already has a validity head"):
@@ -564,6 +605,64 @@ def test_pooled_lag_sums_cost_curves_per_video():
     assert set(gate.pooled_video_lags(partial)["H"]["curve"]) == {"-6", "0", "6"}      # lags common to every pair
 
 
+def test_review_adversarial_cases():
+    """The independent review's adversarial cases (findings 1, 4, 6), now refused, plus its passing timing checks."""
+    import uwb_outside_frame_accuracy as ofa
+    def cell(frames, survival, videos=5):
+        return dict(frames=frames, survival=survival, kept=dict(videos=videos, n=int(frames * survival)))
+    tight = dict(by_decision={d: {s: {"Forearm": {"outside": cell(1000, surv)}} for s in ("Left", "Right")}
+                              for d, surv in (("head", 0.0), ("inside", 0.0))},
+                 verdicts={"head": dict(admissible=True, failures=[])})
+    tight["by_decision"]["mediapipe"] = {s: {"Forearm": {"outside": cell(1000, .018, videos=3)}} for s in ("Left", "Right")}
+    rows = verdict.chest_up_head_rows(dict(regressors_sha256="b" * 64, tight=tight), "b" * 64)
+    assert all(r["status"] == "not-evaluable" for r in rows)      # a head keeping nothing out of frame never passes
+    cells = {s: {b: {n: dict(admitted=False) for n, *_ in ofa.BINS} for b in ofa.BONES} for s in ofa.SIDES}
+    anchors = {s: {b: dict(n=100, median=10., p90=20.) for b in ofa.BONES} for s in ofa.SIDES}
+    assert ofa.rule_verdict(cells, anchors, None)["admissible"] is True   # vacuous: hence the admitted-bin requirement
+    curve = {"-1": [5., 100], "1": [6., 100]}                    # no lag 0, pooled lag within 1: not an offender
+    pairs = [dict(status="evaluated", video_id="v", fps=30., meta_fps=30., alignment=dict(method="arm-2d", curve=curve))
+             for _ in range(3)]
+    assert [r["status"] for r in verdict.pooled_lag_rows(pairs)] == ["pass", "pass"]
+    good = {str(k): [10. + abs(k - 3), 100] for k in range(-6, 7)}
+    pairs = [dict(status="evaluated", video_id="v", fps=30., meta_fps=30., alignment=dict(method="arm-2d", curve=good))
+             for _ in range(3)]
+    pairs += [dict(status="evaluated", video_id="w", fps=30., meta_fps=60., alignment=dict(method="arm-2d", curve=good))
+              for _ in range(5)]
+    lags = gate.pooled_video_lags(pairs)
+    assert set(lags) == {"v"} and lags["v"]["lag"] == 3 and lags["v"]["gain_over_lag0"] == 3.
+    assert [r["status"] for r in verdict.pooled_lag_rows(pairs)] == ["fail", "fail"]
+
+
+def test_downstream_lifts_with_the_conversion_rule_head(tmp_path):
+    """Amendment 2: the downstream row reads lifter[head] states (``--visibility head``), recorded beside the gate's."""
+    import uwb_downstream_check as ds
+    from test_de_world_regressor_xy import xy_bundle
+    from test_uwb_downstream_check import make_store as ds_store
+    uwb_prefix, yt_prefix, *_ = ds_store(tmp_path)
+    payload = with_head(xy_bundle(), {"Left": .5, "Right": .5}).save()
+    (tmp_path / "h.pt").write_bytes(payload)
+    sha = hashlib.sha256(payload).hexdigest()
+    store = ["--store", f"dir:{tmp_path}"]
+    assert gate.main(store + ["--uwb-prefix", uwb_prefix, "--youtube-prefix", yt_prefix, "--workers", "1",
+                              "--regressors", str(tmp_path / "h.pt"), "--regressors-sha256", sha, "--visibility",
+                              "inside", "--secondary-visibility", "head", "--bootstrap", "20",
+                              "--out", str(tmp_path / "g.json")]) == 0
+    seen = []
+
+    def translate(states):
+        seen.append([s.channels["body"].inference_method for s in states])
+        return ["a b c"] * len(states)
+    common = store + ["--gate-report", str(tmp_path / "g.json"), "--regressors", str(tmp_path / "h.pt"),
+                      "--regressors-sha256", sha, "--face", "none", "--device", "cpu", "--workers", "1",
+                      "--bootstrap", "20", "--out", str(tmp_path / "d.json")]
+    assert ds.main(common + ["--visibility", "head"], translate_fn=translate) == 0
+    report = json.loads((tmp_path / "d.json").read_text())
+    assert report["visibility"] == "head" and report["gate_visibility"] == "inside"
+    assert all("validity head" in (m or "") for m in seen[0] if m)
+    with pytest.raises(SystemExit, match="visibility rule"):
+        ds.main(common + ["--visibility", "outside"], translate_fn=translate)
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 # gate v2 runs and verdict
 
@@ -599,6 +698,15 @@ def test_gate_v2_options_restrict_the_population_store_curves_and_keep_common_fr
     assert "lifter[head]" in v2["summary"]["methods"] and "lifter[head]" not in v2_runs["v2-nohead"]["summary"]["methods"]
     assert v2["summary"]["methods"]["lifter[inside]"]["common"] == \
         v2_runs["v2-nohead"]["summary"]["methods"]["lifter[inside]"]["common"]        # head is outside the common frames
+    assert {p["channel"] for p in v2["pairs"]} == {"ch0", "ch1", "ch2"}
+    common = v2["summary"]["methods"]["lifter[inside]"]["common"]
+    assert all("median_ci95_by_channel" in s for s in common.values())               # amendment 2: reported beside
+    g = next(g for g, x in common.items() if x["median_ci95_by_channel"])      # synthetic arms leave the frame
+    assert len(common[g]["median_ci95_by_channel"]) == 2
+    assert all("median_ci95_by_channel" not in x for x in v2["summary"]["methods"]["lifter[learned]"]["common"].values())
+    rows = {r["id"]: r for r in verdict.channel_ci_rows(v2["summary"]["methods"]["lifter[inside]"])}
+    assert rows[f"channel_ci.median.{g}"]["gating"] is False
+    assert rows[f"channel_ci.median.{g}"]["value"] == common[g]["median_ci95_by_channel"][1]
 
 
 def _h2s(sha, medians, n=500, videos=10, primary="lifter[inside]"):
@@ -607,11 +715,13 @@ def _h2s(sha, medians, n=500, videos=10, primary="lifter[inside]"):
                     g: dict(n=n, videos=videos, median=m) for g, m in medians.items()})}))
 
 
-def _tight(head, mp, inside, mp_frames=400, mp_videos=6, admissible=True):
-    def cell(survival, frames=1000, videos=6):
-        return {side: dict(Forearm=dict(outside=dict(frames=frames, survival=survival, kept=dict(videos=videos))))
-                for side in ("Left", "Right")}
-    return dict(by_decision=dict(head=cell(head), inside=cell(inside),
+def _tight(head, mp, inside, mp_frames=400, mp_videos=6, admissible=True, head_bins=("0-0.1",)):
+    def cell(survival, frames=1000, videos=6, bins=()):
+        forearm = dict(outside=dict(frames=frames, survival=survival, kept=dict(videos=videos)))
+        for b in ("0-0.1", "0.1-0.3", "0.3-inf"):
+            forearm[b] = dict(admitted=b in bins, unmeasured=False)
+        return {side: dict(Forearm=forearm) for side in ("Left", "Right")}
+    return dict(by_decision=dict(head=cell(head, bins=head_bins), inside=cell(inside),
                                  mediapipe=cell(mp, frames=mp_frames / mp if mp else 0, videos=mp_videos)),
                 verdicts=dict(head=dict(admissible=admissible, failures=[])))
 
@@ -623,7 +733,7 @@ def test_gate_v2_verdict_rows_and_not_evaluable_handling(v2_runs, monkeypatch, t
                                                      bundle_sha=sha)}
     assert rows["held_out_only"]["status"] == "pass" and rows["split_disjoint"]["status"] == "pass"
     for rid in ("pairs_on_this_split", "bundle_trained_on_this_split", "v1_reference_on_identical_sample",
-                "full_frame_forearm_median.Left<=28.2", "chest_up_head_forearm_survival.Right",
+                "full_frame_forearm_median.Left<=v1", "chest_up_head_forearm_survival.Right",
                 "how2sign_val_v2_minus_v1.forearms<=0.5", "relative.forearms<=1.6x", "downstream_back_translator"):
         assert rows[rid]["status"] == "not-evaluable" and rows[rid]["gating"], rid
     assert rows["bundle_is_lifter_v2"]["status"] == "pass" and rows["split_is_the_declared_split"]["status"] == "pass"
@@ -644,6 +754,17 @@ def test_gate_v2_verdict_rows_and_not_evaluable_handling(v2_runs, monkeypatch, t
     assert verdict.v1_reference_rows(v2, fewer)[0]["status"] == "not-evaluable"
     other = dict(v2_runs["v1"], regressors_sha256="f" * 64)
     assert "not xy2" in verdict.v1_reference_rows(v2, other)[0]["detail"]["reason"]
+    # amendment 2: every gate setting (head, excluded videos, text matches, prefixes) and the evaluated pair sets
+    for key, value in (("head", "affine"), ("exclude_videos", "other.txt"), ("min_text_matches", 4),
+                       ("uwb_prefix", "elsewhere"), ("youtube_prefix", "elsewhere")):
+        changed = dict(v2_runs["v1"], settings=dict(v2_runs["v1"]["settings"], **{key: value}))
+        row = verdict.v1_reference_rows(v2, changed)[0]
+        assert row["status"] == "not-evaluable" and key in row["detail"]["reason"], key
+    flipped = json.loads(json.dumps(v2_runs["v1"]))
+    flipped["pairs"][0]["status"] = "refused"
+    row = verdict.v1_reference_rows(v2, flipped)[0]
+    assert row["status"] == "not-evaluable" and "evaluated pairs" in row["detail"]["reason"]
+    assert verdict.v1_reference_rows(v2, dict(v2_runs["v1"], excluded_videos=["x"]))[0]["status"] == "not-evaluable"
     # How2Sign non-inferiority
     v1m = dict(upper_arms=8., forearms=7., wrists=10., fingers=12.)
     rows = verdict.h2s_noninferiority_rows(_h2s(sha, {g: m + .4 for g, m in v1m.items()}), _h2s(v2_runs["v1_sha"], v1m),
@@ -660,10 +781,16 @@ def test_gate_v2_verdict_rows_and_not_evaluable_handling(v2_runs, monkeypatch, t
                                              "lifter[inside]", verdict.V2["candidates"])
     assert {r["status"] for r in swapped} == {"not-evaluable"}
     # truth anchor
-    anchor = dict(regressors_sha256=sha, anchor=dict(Left=dict(Forearm=dict(n=900, median=28.2)),
-                                                     Right=dict(Forearm=dict(n=900, median=29.5))))
-    assert [r["status"] for r in verdict.truth_anchor_rows(anchor, sha)] == ["pass", "fail"]
-    assert {r["status"] for r in verdict.truth_anchor_rows(anchor, "0" * 64)} == {"not-evaluable"}
+    v1_anchor = dict(regressors_sha256=v2_runs["v1_sha"], anchor=dict(Left=dict(Forearm=dict(n=460, median=28.24)),
+                                                                     Right=dict(Forearm=dict(n=474, median=29.07))))
+    anchor = dict(regressors_sha256=sha, anchor=dict(Left=dict(Forearm=dict(n=900, median=28.24)),
+                                                     Right=dict(Forearm=dict(n=900, median=29.08))))
+    rows = verdict.truth_anchor_rows(anchor, sha, v1_anchor)
+    assert [r["status"] for r in rows] == ["pass", "fail"] and [r["bar"] for r in rows] == [28.24, 29.07]
+    assert {r["status"] for r in verdict.truth_anchor_rows(anchor, sha)} == {"not-evaluable"}          # no v1 report
+    assert {r["status"] for r in verdict.truth_anchor_rows(anchor, "0" * 64, v1_anchor)} == {"not-evaluable"}
+    # review finding 4: xy2 passes its own anchor (the rounded 28.2 bar failed it on the left)
+    assert {r["status"] for r in verdict.truth_anchor_rows(v1_anchor, v2_runs["v1_sha"], v1_anchor)} == {"pass"}
     # chest-up survival of head: the MediaPipe branch, then the inside-and-admissible branch
     outside = dict(regressors_sha256=sha, tight=_tight(head=.5, mp=.6, inside=0.))
     assert [r["status"] for r in verdict.chest_up_head_rows(outside, sha)] == ["pass", "pass"]   # 0.833 >= 0.8
@@ -674,7 +801,17 @@ def test_gate_v2_verdict_rows_and_not_evaluable_handling(v2_runs, monkeypatch, t
     assert [r["status"] for r in rows] == ["pass", "pass"] and "inside" in rows[0]["detail"]["branch"]
     outside = dict(regressors_sha256=sha, tight=_tight(head=.3, mp=.01, inside=.1, mp_frames=18, admissible=False))
     assert [r["status"] for r in verdict.chest_up_head_rows(outside, sha)] == ["fail", "fail"]
+    # amendment 2: equal to inside, or no admitted measured outside bin -> not-evaluable, never pass
+    for tight in (_tight(head=.1, mp=.01, inside=.1, mp_frames=18), _tight(head=.3, mp=.01, inside=.1, mp_frames=18,
+                                                                          head_bins=())):
+        rows = verdict.chest_up_head_rows(dict(regressors_sha256=sha, tight=tight), sha)
+        assert [r["status"] for r in rows] == ["not-evaluable"] * 2 and rows[0]["detail"]["reason"]
     assert {r["status"] for r in verdict.chest_up_head_rows(dict(regressors_sha256=sha), sha)} == {"not-evaluable"}
+    # downstream: the row reads lifter[head] states (amendment 2); an inside read is not-evaluable
+    for rule, ok in (("inside", False), ("head", True)):
+        ds_report = dict(gate_report_sha256="g", regressors_sha256=sha, visibility=rule, bootstrap=2000)
+        row = verdict.downstream_rows(ds_report, "g", v2, expected_visibility="head")[0]
+        assert ("visibility rule" in (row["detail"]["reason"] or "")) is not ok
     # population: a gated video of the training lists fails; provenance of pairs and bundle
     bad_split = json.loads(json.dumps(v2_runs["split"]))
     bad_split["held_out"]["videos"].remove("vid2")
@@ -702,6 +839,10 @@ def test_gate_v2_main_writes_the_v2_verdict_and_v1_mode_refuses_v2_inputs(v2_run
     assert rows["v1_reference_on_identical_sample"]["status"] == "pass"
     assert "v1_reference.pooled_lag_within_1_share>=0.9" in rows
     assert "**Overall:" in (tmp_path / "v.md").read_text()
+    (tmp_path / "of1.json").write_text("{}")
+    with pytest.raises(SystemExit, match="pinned"):
+        verdict.main(["--store", "none", "--gate-version", "2", "--gate-report", str(t / "v2.json"),
+                      "--outside-frame-v1", str(tmp_path / "of1.json"), "--out", str(out)])
     with pytest.raises(SystemExit, match="gate v2 input"):
         verdict.main(["--store", "none", "--gate-report", str(t / "v2.json"), "--split-file", str(t / "split.json"),
                       "--out", str(out)])

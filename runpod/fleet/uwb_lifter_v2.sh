@@ -85,8 +85,14 @@ refuse_existing $PHASE
 case $PHASE in
 split)
   python scripts/build_uwb_lifter_split.py --exclude-videos $DEV --workers $N --out $W/out/uwb-lifter-split-v1.json
-  store split "channel-disjoint split; composition published before training"
-  echo "SPLIT_SHA=$(sha256sum $W/out/uwb-lifter-split-v1.json | cut -d' ' -f1)" ;;
+  SPLIT=$(sha256sum $W/out/uwb-lifter-split-v1.json | cut -d' ' -f1)
+  # amendment 2 published the composition (160 held-out channels incl. 8 monitor channels, 507 videos, 38,610
+  # candidate pairs) with split SHA 27c35505... (the reviewer's recomputation). A different SHA is stored but flagged:
+  # the pairs phase runs only with the SHA the coordinator passes in.
+  case $SPLIT in 27c35505*) echo "split SHA matches the published 27c35505..." ;;
+    *) echo "SPLIT-SHA-DIFFERS-FROM-PUBLISHED: $SPLIT (published 27c35505...): compare the compositions first" ;; esac
+  store split "channel-disjoint split; composition published before training (amendment 2)"
+  echo "SPLIT_SHA=$SPLIT" ;;
 pairs)
   split_file
   python scripts/build_uwb_lifter_pairs.py --split-file $W/split.json --workers $N --out-dir $W/out
@@ -96,13 +102,14 @@ crops)
   python scripts/uwb_lifter_v2_crops.py fetch --clips-per-signer 40 --seed 0 --video-dir $W/videos --list $W/videos.txt
   python scripts/elbow_outside_accuracy.py extract --videos $(cat $W/videos.txt) --out-dir $W/c/crops \
     --models-dir /root/work/models --workers $N
-  uv venv -q -p 3.11 /root/legacy-mp       # legacy Holistic, as the v2 pairs' inputs (mediapipe 0.10.14, complexity 1)
+  [ -x /root/legacy-mp/bin/python ] || uv venv -q -p 3.11 /root/legacy-mp   # legacy Holistic, as the v2 pairs' inputs
   VIRTUAL_ENV=/root/legacy-mp uv pip install -q mediapipe==0.10.14 av==12.3.0 numpy==2.4.6 protobuf==4.25.9
   python scripts/uwb_lifter_v2_crops.py legacy-jobs --video-dir $W/videos --crop-dir $W/c/crops --legacy-dir $W/c/legacy \
     --jobs $W/legacy-jobs.json
   mkdir -p $W/c/legacy
   /root/legacy-mp/bin/python scripts/legacy_holistic_arrays.py --jobs $W/legacy-jobs.json --workers $N \
     --hashes $W/c/legacy-holistic-models.json
+  python scripts/uwb_lifter_v2_crops.py check-models --hashes $W/c/legacy-holistic-models.json   # refuses a mismatch
   [ "$(ls $W/c/crops | wc -l)" -eq "$(ls $W/c/legacy | wc -l)" ]
   tar -cf $W/out/crops.tar -C $W/c crops legacy legacy-holistic-models.json
   store crops "tight crops of How2Sign training signers 3, 4, 5, 8, 11 (Tasks) + legacy Holistic 0.10.14 arrays"
@@ -112,14 +119,15 @@ train)
   fetch $V2/crops/files/crops.tar "${CROPS_SHA:?CROPS_SHA from the crops phase}" $W/crops.tar
   tar -xf $W/crops.tar -C $W && rm $W/crops.tar
   T="python scripts/train_uwb_lifter_v2.py"
+  python scripts/uwb_lifter_v2_crops.py check-models --hashes $W/legacy-holistic-models.json
+  # the pose arms read the v2 pairs and YouTube only; the crops train only the validity head (amendment 2)
   COMMON="--split-file $W/split.json --yt-pairs $W/yt --h2s-pairs $W/pairs --h2s-legacy $W/legacy-pairs \
-    --crops $W/crops --crops-legacy $W/legacy --init-bundle $W/xy2.pt --init-sha256 $XY2_SHA --seed 0"
-  # Pose arms run one after another by default: each holds every YouTube frame in memory. PARALLEL_ARMS=1 runs the three
-  # together (size the pod's memory for 3x one arm's peak RSS, which each arm prints and records in its report).
-  ARMS=("pose-ft --epochs 15 --lr 3e-4" "pose-scratch --from-scratch --epochs 30 --lr 1e-3"
-        "pose-ft-hands --finetune-hands --epochs 15 --lr 3e-4")
+    --init-bundle $W/xy2.pt --init-sha256 $XY2_SHA --seed 0"
+  # Pose arms run one after another by default: each holds every YouTube frame in memory. PARALLEL_ARMS=1 runs the two
+  # primary arms together (size the pod's memory for 2x one arm's peak RSS, which each arm prints and records).
+  ARMS=("pose-ft --epochs 15 --lr 3e-4" "pose-scratch --from-scratch --epochs 30 --lr 1e-3")
   if [ "${PARALLEL_ARMS:-0}" = 1 ]; then
-    export TORCH_THREADS=$(( N / 3 > 0 ? N / 3 : 1 )); PIDS=()
+    export TORCH_THREADS=$(( N / 2 > 0 ? N / 2 : 1 )); PIDS=()
     for A in "${ARMS[@]}"; do
       read NAME FLAGS <<< "$A"
       $T pose $COMMON $FLAGS --out $W/out/$NAME.pt --report $W/out/$NAME.json > $W/out/$NAME.log 2>&1 & PIDS+=($!)
@@ -139,10 +147,17 @@ train)
   done
   $T select --reports $W/out/pose-ft.json $W/out/pose-scratch.json --out $W/out/selection.json
   CHOSEN=$(python -c "import json,sys; s=json.load(open(sys.argv[1])); print(['pose-ft','pose-scratch'][s['chosen']])" $W/out/selection.json)
+  CHOSEN_SHA=$(python -c "import json,sys; print(json.load(open(sys.argv[1]))['bundle_sha256'])" $W/out/selection.json)
+  need $W/out/$CHOSEN.pt $CHOSEN_SHA                  # the bundle on disk is the one selection.json chose
   export TORCH_THREADS=$N
   $T validity --split-file $W/split.json --yt-pairs $W/yt --crops $W/crops --crops-legacy $W/legacy \
-    --bundle $W/out/$CHOSEN.pt --bundle-sha256 $(sha256sum $W/out/$CHOSEN.pt | cut -d' ' -f1) \
+    --bundle $W/out/$CHOSEN.pt --bundle-sha256 $CHOSEN_SHA \
     --out $W/out/world-regressors-v2-uwb.pt --report $W/out/world-regressors-v2-uwb.json
+  # the hands comparison (declared, never selected) runs after the primary pipeline; its failure is recorded, not fatal
+  if ! $T pose $COMMON --finetune-hands --epochs 15 --lr 3e-4 --out $W/out/pose-ft-hands.pt \
+      --report $W/out/pose-ft-hands.json > $W/out/pose-ft-hands.log 2>&1; then
+    echo "hands comparison failed: see pose-ft-hands.log" | tee $W/out/pose-ft-hands.FAILED
+  fi
   store train "lifter v2: pose arms (fine-tuned / from scratch / hands comparison), selection on lifter-val, validity head"
   echo "BUNDLE_SHA=$(sha256sum $W/out/world-regressors-v2-uwb.pt | cut -d' ' -f1)" ;;
 gate)
@@ -168,11 +183,13 @@ gate)
     --regressors-sha256 $BUNDLE_SHA --rules $CANDIDATES,head --tight-summary --report $W/out/outside-frame-v2.json
   mkdir -p $W/train && fetch_phase train $W/train
   pairs_index
+  fetch $K1/selection/outside-frame-xy2-v1.json 3e26180a5f6510f68adecb5bbb3d977aa03d469f29930dac38919d8533590555 $W/outside-frame-v1.json
   python scripts/uwb_gate_verdict.py --store none --gate-version 2 --gate-report $W/out/gate-v2.json \
     --v1-reference $W/out/gate-v1-reference.json --how2sign-val $W/out/how2sign-val-v2.json \
     --how2sign-val-v1 $W/out/how2sign-val-xy2.json --outside-frame $W/out/outside-frame-v2.json \
     --split-file $W/split.json --pairs-index $W/pairs-index.json --training-report $W/train/world-regressors-v2-uwb.json \
     --pose-report $W/train/$(python -c "import json,sys; s=json.load(open(sys.argv[1])); print(['pose-ft','pose-scratch'][s['chosen']])" $W/train/selection.json).json \
+    --outside-frame-v1 $W/outside-frame-v1.json \
     --bundle-sha256 $BUNDLE_SHA --out $W/out/gate-verdict-v2-without-downstream.json \
     --markdown $W/out/gate-verdict-v2-without-downstream.md
   store gate "gate v2 (held-out channels, 12 pairs/video) for v2 and the xy2 reference; How2Sign-val medians; outside-frame"
@@ -185,7 +202,10 @@ downstream)
   fetch $V2/train/files/world-regressors-v2-uwb.pt "${BUNDLE_SHA:?BUNDLE_SHA}" $W/v2.pt
   mkdir -p $W/gate $W/train && fetch_phase gate $W/gate && fetch_phase train $W/train
   need $W/gate/gate-v2.json "${GATE_SHA:?GATE_SHA from the gate phase}"
-  python scripts/uwb_downstream_check.py --gate-report $W/gate/gate-v2.json --regressors $W/v2.pt --regressors-sha256 $BUNDLE_SHA \
+  fetch $K1/selection/outside-frame-xy2-v1.json 3e26180a5f6510f68adecb5bbb3d977aa03d469f29930dac38919d8533590555 $W/outside-frame-v1.json
+  # the lifted states use head, the conversion rule (amendment 2); the verdict checks it
+  python scripts/uwb_downstream_check.py --gate-report $W/gate/gate-v2.json --visibility head \
+    --regressors $W/v2.pt --regressors-sha256 $BUNDLE_SHA \
     --instrument-manifest-sha256 $KPMANIFEST --instrument-sha256 $KPSHA --models-dir /root/work/models --pairs 2000 \
     --seed 0 --bootstrap 2000 --device cuda --out $W/out/downstream-v2.json
   python scripts/uwb_gate_verdict.py --store none --gate-version 2 --gate-report $W/gate/gate-v2.json \
@@ -194,6 +214,7 @@ downstream)
     --downstream $W/out/downstream-v2.json --split-file $W/split.json --pairs-index $W/pairs-index.json \
     --training-report $W/train/world-regressors-v2-uwb.json \
     --pose-report $W/train/$(python -c "import json,sys; s=json.load(open(sys.argv[1])); print(['pose-ft','pose-scratch'][s['chosen']])" $W/train/selection.json).json \
+    --outside-frame-v1 $W/outside-frame-v1.json \
     --bundle-sha256 $BUNDLE_SHA --out $W/out/gate-verdict-v2.json --markdown $W/out/gate-verdict-v2.md
   store downstream "gate v2 downstream row and the full verdict" ;;
 *) echo "unknown phase $PHASE"; exit 2 ;;

@@ -47,7 +47,9 @@ listed in ``reports/uwb_gate_smoke_videos.txt``).
 **Gate v2 options** (plan "UWB lifter v2 and gate v2", 2026-10-30 11:12 UTC; without them every output is exactly as
 before): ``--split-file`` (``build_uwb_lifter_split.py``; a local path, store key or ``KEY@SHA256``) restricts the
 population to the split's held-out videos and refuses to evaluate any other video (the split's SHA-256 is recorded);
-``--lag-curves`` stores each pair's per-lag alignment cost curve (``alignment.curve``: lag -> [median angle, bone-frames],
+the evaluated pairs carry their channel and the primary method's common-frame medians gain a channel-clustered 95%
+interval (``median_ci95_by_channel``, reported beside the by-video one); ``--lag-curves`` stores each pair's per-lag
+alignment cost curve (``alignment.curve``: lag -> [median angle, bone-frames],
 for the pooled-lag timing row); ``--secondary-visibility`` scores further rules (``head``) as reported methods that do
 not enter the common frames. The summary carries ``proposal_check``: the coordinator's proposed
 gate evaluated where this script can compute it (it is a proposal until declared). Reads only; writes the report
@@ -643,6 +645,17 @@ def group_stats(rows: list[dict], method: str, scope: str, resamples: int) -> di
     return out
 
 
+def add_channel_intervals(stats: dict, rows: list[dict], method: str, scope: str, resamples: int) -> None:
+    """Gate v2 (amendment 2, reported only): beside each group's by-video interval, the 95% interval of the pooled
+    median resampling channels (``median_ci95_by_channel``); rows carry ``channel`` only in split runs."""
+    for g in stats:
+        by_channel = collections.defaultdict(list)
+        for r in rows:
+            by_channel[r["channel"]].append(np.asarray(r["methods"][method][scope].get(g, ()), dtype=np.float64))
+        arrays = {k: np.concatenate(v) for k, v in by_channel.items()}
+        stats[g]["median_ci95_by_channel"] = clustered_median_ci(arrays, resamples=resamples)
+
+
 def agreement_summary(counts: dict) -> dict:
     total = sum(counts[k] for k in CELLS)
     return dict(counts, frames=total, agreement=round((counts["both"] + counts["neither"]) / total, 4) if total else None,
@@ -695,6 +708,8 @@ def summarise(results: list[dict], *, primary: str | None = None, resamples: int
     for m in methods:
         started = time.monotonic()
         entry = {scope: group_stats(ok, m, scope, resamples) for scope in ("common", "own", "rotated")}
+        if m == primary and ok and all(r.get("channel") for r in ok):
+            add_channel_intervals(entry["common"], ok, m, "common", resamples)
         print(f"summarise {m}: angle statistics {time.monotonic() - started:.0f} s", flush=True)
         hands = collections.defaultdict(collections.Counter)
         for r in ok:
@@ -944,6 +959,8 @@ def _evaluate(job: dict) -> dict:
     from signtranslator.pose.multichannel import MultichannelMotion
     args, store = _WORKER["args"], _WORKER["store"]
     base = {k: job.get(k) for k in ("video_id", "clip_id", "sample_id", "cue_start", "iou", "fps", "meta_fps", "zip")}
+    if "channel" in job:                         # split runs only (gate v2): the channel-clustered intervals
+        base["channel"] = job["channel"]
     try:
         archive = _WORKER["archives"].get(job["zip"])
         if archive is None:
@@ -1174,6 +1191,8 @@ def main(argv=None) -> int:
             jobs.append(dict(video_id=video_id, clip_id=clip["clip_id"], sample_id=cue["sample_id"],
                              cue_start=cue["start"], iou=iou, fps=estimate["fps"], meta_fps=meta,
                              state_key=cue["state_key"], state_sha256=cue["state_sha256"]))
+            if split is not None:
+                jobs[-1]["channel"] = (report.get("meta") or {}).get("channel_id") or f"video:{video_id}"
     fps_summary = summarise_fps(fps_rows)
     print(json.dumps(fps_summary), flush=True)
     if args.overlap_table_out:
