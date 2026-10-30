@@ -22,7 +22,7 @@ import time
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 
 
 class Hashing:
@@ -98,10 +98,9 @@ def parallel(args, store) -> int:
     stored = int(store.s3.head_object(Bucket=store.bucket, Key=args.key)["ContentLength"])
     if stored != length:
         raise SystemExit(f"the stored object has {stored} bytes, expected {length}")
-    digest, body = hashlib.sha256(), store.s3.get_object(Bucket=store.bucket, Key=args.key)["Body"]
-    while chunk := body.read(8 * 2 ** 20):
-        digest.update(chunk)
-    index = dict(source=args.url, key=args.key, bytes=length, sha256=digest.hexdigest(), licence=args.licence,
+    from hash_store_object import ranged_sha256      # ranged read-back: a dropped connection costs one chunk
+    sha, _ = ranged_sha256(store, args.key, 512 * 2 ** 20)
+    index = dict(source=args.url, key=args.key, bytes=length, sha256=sha, licence=args.licence,
                  note=args.note, acquired_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), part_bytes=part,
                  parts=[dict(number=x["PartNumber"], bytes=x["bytes"], sha256=x["sha256"]) for x in parts], **meta)
     store.put(f"{args.key}.INDEX.json", json.dumps(index, indent=1).encode())
