@@ -54,6 +54,7 @@ from concurrent.futures import ProcessPoolExecutor
 import hashlib
 import io
 import json
+import time
 import os
 from pathlib import Path
 import random
@@ -524,16 +525,27 @@ def stat(values) -> dict:
 
 
 def clustered_median_ci(by_video: dict, *, resamples: int = BOOTSTRAP, seed: int = 0) -> list | None:
-    """95% interval of the pooled median, resampling videos with replacement."""
+    """95% interval of the pooled median, resampling videos with replacement. Exact and identical to concatenating the
+    resampled videos and taking np.median (same draws), but faster: the values are sorted once, and each resample
+    weights them by its video counts and reads the median off the cumulative weights."""
     keys = [k for k, v in by_video.items() if len(v)]
     if len(keys) < 2 or resamples <= 0:
         return None
     rng = np.random.default_rng(seed)
     arrays = [np.asarray(by_video[k], dtype=np.float64) for k in keys]
+    values = np.concatenate(arrays)
+    owner = np.concatenate([np.full(len(a), i) for i, a in enumerate(arrays)])
+    order = np.argsort(values, kind="stable")
+    values, owner = values[order], owner[order]
     medians = []
     for _ in range(resamples):
         pick = rng.integers(0, len(keys), len(keys))
-        medians.append(np.median(np.concatenate([arrays[k] for k in pick])))
+        cum = np.cumsum(np.bincount(pick, minlength=len(keys))[owner])
+        n = int(cum[-1])
+        if n % 2:
+            medians.append(values[np.searchsorted(cum, (n + 1) // 2)])
+        else:
+            medians.append((values[np.searchsorted(cum, n // 2)] + values[np.searchsorted(cum, n // 2 + 1)]) / 2)
     return [round(float(np.percentile(medians, 2.5)), 2), round(float(np.percentile(medians, 97.5)), 2)]
 
 
@@ -640,7 +652,9 @@ def summarise(results: list[dict], *, primary: str | None = None, resamples: int
     methods = sorted({m for r in ok for m in r["methods"]})
     summary = dict(pairs=len(ok), videos=len({r["video_id"] for r in ok}), primary=primary, methods={})
     for m in methods:
+        started = time.monotonic()
         entry = {scope: group_stats(ok, m, scope, resamples) for scope in ("common", "own", "rotated")}
+        print(f"summarise {m}: angle statistics {time.monotonic() - started:.0f} s", flush=True)
         hands = collections.defaultdict(collections.Counter)
         for r in ok:
             for stratum, sides in r["methods"][m]["hands"].items():
