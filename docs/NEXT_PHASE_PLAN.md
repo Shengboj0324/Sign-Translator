@@ -5414,3 +5414,37 @@ Same 1,000 clips, instrument v1. Real 4.136 and blank 1.859 reproduce exactly. A
 **If no lever improves D20:** composition on this instrument is capped near its oracle. M1 needs the structural 3.8 track (pretrained text encoder, masked decoding with durations, instrument v2), which goes to the owner with this evidence.
 
 **Process:** branch `round20` (D20/C20 builder, vocabulary switch with the activity core, continuous-form oracle, retiming options, v3d cache rerank, likelihood metric, Butterworth option) → tests → independent review → Phase A on CPU/GPU evaluation pods → Phase B.
+
+## Road to 3.8, part 2: the staged route after M1 (declared 2026-10-30, 19:32 UTC)
+
+The owner directed (about 19:15 UTC): pursue 3.8 by every means once M1 is reached, and plan and research now. Research report: `reports/Route to near real signing.md`, building on `reports/Sign production breakthrough methods.md`.
+
+**Ceiling finding.** Our d2 tokenizer's round trip of real How2Sign sentences reads **3.365 on instrument v1, 66% of the blank-to-real gap**.
+- Anything decoded through d2 is capped there unless it games the instrument. 3.8 on v1 is unreachable with d2, so a **tokenizer upgrade (S5) is a precondition** for 3.8.
+- The open-domain literature reaches 31–46% of its own ground truth in raw terms (MS2SL, SignRR on CSL-Daily, sign.mt). No paper reports a blank floor.
+
+**Target unchanged:** 3.8, which is 85% of the blank-to-real gap on the instrument in use. Waypoints are added:
+- **M2:** 50% of the gap, ≈ 3.0 on v1, with v2 agreeing in sign;
+- **T-milestone:** tokenizer round trip ≥ 85% of the gap on both instruments.
+
+Every reading is reported as a gap fraction and as a share of the attainable gap, (generated − blank) / (round trip − blank).
+
+**Stages.** No stage trains until its probe passes (the owner's rule). Probes S0 and S1 cost almost nothing and run alongside round 20.
+
+| Stage | Probe first (training-free or CPU) | Pass condition | Training it would justify |
+|---|---|---|---|
+| **S0** ceilings and metrics | On v1 (and v2 once accepted): d2 round trip; stage-truncated round trips (stages 1, 1–2, 1–4); real with mean or damped face; time-warped and low-passed real; ΔNLL over blank, 100-way retrieval and ρ_faith on every stored output | ΔNLL and retrieval reproduce BLEU's resolved orderings with tighter CIs | none (measurement) |
+| **S1** locate the text bottleneck | KL(text ‖ empty) on stage-1 codes for the round-4 flan-T5 and MiniLM priors against the byte prior; stage-1-only round trip | The pretrained priors show the same 0.02–0.07 nats → the **decoder** is the bottleneck; stage 1 (+2) keeps ≥ 0.8 of d2's gap share | none; chooses S2's design |
+| **S2** masked base-layer generator with pretrained cross-attention | S1 passes, plus a CPU contrastive probe showing stage-1 codes of real phrases are retrievable from text | Phrase retrieval clearly above chance | Curriculum pilot (lexicon words → ASLLRP and stitched 2–3-word phrases), gated on phrase retrieval and ρ_faith < 0.8 above W14b; then sentences. Duration model for length, never the true length |
+| **S3** continuous-form dictionary, retrieval as prompt hints | Real-segment oracle at 25/50/75/100% coverage (ASLLRP plus caption-gated How2Sign-train spotting) on v1 and v2; code agreement of continuous-form concatenation against the target | Oracle rises with coverage and its 100% point clears 50% of the gap | SOKE-style hints in S2's encoder; a refiner only if ≥ 80% coverage reaches ≥ 50% of the gap |
+| **S4** stitched synthetic sentences | v2 reads stitched sentences well above blank and shuffled; seam statistics within a declared band of real | Content readable; realistic seams | Blended schedule (100% → 15% synthetic), junction-masked loss; control without synthetic data |
+| **S5** representation ceiling | Per-part decomposition of round-trip loss; face-ablation probe | One part, or the face, explains most of the 34% loss | Tokenizer v3 (variable rate, quantization dropout, per-part rates, face/mouth stream if needed), its translation loss from a **separate** translator, never v1 or v2; gate: round trip ≥ d2 on both instruments |
+| **S6** human evaluation | at each passed milestone | — | 200 sentences × 3 Deaf raters with real references (≈ $500 per system) |
+
+**Anti-gaming discipline:**
+- v1 and v2 are never used for training losses, reranking or best-of-N;
+- levers are chosen on disjoint development splits; declared sets are read only to confirm;
+- every number carries its controls (blank, mean pose, shuffled text, mismatched words, length ratio, wrist speed);
+- progress is claimed only when v1 and v2 agree.
+
+**Now:** S0 (v1 parts) and S1 are built and run as evaluation-only jobs alongside round 20. S2–S5 wait for their probes and for M1.
