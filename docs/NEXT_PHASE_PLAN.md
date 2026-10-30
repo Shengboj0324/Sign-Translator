@@ -5270,3 +5270,20 @@ From the build (branch `round18` c7befa3):
 4. **Lifted clips:** the same caption and duration filter as our YouTube records. Hand coverage is the larger per-side fraction.
 5. **Pilot:** it names round18-mixed-v1 and its SHA, because the generator loader refuses a checkpoint trained on another manifest. It writes to a new output key, so R16C's stored pilot is never overwritten. The builder refuses the mix if the 1,000 pilot clips differ.
 6. **Smoke test:** the pilot command is smoke-tested on GPU, on a few clips, before the chain launches.
+
+### Round 18, amendment 2 (declared 2026-10-30, 13:48 UTC, from the independent review; before anything runs)
+
+1. **Rejected cues do not re-enter.**
+   - On real metadata, 116,316 of the 119,858 non-duplicate lifted candidates pair with cues our youtube-asl-v1 pipeline saw and rejected.
+   - Lifted clips are joined to our extraction reports by `our_sample_id`. A clip whose cue was rejected for second person, not frontal, face not visible, the video gate or the channel cap is **dropped**: the lifter fixes none of these.
+   - Only rejections the lifter addresses (arm or hands untracked by our extraction) and cues we never extracted may enter.
+   - The resulting counts per reason are reported before the manifest is used. If fewer than 20k lifted records remain, round 18 is reported as "no meaningful data gain" and **not trained**.
+2. **Leaks after text cleaning** are filtered as `evaluation_leak_cleaned`, the same normalisation as `build_youtube_asl_manifest.py`. The guard stays as an assertion.
+3. **One text per video** counts our own selected texts too.
+4. **Instrument confound** (v1 was pretrained on these UWB captions): the v3d lexicon (independent of UWB) is in the rule, and an instrument-v2 read is reported beside it if v2 is accepted.
+5. **Housekeeping:**
+   - UWB dev clips of our training videos may train; the docstring is corrected, and no evaluation data is exposed;
+   - every conversion setting is checked by the builder;
+   - the pilot comparisons use pipefail, read local files and refuse overwrites;
+   - the conversion worker count also respects the cgroup CPU quota;
+   - R16C's and R18's code bundle commits are recorded.
