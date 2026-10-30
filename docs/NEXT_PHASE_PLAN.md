@@ -4775,3 +4775,5 @@ Every item holds before a result is reported:
   The crops cannot measure whether it drops arms that are fully in view.
 - **The YouTube gate** covers the inside-frame majority (about 75% of UWB's weight) for the chosen rule.
 - **Remaining dedup fix (before conversion):** drop a UWB clip when the covers of the selected cues of ours sum to ≥ 0.5.
+
+**Owner (2026-10-30, 04:02 UTC):** declared the proposed UWB lifter gate, as written above with amendment 1.
