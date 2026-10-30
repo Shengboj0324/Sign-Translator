@@ -4904,3 +4904,51 @@ P17's plan-only BLEU and the oracle–generated gap are reported beside it.
 **When only one passes:** that arm leads.
 
 **Oracle precondition** (`compare_pilot_lexicon.py --oracle-precondition`, from the pilot's `--oracle-only` read) is judged per arm before that arm's pilot runs. The oracle wrist-speed gate, [0.8, 1.5] × real, is read from the same oracle-only run.
+
+## Instrument v2: design and declared gates (declared 2026-10-30, 09:10 UTC, before any code is written or anything trains)
+
+**Purpose.** The owner-approved stronger back-translator (01:53 UTC). v1 (`back-translator-kp2d-uwb-ft-v1`) reads real How2Sign val at 4.136 and blank at 1.859, so a paired ±0.3 is near its resolution. The run is named `back-translator-state-t5-v1` (kind `state_to_text_t5`); "back-translator v2" already names the old 3D T5.
+
+**v1 stays frozen for every comparison already declared.** v2 never trains or reranks the generator. Its checkpoint carries a licence tag, because it reads ASL STEM Wiki (instruments only).
+
+**Design:**
+- **Input:** the generator's own states, conformed to the `how2sign-two-view-text-v1` template as the generator's are.
+  - 3D forward-kinematics positions with z, normalised like v1 but in 3D.
+  - Native rotation, face, blink, head and gaze channels.
+  - Per-channel validity flags.
+  - Root and head translation centred on each clip's median.
+- **Model:** a motion encoder (d 512, 6 layers, ×2 downsample) feeding the flan-t5-base decoder, as v1 does. It is not warm-started from v1, so the ranking check stays independent.
+- **Training data:**
+  - How2Sign train, components c02 and c04 only. Never c00 (signer 9) or val, and train sentences equal or near to val/test sentences are dropped.
+  - YouTube-ASL states (evaluation text already filtered).
+  - ASL STEM Wiki states (4 participants held out, reported only).
+  - UWB-lifted states are a pretraining option only if the lifter gate passes.
+- **2M-Flores is held out entirely** as the cross-domain check.
+- **Augmentation:**
+  - speed, trim, face dropout and validity dropout;
+  - tokenizer (d2) round-trip copies at p ≈ 0.4 under the same text, so the instrument sees the generator's form with content.
+  - **Forbidden:** training on blank or control inputs with special targets.
+- **Selection on held-out train data, never How2Sign val:** c04 plus 1,000 fixed YouTube monitor-channel clips. Criterion: BLEU(real) − BLEU(blank) on that set, not real BLEU, so a stronger text prior is not rewarded.
+
+**Controls on every read** (each at the reference clip's duration):
+- blank (all channels invalid);
+- blank at a fixed median duration;
+- static-valid (the first real frame held, every channel valid: the generator's form with no motion);
+- mismatched (a derangement: B's real motion time-stretched to A's duration).
+
+Report-only: shuffled 0.5 s chunks; length ratio per form.
+
+**Gates** (on the same 1,000 How2Sign val clips as every pilot; paired 95% CIs; all must hold):
+
+| Gate | Requirement |
+|---|---|
+| **G1 strength** | real ≥ 6.20 (1.5× v1), CI lower bound > 4.136 |
+| **G2 gap** | real − max(blank, static-valid, mismatched) ≥ 4.55 (2× v1's 2.277), paired CI lower bound > 2.277. Report the gap over the W14b − R16C paired half-width against v1's |
+| **G3 no same-space bias** | every generated arm reads below real (paired upper bound < 0); d2 round trip ≥ 0.8 × real |
+| **G4 cross-domain** | 2M-Flores real CI above its own blank and mismatched controls |
+| **G5 ranking** | re-read W14b, R16, R16C, composition, real, blank. Every ordering v1 resolved (CI excluding 0) keeps its sign; Kendall τ reported. Re-generation must first reproduce v1's stored hypotheses |
+| **G6 per-signer** | each How2Sign val signer group (c01, c03, c05) reads real above blank (CI) |
+
+**If all pass:** v2 becomes the instrument for **new** declarations only, and 3.8 is restated as blank + 0.85 × (real − blank) on v2. **If any fails:** v2 is not used, and the failing gate and its next fix are reported.
+
+**Process:** build on branch `instrument-v2`, with unit tests (featurisation round trip; the validity mask survives conform; a val or c00 record is refused in training; controls are built at the reference duration), then an independent review before any pod trains.
