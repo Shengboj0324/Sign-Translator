@@ -4952,3 +4952,8 @@ Report-only: shuffled 0.5 s chunks; length ratio per form.
 **If all pass:** v2 becomes the instrument for **new** declarations only, and 3.8 is restated as blank + 0.85 × (real − blank) on v2. **If any fails:** v2 is not used, and the failing gate and its next fix are reported.
 
 **Process:** build on branch `instrument-v2`, with unit tests (featurisation round trip; the validity mask survives conform; a val or c00 record is refused in training; controls are built at the reference duration), then an independent review before any pod trains.
+
+**Instrument v2 clarification (2026-10-30, 09:14 UTC, before any code).** The design names How2Sign c04 both as training data and as selection data; selection must be disjoint from training. Resolved:
+- How2Sign **training = c02 only**.
+- **Selection = c04 + 1,000 fixed YouTube monitor-channel clips.**
+- Nothing else changes.
