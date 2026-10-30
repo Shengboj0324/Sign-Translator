@@ -4882,7 +4882,7 @@ P17's plan-only BLEU and the oracle–generated gap are reported beside it.
 - PT may train once the review fixes land and are re-reviewed.
 - P17 and D17 wait for the UWB gate result, per the owner's O4 decision.
 
-### Round 17 gates, amendment 1 (declared 2026-10-30, 06:22 UTC, before anything trains; second review of a8f6da9)
+### Round 17 gates, amendment 1 (declared 2026-10-30, 06:04 UTC, before anything trains; second review of a8f6da9)
 
 - **Plan following** (replaces "≥ 70%"). A detail prior ignoring its plan already scores about 0.66 from clip duration alone (BLEU's brevity penalty): blank at A's duration reads 0.6605 [0.631, 0.688]; real clips read 0.757. So both must hold:
   - the paired difference, A-plan-with-no-text minus blank-at-A's-duration on the same pairs, has a lower bound > 0;
