@@ -99,7 +99,8 @@ def corpus_sample_weights(records, weights: dict[str, float]) -> list[float]:
 # value, so a warm start may change them (round 13: F12's weights with guided attention). history_stages, the text
 # model, locus/grammar conditioning and every size stay part of the comparison: they change the forward pass.
 PRIOR_TRAINING_ONLY = ("input_corruption", "scheduled_sampling", "history_dropout", "part_valid_loss", "guided_attention",
-                       "guided_attention_width", "alignment_supervision")
+                       "guided_attention_width", "alignment_supervision", "rollout_blocks", "rollout_min", "rollout_max",
+                       "rollout_onset")
 
 
 def prior_warm_start_compatible(init_config: dict, config: dict) -> bool:
@@ -176,6 +177,13 @@ def main(argv=None) -> int:
     parser.add_argument("--history-dropout", type=float, default=0.,
                         help="rvq prior: with this probability per sequence, hide every history step before a random "
                              "cut behind the start code (round 9 candidate, against the copycat shortcut; 0 = off)")
+    parser.add_argument("--rollout-blocks", type=float, default=0.,
+                        help="rvq prior: with this probability per sequence, a contiguous block of the prior's own "
+                             "free-running output replaces the history (round 16 candidate, on-policy; 0 = off)")
+    parser.add_argument("--rollout-min", type=int, default=4, help="rvq prior: shortest rollout block (steps)")
+    parser.add_argument("--rollout-max", type=int, default=12, help="rvq prior: longest rollout block (steps)")
+    parser.add_argument("--rollout-onset", type=float, default=.25,
+                        help="rvq prior: probability that a rollout block starts at the first step")
     parser.add_argument("--part-valid-loss", action="store_true",
                         help="rvq prior: count a code's cross entropy only where its part was observed (round 10)")
     parser.add_argument("--history-stages", type=int, default=0,
@@ -273,7 +281,9 @@ def main(argv=None) -> int:
                                     history_stages=args.history_stages, part_valid_loss=args.part_valid_loss,
                                     guided_attention=args.guided_attention,
                                     guided_attention_width=args.guided_attention_width,
-                                    alignment_supervision=args.alignment_supervision, **common)
+                                    alignment_supervision=args.alignment_supervision,
+                                    rollout_blocks=args.rollout_blocks, rollout_min=args.rollout_min,
+                                    rollout_max=args.rollout_max, rollout_onset=args.rollout_onset, **common)
             model = RVQPrior(config).to(device)
     kind = tokenizer_kind if args.stage == "tokenizer" else prior_kind
 

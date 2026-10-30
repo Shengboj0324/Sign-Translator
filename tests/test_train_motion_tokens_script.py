@@ -359,6 +359,12 @@ def test_a_prior_warm_starts_from_another_prior_and_trains_at_a_fixed_rate(tmp_p
     assert f"initialised from {init}" in capsys.readouterr().out
     run = json.loads((store / "training-runs/second/run.json").read_text())
     assert run["args"]["init_key"] == init and run["args"]["fps"] == 30
+    # round 16: rollout blocks are training-only, so a warm start may add them; the run records them in its config
+    assert script.main(prior + ["--run", "rolled", "--init-key", init, "--init-sha256", init_sha, "--rollout-blocks",
+                                "0.5", "--rollout-min", "1", "--rollout-max", "2"]) == 0
+    saved = torch.load(_io.BytesIO((store / "training-runs/rolled/checkpoints/step-00000002.pt").read_bytes()),
+                       map_location="cpu", weights_only=False)
+    assert saved["config"]["rollout_blocks"] == .5 and saved["config"]["rollout_max"] == 2
     # the tokenizer's manifest must be the one named (here a wrong one is named)
     with pytest.raises(SystemExit, match="not a tokenizer trained on this manifest"):
         script.main(prior + ["--run", "third", "--tokenizer-manifest-sha256", "f" * 64])
