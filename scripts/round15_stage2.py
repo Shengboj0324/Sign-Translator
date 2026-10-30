@@ -351,9 +351,17 @@ def sign_core(word, state, *, fractions, margin, tighten: bool = False):
     """The sign-fitted core of a clip without its own annotation (every generated clip): the annotated sign's median
     position in the word's ASLLVD train clips (``fractions["entries"]``), else in all of them (``fractions["all"]``),
     widened by ``margin`` seconds (``compositional.fraction_window``). ``tighten``: cut again by the activity rule
-    inside that window (``composition_space.tighten_window``, the rule's margin the same ``margin``; never extends)."""
+    inside that window (``composition_space.tighten_window``, the rule's margin the same ``margin``; never extends).
+    Round 20 (only when ``fractions`` carries ``"activity"``, a collection of entries, e.g. the Sem-Lex-only ones): an
+    entry listed there without an ASLLVD median is cut by the activity rule instead (``compositional.core_window``,
+    margin ``fractions["activity_margin"]``, default 0), reason ``activity`` (``activity_<reason>`` when the rule
+    keeps the clip whole)."""
     from signtranslator.generation.compositional import CORE_RULE, fraction_window
     frac = fractions["entries"].get(word)
+    if frac is None and word in (fractions.get("activity") or ()):
+        from signtranslator.generation.compositional import core_window
+        w = core_window(state, dict(CORE_RULE, margin=float(fractions.get("activity_margin") or 0.)))
+        return dict(w, reason="activity" if w["reason"] == "core" else f"activity_{w['reason']}")
     window = fraction_window(state, frac or fractions["all"], margin, reason="entry" if frac else "all")
     if tighten:
         from signtranslator.generation.composition_space import tighten_window
