@@ -69,12 +69,19 @@ def judge(ratios: dict[str, float], bleu: dict, separated) -> dict:
     return dict(band=list(BAND), out_of_band=bad, r2b_above_blank=r2b_ok, **{"pass": not bad and r2b_ok})
 
 
+def check_translator_kind(kind) -> None:
+    """R2b reads with the 2D keypoint back-translator (v1) or instrument v2 (``state_to_text_t5``), nothing else."""
+    if kind not in ("keypoints", "states"):
+        raise SystemExit("--translator-key must be the 2D keypoint back-translator or instrument v2")
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--manifest-key", required=True)
     p.add_argument("--manifest-sha256", required=True)
     p.add_argument("--tokenizer-key", required=True)
-    p.add_argument("--translator-key", required=True, help="the accepted 2D keypoint back-translator (R2b)")
+    p.add_argument("--translator-key", required=True, help="the accepted 2D keypoint back-translator (R2b), or "
+                   "instrument v2 (kind state_to_text_t5)")
     p.add_argument("--translator-manifest-sha256", required=True)
     p.add_argument("--groups", default="c01,c03,c05")
     p.add_argument("--limit", type=int, default=300)
@@ -150,8 +157,7 @@ def main(argv=None) -> int:
     # round 17 (review fix 2, report-only): with a plan, the tokenizer's own round trips of the same clips beside it
     tokenizer_trips, tokenizer_ratios = trips_and_ratios(None) if plan is not None else (None, None)
     translator, kind = load_translator(store, args.translator_key, args.translator_manifest_sha256)
-    if kind != "keypoints":
-        raise SystemExit("--translator-key must be the 2D keypoint back-translator")
+    check_translator_kind(kind)
     translator = translator.to(torch.device(args.device))
     texts = [r["text"] for r in records]
     bleu, hypotheses = {}, {}

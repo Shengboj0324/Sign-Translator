@@ -440,7 +440,7 @@ def run(args) -> dict:
         del refiner, rtok
         clock["refine"] = time.time()
     # translate per global block (the unsharded run's batches)
-    kp = json.loads(store.get(f"training-runs/{TRANSLATOR_RUN}/best.json"))["checkpoint_key"]
+    kp = json.loads(store.get(f"training-runs/{args.translator_run}/best.json"))["checkpoint_key"]
     translator, kind = load_translator(store, kp, MIX_SHA)
     translator = translator.to(torch.device(args.device))
     translator_fps = float(getattr(getattr(translator, "config", None), "fps", FPS))
@@ -682,6 +682,9 @@ def main(argv=None) -> int:
     r.add_argument("--part-temperature", default="body=1.1,left_hand=1.1,right_hand=1.1,face=1.0")
     r.add_argument("--guidance", type=float, default=1.5)
     r.add_argument("--recognizer-run", default="sign-recognizer-v2")
+    r.add_argument("--translator-run", default=TRANSLATOR_RUN,
+                   help="instrument v2: the back-translator run whose best.json checkpoint reads every form (default: "
+                        "v1, so declared runs are unchanged; the checkpoint is recorded in settings.translator_key)")
     r.add_argument("--device", default="cuda")
     r.add_argument("--word-workers", type=int, default=1)
     r.add_argument("--rerank", type=int, default=1, help="samples per word, the best kept by the prior's own "

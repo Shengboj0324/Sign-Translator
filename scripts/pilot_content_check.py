@@ -50,6 +50,7 @@ sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 
 MIX = "acquisition/2026-10-17-v1/youtube-asl-v1/round3c-mixed-v1/manifest.json"
 MIX_SHA = "004bf6596a2330ee5f840bfeef0d233174f63d0602f72465b6c28a21078d00fd"
+TRANSLATOR_RUN = "back-translator-kp2d-uwb-ft-v1"   # instrument v1: every declared comparison reads with it
 
 
 def validation_sentences(manifest, clips: int):
@@ -214,6 +215,10 @@ def main(argv=None) -> int:
                         "real and blank) and stop: no plan-prior generation, no lexicon. The oracle precondition "
                         "(compare_pilot_lexicon.py --oracle-precondition against R16C) is judged on this report before "
                         "the arm's pilot runs")
+    p.add_argument("--translator-run", default=TRANSLATOR_RUN,
+                   help="instrument v2: the back-translator run whose best.json checkpoint reads the meaning half "
+                        "(default: v1, so every declared comparison is unchanged; another run is recorded as "
+                        "translator_run in the report)")
     p.add_argument("--output-key", required=True)
     args = p.parse_args(argv)
     if args.oracle_only and not args.oracle_plan:
@@ -319,7 +324,7 @@ def main(argv=None) -> int:
             if args.oracle_plan:
                 oracle_gens += [post(o) for o in sample.batch_with_plans(texts[i:i + 32], 24., seconds[i:i + 32],
                                                                          args.guidance, 1000 + i, plans[i:i + 32])]
-        kp = json.loads(store.get("training-runs/back-translator-kp2d-uwb-ft-v1/best.json"))["checkpoint_key"]
+        kp = json.loads(store.get(f"training-runs/{args.translator_run}/best.json"))["checkpoint_key"]
         translator, kind = load_translator(store, kp, MIX_SHA)  # the translator's own manifest (round 3c)
         translator = translator.to(torch.device(args.device))
         meaning = {}
@@ -356,6 +361,8 @@ def main(argv=None) -> int:
                               "oracle_gap": extra_meaning.get("oracle_gap")}), flush=True)
         print(json.dumps({"meaning": {k: {f: v for f, v in m.items() if f != "hypotheses"} if isinstance(m, dict) else m
                                       for k, m in meaning.items() if k != "references"}}), flush=True)
+    if args.translator_run != TRANSLATOR_RUN:          # instrument v2: recorded only off the default (v1 reports unchanged)
+        extra_meaning["translator_run"] = args.translator_run
     if args.oracle_only:                               # round 17: the oracle read alone, before the arm's pilot
         report = dict(checkpoint_key=args.checkpoint_key, part_temperature=temperature, guidance=args.guidance,
                       clips=len(texts), meaning=meaning, oracle_only=True, plan=dict(plan), **extra_meaning)
