@@ -2,11 +2,11 @@
 (docs/NEXT_PHASE_PLAN.md, "Round 20: composition v2", declared 2026-10-30 19:09 UTC). Generation and scoring only;
 nothing trains.
 
-**Entries:** every vocabulary entry the stage-1 selection keeps for the sentences (``--sentences-key``: D20 / C20;
-else ``validation_sentences(mix, --clips)``), on the vocabulary of ``--vocabulary-mix-key`` (default the evaluation
-mix) and its corpora, exactly as ``round15_compose_eval.py`` selects them (the matched and the mismatched words of a
-set are the same set's entries); with a set, ``--clips`` keeps its first N sentences (as the composition does).
-``--limit`` keeps the first K entries (smoke runs).
+**Entries:** every vocabulary entry that the stage-1 selection keeps for the sentences, selected exactly as
+``round15_compose_eval.py`` selects them. The sentences are ``--sentences-key`` (D20 or C20; ``--clips N`` keeps its
+first N, as the composition does) or else ``validation_sentences(mix, --clips)``. The vocabulary is that of
+``--vocabulary-mix-key`` (default: the evaluation mix) and its corpora. A set's mismatched-words controls use the same
+set's entries, so they are covered too. ``--limit`` keeps the first K entries (smoke runs).
 
 **Samples:** entry e is generated ``--samples`` times exactly as the composition generates a word
 (``compositional.generate_word``: ``generate_rvq_motion`` at the entry's typical isolated seconds, guidance and part
@@ -16,9 +16,11 @@ is the entry's own).
 
 **Scores:** recogniser ``--recognizer-run`` (v3d, the instrument) reads each whole sample; the score is the softmax
 probability of the entry's label (``round20_lib.entry_label``: the entry upper-cased, multi-word entries joined); each
-sample's rank of the label is kept for top-1 / top-5 reads. An entry without a label falls back to the prior's own
-teacher-forced PMI (``rerank.word_pmi`` on the sampled codes). **Choice** for each N of ``--choose`` (each <=
-``--samples``): the best of samples 0..N-1 (``rerank.choose``: the first on a tie), so N = 4, 8, 16 come from one run.
+sample's rank of the label is kept for top-1 / top-5 reads. The choice compares the *unrounded* log-probability of the
+label (``log_probabilities``; ``probabilities`` are rounded for display only), so samples whose probabilities are all
+tiny are still ordered. An entry without a label falls back to the prior's own teacher-forced PMI (``rerank.word_pmi``
+on the sampled codes). **Choice** for each N of ``--choose`` (each <= ``--samples``): the best of samples 0..N-1
+(``rerank.choose``: on a tie, the lower sample index), so N = 4, 8, 16 come from one run.
 The chosen samples are stored (``<prefix>/states/<entry hash>-s<k>.npz``) with every score.
 
 **Circularity:** a composition built from this cache is chosen by the cache's recogniser, so its word spotting by that
@@ -146,7 +148,7 @@ def run(args) -> dict:
         label = entry_label(e, labels)
         seconds = float(vocab[e])
         seeds = rerank_seeds(entry_seed(e), args.samples)
-        states, probs, ranks, pmis = [], [], [], []
+        states, probs, logps, ranks, pmis = [], [], [], [], []
         for s in seeds:
             raw, codes = generate_rvq_motion(sample.prior, sample.tokenizer, [e], fps=FPS, durations=[seconds],
                                              guidance=args.guidance, temperature=temperature, seed=s,
@@ -154,13 +156,14 @@ def run(args) -> dict:
             state = post(resample_motion(raw[0], FPS))
             states.append(state)
             if label:
-                logits = vsr.logits_of(recogniser, [at_rate(state, FPS)], args.device)[0]
-                p = torch.softmax(logits.float(), 0)
-                probs.append(round(float(p[index[label]]), 6))
-                ranks.append(int((p > p[index[label]]).sum()) + 1)
+                logits = vsr.logits_of(recogniser, [at_rate(state, FPS)], args.device)[0].double()
+                lp = torch.log_softmax(logits, 0)
+                logps.append(float(lp[index[label]]))                    # unrounded: the choice's score
+                probs.append(round(float(lp[index[label]].exp()), 6))     # display only
+                ranks.append(int((lp > lp[index[label]]).sum()) + 1)
             else:
                 pmis.append(word_pmi(sample.prior, e, codes[0], seconds)["pmi_per_code"])
-        scores = probs if label else pmis
+        scores = logps if label else pmis
         chosen = {}
         for n, k in choices(scores, ns).items():
             key = f"{args.prefix}/states/{entry_hash(e)}-s{k}.npz"
@@ -175,7 +178,8 @@ def run(args) -> dict:
                 store.put(key, payload)
             chosen[n] = dict(index=k, seed=seeds[k], score=scores[k], state_key=key, state_sha256=sha)
         rows.append(dict(entry=e, label=label, scorer="recogniser" if label else "prior_pmi", seconds=seconds,
-                         seeds=seeds, scores=scores, probabilities=probs, ranks=ranks, chosen=chosen))
+                         seeds=seeds, scores=scores, log_probabilities=logps, probabilities=probs, ranks=ranks,
+                         chosen=chosen))
         if (j + 1) % 25 == 0 or j + 1 == len(mine):
             print(f"{j + 1}/{len(mine)} entries ({time.time() - start:.0f} s)", flush=True)
     settings = dict(mix_key=args.mix_key, mix_sha256=args.mix_sha256, vocabulary_mix=vmix, corpora=list(corpora),

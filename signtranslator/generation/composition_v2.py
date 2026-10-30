@@ -7,7 +7,8 @@ sentence median (the stage-2 model's ``timing["sentence_seconds"]``, entries wit
 occurrences), else its isolated annotated duration (``compositional_grammar.isolated_sign_seconds``) times
 ``CONTINUOUS_RATIO`` = 0.385, the continuous-over-isolated ratio recorded in the round-20 evidence (ASLLRP signs last
 0.234 s against their annotated isolated forms; the F12 model's own fitted ratio, 0.3926, is in ``timing["ratio"]``).
-No clipping.
+An entry with neither (``isolated_sign_seconds``' "default" source: the median ASLLRP *sentence* sign, already a
+continuous duration) takes that default unshrunk ("default"), never x the ratio a second time. No clipping.
 
 **Velocity-bounded bridges** (``bridge_frames``, after Sign Stitching, Walsh et al., arXiv 2405.07663, step 5: linear
 bridges whose length keeps the bridge no faster than the signs it joins). For each side, with the wrist taken in the
@@ -26,7 +27,9 @@ is compressed (``allocate``, at least one frame per sign; more signs than frames
 predicted length (the report-only predicted-duration form). ``tempo`` > 1 is slower.
 
 **Butterworth low-pass** (``lowpass_state``): 4th-order Butterworth (second-order sections), zero-phase (``sosfiltfilt``)
-on every channel's values along time, per run of consecutive valid frames (shorter runs than two frames untouched; the
+on every channel's values along time. Forward-backward filtering squares the magnitude response: at the nominal cutoff
+the gain is 0.5 (-6 dB), and the effective -3 dB point of a 6 Hz setting at 24 fps is about 5.3 Hz. The state must be
+on a uniform 24 fps clock (checked from its timestamps). The filter runs per run of consecutive valid frames (shorter runs than two frames untouched; the
 padding is shortened on short runs), then each value put back on its manifold: 6D rotations re-orthonormalised
 (Gram-Schmidt; a degenerate frame keeps its input), unit vectors renormalised, bounded scalars clipped to [0, 1].
 Validity, observation and confidence are unchanged.
@@ -59,6 +62,8 @@ def continuous_seconds(entry: str, timing: dict, typical, ratio: float = CONTINU
     if entry in (timing.get("sentence_seconds") or {}):
         return float(timing["sentence_seconds"][entry]), "asllrp"
     seconds, source = isolated_sign_seconds(entry, timing, typical)
+    if source == "default":                    # already the ASLLRP sentence-sign median: a continuous duration
+        return float(seconds), "default"
     return float(ratio) * float(seconds), f"isolated_{source}"
 
 
@@ -190,6 +195,9 @@ def lowpass_state(state, hz: float, *, fps: float = FPS, order: int = 4):
     """``state`` with every channel low-passed (module docstring); the clock, masks and confidences unchanged."""
     from ..pose.multichannel import CHANNELS
     from .compositional import _gram_schmidt
+    t = np.asarray(state.timestamps, dtype=float)
+    if len(t) > 1 and not np.allclose(np.diff(t), 1. / fps, rtol=.01, atol=0.):
+        raise ValueError(f"the low-pass needs a uniform {fps:g} fps clock")
     channels = {}
     for name, c in state.channels.items():
         kind = CHANNELS[name][0]

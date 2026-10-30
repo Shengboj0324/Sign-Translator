@@ -135,6 +135,8 @@ def test_continuous_seconds():
     assert cv2.continuous_seconds("cut", timing, {"cut": 1.}) == (.25, "asllrp")
     assert cv2.continuous_seconds("onion", timing, {"onion": 1.}) == (pytest.approx(.385 * .6), "isolated_annotated")
     assert cv2.continuous_seconds("go", timing, {"go": 1.2}, ratio=.5) == (pytest.approx(.3), "isolated_trimmed")
+    plain = dict(timing, trimmed_over_annotated=None)                          # no ratio: the sentence-sign default
+    assert cv2.continuous_seconds("go", plain, {"go": 1.2}) == (.23, "default")   # not shrunk twice
 
 
 def test_bridge_frames_bound_the_bridge_speed():
@@ -213,6 +215,11 @@ def test_the_lowpass_keeps_slow_motion_removes_fast_and_respects_masks():
         assert any(k == kind for k, _, _ in CHANNELS.values())
     with pytest.raises(ValueError):
         cv2.lowpass_state(s, 12.)
+    with pytest.raises(ValueError, match="24 fps"):                         # a 30 fps clock is refused
+        cv2.lowpass_state(replace(s, timestamps=np.arange(len(s.timestamps)) / 30.), 6.)
+    from scipy.signal import sosfreqz, butter                                  # the documented response
+    _, h = sosfreqz(butter(4, 6., fs=24., output="sos"), worN=[6.], fs=24.)
+    assert abs(h[0]) ** 2 == pytest.approx(.5, abs=1e-6)                      # -6 dB at the cutoff after filtfilt
 
 
 def test_lowpass_short_runs_are_untouched():
@@ -265,14 +272,19 @@ def test_segment_clip_cuts_the_span_with_context():
     utt = signer_state(7, frames=40, amplitude=.4)
     native = np.arange(40) / 24.
     piece = lib.segment_clip(pools["onion"][0], utt, native, margin=1 / 24., context=4 / 24.)
-    assert len(piece["state"].timestamps) == (25 + 4) - (18 - 4) + 1           # frames 14..29
-    assert (piece["lo"], piece["hi"]) == (3, 12) and piece["reason"] == "continuous"
-    np.testing.assert_array_equal(piece["state"].channels["body"].values, utt.channels["body"].values[14:30])
+    assert len(piece["state"].timestamps) == (25 + 5) - (18 - 5) + 1           # frames 13..30
+    assert (piece["lo"], piece["hi"]) == (4, 13) and piece["reason"] == "continuous"
+    np.testing.assert_array_equal(piece["state"].channels["body"].values, utt.channels["body"].values[13:31])
+    core = lib.segment_clip(pools["onion"][0], utt, native, margin=1 / 24.)    # default: the piece is its core
+    assert (core["lo"], core["hi"]) == (0, 9) and core["whole"]
+    np.testing.assert_array_equal(core["state"].channels["body"].values, utt.channels["body"].values[17:27])
+    lead = comp.lead_in(core["state"], core["lo"], 3)                           # a padded lead-in holds the core start
+    np.testing.assert_array_equal(lead.channels["body"].values, utt.channels["body"].values[[17, 17, 17]])
     assert lib.segment_clip(pools["onion"][0], utt, native[:30]) is None       # the frame count disagrees (25%)
     long = signer_state(7, frames=41, amplitude=.4)                            # 2.5% long: mapped proportionally
     p2 = lib.segment_clip(pools["onion"][0], long, np.arange(41) / 24., margin=1 / 24., context=4 / 24.)
     assert p2["span_scale"] == 1.025                                           # sign frames 18 -> 18, 25 -> 26
-    np.testing.assert_array_equal(p2["state"].channels["body"].values, long.channels["body"].values[14:31])
+    np.testing.assert_array_equal(p2["state"].channels["body"].values, long.channels["body"].values[13:32])
 
 
 # ---- word cache -----------------------------------------------------------------------------------------------------
@@ -342,3 +354,25 @@ def test_reference_log_likelihood_is_the_teacher_forced_loss():
         assert x["log_likelihood"] < 0
     with pytest.raises(ValueError, match="T5"):
         next(sbt._encoder_batches(model, object(), states, 1))
+
+
+def test_tracked_pools_keep_well_tracked_clips_or_the_best_one():
+    def arm_state(seed, share):
+        st = signer_state(seed, frames=20, amplitude=.4)
+        body = st.channels["body"]
+        valid = body.valid.copy()
+        labels = list(body.labels)
+        off = int(round(20 * (1 - share)))
+        valid[:off, labels.index("RightForearm")] = False
+        values = np.where(valid[..., None], body.values, 0.)
+        return replace(st, channels=dict(st.channels, body=replace(body, valid=valid, values=values,
+                                                                   confidence=valid.astype(float))))
+    shares = {"a": .1, "b": .5, "c": .9, "d": .2, "e": .05}
+    states = {k: arm_state(i, sh) for i, (k, sh) in enumerate(shares.items())}
+    pools = {"go": [dict(sign="a"), dict(sign="b"), dict(sign="c")], "stir": [dict(sign="d"), dict(sign="e")],
+             "cut": [dict(sign="a")]}
+    loaded = {}
+    out, counts = lib.tracked_pools(pools, ["go", "stir"], load=lambda r: states[r["sign"]], loaded=loaded, floor=.3)
+    assert [r["sign"] for r in out["go"]] == ["b", "c"] and [r["sign"] for r in out["stir"]] == ["d"]
+    assert out["cut"] is pools["cut"] and counts["entries_best_tracked_fallback"] == 1 and counts["records_kept"] == 3
+    assert lib.right_tracked_share(states["c"]) == pytest.approx(.9) and set(loaded) == {"a", "b", "c", "d", "e"}

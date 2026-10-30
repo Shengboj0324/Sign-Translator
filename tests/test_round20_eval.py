@@ -113,6 +113,15 @@ def test_sentence_set_retiming_lowpass_likelihood_and_predicted(tmp_path, stage2
     c = compare_forms(m, "core_crossfade", m, "oracle_stage2", boot=50)
     assert c["sentences"] == 4 and "difference" in c["likelihood_minus_blank"]["difference"]
     assert c["both_improve"] == (c["bleu"]["difference"] > 0 and c["likelihood_minus_blank"]["difference"]["difference"] > 0)
+    for field, value in (("signs", ["x"] * 4), ("references", ["y"] * 4)):
+        with pytest.raises(SystemExit, match="not paired"):
+            compare_forms(m, "core_crossfade", dict(m, **{field: value}), "oracle_stage2", boot=20)
+    for field, value in (("seed", 7), ("translator_key", "other.pt"),
+                         ("round20", dict(m["settings"]["round20"], sentences=dict(sha256="0" * 64)))):
+        with pytest.raises(SystemExit, match="not paired"):
+            compare_forms(m, "core_crossfade", dict(m, settings=dict(m["settings"], **{field: value})),
+                          "oracle_stage2", boot=20)
+    assert m["round20"]["per_variant"]["oracle_stage2"]["right_arm_tracked"]["words"] > 0
     same = compare_forms(m, "core_crossfade", m, "core_crossfade", boot=20)
     assert same["bleu"]["difference"] == 0 and same["likelihood_minus_blank"]["difference"]["difference"] == 0
     assert not same["both_improve"]
@@ -125,6 +134,12 @@ def test_sentence_set_retiming_lowpass_likelihood_and_predicted(tmp_path, stage2
         ce.main(run_args(tmp_path, sha, "--sentences-key", "sets/d20.json", "--sentences-sha256", "0" * 64,
                          "--output-file", str(tmp_path / "x.json")))
     for bad in (["--tempo", "1.5"], ["--retime", "continuous", "--timing", "stage1"], ["--lowpass-hz", "13"],
+                ["--continuous-ratio", ".4"], ["--bridge-min-speed", ".5"], ["--retime", "continuous",
+                                                                           "--no-bridge-velocity", "--bridge-max-seconds",
+                                                                           "1"],
+                ["--activity-margin", ".1"], ["--word-cache-n", "8"], ["--gloss-manifest-key", "g.json"],
+                ["--lowpass-hz", "6", "--lowpass-report-hz", "6"],
+                ["--semlex-oracle-tracked", "--variants", "core_crossfade"],
                 ["--semlex-core", "activity", "--timing", "asllrp"], ["--oracle-source", "continuous",
                                                                        "--variants", "core_crossfade"]):
         with pytest.raises(SystemExit):
@@ -164,7 +179,8 @@ def test_the_continuous_form_oracle(tmp_path, stage2_store):  # noqa: F811
     args[args.index("core_crossfade,oracle_stage2")] = "oracle_stage2"
     assert ce.main(args + ["--clips", "5", "--oracle-source", "continuous", "--gloss-manifest-key", "gloss.json",
                            "--gloss-manifest-sha256", gsha, "--output-key", "e/c.json"]) == 0
-    assert ce.main(args + ["--clips", "5", "--output-key", "e/i.json"]) == 0
+    assert ce.main(args + ["--clips", "5", "--semlex-oracle-tracked", "--lowpass-report-hz", "6",
+                           "--output-key", "e/i.json"]) == 0
     shard = json.loads(store.get("e/c.json"))
     assert shard["settings"]["round20"]["gloss_manifest"] == dict(key="gloss.json", sha256=gsha)
     assert shard["round20"]["segments"]["segments"] > 0
@@ -174,6 +190,11 @@ def test_the_continuous_form_oracle(tmp_path, stage2_store):  # noqa: F811
     assert pv["reasons"].get("continuous") == pv["sources"]["continuous"]
     iso = json.loads(store.get("e/i.json"))
     assert iso["clips"][0]["entries"] == shard["clips"][0]["entries"]          # same words, other material
+    assert iso["round20"]["semlex_oracle_tracked"]["floor"] == .3              # no Sem-Lex-only word here
+    merge(tmp_path, "e/i.json", "e/im.json")
+    im = json.loads(store.get("e/im.json"))
+    assert "minus_unfiltered" in im["forms"]["oracle_stage2@lowpass"]
+    assert im["forms"]["oracle_stage2@lowpass"]["hypotheses"] != [] and "oracle_stage2@lowpass" in im["motion"]
 
 
 def test_the_word_cache_and_composition_from_it(tmp_path, stage2_store, monkeypatch):  # noqa: F811
@@ -238,6 +259,28 @@ def test_the_word_cache_and_composition_from_it(tmp_path, stage2_store, monkeypa
         ce.main(args + ["--clips", "5", *cache[:-1], "5", "--output-file", str(tmp_path / "z.json")])
     with pytest.raises(SystemExit):                                       # the cache replaces the checkpoint
         ce.main(run_args(tmp_path, sha, "--clips", "5", *cache, "--output-file", str(tmp_path / "q.json")))
+    # the choice compares unrounded log-probabilities: all-tiny probabilities are still ordered
+    def tiny_logits(model, states, device, batch=64):
+        out = []
+        for s in states:
+            rh = s.channels["right_hand"]
+            level = float(np.abs(rh.values[rh.valid]).mean()) if rh.valid.any() else 0.
+            row = torch.zeros(len(labels), dtype=torch.float64)
+            row[:] = 60.
+            row[labels.index("CUT")] = level * 1e-3        # p(CUT) ~ e^-60: rounds to 0 at 6 places
+            row[labels.index("ONION")] = level * 2e-3
+            out.append(row)
+        return torch.stack(out)
+    monkeypatch.setattr(vsr, "logits_of", tiny_logits)
+    tiny = ["run", "--store", f"dir:{tmp_path / 'store'}", "--prefix", "cache/tiny", "--mix-key", "mix.json",
+            "--mix-sha256", sha, "--clips", "5", "--checkpoint-key", "prior.pt", "--samples", "3", "--choose", "3",
+            "--device", "cpu"]
+    assert cache_main(tiny) == 0
+    rows_t = {r["entry"]: r for r in json.loads(store.get("cache/tiny/shard-0-of-1.json"))["entries"]}
+    for e in ("cut", "onion"):
+        r = rows_t[e]
+        assert r["probabilities"] == [0., 0., 0.] and len(set(r["log_probabilities"])) == 3
+        assert r["chosen"]["3"]["index"] == int(np.argmax(r["log_probabilities"])) and r["scores"] == r["log_probabilities"]
     # A5: two indexes compared entry by entry
     from scripts.round20_compare import compare_words
     out = compare_words(index, index, boot=20)
@@ -251,5 +294,6 @@ def test_the_pod_script_parses():
     subprocess.run(["bash", "-n", str(script)], check=True)
     text = script.read_text()
     for needle in ("--sentences-key", "--vocabulary-mix-key", "--oracle-source continuous", "--retime continuous",
-                   "--lowpass-hz", "round20_word_cache.py", "--likelihood", "SMOKE"):
+                   "--lowpass-report-hz", "round20_word_cache.py", "--likelihood", "SMOKE", "r14b-fraction",
+                   "--semlex-oracle-tracked", "kill $q"):
         assert needle in text, needle

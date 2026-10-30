@@ -115,6 +115,7 @@ SETTINGS = ("clips", "shards", "block", "seed", "mix_key", "mix_sha256", "corpor
             "tighten_cores", "space_stats", "refiner", "extra_translators", "round20")
 REST_ONLY = "/rest_only"
 PREDICTED = "@predicted"             # round 20, report-only: the main form at the text-predicted sentence duration
+LOWPASS = "@lowpass"                 # round 20 A6: the main form low-passed, from the same material
 REFINED, RECON = "@refined", "@recon"
 INSTRUMENT = "sign-recognizer-v3d"   # the spotting instrument of the refined rule (recogniser v3 amendment 2)
 REFINED_RULE = "bleu:recon,bleu:mismatched_words,bleu:rest_only,spotting"     # the design's rule (review of a1bdda3)
@@ -254,9 +255,10 @@ def rest_material(material: dict) -> dict:
 
 # ---- round 20 options (docs/NEXT_PHASE_PLAN.md "Round 20"; all off by default: the run and report are unchanged) ----
 
+TRACKED_FLOOR = .3                   # the activity rule's tracked-share floor (compositional.CORE_RULE min_tracked)
 ROUND20_DEFAULTS = dict(sentences_key=None, vocabulary_mix_key=None, semlex_core="fraction", oracle_source="isolated",
                         retime="reference", tempo=1., lowpass_hz=None, word_cache_key=None, likelihood=False,
-                        predicted_duration=False)
+                        predicted_duration=False, semlex_oracle_tracked=False, lowpass_report_hz=None)
 
 
 def round20_on(args) -> bool:
@@ -277,7 +279,8 @@ def round20_settings(args, sentence_set, word_cache) -> dict:
                                       max_gap_seconds=args.bridge_max_seconds, continuous_ratio=args.continuous_ratio)
                                  if args.retime == "continuous" else None),
                 lowpass_hz=args.lowpass_hz, word_cache=word_cache, likelihood=args.likelihood,
-                predicted_duration=args.predicted_duration)
+                predicted_duration=args.predicted_duration, semlex_oracle_tracked=args.semlex_oracle_tracked,
+                lowpass_report_hz=args.lowpass_report_hz)
 
 
 def load_word_cache(store, args, vocab, corpora, words) -> tuple[dict, dict]:
@@ -353,7 +356,7 @@ def render_round20(args, material, job, reference_seconds, model, vocab, *, orde
 def clip_round20(plan: dict, segments) -> dict:
     """The per-clip round-20 record of a main form: each word's core reason and source, the plan's fit and, for the
     continuous plan, its gaps (base and velocity-raised) and duration sources."""
-    out = dict(reasons=[s.get("reason") for s in segments],
+    out = dict(reasons=[s.get("reason") for s in segments], right_tracked=[s.get("right_tracked") for s in segments],
                sources=[s.get("source") or ("cache" if s.get("cached") else "isolated" if "corpus" in s else "generated")
                         for s in segments],
                fit=plan["fit"], frames=plan["frames"], cores=list(plan["cores"]), gaps=list(plan["gaps"]))
@@ -378,11 +381,15 @@ def merge_round20(partials, rows, variants) -> dict:
         sources = collections.Counter(x for rec in recs for x in rec["sources"])
         words = sum(sources.values())
         joins = sum(len(rec["gaps"]) for rec in recs)
+        tracked = [x for rec in recs for x in rec.get("right_tracked") or () if x is not None]
         per_variant[v] = dict(
             clips=len(recs), words=words, reasons=dict(collections.Counter(x for rec in recs for x in rec["reasons"])),
             sources=dict(sources),
             continuous_share=round(sources.get("continuous", 0) / words, 4) if words else None,
             fits=dict(collections.Counter(rec["fit"] for rec in recs)),
+            right_arm_tracked=(dict(mean=round(float(np.mean(tracked)), 4),
+                                    at_floor_share=round(float(np.mean([x >= TRACKED_FLOOR for x in tracked])), 4),
+                                    floor=TRACKED_FLOOR, words=len(tracked)) if tracked else None),
             velocity_raised_share=(round(sum(rec.get("velocity_raised", 0) for rec in recs) / joins, 4)
                                    if joins and any("velocity_raised" in rec for rec in recs) else None))
     out["per_variant"] = per_variant
@@ -544,6 +551,11 @@ def run(args) -> dict:
         template = layout_template(manifest, TEMPLATE_CORPUS, cache, store.get)
         loaded = {}
         load = lambda r: word_clip(r, cache=cache, fetch=store.get, template=template)    # noqa: E731
+        if r20 and args.semlex_oracle_tracked:       # round 20: Sem-Lex-only words drawn among well-tracked clips
+            from round20_lib import semlex_only_entries, tracked_pools
+            needed = {w for k, j in jobs.items() if j is not None and k[0] == "oracle_stage2" for w in j["words"]}
+            pools, r20_info["semlex_oracle_tracked"] = tracked_pools(
+                pools, needed & set(semlex_only_entries(pools)), load=load, loaded=loaded, floor=TRACKED_FLOOR)
         if getattr(args, "oracle_source", "isolated") == "continuous":      # round 20 A2: ASLLRP continuous forms
             from round20_lib import continuous_material, utterance_clip
             segment_pools, r20_info["segments"] = load_segment_pools(store, args, vmanifest, vocab)
@@ -557,6 +569,11 @@ def run(args) -> dict:
                 if j is not None and k[0] == "oracle_stage2" and k[1] != "/shuffled":
                     material[k] = r2.oracle_material(j, k[2], pools, loaded=loaded, load=load, rule=rule, **mode)
     clock["compose"] = time.time()
+    if r20:                                          # each word clip's dominant-arm tracked share (reported per variant)
+        from round20_lib import right_tracked_share
+        for m in material.values():
+            for seg, piece in zip(m.get("segments") or (), m.get("pieces") or ()):
+                seg["right_tracked"] = round(right_tracked_share(piece["state"]), 4)
 
     # render: {form: {clip: state}}
     blanks = dict(zip(mine, blanked([refs[i] for i in mine])))
@@ -609,6 +626,9 @@ def run(args) -> dict:
                                                order=None, sample_id=f"round15-eval-{v}{PREDICTED}:{i}", space=space)
                 plans_out[i][v]["predicted"] = dict(frames=fp["frames"], fit=fp["fit"])
             forms[f"{v}{PREDICTED}"] = states
+        if r20 and args.lowpass_report_hz:         # A6: the same rendered main forms, low-passed (same material)
+            from signtranslator.generation.composition_v2 import lowpass_state
+            forms[f"{v}{LOWPASS}"] = {i: lowpass_state(forms[v][i], args.lowpass_report_hz) for i in mine}
     refiner_info = None
     if refining:                     # every composed form refined, per global block (module docstring)
         from signtranslator.generation.refiner import load_refiner, load_target_index, refine_states, tokenize_state
@@ -837,6 +857,8 @@ def merge(args, store) -> dict:
     for v in variants:                                 # round 20, report-only: present only with --predicted-duration
         if f"{v}{PREDICTED}" in hyps:
             pairs[f"{v}{PREDICTED}"] = {"end_to_end": "end_to_end", "reference_duration": v}
+        if f"{v}{LOWPASS}" in hyps:
+            pairs[f"{v}{LOWPASS}"] = {"end_to_end": "end_to_end", "unfiltered": v}
     for flag, cs, names in (("--rule", checks, variants),
                             ("--refined-rule", refined_checks, [f"{v}{REFINED}" for v in variants])):
         for c in cs:
@@ -933,6 +955,7 @@ def _write(store, args, payload: dict) -> None:
 
 
 def round20_errors(p, args, variants) -> None:
+    from round20_lib import GLOSS_MANIFEST
     """Refuse round-20 options that do not apply (before anything is loaded)."""
     if bool(args.sentences_key) != bool(args.sentences_sha256):
         p.error("--sentences-key and --sentences-sha256 go together")
@@ -965,6 +988,27 @@ def round20_errors(p, args, variants) -> None:
             p.error("--word-cache-key replaces --checkpoint-key (the cache records its prior)")
     if args.predicted_duration and args.timing == "stage1":
         p.error("--predicted-duration applies to the asllrp and sign-fitted timings")
+    orphans = [flag for flag, given, parent in (
+        ("--continuous-ratio", args.continuous_ratio != .385, args.retime == "continuous"),
+        ("--no-bridge-velocity", args.no_bridge_velocity, args.retime == "continuous"),
+        ("--bridge-min-speed", args.bridge_min_speed != .3, args.retime == "continuous" and not args.no_bridge_velocity),
+        ("--bridge-max-seconds", args.bridge_max_seconds != .6,
+         args.retime == "continuous" and not args.no_bridge_velocity),
+        ("--activity-margin", args.activity_margin != 0., args.semlex_core == "activity"),
+        ("--word-cache-n", args.word_cache_n != 4, bool(args.word_cache_key)),
+        ("--word-cache-sha256", bool(args.word_cache_sha256), bool(args.word_cache_key)),
+        ("--gloss-manifest-key", args.gloss_manifest_key != GLOSS_MANIFEST[0], args.oracle_source == "continuous"),
+        ("--gloss-manifest-sha256", args.gloss_manifest_sha256 != GLOSS_MANIFEST[1], args.oracle_source == "continuous"),
+    ) if given and not parent]
+    if orphans:
+        p.error(f"{', '.join(orphans)}: given without the option they qualify")
+    if args.semlex_oracle_tracked and "oracle_stage2" not in variants:
+        p.error("--semlex-oracle-tracked draws oracle_stage2's real clips")
+    if args.lowpass_report_hz is not None:
+        if not 0 < args.lowpass_report_hz < 12:
+            p.error("--lowpass-report-hz must be in (0, 12) (24 fps)")
+        if args.lowpass_hz is not None:
+            p.error("--lowpass-report-hz pairs filtered with unfiltered forms: not with --lowpass-hz")
 
 
 def main(argv=None) -> int:
@@ -1057,7 +1101,13 @@ def main(argv=None) -> int:
     g.add_argument("--likelihood", action="store_true", help="the reference's teacher-forced log-likelihood per token "
                    "under the back-translator, every form (and its deranged reference)")
     g.add_argument("--predicted-duration", action="store_true", help="report-only <variant>@predicted forms: the main "
-                   "form rendered at a text-predicted sentence duration (How2Sign train least squares on tokens)")
+                   "form rendered at a text-predicted sentence duration (How2Sign train least squares on tokens); a "
+                   "sentence with no selected word stays its blank clip at the reference duration, as in every form")
+    g.add_argument("--semlex-oracle-tracked", action="store_true", help="oracle_stage2: draw a Sem-Lex-only entry's "
+                   "real clip only among its clips whose right (dominant) arm is tracked on >= 0.3 of the frames (the "
+                   "activity rule's floor); none: its best-tracked clip")
+    g.add_argument("--lowpass-report-hz", type=float, help="A6: also render <variant>@lowpass, the main form low-passed "
+                   "at this cutoff from the very same material (paired with the unfiltered form in one run)")
     m = sub.add_parser("merge", help="combine the shards and score")
     m.add_argument("--shard-keys", default="")
     m.add_argument("--shard-files")

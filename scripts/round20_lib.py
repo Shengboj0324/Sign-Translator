@@ -38,7 +38,8 @@ GLOSS_MANIFEST = ("acquisition/2026-10-17-v1/derived/asllrp-dai2-v1/gloss-manife
                   "f8c40aead29ad1cf97c4a3986d326d475f07bf539deec87219ba69cd47e72944")
 SEGMENT_PARTITIONS = ("train", "val")
 SEGMENT_CORPUS = "asllrp-continuous-segment"
-SEGMENT_CONTEXT = .5          # seconds of the utterance kept either side of a segment's sign (approach / return)
+SEGMENT_CONTEXT = 0.          # no neighbouring ASLLRP motion beyond the core: a padded plan holds the core's boundary
+DOMINANT = "Right"            # the states are right-dominant by construction (composition_space.DOMINANT)
 CACHE_SEED_BASE = 40_000_000  # an entry's sample 0: CACHE_SEED_BASE + (first 4 bytes of sha256(entry)) mod 10^7
 
 
@@ -130,6 +131,38 @@ def coverage(details) -> dict:
     return out
 
 
+def right_tracked_share(state) -> float:
+    """The share of frames whose dominant (right) forearm and upper arm are both tracked (``side_tracks``)."""
+    from signtranslator.generation.compositional import side_tracks
+    arm = np.asarray(side_tracks(state)[DOMINANT][0], dtype=bool)
+    return float(arm.mean()) if len(arm) else 0.
+
+
+def tracked_pools(pools, entries, *, load, loaded: dict, floor: float) -> tuple[dict, dict]:
+    """(pools with each listed entry's records restricted to clips whose dominant-arm tracked share is >= ``floor``,
+    or, when none is, to the single best-tracked clip (the first on a tie); counts). Round 20: Sem-Lex-only entries'
+    oracle draws, so the activity core can cut their clips. Clips are loaded through ``loaded`` (by sign)."""
+    out, counts = dict(pools), collections.Counter()
+    for e in sorted(set(entries)):
+        records = pools.get(e) or []
+        if not records:
+            continue
+        shares = []
+        for r in records:
+            if r["sign"] not in loaded:
+                loaded[r["sign"]] = load(r)
+            shares.append(right_tracked_share(loaded[r["sign"]]))
+        keep = [r for r, sh in zip(records, shares) if sh >= floor]
+        if not keep:
+            keep = [records[int(np.argmax(shares))]]
+            counts["entries_best_tracked_fallback"] += 1
+        counts["entries"] += 1
+        counts["records"] += len(records)
+        counts["records_kept"] += len(keep)
+        out[e] = keep
+    return out, dict(sorted(counts.items()), floor=floor)
+
+
 # ---- continuous forms (ASLLRP segments) ---------------------------------------------------------------------------
 
 def asllrp_segments(utterances, gloss_manifest, vocab, signbank, codes, semlex) -> tuple[dict, dict]:
@@ -196,8 +229,9 @@ SPAN_TOLERANCE = .03          # a state up to 3% longer or shorter than its anno
 def segment_clip(segment, utterance, native, *, margin: float = .1, context: float = SEGMENT_CONTEXT,
                  tolerance: float = SPAN_TOLERANCE) -> dict | None:
     """A piece (``{"state", "lo", "hi", "reason", "span_scale"}``) for one segment of a loaded utterance
-    (``utterance_clip``): the 24 fps frames from ``context`` seconds before the sign's first frame to ``context`` after
-    its last, with the core the sign's span widened by ``margin`` seconds (at least one frame). The annotation's frame
+    (``utterance_clip``): the core is the sign's span widened by ``margin`` seconds (at least one frame), and the piece
+    keeps ``context`` further seconds either side (default 0: the piece is its core, so a padded plan's lead-in and
+    lead-out hold the core's boundary frames instead of showing the neighbouring ASLLRP signs). The annotation's frame
     indices are used as they are when the state has the annotation's frame count; a count off by at most
     ``tolerance`` (the RIT sentence videos' states run about 1% long) maps them proportionally (``span_scale``); a
     larger difference returns None (the span cannot be placed)."""
@@ -208,7 +242,7 @@ def segment_clip(segment, utterance, native, *, margin: float = .1, context: flo
     at = lambda k: min(len(native) - 1, int(round(k * scale)))         # noqa: E731
     ta, tb = float(native[at(segment["start"])]), float(native[at(segment["end"])])
     t = np.asarray(utterance.timestamps, dtype=float) - float(utterance.timestamps[0])
-    keep = np.flatnonzero((t >= ta - context - 1e-9) & (t <= tb + context + 1e-9))
+    keep = np.flatnonzero((t >= ta - margin - context - 1e-9) & (t <= tb + margin + context + 1e-9))
     if not len(keep):
         keep = np.array([int(np.argmin(np.abs(t - (ta + tb) / 2)))])
     state = take_frames(utterance, keep)

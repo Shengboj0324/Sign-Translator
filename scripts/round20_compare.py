@@ -1,8 +1,9 @@
 """Round 20's paired comparisons on D20 (docs/NEXT_PHASE_PLAN.md, "Round 20": "a lever is adopted only if both point
 estimates improve on D20"). Reads stored reports only.
 
-``forms``: two forms of merged ``round15_compose_eval.py`` reports (``--a KEY:FORM``, ``--b KEY:FORM``; the same
-references in the same order) compared sentence by sentence: the paired corpus-BLEU difference a - b
+``forms``: two forms of merged ``round15_compose_eval.py`` reports (``--a KEY:FORM``, ``--b KEY:FORM``; refused unless
+both read the same clip ids and references in order, with the same derangement seed, back-translator checkpoint and
+sentence-set hash) compared sentence by sentence: the paired corpus-BLEU difference a - b
 (``sentence_exposure_diagnostic.paired_bleu_difference``: the pilot's bootstrap) and, when both reports carry
 ``--likelihood``, the paired difference of the selection metric, the reference log-likelihood per token minus its
 blank's, per sentence (``round20_lib.paired_mean``). ``both_improve``: both point estimates above 0 (the adoption rule;
@@ -34,11 +35,23 @@ def _split(spec: str) -> tuple[str, str]:
     return key, form
 
 
+def check_pairable(a: dict, b: dict) -> None:
+    """Stop unless the two merged reports read the same clips (ids and references, in order) with the same reference
+    derangement seed, the same back-translator checkpoint and the same sentence set (its hash)."""
+    sa, sb = a.get("settings") or {}, b.get("settings") or {}
+    differ = [name for name, x, y in (
+        ("references", a.get("references"), b.get("references")), ("clip ids", a.get("signs"), b.get("signs")),
+        ("seed", sa.get("seed"), sb.get("seed")), ("translator", sa.get("translator_key"), sb.get("translator_key")),
+        ("sentence set", ((sa.get("round20") or {}).get("sentences") or {}).get("sha256"),
+         ((sb.get("round20") or {}).get("sentences") or {}).get("sha256"))) if x != y]
+    if differ:
+        raise SystemExit(f"the two reports are not paired: other {', '.join(differ)}")
+
+
 def compare_forms(a: dict, form_a: str, b: dict, form_b: str, *, boot: int = 1000) -> dict:
     from sentence_exposure_diagnostic import paired_bleu_difference
     from round20_lib import paired_mean
-    if a["references"] != b["references"]:
-        raise SystemExit("the two reports read other references")
+    check_pairable(a, b)
     refs = a["references"]
     for r, f in ((a, form_a), (b, form_b)):
         if f not in r["forms"]:
