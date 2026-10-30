@@ -4807,3 +4807,5 @@ Every item holds before a result is reported:
 - **Error checks:** passed. Instrument consistency is as above, the comparisons are paired, the pods ran bundle f96ad7f/965382c, and both pilots had the corrected word list. Wrist speed was not in these reports.
 
 **Decision per O4:** propose the report's rank 4 to the owner (structural: retokenise with 2–4× temporal downsampling and coarse plan codes). In parallel, the non-structural data lever is in flight: the UWB lifter gate, running now. If it passes, about 4× the YouTube sentence data could be tested on the current architecture first, as a cheaper discriminator before restructuring.
+
+**Owner decision (2026-10-30, 04:39 UTC), O4:** design the rank-4 retokenisation now (2–4× temporal downsampling with coarse plan codes), design and tests only. **No training until the UWB data result.** The UWB 4×-data test stays the first discriminator.
