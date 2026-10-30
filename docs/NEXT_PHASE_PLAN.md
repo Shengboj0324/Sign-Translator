@@ -4714,3 +4714,9 @@ Every item holds before a result is reported:
 - The road-to-3.8 plan and decision tree (O1–O6) are confirmed.
 - Build the stronger back-translator.
 - **The target is restated as 85% of the blank-to-real gap on the instrument in use.** The current back-translator stays frozen for every comparison already declared.
+
+**Data track addition (2026-10-30, 02:00 UTC).** The UWB YouTube-ASL keypoints are already in R2: 390,547 clips with English, CC BY 4.0, all of YouTube-ASL.
+- They are pixel 2D Holistic: no z, no visibility, fps unpublished.
+- Until now they fed only the 2D back-translator.
+- **A 2D→world lifter** would turn them into generator states: the learned world regressors retrained without z, gated on the about 100k overlapping cues we extracted ourselves (paired angle errors, recogniser read). That is about 4× the generator's YouTube data without any YouTube download.
+- This is the next data lever to build, and it runs in parallel with the YouTube route.
