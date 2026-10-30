@@ -23,6 +23,12 @@ Recogniser v3 (docs/NEXT_PHASE_PLAN.md, "Instrument finding and the recogniser v
 ``--word-list-key`` / ``--word-list-sha256`` score exactly a pinned word list (``pinned_words``; the round-14 R5 split
 ``round14/r5-word-split.json`` gives the 150 R5 words), so a new instrument's own reliable glosses cannot change the
 words; the report records the list's key and SHA-256 under ``word_list``. Without it the list is derived as before.
+
+Round 17 (docs/NEXT_PHASE_PLAN.md, "Round 17 design"), additions only: with ``--plan-prior-key`` and
+``--plan-tokenizer-key`` (each with its SHA-256, checked against the detail checkpoint's own pins), ``--checkpoint-key``
+is a plan-conditioned detail prior and every sample is two-stage: plan prior, then detail prior, then the tokenizer's
+decoder (``--plan-temperature``/``--plan-guidance`` for the plan sampler; by default the detail's). The report records
+the pins under ``plan``. ``--oracle-plan`` (diagnostic) gives the meaning half each reference clip's own plan.
 """
 from __future__ import annotations
 
@@ -187,8 +193,31 @@ def main(argv=None) -> int:
                    "the recogniser's reliable glosses, so a new instrument cannot change the R5 words; needs "
                    "--word-list-sha256")
     p.add_argument("--word-list-sha256")
+    p.add_argument("--plan-prior-key", help="round 17: --checkpoint-key is a plan-conditioned detail prior; this plan "
+                   "prior samples each text's plan first (plan, then detail, then the tokenizer's decoder); needs "
+                   "--plan-prior-sha256, --plan-tokenizer-key and --plan-tokenizer-sha256, all checked against the "
+                   "detail checkpoint")
+    p.add_argument("--plan-prior-sha256")
+    p.add_argument("--plan-tokenizer-key", help="round 17: the plan tokenizer both priors were trained with (pinned)")
+    p.add_argument("--plan-tokenizer-sha256")
+    p.add_argument("--plan-temperature", help="round 17: the plan sampler's part temperatures (default: "
+                   "--part-temperature)")
+    p.add_argument("--plan-guidance", type=float, help="round 17: the plan sampler's guidance (default: --guidance)")
+    p.add_argument("--oracle-plan", action="store_true",
+                   help="round 17 diagnostic: the meaning half generates the detail from each reference clip's own plan "
+                        "(the plan tokenizer's codes of the real clip) instead of the plan prior's; the lexicon half is "
+                        "unchanged (single words have no reference clip). An upper bound on what the plan can carry, "
+                        "never an arm's result")
     p.add_argument("--output-key", required=True)
     args = p.parse_args(argv)
+    plan_args = (args.plan_prior_key, args.plan_prior_sha256, args.plan_tokenizer_key, args.plan_tokenizer_sha256)
+    if any(plan_args) and not all(plan_args):
+        raise SystemExit("--plan-prior-key, --plan-prior-sha256, --plan-tokenizer-key and --plan-tokenizer-sha256 go "
+                         "together")
+    if (args.plan_temperature or args.plan_guidance is not None or args.oracle_plan) and not args.plan_prior_key:
+        raise SystemExit("--plan-temperature, --plan-guidance and --oracle-plan need --plan-prior-key")
+    if args.oracle_plan and args.meaning_from_key:
+        raise SystemExit("--oracle-plan recomputes the meaning half; it cannot reuse --meaning-from-key")
     import warnings
     warnings.simplefilter("ignore")
     import numpy as np
@@ -221,7 +250,15 @@ def main(argv=None) -> int:
         path = Path(t) / "m.json"; path.write_bytes(store.get(args.mix_key) + b"\n")
         manifest = load_manifest(path, expected_sha256=args.mix_sha256)
     temperature = {k: float(v) for k, v in (x.split("=") for x in args.part_temperature.split(","))}
-    _, _, sample = load_generator(store, args.checkpoint_key, args.mix_sha256, args.device, temperature=temperature)
+    plan = None
+    if args.plan_prior_key:                            # round 17: two-stage generation, every checkpoint pinned
+        plan = dict(prior_key=args.plan_prior_key, prior_sha256=args.plan_prior_sha256,
+                    tokenizer_key=args.plan_tokenizer_key, tokenizer_sha256=args.plan_tokenizer_sha256,
+                    guidance=args.plan_guidance,
+                    temperature=({k: float(v) for k, v in (x.split("=") for x in args.plan_temperature.split(","))}
+                                 if args.plan_temperature else None))
+    _, _, sample = load_generator(store, args.checkpoint_key, args.mix_sha256, args.device, temperature=temperature,
+                                  **({"plan": plan} if plan else {}))
     post = postprocess
     # lexicon word list (round 14: drawn up before the meaning half, so a bad word split fails before any generation)
     validation = (None if args.word_list_key else      # a pinned list needs no reliable-gloss list
@@ -246,7 +283,8 @@ def main(argv=None) -> int:
     # meaning
     if args.meaning_from_key:   # round 13 amendment 1: the lexicon re-run keeps the arm's own meaning half
         earlier = json.loads(store.get(args.meaning_from_key))
-        same = dict(checkpoint_key=args.checkpoint_key, clips=args.clips, guidance=args.guidance, part_temperature=temperature)
+        same = dict(checkpoint_key=args.checkpoint_key, clips=args.clips, guidance=args.guidance, part_temperature=temperature,
+                    plan=plan)                         # round 17: None for one-stage reports
         if {k: earlier.get(k) for k in same} != same:
             raise SystemExit(f"--meaning-from-key: the earlier report used other settings: {({k: earlier.get(k) for k in same}, same)}")
         meaning, texts = earlier["meaning"], earlier["meaning"]["references"]
@@ -258,8 +296,20 @@ def main(argv=None) -> int:
         texts = [r["text"] for r in val]
         seconds = [float(s.timestamps[-1] - s.timestamps[0]) + 1 / 24. for s in refs]
         gens = []
+        if args.oracle_plan:                           # round 17 diagnostic: each clip's own plan
+            from signtranslator.generation.plan_codes import load_plan_tokenizer, oracle_plans
+            plan_vq, plan_tok, _ = load_plan_tokenizer(store.get(args.plan_tokenizer_key), args.plan_tokenizer_sha256,
+                                                       device=args.device)
+            plans, adjusted = oracle_plans(plan_vq, plan_tok, refs, seconds, 24.)
+            plan["oracle"] = dict(clips=len(plans), length_adjusted=adjusted)
+            print(json.dumps({"oracle_plan": plan["oracle"]}), flush=True)
         for i in range(0, len(texts), 32):
-            gens += [post(o) for o in sample.batch(texts[i:i + 32], 24., seconds[i:i + 32], args.guidance, 1000 + i)]
+            if args.oracle_plan:
+                out = sample.batch_with_plans(texts[i:i + 32], 24., seconds[i:i + 32], args.guidance, 1000 + i,
+                                              plans[i:i + 32])
+            else:
+                out = sample.batch(texts[i:i + 32], 24., seconds[i:i + 32], args.guidance, 1000 + i)
+            gens += [post(o) for o in out]
         kp = json.loads(store.get("training-runs/back-translator-kp2d-uwb-ft-v1/best.json"))["checkpoint_key"]
         translator, kind = load_translator(store, kp, MIX_SHA)  # the translator's own manifest (round 3c)
         translator = translator.to(torch.device(args.device))
@@ -307,7 +357,8 @@ def main(argv=None) -> int:
                   **({"vocab_mix_key": args.vocab_mix_key} if args.vocab_mix_key else {}),
                   **({"word_list": dict(key=args.word_list_key, sha256=list_sha, words=len(words))}
                      if args.word_list_key else {}),
-                  **({"meaning_from_key": args.meaning_from_key} if args.meaning_from_key else {}))
+                  **({"meaning_from_key": args.meaning_from_key} if args.meaning_from_key else {}),
+                  **({"plan": {k: v for k, v in plan.items()}} if plan else {}))
     store.put(args.output_key, json.dumps(report, indent=2, sort_keys=True, default=float).encode())
     return 0
 

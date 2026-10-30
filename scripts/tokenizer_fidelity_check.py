@@ -83,8 +83,13 @@ def main(argv=None) -> int:
                                          "are applied to every round trip after decoding")
     p.add_argument("--speed-joints-key", help="round 3d: joint_reliability.py report; speed ratios over its reliable "
                                                 "joints (all-joint speeds are still reported)")
+    p.add_argument("--plan-tokenizer-key", help="round 17: a plan tokenizer over --tokenizer-key; the round trips decode "
+                   "the latents reconstructed from its plan codes (the plan's fidelity gate: hand speed)")
+    p.add_argument("--plan-tokenizer-sha256", help="its SHA-256 (required with --plan-tokenizer-key)")
     p.add_argument("--output-key")
     args = p.parse_args(argv)
+    if bool(args.plan_tokenizer_key) != bool(args.plan_tokenizer_sha256):
+        raise SystemExit("--plan-tokenizer-key and --plan-tokenizer-sha256 go together")
     import tempfile
     import torch
     from signtranslator.data.text_motion_dataset import R2Store
@@ -107,7 +112,13 @@ def main(argv=None) -> int:
             for r in records]
     model, _ = dt.load_tokenizer(store, args.tokenizer_key)
     model.eval()                 # round_trip collates on the CPU, as the recognisability check's tokenizer does
-    trips = [round_trip(model, model.config.motion, s, 24.) for s in real]
+    plan = None
+    if args.plan_tokenizer_key:                      # round 17: the plan's round trip through the same decoder
+        from signtranslator.generation.plan_codes import load_plan_tokenizer
+        plan, _, saved_plan = load_plan_tokenizer(store.get(args.plan_tokenizer_key), args.plan_tokenizer_sha256)
+        if saved_plan["tokenizer_key"] != args.tokenizer_key:
+            raise SystemExit(f"the plan tokenizer reads {saved_plan['tokenizer_key']}, not --tokenizer-key")
+    trips = [round_trip(model, model.config.motion, s, 24., plan=plan) for s in real]
     gains = json.loads(store.get(args.gains_key))["gains"] if args.gains_key else None
     if gains:
         from fit_tokenizer_gains import apply_gains
@@ -136,6 +147,8 @@ def main(argv=None) -> int:
         bleu[name] = dict(bleu=point, ci95=ci)
     verdict = judge(ratios, bleu, separated)
     report = dict(tokenizer_key=args.tokenizer_key, clips=len(records), groups=sorted(groups), ratios=ratios, r2b=bleu,
+                  **({"plan_tokenizer_key": args.plan_tokenizer_key, "plan_tokenizer_sha256": args.plan_tokenizer_sha256}
+                     if args.plan_tokenizer_key else {}),
                   gains=gains, speed_joints=speed_joints,
                   **verdict)
     print(json.dumps(dict(ratios=ratios, r2b={k: v["bleu"] for k, v in bleu.items()}, out_of_band=verdict["out_of_band"],

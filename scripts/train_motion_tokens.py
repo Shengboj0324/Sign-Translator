@@ -17,6 +17,16 @@ checkpoints under ``training-runs/<run>/checkpoints/step-XXXXXXXX.pt``; the newe
 resumed and must match the configuration and manifest. Stage 2 freezes the stage 1
 tokenizer named by ``--tokenizer-key`` (hash-pinned) and stores its weights inside
 every prior checkpoint, so one prior checkpoint fully defines the generator.
+
+**Round 17** (docs/NEXT_PHASE_PLAN.md, "Round 17 design"; ``generation/plan_codes.py``). ``--plan-tokenizer-key``
+(SHA-pinned, a ``train_plan_tokenizer.py`` checkpoint over ``--tokenizer-key``):
+- ``--stage prior``: the plan-conditioned detail prior, trained on the true plans of the batch with
+  ``--plan-dropout``; validation also reports ``tokens_no_plan`` and ``plan_gain`` (the informativeness measure: the
+  same codes under the empty plan). ``--init-key`` may name a plan-less prior of the same config (W14b): the plan
+  modules then start at zero, so the warm-started prior equals it at step 0 (``plan_warm_start``).
+- ``--stage plan-prior``: the text -> plan-code prior (kind ``motion_plan_prior``); ``--init-text-key`` copies the
+  text encoder of an rvq prior (W14b).
+Both store the plan tokenizer's key, SHA-256, config and weights in every checkpoint.
 """
 from __future__ import annotations
 
@@ -47,7 +57,10 @@ from signtranslator.data.text_motion_dataset import TextMotionDataset, collate_t
 from signtranslator.data_engineering.corpus_manifest import ContentCache, load_manifest  # noqa: E402
 from signtranslator.generation.canonical_state import channel_bindings_from_state  # noqa: E402
 from signtranslator.generation.motion_rvq import (  # noqa: E402
-    MotionRVQ, MotionRVQConfig, RVQPrior, RVQPriorConfig, rvq_loss, rvq_prior_loss,
+    PLAN_FIELDS, MotionRVQ, MotionRVQConfig, RVQPrior, RVQPriorConfig, rvq_loss, rvq_prior_loss,
+)
+from signtranslator.generation.plan_codes import (  # noqa: E402
+    PLAN_PRIOR_KIND, PlanPriorConfig, copy_text_encoder, load_plan_tokenizer, plan_prior_loss,
 )
 from signtranslator.generation.motion_tokens import (  # noqa: E402
     MotionVQ, MotionVQConfig, TokenPrior, TokenPriorConfig, prior_loss, tokenizer_loss,
@@ -100,18 +113,40 @@ def corpus_sample_weights(records, weights: dict[str, float]) -> list[float]:
 # model, locus/grammar conditioning and every size stay part of the comparison: they change the forward pass.
 PRIOR_TRAINING_ONLY = ("input_corruption", "scheduled_sampling", "history_dropout", "part_valid_loss", "guided_attention",
                        "guided_attention_width", "alignment_supervision", "rollout_blocks", "rollout_min", "rollout_max",
-                       "rollout_onset", "rollout_guidance", "rollout_temperature")
+                       "rollout_onset", "rollout_guidance", "rollout_temperature", "plan_dropout")
 
 
 def prior_warm_start_compatible(init_config: dict, config: dict) -> bool:
-    """A prior may warm-start from ``init_config`` when the two configs agree on everything but training-only fields."""
+    """A prior may warm-start from ``init_config`` when the two configs agree on everything but training-only fields.
+
+    Round 17: a plan-less prior may also warm-start a plan-conditioned one whose config differs only in the plan
+    fields (``motion_rvq.PLAN_FIELDS``). The network then differs by exactly the plan modules, which start at zero, so
+    the warm-started prior equals the plan-less one at step 0 (tested); ``plan_warm_start`` loads it."""
     strip = lambda c: {k: v for k, v in c.items() if k not in PRIOR_TRAINING_ONLY}
-    return strip(init_config) == strip(config)
+    if strip(init_config) == strip(config):
+        return True
+    if not init_config.get("plan_window") and config.get("plan_window"):
+        plain = lambda c: {k: v for k, v in strip(c).items() if k not in PLAN_FIELDS}
+        return plain(init_config) == plain(config)
+    return False
+
+
+def plan_warm_start(model, state: dict) -> int:
+    """Load a plan-less prior's weights into a plan-conditioned ``model``; returns the number of plan keys left at
+    their zero initialisation. Refuses unless the missing keys are exactly the plan modules and none is unexpected."""
+    missing, unexpected = model.load_state_dict(state, strict=False)
+    if unexpected or set(missing) != model.plan_parameter_names():
+        raise SystemExit(f"--init-key: not a plan-less version of this prior (missing {sorted(missing)[:4]}, "
+                         f"unexpected {sorted(unexpected)[:4]})")
+    return len(missing)
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--stage", choices=("tokenizer", "prior"), required=True)
+    parser.add_argument("--stage", choices=("tokenizer", "prior", "plan-prior"), required=True,
+                        help="plan-prior (round 17): the text -> plan-code prior over a plan tokenizer "
+                             "(--plan-tokenizer-key); a prior with --plan-tokenizer-key is the plan-conditioned detail "
+                             "prior")
     parser.add_argument("--architecture", choices=("vq", "rvq"), default="vq", help="tokens v1 (vq) or v2 (rvq)")
     parser.add_argument("--stages", type=int, default=4, help="rvq: residual stages per part")
     parser.add_argument("--codebook-follows-lr", action="store_true",
@@ -200,6 +235,19 @@ def main(argv=None) -> int:
     parser.add_argument("--alignment-supervision", type=float, default=0.,
                         help="rvq prior: weight of the cross entropy pulling each step's cross-attention to the bytes "
                              "of the word signed there, on records that carry sign_spans (round 13; 0 = off)")
+    parser.add_argument("--plan-tokenizer-key", help="round 17: a plan tokenizer checkpoint (train_plan_tokenizer.py) "
+                        "over --tokenizer-key; the prior stage conditions on its true plans, the plan-prior stage "
+                        "predicts them")
+    parser.add_argument("--plan-tokenizer-sha256", help="its SHA-256")
+    parser.add_argument("--plan-tokenizer-manifest-sha256",
+                        help="the manifest the plan tokenizer was trained on, when it is not --manifest-sha256")
+    parser.add_argument("--plan-dropout", type=float, default=0.,
+                        help="round 17 detail prior: probability a sequence trains with the empty plan (0 = off)")
+    parser.add_argument("--no-plan-memory", dest="plan_memory", action="store_false",
+                        help="round 17 detail prior: only the step-rate plan input, no plan cross-attention readers")
+    parser.add_argument("--init-text-key", help="round 17 plan prior: copy the text encoder (embedding, projections, "
+                        "text layers, duration head) of this rvq prior checkpoint's EMA weights (W14b)")
+    parser.add_argument("--init-text-sha256", help="its SHA-256")
     parser.add_argument("--max-seconds", type=float, default=20.)
     parser.add_argument("--velocity-cap", type=float, default=0.,
                         help="rvq tokenizer: log-compress any velocity term above this value (round 10; 0 = off)")
@@ -218,6 +266,15 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     if args.device == "mps":
         raise SystemExit("MPS is refused: it miscomputes rotation operations at batch scale")
+    prior_stage = args.stage in ("prior", "plan-prior")
+    if args.stage == "plan-prior" and (args.architecture != "rvq" or not args.plan_tokenizer_key):
+        raise SystemExit("--stage plan-prior needs --architecture rvq and --plan-tokenizer-key")
+    if args.plan_tokenizer_key and (not prior_stage or args.architecture != "rvq" or not args.plan_tokenizer_sha256):
+        raise SystemExit("--plan-tokenizer-key needs an rvq prior stage and --plan-tokenizer-sha256")
+    if args.plan_dropout and not (args.stage == "prior" and args.plan_tokenizer_key):
+        raise SystemExit("--plan-dropout is for the plan-conditioned detail prior (--stage prior --plan-tokenizer-key)")
+    if args.init_text_key and (args.stage != "plan-prior" or not args.init_text_sha256):
+        raise SystemExit("--init-text-key is for --stage plan-prior and needs --init-text-sha256")
     store = make_store(args.store)
     device = torch.device("cuda" if args.device == "auto" and torch.cuda.is_available() else
                           ("cpu" if args.device == "auto" else args.device))
@@ -229,7 +286,7 @@ def main(argv=None) -> int:
     cache = ContentCache(Path(os.environ.get("SIGN_CACHE_DIR", tempfile.gettempdir())) / "sign-translator-cache",
                          args.cache_bytes)
     template = layout_template(manifest, args.conform_to_corpus, cache, store.get) if args.conform_to_corpus else None
-    word_spans = args.stage == "prior" and args.architecture != "vq" and args.alignment_supervision > 0
+    word_spans = prior_stage and args.architecture != "vq" and args.alignment_supervision > 0
     train = TextMotionDataset(manifest, partition="train", cache=cache, fetch=store.get, max_seconds=args.max_seconds,
                               fps=args.fps, template=template, word_spans=word_spans)
     if not len(train):
@@ -237,6 +294,9 @@ def main(argv=None) -> int:
     val = TextMotionDataset(manifest, partition="val", cache=cache, fetch=store.get, max_seconds=args.max_seconds,
                             fps=args.fps, template=template, word_spans=word_spans)
     tokenizer_kind, prior_kind = kinds(args.architecture)
+    if args.stage == "plan-prior":
+        prior_kind = PLAN_PRIOR_KIND
+    plan, plan_state = None, None                   # round 17: the frozen plan tokenizer
     if args.stage == "tokenizer":
         motion = TextToMotionConfig(bindings=channel_bindings_from_state(train[0][1]),
                                     trained_channels=tuple(args.trained_channels.split(",")), max_seconds=args.max_seconds)
@@ -270,6 +330,18 @@ def main(argv=None) -> int:
             tokenizer = MotionRVQ(MotionRVQConfig.from_dict(saved["config"]))
         tokenizer.load_state_dict(tokenizer_state)
         tokenizer.to(device).eval().requires_grad_(False)
+        if args.plan_tokenizer_key:
+            try:
+                plan, _, plan_saved = load_plan_tokenizer(store.get(args.plan_tokenizer_key), args.plan_tokenizer_sha256,
+                                                          tokenizer_sha256=args.tokenizer_sha256, device=device)
+            except ValueError as error:
+                raise SystemExit(f"--plan-tokenizer-key: {error}")
+            if plan_saved["manifest_sha256"] != (args.plan_tokenizer_manifest_sha256 or args.manifest_sha256):
+                raise SystemExit("--plan-tokenizer-key was not trained on this manifest (or on "
+                                 "--plan-tokenizer-manifest-sha256)")
+            if plan.config.tokenizer.sha256() != tokenizer.config.sha256():
+                raise SystemExit("--plan-tokenizer-key reads another tokenizer config than --tokenizer-key")
+            plan_state = plan.state_dict()
         common = dict(d_model=args.d_model, heads=args.heads, text_layers=args.text_layers, feedforward=args.feedforward,
                       dropout=args.dropout, cfg_dropout=args.cfg_dropout, grammar_features=args.grammar_features,
                       locus_conditioning=args.locus_conditioning)
@@ -277,7 +349,13 @@ def main(argv=None) -> int:
             config = TokenPriorConfig(tokenizer.config, token_layers=args.token_layers, **common)
             model = TokenPrior(config).to(device)
         else:
-            config = RVQPriorConfig(tokenizer.config, temporal_layers=args.token_layers, depth_layers=args.depth_layers,
+            # round 17: the plan prior's "tokenizer" is the plan tokenizer; the detail prior gains the plan fields
+            plan_fields = (dict(plan_window=plan.config.window, plan_codes=plan.config.codes_per_step,
+                                plan_codebook=plan.config.codebook, plan_memory=args.plan_memory,
+                                plan_dropout=args.plan_dropout) if plan is not None and args.stage == "prior" else {})
+            config_class = PlanPriorConfig if args.stage == "plan-prior" else RVQPriorConfig
+            config = config_class(plan.config if args.stage == "plan-prior" else tokenizer.config,
+                                    temporal_layers=args.token_layers, depth_layers=args.depth_layers,
                                     text_model=args.text_model, text_model_revision=args.text_model_revision,
                                     input_corruption=args.input_corruption,
                                     scheduled_sampling=args.scheduled_sampling, history_dropout=args.history_dropout,
@@ -288,16 +366,20 @@ def main(argv=None) -> int:
                                     rollout_blocks=args.rollout_blocks, rollout_min=args.rollout_min,
                                     rollout_max=args.rollout_max, rollout_onset=args.rollout_onset,
                                     rollout_guidance=args.rollout_guidance,
-                                    rollout_temperature=args.rollout_temperature, **common)
+                                    rollout_temperature=args.rollout_temperature, **plan_fields, **common)
             model = RVQPrior(config).to(device)
     kind = tokenizer_kind if args.stage == "tokenizer" else prior_kind
+    plan_detail = plan is not None and args.stage == "prior"
 
     def loss_of(motion, tokens, mask, loci, train: bool, spans=None):
         if args.stage == "tokenizer":
             return tokenizer_loss(model, motion) if args.architecture == "vq" else rvq_loss(model, motion)
         if args.architecture == "vq":
             return prior_loss(model, tokenizer, tokens, mask, motion, *loci)
-        return rvq_prior_loss(model, tokenizer, tokens, mask, motion, *loci, train=train, word_spans=spans)
+        if args.stage == "plan-prior":
+            return plan_prior_loss(model, tokenizer, plan, tokens, mask, motion, *loci, train=train, word_spans=spans)
+        return rvq_prior_loss(model, tokenizer, tokens, mask, motion, *loci, train=train, word_spans=spans,
+                              **({"plan_tokenizer": plan} if plan_detail else {}))
 
     def split_spans(batch):
         """(batch without the per-frame word spans, the spans on the device or None)."""
@@ -311,7 +393,8 @@ def main(argv=None) -> int:
     if checkpoints:
         state = torch.load(io.BytesIO(store.get(checkpoints[-1])), map_location=device, weights_only=False)
         if (state.get("kind") != kind or state["config_sha256"] != config.sha256()
-                or state["manifest_sha256"] != args.manifest_sha256):
+                or state["manifest_sha256"] != args.manifest_sha256
+                or state.get("plan_tokenizer_sha256") != args.plan_tokenizer_sha256):
             raise SystemExit("the newest checkpoint was trained with a different config or manifest")
         model.load_state_dict(state["model"])
         optimizer.load_state_dict(state["optimizer"])
@@ -327,12 +410,29 @@ def main(argv=None) -> int:
             if hashlib.sha256(payload).hexdigest() != args.init_sha256:
                 raise SystemExit("the --init-key checkpoint differs from --init-sha256")
             init = torch.load(io.BytesIO(payload), map_location=device, weights_only=False)
-            same = (prior_warm_start_compatible(init["config"], config.to_dict()) if args.stage == "prior"
+            same = (prior_warm_start_compatible(init["config"], config.to_dict()) if prior_stage
                     else warm_start_compatible(init["config"], config.to_dict()))
             if init.get("kind") != kind or not same:
                 raise SystemExit("--init-key is a different kind or config")
-            model.load_state_dict(init.get("ema") or init["model"])
+            if plan_detail and not init["config"].get("plan_window"):
+                # round 17: a plan-less prior (W14b); the plan modules keep their zero initialisation
+                added = plan_warm_start(model, init.get("ema") or init["model"])
+                print(f"plan modules zero-initialised ({added} tensors)", flush=True)
+            else:
+                model.load_state_dict(init.get("ema") or init["model"])
             print(f"initialised from {args.init_key} (step {init.get('step')})", flush=True)
+        if args.init_text_key:                         # round 17: the plan prior's text side from W14b
+            payload = store.get(args.init_text_key)
+            if hashlib.sha256(payload).hexdigest() != args.init_text_sha256:
+                raise SystemExit("the --init-text-key checkpoint differs from --init-text-sha256")
+            source = torch.load(io.BytesIO(payload), map_location=device, weights_only=False)
+            if source.get("kind") != "motion_rvq_prior":
+                raise SystemExit("--init-text-key is not an rvq prior checkpoint")
+            try:
+                copied = copy_text_encoder(model, source.get("ema") or source["model"], source["config"])
+            except ValueError as error:
+                raise SystemExit(f"--init-text-key: {error}")
+            print(f"text encoder from {args.init_text_key} ({len(copied)} tensors)", flush=True)
         store.put(f"{prefix}/run.json", json.dumps(dict(kind=kind, config=config.to_dict(), config_sha256=config.sha256(),
                                                         manifest_key=args.manifest_key,
                                                         manifest_sha256=args.manifest_sha256, args=vars(args),
@@ -345,7 +445,7 @@ def main(argv=None) -> int:
                                         replacement=True, generator=torch.Generator().manual_seed(args.seed + step))
     loader = DataLoader(train, batch_size=args.batch_size, shuffle=sampler is None, sampler=sampler,
                         num_workers=args.workers,
-                        collate_fn=partial(collate_text_motion, loci=args.locus_conditioning and args.stage == "prior",
+                        collate_fn=partial(collate_text_motion, loci=args.locus_conditioning and prior_stage,
                                            word_spans=word_spans),
                         generator=torch.Generator().manual_seed(args.seed + step),
                         persistent_workers=args.workers > 0, drop_last=True)
@@ -357,7 +457,7 @@ def main(argv=None) -> int:
     val_batches = []
     if len(val):
         val_loader = DataLoader(val, batch_size=args.batch_size, shuffle=False, num_workers=0,
-                                collate_fn=partial(collate_text_motion, loci=args.locus_conditioning and args.stage == "prior",
+                                collate_fn=partial(collate_text_motion, loci=args.locus_conditioning and prior_stage,
                                            word_spans=word_spans))
         for index, batch in enumerate(val_loader):
             if index >= args.val_batches:
@@ -376,6 +476,11 @@ def main(argv=None) -> int:
                 batch, _ = split_spans(batch)
                 tokens_v, mask_v, motion_v, *loci_v = to_device(batch, device)
                 loss_v, terms_v = loss_of(motion_v, tokens_v, mask_v, loci_v, train=False)
+                if plan_detail:                # round 17 informativeness: the same codes without the plan
+                    _, empty_v = rvq_prior_loss(model, tokenizer, tokens_v, mask_v, motion_v, *loci_v, train=False,
+                                                plan_tokenizer=plan, plan_mode="empty")
+                    terms_v = dict(terms_v, tokens_no_plan=empty_v["tokens"],
+                                   plan_gain=empty_v["tokens"] - terms_v["tokens"])
                 for key, value in dict(loss=float(loss_v), **terms_v).items():
                     totals[key] = totals.get(key, 0.) + float(value)
                 count += 1
@@ -411,7 +516,10 @@ def main(argv=None) -> int:
                         step=step, validation=metrics,
                         torch_rng=torch.get_rng_state(), config=config.to_dict(), config_sha256=config.sha256(),
                         manifest_sha256=args.manifest_sha256, tokenizer_state=tokenizer_state,
-                        tokenizer_key=args.tokenizer_key, tokenizer_sha256=args.tokenizer_sha256), buffer)
+                        tokenizer_key=args.tokenizer_key, tokenizer_sha256=args.tokenizer_sha256,
+                        **(dict(plan_tokenizer_key=args.plan_tokenizer_key, plan_tokenizer_sha256=args.plan_tokenizer_sha256,
+                                plan_tokenizer_config=plan.config.to_dict(), plan_tokenizer_state=plan_state)
+                           if plan is not None else {})), buffer)
         key = f"{prefix}/checkpoints/step-{step:08d}.pt"
         items = [(key, buffer.getvalue()), (f"{prefix}/log/step-{step:08d}.json", json.dumps(log, sort_keys=True).encode())]
         if metrics and (best is None or metrics["val/loss"] < best["val_loss"]):
