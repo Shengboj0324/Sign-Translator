@@ -5187,3 +5187,19 @@ Settles the build's open choices (branch `uwb-lifter-v2` ad3c102):
    - the pairs index and the bundle's training report must name the same split.
    - Either missing makes the gate not evaluable.
 6. **Pooled lag:** averaged per-pair cost curves over the lags every pair scored. A video with no common lag counts as outside ±1.
+
+### UWB lifter v2, amendment 2 (declared 2026-10-30, 12:03 UTC, from the independent review; before anything runs)
+
+Every change is stricter than, or equal to, the declaration.
+1. **Chest-up fallback** (MediaPipe < 200 outside-frame frames):
+   - `head` must keep **more** out-of-frame forearms than `inside`;
+   - it must admit at least one measured outside bin;
+   - otherwise the row is not evaluable, never pass.
+2. **Downstream row:** reads `lifter[head]` states, the rule conversion uses, not `inside`.
+3. **Pose regressor training:** How2Sign v2 pairs (signers 3, 4, 5, 8, 11) and YouTube pairs only. The tight crops train **only the validity head**, as declared.
+4. **Truth anchor:** v1's unrounded values from its pinned report, 28.24° left and 29.07° right (the declaration wrote 28.2 and 29.1).
+5. **Intervals:** a 95% interval clustered by channel is reported beside the by-video one, which stays the declared gating interval.
+   - The held-out set has **8** monitor channels, not 7: 160 channels, 507 videos, 38,610 candidate pairs, largest channel 18.5% of videos.
+   - Split SHA `27c35505…`, from the reviewer's independent recomputation.
+6. **Validity-head thresholds:** refused below 500 chest-valid lifter-val frames per side.
+7. **v1 reference identity:** compares the evaluated pair sets and every gate setting, not only the pair lists.
