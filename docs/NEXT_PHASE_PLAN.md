@@ -4709,3 +4709,8 @@ Every item holds before a result is reported:
 7. empty or failed jobs caught by checking outputs, not exit codes;
 8. an independent review before any adoption;
 9. every number logged to memory.
+
+**Owner confirmation (2026-10-30, 01:53 UTC):**
+- The road-to-3.8 plan and decision tree (O1–O6) are confirmed.
+- Build the stronger back-translator.
+- **The target is restated as 85% of the blank-to-real gap on the instrument in use.** The current back-translator stays frozen for every comparison already declared.
