@@ -12,10 +12,10 @@ N=$(( $(nproc) - 2 )); [ $N -gt 30 ] && N=30
 O=/root/gate; rm -rf $O && mkdir -p $O
 python scripts/uwb_lifter_gate.py --regressors $K/files/world-regressors-xy2-v1.pt --regressors-sha256 $SHA \
   --visibility inside --candidate-visibility learned,inside,margin:0.1,margin:0.25 \
-  --exclude-videos reports/uwb_gate_smoke_videos.txt --videos 0 --pairs-per-video 5 --head affine \
+  --exclude-videos reports/uwb_gate_smoke_videos.txt --videos 0 --pairs-per-video 5 --head affine --models-dir /root/work/models \
   --workers $N --out $O/gate-xy2-v1.json
 python scripts/uwb_lifter_gate.py --regressors $K/files/world-regressors-xy2-v1.pt --regressors-sha256 $SHA \
-  --visibility inside --candidate-visibility "" --exclude-videos reports/uwb_gate_smoke_videos.txt --videos 0 \
+  --visibility inside --candidate-visibility "" --exclude-videos reports/uwb_gate_smoke_videos.txt --videos 0 --models-dir /root/work/models \
   --pairs-per-video 12 --workers $N --out $O/gate-drift.json --fps-table-out $O/uwb-fps-table-v3.json
 [ -s $O/gate-xy2-v1.json ] && [ -s $O/uwb-fps-table-v3.json ]
 python scripts/store_local_files.py --dir $O --prefix $K/gate --source "uwb_lifter_gate.py, xy2 bundle $SHA, visibility inside" \
