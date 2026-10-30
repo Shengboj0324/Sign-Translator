@@ -5255,3 +5255,18 @@ Verdicts from `scripts/round17_pt_verdict.py`, on each arm's best-validation che
 - The plan-code route at 2–4× is not viable as specified. P17 and D17 do not run, and round 17 is closed.
 - O4's alternatives are reopened. The first is the UWB 4×-data test: lifter v2 is running, and round 18 is declared at 13:03.
 - The composition path (M1 2.55) remains the leader's route.
+
+### Round 18, amendment 1 (declared 2026-10-30, 13:36 UTC, before review and before anything runs)
+
+From the build (branch `round18` c7befa3):
+1. **Scale is about 1.8×, not 4×.**
+   - Video frame rates can be estimated only for the 2,509 videos we downloaded: the fit needs our own caption cues, and UWB publishes no clip times.
+   - After removing duplicates of our cues, evaluation-text leaks and short or garbled captions, at most about 79.7k lifted records (about 105 h) remain. Our own YouTube set is 99.9k (152 h).
+   - Round 18 therefore tests about 1.8× YouTube data. The rule is unchanged.
+2. **The other ~8.5k UWB videos** have unknown rates. Assuming 30 fps would be wrong for about a quarter of them: 23.976 fps is about 18% of the estimated rates.
+   - They enter only through a declared follow-up (round 18b): a frame-rate estimator from motion statistics, validated against the 2,509 known videos, with a held-out ablation, as gate v1 required.
+   - Round 18b runs only if R18's paired BLEU against R16C is positive in point estimate.
+3. **Leak filter:** round14b-mixed-v1 is a third `--eval-manifest`, because 1,460 of its How2Sign val sentences are not val or test in the full-v1 manifest. Stricter.
+4. **Lifted clips:** the same caption and duration filter as our YouTube records. Hand coverage is the larger per-side fraction.
+5. **Pilot:** it names round18-mixed-v1 and its SHA, because the generator loader refuses a checkpoint trained on another manifest. It writes to a new output key, so R16C's stored pilot is never overwritten. The builder refuses the mix if the 1,000 pilot clips differ.
+6. **Smoke test:** the pilot command is smoke-tested on GPU, on a few clips, before the chain launches.
