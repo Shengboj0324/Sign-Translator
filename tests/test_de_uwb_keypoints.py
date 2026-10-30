@@ -137,6 +137,42 @@ def test_a_z_trained_bundle_and_bad_options_are_refused():
                         regressors=TrueWorldXY(body, hands))
 
 
+def test_visibility_rules_inside_margin_all_and_learned():
+    data, body, hands = uwb_clip_json(size=(1280, 720))
+    clip = uk.parse_clip(data, NAME)
+    y = clip.pose[..., 1] / 720
+    stub = TrueWorldXY(body, hands)
+    vis = {rule: uk.clip_landmarks(clip, 30., regressors=stub, visibility=rule)[0].pose_visibility
+           for rule in ("inside", "margin:0.25", "all", "learned")}
+    assert ((vis["inside"][:, 13] == 1) == (y[:, 13] <= 1.)).all()               # elbows below the frame: dropped
+    assert (y[:, 13] > 1.).any() and (y[:, 13] <= 1.25).all()
+    assert (vis["margin:0.25"][:, 11:17] == 1).all() and (vis["all"][:, :25] == 1).all()
+    far = y > 1.25                                                                   # the synthetic filler points
+    assert far[:, :25].any() and not vis["margin:0.25"][:, :25][far[:, :25]].any()
+    assert (vis["learned"] == stub.visibility).all() and not vis["all"][:, 25:].any()
+    assert uk.visibility_margin("margin:0") == 0. and uk.visibility_margin("learned") is None
+    for bad in ("margin:-1", "margin:x", "margin:3", "outside", ""):
+        with pytest.raises(ValueError, match="visibility rule"):
+            uk.visibility_margin(bad)
+    state, _ = uk.convert_clip(clip, 30., source_sha256="a" * 64, fps_source="assumed", regressors=stub,
+                               visibility="margin:0.25")
+    assert "extended by 0.25 of its size" in state.channels["body"].inference_method
+    assert "CC BY 4.0" in state.channels["body"].inference_method
+
+
+def test_framing_invariant_xy2_bundles_are_accepted():
+    from test_de_world_regressor_xy import xy_bundle
+    from signtranslator.data_engineering import world_regressor as wr
+    data, *_ = uwb_clip_json()
+    bundle = xy_bundle()
+    bundle.features = wr.FEATURES_XY2
+    torch = pytest.importorskip("torch")
+    torch.manual_seed(0)
+    bundle.pose = (wr.MLP(50, 108, width=8, depth=1).eval(), np.zeros(50, np.float32), np.ones(50, np.float32))
+    landmarks, info = uk.clip_landmarks(uk.parse_clip(data, NAME), 30., regressors=bundle)
+    assert landmarks.pose_found.all() and info["world"].startswith("learned:")
+
+
 def test_pseudo_world_is_the_image_plane():
     data, body, hands = uwb_clip_json(size=(1280, 720))
     clip = uk.parse_clip(data, NAME)

@@ -1,4 +1,4 @@
-# UWB 2D-to-world lifter: development report (2026-10-30, 02:50 UTC)
+# UWB 2D-to-world lifter: development report (2026-10-30, 02:50 UTC; review fixes 03:30 UTC)
 
 Branch `uwb-lifter` (from main `ab7df81`). Nothing ran on a pod; no training beyond a local smoke; R2 was read, and
 written only under `scratch/uwb-lifter-dev/`.
@@ -12,7 +12,11 @@ written only under `scratch/uwb-lifter-dev/`.
 | UWB clip adapter (parse, clock, normalise, learned or pseudo world, visibility, blendshapes, optional affine head) | `signtranslator/data_engineering/uwb_keypoints.py` |
 | Converter: ranged reads, units of 1,000 members, shards, resumable, per-clip provenance | `scripts/convert_uwb_clips.py` |
 | Paired gate: per-video fps estimate, cue pairing, lag alignment, bone errors, validity agreement, mirror check | `scripts/uwb_lifter_gate.py` |
-| Tests (synthetic, offline; 37 new; 98 with the related regressor and Sem-Lex suites, all passing under `-W error`) | `tests/test_de_world_regressor_xy.py`, `tests/test_de_uwb_keypoints.py`, `tests/test_convert_uwb_clips_script.py`, `tests/test_uwb_lifter_gate.py`, `tests/uwb_synthetic.py` |
+| Framing-invariant features `world-regressor-features-xy-v2` (pose 50 inputs, no context); `--features xy2`; `--augment-framing K` for xy; `input_zscores` | `signtranslator/data_engineering/world_regressor.py`, `scripts/train_world_regressors.py` |
+| Training-record selection that refuses unchecked clips and drops leaks and duplicates | `signtranslator/data_engineering/uwb_manifest.py` |
+| Outside-frame accuracy of visibility rules on How2Sign two-view truth | `scripts/uwb_outside_frame_accuracy.py` |
+| Development videos excluded from the declared gate (70) | `reports/uwb_gate_smoke_videos.txt` |
+| Tests (synthetic, offline): see the review section for counts | `tests/test_de_world_regressor_xy.py`, `tests/test_de_uwb_keypoints.py`, `tests/test_convert_uwb_clips_script.py`, `tests/test_uwb_lifter_gate.py`, `tests/test_uwb_outside_frame_accuracy_script.py`, `tests/uwb_synthetic.py` |
 
 ## The real UWB format (checked before coding)
 
@@ -121,14 +125,141 @@ Median / p90 in degrees against our own Tasks-extracted states, on each method's
    - `legacy-pairs.tar`: sha256 `7042e0a8bcd7452d13743fcac5f6b37be1854fafb06c417ab54fa8aa24c65fa0`
    - `INDEX.json`
 
+## Review fixes (2026-10-30)
+
+The independent review of `e186d62` approved with fixes and blocked conversion and training until items 1–4 were
+fixed.
+
+**Tests:** 46 UWB lifter tests. The whole suite passes under `python -W error -m pytest`, as CI runs it: 3,966 passed.
+
+Status of every item:
+
+1. **Visibility (major).**
+   - Done:
+     - New declared rules: `learned`, `inside`, `margin:<m>`, plus the diagnostic `all`. `uwb_keypoints.visibility_margin` parses them.
+     - The converter refuses a run without an explicit `--visibility`, and refuses `all`.
+     - The gate takes a declared `--visibility` (the primary method) and scores candidate rules beside it.
+     - Gate validity now covers all frames, split by framing (both hips inside the UWB frame or not). It reports hand agreement, kappa and UWB-only rate on every frame, forearm survival on every frame, and forearm agreement where our chest is valid.
+     - `scripts/uwb_outside_frame_accuracy.py` scores each rule against How2Sign two-view truth. It reports survival against MediaPipe's, and the accuracy of what a rule keeps and drops, inside and outside the frame. Signer 9 is refused.
+   - The "visibility head retrained with crop/translation augmentation" candidate is the xy-v2 head. It cannot see the frame at all (item 2).
+   - Dev results (smoke bundles, 30 new videos, smoke videos excluded):
+
+| Rule (xy2 smoke) | Forearm survival L / R, all frames | Same, hips not visible | Forearm agreement L / R (our chest) | UWB-only R | Arms, own frames (upper / fore) |
+|---|---|---|---|---|---|
+| `learned` (framing-blind head) | 0.78 / **0.25** | 0.75 / 0.27 | 0.80 / **0.33** | 0.02 | 13.9 / 18.2 |
+| `inside` | 0.63 / 0.77 | 0.53 / 0.70 | 0.93 / 0.82 | 0.17 | 11.4 / 15.5 |
+| `margin:0.25` | 0.92 / 0.98 | 0.90 / 0.97 | 0.94 / 0.82 | 0.18 | 11.4 / 15.7 |
+
+   - The right-forearm loss of the learned head is not caused by framing: the framing-blind xy2 head shows it too. It comes from the How2Sign-crop targets, where MediaPipe rarely calls the right arm visible (right forearm scored on 653 of 7,212 smoke val frames, the left on 4,011).
+   - On How2Sign two-view truth (12 videos of signers 1 and 2; 56 crops; 6,364 frame-sides; elbow outside the crop on 97%):
+
+| Keep decision | Survival | vs MediaPipe | Kept forearm error | Dropped forearm error |
+|---|---|---|---|---|
+| MediaPipe (Tasks visibility) | 0.146 | 1.0 | 27.3 | 42.2 |
+| `learned` (xy2 head) | 0.221 | 1.51 | 26.4 | 46.3 |
+| `inside` | 0.010 | 0.07 | 27.9 | 40.0 |
+| `margin:0.1` | 0.202 | 1.38 | 33.8 | 45.8 |
+| `margin:0.25` | 0.362 | 2.47 | 33.0 | 60.1 |
+| `margin:0.5` | 0.617 | 4.21 | 35.2 | 90.1 |
+
+     Forearm errors are median degrees of the ungated smoke lifter against truth (Tasks image inputs, not legacy Holistic). Upper-arm errors stay at 9–11° under every rule.
+   - Reading: on chest-up crops, `margin:0.25` keeps 2.5× MediaPipe's arms at about 6° worse forearm accuracy. `learned` matches MediaPipe's accuracy but loses the right arm on YouTube. **No rule is declared here.** The choice belongs to the full gate with the full bundle. Candidate: `margin:0.25` (or 0.1).
+2. **Pose context out of range (major).**
+   - Done:
+     - `world-regressor-features-xy-v2` drops the four context inputs. The pose model and its visibility head are invariant to image translation, scale and frame shape by construction (tested).
+     - `--augment-framing K` re-frames training pose frames for xy-v1: scale 0.3–1.2, shoulder midpoint uniform in x 0.2–0.8 and y 0.1–0.7, frame shapes 16:9, 4:3, 1:1 and 9:16. It is refused for xy2, where it would be a no-op.
+     - `input_zscores` and the gate's `inputs` block report p99 |z| per input.
+   - On 30 new YouTube videos:
+     - xy smoke bundle: `context.mid_y` p99 |z| = 9.07, `context.mid_x` = 5.78.
+     - xy2 smoke bundle: no context inputs. Its arms improve from 13.5 / 20.2 to 11.4 / 15.7 (`margin:0.25`, own frames).
+   - **Still above 4 under xy2:**
+     - head-relative y inputs `p0.y` (nose) and `p9.y`/`p10.y` (mouth) reach 5.1–5.7;
+     - hand y inputs reach 6.2.
+     These are pose-distribution shifts (YouTube vs 3 How2Sign signers in the smoke). The full training on 5 signers widens the statistics. If the bar still fails, YouTube-framed pairs are needed. Full-frame pairs are not available now: `collect_world_pairs.py` has a YouTube branch, but needs staged videos.
+3. **Evaluation leaks (major, critical).**
+   - Done:
+     - `convert_uwb_clips.py --eval-manifest KEY@SHA` is required and repeatable.
+     - Every clip's text is checked with `build_youtube_asl_manifest.EvalIndex.leaks` against val/test/heldout sentences (exact match, or 5-gram Jaccard ≥ 0.8).
+     - `eval_leak` and the index SHA-256 are stored per clip. Leaks are counted per unit (`checks.eval_leak`).
+     - `signtranslator/data_engineering/uwb_manifest.select_training_records` refuses any converted record without the leak or overlap fields, refuses one checked against another index, and drops leaks, duplicates and text-less clips. Any manifest builder must call it.
+   - Manifests to pass (as `youtube_pretrain_instruments.sh` does): `derived/full-v1/how2sign-text-manifest-v1/manifest.json` and `derived/asllrp-dai2-v1/plan-manifest-v2/manifest.json`, with their SHAs.
+4. **Resume and settings (major).**
+   - Done:
+     - Each unit report stores its settings and a settings fingerprint: adapter, world, visibility, face, head, flags, default fps, the SHAs of the fps table, overlap table, eval index and regressors, chunk size, prefixes.
+     - A finished unit with different settings is never skipped silently. The unit returns `settings-mismatch` naming the keys, and the run exits 2.
+     - Runs write only unit reports and `shards/shard-i-of-n.json`.
+     - `--merge-index`, run once after all shards, writes `index.json`. It refuses when units disagree on settings and records each unit's fingerprint.
+5. **Overlap with our own YouTube states (major).**
+   - Done:
+     - The gate's `--overlap-table-out` lists every cue pair (UWB clip → our sample id; 212,291 pairs) and every video we extracted with our channel-hashed partition (2,605 videos: 2,587 train, 18 monitor, `monitor_share` 0.01).
+     - The 79 videos we hold but could not time are marked `whole-video`: all their UWB clips count as duplicates.
+     - The converter (`--overlap-table`, required) stores `duplicate_of_our_cue`, `our_cue_iou`, `our_partition`, `uwb_partition`, and `partition` (ours wins for our videos). The selection helper drops the duplicates.
+   - Table: `scratch/uwb-lifter-dev/uwb-overlap-table-v1.json`, sha256 `645bc6459d2679a633fd4f4845cbf66b6c05cee1a052d0ea00188fa4af32a7f9`.
+6. **Gate method (major).**
+   - Done:
+     - `--exclude-videos reports/uwb_gate_smoke_videos.txt` lists all 70 videos any development run touched.
+     - `--visibility` is a required declared rule.
+     - The summary's `primary` is the declared lifter on `common` frames (held by ours and every compared method). Strata, CIs and `proposal_check` use it.
+     - Strata: hips visible or not, fps ≈ 30 or not, stream match or not, frame-count difference 0 / −1.
+   - The dev smoke's **stream-mismatch stratum** (UWB rate ≠ our download's) is far worse: wrists 61.7°, fingers 37.7° against 15.9° / 17.1°, on 15 pairs. Watch it in the full run; it may need excluding.
+7. **fps estimation (minor).**
+   - Done:
+     - Theil–Sen start (median pairwise slope).
+     - Refusal when the offset is outside [−1, 0] frames or the rate is outside 10–70 fps.
+     - The time-grid fallback needs ≥ 50% of the video's clips.
+     - A full gate run drops videos with |drift| > 1 frame/min from the table it writes (`drift_checked`).
+   - Rerun on all 2,605 videos:
+     - 2,526 estimated.
+     - 40 refused for offset, 1 implausible (6 fps), 38 with too little evidence.
+     - 2,298 agree with yt-dlp within 0.2%; 26.8% of the 2,526 are not 30/29.97.
+   - New table: `scratch/uwb-lifter-dev/uwb-fps-table-v2.json`, sha256 `157dd673f0bbb7db2963299ef86c6b14284c491d3a45dc6ccc8ab50d889eca76`. This one is not yet drift-checked; the full gate rewrites it.
+8. **Reporting (minor).**
+   - Done:
+     - Lags by frame-count difference.
+     - Kappa and UWB-only rate in every validity table.
+     - Median CIs from 2,000 video resamples (default).
+     - The licence in every clip record and in every state's inference method.
+   - Dev smoke:
+     - |lag| ≤ 1 on 70% of arm-aligned pairs. The lag minimum is shallow, so this criterion may need the margin raised or the signal changed.
+     - Lag 0 dominates for both frame-count classes.
+
+### Proposed gate (to be declared by the coordinator)
+
+- Full xy bundle, smoke videos excluded, all estimated-fps videos ×5 pairs, common frames, 95% CI by video.
+- Accuracy: medians upper arm ≤12°, forearm ≤18°, wrist ≤15°, fingers ≤16°, each CI upper ≤ bar+1°; p90 upper arm ≤25°, forearm ≤40°.
+- Relative: each group's YouTube median ≤1.6× the same bundle's How2Sign-val median; arms gain ≤3° after one global rotation per clip.
+- Strata (hips-visible/not, fps≈30/not, stream-match/not, fc-diff 0/−1): no stratum with ≥200 pairs worse than the global bar by >3°.
+- Validity on all frames: hand-valid agreement ≥0.88 per side; forearm-valid agreement ≥0.85 per side on hip-visible frames; UWB-only-valid ≤10%; chest-up forearm survival ≥80% of MediaPipe-visibility survival.
+- Inputs: p99 |z| ≤4 for every regressor input.
+- Mirror-better ≤3% clips; |lag| ≤1 on ≥90% of arm-aligned pairs; |drift| <1 frame/min on ≥95% of videos (failures dropped from the fps table).
+- Downstream: back-translator top-5/BLEU on lifted states ≥90% of on our states for paired cues, and clearly above blank.
+
+`uwb_lifter_gate.py` evaluates the computable items in `summary.proposal_check`. Two items are not computed there:
+
+- How2Sign-val relative ratios: the training report scores local rotations, not the gate's direction errors.
+- The back-translator read.
+
+Chest-up survival versus MediaPipe comes from `uwb_outside_frame_accuracy.py`.
+
+Dev smoke, informative only, not a verdict (smoke bundle; the declared rule is not chosen):
+
+- Hand agreement, UWB-only rate and strata pass.
+- Accuracy medians fail by 2–6° (upper arms 13.9, forearms 18.2, wrists 17.7, fingers 18.5 on common frames).
+- Rotation gain fails: 4.0 upper arms, 3.2 forearms.
+- Inputs fail (p99 |z| 6.2).
+- Mirror-better is 2/69 (2.9%) for `inside` and `margin:0.25`, and 14/67 for `learned`. The table above shows the `learned` primary.
+- Lag within 1 fails (0.70).
+
 ## Commands
 
-### (a) Train the xy regressors
+All are CPU jobs. Run them from a checkout of this branch with the R2 secrets in the environment.
 
-CPU only, about 1 h.
+### (a) Train the regressors
+
+Two bundles: the framing-invariant xy2 (recommended primary), and xy with framing augmentation (the alternative), so
+that the gate can compare them. About 1 h each on CPU.
 
 ```bash
-set -a; source .env.r2.local; set +a          # pod: secrets already in the environment
 mkdir -p /workspace/uwb && cd /workspace/uwb
 python - <<'EOF'
 import os, hashlib, tarfile, sys; sys.path.insert(0, "/workspace/sign-translator")
@@ -142,40 +273,60 @@ b = s.get("acquisition/2026-10-17-v1/sem-lex-mirror-v1/adapter-dev/world-regress
 assert hashlib.sha256(b).hexdigest() == "0953cd2cb2b48506808dff2d7199061eac3218ad555ea35327ff34edac3acab1"
 open("v2.pt", "wb").write(b)
 EOF
-python /workspace/sign-translator/scripts/train_world_regressors.py --pairs pairs --legacy-dir legacy-pairs \
-  --features xy --epochs 30 --seed 0 --val-signers h2s-1,h2s-2 --baseline-bundle v2.pt \
-  --out world-regressors-xy-v1.pt --report world-regressors-xy-v1-training.json
-# upload both files to R2, e.g. under .../youtube-asl-uwb-keypoints-v1/lifter-dev/world-regressors-xy-v1/
+T=/workspace/sign-translator/scripts/train_world_regressors.py
+python $T --pairs pairs --legacy-dir legacy-pairs --features xy2 --epochs 30 --seed 0 --val-signers h2s-1,h2s-2 \
+  --baseline-bundle v2.pt --out world-regressors-xy2-v1.pt --report world-regressors-xy2-v1-training.json
+python $T --pairs pairs --legacy-dir legacy-pairs --features xy --augment-framing 3 --epochs 30 --seed 0 \
+  --val-signers h2s-1,h2s-2 --baseline-bundle v2.pt --out world-regressors-xy-aug-v1.pt \
+  --report world-regressors-xy-aug-v1-training.json
+# upload the four files (e.g. under .../youtube-asl-uwb-keypoints-v1/lifter-dev/) and record their SHA-256
 ```
 
-### (b) Run the gate
+### (b) Gate
 
-CPU pod, all about 2,568 videos, 5 pairs each:
+Declare the visibility rule and the bar first. Then run the paired gate, all estimated-fps videos × 5 pairs, with the
+smoke videos excluded. It also writes the drift-checked fps table:
 
 ```bash
-python scripts/uwb_lifter_gate.py --regressors <key of world-regressors-xy-v1.pt> --regressors-sha256 <sha> \
-  --videos 0 --pairs-per-video 5 --head affine --workers 30 \
-  --out gate-xy-v1.json --fps-table-out uwb-fps-table-v1.json
+python scripts/uwb_lifter_gate.py --regressors <key of world-regressors-xy2-v1.pt> --regressors-sha256 <sha> \
+  --visibility <declared rule, e.g. margin:0.25> --candidate-visibility learned,inside,margin:0.1,margin:0.25 \
+  --exclude-videos reports/uwb_gate_smoke_videos.txt --videos 0 --pairs-per-video 5 --head affine \
+  --workers 30 --out gate-xy2-v1.json --fps-table-out uwb-fps-table-v3.json
+# the same with the xy-aug bundle if both are candidates (declare which is primary before running)
 ```
 
-Before the full run, declare a bar. Proposal:
-
-- learned arms and fingers at least 10° below pseudo, on common frames;
-- forearm-valid and hand-valid agreement at least 0.85 per side;
-- mirror-better in at most 5% of clips;
-- then a recogniser read of lifted against our states on paired cues.
-
-### (c) Convert all 390,547 clips
-
-The output prefix is the owner's to approve. Example with 8 pods × 30 workers, about 40 min:
+Then run the outside-frame check (seconds). Its data is in `scratch/uwb-lifter-dev/outside-frame-data.tar`, sha256
+`598ab2ce80f05d663cdb1a0805fb4c56e412ff5708e76810c886d9eb028cc1a3`; extract it to `ofd/`:
 
 ```bash
-python scripts/convert_uwb_clips.py --out-prefix acquisition/2026-10-17-v1/youtube-asl-uwb-keypoints-v1/states-xy-v1 \
-  --regressors <key> --regressors-sha256 <sha> --visibility inside \
-  --fps-table scratch/uwb-lifter-dev/uwb-fps-table-v1.json@ceaf7675949b99c6a7c797dc36229a21ed280456522e85e28d446ac5f9e07be0 \
+python scripts/uwb_outside_frame_accuracy.py --crop-dirs ofd/val ofd/val-tight --two-view-dir ofd/twoview \
+  --regressors world-regressors-xy2-v1.pt --regressors-sha256 <sha> \
+  --rules learned,inside,margin:0.1,margin:0.25,margin:0.5 --report outside-frame-xy2-v1.json
+```
+
+The overlap table, if regenerated, needs every video (no `--videos`):
+
+```bash
+python scripts/uwb_lifter_gate.py --fps-only --overlap-table-out uwb-overlap-table-v2.json --out fps-only.json
+```
+
+### (c) Convert all 390,547 clips (only after the gate passes)
+
+The output prefix is the owner's to approve. Example with 8 pods × 30 workers:
+
+```bash
+ACQ=acquisition/2026-10-17-v1
+python scripts/convert_uwb_clips.py --out-prefix $ACQ/youtube-asl-uwb-keypoints-v1/states-xy2-v1 \
+  --regressors <key> --regressors-sha256 <sha> --visibility <declared rule> \
+  --fps-table <key of the drift-checked table>@<sha> \
+  --overlap-table scratch/uwb-lifter-dev/uwb-overlap-table-v1.json@645bc6459d2679a633fd4f4845cbf66b6c05cee1a052d0ea00188fa4af32a7f9 \
+  --eval-manifest $ACQ/derived/full-v1/how2sign-text-manifest-v1/manifest.json@<sha> \
+  --eval-manifest $ACQ/derived/asllrp-dai2-v1/plan-manifest-v2/manifest.json@<sha> \
   --face blendshapes --head none --shard $I --shards 8 --workers 30
+# after every shard has finished (one process):
+python scripts/convert_uwb_clips.py --out-prefix $ACQ/youtube-asl-uwb-keypoints-v1/states-xy2-v1 --merge-index
 ```
 
-- `--visibility inside` is what the smoke supports. Confirm it with (b).
-- Rerunning the same command resumes.
-- `index.json` summarises the finished units.
+- Rerunning a shard with the same settings resumes it.
+- Any other settings on a finished unit exit 2.
+- Training manifests must select records through `uwb_manifest.select_training_records`.

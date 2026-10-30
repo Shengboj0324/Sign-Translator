@@ -58,6 +58,38 @@ def test_without_text_matches_the_time_grid_decides_and_too_little_evidence_give
     assert gate.text_pairs([dict(c, text="thank you") for c in clips], repeated).shape == (0, 2)
 
 
+def test_a_robust_start_survives_many_mismatched_cues_and_implausible_fits_are_refused():
+    cues, clips = cues_and_clips(25., n=60, span=1200.)
+    rng = np.random.default_rng(5)
+    for k in rng.choice(60, 20, replace=False):                                 # a third of the clips misaligned
+        shift = int(rng.integers(30, 3000))
+        clips[k] = dict(clips[k], first=clips[k]["first"] + shift, last=clips[k]["last"] + shift)
+    estimate = gate.estimate_fps(clips, cues)
+    assert estimate["fps"] == 25. and estimate["outliers"] == 40 and estimate["theil_sen_start"] == pytest.approx(25, abs=.05)
+    late_heavy = [dict(c, first=c["first"] + 4 * c["first"], last=c["last"] + 4 * c["first"]) if k % 3 == 0 else c
+                  for k, c in enumerate(cues_and_clips(25., n=60, span=1200.)[1])]  # a third on a 5x-rate line
+    rows = gate.text_pairs(late_heavy, cues_and_clips(25., n=60, span=1200.)[0])
+    plain = np.linalg.lstsq(np.c_[rows[:, 0], np.ones(len(rows))], rows[:, 1], rcond=None)[0][0]
+    assert abs(plain - 25.) > 5.                                                 # plain least squares is dragged off
+    assert gate.estimate_fps(late_heavy, cues_and_clips(25., n=60, span=1200.)[0])["fps"] == 25.
+    six = gate.estimate_fps(*reversed(cues_and_clips(6., span=2000.)))
+    assert six["fps"] is None and "implausible" in six["refused"]
+    late = gate.estimate_fps(*reversed(cues_and_clips(25., rounding=lambda v: math.floor(v) + 2)))
+    assert late["fps"] is None and "offset" in late["refused"]
+
+
+def test_the_time_grid_needs_half_the_clips():
+    cues, clips = cues_and_clips(25., n=40, texts=False)
+    for k in range(0, 40, 5):
+        clips[k] = dict(clips[k], first=clips[k]["first"] + 500, last=clips[k]["last"] + 500)
+    assert gate.estimate_fps(clips, cues)["fps"] == 25.                         # 32 of 40 land
+    for k in range(40):
+        if k % 5 in (1, 2, 3):
+            clips[k] = dict(clips[k], first=clips[k]["first"] + 700, last=clips[k]["last"] + 700)
+    sparse = gate.estimate_fps(clips, cues)                                       # 8 of 40 land
+    assert sparse["fps"] is None and sparse["grid"]["hits"] == 8 and sparse["refused"]
+
+
 def test_pairing_is_one_to_one_by_overlap_and_a_wrong_rate_pairs_little():
     cues, clips = cues_and_clips(25., n=30, span=900.)
     pairs = gate.pair_clips(clips, cues, 25.)
@@ -163,9 +195,18 @@ def test_hand_agreement_counts_and_lag_drift():
                                 "Right": (hand - hand[:, :1], np.zeros(frames, bool))})
     theirs = _state(body, times, {"Left": (hand - hand[:, :1], np.arange(frames) >= 2),
                                   "Right": (hand - hand[:, :1], np.zeros(frames, bool))})
-    counts = gate.hand_agreement(ours, theirs, np.arange(frames), np.arange(frames))
-    assert counts["Left"] == dict(both=4, ours_only=2, uwb_only=2, neither=0)
-    assert counts["Right"] == dict(both=0, ours_only=0, uwb_only=0, neither=8)
+    strata = {"first_half": np.arange(frames) < 4}
+    counts = gate.hand_agreement(ours, theirs, np.arange(frames), np.arange(frames), strata)
+    assert counts["all"]["Left"] == dict(both=4, ours_only=2, uwb_only=2, neither=0)
+    assert counts["all"]["Right"] == dict(both=0, ours_only=0, uwb_only=0, neither=8)
+    assert counts["first_half"]["Left"] == dict(both=2, ours_only=2, uwb_only=0, neither=0)
+    summary = gate.agreement_summary(counts["all"]["Left"])
+    assert summary["agreement"] == .5 and summary["uwb_only_rate"] == .25 and summary["frames"] == 8
+    assert summary["kappa"] == pytest.approx((.5 - .625) / .375, abs=1e-4)      # below chance: pe = .75^2 + .25^2
+    assert gate.kappa(dict(both=5, ours_only=0, uwb_only=0, neither=5)) == 1.
+    assert gate.kappa(dict(both=0, ours_only=0, uwb_only=0, neither=0)) is None
+    survival = gate.forearm_survival(theirs, np.arange(frames), strata)
+    assert survival["all"]["Left"] == [8, 8] and survival["first_half"]["Right"] == [4, 4]
     visible = np.ones((frames, 33), bool)
     visible[4:, 16] = False                                       # their right wrist unseen on the last 4 frames
     arms = gate.arm_agreement(ours, _state(body, times, visible=visible), np.arange(frames), np.arange(frames))
@@ -201,12 +242,27 @@ def test_evaluate_pair_end_to_end_recovers_the_lag_and_ranks_the_methods():
     assert len(pseudo["own"].get("upper_arms", ())) == 0 and len(learned["own"]["upper_arms"]) == 2 * frames
     assert result["aligned_frames"] == frames and len(learned["own"]["fingers"]) == 50          # capped
     assert len(pseudo["common"].get("fingers", ())) == len(learned["common"]["fingers"]) > 0
-    assert learned["hands"]["Left"]["both"] == frames - 0 and np.median(learned["mirror_arms"]) > 5.
-    summary = gate.summarise([dict(result, status="evaluated", video_id="vid", cue_start=10.),
-                              dict(status="refused", reason="Refusal: x")])
-    assert summary["pairs"] == 1 and summary["methods"]["learned"]["own"]["forearms"]["median"] < 1e-2
+    assert learned["hands"]["all"]["Left"]["both"] == frames and np.median(learned["mirror_arms"]) > 5.
+    # the synthetic hips lie below this frame: every aligned frame is in the hips-not-visible stratum
+    assert result["hips_visible_share"] == 0. and learned["hands"]["hips_not_visible"]["Left"]["both"] == frames
+    assert learned["forearm_survival"]["all"]["Left"] == [frames + 4, frames + 4]
+    assert pseudo["forearm_survival"]["all"]["Left"][0] == 0                     # inside-image drops every forearm
+    row = dict(result, status="evaluated", video_id="vid", cue_start=10., fps=fps, meta_fps=30,
+               inputs=dict(pose=np.full((4, 54), 5., np.float16), Left=np.zeros((4, 40), np.float16)))
+    summary = gate.summarise([row, dict(status="refused", reason="Refusal: x")], primary="learned", resamples=50,
+                             input_names=gate.names_for([row]))
+    assert summary["pairs"] == 1 and summary["methods"]["learned"]["common"]["fingers"]["n"] > 0
+    assert summary["methods"]["learned"]["own"]["forearms"]["median"] < 1e-2
     assert summary["methods"]["learned"]["mirror_check"]["mirror_better"] == 0
     assert summary["alignment"]["lags"] == {"-2": 1} and summary["refusals"] == {"Refusal: x": 1}
+    assert summary["alignment"]["lags_by_frame_count_difference"] == {"0": {"-2": 1}}
+    assert summary["strata"]["hips"] == {"not_visible": summary["strata"]["hips"]["not_visible"]}
+    assert summary["strata"]["fps30"]["yes"]["pairs"] == 1 and summary["strata"]["stream_match"]["yes"]["pairs"] == 1
+    assert summary["inputs"]["pose"]["max_p99_abs_z"] == 5. and len(summary["inputs"]["pose"]["inputs_over_4"]) == 54
+    assert summary["inputs"]["pose"]["inputs_over_4"][0] == "p0.x" and summary["inputs"]["Left"]["max_p99_abs_z"] == 0.
+    check = summary["proposal_check"]
+    assert check["inputs_p99_abs_z<=4.0"] is False and check["median.fingers<=16.0"] is True
+    assert check["hand_agreement.Left>=0.88"] is True and check["mirror_better_share<=0.03"] is True
 
 
 def test_main_estimates_rates_pairs_cues_and_evaluates_from_a_store(tmp_path):
@@ -252,13 +308,36 @@ def test_main_estimates_rates_pairs_cues_and_evaluates_from_a_store(tmp_path):
     assert report["fps"]["summary"]["agree_with_meta_within_ntsc"] == 1
     written = json.loads(table.read_text())
     assert written["fps"] == {video: fps} and written["schema"] == "uwb-fps-table-v1"
+    overlap = tmp_path / "overlap.json"
+    assert gate.main(common + ["--fps-only", "--out", str(out), "--overlap-table-out", str(overlap)]) == 0
+    table = json.loads(overlap.read_text())
+    assert table["schema"] == "uwb-overlap-table-v1" and table["videos"][video]["dedup"] == "cue"
+    assert table["videos"][video]["partition"] in ("train", "monitor") and len(table["clips"]) == 4
+    assert {v["our_sample_id"] for v in table["clips"].values()} == {f"{video}-{k:04d}" for k in range(4)}
     with pytest.raises(SystemExit, match="regressors"):
         gate.main(common + ["--out", str(out)])
-    assert gate.main(common + ["--regressors", str(tmp_path / "xy.pt"), "--regressors-sha256",
-                               hashlib.sha256(payload).hexdigest(), "--out", str(out)]) == 0
+    bundle = ["--regressors", str(tmp_path / "xy.pt"), "--regressors-sha256", hashlib.sha256(payload).hexdigest()]
+    with pytest.raises(SystemExit, match="declared rule"):
+        gate.main(common + bundle + ["--out", str(out)])
+    with pytest.raises(SystemExit, match="visibility rule"):
+        gate.main(common + bundle + ["--visibility", "outside", "--out", str(out)])
+    with pytest.raises(SystemExit, match="every video"):
+        gate.main(common + bundle + ["--visibility", "inside", "--videos", "1", "--overlap-table-out", str(overlap),
+                                     "--out", str(out)])
+    assert gate.main(common + bundle + ["--visibility", "margin:0.25", "--bootstrap", "20", "--out", str(out),
+                                        "--fps-table-out", str(table_path := tmp_path / "t2.json")]) == 0
     report = json.loads(out.read_text())
     summary = report["summary"]
     assert summary["pairs"] == 4 and summary["videos"] == 1 and summary["refusals"] == {}
-    assert set(summary["methods"]) == {"learned", "learned-inside", "pseudo"}
-    assert summary["methods"]["pseudo"]["hand_valid"]["Left"]["agreement"] == 1.
+    assert summary["primary"] == "lifter[margin:0.25]"
+    assert set(summary["methods"]) == {"lifter[margin:0.25]", "lifter[learned]", "lifter[inside]", "pseudo"}
+    assert summary["methods"]["pseudo"]["hand_valid"]["all.Left"]["agreement"] == 1.
+    assert summary["inputs"]["pose"]["frames"] > 0 and "proposal_check" in summary
     assert all(p["status"] == "evaluated" and p["fps"] == fps for p in report["pairs"])
+    assert json.loads(table_path.read_text())["drift_checked"] is True
+    excluded = tmp_path / "exclude.txt"
+    excluded.write_text(f"# smoke videos\n{video}\n")
+    assert gate.main(common + bundle + ["--visibility", "inside", "--exclude-videos", str(excluded),
+                                        "--out", str(out)]) == 0
+    report = json.loads(out.read_text())
+    assert report["summary"]["pairs"] == 0 and report["excluded_videos"] == [video]

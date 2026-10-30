@@ -112,6 +112,51 @@ def test_v1_bundles_keep_their_version_and_mismatched_widths_are_refused():
         wr.WorldRegressors.load(buffer.getvalue())
 
 
+def test_xy2_pose_features_are_invariant_to_framing_and_zscores_use_the_bundle_statistics():
+    array, *_ = semlex_array((640, 480))
+    pose = array[:, 478:511]
+    f0, ok = wr.pose_features_xy2(pose, 4 / 3)
+    assert ok.all() and f0.shape == (len(pose), 50)
+    np.testing.assert_array_equal(f0, wr.pose_features_xy(pose, 4 / 3)[0][:, :50])
+    # the same person re-framed: scaled by 0.4 and moved, in a 16:9 frame instead of 4:3
+    q = pose[..., :2] * [1., 3 / 4]                                          # image widths
+    q = (q - q[:, 11:13].mean(1, keepdims=True)) * .4 + [.3, .2]
+    moved = q * [1., 16 / 9]
+    np.testing.assert_allclose(wr.pose_features_xy2(moved, 16 / 9)[0], f0, atol=1e-5)
+    assert not np.allclose(wr.pose_features_xy(moved, 16 / 9)[0], wr.pose_features_xy(pose, 4 / 3)[0], atol=1e-3)
+    assert len(wr.input_names(wr.FEATURES_XY2)["pose"]) == 50 and len(wr.input_names(wr.FEATURES_XY)["pose"]) == 54
+    assert wr.input_names(wr.FEATURES_VERSION)["hand"][:3] == ["h1.x", "h1.y", "h1.z"]
+    torch.manual_seed(0)
+    mean, std = np.full(50, .5, np.float32), np.full(50, 2., np.float32)
+    bundle = wr.WorldRegressors(
+        hand={s: (wr.MLP(40, 63, width=8, depth=1).eval(), np.zeros(40, np.float32), np.ones(40, np.float32))
+              for s in ("Left", "Right")},
+        pose=(wr.MLP(50, 108, width=8, depth=1).eval(), mean, std), features=wr.FEATURES_XY2)
+    loaded = wr.WorldRegressors.load(bundle.save())
+    assert loaded.features == wr.FEATURES_XY2
+    z = wr.input_zscores(loaded, pose, {"Left": hand_points(), "Right": None}, 4 / 3)
+    np.testing.assert_allclose(z["pose"], (f0 - .5) / 2., atol=1e-6)
+    np.testing.assert_allclose(z["Left"], wr.hand_features_xy(hand_points(), 4 / 3)[0], atol=1e-6)
+    assert "Right" not in z
+
+
+def test_framing_augmentation_moves_the_context_but_not_the_relative_pose_or_the_targets():
+    import train_world_regressors as job
+    array, *_ = semlex_array((640, 480))
+    chunk = dict(signer="h2s-3", aspect=4 / 3, image=array[:, 478:511].astype(np.float64), world=np.zeros((8, 33, 3)),
+                 vis=np.ones((8, 33)))
+    out = job.augment_framing([chunk], 3, seed=0)
+    assert len(out) == 3 and all(o["augmented"] and o["world"] is chunk["world"] for o in out)
+    base = wr.pose_features_xy(chunk["image"], 4 / 3)[0]
+    for o in out:
+        f = wr.pose_features_xy(o["image"], o["aspect"])[0]
+        np.testing.assert_allclose(f[:, :50], base[:, :50], atol=1e-5)          # relative pose unchanged
+        assert o["aspect"] in job.AUGMENT_ASPECTS
+        mid = (o["image"][:, 11, :2] + o["image"][:, 12, :2]) / 2
+        assert ((mid[:, 0] >= .2) & (mid[:, 0] <= .8) & (mid[:, 1] >= .1 - 1e-9) & (mid[:, 1] <= .7 + 1e-9)).all()
+    assert np.ptp(np.concatenate([wr.pose_features_xy(o["image"], o["aspect"])[0][:, 50] for o in out])) > .1
+
+
 def test_the_pinned_bundle_constants_are_unchanged():
     assert wr.FEATURES_VERSION == "world-regressor-features-v1"
     assert wr.WORLD_REGRESSORS is wr.WORLD_REGRESSORS_V2
@@ -146,3 +191,18 @@ def test_training_with_xy_features_writes_an_xy_bundle_and_a_zero_depth_baseline
     v1_report = json.loads((tmp_path / "v1.json").read_text())
     assert "pseudo_world_depth_gains" not in v1_report and v1_report["settings"]["features"] == wr.FEATURES_VERSION
     assert wr.load_regressors(out).features == wr.FEATURES_VERSION
+    # xy with framing augmentation records it; xy2 trains a 50-input pose model; augmenting xy2 is refused
+    aug = tmp_path / "aug.pt"
+    assert job.main(["--pairs", str(pairs), "--legacy-dir", str(legacy), "--epochs", "1", "--features", "xy",
+                     "--augment-framing", "2", "--out", str(aug), "--report", str(tmp_path / "aug.json")]) == 0
+    aug_report = json.loads((tmp_path / "aug.json").read_text())
+    assert aug_report["settings"]["augment_framing"]["copies"] == 2
+    assert aug_report["pose"]["train_frames"] == 3 * report["pose"]["train_frames"]
+    xy2 = tmp_path / "xy2.pt"
+    assert job.main(["--pairs", str(pairs), "--legacy-dir", str(legacy), "--epochs", "1", "--features", "xy2",
+                     "--out", str(xy2), "--report", str(tmp_path / "xy2.json")]) == 0
+    loaded = wr.load_regressors(xy2)
+    assert loaded.features == wr.FEATURES_XY2 and loaded.pose[0].shape[0] == 50
+    with pytest.raises(SystemExit, match="changes nothing"):
+        job.main(["--pairs", str(pairs), "--legacy-dir", str(legacy), "--features", "xy2", "--augment-framing", "1",
+                  "--out", str(tmp_path / "no.pt"), "--report", str(tmp_path / "no.json")])

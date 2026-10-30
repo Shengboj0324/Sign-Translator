@@ -38,8 +38,16 @@ assumed default) are recorded in the clock id and the report.
 version must be ``FEATURES_XY`` (a z-trained bundle fed zero depth is refused: it would be silently wrong).
 ``world="pseudo"``: the geometric baseline ``(x, y / a, 0)`` (``semlex_pose.pseudo_world`` with zero depth gain).
 
-**Visibility.** ``"learned"``: the pose regressor's visibility head (leg points 25..32 never visible), as the
-Sem-Lex gate v2 decided; ``"inside"``: finite and inside the image.
+**Visibility** (a declared rule; leg points 25..32 never visible under the learned world, which places none):
+
+- ``"learned"``: the pose regressor's visibility head, as the Sem-Lex gate v2 decided;
+- ``"inside"``: finite and inside the image (``"margin:0"``);
+- ``"margin:<m>"``: finite and inside the frame extended by ``m`` of its width and height on every side (elbows
+  just below a chest-up frame survive);
+- ``"all"``: every finite point (diagnostic: the ungated arm, to measure what a rule drops).
+
+YouTube framings cut the arms: on 120 sampled clips the elbow lies below the frame on 32% of pose frames, so the rule
+decides how many arm frames survive (``scripts/uwb_lifter_gate.py``, ``scripts/uwb_outside_frame_accuracy.py``).
 
 **Face.** Blendshapes from MediaPipe's own ``face_blendshapes.tflite`` on the stored mesh in pixels
 (``semlex_pose.BlendshapeModel``; it reads only x, y), when a model is given. Head rotation needs depth that is not
@@ -215,6 +223,25 @@ def _unavailable(name: str, frames: int, source_sha256: str):
                          source_id=SOURCE_ID, source_sha256=source_sha256, convention=CONVENTION)
 
 
+def visibility_margin(rule: str) -> float | None:
+    """The frame margin of a visibility rule: None for ``learned``, 0 for ``inside``, ``m`` for ``margin:<m>``
+    (0 <= m <= 2), infinity for ``all``; ``ValueError`` otherwise."""
+    if rule == "learned":
+        return None
+    if rule == "inside":
+        return 0.
+    if rule == "all":
+        return float("inf")
+    if isinstance(rule, str) and rule.startswith("margin:"):
+        try:
+            m = float(rule[7:])
+        except ValueError:
+            m = -1.
+        if 0. <= m <= 2.:
+            return m
+    raise ValueError(f"visibility rule {rule!r}: 'learned', 'inside', 'margin:<m>' (0 <= m <= 2) or 'all'")
+
+
 def clip_landmarks(clip: UwbClip, fps: float, *, regressors=None, world: str = "learned", visibility: str = "learned",
                    blendshape_model=None, head: str = "none", face_resources=None) -> tuple[ClipLandmarks, dict]:
     """``ClipLandmarks`` (and a diagnostic dict) of one clip at ``fps`` source frames per second."""
@@ -222,19 +249,18 @@ def clip_landmarks(clip: UwbClip, fps: float, *, regressors=None, world: str = "
         raise Refusal(f"frame rate {fps} outside [{MIN_FPS}, {MAX_FPS}]")
     if world not in ("learned", "pseudo"):
         raise ValueError("world must be 'learned' or 'pseudo'")
-    if visibility not in ("learned", "inside"):
-        raise ValueError("visibility must be 'learned' or 'inside'")
+    margin = visibility_margin(visibility)
     if head not in ("none", "affine"):
         raise ValueError("head must be 'none' or 'affine'")
     if visibility == "learned" and world != "learned":
         raise ValueError("learned visibility needs the learned world (the pose regressor's visibility head)")
     if world == "learned":
-        from .world_regressor import FEATURES_XY
+        from .world_regressor import Z_FREE_FEATURES
         if regressors is None:
             raise ValueError("world='learned' needs regressors")
-        if getattr(regressors, "features", None) != FEATURES_XY:
+        if getattr(regressors, "features", None) not in Z_FREE_FEATURES:
             raise ValueError(f"regressors trained on {getattr(regressors, 'features', None)!r} read z, which UWB does "
-                             f"not store; a {FEATURES_XY!r} bundle is required")
+                             f"not store; a z-free bundle {sorted(Z_FREE_FEATURES)} is required")
     if head == "affine" and face_resources is None:
         raise ValueError("head='affine' needs face_resources (the canonical face)")
     frames, a = clip.frames, clip.aspect
@@ -254,18 +280,23 @@ def clip_landmarks(clip: UwbClip, fps: float, *, regressors=None, world: str = "
                 visibility=visibility, head=head)
     pose3, hands3 = np.concatenate((pose, np.zeros(pose.shape[:-1] + (1,))), -1), \
         np.concatenate((hands, np.zeros(hands.shape[:-1] + (1,))), -1)
-    inside = ((pose >= 0.) & (pose <= 1.)).all(-1) & pose_found[:, None]
+    if margin is None:
+        rule = None                             # the visibility head, below
+    elif np.isinf(margin):
+        rule = np.broadcast_to(pose_found[:, None], pose_found.shape + (33,)).copy()
+    else:
+        rule = ((pose >= -margin) & (pose <= 1. + margin)).all(-1) & pose_found[:, None]
     if world == "pseudo":
         pose_world, hands_world = pose3.copy(), hands3.copy()
         pose_world[..., 1] /= a
         hands_world[..., 1] /= a
-        pose_visibility = inside.astype(np.float64)
+        pose_visibility = rule.astype(np.float64)
         info["world"] = "pseudo-world-z0"
     else:
         pose_world, learned, ok = regressors.pose_world(pose3, a)
         pose_found = pose_found & ok
         hands_found = hands_found & pose_found[:, None]
-        pose_visibility = (learned if visibility == "learned" else inside) * pose_found[:, None]
+        pose_visibility = (learned if rule is None else rule) * pose_found[:, None]
         pose_visibility = np.array(pose_visibility, dtype=np.float64)
         pose_visibility[:, 25:] = 0.             # the regressors place no leg points (25..32 are zero): never visible
         hands_world = np.zeros_like(hands3)
@@ -318,12 +349,16 @@ def inference_method(info: dict, flags: str, fps_source: str) -> str:
     learned = info["world"].startswith("learned:")
     world = (f"world landmarks from z-free learned image-to-world regressors (bundle sha256 {info['world'][8:]})"
              if learned else "pseudo-3D (x, y/a, 0): image plane only")
-    visibility = ("the pose regressor's visibility head" if info["visibility"] == "learned"
-                  else "finite and inside the image") + " (leg points never visible)" * learned
+    margin = visibility_margin(info["visibility"])
+    visibility = ("the pose regressor's visibility head" if margin is None
+                  else "finite and inside the image" if margin == 0.
+                  else "every finite point" if np.isinf(margin)
+                  else f"finite and inside the frame extended by {margin:g} of its size on every side")
+    visibility += " (leg points never visible)" * learned
     head = ("head rotation by a scaled-orthographic fit to MediaPipe's canonical face (unvalidated estimate)"
             if info["head"] == "affine" else "head rotation unavailable (no depth stored)")
     return (f"UWB YouTube-ASL Clip Keypoint Dataset MediaPipe Holistic 2D pixel landmarks (publisher's files; "
-            f"Holistic version not stated); {info['adapter']}: {world}; aspect a={info['aspect']:.4f} from the stored "
+            f"Holistic version not stated; licence: {LICENCE}); {info['adapter']}: {world}; aspect a={info['aspect']:.4f} from the stored "
             f"frame size {info['image_size'][0]}x{info['image_size'][1]}; clock: source frame index / {info['fps']:g} fps "
             f"({fps_source}); visibility = {visibility}; blendshapes by face_blendshapes.tflite on the stored mesh; "
             f"{head}; {CONVENTION}; solver flags {flags}: chest up axis from the camera vertical (upright prior)"
@@ -362,5 +397,5 @@ def convert_clip(clip: UwbClip, fps: float, *, source_sha256: str, fps_source: s
 
 
 __all__ = ["ADAPTER", "PSEUDO_ADAPTER", "SOURCE_ID", "LICENCE", "DEFAULT_FPS", "SOLVER_FLAGS", "Refusal", "UwbClip",
-           "parse_clip_name", "parse_clip", "affine_head_rotation", "clip_landmarks", "inference_method",
+           "parse_clip_name", "parse_clip", "affine_head_rotation", "visibility_margin", "clip_landmarks", "inference_method",
            "convert_clip"]

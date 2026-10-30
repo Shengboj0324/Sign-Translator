@@ -4,36 +4,47 @@ For YouTube-ASL videos that we extracted ourselves (``<youtube prefix>/videos/<i
 end, text and state key) **and** that the UWB keypoint dataset also holds (clip ids ``<id>.<first>-<last>``):
 
 1. **Frame rate, per video.** UWB clip names are source frame ranges at an unpublished rate. UWB clips and our cues
-   come from the same caption track, so cues whose normalised text matches exactly once on both sides give pairs
-   ``(start, first)`` and ``(end, last)``; a least-squares line ``frame = fps * t + c`` with outliers (> 3 frames)
-   dropped gives the rate, snapped to a standard rate within 0.03% (``STANDARD_FPS``). With fewer than
-   ``--min-text-matches`` text pairs, each standard rate is scored by how many UWB clips land on a cue
-   (``|first - start * fps| <= 2`` and ``|last - end * fps| <= 2``). The estimate, its residuals and yt-dlp's
-   rate from our report are reported, and ``--fps-table-out`` writes the per-video rates for ``convert_uwb_clips.py``.
+   come from the same caption track, so cues whose normalised text matches exactly once on both sides give rows
+   ``(start, first)`` and ``(end, last)``. A Theil-Sen line (median of pairwise slopes, robust to mismatched cues)
+   starts the fit; rows within 3 frames of it are refitted by least squares (``frame = fps * t + c``), and the rate is
+   snapped to a standard rate within 0.03% (``STANDARD_FPS``). The estimate is refused when the offset ``c`` lies
+   outside [-1, 0] frames (UWB frames are ``floor(t * fps)``: c is about -0.5) or the rate outside [10, 70] fps.
+   With fewer than ``--min-text-matches`` text rows, each standard rate is scored by how many UWB clips land on a cue
+   (both ends within 2 frames); the best is taken only if it places >= 50% of the video's clips and beats the
+   runner-up. ``--fps-table-out`` writes the per-video rates for ``convert_uwb_clips.py``; after a full evaluation,
+   videos whose lag drifts by more than 1 frame/min are dropped from it.
 2. **Pairs.** Each UWB clip is paired with the cue of largest time overlap (IoU >= 0.5, one-to-one).
+   ``--overlap-table-out`` (fps-only or all-video runs) writes every pair (clip -> our sample id) and every video we
+   extracted with our channel-hashed partition (``build_youtube_asl_manifest.monitor_channel``), for the converter's
+   dedup; videos we hold but could not time are marked ``whole-video`` (all their UWB clips count as duplicates).
 3. **Temporal alignment.** UWB frame ``j`` is at ``(first + j + L) / fps`` and is matched to our nearest frame within
-   half a frame. The lag ``L`` (|L| <= ``--max-lag``) is chosen by a lifter-independent signal: the image-plane angle
-   between UWB's raw 2D arm bones (shoulder->elbow, elbow->wrist) and our state's world arm directions projected on the
-   image plane; a non-zero lag must beat lag 0 by ``--lag-margin`` degrees (bone directions change slowly, so the
-   minimum is shallow: on the first real smoke the best lag gained < 1 deg over lag 0 on most clips). Clips without
-   our arms keep ``L = 0`` (method ``none``). Per video, the lag's drift against cue time (frames per minute) exposes a
-   wrong rate.
-4. **Errors**, on aligned frames where both states hold the quantity, in degrees: upper arms and forearms (world
-   bone directions by forward kinematics of the stored rotations: convention-free, since the swing IK reproduces
-   every bone direction exactly whatever the chest frame), wrists (the palm frame in the camera frame), fingers (bone
-   directions in the palm frame, chained from the stored local rotations); also arms and wrists after one best
-   global rotation per clip. Medians, p75, p90, means, and a 95% CI of the median by resampling videos.
-   Methods: the z-free regressors with their visibility head (``learned``) and with the inside-image visibility rule
-   (``learned-inside``), and the geometric pseudo-world ``(x, y / a, 0)`` with the inside-image rule (``pseudo``), on
-   each method's own valid frames and on frames all of them and ours hold (``common``).
-5. **Validity agreement** per side (both / ours only / UWB only / neither) for hands, and for forearms on frames
-   where our chest is valid; and a **mirror check**: the arm error if UWB's video were the mirror image of ours (UWB
-   left arm against our right arm reflected in x).
-6. Head rotation (``--head affine``): the scaled-orthographic estimate against our face-geometry head rotation.
+   half a frame. ``L`` (|L| <= ``--max-lag``) minimises the image-plane angle between UWB's raw 2D arm bones and our
+   projected world arm directions (independent of the lifter); a non-zero lag must beat lag 0 by ``--lag-margin``
+   degrees (the minimum is shallow). Clips without our arms keep ``L = 0`` (method ``none``). Lags are reported by
+   frame-count difference (UWB clips hold ``last - first + 1`` or ``last - first`` frames) and drift per video.
+4. **Errors** (degrees): upper arms and forearms (world bone directions by forward kinematics: convention-free),
+   wrists (palm frame in the camera frame), fingers (bone directions in the palm frame), and arms and wrists after one
+   best global rotation per clip. **The primary metric is the declared lifter on common frames**: frames held by our
+   state and by every compared method. Methods: the lifter under the declared visibility rule (``--visibility``,
+   required) and under each candidate rule (``--candidate-visibility``), and the geometric pseudo-world
+   ``(x, y / a, 0)`` with the inside-image rule. Medians, p75, p90, means, and a 95% CI of the median from 2,000
+   resamples of videos. Strata: hips visible in the UWB frame or not, fps about 30 or not, UWB stream rate equal to
+   our download's or not, frame-count difference 0 / -1 / other.
+5. **Validity on all frames**, stratified by framing (both hips inside the UWB frame or not): hand-valid agreement with
+   ours per side (counts, agreement, Cohen's kappa, UWB-only rate) on every aligned frame; forearm survival (share of
+   frames each rule keeps) on every frame; forearm agreement only where our chest is valid (our original solver needs
+   both hips for the chest, so elsewhere our arms are absent by construction). Survival against MediaPipe's own
+   visibility on chest-up framings, and the accuracy of what a rule keeps or drops outside the frame, are measured
+   on How2Sign two-view truth by ``scripts/uwb_outside_frame_accuracy.py``.
+6. **Inputs.** Every regressor input, standardised by the bundle's own statistics, on a sample of UWB frames: p99 |z|
+   per input (the proposed bar is <= 4 for every input).
+7. A **mirror check** (the arm error if UWB were the mirror image of ours) and, with ``--head affine``, the
+   scaled-orthographic head rotation against our face-geometry head rotation.
 
-Our states were solved by the original pipeline (chest from both hips; no upright chest): their arms exist only where
-the hips are seen, so arm errors come from the wider-framed videos. That is a property of the reference, recorded.
-Reads only; writes the report locally (``--out``) and optionally the fps table.
+``--exclude-videos`` (a file of video ids) keeps development videos out of the evaluation (the smoke runs' videos are
+listed in ``reports/uwb_gate_smoke_videos.txt``). The summary carries ``proposal_check``: the coordinator's proposed
+gate evaluated where this script can compute it (it is a proposal until declared). Reads only; writes the report
+locally (``--out``) and optionally the fps and overlap tables.
 """
 from __future__ import annotations
 
@@ -61,8 +72,20 @@ YOUTUBE_PREFIX = "acquisition/2026-10-17-v1/youtube-asl-v1"
 STANDARD_FPS = (12., 15., 20., 23.976, 24., 25., 29.97, 30., 48., 50., 59.94, 60.)
 SNAP_TOLERANCE = 3e-4
 OUTLIER_FRAMES = 3.
+PLAUSIBLE_FPS = (10., 70.)
+OFFSET_RANGE = (-1., 0.)
+GRID_MIN_SHARE = .5
+DRIFT_LIMIT = 1.                   # frames per minute
 ARM_BONES = {"LeftUpperArm": (11, 13), "LeftForearm": (13, 15), "RightUpperArm": (12, 14), "RightForearm": (14, 16)}
 GROUPS = ("upper_arms", "forearms", "wrists", "fingers")
+CELLS = ("both", "ours_only", "uwb_only", "neither")
+Z_FRAMES = 8                       # UWB frames per pair whose standardised regressor inputs are kept
+BOOTSTRAP = 2000
+# The coordinator's proposed gate (reports/uwb_lifter_dev.md), checked where this script can compute it.
+PROPOSAL = dict(median=dict(upper_arms=12., forearms=18., wrists=15., fingers=16.), ci_slack=1.,
+                p90=dict(upper_arms=25., forearms=40.), rotation_gain=3., stratum_pairs=200, stratum_slack=3.,
+                hand_agreement=.88, forearm_agreement=.85, uwb_only=.10, input_z=4., mirror_share=.03,
+                lag_within_1=.90, drift_share=.95)
 _WORKER: dict = {}
 
 
@@ -94,9 +117,29 @@ def text_pairs(clips: list[dict], cues: list[dict]) -> np.ndarray:
     return np.array(rows, dtype=np.float64).reshape(-1, 2)
 
 
+def theil_sen(rows: np.ndarray, *, max_pairs: int = 20000, min_dt: float = 1., seed: int = 0):
+    """(slope, intercept): the median of pairwise slopes over rows at least ``min_dt`` seconds apart, and the median
+    residual intercept; None when no such pair exists."""
+    n = len(rows)
+    i, j = np.triu_indices(n, 1)
+    if len(i) > max_pairs:
+        pick = np.random.default_rng(seed).choice(len(i), max_pairs, replace=False)
+        i, j = i[pick], j[pick]
+    dt = rows[j, 0] - rows[i, 0]
+    keep = np.abs(dt) >= min_dt
+    if not keep.any():
+        return None
+    slope = float(np.median((rows[j, 1] - rows[i, 1])[keep] / dt[keep]))
+    return slope, float(np.median(rows[:, 1] - slope * rows[:, 0]))
+
+
 def fit_rate(rows: np.ndarray) -> dict | None:
-    """Least-squares ``frame = fps t + c`` with outliers (> OUTLIER_FRAMES) dropped, at most 3 refits."""
-    keep = np.ones(len(rows), bool)
+    """Theil-Sen start, then least squares on the rows within OUTLIER_FRAMES of the current line (at most 4 refits)."""
+    start = theil_sen(rows) if len(rows) >= 4 else None
+    if start is None:
+        return None
+    fps, offset = start
+    keep = np.abs(rows[:, 1] - (fps * rows[:, 0] + offset)) <= OUTLIER_FRAMES
     for _ in range(4):
         if keep.sum() < 4 or np.ptp(rows[keep, 0]) <= 0:
             return None
@@ -110,7 +153,7 @@ def fit_rate(rows: np.ndarray) -> dict | None:
     r = np.abs(residual[keep])
     return dict(raw=float(fps), offset_frames=round(float(offset), 3), rows=int(keep.sum()),
                 outliers=int((~keep).sum()), residual_median=round(float(np.median(r)), 3),
-                residual_p90=round(float(np.percentile(r, 90)), 3))
+                residual_p90=round(float(np.percentile(r, 90)), 3), theil_sen_start=round(start[0], 4))
 
 
 def grid_rate(clips: list[dict], cues: list[dict], tolerance: float = 2.) -> dict:
@@ -125,22 +168,31 @@ def grid_rate(clips: list[dict], cues: list[dict], tolerance: float = 2.) -> dic
                           & (np.abs(c["last"] - ends * fps) <= tolerance)).any())
         scores[fps] = hits
     order = sorted(scores, key=lambda f: -scores[f])
-    return dict(best=order[0], hits=scores[order[0]], runner_up=order[1], runner_up_hits=scores[order[1]])
+    return dict(best=order[0], hits=scores[order[0]], runner_up=order[1], runner_up_hits=scores[order[1]],
+                clips=len(clips))
 
 
 def estimate_fps(clips: list[dict], cues: list[dict], *, min_text_matches: int = 3) -> dict:
-    """Per-video rate estimate: ``fps`` (snapped or raw) or None, with how it was found."""
+    """Per-video rate estimate: ``fps`` (snapped or raw) or None with ``refused`` saying why."""
     rows = text_pairs(clips, cues)
     out = dict(text_matches=len(rows) // 2, fps=None, method=None)
     if len(rows) // 2 >= min_text_matches:
         fit = fit_rate(rows)
         if fit is not None:
+            out.update(fit, method="text-matched-fit")
+            if not PLAUSIBLE_FPS[0] <= fit["raw"] <= PLAUSIBLE_FPS[1]:
+                return dict(out, refused=f"implausible rate {fit['raw']:.3f}")
+            if not OFFSET_RANGE[0] <= fit["offset_frames"] <= OFFSET_RANGE[1]:
+                return dict(out, refused=f"offset {fit['offset_frames']} frames outside {list(OFFSET_RANGE)}")
             fps, snapped = snap_fps(fit["raw"])
-            return dict(out, **fit, fps=fps, snapped_to=snapped, method="text-matched-fit")
+            return dict(out, fps=fps, snapped_to=snapped)
     grid = grid_rate(clips, cues)
     out["grid"] = grid
-    if grid["hits"] >= min_text_matches and grid["hits"] > grid["runner_up_hits"]:
+    if (grid["hits"] >= max(min_text_matches, GRID_MIN_SHARE * len(clips))
+            and grid["hits"] > grid["runner_up_hits"] and PLAUSIBLE_FPS[0] <= grid["best"] <= PLAUSIBLE_FPS[1]):
         out.update(fps=grid["best"], snapped_to=f"{grid['best']:g}", method="time-grid")
+    else:
+        out["refused"] = out.get("refused") or "too little timing evidence"
     return out
 
 
@@ -185,7 +237,7 @@ def state_items(state) -> dict:
         ch = state.channels[name]
         local = matrices(ch)
         chain, chain_ok = None, None
-        for k, joint in enumerate(finger_joints(side)):
+        for joint in finger_joints(side):
             j = ch.labels.index(joint.name)
             if joint.parent == "Hand":
                 chain, chain_ok = local[:, j], ch.valid[:, j].astype(bool)
@@ -239,9 +291,8 @@ def frame_map(times: np.ndarray, first: int, frames: int, fps: float, lag: int) 
 def choose_lag(times, first, frames, fps, ours: dict, uwb2d: dict, max_lag: int, min_frames: int = 10,
                margin: float = 0.) -> dict:
     """The lag minimising the median image-plane arm angle between UWB's 2D bones and our projected directions; a
-    non-zero lag must beat lag 0 by ``margin`` degrees (bone directions change slowly, so the minimum is shallow and
-    a small gain is noise). ``ours``: label -> ((T, 3) y-up world directions, valid); ``uwb2d``: label -> ((F, 2) image
-    vectors, valid)."""
+    non-zero lag must beat lag 0 by ``margin`` degrees. ``ours``: label -> ((T, 3) y-up world directions, valid);
+    ``uwb2d``: label -> ((F, 2) image vectors, valid)."""
     scores = {}
     for lag in range(-max_lag, max_lag + 1):
         i, j = frame_map(times, first, frames, fps, lag)
@@ -307,13 +358,43 @@ def mirrored_arms(items: dict) -> dict:
     return out
 
 
-def hand_agreement(ours_state, uwb_state, i, j) -> dict:
+def confusion(a: np.ndarray, b: np.ndarray) -> dict:
+    a, b = np.asarray(a, bool), np.asarray(b, bool)
+    return dict(both=int((a & b).sum()), ours_only=int((a & ~b).sum()), uwb_only=int((~a & b).sum()),
+                neither=int((~a & ~b).sum()))
+
+
+def kappa(cells: dict) -> float | None:
+    """Cohen's kappa of a 2x2 agreement table (None when undefined)."""
+    n = sum(cells[k] for k in CELLS)
+    if not n:
+        return None
+    po = (cells["both"] + cells["neither"]) / n
+    ours = (cells["both"] + cells["ours_only"]) / n
+    uwb = (cells["both"] + cells["uwb_only"]) / n
+    pe = ours * uwb + (1 - ours) * (1 - uwb)
+    return None if pe >= 1. else round((po - pe) / (1 - pe), 4)
+
+
+def hips_inside(uwb_clip) -> np.ndarray:
+    """(F,) both hip landmarks inside the UWB frame (the framing stratum)."""
+    pose = uwb_clip.pose
+    xy = pose[:, [23, 24]]
+    with np.errstate(invalid="ignore"):
+        return (np.isfinite(xy).all((1, 2)) & (xy[..., 0] >= 0).all(1) & (xy[..., 0] <= uwb_clip.width).all(1)
+                & (xy[..., 1] >= 0).all(1) & (xy[..., 1] <= uwb_clip.height).all(1))
+
+
+def hand_agreement(ours_state, uwb_state, i, j, strata=None) -> dict:
+    """{stratum: {side: confusion}} of hand validity on aligned frames (stratum "all" plus the given masks)."""
+    strata = {"all": np.ones(len(j), bool), **(strata or {})}
     out = {}
-    for side, name in (("Left", "left_hand"), ("Right", "right_hand")):
-        a = ours_state.channels[name].valid.any(axis=1)[i]
-        b = uwb_state.channels[name].valid.any(axis=1)[j]
-        out[side] = dict(both=int((a & b).sum()), ours_only=int((a & ~b).sum()), uwb_only=int((~a & b).sum()),
-                         neither=int((~a & ~b).sum()))
+    for name, mask in strata.items():
+        out[name] = {}
+        for side, channel in (("Left", "left_hand"), ("Right", "right_hand")):
+            a = ours_state.channels[channel].valid.any(axis=1)[i][mask]
+            b = uwb_state.channels[channel].valid.any(axis=1)[j][mask]
+            out[name][side] = confusion(a, b)
     return out
 
 
@@ -326,8 +407,19 @@ def arm_agreement(ours_state, uwb_state, i, j) -> dict:
     for side in ("Left", "Right"):
         x = a.valid[i, a.labels.index(f"{side}Forearm")].astype(bool)[chest]
         y = b.valid[j, b.labels.index(f"{side}Forearm")].astype(bool)[chest]
-        out[side] = dict(both=int((x & y).sum()), ours_only=int((x & ~y).sum()), uwb_only=int((~x & y).sum()),
-                         neither=int((~x & ~y).sum()))
+        out[side] = confusion(x, y)
+    return out
+
+
+def forearm_survival(uwb_state, frames: np.ndarray, strata: dict) -> dict:
+    """{stratum: {side: [kept, frames]}}: forearm-valid frames of a UWB state among its pose frames ``frames``."""
+    body = uwb_state.channels["body"]
+    out = {}
+    for name, mask in {"all": np.ones(len(frames), bool), **strata}.items():
+        out[name] = {}
+        for side in ("Left", "Right"):
+            valid = body.valid[:, body.labels.index(f"{side}Forearm")].astype(bool)[frames][mask]
+            out[name][side] = [int(valid.sum()), int(mask.sum())]
     return out
 
 
@@ -348,10 +440,15 @@ def _capped(values, cap: int, seed: int) -> np.ndarray:
     return v
 
 
+def zlib_seed(text: str) -> int:
+    import zlib
+    return zlib.crc32(text.encode())
+
+
 def evaluate_pair(ours_state, uwb_states: dict, uwb_clip, fps: float, max_lag: int, head: bool = False,
                   cap: int = 0, lag_margin: float = 0.) -> dict:
-    """Errors of each UWB method's state against ours on the aligned frames. ``uwb_states``: method -> state.
-    Every error list is a float32 array, subsampled to ``cap`` values per group when ``cap`` > 0."""
+    """Errors and validity of each UWB method's state against ours on the aligned frames. ``uwb_states``: method ->
+    state. Every error list is a float32 array, subsampled to ``cap`` values per group when ``cap`` > 0."""
     from signtranslator.data_engineering.uwb_keypoints import _found
     times = ours_state.timestamps
     ours = state_items(ours_state)
@@ -359,10 +456,17 @@ def evaluate_pair(ours_state, uwb_states: dict, uwb_clip, fps: float, max_lag: i
     alignment = choose_lag(times, uwb_clip.first, uwb_clip.frames, fps, ours,
                            image_arm_directions(uwb_clip.pose, pose_found), max_lag, margin=lag_margin)
     i, j = frame_map(times, uwb_clip.first, uwb_clip.frames, fps, alignment["lag"])
+    hips = hips_inside(uwb_clip)
+    aligned_strata = {"hips_visible": hips[j], "hips_not_visible": ~hips[j]}
+    pose_frames = np.flatnonzero(pose_found)
+    pose_strata = {"hips_visible": hips[pose_frames], "hips_not_visible": ~hips[pose_frames]}
     items = {m: state_items(s) for m, s in uwb_states.items()}
     support = {label: np.all([items[m][label][1][j] for m in items], axis=0) for label in ours}
     result = dict(alignment=alignment, aligned_frames=int(len(i)), our_frames=int(len(times)),
-                  uwb_frames=int(uwb_clip.frames), methods={})
+                  uwb_frames=int(uwb_clip.frames), hips_visible_share=round(float(hips[pose_found].mean()), 4)
+                  if pose_found.any() else None, frame_count_difference=int(uwb_clip.frame_count_difference),
+                  methods={})
+    seed = zlib_seed(uwb_clip.clip_id)
     for method, other in items.items():
         own = compare(ours, other, i, j)
         common = compare(ours, other, i, j, support)
@@ -373,23 +477,37 @@ def evaluate_pair(ours_state, uwb_states: dict, uwb_clip, fps: float, max_lag: i
         rotation = kabsch(pairs)
         aligned = compare(ours, rotated_items(other, rotation), i, j) if rotation is not None else {}
         mirror = compare(ours, mirrored_arms(other), i, j)
-        seed = zlib_seed(uwb_clip.clip_id)
         result["methods"][method] = dict(
             own={g: _capped(v, cap, seed) for g, v in own.items()},
             common={g: _capped(v, cap, seed) for g, v in common.items()},
             rotated={g: _capped(v, cap, seed) for g, v in aligned.items() if g in ("upper_arms", "forearms", "wrists")},
             arms=_capped(own.get("upper_arms", []) + own.get("forearms", []), cap, seed),
             mirror_arms=_capped(mirror.get("upper_arms", []) + mirror.get("forearms", []), cap, seed),
-            hands=hand_agreement(ours_state, uwb_states[method], i, j),
-            forearms_valid=arm_agreement(ours_state, uwb_states[method], i, j))
+            hands=hand_agreement(ours_state, uwb_states[method], i, j, aligned_strata),
+            forearms_valid=arm_agreement(ours_state, uwb_states[method], i, j),
+            forearm_survival=forearm_survival(uwb_states[method], pose_frames, pose_strata))
         if head:
             result["methods"][method]["head"] = _capped(head_errors(ours_state, uwb_states[method], i, j), cap, seed)
     return result
 
 
-def zlib_seed(text: str) -> int:
-    import zlib
-    return zlib.crc32(text.encode())
+def input_sample(regressors, uwb_clip, frames: int = Z_FRAMES, seed: int = 0) -> dict:
+    """Standardised regressor inputs (float16) of up to ``frames`` UWB frames: {"pose": (n, D), "Left": ..., "Right"}."""
+    from signtranslator.data_engineering.uwb_keypoints import _found
+    from signtranslator.data_engineering.world_regressor import input_zscores
+    found = _found(uwb_clip.pose)
+    rows = np.flatnonzero(found)
+    if not len(rows):
+        return {}
+    rows = np.sort(np.random.default_rng(seed).choice(rows, min(frames, len(rows)), replace=False))
+    scale = np.array([uwb_clip.width, uwb_clip.height], dtype=np.float64)
+    pose = uwb_clip.pose[rows] / scale
+    hands = {}
+    for k, side in enumerate(("Left", "Right")):
+        ok = _found(uwb_clip.hands[rows, k])
+        hands[side] = uwb_clip.hands[rows, k][ok] / scale
+    z = input_zscores(regressors, pose, hands, uwb_clip.aspect)
+    return {k: np.asarray(v, dtype=np.float16) for k, v in z.items()}
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -403,16 +521,17 @@ def stat(values) -> dict:
                 p90=round(float(np.percentile(v, 90)), 2), mean=round(float(v.mean()), 2))
 
 
-def clustered_median_ci(by_video: dict, *, resamples: int = 200, seed: int = 0) -> list | None:
+def clustered_median_ci(by_video: dict, *, resamples: int = BOOTSTRAP, seed: int = 0) -> list | None:
     """95% interval of the pooled median, resampling videos with replacement."""
     keys = [k for k, v in by_video.items() if len(v)]
-    if len(keys) < 2:
+    if len(keys) < 2 or resamples <= 0:
         return None
     rng = np.random.default_rng(seed)
+    arrays = [np.asarray(by_video[k], dtype=np.float64) for k in keys]
     medians = []
     for _ in range(resamples):
         pick = rng.integers(0, len(keys), len(keys))
-        medians.append(np.median(np.concatenate([by_video[keys[k]] for k in pick])))
+        medians.append(np.median(np.concatenate([arrays[k] for k in pick])))
     return [round(float(np.percentile(medians, 2.5)), 2), round(float(np.percentile(medians, 97.5)), 2)]
 
 
@@ -426,33 +545,90 @@ def lag_drift(rows: list[tuple[float, int]]) -> float | None:
     return round(float(np.polyfit(t, lag, 1)[0] * 60.), 3)
 
 
-def summarise(results: list[dict]) -> dict:
+def group_stats(rows: list[dict], method: str, scope: str, resamples: int) -> dict:
+    out = {}
+    for g in GROUPS:
+        by_video = collections.defaultdict(list)
+        for r in rows:
+            by_video[r["video_id"]].append(np.asarray(r["methods"][method][scope].get(g, ()), dtype=np.float64))
+        arrays = {k: np.concatenate(v) for k, v in by_video.items()}
+        pooled = np.concatenate(list(arrays.values())) if arrays else np.zeros(0)
+        if len(pooled):
+            out[g] = dict(stat(pooled), median_ci95_by_video=clustered_median_ci(arrays, resamples=resamples))
+    return out
+
+
+def agreement_summary(counts: dict) -> dict:
+    total = sum(counts[k] for k in CELLS)
+    return dict(counts, frames=total, agreement=round((counts["both"] + counts["neither"]) / total, 4) if total else None,
+                kappa=kappa(counts), uwb_only_rate=round(counts["uwb_only"] / total, 4) if total else None)
+
+
+def stratum_of(r: dict) -> dict:
+    fps, meta = r["fps"], r.get("meta_fps")
+    share = r.get("hips_visible_share")
+    return dict(hips=None if share is None else ("visible" if share >= .5 else "not_visible"),
+                fps30="yes" if abs(fps - 30.) < .05 or abs(fps - 29.97) < .01 else "no",
+                stream_match=None if not meta else ("yes" if abs(fps / meta - 1) < .002 else "no"),
+                fc_diff={0: "0", -1: "-1"}.get(r.get("frame_count_difference"), "other"))
+
+
+def input_summary(results: list[dict], names: dict | None) -> dict:
+    out = {}
+    for model in ("pose", "Left", "Right"):
+        arrays = [np.asarray(r["inputs"][model], dtype=np.float64) for r in results if len(r.get("inputs", {}).get(model, ()))]
+        if not arrays:
+            continue
+        z = np.abs(np.concatenate(arrays))
+        p99 = np.percentile(z, 99, axis=0)
+        labels = (names or {}).get("pose" if model == "pose" else "hand") or [str(k) for k in range(len(p99))]
+        worst = np.argsort(-p99)[:5]
+        out[model] = dict(frames=int(len(z)), max_p99_abs_z=round(float(p99.max()), 3),
+                          inputs_over_4=[labels[k] for k in np.flatnonzero(p99 > 4.)],
+                          worst={labels[k]: round(float(p99[k]), 3) for k in worst})
+    return out
+
+
+def names_for(results: list[dict]) -> dict | None:
+    """Input names of the bundle that produced the sampled inputs (its pose width tells xy-v1 from xy-v2)."""
+    from signtranslator.data_engineering.world_regressor import FEATURES_XY, FEATURES_XY2, input_names
+    for r in results:
+        pose = r.get("inputs", {}).get("pose")
+        if pose is not None and len(pose):
+            width = np.asarray(pose).shape[1]
+            for version in (FEATURES_XY, FEATURES_XY2):
+                if len(input_names(version)["pose"]) == width:
+                    return input_names(version)
+    return None
+
+
+def summarise(results: list[dict], *, primary: str | None = None, resamples: int = BOOTSTRAP,
+              input_names: dict | None = None) -> dict:
     ok = [r for r in results if r.get("status") == "evaluated"]
     methods = sorted({m for r in ok for m in r["methods"]})
-    summary = dict(pairs=len(ok), videos=len({r["video_id"] for r in ok}), methods={})
+    summary = dict(pairs=len(ok), videos=len({r["video_id"] for r in ok}), primary=primary, methods={})
     for m in methods:
-        entry = {}
-        for scope in ("own", "common", "rotated"):
-            entry[scope] = {}
-            for g in GROUPS:
-                by_video = collections.defaultdict(list)
-                for r in ok:
-                    by_video[r["video_id"]].append(np.asarray(r["methods"][m][scope].get(g, ()), dtype=np.float64))
-                arrays = {k: np.concatenate(v) for k, v in by_video.items()}
-                pooled = np.concatenate(list(arrays.values())) if arrays else np.zeros(0)
-                if len(pooled):
-                    entry[scope][g] = dict(stat(pooled), median_ci95_by_video=clustered_median_ci(arrays))
-        for field, name in (("hands", "hand_valid"), ("forearms_valid", "forearm_valid_where_our_chest_is")):
-            counts = collections.Counter()
-            for r in ok:
-                for side, cells in r["methods"][m][field].items():
-                    for k, v in cells.items():
-                        counts[f"{side}.{k}"] += v
-            for side in ("Left", "Right"):
-                total = sum(counts[f"{side}.{k}"] for k in ("both", "ours_only", "uwb_only", "neither"))
-                entry.setdefault(name, {})[side] = dict(
-                    {k: counts[f"{side}.{k}"] for k in ("both", "ours_only", "uwb_only", "neither")},
-                    agreement=round((counts[f"{side}.both"] + counts[f"{side}.neither"]) / total, 4) if total else None)
+        entry = {scope: group_stats(ok, m, scope, resamples) for scope in ("common", "own", "rotated")}
+        hands = collections.defaultdict(collections.Counter)
+        for r in ok:
+            for stratum, sides in r["methods"][m]["hands"].items():
+                for side, cells in sides.items():
+                    hands[f"{stratum}.{side}"].update(cells)
+        entry["hand_valid"] = {key: agreement_summary({k: hands[key][k] for k in CELLS}) for key in sorted(hands)}
+        arms = collections.defaultdict(collections.Counter)
+        for r in ok:
+            for side, cells in r["methods"][m]["forearms_valid"].items():
+                arms[side].update(cells)
+        entry["forearm_valid_where_our_chest_is"] = {side: agreement_summary({k: arms[side][k] for k in CELLS})
+                                                     for side in sorted(arms)}
+        survival = collections.defaultdict(lambda: [0, 0])
+        for r in ok:
+            for stratum, sides in r["methods"][m]["forearm_survival"].items():
+                for side, (kept, total) in sides.items():
+                    survival[f"{stratum}.{side}"][0] += kept
+                    survival[f"{stratum}.{side}"][1] += total
+        entry["forearm_survival"] = {k: dict(kept=v[0], frames=v[1], share=round(v[0] / v[1], 4) if v[1] else None)
+                                     for k, v in sorted(survival.items())}
         both = [r for r in ok if len(r["methods"][m]["arms"]) and len(r["methods"][m]["mirror_arms"])]
         normal = [float(np.median(r["methods"][m]["arms"])) for r in both]
         mirror = [float(np.median(r["methods"][m]["mirror_arms"])) for r in both]
@@ -463,18 +639,89 @@ def summarise(results: list[dict]) -> dict:
         if heads:
             entry["head"] = stat(np.concatenate(heads))
         summary["methods"][m] = entry
-    lags = collections.Counter(r["alignment"]["lag"] for r in ok)
+    if primary in summary["methods"]:
+        strata = {}
+        for kind in ("hips", "fps30", "stream_match", "fc_diff"):
+            values = collections.defaultdict(list)
+            for r in ok:
+                values[stratum_of(r)[kind]].append(r)
+            strata[kind] = {str(v): dict(pairs=len(rows), common=group_stats(rows, primary, "common", 0))
+                            for v, rows in sorted(values.items(), key=lambda x: str(x[0]))}
+        summary["strata"] = strata
+    aligned = [r for r in ok if r["alignment"]["method"] == "arm-2d"]
+    by_fc = collections.defaultdict(collections.Counter)
+    for r in aligned:
+        by_fc[stratum_of(r)["fc_diff"]][r["alignment"]["lag"]] += 1
     summary["alignment"] = dict(methods=dict(collections.Counter(r["alignment"]["method"] for r in ok)),
-                                lags={str(k): v for k, v in sorted(lags.items())})
+                                lags={str(k): v for k, v in sorted(collections.Counter(
+                                    r["alignment"]["lag"] for r in ok).items())},
+                                lags_by_frame_count_difference={fc: {str(k): v for k, v in sorted(c.items())}
+                                                                for fc, c in sorted(by_fc.items())},
+                                within_1_share=round(sum(abs(r["alignment"]["lag"]) <= 1 for r in aligned)
+                                                     / len(aligned), 4) if aligned else None)
     by_video = collections.defaultdict(list)
-    for r in ok:
-        if r["alignment"]["method"] == "arm-2d":
-            by_video[r["video_id"]].append((r["cue_start"], r["alignment"]["lag"]))
+    for r in aligned:
+        by_video[r["video_id"]].append((r["cue_start"], r["alignment"]["lag"]))
     drifts = {v: lag_drift(rows) for v, rows in by_video.items()}
     summary["lag_drift_frames_per_minute"] = {v: d for v, d in drifts.items() if d is not None}
+    summary["inputs"] = input_summary(ok, input_names)
     summary["refusals"] = dict(collections.Counter(r.get("reason", "?")[:60] for r in results
                                                    if r.get("status") != "evaluated"))
+    if primary in summary["methods"]:
+        summary["proposal_check"] = proposal_check(summary, primary)
     return summary
+
+
+def proposal_check(summary: dict, primary: str, bar: dict = PROPOSAL) -> dict:
+    """The proposed gate's criteria that this script can compute (True/False/None per item; not a declared verdict)."""
+    e = summary["methods"][primary]
+    out = {}
+    for g, limit in bar["median"].items():
+        s = e["common"].get(g, {})
+        ci = s.get("median_ci95_by_video")
+        out[f"median.{g}<={limit}"] = None if not s.get("n") else bool(s["median"] <= limit)
+        out[f"median_ci_upper.{g}<={limit + bar['ci_slack']}"] = None if not ci else bool(ci[1] <= limit + bar["ci_slack"])
+    for g, limit in bar["p90"].items():
+        s = e["common"].get(g, {})
+        out[f"p90.{g}<={limit}"] = None if not s.get("n") else bool(s["p90"] <= limit)
+    for g in ("upper_arms", "forearms"):
+        a, b = e["own"].get(g, {}), e["rotated"].get(g, {})
+        out[f"rotation_gain.{g}<={bar['rotation_gain']}"] = (None if not a.get("n") or not b.get("n")
+                                                             else bool(a["median"] - b["median"] <= bar["rotation_gain"]))
+    worst = []
+    for kind, values in summary.get("strata", {}).items():
+        for value, s in values.items():
+            if s["pairs"] < bar["stratum_pairs"]:
+                continue
+            for g, limit in bar["median"].items():
+                m = s["common"].get(g, {}).get("median")
+                if m is not None and m > limit + bar["stratum_slack"]:
+                    worst.append(f"{kind}={value}:{g}={m}")
+    out["strata_within_3deg_of_bar"] = not worst
+    out["strata_failures"] = worst
+    for side in ("Left", "Right"):
+        h = e["hand_valid"].get(f"all.{side}", {})
+        out[f"hand_agreement.{side}>={bar['hand_agreement']}"] = (None if h.get("agreement") is None
+                                                                  else bool(h["agreement"] >= bar["hand_agreement"]))
+        f = e["forearm_valid_where_our_chest_is"].get(side, {})
+        out[f"forearm_agreement_hips_visible.{side}>={bar['forearm_agreement']}"] = (
+            None if f.get("agreement") is None else bool(f["agreement"] >= bar["forearm_agreement"]))
+        rates = [x.get("uwb_only_rate") for x in (h, f) if x.get("uwb_only_rate") is not None]
+        out[f"uwb_only_rate.{side}<={bar['uwb_only']}"] = None if not rates else bool(max(rates) <= bar["uwb_only"])
+    out["chest_up_forearm_survival_vs_mediapipe"] = "measured by scripts/uwb_outside_frame_accuracy.py"
+    z = [v["max_p99_abs_z"] for v in summary.get("inputs", {}).values()]
+    out[f"inputs_p99_abs_z<={bar['input_z']}"] = None if not z else bool(max(z) <= bar["input_z"])
+    mc = e["mirror_check"]
+    out[f"mirror_better_share<={bar['mirror_share']}"] = (None if not mc["clips"]
+                                                          else bool(mc["mirror_better"] / mc["clips"] <= bar["mirror_share"]))
+    w = summary["alignment"]["within_1_share"]
+    out[f"lag_within_1_share>={bar['lag_within_1']}"] = None if w is None else bool(w >= bar["lag_within_1"])
+    drifts = list(summary["lag_drift_frames_per_minute"].values())
+    out[f"drift_below_1_share>={bar['drift_share']}"] = (None if not drifts else
+                                                        bool(np.mean(np.abs(drifts) < DRIFT_LIMIT) >= bar["drift_share"]))
+    out["relative_to_how2sign_val"] = "not computed here (needs the bundle's How2Sign-val direction errors)"
+    out["downstream_back_translator"] = "not computed here"
+    return out
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -538,17 +785,37 @@ def uwb_clips_of(entry: dict) -> list[dict]:
     return out
 
 
+def read_video_list(path: str | None) -> set:
+    """Video ids from a JSON list or a text file (one per line, '#' comments)."""
+    if not path:
+        return set()
+    text = Path(path).read_text()
+    if text.lstrip().startswith("["):
+        return set(json.loads(text))
+    return {line.split("#")[0].strip() for line in text.splitlines() if line.split("#")[0].strip()}
+
+
+def method_rules(declared: str, candidates: list[str]) -> dict:
+    """method name -> visibility rule: the declared lifter first, then the candidate rules."""
+    from signtranslator.data_engineering.uwb_keypoints import visibility_margin
+    rules = [declared] + [c for c in candidates if c and c != declared]
+    for rule in rules:
+        visibility_margin(rule)
+    return {f"lifter[{rule}]": rule for rule in dict.fromkeys(rules)}
+
+
 def _init(args):
     import torch
     torch.set_num_threads(1)
     from train_text_to_motion import make_store
-    from signtranslator.data_engineering.world_regressor import FEATURES_XY, WorldRegressors
+    from signtranslator.data_engineering.world_regressor import WorldRegressors, Z_FREE_FEATURES
     store = make_store(args.store)
     payload = Path(args.regressors).read_bytes() if Path(args.regressors).exists() else store.get(args.regressors)
     regressors = WorldRegressors.load(payload, expected_sha256=args.regressors_sha256)
-    if regressors.features != FEATURES_XY:
-        raise ValueError(f"the bundle's features are {regressors.features!r}; UWB needs {FEATURES_XY!r}")
-    _WORKER.update(args=args, store=store, archives={}, regressors=regressors)
+    if regressors.features not in Z_FREE_FEATURES:
+        raise ValueError(f"the bundle's features are {regressors.features!r}; UWB needs one of {sorted(Z_FREE_FEATURES)}")
+    _WORKER.update(args=args, store=store, archives={}, regressors=regressors,
+                   rules=method_rules(args.visibility, args.candidate_visibility.split(",")))
     from signtranslator.data_engineering.semlex_pose import BlendshapeModel, load_face_resources
     resources = load_face_resources(Path(args.models_dir) / "face_landmarker.task") if args.head == "affine" else None
     _WORKER["resources"] = resources
@@ -559,7 +826,7 @@ def _evaluate(job: dict) -> dict:
     from signtranslator.data_engineering import uwb_keypoints as uk
     from signtranslator.pose.multichannel import MultichannelMotion
     args, store = _WORKER["args"], _WORKER["store"]
-    base = {k: job[k] for k in ("video_id", "clip_id", "sample_id", "cue_start", "iou", "fps", "zip")}
+    base = {k: job.get(k) for k in ("video_id", "clip_id", "sample_id", "cue_start", "iou", "fps", "meta_fps", "zip")}
     try:
         archive = _WORKER["archives"].get(job["zip"])
         if archive is None:
@@ -573,104 +840,15 @@ def _evaluate(job: dict) -> dict:
         sha = hashlib.sha256(payload).hexdigest()
         common = dict(source_sha256=sha, fps_source="estimated", blendshape_model=_WORKER["blendshapes"],
                       head=args.head, face_resources=_WORKER["resources"], flags="generator")
-        states = {"learned": uk.convert_clip(clip, job["fps"], regressors=_WORKER["regressors"], **common)[0],
-                  "learned-inside": uk.convert_clip(clip, job["fps"], regressors=_WORKER["regressors"],
-                                                    visibility="inside", **common)[0],
-                  "pseudo": uk.convert_clip(clip, job["fps"], world="pseudo", visibility="inside", **common)[0]}
+        states = {m: uk.convert_clip(clip, job["fps"], regressors=_WORKER["regressors"], visibility=rule, **common)[0]
+                  for m, rule in _WORKER["rules"].items()}
+        states["pseudo"] = uk.convert_clip(clip, job["fps"], world="pseudo", visibility="inside", **common)[0]
         result = evaluate_pair(ours, states, clip, job["fps"], args.max_lag, head=args.head == "affine",
                                cap=args.max_values_per_pair, lag_margin=args.lag_margin)
+        result["inputs"] = input_sample(_WORKER["regressors"], clip, seed=zlib_seed(job["clip_id"]))
     except (uk.Refusal, ValueError, KeyError) as error:
         return dict(base, status="refused", reason=f"{type(error).__name__}: {error}"[:200])
     return dict(base, status="evaluated", member_sha256=sha, **result)
-
-
-def main(argv=None) -> int:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--store", default="r2")
-    p.add_argument("--uwb-prefix", default=UWB_PREFIX)
-    p.add_argument("--youtube-prefix", default=YOUTUBE_PREFIX)
-    p.add_argument("--translations", default="YT.translations.all.json", help="UWB translations file under the prefix")
-    p.add_argument("--regressors", help="z-free bundle (local path or store key); not needed with --fps-only")
-    p.add_argument("--regressors-sha256")
-    p.add_argument("--models-dir", default=os.path.expanduser("~/.sign-translator-ops/models"))
-    p.add_argument("--head", choices=("none", "affine"), default="none")
-    p.add_argument("--members-cache", help="local JSON cache of the zips' member lists")
-    p.add_argument("--videos", type=int, default=0, help="evaluate pairs from at most this many videos (0: all)")
-    p.add_argument("--pairs-per-video", type=int, default=5)
-    p.add_argument("--max-lag", type=int, default=6)
-    p.add_argument("--max-values-per-pair", type=int, default=600, help="per group and scope (seeded subsample)")
-    p.add_argument("--lag-margin", type=float, default=.5,
-                   help="degrees a non-zero lag must gain over lag 0 (the image-plane arm angle)")
-    p.add_argument("--min-text-matches", type=int, default=3)
-    p.add_argument("--fps-only", action="store_true", help="estimate rates for every overlapping video; no states")
-    p.add_argument("--fps-table-out", help="write {video: fps} for convert_uwb_clips.py")
-    p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--workers", type=int, default=4)
-    p.add_argument("--out", required=True)
-    args = p.parse_args(argv)
-    if not args.fps_only and not (args.regressors and args.regressors_sha256):
-        raise SystemExit("--regressors and --regressors-sha256 are required (or --fps-only)")
-    from train_text_to_motion import make_store
-    store = make_store(args.store)
-    uwb = json.loads(store.get(f"{args.uwb_prefix}/{args.translations}"))
-    reports = sorted(k for k in store.list(f"{args.youtube_prefix}/videos/") if k.endswith(".json"))
-    ids = [Path(k).name[:-5] for k in reports if Path(k).name[:-5] in uwb]
-    rng = random.Random(args.seed)
-    if args.videos and not args.fps_only:          # a sample: read 3x as many reports as videos wanted, seeded
-        ids = sorted(rng.sample(ids, min(len(ids), 3 * args.videos)))
-    fps_rows, jobs = {}, []
-    with ProcessPoolExecutor(max_workers=max(1, args.workers)) as pool:
-        loaded = list(pool.map(_load_report, [(args.store, f"{args.youtube_prefix}/videos/{v}.json") for v in ids],
-                               chunksize=16))
-    for video_id, report in zip(ids, loaded):
-        if report is None or report.get("status") != "converted":
-            continue
-        clips = uwb_clips_of(uwb[video_id])
-        cues = report["segments"]
-        estimate = estimate_fps(clips, cues, min_text_matches=args.min_text_matches)
-        meta = (report.get("meta") or {}).get("fps")
-        estimate.update(meta_fps=meta, uwb_clips=len(clips), our_cues=len(cues))
-        fps_rows[video_id] = estimate
-        if estimate["fps"] is None:
-            continue
-        pairs = pair_clips(clips, cues, estimate["fps"])
-        estimate["pairs"] = len(pairs)
-        for clip, cue, iou in pairs:
-            jobs.append(dict(video_id=video_id, clip_id=clip["clip_id"], sample_id=cue["sample_id"],
-                             cue_start=cue["start"], iou=iou, fps=estimate["fps"], state_key=cue["state_key"],
-                             state_sha256=cue["state_sha256"]))
-    fps_summary = summarise_fps(fps_rows)
-    print(json.dumps(fps_summary), flush=True)
-    if args.fps_table_out:
-        table = {v: r["fps"] for v, r in sorted(fps_rows.items()) if r["fps"] is not None}
-        Path(args.fps_table_out).write_text(json.dumps(dict(
-            schema="uwb-fps-table-v1", method="uwb_lifter_gate.estimate_fps (text-matched caption cues, snapped)",
-            fps=table), indent=1, sort_keys=True))
-    out = dict(settings={k: v for k, v in vars(args).items()}, fps=dict(summary=fps_summary, videos=fps_rows),
-               candidate_pairs=len(jobs))
-    if not args.fps_only:
-        by_video = collections.defaultdict(list)
-        for job in jobs:
-            by_video[job["video_id"]].append(job)
-        videos = sorted(by_video)
-        rng.shuffle(videos)
-        videos = videos[:args.videos or None]
-        index = members_index(store, args.uwb_prefix, Path(args.members_cache) if args.members_cache else None)
-        chosen = []
-        for v in videos:
-            picked = rng.sample(by_video[v], min(args.pairs_per_video, len(by_video[v])))
-            for job in picked:
-                if job["clip_id"] in index:
-                    chosen.append(dict(job, zip=index[job["clip_id"]]))
-        print(json.dumps(dict(videos=len(videos), pairs=len(chosen))), flush=True)
-        with ProcessPoolExecutor(max_workers=max(1, args.workers), initializer=_init, initargs=(args,)) as pool:
-            results = list(pool.map(_evaluate, chosen, chunksize=1))
-        out["regressors_sha256"] = args.regressors_sha256
-        out["summary"] = summarise(results)
-        out["pairs"] = [{k: v for k, v in r.items() if k != "methods"} for r in results]
-        print(json.dumps(out["summary"], indent=1), flush=True)
-    Path(args.out).write_text(json.dumps(out, indent=1, sort_keys=True, default=str))
-    return 0
 
 
 def _load_report(job):
@@ -694,12 +872,145 @@ def summarise_fps(rows: dict) -> dict:
     counts = collections.Counter(f"{f:g}" for f in estimated)
     meta = collections.Counter(f"{r['meta_fps']:g}" for r in rows.values() if r.get("meta_fps"))
     residuals = [r["residual_median"] for r in rows.values() if r.get("residual_median") is not None]
+    refused = collections.Counter(re.sub(r"[-\d.]+", "N", r["refused"]) for r in rows.values() if r.get("refused"))
     return dict(videos=len(rows), estimated=len(estimated), methods={str(k): v for k, v in methods.items()},
-                with_meta=len(with_meta), agree_with_meta_within_ntsc=agree, equal_to_meta=exact,
+                refused=dict(refused), with_meta=len(with_meta), agree_with_meta_within_ntsc=agree, equal_to_meta=exact,
                 estimated_rates=dict(counts.most_common()), meta_rates=dict(meta.most_common()),
                 share_not_about_30=round(sum(abs(f - 30) > .1 and abs(f - 29.97) > .01 for f in estimated)
                                          / max(len(estimated), 1), 4),
                 residual_median_of_medians=round(float(np.median(residuals)), 3) if residuals else None)
+
+
+def overlap_table(fps_rows: dict, pairs_by_video: dict, reports: dict, monitor_share: float) -> dict:
+    """The converter's dedup and partition table (schema ``uwb-overlap-table-v1``)."""
+    from build_youtube_asl_manifest import monitor_channel
+    clips, videos = {}, {}
+    for video_id, report in sorted(reports.items()):
+        meta = report.get("meta") or {}
+        timed = fps_rows.get(video_id, {}).get("fps") is not None
+        videos[video_id] = dict(partition="monitor" if monitor_channel(meta.get("channel_id"), monitor_share) else "train",
+                                dedup="cue" if timed else "whole-video")
+        for clip, cue, iou in pairs_by_video.get(video_id, ()):
+            clips[clip["clip_id"]] = dict(our_sample_id=cue["sample_id"], iou=iou)
+    return dict(schema="uwb-overlap-table-v1", monitor_share=monitor_share, clips=clips, videos=videos,
+                method="uwb_lifter_gate.pair_clips (IoU >= 0.5, one-to-one) at the estimated rate; partition by "
+                       "build_youtube_asl_manifest.monitor_channel(channel_id, monitor_share)")
+
+
+def main(argv=None) -> int:
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--store", default="r2")
+    p.add_argument("--uwb-prefix", default=UWB_PREFIX)
+    p.add_argument("--youtube-prefix", default=YOUTUBE_PREFIX)
+    p.add_argument("--translations", default="YT.translations.all.json", help="UWB translations file under the prefix")
+    p.add_argument("--regressors", help="z-free bundle (local path or store key); not needed with --fps-only")
+    p.add_argument("--regressors-sha256")
+    p.add_argument("--visibility", help="the declared visibility rule of the lifter (primary method)")
+    p.add_argument("--candidate-visibility", default="learned,inside,margin:0.25",
+                   help="comma-separated rules also scored (secondary)")
+    p.add_argument("--models-dir", default=os.path.expanduser("~/.sign-translator-ops/models"))
+    p.add_argument("--head", choices=("none", "affine"), default="none")
+    p.add_argument("--members-cache", help="local JSON cache of the zips' member lists")
+    p.add_argument("--exclude-videos", help="file of video ids kept out of the evaluation (development videos)")
+    p.add_argument("--videos", type=int, default=0, help="evaluate pairs from at most this many videos (0: all)")
+    p.add_argument("--pairs-per-video", type=int, default=5)
+    p.add_argument("--max-lag", type=int, default=6)
+    p.add_argument("--max-values-per-pair", type=int, default=600, help="per group and scope (seeded subsample)")
+    p.add_argument("--lag-margin", type=float, default=.5,
+                   help="degrees a non-zero lag must gain over lag 0 (the image-plane arm angle)")
+    p.add_argument("--min-text-matches", type=int, default=3)
+    p.add_argument("--bootstrap", type=int, default=BOOTSTRAP)
+    p.add_argument("--monitor-share", type=float, default=.01, help="as build_youtube_asl_manifest.py")
+    p.add_argument("--fps-only", action="store_true", help="estimate rates for every overlapping video; no states")
+    p.add_argument("--fps-table-out", help="write {video: fps} for convert_uwb_clips.py")
+    p.add_argument("--overlap-table-out", help="write the dedup/partition table for convert_uwb_clips.py")
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--workers", type=int, default=4)
+    p.add_argument("--out", required=True)
+    args = p.parse_args(argv)
+    if not args.fps_only:
+        if not (args.regressors and args.regressors_sha256):
+            raise SystemExit("--regressors and --regressors-sha256 are required (or --fps-only)")
+        if not args.visibility:
+            raise SystemExit("--visibility (the declared rule) is required for an evaluation")
+        try:
+            method_rules(args.visibility, args.candidate_visibility.split(","))
+        except ValueError as error:
+            raise SystemExit(str(error)) from error
+    if args.overlap_table_out and args.videos:
+        raise SystemExit("--overlap-table-out needs every video: drop --videos")
+    excluded = read_video_list(args.exclude_videos)
+    from train_text_to_motion import make_store
+    store = make_store(args.store)
+    uwb = json.loads(store.get(f"{args.uwb_prefix}/{args.translations}"))
+    keys = sorted(k for k in store.list(f"{args.youtube_prefix}/videos/") if k.endswith(".json"))
+    ids = [Path(k).name[:-5] for k in keys if Path(k).name[:-5] in uwb]
+    rng = random.Random(args.seed)
+    if args.videos and not args.fps_only:          # a sample: read 3x as many reports as videos wanted, seeded
+        population = [v for v in ids if v not in excluded]
+        ids = sorted(rng.sample(population, min(len(population), 3 * args.videos)))
+    fps_rows, jobs, pairs_by_video, converted = {}, [], {}, {}
+    with ProcessPoolExecutor(max_workers=max(1, args.workers)) as pool:
+        loaded = list(pool.map(_load_report, [(args.store, f"{args.youtube_prefix}/videos/{v}.json") for v in ids],
+                               chunksize=16))
+    for video_id, report in zip(ids, loaded):
+        if report is None or report.get("status") != "converted":
+            continue
+        converted[video_id] = report
+        clips = uwb_clips_of(uwb[video_id])
+        cues = report["segments"]
+        estimate = estimate_fps(clips, cues, min_text_matches=args.min_text_matches)
+        meta = (report.get("meta") or {}).get("fps")
+        estimate.update(meta_fps=meta, uwb_clips=len(clips), our_cues=len(cues))
+        fps_rows[video_id] = estimate
+        if estimate["fps"] is None:
+            continue
+        pairs = pair_clips(clips, cues, estimate["fps"])
+        pairs_by_video[video_id] = pairs
+        estimate["pairs"] = len(pairs)
+        for clip, cue, iou in pairs:
+            jobs.append(dict(video_id=video_id, clip_id=clip["clip_id"], sample_id=cue["sample_id"],
+                             cue_start=cue["start"], iou=iou, fps=estimate["fps"], meta_fps=meta,
+                             state_key=cue["state_key"], state_sha256=cue["state_sha256"]))
+    fps_summary = summarise_fps(fps_rows)
+    print(json.dumps(fps_summary), flush=True)
+    if args.overlap_table_out:
+        table = overlap_table(fps_rows, pairs_by_video, converted, args.monitor_share)
+        Path(args.overlap_table_out).write_text(json.dumps(table, indent=1, sort_keys=True))
+    out = dict(settings={k: v for k, v in vars(args).items()}, fps=dict(summary=fps_summary, videos=fps_rows),
+               candidate_pairs=len(jobs), excluded_videos=sorted(excluded))
+    dropped = {}
+    if not args.fps_only:
+        by_video = collections.defaultdict(list)
+        for job in jobs:
+            if job["video_id"] not in excluded:
+                by_video[job["video_id"]].append(job)
+        videos = sorted(by_video)
+        rng.shuffle(videos)
+        videos = videos[:args.videos or None]
+        index = members_index(store, args.uwb_prefix, Path(args.members_cache) if args.members_cache else None)
+        chosen = []
+        for v in videos:
+            picked = rng.sample(by_video[v], min(args.pairs_per_video, len(by_video[v])))
+            chosen += [dict(job, zip=index[job["clip_id"]]) for job in picked if job["clip_id"] in index]
+        print(json.dumps(dict(videos=len(videos), pairs=len(chosen), excluded=len(excluded))), flush=True)
+        with ProcessPoolExecutor(max_workers=max(1, args.workers), initializer=_init, initargs=(args,)) as pool:
+            results = list(pool.map(_evaluate, chosen, chunksize=1))
+        primary = f"lifter[{args.visibility}]"
+        out["regressors_sha256"] = args.regressors_sha256
+        out["summary"] = summarise(results, primary=primary, resamples=args.bootstrap, input_names=names_for(results))
+        out["pairs"] = [{k: v for k, v in r.items() if k not in ("methods", "inputs")} for r in results]
+        dropped = {v: d for v, d in out["summary"]["lag_drift_frames_per_minute"].items() if abs(d) > DRIFT_LIMIT}
+        out["fps_dropped_for_drift"] = dropped
+        print(json.dumps(out["summary"], indent=1, default=str), flush=True)
+    if args.fps_table_out:
+        table = {v: r["fps"] for v, r in sorted(fps_rows.items()) if r["fps"] is not None and v not in dropped}
+        Path(args.fps_table_out).write_text(json.dumps(dict(
+            schema="uwb-fps-table-v1", method="uwb_lifter_gate.estimate_fps (text-matched caption cues, Theil-Sen + "
+                                             "least squares, snapped; offset in [-1, 0]; 10-70 fps)",
+            drift_checked=not args.fps_only, dropped_for_drift=sorted(dropped), fps=table), indent=1, sort_keys=True))
+    Path(args.out).write_text(json.dumps(out, indent=1, sort_keys=True, default=str))
+    return 0
 
 
 if __name__ == "__main__":
