@@ -4846,3 +4846,38 @@ The research report's better-evidenced variant is LMR's low-rate *plan*, generat
 **Evaluation when run:** the same 1,000-clip pilot. Declared then; the first arm is likely R17-plan against R16-matched controls.
 
 **Interaction with the UWB data test.** If the lifter gate passes and about 4× more sentence data fixes end-to-end on the current architecture, round 17 is re-evaluated before it runs.
+
+### Round 17: declared gates (2026-10-30, 05:36 UTC, before anything trains; per the independent review of c37036b)
+
+Each stage runs only if the previous stage passes. All measures are on How2Sign val unless stated.
+
+**Plan tokenizer (PT):**
+- **Content:** recogniser v2 ASLLVD top-5 on plan-round-trip motion ≥ 0.9 × real. Plan round-trip back-translation BLEU ≥ 0.8 × d2's own round trip on the same clips, with its lower bound above blank.
+- **Stability:**
+  - stage-1 perplexity ≥ 128 per part;
+  - dead-code re-seeds < 1% of the codebook per 1k steps after step 10k;
+  - no divergence through 20k steps.
+- **Report-only:** plan round-trip hand speed (decoded from continuous latents, a path generation never uses).
+
+**Plan prior (P17):** all must hold.
+- **(a) Text use:** teacher-forced text gain (shuffled-text loss − true-text loss) ≥ 2× W14b's same measure.
+- **(b) Plan-only route:** P17 samples → plan decode → d2 → back-translation on the 1,000 clips, with the BLEU lower bound > 1.859 (blank).
+- If (b) fails, the detail prior cannot rescue it and **the pilot is not run.**
+
+**Detail prior (D17):** warm-started from W14b.
+- **Arms:** plan dropout, plus a declared corruption arm (half the rows have a fraction r ~ U(0, 0.5) of plan steps replaced by P17 teacher-forced samples).
+- **Informativeness:** `plan_gain` ≥ 0.05 nats/code by step 4000. The stage-1 gain is reported. (The plan carries ≤ 72 bits per 4-step window, about 8% of W14b's per-window loss, so it cannot trivialise learning.)
+- **Plan following:** back-translation retrieval of clip A over B from A's against B's oracle plan ≥ 70% (chance 50%).
+- **Oracle-plan pilot** (diagnostic only, never the declared metric): oracle BLEU − R16C BLEU lower bound > 0, else the route cannot work and the pilot is skipped.
+- **Oracle-plan detail generations:** wrist speed within [0.8, 1.5] × real.
+
+**Round-17 pilot (R17):** generated plan → D17, 1,000 clips. All must hold:
+- paired BLEU lower bound > 0 against R16C;
+- paired BLEU lower bound > 0 against W14b;
+- v3 lexicon lower bound > −0.05 against R16C.
+
+P17's plan-only BLEU and the oracle–generated gap are reported beside it.
+
+**Sequencing:**
+- PT may train once the review fixes land and are re-reviewed.
+- P17 and D17 wait for the UWB gate result, per the owner's O4 decision.
