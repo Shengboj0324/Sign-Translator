@@ -4720,3 +4720,40 @@ Every item holds before a result is reported:
 - Until now they fed only the 2D back-translator.
 - **A 2D→world lifter** would turn them into generator states: the learned world regressors retrained without z, gated on the about 100k overlapping cues we extracted ourselves (paired angle errors, recogniser read). That is about 4× the generator's YouTube data without any YouTube download.
 - This is the next data lever to build, and it runs in parallel with the YouTube route.
+
+## UWB lifter: declared selection and gate (declared 2026-10-30, 03:34 UTC, before the full-size bundle is trained or the gate runs)
+
+**Purpose.** Convert the UWB YouTube-ASL keypoints (390,547 clips; pixel 2D Holistic; CC BY 4.0) into generator states with a z-free learned image-to-world regressor.
+
+**Code:** branch `uwb-lifter` (e186d62, fixes 6625c83). Independent review: APPROVE WITH FIXES twice. The remaining fixes (overlap dedup decided at manifest time, a mandatory leak filter, merge and resume hardening, drift rule) block **conversion and manifest building only**. They do not block training the regressor or running this selection.
+
+**Bundle.**
+- **Primary:** `xy2`, the framing-invariant features (`world-regressor-features-xy-v2`). It trains on the v2 pairs (How2Sign signers 3, 4, 5, 8, 11; validation signers 1 and 2; signer 9 never), 30 epochs, seed 0.
+- **Comparison only:** `xy-aug` (xy-v1 with `--augment-framing 3`), never selected.
+
+**Visibility rule: selected before the gate, on independent How2Sign two-view truth** (`uwb_outside_frame_accuracy.py`, legacy Holistic inputs where available).
+- **Candidates:** exactly {learned, inside, margin:0.1, margin:0.25}.
+- **Error measure:** for every rule, the *same ungated* lifter error, measured on the rule's kept frames and on MediaPipe's kept frames, **per side and per bone** (forearm, upper arm). The binding case decides.
+- **A rule is admissible only if all of these hold:**
+  - kept median ≤ MediaPipe-kept median + 3°, at the upper end of the by-video 95% CI;
+  - kept p90 ≤ MediaPipe-kept p90 + 5°;
+  - in every distance-outside bin the rule admits (0–0.1, 0.1–0.3), the median stays ≤ MediaPipe-kept + 6°.
+- **Selection:** the admissible rule with the largest **UWB-weighted** forearm survival, its bins weighted by UWB's own elbow-outside distribution. Survival within 2 points counts as a tie, resolved to the more conservative rule. If no rule is admissible: `inside`.
+
+**Gate** on YouTube cues paired with our own Tasks states.
+- **Sample:** the 70 development videos excluded; every estimated-fps video, 5 pairs each; common frames; 95% CI by video, 2,000 resamples.
+
+| Check | Requirement |
+|---|---|
+| Accuracy, medians | upper arms ≤ 12°, forearms ≤ 18°, wrists ≤ 15°, fingers ≤ 16°, each CI upper bound ≤ bar + 1° |
+| Accuracy, p90 | upper arms ≤ 25°, forearms ≤ 40° |
+| Relative to How2Sign validation | each group's YouTube median ≤ 1.6× the same bundle's How2Sign-val median |
+| Global offset | arms gain ≤ 3° after one global rotation per clip |
+| Strata | no stratum with ≥ 200 pairs worse than the global bar by more than 3° (strata: hips visible or not; fps ≈ 30 or not; frame-count difference 0 or −1). Stream-mismatch videos are reported and **excluded from conversion** |
+| Validity, all frames | hand-valid agreement ≥ 0.88 per side; on hip-visible frames, forearm agreement ≥ 0.85 per side; UWB-only valid ≤ 10%; chest-up forearm survival ≥ 80% of MediaPipe's |
+| Timing | mirror-better ≤ 3% of clips; \|lag\| ≤ 1 on ≥ 90% of arm-aligned pairs |
+| Downstream | back-translator read of lifted states ≥ 90% of its read of our states on paired cues, and clearly above blank |
+
+- **Diagnostics only** (per input, reported, not gating): input p99 \|z\|; drift. Videos are dropped only when they have ≥ 8 cues spanning ≥ 3 minutes.
+- **If the gate fails:** no conversion. Report which checks failed and the next fix (full-frame pairs, or a different visibility rule).
+- **If it passes:** conversion, after the conversion-blocking fixes land and are reviewed, using estimated-fps videos only. Assumed-30-fps clips are added only after a held-out ablation shows no harm.
