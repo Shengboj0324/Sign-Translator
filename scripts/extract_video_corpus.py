@@ -25,7 +25,8 @@ so a downstream manifest can hold out whole signers; reports go under ``<out>/vi
 from __future__ import annotations
 
 import argparse
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
+from concurrent.futures.process import BrokenProcessPool
 import csv
 import hashlib
 import io
@@ -154,7 +155,7 @@ def convert(job: dict, args) -> dict:
     return report
 
 
-def auto_workers(per_worker_gb: float = 2.5) -> int:
+def auto_workers(per_worker_gb: float = 4.0) -> int:
     """Workers that fit this container: CPUs minus two, and its cgroup memory limit at ``per_worker_gb`` each (a pod
     may come up with fewer CPUs and less memory than asked; too many workers get OOM-killed and break the pool)."""
     cpus = max(1, (os.cpu_count() or 2) - 2)
@@ -170,6 +171,57 @@ def auto_workers(per_worker_gb: float = 2.5) -> int:
     if limit is None:
         limit = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 2 ** 30
     return max(1, min(cpus, int(limit // per_worker_gb)))
+
+
+def run_resilient(fn, jobs, args, workers: int, progress, *, max_attempts: int = 3, executor=ProcessPoolExecutor):
+    """Run ``fn(job, args)`` over ``jobs`` in a process pool, calling ``progress(n, result)`` as each ends.
+
+    At most ``2 x workers`` jobs are in flight. If a worker dies (for example, OOM-killed), the pool breaks and every
+    in-flight job raises BrokenProcessPool; those jobs are requeued on a fresh pool, and only a job that breaks the pool
+    ``max_attempts`` times counts as failed. One crash used to fail every pending video (3,170 of 5,252 in one pass).
+    Any other exception fails just that job. Failed jobs have no report, so a rerun retries them."""
+    queue = [(j, 1) for j in jobs]
+    queue.reverse()
+    done = 0
+    while queue:
+        pool = executor(workers)
+        broken = False
+        inflight = {}
+        try:
+            while (queue or inflight) and not broken:
+                while queue and len(inflight) < 2 * workers:
+                    job, attempt = queue.pop()
+                    inflight[pool.submit(fn, job, args)] = (job, attempt)
+                finished, _ = wait(inflight, return_when=FIRST_COMPLETED)
+                for future in finished:
+                    job, attempt = inflight.pop(future)
+                    try:
+                        r = future.result()
+                    except BrokenProcessPool:
+                        broken = True
+                        if attempt < max_attempts:
+                            queue.append((job, attempt + 1))
+                            continue
+                        r = dict(status="failed")
+                        print(f"FAILED one video: broke the worker pool {attempt} times", flush=True)
+                    except Exception as error:  # noqa: BLE001 - one video's transient failure must not end the run
+                        r = dict(status="failed")
+                        print(f"FAILED one video: {type(error).__name__}: {str(error)[:160]}", flush=True)
+                    done += 1
+                    progress(done, r)
+            if broken:   # the other in-flight jobs are lost with the pool: each costs one attempt, as above
+                lost = list(inflight.values())
+                for job, attempt in lost:
+                    if attempt < max_attempts:
+                        queue.append((job, attempt + 1))
+                    else:
+                        done += 1
+                        print(f"FAILED one video: lost with a broken worker pool {attempt} times", flush=True)
+                        progress(done, dict(status="failed"))
+                print(f"worker pool broke (a worker died, likely OOM): {len(lost)} more in flight, requeued on a "
+                      f"fresh pool", flush=True)
+        finally:
+            pool.shutdown(wait=not broken, cancel_futures=True)
 
 
 def main(argv=None) -> int:
@@ -207,17 +259,13 @@ def main(argv=None) -> int:
     args.workers = auto_workers() if args.workers == "auto" else int(args.workers)
     print(f"{len(jobs)} videos (shard {args.shard}/{args.shards}), {args.workers} workers", flush=True)
     counts = {}
-    with ProcessPoolExecutor(args.workers) as pool:
-        futures = [pool.submit(convert, j, args) for j in jobs]
-        for n, future in enumerate(as_completed(futures), 1):
-            try:
-                r = future.result()
-            except Exception as error:  # noqa: BLE001 - one video's transient failure must not end the run
-                r = dict(status="failed")                # no report written: the next run retries it
-                print(f"FAILED one video: {type(error).__name__}: {str(error)[:160]}", flush=True)
-            counts[r["status"]] = counts.get(r["status"], 0) + 1
-            if n % 50 == 0 or n == len(jobs):
-                print(f"{n}/{len(jobs)} {counts}", flush=True)
+
+    def progress(n, r):
+        counts[r["status"]] = counts.get(r["status"], 0) + 1
+        if n % 50 == 0 or n == len(jobs):
+            print(f"{n}/{len(jobs)} {counts}", flush=True)
+
+    run_resilient(convert, jobs, args, args.workers, progress)
     print(f"EXTRACTED {counts}", flush=True)
     return 3 if counts.get("failed") else 0           # failed videos have no report: a rerun picks them up
 
