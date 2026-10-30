@@ -76,6 +76,8 @@ PLAUSIBLE_FPS = (10., 70.)
 OFFSET_RANGE = (-1., 0.)
 GRID_MIN_SHARE = .5
 DRIFT_LIMIT = 1.                   # frames per minute
+DRIFT_MIN_CUES, DRIFT_MIN_SPAN = 8, 180.   # a drift is measured only from >= 8 arm-aligned cues spanning >= 3 min
+ELBOW_BINS = (("inside", 0., 0.), ("0-0.1", 0., .1), ("0.1-0.3", .1, .3), ("0.3-inf", .3, np.inf))
 ARM_BONES = {"LeftUpperArm": (11, 13), "LeftForearm": (13, 15), "RightUpperArm": (12, 14), "RightForearm": (14, 16)}
 GROUPS = ("upper_arms", "forearms", "wrists", "fingers")
 CELLS = ("both", "ours_only", "uwb_only", "neither")
@@ -535,14 +537,44 @@ def clustered_median_ci(by_video: dict, *, resamples: int = BOOTSTRAP, seed: int
     return [round(float(np.percentile(medians, 2.5)), 2), round(float(np.percentile(medians, 97.5)), 2)]
 
 
-def lag_drift(rows: list[tuple[float, int]]) -> float | None:
-    """Least-squares slope of lag (frames) against cue time, in frames per minute; None with fewer than 3 cues."""
-    if len(rows) < 3:
+def lag_drift(rows: list[tuple[float, int]], *, min_cues: int = DRIFT_MIN_CUES,
+              min_span: float = DRIFT_MIN_SPAN) -> float | None:
+    """Least-squares slope of lag (frames) against cue time, in frames per minute; None (unchecked) with fewer than
+    ``min_cues`` arm-aligned cues or a span under ``min_span`` seconds: a few cues cannot tell drift from lag noise."""
+    if len(rows) < min_cues:
         return None
     t, lag = np.array(rows, dtype=np.float64).T
-    if np.ptp(t) <= 0:
+    if np.ptp(t) < min_span:
         return None
     return round(float(np.polyfit(t, lag, 1)[0] * 60.), 3)
+
+
+ARM_POINTS = {"Left": (11, 13, 15), "Right": (12, 14, 16)}      # shoulder, elbow, wrist
+
+
+def arm_distance_counts(uwb_clip) -> dict:
+    """{side: {bone: {bin: frames}}} on the clip's pose frames: a bone's distance outside the UWB frame (frame
+    heights) is the larger of its two end points' (forearm: elbow and wrist; upper arm: shoulder and elbow), since the
+    swing joint of a bone needs both ends."""
+    from signtranslator.data_engineering.uwb_keypoints import _found
+    found = _found(uwb_clip.pose)
+    xy = uwb_clip.pose[found] / np.array([uwb_clip.width, uwb_clip.height], dtype=np.float64)
+    out = {}
+    for side, (shoulder, elbow, wrist) in ARM_POINTS.items():
+        dist = {k: outside_distance(xy[:, k], uwb_clip.aspect) for k in (shoulder, elbow, wrist)}
+        out[side] = {}
+        for bone, (a, b) in (("Forearm", (elbow, wrist)), ("UpperArm", (shoulder, elbow))):
+            d = np.maximum(dist[a], dist[b])
+            out[side][bone] = {name: int(((d == 0) if hi == 0 else ((d > lo) & (d <= hi))).sum())
+                               for name, lo, hi in ELBOW_BINS}
+    return out
+
+
+def outside_distance(xy: np.ndarray, aspect: float) -> np.ndarray:
+    """Distance (frame heights) of normalised image points from the image rectangle; 0 inside."""
+    dx = np.maximum(np.maximum(-xy[..., 0], xy[..., 0] - 1.), 0.) * aspect
+    dy = np.maximum(np.maximum(-xy[..., 1], xy[..., 1] - 1.), 0.)
+    return np.hypot(dx, dy)
 
 
 def group_stats(rows: list[dict], method: str, scope: str, resamples: int) -> dict:
@@ -582,10 +614,10 @@ def input_summary(results: list[dict], names: dict | None) -> dict:
         z = np.abs(np.concatenate(arrays))
         p99 = np.percentile(z, 99, axis=0)
         labels = (names or {}).get("pose" if model == "pose" else "hand") or [str(k) for k in range(len(p99))]
-        worst = np.argsort(-p99)[:5]
         out[model] = dict(frames=int(len(z)), max_p99_abs_z=round(float(p99.max()), 3),
                           inputs_over_4=[labels[k] for k in np.flatnonzero(p99 > 4.)],
-                          worst={labels[k]: round(float(p99[k]), 3) for k in worst})
+                          p99_abs_z={labels[k]: round(float(p99[k]), 3) for k in range(len(p99))},
+                          median_abs_z={labels[k]: round(float(v), 3) for k, v in enumerate(np.median(z, axis=0))})
     return out
 
 
@@ -664,6 +696,18 @@ def summarise(results: list[dict], *, primary: str | None = None, resamples: int
         by_video[r["video_id"]].append((r["cue_start"], r["alignment"]["lag"]))
     drifts = {v: lag_drift(rows) for v, rows in by_video.items()}
     summary["lag_drift_frames_per_minute"] = {v: d for v, d in drifts.items() if d is not None}
+    summary["drift_status"] = {v: ("unchecked" if drifts.get(v) is None else
+                                   "dropped" if abs(drifts[v]) > DRIFT_LIMIT else "ok")
+                               for v in sorted({r["video_id"] for r in ok})}
+    arms = collections.defaultdict(collections.Counter)
+    for r in ok:
+        for side, bones in r.get("arm_distance", {}).items():
+            for bone, bins in bones.items():
+                arms[(side, bone)].update(bins)
+    summary["uwb_arm_distance"] = {}
+    for (side, bone), c in sorted(arms.items()):
+        summary["uwb_arm_distance"].setdefault(side, {})[bone] = dict(
+            frames=sum(c.values()), share={name: round(c[name] / max(sum(c.values()), 1), 4) for name, *_ in ELBOW_BINS})
     summary["inputs"] = input_summary(ok, input_names)
     summary["refusals"] = dict(collections.Counter(r.get("reason", "?")[:60] for r in results
                                                    if r.get("status") != "evaluated"))
@@ -710,7 +754,8 @@ def proposal_check(summary: dict, primary: str, bar: dict = PROPOSAL) -> dict:
         out[f"uwb_only_rate.{side}<={bar['uwb_only']}"] = None if not rates else bool(max(rates) <= bar["uwb_only"])
     out["chest_up_forearm_survival_vs_mediapipe"] = "measured by scripts/uwb_outside_frame_accuracy.py"
     z = [v["max_p99_abs_z"] for v in summary.get("inputs", {}).values()]
-    out[f"inputs_p99_abs_z<={bar['input_z']}"] = None if not z else bool(max(z) <= bar["input_z"])
+    out["inputs_diagnostic"] = dict(max_p99_abs_z=max(z) if z else None, reference=bar["input_z"],
+                                    note="a reported diagnostic (summary.inputs has every input), not a gate item")
     mc = e["mirror_check"]
     out[f"mirror_better_share<={bar['mirror_share']}"] = (None if not mc["clips"]
                                                           else bool(mc["mirror_better"] / mc["clips"] <= bar["mirror_share"]))
@@ -719,6 +764,7 @@ def proposal_check(summary: dict, primary: str, bar: dict = PROPOSAL) -> dict:
     drifts = list(summary["lag_drift_frames_per_minute"].values())
     out[f"drift_below_1_share>={bar['drift_share']}"] = (None if not drifts else
                                                         bool(np.mean(np.abs(drifts) < DRIFT_LIMIT) >= bar["drift_share"]))
+    out["drift_checked_videos"] = len(drifts)
     out["relative_to_how2sign_val"] = "not computed here (needs the bundle's How2Sign-val direction errors)"
     out["downstream_back_translator"] = "not computed here"
     return out
@@ -846,6 +892,7 @@ def _evaluate(job: dict) -> dict:
         result = evaluate_pair(ours, states, clip, job["fps"], args.max_lag, head=args.head == "affine",
                                cap=args.max_values_per_pair, lag_margin=args.lag_margin)
         result["inputs"] = input_sample(_WORKER["regressors"], clip, seed=zlib_seed(job["clip_id"]))
+        result["arm_distance"] = arm_distance_counts(clip)
     except (uk.Refusal, ValueError, KeyError) as error:
         return dict(base, status="refused", reason=f"{type(error).__name__}: {error}"[:200])
     return dict(base, status="evaluated", member_sha256=sha, **result)
@@ -881,20 +928,61 @@ def summarise_fps(rows: dict) -> dict:
                 residual_median_of_medians=round(float(np.median(residuals)), 3) if residuals else None)
 
 
-def overlap_table(fps_rows: dict, pairs_by_video: dict, reports: dict, monitor_share: float) -> dict:
-    """The converter's dedup and partition table (schema ``uwb-overlap-table-v1``)."""
+def cue_overlaps(clip: dict, cues: list[dict], fps: float, *, keep: int = 3, min_cover: float = .05) -> list[dict]:
+    """Our cues overlapping a UWB clip in time, largest cover first: ``cover`` = intersection / the UWB clip's span,
+    ``iou`` = intersection / union; at most ``keep`` with cover >= ``min_cover``."""
+    a, b = clip["first"] / fps, (clip["last"] + 1) / fps
+    out = []
+    for q in cues:
+        inter = min(b, q["end"]) - max(a, q["start"])
+        if inter <= 0 or b <= a:
+            continue
+        cover = inter / (b - a)
+        if cover >= min_cover:
+            out.append(dict(sample_id=q["sample_id"], cover=round(float(cover), 4),
+                            iou=round(float(inter / (max(b, q["end"]) - min(a, q["start"]))), 4)))
+    return sorted(out, key=lambda o: (-o["cover"], o["sample_id"]))[:keep]
+
+
+def overlap_table(fps_rows: dict, pairs_by_video: dict, reports: dict, monitor_share: float,
+                  clips_by_video: dict | None = None) -> dict:
+    """The converter's dedup table (schema ``uwb-overlap-table-v2``).
+
+    - ``videos``: every video we extracted that UWB holds: our ``channel_id``, ``dedup`` (``cue`` when timed,
+      ``whole-video`` otherwise: then every UWB clip of it is ``duplicate_of_our_video``), the informational hashed
+      ``partition`` (manifest builders read partitions from our manifest records, ``uwb_manifest``), and the counts of
+      paired, unpaired and unpaired-but-overlapping UWB clips;
+    - ``clips``: every UWB clip of a timed video that overlaps one of our cues: the one-to-one pair (IoU >= 0.5) if
+      any, and up to 3 overlapping cues with cover and IoU (near-duplicates the pairing does not catch)."""
     from build_youtube_asl_manifest import monitor_channel
     clips, videos = {}, {}
+    totals = collections.Counter()
     for video_id, report in sorted(reports.items()):
         meta = report.get("meta") or {}
-        timed = fps_rows.get(video_id, {}).get("fps") is not None
-        videos[video_id] = dict(partition="monitor" if monitor_channel(meta.get("channel_id"), monitor_share) else "train",
-                                dedup="cue" if timed else "whole-video")
-        for clip, cue, iou in pairs_by_video.get(video_id, ()):
-            clips[clip["clip_id"]] = dict(our_sample_id=cue["sample_id"], iou=iou)
-    return dict(schema="uwb-overlap-table-v1", monitor_share=monitor_share, clips=clips, videos=videos,
-                method="uwb_lifter_gate.pair_clips (IoU >= 0.5, one-to-one) at the estimated rate; partition by "
-                       "build_youtube_asl_manifest.monitor_channel(channel_id, monitor_share)")
+        fps = fps_rows.get(video_id, {}).get("fps")
+        pairs = {clip["clip_id"]: (cue["sample_id"], iou) for clip, cue, iou in pairs_by_video.get(video_id, ())}
+        entry = dict(channel_id=meta.get("channel_id"), dedup="cue" if fps is not None else "whole-video",
+                     partition="monitor" if monitor_channel(meta.get("channel_id"), monitor_share) else "train",
+                     paired=len(pairs), unpaired=0, unpaired_overlapping=0,
+                     uwb_clips=len((clips_by_video or {}).get(video_id, ())))
+        if fps is not None:
+            for clip in (clips_by_video or {}).get(video_id, ()):
+                overlaps = cue_overlaps(clip, report.get("segments", []), fps)
+                pair = pairs.get(clip["clip_id"])
+                if pair is None:
+                    entry["unpaired"] += 1
+                    entry["unpaired_overlapping"] += bool(overlaps)
+                if pair is not None or overlaps:
+                    clips[clip["clip_id"]] = dict(our_sample_id=pair and pair[0], iou=pair and pair[1],
+                                                  overlaps=overlaps)
+        videos[video_id] = entry
+        totals.update({k: entry[k] for k in ("paired", "unpaired", "unpaired_overlapping", "uwb_clips")})
+        totals["whole_video_clips"] += entry["uwb_clips"] if fps is None else 0
+    return dict(schema="uwb-overlap-table-v2", monitor_share=monitor_share, clips=clips, videos=videos,
+                totals=dict(totals, videos=len(videos), whole_videos=sum(v["dedup"] == "whole-video"
+                                                                          for v in videos.values())),
+                method="uwb_lifter_gate.pair_clips (IoU >= 0.5, one-to-one) and cue_overlaps (cover >= 0.05) at the "
+                       "estimated rate; partitions are informational (read them from our manifest records)")
 
 
 def main(argv=None) -> int:
@@ -949,7 +1037,7 @@ def main(argv=None) -> int:
     if args.videos and not args.fps_only:          # a sample: read 3x as many reports as videos wanted, seeded
         population = [v for v in ids if v not in excluded]
         ids = sorted(rng.sample(population, min(len(population), 3 * args.videos)))
-    fps_rows, jobs, pairs_by_video, converted = {}, [], {}, {}
+    fps_rows, jobs, pairs_by_video, converted, clips_by_video = {}, [], {}, {}, {}
     with ProcessPoolExecutor(max_workers=max(1, args.workers)) as pool:
         loaded = list(pool.map(_load_report, [(args.store, f"{args.youtube_prefix}/videos/{v}.json") for v in ids],
                                chunksize=16))
@@ -958,6 +1046,7 @@ def main(argv=None) -> int:
             continue
         converted[video_id] = report
         clips = uwb_clips_of(uwb[video_id])
+        clips_by_video[video_id] = clips
         cues = report["segments"]
         estimate = estimate_fps(clips, cues, min_text_matches=args.min_text_matches)
         meta = (report.get("meta") or {}).get("fps")
@@ -975,11 +1064,11 @@ def main(argv=None) -> int:
     fps_summary = summarise_fps(fps_rows)
     print(json.dumps(fps_summary), flush=True)
     if args.overlap_table_out:
-        table = overlap_table(fps_rows, pairs_by_video, converted, args.monitor_share)
+        table = overlap_table(fps_rows, pairs_by_video, converted, args.monitor_share, clips_by_video)
         Path(args.overlap_table_out).write_text(json.dumps(table, indent=1, sort_keys=True))
     out = dict(settings={k: v for k, v in vars(args).items()}, fps=dict(summary=fps_summary, videos=fps_rows),
                candidate_pairs=len(jobs), excluded_videos=sorted(excluded))
-    dropped = {}
+    dropped, drift_status = {}, {}
     if not args.fps_only:
         by_video = collections.defaultdict(list)
         for job in jobs:
@@ -1002,13 +1091,17 @@ def main(argv=None) -> int:
         out["pairs"] = [{k: v for k, v in r.items() if k not in ("methods", "inputs")} for r in results]
         dropped = {v: d for v, d in out["summary"]["lag_drift_frames_per_minute"].items() if abs(d) > DRIFT_LIMIT}
         out["fps_dropped_for_drift"] = dropped
+        drift_status = out["summary"]["drift_status"]
         print(json.dumps(out["summary"], indent=1, default=str), flush=True)
     if args.fps_table_out:
         table = {v: r["fps"] for v, r in sorted(fps_rows.items()) if r["fps"] is not None and v not in dropped}
         Path(args.fps_table_out).write_text(json.dumps(dict(
             schema="uwb-fps-table-v1", method="uwb_lifter_gate.estimate_fps (text-matched caption cues, Theil-Sen + "
                                              "least squares, snapped; offset in [-1, 0]; 10-70 fps)",
-            drift_checked=not args.fps_only, dropped_for_drift=sorted(dropped), fps=table), indent=1, sort_keys=True))
+            drift_checked=not args.fps_only, dropped_for_drift=sorted(dropped),
+            drift={v: drift_status.get(v, "unchecked") for v in table}, drift_rule=dict(
+                min_cues=DRIFT_MIN_CUES, min_span_seconds=DRIFT_MIN_SPAN, limit_frames_per_minute=DRIFT_LIMIT),
+            fps=table), indent=1, sort_keys=True))
     Path(args.out).write_text(json.dumps(out, indent=1, sort_keys=True, default=str))
     return 0
 

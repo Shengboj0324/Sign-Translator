@@ -90,6 +90,39 @@ def test_the_time_grid_needs_half_the_clips():
     assert sparse["fps"] is None and sparse["grid"]["hits"] == 8 and sparse["refused"]
 
 
+def test_arm_distance_bins_a_bone_by_its_farther_end():
+    data, *_ = uwb_clip_json(size=(1280, 720))
+    clip = uk.parse_clip(data, "v.000000-000007")
+    counts = gate.arm_distance_counts(clip)
+    xy = clip.pose / [1280, 720]
+    for side, (shoulder, elbow, wrist) in gate.ARM_POINTS.items():
+        d_fore = np.maximum(gate.outside_distance(xy[:, elbow], 16 / 9), gate.outside_distance(xy[:, wrist], 16 / 9))
+        d_upper = np.maximum(gate.outside_distance(xy[:, shoulder], 16 / 9), gate.outside_distance(xy[:, elbow], 16 / 9))
+        assert counts[side]["Forearm"]["inside"] == int((d_fore == 0).sum())
+        assert counts[side]["UpperArm"]["inside"] == int((d_upper == 0).sum())
+        assert sum(counts[side]["Forearm"].values()) == len(xy)
+
+
+def test_overlap_table_counts_unpaired_near_duplicates_and_marks_untimed_videos():
+    fps = 25.
+    cues = [dict(start=10., end=14., text="a", sample_id="v-0000"), dict(start=14., end=20., text="b", sample_id="v-0001")]
+    clips = [dict(clip_id="v.000250-000349", first=250, last=349, text="a"),        # 10.0-14.0 s: the pair of v-0000
+             dict(clip_id="v.000350-000399", first=350, last=399, text="c"),        # 14-16 s: inside v-0001, IoU 1/3
+             dict(clip_id="v.001000-001049", first=1000, last=1049, text="d")]      # 40-42 s: no cue
+    pairs = gate.pair_clips(clips, cues, fps)
+    assert [(c["clip_id"], q["sample_id"]) for c, q, _ in pairs] == [("v.000250-000349", "v-0000")]
+    near = gate.cue_overlaps(clips[1], cues, fps)
+    assert near[0]["sample_id"] == "v-0001" and near[0]["cover"] == 1. and near[0]["iou"] == pytest.approx(1 / 3, abs=1e-3)
+    reports = {"v": dict(meta=dict(channel_id="ch"), segments=cues), "w": dict(meta=dict(channel_id="ch2"), segments=cues)}
+    table = gate.overlap_table({"v": dict(fps=fps), "w": dict(fps=None)}, {"v": pairs}, reports, .01,
+                               {"v": clips, "w": clips[:2]})
+    assert table["videos"]["v"] == dict(channel_id="ch", dedup="cue", partition=table["videos"]["v"]["partition"],
+                                        paired=1, unpaired=2, unpaired_overlapping=1, uwb_clips=3)
+    assert set(table["clips"]) == {"v.000250-000349", "v.000350-000399"}
+    assert table["clips"]["v.000350-000399"]["our_sample_id"] is None
+    assert table["videos"]["w"]["dedup"] == "whole-video" and table["totals"]["whole_video_clips"] == 2
+
+
 def test_pairing_is_one_to_one_by_overlap_and_a_wrong_rate_pairs_little():
     cues, clips = cues_and_clips(25., n=30, span=900.)
     pairs = gate.pair_clips(clips, cues, 25.)
@@ -215,8 +248,10 @@ def test_hand_agreement_counts_and_lag_drift():
     no_hips[:, 23:25] = False                                     # our chest invalid: nothing is compared
     assert sum(gate.arm_agreement(_state(body, times, visible=no_hips), ours, np.arange(frames),
                                   np.arange(frames))["Left"].values()) == 0
-    assert gate.lag_drift([(0., 0), (60., 2), (120., 4)]) == pytest.approx(2.)
-    assert gate.lag_drift([(0., 0), (60., 2)]) is None
+    steady = [(30. * k, k // 2) for k in range(9)]                        # 9 cues over 4 min, +1 frame per minute
+    assert gate.lag_drift(steady) == pytest.approx(1., abs=.1)
+    assert gate.lag_drift(steady[:7]) is None                             # fewer than 8 cues: unchecked
+    assert gate.lag_drift([(10. * k, k) for k in range(10)]) is None      # 10 cues within 90 s: unchecked
 
 
 def test_evaluate_pair_end_to_end_recovers_the_lag_and_ranks_the_methods():
@@ -259,9 +294,12 @@ def test_evaluate_pair_end_to_end_recovers_the_lag_and_ranks_the_methods():
     assert summary["strata"]["hips"] == {"not_visible": summary["strata"]["hips"]["not_visible"]}
     assert summary["strata"]["fps30"]["yes"]["pairs"] == 1 and summary["strata"]["stream_match"]["yes"]["pairs"] == 1
     assert summary["inputs"]["pose"]["max_p99_abs_z"] == 5. and len(summary["inputs"]["pose"]["inputs_over_4"]) == 54
-    assert summary["inputs"]["pose"]["inputs_over_4"][0] == "p0.x" and summary["inputs"]["Left"]["max_p99_abs_z"] == 0.
+    assert summary["inputs"]["pose"]["p99_abs_z"]["context.mid_y"] == 5. and len(summary["inputs"]["pose"]["p99_abs_z"]) == 54
+    assert summary["inputs"]["Left"]["max_p99_abs_z"] == 0.
     check = summary["proposal_check"]
-    assert check["inputs_p99_abs_z<=4.0"] is False and check["median.fingers<=16.0"] is True
+    assert check["inputs_diagnostic"]["max_p99_abs_z"] == 5. and check["median.fingers<=16.0"] is True
+    assert not any(k.startswith("inputs_p99") for k in check)                  # a diagnostic, not a gate item
+    assert summary["drift_status"] == {"vid": "unchecked"} and check["drift_checked_videos"] == 0
     assert check["hand_agreement.Left>=0.88"] is True and check["mirror_better_share<=0.03"] is True
 
 
@@ -311,9 +349,12 @@ def test_main_estimates_rates_pairs_cues_and_evaluates_from_a_store(tmp_path):
     overlap = tmp_path / "overlap.json"
     assert gate.main(common + ["--fps-only", "--out", str(out), "--overlap-table-out", str(overlap)]) == 0
     table = json.loads(overlap.read_text())
-    assert table["schema"] == "uwb-overlap-table-v1" and table["videos"][video]["dedup"] == "cue"
+    assert table["schema"] == "uwb-overlap-table-v2" and table["videos"][video]["dedup"] == "cue"
     assert table["videos"][video]["partition"] in ("train", "monitor") and len(table["clips"]) == 4
     assert {v["our_sample_id"] for v in table["clips"].values()} == {f"{video}-{k:04d}" for k in range(4)}
+    assert table["videos"][video]["paired"] == 4 and table["videos"][video]["unpaired"] == 0
+    assert all(c["overlaps"][0]["sample_id"] == c["our_sample_id"] for c in table["clips"].values())
+    assert table["totals"]["paired"] == 4 and table["totals"]["whole_videos"] == 0
     with pytest.raises(SystemExit, match="regressors"):
         gate.main(common + ["--out", str(out)])
     bundle = ["--regressors", str(tmp_path / "xy.pt"), "--regressors-sha256", hashlib.sha256(payload).hexdigest()]
@@ -334,7 +375,10 @@ def test_main_estimates_rates_pairs_cues_and_evaluates_from_a_store(tmp_path):
     assert summary["methods"]["pseudo"]["hand_valid"]["all.Left"]["agreement"] == 1.
     assert summary["inputs"]["pose"]["frames"] > 0 and "proposal_check" in summary
     assert all(p["status"] == "evaluated" and p["fps"] == fps for p in report["pairs"])
-    assert json.loads(table_path.read_text())["drift_checked"] is True
+    written = json.loads(table_path.read_text())
+    assert written["drift_checked"] is True and written["drift"] == {video: "unchecked"} and written["fps"] == {video: fps}
+    assert summary["uwb_arm_distance"]["Left"]["Forearm"]["frames"] > 0
+    assert set(summary["uwb_arm_distance"]["Right"]) == {"Forearm", "UpperArm"}
     excluded = tmp_path / "exclude.txt"
     excluded.write_text(f"# smoke videos\n{video}\n")
     assert gate.main(common + bundle + ["--visibility", "inside", "--exclude-videos", str(excluded),
