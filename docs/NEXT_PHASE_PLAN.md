@@ -4759,3 +4759,19 @@ Every item holds before a result is reported:
 - **If it passes:** conversion, after the conversion-blocking fixes land and are reviewed, using estimated-fps videos only. Assumed-30-fps clips are added only after a held-out ablation shows no harm.
 
 **Round 16 evaluation command fix (2026-10-30, 03:38 UTC, before any result).** Both pilots failed at start-up: `training-runs/sign-recognizer-v3d/validation.json` does not exist, and recogniser v3 reads only a pinned word list. The pilots were relaunched (`r16_pilots.sh`) with `--word-list-key round14/r5-word-split.json` (sha `676f56cb…`), the same pinned list the declared W14b comparator (`v3read/pilot-w14b-step30000-v3d.json`) was read with. No other setting changed, and no result had been produced.
+
+**UWB lifter amendment 1: visibility selection (declared 2026-10-30, 03:59 UTC, before the selection runs).** The final independent review approved the code (4c67724) and corrected the selection. This replaces the selection paragraph above.
+- **Bins:** forearms are binned by the larger of the elbow's and wrist's distance outside the frame; upper arms by the larger of the shoulder's and elbow's.
+- **Anchor:** the ungated lifter's own error on frames where the arm is fully in view, measured on the Sem-Lex-framed full crops of the validation signers (1 and 2). The median and p90 are taken per side and per bone.
+  - This replaces "MediaPipe-kept", because MediaPipe keeps 0.5% of right forearms on the tight crops, so that reference rests on almost no frames.
+- **Admissible rule:** for every side, bone and bin the rule admits, both must hold:
+  - the kept median's CI upper bound ≤ anchor median + 3°;
+  - the kept p90's CI upper bound ≤ anchor p90 + 5°.
+- **Unmeasured bins fail:** a bin with fewer than 200 frames or 5 videos counts as unmeasured, and an unmeasured bin fails.
+- **Selection:** the admissible rule with the largest UWB-weighted forearm survival over the covered bins, reported with its coverage. Ties within 2 points go to the more conservative rule. If none is admissible: `inside`.
+- **`learned`** can be selected only if it also passes the YouTube gate's all-frame validity:
+  - forearm agreement ≥ 0.85 per side;
+  - UWB-only valid ≤ 10%.
+  The crops cannot measure whether it drops arms that are fully in view.
+- **The YouTube gate** covers the inside-frame majority (about 75% of UWB's weight) for the chosen rule.
+- **Remaining dedup fix (before conversion):** drop a UWB clip when the covers of the selected cues of ours sum to ≥ 0.5.
