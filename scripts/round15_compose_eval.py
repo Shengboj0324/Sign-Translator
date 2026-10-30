@@ -88,6 +88,7 @@ paired difference); motion statistics with wrist speed as ratios to real.
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 from pathlib import Path
 import sys
@@ -111,8 +112,10 @@ INDEXING = ("word seeds, oracle real-clip draws, shuffle orders and mismatched-w
 SETTINGS = ("clips", "shards", "block", "seed", "mix_key", "mix_sha256", "corpora", "variants", "selection", "timing",
             "rerank", "core_margin", "total_fit", "guidance", "part_temperature", "checkpoint_key", "generator_mix",
             "model_sha256", "translator_key", "recognizer_run", "recognizer_checkpoint", "space_normalise", "bridge",
-            "tighten_cores", "space_stats", "refiner", "extra_translators")
+            "tighten_cores", "space_stats", "refiner", "extra_translators", "round20")
 REST_ONLY = "/rest_only"
+PREDICTED = "@predicted"             # round 20, report-only: the main form at the text-predicted sentence duration
+LOWPASS = "@lowpass"                 # round 20 A6: the main form low-passed, from the same material
 REFINED, RECON = "@refined", "@recon"
 INSTRUMENT = "sign-recognizer-v3d"   # the spotting instrument of the refined rule (recogniser v3 amendment 2)
 REFINED_RULE = "bleu:recon,bleu:mismatched_words,bleu:rest_only,spotting"     # the design's rule (review of a1bdda3)
@@ -250,6 +253,154 @@ def rest_material(material: dict) -> dict:
     return out
 
 
+# ---- round 20 options (docs/NEXT_PHASE_PLAN.md "Round 20"; all off by default: the run and report are unchanged) ----
+
+TRACKED_FLOOR = .3                   # the activity rule's tracked-share floor (compositional.CORE_RULE min_tracked)
+ROUND20_DEFAULTS = dict(sentences_key=None, vocabulary_mix_key=None, semlex_core="fraction", oracle_source="isolated",
+                        retime="reference", tempo=1., lowpass_hz=None, word_cache_key=None, likelihood=False,
+                        predicted_duration=False, semlex_oracle_tracked=False, lowpass_report_hz=None)
+
+
+def round20_on(args) -> bool:
+    """Whether any round-20 option differs from its default (then, and only then, the report carries round-20 rows)."""
+    return any(getattr(args, k, d) != d for k, d in ROUND20_DEFAULTS.items())
+
+
+def round20_settings(args, sentence_set, word_cache) -> dict:
+    return dict(sentences=sentence_set,
+                vocabulary_mix=(dict(key=args.vocabulary_mix_key, sha256=args.vocabulary_mix_sha256)
+                                if args.vocabulary_mix_key else None),
+                semlex_core=args.semlex_core, activity_margin=args.activity_margin if args.semlex_core == "activity"
+                else None, oracle_source=args.oracle_source,
+                gloss_manifest=(dict(key=args.gloss_manifest_key, sha256=args.gloss_manifest_sha256)
+                                if args.oracle_source == "continuous" else None),
+                retime=args.retime, tempo=args.tempo,
+                bridge_velocity=(dict(on=not args.no_bridge_velocity, min_speed=args.bridge_min_speed,
+                                      max_gap_seconds=args.bridge_max_seconds, continuous_ratio=args.continuous_ratio)
+                                 if args.retime == "continuous" else None),
+                lowpass_hz=args.lowpass_hz, word_cache=word_cache, likelihood=args.likelihood,
+                predicted_duration=args.predicted_duration, semlex_oracle_tracked=args.semlex_oracle_tracked,
+                lowpass_report_hz=args.lowpass_report_hz)
+
+
+def load_word_cache(store, args, vocab, corpora, words) -> tuple[dict, dict]:
+    """(the cache's settings for the report, {entry: its stored sign}) of a ``round20_word_cache.py`` index, after
+    checking its hash, its vocabulary (mix and corpora) and that it covers every word the jobs need."""
+    import hashlib
+    from evaluate_text_to_motion import load_state
+    payload = store.get(args.word_cache_key)
+    if hashlib.sha256(payload).hexdigest() != args.word_cache_sha256:
+        raise SystemExit(f"{args.word_cache_key} does not match --word-cache-sha256")
+    index = json.loads(payload)
+    s = index["settings"]
+    want = dict(key=args.vocabulary_mix_key or args.mix_key,
+                sha256=args.vocabulary_mix_sha256 if args.vocabulary_mix_key else args.mix_sha256)
+    if s["vocabulary_mix"] != want or list(s["corpora"]) != list(corpora):
+        raise SystemExit("the word cache was built on another vocabulary")
+    n = str(args.word_cache_n)
+    if n not in {str(x) for x in s["choose"]}:
+        raise SystemExit(f"the word cache has no best-of-{n} choice (it has {s['choose']})")
+    rows = {r["entry"]: r for r in index["entries"]}
+    missing = sorted({w for w in words if w not in rows or w not in vocab})
+    if missing:
+        raise SystemExit(f"the word cache lacks {len(missing)} entries the sentences need: {missing[:5]}")
+    states = {}
+    for w in sorted(set(words)):
+        pick = rows[w]["chosen"][n]
+        states[w] = load_state(store, pick["state_key"], pick["state_sha256"])
+    info = dict(key=args.word_cache_key, sha256=args.word_cache_sha256, n=int(n), checkpoint_key=s["checkpoint_key"],
+                scorer=s["recognizer_run"], samples=s["samples"])
+    return info, states
+
+
+def load_segment_pools(store, args, vmanifest, vocab) -> tuple[dict, dict]:
+    """The ASLLRP continuous segments of the vocabulary (``round20_lib.asllrp_segments``): the Sign Bank utterances and
+    the citizen map at the stage-2 fit's keys, the gloss manifest pinned by its hash."""
+    import asllrp_gloss_corpus as agc
+    import round15_stage2_fit as fit
+    from round20_lib import asllrp_segments
+    from signtranslator.data_engineering.corpus_manifest import load_manifest
+    with tempfile.TemporaryDirectory() as t:
+        path = Path(t) / "g.json"; path.write_bytes(store.get(args.gloss_manifest_key) + b"\n")
+        gloss = load_manifest(path, expected_sha256=args.gloss_manifest_sha256)
+    utterances = json.loads(store.get(fit.KEYS["utterances"]))["items"]
+    signbank, _, codes, semlex = agc.vocabulary_indices(vmanifest, vocab, json.loads(store.get(fit.KEYS["citizen_map"])))
+    return asllrp_segments(utterances, gloss, vocab, signbank, codes, semlex)
+
+
+def render_round20(args, material, job, reference_seconds, model, vocab, *, order, sample_id, space):
+    """(state, plan) of one composition with the round-20 options: ``--retime continuous`` (the continuous-pace plan
+    with velocity-bounded bridges and ``--tempo``) or the round-15 rendering, then ``--lowpass-hz``."""
+    import round15_stage2 as r2
+    from signtranslator.generation import composition_v2 as cv2
+    if args.retime == "continuous":
+        from signtranslator.generation.compositional import parts_from_pieces, render
+        idx = list(range(len(job["words"]))) if order is None else list(order)
+        parts = material["parts"] if order is None else parts_from_pieces(material["pieces"], idx)
+        secs = [cv2.continuous_seconds(job["words"][k], model["timing"], vocab, args.continuous_ratio) for k in idx]
+        plan = cv2.continuous_plan(parts["cores"], [s for s, _ in secs], reference_seconds,
+                                   gap_seconds=model["timing"]["gap"], tempo=args.tempo, total_fit="pad",
+                                   lead_share=model["timing"]["lead_share"], velocity=not args.no_bridge_velocity,
+                                   min_speed=args.bridge_min_speed, max_gap_seconds=args.bridge_max_seconds)
+        plan["sources"] = [src for _, src in secs]
+        state = render(parts, plan, sample_id=sample_id, bridge_mode=args.bridge)
+    else:
+        state, plan = r2.render_form(material, job, reference_seconds, model, timing=args.timing,
+                                     total_fit=args.total_fit, order=order, sample_id=sample_id, space=space,
+                                     bridge=args.bridge)
+    if args.lowpass_hz:
+        state = cv2.lowpass_state(state, args.lowpass_hz)
+    return state, plan
+
+
+def clip_round20(plan: dict, segments) -> dict:
+    """The per-clip round-20 record of a main form: each word's core reason and source, the plan's fit and, for the
+    continuous plan, its gaps (base and velocity-raised) and duration sources."""
+    out = dict(reasons=[s.get("reason") for s in segments], right_tracked=[s.get("right_tracked") for s in segments],
+               sources=[s.get("source") or ("cache" if s.get("cached") else "isolated" if "corpus" in s else "generated")
+                        for s in segments],
+               fit=plan["fit"], frames=plan["frames"], cores=list(plan["cores"]), gaps=list(plan["gaps"]))
+    if "joins" in plan:
+        out.update(base_gap=plan["base_gap"], velocity_raised=plan["velocity_raised"],
+                   duration_sources=plan.get("sources"))
+    return out
+
+
+def merge_round20(partials, rows, variants) -> dict:
+    """``{"round20": ...}`` when the shards ran a round-20 option, else ``{}``: the settings, the coverage (the same in
+    every shard: computed over all clips), and per variant the core reasons, word sources (continuous share), plan
+    fits and velocity-raised joins over the main forms; the word cache's spotting note."""
+    first = partials[0]
+    if not first.get("round20"):
+        return {}
+    s = first["settings"]["round20"]
+    out = dict(settings=s, **{k: v for k, v in first["round20"].items()})
+    per_variant = {}
+    for v in variants:
+        recs = [r["plans"][v]["round20"] for r in rows if (r["plans"].get(v) or {}).get("round20")]
+        sources = collections.Counter(x for rec in recs for x in rec["sources"])
+        words = sum(sources.values())
+        joins = sum(len(rec["gaps"]) for rec in recs)
+        tracked = [x for rec in recs for x in rec.get("right_tracked") or () if x is not None]
+        per_variant[v] = dict(
+            clips=len(recs), words=words, reasons=dict(collections.Counter(x for rec in recs for x in rec["reasons"])),
+            sources=dict(sources),
+            continuous_share=round(sources.get("continuous", 0) / words, 4) if words else None,
+            fits=dict(collections.Counter(rec["fit"] for rec in recs)),
+            right_arm_tracked=(dict(mean=round(float(np.mean(tracked)), 4),
+                                    at_floor_share=round(float(np.mean([x >= TRACKED_FLOOR for x in tracked])), 4),
+                                    floor=TRACKED_FLOOR, words=len(tracked)) if tracked else None),
+            velocity_raised_share=(round(sum(rec.get("velocity_raised", 0) for rec in recs) / joins, 4)
+                                   if joins and any("velocity_raised" in rec for rec in recs) else None))
+    out["per_variant"] = per_variant
+    cache = s.get("word_cache")
+    if cache:
+        recogniser = first["settings"].get("recognizer_run")
+        out["spotting_note"] = ("CIRCULAR: the spotting recogniser chose the cached signs" if recogniser == cache["scorer"]
+                                else f"independent: spotting by {recogniser}, cache chosen by {cache['scorer']}")
+    return {"round20": out}
+
+
 # ---- run -----------------------------------------------------------------------------------------------------------
 
 def run(args) -> dict:
@@ -275,9 +426,17 @@ def run(args) -> dict:
     with tempfile.TemporaryDirectory() as t:
         path = Path(t) / "m.json"; path.write_bytes(store.get(args.mix_key) + b"\n")
         manifest = load_manifest(path, expected_sha256=args.mix_sha256)
+    r20 = round20_on(args)
+    vmanifest = manifest                                       # round 20: the vocabulary's own mix (default: the eval mix)
+    if getattr(args, "vocabulary_mix_key", None):
+        with tempfile.TemporaryDirectory() as t:
+            path = Path(t) / "v.json"; path.write_bytes(store.get(args.vocabulary_mix_key) + b"\n")
+            vmanifest = load_manifest(path, expected_sha256=args.vocabulary_mix_sha256)
     corpora = (tuple(c for c in args.corpora.split(",") if c) if args.corpora
-               else isolated_corpora(manifest))               # round 15's four for the round10 mix
-    vocab = training_vocabulary(manifest, corpora)
+               else isolated_corpora(vmanifest))              # round 15's four for the round10 mix
+    vocab = training_vocabulary(vmanifest, corpora)
+    # the stage-2 model stays the evaluation mix's (its default corpora) when the vocabulary comes from another mix
+    model_corpora = isolated_corpora(manifest) if vmanifest is not manifest else corpora
     generator_mix = dict(key=args.mix_key, sha256=args.mix_sha256, check=None)
     if args.generator_mix_key:
         with tempfile.TemporaryDirectory() as t:
@@ -291,10 +450,10 @@ def run(args) -> dict:
         model = json.loads(Path(args.model_file).read_text())
         fit.check_model(model)
         if model.get("mix_key") != args.mix_key or model["inputs"].get(args.mix_key) != args.mix_sha256 \
-                or list(model.get("corpora") or ()) != list(corpora):
+                or list(model.get("corpora") or ()) != list(model_corpora):
             raise SystemExit("the stage-2 model was fitted on another vocabulary")
     else:
-        model, _ = fit.fit_model(fit.agc._store(args.store), args.mix_key, args.mix_sha256, corpora)
+        model, _ = fit.fit_model(fit.agc._store(args.store), args.mix_key, args.mix_sha256, model_corpora)
     if args.expect_model_sha256 and model["sha256"] != args.expect_model_sha256:
         raise SystemExit(f"the stage-2 model is {model['sha256']}, not the declared {args.expect_model_sha256}")
     if args.timing == "sign-fitted" and not model["timing"].get("default_seconds"):
@@ -307,7 +466,19 @@ def run(args) -> dict:
             raise SystemExit(f"{args.space_stats_key} does not match --space-stats-sha256")
         space = dict(stats=json.loads(payload)["statistics"], target=args.space_normalise)
 
-    val = validation_sentences(manifest, args.clips)
+    sentence_set = None
+    if getattr(args, "sentences_key", None):          # round 20: a stored D20 / C20 list instead of the 1,000
+        import hashlib
+        from round20_lib import load_sentence_set
+        payload = store.get(args.sentences_key)
+        if hashlib.sha256(payload).hexdigest() != args.sentences_sha256:
+            raise SystemExit(f"{args.sentences_key} does not match --sentences-sha256")
+        stored_set = json.loads(payload)
+        val = load_sentence_set(stored_set, manifest, args.mix_key, args.mix_sha256)[:args.clips]
+        sentence_set = dict(key=args.sentences_key, sha256=args.sentences_sha256, set=stored_set.get("set"),
+                            stored=len(stored_set["records"]), used=len(val))
+    else:
+        val = validation_sentences(manifest, args.clips)
     n = len(val)
     if n < 2:
         raise SystemExit("need at least two clips (the controls are derangements)")
@@ -330,7 +501,19 @@ def run(args) -> dict:
     jobs = {k: j for k, j in jobs.items() if k[2] in refs}
     margin = args.core_margin if args.core_margin is not None else (.1 if args.timing == "sign-fitted" else 0.)
     rule = dict(CORE_RULE, margin=margin)
-    fractions = fit.sign_fractions(manifest, vocab) if args.timing == "sign-fitted" else None
+    fractions = fit.sign_fractions(vmanifest, vocab) if args.timing == "sign-fitted" else None
+    pools = None
+    r20_info = {}
+    if r20:
+        from round15_oracle import word_pools
+        from round20_lib import coverage, semlex_only_entries
+        pools = word_pools(vmanifest, corpora)
+        semlex_only = semlex_only_entries(pools)
+        r20_info.update(coverage=coverage(details),
+                        vocabulary=dict(entries=len(vocab), corpora=list(corpora), semlex_only=len(semlex_only),
+                                        model_corpora=list(model_corpora)))
+        if args.semlex_core == "activity":
+            fractions = dict(fractions, activity=frozenset(semlex_only), activity_margin=args.activity_margin)
     mode = dict(timing=args.timing, fractions=fractions, margin=margin, tighten=args.tighten_cores)
     knobs_on = args.space_normalise != "off" or args.bridge != "linear" or args.tighten_cores
     temperature = {k: float(v) for k, v in (x.split("=") for x in args.part_temperature.split(","))}
@@ -338,6 +521,17 @@ def run(args) -> dict:
     print(f"shard {args.shard}/{args.shards}: {len(mine)} of {n} clips; model {model['sha256'][:12]}; "
           f"{len(gen_keys)} generated compositions", flush=True)
     material = {}
+    word_cache = None
+    if gen_keys and getattr(args, "word_cache_key", None):   # round 20: one stored generated sign per entry
+        from functools import partial
+        from round20_lib import cached_material
+        word_cache, cached = load_word_cache(store, args, vocab, corpora,
+                                             [w for k in gen_keys for w in jobs[k]["words"]])
+        cores = (partial(r2.sign_core, fractions=fractions, margin=margin, tighten=args.tighten_cores)
+                 if args.timing == "sign-fitted" else None)
+        for k in gen_keys:
+            material[k] = cached_material(jobs[k], cached, cores=cores, rule=rule)
+        gen_keys = []
     if gen_keys:
         _, _, sample = load_generator(store, args.checkpoint_key, generator_mix["sha256"], args.device,
                                       temperature=temperature)
@@ -352,15 +546,34 @@ def run(args) -> dict:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
     if "oracle_stage2" in variants:
-        pools = word_pools(manifest, corpora)
+        pools = word_pools(vmanifest, corpora)
         cache = ContentCache(Path(args.cache_dir), 8 * 2 ** 30)
         template = layout_template(manifest, TEMPLATE_CORPUS, cache, store.get)
         loaded = {}
         load = lambda r: word_clip(r, cache=cache, fetch=store.get, template=template)    # noqa: E731
-        for k, j in jobs.items():
-            if j is not None and k[0] == "oracle_stage2" and k[1] != "/shuffled":
-                material[k] = r2.oracle_material(j, k[2], pools, loaded=loaded, load=load, rule=rule, **mode)
+        if r20 and args.semlex_oracle_tracked:       # round 20: Sem-Lex-only words drawn among well-tracked clips
+            from round20_lib import semlex_only_entries, tracked_pools
+            needed = {w for k, j in jobs.items() if j is not None and k[0] == "oracle_stage2" for w in j["words"]}
+            pools, r20_info["semlex_oracle_tracked"] = tracked_pools(
+                pools, needed & set(semlex_only_entries(pools)), load=load, loaded=loaded, floor=TRACKED_FLOOR)
+        if getattr(args, "oracle_source", "isolated") == "continuous":      # round 20 A2: ASLLRP continuous forms
+            from round20_lib import continuous_material, utterance_clip
+            segment_pools, r20_info["segments"] = load_segment_pools(store, args, vmanifest, vocab)
+            load_utterance = lambda r: utterance_clip(r, cache=cache, fetch=store.get, template=template)  # noqa: E731
+            for k, j in jobs.items():
+                if j is not None and k[0] == "oracle_stage2" and k[1] != "/shuffled":
+                    material[k] = continuous_material(j, k[2], segment_pools, pools, loaded=loaded,
+                                                      load_utterance=load_utterance, load_word=load, rule=rule, **mode)
+        else:
+            for k, j in jobs.items():
+                if j is not None and k[0] == "oracle_stage2" and k[1] != "/shuffled":
+                    material[k] = r2.oracle_material(j, k[2], pools, loaded=loaded, load=load, rule=rule, **mode)
     clock["compose"] = time.time()
+    if r20:                                          # each word clip's dominant-arm tracked share (reported per variant)
+        from round20_lib import right_tracked_share
+        for m in material.values():
+            for seg, piece in zip(m.get("segments") or (), m.get("pieces") or ()):
+                seg["right_tracked"] = round(right_tracked_share(piece["state"]), 4)
 
     # render: {form: {clip: state}}
     blanks = dict(zip(mine, blanked([refs[i] for i in mine])))
@@ -380,16 +593,42 @@ def run(args) -> dict:
                 reordered = c == "/shuffled" and v != "core_chained"
                 source = (material[(v, "", i)] if reordered else rest_material(material[(v, "", i)])
                           if c == REST_ONLY else material[(v, c, i)])
-                states[i], fp = r2.render_form(source, job, seconds[i], model, timing=args.timing,
-                                               total_fit=args.total_fit, order=orders[i] if reordered else None,
-                                               sample_id=f"round15-eval-{v}{c}:{i}", space=space, bridge=args.bridge)
+                if r20:
+                    states[i], fp = render_round20(args, source, job, seconds[i], model, vocab,
+                                                   order=orders[i] if reordered else None,
+                                                   sample_id=f"round15-eval-{v}{c}:{i}", space=space)
+                else:
+                    states[i], fp = r2.render_form(source, job, seconds[i], model, timing=args.timing,
+                                                   total_fit=args.total_fit, order=orders[i] if reordered else None,
+                                                   sample_id=f"round15-eval-{v}{c}:{i}", space=space,
+                                                   bridge=args.bridge)
                 if c == "":
                     plans_out[i][v] = dict(frames=fp["frames"], fit=fp["fit"], overlong=fp["overlong"])
                     if knobs_on:
                         plans_out[i][v].update(space=fp.get("space"), bridge=args.bridge, cores=[
                             {k2: s.get(k2) for k2 in ("reason", "lo", "hi", "tightened")}
                             for s in material[(v, c, i)]["segments"]])
+                    if r20:
+                        plans_out[i][v]["round20"] = clip_round20(fp, material[(v, c, i)]["segments"])
             forms[f"{v}{c}"] = states
+        if r20 and args.predicted_duration:            # report-only: the sentence's predicted duration, not its clip's
+            from signtranslator.generation.composition_v2 import fit_duration_model, predicted_seconds
+            if "duration_model" not in r20_info:
+                r20_info["duration_model"] = fit_duration_model(manifest)
+            states = {}
+            for i in mine:
+                job = jobs[(v, "", i)]
+                if job is None:
+                    states[i] = blanks[i]
+                    continue
+                states[i], fp = render_round20(args, material[(v, "", i)], job,
+                                               predicted_seconds(r20_info["duration_model"], texts[i]), model, vocab,
+                                               order=None, sample_id=f"round15-eval-{v}{PREDICTED}:{i}", space=space)
+                plans_out[i][v]["predicted"] = dict(frames=fp["frames"], fit=fp["fit"])
+            forms[f"{v}{PREDICTED}"] = states
+        if r20 and args.lowpass_report_hz:         # A6: the same rendered main forms, low-passed (same material)
+            from signtranslator.generation.composition_v2 import lowpass_state
+            forms[f"{v}{LOWPASS}"] = {i: lowpass_state(forms[v][i], args.lowpass_report_hz) for i in mine}
     refiner_info = None
     if refining:                     # every composed form refined, per global block (module docstring)
         from signtranslator.generation.refiner import load_refiner, load_target_index, refine_states, tokenize_state
@@ -457,7 +696,20 @@ def run(args) -> dict:
             print(f"translated {name} ({time.time() - clock['start']:.0f} s)", flush=True)
         return out
     hyps = read_all(translator, kind)
-    extra = {}                                     # instrument v2: the same states read by further translators
+    likelihood = None
+    if r20 and args.likelihood:                    # round 20's selection metric, per form and clip (own, deranged)
+        import score_back_translation as sbt
+        likelihood = {i: {} for i in mine}
+        for name, states in forms.items():
+            for group in blocks(mine, args.block):
+                group_states = [states[i] for i in group]
+                own = sbt.reference_log_likelihood(translator, kind, group_states, [texts[i] for i in group])
+                wrong = sbt.reference_log_likelihood(translator, kind, group_states,
+                                                     [texts[reference_perm[i]] for i in group])
+                for i, a, b in zip(group, own, wrong):
+                    likelihood[i][name] = [a["per_token"], b["per_token"], a["tokens"]]
+        print(f"likelihoods ({time.time() - clock['start']:.0f} s)", flush=True)
+    extra = {}                                   # instrument v2: the same states read by further translators
     for run_name in args.also_translator_run or ():
         model2, kind2, key2, sha2 = load_translator_run(store, run_name, MIX_SHA)
         extra[run_name] = dict(key=key2, sha256=sha2, hyps=read_all(model2.to(torch.device(args.device)), kind2))
@@ -492,7 +744,8 @@ def run(args) -> dict:
                          rerank={v: {block: [s.get("rerank") for s in material[(v, c, i)]["segments"]]
                                      for block, c in (("matched", ""), ("mismatched_words", "/mismatched_words"))
                                      if (v, c, i) in material}
-                                 for v in variants if v in r2.GENERATED} if args.rerank > 1 else None))
+                                 for v in variants if v in r2.GENERATED} if args.rerank > 1 else None,
+                         **({"likelihood": likelihood[i]} if likelihood is not None else {})))
     settings = dict(clips=n, shards=args.shards, block=args.block, seed=args.seed, mix_key=args.mix_key,
                     mix_sha256=args.mix_sha256, corpora=list(corpora), variants=variants, selection=args.selection,
                     timing=args.timing, core_margin=margin, rerank=args.rerank, total_fit=args.total_fit,
@@ -504,6 +757,8 @@ def run(args) -> dict:
         settings["refiner"] = refiner_info
     if extra:                                    # recorded only with --also-translator-run (default reports unchanged)
         settings["extra_translators"] = [dict(run=r, key=e["key"], sha256=e["sha256"]) for r, e in extra.items()]
+    if r20:                                      # recorded only with a round-20 option (default reports unchanged)
+        settings["round20"] = round20_settings(args, sentence_set, word_cache)
     core_counts = None
     if knobs_on:                                 # recorded only when a knob is on (default reports are unchanged)
         settings.update(space_normalise=args.space_normalise, bridge=args.bridge, tighten_cores=args.tighten_cores,
@@ -516,7 +771,8 @@ def run(args) -> dict:
                                   tightened_cores=int(sum(bool(s.get("tightened")) for s in segs)),
                                   tightened_frames=int(sum(s.get("tightened") or 0 for s in segs)),
                                   cores=len(segs))
-    return dict(kind="round15-compose-eval-shard", **({"core_counts": core_counts} if core_counts else {}), shard=args.shard, settings=settings, texts=texts, indexing=INDEXING,
+    return dict(kind="round15-compose-eval-shard", **({"core_counts": core_counts} if core_counts else {}),
+                **({"round20": r20_info} if r20 else {}), shard=args.shard, settings=settings, texts=texts, indexing=INDEXING,
                 signs=[r["sign"] for r in val], reference_derangement=reference_perm, words_derangement=content_perm,
                 stage1_check=stage1_check, spot_labels=len(labels),
                 timing_counts=dict(collections.Counter(p[v]["fit"] for p in plans_out.values() for v in p)),
@@ -598,6 +854,11 @@ def merge(args, store) -> dict:
                          f"amendment 2), not {s.get('recognizer_run')}")
     checks, refined_checks = r2.parse_rule(args.rule), r2.parse_rule(args.refined_rule)
     pairs = form_pairs(variants, paired, refined=refined)
+    for v in variants:                                 # round 20, report-only: present only with --predicted-duration
+        if f"{v}{PREDICTED}" in hyps:
+            pairs[f"{v}{PREDICTED}"] = {"end_to_end": "end_to_end", "reference_duration": v}
+        if f"{v}{LOWPASS}" in hyps:
+            pairs[f"{v}{LOWPASS}"] = {"end_to_end": "end_to_end", "unfiltered": v}
     for flag, cs, names in (("--rule", checks, variants),
                             ("--refined-rule", refined_checks, [f"{v}{REFINED}" for v in variants])):
         for c in cs:
@@ -627,7 +888,13 @@ def merge(args, store) -> dict:
                                                      spotting[f"{v}{REFINED}_mismatched"]["recall"])
                          for v in variants})
     overlong = {v: int(sum(bool((r["plans"].get(v) or {}).get("overlong")) for r in rows)) for v in variants}
-    return dict(kind="round15-compose-eval", settings=s, clips=n, references=texts, signs=merged["signs"], indexing=INDEXING,
+    extra = merge_round20(partials, rows, variants)
+    if rows[0].get("likelihood"):                      # round 20's selection metric (--likelihood)
+        from round20_lib import likelihood_summary
+        other_ll = (json.loads(store.get(args.paired_with)).get("likelihood") if args.paired_with else None)
+        extra["likelihood"] = likelihood_summary(rows, list(rows[0]["likelihood"]), pairs, boot=args.bootstrap,
+                                                 other=other_ll)
+    return dict(kind="round15-compose-eval", **extra, settings=s, clips=n, references=texts, signs=merged["signs"], indexing=INDEXING,
                 shards=sorted(p["shard"] for p in partials), stage1_check=partials[0]["stage1_check"],
                 comparators=comparators, rule=args.rule, rule_checks=checks, bootstrap=args.bootstrap, forms=scores,
                 **(dict(refined_rule=args.refined_rule, refined_rule_checks=refined_checks, refiner=s["refiner"],
@@ -665,6 +932,15 @@ def summary(report: dict) -> None:
                                               for k, v in report["motion_ratio_to_real"].items()}), flush=True)
     for v, d in report["verdicts"].items():
         print(f"VERDICT {v}: {d['verdict']} " + json.dumps(d["checks"]), flush=True)
+    if report.get("likelihood"):
+        print("reference log-likelihood per token (form, mean, minus blank paired):", flush=True)
+        for name, row in report["likelihood"]["forms"].items():
+            mb = row.get("minus_blank")
+            print(f"  {name:34s} {row['mean']['difference']:8.4f}" + (f"  -blank {ci(mb)}" if mb else ""), flush=True)
+    if report.get("round20"):
+        print("round 20: " + json.dumps(dict(coverage=report["round20"].get("coverage", {}).get("token_share"),
+                                             per_variant=report["round20"].get("per_variant"),
+                                             spotting_note=report["round20"].get("spotting_note"))), flush=True)
 
 
 def _write(store, args, payload: dict) -> None:
@@ -678,7 +954,65 @@ def _write(store, args, payload: dict) -> None:
         store.put(args.output_key, data)
 
 
+def round20_errors(p, args, variants) -> None:
+    """Refuse round-20 options that do not apply (before anything is loaded)."""
+    from round20_lib import GLOSS_MANIFEST
+    if bool(args.sentences_key) != bool(args.sentences_sha256):
+        p.error("--sentences-key and --sentences-sha256 go together")
+    if bool(args.vocabulary_mix_key) != bool(args.vocabulary_mix_sha256):
+        p.error("--vocabulary-mix-key and --vocabulary-mix-sha256 go together")
+    if args.sentences_key and args.stage1_report_key:
+        p.error("--stage1-report-key checks the 1,000's clips, not a round-20 sentence set")
+    if args.semlex_core == "activity" and args.timing != "sign-fitted":
+        p.error("--semlex-core activity replaces the sign-fitted timing's median fractions")
+    if args.oracle_source == "continuous" and ("oracle_stage2" not in variants or args.timing == "stage1"):
+        p.error("--oracle-source continuous needs oracle_stage2 and the asllrp or sign-fitted timing")
+    if args.retime == "continuous":
+        if args.timing == "stage1" or "core_chained" in variants:
+            p.error("--retime continuous needs word pieces (core_crossfade, oracle_stage2) cut by the asllrp or "
+                    "sign-fitted timing")
+        if args.space_normalise != "off":
+            p.error("--retime continuous is not combined with --space-normalise")
+    if args.tempo != 1. and args.retime != "continuous":
+        p.error("--tempo applies to --retime continuous")
+    if args.tempo <= 0 or args.bridge_min_speed <= 0 or args.bridge_max_seconds < 0 or args.continuous_ratio <= 0:
+        p.error("--tempo, --bridge-min-speed and --continuous-ratio must be positive")
+    if args.lowpass_hz is not None and not 0 < args.lowpass_hz < 12:
+        p.error("--lowpass-hz must be in (0, 12) (24 fps)")
+    if args.word_cache_key:
+        if not args.word_cache_sha256:
+            p.error("--word-cache-key needs --word-cache-sha256")
+        if "core_chained" in variants or args.rerank != 1 or args.timing == "stage1":
+            p.error("--word-cache-key serves core_crossfade (no rerank) with the asllrp or sign-fitted timing")
+        if args.checkpoint_key:
+            p.error("--word-cache-key replaces --checkpoint-key (the cache records its prior)")
+    if args.predicted_duration and args.timing == "stage1":
+        p.error("--predicted-duration applies to the asllrp and sign-fitted timings")
+    orphans = [flag for flag, given, parent in (
+        ("--continuous-ratio", args.continuous_ratio != .385, args.retime == "continuous"),
+        ("--no-bridge-velocity", args.no_bridge_velocity, args.retime == "continuous"),
+        ("--bridge-min-speed", args.bridge_min_speed != .3, args.retime == "continuous" and not args.no_bridge_velocity),
+        ("--bridge-max-seconds", args.bridge_max_seconds != .6,
+         args.retime == "continuous" and not args.no_bridge_velocity),
+        ("--activity-margin", args.activity_margin != 0., args.semlex_core == "activity"),
+        ("--word-cache-n", args.word_cache_n != 4, bool(args.word_cache_key)),
+        ("--word-cache-sha256", bool(args.word_cache_sha256), bool(args.word_cache_key)),
+        ("--gloss-manifest-key", args.gloss_manifest_key != GLOSS_MANIFEST[0], args.oracle_source == "continuous"),
+        ("--gloss-manifest-sha256", args.gloss_manifest_sha256 != GLOSS_MANIFEST[1], args.oracle_source == "continuous"),
+    ) if given and not parent]
+    if orphans:
+        p.error(f"{', '.join(orphans)}: given without the option they qualify")
+    if args.semlex_oracle_tracked and "oracle_stage2" not in variants:
+        p.error("--semlex-oracle-tracked draws oracle_stage2's real clips")
+    if args.lowpass_report_hz is not None:
+        if not 0 < args.lowpass_report_hz < 12:
+            p.error("--lowpass-report-hz must be in (0, 12) (24 fps)")
+        if args.lowpass_hz is not None:
+            p.error("--lowpass-report-hz pairs filtered with unfiltered forms: not with --lowpass-hz")
+
+
 def main(argv=None) -> int:
+    from round20_lib import GLOSS_MANIFEST
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = p.add_subparsers(dest="command", required=True)
     r = sub.add_parser("run", help="one shard")
@@ -732,6 +1066,48 @@ def main(argv=None) -> int:
     r.add_argument("--refiner-guidance", type=float, default=1., help="the refiner's guidance against the empty source")
     r.add_argument("--refiner-temperature", help="the refiner's sampling temperature: one number for every part or "
                    "part=value,...; default: --part-temperature")
+    g = r.add_argument_group("round 20 (docs/NEXT_PHASE_PLAN.md 'Round 20'; every option off by default: the run and "
+                             "its report are then unchanged)")
+    g.add_argument("--sentences-key", help="a stored sentence set (scripts/build_round20_sets.py: D20 or C20) instead "
+                   "of validation_sentences(mix, --clips); --clips keeps its first N")
+    g.add_argument("--sentences-sha256")
+    g.add_argument("--vocabulary-mix-key", help="the mix whose isolated train records make the vocabulary, its oracle "
+                   "pools and sign fractions (default: the evaluation mix, round10; round14b to switch); the stage-2 "
+                   "model stays the evaluation mix's")
+    g.add_argument("--vocabulary-mix-sha256")
+    g.add_argument("--semlex-core", default="fraction", choices=("fraction", "activity"),
+                   help="sign-fitted cores of Sem-Lex-only entries: ASLLVD's pooled median fraction (round 15) or the "
+                        "activity rule (compositional.core_window)")
+    g.add_argument("--activity-margin", type=float, default=0., help="seconds either side of an activity core")
+    g.add_argument("--oracle-source", default="isolated", choices=("isolated", "continuous"),
+                   help="oracle_stage2's real words: isolated clips (round 15) or ASLLRP continuous segments where "
+                        "the entry has one, else isolated (A2; a headroom read only)")
+    g.add_argument("--gloss-manifest-key", default=GLOSS_MANIFEST[0])
+    g.add_argument("--gloss-manifest-sha256", default=GLOSS_MANIFEST[1])
+    g.add_argument("--retime", default="reference", choices=("reference", "continuous"),
+                   help="reference: the --timing plan filling the reference clip (round 15); continuous: ASLLRP sign "
+                        "and gap durations, velocity-bounded bridges, x --tempo, padded (or compressed) to the reference")
+    g.add_argument("--tempo", type=float, default=1., help="continuous retiming: every sign and gap x this (>1 slower)")
+    g.add_argument("--continuous-ratio", type=float, default=.385,
+                   help="continuous seconds of an entry without an ASLLRP median: its isolated annotated seconds x this")
+    g.add_argument("--no-bridge-velocity", action="store_true", help="continuous retiming with the base gaps only")
+    g.add_argument("--bridge-min-speed", type=float, default=.3, help="m/s: the floor of a bridge's speed bound")
+    g.add_argument("--bridge-max-seconds", type=float, default=.6, help="the longest velocity-bounded bridge")
+    g.add_argument("--lowpass-hz", type=float, help="a 4th-order zero-phase Butterworth low-pass on every composed form")
+    g.add_argument("--word-cache-key", help="a round20_word_cache.py index: core_crossfade uses each entry's cached "
+                   "sign instead of fresh samples (no generation)")
+    g.add_argument("--word-cache-sha256")
+    g.add_argument("--word-cache-n", type=int, default=4, help="which best-of-N choice of the cache")
+    g.add_argument("--likelihood", action="store_true", help="the reference's teacher-forced log-likelihood per token "
+                   "under the back-translator, every form (and its deranged reference)")
+    g.add_argument("--predicted-duration", action="store_true", help="report-only <variant>@predicted forms: the main "
+                   "form rendered at a text-predicted sentence duration (How2Sign train least squares on tokens); a "
+                   "sentence with no selected word stays its blank clip at the reference duration, as in every form")
+    g.add_argument("--semlex-oracle-tracked", action="store_true", help="oracle_stage2: draw a Sem-Lex-only entry's "
+                   "real clip only among its clips whose right (dominant) arm is tracked on >= 0.3 of the frames (the "
+                   "activity rule's floor); none: its best-tracked clip")
+    g.add_argument("--lowpass-report-hz", type=float, help="A6: also render <variant>@lowpass, the main form low-passed "
+                   "at this cutoff from the very same material (paired with the unfiltered form in one run)")
     m = sub.add_parser("merge", help="combine the shards and score")
     m.add_argument("--shard-keys", default="")
     m.add_argument("--shard-files")
@@ -761,8 +1137,9 @@ def main(argv=None) -> int:
         import round15_stage2 as r2
         if not variants or any(v not in r2.VARIANTS for v in variants) or len(set(variants)) != len(variants):
             p.error(f"--variants: distinct names from {','.join(r2.VARIANTS)}")
-        if any(v in r2.GENERATED for v in variants) and not args.checkpoint_key:
+        if any(v in r2.GENERATED for v in variants) and not (args.checkpoint_key or args.word_cache_key):
             p.error("--checkpoint-key is required for generated variants")
+        round20_errors(p, args, variants)
         if bool(args.generator_mix_key) != bool(args.generator_mix_sha256):
             p.error("--generator-mix-key and --generator-mix-sha256 go together")
         if args.timing != "asllrp" and args.total_fit != "pad":

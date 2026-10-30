@@ -111,6 +111,62 @@ def translate(model, vocabulary, states, *, beam: int = 4, batch: int = 32) -> l
     return out
 
 
+def _encoder_batches(model, vocabulary, states, batch: int):
+    """``translate``'s inputs, batch by batch: what ``model.encode`` reads (T5 back-translators only)."""
+    if vocabulary == "states":
+        from signtranslator.data.keypoint_shards import collate_keypoints
+        items = [(torch.from_numpy(f), "") for f in model.featurise(states)]
+        for i in range(0, len(items), batch):
+            yield collate_keypoints(items[i:i + batch])[0]
+    elif vocabulary == "keypoints":
+        from signtranslator.data.keypoint_shards import collate_keypoints
+        from signtranslator.data.keypoints2d import features, from_state, normalise
+        items = []
+        for state in states:
+            points, valid = from_state(at_rate(state, model.config.fps))
+            items.append((torch.from_numpy(features(normalise(points, valid, y_down=False), valid)), ""))
+        for i in range(0, len(items), batch):
+            yield collate_keypoints(items[i:i + batch])[0]
+    elif vocabulary is None:
+        from signtranslator.data.multichannel import collate_multichannel
+        for i in range(0, len(states), batch):
+            yield collate_multichannel(states[i:i + batch])
+    else:
+        raise ValueError("the reference likelihood needs a T5 back-translator (a word-vocabulary model has no "
+                         "teacher-forced text path here)")
+
+
+@torch.no_grad()
+def reference_log_likelihood(model, vocabulary, states, texts, *, batch: int = 32) -> list[dict]:
+    """Round 20's selection metric: per (state, text), the back-translator's teacher-forced log-probability of the text
+    given the state, ``{"log_likelihood": sum over the text's tokens, "tokens": count, "per_token": sum / count}``.
+    The tokens are the training labels (``MotionToT5._labels``: the model's tokenizer, truncated at ``max_tokens``,
+    end-of-sequence included); the encoder reads exactly what ``translate`` feeds it."""
+    from transformers.modeling_outputs import BaseModelOutput
+    if len(states) != len(texts):
+        raise ValueError("one text per state")
+    device = next(model.parameters()).device
+    out, k = [], 0
+    for inputs in _encoder_batches(model, vocabulary, states, batch):
+        if vocabulary is None:
+            from train_text_to_motion import to_device
+            inputs = to_device((None, None, inputs, None), device)[2]
+        else:
+            inputs = tuple(t.to(device) for t in inputs)
+        hidden, valid = model.encode(inputs)
+        n = hidden.shape[0]
+        labels = model._labels(texts[k:k + n], hidden.device)
+        logits = model.t5(encoder_outputs=BaseModelOutput(last_hidden_state=hidden), attention_mask=valid.long(),
+                          labels=labels).logits
+        keep = labels != -100
+        lp = logits.float().log_softmax(-1).gather(-1, labels.clamp_min(0)[..., None])[..., 0] * keep
+        for total, count in zip(lp.sum(1).tolist(), keep.sum(1).tolist()):
+            out.append(dict(log_likelihood=round(float(total), 4), tokens=int(count),
+                            per_token=round(float(total) / max(int(count), 1), 5)))
+        k += n
+    return out
+
+
 def bleu_of(model, vocabulary, states, texts, *, beam: int) -> dict:
     hypotheses = translate(model, vocabulary, states, beam=beam)
     return dict(corpus_bleu(hypotheses, texts), examples=list(zip(hypotheses[:5], texts[:5])), hypotheses=hypotheses)
