@@ -4757,3 +4757,5 @@ Every item holds before a result is reported:
 - **Diagnostics only** (per input, reported, not gating): input p99 \|z\|; drift. Videos are dropped only when they have ≥ 8 cues spanning ≥ 3 minutes.
 - **If the gate fails:** no conversion. Report which checks failed and the next fix (full-frame pairs, or a different visibility rule).
 - **If it passes:** conversion, after the conversion-blocking fixes land and are reviewed, using estimated-fps videos only. Assumed-30-fps clips are added only after a held-out ablation shows no harm.
+
+**Round 16 evaluation command fix (2026-10-30, 03:40 UTC, before any result).** Both pilots failed at start-up: `training-runs/sign-recognizer-v3d/validation.json` does not exist, and recogniser v3 reads only a pinned word list. The pilots were relaunched (`r16_pilots.sh`) with `--word-list-key round14/r5-word-split.json` (sha `676f56cb…`), the same pinned list the declared W14b comparator (`v3read/pilot-w14b-step30000-v3d.json`) was read with. No other setting changed, and no result had been produced.
