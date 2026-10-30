@@ -4894,3 +4894,13 @@ P17's plan-only BLEU and the oracle–generated gap are reported beside it.
 - **PT stability:** "perplexity" means the mean per-batch stage-1 perplexity on validation. The dead-code re-seed rate comes from a counter persisted in checkpoints.
 - **Sampling:** the plan-corruption samples are drawn at guidance 1 and temperature 1; the pilot samples P17 at guidance 1.5 and part temperature 1.1. Declared, not changed.
 - The builder's report must restate exactly these gates before any training.
+
+### Round 17 gates, amendment 2: choosing between the arms (declared 2026-10-30, 06:24 UTC, before anything trains)
+
+**Choosing between R17 (D17, true plans) and R17-PC (D17-PC, plan corruption) when both pass the pilot rule:**
+- R17-PC is the leader if its paired BLEU against R17 has a lower bound > −0.1. It is the arm built for generated plans, so it wins unless it is clearly worse.
+- Otherwise R17 is the leader.
+
+**When only one passes:** that arm leads.
+
+**Oracle precondition** (`compare_pilot_lexicon.py --oracle-precondition`, from the pilot's `--oracle-only` read) is judged per arm before that arm's pilot runs. The oracle wrist-speed gate, [0.8, 1.5] × real, is read from the same oracle-only run.
