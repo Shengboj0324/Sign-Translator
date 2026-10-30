@@ -44,11 +44,17 @@ def verdict(best: dict, reference: dict, fidelity: dict | None, recognisability:
                          status=None))
     else:
         r2b = fidelity["r2b"]
-        ratio = r2b["round_trip"] / r2b["tokenizer_round_trip"]
-        rows.append(dict(row="content.round_trip_bleu", value=f"{r2b['round_trip']} ({ratio:.4f} x d2 {r2b['tokenizer_round_trip']})",
+        bleu = lambda k: r2b[k]["bleu"] if isinstance(r2b[k], dict) else r2b[k]   # noqa: E731 (stored: {bleu, ci95})
+        ratio = bleu("round_trip") / bleu("tokenizer_round_trip")
+        rows.append(dict(row="content.round_trip_bleu", value=f"{bleu('round_trip')} ({ratio:.4f} x d2 {bleu('tokenizer_round_trip')})",
                          bar=">= 0.8 x d2", status=ratio >= CONTENT))
-        rows.append(dict(row="content.above_blank", value=fidelity.get("r2b_above_blank"), bar="lower bound above blank",
-                         status=bool(fidelity.get("r2b_above_blank")) if "r2b_above_blank" in fidelity else None))
+        if isinstance(r2b["round_trip"], dict) and isinstance(r2b["blank"], dict):
+            low, high = r2b["round_trip"]["ci95"][0], r2b["blank"]["ci95"][1]
+            rows.append(dict(row="content.above_blank", value=f"round-trip lower {low} vs blank upper {high}",
+                             bar="round-trip ci95 lower > blank ci95 upper", status=low > high))
+        else:
+            rows.append(dict(row="content.above_blank", value=None, bar="round-trip ci95 lower > blank ci95 upper",
+                             status=None))
     if recognisability is None:
         rows.append(dict(row="content.recogniser_ratio", value=None, bar=">= 0.9 x real", status=None))
     else:

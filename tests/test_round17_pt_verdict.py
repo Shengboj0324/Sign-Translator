@@ -18,7 +18,8 @@ def best(**over):
     return dict(checkpoint_key="k", step=10000, validation=val)
 
 
-FID = dict(r2b=dict(real=4.136, round_trip=2.80, blank=1.859, tokenizer_round_trip=3.365), r2b_above_blank=True,
+FID = dict(r2b=dict(real=dict(bleu=4.136, ci95=[3.6, 4.7]), round_trip=dict(bleu=2.80, ci95=[2.4, 3.2]),
+                    blank=dict(bleu=1.859, ci95=[1.537, 2.175]), tokenizer_round_trip=dict(bleu=3.365, ci95=[2.9, 3.8])),
            ratios={"left_hand_speed_ratio": .6})
 REC = dict(ratio=.93)
 
@@ -31,7 +32,7 @@ def test_pass_and_arm_reference():
 
 
 def test_content_ratio_exact_and_missing():
-    fid = dict(FID, r2b=dict(FID["r2b"], round_trip=0.8 * 3.365 - 1e-9))
+    fid = dict(FID, r2b=dict(FID["r2b"], round_trip=dict(bleu=0.8 * 3.365 - 1e-9, ci95=[2.4, 3.0])))
     assert v.verdict(best(), REF, fid, REC, "a")["overall"] == "FAIL"
     assert v.verdict(best(), REF, None, REC, "a")["overall"] == "NOT-EVALUABLE"
     assert v.verdict(best(), REF, FID, None, "a")["overall"] == "NOT-EVALUABLE"
@@ -42,3 +43,8 @@ def test_floor_and_divergence():
     ref = {"reference_stage1_perplexity": {k: 10. for k in REF["reference_stage1_perplexity"]}}
     assert v.verdict(best(**{"val/stage1_perplexity_left_hand": 31.}), ref, FID, REC, "a")["overall"] == "FAIL"
     assert v.verdict(best(), REF, FID, REC, "a", [{"step": 5, "loss": float("nan")}])["overall"] == "FAIL"
+
+
+def test_above_blank_uses_declared_bounds():
+    fid = dict(FID, r2b=dict(FID["r2b"], round_trip=dict(bleu=2.8, ci95=[2.1, 3.2])))
+    assert v.verdict(best(), REF, fid, REC, "a")["overall"] == "FAIL"           # 2.1 is not above blank's 2.175
