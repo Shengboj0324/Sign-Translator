@@ -4778,6 +4778,6 @@ Every item holds before a result is reported:
 
 **Owner (2026-10-30, 04:02 UTC):** declared the proposed UWB lifter gate, as written above with amendment 1.
 
-**UWB lifter visibility selection result (2026-10-30, 04:20 UTC).** The declared amendment-1 rule was run with the trained xy2 bundle (sha 02a90e4f…), legacy Holistic inputs and UWB arm-distance weights from 300 UWB-only clips. **No rule is admissible, so the declared fallback  is chosen.** Report: `lifter-v1/selection/outside-frame-xy2-v1.json`.
+**UWB lifter visibility selection result (2026-10-30, 04:20 UTC).** The declared amendment-1 rule was run with the trained xy2 bundle (sha 02a90e4f…), legacy Holistic inputs and UWB arm-distance weights from 300 UWB-only clips. **No rule is admissible, so the declared fallback `inside` is chosen.** Report: `lifter-v1/selection/outside-frame-xy2-v1.json`.
 
 **Red flag for the gate.** On full How2Sign frames with the whole arm in view (the anchor), the xy2 forearm median is 28.2° (left) / 29.1° (right), against 11.6° / 8.3° on the training-style crops. Full-frame input is markedly harder for forearms. UWB is full-frame YouTube, so the YouTube gate decides.
