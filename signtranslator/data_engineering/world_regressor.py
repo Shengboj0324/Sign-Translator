@@ -174,6 +174,31 @@ def input_names(version: str) -> dict:
     return dict(hand=hand, pose=pose)
 
 
+VALIDITY_POINTS = (11, 12, 13, 14, 15, 16)     # shoulders, elbows, wrists (BlazePose): the validity head's logits
+VALIDITY_SIDES = ("Left", "Right", "Left", "Right", "Left", "Right")
+VALIDITY_FEATURES = "uwb-validity-features-v1"
+VALIDITY_INPUTS = POSE_POINTS * 2 + 2 * len(VALIDITY_POINTS) + len(VALIDITY_POINTS)     # 50 + 12 + 6 = 68
+
+
+def outside_distance(xy: np.ndarray, aspect: float) -> np.ndarray:
+    """Distance (frame heights) of normalised image points from the image rectangle; 0 inside."""
+    dx = np.maximum(np.maximum(-xy[..., 0], xy[..., 0] - 1.), 0.) * aspect
+    dy = np.maximum(np.maximum(-xy[..., 1], xy[..., 1] - 1.), 0.)
+    return np.hypot(dx, dy)
+
+
+def validity_features(image: np.ndarray, aspect: float):
+    """(N, 33, >= 2) normalised image points (any z ignored) -> validity-head features (N, 68), valid (N,): the 50
+    xy-v2 pose features, then the image x, y of points 11..16 (normalised: they say where the frame cuts), then their
+    distance outside the frame (frame heights)."""
+    pose, valid = pose_features_xy2(image, aspect)
+    xy = np.array(np.asarray(image)[:, VALIDITY_POINTS, :2], dtype=np.float64)
+    valid = valid & np.isfinite(xy).all((1, 2))
+    safe = np.where(np.isfinite(xy), xy, 0.)
+    features = np.concatenate((pose, safe.reshape(len(xy), -1), outside_distance(safe, aspect)), axis=1)
+    return np.where(valid[:, None], features, 0.).astype(np.float32), valid
+
+
 def pose_target(world: np.ndarray) -> np.ndarray:
     w = np.array(world[:, :POSE_POINTS], dtype=np.float64)
     return ((w - (w[:, 11:12] + w[:, 12:13]) / 2) * DECIMETRES).astype(np.float32)
@@ -208,6 +233,7 @@ class WorldRegressors:
     pose: tuple           # (MLP, mean, std)
     sha256: str | None = None
     features: str = FEATURES_VERSION     # which feature functions the models were trained on (FEATURE_FUNCTIONS)
+    validity: tuple | None = None        # optional (MLP, mean (68,), std, {"Left": threshold, "Right": threshold})
 
     @torch.no_grad()
     def hands(self, image: np.ndarray, aspect: float, side: str):
@@ -229,6 +255,23 @@ class WorldRegressors:
         visibility = 1. / (1. + np.exp(-out[:, POSE_POINTS * 3:]))
         return np.where(valid[:, None, None], world, 0.), np.where(valid[:, None], visibility, 0.), valid
 
+    @torch.no_grad()
+    def point_validity(self, image: np.ndarray, aspect: float):
+        """(N, 33, >= 2) normalised image points -> probabilities (N, 6) that points 11..16 are valid (0 where the
+        features are invalid), valid (N,). Needs the validity head."""
+        if self.validity is None:
+            raise ValueError("world regressors: this bundle has no validity head")
+        features, valid = validity_features(image, aspect)
+        model, mean, std, _ = self.validity
+        logits = model(torch.from_numpy((features - mean) / std)).numpy().astype(np.float64)
+        return np.where(valid[:, None], 1. / (1. + np.exp(-logits)), 0.), valid
+
+    def validity_visible(self, image: np.ndarray, aspect: float):
+        """(N, 6) bool: points 11..16 kept by the head (probability >= its side's threshold), valid (N,)."""
+        probability, valid = self.point_validity(image, aspect)
+        thresholds = np.array([self.validity[3][side] for side in VALIDITY_SIDES])
+        return (probability >= thresholds) & valid[:, None], valid
+
     def save(self) -> bytes:
         if self.features not in FEATURE_FUNCTIONS:
             raise ValueError(f"world regressors: unknown feature version {self.features!r}")
@@ -239,6 +282,13 @@ class WorldRegressors:
                     pose=dict(state=self.pose[0].state_dict(), mean=torch.from_numpy(self.pose[1]),
                               std=torch.from_numpy(self.pose[2]),
                               shape=list(self.pose[0].shape)))
+        if self.validity is not None:          # absent otherwise: a bundle without a head saves exactly as before
+            model, mean, std, thresholds = self.validity
+            if set(thresholds) != {"Left", "Right"}:
+                raise ValueError("world regressors: validity thresholds must be {'Left': t, 'Right': t}")
+            blob["validity"] = dict(state=model.state_dict(), mean=torch.from_numpy(mean), std=torch.from_numpy(std),
+                                    shape=list(model.shape), features=VALIDITY_FEATURES,
+                                    thresholds={k: float(thresholds[k]) for k in ("Left", "Right")})
         buffer = io.BytesIO()
         torch.save(blob, buffer)
         return buffer.getvalue()
@@ -260,8 +310,16 @@ class WorldRegressors:
             model = MLP(*entry["shape"])
             model.load_state_dict(entry["state"])
             return model.eval(), entry["mean"].numpy(), entry["std"].numpy()
+        validity = None
+        if "validity" in blob:
+            entry = blob["validity"]
+            if entry.get("features") != VALIDITY_FEATURES or entry["shape"][:2] != [VALIDITY_INPUTS, len(VALIDITY_POINTS)]:
+                raise ValueError("world regressors: the validity head's features or widths are not "
+                                 f"{VALIDITY_FEATURES!r} ({VALIDITY_INPUTS} -> {len(VALIDITY_POINTS)})")
+            thresholds = {k: float(entry["thresholds"][k]) for k in ("Left", "Right")}
+            validity = (*build(entry), thresholds)
         return cls(hand={s: build(e) for s, e in blob["hand"].items()}, pose=build(blob["pose"]), sha256=digest,
-                   features=version)
+                   features=version, validity=validity)
 
 
 def input_zscores(regressors: "WorldRegressors", pose: np.ndarray | None, hands: dict, aspect: float) -> dict:
@@ -286,6 +344,7 @@ def load_regressors(path: Path, expected_sha256: str | None = None) -> WorldRegr
     return WorldRegressors.load(Path(path).read_bytes(), expected_sha256=expected_sha256)
 
 
-__all__ = ["FEATURES_VERSION", "FEATURES_XY", "FEATURES_XY2", "Z_FREE_FEATURES", "FEATURE_FUNCTIONS",
+__all__ = ["FEATURES_VERSION", "FEATURES_XY", "FEATURES_XY2", "Z_FREE_FEATURES", "FEATURE_FUNCTIONS", "VALIDITY_FEATURES",
+           "VALIDITY_INPUTS", "VALIDITY_POINTS", "VALIDITY_SIDES", "outside_distance", "validity_features",
            "hand_features_xy", "pose_features_xy", "pose_features_xy2", "input_names", "input_zscores", "WORLD_REGRESSORS", "WORLD_REGRESSORS_V1", "WORLD_REGRESSORS_V2", "HAND_BONES", "POSE_BONES", "POSE_POINTS", "MLP", "WorldRegressors", "hand_features",
            "hand_target", "hand_output_to_world", "pose_features", "pose_target", "direction_loss", "load_regressors"]

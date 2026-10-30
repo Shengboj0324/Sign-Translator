@@ -42,7 +42,14 @@ end, text and state key) **and** that the UWB keypoint dataset also holds (clip 
    scaled-orthographic head rotation against our face-geometry head rotation.
 
 ``--exclude-videos`` (a file of video ids) keeps development videos out of the evaluation (the smoke runs' videos are
-listed in ``reports/uwb_gate_smoke_videos.txt``). The summary carries ``proposal_check``: the coordinator's proposed
+listed in ``reports/uwb_gate_smoke_videos.txt``).
+
+**Gate v2 options** (plan "UWB lifter v2 and gate v2", 2026-10-30 11:12 UTC; without them every output is exactly as
+before): ``--split-file`` (``build_uwb_lifter_split.py``; a local path, store key or ``KEY@SHA256``) restricts the
+population to the split's held-out videos and refuses to evaluate any other video (the split's SHA-256 is recorded);
+``--lag-curves`` stores each pair's per-lag alignment cost curve (``alignment.curve``: lag -> [median angle, bone-frames],
+for the pooled-lag timing row); ``--secondary-visibility`` scores further rules (``head``) as reported methods that do
+not enter the common frames. The summary carries ``proposal_check``: the coordinator's proposed
 gate evaluated where this script can compute it (it is a proposal until declared). Reads only; writes the report
 locally (``--out``) and optionally the fps and overlap tables.
 """
@@ -292,10 +299,11 @@ def frame_map(times: np.ndarray, first: int, frames: int, fps: float, lag: int) 
 
 
 def choose_lag(times, first, frames, fps, ours: dict, uwb2d: dict, max_lag: int, min_frames: int = 10,
-               margin: float = 0.) -> dict:
+               margin: float = 0., curve: bool = False) -> dict:
     """The lag minimising the median image-plane arm angle between UWB's 2D bones and our projected directions; a
     non-zero lag must beat lag 0 by ``margin`` degrees. ``ours``: label -> ((T, 3) y-up world directions, valid);
-    ``uwb2d``: label -> ((F, 2) image vectors, valid)."""
+    ``uwb2d``: label -> ((F, 2) image vectors, valid). ``curve``: also return every scored lag's
+    [median angle (3 dp), bone-frames] (an arm-aligned result only)."""
     scores = {}
     for lag in range(-max_lag, max_lag + 1):
         i, j = frame_map(times, first, frames, fps, lag)
@@ -312,9 +320,12 @@ def choose_lag(times, first, frames, fps, ours: dict, uwb2d: dict, max_lag: int,
         return dict(lag=0, method="none", score=None)
     best = min(scores, key=lambda k: (scores[k][0], abs(k)))
     lag = 0 if 0 in scores and scores[0][0] - scores[best][0] < margin else best
-    return dict(lag=int(lag), method="arm-2d", score=round(scores[lag][0], 3), frames=scores[lag][1],
-                best_lag=int(best), best_score=round(scores[best][0], 3),
-                lag0_score=round(scores[0][0], 3) if 0 in scores else None)
+    out = dict(lag=int(lag), method="arm-2d", score=round(scores[lag][0], 3), frames=scores[lag][1],
+               best_lag=int(best), best_score=round(scores[best][0], 3),
+               lag0_score=round(scores[0][0], 3) if 0 in scores else None)
+    if curve:
+        out["curve"] = {str(k): [round(v[0], 3), int(v[1])] for k, v in sorted(scores.items())}
+    return out
 
 
 def kabsch(pairs: list) -> np.ndarray | None:
@@ -449,22 +460,25 @@ def zlib_seed(text: str) -> int:
 
 
 def evaluate_pair(ours_state, uwb_states: dict, uwb_clip, fps: float, max_lag: int, head: bool = False,
-                  cap: int = 0, lag_margin: float = 0.) -> dict:
+                  cap: int = 0, lag_margin: float = 0., lag_curves: bool = False, secondary=()) -> dict:
     """Errors and validity of each UWB method's state against ours on the aligned frames. ``uwb_states``: method ->
-    state. Every error list is a float32 array, subsampled to ``cap`` values per group when ``cap`` > 0."""
+    state. Every error list is a float32 array, subsampled to ``cap`` values per group when ``cap`` > 0.
+    ``secondary``: methods scored and reported that do not define the common frames; ``lag_curves``: the alignment
+    carries its per-lag cost curve."""
     from signtranslator.data_engineering.uwb_keypoints import _found
     times = ours_state.timestamps
     ours = state_items(ours_state)
     pose_found = _found(uwb_clip.pose)
     alignment = choose_lag(times, uwb_clip.first, uwb_clip.frames, fps, ours,
-                           image_arm_directions(uwb_clip.pose, pose_found), max_lag, margin=lag_margin)
+                           image_arm_directions(uwb_clip.pose, pose_found), max_lag, margin=lag_margin,
+                           curve=lag_curves)
     i, j = frame_map(times, uwb_clip.first, uwb_clip.frames, fps, alignment["lag"])
     hips = hips_inside(uwb_clip)
     aligned_strata = {"hips_visible": hips[j], "hips_not_visible": ~hips[j]}
     pose_frames = np.flatnonzero(pose_found)
     pose_strata = {"hips_visible": hips[pose_frames], "hips_not_visible": ~hips[pose_frames]}
     items = {m: state_items(s) for m, s in uwb_states.items()}
-    support = {label: np.all([items[m][label][1][j] for m in items], axis=0) for label in ours}
+    support = {label: np.all([items[m][label][1][j] for m in items if m not in secondary], axis=0) for label in ours}
     result = dict(alignment=alignment, aligned_frames=int(len(i)), our_frames=int(len(times)),
                   uwb_frames=int(uwb_clip.frames), hips_visible_share=round(float(hips[pose_found].mean()), 4)
                   if pose_found.any() else None, frame_count_difference=int(uwb_clip.frame_count_difference),
@@ -559,6 +573,33 @@ def lag_drift(rows: list[tuple[float, int]], *, min_cues: int = DRIFT_MIN_CUES,
     if np.ptp(t) < min_span:
         return None
     return round(float(np.polyfit(t, lag, 1)[0] * 60.), 3)
+
+
+def pooled_video_lags(pairs: list[dict], *, min_pairs: int = 3) -> dict:
+    """Gate v2's timing measurement: per video with >= ``min_pairs`` evaluated, stream-match (``stratum_of``),
+    arm-aligned pairs that carry a lag curve, the pooled curve is the mean of the pairs' per-lag median angles over the
+    lags every one of them scored (the summed cost curves, in degrees per pair); the pooled lag is its minimum (ties to
+    the smaller |lag|, then the earlier lag). Returns {video: {pairs, lag, gain_over_lag0, curve}}; ``gain_over_lag0``
+    is None when lag 0 is not among the common lags."""
+    by_video = collections.defaultdict(list)
+    for p in pairs:
+        a = p.get("alignment") or {}
+        if (p.get("status") == "evaluated" and a.get("method") == "arm-2d" and a.get("curve")
+                and stratum_of(p)["stream_match"] == "yes"):
+            by_video[p["video_id"]].append(a["curve"])
+    out = {}
+    for video, curves in sorted(by_video.items()):
+        if len(curves) < min_pairs:
+            continue
+        lags = sorted(set.intersection(*(set(c) for c in curves)), key=int)
+        if not lags:
+            out[video] = dict(pairs=len(curves), lag=None, gain_over_lag0=None, curve={})
+            continue
+        pooled = {k: float(np.mean([c[k][0] for c in curves])) for k in lags}
+        best = min(lags, key=lambda k: (pooled[k], abs(int(k)), int(k)))
+        out[video] = dict(pairs=len(curves), lag=int(best), curve={k: round(v, 4) for k, v in pooled.items()},
+                          gain_over_lag0=round(pooled["0"] - pooled[best], 4) if "0" in pooled else None)
+    return out
 
 
 ARM_POINTS = {"Left": (11, 13, 15), "Right": (12, 14, 16)}      # shoulder, elbow, wrist
@@ -864,6 +905,20 @@ def method_rules(declared: str, candidates: list[str]) -> dict:
     return {f"lifter[{rule}]": rule for rule in dict.fromkeys(rules)}
 
 
+def secondary_rules(args) -> dict:
+    """method name -> rule of ``--secondary-visibility`` (reported methods outside the common frames)."""
+    from signtranslator.data_engineering.uwb_keypoints import visibility_margin
+    rules = [r for r in (getattr(args, "secondary_visibility", "") or "").split(",") if r]
+    declared = method_rules(args.visibility, args.candidate_visibility.split(","))
+    out = {}
+    for rule in rules:
+        visibility_margin(rule)
+        if f"lifter[{rule}]" in declared:
+            raise ValueError(f"secondary rule {rule!r} is already the declared or a candidate rule")
+        out[f"lifter[{rule}]"] = rule
+    return out
+
+
 def _init(args):
     import torch
     torch.set_num_threads(1)
@@ -874,8 +929,10 @@ def _init(args):
     regressors = WorldRegressors.load(payload, expected_sha256=args.regressors_sha256)
     if regressors.features not in Z_FREE_FEATURES:
         raise ValueError(f"the bundle's features are {regressors.features!r}; UWB needs one of {sorted(Z_FREE_FEATURES)}")
+    secondary = secondary_rules(args)
     _WORKER.update(args=args, store=store, archives={}, regressors=regressors,
-                   rules=method_rules(args.visibility, args.candidate_visibility.split(",")))
+                   rules={**method_rules(args.visibility, args.candidate_visibility.split(",")), **secondary},
+                   secondary=frozenset(secondary))
     from signtranslator.data_engineering.semlex_pose import BlendshapeModel, load_face_resources
     resources = load_face_resources(Path(args.models_dir) / "face_landmarker.task") if args.head == "affine" else None
     _WORKER["resources"] = resources
@@ -904,7 +961,8 @@ def _evaluate(job: dict) -> dict:
                   for m, rule in _WORKER["rules"].items()}
         states["pseudo"] = uk.convert_clip(clip, job["fps"], world="pseudo", visibility="inside", **common)[0]
         result = evaluate_pair(ours, states, clip, job["fps"], args.max_lag, head=args.head == "affine",
-                               cap=args.max_values_per_pair, lag_margin=args.lag_margin)
+                               cap=args.max_values_per_pair, lag_margin=args.lag_margin,
+                               lag_curves=getattr(args, "lag_curves", False), secondary=_WORKER.get("secondary", ()))
         result["inputs"] = input_sample(_WORKER["regressors"], clip, seed=zlib_seed(job["clip_id"]))
         result["arm_distance"] = arm_distance_counts(clip)
     except (uk.Refusal, ValueError, KeyError) as error:
@@ -999,6 +1057,33 @@ def overlap_table(fps_rows: dict, pairs_by_video: dict, reports: dict, monitor_s
                        "estimated rate; partitions are informational (read them from our manifest records)")
 
 
+def load_split(store, spec: str) -> tuple[dict, str]:
+    """(split, SHA-256) of a ``build_uwb_lifter_split.py`` output; refused unless its parts are disjoint by video and
+    by channel."""
+    from uwb_downstream_check import read_spec
+    payload, sha = read_spec(store, spec)
+    split = json.loads(payload)
+    if split.get("schema") != "uwb-lifter-split-v1":
+        raise SystemExit(f"{spec}: not a uwb-lifter-split-v1 file")
+    parts = ("train", "lifter_val", "held_out")
+    for kind in ("videos", "channels"):
+        for a in range(3):
+            for b in range(a + 1, 3):
+                both = set(split[parts[a]][kind]) & set(split[parts[b]][kind])
+                if both:
+                    raise SystemExit(f"{spec}: {parts[a]} and {parts[b]} share {len(both)} {kind}")
+    return split, sha
+
+
+def check_population(jobs: list[dict], split: dict) -> None:
+    """Refuses (SystemExit) any job whose video is not a held-out video of the split."""
+    held = set(split["held_out"]["videos"])
+    other = set(split["train"]["videos"]) | set(split["lifter_val"]["videos"])
+    bad = sorted({j["video_id"] for j in jobs if j["video_id"] not in held or j["video_id"] in other})
+    if bad:
+        raise SystemExit(f"--split-file: {len(bad)} videos to evaluate are not held out, e.g. {bad[:3]}")
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--store", default="r2")
@@ -1028,6 +1113,11 @@ def main(argv=None) -> int:
     p.add_argument("--overlap-table-out", help="write the dedup/partition table for convert_uwb_clips.py")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--workers", type=int, default=4)
+    p.add_argument("--split-file", help="gate v2: build_uwb_lifter_split.py output (path, key or KEY@SHA256); only its "
+                                         "held-out videos are evaluated")
+    p.add_argument("--lag-curves", action="store_true", help="gate v2: store each pair's per-lag cost curve")
+    p.add_argument("--secondary-visibility", default="",
+                   help="gate v2: comma-separated rules scored as reported methods outside the common frames (head)")
     p.add_argument("--out", required=True)
     args = p.parse_args(argv)
     if not args.fps_only:
@@ -1037,16 +1127,25 @@ def main(argv=None) -> int:
             raise SystemExit("--visibility (the declared rule) is required for an evaluation")
         try:
             method_rules(args.visibility, args.candidate_visibility.split(","))
+            secondary_rules(args)
         except ValueError as error:
             raise SystemExit(str(error)) from error
     if args.overlap_table_out and args.videos:
         raise SystemExit("--overlap-table-out needs every video: drop --videos")
+    if args.split_file and (args.fps_only or args.overlap_table_out or args.fps_table_out):
+        raise SystemExit("--split-file evaluates held-out videos only: no --fps-only, fps or overlap tables")
     excluded = read_video_list(args.exclude_videos)
     from train_text_to_motion import make_store
     store = make_store(args.store)
+    split = held_out = None
+    if args.split_file:
+        split, split_sha = load_split(store, args.split_file)
+        held_out = set(split["held_out"]["videos"])
     uwb = json.loads(store.get(f"{args.uwb_prefix}/{args.translations}"))
     keys = sorted(k for k in store.list(f"{args.youtube_prefix}/videos/") if k.endswith(".json"))
     ids = [Path(k).name[:-5] for k in keys if Path(k).name[:-5] in uwb]
+    if held_out is not None:
+        ids = [v for v in ids if v in held_out]
     rng = random.Random(args.seed)
     if args.videos and not args.fps_only:          # a sample: read 3x as many reports as videos wanted, seeded
         population = [v for v in ids if v not in excluded]
@@ -1082,6 +1181,12 @@ def main(argv=None) -> int:
         Path(args.overlap_table_out).write_text(json.dumps(table, indent=1, sort_keys=True))
     out = dict(settings={k: v for k, v in vars(args).items()}, fps=dict(summary=fps_summary, videos=fps_rows),
                candidate_pairs=len(jobs), excluded_videos=sorted(excluded))
+    if split is not None:
+        out["split"] = dict(spec=args.split_file, sha256=split_sha, held_out_videos=len(held_out),
+                            held_out_channels=len(split["held_out"]["channels"]))
+    for key in ("split_file", "lag_curves", "secondary_visibility"):     # gate v1 reports stay exactly as before
+        if not out["settings"][key]:
+            del out["settings"][key]
     dropped, drift_status = {}, {}
     if not args.fps_only:
         by_video = collections.defaultdict(list)
@@ -1096,6 +1201,8 @@ def main(argv=None) -> int:
         for v in videos:
             picked = rng.sample(by_video[v], min(args.pairs_per_video, len(by_video[v])))
             chosen += [dict(job, zip=index[job["clip_id"]]) for job in picked if job["clip_id"] in index]
+        if held_out is not None:
+            check_population(chosen, split)
         print(json.dumps(dict(videos=len(videos), pairs=len(chosen), excluded=len(excluded))), flush=True)
         with ProcessPoolExecutor(max_workers=max(1, args.workers), initializer=_init, initargs=(args,)) as pool:
             results, started = [], time.monotonic()

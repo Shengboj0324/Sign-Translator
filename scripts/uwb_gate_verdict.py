@@ -39,6 +39,21 @@ values: those rows are marked ``rounded_source`` and compared as given, so a val
 **Cross-check**: every boolean of the gate report's ``proposal_check`` is recomputed here by its own definition and
 compared; a different value is a **disagreement**. Where the declared gate differs from the proposal's definition
 (strata scope; drift, which the proposal checks and the declaration makes a diagnostic) both readings are listed.
+
+**Gate v2** (``--gate-version 2``; plan "UWB lifter v2 and gate v2: declared", 2026-10-30 11:12 UTC; the default mode is
+gate v1, unchanged). Every gate v1 bar is kept; the accuracy, relative, offset and strata rows read ``lifter[inside]``
+on the common frames, the validity rows read ``lifter[head]`` (the rule the head becomes; ``inside``'s are reported).
+New rows: setup (inside, the gate v1 candidate rules, head as a secondary method, the declared v2 bundle, 12 pairs per
+video, 2,000 resamples, 70 development videos excluded, lag curves, the declared split); **population** (every gated
+video held out, the split disjoint by channel and video, the pairs index and the bundle's training report on this
+split); **v1 reference** (the xy2 bundle on the identical sample: gating as a setup row, not-evaluable unless present and
+identical; its medians reported); **How2Sign non-inferiority** (v2's How2Sign-val median per group <= v1's + 0.5 deg);
+**truth anchor** (full-frame two-view forearm median <= 28.2 left / 29.1 right); **chest-up survival of head** (tight
+crops of signers 1 and 2, out-of-frame forearms: >= 0.8x MediaPipe where it keeps >= 200 frames from >= 5 videos,
+else >= inside's survival and head admissible); **timing** redefined (mirror unchanged; pooled lag per video with >= 3
+arm-aligned stream-match pairs within 1 for >= 90% of videos, and no video gaining > 2 deg over lag 0 beyond 1; v1's
+value reported). Reported: head-kept accuracy, held-out minus lifter-val gaps, diagnostics. Only proposal_check keys
+whose rows keep their gate v1 definition on the same method are cross-checked.
 """
 from __future__ import annotations
 
@@ -226,6 +241,11 @@ def share_of(cells: dict, keys) -> float | None:
 def validity_rows(e: dict, outside: dict | None, gate_sha: str | None, rule: str | None) -> list[dict]:
     """Agreements and UWB-only rates unrounded from the confusion counts; ``proposal_value`` reads the rounded rates
     as proposal_check does."""
+    return validity_core_rows(e) + chest_up_rows(outside, gate_sha, rule)
+
+
+def validity_core_rows(e: dict) -> list[dict]:
+    """Hand agreement, forearm agreement where our chest is valid, and UWB-only rate, per side."""
     out = []
     for side in ("Left", "Right"):
         h = e["hand_valid"].get(f"all.{side}", {})
@@ -255,7 +275,6 @@ def validity_rows(e: dict, outside: dict | None, gate_sha: str | None, rule: str
         out.append(row("Validity", key, value, BARS["uwb_only"], at_most(value, BARS["uwb_only"]), proposal_key=key,
                        proposal_value=as_bool(at_most(max(rounded) if rounded else None, BARS["uwb_only"])),
                        detail=dict(hand=h.get("uwb_only_rate"), forearm=f.get("uwb_only_rate"))))
-    out += chest_up_rows(outside, gate_sha, rule)
     return out
 
 
@@ -509,6 +528,353 @@ def markdown(rows: list[dict], verdict: str, check: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+# ======================================================================================================================
+# Gate v2 (docs/NEXT_PHASE_PLAN.md, "UWB lifter v2 and gate v2: declared", 2026-10-30 11:12 UTC)
+
+V2_DECLARATION = ("docs/NEXT_PHASE_PLAN.md: UWB lifter v2 and gate v2: declared (2026-10-30, 11:12 UTC); every gate v1 "
+                  "bar unchanged (declared selection and gate 03:34 UTC, amendment 1 03:59, owner 04:02)")
+V2 = dict(pairs_per_video=12, candidates="learned,inside,margin:0.1,margin:0.25", secondary="head",
+          h2s_noninferiority=.5, truth_anchor=dict(Left=28.2, Right=29.1), pooled_lag_share=.90, pooled_lag_min_pairs=3,
+          pooled_lag_bound=1, pooled_lag_gain=2., chest_up_survival=.80)
+HEAD = "lifter[head]"
+
+
+def _strip_proposal(rows: list[dict]) -> list[dict]:
+    """Rows judged on another method than the gate summary's proposal_check: no proposal key or reading."""
+    out = []
+    for r in rows:
+        r = dict(r, proposal_key=None)
+        r.pop("proposal_value", None)
+        out.append(r)
+    return out
+
+
+def _secondary(rows: list[dict], prefix: str) -> list[dict]:
+    return [dict(r, id=f"{prefix}.{r['id']}", gating=False) for r in _strip_proposal(rows)]
+
+
+def setup_rows_v2(report: dict, bundle_sha: str | None, split_sha: str | None) -> list[dict]:
+    s = report.get("settings", {})
+    split = report.get("split") or {}
+    secondary = {r for r in (s.get("secondary_visibility") or "").split(",") if r}
+    bundle = report.get("regressors_sha256")
+    return [row("Setup", "visibility_is_inside", s.get("visibility"), SELECTED_RULE,
+                PASS if s.get("visibility") == SELECTED_RULE else FAIL),
+            row("Setup", "candidate_rules_as_gate_v1", s.get("candidate_visibility"), V2["candidates"],
+                PASS if candidate_rules(s.get("candidate_visibility")) == candidate_rules(V2["candidates"]) else FAIL),
+            row("Setup", "head_scored_as_secondary", sorted(secondary), V2["secondary"],
+                PASS if V2["secondary"] in secondary else FAIL),
+            row("Setup", "bundle_is_lifter_v2", bundle, bundle_sha or "the declared v2 bundle (--bundle-sha256)",
+                NA if not bundle_sha else PASS if bundle == bundle_sha and bundle != BUNDLE_SHA256 else FAIL),
+            row("Setup", "pairs_per_video", s.get("pairs_per_video"), V2["pairs_per_video"],
+                PASS if s.get("pairs_per_video") == V2["pairs_per_video"] and not s.get("videos") else FAIL,
+                detail=dict(videos_limit=s.get("videos"))),
+            row("Setup", "bootstrap_resamples", s.get("bootstrap"), SAMPLE["bootstrap"],
+                PASS if s.get("bootstrap") == SAMPLE["bootstrap"] else FAIL),
+            row("Setup", "development_videos_excluded", len(report.get("excluded_videos", [])), SAMPLE["excluded_videos"],
+                PASS if len(report.get("excluded_videos", [])) == SAMPLE["excluded_videos"] else FAIL),
+            row("Setup", "lag_curves_stored", bool(s.get("lag_curves")), True, PASS if s.get("lag_curves") else FAIL),
+            row("Setup", "split_is_the_declared_split", split.get("sha256"), split_sha or "the split file (--split-file)",
+                NA if not split_sha else PASS if split.get("sha256") == split_sha else FAIL)]
+
+
+def population_rows(report: dict, split: dict | None, split_sha: str | None, pairs_index: dict | None,
+                    training: dict | None, bundle_sha: str | None) -> list[dict]:
+    """Held-out channels only, verified disjoint from the training and lifter-val lists, and the training data and
+    bundle provably built on this split."""
+    if split is None:
+        return [row("Population", rid, None, bar, NA, detail=dict(reason="no split file given"))
+                for rid, bar in (("held_out_only", "every gated video held out"),
+                                 ("split_disjoint", "no shared channel or video"),
+                                 ("pairs_on_this_split", "pairs index of this split"),
+                                 ("bundle_trained_on_this_split", "training report of this bundle and split"))]
+    held = set(split["held_out"]["videos"])
+    other = set(split["train"]["videos"]) | set(split["lifter_val"]["videos"])
+    channels = set(split["train"]["channels"]) | set(split["lifter_val"]["channels"])
+    videos = {p.get("video_id") for p in report.get("pairs", [])}
+    outside = sorted(v for v in videos if v not in held or v in other)
+    shared = dict(channels=len(set(split["held_out"]["channels"]) & channels), videos=len(held & other))
+    out = [row("Population", "held_out_only", len(outside), 0, PASS if videos and not outside else FAIL if outside else NA,
+               detail=dict(videos=len(videos), not_held_out=outside[:20])),
+           row("Population", "split_disjoint", shared, "0 channels, 0 videos",
+               PASS if not any(shared.values()) else FAIL)]
+    if pairs_index is None:
+        out.append(row("Population", "pairs_on_this_split", None, split_sha, NA,
+                       detail=dict(reason="no pairs index given (build_uwb_lifter_pairs.py pairs-index.json)")))
+    else:
+        out.append(row("Population", "pairs_on_this_split", pairs_index.get("split_sha256"), split_sha,
+                       PASS if pairs_index.get("split_sha256") == split_sha else FAIL))
+    if training is None:
+        out.append(row("Population", "bundle_trained_on_this_split", None, split_sha, NA,
+                       detail=dict(reason="no training report given (train_uwb_lifter_v2.py validity report)")))
+    else:
+        ok = training.get("split_sha256") == split_sha and training.get("bundle_sha256") == bundle_sha
+        out.append(row("Population", "bundle_trained_on_this_split",
+                       dict(split=training.get("split_sha256"), bundle=training.get("bundle_sha256")),
+                       dict(split=split_sha, bundle=bundle_sha), PASS if ok else FAIL))
+    return out
+
+
+def _sample(report: dict) -> set:
+    return {(p.get("video_id"), p.get("clip_id")) for p in report.get("pairs", [])}
+
+
+def v1_reference_rows(report: dict, v1: dict | None) -> list[dict]:
+    """The xy2 bundle on the identical held-out sample: a gating setup row (not-evaluable unless present and identical)
+    and its accuracy medians beside v2's (reported)."""
+    rid, bar = "v1_reference_on_identical_sample", "xy2 bundle, same split, settings and pairs"
+    if v1 is None:
+        return [row("v1 reference", rid, None, bar, NA, detail=dict(reason="no v1 reference report given"))]
+    s, s1 = report.get("settings", {}), v1.get("settings", {})
+    same = ("visibility", "candidate_visibility", "pairs_per_video", "bootstrap", "seed", "max_lag", "lag_margin",
+            "max_values_per_pair", "videos", "lag_curves")
+    differs = [k for k in same if s.get(k) != s1.get(k)]
+    problems = []
+    if v1.get("regressors_sha256") != BUNDLE_SHA256:
+        problems.append(f"bundle {v1.get('regressors_sha256')} is not xy2")
+    if (v1.get("split") or {}).get("sha256") != (report.get("split") or {}).get("sha256"):
+        problems.append("another split")
+    if differs:
+        problems.append(f"settings differ: {differs}")
+    if _sample(v1) != _sample(report):
+        problems.append(f"another sample ({len(_sample(v1))} pairs against {len(_sample(report))})")
+    out = [row("v1 reference", rid, len(_sample(v1)), bar, NA if problems else PASS,
+               detail=dict(reason="; ".join(problems) or None))]
+    e2 = report["summary"]["methods"][report["summary"]["primary"]]
+    e1 = (v1.get("summary") or {}).get("methods", {}).get((v1.get("summary") or {}).get("primary"), {})
+    for g in GROUPS:
+        a, b = e1.get("common", {}).get(g, {}), e2["common"].get(g, {})
+        out.append(row("v1 reference", f"v1_reference.median.{g}", a.get("median"), f"v2 {b.get('median')}",
+                       "reported", gating=False, rounded=ROUNDED_2DP,
+                       detail=dict(v1=dict(median=a.get("median"), p90=a.get("p90"), ci95=a.get("median_ci95_by_video")),
+                                   v2=dict(median=b.get("median"), p90=b.get("p90"),
+                                           ci95=b.get("median_ci95_by_video")))))
+    return out
+
+
+def h2s_noninferiority_rows(h2s: dict | None, h2s_v1: dict | None, bundle: str | None, primary: str,
+                            candidates) -> list[dict]:
+    """Per group: v2's How2Sign-val median <= v1's + 0.5 deg (same primary method and candidate rules as the gate;
+    each measured on >= 200 values from >= 5 videos)."""
+    reason = None
+    for name, x, sha in (("v2", h2s, bundle), ("v1", h2s_v1, BUNDLE_SHA256)):
+        if x is None:
+            reason = reason or f"no How2Sign-val medians of the {name} bundle given"
+        elif x.get("regressors_sha256") != sha:
+            reason = reason or f"the {name} How2Sign-val medians are of bundle {x.get('regressors_sha256')}, not {sha}"
+        elif x["summary"].get("primary") != primary:
+            reason = reason or f"the {name} How2Sign-val primary method is {x['summary'].get('primary')}, not {primary}"
+        elif candidate_rules(x.get("candidate_visibility")) != candidate_rules(candidates):
+            reason = reason or f"the {name} How2Sign-val candidate rules differ from the gate run's"
+    out = []
+    bar = V2["h2s_noninferiority"]
+    for g in GROUPS:
+        why, value = reason, None
+        refs = {}
+        if not why:
+            for name, x in (("v2", h2s), ("v1", h2s_v1)):
+                refs[name] = x["summary"]["methods"].get(primary, {}).get("common", {}).get(g, {})
+                if refs[name].get("n", 0) < MIN_VALUES or refs[name].get("videos", 0) < MIN_VIDEOS:
+                    why = f"{name} {g}: {refs[name].get('n', 0)} values from {refs[name].get('videos', 0)} videos"
+        if not why:
+            value = refs["v2"]["median"] - refs["v1"]["median"]
+        out.append(row("How2Sign non-inferiority", f"how2sign_val_v2_minus_v1.{g}<={bar}", value, bar,
+                       at_most(value, bar), rounded="difference of two 2-dp medians",
+                       detail=dict(v2=refs.get("v2", {}).get("median"), v1=refs.get("v1", {}).get("median"),
+                                   reason=why)))
+    return out
+
+
+def truth_anchor_rows(outside: dict | None, bundle: str | None) -> list[dict]:
+    """Full-frame two-view forearm error of the v2 bundle (the ungated lifter on full How2Sign frames with the whole
+    arm in view: ``uwb_outside_frame_accuracy.anchor``) <= v1's 28.2 deg (left) / 29.1 deg (right)."""
+    reason = None if outside is not None else "no outside-frame report of the v2 bundle given"
+    if not reason and outside.get("regressors_sha256") != bundle:
+        reason = f"outside-frame report of bundle {outside.get('regressors_sha256')}, the gate ran {bundle}"
+    out = []
+    for side, bar in V2["truth_anchor"].items():
+        a = {} if reason else (outside.get("anchor") or {}).get(side, {}).get("Forearm", {})
+        value = a.get("median") if a.get("n") else None
+        out.append(row("Truth anchor", f"full_frame_forearm_median.{side}<={bar}", value, bar, at_most(value, bar),
+                       rounded="outside-frame report, 2 dp", detail=dict(n=a.get("n"), videos=a.get("videos"),
+                                                                         ci95=a.get("median_ci95"), reason=reason)))
+    return out
+
+
+def _outside_cell(tight: dict, decision: str, side: str) -> dict:
+    return ((tight.get("by_decision") or {}).get(decision) or {}).get(side, {}).get("Forearm", {}).get("outside", {})
+
+
+def chest_up_head_rows(outside: dict | None, bundle: str | None) -> list[dict]:
+    """Per side, on the tight crops of How2Sign val signers 1 and 2 (``uwb_outside_frame_accuracy --tight-summary``),
+    out-of-frame forearms (distance > 0): head survival >= 0.8x MediaPipe's where MediaPipe keeps >= 200 such frames
+    from >= 5 videos; otherwise head survival >= ``inside``'s and ``head`` admissible (amendment 1, on those crops)."""
+    reason = None
+    tight = (outside or {}).get("tight")
+    if outside is None:
+        reason = "no outside-frame report of the v2 bundle given"
+    elif outside.get("regressors_sha256") != bundle:
+        reason = f"outside-frame report of bundle {outside.get('regressors_sha256')}, the gate ran {bundle}"
+    elif not tight:
+        reason = "the outside-frame report has no tight-crop summary (--tight-summary)"
+    elif not all(d in tight.get("by_decision", {}) for d in ("head", "inside", "mediapipe")):
+        reason = "head, inside or MediaPipe not measured on the tight crops"
+    out = []
+    for side in ("Left", "Right"):
+        value, bar, status, detail = None, f">= {V2['chest_up_survival']}x MediaPipe", NA, dict(reason=reason)
+        if not reason:
+            head, mp, inside = (_outside_cell(tight, d, side) for d in ("head", "mediapipe", "inside"))
+            mp_frames = round((mp.get("frames") or 0) * (mp.get("survival") or 0))
+            mp_videos = (mp.get("kept") or {}).get("videos", 0)
+            admissible = (tight.get("verdicts") or {}).get("head", {}).get("admissible")
+            detail = dict(head_survival=head.get("survival"), mediapipe_survival=mp.get("survival"),
+                          inside_survival=inside.get("survival"), outside_frames=head.get("frames"),
+                          mediapipe_kept_frames=mp_frames, mediapipe_kept_videos=mp_videos, head_admissible=admissible,
+                          head_failures=(tight.get("verdicts") or {}).get("head", {}).get("failures"))
+            if head.get("survival") is None:
+                detail["reason"] = "no out-of-frame forearm on the tight crops"
+            elif mp_frames >= MIN_VALUES and mp_videos >= MIN_VIDEOS:
+                value = head["survival"] / mp["survival"]
+                status = at_least(value, V2["chest_up_survival"])
+                detail["branch"] = "MediaPipe measured: ratio"
+            else:
+                value, bar = head["survival"], f">= inside's survival ({inside.get('survival')}) and head admissible"
+                status = PASS if (inside.get("survival") is not None and value >= inside["survival"]
+                                  and admissible) else FAIL
+                detail["branch"] = f"MediaPipe keeps {mp_frames} frames from {mp_videos} videos: inside and admissibility"
+        out.append(row("Chest-up survival (head)", f"chest_up_head_forearm_survival.{side}", value, bar, status,
+                       rounded="ratio or value of 4-dp survivals (uwb_outside_frame_accuracy)", detail=detail))
+    return out
+
+
+def pooled_lag_rows(pairs: list | None, *, gating: bool = True, prefix: str = "") -> list[dict]:
+    """Timing, redefined: per video with >= 3 arm-aligned stream-match pairs, the pooled lag (summed per-lag cost
+    curves, ``uwb_lifter_gate.pooled_video_lags``) has |lag| <= 1 for >= 90% of videos; and no video's pooled lag beats
+    lag 0 by more than 2 deg at |lag| > 1. A video without a common lag counts outside 1; one whose common lags lack 0
+    counts as beating it."""
+    import uwb_lifter_gate as gate
+    lags = gate.pooled_video_lags(pairs or [], min_pairs=V2["pooled_lag_min_pairs"])
+    share_id = f"{prefix}pooled_lag_within_1_share>={V2['pooled_lag_share']}"
+    gain_id = f"{prefix}pooled_lag_beyond_1_gain_over_lag0<={V2['pooled_lag_gain']}"
+    if not lags:
+        reason = "no video with >= 3 arm-aligned stream-match pairs carrying lag curves"
+        return [row("Timing", share_id, None, V2["pooled_lag_share"], NA, gating=gating, detail=dict(reason=reason)),
+                row("Timing", gain_id, None, "0 videos", NA, gating=gating, detail=dict(reason=reason))]
+    within = [v for v, x in lags.items() if x["lag"] is not None and abs(x["lag"]) <= V2["pooled_lag_bound"]]
+    share = len(within) / len(lags)
+    offenders = {v: x["gain_over_lag0"] for v, x in lags.items() if x["lag"] is not None
+                 and abs(x["lag"]) > V2["pooled_lag_bound"]
+                 and (x["gain_over_lag0"] is None or x["gain_over_lag0"] > V2["pooled_lag_gain"])}
+    histogram = {}
+    for x in lags.values():
+        histogram[str(x["lag"])] = histogram.get(str(x["lag"]), 0) + 1
+    gains = [x["gain_over_lag0"] for x in lags.values() if x["lag"] is not None
+             and abs(x["lag"]) > V2["pooled_lag_bound"] and x["gain_over_lag0"] is not None]
+    return [row("Timing", share_id, share, V2["pooled_lag_share"], at_least(share, V2["pooled_lag_share"]),
+                gating=gating, detail=dict(videos=len(lags), within_1=len(within), pooled_lags=histogram)),
+            row("Timing", gain_id, len(offenders), "0 videos", PASS if not offenders else FAIL, gating=gating,
+                detail=dict(offenders=dict(sorted(offenders.items())[:20]), largest_gain_beyond_1=max(gains)
+                            if gains else None))]
+
+
+def lifter_val_gap_rows(report: dict, pose_report: dict | None) -> list[dict]:
+    """Circularity control (reported): held-out minus lifter-val arm medians. Lifter-val is the trainer's direction
+    error on every frame where our bone is valid; held-out is the gate's own-frame error of the inside and head
+    methods (the closest gate quantities)."""
+    if pose_report is None:
+        return [row("Circularity", "lifter_val_gap", None, "reported", "reported", gating=False,
+                    detail=dict(reason="no pose training report given"))]
+    lv = (pose_report.get("lifter_val") or {}).get("pose") or {}
+    out = []
+    methods = report["summary"]["methods"]
+    for g in ("upper_arms", "forearms"):
+        held = {m: methods.get(m, {}).get("own", {}).get(g, {}).get("median") for m in (f"lifter[{SELECTED_RULE}]", HEAD)}
+        value = {m: None if v is None or lv.get(g, {}).get("median") is None else round(v - lv[g]["median"], 2)
+                 for m, v in held.items()}
+        out.append(row("Circularity", f"held_out_minus_lifter_val.{g}", value, "reported", "reported", gating=False,
+                       detail=dict(lifter_val=lv.get(g), held_out_own=held)))
+    return out
+
+
+def build_rows_v2(report: dict, *, v1: dict | None = None, h2s: dict | None = None, h2s_v1: dict | None = None,
+                  downstream: dict | None = None, outside: dict | None = None, split: dict | None = None,
+                  split_sha: str | None = None, pairs_index: dict | None = None, training: dict | None = None,
+                  pose_report: dict | None = None, bundle_sha: str | None = None,
+                  gate_sha: str | None = None) -> list[dict]:
+    summary = report["summary"]
+    primary = summary["primary"]
+    if primary not in summary["methods"]:
+        raise SystemExit(f"the primary method {primary} is not in the gate summary")
+    e = summary["methods"][primary]
+    settings = report.get("settings", {})
+    bundle = report.get("regressors_sha256")
+    rows = setup_rows_v2(report, bundle_sha, split_sha)
+    rows += population_rows(report, split, split_sha, pairs_index, training, bundle_sha)
+    rows += v1_reference_rows(report, v1)
+    rows += accuracy_rows(e)
+    rows += relative_rows(e, h2s, bundle, primary, settings.get("candidate_visibility"))
+    rows += h2s_noninferiority_rows(h2s, h2s_v1, bundle, primary, settings.get("candidate_visibility"))
+    rows += truth_anchor_rows(outside, bundle) + offset_rows(e) + strata_rows(summary)
+    if HEAD in summary["methods"]:
+        rows += [dict(r, note=f"method {HEAD}") for r in _strip_proposal(validity_core_rows(summary["methods"][HEAD]))]
+    else:
+        rows += [row("Validity", rid, None, "", NA, detail=dict(reason=f"{HEAD} not in the gate summary"))
+                 for rid in ("hand_agreement", "forearm_agreement_hips_visible", "uwb_only_rate")]
+    rows += _secondary(validity_core_rows(e), "inside")
+    rows += chest_up_head_rows(outside, bundle)
+    mc = timing_rows(e, summary, report.get("pairs"))[0]
+    rows += [mc] + pooled_lag_rows(report.get("pairs"))
+    if v1 is not None:
+        rows += pooled_lag_rows(v1.get("pairs"), gating=False, prefix="v1_reference.")
+    rows += downstream_rows(downstream, gate_sha, report)
+    if HEAD in summary["methods"]:
+        rows += _secondary(accuracy_rows(dict(summary["methods"][HEAD], common=summary["methods"][HEAD]["own"])),
+                           "head_kept")
+    rows += lifter_val_gap_rows(report, pose_report) + diagnostic_rows(summary)
+    return rows
+
+
+def main_v2(args, store) -> int:
+    report, gate_sha = load(store, args.gate_report)
+    v1, v1_sha = load(store, args.v1_reference)
+    h2s, h2s_sha = load(store, args.how2sign_val)
+    h2s_v1, h2s_v1_sha = load(store, args.how2sign_val_v1)
+    downstream, ds_sha = load(store, args.downstream)
+    outside, of_sha = load(store, args.outside_frame)
+    split, split_sha = load(store, args.split_file)
+    pairs_index, pi_sha = load(store, args.pairs_index)
+    training, tr_sha = load(store, args.training_report)
+    pose_report, pr_sha = load(store, args.pose_report)
+    rows = build_rows_v2(report, v1=v1, h2s=h2s, h2s_v1=h2s_v1, downstream=downstream, outside=outside, split=split,
+                         split_sha=split_sha, pairs_index=pairs_index, training=training, pose_report=pose_report,
+                         bundle_sha=args.bundle_sha256, gate_sha=gate_sha)
+    check = cross_check(rows, report["summary"])
+    verdict = overall(rows, check)
+    out = dict(gate_version=2, verdict=verdict, rows=rows, cross_check=check, bars=BARS, bars_v2=V2,
+               gating_strata=GATING_STRATA,
+               inputs=dict(gate_report=[args.gate_report, gate_sha], v1_reference=[args.v1_reference, v1_sha],
+                           how2sign_val=[args.how2sign_val, h2s_sha], how2sign_val_v1=[args.how2sign_val_v1, h2s_v1_sha],
+                           downstream=[args.downstream, ds_sha], outside_frame=[args.outside_frame, of_sha],
+                           split_file=[args.split_file, split_sha], pairs_index=[args.pairs_index, pi_sha],
+                           training_report=[args.training_report, tr_sha], pose_report=[args.pose_report, pr_sha]),
+               declaration=V2_DECLARATION)
+    return finish(args, store, out, rows, verdict, check)
+
+
+def finish(args, store, out: dict, rows: list[dict], verdict: str, check: dict) -> int:
+    text = json.dumps(out, indent=1, sort_keys=True, default=str)
+    Path(args.out).write_text(text)
+    table = markdown(rows, verdict, check)
+    if args.markdown:
+        Path(args.markdown).write_text(table)
+    if args.output_key:
+        store.put(args.output_key, text.encode())
+    if args.markdown_key:
+        store.put(args.markdown_key, table.encode())
+    print(table)
+    return 0
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--store", default="r2")
@@ -520,12 +886,28 @@ def main(argv=None) -> int:
     p.add_argument("--markdown", help="local Markdown table")
     p.add_argument("--output-key", help="also store the JSON here (refused if it exists)")
     p.add_argument("--markdown-key", help="also store the Markdown table here (refused if it exists)")
+    p.add_argument("--gate-version", type=int, choices=(1, 2), default=1,
+                   help="2: gate v2 (plan 2026-10-30 11:12 UTC); 1 (default): the gate v1 verdict, unchanged")
+    v2 = p.add_argument_group("gate v2 inputs")
+    v2.add_argument("--v1-reference", help="the gate run of the xy2 bundle on the identical held-out sample")
+    v2.add_argument("--how2sign-val-v1", help="uwb_how2sign_val_medians.py of the xy2 bundle")
+    v2.add_argument("--split-file", help="build_uwb_lifter_split.py output")
+    v2.add_argument("--pairs-index", help="build_uwb_lifter_pairs.py pairs-index.json")
+    v2.add_argument("--training-report", help="train_uwb_lifter_v2.py validity report (the gated bundle's)")
+    v2.add_argument("--pose-report", help="train_uwb_lifter_v2.py pose report of the selected arm (lifter-val)")
+    v2.add_argument("--bundle-sha256", help="the declared v2 bundle's SHA-256")
     args = p.parse_args(argv)
+    v2_only = [a for a in ("v1_reference", "how2sign_val_v1", "split_file", "pairs_index", "training_report",
+                           "pose_report", "bundle_sha256") if getattr(args, a)]
+    if args.gate_version == 1 and v2_only:
+        raise SystemExit(f"--{v2_only[0].replace('_', '-')} is a gate v2 input (--gate-version 2)")
     from train_text_to_motion import make_store
     store = make_store(args.store) if args.store != "none" else None
     for key in (args.output_key, args.markdown_key):
         if key and store.exists(key):
             raise SystemExit(f"{key} exists; a rerun writes elsewhere")
+    if args.gate_version == 2:
+        return main_v2(args, store)
     report, gate_sha = load(store, args.gate_report)
     h2s, h2s_sha = load(store, args.how2sign_val)
     downstream, ds_sha = load(store, args.downstream)
