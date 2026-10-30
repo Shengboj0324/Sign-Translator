@@ -5354,3 +5354,20 @@ Gate v2 on the held-out channels: 5,821 pairs, 12 per video, split `27c35505…`
 - **Timing (pooled):** 0.767 (bar 0.9), with 11 videos whose lag beyond ±1 beats lag 0. **xy2 reads identically, 0.767**, so the timing gap is a property of the data pairing, not of either lifter.
 
 **Decision (as declared):** no conversion, and round 18b does not run. The UWB lift does not meet the declared bars. Its accuracy trade-off (forearms better, wrists worse) and the lifter-independent timing gap would each need new work for uncertain gain. Combined with round 18's 7.4k-record finding, **the UWB data lever is closed** for this phase.
+
+## Round 19 result, recorded (2026-10-30, 18:43 UTC): both arms FAIL
+
+Same 1,000 clips, instrument v1. Real 4.136 and blank 1.859 reproduce exactly. All differences are paired, against the stored R16C and W14b pilots.
+
+| Arm | BLEU | − R16C | − W14b | v3 lexicon − R16C |
+|---|---|---|---|---|
+| R19 (natural) | 1.601 [1.36, 1.85] | −0.057 [−0.366, +0.267] | −0.184 [−0.507, +0.150] | −0.027 [−0.063, +0.010] |
+| R19w (non-YouTube mass kept) | 1.543 [1.28, 1.80] | −0.115 [−0.426, +0.167] | −0.242 [−0.559, +0.066] | −0.030 [−0.060, 0.000] |
+
+**Reading:**
+- +74k of our own YouTube cues (+114 h) does not help end-to-end in 10k steps, at either mass.
+- Teacher-forced validation loss fell slightly (about 0.01–0.017 below R16C), but generation did not improve. This is the familiar loss/generation disconnect.
+- Every 10k continuation of W14b so far reads below W14b: R16C 1.658, R16 1.768, R19 1.601, R19w 1.543. All stay below blank (1.859).
+- The end-to-end autoregressive route at 24 Hz is not moved by data volume, by on-policy rollout (round 16), or by plan codes (round 17).
+
+**Decision (as declared): the composition path is the focus.** Its leader is W14b composition, 2.31; milestone M1 is 2.55. The UWB lever is closed too (gate v2, 18:40). The next round is designed for the composition path, from its own record (rounds 14–15), and declared before anything trains.
