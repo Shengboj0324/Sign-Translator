@@ -36,6 +36,11 @@ fail), the CI-upper kept median <= anchor median + 3 deg and the CI-upper kept p
 rule with the largest UWB-weighted forearm survival (mean of the sides) is chosen; rules within 2 points of the best
 go to the more conservative (``CONSERVATIVE_ORDER``). ``learned`` is chosen only conditional on the YouTube gate's
 validity (all-frame forearm agreement >= 0.85 per side, UWB-only valid <= 10%). If no rule is admissible: ``inside``.
+
+**Gate v2** (plan "UWB lifter v2 and gate v2", 2026-10-30 11:12 UTC): rule ``head`` (a bundle with a validity head) is
+accepted like any rule. ``--tight-summary`` adds ``tight``: the per-decision summary on the tight crops only, with an
+``outside`` cell (every frame whose bone lies outside the frame: distance > 0) per side and bone, and each rule's
+amendment-1 admissibility on those crops (the chest-up survival row of gate v2). Without it the report is unchanged.
 """
 from __future__ import annotations
 
@@ -54,7 +59,7 @@ SIDES = {"Left": (11, 13, 15), "Right": (12, 14, 16)}          # shoulder, elbow
 BONES = ("UpperArm", "Forearm")
 BINS = (("inside", 0., 0.), ("0-0.1", 0., .1), ("0.1-0.3", .1, .3), ("0.3-inf", .3, np.inf))
 DEFAULT_RULES = "learned,inside,margin:0.1,margin:0.25"
-CONSERVATIVE_ORDER = ("inside", "margin:0.1", "margin:0.25", "margin:0.5", "learned")
+CONSERVATIVE_ORDER = ("inside", "margin:0.1", "margin:0.25", "margin:0.5", "head", "learned")
 EXCLUDED_SIGNERS = ("9",)
 LEGACY_INPUT = "legacy-holistic-0.10.14"
 TASKS_INPUT = "tasks-image"
@@ -217,16 +222,17 @@ def anchor(rows: list[dict], draws: int) -> dict:
                                       and r["bone"] == bone], draws) for bone in BONES} for side in SIDES}
 
 
-def decision_summary(rows: list[dict], key: str, draws: int, admit_share: float) -> dict:
-    """Per side, bone and bin (crops only): frames, survival, kept error statistics, admitted and unmeasured."""
+def decision_summary(rows: list[dict], key: str, draws: int, admit_share: float, outside: bool = False) -> dict:
+    """Per side, bone and bin (crops only): frames, survival, kept error statistics, admitted and unmeasured.
+    ``outside``: also an ``outside`` cell (distance > 0, every outside bin together; never admitted)."""
     out = {}
     for side in SIDES:
         out[side] = {}
         for bone in BONES:
             out[side][bone] = {}
-            for name, *_ in (("all",), *BINS):
+            for name, *_ in (("all",), *BINS) + ((("outside",),) if outside else ()):
                 sel = [r for r in rows if r["kind"] != "full" and r["side"] == side and r["bone"] == bone
-                       and (name == "all" or r["bin"] == name)]
+                       and (name == "all" or r["bin"] == name or (name == "outside" and r["distance"] > 0))]
                 if not sel:
                     out[side][bone][name] = dict(frames=0, survival=None, admitted=False)
                     continue
@@ -235,7 +241,7 @@ def decision_summary(rows: list[dict], key: str, draws: int, admit_share: float)
                 survival = len(kept_rows) / len(sel)
                 out[side][bone][name] = dict(
                     frames=len(sel), videos=len({r["video"] for r in sel}), survival=round(survival, 4),
-                    kept=stats, admitted=bool(name != "all" and survival >= admit_share),
+                    kept=stats, admitted=bool(name not in ("all", "outside") and survival >= admit_share),
                     unmeasured=bool(stats["n"] < MIN_KEPT_FRAMES or stats["videos"] < MIN_KEPT_VIDEOS))
     return out
 
@@ -379,7 +385,14 @@ def analyse(args, regressors=None) -> dict:
     min_frames = getattr(args, "min_bin_frames", 200)
     weighted = {name: weighted_survival(s, weights, min_frames) for name, s in by_decision.items()}
     selection = select_rule(by_decision, anchors, weighted, rules)
-    return dict(regressors_sha256=regressors.sha256, features=regressors.features, signers=sorted(signers),
+    extra = {}
+    if getattr(args, "tight_summary", False):
+        tight_rows = [r for r in rows if r["kind"] == "tight"]
+        tight = {name: decision_summary(tight_rows, key, draws, admit, outside=True) for name, key in decisions.items()}
+        extra["tight"] = dict(by_decision=tight, clips=len({r["clip"] for r in tight_rows}),
+                              videos=len({r["video"] for r in tight_rows}),
+                              verdicts={rule: rule_verdict(tight[rule], anchors, None) for rule in rules})
+    return dict(**extra, regressors_sha256=regressors.sha256, features=regressors.features, signers=sorted(signers),
                 rules=rules, inputs={k: len(v) for k, v in inputs.items()},
                 clips=dict(full=sum(1 for m, _ in clips if kind_of(m) == "full"),
                            crops=sum(1 for m, _ in clips if kind_of(m) != "full")),
@@ -403,6 +416,7 @@ def main(argv=None) -> int:
     p.add_argument("--bootstrap", type=int, default=1000)
     p.add_argument("--min-bin-frames", type=int, default=200, help="bins with fewer frames do not enter the weighting")
     p.add_argument("--admit-share", type=float, default=.05, help="a rule admits a bin when it keeps this share of it")
+    p.add_argument("--tight-summary", action="store_true", help="gate v2: add the tight-crop summary (key 'tight')")
     p.add_argument("--report", required=True)
     args = p.parse_args(argv)
     import torch

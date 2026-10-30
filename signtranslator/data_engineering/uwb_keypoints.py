@@ -44,7 +44,10 @@ version must be ``FEATURES_XY`` (a z-trained bundle fed zero depth is refused: i
 - ``"inside"``: finite and inside the image (``"margin:0"``);
 - ``"margin:<m>"``: finite and inside the frame extended by ``m`` of its width and height on every side (elbows
   just below a chest-up frame survive);
-- ``"all"``: every finite point (diagnostic: the ungated arm, to measure what a rule drops).
+- ``"all"``: every finite point (diagnostic: the ungated arm, to measure what a rule drops);
+- ``"head"`` (UWB lifter v2): shoulders, elbows and wrists (points 11..16) by the bundle's validity head
+  (``WorldRegressors.validity``: a point is kept when its probability reaches its side's threshold), every other
+  point by ``inside``. It needs the learned world and a bundle with a validity head.
 
 YouTube framings cut the arms: on 120 sampled clips the elbow lies below the frame on 32% of pose frames, so the rule
 decides how many arm frames survive (``scripts/uwb_lifter_gate.py``, ``scripts/uwb_outside_frame_accuracy.py``).
@@ -224,11 +227,11 @@ def _unavailable(name: str, frames: int, source_sha256: str):
 
 
 def visibility_margin(rule: str) -> float | None:
-    """The frame margin of a visibility rule: None for ``learned``, 0 for ``inside``, ``m`` for ``margin:<m>``
-    (0 <= m <= 2), infinity for ``all``; ``ValueError`` otherwise."""
+    """The frame margin of a visibility rule: None for ``learned``, 0 for ``inside`` and for ``head`` (its points
+    other than 11..16), ``m`` for ``margin:<m>`` (0 <= m <= 2), infinity for ``all``; ``ValueError`` otherwise."""
     if rule == "learned":
         return None
-    if rule == "inside":
+    if rule in ("inside", "head"):
         return 0.
     if rule == "all":
         return float("inf")
@@ -239,7 +242,7 @@ def visibility_margin(rule: str) -> float | None:
             m = -1.
         if 0. <= m <= 2.:
             return m
-    raise ValueError(f"visibility rule {rule!r}: 'learned', 'inside', 'margin:<m>' (0 <= m <= 2) or 'all'")
+    raise ValueError(f"visibility rule {rule!r}: 'learned', 'inside', 'head', 'margin:<m>' (0 <= m <= 2) or 'all'")
 
 
 def clip_landmarks(clip: UwbClip, fps: float, *, regressors=None, world: str = "learned", visibility: str = "learned",
@@ -254,6 +257,8 @@ def clip_landmarks(clip: UwbClip, fps: float, *, regressors=None, world: str = "
         raise ValueError("head must be 'none' or 'affine'")
     if visibility == "learned" and world != "learned":
         raise ValueError("learned visibility needs the learned world (the pose regressor's visibility head)")
+    if visibility == "head" and (world != "learned" or getattr(regressors, "validity", None) is None):
+        raise ValueError("visibility 'head' needs the learned world and a bundle with a validity head")
     if world == "learned":
         from .world_regressor import Z_FREE_FEATURES
         if regressors is None:
@@ -298,6 +303,10 @@ def clip_landmarks(clip: UwbClip, fps: float, *, regressors=None, world: str = "
         hands_found = hands_found & pose_found[:, None]
         pose_visibility = (learned if rule is None else rule) * pose_found[:, None]
         pose_visibility = np.array(pose_visibility, dtype=np.float64)
+        if visibility == "head":                 # points 11..16 by the validity head, the rest by `inside`
+            from .world_regressor import VALIDITY_POINTS
+            kept, _ = regressors.validity_visible(pose3, a)
+            pose_visibility[:, list(VALIDITY_POINTS)] = kept & pose_found[:, None]
         pose_visibility[:, 25:] = 0.             # the regressors place no leg points (25..32 are zero): never visible
         hands_world = np.zeros_like(hands3)
         for k, side in enumerate(("Left", "Right")):
@@ -350,7 +359,9 @@ def inference_method(info: dict, flags: str, fps_source: str) -> str:
     world = (f"world landmarks from z-free learned image-to-world regressors (bundle sha256 {info['world'][8:]})"
              if learned else "pseudo-3D (x, y/a, 0): image plane only")
     margin = visibility_margin(info["visibility"])
-    visibility = ("the pose regressor's visibility head" if margin is None
+    visibility = ("the validity head (per-side thresholds) for shoulders, elbows and wrists, finite and inside the "
+                  "image elsewhere" if info["visibility"] == "head"
+                  else "the pose regressor's visibility head" if margin is None
                   else "finite and inside the image" if margin == 0.
                   else "every finite point" if np.isinf(margin)
                   else f"finite and inside the frame extended by {margin:g} of its size on every side")

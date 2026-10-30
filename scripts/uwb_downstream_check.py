@@ -21,7 +21,8 @@ videos than ``--pairs``, a seeded draw from the remaining pairs.
 exactly as the pilots read motion), against the **same reference**, our cue's English text:
 
 1. **lifted**: the UWB clip converted by ``convert_uwb_clips.convert_member`` itself (its worker state set up as a
-   conversion run would: the xy2 bundle, the gate's visibility rule, ``generator`` flags, the converter's face and
+   conversion run would: the xy2 bundle, the gate's visibility rule (``--visibility`` overrides it: gate v2 lifts with
+   ``head``, its conversion rule), ``generator`` flags, the converter's face and
    head defaults, ``fps_source`` ``estimated`` at the gate's fps), cut to the UWB frames the gate aligned
    (``uwb_lifter_gate.frame_map`` with the pair's lag): the frame range ``[j_min, j_max]``;
 2. **ours**: our state of the cue cut to the frames those UWB frames were matched to: ``[i_min, i_max]`` (the same
@@ -428,6 +429,8 @@ def main(argv=None, *, translate_fn=None) -> int:
     p.add_argument("--youtube-prefix", help="default: the gate report's")
     p.add_argument("--regressors", default=BUNDLE_KEY)
     p.add_argument("--regressors-sha256", default=BUNDLE_SHA256)
+    p.add_argument("--visibility", help="the conversion rule to lift with (gate v2: head); default: the gate report's "
+                                         "declared rule")
     p.add_argument("--face", choices=("blendshapes", "none"), default="blendshapes", help="the converter's default")
     p.add_argument("--head", choices=("none", "affine"), default="none", help="the converter's default")
     p.add_argument("--models-dir", default=os.path.expanduser("~/.sign-translator-ops/models"))
@@ -454,6 +457,13 @@ def main(argv=None, *, translate_fn=None) -> int:
     payload, gate_sha = read_spec(store, args.gate_report)
     report = json.loads(payload)
     gs = report["settings"]
+    rule = args.visibility or gs["visibility"]
+    if args.visibility:
+        from signtranslator.data_engineering.uwb_keypoints import visibility_margin
+        try:
+            visibility_margin(args.visibility)
+        except ValueError as error:
+            raise SystemExit(str(error)) from error
     if report.get("regressors_sha256") != args.regressors_sha256:
         raise SystemExit(f"the gate ran bundle {report.get('regressors_sha256')}, not {args.regressors_sha256}")
     uwb_prefix, youtube_prefix = args.uwb_prefix or gs["uwb_prefix"], args.youtube_prefix or gs["youtube_prefix"]
@@ -478,7 +488,7 @@ def main(argv=None, *, translate_fn=None) -> int:
                 refused.append(dict(clip_id=pair["clip_id"], stage="reconstruct", reason=str(error)[:300]))
     del uwb
     settings = dict(store=args.store, uwb_prefix=uwb_prefix, regressors=args.regressors,
-                    regressors_sha256=args.regressors_sha256, visibility=gs["visibility"], face=args.face,
+                    regressors_sha256=args.regressors_sha256, visibility=rule, face=args.face,
                     head=args.head, models_dir=args.models_dir)
     fps_table = {j["video_id"]: j["fps"] for j in jobs}
     workers = args.workers or worker_count()
@@ -523,7 +533,7 @@ def main(argv=None, *, translate_fn=None) -> int:
         row="Downstream: back-translator read of lifted states >= 90% of its read of our states on paired cues, and "
             "clearly above blank",
         gate_report=args.gate_report, gate_report_sha256=gate_sha, regressors_sha256=args.regressors_sha256,
-        visibility=gs["visibility"], bootstrap=args.bootstrap, seed=args.seed,
+        visibility=rule, bootstrap=args.bootstrap, seed=args.seed,
         instrument=dict(run=args.instrument_run, checkpoint_key=instrument_key, checkpoint_sha256=instrument_sha,
                         read_fps=READ_FPS),
         converter=dict(function="convert_uwb_clips.convert_member", world="learned", flags="generator", face=args.face,
@@ -543,6 +553,8 @@ def main(argv=None, *, translate_fn=None) -> int:
                        uwb_partition=r["uwb_partition"], lifted_state_sha256=r["lifted_state_sha256"],
                        pooled=r["clip_id"] in pooled_ids, dev=r["clip_id"] in dev_ids,
                        **{read: hypotheses[read][k] for read in READS}) for k, r in enumerate(rows)])
+    if args.visibility:                          # gate v2: the conversion rule differs from the gate's primary rule
+        out["gate_visibility"] = gs["visibility"]
     text = json.dumps(out, indent=1, sort_keys=True)
     Path(args.out).write_text(text)
     if args.output_key:
