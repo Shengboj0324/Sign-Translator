@@ -4574,3 +4574,46 @@ The refiner's input therefore predicts almost nothing about the real sentence fr
 **Conclusion:** both refiners fail for a data and formulation reason, not a code reason. A refiner of compositions is bounded by their word coverage. **The refiner route is closed.**
 
 Together with the 1,000-sentence real-word oracle (2.17) and W14b's composition (2.31), composition cannot reach M1's 2.55. The next lever is end-to-end sentence generation (round 16).
+
+## Round 16: end-to-end sentences, on-policy rollout blocks (declared 2026-10-30, 00:25 UTC, before it runs)
+
+**Why.**
+- Composition cannot reach M1: the real-word oracle scores 2.17 on 1,000 sentences and W14b's composition 2.31, and the refiner route is closed (amendments 8–9).
+- End-to-end sentence generation can in principle exceed composition (real How2Sign signing reads 4.14), but free-running W14b reads 1.79.
+- The measured failure is exposure bias: teacher-forced and one-step predictions are good, while free running drifts. Earlier fixes all perturbed the history while leaving the real history copyable: scheduled sampling of i.i.d. single steps (S8), history dropout and coarse history (in F12 and W14b).
+- Rank 3 of the 2026-10-29 research report (acRNN, DAgger) feeds the prior contiguous blocks of its *own* output and keeps the real targets at the same time index, so it learns to continue from, and recover after, its own motion.
+
+**Code:** `--rollout-blocks` (9a0e818, review fixes 52965cc), independent review: REJECT (the sampled rollout was not exact), fixed in 52965cc, then APPROVE.
+
+**Arms.** Two arms, warm-started from W14b step 30000 (SHA-256 pinned in the job). Both keep W14b's settings unchanged: manifest round14b-mixed-v1, corpus weights, history dropout 0.5, history stages 1, part-valid loss, lr 1e-4, warmup 200. Each runs 10,000 steps at batch 64.
+- **R16** adds `--rollout-blocks 0.5 --rollout-min 4 --rollout-max 16 --rollout-onset 0.25 --rollout-guidance 1.5 --rollout-temperature 1.1`:
+  - each rolled block is exact free running, sampled as generation samples (eval-mode text, guidance 1.5, temperature 1.1), but with the live weights, not the EMA weights generation uses;
+  - rolled rows skip history dropout;
+  - the training log reports the rolled steps' loss and accuracy (`rollout_tokens`, `rollout_accuracy`).
+- **R16C** (control) adds nothing, so it separates the rollout's effect from 10,000 more steps of training.
+
+**Known differences between the arms, declared:**
+- Rolled rows skip history dropout, so R16's effective history-dropout rate is about 0.5 × (1 − 0.9 × 0.5) ≈ 0.28, against R16C's 0.5.
+- The rollout's single temperature (1.1) is applied to every part, while generation uses 1.0–1.2 per part.
+- The rollout uses the live weights.
+
+If R16 passes, a follow-up arm separates the rollout from the lower dropout rate.
+
+The reviewer estimates R16 at about 1.5–1.85× the control's step cost. The smoke run measures seconds per step. If R16's projected wall time exceeds 8 h, both arms are cut to the same smaller step count before the full run starts (recorded here).
+
+**Evaluation.**
+- Each arm's step-10000 checkpoint runs `pilot_content_check.py` on the same 1,000 How2Sign val clips as W14b's pilot: back-translation BLEU, lexicon read by recogniser v3 (`sign-recognizer-v3d`), the mirrored read and the R5 covered/new word split.
+- Comparisons by `compare_pilot_lexicon.py`, paired:
+  - R16 against R16C;
+  - R16 against W14b step 30000, using W14b's v3 re-read report `v3read/pilot-w14b-step30000-v3d.json` (BLEU 1.786, v3 lexicon 0.583; its hypotheses are the original pilot's). R16C is also compared against W14b.
+
+**Rule.** R16 becomes the end-to-end leader only if all of these hold:
+1. Its paired BLEU against R16C has a lower bound above 0.
+2. Its paired BLEU against W14b step 30000 has a lower bound above 0.
+3. Its v3 lexicon against R16C has a lower bound above −0.05 (it may not trade words for BLEU).
+
+Also reported: whether R16's point BLEU reaches W14b's composition (2.31) and M1 (2.55), and the arms' wrist speed relative to real motion against the 1.5× bar.
+
+If R16 passes, the next round tunes the block length and rate. If it fails while R16C also fails to beat W14b, the next lever is the report's rank 4 (temporal downsampling), which needs the owner's approval as a structural change.
+
+Chain: `r16_chain.sh`.
