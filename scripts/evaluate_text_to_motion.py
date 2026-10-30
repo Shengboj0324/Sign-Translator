@@ -58,14 +58,51 @@ def accepted_decoder_gains(store, tokenizer_key):
     return report["gains"]
 
 
-def load_generator(store, key: str, manifest_sha256: str, device: str = "cpu", *, temperature: float = 1., top_k: int = 0):
-    """(label, trained channels, sample(text, fps, seconds, guidance, steps, seed)) for any checkpoint kind."""
+def load_plan_prior(store, plan: dict, detail: dict, manifest_sha256: str):
+    """Round 17: the plan prior named by ``plan`` (prior_key/prior_sha256, tokenizer_key/tokenizer_sha256: the plan
+    tokenizer), checked against the plan-conditioned detail checkpoint ``detail``: every checkpoint SHA-pinned, the
+    same plan tokenizer (key and SHA-256) and detail tokenizer under both priors, trained on this manifest."""
+    import hashlib
+    from signtranslator.generation.plan_codes import PLAN_PRIOR_KIND, PlanPriorConfig
+    for name in ("prior", "tokenizer"):
+        payload = store.get(plan[f"{name}_key"])
+        if hashlib.sha256(payload).hexdigest() != plan[f"{name}_sha256"]:
+            raise SystemExit(f"the plan {name} checkpoint differs from its pinned SHA-256")
+        if name == "prior":
+            saved = torch.load(io.BytesIO(payload), map_location="cpu", weights_only=False)
+    if saved.get("kind") != PLAN_PRIOR_KIND or saved["manifest_sha256"] != manifest_sha256:
+        raise SystemExit("--plan-prior-key is not a plan prior trained on this manifest")
+    pins = {"plan tokenizer key": (saved.get("plan_tokenizer_key"), detail.get("plan_tokenizer_key"), plan["tokenizer_key"]),
+            "plan tokenizer SHA-256": (saved.get("plan_tokenizer_sha256"), detail.get("plan_tokenizer_sha256"),
+                                       plan["tokenizer_sha256"]),
+            "tokenizer SHA-256": (saved.get("tokenizer_sha256"), detail.get("tokenizer_sha256"),
+                                  detail.get("tokenizer_sha256"))}
+    for what, values in pins.items():
+        if len(set(values)) != 1:
+            raise SystemExit(f"plan prior, detail prior and pins disagree on the {what}: {values}")
+    plan_prior = RVQPrior(PlanPriorConfig.from_dict(saved["config"]))
+    plan_prior.load_state_dict(saved.get("ema") or saved["model"])
+    return plan_prior
+
+
+def load_generator(store, key: str, manifest_sha256: str, device: str = "cpu", *, temperature: float = 1., top_k: int = 0,
+                   plan: dict | None = None):
+    """(label, trained channels, sample(text, fps, seconds, guidance, steps, seed)) for any checkpoint kind.
+
+    Round 17: a plan-conditioned rvq prior needs ``plan`` (``load_plan_prior``'s keys, optionally ``temperature`` and
+    ``guidance`` of the plan sampler: by default the detail's); it then samples plan, then detail
+    (``plan_codes.generate_plan_detail_batch``). Without ``plan`` every other checkpoint loads as before."""
     checkpoint = torch.load(io.BytesIO(store.get(key)), map_location="cpu", weights_only=False)
     if checkpoint["manifest_sha256"] != manifest_sha256:
         raise SystemExit(f"{key} was trained on a different manifest")
     weights = checkpoint.get("ema") or checkpoint["model"]          # EMA weights when the run kept them
+    if plan is not None and (checkpoint.get("kind") != "motion_rvq_prior"
+                             or not checkpoint["config"].get("plan_window")):
+        raise SystemExit(f"{key} is not a plan-conditioned prior; a plan prior cannot be used with it")
     if checkpoint.get("kind") == "motion_rvq_prior":
         prior = RVQPrior(RVQPriorConfig.from_dict(checkpoint["config"]))
+        if prior.config.plan_window and plan is None:
+            raise SystemExit(f"{key} is plan-conditioned: name its plan prior and plan tokenizer (--plan-prior-key)")
         prior.load_state_dict(weights)
         tokenizer = MotionRVQ(prior.config.tokenizer)
         tokenizer.load_state_dict(checkpoint["tokenizer_state"])
@@ -81,6 +118,25 @@ def load_generator(store, key: str, manifest_sha256: str, device: str = "cpu", *
             from signtranslator.generation.motion_rvq import generate_rvq_motion_batch
             return generate_rvq_motion_batch(prior, tokenizer, texts, fps=fps, durations=seconds, guidance=guidance,
                                              temperature=temperature, top_k=top_k, seed=seed)
+        if plan is not None:                       # round 17: plan prior, then the plan-conditioned detail prior
+            from signtranslator.generation.plan_codes import generate_plan_detail_batch
+            plan_prior = load_plan_prior(store, plan, checkpoint, manifest_sha256).to(device).eval()
+            two_stage = dict(temperature=temperature, top_k=top_k, plan_temperature=plan.get("temperature"),
+                             plan_guidance=plan.get("guidance"))
+
+            def sample(text, fps, seconds, guidance, steps, seed, loci=None):
+                return generate_plan_detail_batch(plan_prior, prior, tokenizer, [text], fps=fps,
+                                                  durations=None if seconds is None else [seconds], guidance=guidance,
+                                                  seed=seed, loci=None if loci is None else [loci], **two_stage)[0]
+
+            def sample_batch(texts, fps, seconds, guidance, seed):
+                return generate_plan_detail_batch(plan_prior, prior, tokenizer, texts, fps=fps, durations=seconds,
+                                                  guidance=guidance, seed=seed, **two_stage)
+
+            def sample_batch_with_plans(texts, fps, seconds, guidance, seed, plans):
+                """The detail prior given these plans (one per text), not the plan prior's (oracle-plan diagnostic)."""
+                return generate_plan_detail_batch(plan_prior, prior, tokenizer, texts, fps=fps, durations=seconds,
+                                                  guidance=guidance, seed=seed, plans=plans, **two_stage)
         sample.batch = sample_batch
         sample.decoder_gains = None
         gains = accepted_decoder_gains(store, checkpoint.get("tokenizer_key"))
@@ -92,6 +148,10 @@ def load_generator(store, key: str, manifest_sha256: str, device: str = "cpu", *
             sample.decoder_gains = gains
             print(f"decoder gains applied: {gains}", flush=True)
         sample.prior, sample.tokenizer = prior, tokenizer     # the loaded models (round 15: compositional generation)
+        sample.plan_prior = plan_prior if plan is not None else None    # round 17
+        if plan is not None:
+            sample.batch_with_plans = ((lambda *a, **k: [apply_gains(o, gains) for o in sample_batch_with_plans(*a, **k)])
+                                       if gains else sample_batch_with_plans)
         return "motion_tokens_v2", prior.config.tokenizer.motion.trained_channels, sample
     if checkpoint.get("kind") in ("motion_tokenizer", "motion_rvq_tokenizer"):
         raise SystemExit(f"{key} is a tokenizer, not a generator; evaluate its prior")

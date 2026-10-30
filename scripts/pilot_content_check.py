@@ -23,6 +23,13 @@ Recogniser v3 (docs/NEXT_PHASE_PLAN.md, "Instrument finding and the recogniser v
 ``--word-list-key`` / ``--word-list-sha256`` score exactly a pinned word list (``pinned_words``; the round-14 R5 split
 ``round14/r5-word-split.json`` gives the 150 R5 words), so a new instrument's own reliable glosses cannot change the
 words; the report records the list's key and SHA-256 under ``word_list``. Without it the list is derived as before.
+
+Round 17 (docs/NEXT_PHASE_PLAN.md, "Round 17 design"), additions only: with ``--plan-prior-key`` and
+``--plan-tokenizer-key`` (each with its SHA-256, checked against the detail checkpoint's own pins), ``--checkpoint-key``
+is a plan-conditioned detail prior and every sample is two-stage: plan prior, then detail prior, then the tokenizer's
+decoder (``--plan-temperature``/``--plan-guidance`` for the plan sampler; by default the detail's). The report records
+the pins under ``plan``. ``--oracle-plan`` (diagnostic) also generates the meaning half from each reference clip's own
+plan: ``meaning_oracle_plan`` and the paired gap ``oracle_gap`` (oracle minus generated), the arm's halves unchanged.
 """
 from __future__ import annotations
 
@@ -187,8 +194,38 @@ def main(argv=None) -> int:
                    "the recogniser's reliable glosses, so a new instrument cannot change the R5 words; needs "
                    "--word-list-sha256")
     p.add_argument("--word-list-sha256")
+    p.add_argument("--plan-prior-key", help="round 17: --checkpoint-key is a plan-conditioned detail prior; this plan "
+                   "prior samples each text's plan first (plan, then detail, then the tokenizer's decoder); needs "
+                   "--plan-prior-sha256, --plan-tokenizer-key and --plan-tokenizer-sha256, all checked against the "
+                   "detail checkpoint")
+    p.add_argument("--plan-prior-sha256")
+    p.add_argument("--plan-tokenizer-key", help="round 17: the plan tokenizer both priors were trained with (pinned)")
+    p.add_argument("--plan-tokenizer-sha256")
+    p.add_argument("--plan-temperature", help="round 17: the plan sampler's part temperatures (default: "
+                   "--part-temperature)")
+    p.add_argument("--plan-guidance", type=float, help="round 17: the plan sampler's guidance (default: --guidance)")
+    p.add_argument("--oracle-plan", action="store_true",
+                   help="round 17 diagnostic: the meaning half is also generated from each reference clip's own plan "
+                        "(the plan tokenizer's codes of the real clip, the same seeds), read as meaning_oracle_plan, with "
+                        "the paired BLEU gap oracle minus generated (oracle_gap). The arm's own meaning and lexicon halves "
+                        "are unchanged. An upper bound on what the plan route can carry, never an arm's result")
+    p.add_argument("--oracle-only", action="store_true",
+                   help="round 17 (declared sequencing): with --oracle-plan, read only the oracle-plan generations (plus "
+                        "real and blank) and stop: no plan-prior generation, no lexicon. The oracle precondition "
+                        "(compare_pilot_lexicon.py --oracle-precondition against R16C) is judged on this report before "
+                        "the arm's pilot runs")
     p.add_argument("--output-key", required=True)
     args = p.parse_args(argv)
+    if args.oracle_only and not args.oracle_plan:
+        raise SystemExit("--oracle-only needs --oracle-plan")
+    plan_args = (args.plan_prior_key, args.plan_prior_sha256, args.plan_tokenizer_key, args.plan_tokenizer_sha256)
+    if any(plan_args) and not all(plan_args):
+        raise SystemExit("--plan-prior-key, --plan-prior-sha256, --plan-tokenizer-key and --plan-tokenizer-sha256 go "
+                         "together")
+    if (args.plan_temperature or args.plan_guidance is not None or args.oracle_plan) and not args.plan_prior_key:
+        raise SystemExit("--plan-temperature, --plan-guidance and --oracle-plan need --plan-prior-key")
+    if args.oracle_plan and args.meaning_from_key:
+        raise SystemExit("--oracle-plan recomputes the meaning half; it cannot reuse --meaning-from-key")
     import warnings
     warnings.simplefilter("ignore")
     import numpy as np
@@ -221,7 +258,15 @@ def main(argv=None) -> int:
         path = Path(t) / "m.json"; path.write_bytes(store.get(args.mix_key) + b"\n")
         manifest = load_manifest(path, expected_sha256=args.mix_sha256)
     temperature = {k: float(v) for k, v in (x.split("=") for x in args.part_temperature.split(","))}
-    _, _, sample = load_generator(store, args.checkpoint_key, args.mix_sha256, args.device, temperature=temperature)
+    plan = None
+    if args.plan_prior_key:                            # round 17: two-stage generation, every checkpoint pinned
+        plan = dict(prior_key=args.plan_prior_key, prior_sha256=args.plan_prior_sha256,
+                    tokenizer_key=args.plan_tokenizer_key, tokenizer_sha256=args.plan_tokenizer_sha256,
+                    guidance=args.plan_guidance,
+                    temperature=({k: float(v) for k, v in (x.split("=") for x in args.plan_temperature.split(","))}
+                                 if args.plan_temperature else None))
+    _, _, sample = load_generator(store, args.checkpoint_key, args.mix_sha256, args.device, temperature=temperature,
+                                  **({"plan": plan} if plan else {}))
     post = postprocess
     # lexicon word list (round 14: drawn up before the meaning half, so a bad word split fails before any generation)
     validation = (None if args.word_list_key else      # a pinned list needs no reliable-gloss list
@@ -244,9 +289,11 @@ def main(argv=None) -> int:
         words = words[:args.words] if args.word_set == "r5" else words[args.words:2 * args.words]
     subsets = word_split(split_payload, words) if args.word_split_key else None
     # meaning
+    extra_meaning = {}
     if args.meaning_from_key:   # round 13 amendment 1: the lexicon re-run keeps the arm's own meaning half
         earlier = json.loads(store.get(args.meaning_from_key))
-        same = dict(checkpoint_key=args.checkpoint_key, clips=args.clips, guidance=args.guidance, part_temperature=temperature)
+        same = dict(checkpoint_key=args.checkpoint_key, clips=args.clips, guidance=args.guidance, part_temperature=temperature,
+                    plan=plan)                         # round 17: None for one-stage reports
         if {k: earlier.get(k) for k in same} != same:
             raise SystemExit(f"--meaning-from-key: the earlier report used other settings: {({k: earlier.get(k) for k in same}, same)}")
         meaning, texts = earlier["meaning"], earlier["meaning"]["references"]
@@ -258,20 +305,62 @@ def main(argv=None) -> int:
         texts = [r["text"] for r in val]
         seconds = [float(s.timestamps[-1] - s.timestamps[0]) + 1 / 24. for s in refs]
         gens = []
+        if args.oracle_plan:                           # round 17 diagnostic: each clip's own plan
+            from signtranslator.generation.plan_codes import load_plan_tokenizer, oracle_plans
+            plan_vq, plan_tok, _ = load_plan_tokenizer(store.get(args.plan_tokenizer_key), args.plan_tokenizer_sha256,
+                                                       device=args.device)
+            plans, adjusted = oracle_plans(plan_vq, plan_tok, refs, seconds, 24.)
+            plan["oracle"] = dict(clips=len(plans), length_adjusted=adjusted)
+            print(json.dumps({"oracle_plan": plan["oracle"]}), flush=True)
+        oracle_gens = []
         for i in range(0, len(texts), 32):
-            gens += [post(o) for o in sample.batch(texts[i:i + 32], 24., seconds[i:i + 32], args.guidance, 1000 + i)]
+            if not args.oracle_only:
+                gens += [post(o) for o in sample.batch(texts[i:i + 32], 24., seconds[i:i + 32], args.guidance, 1000 + i)]
+            if args.oracle_plan:
+                oracle_gens += [post(o) for o in sample.batch_with_plans(texts[i:i + 32], 24., seconds[i:i + 32],
+                                                                         args.guidance, 1000 + i, plans[i:i + 32])]
         kp = json.loads(store.get("training-runs/back-translator-kp2d-uwb-ft-v1/best.json"))["checkpoint_key"]
         translator, kind = load_translator(store, kp, MIX_SHA)  # the translator's own manifest (round 3c)
         translator = translator.to(torch.device(args.device))
         meaning = {}
-        for name, states in (("generated", gens), ("real", refs), ("blank", blanked(refs))):
+        reads = (("real", refs), ("blank", blanked(refs))) if args.oracle_only else \
+            (("generated", gens), ("real", refs), ("blank", blanked(refs)))
+        for name, states in reads:
             hyps = translate(translator, kind, states)
             point, ci = bleu_ci(hyps, texts)
             meaning[name] = dict(bleu=point, ci95=ci, hypotheses=list(hyps))     # kept for the paired BLEU test (round 7)
         meaning["references"] = list(texts)
-        meaning["above_blank"] = separated(meaning["generated"]["ci95"], meaning["blank"]["ci95"])
+        if not args.oracle_only:
+            meaning["above_blank"] = separated(meaning["generated"]["ci95"], meaning["blank"]["ci95"])
+        if args.oracle_plan:                           # round 17 (review fix 4): the oracle read and the paired gap
+            from compare_pilot_lexicon import paired_bleu_difference
+            hyps = translate(translator, kind, oracle_gens)
+            point, ci = bleu_ci(hyps, texts)
+            extra_meaning["meaning_oracle_plan"] = dict(bleu=point, ci95=ci, hypotheses=list(hyps))
+            # the declared D17 gate "oracle-plan detail generations: wrist speed within [0.8, 1.5] x real", measured as
+            # rounds 15-16 measured wrist speed relative to real (the back-translator's normalised 2D view)
+            from compositional_baseline import motion_rows
+            from sentence_exposure_diagnostic import mean_statistics, ratio_to
+            ratio = ratio_to(mean_statistics(motion_rows(oracle_gens, refs, 24.)),
+                             mean_statistics(motion_rows(refs, refs, 24.)))
+            speed = ratio.get("wrist_speed")
+            extra_meaning["oracle_motion_ratio_to_real"] = ratio
+            extra_meaning["oracle_wrist_speed_gate"] = dict(
+                wrist_speed_over_real=speed, band=[.8, 1.5],
+                passes=bool(speed is not None and .8 <= speed <= 1.5))
+            if not args.oracle_only:
+                gap, (low, high) = paired_bleu_difference(hyps, meaning["generated"]["hypotheses"], texts)
+                extra_meaning["oracle_gap"] = dict(difference=round(gap, 3), ci95=[round(low, 3), round(high, 3)],
+                                                   meaning="oracle plan minus the plan prior's plan, paired over the clips")
+            print(json.dumps({"meaning_oracle_plan": dict(bleu=point, ci95=ci),
+                              "oracle_gap": extra_meaning.get("oracle_gap")}), flush=True)
         print(json.dumps({"meaning": {k: {f: v for f, v in m.items() if f != "hypotheses"} if isinstance(m, dict) else m
                                       for k, m in meaning.items() if k != "references"}}), flush=True)
+    if args.oracle_only:                               # round 17: the oracle read alone, before the arm's pilot
+        report = dict(checkpoint_key=args.checkpoint_key, part_temperature=temperature, guidance=args.guidance,
+                      clips=len(texts), meaning=meaning, oracle_only=True, plan=dict(plan), **extra_meaning)
+        store.put(args.output_key, json.dumps(report, indent=2, sort_keys=True, default=float).encode())
+        return 0
     # lexicon
     states, y = [], []
     for k, g in enumerate(words):
@@ -307,7 +396,8 @@ def main(argv=None) -> int:
                   **({"vocab_mix_key": args.vocab_mix_key} if args.vocab_mix_key else {}),
                   **({"word_list": dict(key=args.word_list_key, sha256=list_sha, words=len(words))}
                      if args.word_list_key else {}),
-                  **({"meaning_from_key": args.meaning_from_key} if args.meaning_from_key else {}))
+                  **({"meaning_from_key": args.meaning_from_key} if args.meaning_from_key else {}),
+                  **({"plan": {k: v for k, v in plan.items()}} if plan else {}), **extra_meaning)
     store.put(args.output_key, json.dumps(report, indent=2, sort_keys=True, default=float).encode())
     return 0
 

@@ -42,11 +42,18 @@ def label_of(record) -> str | None:
 
 
 @torch.no_grad()
-def round_trip(model, cfg, state, fps: float):
+def round_trip(model, cfg, state, fps: float, plan=None):
+    """The tokenizer's reconstruction of ``state``. Round 17: with ``plan`` (a ``plan_codes.PlanVQ`` over this
+    tokenizer), the decoder is given the latents decoded from the plan codes instead of the quantised latents (the
+    plan tokenizer's fidelity round trip)."""
     b = collate_multichannel([state])
     unit = diffusion_targets(cfg, b)
     frames = unit.shape[1]
-    quantised, _, _ = model.quantize(model.encode(unit))
+    latents = model.encode(unit)
+    if plan is None:
+        quantised, _, _ = model.quantize(latents)
+    else:
+        quantised = plan.eval().reconstruct(latents, model.token_valid(b.frame_valid))
     rec = model.decode_latents(quantised, frames)
     def to_state(u):
         raw = unit_to_raw(cfg, u.double())
@@ -84,7 +91,12 @@ def main(argv=None) -> int:
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--output-key")
     parser.add_argument("--gains-key", help="amendment 5: fit_tokenizer_gains.py output, applied to every round trip")
+    parser.add_argument("--plan-tokenizer-key", help="round 17: a plan tokenizer over --tokenizer-key; the round trip "
+                        "decodes the latents reconstructed from its plan codes (the plan's fidelity gate)")
+    parser.add_argument("--plan-tokenizer-sha256", help="its SHA-256 (required with --plan-tokenizer-key)")
     args = parser.parse_args(argv)
+    if bool(args.plan_tokenizer_key) != bool(args.plan_tokenizer_sha256):
+        raise SystemExit("--plan-tokenizer-key and --plan-tokenizer-sha256 go together")
     global label_of
     import diagnose_tokenizer as dt
     from evaluate_text_to_motion import at_rate
@@ -125,8 +137,20 @@ def main(argv=None) -> int:
         raise SystemExit("no clips whose gloss the recogniser knows")
     model, _ = dt.load_tokenizer(store, args.tokenizer_key)
     cfg = model.config.motion
+    plan = None
+    if args.plan_tokenizer_key:
+        import hashlib
+        from signtranslator.generation.plan_codes import load_plan_tokenizer
+        tokenizer_sha = hashlib.sha256(store.get(args.tokenizer_key)).hexdigest()   # the plan must read these bytes
+        try:
+            plan, _, saved_plan = load_plan_tokenizer(store.get(args.plan_tokenizer_key), args.plan_tokenizer_sha256,
+                                                      tokenizer_sha256=tokenizer_sha)
+        except ValueError as error:
+            raise SystemExit(f"--plan-tokenizer-key: {error}")
+        if saved_plan["tokenizer_key"] != args.tokenizer_key:
+            raise SystemExit(f"the plan tokenizer reads {saved_plan['tokenizer_key']}, not --tokenizer-key")
     real = [at_rate(conform(load_sample(r, "continuous", cache=cache, fetch=store.get), template), args.fps) for r in records]
-    trip = [round_trip(model, cfg, s, args.fps) for s in real]
+    trip = [round_trip(model, cfg, s, args.fps, plan=plan) for s in real]
     if args.gains_key:
         from fit_tokenizer_gains import apply_gains
         gains = json.loads(store.get(args.gains_key))["gains"]
@@ -138,6 +162,8 @@ def main(argv=None) -> int:
         return dict(top1=round(float((top[:, 0] == y).float().mean()), 4),
                     top5=round(float((top == y[:, None]).any(1).float().mean()), 4))
     report = dict(corpus=args.corpus, partition=args.partition, clips=len(records), tokenizer_key=args.tokenizer_key,
+                  **({"plan_tokenizer_key": args.plan_tokenizer_key, "plan_tokenizer_sha256": args.plan_tokenizer_sha256}
+                     if args.plan_tokenizer_key else {}),
                   recognizer_run=args.recognizer_run, real=acc(real), round_trip=acc(trip), min_ratio=args.min_ratio,
                   valid_fraction={c: round(float(np.median([s.channels[c].valid.mean() for s in real])), 3) for c in MASKED})
     report["ratio"] = round(report["round_trip"]["top5"] / max(report["real"]["top5"], 1e-9), 3)
