@@ -955,8 +955,8 @@ def _write(store, args, payload: dict) -> None:
 
 
 def round20_errors(p, args, variants) -> None:
-    from round20_lib import GLOSS_MANIFEST
     """Refuse round-20 options that do not apply (before anything is loaded)."""
+    from round20_lib import GLOSS_MANIFEST
     if bool(args.sentences_key) != bool(args.sentences_sha256):
         p.error("--sentences-key and --sentences-sha256 go together")
     if bool(args.vocabulary_mix_key) != bool(args.vocabulary_mix_sha256):

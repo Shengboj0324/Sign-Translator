@@ -124,10 +124,19 @@ case $PHASE in
         --recognizer-run sign-recognizer-v3d --device $DEV --shards $N --shard $s --clips $CLIPS \
         > /root/r20-cache-$ARM-$s.log 2>&1 & pids+=($!)
     done
-    failed=0
-    for p in "${pids[@]}"; do
-      if ! wait $p; then failed=1; for q in "${pids[@]}"; do kill $q 2>/dev/null; done; fi
+    failed=0; ended=" "   # poll every shard: an early failure stops the others at once (re-review; any bash, no wait -n)
+    while :; do
+      running=0
+      for q in "${pids[@]}"; do
+        case "$ended" in *" $q "*) continue ;; esac
+        if kill -0 $q 2>/dev/null; then running=1; continue; fi
+        wait $q || failed=1; ended="$ended$q "
+      done
+      if [ $failed = 1 ]; then for q in "${pids[@]}"; do kill $q 2>/dev/null; done; break; fi
+      [ $running = 0 ] && break
+      sleep 10
     done
+    wait
     [ $failed = 0 ] || die "a cache shard failed; the others were stopped (logs /root/r20-cache-$ARM-*.log)"
     python scripts/round20_word_cache.py merge --prefix $PREFIX --shards $N || die "cache merge"
     echo "R20 cache-$ARM-$VOCAB $PREFIX/index.json $(sha $PREFIX/index.json)" ;;

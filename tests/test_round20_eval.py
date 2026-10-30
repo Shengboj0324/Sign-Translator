@@ -295,5 +295,5 @@ def test_the_pod_script_parses():
     text = script.read_text()
     for needle in ("--sentences-key", "--vocabulary-mix-key", "--oracle-source continuous", "--retime continuous",
                    "--lowpass-report-hz", "round20_word_cache.py", "--likelihood", "SMOKE", "r14b-fraction",
-                   "--semlex-oracle-tracked", "kill $q"):
+                   "--semlex-oracle-tracked", "kill $q", "an early failure stops the others at once"):
         assert needle in text, needle
