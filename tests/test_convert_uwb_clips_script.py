@@ -2,6 +2,7 @@
 a settings check, restricted runs, the merged index and the manifest selection helper."""
 import hashlib
 import json
+import shutil
 from pathlib import Path
 import sys
 import zipfile
@@ -275,3 +276,90 @@ def test_near_duplicates_are_judged_by_the_summed_cover_of_selected_cues():
     assert kept == [] and why == {"near_duplicate_of_our_cue": 1}               # 0.3 + 0.3 >= 0.5
     kept, why = select_training_records([base], eval_index_sha256="a" * 64, our_records=both[:1])
     assert [r["clip_id"] for r in kept] == ["u"]                                # one selected cue covers only 0.3
+
+
+# ---- round 18: estimated-fps videos only, stream-mismatch videos left out, the head rule's bundle check ----
+
+def gate_report(root, rows):
+    path = root / "gate.json"
+    path.write_text(json.dumps({"fps": {"videos": rows}, "pairs": []}))
+    return str(path)
+
+
+def test_round18_population_leaves_out_assumed_fps_and_stream_mismatch_videos_unread(tmp_path, capsys):
+    s = make_store(tmp_path)
+    table = tmp_path / "fps.json"
+    table.write_text(json.dumps({"schema": "uwb-fps-table-v1", "fps": {"vidA": 30., "vidB": 25.}}))
+    gate = gate_report(tmp_path, {"vidA": dict(fps=30., meta_fps=30), "vidB": dict(fps=25., meta_fps=50),
+                                  "vidX": dict(fps=None, meta_fps=24)})
+    population = ["--fps-table", str(table), "--fps-sources", "estimated", "--stream-check", gate]
+    assert run(tmp_path, s, *population) == 0
+    clips = {c["member"]: c for f in reports(tmp_path) for c in json.loads(f.read_text())["clips"]}
+    assert {m: c["status"] for m, c in clips.items()} == {
+        "vidA.000100-000107.json": "converted", "vidA.000107-000114.json": "converted",
+        "vidB.000050-000057.json": "skipped", "vidB.000058-000065.json": "skipped",   # malformed but never read
+        "vidC.000010-000017.json": "skipped"}
+    assert clips["vidB.000050-000057.json"]["reason"] == "stream_mismatch"
+    assert clips["vidC.000010-000017.json"] == dict(zip="raw_keypoints_1.zip", member="vidC.000010-000017.json",
+                                                    clip_id="vidC.000010-000017", video_id="vidC", status="skipped",
+                                                    reason="fps_assumed")
+    assert {c["fps_source"] for c in clips.values() if c["status"] == "converted"} == {"estimated"}
+    report = json.loads(reports(tmp_path)[1].read_text())
+    assert report["checks"]["skipped_stream_mismatch"] == 2 and report["counts"] == {"skipped": 2}
+    assert report["settings"]["fps_sources"] == "estimated"
+    assert report["settings"]["stream_check_sha256"] == hashlib.sha256(Path(gate).read_bytes()).hexdigest()
+    assert job.main(["--store", f"dir:{tmp_path}", "--out-prefix", "out/uwb", "--merge-index"]) == 0
+    index = json.loads((tmp_path / "out/uwb/index.json").read_text())
+    assert index["counts"] == {"converted": 2, "skipped": 3} and index["complete"] is True
+    assert index["checks"]["skipped_fps_assumed"] == 1 and index["checks"]["skipped_stream_mismatch"] == 2
+    # the population is part of the resume fingerprint: a run over every video is refused on these units
+    capsys.readouterr()
+    assert run(tmp_path, s, "--fps-table", str(table)) == 2
+    assert '"fps_sources"' in capsys.readouterr().out
+    # without --stream-check the mismatching video would be converted
+    shutil.rmtree(tmp_path / "out")
+    assert run(tmp_path, s, "--fps-table", str(table), "--fps-sources", "estimated") == 0
+    clips = {c["member"]: c for f in reports(tmp_path) for c in json.loads(f.read_text())["clips"]}
+    assert clips["vidB.000050-000057.json"]["status"] == "converted" and clips["vidC.000010-000017.json"]["status"] == "skipped"
+
+
+def test_round18_population_arguments_are_refused_when_inconsistent(tmp_path):
+    s = make_store(tmp_path)
+    table = tmp_path / "fps.json"
+    table.write_text(json.dumps({"fps": {"vidA": 30., "vidB": 25.}}))
+    with pytest.raises(SystemExit, match="needs --fps-table"):
+        run(tmp_path, s, "--fps-sources", "estimated")
+    other_rate = gate_report(tmp_path, {"vidA": dict(fps=29.97, meta_fps=30), "vidB": dict(fps=25., meta_fps=25)})
+    with pytest.raises(SystemExit, match="not the run that wrote the table"):
+        run(tmp_path, s, "--fps-table", str(table), "--stream-check", other_rate)
+    missing = gate_report(tmp_path, {"vidA": dict(fps=30., meta_fps=30)})
+    with pytest.raises(SystemExit, match="not the run that wrote the table"):
+        run(tmp_path, s, "--fps-table", str(table), "--stream-check", missing)
+    with pytest.raises(SystemExit, match="needs --fps-table"):
+        run(tmp_path, s, "--stream-check", gate_report(tmp_path, {}))
+    (tmp_path / "bad.json").write_text(json.dumps({"fps": {"vidA": 30.}}))
+    with pytest.raises(SystemExit, match="not a uwb_lifter_gate.py report"):
+        run(tmp_path, s, "--fps-table", str(table), "--stream-check", str(tmp_path / "bad.json"))
+    # no meta_fps: the stream match is not established, so the video is left out
+    unknown = gate_report(tmp_path, {"vidA": dict(fps=30., meta_fps=None), "vidB": dict(fps=25., meta_fps=25)})
+    assert run(tmp_path, s, "--fps-table", str(table), "--fps-sources", "estimated", "--stream-check", unknown) == 0
+    clips = {c["member"]: c for f in reports(tmp_path) for c in json.loads(f.read_text())["clips"]}
+    assert clips["vidA.000100-000107.json"]["reason"] == "stream_mismatch"
+    assert clips["vidB.000050-000057.json"]["status"] == "converted"
+
+
+def test_head_visibility_needs_a_bundle_with_a_validity_head(tmp_path):
+    from test_uwb_lifter_v2 import with_head, xy2_bundle
+    s = make_store(tmp_path)
+    with pytest.raises(SystemExit, match="validity head"):
+        run(tmp_path, s, visibility="head")
+    payload = with_head(xy2_bundle(), {"Left": .4, "Right": .6}).save()
+    (tmp_path / "v2.pt").write_bytes(payload)
+    v2 = dict(s, bundle=str(tmp_path / "v2.pt"), sha=hashlib.sha256(payload).hexdigest())
+    assert run(tmp_path, v2, "--video", "vidA", visibility="head") == 0
+    partial = json.loads((tmp_path / "out/uwb/reports/raw_keypoints_1/chunk-00000.partial.json").read_text())
+    assert partial["settings"]["visibility"] == "head" and partial["clips"][0]["visibility"] == "head"
+    clip = partial["clips"][0]
+    state = MultichannelMotion.load(tmp_path / clip["state_key"], expected_sha256=clip["state_sha256"])
+    methods = {c.inference_method for c in state.channels.values() if c.inference_method}
+    assert methods and all("validity head (per-side thresholds)" in m for m in methods)
