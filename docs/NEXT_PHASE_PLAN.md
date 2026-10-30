@@ -4549,3 +4549,28 @@ Paired differences for @refined:
 - **Rule:** all four checks fail, so r1 is **not adopted**.
 - **Reading:** the refined output does not depend on its input. It scores the same whether the input carries the sentence's words, another sentence's words or rest frames, so the refiner writes a generic, slower sentence (1.45× real against 2.26×). This confirms the training observation: under teacher forcing the history carries the loss, and the source is ignored.
 - Amendment 9 (r2, no target history) is already declared and training.
+
+### Round 15 amendment 9 result: refiner r2 stopped early, NOT adopted (recorded 2026-10-30, 00:12 UTC)
+
+On the owner's decision, the run was stopped at about step 1,100 of 4,201. The training gate could not pass:
+
+| Step | Selection loss | Empty-source loss | Source gain | Stage-1 accuracy |
+|---|---|---|---|---|
+| 0 (warm start) | 4.788 | 4.880 | 0.092 | 0.180 |
+| 250 | 4.725 | 4.739 | 0.014 | 0.119 |
+| 500 | 4.763 | 4.767 | 0.004 | 0.074 |
+| 1,000 | 4.830 | 4.837 | 0.007 | 0.039 |
+
+- The training loss was flat at about 5.05.
+- The best checkpoint (step 250) has a source gain of 0.014, below the gate's 0.05. **r2 is not adopted and was not evaluated.**
+
+**Data diagnosis** (300 training pairs of `refiner-pairs-v1`):
+- The stage-1 codes of the composed input and of the real target agree exactly at chance: 0.49%, against 0.42% for mismatched pairs, at every time shift from −48 to +48 steps.
+- A composition covers only the sentence's stage-1 words (for example 5 of a 20-word sentence), taken from other corpora's signers.
+- The target's own stage-1 code repeats its previous step 34% of the time.
+
+The refiner's input therefore predicts almost nothing about the real sentence frame by frame. Under maximum likelihood, the refiner learns to ignore it: r1 through its history, r2 by moving towards the marginal.
+
+**Conclusion:** both refiners fail for a data and formulation reason, not a code reason. A refiner of compositions is bounded by their word coverage. **The refiner route is closed.**
+
+Together with the 1,000-sentence real-word oracle (2.17) and W14b's composition (2.31), composition cannot reach M1's 2.55. The next lever is end-to-end sentence generation (round 16).
