@@ -5103,3 +5103,68 @@ The lag row needs a diagnosis before a fix:
 - The gate's videos stay held out.
 - This targets the forearm domain gap, the right-hand UWB-only rate and out-of-frame forearms.
 - The lag measurement is diagnosed first.
+
+## UWB lifter v2 and gate v2: declared (2026-10-30, 11:12 UTC, before any code or training)
+
+### Lag diagnosis of gate v1 (from its 12,113 stored pairs; the row stays FAIL for lifter v1)
+
+On the 6,607 arm-aligned pairs:
+- 7.6% of lags sit at the ±6 search bound, 23% of all non-zero lags.
+- For |lag| > 1, the median gain over lag 0 is 1.02°.
+- The within-1 share falls with weak signal: 0.85 / 0.79 / 0.56 by lag-0 score tercile, and 0.56 / 0.77 / 0.85 by arm frames.
+- Video explains about 3.5% of lag variance (within 3.70 against shuffled 3.84).
+- No stream-match video with at least 3 pairs has a consistent non-zero offset.
+- Drift is −0.013 frames/min.
+
+**Reading:** a shallow-cost measurement artefact, not a timing error. Separately, 60-fps downloads against UWB's 30 fps (482 pairs; within-1 share 0.28–0.37; wrists 71.9°) are a real stream problem, already excluded from conversion and to be checked as a possible timestamp issue.
+
+### Lifter v2
+
+**Split** (new, channel-disjoint, SHA-pinned, `scripts/build_uwb_lifter_split.py`):
+- **held-out:** channels with sha256("uwb-lifter-v2:" + channel) < 0.20, plus all 7 monitor channels. About 157 channels, 500 videos, 39k candidate pairs. Its composition is published before training.
+- **lifter-val:** 10% of the remaining channels.
+- **train:** the rest.
+- The 70 development videos are dropped everywhere.
+
+**Pairs** (training and lifter-val only; held-out video ids refused): the gate's own pairing, fps and alignment code. A pair is kept only if:
+- the streams match (within 0.2%);
+- alignment is `arm-2d`;
+- the chosen and best lags are both in {−1, 0, 1};
+- it has ≥ 400 bone-frames;
+- the lag-0 score is ≤ 20°.
+
+Targets are our arm directions on hips-visible frames.
+
+**Model:**
+- **Pose regressor:** initialised from xy2 and fine-tuned 15 epochs at lr 3e-4.
+  - Batches are 50/50 How2Sign v2 pairs (signers 3, 4, 5, 8, 11; original loss) and YouTube (1 − cos on the four arm bones and the shoulder line).
+  - A from-scratch 30-epoch comparison arm.
+  - **Selection on lifter-val only.**
+- **Hands:** frozen; fine-tuning is a declared comparison.
+- **Validity head:** a new MLP on the xy2 pose features plus image x, y and outside distance of points 11–16, giving 6 point logits.
+  - Labels: our upper-arm and forearm validity on YouTube hips-visible frames, plus tight crops of How2Sign **training** signers labelled by Tasks visibility ≥ 0.5.
+  - Per-side thresholds are set on lifter-val: maximise agreement subject to UWB-only ≤ 0.07.
+  - It becomes visibility rule `head`.
+- CPU only.
+
+### Gate v2
+
+**Identical to gate v1:** every bar (accuracy, p90, relative 1.6×, global offset, strata, validity, mirror, downstream), the 2,000-resample by-video CIs, the 70 development videos excluded, and `inside` common frames for the accuracy rows. Head-kept frames are reported as secondary.
+
+**New:**
+1. **Population:** held-out channels only, verified disjoint from the training and lifter-val lists, 12 pairs per video.
+2. **v1 reference:** xy2 re-evaluated on the identical held-out sample, reported beside v2.
+3. **How2Sign non-inferiority:** v2's How2Sign-val median per group ≤ v1's + 0.5°, so the relative row cannot pass by degrading How2Sign.
+4. **Truth anchor:** full-frame two-view forearm error ≤ v1's 28.2° (left) and 29.1° (right).
+5. **Chest-up survival** (How2Sign val signers 1 and 2, tight crops, amendment-1 admissibility):
+   - head survival on out-of-frame forearms ≥ 0.8 × MediaPipe's;
+   - where MediaPipe keeps < 200 frames, as on the right, ≥ `inside`'s survival and admissible.
+6. **Timing (redefined; this redefinition was informed by the gate v1 data):**
+   - stream-match pairs only;
+   - per video with ≥ 3 arm-aligned pairs, the pooled lag (summed per-lag cost curves) has |lag| ≤ 1 for ≥ 90% of videos;
+   - and no video's pooled lag beats lag 0 by more than 2° at |lag| > 1;
+   - v1's value under the new row is reported beside it.
+
+**Circularity control.** The targets and the gate's reference share the Tasks pipeline. Rows 2, 3 and 4 above, and the lifter-val minus held-out gap, are the controls, and they are reported.
+
+**Process:** branch `uwb-lifter-v2` → tests → independent review → CPU pods (pairs about 1 h, crops, training 1–2 h, gate 1–2 h) → gate v2 verdict. Conversion only if every gating row passes.
