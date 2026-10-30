@@ -480,78 +480,143 @@ def test_velocity_cap_log_compresses_only_terms_above_it_and_keeps_old_shas():
     torch.testing.assert_close(rvq_loss(loose, batch, stages=3)[0], loss)      # below the cap: unchanged
 
 
+def _rollout_inputs(prior, S=8, B=3, lengths=(8, 5, 2), seed=0):
+    torch.manual_seed(seed)
+    tokens, _ = encode_texts(["ask him", "cut it now", "go"])
+    tokens = tokens[:B]
+    codes = torch.randint(0, prior.K, (B, S, prior.J))
+    previous = torch.cat((torch.full_like(codes[:, :1], prior.K), codes[:, :-1]), 1)
+    seconds = (torch.arange(S) / 24.)[None].expand(B, -1).contiguous()
+    valid = torch.arange(S)[None] < torch.tensor(lengths)[:, None]
+    duration = valid.sum(1).float() / 24.
+    return tokens, previous, seconds, duration, valid
+
+
 def test_rollout_blocks_are_opt_in_training_only_and_exact_free_running(monkeypatch):
     """Round 16 candidate: a block of the prior's own output replaces the history of the block's next steps. Off, the
-    config (and every earlier prior's SHA) is unchanged; evaluation never rolls out; with greedy draws the block equals
-    a step-by-step free run from the history before it; the history elsewhere, the targets and the caller's tensors are
-    untouched; the model's train/eval mode is restored; the fields are warm-start compatible."""
+    config (and every earlier prior's SHA) is unchanged; evaluation never rolls out; every block step is drawn once,
+    from the final history before it (stochastic exactness), and with greedy draws the block equals generation's own
+    step-by-step free run with guidance and temperature; the block stays inside the valid steps (its last code is a
+    valid step's history); history elsewhere, unread stages, the targets and the caller's tensors are untouched; text-
+    dropped rows are never rolled; rolled rows skip history dropout; the mode is restored even on an exception."""
     from dataclasses import replace
     import json
     import scripts.train_motion_tokens as tmt
     from signtranslator.generation.motion_rvq import rollout_history
+    from signtranslator.generation.text_to_motion import PAD, empty_loci
+    from signtranslator.generation.motion_tokens import _empty_like
     states, tokenizer, prior = prior_setup()
     data = prior.config.to_dict()
-    assert not {"rollout_blocks", "rollout_min", "rollout_max", "rollout_onset"} & set(data)
-    on = RVQPrior(replace(prior.config, history_stages=1, rollout_blocks=1., rollout_min=3, rollout_max=3,
-                          rollout_onset=1.))
+    assert not {k for k in data if k.startswith("rollout")}
+    with pytest.raises(ValueError, match="rollout blocks need"):
+        replace(prior.config, rollout_blocks=.5, rollout_min=5, rollout_max=4)
+    with pytest.raises(ValueError, match="rollout blocks need"):
+        replace(prior.config, rollout_blocks=1.5)
+    for stages in (1, 0):
+        cfg = replace(prior.config, history_stages=stages, rollout_blocks=1., rollout_min=2, rollout_max=5,
+                      rollout_onset=0., rollout_guidance=1.5, rollout_temperature=1.1)
+        on = RVQPrior(cfg)
+        on.load_state_dict(prior.state_dict())
+        assert RVQPriorConfig.from_dict(json.loads(json.dumps(cfg.to_dict()))) == cfg
+        assert tmt.prior_warm_start_compatible(replace(prior.config, history_stages=stages).to_dict(), cfg.to_dict())
+        coded = (stages or cfg.tokenizer.stages) * (on.J // cfg.tokenizer.stages)
+        tokens, previous, seconds, duration, valid = _rollout_inputs(on)
+        kept = previous.clone()
+        conditioned = torch.ones(3, dtype=torch.bool)
+        # stochastic exactness: every pass's input prefix up to the drawn step equals the final history there
+        seen, original = [], on.temporal_states
+        monkeypatch.setattr(on, "temporal_states", lambda h, m, prev, *a, **k: seen.append(prev.clone()) or
+                            original(h, m, prev, *a, **k))
+        for seed in range(6):
+            seen.clear()
+            torch.manual_seed(seed)
+            on.train()
+            history, block = rollout_history(on, tokens, None, conditioned, previous, seconds, duration, valid)
+            assert on.training and torch.equal(previous, kept)
+            rows = block.any(1).nonzero().squeeze(1).tolist()
+            for r in range(3):
+                idx = block[r].nonzero().squeeze(1)
+                if not len(idx):
+                    continue
+                assert int(idx.max()) <= int(valid[r].sum()) - 1               # a valid step's history
+                assert int(idx.max()) - int(idx.min()) + 1 <= 5 and bool((idx.diff() == 1).all())
+                assert torch.equal(history[r, :, coded:], previous[r, :, coded:])   # unread stages untouched
+                outside = ~block[r]
+                assert torch.equal(history[r][outside], previous[r][outside])
+            # each guided pass records two inputs (conditional, empty text) of the live rows, in rows order
+            n_by_row = {r: int(block[r].sum()) for r in rows}
+            k = 0
+            for i in range(0, len(seen), 2):
+                live = [r for r in rows if n_by_row[r] > k]
+                for j, r in enumerate(live):
+                    pos = int(block[r].nonzero()[0]) - 1 + k
+                    assert torch.equal(seen[i][j, :pos + 1], history[r, :pos + 1]), (stages, seed, r, k)
+                    assert torch.equal(seen[i + 1][j, :pos + 1], history[r, :pos + 1])
+                k += 1
+        monkeypatch.undo()
+    # greedy: the block equals generation's free run (guidance 1.5, temperature 1.1) from the real history before it
+    cfg = replace(prior.config, history_stages=1, rollout_blocks=1., rollout_min=3, rollout_max=3, rollout_onset=0.,
+                  rollout_guidance=1.5, rollout_temperature=1.1)
+    on = RVQPrior(cfg)
     on.load_state_dict(prior.state_dict())
-    assert on.config.to_dict()["rollout_blocks"] == 1. and on.config.to_dict()["rollout_max"] == 3
-    assert RVQPriorConfig.from_dict(json.loads(json.dumps(on.config.to_dict()))) == on.config
-    assert tmt.prior_warm_start_compatible(replace(prior.config, history_stages=1).to_dict(), on.config.to_dict())
-    batch = collate_multichannel(states)
-    tokens, mask = encode_texts(["ask him", "cut it"])
-    coarse = RVQPrior(replace(prior.config, history_stages=1))
-    coarse.load_state_dict(prior.state_dict())
-    coarse.eval(); on.eval()
-    torch.manual_seed(1)
-    plain, _ = rvq_prior_loss(coarse, tokenizer, tokens, mask, batch, train=False)
-    torch.manual_seed(1)
-    same, terms = rvq_prior_loss(on, tokenizer, tokens, mask, batch, train=False)
-    torch.testing.assert_close(plain, same)                                    # evaluation never rolls out
-    assert "rollout_fraction" not in terms
-    # exactness with greedy draws: the block (steps 0..2, onset) is the prior's own step-by-step free run
+    P = on.J // cfg.tokenizer.stages
+    tokens, previous, seconds, duration, valid = _rollout_inputs(on, lengths=(8, 8, 8))
     monkeypatch.setattr(torch, "multinomial", lambda probs, k, **kw: probs.argmax(-1, keepdim=True))
-    P = on.J // on.config.tokenizer.stages
-    S = 6
-    hidden = torch.randn(2, 3, on.config.d_model); hmask = torch.ones(2, 3, dtype=torch.bool)
-    codes = torch.randint(0, on.K, (2, S, on.J))
-    previous = torch.cat((torch.full_like(codes[:, :1], on.K), codes[:, :-1]), 1)
-    kept = previous.clone()
-    seconds = (torch.arange(S) / 24.)[None].expand(2, -1); duration = torch.full((2,), S / 24.)
-    valid = torch.ones(2, S, dtype=torch.bool); valid[1, 5:] = False
-    on.train()
-    history, rolled = rollout_history(on, hidden, hmask, previous, seconds, duration, valid)
-    assert on.training and torch.equal(previous, kept)                         # mode restored, input untouched
-    assert rolled == pytest.approx(6 / 11)                                     # 3 slots in each row (3 of 6 + 3 of 5)
+    torch.manual_seed(5)
+    history, block = rollout_history(on, tokens, None, torch.ones(3, dtype=torch.bool), previous, seconds, duration,
+                                     valid)
     on.eval()
     with torch.no_grad():
-        free = previous.clone()
-        for k in range(3):                                                      # step-by-step greedy free run
-            h = on.temporal_states(hidden, hmask, free[:, :k + 1], seconds[:, :k + 1], duration)[:, -1]
-            drawn = torch.zeros((2, 0), dtype=torch.long)
-            for _ in range(P):
-                drawn = torch.cat((drawn, on.depth_logits(h, drawn)[:, -1].argmax(-1, keepdim=True)), 1)
-            free[:, k + 1, :P] = drawn
-    assert torch.equal(history[:, 1:4, :P], free[:, 1:4, :P])                 # the block is exact free running
-    assert torch.equal(history[:, 4:], previous[:, 4:]) and torch.equal(history[:, :1], previous[:, :1])
-    assert torch.equal(history[..., P:], previous[..., P:])                    # unread stages untouched
-    assert not torch.equal(history[:, 1:4, :P], previous[:, 1:4, :P])
-    # a block within the valid steps, anywhere; training runs and backpropagates
+        hidden, _, mask = on.encode(tokens, tokens != PAD, None)
+        empty = _empty_like(tokens[:1, :2])
+        e_hidden, _, e_mask = on.encode(empty, empty != PAD, empty_loci(cfg, "cpu"))
+        for r in range(3):
+            first = int(block[r].nonzero()[0])                                 # slot start+1
+            free = previous[r:r + 1].clone()
+            for step in range(first - 1, first + 2):
+                h = on.temporal_states(hidden[r:r + 1], mask[r:r + 1], free[:, :step + 1], seconds[r:r + 1, :step + 1],
+                                       duration[r:r + 1])[:, -1]
+                hf = on.temporal_states(e_hidden, e_mask, free[:, :step + 1], seconds[r:r + 1, :step + 1],
+                                        duration[r:r + 1])[:, -1]
+                drawn = torch.zeros((1, 0), dtype=torch.long)
+                for _ in range(P):
+                    lg, fr = on.depth_logits(h, drawn)[:, -1], on.depth_logits(hf, drawn)[:, -1]
+                    drawn = torch.cat((drawn, ((fr + 1.5 * (lg - fr)) / 1.1).argmax(-1, keepdim=True)), 1)
+                free[0, step + 1, :P] = drawn[0]
+            assert torch.equal(history[r, first:first + 3, :P], free[0, first:first + 3, :P]), r
     monkeypatch.undo()
-    anywhere = RVQPrior(replace(on.config, rollout_onset=0., rollout_min=2, rollout_max=4))
-    anywhere.load_state_dict(prior.state_dict())
-    for seed in range(20):
-        torch.manual_seed(seed)
-        h2, _ = rollout_history(anywhere, hidden, hmask, previous, seconds, duration, valid)
-        changed = (h2 != previous).any(-1)                                      # (B, S)
-        for r, row in enumerate(changed):
-            idx = row.nonzero().squeeze(1)
-            if len(idx):
-                assert int(idx.min()) >= 1 and int(idx.max()) <= int(valid[r].sum())
-                assert int(idx.max()) - int(idx.min()) < 4
-    anywhere.train()
+    # text-dropped rows are never rolled; the mode is restored when the model raises
+    _, block = rollout_history(on, tokens, None, torch.tensor([True, False, True]), previous, seconds, duration, valid)
+    assert not bool(block[1].any())
+    on.train()
+    monkeypatch.setattr(on, "temporal_states", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    with pytest.raises(RuntimeError, match="boom"):
+        rollout_history(on, tokens, None, torch.ones(3, dtype=torch.bool), previous, seconds, duration, valid)
+    assert on.training
+    monkeypatch.undo()
+    # in the loss: evaluation never rolls out; training reports the rolled steps; rolled rows skip history dropout
+    batch = collate_multichannel(states)
+    texts, tmask = encode_texts(["ask him", "cut it"])
+    coarse = RVQPrior(replace(prior.config, history_stages=1))
+    coarse.load_state_dict(prior.state_dict())
+    both = RVQPrior(replace(cfg, rollout_min=2, rollout_max=4, history_dropout=1.))
+    both.load_state_dict(prior.state_dict())
+    coarse.eval(); both.eval()
+    torch.manual_seed(1)
+    plain, _ = rvq_prior_loss(coarse, tokenizer, texts, tmask, batch, train=False)
+    torch.manual_seed(1)
+    same, terms = rvq_prior_loss(both, tokenizer, texts, tmask, batch, train=False)
+    torch.testing.assert_close(plain, same)
+    assert not {k for k in terms if k.startswith("rollout")}
+    both.train()
+    both.config = replace(both.config, cfg_dropout=0.)
+    seen, original = [], both.temporal_states
+    monkeypatch.setattr(both, "temporal_states", lambda h, m, prev, *a, **k: seen.append(prev.clone()) or
+                        original(h, m, prev, *a, **k))
     torch.manual_seed(2)
-    loss, terms = rvq_prior_loss(anywhere, tokenizer, tokens, mask, batch, train=True)
-    assert 0 < terms["rollout_fraction"] <= 1
+    loss, terms = rvq_prior_loss(both, tokenizer, texts, tmask, batch, train=True)
+    assert 0 < terms["rollout_fraction"] <= 1 and {"rollout_tokens", "rollout_accuracy"} <= set(terms)
+    final = seen[-1]                                                            # the training pass's history
+    assert not bool((final[:, 1:] == both.K).all(-1).any())                   # history dropout skipped rolled rows
     loss.backward()
-    assert all(p.grad is None or torch.isfinite(p.grad).all() for p in anywhere.parameters())
+    assert all(p.grad is None or torch.isfinite(p.grad).all() for p in both.parameters())

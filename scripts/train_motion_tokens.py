@@ -100,7 +100,7 @@ def corpus_sample_weights(records, weights: dict[str, float]) -> list[float]:
 # model, locus/grammar conditioning and every size stay part of the comparison: they change the forward pass.
 PRIOR_TRAINING_ONLY = ("input_corruption", "scheduled_sampling", "history_dropout", "part_valid_loss", "guided_attention",
                        "guided_attention_width", "alignment_supervision", "rollout_blocks", "rollout_min", "rollout_max",
-                       "rollout_onset")
+                       "rollout_onset", "rollout_guidance", "rollout_temperature")
 
 
 def prior_warm_start_compatible(init_config: dict, config: dict) -> bool:
@@ -184,6 +184,9 @@ def main(argv=None) -> int:
     parser.add_argument("--rollout-max", type=int, default=12, help="rvq prior: longest rollout block (steps)")
     parser.add_argument("--rollout-onset", type=float, default=.25,
                         help="rvq prior: probability that a rollout block starts at the first step")
+    parser.add_argument("--rollout-guidance", type=float, default=1.5,
+                        help="rvq prior: the rollout's guidance against the empty text (as generation's)")
+    parser.add_argument("--rollout-temperature", type=float, default=1.1, help="rvq prior: the rollout's temperature")
     parser.add_argument("--part-valid-loss", action="store_true",
                         help="rvq prior: count a code's cross entropy only where its part was observed (round 10)")
     parser.add_argument("--history-stages", type=int, default=0,
@@ -283,7 +286,9 @@ def main(argv=None) -> int:
                                     guided_attention_width=args.guided_attention_width,
                                     alignment_supervision=args.alignment_supervision,
                                     rollout_blocks=args.rollout_blocks, rollout_min=args.rollout_min,
-                                    rollout_max=args.rollout_max, rollout_onset=args.rollout_onset, **common)
+                                    rollout_max=args.rollout_max, rollout_onset=args.rollout_onset,
+                                    rollout_guidance=args.rollout_guidance,
+                                    rollout_temperature=args.rollout_temperature, **common)
             model = RVQPrior(config).to(device)
     kind = tokenizer_kind if args.stage == "tokenizer" else prior_kind
 
