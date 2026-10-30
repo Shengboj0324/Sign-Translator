@@ -8,7 +8,10 @@ Input: a prefix written by ``acquire_hf_dataset.py`` (``INDEX.json``, ``files/..
 ``<out>/states/<split>/<stem>.npz``, ``<out>/landmarks/<split>/<stem>.npz`` and a report
 ``<out>/videos/<split>/<stem>.json`` (text fields, source key and SHA-256, frames, seconds, hand and face coverage,
 available channels; or the refusal). A video with a report is skipped (resumable); ``--shard i --shards n`` splits the
-work by a hash of the path. Videos are fetched to a temporary file and deleted after conversion.
+work by a hash of the path. Videos are fetched to a temporary file and deleted after conversion. ``--transcode HxF``
+(e.g. ``720x24``) first re-encodes each video with ffmpeg to that height and frame rate (How2Sign's 720p at 24 fps):
+2M-Flores is 1080p at 60 fps, about five times the landmarking work for no gain at the generator's 24 fps; the
+setting is recorded in each report and in the inference method.
 
     python scripts/extract_video_corpus.py --source acquisition/2026-10-30-v1/2m-flores-asl \
         --metadata data/dev/metadata.csv --metadata data/devtest/metadata.csv \
@@ -68,13 +71,25 @@ def convert(job: dict, args) -> dict:
             raise SystemExit(f"{job['key']}: SHA-256 differs from the index")
         video.write_bytes(payload)
         del payload
+        if args.transcode:
+            import subprocess
+            height, fps = (int(x) for x in args.transcode.split("x"))
+            small = Path(tmp) / "t.mp4"
+            subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-i", str(video), "-an", "-vf",
+                            f"scale=-2:{height},fps={fps}", "-c:v", "libx264", "-preset", "veryfast", "-crf", "17",
+                            str(small)], check=True)
+            video.unlink()
+            video = small
+            report["transcode"] = dict(height=height, fps=fps, codec="libx264 veryfast crf 17")
         try:
             clip = extract_clip(video, models, roi=True, count_people_every=args.count_people_every)
             raw = save_raw_landmarks(clip)
             state, _ = canonical_from_landmarks(
                 load_raw_landmarks(raw), sample_id=base.replace("/", "-"), source_id=args.source_id,
                 source_sha256=job["sha256"], clock_id=f"{args.source_id}:{base}:pts",
-                inference_method=inference_method() + ARM_RECOVERY_METHOD, upright_chest=True, upright_root=True)
+                inference_method=inference_method() + ARM_RECOVERY_METHOD + (
+                    f"; transcoded to {args.transcode} (height x fps) before landmarking" if args.transcode else ""),
+                upright_chest=True, upright_root=True)
         except ValueError as error:
             report.update(status="refused", reason=str(error)[:300])
             store.put(report_key, json.dumps(report, indent=1).encode())
@@ -106,6 +121,7 @@ def main(argv=None) -> int:
     p.add_argument("--shards", type=int, default=1)
     p.add_argument("--limit", type=int)
     p.add_argument("--count-people-every", type=int, default=24)
+    p.add_argument("--transcode", help="HEIGHTxFPS, e.g. 720x24: ffmpeg re-encode before landmarking")
     args = p.parse_args(argv)
     from signtranslator.data.text_motion_dataset import R2Store
     store = R2Store(os.environ)
