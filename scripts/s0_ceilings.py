@@ -3,9 +3,13 @@
 Declared in docs/NEXT_PHASE_PLAN.md, "Road to 3.8, part 2" (2026-10-30, 19:32 UTC). Background:
 ``reports/Route to near real signing.md`` (S0 row and "Measure progress with likelihood and faithfulness").
 
-**Clips.** ``pilot_content_check.validation_sentences(round10-mixed-v1, --clips)``: the 1,000 How2Sign val clips every
-pilot and the round-15 1,000-clip composition evaluation read (``--clips 1000``), at 24 fps. With ``--stored`` reports
-their references must equal these texts (checked).
+**Clips.** The first ``--clips`` of ``pilot_content_check.validation_sentences(round10-mixed-v1, --sample)``
+(``--sample`` 1000: the 1,000 How2Sign val clips every pilot and the round-15 1,000-clip composition evaluation read),
+at 24 fps. A smaller read is always a *prefix* of that declared draw (``declared_sample``), never a draw of its own:
+``random.sample``'s choices depend on k (k = 1000 uses its pool method, k = 20 or 32 its set method), so
+``validation_sentences(mix, 32)`` agrees with the 1,000-draw only on its first 16 clips (the 2026-10-30 smoke failure).
+The report states the draw (``sample``: mix, SHA-256, drawn, clips, signs). With ``--stored`` reports their
+references must begin with these texts (checked).
 
 **Forms** (``--forms``; each a list of states of the same clips, read by the same instrument):
 - ``real``; ``blank`` (every channel removed, durations kept: ``evaluate_text_to_motion.blanked``);
@@ -36,8 +40,11 @@ each metric's real − blank range)?
 fractions, paired against this run's real and blank). ΔNLL, retrieval and ρ_faith need motion, so they need
 regeneration: ``--regenerate KEY`` (repeatable; end-to-end pilot reports only) regenerates the pilot's generated half
 exactly as ``pilot_content_check`` did (its checkpoint, guidance and part temperatures, seeds 1000 + i per block of
-32, the round-3e post-processing, the tokenizer's accepted gains), whole blocks of 32 even when ``--clips`` is smaller,
-and reports how many hypotheses reproduce the stored ones before giving the full panel. Composition forms need
+32, the round-3e post-processing, the tokenizer's accepted gains) on **the pilot's own clip list**
+(``pilot_records``: ``validation_sentences`` of the pilot's generator mix, which is the ``--mix-key`` its pilot ran with,
+at the pilot's own clip count, checked text for text against its stored references), whole blocks of 32 even when
+``--clips`` is smaller; the regenerated clips must be the ceiling read's clips (sign ids, checked); the report gives
+the pilot's mix and then reports how many hypotheses reproduce the stored ones before giving the full panel. Composition forms need
 ``round15_compose_eval.py``'s renderer (round 20's tooling); they are read on hypotheses only here.
 
 ``--forms none`` with ``--stored``: a CPU-only read of stored hypotheses (references, real and blank from the first
@@ -397,9 +404,35 @@ def short_name(key: str) -> str:
     return "/".join(parts[-2:])
 
 
-def regenerate(store, key: str, texts, seconds, device: str):
-    """The pilot's generated half regenerated for ``texts`` (whole blocks of 32 from clip 0), as pilot_content_check:
-    ``load_generator`` with the stored checkpoint, guidance and part temperatures; seeds 1000 + i; post-processed."""
+def declared_sample(manifest, sample: int, clips: int):
+    """The first ``clips`` records of ``validation_sentences(manifest, sample)``: a smaller read is a prefix of the
+    declared draw (``random.sample(population, k)`` draws differently for different k)."""
+    from pilot_content_check import validation_sentences
+    if clips > sample:
+        raise SystemExit(f"--clips {clips} exceeds the declared sample {sample}")
+    return validation_sentences(manifest, sample)[:clips]
+
+
+def pilot_records(store, report: dict, load_mix):
+    """(records, run info) of a stored pilot's own clips: ``validation_sentences(its generator's training mix,
+    len(references))``. ``pilot_content_check`` drew its clips from ``--mix-key`` and gave ``--mix-sha256`` to
+    ``load_generator``, which refuses any mix but the checkpoint's training manifest, so that mix is the run's
+    ``run.json`` manifest. Checked text for text against the stored references."""
+    from pilot_content_check import validation_sentences
+    run = report["checkpoint_key"].split("/checkpoints/")[0]
+    info = json.loads(store.get(f"{run}/run.json"))
+    references = report["meaning"]["references"]
+    records = validation_sentences(load_mix(info["manifest_key"], info["manifest_sha256"]), len(references))
+    if [r["text"] for r in records] != references:
+        raise SystemExit(f"{run}: validation_sentences of its mix does not reproduce the pilot's references")
+    return records, info
+
+
+def regenerate(store, key: str, clips: int, device: str, load_mix, load_states):
+    """(generated states of the pilot's first ``clips`` clips, the pilot report, those clips' records, run info):
+    the pilot's generated half regenerated as pilot_content_check did, on its own clip list, whole blocks of 32 from
+    clip 0 (``load_generator`` with the stored checkpoint, guidance and part temperatures; seeds 1000 + i;
+    post-processed)."""
     from evaluate_text_to_motion import load_generator
     from pilot_content_check import postprocess
     report = json.loads(store.get(key))
@@ -407,15 +440,20 @@ def regenerate(store, key: str, texts, seconds, device: str):
         raise SystemExit(f"{key}: plan-conditioned pilots are not regenerated here")
     if "meaning" not in report or "generated" not in report["meaning"]:
         raise SystemExit(f"{key}: not an end-to-end pilot report")
-    ck = report["checkpoint_key"]
-    run = ck.split("/checkpoints/")[0]
-    manifest_sha = json.loads(store.get(f"{run}/run.json"))["manifest_sha256"]
-    _, _, sample = load_generator(store, ck, manifest_sha, device, temperature=report["part_temperature"])
+    records, info = pilot_records(store, report, load_mix)
+    if clips > len(records):
+        raise SystemExit(f"{key}: the pilot read {len(records)} clips, fewer than --clips {clips}")
+    block = records[:min(len(records), math.ceil(clips / BLOCK) * BLOCK)]
+    refs = load_states(block)
+    texts = [r["text"] for r in block]
+    seconds = [float(s.timestamps[-1] - s.timestamps[0]) + 1 / FPS for s in refs]
+    _, _, sample = load_generator(store, report["checkpoint_key"], info["manifest_sha256"], device,
+                                  temperature=report["part_temperature"])
     gens = []
     for i in range(0, len(texts), BLOCK):
         gens += [postprocess(o) for o in sample.batch(texts[i:i + BLOCK], FPS, seconds[i:i + BLOCK], report["guidance"],
                                                       1000 + i)]
-    return gens, report
+    return gens[:clips], report, records[:clips], info
 
 
 # ---- main -----------------------------------------------------------------------------------------------------------
@@ -425,7 +463,8 @@ def main(argv=None) -> int:
     p.add_argument("--store", default="r2", help="r2, or dir:/path (tests)")
     p.add_argument("--mix-key", default=EVAL_MIX)
     p.add_argument("--mix-sha256", default=EVAL_MIX_SHA)
-    p.add_argument("--clips", type=int, default=1000)
+    p.add_argument("--sample", type=int, default=1000, help="the declared draw: validation_sentences(mix, --sample)")
+    p.add_argument("--clips", type=int, default=1000, help="read the first --clips of the declared draw")
     p.add_argument("--forms", default=",".join(ALL_FORMS), help="comma list of forms, or 'none' (stored reads only)")
     p.add_argument("--tokenizer-key", default=TOKENIZER)
     p.add_argument("--tokenizer-sha256", default=TOKENIZER_SHA)
@@ -492,17 +531,27 @@ def main(argv=None) -> int:
         with tempfile.TemporaryDirectory() as t:
             path = Path(t) / "m.json"; path.write_bytes(store.get(args.mix_key) + b"\n")
             manifest = load_manifest(path, expected_sha256=args.mix_sha256)
-        n_load = args.clips
-        if args.regenerate:                             # whole generation blocks, as the pilots generated them
-            n_load = math.ceil(args.clips / BLOCK) * BLOCK
-        records = validation_sentences(manifest, n_load)
-        all_texts = [r["text"] for r in records]
-        texts = all_texts[:args.clips]
-        refs_all = [at_rate(load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]), FPS)
-                    for r in records]
-        refs = refs_all[:args.clips]
+        mixes = {}
+
+        def load_mix(key, sha):
+            if (key, sha) not in mixes:
+                with tempfile.TemporaryDirectory() as t:
+                    path = Path(t) / "m.json"; path.write_bytes(store.get(key) + b"\n")
+                    mixes[(key, sha)] = load_manifest(path, expected_sha256=sha)
+            return mixes[(key, sha)]
+
+        def load_states(recs):
+            return [at_rate(load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]), FPS)
+                    for r in recs]
+        mixes[(args.mix_key, args.mix_sha256)] = manifest
+        records = declared_sample(manifest, args.sample, args.clips)
+        texts = [r["text"] for r in records]
+        refs = load_states(records)
         report["clips"], report["references"] = len(texts), texts
-        report["signs"] = [r["sign"] for r in records[:args.clips]]
+        report["signs"] = [r["sign"] for r in records]
+        report["sample"] = dict(mix_key=args.mix_key, mix_sha256=args.mix_sha256, drawn=args.sample, clips=len(texts),
+                                rule="the first --clips records of pilot_content_check.validation_sentences(mix, "
+                                     "--sample)")
         payload = store.get(args.tokenizer_key)
         if hashlib.sha256(payload).hexdigest() != args.tokenizer_sha256:
             raise SystemExit(f"{args.tokenizer_key}: SHA-256 differs from --tokenizer-sha256")
@@ -575,14 +624,15 @@ def main(argv=None) -> int:
             report["forms"][name] = panel(name, raw, "computed")
             del raw
         for key in args.regenerate:
-            seconds = [float(s.timestamps[-1] - s.timestamps[0]) + 1 / FPS for s in refs_all]
-            if json.loads(store.get(key))["meaning"]["references"][:len(texts)] != texts:
-                raise SystemExit(f"{key}: its references are not these clips")
-            gens, pilot = regenerate(store, key, all_texts, seconds, args.device)
+            gens, pilot, pilot_recs, info = regenerate(store, key, len(texts), args.device, load_mix, load_states)
+            if [r["sign"] for r in pilot_recs] != report["signs"]:
+                raise SystemExit(f"{key}: the pilot's clips are not the ceiling read's clips")
             label = f"regen:{short_name(key)}"
             entry = panel(label, compute(gens[:len(texts)]), key)
             stored_hyps = pilot["meaning"]["generated"]["hypotheses"][:len(texts)]
             entry["reproduction"] = dict(report_sha256=hashlib.sha256(store.get(key)).hexdigest(),
+                pilot_mix=dict(key=info["manifest_key"], sha256=info["manifest_sha256"],
+                               clips=len(pilot["meaning"]["references"])),
                 identical=round(float(np.mean([a == b for a, b in zip(entry["hypotheses"], stored_hyps)])), 4),
                 stored_bleu=M.bleu_ci_fast(stored_hyps, texts)[0], regenerated_bleu=entry["bleu"]["bleu"],
                 checkpoint_key=pilot["checkpoint_key"], guidance=pilot["guidance"],

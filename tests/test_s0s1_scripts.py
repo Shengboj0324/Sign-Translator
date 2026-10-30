@@ -220,14 +220,38 @@ def test_stored_only_read_scores_hypotheses_and_is_write_once(tmp_path):
         s0.main(["--store", f"dir:{tmp_path / 'store'}", "--forms", "round_trip", "--output-file", str(tmp_path / "x")])
 
 
-def test_regeneration_uses_the_pilots_blocks_seeds_and_settings(tmp_path, monkeypatch):
+def val_manifest(n=3096):
+    """A manifest-like dict with ``n`` How2Sign val records of the three validation groups (and noise records)."""
+    groups = ("c01", "c03", "c05")
+    recs = [dict(corpus="how2sign-two-view-text-v1", partition="val", signer_component=groups[i % 3],
+                 text=f"sentence {i}", sign=f"s{i}", continuous=dict(state_key=f"k{i}", state_sha256="0" * 64))
+            for i in range(n)]
+    recs += [dict(corpus="how2sign-two-view-text-v1", partition="train", signer_component="c02", text="t", sign="x")]
+    return dict(records=recs)
+
+
+def test_a_small_read_is_a_prefix_of_the_declared_draw_not_a_draw_of_its_own():
+    from pilot_content_check import validation_sentences
+    m = val_manifest()
+    full = validation_sentences(m, 1000)
+    own = validation_sentences(m, 32)                      # random.sample's draw depends on k
+    assert [r["sign"] for r in own] != [r["sign"] for r in full[:32]]
+    assert s0.declared_sample(m, 1000, 20) == full[:20] and s0.declared_sample(m, 1000, 1000) == full
+    with pytest.raises(SystemExit):
+        s0.declared_sample(m, 1000, 1001)
+
+
+def test_regeneration_uses_the_pilots_own_clips_blocks_seeds_and_settings(tmp_path, monkeypatch):
     import evaluate_text_to_motion as etm
+    from pilot_content_check import validation_sentences
+    m = val_manifest()
+    refs = [r["text"] for r in validation_sentences(m, 1000)]
     store = DirectoryStore(tmp_path / "store")
-    store.put("training-runs/r/run.json", json.dumps(dict(manifest_sha256="m" * 64)).encode())
+    store.put("training-runs/r/run.json", json.dumps(dict(manifest_key="mix.json", manifest_sha256="m" * 64)).encode())
     store.put("p.json", json.dumps(dict(checkpoint_key="training-runs/r/checkpoints/step-1.pt", guidance=1.5,
                                         part_temperature=dict(body=1.1), meaning=dict(
-                                            references=["t"] * 40, generated=dict(hypotheses=["h"] * 40)))).encode())
-    calls = {}
+                                            references=refs, generated=dict(hypotheses=["h"] * 1000)))).encode())
+    calls, mixes = {}, []
 
     def loader(store_, key, sha, device, temperature=None, plan=None):
         calls["load"] = (key, sha, device, temperature)
@@ -236,17 +260,28 @@ def test_regeneration_uses_the_pilots_blocks_seeds_and_settings(tmp_path, monkey
             raise AssertionError("single samples are not used")
 
         def batch(texts, fps, seconds, guidance, seed):
-            calls.setdefault("batches", []).append((len(texts), fps, guidance, seed))
+            calls.setdefault("batches", []).append((list(texts), fps, guidance, seed))
             return [signer_state(0, frames=4) for _ in texts]
         sample.batch = batch
         return "x", None, sample
     monkeypatch.setattr(etm, "load_generator", loader)
-    gens, report = s0.regenerate(store, "p.json", ["t"] * 40, [1.] * 40, "cpu")
-    assert len(gens) == 40 and calls["load"] == ("training-runs/r/checkpoints/step-1.pt", "m" * 64, "cpu", dict(body=1.1))
-    assert calls["batches"] == [(32, 24., 1.5, 1000), (8, 24., 1.5, 1032)]
+    load_mix = lambda key, sha: mixes.append((key, sha)) or m
+    load_states = lambda recs: [signer_state(0, frames=24) for _ in recs]
+    gens, report, recs, info = s0.regenerate(store, "p.json", 20, "cpu", load_mix, load_states)
+    assert mixes == [("mix.json", "m" * 64)]                                    # the pilot's own mix
+    assert len(gens) == 20 and recs == validation_sentences(m, 1000)[:20]      # its clips, not a 20- or 32-draw
+    assert calls["load"] == ("training-runs/r/checkpoints/step-1.pt", "m" * 64, "cpu", dict(body=1.1))
+    assert [(b[0], b[3]) for b in calls["batches"]] == [(refs[:32], 1000)]      # one whole block of 32, seed 1000
+    gens, *_ = s0.regenerate(store, "p.json", 40, "cpu", load_mix, load_states)
+    assert [b[3] for b in calls["batches"][1:]] == [1000, 1032] and calls["batches"][2][0] == refs[32:64]
+    store.put("bad.json", json.dumps(dict(checkpoint_key="training-runs/r/checkpoints/step-1.pt", guidance=1.5,
+                                          part_temperature={}, meaning=dict(references=list(reversed(refs)),
+                                                                            generated={}))).encode())
+    with pytest.raises(SystemExit):                                             # its mix does not give its clips
+        s0.regenerate(store, "bad.json", 20, "cpu", load_mix, load_states)
     store.put("plan.json", json.dumps(dict(plan=dict(a=1), meaning=dict(generated={}))).encode())
     with pytest.raises(SystemExit):
-        s0.regenerate(store, "plan.json", ["t"], [1.], "cpu")
+        s0.regenerate(store, "plan.json", 20, "cpu", load_mix, load_states)
 
 
 # ---- S1 ------------------------------------------------------------------------------------------------------------

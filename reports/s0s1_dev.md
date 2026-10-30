@@ -17,6 +17,10 @@
 ## Clips and instrument
 
 - **Clips:** `pilot_content_check.validation_sentences(round10-mixed-v1, 1000)`, the 1,000 How2Sign val clips that every pilot and the round-15 composition evaluation read, at 24 fps.
+- **Smaller reads are prefixes of that draw (fix, 2026-10-30, after the first pod smoke).** `random.sample(val, k)` draws differently for different k: k = 1000 uses its pool method, while k = 20 or 32 uses its set method. So `validation_sentences(mix, 32)` agrees with the 1,000-draw only on its first 16 clips. The first pod smoke drew 32 clips for the W14b regeneration and was refused: its references were not the pilot's. Its 20-clip ceiling numbers (real 3.314, blank 2.332, …) came from that k = 20 draw, not the 1,000's first 20.
+  - Now `--sample 1000` is always drawn and `--clips` takes its prefix. The report's `sample` block states the draw.
+  - Regeneration uses each pilot's own clip list: `validation_sentences` of its generator's training mix (round14b for W14b, R16 and R16C; round19 for R19 and R19w) at the pilot's clip count, checked against its stored references and against the ceiling read's sign ids.
+  - All five pilots resolve to the same 1,000 sign ids as round10's draw (checked on R2).
 - **Instrument v1:** `back-translator-kp2d-uwb-ft-v1` step 9000 (SHA-256 2e3ded3f…), beam 4, batch 32, as every pilot.
 - **Checked locally (4 clips, CPU):** v1 reproduces the stored eval1000 real hypotheses exactly (`identical_to_computed` = 1.0). The pod smoke repeats this check on 20 clips and stops the job if it fails.
 
