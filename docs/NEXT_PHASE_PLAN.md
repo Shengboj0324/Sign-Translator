@@ -4617,3 +4617,19 @@ Also reported: whether R16's point BLEU reaches W14b's composition (2.31) and M1
 If R16 passes, the next round tunes the block length and rate. If it fails while R16C also fails to beat W14b, the next lever is the report's rank 4 (temporal downsampling), which needs the owner's approval as a structural change.
 
 Chain: `r16_chain.sh`.
+
+### Round 15 amendment 7 result, single knobs (recorded 2026-10-30, 00:33 UTC): none adopted
+
+Each knob was run alone on the 1,000-sentence real-word oracle. The paired difference is against the unrefined oracle, 2.17.
+
+| Knob | BLEU | Paired vs oracle | −mismatched words | Wrist speed / real |
+|---|---|---|---|---|
+| sentence space normalisation | 2.112 | −0.06 [−0.34, +0.19] | +0.95 | 2.47× |
+| minimum-jerk bridges | 1.997 | −0.17 [−0.40, +0.05] | +0.89 | 2.74× |
+| tightened cores | 2.182 | +0.01 [−0.16, +0.19] | +0.99 | 2.24× |
+| (oracle, no knob) | 2.17 | — | — | 2.26× |
+| (all three together) | 1.90 | −0.27 [−0.54, −0.02] | — | 3.03× |
+
+- **Rule:** no lower bound is above 0, so **no knob is adopted.**
+- **Speed:** no knob brings wrist speed towards the 1.5× bar. Only tightened cores matches the oracle's own 2.26×, while space normalisation and minimum-jerk raise it.
+- **Correction:** earlier notes read the knobs' speeds against the all-knobs figure (3.03×). The right reference is the oracle's own 2.26×.
