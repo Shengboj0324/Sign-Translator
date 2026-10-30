@@ -38,6 +38,12 @@ process, after every shard) checks that all unit reports share one settings fing
   ``inside`` or ``margin:<m>``. The first real smoke showed the How2Sign-crop visibility head dropping the right forearm
   (agreement 0.41) and the review showed ``inside`` dropping 44% / 31% of forearm frames (elbow below the frame);
   the gate decides.
+- **Clip population** (round 18): ``--fps-sources estimated`` converts only videos with an ``--fps-table`` entry, and
+  ``--stream-check`` (a ``uwb_lifter_gate.py`` report, ``KEY@SHA256``: the run that wrote the fps table, whose
+  ``fps.videos`` rows carry our download's container rate ``meta_fps``) also leaves out every table video whose stream
+  does not match (the gate's ``stratum_of`` rule: ``|fps / meta_fps - 1| >= 0.002``, or no ``meta_fps``). Left-out
+  members are listed as ``skipped`` (reason ``fps_assumed`` / ``stream_mismatch``) without being read; both settings
+  are in the resume fingerprint. The report must give every table video the table's rate, else the run refuses.
 - Refusals (malformed JSON, frame count off the range by more than 2, fewer than ``--min-frames`` frames, no pose)
   are listed with their reason; transient store errors are ``error`` and the unit is retried by the next run.
 """
@@ -62,6 +68,7 @@ PREFIX = "acquisition/2026-10-17-v1/youtube-asl-uwb-keypoints-v1"
 TRANSLATIONS = (("YT.translations.train.json", "train"), ("YT.translations.dev.json", "monitor"))
 EVAL_PARTITIONS = ("val", "test", "heldout_official")
 RUN_ONLY = ("limit", "video", "max_units")          # settings that restrict a run but never change a converted clip
+STREAM_MATCH = .002                                  # uwb_lifter_gate.stratum_of: a stream matches below |fps / meta - 1|
 _WORKER: dict = {}
 
 
@@ -116,6 +123,36 @@ def load_overlap_table(spec: str, store) -> tuple[dict, str]:
     return dict(clips=data["clips"], videos=data["videos"]), sha
 
 
+def load_stream_check(spec: str | None, store, fps_table: dict) -> tuple[set, str | None, dict]:
+    """(videos of the fps table whose stream does not match, the report's SHA-256, counts) from a ``uwb_lifter_gate.py``
+    report's ``fps.videos`` rows (``fps``, ``meta_fps``). Refused unless every table video is in the report with the
+    table's rate (the report must be the run that wrote the table)."""
+    payload, sha = load_spec(spec, store, "--stream-check")
+    if payload is None:
+        return set(), None, {}
+    try:
+        rows = json.loads(payload)["fps"]["videos"]
+    except (KeyError, TypeError) as error:
+        raise SystemExit("--stream-check: not a uwb_lifter_gate.py report (no fps.videos rows)") from error
+    if not fps_table:
+        raise SystemExit("--stream-check needs --fps-table (it checks the table's videos)")
+    differ = [v for v, fps in fps_table.items() if v not in rows or rows[v].get("fps") is None
+              or abs(float(rows[v]["fps"]) - fps) > 1e-6]
+    if differ:
+        raise SystemExit(f"--stream-check: {len(differ)} fps-table videos are missing from the report or have another "
+                         f"rate there (e.g. {sorted(differ)[:3]}): not the run that wrote the table")
+    mismatch, counts = set(), collections.Counter()
+    for video, fps in fps_table.items():
+        meta = rows[video].get("meta_fps")
+        if not meta:
+            mismatch.add(video); counts["no_meta_fps"] += 1
+        elif abs(fps / float(meta) - 1) >= STREAM_MATCH:
+            mismatch.add(video); counts["mismatch"] += 1
+        else:
+            counts["match"] += 1
+    return mismatch, sha, dict(counts)
+
+
 def eval_index(specs: list[str], store):
     """``EvalIndex`` over the val/test/heldout sentences of every manifest, and its SHA-256 (sentences + rule)."""
     from build_youtube_asl_manifest import EvalIndex
@@ -163,6 +200,7 @@ def settings(args) -> dict:
                 flags=args.flags, default_fps=args.fps, fps_table_sha256=args.fps_table_sha256,
                 overlap_table_sha256=args.overlap_table_sha256, eval_index_sha256=args.eval_index_sha256,
                 eval_manifests=sorted(args.eval_manifest), regressors_sha256=args.regressors_sha256,
+                fps_sources=args.fps_sources, stream_check_sha256=args.stream_check_sha256,
                 min_frames=args.min_frames, chunk_size=args.chunk_size, prefix=args.prefix, out_prefix=args.out_prefix)
 
 
@@ -175,13 +213,13 @@ def settings_difference(recorded: dict | None, current: dict) -> list[str]:
     return sorted(k for k in set(recorded) | set(current) if k not in RUN_ONLY and recorded.get(k) != current.get(k))
 
 
-def _init(args, texts, fps_table, overlap, index):
+def _init(args, texts, fps_table, overlap, index, stream_mismatch=frozenset()):
     import torch
     torch.set_num_threads(1)
     from train_text_to_motion import make_store
     store = make_store(args.store)
     _WORKER.update(args=args, store=store, texts=texts, fps=fps_table, overlap=overlap, eval_index=index, archives={},
-                   settings=settings(args))
+                   settings=settings(args), stream_mismatch=frozenset(stream_mismatch))
     _WORKER["regressors"] = (load_regressors(args.regressors, args.regressors_sha256, store)
                              if args.world == "learned" else None)
     _WORKER["blendshapes"] = _WORKER["resources"] = None
@@ -214,6 +252,23 @@ def clip_context(clip_id: str, video_id: str) -> dict:
                 our_cue_overlaps=pair.get("overlaps", []),
                 eval_leak=None if not text else bool(_WORKER["eval_index"].leaks(text)),
                 eval_index_sha256=_WORKER["args"].eval_index_sha256, licence=LICENCE)
+
+
+def skip_record(name: str, zip_name: str) -> dict | None:
+    """The record of a member left out of this conversion without being read (``--fps-sources``, ``--stream-check``),
+    or None when it is converted."""
+    from signtranslator.data_engineering import uwb_keypoints as uk
+    try:
+        clip_id, video_id, _, _ = uk.parse_clip_name(name)
+    except uk.Refusal:
+        return None                                    # refused, with its reason, by convert_member
+    reason = None
+    if getattr(_WORKER["args"], "fps_sources", "all") == "estimated" and video_id not in _WORKER["fps"]:
+        reason = "fps_assumed"
+    elif video_id in _WORKER.get("stream_mismatch", ()):
+        reason = "stream_mismatch"
+    return reason and dict(zip=zip_name, member=name, clip_id=clip_id, video_id=video_id, status="skipped",
+                           reason=reason)
 
 
 def convert_member(name: str, payload: bytes, zip_name: str) -> tuple[dict, bytes | None]:
@@ -278,6 +333,10 @@ def convert_unit(unit: dict) -> dict:
     for info in infos[:args.limit or None]:
         if args.video and info.filename.rsplit(".", 2)[0] not in args.video:
             continue
+        left_out = skip_record(info.filename, unit["zip"])
+        if left_out:
+            records.append(left_out)
+            continue
         try:
             payload = archive.read(info)
         except Exception as error:  # noqa: BLE001 - a transient store failure: retried by the next run
@@ -296,6 +355,7 @@ def convert_unit(unit: dict) -> dict:
                                   for r in records if r["status"] == "refused")
     converted = [r for r in records if r["status"] == "converted"]
     fps_sources = collections.Counter(r.get("fps_source") for r in converted)
+    skipped = collections.Counter(r["reason"] for r in records if r["status"] == "skipped")
     checks = dict(eval_leak=sum(bool(r.get("eval_leak")) for r in converted),
                   no_text=sum(not r.get("text") for r in converted),
                   duplicate_of_our_cue=sum(bool(r.get("duplicate_of_our_cue")) for r in converted),
@@ -303,7 +363,8 @@ def convert_unit(unit: dict) -> dict:
                   near_duplicate_unpaired=sum(bool(r.get("our_cue_overlaps")) and not r.get("duplicate_of_our_cue")
                                               for r in converted),
                   our_video=sum(bool(r.get("our_video")) for r in converted),
-                  partitions=dict(collections.Counter(r.get("partition") for r in converted)))
+                  partitions=dict(collections.Counter(r.get("partition") for r in converted)),
+                  **{f"skipped_{k}": v for k, v in sorted(skipped.items())})
     report = dict(zip=unit["zip"], chunk=unit["chunk"], members=len(unit["members"]), counts=dict(counts),
                   refusal_reasons=dict(reasons), fps_sources=dict(fps_sources), checks=checks,
                   seconds=round(time.time() - started, 1), settings=current,
@@ -374,13 +435,17 @@ def main(argv=None) -> int:
     p.add_argument("--shards", type=int, default=1)
     p.add_argument("--fps", type=float, default=30., help="assumed rate for videos without an fps-table entry")
     p.add_argument("--fps-table", help="local path or KEY@SHA256 of per-video rates (uwb_lifter_gate.py)")
+    p.add_argument("--fps-sources", choices=("all", "estimated"), default="all",
+                   help="estimated: only videos with an --fps-table entry (round 18); all: others at --fps")
+    p.add_argument("--stream-check", help="KEY@SHA256 or path of the uwb_lifter_gate.py report that wrote --fps-table: "
+                                          "its stream-mismatch videos are left out")
     p.add_argument("--overlap-table", help="required: local path or KEY@SHA256 (uwb_lifter_gate.py --overlap-table-out)")
     p.add_argument("--eval-manifest", action="append", default=[],
                    help="required, repeatable: KEY@SHA256 of a manifest whose val/test sentences must not train")
     p.add_argument("--regressors", help="z-free bundle: local path or store key")
     p.add_argument("--regressors-sha256")
     p.add_argument("--world", choices=("learned", "pseudo"), default="learned")
-    p.add_argument("--visibility", help="required, declared: learned | inside | margin:<m>")
+    p.add_argument("--visibility", help="required, declared: learned | inside | head | margin:<m>")
     p.add_argument("--face", choices=("blendshapes", "none"), default="blendshapes")
     p.add_argument("--head", choices=("none", "affine"), default="none")
     p.add_argument("--flags", choices=("generator", "upright-chest"), default="generator")
@@ -403,15 +468,17 @@ def main(argv=None) -> int:
         raise SystemExit("--shard must lie in [0, --shards)")
     from signtranslator.data_engineering.uwb_keypoints import visibility_margin
     if args.visibility is None or args.visibility == "all":
-        raise SystemExit("--visibility is a declared rule: learned | inside | margin:<m>")
+        raise SystemExit("--visibility is a declared rule: learned | inside | head | margin:<m>")
     try:
         visibility_margin(args.visibility)
     except ValueError as error:
         raise SystemExit(str(error)) from error
     if args.world == "learned" and not (args.regressors and args.regressors_sha256):
         raise SystemExit("--world learned needs --regressors and --regressors-sha256")
-    if args.world == "pseudo" and args.visibility == "learned":
+    if args.world == "pseudo" and args.visibility in ("learned", "head"):
         raise SystemExit("--world pseudo has no visibility head: pass --visibility inside")
+    if args.fps_sources == "estimated" and not args.fps_table:
+        raise SystemExit("--fps-sources estimated needs --fps-table")
     if args.out_prefix.rstrip("/") == args.prefix.rstrip("/"):
         raise SystemExit("--out-prefix must differ from the source prefix")
     if not args.eval_manifest:
@@ -421,6 +488,7 @@ def main(argv=None) -> int:
     args.video = set(args.video)
     from build_uwb_keypoint_shards import open_zip
     fps_table, args.fps_table_sha256 = load_fps_table(args.fps_table, store)
+    stream_mismatch, args.stream_check_sha256, stream_counts = load_stream_check(args.stream_check, store, fps_table)
     overlap, args.overlap_table_sha256 = load_overlap_table(args.overlap_table, store)
     index, args.eval_index_sha256, sentences = eval_index(args.eval_manifest, store)
     if args.world == "learned":
@@ -428,6 +496,8 @@ def main(argv=None) -> int:
         from signtranslator.data_engineering.world_regressor import Z_FREE_FEATURES
         if bundle.features not in Z_FREE_FEATURES:
             raise SystemExit(f"the bundle's features are {bundle.features!r}; UWB needs one of {sorted(Z_FREE_FEATURES)}")
+        if args.visibility == "head" and getattr(bundle, "validity", None) is None:
+            raise SystemExit("--visibility head needs a bundle with a validity head (lifter v2)")
     else:
         args.regressors_sha256 = None
     zips = args.zip or sorted((Path(k).name for k in store.list(args.prefix + "/")
@@ -442,6 +512,7 @@ def main(argv=None) -> int:
         units += units_of(members, name, args.chunk_size)
     mine = [u for k, u in enumerate(units) if k % args.shards == args.shard][:args.max_units or None]
     print(json.dumps(dict(zips=len(zips), units=len(units), shard_units=len(mine), fps_table_videos=len(fps_table),
+                          fps_sources=args.fps_sources, stream_check=stream_counts or None,
                           overlap_videos=len(overlap["videos"]), eval_sentences=sentences)), flush=True)
     if args.dry_run:
         return 0
@@ -454,7 +525,7 @@ def main(argv=None) -> int:
     texts = translations(store, args.prefix)
     results = []
     with Pool(max(1, min(args.workers, len(mine))), initializer=_init,
-              initargs=(args, texts, fps_table, overlap, index)) as pool:
+              initargs=(args, texts, fps_table, overlap, index, stream_mismatch)) as pool:
         for result in pool.imap_unordered(convert_unit, mine):
             results.append(result)
             print(json.dumps(result), flush=True)
