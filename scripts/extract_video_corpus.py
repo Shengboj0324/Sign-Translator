@@ -173,53 +173,58 @@ def auto_workers(per_worker_gb: float = 4.0) -> int:
     return max(1, min(cpus, int(limit // per_worker_gb)))
 
 
-def run_resilient(fn, jobs, args, workers: int, progress, *, max_attempts: int = 3, executor=ProcessPoolExecutor):
+def run_resilient(fn, jobs, args, workers: int, progress, *, max_attempts: int = 2, executor=ProcessPoolExecutor):
     """Run ``fn(job, args)`` over ``jobs`` in a process pool, calling ``progress(n, result)`` as each ends.
 
     At most ``2 x workers`` jobs are in flight. If a worker dies (for example, OOM-killed), the pool breaks and every
-    in-flight job raises BrokenProcessPool; those jobs are requeued on a fresh pool, and only a job that breaks the pool
-    ``max_attempts`` times counts as failed. One crash used to fail every pending video (3,170 of 5,252 in one pass).
-    Any other exception fails just that job. Failed jobs have no report, so a rerun retries them."""
-    queue = [(j, 1) for j in jobs]
-    queue.reverse()
-    done = 0
-    while queue:
+    in-flight job raises BrokenProcessPool, so the culprit cannot be told from the rest: those jobs become suspects and
+    run one at a time on a fresh pool. A job that breaks the pool while alone in flight is the culprit; it counts as
+    failed after ``max_attempts`` such breaks. Innocent suspects simply finish. One crash used to fail every pending
+    video (3,170 of 5,252 in one pass). Any other exception fails just that job. Failed jobs have no report, so a rerun
+    retries them."""
+    queue = list(reversed(range(len(jobs))))           # job indices: strikes are counted per index
+    suspects, strikes, done = [], {}, 0
+    while queue or suspects:
         pool = executor(workers)
         broken = False
         inflight = {}
         try:
-            while (queue or inflight) and not broken:
-                while queue and len(inflight) < 2 * workers:
-                    job, attempt = queue.pop()
-                    inflight[pool.submit(fn, job, args)] = (job, attempt)
+            while (queue or suspects or inflight) and not broken:
+                solo = bool(suspects)                       # suspects run alone, so a break names its culprit
+                while not inflight and suspects:
+                    k = suspects.pop()
+                    inflight[pool.submit(fn, jobs[k], args)] = k
+                while not solo and queue and len(inflight) < 2 * workers:
+                    k = queue.pop()
+                    inflight[pool.submit(fn, jobs[k], args)] = k
+                if not inflight:
+                    break
                 finished, _ = wait(inflight, return_when=FIRST_COMPLETED)
                 for future in finished:
-                    job, attempt = inflight.pop(future)
+                    k = inflight.pop(future)
                     try:
                         r = future.result()
                     except BrokenProcessPool:
                         broken = True
-                        if attempt < max_attempts:
-                            queue.append((job, attempt + 1))
+                        if solo:                            # alone in flight: this job killed its worker
+                            strikes[k] = strikes.get(k, 0) + 1
+                            if strikes[k] < max_attempts:
+                                suspects.append(k)
+                                continue
+                            r = dict(status="failed")
+                            print(f"FAILED one video: killed its worker {strikes[k]} times", flush=True)
+                        else:
+                            suspects.append(k)
                             continue
-                        r = dict(status="failed")
-                        print(f"FAILED one video: broke the worker pool {attempt} times", flush=True)
                     except Exception as error:  # noqa: BLE001 - one video's transient failure must not end the run
                         r = dict(status="failed")
                         print(f"FAILED one video: {type(error).__name__}: {str(error)[:160]}", flush=True)
                     done += 1
                     progress(done, r)
-            if broken:   # the other in-flight jobs are lost with the pool: each costs one attempt, as above
-                lost = list(inflight.values())
-                for job, attempt in lost:
-                    if attempt < max_attempts:
-                        queue.append((job, attempt + 1))
-                    else:
-                        done += 1
-                        print(f"FAILED one video: lost with a broken worker pool {attempt} times", flush=True)
-                        progress(done, dict(status="failed"))
-                print(f"worker pool broke (a worker died, likely OOM): {len(lost)} more in flight, requeued on a "
-                      f"fresh pool", flush=True)
+            if broken:   # the other in-flight jobs are lost with the pool: they become suspects too
+                suspects.extend(inflight.values())
+                print(f"worker pool broke (a worker died, likely OOM): {len(suspects)} suspects rerun one at a time "
+                      f"on a fresh pool", flush=True)
         finally:
             pool.shutdown(wait=not broken, cancel_futures=True)
 

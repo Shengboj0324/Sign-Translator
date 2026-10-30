@@ -17,7 +17,7 @@ def job_fn(job, args):
     return dict(status="converted")
 
 
-def run(jobs, workers=2, attempts=3):
+def run(jobs, workers=2, attempts=2):
     seen = []
     evc.run_resilient(job_fn, jobs, None, workers, lambda n, r: seen.append((n, r["status"])), max_attempts=attempts)
     return seen
@@ -44,3 +44,10 @@ def test_ordinary_exception_fails_one_job():
 
 def test_auto_workers_budget():
     assert evc.auto_workers() >= 1
+
+
+def test_two_killers_and_many_innocents():
+    jobs = [f"v{i}" for i in range(30)] + ["killer"] + [f"w{i}" for i in range(30)] + ["killer"] + ["x"]
+    statuses = [s for _, s in run(jobs, workers=3)]
+    assert len(statuses) == len(jobs)
+    assert statuses.count("failed") == 2 and statuses.count("converted") == len(jobs) - 2
