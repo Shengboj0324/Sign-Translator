@@ -1098,7 +1098,11 @@ def main(argv=None) -> int:
             chosen += [dict(job, zip=index[job["clip_id"]]) for job in picked if job["clip_id"] in index]
         print(json.dumps(dict(videos=len(videos), pairs=len(chosen), excluded=len(excluded))), flush=True)
         with ProcessPoolExecutor(max_workers=max(1, args.workers), initializer=_init, initargs=(args,)) as pool:
-            results = list(pool.map(_evaluate, chosen, chunksize=1))
+            results, started = [], time.monotonic()
+            for result in pool.map(_evaluate, chosen, chunksize=1):
+                results.append(result)
+                if len(results) % 250 == 0 or len(results) == len(chosen):
+                    print(f"pairs {len(results)}/{len(chosen)} ({time.monotonic() - started:.0f} s)", flush=True)
         primary = f"lifter[{args.visibility}]"
         out["regressors_sha256"] = args.regressors_sha256
         out["summary"] = summarise(results, primary=primary, resamples=args.bootstrap, input_names=names_for(results))
