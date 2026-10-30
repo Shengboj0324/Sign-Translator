@@ -402,3 +402,9 @@ Not declared, and so not gates: the hand-speed thresholds, "plan_gain > 0 at eve
 - **Dropout and exactness.** Warm-start exactness is bit-level in evaluation and in RNG-free training. Under dropout 0.1 the random stream shifts (see "Exactness scope").
 - **d2's padding leak** (finding 6) is unchanged and affects every prior since round 3.
 - **Pre-existing.** Eight stored prior configs whose recorded SHA the original code does not reproduce. This branch leaves them unchanged.
+
+## Declared-gate sync (coordinator, 2026-10-30, after merge 9ad176a)
+
+- **Arm selection (plan amendment 2, a560fd0).** If both R17 and R17-PC pass the pilot rule, R17-PC leads when `compare-r17pc-vs-r17.json` → `bleu_paired.ci95[0]` > −0.1; otherwise R17 leads. When only one passes, that arm leads. This supersedes "needs the owner".
+- **Ordering.** The oracle-only read (`pilot --oracle-only`, then `compare_pilot_lexicon --oracle-precondition`) is judged per arm, before that arm's pilot.
+- **PT "lower bound above blank".** Declared as interval separation: `r2b.round_trip.ci95[0]` > `r2b.blank.ci95[1]`. This is the stricter reading.
