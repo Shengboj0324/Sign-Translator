@@ -5203,3 +5203,32 @@ Every change is stricter than, or equal to, the declaration.
    - Split SHA `27c35505…`, from the reviewer's independent recomputation.
 6. **Validity-head thresholds:** refused below 500 chest-valid lifter-val frames per side.
 7. **v1 reference identity:** compares the evaluated pair sets and every gate setting, not only the pair lists.
+
+## Round 18: the UWB 4×-data test (declared 2026-10-30, 13:03 UTC; runs only if UWB gate v2 passes)
+
+**Question** (the owner's O4 discriminator): does about 4× more YouTube sentence data, lifted from UWB keypoints, improve end-to-end generation on the current architecture?
+
+**Data, if gate v2 passes:**
+- Every UWB clip is converted with the gate-v2 bundle, visibility `head`, and fps table v3 (`lifter-v1/gate-rerun/files/uwb-fps-table-v3.json`).
+- Only estimated-fps videos are used. Stream-mismatch videos are excluded. Assumed-30-fps videos are excluded until a held-out ablation shows no harm, as gate v1 declared.
+- The conversion's mandatory `--eval-manifest` and overlap filters apply. Where we have our own Tasks states for a cue, ours are kept.
+- Monitor channels (`build_youtube_asl_manifest.monitor_channel`) stay out of training.
+- The result is the manifest `round18-mixed-v1`: round14b-mixed-v1 plus the lifted clips under corpus `youtube-asl-uwb-lifted-v2`, corpus weight 1 (as YouTube).
+- Every state is SHA-verified before training.
+
+**Arm R18:** warm start from W14b step 30000 (sha 0a689471…), plain continuation for 10,000 steps with R16C's exact recipe; only the mix differs.
+
+**Control:** the existing **R16C**, identical except for the data, with its stored pilot.
+
+**Pilot:** the same 1,000 How2Sign val clips, instrument v1 (`back-translator-kp2d-uwb-ft-v1`), recogniser v3d lexicon with word list `round14/r5-word-split.json`, and the same seeds.
+
+**Rule (all must hold):**
+- paired BLEU lower bound > 0 against R16C;
+- paired BLEU lower bound > 0 against W14b;
+- v3 lexicon lower bound > −0.05 against R16C.
+
+End-to-end against blank (1.859) is reported beside it.
+
+**If R18 passes:** a declared longer run on the same mix. **If it fails:** more data at this scale does not fix end-to-end, and the composition path (M1 2.55) is the focus.
+
+**Chain:** conversion on CPU pods, then the manifest, prefetch and SHA check, then training on GPU, then the pilot. The pilot command is smoke-tested on a few clips before the chain is declared ready, a round-16 lesson.
