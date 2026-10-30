@@ -4781,3 +4781,29 @@ Every item holds before a result is reported:
 **UWB lifter visibility selection result (2026-10-30, 04:20 UTC).** The declared amendment-1 rule was run with the trained xy2 bundle (sha 02a90e4f…), legacy Holistic inputs and UWB arm-distance weights from 300 UWB-only clips. **No rule is admissible, so the declared fallback `inside` is chosen.** Report: `lifter-v1/selection/outside-frame-xy2-v1.json`.
 
 **Red flag for the gate.** On full How2Sign frames with the whole arm in view (the anchor), the xy2 forearm median is 28.2° (left) / 29.1° (right), against 11.6° / 8.3° on the training-style crops. Full-frame input is markedly harder for forearms. UWB is full-frame YouTube, so the YouTube gate decides.
+
+### Round 16 result: R16 NOT adopted, outcome O4 (recorded 2026-10-30, 04:38 UTC)
+
+1,000 How2Sign val clips. The instruments are consistent across the three reports: real 4.136, blank 1.859, identical references; lexicon read by recogniser v3d, blank 0.0.
+
+| Arm | BLEU | v3 lexicon top-5 |
+|---|---|---|
+| W14b step 30000 | 1.786 | 0.583 |
+| R16C (control, +10k steps) | 1.658 | 0.62 |
+| **R16** (rollout blocks) | **1.768** | **0.64** |
+
+| Paired comparison | BLEU difference [95% CI] | Lexicon difference [95% CI] |
+|---|---|---|
+| R16 − R16C | +0.109 [−0.203, +0.427] | +0.02 [−0.02, +0.06] |
+| R16 − W14b | −0.018 [−0.333, +0.295] | **+0.057 [+0.02, +0.093]** |
+| R16C − W14b | −0.127 [−0.435, +0.178] | +0.037 [+0.003, +0.07] |
+
+**Rule:** conditions 1 and 2 fail (no BLEU lower bound above 0), so **R16 is not adopted**. Condition 3 holds.
+
+**Outcome: O4.** Both arms fail to move sentence BLEU, and R16 sits within noise of W14b. End-to-end generation still reads at or below blank motion (1.77 against 1.86).
+
+**Readings:**
+- **Words:** 10k more steps improve word recognition (v3 lexicon +0.04, significant), and rollout blocks a little more (+0.057 against W14b). Sentences do not improve.
+- **Error checks:** passed. Instrument consistency is as above, the comparisons are paired, the pods ran bundle f96ad7f/965382c, and both pilots had the corrected word list. Wrist speed was not in these reports.
+
+**Decision per O4:** propose the report's rank 4 to the owner (structural: retokenise with 2–4× temporal downsampling and coarse plan codes). In parallel, the non-structural data lever is in flight: the UWB lifter gate, running now. If it passes, about 4× the YouTube sentence data could be tested on the current architecture first, as a cheaper discriminator before restructuring.
