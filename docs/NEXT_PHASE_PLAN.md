@@ -4984,3 +4984,22 @@ Report-only: shuffled 0.5 s chunks; length ratio per form.
 - report-only fidelity at step 10k.
 
 **PT-v2 is declared, with reasons, before anything retrains.**
+
+### Instrument v2, amendment 1 (declared 2026-10-30, 10:01 UTC, before review and before anything trains)
+
+Settles the build's open questions (branch `instrument-v2` 86b8fca):
+1. **Selection set:** c04 plus **all 536** YouTube monitor-channel clips. `youtube-asl-v1` has only 536, not the declared 1,000; the count is recorded as `MONITOR_CLIPS=536`.
+2. **c04 is selection only** (as clarified at 09:11).
+3. **Training choices fixed now:**
+   - corpus weights How2Sign 4 : YouTube 1 : STEM Wiki 1;
+   - validity dropout 0.3;
+   - encoder 8 heads, feed-forward 2,048.
+4. **G4 and G6 use paired 95% CIs**, as the gate header says. Unpaired separation is reported beside them.
+5. **G5 ranking:**
+   - The regenerated arms are read by **both** v1 and v2 on the same samples.
+   - Every ordering v1 resolves on those samples (CI excluding 0) must keep its sign under v2.
+   - Reproducing v1's stored pilot hypotheses exactly is reported as a diagnostic, not required: GPU kernels may differ.
+   - Regeneration runs on the pilots' GPU type where available.
+6. **Data phase:** runs after STEM Wiki extraction completes (it builds the manifest once).
+
+UWB-lifted pretraining stays out unless the lifter gate passes.
