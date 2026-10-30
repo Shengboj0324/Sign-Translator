@@ -48,33 +48,53 @@ def synthetic_report(**changes):
             target = target[k]
         target[keys[-1]] = value
     summary["proposal_check"] = gate.proposal_check(summary, PRIMARY)
-    return dict(settings=dict(visibility="inside", pairs_per_video=5, bootstrap=2000, videos=0),
+    return dict(settings=dict(visibility="inside", pairs_per_video=5, bootstrap=2000, videos=0,
+                              candidate_visibility="learned,inside,margin:0.1,margin:0.25"),
                 regressors_sha256=gv.BUNDLE_SHA256, excluded_videos=[f"dev{k}" for k in range(70)], summary=summary)
 
 
-def h2s_report(scale=1.25, n=1000, videos=90, sha=gv.BUNDLE_SHA256):
+def h2s_report(scale=1.25, n=1000, videos=90, sha=gv.BUNDLE_SHA256, primary=PRIMARY,
+               candidates=("learned", "inside", "margin:0.1", "margin:0.25")):
     """How2Sign-val medians: the YouTube medians / ``scale``."""
     common = {g: dict(n=n, videos=videos, median=round(m / scale, 3), median_ci95_by_video=[1., 2.])
               for g, m in MEDIANS.items()}
-    return dict(regressors_sha256=sha, summary=dict(primary=PRIMARY, methods={PRIMARY: dict(common=common)}))
+    return dict(regressors_sha256=sha, visibility=primary[7:-1], candidate_visibility=list(candidates),
+                summary=dict(primary=primary, methods={primary: dict(common=common)}))
 
 
-def outside_report(kept=(.5, .5), mediapipe=(.55, .52), chosen="inside"):
-    by = {name: {side: {"Forearm": {"all": dict(frames=3000, survival=v[k])}} for k, side in enumerate(("Left", "Right"))}
+def outside_report(kept=(.5, .5), mediapipe=(.55, .52), chosen="inside", outside_frames=1000, videos=20):
+    """Per side, ``survival`` on every bin (all, and the three outside-frame bins of ``outside_frames`` each)."""
+    def cells(v):
+        bins = {b: dict(frames=outside_frames, survival=v, kept=dict(n=round(outside_frames * v), videos=videos))
+                for b in gv.OUTSIDE_BINS}
+        return dict(all=dict(frames=3 * outside_frames, survival=v), **bins)
+    by = {name: {side: {"Forearm": cells(v[k])} for k, side in enumerate(("Left", "Right"))}
           for name, v in (("inside", kept), ("mediapipe", mediapipe))}
     return dict(regressors_sha256=gv.BUNDLE_SHA256, selection=dict(chosen=chosen), by_decision=by)
 
 
-def downstream_report(status="pass", ratio=.95, sha="g" * 64):
-    return dict(gate_report_sha256=sha, verdict=dict(status=status, ratio_lifted_over_ours=ratio), reads={},
-                differences={}, pairs=2000)
+def boot(lifted=3.8, ours=4., blank=1.9, lifted_blank_low=.5, ours_blank_low=.8):
+    return dict(reads=dict(lifted=dict(bleu=lifted), ours=dict(bleu=ours), blank=dict(bleu=blank)),
+                differences=dict(lifted_minus_blank=dict(ci95=[lifted_blank_low, 9.]),
+                                 ours_minus_blank=dict(ci95=[ours_blank_low, 9.]),
+                                 lifted_minus_ours=dict(ci95=[-1., 1.])))
+
+
+def downstream_report(pooled=None, dev=None, dev_pairs=300, dev_videos=80, refused=0, union=2300, sha="g" * 64,
+                      bundle=gv.BUNDLE_SHA256, visibility="inside", bootstrap=2000, recorded="pass"):
+    pooled, dev = pooled or boot(), dev or boot()
+    return dict(gate_report_sha256=sha, regressors_sha256=bundle, visibility=visibility, bootstrap=bootstrap,
+                **pooled, pairs=2000, dev=dict(dev, pairs=dev_pairs, videos_scored=dev_videos),
+                sample=dict(sampled=2000, dev_sampled=dev_pairs, union=union, refused=refused),
+                verdict=dict(status=recorded))
 
 
 def verdict_of(report, **inputs):
     kw = dict(h2s=h2s_report(), downstream=downstream_report(), outside=outside_report(), gate_sha="g" * 64)
     kw.update(inputs)
     rows = gv.build_rows(report, **kw)
-    return rows, gv.overall(rows), gv.cross_check(rows, report["summary"])
+    check = gv.cross_check(rows, report["summary"])
+    return rows, gv.overall(rows, check), check
 
 
 def by_id(rows):
@@ -102,7 +122,8 @@ def test_a_passing_report_passes_every_row_and_reproduces_proposal_check():
         assert ids[f"median_ci_upper.{g}<={bar + 1}"]["value"] == MEDIANS[g] + .5
         assert ids[f"relative.{g}<=1.6x"]["value"] == pytest.approx(1.25, abs=1e-3)
     assert ids["rotation_gain.forearms<=3.0"]["value"] == 1.5 and ids["uwb_only_rate.Right<=0.1"]["value"] == .08
-    assert ids["chest_up_forearm_survival.Left>=0.8x_mediapipe"]["value"] == pytest.approx(.5 / .55, abs=1e-4)
+    assert ids["chest_up_forearm_survival.Left>=0.8x_mediapipe"]["value"] == pytest.approx(.5 / .55, abs=1e-12)
+    assert ids["downstream_back_translator"]["value"] == pytest.approx(.95)
     # the non-gating stratum fc_diff=other (50 pairs, forearms 40) is not judged
     assert ids["stratum.fc_diff=other"]["status"] == "not-evaluable" and not ids["stratum.fc_diff=other"]["gating"]
     # every boolean of proposal_check is recomputed and agrees
@@ -155,7 +176,8 @@ def test_missing_or_mismatched_inputs_leave_rows_not_evaluable_and_prevent_pass(
     report = synthetic_report()
     for inputs, row_id in ((dict(downstream=None), "downstream_back_translator"),
                            (dict(downstream=downstream_report(sha="x" * 64)), "downstream_back_translator"),
-                           (dict(downstream=downstream_report(status="not-evaluable")), "downstream_back_translator"),
+                           (dict(downstream=downstream_report(pooled=boot(ours_blank_low=-.1))),
+                            "downstream_back_translator"),
                            (dict(h2s=None), "relative.fingers<=1.6x"),
                            (dict(h2s=h2s_report(sha="f" * 64)), "relative.wrists<=1.6x"),
                            (dict(h2s=h2s_report(n=150)), "relative.upper_arms<=1.6x"),
@@ -165,7 +187,7 @@ def test_missing_or_mismatched_inputs_leave_rows_not_evaluable_and_prevent_pass(
         rows, overall, _ = verdict_of(report, **inputs)
         assert by_id(rows)[row_id]["status"] == "not-evaluable", (inputs, row_id)
         assert overall == "NOT-EVALUABLE", inputs
-    rows, overall, _ = verdict_of(report, downstream=downstream_report(status="fail", ratio=.7))
+    rows, overall, _ = verdict_of(report, downstream=downstream_report(pooled=boot(lifted=2.8)))
     assert overall == "FAIL"                                # a failing row decides, whatever else is missing
     rows, overall, _ = verdict_of(report, downstream=None, h2s=h2s_report(scale=1.))
     assert overall == "NOT-EVALUABLE"
@@ -177,12 +199,28 @@ def test_relative_and_chest_up_rows_fail_on_their_bars():
     assert overall == "FAIL" and by_id(rows)["relative.forearms<=1.6x"]["status"] == "fail"
     rows, overall, _ = verdict_of(report, h2s=h2s_report(scale=1.6))
     assert by_id(rows)["relative.forearms<=1.6x"]["status"] == "pass"                  # exactly 1.6x
-    rows, overall, _ = verdict_of(report, outside=outside_report(kept=(0., .0233), mediapipe=(.286, .0069)))
+    rows, overall, _ = verdict_of(report, outside=outside_report(kept=(0., .5), mediapipe=(.286, .52)))
     ids = by_id(rows)
-    assert ids["chest_up_forearm_survival.Left>=0.8x_mediapipe"]["status"] == "fail" and overall == "FAIL"
+    left = ids["chest_up_forearm_survival.Left>=0.8x_mediapipe"]
+    assert left["status"] == "fail" and overall == "FAIL" and "fails by construction" in left["note"]
     assert ids["chest_up_forearm_survival.Right>=0.8x_mediapipe"]["status"] == "pass"
     rows, _, _ = verdict_of(report, outside=outside_report(mediapipe=(0., .5)))
     assert by_id(rows)["chest_up_forearm_survival.Left>=0.8x_mediapipe"]["status"] == "not-evaluable"
+
+
+def test_a_chest_up_side_is_measured_only_on_200_mediapipe_frames_from_5_videos():
+    """Review of d2591fa: the real Right side kept 0.0233 against MediaPipe's 0.0069, about 20 frames: 3.4x 'passed'."""
+    report = synthetic_report()
+    rows, overall, _ = verdict_of(report, outside=outside_report(kept=(.5, .0233), mediapipe=(.55, .0069)))
+    right = by_id(rows)["chest_up_forearm_survival.Right>=0.8x_mediapipe"]
+    assert right["status"] == "not-evaluable" and right["value"] is None and overall == "NOT-EVALUABLE"
+    assert right["detail"]["mediapipe_outside_frames"] == 21 and "unmeasured" in right["detail"]["reason"]
+    rows, _, _ = verdict_of(report, outside=outside_report(videos=4))
+    assert by_id(rows)["chest_up_forearm_survival.Left>=0.8x_mediapipe"]["status"] == "not-evaluable"
+    rows, _, _ = verdict_of(report, outside=outside_report(outside_frames=67))       # 3 x 34 = 102 kept: too few
+    assert by_id(rows)["chest_up_forearm_survival.Left>=0.8x_mediapipe"]["status"] == "not-evaluable"
+    rows, _, _ = verdict_of(report, outside=outside_report(outside_frames=134))      # 3 x 67 = 201 kept
+    assert by_id(rows)["chest_up_forearm_survival.Left>=0.8x_mediapipe"]["status"] == "pass"
 
 
 def test_setup_rows_check_the_declared_sample():
@@ -215,3 +253,74 @@ def test_main_writes_the_table_and_the_json(tmp_path):
     assert md.read_text().startswith("**Overall: PASS**") and "`downstream_back_translator`" in md.read_text()
     assert gv.main(["--store", "none", "--gate-report", str(paths["gate"]), "--out", str(out)]) == 0
     assert json.loads(out.read_text())["verdict"] == "NOT-EVALUABLE"
+
+
+def test_the_relative_row_needs_the_gates_primary_and_candidate_rules():
+    report = synthetic_report()
+    h2s = h2s_report(primary="lifter[learned]")
+    rows, overall, _ = verdict_of(report, h2s=h2s)
+    row = by_id(rows)["relative.forearms<=1.6x"]
+    assert row["status"] == "not-evaluable" and "primary" in row["detail"]["reason"] and overall == "NOT-EVALUABLE"
+    rows, overall, _ = verdict_of(report, h2s=h2s_report(candidates=("inside",)))
+    row = by_id(rows)["relative.forearms<=1.6x"]
+    assert row["status"] == "not-evaluable" and "candidate" in row["detail"]["reason"] and overall == "NOT-EVALUABLE"
+    rows, overall, _ = verdict_of(report, h2s=h2s_report(candidates=("margin:0.25", "margin:0.1", "inside", "learned")))
+    assert overall == "PASS"                                                # the same rules in another order
+
+
+def test_the_downstream_row_is_recomputed_never_trusted():
+    report = synthetic_report()
+    rows, overall, _ = verdict_of(report, downstream=downstream_report(pooled=boot(lifted=2.), recorded="pass"))
+    row = by_id(rows)["downstream_back_translator"]
+    assert row["status"] == "fail" and row["detail"]["recorded_differs"] and overall == "FAIL"
+    rows, overall, _ = verdict_of(report, downstream=downstream_report(recorded="fail"))
+    assert by_id(rows)["downstream_back_translator"]["status"] == "pass" and overall == "PASS"
+    # the UWB dev partition must pass too, on >= 200 pairs from >= 50 videos
+    rows, overall, _ = verdict_of(report, downstream=downstream_report(dev=boot(lifted=3.)))
+    assert by_id(rows)["downstream_back_translator"]["status"] == "fail" and overall == "FAIL"
+    for kw in (dict(dev_pairs=199), dict(dev_videos=49), dict(refused=231, union=2300)):
+        rows, overall, _ = verdict_of(report, downstream=downstream_report(**kw))
+        assert by_id(rows)["downstream_back_translator"]["status"] == "not-evaluable", kw
+        assert overall == "NOT-EVALUABLE"
+    rows, _, _ = verdict_of(report, downstream=downstream_report(refused=230, union=2300))   # exactly 10%
+    assert by_id(rows)["downstream_back_translator"]["status"] == "pass"
+    for kw in (dict(bundle="f" * 64), dict(visibility="learned"), dict(bootstrap=200), dict(sha="h" * 64)):
+        rows, overall, _ = verdict_of(report, downstream=downstream_report(**kw))
+        assert by_id(rows)["downstream_back_translator"]["status"] == "not-evaluable", kw
+
+
+def test_values_are_compared_unrounded_where_the_inputs_carry_them():
+    # 100 / 3329 = 0.030039 > 0.03 (rounded to 4 dp it would read 0.03)
+    report = synthetic_report(**{f"methods/{PRIMARY}/mirror_check": dict(clips=3329, mirror_better=100)})
+    rows, overall, check = verdict_of(report)
+    assert by_id(rows)["mirror_better_share<=0.03"]["status"] == "fail" and overall == "FAIL"
+    assert check["disagreements"] == []
+    # agreement 0.879960 from the counts; the summary's 4-dp value is 0.88: proposal_check passes, the row fails
+    cells = dict(both=21999, ours_only=1500, uwb_only=1501, neither=0)
+    left = dict(gate.agreement_summary(cells))
+    assert left["agreement"] == .88
+    report = synthetic_report(**{f"methods/{PRIMARY}/hand_valid/all.Left": left})
+    rows, overall, check = verdict_of(report)
+    row = by_id(rows)["hand_agreement.Left>=0.88"]
+    assert row["status"] == "fail" and row["value"] == pytest.approx(21999 / 25000)
+    assert report["summary"]["proposal_check"]["hand_agreement.Left>=0.88"] is True
+    assert check["disagreements"] == [] and overall == "FAIL"
+    assert any(d["key"] == "hand_agreement.Left>=0.88" for d in check["declared_differences"])
+    # the lag share from the report's pairs, not the summary's 4-dp value
+    report = synthetic_report(**{"alignment/within_1_share": .9})
+    report["pairs"] = [dict(status="evaluated", alignment=dict(method="arm-2d", lag=0 if k < 8999 else 3))
+                       for k in range(10000)]
+    rows, _, _ = verdict_of(report)
+    assert by_id(rows)["lag_within_1_share>=0.9"]["status"] == "fail"
+    assert by_id(rows)["median.forearms<=18.0"]["rounded_source"]           # medians exist only rounded
+
+
+def test_any_disagreement_with_proposal_check_makes_the_verdict_not_evaluable(tmp_path):
+    report = synthetic_report()
+    report["summary"]["proposal_check"]["median.forearms<=18.0"] = False
+    rows, overall, check = verdict_of(report)
+    assert check["disagreements"] and overall == "NOT-EVALUABLE"
+    report["summary"]["proposal_check"]["new_item"] = True
+    _, _, check = verdict_of(report)
+    assert check["not_recomputed"] == ["new_item"]
+    assert "not recomputed: new_item" in gv.markdown(rows, "NOT-EVALUABLE", check)

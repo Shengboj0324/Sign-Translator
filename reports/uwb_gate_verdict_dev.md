@@ -1,4 +1,4 @@
-# UWB lifter gate: the two missing rows and a row-by-row verdict (development report, 2026-10-30 10:18 UTC)
+# UWB lifter gate: the two missing rows and a row-by-row verdict (development report, 2026-10-30 10:18 UTC; review fixes after d2591fa)
 
 Branch `uwb-verdict`, from main `ecaa490`. The declared gate is in docs/NEXT_PHASE_PLAN.md: "UWB lifter: declared selection and gate" (03:34 UTC), amendment 1 (03:59), owner declaration (04:02), and the selection result `inside` (04:20).
 
@@ -17,9 +17,9 @@ This branch adds both, plus a verdict over every row.
 | `scripts/uwb_downstream_check.py` | (B) the frozen `back-translator-kp2d-uwb-ft-v1` reads lifted, ours and blank on the gate's pairs |
 | `scripts/uwb_gate_verdict.py` | every declared row with its value, bar and status, the overall verdict, and a cross-check against `proposal_check` |
 | `runpod/fleet/uwb_downstream.sh` | pod job: (A), then (B), then the verdict. Takes the gate report key as `$1` |
-| `tests/test_uwb_downstream_check.py`, `tests/test_uwb_gate_verdict.py` | 18 tests on synthetic data |
+| `tests/test_uwb_downstream_check.py`, `tests/test_uwb_gate_verdict.py` | 24 tests on synthetic data |
 
-Tests: these 18 pass together with the existing UWB suites (`test_uwb_lifter_gate`, `test_convert_uwb_clips_script`, `test_uwb_outside_frame_accuracy_script`, `test_de_uwb_keypoints`), 61 in total, under warning-strict pytest.
+Tests: these 24 pass together with the existing UWB suites (`test_uwb_lifter_gate`, `test_convert_uwb_clips_script`, `test_uwb_outside_frame_accuracy_script`, `test_de_uwb_keypoints`), 67 in total, under warning-strict pytest.
 
 ## (A) Relative to How2Sign validation
 
@@ -54,19 +54,16 @@ Readings:
 
 ## Chest-up forearm survival (Validity row), from the selection report
 
-This is measured by `uwb_outside_frame_accuracy.py` (`lifter-v1/selection/outside-frame-xy2-v1.json`, sha `3e26180a…`). The value is the selected rule's forearm survival over MediaPipe's own keep decision, on the How2Sign validation chest-up crops (all distance bins, 3,182 frames per side):
+This is measured by `uwb_outside_frame_accuracy.py` (`lifter-v1/selection/outside-frame-xy2-v1.json`, sha `3e26180a…`). The value is the selected rule's forearm survival over MediaPipe's own keep decision, on the How2Sign validation chest-up crops (all distance bins, 3,182 frames per side).
 
-| Side | `inside` survival | MediaPipe survival | Ratio | Bar ≥ 0.8 |
-|---|---|---|---|---|
-| Left | 0.000 | 0.286 | 0.00 | **fail** |
-| Right | 0.0233 | 0.0069 | 3.38 | pass (MediaPipe keeps almost nothing) |
+**Measurability rule** (coordinator ruling on the review): a side counts as measured only if MediaPipe keeps ≥ 200 frames from ≥ 5 videos on that side's outside-frame bins. Otherwise the side is not-evaluable, never a pass.
+
+| Side | `inside` survival | MediaPipe survival | MediaPipe outside-frame frames kept (videos ≥) | Ratio | Status |
+|---|---|---|---|---|---|
+| Left | 0.000 | 0.286 | 910 (10) | 0.00 | **fail, by construction**: `inside` drops every point outside the image |
+| Right | 0.0233 | 0.0069 | 18 (2) | — | not-evaluable (unmeasured) |
 
 **The declared gate therefore fails on this row (Left) whatever the YouTube numbers are.**
-
-- On these crops no left forearm lies inside the frame: the inside bin has 0 frames.
-- `inside` keeps none of them. MediaPipe keeps 28.6%.
-
-The UWB-weighted survival tells the same story: 0.0 against 0.455 on the left.
 
 ## (B) Downstream, `scripts/uwb_downstream_check.py`
 
@@ -95,38 +92,56 @@ Each read is cut to the gate's frame map (lag respected), resampled with `at_rat
 - Exact-match rates.
 - A breakdown by UWB partition.
 
-**Verdict.** Pass when the ratio is ≥ 0.9 **and** the lifted − blank lower bound is > 0. If the ours − blank lower bound is ≤ 0, the row is not-evaluable.
+**Verdict per read set.** Pass when the ratio is ≥ 0.9 **and** the lifted − blank lower bound is > 0. If the ours − blank lower bound is ≤ 0, that read is not-evaluable. Values are compared unrounded.
+
+**Contamination rule** (review): the instrument was pretrained on UWB's train split. The row therefore passes only if it passes both:
+
+- pooled, on the ≤ 2,000-pair sample;
+- on UWB's dev partition alone. This uses every evaluated dev pair (`YT.translations.dev.json`, labelled `monitor` by the converter), and needs ≥ 200 pairs from ≥ 50 videos; fewer makes the row not-evaluable.
+
+If more than 10% of the sampled pairs (pooled and dev together) are refused, the row is not-evaluable.
 
 ## Verdict, `scripts/uwb_gate_verdict.py`
 
-- **Rows:** every declared row with its declared bar. The script also checks the declared sample: rule `inside`, the xy2 SHA, 5 pairs per video, 2,000 resamples, 70 development videos excluded.
+- **Rows:** every declared row with its declared bar. The downstream row is recomputed from the report's reads and differences, pooled and dev; its recorded status is never trusted. It also checks that the downstream report read the same gate report, bundle and rule, with 2,000 resamples. The relative row is not-evaluable unless the How2Sign medians share the gate's primary method and candidate rules. The script also checks the declared sample: rule `inside`, the xy2 SHA, 5 pairs per video, 2,000 resamples, 70 development videos excluded.
 - **Not gating:** input p99 |z| and drift (diagnostics in the declaration). Stream-mismatch strata and frame-count difference "other" are reported but not gated.
-- **Overall:** FAIL if any gating row fails. Otherwise PASS only if every gating row passes; any not-evaluable row gives NOT-EVALUABLE.
+- **Overall:** NOT-EVALUABLE if any `proposal_check` boolean disagrees with its recomputation. Otherwise FAIL if any gating row fails, and PASS only if every gating row passes; any not-evaluable row gives NOT-EVALUABLE.
+- **Rounding:** values are compared unrounded wherever the inputs carry them:
+  - agreements, UWB-only rates and the mirror share, from their counts;
+  - the lag share, from the report's pairs;
+  - the downstream BLEUs.
+
+  Medians, p90s and their intervals exist only as the gate summary's 2-decimal values (`uwb_lifter_gate.stat`), and chest-up survivals as 4-decimal values. Those rows are marked `rounded_source` and compared as given, so a value exactly at the bar passes. Where the unrounded value fails but `proposal_check`'s rounded reading passes, this is listed as a declared difference, not a disagreement.
 - **Cross-check:** all 22 `proposal_check` booleans are recomputed by the proposal's own definitions. Any difference is listed as a disagreement. The declared-versus-proposal differences (strata scope, drift gating) are listed separately.
 
 ## Pod command
 
-The gate rerun stores its report through `store_local_files.py` under `$GATE_PREFIX/files/`. With `GATE_PREFIX=…/lifter-v1/gate-rerun`, the command is:
+(A) already ran locally. Its report is committed as `reports/uwb-how2sign-val-medians-v1.json` (sha `751e4abc…`), with the SHAs of both input archives and of every pairs file. The job reads it from the store, SHA-pinned, so it must be uploaded first. The gate report key depends on the rerun's `GATE_PREFIX`: `store_local_files.py` adds `files/`.
 
 ```
-runpod/fleet/uwb_downstream.sh acquisition/2026-10-17-v1/youtube-asl-uwb-keypoints-v1/lifter-v1/gate-rerun/files/gate-xy2-v1.json
+runpod/fleet/uwb_downstream.sh \
+  acquisition/2026-10-17-v1/youtube-asl-uwb-keypoints-v1/lifter-v1/gate-rerun/files/gate-xy2-v1.json \
+  acquisition/2026-10-17-v1/youtube-asl-uwb-keypoints-v1/lifter-v1/gate-rerun/how2sign-val-medians-v1.json
 ```
 
-It needs a GPU pod with `/root/work/models/face_landmarker.task` (as the gate pods have). It writes:
+The job:
 
-- `lifter-v1/gate-rerun/how2sign-val-medians-v1.json`
-- `lifter-v1/gate-rerun/downstream-v1.json`
-- `lifter-v1/gate-rerun/gate-verdict-v1.json` and `.md`
+- needs a GPU pod with `/root/work/models/face_landmarker.task`;
+- has the lifting workers load the bundle from the local, SHA-checked `$W/xy2.pt`;
+- pins the instrument checkpoint `step-00009000.pt` at `2e3ded3f…` (streamed hash, 2026-10-30);
+- passes `ad8a5876…` as the instrument's manifest SHA, exactly as `round17_pt.sh:36` does. That value is the round3b-mixed-v2 manifest, not the checkpoint, so it cannot serve as the checkpoint pin. For a keypoints translator, `load_translator` does not check it.
 
-Each script refuses to overwrite an existing key.
+It writes `gate-rerun/downstream-v1.json`, `gate-verdict-v1.json` and `gate-verdict-v1.md`. Every key is refused if it already exists.
 
 ## Not implemented exactly as declared or briefed
 
 1. **BLEU:** the repo has no sacrebleu. Every pilot and helper uses `motion_to_text.corpus_bleu`, so that is used here.
 2. **Windows:** each state is cut to the frame range of its matched frames, `[min, max]`, not to the matched frames alone. A state needs a strictly increasing, contiguous clock. Both windows cover the same time span, within a frame.
 3. **Lifted face and head:** the lifted state uses the converter's defaults (blendshapes, head none). The gate used affine heads. The 2D instrument reads only the body and hands through its FK projection, so this does not change the read.
-4. **Instrument contamination:** `back-translator-kp2d-uwb-ft-v1` was pretrained on 323,978 UWB train-split clips with these sentences. The per-partition reads are a diagnostic for this, not a gate.
-5. **Instrument checkpoint SHA:** not pinned (3.6 GB, not downloaded here). It is recorded at run time; `--instrument-sha256` can pin it.
+4. **Instrument contamination:** `back-translator-kp2d-uwb-ft-v1` was pretrained on 323,978 UWB train-split clips with these sentences. The row must now also pass on the UWB dev partition alone. If the gate's pairs hold fewer than 200 dev pairs from 50 videos, the row is not-evaluable.
+5. **Instrument checkpoint SHA:** pinned at `2e3ded3f…`, streamed and hashed from R2 here. The `ad8a5876…` value the review named is the translator manifest SHA used in `round17_pt.sh`, not the checkpoint's.
 6. **(A) truth solver:** the truth uses `generator` flags (upright chest). The gate's "ours" uses the original solver. Arm directions are convention-free; only which frames hold an arm differs.
 7. **Hip-visible forearm agreement:** this is the gate's "where our chest is valid" (both hips). UWB-only valid per side is the larger of the hand and forearm rates, as `proposal_check` computes it.
 8. **No real verdict yet:** neither the gate rerun report nor (B) exists, so the full verdict has not been run on real data.
+9. **Chest-up video count:** the outside-frame video count is a lower bound: the largest per-bin count of videos with a kept, scored frame. The report holds no union across bins.
+10. **Chest-up frame count:** kept frames are each bin's frames × survival, and the survival is rounded to 4 decimals in the report.

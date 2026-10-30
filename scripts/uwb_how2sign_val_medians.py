@@ -45,6 +45,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(Path(__file__).resolve().parent)]
 
 EXCLUDED_SIGNERS = ("h2s-9",)
+VAL_SIGNERS = ("h2s-1", "h2s-2")
 TRUTH_FLAGS = {"generator": dict(upright_chest=True, upright_root=True), "original": {}}
 _WORKER: dict = {}
 
@@ -63,6 +64,8 @@ def source_video(member: str) -> str:
 def val_files(pairs_dir: Path, signers: set) -> list[Path]:
     if signers & set(EXCLUDED_SIGNERS):
         raise SystemExit("How2Sign signer 9 (component c00) is never read")
+    if not signers <= set(VAL_SIGNERS):
+        raise SystemExit(f"only the bundle's validation signers {VAL_SIGNERS} are read, not {sorted(signers)}")
     out = []
     for path in sorted(Path(pairs_dir).glob("*.npz")):
         signer = signer_of_name(path.name)
@@ -73,7 +76,7 @@ def val_files(pairs_dir: Path, signers: set) -> list[Path]:
     return out
 
 
-def clip_inputs(pairs_path: Path, legacy_dir: Path):
+def clip_inputs(pairs_path: Path, legacy_dir: Path, signers=VAL_SIGNERS):
     """(truth ClipLandmarks, lifted UwbClip, fps, meta) of one validation clip, or None when the legacy array does not
     match (frame count or size), as ``train_world_regressors.load_pairs`` skips it."""
     from signtranslator.data_engineering.video_landmarks import ClipLandmarks
@@ -84,8 +87,12 @@ def clip_inputs(pairs_path: Path, legacy_dir: Path):
     with np.load(pairs_path, allow_pickle=False) as z:
         pairs = {k: z[k] for k in z.files}
     signer = str(pairs["signer"])
-    if signer in EXCLUDED_SIGNERS:
+    if signer in EXCLUDED_SIGNERS or signer_of_name(pairs_path.name) in EXCLUDED_SIGNERS:
         raise SystemExit(f"{pairs_path.name}: signer {signer} is never read")
+    if signer != signer_of_name(pairs_path.name):
+        raise SystemExit(f"{pairs_path.name}: the signer field {signer} differs from the file name's")
+    if signer not in signers or signer not in VAL_SIGNERS:
+        raise SystemExit(f"{pairs_path.name}: signer {signer} is not a validation signer {VAL_SIGNERS}")
     with np.load(legacy_path, allow_pickle=False) as z:
         holistic, size, times = z["holistic"].astype(np.float64), z["size"].tolist(), z["times"].astype(np.float64)
     width, height = (int(v) for v in pairs["size"])
@@ -114,12 +121,13 @@ def clip_inputs(pairs_path: Path, legacy_dir: Path):
     return truth, lifted, rate, meta
 
 
-def evaluate_clip(pairs_path: Path, legacy_dir: Path, regressors, rules: dict, *, cap: int, truth_flags: str) -> dict:
+def evaluate_clip(pairs_path: Path, legacy_dir: Path, regressors, rules: dict, *, cap: int, truth_flags: str,
+                  signers=VAL_SIGNERS) -> dict:
     """One row in the gate's per-pair format (``status``, ``video_id``, ``methods``...)."""
     import uwb_lifter_gate as gate
     from signtranslator.data_engineering import uwb_keypoints as uk
     from signtranslator.data_engineering.video_landmarks import canonical_from_landmarks
-    loaded = clip_inputs(pairs_path, legacy_dir)
+    loaded = clip_inputs(pairs_path, legacy_dir, signers)
     if loaded is None:
         return dict(status="refused", name=pairs_path.stem, reason="legacy array missing or not matching")
     truth_landmarks, clip, fps, meta = loaded
@@ -152,7 +160,7 @@ def _init(settings: dict) -> None:
 def _evaluate(path: str) -> dict:
     s = _WORKER["settings"]
     return evaluate_clip(Path(path), Path(s["legacy_dir"]), _WORKER["regressors"], _WORKER["rules"],
-                         cap=s["cap"], truth_flags=s["truth_flags"])
+                         cap=s["cap"], truth_flags=s["truth_flags"], signers=tuple(s["signers"]))
 
 
 def summarise(rows: list[dict], primary: str, resamples: int) -> dict:
@@ -182,6 +190,8 @@ def main(argv=None) -> int:
     p.add_argument("--max-values-per-pair", type=int, default=600, help="the gate's per-pair cap")
     p.add_argument("--bootstrap", type=int, default=2000)
     p.add_argument("--workers", type=int, default=0, help="0: from sched_getaffinity and cgroup memory")
+    p.add_argument("--source-archive", action="append", default=[],
+                   help="NAME=SHA256 of an archive the pairs came from (recorded with the report)")
     p.add_argument("--out", required=True)
     p.add_argument("--store", default="r2")
     p.add_argument("--output-key", help="also store the report here (refused if it exists)")
@@ -202,7 +212,7 @@ def main(argv=None) -> int:
             raise SystemExit(f"{args.output_key} exists; a rerun writes elsewhere")
     settings = dict(regressors=args.regressors, regressors_sha256=args.regressors_sha256, visibility=args.visibility,
                     candidates=candidates, legacy_dir=args.legacy_dir, cap=args.max_values_per_pair,
-                    truth_flags=args.truth_flags)
+                    truth_flags=args.truth_flags, signers=sorted(signers))
     workers = args.workers or worker_count()
     with ProcessPoolExecutor(max_workers=max(1, workers), initializer=_init, initargs=(settings,)) as pool:
         rows = list(pool.map(_evaluate, [str(f) for f in files], chunksize=1))
@@ -213,7 +223,8 @@ def main(argv=None) -> int:
                                                                f"({args.truth_flags} flags)",
                inputs="legacy Holistic 0.10.14 image landmarks (the bundle's training inputs)",
                method="uwb_lifter_gate.evaluate_pair (max lag 0) + group_stats, scope common",
-               candidate_visibility=candidates, max_values_per_pair=args.max_values_per_pair, bootstrap=args.bootstrap,
+               visibility=args.visibility, candidate_visibility=candidates,
+               source_archives=dict(a.split("=", 1) for a in args.source_archive), max_values_per_pair=args.max_values_per_pair, bootstrap=args.bootstrap,
                files=dict(read=len(files), evaluated=sum(r["status"] == "evaluated" for r in rows),
                           refused=[dict(name=r.get("name"), reason=r.get("reason")) for r in rows
                                    if r["status"] != "evaluated"]),

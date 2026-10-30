@@ -53,8 +53,9 @@ def make_store(tmp_path):
             segments_of[video] = segments
             (tmp_path / yt_prefix / "videos" / f"{video}.json").write_text(json.dumps(
                 dict(video_id=video, status="converted", meta=dict(fps=25), segments=segments)))
-    for name in ("YT.translations.all.json", "YT.translations.train.json"):
-        (tmp_path / uwb_prefix / name).write_text(json.dumps(translations))
+    (tmp_path / uwb_prefix / "YT.translations.all.json").write_text(json.dumps(translations))
+    (tmp_path / uwb_prefix / "YT.translations.train.json").write_text(json.dumps({"vidX": translations["vidX"]}))
+    (tmp_path / uwb_prefix / "YT.translations.dev.json").write_text(json.dumps({"vidY": translations["vidY"]}))
     return uwb_prefix, yt_prefix, translations, segments_of
 
 
@@ -178,7 +179,8 @@ def test_main_reads_three_states_against_the_same_references_with_blank_at_our_d
                     str(root / "xy.pt"), "--regressors-sha256", gate_run["sha"], "--face", "none", "--device", "cpu",
                     "--workers", "1", "--bootstrap", "200", "--out", str(out)], translate_fn=translate) == 0
     report = json.loads(out.read_text())
-    assert report["sample"] == dict(rule=report["sample"]["rule"], sampled=8, reconstructed=8, scored=8, refused=0)
+    assert report["sample"] == dict(rule=report["sample"]["rule"], sampled=8, dev_sampled=4, union=8, reconstructed=8,
+                                    scored=8, refused=0)
     assert len(calls) == 3 and all(len(c) == 8 for c in calls)
     lifted, ours, blank = calls
     for a, b in zip(ours, blank):                            # blank: our window's clock, every channel removed
@@ -189,13 +191,18 @@ def test_main_reads_three_states_against_the_same_references_with_blank_at_our_d
     for row in report["per_pair"]:                           # one reference per pair, the cue's own text
         assert row["text"] == texts[row["sample_id"]] and row["ours"] == row["text"] and row["blank"] == "nothing at all"
     refs = [r["text"] for r in report["per_pair"]]
-    for read in ds.READS:
-        assert report["reads"][read]["bleu"] == round(corpus_bleu([r[read] for r in report["per_pair"]], refs)["bleu"], 3)
+    for read in ds.READS:                                    # unrounded
+        assert report["reads"][read]["bleu"] == pytest.approx(corpus_bleu([r[read] for r in report["per_pair"]], refs)["bleu"])
     assert report["reads"]["ours"]["bleu"] == 100. and report["reads"]["blank"]["bleu"] == 0.
-    v = report["verdict"]
-    assert v["status"] == "pass" if v["ratio_lifted_over_ours"] >= .9 else v["status"] == "fail"
+    pooled = report["verdict_pooled"]
+    assert pooled["status"] == ("pass" if pooled["ratio_lifted_over_ours"] >= .9 else "fail")
+    # the UWB dev partition (vidY, 4 pairs from 1 video) is read on its own and is too small to judge
+    assert report["dev"]["pairs"] == 4 and report["dev"]["videos_scored"] == 1
+    assert report["verdict"]["dev_pairs"] == 4 and report["verdict"]["status"] == (
+        "fail" if pooled["status"] == "fail" else "not-evaluable")
     assert report["exact_match"]["ours_equals_reference"] == 1. and report["exact_match"]["lifted_equals_ours"] == .5
-    assert set(report["by_uwb_partition"]) == {"train"} and report["instrument"]["read_fps"] == 24.
+    assert set(report["by_uwb_partition"]) == {"train", "monitor"} and report["instrument"]["read_fps"] == 24.
+    assert report["bootstrap"] == 200 and report["visibility"] == "inside"
     assert report["gate_report_sha256"] == hashlib.sha256(gate_run["gate"].read_bytes()).hexdigest()
     with pytest.raises(SystemExit, match="bundle"):
         ds.main(["--store", f"dir:{root}", "--gate-report", str(gate_run["gate"]), "--regressors-sha256", "f" * 64,
@@ -236,9 +243,10 @@ def test_the_bootstrap_resamples_videos_with_all_their_pairs():
         for r in hyps:
             draws[r].append(corpus_bleu([hyps[r][k] for k in idx], [refs[k] for k in idx])["bleu"])
     for r in hyps:
-        assert boot["reads"][r]["ci95"] == [round(float(np.percentile(draws[r], q)), 3) for q in (2.5, 97.5)]
+        assert boot["reads"][r]["ci95"] == pytest.approx([float(np.percentile(draws[r], q)) for q in (2.5, 97.5)])
     d = np.asarray(draws["lifted"]) - np.asarray(draws["blank"])
-    assert boot["differences"]["lifted_minus_blank"]["ci95"] == [round(float(np.percentile(d, q)), 3) for q in (2.5, 97.5)]
+    assert boot["differences"]["lifted_minus_blank"]["ci95"] == pytest.approx([float(np.percentile(d, q))
+                                                                                for q in (2.5, 97.5)])
     assert boot["videos"] == 6 and boot["resamples"] == 50
     single = ds.clustered_bootstrap(stats, ["v0"] * 24, resamples=50)  # one video: no interval
     assert single["reads"]["ours"]["ci95"] is None and single["resamples"] == 0
@@ -261,6 +269,25 @@ def test_the_downstream_verdict_needs_the_ratio_the_blank_margin_and_a_sane_inst
     assert ds.verdict(_boot(3.9, 4.0, 1.9, .5, -.2))["status"] == "not-evaluable"  # ours not above blank
     assert ds.verdict(_boot(0., 0., 0., 0., 0.))["status"] == "not-evaluable"
     assert ds.RATIO_BAR == .9
+    just_below = ds.verdict(_boot(3.59985, 4.0, 1.9, .5, .8))                     # 0.8999625: compared unrounded
+    assert just_below["status"] == "fail" and just_below["ratio_lifted_over_ours"] < .9
+
+
+def test_the_row_passes_only_if_the_pooled_and_the_uwb_dev_reads_both_pass():
+    ok, bad = ds.verdict(_boot(3.8, 4.0, 1.9, .5, .8)), ds.verdict(_boot(3.0, 4.0, 1.9, .5, .8))
+    na = ds.verdict(_boot(3.8, 4.0, 1.9, .5, -.1))
+    size = dict(dev_pairs=300, dev_videos=60, refused=0, sampled=2300)
+    assert ds.combined_verdict(ok, ok, **size)["status"] == "pass"
+    assert ds.combined_verdict(ok, bad, **size)["status"] == "fail"               # contaminated pooled pass
+    assert ds.combined_verdict(bad, ok, **size)["status"] == "fail"
+    assert ds.combined_verdict(ok, na, **size)["status"] == "not-evaluable"
+    assert ds.combined_verdict(ok, None, **dict(size, dev_pairs=0, dev_videos=0))["status"] == "not-evaluable"
+    assert ds.combined_verdict(ok, ok, **dict(size, dev_pairs=199))["status"] == "not-evaluable"
+    assert ds.combined_verdict(ok, ok, **dict(size, dev_videos=49))["status"] == "not-evaluable"
+    assert ds.combined_verdict(ok, ok, **dict(size, refused=231))["status"] == "not-evaluable"   # > 10% refused
+    assert ds.combined_verdict(bad, ok, **dict(size, refused=231))["status"] == "not-evaluable"
+    assert ds.combined_verdict(ok, ok, **dict(size, refused=230))["status"] == "pass"
+    assert (ds.MIN_DEV_PAIRS, ds.MIN_DEV_VIDEOS, ds.MAX_REFUSED_SHARE, ds.DEV_PARTITION) == (200, 50, .1, "monitor")
 
 
 def test_worker_count_reads_affinity_and_memory_not_nproc(monkeypatch):
@@ -314,6 +341,14 @@ def test_how2sign_val_medians_use_the_gates_code_and_never_read_signer_9(tmp_pat
     assert len(own["forearms"]) == 2 * 12 and np.max(own["forearms"]) < .5
     summary = h2s.summarise([row], "lifter[inside]", 0)
     assert summary["methods"]["lifter[inside]"]["common"]["fingers"]["videos"] == 1
+    _pairs_files(pairs, legacy, "abcVID_5-2-rgb_front__4x3", "h2s-5")                  # field and name disagree
+    with pytest.raises(SystemExit, match="differs from the file name"):
+        h2s.clip_inputs(pairs / "abcVID_5-2-rgb_front__4x3.npz", legacy)
+    _pairs_files(pairs, legacy, "abcVID_6-5-rgb_front__4x3", "h2s-5")
+    with pytest.raises(SystemExit, match="not a validation signer"):
+        h2s.clip_inputs(pairs / "abcVID_6-5-rgb_front__4x3.npz", legacy)
+    with pytest.raises(SystemExit, match="validation signers"):
+        h2s.val_files(pairs, {"h2s-1", "h2s-5"})
     _pairs_files(pairs, legacy, "abcVID_9-9-rgb_front__4x3", "h2s-9")
     with pytest.raises(SystemExit, match="signer 9"):
         h2s.val_files(pairs, {"h2s-1"})

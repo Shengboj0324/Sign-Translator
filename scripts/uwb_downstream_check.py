@@ -35,8 +35,15 @@ n-gram statistics) for lifted - ours, lifted - blank and ours - blank; per-pair 
 hypothesis equal to the reference, and the reads' hypotheses equal to each other); the same reads split by the UWB
 partition of the clip (the instrument was pretrained on UWB's train split: a contamination diagnostic, not gated).
 
-**Verdict.** ``pass`` iff ratio >= 0.9 and the lifted - blank lower bound > 0, provided ours - blank's lower bound > 0;
-when the instrument does not read our states above blank (or reads them at 0) the row is ``not-evaluable``, never pass.
+**Verdict** (per read set): ``pass`` iff ratio >= 0.9 and the lifted - blank lower bound > 0, provided ours - blank's
+lower bound > 0; when the instrument does not read our states above blank (or reads them at 0) it is
+``not-evaluable``, never pass. Values are compared unrounded.
+
+**Contamination rule** (review of d2591fa): the instrument was pretrained on UWB's train split, so the row passes only
+if it passes on the pooled sample **and** on UWB's dev partition alone (every evaluated pair of
+``YT.translations.dev.json``, labelled ``monitor`` by ``convert_uwb_clips.translations``), which needs >= 200 dev pairs
+from >= 50 videos (fewer: not-evaluable). More than 10% refused pairs (of the pooled and dev samples together) make the
+row not-evaluable.
 
 Workers: a process pool sized from ``os.sched_getaffinity`` and the cgroup memory limit (never ``nproc``, which
 honours OMP_NUM_THREADS=1); the instrument runs in the main process on ``--device``.
@@ -71,6 +78,9 @@ INSTRUMENT_RUN = "back-translator-kp2d-uwb-ft-v1"
 INSTRUMENT_MANIFEST = "004bf6596a2330ee5f840bfeef0d233174f63d0602f72465b6c28a21078d00fd"   # as round17_diagnostics
 READ_FPS = 24.                     # the pilots resample every state they read to 24 fps (at_rate) before translate
 RATIO_BAR = .9
+DEV_PARTITION = "monitor"          # UWB's YT.translations.dev.json (convert_uwb_clips.translations labels it monitor)
+MIN_DEV_PAIRS, MIN_DEV_VIDEOS = 200, 50
+MAX_REFUSED_SHARE = .10
 READS = ("lifted", "ours", "blank")
 COMPARISONS = (("lifted", "ours"), ("lifted", "blank"), ("ours", "blank"))
 MAX_ORDER = 4
@@ -295,15 +305,14 @@ def clustered_bootstrap(stats: dict, videos: list[str], *, resamples: int, seed:
         for r in stats:
             draws[r].append(bleu_from(counts @ per_video[r]))
 
-    def interval(values):
-        return [round(float(np.percentile(values, 2.5)), 3), round(float(np.percentile(values, 97.5)), 3)] \
-            if len(values) else None
-    reads = {r: dict(bleu=round(point[r], 3), ci95=interval(draws[r])) for r in stats}
+    def interval(values):                     # unrounded: the verdicts compare them to their bars
+        return [float(np.percentile(values, 2.5)), float(np.percentile(values, 97.5))] if len(values) else None
+    reads = {r: dict(bleu=float(point[r]), ci95=interval(draws[r])) for r in stats}
     diffs = {}
     for a, b in COMPARISONS:
         if a in stats and b in stats:
             d = np.asarray(draws[a]) - np.asarray(draws[b])
-            diffs[f"{a}_minus_{b}"] = dict(difference=round(point[a] - point[b], 3), ci95=interval(d))
+            diffs[f"{a}_minus_{b}"] = dict(difference=float(point[a] - point[b]), ci95=interval(d))
     return dict(reads=reads, differences=diffs, videos=len(keys), resamples=resamples if len(keys) >= 2 else 0,
                 seed=seed)
 
@@ -314,7 +323,7 @@ def verdict(boot: dict, bar: float = RATIO_BAR) -> dict:
     ours, lifted = reads["ours"]["bleu"], reads["lifted"]["bleu"]
     sanity = diffs["ours_minus_blank"]["ci95"]
     above = diffs["lifted_minus_blank"]["ci95"]
-    ratio = None if not ours else round(lifted / ours, 4)
+    ratio = None if not ours else lifted / ours                    # unrounded against the bar
     out = dict(ratio_lifted_over_ours=ratio, ratio_bar=bar, lifted_minus_blank_lower=above and above[0],
                ours_minus_blank_lower=sanity and sanity[0])
     if not ours or sanity is None or sanity[0] <= 0:
@@ -324,6 +333,30 @@ def verdict(boot: dict, bar: float = RATIO_BAR) -> dict:
     ok_ratio, ok_blank = ratio >= bar, above is not None and above[0] > 0
     return dict(out, ratio_ok=bool(ok_ratio), clearly_above_blank=bool(ok_blank),
                 status="pass" if ok_ratio and ok_blank else "fail")
+
+
+def combined_verdict(pooled: dict, dev: dict | None, *, dev_pairs: int, dev_videos: int, refused: int,
+                     sampled: int) -> dict:
+    """The row's verdict: pass only if the pooled read **and** the UWB dev-partition read (the instrument never trained
+    on it; >= MIN_DEV_PAIRS pairs from >= MIN_DEV_VIDEOS videos) both pass; not-evaluable when more than
+    MAX_REFUSED_SHARE of the sampled pairs were refused, or the dev read is too small, or either read is
+    not-evaluable; fail when either evaluable read fails."""
+    share = refused / sampled if sampled else 1.
+    out = dict(pooled=pooled["status"], dev=dev and dev["status"], dev_pairs=dev_pairs, dev_videos=dev_videos,
+               min_dev=dict(pairs=MIN_DEV_PAIRS, videos=MIN_DEV_VIDEOS), refused=refused, sampled=sampled,
+               refused_share=share, max_refused_share=MAX_REFUSED_SHARE)
+    if share > MAX_REFUSED_SHARE:
+        return dict(out, status="not-evaluable", reason=f"{refused} of {sampled} sampled pairs refused")
+    statuses = [pooled["status"]] + ([dev["status"]] if dev else [])
+    if "fail" in statuses:
+        return dict(out, status="fail", reason="a read fails: " + ", ".join(
+            name for name, v in (("pooled", pooled), ("dev", dev)) if v and v["status"] == "fail"))
+    if dev is None or dev_pairs < MIN_DEV_PAIRS or dev_videos < MIN_DEV_VIDEOS:
+        return dict(out, status="not-evaluable", reason=f"UWB dev partition: {dev_pairs} pairs from {dev_videos} "
+                                                        f"videos (needs {MIN_DEV_PAIRS} from {MIN_DEV_VIDEOS})")
+    if "not-evaluable" in statuses:
+        return dict(out, status="not-evaluable", reason="a read is not evaluable (ours not above blank)")
+    return dict(out, status="pass", reason="pooled and dev both pass")
 
 
 def exact_matches(hypotheses: dict, references: list[str]) -> dict:
@@ -402,6 +435,7 @@ def main(argv=None, *, translate_fn=None) -> int:
     p.add_argument("--instrument-manifest-sha256", default=INSTRUMENT_MANIFEST)
     p.add_argument("--instrument-sha256", help="pin the checkpoint's SHA-256 (recorded either way)")
     p.add_argument("--pairs", type=int, default=2000, help="at most this many pairs (0: all)")
+    p.add_argument("--dev-pairs", type=int, default=0, help="at most this many UWB dev-partition pairs (0: all)")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--bootstrap", type=int, default=2000)
     p.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
@@ -423,20 +457,25 @@ def main(argv=None, *, translate_fn=None) -> int:
     if report.get("regressors_sha256") != args.regressors_sha256:
         raise SystemExit(f"the gate ran bundle {report.get('regressors_sha256')}, not {args.regressors_sha256}")
     uwb_prefix, youtube_prefix = args.uwb_prefix or gs["uwb_prefix"], args.youtube_prefix or gs["youtube_prefix"]
-    sample = sample_pairs(report["pairs"], args.pairs, args.seed)
-    print(json.dumps(dict(evaluated=sum(p.get("status") == "evaluated" for p in report["pairs"]), sampled=len(sample),
+    from convert_uwb_clips import translations
+    partitions = {clip: part for clip, (_, part) in translations(store, uwb_prefix).items()}
+    evaluated = [p for p in report["pairs"] if p.get("status") == "evaluated"]
+    sample = sample_pairs(evaluated, args.pairs, args.seed)
+    dev_sample = sample_pairs([p for p in evaluated if partitions.get(p["clip_id"]) == DEV_PARTITION],
+                              args.dev_pairs, args.seed)
+    pooled_ids, dev_ids = {p["clip_id"] for p in sample}, {p["clip_id"] for p in dev_sample}
+    union = sorted({p["clip_id"]: p for p in sample + dev_sample}.values(), key=lambda p: (p["video_id"], p["clip_id"]))
+    print(json.dumps(dict(evaluated=len(evaluated), sampled=len(sample), dev_sampled=len(dev_sample), union=len(union),
                           videos=len({p["video_id"] for p in sample}))), flush=True)
     uwb = json.loads(store.get(f"{uwb_prefix}/{gs['translations']}"))
     jobs, refused = [], []
-    for video in sorted({p["video_id"] for p in sample}):
+    for video in sorted({p["video_id"] for p in union}):
         ours_report = json.loads(store.get(f"{youtube_prefix}/videos/{video}.json"))
-        for pair in (p for p in sample if p["video_id"] == video):
+        for pair in (p for p in union if p["video_id"] == video):
             try:
                 jobs.append(reconstruct(pair, ours_report, uwb.get(video, {}), report["fps"]["videos"].get(video)))
             except Mismatch as error:
                 refused.append(dict(clip_id=pair["clip_id"], stage="reconstruct", reason=str(error)[:300]))
-    from convert_uwb_clips import translations
-    partitions = {clip: part for clip, (_, part) in translations(store, uwb_prefix).items()}
     del uwb
     settings = dict(store=args.store, uwb_prefix=uwb_prefix, regressors=args.regressors,
                     regressors_sha256=args.regressors_sha256, visibility=gs["visibility"], face=args.face,
@@ -464,35 +503,52 @@ def main(argv=None, *, translate_fn=None) -> int:
     else:
         instrument_key = instrument_sha = "injected"
     hypotheses = read_all(rows, translate_fn)
-    result = score(rows, hypotheses, resamples=args.bootstrap, seed=args.seed)
-    by_partition = {}
-    for part in sorted({str(r["uwb_partition"]) for r in rows}):
-        keep = [k for k, r in enumerate(rows) if str(r["uwb_partition"]) == part]
+
+    def subset(keep: list[int]) -> dict:
         sub = score([rows[k] for k in keep], {read: [h[k] for k in keep] for read, h in hypotheses.items()},
                     resamples=args.bootstrap, seed=args.seed)
+        return dict(sub, videos_scored=len({rows[k]["video_id"] for k in keep}))
+    pooled = subset([k for k, r in enumerate(rows) if r["clip_id"] in pooled_ids])
+    dev_keep = [k for k, r in enumerate(rows) if r["clip_id"] in dev_ids]
+    dev = subset(dev_keep) if dev_keep else None
+    by_partition = {}
+    pooled_rows = [k for k, r in enumerate(rows) if r["clip_id"] in pooled_ids]
+    for part in sorted({str(rows[k]["uwb_partition"]) for k in pooled_rows}):
+        sub = subset([k for k in pooled_rows if str(rows[k]["uwb_partition"]) == part])
         by_partition[part] = {k: sub[k] for k in ("pairs", "reads", "differences", "verdict")}
+    verdict_all = combined_verdict(pooled["verdict"], dev and dev["verdict"], dev_pairs=len(dev_keep),
+                                   dev_videos=len({rows[k]["video_id"] for k in dev_keep}), refused=len(refused),
+                                   sampled=len(union))
     out = dict(
         row="Downstream: back-translator read of lifted states >= 90% of its read of our states on paired cues, and "
             "clearly above blank",
         gate_report=args.gate_report, gate_report_sha256=gate_sha, regressors_sha256=args.regressors_sha256,
-        visibility=gs["visibility"], instrument=dict(run=args.instrument_run, checkpoint_key=instrument_key,
-                                                     checkpoint_sha256=instrument_sha, read_fps=READ_FPS),
+        visibility=gs["visibility"], bootstrap=args.bootstrap, seed=args.seed,
+        instrument=dict(run=args.instrument_run, checkpoint_key=instrument_key, checkpoint_sha256=instrument_sha,
+                        read_fps=READ_FPS),
         converter=dict(function="convert_uwb_clips.convert_member", world="learned", flags="generator", face=args.face,
                        head=args.head, fps_source="estimated (the gate's per-video fps)"),
-        sample=dict(rule=f"all evaluated pairs if <= {args.pairs}, else one per video first (seed {args.seed})",
-                    sampled=len(sample), reconstructed=len(jobs), scored=len(rows), refused=len(refused)),
-        refused=refused, **result, by_uwb_partition=by_partition,
+        sample=dict(rule=f"pooled: all evaluated pairs if <= {args.pairs}, else one per video first (seed {args.seed}); "
+                         f"dev: every evaluated pair of UWB's dev partition ({DEV_PARTITION}) "
+                         f"{'(at most ' + str(args.dev_pairs) + ')' if args.dev_pairs else ''}",
+                    sampled=len(sample), dev_sampled=len(dev_sample), union=len(union), reconstructed=len(jobs),
+                    scored=len(rows), refused=len(refused)),
+        refused=refused, **{k: v for k, v in pooled.items() if k not in ("verdict", "seed")}, verdict_pooled=pooled["verdict"],
+        dev=dev and {k: dev[k] for k in ("pairs", "videos_scored", "reads", "differences", "verdict", "exact_match")},
+        verdict=verdict_all, by_uwb_partition=by_partition,
         bleu="signtranslator.generation.motion_to_text.corpus_bleu (the repo's helper; summed segment statistics in "
-             "the bootstrap)",
+             "the bootstrap); values unrounded",
         per_pair=[dict(video_id=r["video_id"], clip_id=r["clip_id"], sample_id=r["sample_id"], text=r["text"],
                        lag=r["lag"], aligned_frames=r["aligned_frames"], seconds=r["seconds"],
                        uwb_partition=r["uwb_partition"], lifted_state_sha256=r["lifted_state_sha256"],
+                       pooled=r["clip_id"] in pooled_ids, dev=r["clip_id"] in dev_ids,
                        **{read: hypotheses[read][k] for read in READS}) for k, r in enumerate(rows)])
     text = json.dumps(out, indent=1, sort_keys=True)
     Path(args.out).write_text(text)
     if args.output_key:
         store.put(args.output_key, text.encode())
-    print(json.dumps({k: out[k] for k in ("sample", "reads", "differences", "verdict", "exact_match")}, indent=1))
+    print(json.dumps({k: out[k] for k in ("sample", "reads", "differences", "verdict_pooled", "verdict", "exact_match")},
+                     indent=1))
     return 0
 
 
