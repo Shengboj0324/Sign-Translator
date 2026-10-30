@@ -5232,3 +5232,26 @@ End-to-end against blank (1.859) is reported beside it.
 **If R18 passes:** a declared longer run on the same mix. **If it fails:** more data at this scale does not fix end-to-end, and the composition path (M1 2.55) is the focus.
 
 **Chain:** conversion on CPU pods, then the manifest, prefetch and SHA check, then training on GPU, then the pilot. The pilot command is smoke-tested on a few clips before the chain is declared ready, a round-16 lesson.
+
+## Round 17 PT-v2 result, recorded (2026-10-30, 13:32 UTC): both arms FAIL, so the plan-code route closes as declared
+
+Verdicts from `scripts/round17_pt_verdict.py`, on each arm's best-validation checkpoint.
+
+| Gate | v1 (record) | PT-v2a (w4, learned, 3 stages; step 20k) | PT-v2b (w2, mean, 2 stages; step 10k) |
+|---|---|---|---|
+| Right-hand perplexity (≥ 0.8 × d2) | 78.3 | **79.9 < 88.3** | **82.6 < 91.7** |
+| Left hand / body / face | — | 56.4 / 166.4 / 208.4 (pass) | 57.9 / 197.9 / 201.6 (pass) |
+| Re-seeds, divergence | pass | pass | pass |
+| Round-trip BLEU vs d2 (≥ 0.8×) | 0.795 | **2.519 = 0.749×** | **2.613 = 0.777×** |
+| Above blank (round-trip lower > blank upper 2.175) | yes | **no (2.132)** | yes (2.233) |
+| Recogniser ratio (≥ 0.9) | 0.927 | 0.967 | 0.943 |
+| Hand speed L / R (report only) | 0.47 / 0.43 | 0.53 / 0.48 | 0.61 / 0.58 |
+
+**Reading:**
+- Word identity survives the plan codes in all three tokenizers (recogniser 0.93–0.97), but sentence content does not (0.75–0.80 × d2). Neither a shorter window nor learned pooling with a third stage closes the gap.
+- The right-hand codebook stays below 0.8 × d2's diversity in every arm.
+
+**Decision (as declared):**
+- The plan-code route at 2–4× is not viable as specified. P17 and D17 do not run, and round 17 is closed.
+- O4's alternatives are reopened. The first is the UWB 4×-data test: lifter v2 is running, and round 18 is declared at 13:03.
+- The composition path (M1 2.55) remains the leader's route.
