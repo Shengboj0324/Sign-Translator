@@ -107,3 +107,33 @@ BAD_DCS="US-NC-1 US-MO-1" DCS="$GDCS" bash run_job_pod.sh r19-pilot "MANIFEST_SH
 - The cache is about 333 h × 46 KB/s ≈ 55 GB. That fits the default 120 GB disk and the trainer's 100 GiB cache.
 
 **Compute:** as R16C. The step count and batch are the same, so the GPU time is the same; only the prefetch grows.
+
+## Amendment 1 (15:14 UTC): arms R19 and R19w
+
+Both jobs take `ARM=r19|r19w`; the default is `r19`.
+
+- **R19w:** adds exactly `--corpus-weight youtube-asl-v1=0.5767`.
+  - The corpus id `youtube-asl-v1` is the one in `round19-mixed-v1`. The trainer accepts a weight for any corpus in the training partition.
+  - The weight is appended to R16C's `EXTRA_WEIGHTS`, so `args.corpus_weight` = R16C's list + that one entry.
+  - Run name: `tokens-rvq-d0b-prior-r19w-refresh-weighted`.
+- **Recipe check:** `scripts/round19_recipe_check.py` compares the arm's smoke `run.json` with R16C's. Besides run name and manifest, r19w may add exactly that one weight; r19 may add nothing. It also needs the same `config_sha256` and round 17's flags at their defaults. Checked against R16C's real smoke `run.json`: both arms show 0 differences, and each arm's weights fail the other arm's check.
+- **Pilot:** keys are per arm and write-once: `round19/pilot-<arm>.json`, `compare-<arm>-vs-{r16c,w14b}.json`, `verdict-<arm>.json`. Verdict markers are `R19-VERDICT` and `R19W-VERDICT`.
+- **Sampling test** (`tests/test_round19_arms.py`): run on the real trainer-visible counts with the trainer's own `corpus_sample_weights`.
+  - Every non-YouTube record's per-draw probability under round19 + R19w is within 1e-3 (relative) of round14b + R16C, and so is YouTube's total mass.
+  - Under R19's natural proportions it is below 0.8×.
+  - The counts are YouTube 99,887 → 173,202, everything else unchanged.
+
+### Launch commands (both arms)
+
+```bash
+cd ~/.sign-translator-ops
+export MANIFEST_SHA=99508be68ce97d9696d74691718e852da82133bc3b8f12da3905af414ea0b6af
+for A in r19 r19w; do
+  BAD_DCS="US-NC-1 US-MO-1" DCS="$GDCS" bash run_job_pod.sh $A-train "ARM=$A MANIFEST_SHA=$MANIFEST_SHA bash runpod/fleet/round19_train.sh" >> job_$A-train.log 2>&1 &
+  sleep 90
+done; wait
+# after each arm's smoke checkpoint exists:
+for A in r19 r19w; do BAD_DCS="US-NC-1 US-MO-1" DCS="$GDCS" bash run_job_pod.sh $A-pilot-smoke "SMOKE=1 ARM=$A MANIFEST_SHA=$MANIFEST_SHA bash runpod/fleet/round19_pilot.sh" >> job_$A-pilot-smoke.log 2>&1; done
+# after both trainings (JOB-DONE 0):
+for A in r19 r19w; do BAD_DCS="US-NC-1 US-MO-1" DCS="$GDCS" bash run_job_pod.sh $A-pilot "ARM=$A MANIFEST_SHA=$MANIFEST_SHA bash runpod/fleet/round19_pilot.sh" >> job_$A-pilot.log 2>&1 & sleep 90; done; wait
+```

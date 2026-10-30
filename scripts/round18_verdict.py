@@ -82,6 +82,10 @@ ROUNDS = {   # arm name -> (rule reference, what follows a pass, what follows a 
     "R19": ("docs/NEXT_PHASE_PLAN.md, Round 19 (declared 2026-10-30 14:16 UTC): all three rows must pass",
             "more of our own data helps end-to-end: the declared longer run, then round 18b (UWB-only videos)",
             "data volume at this scale (+77% YouTube) is not the lever for end-to-end; the composition path is the focus"),
+    "R19W": ("docs/NEXT_PHASE_PLAN.md, Round 19 amendment 1 (declared 2026-10-30 15:14 UTC; arm R19w, YouTube weight "
+             "0.5767): all three rows must pass; read beside R19 by the amendment's table",
+             "more YouTube diversity at R16C's YouTube mass helps (read beside R19 by amendment 1's table)",
+             "more YouTube diversity at R16C's YouTube mass does not help (read beside R19 by amendment 1's table)"),
 }
 
 
