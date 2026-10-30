@@ -31,6 +31,14 @@ from train_text_to_motion import make_store  # noqa: E402
 def load_translator(store, key: str, manifest_sha256: str):
     """(model with EMA weights in eval mode, vocabulary), refusing one trained on another manifest."""
     saved = torch.load(io.BytesIO(store.get(key)), map_location="cpu", weights_only=False)
+    if saved.get("kind") == "state_to_text_t5":              # instrument v2: reads the conformed state itself
+        from signtranslator.generation.state_to_text_t5 import StateToT5Config, build
+        config = StateToT5Config.from_dict(saved["config"])
+        if config.sha256() != saved["config_sha256"]:
+            raise SystemExit(f"{key}: its config does not hash to its config_sha256")
+        model = build(config, pretrained=False)
+        model.load_state_dict(saved.get("ema") or saved["model"])
+        return model.eval(), "states"
     if saved.get("kind") == "keypoints_to_text_t5":          # 2D second opinion: reads states through FK projection
         from signtranslator.generation.keypoints_to_text_t5 import KeypointsToT5Config, build
         model = build(KeypointsToT5Config.from_dict(saved["config"]), pretrained=False)
@@ -48,11 +56,40 @@ def load_translator(store, key: str, manifest_sha256: str):
     return model.eval(), WordVocabulary(saved["vocabulary"]["words"])
 
 
+def load_translator_run(store, run: str, manifest_sha256: str):
+    """(model, kind, checkpoint key, checkpoint SHA-256 or None) of a run's ``best.json`` checkpoint (instrument v2's
+    ``--translator-run``). A best.json that records ``checkpoint_sha256`` (``train_state_to_text_t5.py`` writes it) is
+    an instrument-v2 run: the payload is checked against that SHA-256 and loaded weights-only
+    (``state_to_text_t5.load_model``). Any other run is loaded by ``load_translator`` exactly as before."""
+    import hashlib
+    best = json.loads(store.get(f"training-runs/{run}/best.json"))
+    key = best["checkpoint_key"]
+    if not best.get("checkpoint_sha256"):
+        model, kind = load_translator(store, key, manifest_sha256)
+        return model, kind, key, None
+    from signtranslator.generation.state_to_text_t5 import load_model
+    payload = store.get(key)
+    if hashlib.sha256(payload).hexdigest() != best["checkpoint_sha256"]:
+        raise SystemExit(f"{key}: SHA-256 differs from {run}'s best.json")
+    try:
+        model, _ = load_model(payload, expected_sha256=best["checkpoint_sha256"])
+    except ValueError as error:
+        raise SystemExit(f"{key}: {error}")
+    return model, "states", key, best["checkpoint_sha256"]
+
+
 @torch.no_grad()
 def translate(model, vocabulary, states, *, beam: int = 4, batch: int = 32) -> list[str]:
     from signtranslator.data.multichannel import collate_multichannel
     out = []
     device = next(model.parameters()).device
+    if vocabulary == "states":                               # instrument v2 (state_to_text_t5)
+        from signtranslator.data.keypoint_shards import collate_keypoints
+        items = [(torch.from_numpy(f), "") for f in model.featurise(states)]
+        for i in range(0, len(items), batch):
+            (x, valid), _ = collate_keypoints(items[i:i + batch])
+            out += model.generate_text((x.to(device), valid.to(device)), beam=beam)
+        return out
     if vocabulary == "keypoints":
         from signtranslator.data.keypoint_shards import collate_keypoints
         from signtranslator.data.keypoints2d import features, from_state, normalise
@@ -106,7 +143,7 @@ def main(argv=None) -> int:
         manifest = load_manifest(path, expected_sha256=args.manifest_sha256)
     by_sign = {r["sign"]: r for r in manifest["records"]}
     model, vocabulary = load_translator(store, args.translator_key, args.translator_manifest_sha256 or args.manifest_sha256)
-    if vocabulary is None or vocabulary == "keypoints":     # T5 translators move whole; v1 keeps its CPU path
+    if vocabulary is None or vocabulary in ("keypoints", "states"):  # T5 translators move whole; v1 keeps its CPU path
         model = model.to(torch.device("cuda" if args.device == "auto" and torch.cuda.is_available() else
                                       ("cpu" if args.device == "auto" else args.device)))
     out = {}

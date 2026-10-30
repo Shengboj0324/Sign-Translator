@@ -111,7 +111,7 @@ INDEXING = ("word seeds, oracle real-clip draws, shuffle orders and mismatched-w
 SETTINGS = ("clips", "shards", "block", "seed", "mix_key", "mix_sha256", "corpora", "variants", "selection", "timing",
             "rerank", "core_margin", "total_fit", "guidance", "part_temperature", "checkpoint_key", "generator_mix",
             "model_sha256", "translator_key", "recognizer_run", "recognizer_checkpoint", "space_normalise", "bridge",
-            "tighten_cores", "space_stats", "refiner")
+            "tighten_cores", "space_stats", "refiner", "extra_translators")
 REST_ONLY = "/rest_only"
 REFINED, RECON = "@refined", "@recon"
 INSTRUMENT = "sign-recognizer-v3d"   # the spotting instrument of the refined rule (recogniser v3 amendment 2)
@@ -264,7 +264,7 @@ def run(args) -> dict:
     from round15_oracle import TEMPLATE_CORPUS, word_clip, word_pools
     import round15_stage2 as r2
     import round15_stage2_fit as fit
-    from score_back_translation import load_translator, translate
+    from score_back_translation import load_translator, load_translator_run, translate
     from sentence_exposure_diagnostic import derangement
     import sentence_word_spotting as sws
     from train_motion_tokens import layout_template
@@ -440,16 +440,28 @@ def run(args) -> dict:
         del refiner, rtok
         clock["refine"] = time.time()
     # translate per global block (the unsharded run's batches)
-    kp = json.loads(store.get(f"training-runs/{TRANSLATOR_RUN}/best.json"))["checkpoint_key"]
-    translator, kind = load_translator(store, kp, MIX_SHA)
+    if args.translator_run == TRANSLATOR_RUN:      # v1: exactly the declared path
+        kp = json.loads(store.get(f"training-runs/{args.translator_run}/best.json"))["checkpoint_key"]
+        translator, kind = load_translator(store, kp, MIX_SHA)
+    else:                                          # instrument v2: SHA-checked, weights-only
+        translator, kind, kp, _ = load_translator_run(store, args.translator_run, MIX_SHA)
     translator = translator.to(torch.device(args.device))
     translator_fps = float(getattr(getattr(translator, "config", None), "fps", FPS))
-    hyps = {name: {} for name in forms}
-    for name, states in forms.items():
-        for group in blocks(mine, args.block):
-            for i, h in zip(group, translate(translator, kind, [states[i] for i in group])):
-                hyps[name][i] = h
-        print(f"translated {name} ({time.time() - clock['start']:.0f} s)", flush=True)
+
+    def read_all(model, model_kind):
+        out = {name: {} for name in forms}
+        for name, states in forms.items():
+            for group in blocks(mine, args.block):
+                for i, h in zip(group, translate(model, model_kind, [states[i] for i in group])):
+                    out[name][i] = h
+            print(f"translated {name} ({time.time() - clock['start']:.0f} s)", flush=True)
+        return out
+    hyps = read_all(translator, kind)
+    extra = {}                                     # instrument v2: the same states read by further translators
+    for run_name in args.also_translator_run or ():
+        model2, kind2, key2, sha2 = load_translator_run(store, run_name, MIX_SHA)
+        extra[run_name] = dict(key=key2, sha256=sha2, hyps=read_all(model2.to(torch.device(args.device)), kind2))
+        del model2
     clock["translation"] = time.time()
     # spotting (own words, the next sentence's words) and motion, per clip
     recogniser, labels, best = vsr.load_model(store, args.recognizer_run, args.device)
@@ -472,6 +484,8 @@ def run(args) -> dict:
         rows.append(dict(clip=i, sign=val[i]["sign"], entries=plans[i]["entries"], stage1_words=words1[i],
                          shuffled_order=orders[i], mismatched_from=content_perm[i], frames_reference=len(refs[i].timestamps),
                          plans=plans_out[i], hypotheses={name: hyps[name][i] for name in forms},
+                         **({"extra_hypotheses": {r: {name: e["hyps"][name][i] for name in forms}
+                                                  for r, e in extra.items()}} if extra else {}),
                          spotting={v: spot[v][i] for v in spot},
                          **({"memorisation_codes": memorised[i]} if refining else {}),
                          motion={name: motion[name][i] for name in motion},
@@ -488,6 +502,8 @@ def run(args) -> dict:
                     recognizer_checkpoint=best.get("checkpoint_key") if isinstance(best, dict) else None)
     if refiner_info:
         settings["refiner"] = refiner_info
+    if extra:                                    # recorded only with --also-translator-run (default reports unchanged)
+        settings["extra_translators"] = [dict(run=r, key=e["key"], sha256=e["sha256"]) for r, e in extra.items()]
     core_counts = None
     if knobs_on:                                 # recorded only when a knob is on (default reports are unchanged)
         settings.update(space_normalise=args.space_normalise, bridge=args.bridge, tighten_cores=args.tighten_cores,
@@ -618,8 +634,24 @@ def merge(args, store) -> dict:
                         memorisation=memorisation_report(store, s, rows, hyps, variants)) if refined else {}),
                 spotting=dict(windows=list(SPOT["windows"]), hop=SPOT["hop"], top_k=SPOT["top_k"], scores=spotting),
                 motion=motion, motion_ratio_to_real=motion_ratio, verdicts=verdicts, overlong_clips=overlong,
-                **merge_core_counts(partials),
+                **merge_core_counts(partials), **merge_extra_translators(s, rows, texts),
                 per_clip=[{k: r[k] for k in ("clip", "sign", "entries", "stage1_words", "plans")} for r in rows])
+
+
+def merge_extra_translators(settings: dict, rows, texts) -> dict:
+    """``{"extra_translators": {run: {key, sha256, forms: {form: {bleu, hypotheses}}}}}`` when the shards read their
+    forms with ``--also-translator-run`` (the same states as the main translator), else ``{}`` (reports unchanged)."""
+    if not settings.get("extra_translators"):
+        return {}
+    from signtranslator.generation.motion_to_text import corpus_bleu
+    out = {}
+    for t in settings["extra_translators"]:
+        forms = {}
+        for name in rows[0]["extra_hypotheses"][t["run"]]:
+            hyps = [r["extra_hypotheses"][t["run"]][name] for r in rows]
+            forms[name] = dict(bleu=round(corpus_bleu(hyps, texts)["bleu"], 3), hypotheses=hyps)
+        out[t["run"]] = dict(key=t["key"], sha256=t["sha256"], forms=forms)
+    return {"extra_translators": out}
 
 
 def summary(report: dict) -> None:
@@ -682,6 +714,13 @@ def main(argv=None) -> int:
     r.add_argument("--part-temperature", default="body=1.1,left_hand=1.1,right_hand=1.1,face=1.0")
     r.add_argument("--guidance", type=float, default=1.5)
     r.add_argument("--recognizer-run", default="sign-recognizer-v2")
+    r.add_argument("--translator-run", default=TRANSLATOR_RUN,
+                   help="instrument v2: the back-translator run whose best.json checkpoint reads every form (default: "
+                        "v1, so declared runs are unchanged; the checkpoint is recorded in settings.translator_key)")
+    r.add_argument("--also-translator-run", action="append",
+                   help="instrument v2: also read every form of this run with this back-translator run (repeated), so "
+                        "two instruments read the very same generated states; stored per clip as extra_hypotheses and "
+                        "merged as extra_translators. Absent: the run and its report are unchanged")
     r.add_argument("--device", default="cuda")
     r.add_argument("--word-workers", type=int, default=1)
     r.add_argument("--rerank", type=int, default=1, help="samples per word, the best kept by the prior's own "

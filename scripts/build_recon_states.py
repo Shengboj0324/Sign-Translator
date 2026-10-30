@@ -71,10 +71,11 @@ def shard_key(prefix: str, shard: int, shards: int) -> str:
     return f"{prefix}/index/shard-{shard:03d}-of-{shards:03d}.json"
 
 
-def jobs_of(manifests, *, partitions=PARTITIONS, whole_clip=()) -> tuple[list[dict], collections.Counter]:
+def jobs_of(manifests, *, partitions=PARTITIONS, whole_clip=(), corpora=()) -> tuple[list[dict], collections.Counter]:
     """Every record to decode, sorted by (corpus, sign): (manifest, corpus) pairs in; each job a record copy with its
     ``corpus``. Test and How2Sign signer-9 records raise (``check_loadable``) only if they would be read; the test
-    partition is dropped first, unread."""
+    partition is dropped first, unread. ``corpora`` (instrument v2, sentence manifests): only these corpora of a mixed
+    manifest are read (empty: every corpus, as before)."""
     from signtranslator.data_engineering.corpus_manifest import usable_channels
     from signtranslator.generation.recognizer_corpora import FORBIDDEN_PARTITIONS, check_loadable, corpus_name
     if set(partitions) & set(FORBIDDEN_PARTITIONS):
@@ -83,6 +84,9 @@ def jobs_of(manifests, *, partitions=PARTITIONS, whole_clip=()) -> tuple[list[di
     for manifest in manifests:
         for r in manifest["records"]:
             name = corpus_name(manifest, r)
+            if corpora and name not in corpora:
+                counts[f"{name}:not_read:corpus"] += 1
+                continue
             if r.get("partition") not in partitions:
                 counts[f"{name}:not_read:{r.get('partition')}"] += 1
                 continue
@@ -237,6 +241,10 @@ def main(argv=None) -> int:
     p.add_argument("--manifest", action="append", help="KEY@SHA of a gloss manifest, repeated (not with --merge)")
     p.add_argument("--whole-clip", action="append", default=[], help="CORPUS whose trim windows are removed (as the "
                    "recogniser's --whole-clip; the copies follow exactly the records the recogniser loads)")
+    p.add_argument("--partition", action="append", help="instrument v2: the partitions to decode (repeated; default "
+                   "train and val). A sentence back-translator decodes its training records only (--partition train)")
+    p.add_argument("--corpus", action="append", help="instrument v2: decode only these corpora of the manifests "
+                   "(repeated; default every corpus)")
     p.add_argument("--prefix", required=True, help="write-once store prefix of the decoded states and index")
     p.add_argument("--tokenizer-key", default=TOKENIZER_KEY)
     p.add_argument("--tokenizer-sha256", default=TOKENIZER_SHA256)
@@ -324,7 +332,9 @@ def main(argv=None) -> int:
         print(f"{out_key} exists: shard done", flush=True)
         return 0
     manifests = [manifest_of(*parse_manifest_spec(m)) for m in args.manifest]
-    jobs, counts = jobs_of(manifests, whole_clip=set(args.whole_clip))
+    partitions = tuple(args.partition) if args.partition else PARTITIONS
+    jobs, counts = jobs_of(manifests, partitions=partitions, whole_clip=set(args.whole_clip),
+                           corpora=tuple(args.corpus or ()))
     shard = [j for i, j in enumerate(jobs) if i % args.shards == args.shard][:args.limit]
     print(f"{len(jobs)} records, shard {args.shard}/{args.shards}: {len(shard)}; {json.dumps(dict(counts))}", flush=True)
     results, started = [], time.monotonic()
@@ -358,6 +368,8 @@ def main(argv=None) -> int:
     index = dict(schema=SCHEMA, config_sha256=hashlib.sha256(config_payload).hexdigest(), shard=args.shard,
                  shards=args.shards, manifests=args.manifest, whole_clip=sorted(args.whole_clip),
                  job_counts=dict(counts), status_counts=status, entries=results)
+    if args.partition or args.corpus:                  # instrument v2 selections (absent: the index is as before)
+        index.update(partitions=list(partitions), corpora=sorted(args.corpus or ()))
     if store.exists(out_key):
         raise SystemExit(f"{out_key} appeared while this shard ran: not overwritten")
     store.put(out_key, json.dumps(index, sort_keys=True).encode())
@@ -378,9 +390,10 @@ def merge(store, prefix: str, shards: int) -> int:
         part = json.loads(payload)
         if part["config_sha256"] != config_sha or part["shards"] != shards or part["shard"] != shard:
             raise SystemExit(f"{key} was made with another configuration or sharding")
-        if manifests is not None and (part["manifests"], part["whole_clip"]) != manifests:
+        selected = (part["manifests"], part["whole_clip"], part.get("partitions"), part.get("corpora"))
+        if manifests is not None and selected != manifests:
             raise SystemExit(f"{key} decoded other manifests")
-        manifests = (part["manifests"], part["whole_clip"])
+        manifests = selected
         parts.append(dict(key=key, sha256=hashlib.sha256(payload).hexdigest(), status_counts=part["status_counts"]))
         entries += part["entries"]
     keys = [(e["corpus"], e["sign"]) for e in entries]
@@ -389,6 +402,7 @@ def merge(store, prefix: str, shards: int) -> int:
     entries.sort(key=lambda e: (e["corpus"], e["sign"]))
     index = dict(schema=SCHEMA, config=json.loads(config_payload), config_sha256=config_sha, shards=parts,
                  manifests=manifests[0], whole_clip=manifests[1],
+                 **({"partitions": manifests[2], "corpora": manifests[3]} if manifests[2] is not None else {}),
                  status_counts=dict(collections.Counter(e["status"] for e in entries)), entries=entries)
     payload = json.dumps(index, sort_keys=True).encode()
     key = f"{prefix}/index.json"
