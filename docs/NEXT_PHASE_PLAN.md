@@ -5045,3 +5045,9 @@ The content gates (round-trip BLEU ≥ 0.8 × d2 with lower bound above blank; r
 **Job fix:** every gate instrument runs and is stored even when an earlier one exits non-zero. In v1, the fidelity script's exit 4 skipped recognisability under `set -e`. A missing measurement means not evaluable, never pass.
 
 P17 and D17 still wait for the UWB gate result.
+
+**PT-v2 amendment (2026-10-30, 10:20 UTC, before anything trains; from the job review):**
+- **Arm b's perplexity reference.** Arm b (window 2) has twice the plan positions per batch, and perplexity grows with the sample count, so its stability bar uses d2's **every-step** values: body ≥ 139.6, face ≥ 124.2, left hand ≥ 51.7, right hand ≥ 91.7. That is stricter than a window-2-matched reference would be.
+- **Arm a** keeps the every-4th-step reference.
+- Checkpoints are saved **every 1,000 steps**, so the best-validation-loss checkpoint is exactly the best of the 20 validations.
+- A crashed gate instrument (any exit other than 0 or 4) fails the job.

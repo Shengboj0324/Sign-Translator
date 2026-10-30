@@ -24,25 +24,27 @@ W14B=training-runs/tokens-rvq-d0b-prior-r14b-w14b/checkpoints/step-00030000.pt
 W14BSHA=0a689471fc6ea90277ba29fd96650119e404da6ccc63907978b9e3edaa71e563
 WEIGHTS="--corpus-weight asllvd-text-v1=3 --corpus-weight rit-text-r6=3 --corpus-weight wlasl-text-r6=3 --corpus-weight semlex-text-v2=2"
 DATA="--fps 24 --conform-to-corpus how2sign-two-view-text-v1 --workers 10 --cache-bytes 107374182400"
-DIAG="--mix-key $MIX --mix-sha256 $MSHA --clips 1000 --device cuda"
 [ "$(sha $MIX)" = "$MSHA" ] && [ "$(sha $TOK)" = "$TSHA" ] && [ "$(sha $W14B)" = "$W14BSHA" ] || { echo "pin mismatch"; exit 1; }
 python scripts/prefetch_cache.py $MIX || exit 1
 COMMON="--manifest-key $MIX --manifest-sha256 $MSHA --tokenizer-key $TOK --tokenizer-sha256 $TSHA --tokenizer-manifest-sha256 $TMSHA $DATA $WEIGHTS $SHAPE --hidden 256 --code-dim 64 --codebook 512 --blocks 2 --latent-weight 1 --motion-weight 1 --batch-size 64 --lr 3e-4 --warmup 500 --fidelity-clips 64"
 python scripts/train_plan_tokenizer.py --run $RUN-smoke $COMMON --steps 300 --val-every 100 --val-batches 32 --checkpoint-every 100 \
   || { echo "smoke failed"; exit 1; }
-python scripts/train_plan_tokenizer.py --run $RUN $COMMON --steps 20000 --val-every 1000 --val-batches 32 --checkpoint-every 2000 \
+python scripts/train_plan_tokenizer.py --run $RUN $COMMON --steps 20000 --val-every 1000 --val-batches 32 --checkpoint-every 1000 \
   || { echo "training failed"; exit 1; }
-P=$(best $RUN); PSHA=$(sha $P); echo "PLAN-TOKENIZER $P $PSHA (best validation loss)"
+P=$(best $RUN); PSHA=$( [ -n "$P" ] && sha $P ); echo "PLAN-TOKENIZER $P $PSHA (best validation loss)"
 KP2D=$(best back-translator-kp2d-uwb-ft-v1); KPSHA=ad8a5876c37fb17e80bf0c5e8d45e6bc8cd51f6849c23057e47ad6ae4d12cfd2
+[ -n "$P" ] && [ -n "$PSHA" ] && [ -n "$KP2D" ] || { echo "no best checkpoint or translator"; exit 1; }
 rc=0
 python scripts/tokenizer_fidelity_check.py --manifest-key $TMIX --manifest-sha256 $TMSHA --tokenizer-key $TOK \
   --plan-tokenizer-key $P --plan-tokenizer-sha256 $PSHA --translator-key "$KP2D" --translator-manifest-sha256 $KPSHA \
   --limit 1000 --device cuda --speed-joints-key $O/round3d/joint-reliability-how2sign-train.json \
-  --output-key $O/round17/plan-fidelity-$RUN.json 2>&1 | grep -v Warning | tail -2; echo "fidelity exit ${PIPESTATUS[0]}"
+  --output-key $O/round17/plan-fidelity-$RUN.json > /root/fidelity-$RUN.log 2>&1; fe=$?
+grep -v Warning /root/fidelity-$RUN.log | tail -30; echo "fidelity exit $fe"; [ $fe = 0 ] || [ $fe = 4 ] || rc=1
 python scripts/tokenizer_recognisability_check.py --manifest-key $TMIX --manifest-sha256 $TMSHA --corpus asllvd-text-v1 \
   --gloss-map-key acquisition/2026-10-17-v1/derived/signbank-v1/asl-citizen-gloss-map.json --tokenizer-key $TOK \
   --plan-tokenizer-key $P --plan-tokenizer-sha256 $PSHA --limit 300 --device cuda \
-  --output-key $O/round17/plan-recognisability-$RUN.json || echo "recognisability exit $?"
+  --output-key $O/round17/plan-recognisability-$RUN.json; re=$?
+echo "recognisability exit $re"; [ $re = 0 ] || [ $re = 4 ] || rc=1
 python - "$O/round17/plan-fidelity-$RUN.json" "$O/round17/plan-recognisability-$RUN.json" <<'PY' || rc=1
 import os, sys
 from signtranslator.data.text_motion_dataset import R2Store
