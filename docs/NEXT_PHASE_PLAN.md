@@ -4809,3 +4809,40 @@ Every item holds before a result is reported:
 **Decision per O4:** propose the report's rank 4 to the owner (structural: retokenise with 2–4× temporal downsampling and coarse plan codes). In parallel, the non-structural data lever is in flight: the UWB lifter gate, running now. If it passes, about 4× the YouTube sentence data could be tested on the current architecture first, as a cheaper discriminator before restructuring.
 
 **Owner decision (2026-10-30, 04:39 UTC), O4:** design the rank-4 retokenisation now (2–4× temporal downsampling with coarse plan codes), design and tests only. **No training until the UWB data result.** The UWB 4×-data test stays the first discriminator.
+
+## Round 17 design: coarse plan codes over the 24 Hz tokenizer (rank-4 variant; design only, written 2026-10-30, 04:50 UTC)
+
+**Why this form and not a coarser tokenizer.** Rounds 10–11 already tried temporal downsampling of the tokenizer itself, and it failed:
+- t2x (12 Hz) and t4x (6 Hz) were rejected on fidelity: hand speed 0.45 and body 0.64 of real.
+- t2xc diverged at about 10.7k steps. Every from-scratch tokenizer of that family went unstable at 9–13k; only d2, fine-tuned from s8, is stable.
+
+The research report's better-evidenced variant is LMR's low-rate *plan*, generated before the detail: it improved both FID and alignment. So the faithful 24 Hz d2 tokenizer and its decoder stay. A short plan sequence carries the sentence-level structure, which is what end-to-end generation lacks: it reads at blank level while one-step prediction is good.
+
+**Components:**
+1. **Plan tokenizer** `plan-vq-v1`.
+   - **Input:** the frozen d2 tokenizer's continuous per-part latents (before quantisation), grouped into windows of W = 4 steps (6 Hz).
+   - **Model:** one small VQ per part (codebook 512, 1–2 residual stages), trained to reconstruct the window's latents.
+   - **Gates:**
+     - Fidelity: d2 decoding from the *plan-reconstructed* latents keeps hand speed ≥ 0.8 of real and recogniser top-5 ≥ 0.9 × real. This is a fidelity bar on the plan's information, not a replacement for the detail.
+     - Informativeness: the teacher-forced detail loss given the true plan beats no plan.
+     - Stability: no divergence through 20k steps, with checkpoints.
+2. **Plan prior:** text → plan codes, autoregressive over about L/4 steps × parts.
+   - It reuses the RVQ prior's architecture: text encoder, temporal transformer over plan steps, depth over parts.
+   - It warm-starts its text encoder from W14b.
+   - Sequences are 4× shorter, so compounding error has 4× fewer steps.
+3. **Detail prior:** W14b's prior plus plan conditioning. The plan embeddings, upsampled to 24 Hz, are added to the temporal input at every step, and an extra cross-attention memory sees the whole plan.
+   - It trains with the true plan and *plan dropout*. It is evaluated with the generated plan.
+   - It warm-starts from W14b; the new modules start at zero, so step 0 equals W14b.
+4. **Generation:** plan prior → plan codes → detail prior conditioned on the plan → d2 decoder.
+
+**Gates before any training** (owner: no training until the UWB data result):
+- the code passes independent review;
+- unit tests:
+  - window/upsampling alignment;
+  - a zero-initialised detail prior equals W14b exactly;
+  - a plan-dropout row equals no-plan;
+  - generation with a fixed plan is deterministic.
+
+**Evaluation when run:** the same 1,000-clip pilot. Declared then; the first arm is likely R17-plan against R16-matched controls.
+
+**Interaction with the UWB data test.** If the lifter gate passes and about 4× more sentence data fixes end-to-end on the current architecture, round 17 is re-evaluated before it runs.
