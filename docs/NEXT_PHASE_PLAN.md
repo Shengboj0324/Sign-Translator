@@ -4985,7 +4985,7 @@ Report-only: shuffled 0.5 s chunks; length ratio per form.
 
 **PT-v2 is declared, with reasons, before anything retrains.**
 
-### Instrument v2, amendment 1 (declared 2026-10-30, 10:01 UTC, before review and before anything trains)
+### Instrument v2, amendment 1 (declared 2026-10-30, 09:56 UTC, before review and before anything trains)
 
 Settles the build's open questions (branch `instrument-v2` 86b8fca):
 1. **Selection set:** c04 plus **all 536** YouTube monitor-channel clips. `youtube-asl-v1` has only 536, not the declared 1,000; the count is recorded as `MONITOR_CLIPS=536`.
