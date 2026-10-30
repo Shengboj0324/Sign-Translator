@@ -5051,3 +5051,11 @@ P17 and D17 still wait for the UWB gate result.
 - **Arm a** keeps the every-4th-step reference.
 - Checkpoints are saved **every 1,000 steps**, so the best-validation-loss checkpoint is exactly the best of the 20 validations.
 - A crashed gate instrument (any exit other than 0 or 4) fails the job.
+
+**plan-vq-v1 diagnostics, recorded (2026-10-30, 10:29 UTC; the verdict stays FAIL):**
+- **Recogniser** (step 20k, 300 ASLLVD val clips): plan round-trip top-5 0.757 against real 0.817, a ratio of **0.927 ≥ 0.9 (pass)**. Top-1: 0.487 against 0.597.
+- **Report-only, best-validation checkpoint (step 10k):**
+  - plan round-trip BLEU 2.688 = 0.799 × d2 (still < 0.8);
+  - hand speed 0.47 / 0.44.
+
+So v1's shortfall is hand dynamics and sentence content, not word identity. PT-v2 targets exactly that.
