@@ -16,7 +16,7 @@ Branch `uwb-lifter-v2` (from main 4db7a96). Binding spec: `docs/NEXT_PHASE_PLAN.
 | Rule `head` accepted; `--tight-summary` | `scripts/uwb_outside_frame_accuracy.py` |
 | `--gate-version 2` with the declared rows | `scripts/uwb_gate_verdict.py` |
 | Pod phases | `runpod/fleet/uwb_lifter_v2.sh` |
-| Tests (19) | `tests/test_uwb_lifter_v2.py` |
+| Tests (20) | `tests/test_uwb_lifter_v2.py` |
 
 ### Split
 
@@ -100,8 +100,8 @@ Three tests pin the rest:
 ## Tests
 
 Run warning-strict (`-W error`, `OMP_NUM_THREADS=1`):
-- `tests/test_uwb_lifter_v2.py`: 19 passed;
-- related UWB suites, with the new tests included: 105 passed;
+- `tests/test_uwb_lifter_v2.py`: 20 passed (after amendment 1);
+- related UWB suites, with the new tests included: 106 passed (after merging main 4245dc1);
 - full suite (4,081 tests collected): exit 0, no failures.
 
 ## Interpretations and deviations
