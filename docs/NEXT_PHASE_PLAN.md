@@ -5448,3 +5448,21 @@ Every reading is reported as a gap fraction and as a share of the attainable gap
 - progress is claimed only when v1 and v2 agree.
 
 **Now:** S0 (v1 parts) and S1 are built and run as evaluation-only jobs alongside round 20. S2–S5 wait for their probes and for M1.
+
+### Road to 3.8: S1 result and first S0 reads, recorded (2026-10-30, 20:17 UTC; merged 38a7f9b)
+
+**S1, the text bottleneck** (`s0s1/s1-text-kl-v1.json`, 1,000 val clips, teacher-forced):
+- For **every** prior (W14b byte, round-4 flan-T5, round-4 MiniLM), text moves stage-1 codes by **≤ 0.025 nats per code**, about 1% of their 2.3–2.8 nats of entropy.
+- **S1 passes on its first condition:** the pretrained-encoder priors show the same tiny text influence, so **the decoder is the bottleneck**, as hypothesised. This supports S2 (masked, coarse-first decoding over stage-1 codes with pretrained cross-attention).
+- The encoder still matters relatively: at matched step, flan-T5 has **1.72×** the byte prior's text influence ([1.66, 1.79]) and MiniLM 1.21×.
+- W14b has the highest absolute influence (0.025), but on held-out clips it moves codes slightly *away* from the true ones.
+- The stage-1-only round trip (S1's second condition) and the 64-way word-retrieval check come from the S0 pod run.
+
+**S0 first reads** (stored hypotheses only):
+- **chrF** reproduces 25 of 38 BLEU-resolved orderings, contradicts none and leaves 13 unresolved. It is not adopted as the selection metric (S0 rule). Composition's BLEU lead over blank does not show in chrF.
+- **R16** is the only stored output above blank on chrF, but at 1.45× the reference length. Length ratios must accompany chrF.
+- **v1 reads arm and hand points only.** Face-ablated forms read identically on v1, so the face probe is meaningful only on v2, and face channels cannot affect any v1 score.
+- **Pending (evaluation-only pod, about $5):**
+  - ΔNLL, 100-way retrieval and ρ_faith, after regenerating the W14b, R16, R16C, R19 and R19w pilots;
+  - the stage-truncated round trips and the time-warped and low-passed reads.
+  - It runs when a slot frees after round 20 Phase A.
