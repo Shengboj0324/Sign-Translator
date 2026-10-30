@@ -99,15 +99,16 @@ pairs)
   store pairs "train and lifter-val pairs (stream match, arm-2d, lags in {-1,0,1}, >= 400 bone-frames, lag-0 <= 20 deg)"
   echo "PAIRS_INDEX_SHA=$(sha256sum $W/out/pairs-index.json | cut -d' ' -f1)" ;;
 crops)
+  NC=$(( N < 10 ? N : 10 ))   # MediaPipe video workers need ~5 GB each: 30 at 2 GB broke the pool (OOM), 15:52 UTC
   python scripts/uwb_lifter_v2_crops.py fetch --clips-per-signer 40 --seed 0 --video-dir $W/videos --list $W/videos.txt
   python scripts/elbow_outside_accuracy.py extract --videos $(cat $W/videos.txt) --out-dir $W/c/crops \
-    --models-dir /root/work/models --workers $N
+    --models-dir /root/work/models --workers $NC
   [ -x /root/legacy-mp/bin/python ] || uv venv -q -p 3.11 /root/legacy-mp   # legacy Holistic, as the v2 pairs' inputs
   VIRTUAL_ENV=/root/legacy-mp uv pip install -q mediapipe==0.10.14 av==12.3.0 numpy==2.4.6 protobuf==4.25.9
   python scripts/uwb_lifter_v2_crops.py legacy-jobs --video-dir $W/videos --crop-dir $W/c/crops --legacy-dir $W/c/legacy \
     --jobs $W/legacy-jobs.json
   mkdir -p $W/c/legacy
-  /root/legacy-mp/bin/python scripts/legacy_holistic_arrays.py --jobs $W/legacy-jobs.json --workers $N \
+  /root/legacy-mp/bin/python scripts/legacy_holistic_arrays.py --jobs $W/legacy-jobs.json --workers $NC \
     --hashes $W/c/legacy-holistic-models.json
   python scripts/uwb_lifter_v2_crops.py check-models --hashes $W/c/legacy-holistic-models.json   # refuses a mismatch
   [ "$(ls $W/c/crops | wc -l)" -eq "$(ls $W/c/legacy | wc -l)" ]
