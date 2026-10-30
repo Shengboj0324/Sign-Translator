@@ -90,7 +90,9 @@ sweep)
   jobs=$(settings | awk -v r="$ROTATE" '{n=split("c01 c03 c05", g, " "); for (i = 0; i < n; i++)
       print $1, $2, g[(r == 1 ? (i + NR - 1) % n : i) + 1]}' | awk -v p="$PART" \
     -v n="$NPARTS" 'p == "" || (NR - 1) % n == index("abcdefgh", p) - 1')
-  echo "$jobs" | xargs -P 3 -L 1 bash -c 'sweep_one "$@"' _
+  # 3 at a time; a dry run prints serially, because parallel echoes of long STAGE lines interleave on a pipe whose
+  # atomic-write size is small (512 bytes on macOS): the CI test then saw a corrupted, seventh command
+  echo "$jobs" | xargs -P "$([ "$DRY" = 1 ] && echo 1 || echo 3)" -L 1 bash -c 'sweep_one "$@"' _
   while read h f g; do      # (a here-string, not a pipe: the exit leaves the script, not a subshell)
     exists $EV/$RUN-sweep-h$h-f$f-$g.json || OMP_NUM_THREADS=8 sweep_one $h $f $g \
       || { echo "evaluation h$h-f$f-$g failed twice"; echo EVAL-DONE; exit 1; }
