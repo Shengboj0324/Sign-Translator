@@ -5696,3 +5696,27 @@ Against `a0-w14b-r10` (BLEU 1.943), on D20. All three meet the rule. Spotting is
 3. If the W14b stack fails rule 3 of amendment 4, the same comparison is made between the corresponding single arms (`a4-r16-n16-r10` against `a4-w14b-n16-r10`).
 
 The word caches for the 1,000 under W14b keep building. An R16 cache for the 1,000 is built only if R16 wins.
+
+### Round 20 stack read and Phase A verdict, recorded (2026-10-31, 13:10 UTC)
+
+**R16 at best of 16.** `a4-r16-n16-r10`: BLEU 2.164; against `a0-w14b-r10` +0.220 [−0.231, +0.683], likelihood +0.026 [+0.004, +0.047], spotting +0.042 [+0.024, +0.058]; wrist speed 2.59× real. Against `a4-w14b-n16-r10`: BLEU −0.165 [−0.591, +0.304], likelihood −0.022 [−0.044, −0.001], spotting −0.024 [−0.040, −0.009].
+
+**W14b stack.** `a9-nogains-n16-r10` (no gains + best of 16): BLEU 2.306 [1.92, 2.68]; likelihood minus blank +0.085 [+0.056, +0.113]; spotting 0.393; wrist speed 2.37× real, spread 2.03×, hands tracked 1.19×; minus blank +0.626 [+0.147, +1.13]; minus shuffled +0.578 [+0.14, +1.034]; minus mismatched words +1.005 [+0.573, +1.46]; likelihood minus shuffled +0.164 [+0.141, +0.187].
+
+| Stack against | Paired BLEU | Paired likelihood | Spotting, paired | Both above 0 |
+|---|---|---|---|---|
+| `a7-nogains-r10` | +0.121 [−0.338, +0.539] | +0.041 [+0.022, +0.064] | +0.073 [+0.059, +0.087] | yes |
+| `a4-w14b-n16-r10` | **−0.022** [−0.42, +0.37] | +0.020 [+0.007, +0.033] | +0.000 [−0.010, +0.012] | **no** |
+| `a0-w14b-r10` | +0.363 [−0.065, +0.778] | +0.068 [+0.048, +0.090] | +0.066 [+0.049, +0.081] | yes |
+
+`@lowpass` on the stack: BLEU −0.058 [−0.327, +0.198], likelihood −0.0003 [−0.004, +0.003]. Not adopted, so A6 stays rejected.
+
+**Verdict by the declared rules:**
+- **Amendment 4, rule 3: the stack fails**, by BLEU −0.022 against best of 16.
+- **Fallback:** the better single lever by likelihood against a0 is A4 (+0.048 against +0.027).
+- **Amendment 5, step 3:** the single arms decide the words, and R16 loses to W14b. R16's no-gains cache is moot and was stopped.
+- **Phase B's arm is W14b, gains on, best of 16.** `stack-check` confirms this and refuses the stack, A7 alone and R16.
+
+**The trade-off, stated plainly.** The stack is stronger on everything but this BLEU difference, which is far inside noise: likelihood +0.020 [+0.007, +0.033], wrist speed 2.37× against 2.57×, order signal +0.578 against +0.35. The rule is applied as declared and not relaxed after seeing the number. A later replacement arm would need its own declared amendment (`R20B_DECLARED_REPLACEMENT`), and it would count as a second read of the 1,000.
+
+**Phase A summary:** adopted A4 (best of 16). A7 passed alone but does not enter Phase B's arm. Rejected A1, A2, A3, A5 (for Phase B's words), A6.
