@@ -5631,3 +5631,17 @@ So A7's comparison is always between two arms proved or generated on one device.
 R16's plain words read better; best-of-N removes the difference. Round 16's lexicon read was similar (+0.057), yet R16 did not improve end-to-end, so a word-level gain has not yet shown that sentences read better.
 
 **Amendment 3.** A5's word read alone cannot meet the adoption rule, which needs sentences. `a8-r16-r10` is `a0-w14b-r10` with R16 step 10000's words (same seeds, word jobs and settings; 5-clip smoke first). **Adopted only if, against `a0-w14b-r10`, form `core_crossfade`: both point estimates above 0 (paired BLEU, paired likelihood minus blank), wrist speed reported, and recogniser v2 spotting paired lower bound above −0.02.** If adopted, Phase B uses R16's words, from its cache if A4 is also adopted. The two priors do not share codes, so this comparison is less tightly paired than A7's. It is evaluation only.
+
+### Round 20 A3 complete, recorded (2026-10-31, 06:26 UTC): no tempo adopted
+
+Against `a1-oracle-r10` (BLEU 2.219, likelihood minus blank +0.032), on D20:
+
+| Arm | BLEU | Paired BLEU | Likelihood minus blank | Paired likelihood | Minus shuffled (BLEU) | Wrist speed / real |
+|---|---|---|---|---|---|---|
+| tempo 0.8 (faster) | 2.224 | +0.004 [−0.406, +0.432] | +0.010 | −0.022 [−0.043, −0.003] | +0.407 [+0.009, +0.805] | 2.31× |
+| tempo 1.0 | 1.972 | −0.247 [−0.639, +0.105] | +0.017 | −0.015 [−0.033, +0.002] | +0.016 [−0.407, +0.396] | 2.31× |
+| tempo 1.0 `@predicted` | 1.932 | −0.288 [−0.672, +0.071] | +0.018 | −0.013 [−0.035, +0.006] | | 1.88× |
+| tempo 1.25 | 2.350 | +0.131 [−0.201, +0.486] | +0.031 | −0.0003 [−0.0145, +0.0138] | +0.467 [+0.109, +0.827] | 2.30× |
+| tempo 1.5 | 2.130 | −0.090 [−0.499, +0.304] | +0.033 | +0.001 [−0.011, +0.014] | +0.435 [+0.024, +0.842] | 2.26× |
+
+**Verdict:** no arm has both point estimates above 0, so A3 is not adopted. Tempo 1.25 misses by −0.0003 on likelihood; the rule is applied as declared and not relaxed. Tempo 0.8 also fails amendment 1's guard. BLEU across the tempos is not monotonic and all intervals overlap, so the 1.25 peak may be noise. Retiming at reference length does not lower wrist speed (2.26–2.31× against 2.17×); only predicted lengths do (1.88×), at 1.34× the reference's length.
