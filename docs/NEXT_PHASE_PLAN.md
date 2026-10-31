@@ -5589,3 +5589,11 @@ Continuous-form oracle under `r10` on D20 (`phase-a/a2-continuous-r10.json`; 82%
 Paired: English minus real BLEU +0.224 [−0.21, +0.62], likelihood +0.024 [−0.029, +0.081]; gloss minus real −0.033 [−0.37, +0.29], −0.039 [−0.089, +0.013].
 
 **Reading:** perfect gloss word choice did not read higher than English matching, so this gives no case for a gloss path. Instrument v1 also cannot separate real ASLLRP signing from blank on BLEU, and it reads isolated clips in English order at or above real signing on likelihood. Its reads on this corpus are therefore weak evidence of comprehension. Instrument v2 and Deaf raters remain the checks.
+
+### Round 20: report-only a0 under `r14b-fraction`, recorded (2026-10-31, 03:52 UTC): closes the vocabulary route
+
+Generated W14b words under `r14b-fraction` on D20 (`phase-a/a0-w14b-r14b-fraction.json`; unmatched 17.4%, 12.16 words per sentence): BLEU 1.700 [1.41, 2.00]; shuffled 1.656; mismatched words 0.869; `@lowpass` 1.616; likelihood minus blank −0.059 [−0.086, −0.032]; spotting 0.323 (mismatched 0.098), order 0.854; wrist speed 3.70× real, spread 2.19×, hands tracked 1.21×.
+
+Against `a0-w14b-r10`: BLEU −0.244 [−0.61, +0.103], likelihood −0.076 [−0.101, −0.051]. Minus blank +0.019 [−0.39, +0.433]; minus shuffled +0.043 [−0.313, +0.377].
+
+**Reading:** by the condition declared at 00:43 this gives no evidence for a new vocabulary lever. The poor tracking of real Sem-Lex clips is not the explanation here, because generated hands are tracked at 1.21×; more words read worse and move far faster (3.70× against 2.60×). No such lever is declared.
