@@ -5597,3 +5597,11 @@ Generated W14b words under `r14b-fraction` on D20 (`phase-a/a0-w14b-r14b-fractio
 Against `a0-w14b-r10`: BLEU −0.244 [−0.61, +0.103], likelihood −0.076 [−0.101, −0.051]. Minus blank +0.019 [−0.39, +0.433]; minus shuffled +0.043 [−0.313, +0.377].
 
 **Reading:** by the condition declared at 00:43 this gives no evidence for a new vocabulary lever. The poor tracking of real Sem-Lex clips is not the explanation here, because generated hands are tracked at 1.21×; more words read worse and move far faster (3.70× against 2.60×). No such lever is declared.
+
+### Round 20 A3 tempo-1.0, recorded (2026-10-31, 03:55 UTC)
+
+Continuous-pace retiming of the `r10` oracle on D20 (`phase-a/a3-tempo-1.0-r10.json`):
+- **Reference duration:** BLEU 1.972 [1.60, 2.36], against `a1-oracle-r10` −0.247 [−0.639, +0.105]; likelihood minus blank +0.017 [−0.012, +0.046], paired −0.015 [−0.033, +0.002]. Shuffled 1.956, mismatched words 1.252. Wrist speed 2.31× real, spread 2.20×, hands tracked 1.00×. Spotting 0.415, order 0.899.
+- **`@predicted` (deployable):** BLEU 1.932 [1.59, 2.28], paired −0.288 [−0.672, +0.071]; likelihood minus blank +0.018 [−0.012, +0.048], paired −0.013 [−0.035, +0.006]. Wrist speed 1.88× real, spread 2.28×; 1.34× the reference's length.
+
+Both point estimates are below 0, so tempo-1.0 is not adopted. Slowing does lower wrist speed, but the read falls with it; S0's tempo artefact works against slower forms on BLEU, not on likelihood. Tempos 0.8, 1.25 and 1.5 are pending.
