@@ -5788,3 +5788,9 @@ Full design: `reports/s2_design.md`. **The one question:** does removing the his
 | **B0, baselines** | W14b end-to-end on D20, gains and no gains, reference and predicted lengths |
 
 **No S2 training unless, on D20:** P1 passes; P2's curve at P1-head samples' error predicts BLEU at least 0.2 above B0's no-gains read and ΔNLL at least 0.10 above W14b's; those samples' time-averaged ρ is below W14b's with lower bound above 0. The design's own estimate is about one chance in three that P1 passes, a judgement rather than a measurement. A P1 fail closes S2 untrained, confirmed once on a pod. Probes run after review; S2 training also still needs M1 or the structural branch as declared. The pilot's gates in the design's section 6 are not declared yet.
+
+### Deployability baseline: proposed release bar, recorded (2026-10-31, 22:00 UTC; a proposal, not a rule, until the owner approves)
+
+The declared layers are: instruments (3.8 with instrument v2 agreeing); exit gate and strict review R1–R7, with the test partition read once on unseen signers; Deaf raters (`docs/HUMAN_EVALUATION_PROTOCOL.md`); serving (`docs/DEPLOYMENT.md`); licensing. The declared human bar, comprehension lower bound above chance (25%), shows meaning gets through and is not a release bar.
+
+**Proposed, before raters start:** comprehension lower bound ≥ 70%; within 10 points of real signing on the same sentences; negation recovered, with false alarms reported; wrist speed 0.8–1.25× real; all at predicted timing, on unseen signers. Current forms use each reference's true length, so 2.57 is not a deployable form.
