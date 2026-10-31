@@ -24,7 +24,8 @@ reported per join.
 joins as above; then the sentence is fitted like ``compositional_grammar.plan_frames``: ``pad`` fills the reference
 with the first word's approach and the last word's return (lead share as the model's), a body longer than the reference
 is compressed (``allocate``, at least one frame per sign; more signs than frames: truncated); ``none`` keeps the
-predicted length (the report-only predicted-duration form). ``tempo`` > 1 is slower.
+body's own length (the evaluation never uses it: its ``@predicted`` form pads or compresses to the predicted seconds).
+``tempo`` > 1 is slower.
 
 **Butterworth low-pass** (``lowpass_state``): 4th-order Butterworth (second-order sections), zero-phase (``sosfiltfilt``)
 on every channel's values along time. Forward-backward filtering squares the magnitude response: at the nominal cutoff
@@ -36,7 +37,10 @@ Validity, observation and confidence are unchanged.
 
 **Predicted sentence duration** (``fit_duration_model``, report-only): least squares of How2Sign *train* sentence seconds
 on their normalised token count; deployment cannot read the reference clip's duration, so the ``@predicted`` forms
-replace it by this text-only prediction.
+replace it by this text-only prediction, under either plan: the same words, with ``--retime reference`` the
+``--timing`` plan and with ``--retime continuous`` the continuous plan, filling round(predicted x 24) frames. Only the
+sentence's total changes; the main form and its controls keep the reference's duration. A sentence with no selected word
+is the blank at the predicted length in that form, and ``blank@predicted`` is its comparator, so the form is text-only.
 """
 from __future__ import annotations
 

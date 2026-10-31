@@ -140,6 +140,25 @@ For the floor: D20 How2Sign wrists in the same frame (30 clips) have a median of
 
 **Predicted duration** (report-only, cheap): least squares of How2Sign *train* seconds on normalised token count, floor 0.5 s. `@predicted` renders the main form's timing with that duration instead of the reference's.
 
+**Phase a10, predicted timing of the adopted arm** (report-only; nothing adopts from it). `ARM=gains` or `nogains`, `VOCAB=r10`, best of 16, from the stored caches; a4's or a9's options plus `--predicted-duration`.
+
+| Form | Words | Timing |
+|---|---|---|
+| `core_crossfade`, `/shuffled`, `/mismatched_words` | the stored cache's | sign-fitted plan filling the reference clip's true frames, as a4 and a9 |
+| `core_crossfade@predicted` | the same | the same plan rule filling round(predicted seconds × 24) frames, seconds = max(−0.083 + 0.3691 × tokens, 0.5) |
+
+- **`@predicted` is not gated to `--retime continuous`.** The code renders it under either plan; only a3 passed the option before. No rendering change was needed.
+- **Added under `--predicted-duration` only:** `@predicted` spotting (paired against the main form), `blank@predicted`, `predicted_timing` in the merged report, and `--expect-duration-model`.
+- **Report-only:** `merge --report-only` puts `report_only: true` at the report's top level and writes no verdicts. `round20_compare.py forms` labels any `@predicted` form or report-only report as report-only and prints no rule.
+- **Built-in check:** `same-codes --whole-read`. Every stored form's per-clip motion and the plans must equal the stored shard's exactly on every clip read, or ALERT and no merge (a smoke skips `/mismatched_words`, whose partners follow the run's length). It records identical hypotheses per form in `<name>-reproduces.json`. Main-form hypotheses that differ ALERT without stopping: device or the unpinned `transformers` can move them, and comparisons inside the run stay paired. `--paired-with` then reports main-form BLEU and likelihood against the stored read.
+- **Blanks:** blank BLEU depends only on the frame count (review of 5f1f12c: 1.6802 at true length, 1.5592 at predicted length on D20), so `@predicted` minus a true-length blank understates by about 0.12. `minus_blank_at_predicted_length` is the like-for-like read; `minus_blank` stays beside it.
+- **Word-less sentences:** D20's 6 (clips 11, 46, 65, 75, 91, 347) are `blank@predicted` in `@predicted`, so that form is text-only throughout (`wordless_clips`).
+- **Controls:** `@predicted` has both blanks, deranged references and `reference_duration`. It has no shuffled or mismatched-words form of its own, so the main form's order and content controls are at true length.
+- **Length, read on D20 metadata before any a10 read:** predicted over true is 1.198 pooled, 1.3445 mean per clip, 1.290 median per clip, on the 494 clips with words, and 7.1% of those clips exceed 2×. The pod's report carries these (`seconds_over_reference`) beside the hypotheses' length ratios. The design note's 1.21 is another fit (`reports/s2_design.md`). The model is unchanged.
+- **This length is outside P3's bar.** 1.198 falls outside P3's [0.95, 1.10] (S2 design). a10 reads the existing model as it is; it does not pass that bar.
+- **Wrist speed is not evidence here.** Stretching the same words by about 20% lowers wrist speed by construction. A lower ratio at `@predicted` is not progress toward the release bar's 0.8–1.25×.
+- **`SMOKE=1` reads 5 real D20 clips** with both instruments and stores them under `smoke/`. Nothing decides on them.
+
 ## 5. Word cache (A4) and word-level reads (A5)
 
 `scripts/round20_word_cache.py` takes the entries of the set's stage-1 selection on the chosen vocabulary.

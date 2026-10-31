@@ -80,6 +80,8 @@ def on_stubs(tmp_path, text, env, *, smoke, gpu):
         'case "$1" in scripts/*round20_word_cache*) echo "$* #OMP=$OMP_NUM_THREADS" >> "$STUB_LOG" ;;\n'
         '  scripts/*) echo "$*" >> "$STUB_LOG" ;; esac\n'
         'case "$*" in *c20-gate*) [ "$STUB_GATE" = 1 ] || exit 1 ;; esac\n'
+        'case "$*" in *" same-codes "*) [ "${STUB_SAME:-0}" = 0 ] || exit "$STUB_SAME" ;; esac\n'
+        'if [ -n "${STUB_FAIL_MATCH:-}" ]; then case "$*" in *"$STUB_FAIL_MATCH"*) exit 1 ;; esac; fi\n'
         'case "$*" in *"round20_phase_b_verdict.py verdict "*) exit ${STUB_VERDICT:-0} ;; esac\n'
         'case "$*" in *" stack-check "*) exit ${STUB_STACK:-0} ;; *" one-arm "*) exit ${STUB_ONE_ARM:-0} ;; esac\n'
         'if [ -n "$STUB_FAIL_SHARD" ]; then case "$*" in *"--shard $STUB_FAIL_SHARD "*) exit 1 ;; esac; fi\n'
@@ -96,8 +98,9 @@ def on_stubs(tmp_path, text, env, *, smoke, gpu):
     text = text.replace("source /root/r2env.sh\n", "").replace("cd /root/work/Sign-Translator\n", "")
     text = text.replace("/root/venv/bin/python", "python").replace("/root/r20b-", f"{tmp_path}/r20b-")
     text = text.replace("/root/r20-", f"{tmp_path}/r20-")
-    text = re.sub(r"^sha\(\) .*$", "sha() { echo stubsha; }", text, flags=re.M)
-    text = re.sub(r"^pin\(\) .*$", 'pin() { echo "pin $1" >> "$STUB_LOG"; }', text, flags=re.M)
+    text = re.sub(r"^sha\(\) .*$", 'sha() { [ -n "${STUB_SHA_EMPTY:-}" ] || echo stubsha; }', text, flags=re.M)
+    text = re.sub(r"^pin\(\) .*$", 'pin() { echo "pin $1" >> "$STUB_LOG"; [ -z "${STUB_PINS:-}" ] || echo "$1 $2" >> "$STUB_PINS"; '
+                  'case " ${STUB_PIN_FAIL:-} " in *" $1 "*) die "$1 differs from its pin" ;; esac; }', text, flags=re.M)
     text = re.sub(r"^exists\(\) .*$", 'exists() { case " $STUB_EXISTS " in *" $1 "*) return 0 ;; esac; return 1; }', text,
                   flags=re.M)
     script = tmp_path / "job.sh"
