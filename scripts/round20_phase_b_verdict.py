@@ -55,9 +55,10 @@ M1_THRESHOLD = 2.55
 SPOTTING_FLOOR = -.02
 W14B_WRIST_SPEED = 2.64            # the plan's read of the comparator (motion_ratio_to_real: 2.6448)
 SCORER = "sign-recognizer-v3d"
+LOWPASS_HZ = 6.                    # amendment 4: A6 enters only as the stack's main form (LOWPASS=1)
 # every round-20 option the arm leaves as the comparator had it (--likelihood reads, the adopted options are below)
 ROUND20_OFF = dict(vocabulary_mix=None, semlex_core="fraction", activity_margin=None, oracle_source="isolated",
-                   gloss_manifest=None, retime="reference", tempo=1., bridge_velocity=None, lowpass_hz=None,
+                   gloss_manifest=None, retime="reference", tempo=1., bridge_velocity=None,
                    predicted_duration=False, semlex_oracle_tracked=False, lowpass_report_hz=None)
 NOT_PREDICTED = "not reported: @predicted applies to an A3 arm and no A3 arm was adopted"
 NO_PAIRED_LIKELIHOOD = "the stored comparator ran without --likelihood: no likelihood of W14b composition exists at any level"
@@ -95,10 +96,13 @@ def settings_differences(arm: dict, comparator: dict) -> list[str]:
     return out
 
 
-def arm_errors(settings: dict, *, prior_checkpoint: str, no_gains: bool, best_of: int, sentences) -> list[str]:
+def arm_errors(settings: dict, *, prior_checkpoint: str, no_gains: bool, best_of: int, sentences,
+               lowpass: bool = False) -> list[str]:
     """What in the arm's settings is not the named arm: the prior, the gains, the cache, nothing else on, likelihood on."""
     r = settings.get("round20") or {}
     out = [f"settings.round20.{k}: {r.get(k)!r}, not {v!r}" for k, v in ROUND20_OFF.items() if r.get(k, v) != v]
+    if r.get("lowpass_hz") != (LOWPASS_HZ if lowpass else None):
+        out.append(f"settings.round20.lowpass_hz: {r.get('lowpass_hz')!r}, not {LOWPASS_HZ if lowpass else None!r}")
     if not r.get("likelihood"):
         out.append("settings.round20.likelihood is not on")
     if r.get("sentences") != sentences and (not sentences or (r.get("sentences") or {}).get("sha256") != sentences["sha256"]
@@ -175,7 +179,7 @@ def words_of(report: dict) -> list:
 
 
 def judge_val1000(arm: dict, comparator: dict, pilot: dict, *, shards_arm, shards_comparator, prior_checkpoint: str,
-                  no_gains: bool, best_of: int, boot: int = 1000) -> dict:
+                  no_gains: bool, best_of: int, boot: int = 1000, lowpass: bool = False) -> dict:
     """The verdict of the 1,000 from the loaded reports (module docstring); SystemExit when they are not paired."""
     from round20_compare import check_pairable, spotting_guard
     check_arm_form(arm)
@@ -183,7 +187,8 @@ def judge_val1000(arm: dict, comparator: dict, pilot: dict, *, shards_arm, shard
         raise SystemExit(f"the comparator has no {FORM} form")
     check_pairable(arm, comparator)
     wrong = settings_differences(arm["settings"], comparator["settings"])
-    wrong += arm_errors(arm["settings"], prior_checkpoint=prior_checkpoint, no_gains=no_gains, best_of=best_of, sentences=None)
+    wrong += arm_errors(arm["settings"], prior_checkpoint=prior_checkpoint, no_gains=no_gains, best_of=best_of, sentences=None,
+                        lowpass=lowpass)
     if wrong:
         raise SystemExit("not the declared arm with the comparator's settings: " + "; ".join(wrong))
     if arm.get("stage1_check") != comparator.get("stage1_check") or words_of(arm) != words_of(comparator):
@@ -218,6 +223,9 @@ def judge_val1000(arm: dict, comparator: dict, pilot: dict, *, shards_arm, shard
     missing = [f"{k}: {v['reason']}" for k, v in items.items() if not v["available"]]
     if reads["likelihood_minus_blank"] is None:
         missing.append("likelihood minus blank: the report has none")
+    notes = ["the stored pilot decodes with gains; this arm's words do not"] if no_gains else []
+    if lowpass:
+        notes.append("the stored pilot and the comparator are not low-passed; this arm's composed forms and controls are")
     paired_ll = (((arm.get("likelihood") or {}).get("forms") or {}).get(FORM) or {}).get(f"minus_paired_{FORM}")
     real = sum(a == b for a, b in zip(arm["forms"]["real"]["hypotheses"], comparator["forms"]["real"]["hypotheses"])) \
         if "real" in arm["forms"] and "real" in comparator["forms"] else None
@@ -235,17 +243,17 @@ def judge_val1000(arm: dict, comparator: dict, pilot: dict, *, shards_arm, shard
                                  "entry, so only the sentences are shared")),
         end_to_end=dict(checkpoint_key=pilot["checkpoint_key"], bleu=meaning["generated"].get("bleu"),
                         real_identical=e2e.get("real_identical"), blank_identical=e2e.get("blank_identical"),
-                        **({"note": "the stored pilot decodes with gains; this arm's words do not"} if no_gains else {})))
+                        **({"note": "; ".join(notes)} if notes else {})))
 
 
 def judge_c20(arm: dict, val_verdict: dict, *, prior_checkpoint: str, no_gains: bool, best_of: int, sentences: dict,
-              comparator: dict) -> dict:
+              comparator: dict, lowpass: bool = False) -> dict:
     """The confirmation set: M1's second condition, and the reads beside it. No comparator or pilot read this set."""
     check_arm_form(arm)
     gate_c20(val_verdict)
     wrong = settings_differences(arm["settings"], comparator["settings"])
     wrong += arm_errors(arm["settings"], prior_checkpoint=prior_checkpoint, no_gains=no_gains, best_of=best_of,
-                        sentences=sentences)
+                        sentences=sentences, lowpass=lowpass)
     if wrong:
         raise SystemExit("not the declared arm with the comparator's settings: " + "; ".join(wrong))
     reads = next_to_bleu(arm)
@@ -286,6 +294,7 @@ def main(argv=None) -> int:
     v.add_argument("--prior-checkpoint-key", required=True)
     v.add_argument("--no-gains", required=True, type=int, choices=(0, 1))
     v.add_argument("--best-of", required=True, type=int, choices=(0, 4, 8, 16))
+    v.add_argument("--lowpass", type=int, choices=(0, 1), default=0, help="the arm's main form is low-passed at 6 Hz")
     v.add_argument("--set", required=True, choices=("val1000", "c20"), dest="sentence_set")
     v.add_argument("--val1000-verdict-key", help="c20: the arm's stored val1000 verdict")
     v.add_argument("--sentences-key", help="c20: the set the report must have read")
@@ -327,7 +336,7 @@ def main(argv=None) -> int:
                             shards_arm=report_shards(store, args.arm_key, arm, None),
                             shards_comparator=report_shards(store, args.comparator_key, comparator, None),
                             prior_checkpoint=args.prior_checkpoint_key, no_gains=bool(args.no_gains),
-                            best_of=args.best_of, boot=args.bootstrap)
+                            best_of=args.best_of, boot=args.bootstrap, lowpass=bool(args.lowpass))
         out["end_to_end"].update(key=args.end_to_end_key, sha256=args.end_to_end_sha256)
     else:
         if not (args.val1000_verdict_key and args.sentences_key and args.sentences_sha256):
@@ -336,11 +345,12 @@ def main(argv=None) -> int:
             raise SystemExit(f"C20 refused: no stored verdict {args.val1000_verdict_key}")
         out = judge_c20(arm, json.loads(store.get(args.val1000_verdict_key)), prior_checkpoint=args.prior_checkpoint_key,
                         no_gains=bool(args.no_gains), best_of=args.best_of, comparator=comparator,
+                        lowpass=bool(args.lowpass),
                         sentences=dict(key=args.sentences_key, sha256=args.sentences_sha256))
         out["val1000_verdict_key"] = args.val1000_verdict_key
     out["arm"] = dict(key=args.arm_key, sha256=sha(arm_payload), prior=args.prior,
                       prior_checkpoint_key=args.prior_checkpoint_key, no_decoder_gains=bool(args.no_gains),
-                      best_of=args.best_of)
+                      best_of=args.best_of, lowpass=bool(args.lowpass))
     out.setdefault("comparator", {}).update(key=args.comparator_key, sha256=args.comparator_sha256)
     data = json.dumps(out, indent=1).encode()
     print(data.decode(), flush=True)

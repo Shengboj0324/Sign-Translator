@@ -3,12 +3,16 @@
 # amendments 1-3). Evaluation only: NOTHING TRAINS, nothing is tuned. One stacked arm of every lever Phase A adopted, against
 # the stored W14b composition (2.306). PREPARED, NOT LAUNCHED: which levers are adopted is not known yet.
 #
-#   R20B_PHASE=cache|run|verdict PRIOR=w14b|r16 NO_GAINS=0|1 BEST_OF=0|4|8|16 SET=val1000|c20 [SMOKE=1] \
+#   R20B_PHASE=cache|run|verdict PRIOR=w14b|r16 NO_GAINS=0|1 BEST_OF=0|4|8|16 SET=val1000|c20 [LOWPASS=0|1] [SMOKE=1] \
 #     bash runpod/fleet/round20_phase_b.sh
 #
 # The arm: PRIOR's words (A5/a8), without decoder gains if NO_GAINS=1 (A7), from a best-of-BEST_OF cache if BEST_OF is not 0
 # (A4); BEST_OF=0 generates fresh words. PRIOR=w14b NO_GAINS=0 BEST_OF=0 is the comparator itself and is refused.
-# Tempo (A3), low-pass (A6), vocabulary (A1) and continuous words (A2) were not adopted: their options stay off.
+# Tempo (A3), vocabulary (A1) and continuous words (A2) were not adopted: their options stay off.
+# LOWPASS=1 (amendment 4, rule 4: A6 enters only if the stack's @lowpass has both point estimates above 0 against the stack):
+# --lowpass-hz 6 on the main form and its controls, applied after rendering, so seeds, codes, plans and the cache are the
+# unfiltered arm's; real and blank stay unfiltered. Its only evidence is a9's read of the W14b no-gains stack, so it is refused
+# on anything else: gained words (A6 was rejected there), fresh words (position seeds, not a9's entry seeds), R16 (other codes).
 #
 # Order and pods (one L40S as in Phase A, wall-clock = GPU-hours; the 1,000 hold 894 entries under r10, against D20's 705):
 #   1. cache   (GPU, only if BEST_OF is not 0)  894 x BEST_OF samples, CACHE_PROCS (4) shard processes on one GPU, at Phase
@@ -91,9 +95,17 @@ case $SET in val1000|c20) ;; *) die "SET must be val1000 or c20" ;; esac
 [ "$PRIOR" = w14b ] && [ "$NO_GAINS" = 0 ] && [ "$BEST_OF" = 0 ] && die "no lever adopted: this arm is the stored W14b composition itself"
 [ "$PHASE" = cache ] && [ "$BEST_OF" = 0 ] && die "cache: BEST_OF=0 uses no cache"
 [ "$PHASE" = verdict ] && [ "${SMOKE:-0}" = 1 ] && die "verdict: no smoke (a smoke run has no comparator)"
+LOWPASS=${LOWPASS:-0}
+case $LOWPASS in
+  0) LP=""; LPTAG="" ;;
+  1) { [ "$PRIOR" = w14b ] && [ "$NO_GAINS" = 1 ] && [ "$BEST_OF" != 0 ]; } ||
+       die "LOWPASS=1: only on the stack a9 read (PRIOR=w14b NO_GAINS=1, BEST_OF 4, 8 or 16)"
+     LP="--lowpass-hz 6"; LPTAG=-lp6 ;;
+  *) die "LOWPASS must be 0 or 1" ;;
+esac
 uv pip install -q 'transformers>=4.40,<5' sentencepiece
 
-ARM=$PRIOR-$GAINS-n$BEST_OF
+ARM=$PRIOR-$GAINS-n$BEST_OF$LPTAG      # the cache's prefix has no LOWPASS: the filter comes after rendering
 REPORT=$ARM-$SET
 VAL_VERDICT=$OUT/verdict-$ARM-val1000.json
 # C20 stays untouched until an M1 claim: no key of it is read, not even to pin it, before this arm's val1000 verdict opens it
@@ -171,7 +183,7 @@ case $PHASE in
       --selection stage1 --timing sign-fitted --core-margin 0.1 --total-fit pad --guidance 1.5 \
       --part-temperature body=1.1,left_hand=1.1,right_hand=1.1,face=1.0 --expect-model-sha256 $MODEL \
       --generator-mix-key $R14B --generator-mix-sha256 $R14BSHA --translator-run $(basename $BT) \
-      --recognizer-run $(basename $V2) --likelihood --device $DEV"
+      --recognizer-run $(basename $V2) --likelihood --device $DEV $LP"
     if [ "$BEST_OF" = 0 ]; then
       pin $CK $CKSHA
       WORDS="--checkpoint-key $CK --word-workers ${WORD_WORKERS:-4} $NG"
@@ -203,7 +215,7 @@ case $PHASE in
       if [ "$SET" = val1000 ]; then FOR_SET="--end-to-end-key $E2E --end-to-end-sha256 $E2ESHA"
       else FOR_SET="--val1000-verdict-key $VAL_VERDICT --sentences-key $C20 --sentences-sha256 $C20SHA"; fi
       python scripts/round20_phase_b_verdict.py verdict --arm-key $MERGED --comparator-key $CMP --comparator-sha256 $CMPSHA \
-        $FOR_SET --prior $PRIOR --prior-checkpoint-key $CK --no-gains $NO_GAINS --best-of $BEST_OF --set $SET \
+        $FOR_SET --lowpass $LOWPASS --prior $PRIOR --prior-checkpoint-key $CK --no-gains $NO_GAINS --best-of $BEST_OF --set $SET \
         --output-key $V || die "verdict $REPORT, nothing stored (exit 2: a rule item is unavailable; 1: refused)"
       echo "R20B verdict $V $(sha $V)"
     fi ;;
