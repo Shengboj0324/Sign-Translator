@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 from types import SimpleNamespace
@@ -548,7 +549,253 @@ def test_a_word_cache_without_gains(tmp_path, stage2_store, monkeypatch):  # noq
 
 def test_the_pod_script_runs_a7_as_a0_plus_the_option():
     text = (ROOT / "runpod/fleet/round20_phase_a.sh").read_text()
-    a0 = text.split("  a0) pin $W14B $W14BSHA\n      compose a0-w14b-$VOCAB ")[1].split(" ;;")[0]
-    a7 = text.split("  a7) pin $W14B $W14BSHA\n      compose a7-nogains-$VOCAB ")[1].split(" ;;")[0]
+    a0 = text.split("      compose a0-w14b-$VOCAB ")[1].split(" ;;")[0]
+    a7 = text.split("      compose a7-nogains-$VOCAB ")[1].split(" ;;")[0]
     assert a7 == a0 + " --no-decoder-gains" and "$GEN --lowpass-report-hz 6" in a0
-    assert "#   a7    (GPU)" in text and "a1 a0 a7 a2" in text
+    assert "#   a7    (GPU, VOCAB=r10 only" in text and "a1 a0 a7 a2" in text
+
+
+# ---- A7: proving the same codes ---------------------------------------------------------------------------------------
+
+def test_a0s_smoke_jobs_are_the_full_runs_first_jobs_and_only_the_controls_move():
+    import scripts.round15_stage2 as r2
+    from sentence_exposure_diagnostic import derangement
+    plans = [dict(entries=[f"w{k}", "x"], generate=[.3, .4], targets=[.2, .2]) for k in range(500)]
+    orders = [[1, 0]] * 500
+
+    def jobs(n):
+        return r2.plan_jobs(["core_crossfade"], plans[:n], derangement(n, 1), orders[:n], overlap=4)
+    full, smoke = jobs(500), jobs(5)
+    for i in range(5):
+        assert smoke[("core_crossfade", "", i)] == full[("core_crossfade", "", i)]     # words and position-derived seeds
+    assert any(smoke[("core_crossfade", "/mismatched_words", i)] != full[("core_crossfade", "/mismatched_words", i)]
+               for i in range(5))                                                      # the derangement depends on n
+
+
+def test_same_codes_check(tmp_path, stage2_store, likelihood_stub):  # noqa: F811
+    from scripts.round20_compare import main as compare_main, same_codes_check
+    store, sha, *_ = stage2_store
+    put_gains(store)
+    ssha, _ = put_set(store, sha)
+    a0 = ["--sentences-key", "sets/d20.json", "--sentences-sha256", ssha, "--variants", "core_crossfade", "--likelihood",
+          "--lowpass-report-hz", "6"]
+    assert ce.main(run_args(tmp_path, sha, *a0, "--output-key", "e/full.json")) == 0
+    assert ce.main(run_args(tmp_path, sha, *a0, "--clips", "2", "--output-key", "e/smoke.json")) == 0
+    assert ce.main(run_args(tmp_path, sha, *a0, "--no-decoder-gains", "--clips", "2", "--output-key", "e/off.json")) == 0
+    full, smoke, off = (json.loads(store.get(f"e/{k}.json")) for k in ("full", "smoke", "off"))
+    assert smoke["settings"]["clips"] == 2 and full["settings"]["clips"] == 4
+    assert same_codes_check(smoke, full, first=2) == dict(same=True, form="core_crossfade", clips=2, words=sum(
+        len(r["entries"]) for r in smoke["clips"]))                                  # the smoke is the run's first clips
+
+    def changed(edit):
+        copy = json.loads(json.dumps(smoke))
+        edit(copy)
+        return copy
+
+    def bump(c):                                                                 # one value, by the smallest amount
+        c["clips"][1]["motion"]["core_crossfade"]["wrist_speed"] = np.nextafter(
+            c["clips"][1]["motion"]["core_crossfade"]["wrist_speed"], np.inf).item()
+    with pytest.raises(SystemExit, match=r"clip 1 motion.core_crossfade.wrist_speed"):
+        same_codes_check(changed(bump), full, first=2)
+    with pytest.raises(SystemExit, match="clip 0 entries"):
+        same_codes_check(changed(lambda c: c["clips"][0].update(entries=["other"])), full, first=2)
+    with pytest.raises(SystemExit, match="clip 0: no motion"):
+        same_codes_check(changed(lambda c: c["clips"][0]["motion"].pop("core_crossfade")), full, first=2)
+    with pytest.raises(SystemExit, match="settings.checkpoint_key"):
+        same_codes_check(changed(lambda c: c["settings"].update(checkpoint_key="other.pt")), full, first=2)
+    with pytest.raises(SystemExit, match="another sentence set"):
+        same_codes_check(changed(lambda c: c["settings"]["round20"]["sentences"].update(sha256="0" * 64)), full, first=2)
+    with pytest.raises(SystemExit, match="--first 3"):                           # more clips than the smoke has
+        same_codes_check(smoke, full, first=3)
+    with pytest.raises(SystemExit, match="clip 1: not in the stored run"):
+        same_codes_check(smoke, dict(full, clips=full["clips"][:1]), first=2)
+    with pytest.raises(SystemExit, match="no word"):
+        same_codes_check(changed(lambda c: [r.update(entries=[]) for r in c["clips"]]),
+                         dict(full, clips=[dict(r, entries=[]) for r in full["clips"]]), first=2)
+    nan = changed(lambda c: c["clips"][0]["motion"]["core_crossfade"].update(wrist_spread=float("nan")))
+    assert same_codes_check(nan, json.loads(json.dumps(nan)), first=2)["same"]   # NaN read twice is the same value
+    with pytest.raises(SystemExit, match="no_decoder_gains"):                    # an ungained run never passes as a0
+        same_codes_check(off, full, first=2)
+    unmarked = json.loads(json.dumps(off))
+    del unmarked["settings"]["round20"]["no_decoder_gains"]
+    with pytest.raises(SystemExit, match="motion.core_crossfade"):               # and the motion itself tells
+        same_codes_check(unmarked, full, first=2)
+    root = ["--store", f"dir:{tmp_path / 'store'}", "--first", "2"]
+    assert compare_main(["same-codes", *root, "--a", "e/smoke.json", "--b", "e/full.json"]) == 0
+    with pytest.raises(SystemExit, match="not the same codes") as e:
+        compare_main(["same-codes", *root, "--a", "e/off.json", "--b", "e/full.json"])
+    assert e.value.code not in (0, None)                                         # the pod script stops on this
+
+
+def phase(tmp_path, *, vocab="r10", gpu=True, same=True, stored=True, smoke=False, done=False):
+    """The real phase script on stubs: every python run logged, the store and the pod's paths replaced."""
+    import os
+    stubs = tmp_path / "stubs"
+    stubs.mkdir(exist_ok=True)
+    log = tmp_path / "commands.log"
+    log.write_text("")
+    (stubs / "python").write_text('#!/bin/bash\ncase "$1" in scripts/*) echo "$*" >> "$STUB_LOG" ;; esac\n'
+                                  'case "$*" in *same-codes*) [ "$STUB_SAME" = 1 ] || exit 1 ;; esac\nexit 0\n')
+    (stubs / "uv").write_text("#!/bin/bash\nexit 0\n")
+    smi = stubs / "nvidia-smi"
+    smi.write_text('#!/bin/bash\necho "GPU 0: Test RTX 4090 (UUID: GPU-x)"\n')
+    for f in stubs.iterdir():
+        f.chmod(0o755)
+    if not gpu:
+        smi.unlink()
+    text = (ROOT / "runpod/fleet/round20_phase_a.sh").read_text()
+    text = text.replace("source /root/r2env.sh\n", "").replace("cd /root/work/Sign-Translator\n", "")
+    text = text.replace("/root/venv/bin/python", "python")
+    text = re.sub(r"^sha\(\) .*$", "sha() { echo stubsha; }", text, flags=re.M)
+    text = re.sub(r"^pin\(\) .*$", "pin() { :; }", text, flags=re.M)
+    # the stored a0 shard exists (or not), and the stored a7 report when done
+    text = re.sub(r"^exists\(\) .*$", 'exists() { case "$1" in *phase-a/a0-w14b-r10-shard0.json) [ "$STUB_STORED" = 1 ] ;; '
+                  '*phase-a/a7-nogains-r10.json) [ "$STUB_DONE" = 1 ] ;; *) return 1 ;; esac; }', text, flags=re.M)
+    script = tmp_path / "phase.sh"
+    script.write_text(text)
+    env = dict(os.environ, PATH=f"{stubs}:/usr/bin:/bin", THREADS="1", R20_PHASE="a7", VOCAB=vocab, STUB_LOG=str(log),
+               STUB_SAME=str(int(same)), STUB_STORED=str(int(stored)), STUB_DONE=str(int(done)))
+    if smoke:
+        env["SMOKE"] = "1"
+    run = subprocess.run(["bash", str(script)], env=env, capture_output=True, text=True)
+    return run.returncode, run.stdout, log.read_text().splitlines()
+
+
+def test_the_a7_phase_proves_the_codes_before_the_full_run(tmp_path):
+    code, out, commands = phase(tmp_path)
+    assert code == 0 and "R20 a7 GPU: GPU 0: Test RTX 4090" in out and "R20-PHASE-A-DONE 0" in out
+    run = [c for c in commands if "round15_compose_eval.py run" in c]
+    assert len(run) == 2
+    a0, a7 = run
+    stamp = re.search(r"phase-a/smoke/(\d{8}T\d{6}Z)/a0-w14b-r10-shard0\.json", a0)
+    assert stamp and a0.index("--clips 500") < a0.index("--clips 5 ")                 # the last --clips wins: the smoke
+    assert "--no-decoder-gains" not in a0 and "--lowpass-report-hz 6" in a0
+    assert a7.endswith("--no-decoder-gains --output-key "
+                       "acquisition/2026-10-17-v1/youtube-asl-v1/round20/phase-a/a7-nogains-r10-shard0.json")
+    assert a7.replace(" --no-decoder-gains", "").split(" --output-key")[0] == \
+        a0.replace(" --clips 5 ", " ").split(" --output-key")[0]                        # a0's arguments, plus the option
+    check = next(k for k, c in enumerate(commands) if "same-codes" in c)
+    assert commands.index(a0) < check < commands.index(a7)
+    assert (f"--a acquisition/2026-10-17-v1/youtube-asl-v1/round20/phase-a/smoke/{stamp[1]}/a0-w14b-r10-shard0.json "
+            "--b acquisition/2026-10-17-v1/youtube-asl-v1/round20/phase-a/a0-w14b-r10-shard0.json "
+            "--form core_crossfade --first 5") in commands[check]
+    # a mismatch: an ALERT naming the GPU, and nothing further runs
+    code, out, commands = phase(tmp_path, same=False)
+    assert code == 1 and "ALERT" in out and "Test RTX 4090" in out and "R20-PHASE-A-DONE 1" in out
+    assert not any("a7-nogains" in c for c in commands)
+    # no stored a0 shard: no smoke, no run
+    code, out, commands = phase(tmp_path, stored=False)
+    assert code == 1 and "ALERT" in out and "Test RTX 4090" in out and "round15_compose_eval.py" not in "".join(commands)
+    # a CPU fallback dies before anything runs, a smoke may use it and needs no stored a0
+    code, out, commands = phase(tmp_path, gpu=False)
+    assert code == 1 and "needs a GPU" in out and "round15_compose_eval.py" not in "".join(commands)
+    code, out, commands = phase(tmp_path, gpu=False, smoke=True, stored=False)
+    assert code == 0 and not any("same-codes" in c for c in commands)
+    assert any("/smoke/" in c and "a7-nogains-r10-shard0" in c and "--no-decoder-gains" in c for c in commands)
+    # only r10, smoke or not
+    for smoke in (False, True):
+        for vocab in ("r14b-fraction", "r14b-activity"):
+            code, out, commands = phase(tmp_path, vocab=vocab, smoke=smoke)
+            assert code == 1 and "VOCAB must be r10" in out and not commands
+    # a7 already stored: no second smoke
+    code, out, commands = phase(tmp_path, done=True)
+    assert code == 0 and "stored:" in out and not commands
+
+
+# ---- the spotting guard, and the review's small refusals --------------------------------------------------------------
+
+def test_the_spotting_guard_reads_the_shards_and_leaves_the_rule_alone(tmp_path, stage2_store, likelihood_stub):  # noqa: F811
+    from scripts.round20_compare import compare_forms, main as compare_main
+    store, sha, *_ = stage2_store
+    put_gains(store)
+    ssha, texts = put_set(store, sha)
+    a0 = ["--sentences-key", "sets/d20.json", "--sentences-sha256", ssha, "--likelihood"]
+    assert ce.main(run_args(tmp_path, sha, *a0, "--output-key", "e/a0-shard0.json")) == 0
+    assert ce.main(run_args(tmp_path, sha, *a0, "--no-decoder-gains", "--output-key", "e/a7-shard0.json")) == 0
+    merge(tmp_path, "e/a0-shard0.json", "e/a0.json")
+    merge(tmp_path, "e/a7-shard0.json", "e/a7.json")
+    s0, s7, m0, m7 = (json.loads(store.get(f"e/{k}.json")) for k in ("a0-shard0", "a7-shard0", "a0", "a7"))
+    recall = lambda s, f: [r["spotting"][f]["own"]["recall"] for r in s["clips"]]  # noqa: E731
+    out = compare_forms(m7, "core_crossfade", m0, "core_crossfade", boot=50, shards_a=[s7], shards_b=[s0])
+    g = out["spotting_guard"]
+    assert g["available"] and g["recogniser"] == "sign-recognizer-v2" and g["word_source"] == ["generated"]
+    assert g["difference"] == lib.paired_mean(recall(s7, "core_crossfade"), recall(s0, "core_crossfade"), boot=50)
+    assert g["a"] == lib.paired_mean(recall(s7, "core_crossfade"), boot=50)
+    assert out["spotting_guard_lower_bound"] == g["difference"]["ci95"][0] and "same word source" in g["note"]
+    # the adoption rule does not read it, and no shards simply means no guard
+    plain = compare_forms(m7, "core_crossfade", m0, "core_crossfade", boot=50)
+    assert plain["both_improve"] == out["both_improve"] == (
+        out["bleu"]["difference"] > 0 and out["likelihood_minus_blank"]["difference"]["difference"] > 0)
+    assert not plain["spotting_guard"]["available"] and plain["spotting_guard_lower_bound"] is None
+    # known recalls: the own words' recall, paired over the sentences both have (a None drops that sentence)
+    def with_recalls(shard, own, other):
+        rows = json.loads(json.dumps(shard["clips"]))
+        for r, x, y in zip(rows, own, other):
+            r["spotting"]["core_crossfade"] = dict(r["spotting"]["core_crossfade"], own=dict(recall=x),
+                                                   mismatched=dict(recall=y))
+        return dict(shard, clips=rows)
+    known = compare_forms(m7, "core_crossfade", m0, "core_crossfade", boot=50,
+                          shards_a=[with_recalls(s7, [1., .5, None, 0.], [0.] * 4)],
+                          shards_b=[with_recalls(s0, [.5, .5, 1., 1.], [1.] * 4)])["spotting_guard"]
+    assert known["difference"]["difference"] == pytest.approx((.5 + 0. - 1.) / 3, abs=1e-4) and known["difference"]["n"] == 3
+    # a form better on BLEU and likelihood stays adopted whatever the guard reads, or if there is none
+    better = json.loads(json.dumps(m7))
+    better["forms"]["core_crossfade"]["hypotheses"] = list(better["references"])
+    better["likelihood"]["per_form"]["core_crossfade"] = [
+        [x + 1. if x is not None else None for x in row] if isinstance(row, list) else row + 1.
+        for row in m0["likelihood"]["per_form"]["core_crossfade"]]
+    bad = [with_recalls(s7, [0.] * 4, [0.] * 4)], [with_recalls(s0, [1.] * 4, [0.] * 4)]
+    worse = compare_forms(better, "core_crossfade", m0, "core_crossfade", boot=50, shards_a=bad[0], shards_b=bad[1])
+    assert worse["both_improve"] and worse["spotting_guard_lower_bound"] == -1.
+    assert compare_forms(better, "core_crossfade", m0, "core_crossfade", boot=50)["both_improve"]
+    # the checkpoint and mix keys are reported, not compared
+    assert out["a"]["checkpoint_key"] == out["b"]["checkpoint_key"] == "prior.pt"
+    assert out["a"]["mix_key"] == "mix.json" and out["a"]["generator_mix_key"] == "mix.json"
+    other = dict(m0, settings=dict(m0["settings"], checkpoint_key="other.pt"))
+    assert compare_forms(m7, "core_crossfade", other, "core_crossfade", boot=20)["b"]["checkpoint_key"] == "other.pt"
+    # withheld across word sources, for other recognisers and for forms without per-clip spotting
+    cross = compare_forms(m7, "core_crossfade", m0, "oracle_stage2", boot=20, shards_a=[s7], shards_b=[s0])
+    assert not cross["spotting_guard"]["available"] and "word sources" in cross["spotting_guard"]["reason"]
+    assert cross["spotting_guard_lower_bound"] is None and "difference" not in cross["spotting_guard"]
+    v3 = dict(m0, settings=dict(m0["settings"], recognizer_run="sign-recognizer-v3d"))
+    assert "not sign-recognizer-v2" in compare_forms(m7, "core_crossfade", v3, "core_crossfade", boot=20, shards_a=[s7],
+                                                     shards_b=[s0])["spotting_guard"]["reason"]
+    assert not compare_forms(m7, "core_crossfade/shuffled", m0, "core_crossfade/shuffled", boot=20, shards_a=[s7],
+                             shards_b=[s0])["spotting_guard"]["available"]
+    with pytest.raises(SystemExit, match="not this report's"):                   # shards of other clips
+        compare_forms(m7, "core_crossfade", m0, "core_crossfade", boot=20, shards_a=[s7],
+                      shards_b=[dict(s0, clips=list(reversed(s0["clips"]))[1:])])
+    with pytest.raises(SystemExit, match="not this report's"):                   # or of another run
+        compare_forms(m7, "core_crossfade", m0, "core_crossfade", boot=20, shards_a=[s0], shards_b=[s0])
+    # the command line: shards by the phase script's names, by given keys, or none
+    root = ["forms", "--store", f"dir:{tmp_path / 'store'}", "--bootstrap", "20"]
+    pair = ["--a", "e/a7.json:core_crossfade", "--b", "e/a0.json:core_crossfade"]
+    assert compare_main([*root, *pair, "--output-file", str(tmp_path / "p1.json")]) == 0
+    assert json.loads((tmp_path / "p1.json").read_text())["spotting_guard"]["available"]
+    store.put("e/copy.json", store.get("e/a0-shard0.json"))
+    store.put("e/b.json", store.get("e/a0.json"))
+    swapped = ["--a", "e/a7.json:core_crossfade", "--b", "e/b.json:core_crossfade"]
+    assert compare_main([*root, *swapped, "--output-file", str(tmp_path / "p2.json")]) == 0
+    p2 = json.loads((tmp_path / "p2.json").read_text())
+    assert not p2["spotting_guard"]["available"] and "not found" in p2["spotting_guard"]["reason"]
+    assert compare_main([*root, *swapped, "--b-shard-keys", "e/copy.json", "--output-file", str(tmp_path / "p3.json")]) == 0
+    assert json.loads((tmp_path / "p3.json").read_text())["spotting_guard"]["available"]
+
+
+def test_the_refiner_and_mixed_caches_are_refused(tmp_path, stage2_store, capsys):  # noqa: F811
+    from scripts.round20_compare import compare_words
+    store, sha, *_ = stage2_store
+    put_gains(store)
+    with pytest.raises(SystemExit):
+        ce.main(run_args(tmp_path, sha, "--clips", "5", "--no-decoder-gains", "--refiner-checkpoint-key", "refiner.pt",
+                         "--output-file", str(tmp_path / "o.json")))
+    assert "the refiner's post reapplies" in capsys.readouterr().err
+    row = dict(entry="cut", label="CUT", probabilities=[.5], ranks=[1], chosen={"1": dict(index=0)})
+    index = lambda **s: dict(settings=dict(checkpoint_key="p.pt", choose=[1], recognizer_run="v3d", **s),  # noqa: E731
+                             entries=[row])
+    with pytest.raises(SystemExit, match="without the decoder gains"):
+        compare_words(index(no_decoder_gains=True), index(), boot=10)
+    with pytest.raises(SystemExit, match="without the decoder gains"):
+        compare_words(index(), index(no_decoder_gains=True), boot=10)
+    assert compare_words(index(no_decoder_gains=True), index(no_decoder_gains=True), boot=10)["entries"] == 1
+    assert compare_words(index(), index(), boot=10)["entries"] == 1

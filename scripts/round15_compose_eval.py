@@ -989,6 +989,9 @@ def round20_errors(p, args, variants) -> None:
         p.error("--lowpass-hz must be in (0, 12) (24 fps)")
     if args.no_decoder_gains:
         import round15_stage2 as r2
+        if args.refiner_checkpoint_key:
+            p.error("--no-decoder-gains is not combined with --refiner-checkpoint-key (the refiner's post reapplies "
+                    "the gains)")
         if not any(v in r2.GENERATED for v in variants):
             p.error("--no-decoder-gains needs a generated variant (oracle words have no decoder)")
         if args.word_cache_key:
@@ -1124,8 +1127,9 @@ def main(argv=None) -> int:
     g.add_argument("--lowpass-report-hz", type=float, help="A6: also render <variant>@lowpass, the main form low-passed "
                    "at this cutoff from the very same material (paired with the unfiltered form in one run)")
     g.add_argument("--no-decoder-gains", action="store_true", help="A7: generated words decode without the tokenizer's "
-                   "accepted gains (head smoothing stays; same seeds, same codes); refused without generated words or "
-                   "without accepted gains")
+                   "accepted gains (head smoothing stays; same seeds). The codes are the gained run's for the sign-fitted "
+                   "core_crossfade path only: under asllrp cuts move with the gain, and in core_chained gained cuts feed "
+                   "later sampling. Refused without generated words, without accepted gains, or with a refiner")
     m = sub.add_parser("merge", help="combine the shards and score")
     m.add_argument("--shard-keys", default="")
     m.add_argument("--shard-files")

@@ -17,8 +17,11 @@
 #   a1    (CPU)  real-word oracle; also renders oracle_stage2@lowpass (6 Hz, same material: A6 on real words)
 #   a0    (GPU)  W14b fresh composition (4 word workers); also core_crossfade@lowpass (6 Hz, same material: A6).
 #                Run under EVERY VOCAB: the A1 winner is named from a1 and a0 together (reports/round20_dev.md)
-#   a7    (GPU)  a0 with the tokenizer's accepted decoder gains off: a0's arguments, jobs and seeds, so the same codes
-#                decode without the gain. Use a0's GPU type: logits differ by device, which can change sampled codes
+#   a7    (GPU, VOCAB=r10 only: core_window cuts on gained motion under r14b-activity)  a0 with the tokenizer's accepted
+#                decoder gains off: a0's arguments, jobs and seeds, so the same codes decode without the gain. Logits differ
+#                by device and a flipped draw changes the rest of a word, so a full run needs a GPU, logs it, and first
+#                reruns a0's smoke on this pod: its per-clip core_crossfade motion must equal the stored a0 shard's
+#                exactly (first 5 clips) or nothing further runs. Reports store no codes: this is the only check.
 #   a2    (CPU)  continuous-form oracle (ASLLRP segments where available, else isolated) on VOCAB (the A1 winner)
 #   a3    (CPU)  continuous retiming, velocity-bounded bridges, ARM=tempo-0.8 | tempo-1.0 | tempo-1.25 | tempo-1.5
 #                (tempo-1.0 also renders the report-only, deployable @predicted form)
@@ -98,11 +101,29 @@ compose() {
   echo "R20 $name $merged $(sha $merged)"
 }
 
+# A7's guard: a0's smoke on this pod against the stored a0 shard (scripts/round20_compare.py same-codes)
+a7_same_codes() {
+  local gpu=$1 full=$OUT stored=$OUT/a0-w14b-$VOCAB-shard0.json
+  exists $stored || die "a7: the stored a0 shard $stored is missing; GPU: $gpu"
+  OUT=$full/smoke/$(date -u +%Y%m%dT%H%M%SZ)
+  compose a0-w14b-$VOCAB $GEN --lowpass-report-hz 6 --clips 5
+  python scripts/round20_compare.py same-codes --a $OUT/a0-w14b-$VOCAB-shard0.json --b $stored \
+    --form core_crossfade --first 5 || die "a7: this pod does not reproduce a0's codes on the first 5 clips, nothing further runs; GPU: $gpu"
+  OUT=$full
+}
+
 case $PHASE in
   a1) compose a1-oracle-$VOCAB $ORACLE --lowpass-report-hz 6 ;;
   a0) pin $W14B $W14BSHA
       compose a0-w14b-$VOCAB $GEN --lowpass-report-hz 6 ;;
-  a7) pin $W14B $W14BSHA
+  a7) [ "$VOCAB" = r10 ] || die "a7: VOCAB must be r10 (core_window cuts on gained motion under r14b-activity)"
+      pin $W14B $W14BSHA
+      if [ "${SMOKE:-0}" != 1 ]; then
+        [ "$DEV" = cuda ] || die "a7: a full run needs a GPU as a0 did (DEV=$DEV): on another device a flipped draw changes the rest of a word"
+        GPU=$(nvidia-smi -L 2>&1)
+        echo "R20 a7 GPU: $GPU"
+        exists $OUT/a7-nogains-$VOCAB.json || a7_same_codes "$GPU"
+      fi
       compose a7-nogains-$VOCAB $GEN --lowpass-report-hz 6 --no-decoder-gains ;;
   a2) compose a2-continuous-$VOCAB $ORACLE --oracle-source continuous \
         --gloss-manifest-key $GLOSS --gloss-manifest-sha256 $GLOSSSHA ;;
