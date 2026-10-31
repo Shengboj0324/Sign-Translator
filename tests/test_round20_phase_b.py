@@ -80,6 +80,7 @@ def on_stubs(tmp_path, text, env, *, smoke, gpu):
         'case "$1" in scripts/*round20_word_cache*) echo "$* #OMP=$OMP_NUM_THREADS" >> "$STUB_LOG" ;;\n'
         '  scripts/*) echo "$*" >> "$STUB_LOG" ;; esac\n'
         'case "$*" in *c20-gate*) [ "$STUB_GATE" = 1 ] || exit 1 ;; esac\n'
+        'case "$*" in *" same-codes "*) [ "${STUB_SAME:-1}" = 1 ] || exit 1 ;; esac\n'
         'case "$*" in *"round20_phase_b_verdict.py verdict "*) exit ${STUB_VERDICT:-0} ;; esac\n'
         'case "$*" in *" stack-check "*) exit ${STUB_STACK:-0} ;; *" one-arm "*) exit ${STUB_ONE_ARM:-0} ;; esac\n'
         'if [ -n "$STUB_FAIL_SHARD" ]; then case "$*" in *"--shard $STUB_FAIL_SHARD "*) exit 1 ;; esac; fi\n'

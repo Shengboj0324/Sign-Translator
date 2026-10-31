@@ -140,6 +140,20 @@ For the floor: D20 How2Sign wrists in the same frame (30 clips) have a median of
 
 **Predicted duration** (report-only, cheap): least squares of How2Sign *train* seconds on normalised token count, floor 0.5 s. `@predicted` renders the main form's timing with that duration instead of the reference's.
 
+**Phase a10, predicted timing of the adopted arm** (report-only; nothing adopts from it). `ARM=gains` or `nogains`, `VOCAB=r10`, best of 16, from the stored caches; a4's or a9's options plus `--predicted-duration`.
+
+| Form | Words | Timing |
+|---|---|---|
+| `core_crossfade`, `/shuffled`, `/mismatched_words` | the stored cache's | sign-fitted plan filling the reference clip's true frames, as a4 and a9 |
+| `core_crossfade@predicted` | the same | the same plan rule filling round(predicted seconds × 24) frames, seconds = max(−0.083 + 0.3691 × tokens, 0.5) |
+
+- **`@predicted` is not gated to `--retime continuous`.** The code renders it under either plan; only a3 passed the option before. No rendering change was needed.
+- **Added under `--predicted-duration` only:** `@predicted` spotting (paired against the main form), `predicted_timing` in the merged report, and `--expect-duration-model`.
+- **Built-in check:** the main form's per-clip motion must equal the stored shard's exactly on every clip read, or ALERT and no merge. `--paired-with` then reports main-form BLEU and likelihood against the stored read.
+- **Controls:** `@predicted` has blank, deranged references and `reference_duration`. It has no shuffled or mismatched-words form of its own, so the main form's order and content controls are at true length.
+- **True length remaining in the form:** D20's 6 sentences with no selected word stay blank clips at the reference's length (counted as `blank_clips_at_reference_length`), and blank, the comparator, is also at the reference's length.
+- **Length, read on D20 metadata before any a10 read:** predicted over true is 1.199 pooled, 1.345 mean per clip, 1.291 median per clip, on the 494 clips with words. The pod's report carries these (`seconds_over_reference`) beside the hypotheses' length ratios. The design note's 1.21 is another fit (`reports/s2_design.md`). The model is unchanged.
+
 ## 5. Word cache (A4) and word-level reads (A5)
 
 `scripts/round20_word_cache.py` takes the entries of the set's stage-1 selection on the chosen vocabulary.

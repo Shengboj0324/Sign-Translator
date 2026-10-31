@@ -18,7 +18,8 @@ cached generated word counts as generated.
 paired re-decode (A7) relies on sampling the same codes. Exits non-zero unless ``--form``'s per-clip motion is exactly equal
 on the first ``--first`` clips and the two runs share their generation settings. Reports store no codes, so equality is
 necessary, not sufficient: only these clips are read, and a draw that changes neither the kept frames nor the keypoint
-statistics goes unseen.
+statistics goes unseen. Phase a10 uses it with ``--first`` = every clip it read: its word-cache main form must be the stored
+a4 or a9 read's (the settings compared include the cache's hash and best-of-N).
 
 ``words``: two ``round20_word_cache.py`` indexes (``--a KEY``, ``--b KEY``; A5: two priors on the same entries)
 compared entry by entry over the entries labelled in both: the probability of the label, top-1 and top-5, on sample 0,
