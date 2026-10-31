@@ -5798,3 +5798,12 @@ The declared layers are: instruments (3.8 with instrument v2 agreeing); exit gat
 ### Release bar: the owner's rule (2026-10-31, 22:00 UTC)
 
 The owner approved the proposed bar and set it as a rule. **A system may be released only if all hold:** comprehension Wilson 95% lower bound ≥ 70%; within 10 points of real signing on the same sentences; negation recovered, with false alarms reported; wrist speed 0.8–1.25× real; all at predicted timing, on unseen signers. It adds to the instrument, exit-gate and strict-review, serving and licensing layers, and replaces none of them. Recorded in `docs/HUMAN_EVALUATION_PROTOCOL.md` §6, before any rater sheet.
+
+### Consent finding: recogniser v3d chooses the words of every best-of-16 arm (recorded 2026-10-31, 22:36 UTC)
+
+Found by the rater-package survey (`reports/rater_package_plan.md`), checked against the declaration of `sign-recognizer-v3d`, which lists ASL Citizen among its training corpora. ASL Citizen's consent covers sign language recognition, and this plan keeps it out of the generator. No ASL Citizen motion enters the generator mix. But best of 16 uses v3d's scores to choose the generated word clips, so a model trained on ASL Citizen now decides what the composition output contains. That goes beyond a read-only instrument, and neither `a4` nor Phase B's arms disclosed it. Recorded after both arms were read and while C20's cache is running.
+
+**Decision until the owner or ASL Citizen's authors say otherwise:**
+- Best-of-16 output stays a private measurement. It does not go into a rater packet or any public build, whatever C20 reads.
+- C20's single read continues as declared: it is private, evaluation only, and its rule is unchanged. Any M1 statement carries this finding beside it.
+- A rater or public build needs one of: written permission for this use, a selector trained without ASL Citizen and shown to do the same job, or an arm with no v3d selection (`a7`, no best-of-N, read 2.186 on D20).
