@@ -50,6 +50,13 @@ the pilot's mix and then reports how many hypotheses reproduce the stored ones b
 ``--forms none`` with ``--stored``: a CPU-only read of stored hypotheses (references, real and blank from the first
 stored report that has them); no model is loaded.
 
+**Stage S2's B0** (``--sentence-set d20 --b0-pilot KEY --b0-lengths FILE``; plan, "Road to 3.8: S2 design received"): D20 in
+place of the 1,000, through ``s2_lib.load_read_list`` (pinned; ``--stored`` and ``--regenerate`` are refused, since they read
+the 1,000), and W14b's end-to-end forms regenerated on it with the pilot's checkpoint, guidance and temperatures, seeds
+1000 + i per block of 32: ``w14b_gains_ref``, ``w14b_nogains_ref``, ``w14b_gains_pred``, ``w14b_nogains_pred`` (reference
+durations; P3's predicted lengths, the file ``s2_length_probe.py lengths`` writes). ``--smoke-train N`` reads N c02 train
+clips instead (a smoke). The report's ``b0`` block says what was read; B0 has no pass bar.
+
 Write-once: ``--output-key`` (refused if it exists) or ``--output-file``.
 """
 from __future__ import annotations
@@ -325,7 +332,7 @@ def rho_panel(latents, real_latents, mean, std, parts, code_dim, *, K, device, p
     avg = M.rho_faith(out_z, ref_z, K=K, distance="mean")
     block = dict(dtw={k: v for k, v in dtw.items() if k != "per_clip"},
                  mean={k: v for k, v in avg.items() if k != "per_clip"},
-                 per_clip_dtw=dtw["per_clip"])
+                 per_clip_dtw=dtw["per_clip"], per_clip_mean=avg["per_clip"])
     if per_part:
         block["parts"] = {}
         for p, part in enumerate(parts):
@@ -456,6 +463,23 @@ def regenerate(store, key: str, clips: int, device: str, load_mix, load_states):
     return gens[:clips], report, records[:clips], info
 
 
+B0_FORMS = dict(w14b_gains_ref=(True, "ref"), w14b_nogains_ref=(False, "ref"), w14b_gains_pred=(True, "pred"),
+                w14b_nogains_pred=(False, "pred"))
+
+
+def b0_form(store, pilot: dict, manifest_sha: str, texts, seconds, gains: bool, device: str) -> list:
+    """The pilot's generated half on these clips: its checkpoint, guidance and temperatures, seeds 1000 + i per block of
+    32, post-processed; ``gains`` False decodes the same codes without the accepted gains (round 20 A7)."""
+    from evaluate_text_to_motion import load_generator
+    from pilot_content_check import postprocess
+    _, _, sample = load_generator(store, pilot["checkpoint_key"], manifest_sha, device,
+                                  temperature=pilot["part_temperature"], decoder_gains=gains)
+    out = []
+    for i in range(0, len(texts), BLOCK):
+        out += [postprocess(o) for o in sample.batch(texts[i:i + BLOCK], FPS, seconds[i:i + BLOCK], pilot["guidance"], 1000 + i)]
+    return out
+
+
 # ---- main -----------------------------------------------------------------------------------------------------------
 
 def main(argv=None) -> int:
@@ -478,6 +502,10 @@ def main(argv=None) -> int:
     p.add_argument("--regenerate", action="append", default=[], help="an end-to-end pilot report to regenerate")
     p.add_argument("--merge-from", action="append", default=[], help="an earlier s0 report (key, or file:/path) of the "
                    "same clips and instrument: its forms join this run's orderings (per-clip arrays and hypotheses)")
+    p.add_argument("--sentence-set", choices=("d20",), help="stage S2's B0: read D20 instead of the 1,000; nothing else is accepted")
+    p.add_argument("--smoke-train", type=int, default=0, help="B0's smoke: read this many c02 train clips")
+    p.add_argument("--b0-pilot", help="B0: the end-to-end pilot report to regenerate on D20 (W14b's)")
+    p.add_argument("--b0-lengths", help="B0: lengths.json of s2_length_probe.py, for the predicted-length forms")
     p.add_argument("--nll-group", type=int, default=2, help="clips per teacher-forced batch (× candidates rows)")
     p.add_argument("--device", default="cuda")
     p.add_argument("--output-key")
@@ -492,6 +520,11 @@ def main(argv=None) -> int:
         raise SystemExit(f"{args.output_key} exists (write-once)")
     if args.output_file and Path(args.output_file).exists():
         raise SystemExit(f"{args.output_file} exists (write-once)")
+    s2_read = bool(args.sentence_set or args.smoke_train)
+    if s2_read and (args.stored or args.regenerate or args.merge_from):
+        raise SystemExit("--stored, --regenerate and --merge-from read the 1,000: refused with --sentence-set")
+    if bool(args.b0_pilot) != bool(args.b0_lengths) or (args.b0_pilot and not s2_read):
+        raise SystemExit("--b0-pilot and --b0-lengths go together, with --sentence-set d20 or --smoke-train")
     forms = [] if args.forms == "none" else [f for f in args.forms.split(",") if f]
     if forms:
         missing = [f for f in ("real", "blank") if f not in forms]
@@ -544,7 +577,17 @@ def main(argv=None) -> int:
             return [at_rate(load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]), FPS)
                     for r in recs]
         mixes[(args.mix_key, args.mix_sha256)] = manifest
-        records = declared_sample(manifest, args.sample, args.clips)
+        if s2_read:
+            import s2_lib as L
+            if (args.mix_key, args.mix_sha256) != (L.EVAL_MIX, L.EVAL_MIX_SHA):
+                raise SystemExit("B0 uses D20's own manifest")
+            if args.smoke_train:
+                records = L.smoke_records(manifest, args.smoke_train)
+                L.check_train_records(records, ("c02",))
+            else:
+                records = L.load_read_list(store, manifest)
+        else:
+            records = declared_sample(manifest, args.sample, args.clips)
         texts = [r["text"] for r in records]
         refs = load_states(records)
         report["clips"], report["references"] = len(texts), texts
@@ -552,6 +595,9 @@ def main(argv=None) -> int:
         report["sample"] = dict(mix_key=args.mix_key, mix_sha256=args.mix_sha256, drawn=args.sample, clips=len(texts),
                                 rule="the first --clips records of pilot_content_check.validation_sentences(mix, "
                                      "--sample)")
+        if s2_read:
+            report["sample"] = dict(mix_key=args.mix_key, mix_sha256=args.mix_sha256, clips=len(texts),
+                                    rule="c02 train clips (a smoke)" if args.smoke_train else "D20")
         payload = store.get(args.tokenizer_key)
         if hashlib.sha256(payload).hexdigest() != args.tokenizer_sha256:
             raise SystemExit(f"{args.tokenizer_key}: SHA-256 differs from --tokenizer-sha256")
@@ -597,6 +643,7 @@ def main(argv=None) -> int:
                             per_part=not args.no_rho_parts)
             per_clip = lik.pop("per_clip")
             per_clip["rho_dtw"] = rho.pop("per_clip_dtw")
+            per_clip["rho_mean"] = rho.pop("per_clip_mean")
             entry.update(lik, rho_faith=rho, per_clip=per_clip, seconds=round(time.time() - raw["t0"], 1))
             table[name] = dict(stats=M.bleu_statistics(raw["hyps"], texts), delta_nll=np.asarray(per_clip["delta_nll"]),
                                rank=np.asarray(per_clip["rank"]), rank_pmi=np.asarray(per_clip["rank_pmi"]))
@@ -623,6 +670,24 @@ def main(argv=None) -> int:
             raw = compute(build_form(name, refs, tokenizer, gains))
             report["forms"][name] = panel(name, raw, "computed")
             del raw
+        if args.b0_pilot:
+            pilot = json.loads(store.get(args.b0_pilot))
+            run = pilot["checkpoint_key"].split("/checkpoints/")[0]
+            sha = json.loads(store.get(f"{run}/run.json"))["manifest_sha256"]
+            lengths = json.loads(Path(args.b0_lengths).read_text())
+            if lengths["signs"] != report["signs"]:
+                raise SystemExit("--b0-lengths: another list's lengths")
+            reference = [float(s.timestamps[-1] - s.timestamps[0]) + 1 / FPS for s in refs]
+            seconds = dict(ref=reference, pred=lengths["predicted_seconds"])
+            for label, (with_gains, lengths_kind) in B0_FORMS.items():
+                gens = b0_form(store, pilot, sha, texts, seconds[lengths_kind], with_gains, args.device)
+                report["forms"][label] = panel(label, compute(gens), args.b0_pilot)
+                del gens
+            report["b0"] = dict(baseline_only=True, pilot=args.b0_pilot, checkpoint_key=pilot["checkpoint_key"],
+                                guidance=pilot["guidance"], part_temperature=pilot["part_temperature"],
+                                forms=list(B0_FORMS), lengths_pooled_ratio=lengths["pooled_ratio"],
+                                declared_read=not args.smoke_train,
+                                real_above_blank=report["forms"]["real"]["bleu"]["bleu"] > report["forms"]["blank"]["bleu"]["bleu"])
         for key in args.regenerate:
             gens, pilot, pilot_recs, info = regenerate(store, key, len(texts), args.device, load_mix, load_states)
             if [r["sign"] for r in pilot_recs] != report["signs"]:

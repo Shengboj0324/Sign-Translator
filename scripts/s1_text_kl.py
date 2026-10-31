@@ -27,6 +27,11 @@ sum is the scale to compare with the 64-way word retrieval (``word_retrieval_che
 (the reference, by default W14b), and against the byte prior at the matched step (``byte24k``, round 3d's recipe on
 the same mix as the round-4 arms).
 
+**D20 (stage S2's probe P1).** ``--sentence-set d20`` reads D20's clips instead of the 1,000, through ``s2_lib.load_read_list``
+(pinned, nothing else accepted), so the AR priors' gain is read on P1's clips. ``--smoke-train N`` reads N c02 train clips
+(a smoke). Either adds per prior ``gain_nats_per_second`` (``s2_lib.pooled_rate``: total nats over total seconds, the
+unit of the stored 1.42 and -0.51) and per-clip ``gain_nats`` and ``seconds``, and the report's ``signs`` to pair by.
+
 Write-once: ``--output-key`` or ``--output-file``.
 """
 from __future__ import annotations
@@ -171,6 +176,20 @@ def summarise(reads: dict, parts, seconds) -> dict:
                               mean_gain=np.round(clip_gain, 5).tolist()))
 
 
+def add_rates(summary: dict, reads: dict, seconds) -> dict:
+    """``summary`` with the pooled gain rate and the per-clip nats behind it (the D20 read; ``seconds``: every clip's).
+    A clip left out of the read has zero codes: it is listed with None and left out of the rate."""
+    import s2_lib as L
+    n, row, gain = len(seconds), reads["row"], reads["gain"]
+    has = np.bincount(row, minlength=n) > 0
+    nats = np.bincount(row, weights=gain.sum(1), minlength=n)
+    steps = np.bincount(row, minlength=n) / FPS
+    summary["gain_nats_per_second"] = L.pooled_rate(nats[has], steps[has])
+    summary["per_clip"]["gain_nats"] = [round(float(x), 4) if h else None for x, h in zip(nats, has)]
+    summary["per_clip"]["seconds"] = [round(float(x), 5) if h else None for x, h in zip(steps, has)]
+    return summary
+
+
 def load_prior(store, key: str, sha: str | None, device):
     import torch
     from signtranslator.generation.motion_rvq import MotionRVQ, RVQPrior, RVQPriorConfig
@@ -197,6 +216,8 @@ def main(argv=None) -> int:
     p.add_argument("--mix-key", default=EVAL_MIX)
     p.add_argument("--mix-sha256", default=EVAL_MIX_SHA)
     p.add_argument("--clips", type=int, default=1000)
+    p.add_argument("--sentence-set", choices=("d20",), help="read D20 instead of the 1,000 (S2's P1); nothing else is accepted")
+    p.add_argument("--smoke-train", type=int, default=0, help="with no --sentence-set: read this many c02 train clips (a smoke)")
     p.add_argument("--checkpoint", action="append", help="label=key[@sha256], repeatable; the first is the reference "
                    f"(default: {', '.join(c.split('=')[0] for c in DEFAULT_CHECKPOINTS)})")
     p.add_argument("--matched-byte", default="byte24k", help="the byte prior every pretrained-encoder prior is also "
@@ -228,10 +249,27 @@ def main(argv=None) -> int:
     with tempfile.TemporaryDirectory() as t:
         path = Path(t) / "m.json"; path.write_bytes(store.get(args.mix_key) + b"\n")
         manifest = load_manifest(path, expected_sha256=args.mix_sha256)
-    records = validation_sentences(manifest, args.clips)
+    sentence_set = None
+    if args.sentence_set or args.smoke_train:
+        import s2_lib as L
+        if args.sentence_set and args.smoke_train:
+            raise SystemExit("--sentence-set and --smoke-train exclude each other")
+        if (args.mix_key, args.mix_sha256) != (L.EVAL_MIX, L.EVAL_MIX_SHA):
+            raise SystemExit("the D20 read uses D20's own manifest")
+        if args.smoke_train:
+            records = L.smoke_records(manifest, args.smoke_train)
+            L.check_train_records(records, ("c02",))
+            sentence_set = dict(list="smoke:c02-train", clips=len(records))
+        else:
+            records = L.load_read_list(store, manifest)
+            sentence_set = dict(list=L.D20_KEY, sha256=L.D20_SHA, clips=len(records))
+    else:
+        records = validation_sentences(manifest, args.clips)
     states = [at_rate(load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]), FPS)
               for r in records]
     report = dict(kind="s1-text-kl", settings=dict(vars(args)), clips_drawn=len(records), priors={})
+    if sentence_set:
+        report.update(sentence_set=sentence_set, signs=[r["sign"] for r in records], declared_read=not args.smoke_train)
     per_clip = {}
     for label, key, sha in specs:
         prior, tokenizer, info = load_prior(store, key, sha, device)
@@ -251,6 +289,8 @@ def main(argv=None) -> int:
         reads = {k: np.concatenate(v, 0) for k, v in reads.items()}
         seconds = [float(s.timestamps[-1] - s.timestamps[0]) + 1 / FPS for s in states]
         summary = summarise(reads, [p for p, _ in tokenizer.parts], seconds)
+        if sentence_set:
+            add_rates(summary, reads, seconds)
         summary["clips"] = len(keep)
         summary["left_out_over_max_seconds"] = len(states) - len(keep)
         summary["seconds"] = round(time.time() - t0, 1)

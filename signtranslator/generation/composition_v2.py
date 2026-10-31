@@ -220,24 +220,41 @@ def lowpass_state(state, hz: float, *, fps: float = FPS, order: int = 4):
 
 # ---- predicted sentence duration (report-only) -----------------------------------------------------------------------
 
-def fit_duration_model(manifest, corpus: str = H2S, partition: str = "train") -> dict:
+def fit_duration_model(manifest, corpus: str = H2S, partition: str = "train", *, components=None,
+                       signer_balanced: bool = False) -> dict:
     """Least squares seconds = intercept + slope x tokens over ``corpus`` ``partition`` records with a text and a
-    duration (``continuous.seconds``); tokens by ``compositional.normalise``."""
+    duration (``continuous.seconds``); tokens by ``compositional.normalise``.
+
+    Stage S2's probe P3 (keyword-only; the defaults reproduce the fit above exactly): ``components`` restricts the fit to
+    those signer components, and ``signer_balanced`` gives every component equal total weight. How2Sign train is almost
+    all one signer (c02, 0.366 s/token; val 0.28-0.33), so an unweighted fit carries that signer's tempo."""
     from .compositional import normalise
-    x, y = [], []
+    x, y, group = [], [], []
     for r in manifest["records"]:
         if r.get("corpus") != corpus or r.get("partition") != partition or not r.get("text"):
+            continue
+        if components is not None and r.get("signer_component") not in components:
             continue
         s = (r.get("continuous") or {}).get("seconds")
         if s:
             x.append(len(normalise(r["text"])))
             y.append(float(s))
+            group.append(r.get("signer_component"))
     if len(x) < 2 or len(set(x)) < 2:
         raise ValueError("too few records to fit the duration model")
-    slope, intercept = np.polyfit(np.asarray(x, float), np.asarray(y, float), 1)
-    residual = np.asarray(y) - (intercept + slope * np.asarray(x, float))
+    x, y = np.asarray(x, float), np.asarray(y, float)
+    weights = None
+    extra = {}
+    if signer_balanced:
+        names, inverse, counts = np.unique(np.asarray(group, dtype=str), return_inverse=True, return_counts=True)
+        if len(names) < 2:
+            raise ValueError("a signer-balanced fit needs at least two signer components")
+        weights = np.sqrt(1. / counts[inverse])                    # np.polyfit weights the residual, so the square root
+        extra = dict(signer_balanced=True, components={str(n): int(c) for n, c in zip(names, counts)})
+    slope, intercept = np.polyfit(x, y, 1, w=weights)
+    residual = y - (intercept + slope * x)
     return dict(corpus=corpus, partition=partition, records=len(x), intercept=round(float(intercept), 4),
-                slope=round(float(slope), 4), median_abs_error=round(float(np.median(np.abs(residual))), 4))
+                slope=round(float(slope), 4), median_abs_error=round(float(np.median(np.abs(residual))), 4), **extra)
 
 
 def predicted_seconds(model: dict, text: str, floor: float = .5) -> float:
