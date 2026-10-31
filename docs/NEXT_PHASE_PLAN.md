@@ -5505,3 +5505,49 @@ Generated W14b words, composed with `core_crossfade`, on D20 (`phase-a/a0-w14b-r
 **Warning for M1.** On the disjoint D20, generated composition sits below its own real-word oracle (1.943 against 2.219), and its lower bound against blank is below 0. On the 1,000 it read 2.306 against an oracle of 2.17. The intervals overlap, so this does not show the 1,000's figure is inflated, but that set has been read for many earlier selections, so an inflation of some size is possible. It is why M1 needs C20, and 2.55 on a fresh set may be harder than the 0.244 distance on the 1,000 suggests. Nothing changes in the rule: Phase B stays on the 1,000 and M1 needs both sets.
 
 The two reads were on different devices (a1 CPU, a0 GPU). Real reads 4.495 against 4.493, so cross-device reads differ by about 0.002.
+
+### Road to 3.8: S0 final reads, recorded (2026-10-31, 02:44 UTC)
+
+Full 1,000, instrument v1 (`s0s1/s0-regenerated-v1.json`, `s0-ceilings-v1.json`). Gap share is against real minus blank, on the metric named.
+
+| Form | BLEU | Likelihood minus blank | Share of likelihood gap | Share of MRR gap | Length ratio |
+|---|---|---|---|---|---|
+| real | 4.136 | +0.306 | 100% | 100% | 1.31 |
+| real at 1.25× speed | 4.751 | +0.301 | 98% | 95% | 1.20 |
+| real at 0.8× speed | 3.902 | +0.282 | 92% | 91% | 1.46 |
+| real low-passed at 6 Hz | 4.121 | +0.306 | 100% | 100% | 1.31 |
+| round trip, all stages | 3.364 | +0.055 | 18% | 59% | 1.32 |
+| round trip with gains | 3.154 | +0.022 | 7% | 57% | 1.39 |
+| stages 1–4 | 3.263 | +0.019 | 6% | 49% | 1.29 |
+| stages 1–2 | 2.787 | −0.054 | −18% | 37% | 1.30 |
+| stage 1 | 2.241 | −0.119 | −39% | 21% | 1.28 |
+| blank | 1.859 | 0 | 0% | 0% | 1.43 |
+| W14b end-to-end | 1.786 | −0.286 | −93% | 6% | 1.32 |
+| R16 | 1.768 | −0.312 | −102% | 6% | 1.45 |
+| R16C | 1.658 | −0.297 | −97% | 6% | 1.33 |
+| R19 | 1.601 | −0.299 | −98% | 5% | 1.34 |
+| R19w | 1.543 | −0.305 | −100% | 4% | 1.34 |
+
+**Findings:**
+1. **BLEU has a tempo artefact.** Real signing played 1.25× faster gains BLEU +0.615 [+0.258, +0.998] with no likelihood gain (−0.005 [−0.011, +0.002]) and a lower MRR (−0.008 [−0.014, −0.002]). Its hypotheses are shorter (length ratio 1.20 against 1.31). So BLEU can rise without any more content being read, and 2.55 or 3.8 could be approached by speed alone. Likelihood is the guard.
+2. **Decoder gains cost both metrics on real motion.** Round trip without gains minus with gains: BLEU +0.210 [−0.107, +0.544], likelihood +0.033 [+0.027, +0.038]. Noted at round 3d's gate as an instrument property.
+3. **All five end-to-end generators are one group.** Among the 10 pairs, BLEU and MRR resolve none. Likelihood resolves one (W14b above R16, +0.026). They sit about as far below blank on likelihood as real sits above it.
+4. **The tokenizer is a tighter limit on likelihood than on BLEU:** 18% of the gap on likelihood against 66% on BLEU. Tokenizer v3 (S5) matters more than the BLEU cap suggested.
+5. **No alternative metric replaces BLEU.** None passes the declared rule (likelihood contradicts 1 of 106 resolved BLEU orderings, MRR 4, PMI MRR 4), with Kendall τ against BLEU of 0.80, 0.83, 0.73. BLEU stays primary, with likelihood as the guard.
+
+### Round 20, amendment 1 (declared 2026-10-31, 02:44 UTC; before any a3 result and before A7 runs)
+
+**A3 tempo guard, from finding 1.** `--tempo` above 1 is slower. A tempo arm faster than continuous pace (`tempo-0.8`) is adopted only if the paired likelihood's lower bound is above 0 as well as both point estimates. Slower arms keep the declared rule, because the artefact works against them. `tempo-1.0` is unchanged.
+
+**A7, generated words without decoder gains (evaluation only, no training).** `a7-nogains-r10` is `a0-w14b-r10` with the same seeds and word jobs, so the same codes decoded without the gain (head smoothing stays).
+
+Evidence for a higher chance than a0, from before any A7 read:
+- finding 2 above;
+- generated words read 2.60× real wrist speed against 2.17× for real words of the same sentences. That ratio is 1.20, close to the gains (body 1.17, hands 1.27).
+
+**Adopted only if all hold, against `a0-w14b-r10`, form `core_crossfade`, on D20:**
+- both point estimates above 0 (paired BLEU, paired likelihood minus blank);
+- wrist speed ratio to real closer to 1 than a0's 2.60×;
+- spotting recall (recogniser v2, the independent guard) paired lower bound above −0.02.
+
+The extra guards exist because the instrument reads damped motion more easily (recorded at round 3d), so a BLEU gain alone would not show better signing. If adopted, the departure from amendment 5 ("gains on every generated state") is recorded for composition only, the word caches are rebuilt without gains for a4, and Phase B stacks it. Independent review comes before any pod runs it.
