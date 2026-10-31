@@ -555,6 +555,17 @@ def test_the_pod_script_runs_a7_as_a0_plus_the_option():
     assert "#   a7    (GPU, VOCAB=r10 only" in text and "a1 a0 a7 a2" in text
 
 
+def test_the_pod_script_runs_a8_as_a0_with_r16s_words():
+    text = (ROOT / "runpod/fleet/round20_phase_a.sh").read_text()
+    a8 = text.split("      compose a8-r16-$VOCAB ")[1].split(" ;;")[0].replace("\\\n       ", "")
+    assert " ".join(a8.split()) == ("--variants core_crossfade $VMIX --checkpoint-key $R16 --generator-mix-key $R14B "
+                                    "--generator-mix-sha256 $R14BSHA --word-workers ${WORD_WORKERS:-4} "
+                                    "--lowpass-report-hz 6")
+    gen = text.split('GEN="')[1].split('"')[0].replace("\\\n ", "")
+    assert " ".join(gen.split()).replace("$W14B", "$R16") == " ".join(a8.split()).replace(" --lowpass-report-hz 6", "")
+    assert "a8) pin $R16 $R16SHA" in text
+
+
 # ---- A7: proving the same codes ---------------------------------------------------------------------------------------
 
 def test_a0s_smoke_jobs_are_the_full_runs_first_jobs_and_only_the_controls_move():

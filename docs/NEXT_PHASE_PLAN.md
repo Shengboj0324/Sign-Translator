@@ -5615,3 +5615,19 @@ Equality can fail without any change of code: on Mac CPU the same check differed
 2. A fresh a0 under `r10` runs on the same pod (`a0b-w14b-r10`), and a7 is paired against it. The stored a0 stays on record, and the a0b read is reported beside it.
 
 So A7's comparison is always between two arms proved or generated on one device. The adoption rule (amendment 1) is unchanged.
+
+### Round 20 A5 word-level read, and amendment 3 (declared 2026-10-31, 06:25 UTC; before any a4 result, and before a8 runs)
+
+**A5 on D20's 438 labelled entries, recogniser v3d, R16 step 10000 minus W14b (`phase-a/a5-r16-vs-w14b-r10.json`):**
+
+| Choice | Label probability | Top-1 | Top-5 |
+|---|---|---|---|
+| sample 0 | 0.545 vs 0.499: +0.046 [+0.020, +0.074] | 0.710 vs 0.667: +0.043 [0.000, +0.085] | 0.895 vs 0.852: +0.043 [+0.011, +0.075] |
+| all samples | 0.560 vs 0.506: +0.055 [+0.043, +0.067] | 0.719 vs 0.659: +0.060 [+0.045, +0.075] | 0.899 vs 0.858: +0.041 [+0.030, +0.053] |
+| best of 4 | +0.008 [−0.009, +0.024] | 0.000 [−0.023, +0.021] | +0.021 [+0.005, +0.039] |
+| best of 8 | +0.003 [−0.011, +0.017] | +0.002 [−0.016, +0.021] | +0.002 [−0.011, +0.016] |
+| best of 16 | +0.001 [−0.008, +0.012] | −0.002 [−0.018, +0.011] | +0.005 [−0.007, +0.016] |
+
+R16's plain words read better; best-of-N removes the difference. Round 16's lexicon read was similar (+0.057), yet R16 did not improve end-to-end, so a word-level gain has not yet shown that sentences read better.
+
+**Amendment 3.** A5's word read alone cannot meet the adoption rule, which needs sentences. `a8-r16-r10` is `a0-w14b-r10` with R16 step 10000's words (same seeds, word jobs and settings; 5-clip smoke first). **Adopted only if, against `a0-w14b-r10`, form `core_crossfade`: both point estimates above 0 (paired BLEU, paired likelihood minus blank), wrist speed reported, and recogniser v2 spotting paired lower bound above −0.02.** If adopted, Phase B uses R16's words, from its cache if A4 is also adopted. The two priors do not share codes, so this comparison is less tightly paired than A7's. It is evaluation only.

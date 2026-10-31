@@ -29,6 +29,7 @@
 #                processes on one GPU (a failed shard stops the others), then the merge
 #   a4    (CPU or GPU)  composition from the W14b cache, ARM=n4 | n8 | n16 (v2 spotting: the independent guard)
 #   a5    (CPU)  A5: R16 step 10000 against W14b, word-level v3d reads entry by entry (both caches first)
+#   a8    (GPU)  A5's sentence read: a0 with R16 step 10000's words instead of W14b's, against a0 (amendment 3)
 # Comparisons (CPU, seconds): scripts/round20_compare.py forms --a KEY:FORM --b KEY:FORM (paired BLEU + likelihood).
 # Thread counts come from the cgroup CPU quota or sched_getaffinity, never nproc.
 set -uo pipefail
@@ -69,7 +70,7 @@ for p in "$R10 $R10SHA" "$R14B $R14BSHA" "$D20 $D20SHA" "$GLOSS $GLOSSSHA" "$BT/
          "$V2/best.json $V2SHA" "$V2CK $V2CKSHA" "$V3D/best.json $V3DSHA" "$V3DCK $V3DCKSHA"; do
   set -- $p; pin "$1" "$2"
 done
-PHASE=${R20_PHASE:?set R20_PHASE: a1 a0 a7 a2 a3 cache a4 a5}
+PHASE=${R20_PHASE:?set R20_PHASE: a1 a0 a7 a2 a3 cache a4 a5 a8}
 ARM=${ARM:-}
 VOCAB=${VOCAB:?set VOCAB: r10, r14b-fraction or r14b-activity}
 case $VOCAB in
@@ -116,6 +117,9 @@ case $PHASE in
   a1) compose a1-oracle-$VOCAB $ORACLE --lowpass-report-hz 6 ;;
   a0) pin $W14B $W14BSHA
       compose a0-w14b-$VOCAB $GEN --lowpass-report-hz 6 ;;
+  a8) pin $R16 $R16SHA        # A5's sentence read (amendment 3): as a0, with R16's words
+      compose a8-r16-$VOCAB --variants core_crossfade $VMIX --checkpoint-key $R16 --generator-mix-key $R14B \
+        --generator-mix-sha256 $R14BSHA --word-workers ${WORD_WORKERS:-4} --lowpass-report-hz 6 ;;
   a7) [ "$VOCAB" = r10 ] || die "a7: VOCAB must be r10 (core_window cuts on gained motion under r14b-activity)"
       pin $W14B $W14BSHA
       if [ "${SMOKE:-0}" != 1 ]; then
