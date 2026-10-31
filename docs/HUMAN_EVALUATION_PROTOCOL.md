@@ -120,6 +120,14 @@ that meaning gets through; it does not allow release. A system may be released o
 - wrist speed 0.8–1.25× real;
 - all of it read at predicted timing, on unseen signers.
 
+How these are read (declared 2026-10-31, 22:39 UTC):
+- Intervals are paired by utterance, by two-way cluster bootstrap over utterances and reviewers.
+- Comprehension must also have a clustered lower bound ≥ 70%.
+- "Within 10 points" means the upper 95% bound of reference minus system is ≤ 10 points.
+- A sentence is negated only if its English has a negation and a Deaf checker, not shown any generated clip, confirms the real recording signs it.
+- "Negation recovered" means recall Wilson lower bound ≥ 70%, upper 95% bound of reference minus system recall ≤ 10 points, and false-alarm Wilson upper bound ≤ 20%. If the reference's recall lower bound is below 70%, the read is void.
+- A system with over 5% of rows marked `viewable = no` does not pass.
+
 The instrument, realism, serving and licensing requirements still apply (`docs/NEXT_PHASE_PLAN.md`).
 
 ## 7. Use of the results

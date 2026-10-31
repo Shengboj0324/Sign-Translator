@@ -23,7 +23,7 @@ Nine raters, about 67 hours; the bound needs 73.8% observed. With assumed cluste
 ## 3. Missing
 - **Composed states** (`round15_compose_eval.py`): D20 caches exist, no export. 1 day.
 - **How2Sign packet** (`build_human_eval_packet.py`): no composition kind; `design_study` raises KeyError without markers. 1 day.
-- **Negation truth:** English rule plus signer check. 26 of 80 negated sentences have no negation word cached. 0.5 day.
+- **Negation truth:** English rule plus signer check, as declared in the plan (22:39 UTC). 26 of 80 negated sentences have no negation word cached. 0.5 day.
 - **Bar scorer** (`score_study`): no paired interval or clustered bound. 0.5 day.
 - **Design, sheets** (`human_study.py`): passed, synthetic IDs.
 - **Avatar** (`render_avatar.py`): works. Bald, flat, hands through body, shake unfixed; v2 unstarted. Pilot decides.
@@ -34,13 +34,11 @@ Nine raters, about 67 hours; the bound needs 73.8% observed. With assumed cluste
 Measured: 13 s per 147-frame clip at 768 px (docs' 45 s is stale). 600 clips: about 2.2 h, one Mac process. Pod untested. Use the Mac. R2, all files: about 65 GB, ~$1/month. The Mac has 39 GB free: upload and delete per clip.
 
 ## 5. Licensing (not legal advice)
-How2Sign: CC BY-NC 4.0, research consent; attribute and state changes. English options derive from How2: contracted reviewers only. No ASL Citizen or STEM Wiki clip appears, and the generator mix excludes them. **But v3d, trained on ASL Citizen, chooses both arms' best-of-16 words**, a consent question.
+How2Sign: CC BY-NC 4.0, research consent; attribute and state changes. English options derive from How2: contracted reviewers only. No ASL Citizen or STEM Wiki clip appears, and the generator mix excludes them. v3d, trained on ASL Citizen, chooses both arms' best-of-16 words. The owner deferred consent until after the model finishes (22:39 UTC); this read keeps best of 16.
 
 ## 6. Owner's actions
 - Recruit 9 Deaf raters plus pilot.
 - Set and pay rates.
 - Get ethics or IRB review; sign consent.
 - Arrange ASL instructions or an interpreter.
-- Rule on v3d.
-- Define "within 10 points" and "negation recovered".
 - Choose delivery.

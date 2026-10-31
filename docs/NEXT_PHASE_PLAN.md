@@ -5803,7 +5803,15 @@ The owner approved the proposed bar and set it as a rule. **A system may be rele
 
 Found by the rater-package survey (`reports/rater_package_plan.md`), checked against the declaration of `sign-recognizer-v3d`, which lists ASL Citizen among its training corpora. ASL Citizen's consent covers sign language recognition, and this plan keeps it out of the generator. No ASL Citizen motion enters the generator mix. But best of 16 uses v3d's scores to choose the generated word clips, so a model trained on ASL Citizen now decides what the composition output contains. That goes beyond a read-only instrument, and neither `a4` nor Phase B's arms disclosed it. Recorded after both arms were read and while C20's cache is running.
 
-**Decision until the owner or ASL Citizen's authors say otherwise:**
-- Best-of-16 output stays a private measurement. It does not go into a rater packet or any public build, whatever C20 reads.
-- C20's single read continues as declared: it is private, evaluation only, and its rule is unchanged. Any M1 statement carries this finding beside it.
-- A rater or public build needs one of: written permission for this use, a selector trained without ASL Citizen and shown to do the same job, or an arm with no v3d selection (`a7`, no best-of-N, read 2.186 on D20).
+**Superseded by the owner, 2026-10-31, 22:39 UTC:** "We only prioritize quality, we will deal with consents after the model finishes", and "do not change the plan or quality due to consent issues". The restriction above is withdrawn. Best-of-16 stays in the plan, including rater packets. Consent is reviewed after the model finishes, and this finding stays on that list; the release layers (licensing) are unchanged.
+
+### Rater read terms defined (declared 2026-10-31, 22:39 UTC, before any sheet exists; owner delegated the definitions)
+
+Stricter than the release bar's wording, never looser. Paired by sentence; intervals by two-way cluster bootstrap over sentences and raters.
+- **Comprehension:** Wilson 95% lower bound ≥ 70% (the owner's rule) and the clustered lower bound ≥ 70%, because Wilson alone falsely passes a true 70% 8–14% of the time under the assumed clustering.
+- **Within 10 points:** the upper 95% bound of reference accuracy minus system accuracy is ≤ 10 points. A point estimate within 10 with a wider interval is not established.
+- **Negation truth:** a sentence counts as negated only if its English has a negation and a Deaf checker, not shown any generated clip, confirms the real recording signs it. Fixed before rating.
+- **Negation recovered:** blind recall Wilson lower bound ≥ 70%; upper 95% bound of reference recall minus system recall ≤ 10 points; false-alarm rate reported, with its Wilson upper bound ≤ 20%. If the reference's own recall lower bound is below 70%, the negation read is void, not passed.
+- **Sentence draw:** every eligible negated sentence is kept among the 200, to give negation enough ratings. Comprehension is read weighted to D20's negated share, and the unweighted value is reported beside it.
+- **Unviewable rows:** counted and excluded as in the protocol; a system with over 5% does not pass.
+- **Wrist speed and timing:** measured on the exact clips rated, at predicted timing, unseen signers. The first read fails these by construction and stays diagnostic.
