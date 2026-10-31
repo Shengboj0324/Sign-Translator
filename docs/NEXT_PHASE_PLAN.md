@@ -5720,3 +5720,16 @@ The word caches for the 1,000 under W14b keep building. An R16 cache for the 1,0
 **The trade-off, stated plainly.** The stack is stronger on everything but this BLEU difference, which is far inside noise: likelihood +0.020 [+0.007, +0.033], wrist speed 2.37× against 2.57×, order signal +0.578 against +0.35. The rule is applied as declared and not relaxed after seeing the number. A later replacement arm would need its own declared amendment (`R20B_DECLARED_REPLACEMENT`), and it would count as a second read of the 1,000.
 
 **Phase A summary:** adopted A4 (best of 16). A7 passed alone but does not enter Phase B's arm. Rejected A1, A2, A3, A5 (for Phase B's words), A6.
+
+### Round 20 Phase B first read, and amendment 6 (declared 2026-10-31, 15:35 UTC; before any read of the stack on the 1,000)
+
+**Phase B, W14b, gains on, best of 16, on the 1,000** (`phase-b/w14b-gains-n16-val1000.json`, verdict stored): BLEU 2.570 [2.236, 2.892]. Minus W14b composition 2.306: +0.264 [−0.073, +0.615], so the rule's first item fails and `rule_passed` is false. Minus own end-to-end 1.786: +0.785 [+0.405, +1.143]. Minus mismatched words: +1.496 [+1.175, +1.836]. Minus shuffled: +0.277 [−0.06, +0.596]. Likelihood minus blank +0.055 [+0.032, +0.078]. Spotting 0.4125, order 0.914. Wrist speed 2.60× real. Length ratio 1.60 (comparator 1.68, real 1.31). M1 is not claimed. An independent audit of this read and of the C20 question is running.
+
+**Owner's instruction (chat, 15:3x UTC):** test the no-gains stack on the 1,000, with the decision left to the lead.
+
+**Amendment 6.**
+1. **A second arm on the 1,000.** `w14b-nogains-n16-val1000`: W14b, no decoder gains, best of 16, from the stored cache, read by the same job. Own end-to-end is the no-gains pilot (2.000). It reads with `R20B_DECLARED_REPLACEMENT=<this commit>`. The verdict and every report state this is the set's second read of Round 20. The first arm's read stays on record and is not overwritten.
+2. **Compared with:** the Phase B rule as declared, plus paired BLEU, likelihood and recogniser v2 spotting against the first arm.
+3. **Only one arm reads C20, chosen by this rule, fixed now.** The stack replaces the first arm **only if all hold** on the 1,000: BLEU point estimate ≥ 2.55; paired likelihood against the first arm with lower bound above 0; v2 spotting paired lower bound above −0.02; wrist speed ratio closer to 1 than the first arm's 2.60×. Otherwise the first arm stays. BLEU is not compared directly, because D20 showed the difference between these two arms is far inside noise, and BLEU has the known tempo artefact.
+4. **Skepticism carried over.** Removing gains yields damped motion, which this instrument reads more easily, so the likelihood gain may partly be that preference. Wrist speed is the instrument-free check; instrument v2 and raters still decide.
+5. **Whether C20 runs at all** follows the audit and is recorded separately before any C20 read. Nothing here reads C20.
