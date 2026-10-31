@@ -902,7 +902,8 @@ def merge(args, store) -> dict:
         other_ll = (json.loads(store.get(args.paired_with)).get("likelihood") if args.paired_with else None)
         extra["likelihood"] = likelihood_summary(rows, list(rows[0]["likelihood"]), pairs, boot=args.bootstrap,
                                                  other=other_ll)
-    return dict(kind="round15-compose-eval", **extra, settings=s, clips=n, references=texts, signs=merged["signs"], indexing=INDEXING,
+    declared = {"declared_replacement": args.declared_replacement} if getattr(args, "declared_replacement", None) else {}
+    return dict(kind="round15-compose-eval", **declared, **extra, settings=s, clips=n, references=texts, signs=merged["signs"], indexing=INDEXING,
                 shards=sorted(p["shard"] for p in partials), stage1_check=partials[0]["stage1_check"],
                 comparators=comparators, rule=args.rule, rule_checks=checks, bootstrap=args.bootstrap, forms=scores,
                 **(dict(refined_rule=args.refined_rule, refined_rule_checks=refined_checks, refiner=s["refiner"],
@@ -1139,6 +1140,8 @@ def main(argv=None) -> int:
     m.add_argument("--refined-rule", help="the declared rule of the refined forms (<variant>@refined); the "
                    f"design's: {REFINED_RULE}")
     m.add_argument("--bootstrap", type=int, default=1000)
+    m.add_argument("--declared-replacement", help="round 20 Phase B: the plan commit of the amendment that declares this arm a "
+                   "replacement of another on the same set; recorded in the report")
     for q in (r, m):
         q.add_argument("--store", default="r2", help="r2, or dir:/path (tests)")
         q.add_argument("--output-key")

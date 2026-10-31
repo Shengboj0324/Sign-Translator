@@ -30,6 +30,13 @@ is a plan-conditioned detail prior and every sample is two-stage: plan prior, th
 decoder (``--plan-temperature``/``--plan-guidance`` for the plan sampler; by default the detail's). The report records
 the pins under ``plan``. ``--oracle-plan`` (diagnostic) also generates the meaning half from each reference clip's own
 plan: ``meaning_oracle_plan`` and the paired gap ``oracle_gap`` (oracle minus generated), the arm's halves unchanged.
+
+Round 20 (docs/NEXT_PHASE_PLAN.md, "Round 20", A7), an addition only: ``--no-decoder-gains`` generates both halves with the same
+seeds and clips, decoded without the tokenizer's accepted gains: Phase B's end-to-end comparator for an arm without gains. Gains
+reach this script at one place, ``load_generator``'s wrappers around ``sample`` and ``sample.batch``: ``postprocess`` only smooths
+the head and there are no worker processes. The report records ``no_decoder_gains``; its key is written once, and
+``--meaning-from-key`` (an earlier report's gained meaning half) is refused. ``--first-clips N`` (smoke, with that option only)
+keeps the first N of the clips, at their positions. Without the option the run and its report are unchanged.
 """
 from __future__ import annotations
 
@@ -219,8 +226,15 @@ def main(argv=None) -> int:
                    help="instrument v2: the back-translator run whose best.json checkpoint reads the meaning half "
                         "(default: v1, so every declared comparison is unchanged; another run is recorded as "
                         "translator_run in the report)")
+    p.add_argument("--no-decoder-gains", action="store_true", help="round 20: decode without the tokenizer's accepted gains "
+                   "(same seeds and clips; head smoothing stays); recorded in the report, its key written once")
+    p.add_argument("--first-clips", type=int, help="smoke, with --no-decoder-gains: the first N of the --clips sentences")
     p.add_argument("--output-key", required=True)
     args = p.parse_args(argv)
+    if args.no_decoder_gains and args.meaning_from_key:
+        raise SystemExit("--no-decoder-gains generates its own meaning half: --meaning-from-key would reuse a gained one")
+    if args.first_clips is not None and (not args.no_decoder_gains or args.first_clips < 2):
+        raise SystemExit("--first-clips is a smoke of --no-decoder-gains, of at least 2 clips")
     if args.oracle_only and not args.oracle_plan:
         raise SystemExit("--oracle-only needs --oracle-plan")
     plan_args = (args.plan_prior_key, args.plan_prior_sha256, args.plan_tokenizer_key, args.plan_tokenizer_sha256)
@@ -243,6 +257,8 @@ def main(argv=None) -> int:
     from strict_prior_review import bleu_ci, separated
     from validate_sign_recognizer import load_model, logits_of
     store = R2Store(os.environ)
+    if args.no_decoder_gains and store.exists(args.output_key):
+        raise SystemExit(f"{args.output_key} exists: refusing to overwrite")
     if args.word_split_sha256 and not args.word_split_key:
         raise SystemExit("--word-split-sha256 needs --word-split-key")
     if bool(args.word_list_key) != bool(args.word_list_sha256):
@@ -271,7 +287,8 @@ def main(argv=None) -> int:
                     temperature=({k: float(v) for k, v in (x.split("=") for x in args.plan_temperature.split(","))}
                                  if args.plan_temperature else None))
     _, _, sample = load_generator(store, args.checkpoint_key, args.mix_sha256, args.device, temperature=temperature,
-                                  **({"plan": plan} if plan else {}))
+                                  **({"plan": plan} if plan else {}),
+                                  **({"decoder_gains": False} if args.no_decoder_gains else {}))
     post = postprocess
     # lexicon word list (round 14: drawn up before the meaning half, so a bad word split fails before any generation)
     validation = (None if args.word_list_key else      # a pinned list needs no reliable-gloss list
@@ -305,7 +322,7 @@ def main(argv=None) -> int:
         if texts != [r["text"] for r in validation_sentences(manifest, args.clips)]:
             raise SystemExit("--meaning-from-key: the earlier report translated other clips")
     else:
-        val = validation_sentences(manifest, args.clips)
+        val = validation_sentences(manifest, args.clips)[:args.first_clips]
         refs = [at_rate(load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]), 24.) for r in val]
         texts = [r["text"] for r in val]
         seconds = [float(s.timestamps[-1] - s.timestamps[0]) + 1 / 24. for s in refs]
@@ -408,7 +425,9 @@ def main(argv=None) -> int:
                   **({"word_list": dict(key=args.word_list_key, sha256=list_sha, words=len(words))}
                      if args.word_list_key else {}),
                   **({"meaning_from_key": args.meaning_from_key} if args.meaning_from_key else {}),
-                  **({"plan": {k: v for k, v in plan.items()}} if plan else {}), **extra_meaning)
+                  **({"plan": {k: v for k, v in plan.items()}} if plan else {}), **extra_meaning,
+                  **({"no_decoder_gains": True} if args.no_decoder_gains else {}),
+                  **({"first_clips": args.first_clips} if args.first_clips else {}))
     store.put(args.output_key, json.dumps(report, indent=2, sort_keys=True, default=float).encode())
     return 0
 

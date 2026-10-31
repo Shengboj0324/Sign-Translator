@@ -20,6 +20,7 @@ from tests.test_round15_compose_eval import pilot_report, run_args
 from tests.test_round15_stage2 import stage2_store, generator_store  # noqa: F401  (fixtures)
 from tests.test_round15_compositional import stubbed  # noqa: F401
 from tests.test_round20_eval import likelihood_stub, put_gains  # noqa: F401
+from tests.test_pilot_content_check import pilot, pcc  # noqa: F401
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "runpod/fleet/round20_phase_b.sh"
@@ -31,6 +32,10 @@ CMP = f"{O}/round15/eval1000/w14b-step30000.json"
 W14B = "training-runs/tokens-rvq-d0b-prior-r14b-w14b/checkpoints/step-00030000.pt"
 R16 = "training-runs/tokens-rvq-d0b-prior-r16-rollout/checkpoints/step-00010000.pt"
 FORM = "core_crossfade"
+READS = [f"{OUT_A}/{k}.json" for k in ("a0-w14b-r10", "a8-r16-r10", "a7-nogains-r10", "a7-nogains-r16-r10",
+                                       *(f"{p}-n{n}-r10" for p in ("a4-w14b", "a4-r16", "a9-nogains", "a9-nogains-r16")
+                                         for n in (4, 8, 16)))]
+PILOTS = [f"{OUT}/pilot-{p}-nogains-val1000.json" for p in ("w14b", "r16")]
 # read from the stored comparator's settings (2026-10-31)
 COMPARATOR = dict(
     clips=1000, shards=4, block=32, seed=0, variants=[FORM],
@@ -50,10 +55,11 @@ COMPARATOR = dict(
 # ---- the job on stubs --------------------------------------------------------------------------------------------------
 
 def job(tmp_path, phase, *, prior="w14b", no_gains="1", best_of="8", sentence_set="val1000", smoke=False, gpu=True, gate=True,
-        stored=(), fail_shard="", hang=False, **env):
+        stored=(), fail_shard="", hang=False, reads=True, pilots=True, **env):
     """The real job on stubs. Returns (exit code, stdout, [logged lines])."""
     e = dict(R20B_PHASE=phase, PRIOR=prior, NO_GAINS=no_gains, BEST_OF=best_of, SET=sentence_set, STUB_GATE=str(int(gate)),
-             STUB_EXISTS=" ".join(stored), STUB_FAIL_SHARD=fail_shard, STUB_HANG="1" if hang else "", **env)
+             STUB_EXISTS=" ".join([*stored, *(READS if reads else ()), *(PILOTS if pilots else ())]),
+             STUB_FAIL_SHARD=fail_shard, STUB_HANG="1" if hang else "", **env)
     return on_stubs(tmp_path, SCRIPT.read_text(), e, smoke=smoke, gpu=gpu)
 
 
@@ -78,6 +84,7 @@ def on_stubs(tmp_path, text, env, *, smoke, gpu):
         '  scripts/*) echo "$*" >> "$STUB_LOG" ;; esac\n'
         'case "$*" in *c20-gate*) [ "$STUB_GATE" = 1 ] || exit 1 ;; esac\n'
         'case "$*" in *"round20_phase_b_verdict.py verdict "*) exit ${STUB_VERDICT:-0} ;; esac\n'
+        'case "$*" in *" stack-check "*) exit ${STUB_STACK:-0} ;; *" one-arm "*) exit ${STUB_ONE_ARM:-0} ;; esac\n'
         'if [ -n "$STUB_FAIL_SHARD" ]; then case "$*" in *"--shard $STUB_FAIL_SHARD "*) exit 1 ;; esac; fi\n'
         'if [ -n "$STUB_HANG" ]; then case "$*" in *round20_word_cache*" run "*) exec /bin/sleep 30 ;; esac; fi\n'
         'exit 0\n')
@@ -109,7 +116,8 @@ def on_stubs(tmp_path, text, env, *, smoke, gpu):
 
 
 def scripts_run(commands):
-    return [c for c in commands if c.startswith("scripts/")]
+    """What ran, apart from the D20 reads' check that precedes every full phase."""
+    return [c for c in commands if c.startswith("scripts/") and " stack-check " not in c]
 
 
 def parsed_run(tmp_path, monkeypatch, line, name):
@@ -171,12 +179,13 @@ def test_the_run_is_the_comparators_command_apart_from_the_adopted_options(tmp_p
             expected.update(word_cache_key=index, word_cache_sha256="stubsha")
         assert {k: (arm[k], expected[k]) for k in arm if arm[k] != expected[k]} == {}
     merge = next(c for c in commands if "round15_compose_eval.py merge" in c)
-    pilot = f"{O}/round14b/pilot-w14b-step30000.json" if prior == "w14b" else f"{O}/round16/pilot-r16.json"
+    stored_pilot = f"{O}/round14b/pilot-w14b-step30000.json" if prior == "w14b" else f"{O}/round16/pilot-r16.json"
+    pilot = f"{OUT}/pilot-{prior}-nogains-val1000.json" if no_gains == "1" else stored_pilot
     assert merge == ("scripts/round15_compose_eval.py merge --shard-keys " + ",".join(f"{report}-shard{s}.json" for s in range(4))
                      + f" --end-to-end-report {pilot} --paired-with {CMP} --rule bleu:end_to_end,bleu:mismatched_words,"
                      f"spotting --output-key {report}.json")
     pins = [c for c in commands if c.startswith("pin ")]
-    assert f"pin {CMP}" in pins and f"pin {pilot}" in pins
+    assert f"pin {CMP}" in pins and f"pin {stored_pilot}" in pins
     assert (f"pin {R16 if prior == 'r16' else W14B}" in pins) == (best_of == "0")       # only where words are generated
     assert all(f"pin {CMP[:-5]}-shard{s}.json" in pins for s in range(4))
     assert not any("round20/c20" in c for c in commands)      # the 1,000's run reads nothing of C20
@@ -264,7 +273,9 @@ def test_c20_stays_closed_until_a_stored_verdict_opens_it(tmp_path):
         assert code == 1 and "no stored val1000 verdict" in out and not commands
         code, out, commands = job(tmp_path, phase, sentence_set="c20", stored=[verdict], gate=False)  # below 2.55 or failed
         assert code == 1 and "does not open it" in out
-        assert commands == [f"scripts/round20_phase_b_verdict.py c20-gate --verdict-key {verdict}"]   # nothing of C20
+        assert len(commands) == 1 and f"round20_phase_b_verdict.py c20-gate --verdict-key {verdict} " in commands[0]   # nothing of C20
+        assert (f"--out {OUT} --report w14b-nogains-n8-val1000 --prior w14b --prior-checkpoint-key {W14B} --no-gains 1 "
+                "--best-of 8 --lowpass 0") in commands[0]
     code, out, commands = job(tmp_path, "cache", sentence_set="c20", stored=[verdict], smoke=True)    # nor by a smoke
     code2, out2, _ = job(tmp_path, "cache", sentence_set="c20", smoke=True)
     assert code == 0 and code2 == 1 and "no stored val1000 verdict" in out2
@@ -274,7 +285,7 @@ def test_c20_stays_closed_until_a_stored_verdict_opens_it(tmp_path):
     # open: the gate first, then the pin, then the set; the comparator and the pilots cannot pair with it
     c20 = f"--sentences-key {O}/round20/c20.json --sentences-sha256 24ac16f220139365af2bc7a62e7555ab88d13e9adb9b0a5f078c8b4107f72956"
     code, out, commands = job(tmp_path, "cache", sentence_set="c20", stored=[verdict])
-    assert code == 0 and commands[0].endswith(f"c20-gate --verdict-key {verdict}") and commands[1] == f"pin {O}/round20/c20.json"
+    assert code == 0 and f"c20-gate --verdict-key {verdict} " in commands[0] and commands[1] == f"pin {O}/round20/c20.json"
     assert all(c20 in c and f"--prefix {OUT}/cache-w14b-nogains-c20-n8 " in c for c in commands if " run " in c)
     index = f"{OUT}/cache-w14b-nogains-c20-n8/index.json"
     code, out, commands = job(tmp_path, "run", sentence_set="c20", stored=[verdict, index])
@@ -386,7 +397,12 @@ def reports(hyp_arm=HYP_ARM, delta=0.):
                       shards=[0], forms={FORM: hyp_form(HYP_CMP), "real": hyp_form(REFS), "blank": hyp_form(["the"] * 6)},
                       motion_ratio_to_real={FORM: dict(wrist_speed=2.6448)})
     settings = dict(COMPARATOR, rerank=1, checkpoint_key=None, round20=round20())
-    pilot = dict(checkpoint_key=W14B, meaning=dict(references=REFS, generated=dict(bleu=1.786, hypotheses=["end"] * 6)))
+    stored = dict(checkpoint_key=W14B, clips=6, guidance=1.5, part_temperature=dict(COMPARATOR["part_temperature"]),
+                  meaning=dict(references=REFS, generated=dict(bleu=1.786, hypotheses=["stored"] * 6),
+                               real=dict(hypotheses=list(REFS)), blank=dict(hypotheses=["the"] * 6)))
+    pilot = copy.deepcopy(stored)                     # the arm has no gains (below): its pilot is the rerun without them
+    pilot["no_decoder_gains"] = True
+    pilot["meaning"]["generated"] = dict(bleu=1.9, hypotheses=["end"] * 6)
     arm = dict(kind="round15-compose-eval", settings=settings, references=REFS, signs=SIGNS, clips=len(REFS), shards=[0],
                forms={FORM: hyp_form(hyp_arm, minus_paired_core_crossfade=dict(GOOD), minus_mismatched_words=dict(GOOD),
                                      minus_end_to_end=dict(GOOD)),
@@ -398,14 +414,22 @@ def reports(hyp_arm=HYP_ARM, delta=0.):
                                       "real": dict(minus_blank=dict(difference=.3, ci95=[.2, .4], n=6))}),
                motion_ratio_to_real={FORM: dict(wrist_speed=2.1), "real": dict(wrist_speed=1.)},
                round20=dict(per_variant={FORM: dict(sources=dict(cache=40))}))
-    return dict(arm=arm, comparator=comparator, pilot=pilot, shards_arm=[shard(settings, delta)],
+    return dict(arm=arm, comparator=comparator, pilot=pilot, stored_pilot=stored, shards_arm=[shard(settings, delta)],
                 shards_comparator=[shard(COMPARATOR)])
 
 
 def judge(r, **over):
     args = dict(prior_checkpoint=W14B, no_gains=True, best_of=8, boot=50)
     return pv.judge_val1000(r["arm"], r["comparator"], r["pilot"], shards_arm=r["shards_arm"],
-                            shards_comparator=r["shards_comparator"], **{**args, **over})
+                            shards_comparator=r["shards_comparator"], stored_pilot=r["stored_pilot"], **{**args, **over})
+
+
+def gained_arm(r):
+    """The same reports as an arm with gains: its cache's, and the stored pilot as its own end-to-end."""
+    r["arm"]["settings"]["round20"]["word_cache"] = cache_settings(no_gains=False)
+    r["pilot"] = r["stored_pilot"]
+    r["arm"]["forms"]["end_to_end"]["hypotheses"] = r["pilot"]["meaning"]["generated"]["hypotheses"]
+    return r
 
 
 def test_a_passing_verdict_judges_each_item_and_reports_the_rest():
@@ -424,11 +448,13 @@ def test_a_passing_verdict_judges_each_item_and_reports_the_rest():
     assert "no A3 arm" in v["predicted"] and "@predicted" not in json.dumps(v["next_to_bleu"])
     assert v["comparator"]["paired_likelihood"]["available"] is False
     assert "without --likelihood" in v["comparator"]["paired_likelihood"]["reason"]
-    assert v["comparator"]["real_hypotheses_identical"] == 6 and "note" in v["end_to_end"]
+    assert v["comparator"]["real_hypotheses_identical"] == 6 and v["end_to_end"]["no_decoder_gains"] is True
+    assert "WITHOUT gains" in v["items"]["bleu_vs_own_end_to_end"]["note"]
+    assert v["end_to_end"]["identical_to_stored_pilot"] == dict(real=6, blank=6)
     assert not any("artefact" in k or "tempo" in k for k in v)        # no tempo-artefact logic
-    gained = reports()
-    gained["arm"]["settings"]["round20"]["word_cache"] = cache_settings(no_gains=False)
-    assert "note" not in judge(gained, no_gains=False)["end_to_end"]   # a gained arm against the gained pilot: no caveat
+    gained = judge(gained_arm(reports()), no_gains=False)
+    assert "with gains" in gained["items"]["bleu_vs_own_end_to_end"]["note"] and gained["end_to_end"]["no_decoder_gains"] is False
+    assert "identical_to_stored_pilot" not in gained["end_to_end"]
 
 
 @pytest.mark.parametrize("item,field", [("bleu_vs_w14b_composition", "minus_paired_core_crossfade"),
@@ -549,6 +575,7 @@ def test_fresh_arms_and_arms_of_another_prior():
     r["arm"]["settings"]["round20"]["word_cache"] = cache_settings(checkpoint=R16)
     r["arm"]["comparators"]["end_to_end"]["checkpoint_key"] = R16
     r["pilot"]["checkpoint_key"] = R16
+    r["stored_pilot"]["checkpoint_key"] = R16
     v = judge(r, prior_checkpoint=R16)
     assert v["rule_passed"] and v["end_to_end"]["checkpoint_key"] == R16
 
@@ -578,12 +605,17 @@ def store_all(tmp_path, r, arm_key="r/arm.json", comparator_key="r/w14b.json", p
     store.put(arm_key, payloads["arm"])
     store.put(comparator_key, payloads["comparator"])
     store.put(pilot_key, payloads["pilot"])
+    stored_key = pilot_key.replace("pilot", "stored-pilot")
+    stored_payload = json.dumps(r["stored_pilot"]).encode()
+    store.put(stored_key, stored_payload)
     for stem, shards in ((arm_key, r["shards_arm"]), (comparator_key, r["shards_comparator"])):
         for s, part in enumerate(shards or ()):
             store.put(f"{stem[:-5]}-shard{s}.json", json.dumps(part).encode())
     argv = ["verdict", "--store", f"dir:{tmp_path / 'tiny'}", "--arm-key", arm_key, "--comparator-key", comparator_key,
             "--comparator-sha256", hashlib.sha256(payloads["comparator"]).hexdigest(), "--end-to-end-key", pilot_key,
-            "--end-to-end-sha256", hashlib.sha256(payloads["pilot"]).hexdigest(), "--prior", "w14b",
+            "--end-to-end-sha256", hashlib.sha256(payloads["pilot"]).hexdigest(), "--stored-pilot-key", stored_key,
+            "--stored-pilot-sha256", hashlib.sha256(stored_payload).hexdigest(), "--out", arm_key.split("/")[0],
+            "--report", "w14b-nogains-n8-val1000", "--prior", "w14b",
             "--prior-checkpoint-key", W14B, "--no-gains", "1", "--best-of", "8", "--set", "val1000", "--bootstrap", "50",
             "--output-key", "r/verdict.json"]
     return store, argv
@@ -616,7 +648,8 @@ def test_the_cli_stores_a_failing_verdict_and_refuses_an_incomplete_one(tmp_path
 def test_the_cli_refuses_another_comparator_or_pilot(tmp_path):
     store, argv = store_all(tmp_path, reports())
     for flag, message in (("--comparator-sha256", "does not match --comparator-sha256"),
-                          ("--end-to-end-sha256", "does not match --end-to-end-sha256")):
+                          ("--end-to-end-sha256", "does not match --end-to-end-sha256"),
+                          ("--stored-pilot-sha256", "does not match --stored-pilot-sha256")):
         bad = list(argv)
         bad[bad.index(flag) + 1] = "0" * 64
         with pytest.raises(SystemExit, match=message):
@@ -628,9 +661,16 @@ def test_the_cli_refuses_another_comparator_or_pilot(tmp_path):
 
 # ---- C20's gate, and its verdict ----------------------------------------------------------------------------------------
 
-def val_verdict(*, passed=True, point=2.6, complete=True):
+def val_verdict(*, passed=True, point=2.6, complete=True, **arm):
     return dict(kind="round20-phase-b-verdict", set="val1000", complete=complete, rule_passed=passed,
-                m1=dict(threshold=2.55, point_estimate=point, met=point >= 2.55))
+                m1=dict(threshold=2.55, point_estimate=point, met=point >= 2.55),
+                arm=dict(dict(prior="w14b", prior_checkpoint_key=W14B, no_decoder_gains=True, best_of=8, lowpass=False), **arm))
+
+
+def gate_argv(tmp_path, *extra):
+    return ["c20-gate", "--store", f"dir:{tmp_path / 'g'}", "--verdict-key", "o/v.json", "--out", "o", "--report",
+            "w14b-nogains-n8-val1000", "--prior", "w14b", "--prior-checkpoint-key", W14B, "--no-gains", "1", "--best-of", "8",
+            "--lowpass", "0", *extra]
 
 
 @pytest.mark.parametrize("verdict,match", [
@@ -641,22 +681,36 @@ def val_verdict(*, passed=True, point=2.6, complete=True):
     (dict(val_verdict(), kind="other"), "not a complete"),
     (dict(val_verdict(), m1=None), "below 2.55"),
     (dict(val_verdict(), m1=dict(met=True, point_estimate=2.5)), "below 2.55"),
+    (val_verdict(best_of=4), "another arm's"),
+    (val_verdict(no_decoder_gains=False), "another arm's"),
+    (val_verdict(lowpass=True), "another arm's"),
+    (val_verdict(prior="r16"), "another arm's"),
+    (val_verdict(prior_checkpoint_key=R16), "another arm's"),
+    (dict(val_verdict(), arm=None), "another arm's"),
 ])
 def test_the_c20_gate_stays_closed(tmp_path, verdict, match):
     from train_text_to_motion import make_store
     store = make_store(f"dir:{tmp_path / 'g'}")
-    store.put("v.json", json.dumps(verdict).encode())
+    store.put("o/v.json", json.dumps(verdict).encode())
     with pytest.raises(SystemExit, match=match):
-        pv.main(["c20-gate", "--store", f"dir:{tmp_path / 'g'}", "--verdict-key", "v.json"])
+        pv.main(gate_argv(tmp_path))
 
 
 def test_the_c20_gate_opens_and_needs_a_stored_verdict(tmp_path):
     from train_text_to_motion import make_store
     store = make_store(f"dir:{tmp_path / 'g'}")
     with pytest.raises(SystemExit, match="no stored verdict"):
-        pv.main(["c20-gate", "--store", f"dir:{tmp_path / 'g'}", "--verdict-key", "v.json"])
-    store.put("v.json", json.dumps(val_verdict(point=2.55)).encode())
-    assert pv.main(["c20-gate", "--store", f"dir:{tmp_path / 'g'}", "--verdict-key", "v.json"]) == 0
+        pv.main(gate_argv(tmp_path))
+    store.put("o/v.json", json.dumps(val_verdict(point=2.55)).encode())
+    assert pv.main(gate_argv(tmp_path)) == 0
+    # another arm on the 1,000 keeps it shut, unless this arm is that arm's declared replacement
+    store.put("o/w14b-gains-n8-val1000-shard2.json", b"{}")
+    with pytest.raises(SystemExit, match="also hold .'w14b-gains-n8-val1000'."):
+        pv.main(gate_argv(tmp_path))
+    verdict = dict(val_verdict(point=2.55), declared_replacement="abc1234")
+    (tmp_path / "g/o/v.json").unlink()
+    store.put("o/v.json", json.dumps(verdict).encode())
+    assert pv.main(gate_argv(tmp_path)) == 0
 
 
 def c20_arm(hyp_arm=REFS):
@@ -687,7 +741,7 @@ def test_the_c20_verdict():
 
 # ---- real merges of the synthetic store ---------------------------------------------------------------------------------
 
-def merged_pair(tmp_path, store, sha, words, *, arm_stem="e/arm"):
+def merged_pair(tmp_path, store, sha, words, *, arm_stem="e/arm", pilot="pilot.json", merge_extra=()):
     """A comparator (no likelihood, as the stored one) and an arm on the same clips, both merged as the job merges them."""
     def shards(stem, *extra):
         for s in (0, 1):
@@ -695,18 +749,21 @@ def merged_pair(tmp_path, store, sha, words, *, arm_stem="e/arm"):
                                     "--shards", "2", "--shard", str(s), *extra,
                                     "--output-key", f"{stem}-shard{s}.json")) == 0
         return f"{stem}-shard0.json,{stem}-shard1.json"
-    root = ["merge", "--store", f"dir:{tmp_path / 'store'}", "--bootstrap", "50", "--end-to-end-report", "pilot.json",
+    root = ["merge", "--store", f"dir:{tmp_path / 'store'}", "--bootstrap", "50", "--end-to-end-report", pilot,
             "--rule", "bleu:end_to_end,bleu:mismatched_words,spotting"]
     if not store.exists("e/w14b.json"):
         assert ce.main([*root, "--shard-keys", shards("e/w14b"), "--output-key", "e/w14b.json"]) == 0
     args = shards(arm_stem, "--likelihood", *words)
-    assert ce.main([*root, "--shard-keys", args, "--paired-with", "e/w14b.json", "--output-key", f"{arm_stem}.json"]) == 0
+    assert ce.main([*root, "--shard-keys", args, "--paired-with", "e/w14b.json", *merge_extra,
+                    "--output-key", f"{arm_stem}.json"]) == 0
 
 
-def verdict_argv(tmp_path, store, *, no_gains, best_of, arm="e/arm", output="e/verdict.json"):
+def verdict_argv(tmp_path, store, *, no_gains, best_of, arm="e/arm", output="e/verdict.json", pilot="pilot.json"):
+    stored = ["--stored-pilot-key", "pilot.json", "--stored-pilot-sha256", hashlib.sha256(store.get("pilot.json")).hexdigest()]
     return ["verdict", "--store", f"dir:{tmp_path / 'store'}", "--arm-key", f"{arm}.json", "--comparator-key", "e/w14b.json",
-            "--comparator-sha256", hashlib.sha256(store.get("e/w14b.json")).hexdigest(), "--end-to-end-key", "pilot.json",
-            "--end-to-end-sha256", hashlib.sha256(store.get("pilot.json")).hexdigest(), "--prior", "w14b",
+            "--comparator-sha256", hashlib.sha256(store.get("e/w14b.json")).hexdigest(), "--end-to-end-key", pilot,
+            "--end-to-end-sha256", hashlib.sha256(store.get(pilot)).hexdigest(), *(stored if pilot != "pilot.json" else ()),
+            "--out", "e", "--report", "w14b-nogains-n0-val1000", "--prior", "w14b",
             "--prior-checkpoint-key", "prior.pt", "--no-gains", str(no_gains), "--best-of", str(best_of), "--set", "val1000",
             "--bootstrap", "50", "--output-key", output]
 
@@ -715,11 +772,19 @@ def test_the_verdict_reads_real_merges_of_a_fresh_arm_without_gains(tmp_path, st
     store, sha, s1, *_ = stage2_store
     put_gains(store)
     pilot_report(store, s1)
-    merged_pair(tmp_path, store, sha, ["--no-decoder-gains"])
+    rerun = dict(json.loads(store.get("pilot.json")), no_decoder_gains=True)
+    store.put("pilot-nogains.json", json.dumps(rerun).encode())
+    merged_pair(tmp_path, store, sha, ["--no-decoder-gains"], pilot="pilot-nogains.json",
+                merge_extra=("--declared-replacement", "abc1234"))
     arm = json.loads(store.get("e/arm.json"))
+    assert arm["declared_replacement"] == "abc1234" and "declared_replacement" not in json.loads(store.get("e/w14b.json"))
     assert "likelihood" not in json.loads(store.get("e/w14b.json")) and "minus_paired_core_crossfade" in arm["forms"][FORM]
-    assert pv.main(verdict_argv(tmp_path, store, no_gains=1, best_of=0)) == 0
+    with pytest.raises(SystemExit, match="no other arm"):        # a declaration with nothing to replace
+        pv.main(verdict_argv(tmp_path, store, no_gains=1, best_of=0, pilot="pilot-nogains.json"))
+    store.put("e/w14b-gains-n8-val1000.json", b"{}")
+    assert pv.main(verdict_argv(tmp_path, store, no_gains=1, best_of=0, pilot="pilot-nogains.json")) == 0
     v = json.loads(store.get("e/verdict.json"))
+    assert v["declared_replacement"] == "abc1234" and v["other_arms"] == ["w14b-gains-n8-val1000"]
     assert v["complete"] and v["items"]["bleu_vs_w14b_composition"]["available"]
     assert set(v["items"]) == {"bleu_vs_w14b_composition", "bleu_vs_other_sentence_words", "bleu_vs_own_end_to_end",
                                "v2_spotting_vs_w14b_composition", "wrist_speed_reported"}
@@ -729,12 +794,15 @@ def test_the_verdict_reads_real_merges_of_a_fresh_arm_without_gains(tmp_path, st
     assert v["items"]["v2_spotting_vs_w14b_composition"]["word_source"] == ["generated"]
     assert v["items"]["wrist_speed_reported"]["ratio_to_real"] == arm["motion_ratio_to_real"][FORM]["wrist_speed"]
     assert v["next_to_bleu"]["likelihood_minus_blank"] == arm["likelihood"]["forms"][FORM]["minus_blank"]
-    assert v["comparator"]["paired_likelihood"]["available"] is False and "note" in v["end_to_end"]
+    assert v["comparator"]["paired_likelihood"]["available"] is False
+    assert "WITHOUT gains" in v["items"]["bleu_vs_own_end_to_end"]["note"]
     assert v["rule_passed"] == all(i["passed"] for i in v["items"].values())
     # the same reports under another name of the arm are refused: gains on, or a cache
     for over, match in ((dict(no_gains=0, best_of=0), "no_decoder_gains"), (dict(no_gains=1, best_of=8), "no word cache")):
         with pytest.raises(SystemExit, match=match):
-            pv.main(verdict_argv(tmp_path, store, output="e/other.json", **over))
+            pv.main(verdict_argv(tmp_path, store, output="e/other.json", pilot="pilot-nogains.json", **over))
+    with pytest.raises(SystemExit, match="end-to-end-report|lenient"):          # the merge read another pilot than this
+        pv.main(verdict_argv(tmp_path, store, no_gains=1, best_of=0, output="e/other.json"))
 
 
 def test_the_verdict_reads_real_merges_of_a_cached_arm(tmp_path, stage2_store, likelihood_stub, monkeypatch):  # noqa: F811
@@ -774,6 +842,7 @@ def test_the_verdict_reads_real_merges_of_a_cached_arm(tmp_path, stage2_store, l
     assert v["items"]["v2_spotting_vs_w14b_composition"]["word_source"] == ["generated"]   # a cached word is a generated word
     with pytest.raises(SystemExit, match="word_cache.n"):
         pv.main(verdict_argv(tmp_path, store, no_gains=0, best_of=8, output="e/other.json"))
+    assert "with gains" in v["items"]["bleu_vs_own_end_to_end"]["note"]
 
 
 # ---- amendment 4: the D20 stack read (Phase A's no-gains cache and a9) ----------------------------------------------------
@@ -959,6 +1028,11 @@ def test_lowpass_is_one_more_option_on_the_stack(tmp_path, monkeypatch):
     code, out, commands = job(tmp_path, "cache", **STACK, sentence_set="c20", LOWPASS="1",
                               stored=[f"{OUT}/verdict-w14b-nogains-n8-val1000.json"])
     assert code == 1 and "no stored val1000 verdict" in out      # the unfiltered arm's verdict does not open it
+    verdict = f"{OUT}/verdict-w14b-nogains-n8-lp6-val1000.json"
+    code, out, commands = job(tmp_path, "cache", **STACK, sentence_set="c20", LOWPASS="1", stored=[verdict])
+    gate = next(c for c in commands if " c20-gate " in c)
+    assert code == 0 and f"--verdict-key {verdict} " in gate and gate.endswith("--best-of 8 --lowpass 1")
+    assert "--report w14b-nogains-n8-lp6-val1000 " in gate
 
 
 @pytest.mark.parametrize("kwargs,message", [
@@ -993,7 +1067,7 @@ def test_the_verdict_names_the_low_passed_arm():
         judge(copy.deepcopy(r), lowpass=True)
     r["arm"]["settings"]["round20"]["lowpass_hz"] = 6.
     v = judge(copy.deepcopy(r), lowpass=True)
-    assert v["rule_passed"] and "not low-passed" in v["end_to_end"]["note"] and "decodes with gains" in v["end_to_end"]["note"]
+    assert v["rule_passed"] and "not low-passed" in v["end_to_end"]["note"]
     with pytest.raises(SystemExit, match="round20.lowpass_hz: 6.0, not None"):
         judge(r)
     r["arm"]["settings"]["round20"]["lowpass_hz"] = 5.
@@ -1022,3 +1096,448 @@ def test_the_main_form_filter_comes_after_rendering(tmp_path, stage2_store, like
         assert a["hypotheses"]["blank"] == b["hypotheses"]["blank"]
         for control in ("/shuffled", "/mismatched_words"):                                    # the controls are filtered too
             assert a["motion"][f"{FORM}{control}"] != b["motion"][f"{FORM}{control}"]
+
+
+# ---- review fix 1: its own end-to-end without gains ---------------------------------------------------------------------------
+
+def nogains_stub(monkeypatch, seen):
+    import evaluate_text_to_motion as etm
+    from tests.test_pilot_content_check import stub_sample
+
+    def load(store, key, sha, device, temperature=None, **kw):
+        seen.append(kw)
+        return "stub", (), stub_sample
+    monkeypatch.setattr(etm, "load_generator", load)
+
+
+def test_the_pilot_without_gains_changes_only_its_decoder_and_its_record(pilot, monkeypatch):  # noqa: F811
+    store, run = pilot
+    seen = []
+    nogains_stub(monkeypatch, seen)
+    default = json.loads(run())
+    plain = json.loads(run("--no-decoder-gains", output="reports/nogains.json"))
+    assert seen == [{}, {"decoder_gains": False}]                    # the default call passes nothing new
+    assert plain.pop("no_decoder_gains") is True and "no_decoder_gains" not in default
+    assert plain == default                                          # same seeds, clips and words (the stub does not decode)
+    with pytest.raises(SystemExit, match="refusing to overwrite"):   # written once, before any generation
+        run("--no-decoder-gains", output="reports/nogains.json")
+    assert len(seen) == 2
+    with pytest.raises(SystemExit, match="reuse a gained one"):
+        run("--no-decoder-gains", "--meaning-from-key", "reports/pilot.json", output="reports/x.json")
+    for bad in (("--first-clips", "2"), ("--no-decoder-gains", "--first-clips", "1")):
+        with pytest.raises(SystemExit, match="--first-clips"):
+            run(*bad, output="reports/y.json")
+    first = json.loads(run("--no-decoder-gains", "--first-clips", "2", output="reports/smoke.json"))
+    assert first["first_clips"] == 2 and first["clips"] == 2
+    assert first["meaning"]["references"] == default["meaning"]["references"][:2]
+
+
+def test_every_gain_path_of_the_pilot_goes_through_load_generator(tmp_path, stage2_store):  # noqa: F811
+    from evaluate_text_to_motion import load_generator
+    from fit_tokenizer_gains import apply_gains
+    from tests.test_round20_eval import GAINS
+    source = (ROOT / "scripts/pilot_content_check.py").read_text()
+    for path in ("apply_gains", "make_post", "multiprocessing", "run_jobs", "decoder_gains="):
+        assert path not in source, path                               # no other route for a gain, no workers
+    assert source.count("load_generator(") == 1
+    assert "smooth" in source.split("def postprocess")[1][:300]
+    store, sha, *_ = stage2_store
+    put_gains(store)
+    temperature = dict(COMPARATOR["part_temperature"])
+    on = load_generator(store, "prior.pt", sha, "cpu", temperature=temperature)[2]
+    off = load_generator(store, "prior.pt", sha, "cpu", temperature=temperature, decoder_gains=False)[2]
+    assert on.decoder_gains and off.decoder_gains is None
+    for a, b in ((on("cut the onion", 24., 1., 1.5, 50, 7), off("cut the onion", 24., 1., 1.5, 50, 7)),
+                 (on.batch(["cut the onion"], 24., [1.], 1.5, 1000)[0], off.batch(["cut the onion"], 24., [1.], 1.5, 1000)[0])):
+        regained = apply_gains(b, GAINS)
+        assert (a.channels["body"].values == regained.channels["body"].values).all()   # the stub's gains are body and head
+        assert (a.channels["body"].values != b.channels["body"].values).any()
+
+
+@pytest.mark.parametrize("prior,words,checkpoint", [
+    ("w14b", f"--word-split-key {O}/round14/r5-word-split.json --word-split-sha256 "
+             "676f56cbbaa9bac08f0bc305027807827f982cd4c242de03f7891323e723102a --recognizer-run sign-recognizer-v2", W14B),
+    ("r16", f"--word-split-key {O}/round14/r5-word-split.json --word-split-sha256 "
+            "676f56cbbaa9bac08f0bc305027807827f982cd4c242de03f7891323e723102a "
+            f"--word-list-key {O}/round14/r5-word-split.json --word-list-sha256 "
+            "676f56cbbaa9bac08f0bc305027807827f982cd4c242de03f7891323e723102a --recognizer-run sign-recognizer-v3d", R16),
+])
+def test_the_e2e_phase_is_the_stored_pilots_command_without_gains(tmp_path, pilot, prior, words, checkpoint):  # noqa: F811
+    code, out, commands = job(tmp_path, "e2e", prior=prior, no_gains="1", best_of="0", pilots=False)
+    line = next(c for c in commands if "pilot_content_check.py" in c)
+    key = f"{OUT}/pilot-{prior}-nogains-val1000.json"
+    assert code == 0 and f"R20B e2e {key} stubsha" in out and "R20-PHASE-B-DONE 0" in out and f"pin {checkpoint}" in commands
+    assert line == (f"scripts/pilot_content_check.py --checkpoint-key {checkpoint} --mix-key {COMPARATOR['generator_mix']['key']} "
+                    f"--mix-sha256 {COMPARATOR['generator_mix']['sha256']} --vocab-mix-key {COMPARATOR['mix_key']} "
+                    f"--vocab-mix-sha256 {COMPARATOR['mix_sha256']} --clips 1000 "
+                    "--part-temperature body=1.1,left_hand=1.1,right_hand=1.1,face=1.0 --guidance 1.5 "
+                    f"--translator-run back-translator-kp2d-uwb-ft-v1 {words} --device cuda --no-decoder-gains --output-key {key}")
+    store, _ = pilot
+    store.put(key, b"{}")                                           # the script's own parser takes the list
+    with pytest.raises(SystemExit, match="refusing to overwrite"):
+        pcc.main(line.split()[1:])
+    # one pilot per prior, whatever the arm's cache
+    other = next(c for c in job(tmp_path, "e2e", prior=prior, no_gains="1", best_of="8", pilots=False)[2] if "pilot_content" in c)
+    assert other == line
+    # stored: not rerun
+    code, out, commands = job(tmp_path, "e2e", prior=prior, no_gains="1", best_of="0")
+    assert code == 0 and "stored:" in out and not scripts_run(commands)
+
+
+def test_e2e_refusals_and_smoke(tmp_path):
+    code, out, commands = job(tmp_path, "e2e", no_gains="0", best_of="8")
+    assert code == 1 and "only for NO_GAINS=1" in out and not commands
+    code, out, commands = job(tmp_path, "e2e", sentence_set="c20")
+    assert code == 1 and "SET=val1000 only" in out and not commands
+    code, out, commands = job(tmp_path, "e2e", gpu=False, pilots=False)
+    assert code == 1 and "needs a GPU" in out and not scripts_run(commands)
+    code, out, commands = job(tmp_path, "e2e", smoke=True, gpu=False, pilots=False)
+    line = next(c for c in commands if "pilot_content_check.py" in c)
+    assert code == 0 and "--first-clips 5" in line and re.search(rf"--output-key {OUT}/smoke/\d{{8}}T\d{{6}}Z/pilot-w14b-nogains-val1000", line)
+    assert not any("round20/c20" in c for c in commands) and not any(" stack-check " in c for c in commands)
+
+
+def test_a_no_gains_arm_needs_its_own_end_to_end(tmp_path):
+    index = f"{OUT}/cache-w14b-nogains-val1000-n8/index.json"
+    code, out, commands = job(tmp_path, "run", stored=[index], pilots=False)
+    assert code == 1 and "run the e2e phase first" in out and not scripts_run(commands)
+    code, out, commands = job(tmp_path, "verdict", stored=[f"{OUT}/w14b-nogains-n8-val1000.json"], pilots=False)
+    assert code == 1 and "without gains" in out and not scripts_run(commands)
+    code, out, commands = job(tmp_path, "verdict", stored=[f"{OUT}/w14b-nogains-n8-val1000.json"])
+    line = next(c for c in commands if " verdict " in c)
+    assert code == 0 and f"--end-to-end-key {OUT}/pilot-w14b-nogains-val1000.json --end-to-end-sha256 stubsha " in line
+    assert f"--stored-pilot-key {O}/round14b/pilot-w14b-step30000.json --stored-pilot-sha256 090f68b1" in line
+    # a gained arm needs no e2e and names the stored pilot
+    index = f"{OUT}/cache-w14b-gains-val1000-n8/index.json"
+    code, out, commands = job(tmp_path, "run", no_gains="0", stored=[index], pilots=False)
+    assert code == 0 and f"--end-to-end-report {O}/round14b/pilot-w14b-step30000.json " in next(c for c in commands if " merge " in c)
+    code, out, commands = job(tmp_path, "verdict", no_gains="0", stored=[f"{OUT}/w14b-gains-n8-val1000.json"], pilots=False)
+    assert code == 0 and "--stored-pilot-key" not in next(c for c in commands if " verdict " in c)
+    # C20 has no pilot at all
+    verdict = f"{OUT}/verdict-w14b-nogains-n8-val1000.json"
+    code, out, commands = job(tmp_path, "run", sentence_set="c20", stored=[verdict, f"{OUT}/cache-w14b-nogains-c20-n8/index.json"],
+                              pilots=False)
+    assert code == 0 and "--end-to-end-report" not in next(c for c in commands if " merge " in c)
+
+
+@pytest.mark.parametrize("edit,match", [
+    (lambda r: r.update(pilot=r["stored_pilot"]) or r["arm"]["forms"]["end_to_end"].update(
+        hypotheses=r["stored_pilot"]["meaning"]["generated"]["hypotheses"]) or r, "lenient"),   # the gained pilot for a no-gains arm
+    (lambda r: r["pilot"].update(first_clips=5) or r, "a smoke"),
+    (lambda r: r.update(stored_pilot=None) or r, "--stored-pilot-key"),
+    (lambda r: r["pilot"].update(guidance=2.) or r, "differs from the stored pilot in .'guidance'"),
+    (lambda r: r["pilot"].update(clips=300) or r, "differs from the stored pilot in .'clips'"),
+    (lambda r: r["pilot"].update(part_temperature=dict(body=1.)) or r, "differs from the stored pilot in .'part_temperature'"),
+    (lambda r: r["stored_pilot"].update(checkpoint_key=R16) or r, "differs from the stored pilot in .'checkpoint_key'"),
+    (lambda r: r["stored_pilot"]["meaning"].update(references=["x"] * 6) or r, "differs from the stored pilot in .'references'"),
+])
+def test_a_no_gains_arm_refuses_any_other_end_to_end(edit, match):
+    with pytest.raises(SystemExit, match=match):
+        judge(edit(reports()))
+
+
+def test_a_gained_arm_refuses_a_pilot_without_gains():
+    r = gained_arm(reports())
+    r["pilot"] = dict(r["pilot"], no_decoder_gains=True)
+    with pytest.raises(SystemExit, match="the end-to-end pilot does not"):
+        judge(r, no_gains=False)
+
+
+# ---- review fix 2: one arm, and the stored D20 reads ----------------------------------------------------------------------------
+
+def test_other_arms_reads_names_on_this_set_only():
+    keys = [f"o/{k}" for k in ("w14b-nogains-n8-val1000.json", "w14b-nogains-n8-val1000-shard0.json",     # this arm
+                               "verdict-r16-gains-n0-val1000.json", "pilot-w14b-nogains-val1000.json",   # no arms
+                               "cache-w14b-gains-val1000-n4/index.json", "r16-gains-n4-c20.json")]       # other set
+    keys += ["o/smoke/20261031T000000Z/r16-gains-n0-val1000.json", "other/r16-gains-n0-val1000.json"]     # elsewhere
+    assert pv.other_arms(keys, "o", "val1000", "w14b-nogains-n8-val1000") == []
+    assert pv.other_arms(keys + ["o/r16-gains-n0-val1000-shard3.json"], "o", "val1000", "w14b-nogains-n8-val1000") == ["r16-gains-n0-val1000"]
+    assert pv.other_arms(keys + ["o/w14b-nogains-n8-lp6-val1000.json"], "o/", "val1000", "w14b-nogains-n8-val1000") == \
+        ["w14b-nogains-n8-lp6-val1000"]                                                  # the low-passed arm is another arm
+    assert pv.other_arms(keys, "o", "c20", "w14b-nogains-n8-c20") == ["r16-gains-n4-c20"]
+
+
+def test_one_arm_cli(tmp_path, capsys):
+    from train_text_to_motion import make_store
+    store = make_store(f"dir:{tmp_path / 'a'}")
+    argv = ["one-arm", "--store", f"dir:{tmp_path / 'a'}", "--out", "o", "--set", "val1000", "--report", "w14b-nogains-n8-val1000"]
+    assert pv.main(argv) == 0
+    with pytest.raises(SystemExit, match="holds no other arm"):                  # nothing to replace
+        pv.main([*argv, "--declared-replacement", "abc1234"])
+    store.put("o/w14b-gains-n8-val1000.json", b"{}")
+    with pytest.raises(SystemExit, match="no amendment declares"):
+        pv.main(argv)
+    for bad in ("v2", "ABC1234", "abc123", "abc1234; rm"):
+        with pytest.raises(SystemExit, match="not a plan commit"):
+            pv.main([*argv, "--declared-replacement", bad])
+    capsys.readouterr()
+    assert pv.main([*argv, "--declared-replacement", "abc1234"]) == 0
+    assert "DECLARED REPLACEMENT abc1234" in capsys.readouterr().out
+
+
+def test_the_verdict_refuses_a_second_arm(tmp_path, capsys):
+    store, argv = store_all(tmp_path, reports())
+    store.put("r/w14b-gains-n8-val1000-shard0.json", b"{}")
+    with pytest.raises(SystemExit, match="no amendment declares"):
+        pv.main(argv)
+    assert not store.exists("r/verdict.json")
+    r = reports()
+    r["arm"]["declared_replacement"] = "abc1234"
+    store, argv = store_all(tmp_path, r, arm_key="r/arm2.json", comparator_key="r/w14b2.json", pilot_key="r/pilot2.json")
+    assert pv.main(argv) == 0
+    stored = json.loads(store.get("r/verdict.json"))
+    assert stored["declared_replacement"] == "abc1234" and stored["other_arms"] == ["w14b-gains-n8-val1000"]
+
+
+def test_run_refuses_a_second_arm_and_logs_a_declared_replacement(tmp_path):
+    index = f"{OUT}/cache-w14b-nogains-val1000-n8/index.json"
+    report = "w14b-nogains-n8-val1000"
+    code, out, commands = job(tmp_path, "run", stored=[index], STUB_ONE_ARM="1")
+    assert code == 1 and "already holds another arm" in out and "R20-PHASE-B-DONE 1" in out
+    assert not any("round15_compose_eval" in c for c in commands)                # before any shard
+    code, out, commands = job(tmp_path, "run", stored=[index])
+    check = next(k for k, c in enumerate(commands) if " one-arm " in c)
+    assert commands[check] == f"scripts/round20_phase_b_verdict.py one-arm --out {OUT} --set val1000 --report {report}"
+    assert check < next(k for k, c in enumerate(commands) if " run " in c)
+    assert "--declared-replacement" not in next(c for c in commands if " merge " in c) and "DECLARED" not in out
+    code, out, commands = job(tmp_path, "run", stored=[index], R20B_DECLARED_REPLACEMENT="abc1234")
+    assert code == 0 and f"R20B DECLARED REPLACEMENT abc1234: {report}" in out
+    assert next(c for c in commands if " one-arm " in c).endswith("--declared-replacement abc1234")
+    assert "--declared-replacement abc1234 --output-key" in next(c for c in commands if " merge " in c)
+    assert not any("--declared-replacement" in c for c in commands if "compose_eval.py run" in c)
+    for bad in ("v2", "ABCDEF1", "abc12", "a" * 41):
+        code, out, commands = job(tmp_path, "run", stored=[index], R20B_DECLARED_REPLACEMENT=bad)
+        assert code == 1 and "must be a plan commit" in out and not commands
+    for phase, kwargs in (("cache", {}), ("verdict", {}), ("e2e", {}), ("run", dict(smoke=True))):
+        code, out, commands = job(tmp_path, phase, R20B_DECLARED_REPLACEMENT="abc1234", **kwargs)
+        assert code == 1 and "belongs to a full run" in out and not commands
+    # a smoke has its own prefix and no check; a stored arm is not checked again
+    code, out, commands = job(tmp_path, "run", smoke=True, gpu=False, CACHE_KEY="k/i.json", stored=["k/i.json"])
+    assert code == 0 and not any(" one-arm " in c for c in commands)
+    code, out, commands = job(tmp_path, "run", stored=[index, f"{OUT}/{report}.json"])
+    assert code == 0 and not any(" one-arm " in c for c in commands)
+
+
+@pytest.mark.parametrize("prior,no_gains,best_of,read,against", [
+    ("w14b", "0", "4", "a4-w14b-n4-r10", ["a0-w14b-r10"]),
+    ("w14b", "1", "0", "a7-nogains-r10", ["a0-w14b-r10"]),
+    ("w14b", "1", "8", "a9-nogains-n8-r10", ["a7-nogains-r10", "a4-w14b-n8-r10"]),
+    ("r16", "0", "0", "a8-r16-r10", ["a0-w14b-r10"]),
+    ("r16", "0", "16", "a4-r16-n16-r10", ["a8-r16-r10"]),
+    ("r16", "1", "0", "a7-nogains-r16-r10", ["a8-r16-r10"]),
+    ("r16", "1", "4", "a9-nogains-r16-n4-r10", ["a7-nogains-r16-r10", "a4-r16-n4-r10"]),
+])
+def test_every_full_phase_checks_the_stored_read_of_its_combination(tmp_path, prior, no_gains, best_of, read, against):
+    keys = [f"{OUT_A}/{k}.json" for k in (read, *against)]
+    phase = "cache" if best_of != "0" else "e2e" if no_gains == "1" else "verdict"
+    stored = [f"{OUT}/{prior}-gains-n0-val1000.json"]
+    code, out, commands = job(tmp_path, phase, prior=prior, no_gains=no_gains, best_of=best_of, stored=stored + keys, reads=False)
+    line = next(c for c in commands if " stack-check " in c)
+    assert code == 0 and f"--read-key {keys[0]} " in line and all(f"--against-key {k}" in line for k in keys[1:])
+    assert line.count("--against-key") == len(against)
+    ck = R16 if prior == "r16" else W14B
+    assert (f"--prior-checkpoint-key {ck} --no-gains {no_gains} --best-of {best_of} --lowpass 0 "
+            "--sentences-sha256 d311703b748821822f65f8e65c5e6bd81422d5e16231171f0ab1ea54e185dabe") in line
+    for k in keys:                                                               # either read missing: an unread combination
+        code, out, commands = job(tmp_path, phase, prior=prior, no_gains=no_gains, best_of=best_of, reads=False,
+                                  stored=stored + [x for x in keys if x != k])
+        assert code == 1 and "unread combination" in out and k in out and not scripts_run(commands)
+    code, out, commands = job(tmp_path, phase, prior=prior, no_gains=no_gains, best_of=best_of, stored=stored + keys, reads=False,
+                              STUB_STACK="1")
+    assert code == 1 and "do not support this combination" in out and not scripts_run(commands)
+
+
+def test_lowpass_is_checked_by_the_stored_read_and_a_smoke_is_not(tmp_path):
+    code, out, commands = job(tmp_path, "run", **STACK, stored=[STACK_INDEX], LOWPASS="1", STUB_STACK="1")
+    assert code == 1 and "do not support" in out and not any("compose_eval" in c for c in commands)
+    code, out, commands = job(tmp_path, "cache", **STACK, LOWPASS="1")
+    assert "--lowpass 1 " in next(c for c in commands if " stack-check " in c)
+    code, out, commands = job(tmp_path, "cache", smoke=True, gpu=False, reads=False)
+    assert code == 0 and not any(" stack-check " in c for c in commands)
+
+
+D20_SHA = "d" * 64
+A0 = ["the cat ran on a rug", "a dog sat in a lake", "she has a long book", "we go to the town", "he ate a cold soup",
+      "they sing at the start"]
+BETTER = HYP_ARM
+
+
+def d20_read(hyps=BETTER, ll=-2., lowpass=None, lowpass_ll=None, **over):
+    """A stored D20 read: per sentence the likelihood, blank at -3. ``over``: settings.round20 fields."""
+    forms = {FORM: hyp_form(hyps), "blank": hyp_form(["the"] * 6)}
+    per = {FORM: [ll] * 6, "blank": [-3.] * 6}
+    if lowpass is not None:
+        forms[f"{FORM}@lowpass"] = hyp_form(lowpass)
+        per[f"{FORM}@lowpass"] = [lowpass_ll] * 6
+    r20 = dict(sentences=dict(sha256=D20_SHA), vocabulary_mix=None, lowpass_hz=None, retime="reference",
+               word_cache=cache_settings(), **over) if "word_cache" not in over else dict(
+        sentences=dict(sha256=D20_SHA), vocabulary_mix=None, lowpass_hz=None, retime="reference", **over)
+    return dict(settings=dict(seed=0, translator_key="t.pt", recognizer_run="sign-recognizer-v2", checkpoint_key=None, round20=r20),
+                references=REFS, signs=SIGNS, forms=forms, likelihood=dict(per_form=per))
+
+
+def worse(**over):
+    return d20_read(hyps=A0, ll=-2.5, **over)
+
+
+def stack(read, against, **over):
+    args = dict(prior_checkpoint=W14B, no_gains=True, best_of=8, lowpass=False, sentences_sha256=D20_SHA)
+    return pv.stack_check(read, against, **{**args, **over})
+
+
+def test_stack_check_passes_a_stack_above_both_single_levers():
+    out = stack(d20_read(), {"a7": worse(), "a4": worse()})
+    assert out["a7"]["both_improve"] and out["a4"]["both_improve"] and out["a7"]["bleu"] > 0 and out["a7"]["likelihood"] == .5
+
+
+@pytest.mark.parametrize("other,match", [
+    (d20_read(hyps=REFS, ll=-2.5), "both point estimates are not above 0"),     # BLEU below
+    (d20_read(hyps=A0, ll=-1.5), "both point estimates are not above 0"),       # likelihood below
+    (d20_read(), "both point estimates are not above 0"),                       # equal is not above
+])
+def test_stack_check_refuses_a_stack_below_one_single_lever(other, match):
+    with pytest.raises(SystemExit, match=match):
+        stack(d20_read(), {"a7": worse(), "a4": other})
+
+
+def test_stack_check_for_lowpass_reads_the_stacks_own_form():
+    against = {"a7": worse(), "a4": worse()}
+    good = d20_read(hyps=BETTER, ll=-2., lowpass=REFS, lowpass_ll=-1.5)
+    out = stack(good, against, lowpass=True)
+    assert out[f"{FORM}@lowpass"]["both_improve"]
+    for read, match in ((d20_read(lowpass=A0, lowpass_ll=-1.5), "the stack's @lowpass does not have both"),    # BLEU below
+                        (d20_read(lowpass=REFS, lowpass_ll=-2.5), "the stack's @lowpass does not have both"),  # likelihood below
+                        (d20_read(lowpass=BETTER, lowpass_ll=-2.), "the stack's @lowpass does not have both"), # equal
+                        (d20_read(), "not in the report")):                                                    # never read
+        with pytest.raises(SystemExit, match=match):
+            stack(read, against, lowpass=True)
+    with pytest.raises(SystemExit, match="only inside the stack"):               # a7's @lowpass read adopts nothing
+        fresh = d20_read(word_cache=None, no_decoder_gains=True, lowpass=BETTER, lowpass_ll=-1.5)
+        fresh["settings"]["checkpoint_key"] = W14B
+        stack(fresh, {"a0": worse()}, best_of=0, lowpass=True)
+
+
+@pytest.mark.parametrize("read,over,match", [
+    (d20_read(), dict(best_of=4), "word_cache.n"),
+    (d20_read(), dict(no_gains=False), "word_cache.no_decoder_gains"),
+    (d20_read(), dict(prior_checkpoint=R16), "word_cache.checkpoint_key"),
+    (d20_read(), dict(sentences_sha256="0" * 64), "did not read D20"),
+    (d20_read(), dict(best_of=0), "used a word cache"),
+    (d20_read(word_cache=None), {}, "has no word cache"),
+])
+def test_stack_check_refuses_a_read_of_another_combination(read, over, match):
+    with pytest.raises(SystemExit, match=match):
+        stack(read, {"a7": worse()}, **over)
+
+
+def test_stack_check_refuses_filtered_retimed_or_other_vocabulary_reads():
+    for field, value, match in (("lowpass_hz", 6., "lowpass_hz"), ("vocabulary_mix", dict(key="m"), "vocabulary_mix"),
+                                ("retime", "continuous", "retime")):
+        read = d20_read()
+        read["settings"]["round20"][field] = value
+        with pytest.raises(SystemExit, match=match):
+            stack(read, {"a7": worse()})
+    with pytest.raises(SystemExit, match="no read to compare"):
+        stack(d20_read(), {})
+
+
+def test_stack_check_cli(tmp_path, capsys):
+    from train_text_to_motion import make_store
+    store = make_store(f"dir:{tmp_path / 's'}")
+    argv = ["stack-check", "--store", f"dir:{tmp_path / 's'}", "--read-key", "a/a9.json", "--against-key", "a/a7.json",
+            "--against-key", "a/a4.json", "--prior-checkpoint-key", W14B, "--no-gains", "1", "--best-of", "8", "--lowpass", "0",
+            "--sentences-sha256", D20_SHA]
+    with pytest.raises(SystemExit, match="unread combination"):
+        pv.main(argv)
+    store.put("a/a9.json", json.dumps(d20_read()).encode())
+    store.put("a/a7.json", json.dumps(worse()).encode())
+    with pytest.raises(SystemExit, match="unread combination.*a4"):
+        pv.main(argv)
+    store.put("a/a4.json", json.dumps(worse()).encode())
+    capsys.readouterr()
+    assert pv.main(argv) == 0
+    assert json.loads(capsys.readouterr().out)["a/a7.json"]["both_improve"] is True
+
+
+# ---- review fix 3 ---------------------------------------------------------------------------------------------------------------
+
+def test_a_full_phase_a_cache_needs_a_gpu(tmp_path):
+    for kwargs in (dict(arm="w14b"), dict(arm="r16"), dict(arm="w14b", NO_GAINS="1")):
+        code, out, commands = phase_a(tmp_path, "cache", gpu=False, **kwargs)
+        assert code == 1 and "a full cache needs a GPU" in out and not scripts_run(commands)
+    code, out, commands = phase_a(tmp_path, "cache", arm="w14b", gpu=False, smoke=True)
+    assert code == 0 and any("round20_word_cache.py run" in c for c in commands)
+
+
+def cache_fixture(tmp_path, store, sha, monkeypatch):
+    import torch
+    import numpy as np
+    import validate_sign_recognizer as vsr
+    labels = ["CUT", "ONION", "SALT", "HEAT", "KNIFE", "HALF", "NOW", "STIR"]
+    monkeypatch.setattr(vsr, "load_model", lambda store, run, device: (None, labels, {"checkpoint_key": "r.pt"}))
+
+    def logits(model, states, device, batch=64):                               # a score that depends on the very state read
+        return torch.stack([torch.tensor([np.sin(float(np.abs(s.channels["right_hand"].values[s.channels["right_hand"].valid]).mean())
+                                                 * (k + 3) * 50.) for k in range(len(labels))], dtype=torch.float64) for s in states])
+    monkeypatch.setattr(vsr, "logits_of", logits)
+    return logits, labels, ["run", "--store", f"dir:{tmp_path / 'store'}", "--prefix", "cache/s", "--mix-key", "mix.json",
+                            "--mix-sha256", sha, "--clips", "5", "--checkpoint-key", "prior.pt", "--samples", "3", "--choose",
+                            "3", "--device", "cpu", "--limit", "3"]
+
+
+@pytest.mark.parametrize("gains_off", [False, True])
+def test_the_cache_scores_the_state_it_stores(tmp_path, stage2_store, monkeypatch, gains_off):  # noqa: F811
+    import torch
+    from evaluate_text_to_motion import at_rate, load_state
+    store, sha, *_ = stage2_store
+    put_gains(store)
+    logits, labels, run = cache_fixture(tmp_path, store, sha, monkeypatch)
+    assert cw.main(run + (["--no-decoder-gains"] if gains_off else [])) == 0
+    rows = json.loads(store.get("cache/s/shard-0-of-1.json"))["entries"]
+    labelled = [r for r in rows if r["label"]]
+    assert labelled
+    for r in labelled:
+        pick = r["chosen"]["3"]
+        state = load_state(store, pick["state_key"], pick["state_sha256"])
+        row = logits(None, [at_rate(state, 24.)], "cpu")[0].double()
+        lp = torch.log_softmax(row, 0)[labels.index(r["label"])]
+        assert float(lp) == pytest.approx(pick["score"], abs=1e-3)              # the stored file reads as its recorded score
+        assert pick["score"] == max(r["scores"][:3])
+        assert len(set(r["scores"])) == 3                                       # each sample scored as itself, not one for all
+
+
+def test_a_repeated_shard_on_other_bits_says_what_to_do(tmp_path, stage2_store, monkeypatch):  # noqa: F811
+    store, sha, *_ = stage2_store
+    _, _, run = cache_fixture(tmp_path, store, sha, monkeypatch)
+    assert cw.main(run) == 0
+    rows = json.loads(store.get("cache/s/shard-0-of-1.json"))["entries"]
+    (tmp_path / "store/cache/s/shard-0-of-1.json").unlink()                      # the pod died before the shard's report
+    (tmp_path / "store" / rows[0]["chosen"]["3"]["state_key"]).write_bytes(b"another device's bits")
+    with pytest.raises(SystemExit) as e:
+        cw.main(run)
+    text = str(e.value)
+    assert "written once" in text and "lost pod" in text and "GPU type" in text and "new --prefix" in text
+    assert not store.exists("cache/s/shard-0-of-1.json")
+
+
+@pytest.mark.parametrize("edit,match", [
+    (lambda r: r["arm"]["settings"].update(guidance=2.), "settings.guidance"),
+    (lambda r: r["arm"]["settings"].update(timing="asllrp"), "settings.timing"),
+    (lambda r: r["arm"]["settings"].update(shards=1), "settings.shards"),
+    (lambda r: r["arm"]["settings"].update(checkpoint_key=W14B), "generated words as well"),
+    (lambda r: r["arm"]["settings"]["round20"].update(tempo=1.25), "round20.tempo"),
+    (lambda r: r["arm"]["settings"]["round20"].update(likelihood=False), "likelihood is not on"),
+    (lambda r: r["arm"]["settings"]["round20"].update(lowpass_hz=6.), "lowpass_hz"),
+    (lambda r: r["arm"]["settings"]["round20"].update(word_cache=cache_settings(n=4)), "word_cache.n"),
+])
+def test_the_c20_verdict_checks_the_arms_settings(edit, match):
+    r = c20_arm()
+    edit(r)
+    with pytest.raises(SystemExit, match=match):
+        judge_c20(r, val_verdict())
+
+
+def test_the_c20_verdict_is_this_arms_only():
+    for arm in (dict(best_of=4), dict(no_decoder_gains=False), dict(lowpass=True), dict(prior_checkpoint_key=R16)):
+        with pytest.raises(SystemExit, match="another arm's"):
+            judge_c20(c20_arm(), val_verdict(**arm))

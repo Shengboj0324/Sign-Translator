@@ -177,7 +177,11 @@ def run(args) -> dict:
                 payload = path.read_bytes()
             if store.exists(key):
                 if hashlib.sha256(store.get(key)).hexdigest() != sha:
-                    raise SystemExit(f"{key} exists with other content: written once")
+                    raise SystemExit(
+                        f"{key} exists with other content: written once. A shard saves only at its end, so this is a shard "
+                        "repeated after a lost pod, on a device that samples other bits. Nothing is deleted: finish this "
+                        "prefix on the GPU type its stored states came from (the shard logs name it), or build the whole "
+                        "cache again under a new --prefix")
             else:
                 store.put(key, payload)
             chosen[n] = dict(index=k, seed=seeds[k], score=scores[k], state_key=key, state_sha256=sha)

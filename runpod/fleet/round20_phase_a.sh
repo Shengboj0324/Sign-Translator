@@ -147,6 +147,7 @@ case $PHASE in
     case $ARM in
       w14b) CK=$W14B; CKSHA=$W14BSHA ;; r16) CK=$R16; CKSHA=$R16SHA ;; *) die "cache: ARM w14b or r16" ;;
     esac
+    [ "$DEV" = cuda ] || [ "${SMOKE:-0}" = 1 ] || die "cache: a full cache needs a GPU (DEV=$DEV): other devices sample other bits"
     pin $CK $CKSHA
     TAG=$ARM; NG=""
     if [ "${NO_GAINS:-0}" = 1 ]; then
