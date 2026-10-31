@@ -5466,3 +5466,23 @@ Every reading is reported as a gap fraction and as a share of the attainable gap
   - ΔNLL, 100-way retrieval and ρ_faith, after regenerating the W14b, R16, R16C, R19 and R19w pilots;
   - the stage-truncated round trips and the time-warped and low-passed reads.
   - It runs when a slot frees after round 20 Phase A.
+
+## Round 20 A1 result on the oracle, recorded (2026-10-31, 00:43 UTC): W = r10
+
+All three real-word oracles on D20 (500 sentences; real 4.495, blank 1.68; real likelihood minus blank +0.292):
+
+| Vocabulary | BLEU | Likelihood minus blank | Shuffled BLEU | Mismatched-words BLEU | Spotting recall | Hands tracked / real | Wrist speed / real |
+|---|---|---|---|---|---|---|---|
+| `r10` | 2.219 [1.85, 2.61] | +0.032 [+0.001, +0.061] | 1.890 | 1.327 | 0.438 | 1.03× | 2.17× |
+| `r14b-fraction` | 2.213 [1.85, 2.57] | −0.006 [−0.030, +0.015] | 1.737 | 1.095 | 0.331 | 0.58× | 2.09× |
+| `r14b-activity` | 1.951 [1.61, 2.31] | −0.019 [−0.044, +0.003] | 1.677 | 1.364 | 0.362 | 0.57× | 2.33× |
+
+Paired against `r10`: `r14b-fraction` BLEU −0.007 [−0.476, +0.455], likelihood −0.038 [−0.070, −0.010]; `r14b-activity` BLEU −0.268 [−0.723, +0.176], likelihood −0.051 [−0.082, −0.020]. `r14b-activity` minus `r14b-fraction`: BLEU −0.261 [−0.537, −0.003], likelihood −0.013 [−0.028, +0.002].
+
+**Verdict by the declared rule (`reports/round20_dev.md`):** a round14b arm beats `r10` only if all four point estimates (BLEU and likelihood, a1 and a0) are above 0. Both arms already fail on a1, so no a0 read can change this: **W = `r10`**. The A1 lever is not adopted. The remaining levers run on `r10`.
+
+**A6 (6 Hz low-pass) on the `r10` oracle:** BLEU 2.245 (+0.026), likelihood −0.003 [−0.007, +0.000]. Not both above 0 on this read; the a0 read is reported beside it.
+
+**Reading (not a rule):** doubling coverage (unmatched tokens 34.7% to 17.4%) did not raise the oracle. The added Sem-Lex material has hands tracked at 0.57× real, and 214 of 388 Sem-Lex-only entries needed the best-tracked fallback, so this oracle may understate the vocabulary on generated words, whose hands do not inherit that tracking loss.
+
+**Report-only read, declared before any a0 result exists:** `a0` under `r14b-fraction` continues on its own pod. It cannot change W. If it beats `a0` under `r10` on both BLEU and likelihood, that is evidence for a new, separately declared vocabulary lever on tracked material, judged on its own comparison; it is not adopted from this read. `a0` under `r14b-activity` was stopped (it cannot pass, and it lost to `r14b-fraction`).
