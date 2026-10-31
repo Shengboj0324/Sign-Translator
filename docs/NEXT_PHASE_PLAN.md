@@ -5605,3 +5605,13 @@ Continuous-pace retiming of the `r10` oracle on D20 (`phase-a/a3-tempo-1.0-r10.j
 - **`@predicted` (deployable):** BLEU 1.932 [1.59, 2.28], paired −0.288 [−0.672, +0.071]; likelihood minus blank +0.018 [−0.012, +0.048], paired −0.013 [−0.035, +0.006]. Wrist speed 1.88× real, spread 2.28×; 1.34× the reference's length.
 
 Both point estimates are below 0, so tempo-1.0 is not adopted. Slowing does lower wrist speed, but the read falls with it; S0's tempo artefact works against slower forms on BLEU, not on likelihood. Tempos 0.8, 1.25 and 1.5 are pending.
+
+### Round 20, amendment 2 (declared 2026-10-31, 04:03 UTC; before A7 runs): what the same-codes gate means
+
+A7's review approved the code (branch `round20-a7`, 0d6cb24). Before the full run, the a7 pod reruns a0's 5-clip smoke and requires its per-clip motion to equal the stored a0 shard exactly; otherwise the job stops with an ALERT and writes no a7 output. Both jobs request the same GPU type (L40S; the job runner has only this GPU type).
+
+Equality can fail without any change of code: on Mac CPU the same check differed by 5e-6 to 5e-5 relative, while a flipped code typically moves a word about 1e-3. **If the gate fails on the pod:**
+1. No tolerance is added and the gate is not edited to pass.
+2. A fresh a0 under `r10` runs on the same pod (`a0b-w14b-r10`), and a7 is paired against it. The stored a0 stays on record, and the a0b read is reported beside it.
+
+So A7's comparison is always between two arms proved or generated on one device. The adoption rule (amendment 1) is unchanged.
