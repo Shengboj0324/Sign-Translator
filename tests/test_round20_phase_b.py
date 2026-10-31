@@ -1367,6 +1367,8 @@ def d20(checkpoint=W14B, *, n=0, gains_off=False, hyps=MID, ll=-2.5, lowpass=Non
                **({"no_decoder_gains": True} if gains_off and not n else {}))
     forms = {FORM: hyp_form(hyps), "blank": hyp_form(["the"] * 6)}
     per = {FORM: [ll] * 6, "blank": [-3.] * 6}
+    if lowpass is None and n and gains_off:      # a stack read always has its @lowpass; by default it improves nothing
+        lowpass, lowpass_ll = hyps, ll
     if lowpass is not None:
         forms[f"{FORM}@lowpass"] = hyp_form(lowpass)
         per[f"{FORM}@lowpass"] = [lowpass_ll] * 6
@@ -1542,17 +1544,23 @@ def test_lowpass_only_on_a_passing_stack_above_it():
     a9 = d20(n=16, gains_off=True, hyps=TOP, ll=-2.1, lowpass=MID, lowpass_ll=-2.0)
     with pytest.raises(SystemExit, match="the stack's @lowpass does not have both"):
         check(world(**{"a9-nogains-n16-r10": a9}), lowpass=True)
-    with pytest.raises(SystemExit, match="not in the report"):
-        check(world(), lowpass=True)                                              # never read
+    unread = d20(n=16, gains_off=True, hyps=TOP, ll=-2.1)
+    del unread["forms"][f"{FORM}@lowpass"], unread["likelihood"]["per_form"][f"{FORM}@lowpass"]
+    for on in (True, False):                                                      # never read: rule 4 cannot be skipped
+        with pytest.raises(SystemExit, match="not in the report"):
+            check(world(**{"a9-nogains-n16-r10": unread}), lowpass=on)
     # a stack whose BLEU leaves room: above both levers on BLEU, its @lowpass above it
     w = world(**{"a7-nogains-r10": d20(gains_off=True, hyps=LOW, ll=-2.45),
                  **{f"a4-w14b-n{n}-r10": d20(n=n, hyps=LOWER, ll=-2.5 + .1 * k) for k, n in enumerate((4, 8, 16), 1)},
                  "a9-nogains-n16-r10": d20(n=16, gains_off=True, hyps=MID, ll=-2.1, lowpass=TOP, lowpass_ll=-2.0)})
     out = check(w, lowpass=True)
     assert out["rule4"]["both_improve"] and out["decision"] == "stack, best of 16 with its @lowpass"
+    with pytest.raises(SystemExit, match="must run with LOWPASS=1"):              # rule 4 admits A6: it cannot be left out
+        check(w, lowpass=False)
     w["a9-nogains-n16-r10"] = d20(n=16, gains_off=True, hyps=MID, ll=-2.1, lowpass=TOP, lowpass_ll=-2.1)
     with pytest.raises(SystemExit, match="the stack's @lowpass does not have both"):
         check(w, lowpass=True)                                                    # likelihood equal
+    assert check(w, lowpass=False)["rule4"]["both_improve"] is False              # and then the stack goes unfiltered
     # not on a stack that failed, nor on a single lever (a7's @lowpass read adopts nothing)
     failed = {"a9-nogains-n16-r10": d20(n=16, gains_off=True, hyps=TOP, ll=-2.3, lowpass=TOP, lowpass_ll=-1.)}
     with pytest.raises(SystemExit, match="against both a7"):

@@ -18,7 +18,8 @@
 # built ahead). Amendment 3 and rule 5: nothing runs until a8 is stored; if a8 meets amendment 3, W14b arms wait for the stack
 # question repeated with R16's words (a4-r16-nN-r10, a7-nogains-r16-r10, a9-nogains-r16-nN-r10; Phase A has no such phases yet,
 # so R16 arms are refused today); if it fails, W14b proceeds. Rule 1: N is computed from the a4 reads. Rule 3: the stack, or
-# only if its stored read failed, the better single lever. Rule 4: LOWPASS=1 needs the stack's @lowpass above the stack.
+# only if its stored read failed, the better single lever. Rule 4: the stack's @lowpass above the stack requires LOWPASS=1, and
+# otherwise LOWPASS=1 is refused.
 #
 # One arm on a set ("one stacked arm"): run refuses if any other arm's report or shard is stored on that set, and the verdict and
 # C20's gate refuse the same way. R20B_DECLARED_REPLACEMENT=<plan commit> lifts that for run only when an amendment declares a

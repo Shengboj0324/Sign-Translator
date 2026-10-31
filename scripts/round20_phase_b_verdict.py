@@ -54,7 +54,8 @@ what its name says, and "above 0" is ``round20_compare.compare_forms``'s ``both_
 - rule 1: all three a4 reads stored, N computed from those meeting the rule; a best-of-N arm must use that N;
 - rule 3: the stack goes only if its stored a9 read at that N has both point estimates above 0 against both a7 and a4-nN. A single
   lever goes only if that read is stored and failed, and only the better one by likelihood against a0 (R16's: against a8);
-- rule 4: LOWPASS only on a passing stack, whose ``@lowpass`` has both point estimates above 0 against it.
+- rule 4: the stack's ``@lowpass`` is always read. Both point estimates above 0 against the stack: the arm must have LOWPASS=1;
+  otherwise LOWPASS=1 is refused. LOWPASS is refused on any arm but a passing stack.
 If no a4 arm meets the rule there is no stack question, and a7 goes alone if it meets its own. R16 alone goes only if no lever on it
 meets its rule.
 """
@@ -290,12 +291,14 @@ def stack_check(load, load_shards, *, prior: str, w14b_checkpoint: str, r16_chec
         if not stack["passed"]:
             raise SystemExit(f"the stack does not have both point estimates above 0 against both a7 and a4-n{chosen}. {stack}")
         out["decision"] = f"stack, best of {chosen}"
+        row = estimates(compare_forms(a9, f"{FORM}@lowpass", a9, FORM, boot=100))    # refused if the read lacks the form
+        out["rule4"] = row
+        if lowpass and not row["both_improve"]:
+            raise SystemExit(f"the stack's @lowpass does not have both point estimates above 0 against the stack: {row}")
+        if row["both_improve"] and not lowpass:
+            raise SystemExit("the stack's @lowpass has both point estimates above 0 against the stack, so amendment 4 rule 4 "
+                             f"admits A6: this arm must run with LOWPASS=1, not without it. {row}")
         if lowpass:
-            form = f"{FORM}@lowpass"
-            row = estimates(compare_forms(a9, form, a9, FORM, boot=100))
-            out["rule4"] = row
-            if not row["both_improve"]:
-                raise SystemExit(f"the stack's @lowpass does not have both point estimates above 0 against the stack: {row}")
             out["decision"] += " with its @lowpass"
         return out
     if lowpass:
