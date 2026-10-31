@@ -5749,3 +5749,20 @@ The word caches for the 1,000 under W14b keep building. An R16 cache for the 1,0
 - **Cost:** at most 562 fresh clips remain (±0.44), so **there is no second fresh 1,000.**
 
 **Not verified:** seed noise; best-of against a fixed per-entry choice; v3d's corpora; code equivalence since 10-29. `c20.json` was not read. The C20 decision is recorded after the stack's read, before any C20 read.
+
+### Round 20 stack on the 1,000, and amendment 7: C20 (declared 2026-10-31, 17:02 UTC; before any C20 read)
+
+**Second arm (`w14b-nogains-n16-val1000`, the set's second read of Round 20):** BLEU 2.565 [2.235, 2.935]. Minus W14b composition +0.259 [−0.094, +0.654] (rule item 1 fails, `rule_passed` false). Minus own no-gains end-to-end 2.000: +0.566 [+0.16, +1.014]. Minus mismatched words +1.442 [+1.128, +1.755]. Minus shuffled +0.259 [−0.112, +0.581]. v2 spotting against W14b composition +0.066 [+0.053, +0.080]. Likelihood minus blank +0.080 [+0.057, +0.102]. Wrist speed 2.39× real, spread 2.06×. Length ratio 1.58.
+
+**Against the first arm:** BLEU −0.005 [−0.297, +0.310]; likelihood +0.025 [+0.015, +0.035]; spotting 0.400 against 0.4125, −0.012 [−0.021, −0.004]; wrist speed 2.39× against 2.60×.
+
+**C20's arm by amendment 6, item 3:** BLEU, likelihood and wrist speed hold; **the spotting lower bound −0.0207 misses −0.02.** The first arm stays: W14b, gains on, best of 16. The miss is 0.0007 and the rule is applied as declared.
+
+**The two arms are one result on BLEU, on this set.** The stack's likelihood and wrist speed are better, and its spotting is slightly worse. Which of them is better signing remains open for instrument v2 and raters.
+
+**Amendment 7: the lead's decision on C20, delegated by the owner (chat, 15:3x UTC).**
+1. **C20 is read once, for the first arm only.** Threshold unchanged: point estimate ≥ 2.55. No retry, and no other arm reads C20.
+2. **This lifts a commitment after the result, stated plainly.** Phase B's rule failed item 1. The job's gate (5b238bb) and the lead's message to the owner ("only if it passes and reaches 2.55") were pre-result commitments. The plan's M1 sentence names only point estimates, and the owner's M1 directive asks for a paired bound against end-to-end, which holds; item 1 needs about 2.65, which an arm truly at 2.55 passes 28% of the time. Lifting the gate is a post-result relaxation and is recorded as one.
+3. **Risk (independent audit):** P(C20 ≥ 2.55) is 7% if the arm is truly 2.306, 27% at 2.45, about 35% pooled. Content alone on the 1,000 reads about 2.45.
+4. **Cost:** at most 562 fresh clips remain, so there is no second fresh 1,000. Accepted, because composition's Phase A levers are spent and both outcomes point to a clear next step.
+5. **Outcomes.** C20 ≥ 2.55: M1 is met on instrument v1, reported with item 1's failure, the loop share and motion figures beside it; the realistic-scenario evaluation and 3.8 pursuit follow. C20 < 2.55: M1 is not met; no further composition arm reads C20, and work moves to the structural track with this evidence. Either way instrument v2 re-reads the same arm when it exists.
