@@ -22,9 +22,10 @@
 # @lowpass above it requires LOWPASS=1, and otherwise LOWPASS=1 is refused. R16's words go as that stack, or that single a4 arm.
 #
 # One arm on a set ("one stacked arm"): run refuses if any other arm's report or shard is stored on that set, and the verdict and
-# C20's gate refuse the same way. R20B_DECLARED_REPLACEMENT=<plan commit> lifts that for run only when an amendment declares a
-# replacement: it is logged and recorded in the report and the verdict. Pods have no git history, so the commit's format is
-# checked but its contents are not: whoever launches must have read that amendment.
+# C20's gate refuse the same way. R20B_DECLARED_REPLACEMENT=<plan commit> opens only the arm that commit declares, hard-coded here
+# and in the verdict script's DECLARED_ARMS: today amendment 6's second arm on the 1,000 (cf4b1559a3: PRIOR=w14b NO_GAINS=1 BEST_OF=16
+# LOWPASS=0 SET=val1000, for run and verdict, beside exactly the first arm w14b-gains-n16-val1000). The stack-check still runs and is
+# logged, its refusal overridden and recorded with the commit; the first arm's keys are never written. C20's gate stays shut.
 #
 # Order and pods (one L40S as in Phase A, wall-clock = GPU-hours; the 1,000 hold 894 entries under r10, against D20's 705):
 #   e2e        (GPU, only if NO_GAINS=1, any time before run; about 50 min, as the R16 pilot job)  the prior's own end-to-end
@@ -118,9 +119,11 @@ case $SET in val1000|c20) ;; *) die "SET must be val1000 or c20" ;; esac
 [ "$PHASE" = e2e ] && [ "$SET" != val1000 ] && die "e2e: SET=val1000 only (no pilot or comparator reads C20)"
 DECLARED=${R20B_DECLARED_REPLACEMENT:-}
 if [ -n "$DECLARED" ]; then
-  [ "$PHASE" = run ] && [ "${SMOKE:-0}" != 1 ] || die "R20B_DECLARED_REPLACEMENT belongs to a full run"
-  case $DECLARED in *[!0-9a-f]*) die "R20B_DECLARED_REPLACEMENT must be a plan commit (hex)" ;; esac
-  [ ${#DECLARED} -ge 7 ] && [ ${#DECLARED} -le 40 ] || die "R20B_DECLARED_REPLACEMENT must be a plan commit (7-40 hex)"
+  case "$DECLARED:$PRIOR:$NO_GAINS:$BEST_OF:${LOWPASS:-0}:$SET" in
+    cf4b1559a3:w14b:1:16:0:val1000) ;;      # amendment 6's second arm; nothing else opens (and DECLARED_ARMS in the verdict script)
+    *) die "R20B_DECLARED_REPLACEMENT=$DECLARED declares no such arm: only cf4b1559a3 with PRIOR=w14b NO_GAINS=1 BEST_OF=16 LOWPASS=0 SET=val1000" ;;
+  esac
+  { [ "$PHASE" = run ] || [ "$PHASE" = verdict ]; } && [ "${SMOKE:-0}" != 1 ] || die "R20B_DECLARED_REPLACEMENT belongs to a full run or verdict"
 fi
 [ "$PHASE" = verdict ] && [ "${SMOKE:-0}" = 1 ] && die "verdict: no smoke (a smoke run has no comparator)"
 LOWPASS=${LOWPASS:-0}
@@ -152,7 +155,8 @@ done
 if { [ "$PHASE" = run ] || [ "$PHASE" = verdict ]; } && [ "${SMOKE:-0}" != 1 ]; then
   python scripts/round20_phase_b_verdict.py stack-check --phase-a-out $A --prior $PRIOR --w14b-checkpoint-key $W14B \
     --r16-checkpoint-key $R16 --no-gains $NO_GAINS --best-of $BEST_OF --lowpass $LOWPASS --sentences-sha256 $D20SHA \
-    || die "the stored D20 reads do not allow this arm on the 1,000"
+    ${DECLARED:+--declared-replacement $DECLARED} || die "the stored D20 reads do not allow this arm on the 1,000"
+  [ -z "$DECLARED" ] || echo "R20B STACK-CHECK under declared replacement $DECLARED on $REPORT: a refusal is logged above and overridden"
 fi
 
 # ---- the sentences: the 1,000 are validation_sentences(round10, 1000), so no --sentences-key: the comparator's own list ----
@@ -279,7 +283,8 @@ case $PHASE in
         else FOR_SET="--end-to-end-key $E2E --end-to-end-sha256 $E2ESHA"; fi
       else FOR_SET="--val1000-verdict-key $VAL_VERDICT --sentences-key $C20 --sentences-sha256 $C20SHA"; fi
       python scripts/round20_phase_b_verdict.py verdict --arm-key $MERGED --comparator-key $CMP --comparator-sha256 $CMPSHA \
-        $FOR_SET --out $OUT --report $REPORT --lowpass $LOWPASS --prior $PRIOR --prior-checkpoint-key $CK --no-gains $NO_GAINS --best-of $BEST_OF --set $SET \
+        $FOR_SET ${DECLARED:+--declared-replacement $DECLARED --phase-a-out $A --w14b-checkpoint-key $W14B --r16-checkpoint-key $R16 --d20-sha256 $D20SHA} \
+        --out $OUT --report $REPORT --lowpass $LOWPASS --prior $PRIOR --prior-checkpoint-key $CK --no-gains $NO_GAINS --best-of $BEST_OF --set $SET \
         --output-key $V || die "verdict $REPORT, nothing stored (exit 2: a rule item is unavailable; 1: refused)"
       echo "R20B verdict $V $(sha $V)"
     fi ;;

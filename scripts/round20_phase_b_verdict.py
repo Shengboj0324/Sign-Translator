@@ -35,17 +35,22 @@ apart from the adopted options; adopted options that are not the arm named by ``
 printed with what is missing, and no write-once key is taken by a report that needs repairing. A stored verdict is complete:
 rule failures are stored like passes (exit 0).
 
-**One arm on a set:** the verdict is refused when another arm's report or shard is stored on the set (``other_arms``), unless the
-arm's report records a ``declared_replacement``, which the verdict records too.
+**One arm on a set:** the verdict is refused when another arm's report or shard is stored on the set (``other_arms``), unless
+``DECLARED_ARMS`` declares this arm beside exactly that other one, and its report and the job both name the commit. Such a verdict
+also records ``declared_replacement``, ``other_arms``, ``set_read`` and ``stack_check`` (run, and its refusal overridden by that
+commit), and ``c20_arm_choice`` by amendment 6 item 3, from the stored first arm and both arms' shards
+(``round20_compare.compare_forms``): BLEU >= 2.55, paired likelihood minus blank against the first arm with lower bound above 0,
+v2 spotting's paired lower bound above -0.02, wrist speed ratio closer to 1 than the first arm's. All hold: the stack; otherwise
+the first arm. It chooses an arm only; whether C20 runs is declared separately.
 
 ``--set c20`` (only after ``c20-gate``, never run so far): the same arm on the confirmation set. No comparator or pilot read
 that set, so the only rule of the set applies: the point estimate >= 2.55. ``m1_claim`` holds if both sets hold it.
 
 ``c20-gate --verdict-key``: exit 0 only if the stored val1000 verdict's rule passed, its point estimate is >= 2.55, its arm is the
-arm asked for, and no other arm on the 1,000 stands beside it without a declared replacement; else exit 1, and the pod job reads
-nothing of C20.
+arm asked for, and no other arm is stored on the 1,000; else exit 1, and the pod job reads nothing of C20. A declared second arm
+does not open it: that decision is declared separately (amendment 6, item 5).
 
-``one-arm``: exit 0 only if no other arm is stored on the set (or a replacement is declared where one is).
+``one-arm``: exit 0 only if no other arm is stored on the set, or ``DECLARED_ARMS`` declares this arm beside exactly the other one.
 
 ``stack-check``: whether the stored D20 reads allow this arm on the 1,000, printing which rule held; every read is checked to be
 what its name says, and "above 0" is ``round20_compare.compare_forms``'s ``both_improve``:
@@ -88,7 +93,12 @@ NO_PAIRED_LIKELIHOOD = "the stored comparator ran without --likelihood: no likel
 
 
 ARM_FILE = re.compile(r"^((?:w14b|r16)-(?:gains|nogains)-n(?:0|4|8|16)(?:-lp6)?-(val1000|c20))(?:-shard\d+)?\.json$")
-COMMIT = re.compile(r"^[0-9a-f]{7,40}$")
+# the arms a plan commit declares for a set that already holds another (amendment 6); the job's table says the same
+DECLARED_ARMS = {"cf4b1559a3": dict(report="w14b-nogains-n16-val1000", replaces="w14b-gains-n16-val1000",
+                                    replaces_sha256="4deced6f852e1fe8814df7226239a5c37252a16617d919f2bc236d06978e0d26",
+                                    prior="w14b", no_gains=True, best_of=16, lowpass=False)}
+SET_READ = ("the set's second read of Round 20, declared by plan commit {commit} (amendment 6); the first arm {first} stays on "
+            "record and is not overwritten")
 
 
 def other_arms(keys, out: str, sentence_set: str, report: str) -> list[str]:
@@ -102,14 +112,60 @@ def other_arms(keys, out: str, sentence_set: str, report: str) -> list[str]:
     return sorted(found)
 
 
+def declared_arm(commit, report: str) -> dict:
+    """The declared arm of ``commit``, which must be ``report``; nothing else opens."""
+    spec = DECLARED_ARMS.get(commit)
+    if spec is None or spec["report"] != report:
+        raise SystemExit(f"{commit!r} declares no such arm as {report}: only {sorted(DECLARED_ARMS)} and their own arms")
+    return spec
+
+
 def one_arm(others: list[str], declared, report: str) -> None:
-    """Stop unless ``report`` is the set's only arm, or a replacement is declared where there is one to replace."""
-    if declared and not COMMIT.match(str(declared)):
-        raise SystemExit(f"{declared!r} is not a plan commit")
-    if others and not declared:
-        raise SystemExit(f"{report}: this set already holds {others}, and no amendment declares a replacement")
-    if declared and not others:
-        raise SystemExit(f"{report}: a replacement ({declared}) is declared, but this set holds no other arm")
+    """Stop unless ``report`` is the set's only arm, or a commit declares it beside exactly the one other arm stored."""
+    if not declared:
+        if others:
+            raise SystemExit(f"{report}: this set already holds {others}, and no amendment declares a replacement")
+        return
+    spec = declared_arm(declared, report)
+    if others != [spec["replaces"]]:
+        raise SystemExit(f"{report}: {declared} declares it beside exactly {spec['replaces']}, but this set holds {others}")
+
+
+def checked_under_declaration(commit: str, run_check) -> dict:
+    """The stack-check run and recorded under a declaration: a refusal is what it would have said, overridden by ``commit``."""
+    try:
+        return dict(overridden=False, by=commit, result=run_check())
+    except SystemExit as refusal:
+        return dict(overridden=True, by=commit, refusal=str(refusal))
+
+
+def c20_arm_choice(arm: dict, first: dict, *, shards_arm, shards_first, spec: dict, boot: int = 1000) -> dict:
+    """Amendment 6, item 3, each item separately: which arm reads C20 if C20 runs. BLEU is not compared directly, only reported."""
+    from round20_compare import compare_forms
+    c = compare_forms(arm, FORM, first, FORM, boot=boot, shards_a=shards_arm, shards_b=shards_first)
+    point = exact_bleu(arm)
+    likelihood = lower_bound_item((c.get("likelihood_minus_blank") or {}).get("difference"), 0.,
+                                  "paired likelihood minus blank against the first arm")
+    guard = c["spotting_guard"]
+    if guard["available"]:
+        spotting = lower_bound_item(guard["difference"], SPOTTING_FLOOR, "the shards' per-clip spotting against the first arm")
+        spotting.update(arm_recall=guard["a"], first_arm_recall=guard["b"])
+    else:
+        spotting = dict(available=False, passed=None, threshold=SPOTTING_FLOOR, reason=guard["reason"])
+    ratios = [((r.get("motion_ratio_to_real") or {}).get(FORM) or {}).get("wrist_speed") for r in (arm, first)]
+    wrist = (dict(available=False, passed=None, reason="wrist_speed is not in both reports") if None in ratios else
+             dict(available=True, passed=bool(abs(ratios[0] - 1) < abs(ratios[1] - 1)), ratio_to_real=ratios[0],
+                  first_arm_ratio_to_real=ratios[1]))
+    items = dict(bleu_at_least_2_55=dict(available=True, passed=bool(point >= M1_THRESHOLD), point_estimate=round(point, 4),
+                                         threshold=M1_THRESHOLD),
+                 paired_likelihood_above_first_arm=likelihood, v2_spotting_against_first_arm=spotting,
+                 wrist_closer_to_1_than_first_arm=wrist)
+    missing = [f"c20_arm_choice.{k}: {v['reason']}" for k, v in items.items() if not v["available"]]
+    all_hold = bool(not missing and all(v["passed"] for v in items.values()))
+    return dict(rule="amendment 6, item 3", items=items, missing=missing, all_hold=all_hold,
+                arm=None if missing else spec["report"] if all_hold else spec["replaces"],
+                paired_bleu_against_first_arm=c["bleu"], first_arm=dict(bleu=first["forms"][FORM]["bleu"], report=spec["replaces"]),
+                note="chooses the arm only; whether C20 runs is recorded separately (amendment 6, item 5)")
 
 
 def sha(payload: bytes) -> str:
@@ -520,6 +576,11 @@ def main(argv=None) -> int:
     v.add_argument("--end-to-end-sha256")
     v.add_argument("--stored-pilot-key", help="val1000, --no-gains 1: the stored gained pilot that --end-to-end-key reran")
     v.add_argument("--stored-pilot-sha256")
+    v.add_argument("--declared-replacement", help="a commit of DECLARED_ARMS; the report must record the same")
+    v.add_argument("--phase-a-out", help="a declared arm's stack-check: the prefix of the stored D20 reads")
+    v.add_argument("--w14b-checkpoint-key")
+    v.add_argument("--r16-checkpoint-key")
+    v.add_argument("--d20-sha256")
     v.add_argument("--out", required=True, help="the prefix holding the set's arms")
     v.add_argument("--report", required=True, help="this arm's name on the set (the report's file name without .json)")
     v.add_argument("--prior", required=True, choices=("w14b", "r16"))
@@ -557,6 +618,8 @@ def main(argv=None) -> int:
     c.add_argument("--best-of", required=True, type=int, choices=(0, 4, 8, 16))
     c.add_argument("--lowpass", required=True, type=int, choices=(0, 1))
     c.add_argument("--sentences-sha256", required=True)
+    c.add_argument("--declared-replacement", help="a commit of DECLARED_ARMS naming exactly this arm: the check runs, and a refusal "
+                   "is printed, recorded as overridden, and does not stop the job")
     for q in (v, g, o, c):
         q.add_argument("--store", default="r2", help="r2, or dir:/path (tests)")
     args = p.parse_args(argv)
@@ -570,8 +633,9 @@ def main(argv=None) -> int:
                                             no_decoder_gains=bool(args.no_gains), best_of=args.best_of,
                                             lowpass=bool(args.lowpass)))
         others = other_arms(store.list(f"{args.out}/"), args.out, "val1000", args.report)
-        if others and not verdict.get("declared_replacement"):
-            raise SystemExit(f"C20 refused: the 1,000 also hold {others}, and no amendment declares this arm their replacement")
+        if others or verdict.get("declared_replacement"):
+            raise SystemExit(f"C20 refused: the 1,000 also hold {others}; which arm reads C20, and whether it runs, is declared "
+                             "separately (amendment 6)")
         print(f"C20 gate open: {args.verdict_key}", flush=True)
         return 0
     if args.command == "one-arm":
@@ -588,10 +652,18 @@ def main(argv=None) -> int:
 
         def load(name):
             return json.loads(store.get(key_of(name))) if store.exists(key_of(name)) else None
-        print(json.dumps(stack_check(load, lambda name, report: report_shards(store, key_of(name), report, None),
-                                     prior=args.prior, w14b_checkpoint=args.w14b_checkpoint_key,
-                                     r16_checkpoint=args.r16_checkpoint_key, no_gains=bool(args.no_gains), best_of=args.best_of,
-                                     lowpass=bool(args.lowpass), sentences_sha256=args.sentences_sha256), indent=1), flush=True)
+
+        def run_check():
+            return stack_check(load, lambda name, report: report_shards(store, key_of(name), report, None),
+                               prior=args.prior, w14b_checkpoint=args.w14b_checkpoint_key,
+                               r16_checkpoint=args.r16_checkpoint_key, no_gains=bool(args.no_gains), best_of=args.best_of,
+                               lowpass=bool(args.lowpass), sentences_sha256=args.sentences_sha256)
+        if args.declared_replacement:
+            arm_name = f"{args.prior}-{'nogains' if args.no_gains else 'gains'}-n{args.best_of}{'-lp6' if args.lowpass else ''}-val1000"
+            declared_arm(args.declared_replacement, arm_name)
+            print(json.dumps(checked_under_declaration(args.declared_replacement, run_check), indent=1), flush=True)
+        else:
+            print(json.dumps(run_check(), indent=1), flush=True)
         return 0
     if not (args.output_key or args.output_file):
         p.error("give --output-key or --output-file")
@@ -606,7 +678,17 @@ def main(argv=None) -> int:
     arm, comparator = json.loads(arm_payload), json.loads(comparator_payload)
     others = other_arms(store.list(f"{args.out}/"), args.out, args.sentence_set, args.report)
     declared = arm.get("declared_replacement")
+    if declared != args.declared_replacement:
+        raise SystemExit(f"the report records declared replacement {declared!r}, the job names {args.declared_replacement!r}")
     one_arm(others, declared, args.report)
+    spec = None
+    if declared:
+        spec = DECLARED_ARMS[declared]
+        asked = dict(prior=args.prior, no_gains=bool(args.no_gains), best_of=args.best_of, lowpass=bool(args.lowpass))
+        if asked != {k: spec[k] for k in asked} or args.sentence_set != "val1000":
+            raise SystemExit(f"{declared} declares {spec['report']}, not {asked} on {args.sentence_set}")
+        if not (args.phase_a_out and args.w14b_checkpoint_key and args.r16_checkpoint_key and args.d20_sha256):
+            p.error("a declared arm: give --phase-a-out, --w14b-checkpoint-key, --r16-checkpoint-key and --d20-sha256")
     if args.sentence_set == "val1000":
         if not (args.end_to_end_key and args.end_to_end_sha256):
             p.error("val1000: give --end-to-end-key and --end-to-end-sha256")
@@ -636,6 +718,28 @@ def main(argv=None) -> int:
                         sentences=dict(key=args.sentences_key, sha256=args.sentences_sha256))
         out["val1000_verdict_key"] = args.val1000_verdict_key
     out.update(declared_replacement=declared, other_arms=others)
+    if declared:
+        first_key = f"{args.out.rstrip('/')}/{spec['replaces']}.json"
+        first_payload = store.get(first_key)
+        if sha(first_payload) != spec["replaces_sha256"]:
+            raise SystemExit(f"{first_key} does not match the first arm's declared hash")
+        first = json.loads(first_payload)
+        out["set_read"] = SET_READ.format(commit=declared, first=spec["replaces"])
+        out["c20_arm_choice"] = c20_arm_choice(arm, first, shards_arm=report_shards(store, args.arm_key, arm, None),
+                                               shards_first=report_shards(store, first_key, first, None), spec=spec,
+                                               boot=args.bootstrap)
+        out["missing"] = [*out["missing"], *out["c20_arm_choice"]["missing"]]
+        out["complete"] = out["complete"] and not out["c20_arm_choice"]["missing"]
+
+        def key_of(name):
+            return f"{args.phase_a_out.rstrip('/')}/{name}.json"
+
+        def load(name):
+            return json.loads(store.get(key_of(name))) if store.exists(key_of(name)) else None
+        out["stack_check"] = checked_under_declaration(declared, lambda: stack_check(
+            load, lambda name, report: report_shards(store, key_of(name), report, None), prior=args.prior,
+            w14b_checkpoint=args.w14b_checkpoint_key, r16_checkpoint=args.r16_checkpoint_key, no_gains=bool(args.no_gains),
+            best_of=args.best_of, lowpass=bool(args.lowpass), sentences_sha256=args.d20_sha256))
     out["arm"] = dict(key=args.arm_key, sha256=sha(arm_payload), prior=args.prior,
                       prior_checkpoint_key=args.prior_checkpoint_key, no_decoder_gains=bool(args.no_gains),
                       best_of=args.best_of, lowpass=bool(args.lowpass))

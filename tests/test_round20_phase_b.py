@@ -700,14 +700,18 @@ def test_the_c20_gate_opens_and_needs_a_stored_verdict(tmp_path):
         pv.main(gate_argv(tmp_path))
     store.put("o/v.json", json.dumps(val_verdict(point=2.55)).encode())
     assert pv.main(gate_argv(tmp_path)) == 0
-    # another arm on the 1,000 keeps it shut, unless this arm is that arm's declared replacement
+    # another arm on the 1,000 keeps it shut, even for a declared second arm: that decision is declared separately
     store.put("o/w14b-gains-n8-val1000-shard2.json", b"{}")
     with pytest.raises(SystemExit, match="also hold .'w14b-gains-n8-val1000'."):
         pv.main(gate_argv(tmp_path))
-    verdict = dict(val_verdict(point=2.55), declared_replacement="abc1234")
+    verdict = dict(val_verdict(point=2.55), declared_replacement="cf4b1559a3")
     (tmp_path / "g/o/v.json").unlink()
     store.put("o/v.json", json.dumps(verdict).encode())
-    assert pv.main(gate_argv(tmp_path)) == 0
+    with pytest.raises(SystemExit, match="declared separately"):
+        pv.main(gate_argv(tmp_path))
+    (tmp_path / "g/o/w14b-gains-n8-val1000-shard2.json").unlink()
+    with pytest.raises(SystemExit, match="declared separately"):             # the flag alone keeps it shut
+        pv.main(gate_argv(tmp_path))
 
 
 def c20_arm(hyp_arm=REFS):
@@ -771,17 +775,14 @@ def test_the_verdict_reads_real_merges_of_a_fresh_arm_without_gains(tmp_path, st
     pilot_report(store, s1)
     rerun = dict(json.loads(store.get("pilot.json")), no_decoder_gains=True)
     store.put("pilot-nogains.json", json.dumps(rerun).encode())
-    merged_pair(tmp_path, store, sha, ["--no-decoder-gains"], pilot="pilot-nogains.json",
-                merge_extra=("--declared-replacement", "abc1234"))
+    merged_pair(tmp_path, store, sha, ["--no-decoder-gains"], pilot="pilot-nogains.json")
     arm = json.loads(store.get("e/arm.json"))
-    assert arm["declared_replacement"] == "abc1234" and "declared_replacement" not in json.loads(store.get("e/w14b.json"))
+    assert "declared_replacement" not in arm and "set_read" not in arm
     assert "likelihood" not in json.loads(store.get("e/w14b.json")) and "minus_paired_core_crossfade" in arm["forms"][FORM]
-    with pytest.raises(SystemExit, match="no other arm"):        # a declaration with nothing to replace
-        pv.main(verdict_argv(tmp_path, store, no_gains=1, best_of=0, pilot="pilot-nogains.json"))
-    store.put("e/w14b-gains-n8-val1000.json", b"{}")
     assert pv.main(verdict_argv(tmp_path, store, no_gains=1, best_of=0, pilot="pilot-nogains.json")) == 0
     v = json.loads(store.get("e/verdict.json"))
-    assert v["declared_replacement"] == "abc1234" and v["other_arms"] == ["w14b-gains-n8-val1000"]
+    assert v["declared_replacement"] is None and v["other_arms"] == []
+    assert not {"c20_arm_choice", "stack_check", "set_read"} & set(v)
     assert v["complete"] and v["items"]["bleu_vs_w14b_composition"]["available"]
     assert set(v["items"]) == {"bleu_vs_w14b_composition", "bleu_vs_other_sentence_words", "bleu_vs_own_end_to_end",
                                "v2_spotting_vs_w14b_composition", "wrist_speed_reported"}
@@ -1261,22 +1262,35 @@ def test_other_arms_reads_names_on_this_set_only():
     assert pv.other_arms(keys, "o", "c20", "w14b-nogains-n8-c20") == ["r16-gains-n4-c20"]
 
 
+FIRST_ARM, SECOND_ARM, DECLARED = "w14b-gains-n16-val1000", "w14b-nogains-n16-val1000", "cf4b1559a3"
+
+
 def test_one_arm_cli(tmp_path, capsys):
     from train_text_to_motion import make_store
     store = make_store(f"dir:{tmp_path / 'a'}")
-    argv = ["one-arm", "--store", f"dir:{tmp_path / 'a'}", "--out", "o", "--set", "val1000", "--report", "w14b-nogains-n8-val1000"]
+    argv = ["one-arm", "--store", f"dir:{tmp_path / 'a'}", "--out", "o", "--set", "val1000", "--report", SECOND_ARM]
     assert pv.main(argv) == 0
-    with pytest.raises(SystemExit, match="holds no other arm"):                  # nothing to replace
-        pv.main([*argv, "--declared-replacement", "abc1234"])
-    store.put("o/w14b-gains-n8-val1000.json", b"{}")
+    with pytest.raises(SystemExit, match="beside exactly w14b-gains-n16-val1000, but this set holds \\[\\]"):   # no first arm
+        pv.main([*argv, "--declared-replacement", DECLARED])
+    store.put(f"o/{FIRST_ARM}.json", b"{}")
     with pytest.raises(SystemExit, match="no amendment declares"):
         pv.main(argv)
-    for bad in ("v2", "ABC1234", "abc123", "abc1234; rm"):
-        with pytest.raises(SystemExit, match="not a plan commit"):
+    for bad in ("v2", "cf4b155", "cf4b1559a3f", "ABC1234", "abc1234; rm"):         # the commit's other spellings open nothing
+        with pytest.raises(SystemExit, match="declares no such arm"):
             pv.main([*argv, "--declared-replacement", bad])
+    third = ["one-arm", "--store", f"dir:{tmp_path / 'a'}", "--out", "o", "--set", "val1000", "--report", "w14b-nogains-n8-val1000"]
+    with pytest.raises(SystemExit, match="declares no such arm"):                  # the commit does not open another arm
+        pv.main([*third, "--declared-replacement", DECLARED])
     capsys.readouterr()
-    assert pv.main([*argv, "--declared-replacement", "abc1234"]) == 0
-    assert "DECLARED REPLACEMENT abc1234" in capsys.readouterr().out
+    assert pv.main([*argv, "--declared-replacement", DECLARED]) == 0              # the second arm, beside exactly the first
+    assert f"DECLARED REPLACEMENT {DECLARED}" in capsys.readouterr().out
+    store.put(f"o/{SECOND_ARM}.json", b"{}")
+    assert pv.main([*argv, "--declared-replacement", DECLARED]) == 0              # its own keys are not another arm
+    with pytest.raises(SystemExit, match="no amendment declares"):                 # a third arm, undeclared
+        pv.main(third)
+    store.put("o/r16-nogains-n16-val1000-shard1.json", b"{}")
+    with pytest.raises(SystemExit, match="but this set holds"):                    # a third arm's shard shuts the second's rerun too
+        pv.main([*argv, "--declared-replacement", DECLARED])
 
 
 def test_the_verdict_refuses_a_second_arm(tmp_path, capsys):
@@ -1286,40 +1300,314 @@ def test_the_verdict_refuses_a_second_arm(tmp_path, capsys):
         pv.main(argv)
     assert not store.exists("r/verdict.json")
     r = reports()
-    r["arm"]["declared_replacement"] = "abc1234"
+    r["arm"]["declared_replacement"] = DECLARED                                    # the report's claim alone opens nothing
     store, argv = store_all(tmp_path, r, arm_key="r/arm2.json", comparator_key="r/w14b2.json", pilot_key="r/pilot2.json")
-    assert pv.main(argv) == 0
-    stored = json.loads(store.get("r/verdict.json"))
-    assert stored["declared_replacement"] == "abc1234" and stored["other_arms"] == ["w14b-gains-n8-val1000"]
+    with pytest.raises(SystemExit, match="the job names None"):
+        pv.main(argv)
+    with pytest.raises(SystemExit, match="the report records declared replacement None"):
+        store3, argv3 = store_all(tmp_path, reports(), arm_key="r/arm3.json", comparator_key="r/w14b3.json", pilot_key="r/pilot3.json")
+        pv.main([*argv3, "--declared-replacement", DECLARED])
 
 
-def test_run_refuses_a_second_arm_and_logs_a_declared_replacement(tmp_path):
-    index = f"{OUT}/cache-w14b-nogains-val1000-n8/index.json"
-    report = "w14b-nogains-n8-val1000"
-    code, out, commands = job(tmp_path, "run", stored=[index], STUB_ONE_ARM="1")
+def test_run_refuses_a_second_arm_and_logs_the_declared_one(tmp_path):
+    index = f"{OUT}/cache-w14b-nogains-val1000-n16/index.json"
+    second = dict(prior="w14b", no_gains="1", best_of="16", stored=[index])
+    code, out, commands = job(tmp_path, "run", **second, STUB_ONE_ARM="1")
     assert code == 1 and "already holds another arm" in out and "R20-PHASE-B-DONE 1" in out
     assert not any("round15_compose_eval" in c for c in commands)                # before any shard
-    code, out, commands = job(tmp_path, "run", stored=[index])
+    code, out, commands = job(tmp_path, "run", **second)
     check = next(k for k, c in enumerate(commands) if " one-arm " in c)
-    assert commands[check] == f"scripts/round20_phase_b_verdict.py one-arm --out {OUT} --set val1000 --report {report}"
+    assert commands[check] == f"scripts/round20_phase_b_verdict.py one-arm --out {OUT} --set val1000 --report {SECOND_ARM}"
     assert check < next(k for k, c in enumerate(commands) if " run " in c)
-    assert "--declared-replacement" not in next(c for c in commands if " merge " in c) and "DECLARED" not in out
-    code, out, commands = job(tmp_path, "run", stored=[index], R20B_DECLARED_REPLACEMENT="abc1234")
-    assert code == 0 and f"R20B DECLARED REPLACEMENT abc1234: {report}" in out
-    assert next(c for c in commands if " one-arm " in c).endswith("--declared-replacement abc1234")
-    assert "--declared-replacement abc1234 --output-key" in next(c for c in commands if " merge " in c)
+    assert "--declared-replacement" not in " ".join(commands) and "DECLARED" not in out
+    code, out, commands = job(tmp_path, "run", **second, R20B_DECLARED_REPLACEMENT=DECLARED)
+    assert code == 0 and f"R20B DECLARED REPLACEMENT {DECLARED}: {SECOND_ARM}" in out
+    assert next(c for c in commands if " one-arm " in c).endswith(f"--declared-replacement {DECLARED}")
+    assert f"--declared-replacement {DECLARED} --output-key {OUT}/{SECOND_ARM}.json" in next(c for c in commands if " merge " in c)
     assert not any("--declared-replacement" in c for c in commands if "compose_eval.py run" in c)
-    for bad in ("v2", "ABCDEF1", "abc12", "a" * 41):
-        code, out, commands = job(tmp_path, "run", stored=[index], R20B_DECLARED_REPLACEMENT=bad)
-        assert code == 1 and "must be a plan commit" in out and not commands
-    for phase, kwargs in (("cache", {}), ("verdict", {}), ("e2e", {}), ("run", dict(smoke=True))):
-        code, out, commands = job(tmp_path, phase, R20B_DECLARED_REPLACEMENT="abc1234", **kwargs)
-        assert code == 1 and "belongs to a full run" in out and not commands
+    # the first arm's keys are never written: the run's and the verdict's outputs are the second arm's
+    written = [c.split("--output-key ")[1].split()[0] for c in commands if "--output-key" in c]
+    assert len(written) == 5 and all(SECOND_ARM in k for k in written) and not any(FIRST_ARM in c for c in written)
+    assert not any(FIRST_ARM in c for c in commands)                             # the job does not even name it; the verdict reads it
     # a smoke has its own prefix and no check; a stored arm is not checked again
     code, out, commands = job(tmp_path, "run", smoke=True, gpu=False, CACHE_KEY="k/i.json", stored=["k/i.json"])
     assert code == 0 and not any(" one-arm " in c for c in commands)
-    code, out, commands = job(tmp_path, "run", stored=[index, f"{OUT}/{report}.json"])
+    code, out, commands = job(tmp_path, "run", **dict(second, stored=[index, f"{OUT}/{SECOND_ARM}.json"]))
     assert code == 0 and not any(" one-arm " in c for c in commands)
+
+
+@pytest.mark.parametrize("kwargs", [
+    dict(prior="w14b", no_gains="0", best_of="16"),      # the first arm
+    dict(prior="w14b", no_gains="1", best_of="8"),       # another N
+    dict(prior="w14b", no_gains="1", best_of="0"),       # fresh words
+    dict(prior="r16", no_gains="1", best_of="16"),       # another prior
+    dict(prior="w14b", no_gains="1", best_of="16", LOWPASS="1"),
+    dict(prior="w14b", no_gains="1", best_of="16", sentence_set="c20"),
+])
+@pytest.mark.parametrize("phase", ["run", "verdict", "cache", "e2e"])
+def test_the_variable_opens_no_other_arm(tmp_path, kwargs, phase):
+    code, out, commands = job(tmp_path, phase, R20B_DECLARED_REPLACEMENT=DECLARED, **kwargs)
+    assert code == 1 and "ALERT" in out and "R20-PHASE-B-DONE 1" in out and not commands
+    assert "declares no such arm" in out or phase in ("cache", "e2e")          # those have their own earlier refusals too
+
+
+@pytest.mark.parametrize("commit", ["abc1234", "cf4b155", "cf4b1559a3f", "CF4B1559A3", "v2"])
+def test_another_commit_opens_nothing(tmp_path, commit):
+    code, out, commands = job(tmp_path, "run", prior="w14b", no_gains="1", best_of="16", R20B_DECLARED_REPLACEMENT=commit)
+    assert code == 1 and "declares no such arm" in out and not commands
+
+
+def test_the_variable_belongs_to_a_full_run_or_verdict(tmp_path):
+    second = dict(prior="w14b", no_gains="1", best_of="16", R20B_DECLARED_REPLACEMENT=DECLARED)
+    for phase, kwargs in (("cache", {}), ("e2e", {}), ("run", dict(smoke=True))):
+        code, out, commands = job(tmp_path, phase, **second, **kwargs)
+        assert code == 1 and "belongs to a full run or verdict" in out and not commands
+
+
+def test_the_stack_check_runs_under_the_declaration(tmp_path):
+    index = f"{OUT}/cache-w14b-nogains-val1000-n16/index.json"
+    second = dict(prior="w14b", no_gains="1", best_of="16")
+    for phase, stored in (("run", [index]), ("verdict", [f"{OUT}/{SECOND_ARM}.json"])):
+        code, out, commands = job(tmp_path, phase, **second, stored=stored, R20B_DECLARED_REPLACEMENT=DECLARED)
+        line = next(c for c in commands if " stack-check " in c)
+        assert code == 0 and line.endswith(f"--declared-replacement {DECLARED}")
+        assert f"R20B STACK-CHECK under declared replacement {DECLARED} on {SECOND_ARM}" in out
+        # the script itself decides: a crash or a refused name still stops the job
+        code, out, commands = job(tmp_path, phase, **second, stored=stored, R20B_DECLARED_REPLACEMENT=DECLARED, STUB_STACK="1")
+        assert code == 1 and "do not allow this arm" in out
+        # unset: as before, a refusal stops it and the flag is absent
+        code, out, commands = job(tmp_path, phase, **second, stored=stored, STUB_STACK="1")
+        assert code == 1 and "do not allow this arm" in out
+        assert "--declared-replacement" not in next(c for c in commands if " stack-check " in c)
+    code, out, commands = job(tmp_path, "verdict", **second, stored=stored, R20B_DECLARED_REPLACEMENT=DECLARED)
+    line = next(c for c in commands if " verdict " in c)
+    assert f"--declared-replacement {DECLARED} --phase-a-out {OUT_A} " in line
+    assert f"--end-to-end-key {OUT}/pilot-w14b-nogains-val1000.json " in line and f"--output-key {OUT}/verdict-{SECOND_ARM}.json" in line
+    # the script's parser takes it, and reaches the comparator's hash
+    from train_text_to_motion import make_store
+    store = make_store(f"dir:{tmp_path / 'p'}")
+    store.put(f"{OUT}/{SECOND_ARM}.json", b"{}")
+    store.put(CMP, b"{}")
+    with pytest.raises(SystemExit, match="does not match --comparator-sha256"):
+        pv.main(line.split()[1:] + ["--store", f"dir:{tmp_path / 'p'}"])
+
+
+def test_stack_check_cli_overrides_only_the_declared_arm(tmp_path, capsys):
+    argv = ["stack-check", "--store", f"dir:{tmp_path / 's'}", "--phase-a-out", "a", "--prior", "w14b", "--w14b-checkpoint-key", W14B,
+            "--r16-checkpoint-key", R16, "--no-gains", "1", "--best-of", "16", "--lowpass", "0", "--sentences-sha256", D20_SHA]
+    with pytest.raises(SystemExit, match="unread: a0-w14b-r10"):
+        pv.main(argv)
+    capsys.readouterr()
+    assert pv.main([*argv, "--declared-replacement", DECLARED]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out == dict(overridden=True, by=DECLARED, refusal="unread: a0-w14b-r10 is not stored")
+    other = list(argv)
+    other[other.index("--best-of") + 1] = "8"
+    with pytest.raises(SystemExit, match="declares no such arm"):
+        pv.main([*other, "--declared-replacement", DECLARED])
+    with pytest.raises(SystemExit, match="declares no such arm"):
+        pv.main([*argv, "--declared-replacement", "abc1234"])
+    assert pv.checked_under_declaration(DECLARED, lambda: dict(decision="x")) == dict(overridden=False, by=DECLARED, result=dict(decision="x"))
+
+
+def test_the_job_and_the_verdict_declare_the_same_arm():
+    text = SCRIPT.read_text()
+    spec = pv.DECLARED_ARMS
+    assert list(spec) == [DECLARED] and spec[DECLARED]["report"] == SECOND_ARM and spec[DECLARED]["replaces"] == FIRST_ARM
+    assert f"    {DECLARED}:w14b:1:16:0:val1000) ;;" in text and len(re.findall(r"^    [0-9a-f]{7,}:", text, flags=re.M)) == 1
+
+
+# ---- amendment 6: c20_arm_choice -------------------------------------------------------------------------------------------------
+
+def first_and_second(*, hyps=REFS, ll=-2.0, first_ll=-2.1, wrist=2.1, first_wrist=2.6, delta=0.):
+    """Two arms of one 1,000 as merged reports hold them: per-clip likelihood, and spotting in the shards only."""
+    r = reports(hyp_arm=hyps, delta=delta)
+    arm = r["arm"]
+    arm["likelihood"]["per_form"] = {FORM: [ll] * 6, "blank": [-3.] * 6}
+    arm["motion_ratio_to_real"][FORM]["wrist_speed"] = wrist
+    first = copy.deepcopy(arm)
+    first["settings"]["round20"]["word_cache"] = cache_settings(no_gains=False)
+    first["forms"][FORM] = hyp_form(HYP_ARM)
+    first["likelihood"]["per_form"] = {FORM: [first_ll] * 6, "blank": [-3.] * 6}
+    first["motion_ratio_to_real"][FORM]["wrist_speed"] = first_wrist
+    return dict(arm=arm, first=first, shards_arm=[shard(arm["settings"], delta)], shards_first=[shard(first["settings"])])
+
+
+def choose(**over):
+    c = first_and_second(**over)
+    return pv.c20_arm_choice(c["arm"], c["first"], shards_arm=c["shards_arm"], shards_first=c["shards_first"],
+                             spec=pv.DECLARED_ARMS[DECLARED], boot=50)
+
+
+def test_the_choice_picks_the_stack_when_all_hold():
+    v = choose()
+    assert v["all_hold"] and v["arm"] == SECOND_ARM and not v["missing"] and "whether C20 runs" in v["note"]
+    assert set(v["items"]) == {"bleu_at_least_2_55", "paired_likelihood_above_first_arm", "v2_spotting_against_first_arm",
+                               "wrist_closer_to_1_than_first_arm"}
+    assert all(i["available"] and i["passed"] for i in v["items"].values())
+    assert v["items"]["paired_likelihood_above_first_arm"]["lower_bound"] == pytest.approx(.1)
+    assert v["items"]["wrist_closer_to_1_than_first_arm"] == dict(available=True, passed=True, ratio_to_real=2.1, first_arm_ratio_to_real=2.6)
+    assert "difference" in v["paired_bleu_against_first_arm"]
+
+
+@pytest.mark.parametrize("over,item", [
+    (dict(hyps=["word"] * 6), "bleu_at_least_2_55"),
+    (dict(ll=-2.1), "paired_likelihood_above_first_arm"),                       # equal: the lower bound is not above 0
+    (dict(ll=-2.2), "paired_likelihood_above_first_arm"),
+    (dict(delta=-.02), "v2_spotting_against_first_arm"),                        # at the floor
+    (dict(delta=-.05), "v2_spotting_against_first_arm"),
+    (dict(wrist=2.6), "wrist_closer_to_1_than_first_arm"),                      # equal is not closer
+    (dict(wrist=3.0), "wrist_closer_to_1_than_first_arm"),
+    (dict(wrist=.1, first_wrist=1.2), "wrist_closer_to_1_than_first_arm"),      # closer means to 1, from either side
+])
+def test_each_failure_keeps_the_first_arm(over, item):
+    v = choose(**over)
+    assert v["all_hold"] is False and v["arm"] == FIRST_ARM and not v["missing"] and v["items"][item]["passed"] is False
+    assert all(i["passed"] for k, i in v["items"].items() if k != item)
+
+
+@pytest.mark.parametrize("point,met", [(2.5496, False), (2.55, True), (2.5504, True)])
+def test_the_choice_reads_bleu_unrounded(monkeypatch, point, met):
+    import sentence_exposure_diagnostic as sed
+    c = first_and_second()
+    c["arm"]["forms"][FORM]["bleu"] = round(point, 3)                          # 3 decimals round all of these to 2.55
+    monkeypatch.setattr(sed, "bleu_from_stats", lambda stats: point)
+    v = pv.c20_arm_choice(c["arm"], c["first"], shards_arm=c["shards_arm"], shards_first=c["shards_first"],
+                          spec=pv.DECLARED_ARMS[DECLARED], boot=20)
+    assert v["items"]["bleu_at_least_2_55"]["passed"] is met and v["arm"] == (SECOND_ARM if met else FIRST_ARM)
+
+
+def test_the_choice_at_its_edges():
+    assert choose(delta=-.019)["arm"] == SECOND_ARM
+    assert choose(wrist=.9, first_wrist=1.2)["arm"] == SECOND_ARM                # below 1 and nearer
+    # BLEU is not compared directly: below the first arm's, above 2.55, the stack can still be chosen
+    assert choose(hyps=HYP_ARM)["items"]["bleu_at_least_2_55"]["passed"] == (corpus_bleu(HYP_ARM, REFS)["bleu"] >= 2.55)
+    c = first_and_second()
+    c["first"]["forms"][FORM] = hyp_form(REFS)
+    c["arm"]["forms"][FORM] = hyp_form(HYP_ARM)
+    assert corpus_bleu(HYP_ARM, REFS)["bleu"] >= 2.55
+    v = pv.c20_arm_choice(c["arm"], c["first"], shards_arm=c["shards_arm"], shards_first=c["shards_first"],
+                          spec=pv.DECLARED_ARMS[DECLARED], boot=50)
+    assert v["paired_bleu_against_first_arm"]["difference"] < 0 and v["arm"] == SECOND_ARM
+
+
+@pytest.mark.parametrize("edit,says", [
+    (lambda c: c["arm"].pop("likelihood"), "paired_likelihood_above_first_arm"),
+    (lambda c: c["first"].pop("likelihood"), "paired_likelihood_above_first_arm"),
+    (lambda c: c.update(shards_arm=None), "v2_spotting_against_first_arm"),
+    (lambda c: c.update(shards_first=None), "v2_spotting_against_first_arm"),
+    (lambda c: c["arm"].pop("motion_ratio_to_real"), "wrist_closer_to_1_than_first_arm"),
+    (lambda c: c["first"]["motion_ratio_to_real"].pop(FORM), "wrist_closer_to_1_than_first_arm"),
+])
+def test_a_missing_field_chooses_no_arm(edit, says):
+    c = first_and_second()
+    edit(c)
+    v = pv.c20_arm_choice(c["arm"], c["first"], shards_arm=c["shards_arm"], shards_first=c["shards_first"],
+                          spec=pv.DECLARED_ARMS[DECLARED], boot=50)
+    assert v["arm"] is None and v["all_hold"] is False and says in " ".join(v["missing"])
+
+
+def test_the_choice_refuses_arms_that_do_not_pair():
+    c = first_and_second()
+    c["first"]["references"] = list(reversed(REFS))
+    with pytest.raises(SystemExit, match="not paired"):
+        pv.c20_arm_choice(c["arm"], c["first"], shards_arm=c["shards_arm"], shards_first=c["shards_first"],
+                          spec=pv.DECLARED_ARMS[DECLARED], boot=50)
+
+
+def test_the_declared_verdict_on_real_merges(tmp_path, stage2_store, likelihood_stub, monkeypatch):  # noqa: F811
+    """Both arms really merged, with the job's flags and keys, as the first arm is stored: 4-shard-style names, per-clip likelihood."""
+    import torch
+    import validate_sign_recognizer as vsr
+    store, sha, s1, *_ = stage2_store
+    put_gains(store)
+    pilot_report(store, s1)
+    gained_pilot = json.loads(store.get("pilot.json"))
+    store.put("pilot-nogains.json", json.dumps(dict(gained_pilot, no_decoder_gains=True)).encode())
+    labels = ["CUT", "ONION", "SALT", "HEAT", "KNIFE", "HALF", "NOW", "STIR"]
+    monkeypatch.setattr(vsr, "load_model", lambda store, run, device: (None, labels, {"checkpoint_key": "r.pt"}))
+    monkeypatch.setattr(vsr, "logits_of", lambda model, states, device, batch=64: torch.zeros(len(states), len(labels)))
+    root = f"dir:{tmp_path / 'store'}"
+
+    def cache(prefix, *extra):
+        common = ["--store", root, "--prefix", prefix]
+        assert cw.main(["run", *common, "--mix-key", "mix.json", "--mix-sha256", sha, "--clips", "5", "--checkpoint-key", "prior.pt",
+                        "--samples", "4", "--choose", "4", "--device", "cpu", *extra]) == 0
+        assert cw.main(["merge", *common]) == 0
+        return ["--word-cache-key", f"{prefix}/index.json", "--word-cache-n", "4", "--word-cache-sha256",
+                hashlib.sha256(store.get(f"{prefix}/index.json")).hexdigest()]
+
+    def arm(name, words, pilot, *merge):
+        args = run_args(tmp_path, sha, "--variants", FORM, "--clips", "5", "--stage1-report-key", "source.json", "--shards", "2")
+        k = args.index("--checkpoint-key")
+        args = args[:k] + args[k + 2:]
+        for s in (0, 1):
+            assert ce.main([*args, "--shard", str(s), "--likelihood", *words, "--output-key", f"o/{name}-shard{s}.json"]) == 0
+        assert ce.main(["merge", "--store", root, "--bootstrap", "50", "--end-to-end-report", pilot, "--paired-with", "o/w14b.json",
+                        "--shard-keys", f"o/{name}-shard0.json,o/{name}-shard1.json", *merge, "--output-key", f"o/{name}.json"]) == 0
+    for s in (0, 1):
+        assert ce.main(run_args(tmp_path, sha, "--variants", FORM, "--clips", "5", "--stage1-report-key", "source.json", "--shards", "2",
+                                "--shard", str(s), "--output-key", f"o/w14b-shard{s}.json")) == 0
+    assert ce.main(["merge", "--store", root, "--bootstrap", "50", "--end-to-end-report", "pilot.json",
+                    "--shard-keys", "o/w14b-shard0.json,o/w14b-shard1.json", "--output-key", "o/w14b.json"]) == 0
+    first, second = "w14b-gains-n4-val1000", "w14b-nogains-n4-val1000"
+    arm(first, cache("c/gains"), "pilot.json")
+    arm(second, cache("c/nogains", "--no-decoder-gains"), "pilot-nogains.json", "--declared-replacement", "abc1234")
+    report = json.loads(store.get(f"o/{second}.json"))
+    assert report["declared_replacement"] == "abc1234" and "second read" in report["set_read"]
+    assert "declared_replacement" not in json.loads(store.get(f"o/{first}.json"))
+    monkeypatch.setitem(pv.DECLARED_ARMS, "abc1234", dict(
+        report=second, replaces=first, replaces_sha256=hashlib.sha256(store.get(f"o/{first}.json")).hexdigest(), prior="w14b",
+        no_gains=True, best_of=4, lowpass=False))
+    argv = ["verdict", "--store", root, "--arm-key", f"o/{second}.json", "--comparator-key", "o/w14b.json",
+            "--comparator-sha256", hashlib.sha256(store.get("o/w14b.json")).hexdigest(), "--end-to-end-key", "pilot-nogains.json",
+            "--end-to-end-sha256", hashlib.sha256(store.get("pilot-nogains.json")).hexdigest(), "--stored-pilot-key", "pilot.json",
+            "--stored-pilot-sha256", hashlib.sha256(store.get("pilot.json")).hexdigest(), "--out", "o", "--report", second, "--prior", "w14b",
+            "--prior-checkpoint-key", "prior.pt", "--no-gains", "1", "--best-of", "4", "--set", "val1000", "--bootstrap", "50",
+            "--output-key", f"o/verdict-{second}.json", "--declared-replacement", "abc1234", "--phase-a-out", "nowhere",
+            "--w14b-checkpoint-key", "prior.pt", "--r16-checkpoint-key", "r16.pt", "--d20-sha256", D20_SHA]
+    with pytest.raises(SystemExit):                                              # the job's four declaration flags are needed
+        pv.main(argv[:argv.index("--phase-a-out")])
+    before = {k: store.get(f"o/{first}{k}.json") for k in ("", "-shard0", "-shard1")}
+    assert pv.main(argv) == 0
+    v = json.loads(store.get(f"o/verdict-{second}.json"))
+    assert v["declared_replacement"] == "abc1234" and v["other_arms"] == [first] and "second read" in v["set_read"] and first in v["set_read"]
+    assert v["stack_check"] == dict(overridden=True, by="abc1234", refusal="unread: a0-w14b-r10 is not stored")
+    assert set(v["items"]) == {"bleu_vs_w14b_composition", "bleu_vs_other_sentence_words", "bleu_vs_own_end_to_end",
+                               "v2_spotting_vs_w14b_composition", "wrist_speed_reported"}
+    assert "WITHOUT gains" in v["items"]["bleu_vs_own_end_to_end"]["note"]
+    choice = v["c20_arm_choice"]
+    assert choice["arm"] in (first, second) and not choice["missing"] and choice["all_hold"] == (choice["arm"] == second)
+    assert choice["items"]["paired_likelihood_above_first_arm"]["available"] and choice["items"]["v2_spotting_against_first_arm"]["available"]
+    assert {k: store.get(f"o/{first}{k}.json") for k in before} == before        # the first arm is untouched
+    with pytest.raises(SystemExit, match="refusing to overwrite"):
+        pv.main(argv)
+    again = [*argv[:argv.index("--output-key") + 1], "o/other.json", *argv[argv.index("--output-key") + 2:]]
+    # the job's arm must be the table's, whatever the report says
+    for flag, value in (("--best-of", "8"), ("--no-gains", "0"), ("--prior", "r16")):
+        other = list(again)
+        other[other.index(flag) + 1] = value
+        with pytest.raises(SystemExit, match="abc1234 declares"):
+            pv.main(other)
+    with pytest.raises(SystemExit, match="abc1234 declares"):
+        pv.main([*again, "--lowpass", "1"])
+    # a tampered first arm: refused before anything is stored
+    good = pv.DECLARED_ARMS["abc1234"]
+    monkeypatch.setitem(pv.DECLARED_ARMS, "abc1234", dict(good, replaces_sha256="0" * 64))
+    with pytest.raises(SystemExit, match="first arm's declared hash"):
+        pv.main(again)
+    monkeypatch.setitem(pv.DECLARED_ARMS, "abc1234", good)
+    # the first arm's shard gone: the choice cannot be read, so nothing is stored
+    shard0 = tmp_path / f"store/o/{first}-shard0.json"
+    kept = shard0.read_bytes()
+    shard0.unlink()
+    assert pv.main(again) == 2 and not store.exists("o/other.json")
+    shard0.write_bytes(kept)
+    # a third arm's shard stops the second arm's verdict
+    store.put("o/r16-gains-n0-val1000-shard0.json", b"{}")
+    with pytest.raises(SystemExit, match="but this set holds"):
+        pv.main(again)
+    assert not store.exists("o/other.json")
 
 
 @pytest.mark.parametrize("prior,no_gains,best_of", [("w14b", "1", "8"), ("w14b", "1", "0"), ("w14b", "0", "4"), ("r16", "0", "0"),
