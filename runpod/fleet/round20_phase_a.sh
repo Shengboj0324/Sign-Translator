@@ -26,14 +26,16 @@
 #   a3    (CPU)  continuous retiming, velocity-bounded bridges, ARM=tempo-0.8 | tempo-1.0 | tempo-1.25 | tempo-1.5
 #                (tempo-1.0 also renders the report-only, deployable @predicted form)
 #   cache (GPU)  best-of-16 word cache, ARM=w14b | r16, on VOCAB's D20 entries (choices 4, 8, 16); CACHE_PROCS shard
-#                processes on one GPU (a failed shard stops the others), then the merge. NO_GAINS=1 (ARM=w14b, VOCAB=r10
-#                only; amendment 4): the words decode without gains, under the prefix cache-w14b-nogains-r10
+#                processes on one GPU (a failed shard stops the others), then the merge. NO_GAINS=1 (VOCAB=r10 only;
+#                amendments 4 and 5): the words decode without gains, under the prefix cache-$ARM-nogains-r10
 #   a4    (CPU or GPU)  composition from the W14b cache, ARM=n4 | n8 | n16 (v2 spotting: the independent guard)
 #   a5    (CPU)  A5: R16 step 10000 against W14b, word-level v3d reads entry by entry (both caches first)
 #   a8    (GPU)  A5's sentence read: a0 with R16 step 10000's words instead of W14b's, against a0 (amendment 3)
 #   a9    (CPU or GPU, VOCAB=r10 only)  amendment 4's stack read: composition from the no-gains cache, ARM=n4 | n8 | n16, with
 #                @lowpass; against both a7-nogains-r10 and a4-w14b-nN-r10. It passes no --no-decoder-gains: the gains are the
 #                cache's, and the report records them (settings.round20.word_cache.no_decoder_gains)
+# a4 and a9 take PRIOR=w14b (default, keys as above) or PRIOR=r16 (amendment 5): a4-r16-$ARM-$VOCAB from cache-r16-$VOCAB, and
+#                a9-r16-nogains-$ARM-$VOCAB from cache-r16-nogains-$VOCAB; the same options
 # Comparisons (CPU, seconds): scripts/round20_compare.py forms --a KEY:FORM --b KEY:FORM (paired BLEU + likelihood).
 # Thread counts come from the cgroup CPU quota or sched_getaffinity, never nproc.
 set -uo pipefail
@@ -86,6 +88,9 @@ case $VOCAB in
 esac
 case ${NO_GAINS:-0} in 0) ;; 1) [ "$PHASE" = cache ] || die "NO_GAINS=1 belongs to the cache phase (a7 and a9 have their own)" ;;
   *) die "NO_GAINS must be 0 or 1" ;; esac
+P=${PRIOR:-w14b}
+case $P in w14b|r16) ;; *) die "PRIOR must be w14b or r16" ;; esac
+[ -z "${PRIOR:-}" ] || [ "$PHASE" = a4 ] || [ "$PHASE" = a9 ] || die "PRIOR belongs to the a4 and a9 phases"
 CLIPS=500; SAMPLES=16; CHOOSE=4,8,16
 if [ "${SMOKE:-0}" = 1 ]; then
   OUT=$OUT/smoke/$(date -u +%Y%m%dT%H%M%SZ); CLIPS=5; SAMPLES=4; CHOOSE=1,4
@@ -147,10 +152,10 @@ case $PHASE in
     case $ARM in
       w14b) CK=$W14B; CKSHA=$W14BSHA ;; r16) CK=$R16; CKSHA=$R16SHA ;; *) die "cache: ARM w14b or r16" ;;
     esac
+    [ "$DEV" = cuda ] || [ "${SMOKE:-0}" = 1 ] || die "cache: a full cache needs a GPU (DEV=$DEV): other devices sample other bits"
     pin $CK $CKSHA
     TAG=$ARM; NG=""
     if [ "${NO_GAINS:-0}" = 1 ]; then
-      [ "$ARM" = w14b ] || die "cache: NO_GAINS=1 is for ARM=w14b only"
       [ "$VOCAB" = r10 ] || die "cache: NO_GAINS=1 is for VOCAB=r10 only"
       TAG=$ARM-nogains; NG=--no-decoder-gains
     fi
@@ -185,17 +190,18 @@ case $PHASE in
     case $ARM in n4|n8|n16) ;; *) die "a4: ARM n4, n8 or n16" ;; esac
     if [ "${SMOKE:-0}" = 1 ]; then      # a smoke cache holds best-of-1 and best-of-4 only
       [ -n "${CACHE_KEY:-}" ] || die "a4 smoke: give CACHE_KEY (a smoke cache's index.json)"; IDX=$CACHE_KEY; NCH=4
-    else IDX=$OUT/cache-w14b-$VOCAB/index.json; NCH=${ARM#n}; fi
-    compose a4-w14b-$ARM-$VOCAB --variants core_crossfade $VMIX --word-cache-key $IDX \
+    else IDX=$OUT/cache-$P-$VOCAB/index.json; NCH=${ARM#n}; fi
+    compose a4-$P-$ARM-$VOCAB --variants core_crossfade $VMIX --word-cache-key $IDX \
       --word-cache-sha256 $(sha $IDX) --word-cache-n $NCH --recognizer-run sign-recognizer-v2 ;;
   a9)
     case $ARM in n4|n8|n16) ;; *) die "a9: ARM n4, n8 or n16" ;; esac
     [ "$VOCAB" = r10 ] || die "a9: VOCAB must be r10"
     if [ "${SMOKE:-0}" = 1 ]; then      # a smoke cache holds best-of-1 and best-of-4 only
       [ -n "${CACHE_KEY:-}" ] || die "a9 smoke: give CACHE_KEY (a no-gains smoke cache's index.json)"; IDX=$CACHE_KEY; NCH=4
-    else IDX=$OUT/cache-w14b-nogains-$VOCAB/index.json; NCH=${ARM#n}; fi
+    else IDX=$OUT/cache-$P-nogains-$VOCAB/index.json; NCH=${ARM#n}; fi
     exists $IDX || die "a9: the no-gains cache $IDX is not stored"
-    compose a9-nogains-$ARM-$VOCAB --variants core_crossfade $VMIX --word-cache-key $IDX \
+    if [ "$P" = w14b ]; then NAME=a9-nogains-$ARM-$VOCAB; else NAME=a9-$P-nogains-$ARM-$VOCAB; fi
+    compose $NAME --variants core_crossfade $VMIX --word-cache-key $IDX \
       --word-cache-sha256 $(sha $IDX) --word-cache-n $NCH --recognizer-run sign-recognizer-v2 --lowpass-report-hz 6 ;;
   a5)
     A=${A5_A:-$OUT/cache-r16-$VOCAB/index.json}; B=${A5_B:-$OUT/cache-w14b-$VOCAB/index.json}

@@ -3,7 +3,7 @@
 # amendments 1-3). Evaluation only: NOTHING TRAINS, nothing is tuned. One stacked arm of every lever Phase A adopted, against
 # the stored W14b composition (2.306). PREPARED, NOT LAUNCHED: which levers are adopted is not known yet.
 #
-#   R20B_PHASE=cache|run|verdict PRIOR=w14b|r16 NO_GAINS=0|1 BEST_OF=0|4|8|16 SET=val1000|c20 [LOWPASS=0|1] [SMOKE=1] \
+#   R20B_PHASE=e2e|cache|run|verdict PRIOR=w14b|r16 NO_GAINS=0|1 BEST_OF=0|4|8|16 SET=val1000|c20 [LOWPASS=0|1] [SMOKE=1] \
 #     bash runpod/fleet/round20_phase_b.sh
 #
 # The arm: PRIOR's words (A5/a8), without decoder gains if NO_GAINS=1 (A7), from a best-of-BEST_OF cache if BEST_OF is not 0
@@ -11,10 +11,24 @@
 # Tempo (A3), vocabulary (A1) and continuous words (A2) were not adopted: their options stay off.
 # LOWPASS=1 (amendment 4, rule 4: A6 enters only if the stack's @lowpass has both point estimates above 0 against the stack):
 # --lowpass-hz 6 on the main form and its controls, applied after rendering, so seeds, codes, plans and the cache are the
-# unfiltered arm's; real and blank stay unfiltered. Its only evidence is a9's read of the W14b no-gains stack, so it is refused
-# on anything else: gained words (A6 was rejected there), fresh words (position seeds, not a9's entry seeds), R16 (other codes).
+# unfiltered arm's; real and blank stay unfiltered. Its only evidence is the chosen stack's own a9 read (R16's: a9-r16-nogains),
+# so it is refused off a stack: gained words (A6 was rejected there), fresh words (position seeds, not a9's entry seeds).
+#
+# Stored D20 reads gate run and verdict (scripts/round20_phase_b_verdict.py stack-check; cache and e2e read none, so they can be
+# built ahead). Nothing runs until a8 is stored. If a8 fails amendment 3, W14b's words go and no R16 read is needed. If it meets
+# it, amendment 5: R16's words go only if a9-r16-nogains-nN has both point estimates above 0 against a9-nogains-nN with v2 spotting
+# above -0.02 (if W14b's stack failed rule 3: a4-r16-nN against a4-w14b-nN); otherwise W14b's. Rule 1: N is computed from W14b's a4
+# reads. Rule 3: the stack, or only if its stored read failed, the better single lever. Rule 4, on the stack actually chosen: its
+# @lowpass above it requires LOWPASS=1, and otherwise LOWPASS=1 is refused. R16's words go as that stack, or that single a4 arm.
+#
+# One arm on a set ("one stacked arm"): run refuses if any other arm's report or shard is stored on that set, and the verdict and
+# C20's gate refuse the same way. R20B_DECLARED_REPLACEMENT=<plan commit> lifts that for run only when an amendment declares a
+# replacement: it is logged and recorded in the report and the verdict. Pods have no git history, so the commit's format is
+# checked but its contents are not: whoever launches must have read that amendment.
 #
 # Order and pods (one L40S as in Phase A, wall-clock = GPU-hours; the 1,000 hold 894 entries under r10, against D20's 705):
+#   e2e        (GPU, only if NO_GAINS=1, any time before run; about 50 min, as the R16 pilot job)  the prior's own end-to-end
+#              without gains: its stored pilot's command (seeds, clips, words) plus --no-decoder-gains, write-once, one per prior.
 #   1. cache   (GPU, only if BEST_OF is not 0)  894 x BEST_OF samples, CACHE_PROCS (4) shard processes on one GPU, at Phase
 #              A's 705 x 16 in 3.9 h = 2,892 samples/h: n4 1.2 h, n8 2.5 h, n16 4.9 h, the same with or without gains (the gain
 #              is one multiplication after the decoder). Samples = BEST_OF: seeds are prefixes, so the choice is what a
@@ -31,12 +45,14 @@
 # recogniser v2's recall is paired from both reports' shards in the verdict. The comparator has NO likelihood at any level, so
 # the arm's likelihood minus blank is its own read, unpaired with W14b (the rule does not ask for it).
 #
-# Its own end-to-end: W14b $E2E_W14B (the comparator's own), R16 $E2E_R16 (step 10000). Both decode with gains; no pilot
-# exists without them, so a NO_GAINS=1 arm is compared against the gained pilot, as the verdict records.
+# Its own end-to-end: W14b $E2E_W14B (the comparator's own), R16 $E2E_R16 (step 10000), both gained. A NO_GAINS=1 arm is compared
+# with the e2e phase's pilot without gains; the verdict refuses a gained pilot for it, and a pilot without gains otherwise.
 #
 # SMOKE=1: plumbing only, under $OUT/smoke/<UTC stamp>/: D20's first 5 sentences (--clips 5 of the 1,000's list would draw
 # other clips, some of them possibly C20's), 4 samples per entry, 1 shard, no comparator (other clips cannot pair). Smoke the
-# run with CACHE_KEY=<the smoke cache's index.json>. No smoke of the verdict: its tests read real merges of the synthetic store.
+# run with CACHE_KEY=<the smoke cache's index.json>. The e2e smoke is the pilot's first 5 clips of the 1,000 (--first-clips: the
+# pilot has no sentence set), real and generated hypotheses of those clips only, into the smoke prefix. No smoke of the verdict:
+# its tests read real merges of the synthetic store.
 # Thread counts come from the cgroup CPU quota or sched_getaffinity, never nproc.
 set -uo pipefail
 source /root/r2env.sh
@@ -69,6 +85,8 @@ CMPS0=641d7a899c4d5a9fb44403d55bacdb49d35597f506b885a65218945fcf016a75
 CMPS1=5b5e324fb7fa56d37cb66035758cb09fff089be7b2225604e21d0f6fef74f769
 CMPS2=f4f72c57c3305e6d9b709ed366656f0f102acf1a9891cc72ef35d77fe7f72151
 CMPS3=fe342ce0943f648940a8a1a8dbb54990455affe33859924043622b218ead2d3c
+SPLIT=$O/round14/r5-word-split.json; SPLITSHA=676f56cbbaa9bac08f0bc305027807827f982cd4c242de03f7891323e723102a
+A=$O/round20/phase-a      # the stored D20 reads
 # each prior's own end-to-end on the same 1,000 (references and real/blank hypotheses checked identical to the comparator's)
 E2E_W14B=$O/round14b/pilot-w14b-step30000.json; E2E_W14BSHA=090f68b1f26e33ff9a8c26f1d90e8a89d33f215687dbd6c40d21cc7232eddb68
 E2E_R16=$O/round16/pilot-r16.json; E2E_R16SHA=8f24b7126326a818d2f1f7a389e05ad13f189e1bb4c995fc4e34b8ed233c8f63
@@ -83,10 +101,12 @@ V3DCK=$V3D/checkpoints/step-00012000.pt; V3DCKSHA=0c6c10e232037e869f3983ed6df16d
 
 # ---- the inputs, refused before anything is read ------------------------------------------------------------------------
 PHASE=${R20B_PHASE:-}; PRIOR=${PRIOR:-}; NO_GAINS=${NO_GAINS:-}; BEST_OF=${BEST_OF:-}; SET=${SET:-}
-case $PHASE in cache|run|verdict) ;; *) die "R20B_PHASE must be cache, run or verdict" ;; esac
+case $PHASE in e2e|cache|run|verdict) ;; *) die "R20B_PHASE must be e2e, cache, run or verdict" ;; esac
 case $PRIOR in
-  w14b) CK=$W14B; CKSHA=$W14BSHA; E2E=$E2E_W14B; E2ESHA=$E2E_W14BSHA ;;
-  r16)  CK=$R16;  CKSHA=$R16SHA;  E2E=$E2E_R16;  E2ESHA=$E2E_R16SHA ;;
+  w14b) CK=$W14B; CKSHA=$W14BSHA; STORED_E2E=$E2E_W14B; E2ESHA=$E2E_W14BSHA
+        WORDS_E2E="--word-split-key $SPLIT --word-split-sha256 $SPLITSHA --recognizer-run sign-recognizer-v2" ;;
+  r16)  CK=$R16;  CKSHA=$R16SHA;  STORED_E2E=$E2E_R16;  E2ESHA=$E2E_R16SHA
+        WORDS_E2E="--word-split-key $SPLIT --word-split-sha256 $SPLITSHA --word-list-key $SPLIT --word-list-sha256 $SPLITSHA --recognizer-run sign-recognizer-v3d" ;;
   *) die "PRIOR must be w14b or r16" ;;
 esac
 case $NO_GAINS in 0) GAINS=gains; NG="" ;; 1) GAINS=nogains; NG=--no-decoder-gains ;; *) die "NO_GAINS must be 0 or 1" ;; esac
@@ -94,12 +114,19 @@ case $BEST_OF in 0|4|8|16) ;; *) die "BEST_OF must be 0, 4, 8 or 16" ;; esac
 case $SET in val1000|c20) ;; *) die "SET must be val1000 or c20" ;; esac
 [ "$PRIOR" = w14b ] && [ "$NO_GAINS" = 0 ] && [ "$BEST_OF" = 0 ] && die "no lever adopted: this arm is the stored W14b composition itself"
 [ "$PHASE" = cache ] && [ "$BEST_OF" = 0 ] && die "cache: BEST_OF=0 uses no cache"
+[ "$PHASE" = e2e ] && [ "$NO_GAINS" = 0 ] && die "e2e: only for NO_GAINS=1 (the gained pilots are stored)"
+[ "$PHASE" = e2e ] && [ "$SET" != val1000 ] && die "e2e: SET=val1000 only (no pilot or comparator reads C20)"
+DECLARED=${R20B_DECLARED_REPLACEMENT:-}
+if [ -n "$DECLARED" ]; then
+  [ "$PHASE" = run ] && [ "${SMOKE:-0}" != 1 ] || die "R20B_DECLARED_REPLACEMENT belongs to a full run"
+  case $DECLARED in *[!0-9a-f]*) die "R20B_DECLARED_REPLACEMENT must be a plan commit (hex)" ;; esac
+  [ ${#DECLARED} -ge 7 ] && [ ${#DECLARED} -le 40 ] || die "R20B_DECLARED_REPLACEMENT must be a plan commit (7-40 hex)"
+fi
 [ "$PHASE" = verdict ] && [ "${SMOKE:-0}" = 1 ] && die "verdict: no smoke (a smoke run has no comparator)"
 LOWPASS=${LOWPASS:-0}
 case $LOWPASS in
   0) LP=""; LPTAG="" ;;
-  1) { [ "$PRIOR" = w14b ] && [ "$NO_GAINS" = 1 ] && [ "$BEST_OF" != 0 ]; } ||
-       die "LOWPASS=1: only on the stack a9 read (PRIOR=w14b NO_GAINS=1, BEST_OF 4, 8 or 16)"
+  1) { [ "$NO_GAINS" = 1 ] && [ "$BEST_OF" != 0 ]; } || die "LOWPASS=1: only on a stack (NO_GAINS=1, BEST_OF 4, 8 or 16)"
      LP="--lowpass-hz 6"; LPTAG=-lp6 ;;
   *) die "LOWPASS must be 0 or 1" ;;
 esac
@@ -111,20 +138,28 @@ VAL_VERDICT=$OUT/verdict-$ARM-val1000.json
 # C20 stays untouched until an M1 claim: no key of it is read, not even to pin it, before this arm's val1000 verdict opens it
 if [ "$SET" = c20 ]; then
   exists $VAL_VERDICT || die "c20: no stored val1000 verdict of this arm ($VAL_VERDICT)"
-  python scripts/round20_phase_b_verdict.py c20-gate --verdict-key $VAL_VERDICT || die "c20: the val1000 verdict does not open it"
+  python scripts/round20_phase_b_verdict.py c20-gate --verdict-key $VAL_VERDICT --out $OUT --report $ARM-val1000 --prior $PRIOR \
+    --prior-checkpoint-key $CK --no-gains $NO_GAINS --best-of $BEST_OF --lowpass $LOWPASS || die "c20: the val1000 verdict does not open it"
   pin $C20 $C20SHA
 fi
 for p in "$R10 $R10SHA" "$R14B $R14BSHA" "$D20 $D20SHA" "$CMP $CMPSHA" "$S1 $S1SHA" \
          "${CMP%.json}-shard0.json $CMPS0" "${CMP%.json}-shard1.json $CMPS1" "${CMP%.json}-shard2.json $CMPS2" \
-         "${CMP%.json}-shard3.json $CMPS3" "$E2E $E2ESHA" "$BT/best.json $BTSHA" "$BTCK $BTCKSHA" \
+         "${CMP%.json}-shard3.json $CMPS3" "$STORED_E2E $E2ESHA" "$SPLIT $SPLITSHA" "$BT/best.json $BTSHA" "$BTCK $BTCKSHA" \
          "$V2/best.json $V2SHA" "$V2CK $V2CKSHA" "$V3D/best.json $V3DSHA" "$V3DCK $V3DCKSHA"; do
   set -- $p; pin "$1" "$2"
 done
+# the stored D20 reads decide whether this arm may read the 1,000; caches and e2e read none of them, so they can be built ahead
+if { [ "$PHASE" = run ] || [ "$PHASE" = verdict ]; } && [ "${SMOKE:-0}" != 1 ]; then
+  python scripts/round20_phase_b_verdict.py stack-check --phase-a-out $A --prior $PRIOR --w14b-checkpoint-key $W14B \
+    --r16-checkpoint-key $R16 --no-gains $NO_GAINS --best-of $BEST_OF --lowpass $LOWPASS --sentences-sha256 $D20SHA \
+    || die "the stored D20 reads do not allow this arm on the 1,000"
+fi
 
 # ---- the sentences: the 1,000 are validation_sentences(round10, 1000), so no --sentences-key: the comparator's own list ----
 CLIPS=1000; SHARDS=4; SAMPLES=$BEST_OF; CHOOSE=$BEST_OF; NCH=$BEST_OF
 if [ "$SET" = val1000 ]; then
   SENTENCES=""; STAGE1="--stage1-report-key $S1"
+  if [ "$NO_GAINS" = 1 ]; then E2E=$OUT/pilot-$PRIOR-nogains-val1000.json; else E2E=$STORED_E2E; fi
   MERGE="--end-to-end-report $E2E --paired-with $CMP --rule bleu:end_to_end,bleu:mismatched_words,spotting"
 else
   SENTENCES="--sentences-key $C20 --sentences-sha256 $C20SHA"; STAGE1=""
@@ -170,6 +205,20 @@ cache_shards() {
 }
 
 case $PHASE in
+  e2e)
+    PILOT=$OUT/pilot-$PRIOR-nogains-val1000.json; FIRST=""
+    [ "${SMOKE:-0}" = 1 ] && FIRST="--first-clips 5"
+    if exists $PILOT; then echo "stored: $PILOT (not rerun)"
+    else
+      pin $CK $CKSHA
+      # the stored pilot's command (its report records these settings); the mix is the prior's own, and its first 1,000 are the
+      # comparator's clips (checked 2026-10-31)
+      python scripts/pilot_content_check.py --checkpoint-key $CK --mix-key $R14B --mix-sha256 $R14BSHA --vocab-mix-key $R10 \
+        --vocab-mix-sha256 $R10SHA --clips 1000 --part-temperature body=1.1,left_hand=1.1,right_hand=1.1,face=1.0 --guidance 1.5 \
+        --translator-run $(basename $BT) $WORDS_E2E --device $DEV --no-decoder-gains $FIRST --output-key $PILOT \
+        || die "e2e $PILOT"
+      echo "R20B e2e $PILOT $(sha $PILOT)"
+    fi ;;
   cache)
     if exists $PREFIX/index.json; then echo "stored: $PREFIX/index.json"
     else
@@ -184,6 +233,9 @@ case $PHASE in
       --part-temperature body=1.1,left_hand=1.1,right_hand=1.1,face=1.0 --expect-model-sha256 $MODEL \
       --generator-mix-key $R14B --generator-mix-sha256 $R14BSHA --translator-run $(basename $BT) \
       --recognizer-run $(basename $V2) --likelihood --device $DEV $LP"
+    if [ "$SET" = val1000 ] && [ "$NO_GAINS" = 1 ] && [ "${SMOKE:-0}" != 1 ]; then
+      exists $E2E || die "run: the own end-to-end without gains $E2E is not stored: run the e2e phase first"
+    fi
     if [ "$BEST_OF" = 0 ]; then
       pin $CK $CKSHA
       WORDS="--checkpoint-key $CK --word-workers ${WORD_WORKERS:-4} $NG"
@@ -198,6 +250,14 @@ case $PHASE in
     MERGED=$OUT/$REPORT.json
     if exists $MERGED; then echo "stored: $MERGED (not rerun)"
     else
+      if [ "${SMOKE:-0}" != 1 ]; then
+        python scripts/round20_phase_b_verdict.py one-arm --out $OUT --set $SET --report $REPORT \
+          ${DECLARED:+--declared-replacement $DECLARED} || die "run $REPORT: this set already holds another arm"
+      fi
+      if [ -n "$DECLARED" ]; then
+        echo "R20B DECLARED REPLACEMENT $DECLARED: $REPORT on a set that holds another arm"
+        MERGE="$MERGE --declared-replacement $DECLARED"
+      fi
       KEYS=""
       for s in $(seq 0 $(( SHARDS - 1 ))); do
         part=$OUT/$REPORT-shard$s.json; KEYS=$KEYS${KEYS:+,}$part
@@ -212,10 +272,14 @@ case $PHASE in
     if exists $V; then echo "stored: $V"
     else
       exists $MERGED || die "verdict: $MERGED is not stored: run the run phase first"
-      if [ "$SET" = val1000 ]; then FOR_SET="--end-to-end-key $E2E --end-to-end-sha256 $E2ESHA"
+      if [ "$SET" = val1000 ]; then
+        if [ "$NO_GAINS" = 1 ]; then
+          exists $E2E || die "verdict: the own end-to-end without gains $E2E is not stored"
+          FOR_SET="--end-to-end-key $E2E --end-to-end-sha256 $(sha $E2E) --stored-pilot-key $STORED_E2E --stored-pilot-sha256 $E2ESHA"
+        else FOR_SET="--end-to-end-key $E2E --end-to-end-sha256 $E2ESHA"; fi
       else FOR_SET="--val1000-verdict-key $VAL_VERDICT --sentences-key $C20 --sentences-sha256 $C20SHA"; fi
       python scripts/round20_phase_b_verdict.py verdict --arm-key $MERGED --comparator-key $CMP --comparator-sha256 $CMPSHA \
-        $FOR_SET --lowpass $LOWPASS --prior $PRIOR --prior-checkpoint-key $CK --no-gains $NO_GAINS --best-of $BEST_OF --set $SET \
+        $FOR_SET --out $OUT --report $REPORT --lowpass $LOWPASS --prior $PRIOR --prior-checkpoint-key $CK --no-gains $NO_GAINS --best-of $BEST_OF --set $SET \
         --output-key $V || die "verdict $REPORT, nothing stored (exit 2: a rule item is unavailable; 1: refused)"
       echo "R20B verdict $V $(sha $V)"
     fi ;;
