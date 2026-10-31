@@ -14,6 +14,9 @@ temperatures as the composition's, resampled to 24 fps, the generator's post-pro
 ``rerank.rerank_seeds(round20_lib.entry_seed(e), N)[k]`` (fixed per entry, independent of any sentence; sample 0's seed
 is the entry's own).
 
+``--no-decoder-gains`` (A7): the samples decode without the tokenizer's accepted gains (same seeds and codes; head
+smoothing stays), recorded in the settings and the index. Give it its own ``--prefix``.
+
 **Scores:** recogniser ``--recognizer-run`` (v3d, the instrument) reads each whole sample; the score is the softmax
 probability of the entry's label (``round20_lib.entry_label``: the entry upper-cased, multi-word entries joined); each
 sample's rank of the label is kept for top-1 / top-5 reads. The choice compares the *unrounded* log-probability of the
@@ -137,7 +140,8 @@ def run(args) -> dict:
     mine = [e for k, e in enumerate(entries) if k % args.shards == args.shard]
     temperature = {k: float(v) for k, v in (x.split("=") for x in args.part_temperature.split(","))}
     gen_sha = args.generator_mix_sha256 or args.mix_sha256
-    _, _, sample = load_generator(store, args.checkpoint_key, gen_sha, args.device, temperature=temperature)
+    _, _, sample = load_generator(store, args.checkpoint_key, gen_sha, args.device, temperature=temperature,
+                                  decoder_gains=not args.no_decoder_gains)
     post = make_post(sample.decoder_gains)
     recogniser, labels, best = vsr.load_model(store, args.recognizer_run, args.device)
     index = {g: k for k, g in enumerate(labels)}
@@ -187,7 +191,8 @@ def run(args) -> dict:
                     generator_mix_sha256=gen_sha, samples=args.samples, choose=ns, guidance=args.guidance,
                     part_temperature=temperature, recognizer_run=args.recognizer_run,
                     recognizer_checkpoint=best.get("checkpoint_key") if isinstance(best, dict) else None,
-                    shards=args.shards, labels=len(labels))
+                    shards=args.shards, labels=len(labels),
+                    **({"no_decoder_gains": True} if args.no_decoder_gains else {}))  # absent: the gains are on
     return dict(kind="round20-word-cache-shard", shard=args.shard, settings=settings, entries=rows,
                 seconds=round(time.time() - start, 1))
 
@@ -234,6 +239,8 @@ def main(argv=None) -> int:
     r.add_argument("--shard", type=int, default=0)
     r.add_argument("--shards", type=int, default=1)
     r.add_argument("--limit", type=int, help="the first K entries only (smoke)")
+    r.add_argument("--no-decoder-gains", action="store_true", help="A7: decode without the tokenizer's accepted gains; "
+                   "refused when it has none")
     m = sub.add_parser("merge")
     m.add_argument("--shards", type=int, default=1)
     for q in (r, m):

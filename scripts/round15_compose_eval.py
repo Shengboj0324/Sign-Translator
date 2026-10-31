@@ -258,7 +258,8 @@ def rest_material(material: dict) -> dict:
 TRACKED_FLOOR = .3                   # the activity rule's tracked-share floor (compositional.CORE_RULE min_tracked)
 ROUND20_DEFAULTS = dict(sentences_key=None, vocabulary_mix_key=None, semlex_core="fraction", oracle_source="isolated",
                         retime="reference", tempo=1., lowpass_hz=None, word_cache_key=None, likelihood=False,
-                        predicted_duration=False, semlex_oracle_tracked=False, lowpass_report_hz=None)
+                        predicted_duration=False, semlex_oracle_tracked=False, lowpass_report_hz=None,
+                        no_decoder_gains=False)
 
 
 def round20_on(args) -> bool:
@@ -280,7 +281,8 @@ def round20_settings(args, sentence_set, word_cache) -> dict:
                                  if args.retime == "continuous" else None),
                 lowpass_hz=args.lowpass_hz, word_cache=word_cache, likelihood=args.likelihood,
                 predicted_duration=args.predicted_duration, semlex_oracle_tracked=args.semlex_oracle_tracked,
-                lowpass_report_hz=args.lowpass_report_hz)
+                lowpass_report_hz=args.lowpass_report_hz,
+                **({"no_decoder_gains": True} if args.no_decoder_gains else {}))  # absent: the gains are on
 
 
 def load_word_cache(store, args, vocab, corpora, words) -> tuple[dict, dict]:
@@ -309,7 +311,8 @@ def load_word_cache(store, args, vocab, corpora, words) -> tuple[dict, dict]:
         pick = rows[w]["chosen"][n]
         states[w] = load_state(store, pick["state_key"], pick["state_sha256"])
     info = dict(key=args.word_cache_key, sha256=args.word_cache_sha256, n=int(n), checkpoint_key=s["checkpoint_key"],
-                scorer=s["recognizer_run"], samples=s["samples"])
+                scorer=s["recognizer_run"], samples=s["samples"],
+                **({"no_decoder_gains": True} if s.get("no_decoder_gains") else {}))
     return info, states
 
 
@@ -532,15 +535,20 @@ def run(args) -> dict:
         for k in gen_keys:
             material[k] = cached_material(jobs[k], cached, cores=cores, rule=rule)
         gen_keys = []
+    # round 20 A7: empty by default, so the two calls below are the round-15 calls
+    gains_off = dict(decoder_gains=False) if getattr(args, "no_decoder_gains", False) else {}
+    if gains_off and not gen_keys:
+        raise SystemExit("--no-decoder-gains: this run generates no word")
     if gen_keys:
         _, _, sample = load_generator(store, args.checkpoint_key, generator_mix["sha256"], args.device,
-                                      temperature=temperature)
+                                      temperature=temperature, **gains_off)
         settings = dict(guidance=args.guidance, temperature=temperature, rule=rule, rerank=args.rerank, **mode)
         worker = (args.store, args.checkpoint_key, generator_mix["sha256"], args.device, temperature,
                   max(1, torch.get_num_threads() // max(args.word_workers, 1)))
         results = r2.run_jobs(sample, [jobs[k] for k in gen_keys], settings, workers=args.word_workers,
                               worker_args=worker, progress=lambda k: print(
-                                  f"composition {k}/{len(gen_keys)} ({time.time() - clock['start']:.0f} s)", flush=True))
+                                  f"composition {k}/{len(gen_keys)} ({time.time() - clock['start']:.0f} s)", flush=True),
+                              **gains_off)
         material.update(zip(gen_keys, results))
         del sample
         if torch.cuda.is_available():
@@ -979,6 +987,16 @@ def round20_errors(p, args, variants) -> None:
         p.error("--tempo, --bridge-min-speed and --continuous-ratio must be positive")
     if args.lowpass_hz is not None and not 0 < args.lowpass_hz < 12:
         p.error("--lowpass-hz must be in (0, 12) (24 fps)")
+    if args.no_decoder_gains:
+        import round15_stage2 as r2
+        if args.refiner_checkpoint_key:
+            p.error("--no-decoder-gains is not combined with --refiner-checkpoint-key (the refiner's post reapplies "
+                    "the gains)")
+        if not any(v in r2.GENERATED for v in variants):
+            p.error("--no-decoder-gains needs a generated variant (oracle words have no decoder)")
+        if args.word_cache_key:
+            p.error("--no-decoder-gains generates fresh words; a cache's gains are fixed when it is built "
+                    "(round20_word_cache.py --no-decoder-gains)")
     if args.word_cache_key:
         if not args.word_cache_sha256:
             p.error("--word-cache-key needs --word-cache-sha256")
@@ -1108,6 +1126,10 @@ def main(argv=None) -> int:
                    "activity rule's floor); none: its best-tracked clip")
     g.add_argument("--lowpass-report-hz", type=float, help="A6: also render <variant>@lowpass, the main form low-passed "
                    "at this cutoff from the very same material (paired with the unfiltered form in one run)")
+    g.add_argument("--no-decoder-gains", action="store_true", help="A7: generated words decode without the tokenizer's "
+                   "accepted gains (head smoothing stays; same seeds). The codes are the gained run's for the sign-fitted "
+                   "core_crossfade path only: under asllrp cuts move with the gain, and in core_chained gained cuts feed "
+                   "later sampling. Refused without generated words, without accepted gains, or with a refiner")
     m = sub.add_parser("merge", help="combine the shards and score")
     m.add_argument("--shard-keys", default="")
     m.add_argument("--shard-files")
