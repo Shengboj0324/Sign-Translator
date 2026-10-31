@@ -43,14 +43,20 @@ commit), and ``c20_arm_choice`` by amendment 6 item 3, from the stored first arm
 v2 spotting's paired lower bound above -0.02, wrist speed ratio closer to 1 than the first arm's. All hold: the stack; otherwise
 the first arm. It chooses an arm only; whether C20 runs is declared separately.
 
-``--set c20`` (only after ``c20-gate``, never run so far): the same arm on the confirmation set. No comparator or pilot read
-that set, so the only rule of the set applies: the point estimate >= 2.55. ``m1_claim`` holds if both sets hold it.
+``--set c20`` (only after ``c20-gate``): the arm on the confirmation set, read once (amendment 7). No comparator or pilot read that
+set and none is read here; settings are checked against the arm's own report on the 1,000. The only rule of the set is the point
+estimate >= 2.55, and ``m1_claim`` holds if both sets hold it. Reported: the interval, minus blank, minus mismatched words, minus
+shuffled, likelihood minus blank, spotting, length ratio and wrist speed; the loop share is not computed, since the repository holds
+no definition of it (the hypotheses are stored). It states that the gate was lifted after the result.
 
 ``c20-gate --verdict-key``: exit 0 only if the stored val1000 verdict's rule passed, its point estimate is >= 2.55, its arm is the
 arm asked for, and no other arm is stored on the 1,000; else exit 1, and the pod job reads nothing of C20. A declared second arm
-does not open it: that decision is declared separately (amendment 6, item 5).
+does not open it. ``--c20-declared`` (``C20_DECLARED``, amendment 7, exactly its one arm): ``rule_passed`` false is lifted and recorded,
+if that arm's point estimate is >= 2.55, the stored stack verdict's ``c20_arm_choice.arm`` is that arm, and the 1,000 hold only those
+two arms. Other commits and arms are refused.
 
 ``one-arm``: exit 0 only if no other arm is stored on the set, or ``DECLARED_ARMS`` declares this arm beside exactly the other one.
+On C20 another arm's cache counts too.
 
 ``stack-check``: whether the stored D20 reads allow this arm on the 1,000, printing which rule held; every read is checked to be
 what its name says, and "above 0" is ``round20_compare.compare_forms``'s ``both_improve``:
@@ -92,11 +98,19 @@ NOT_PREDICTED = "not reported: @predicted applies to an A3 arm and no A3 arm was
 NO_PAIRED_LIKELIHOOD = "the stored comparator ran without --likelihood: no likelihood of W14b composition exists at any level"
 
 
+C20_CACHE = re.compile(r"^cache-((?:w14b|r16)-(?:gains|nogains))-c20-n(0|4|8|16)/")
 ARM_FILE = re.compile(r"^((?:w14b|r16)-(?:gains|nogains)-n(?:0|4|8|16)(?:-lp6)?-(val1000|c20))(?:-shard\d+)?\.json$")
 # the arms a plan commit declares for a set that already holds another (amendment 6); the job's table says the same
 DECLARED_ARMS = {"cf4b1559a3": dict(report="w14b-nogains-n16-val1000", replaces="w14b-gains-n16-val1000",
                                     replaces_sha256="4deced6f852e1fe8814df7226239a5c37252a16617d919f2bc236d06978e0d26",
                                     prior="w14b", no_gains=True, best_of=16, lowpass=False)}
+# the one arm a plan commit lets read C20 (amendment 7); the job's table says the same
+C20_DECLARED = {"945638e703": dict(report="w14b-gains-n16-val1000", stack="w14b-nogains-n16-val1000", prior="w14b", no_gains=False,
+                                   best_of=16, lowpass=False, amendment="amendment 7")}
+POST_RESULT = ("Post-result relaxation: Phase B's rule failed its first item on the 1,000, and the job's gate and the lead's message to "
+               "the owner had required it to pass before C20. Amendment 7 lifted that gate after the result; the threshold of 2.55 did not "
+               "change, and no other arm reads C20.")
+LOOP_SHARE = dict(available=False, reason="the repository holds no definition of the loop share; the hypotheses are stored in the report")
 SET_READ = ("the set's second read of Round 20, declared by plan commit {commit} (amendment 6); the first arm {first} stays on "
             "record and is not overwritten")
 
@@ -109,6 +123,9 @@ def other_arms(keys, out: str, sentence_set: str, report: str) -> list[str]:
         match = ARM_FILE.match(key[len(prefix):]) if key.startswith(prefix) else None
         if match and match[2] == sentence_set and match[1] != report:
             found.add(match[1])
+        cache = C20_CACHE.match(key[len(prefix):]) if sentence_set == "c20" and key.startswith(prefix) else None
+        if cache and f"{cache[1]}-n{cache[2]}-c20" != report:
+            found.add(f"{cache[1]}-n{cache[2]}-c20")
     return sorted(found)
 
 
@@ -526,43 +543,72 @@ def judge_val1000(arm: dict, comparator: dict, pilot: dict, *, shards_arm, shard
 
 
 def judge_c20(arm: dict, val_verdict: dict, *, prior_checkpoint: str, no_gains: bool, best_of: int, sentences: dict,
-              comparator: dict, lowpass: bool = False) -> dict:
-    """The confirmation set: M1's second condition, and the reads beside it. No comparator or pilot read this set."""
+              val_report: dict, lowpass: bool = False, c20_declared=None, stack_verdict=None) -> dict:
+    """The confirmation set: M1's second condition, and the reads beside it. No comparator or pilot read this set; the settings
+    are the arm's own on the 1,000."""
     check_arm_form(arm)
-    gate_c20(val_verdict, expected_arm=dict(prior_checkpoint_key=prior_checkpoint, no_decoder_gains=no_gains, best_of=best_of,
-                                            lowpass=lowpass))
-    wrong = settings_differences(arm["settings"], comparator["settings"])
+    gate = gate_c20(val_verdict, expected_arm=dict(prior_checkpoint_key=prior_checkpoint, no_decoder_gains=no_gains, best_of=best_of,
+                                                   lowpass=lowpass), c20_declared=c20_declared, stack_verdict=stack_verdict)
+    wrong = settings_differences(arm["settings"], val_report["settings"])
     wrong += arm_errors(arm["settings"], prior_checkpoint=prior_checkpoint, no_gains=no_gains, best_of=best_of,
                         sentences=sentences, lowpass=lowpass)
     if wrong:
-        raise SystemExit("not the declared arm with the comparator's settings: " + "; ".join(wrong))
+        raise SystemExit("not the declared arm with its settings on the 1,000: " + "; ".join(wrong))
+    row = arm["forms"][FORM]
     reads = next_to_bleu(arm)
-    items = dict(bleu_vs_other_sentence_words=lower_bound_item(arm["forms"][FORM].get("minus_mismatched_words"), 0.,
-                                                               "minus_mismatched_words"),
-                 wrist_speed_reported=wrist_item(arm, comparator))
+    items = dict(bleu_vs_other_sentence_words=lower_bound_item(row.get("minus_mismatched_words"), 0., "minus_mismatched_words"),
+                 wrist_speed_reported=wrist_item(arm, None))
+    spotting = ((arm.get("spotting") or {}).get("scores") or {}).get(FORM) or {}
+    reported = dict(point_estimate=row["bleu"], ci95=row.get("ci95"), minus_blank=row.get("minus_blank"),
+                    minus_mismatched_words=row.get("minus_mismatched_words"), minus_shuffled=row.get("minus_shuffled"),
+                    likelihood_minus_blank=reads["likelihood_minus_blank"], spotting_recall=spotting.get("recall"),
+                    spotting_order=spotting.get("order"), length_ratio=reads["length_ratio"], loop_share=LOOP_SHARE,
+                    wrist_speed_ratio_to_real=items["wrist_speed_reported"].get("ratio_to_real"))
     missing = [f"{k}: {v['reason']}" for k, v in items.items() if not v["available"]]
-    if reads["likelihood_minus_blank"] is None:
-        missing.append("likelihood minus blank: the report has none")
+    missing += [f"{k}: the report has none" for k, v in reported.items() if v is None]
     m1 = m1_read(exact_bleu(arm))
     return dict(kind="round20-phase-b-verdict", set="c20", clips=arm["clips"], complete=not missing, missing=missing,
-                items=items, next_to_bleu=reads, m1=m1, predicted=NOT_PREDICTED,
+                items=items, next_to_bleu=reads, reported=reported, m1=m1, predicted=NOT_PREDICTED, gate=gate,
+                **({"amendment": gate["amendment"], "post_result_relaxation": POST_RESULT} if c20_declared else {}),
                 m1_claim=bool(not missing and m1["met"] and val_verdict["m1"]["met"]),
                 val1000_point_estimate=val_verdict["m1"]["point_estimate"])
 
 
-def gate_c20(verdict: dict, *, expected_arm: dict) -> None:
-    """C20 stays untouched unless the stored val1000 verdict is this arm's, and its rule passed with a point estimate >= 2.55."""
+def gate_c20(verdict: dict, *, expected_arm: dict, c20_declared=None, stack_verdict=None) -> dict:
+    """C20 stays untouched unless the stored val1000 verdict is this arm's, and its rule passed with a point estimate >= 2.55; or,
+    under ``c20_declared``, amendment 7's reading of it (module docstring). Returns what opened it."""
+    spec = None
+    if c20_declared is not None:
+        spec = C20_DECLARED.get(c20_declared)
+        if spec is None:
+            raise SystemExit(f"C20 refused: {c20_declared!r} declares no read of C20")
     if verdict.get("kind") != "round20-phase-b-verdict" or verdict.get("set") != "val1000" or not verdict.get("complete"):
         raise SystemExit("C20 refused: this is not a complete stored val1000 verdict")
     arm = verdict.get("arm") or {}
     other = {k: (arm.get(k), v) for k, v in expected_arm.items() if arm.get(k) != v}
     if other:
         raise SystemExit(f"C20 refused: the verdict is another arm's: {other}")
-    if verdict.get("rule_passed") is not True:
+    if spec is not None:
+        declared = dict(prior=spec["prior"], no_decoder_gains=spec["no_gains"], best_of=spec["best_of"], lowpass=spec["lowpass"])
+        other = {k: (arm.get(k), v) for k, v in declared.items() if arm.get(k) != v}
+        if other:
+            raise SystemExit(f"C20 refused: {c20_declared} declares {spec['report']}, and the verdict is another arm's: {other}")
+    elif verdict.get("rule_passed") is not True:
         raise SystemExit("C20 refused: the val1000 verdict's rule did not pass")
     m1 = verdict.get("m1") or {}
     if m1.get("met") is not True or not float(m1.get("point_estimate", 0.)) >= M1_THRESHOLD:
         raise SystemExit(f"C20 refused: the val1000 point estimate {m1.get('point_estimate')} is below {M1_THRESHOLD}")
+    if spec is None:
+        return dict(opened_by="rule_passed")
+    if not stack_verdict or stack_verdict.get("kind") != "round20-phase-b-verdict" or stack_verdict.get("set") != "val1000" \
+            or not stack_verdict.get("complete"):
+        raise SystemExit(f"C20 refused: there is no complete stored verdict of the stack {spec['stack']}")
+    choice = (stack_verdict.get("c20_arm_choice") or {}).get("arm")
+    if choice != spec["report"]:
+        raise SystemExit(f"C20 refused: the stack's c20_arm_choice is {choice!r}, not {spec['report']}")
+    return dict(opened_by=c20_declared, amendment=spec["amendment"], rule_passed=verdict.get("rule_passed"),
+                rule_passed_lifted=verdict.get("rule_passed") is not True, point_estimate=m1["point_estimate"], c20_arm_choice=choice,
+                note=POST_RESULT)
 
 
 def main(argv=None) -> int:
@@ -570,8 +616,8 @@ def main(argv=None) -> int:
     sub = p.add_subparsers(dest="command", required=True)
     v = sub.add_parser("verdict")
     v.add_argument("--arm-key", required=True, help="the arm's merged report; its shards are <key stem>-shard<s>.json")
-    v.add_argument("--comparator-key", required=True, help="W14b composition; its shards are <key stem>-shard<s>.json")
-    v.add_argument("--comparator-sha256", required=True)
+    v.add_argument("--comparator-key", help="val1000: W14b composition; its shards are <key stem>-shard<s>.json")
+    v.add_argument("--comparator-sha256")
     v.add_argument("--end-to-end-key", help="val1000: the prior's stored 1,000-clip pilot")
     v.add_argument("--end-to-end-sha256")
     v.add_argument("--stored-pilot-key", help="val1000, --no-gains 1: the stored gained pilot that --end-to-end-key reran")
@@ -590,6 +636,8 @@ def main(argv=None) -> int:
     v.add_argument("--lowpass", type=int, choices=(0, 1), default=0, help="the arm's main form is low-passed at 6 Hz")
     v.add_argument("--set", required=True, choices=("val1000", "c20"), dest="sentence_set")
     v.add_argument("--val1000-verdict-key", help="c20: the arm's stored val1000 verdict")
+    v.add_argument("--val1000-arm-key", help="c20: the arm's merged report on the 1,000: the settings it must keep")
+    v.add_argument("--c20-declared", help="c20: a commit of C20_DECLARED")
     v.add_argument("--sentences-key", help="c20: the set the report must have read")
     v.add_argument("--sentences-sha256")
     v.add_argument("--bootstrap", type=int, default=1000)
@@ -604,6 +652,7 @@ def main(argv=None) -> int:
     g.add_argument("--no-gains", required=True, type=int, choices=(0, 1))
     g.add_argument("--best-of", required=True, type=int, choices=(0, 4, 8, 16))
     g.add_argument("--lowpass", required=True, type=int, choices=(0, 1))
+    g.add_argument("--c20-declared", help="a commit of C20_DECLARED (amendment 7)")
     o = sub.add_parser("one-arm")
     o.add_argument("--out", required=True)
     o.add_argument("--set", required=True, choices=("val1000", "c20"), dest="sentence_set")
@@ -629,14 +678,21 @@ def main(argv=None) -> int:
         if not store.exists(args.verdict_key):
             raise SystemExit(f"C20 refused: no stored verdict {args.verdict_key}")
         verdict = json.loads(store.get(args.verdict_key))
-        gate_c20(verdict, expected_arm=dict(prior=args.prior, prior_checkpoint_key=args.prior_checkpoint_key,
-                                            no_decoder_gains=bool(args.no_gains), best_of=args.best_of,
-                                            lowpass=bool(args.lowpass)))
+        spec = C20_DECLARED.get(args.c20_declared) if args.c20_declared else None
+        stack_key = f"{args.out.rstrip('/')}/verdict-{spec['stack']}.json" if spec else None
+        record = gate_c20(verdict, expected_arm=dict(prior=args.prior, prior_checkpoint_key=args.prior_checkpoint_key,
+                                                     no_decoder_gains=bool(args.no_gains), best_of=args.best_of,
+                                                     lowpass=bool(args.lowpass)), c20_declared=args.c20_declared,
+                          stack_verdict=json.loads(store.get(stack_key)) if stack_key and store.exists(stack_key) else None)
         others = other_arms(store.list(f"{args.out}/"), args.out, "val1000", args.report)
-        if others or verdict.get("declared_replacement"):
+        if spec:
+            if args.report != spec["report"] or others != [spec["stack"]]:
+                raise SystemExit(f"C20 refused: {args.c20_declared} opens {spec['report']} beside exactly {spec['stack']}, not "
+                                 f"{args.report} beside {others}")
+        elif others or verdict.get("declared_replacement"):
             raise SystemExit(f"C20 refused: the 1,000 also hold {others}; which arm reads C20, and whether it runs, is declared "
                              "separately (amendment 6)")
-        print(f"C20 gate open: {args.verdict_key}", flush=True)
+        print(f"C20 gate open: {args.verdict_key}\n{json.dumps(record, indent=1)}", flush=True)
         return 0
     if args.command == "one-arm":
         others = other_arms(store.list(f"{args.out}/"), args.out, args.sentence_set, args.report)
@@ -672,10 +728,16 @@ def main(argv=None) -> int:
     if args.output_file and Path(args.output_file).exists():
         raise SystemExit(f"{args.output_file} exists: refusing to overwrite")
     from round20_compare import report_shards
-    arm_payload, comparator_payload = store.get(args.arm_key), store.get(args.comparator_key)
-    if sha(comparator_payload) != args.comparator_sha256:
-        raise SystemExit(f"{args.comparator_key} does not match --comparator-sha256")
-    arm, comparator = json.loads(arm_payload), json.loads(comparator_payload)
+    arm_payload = store.get(args.arm_key)
+    comparator = None
+    if args.sentence_set == "val1000":
+        if not (args.comparator_key and args.comparator_sha256):
+            p.error("val1000: give --comparator-key and --comparator-sha256")
+        comparator_payload = store.get(args.comparator_key)
+        if sha(comparator_payload) != args.comparator_sha256:
+            raise SystemExit(f"{args.comparator_key} does not match --comparator-sha256")
+        comparator = json.loads(comparator_payload)
+    arm = json.loads(arm_payload)
     others = other_arms(store.list(f"{args.out}/"), args.out, args.sentence_set, args.report)
     declared = arm.get("declared_replacement")
     if declared != args.declared_replacement:
@@ -708,14 +770,17 @@ def main(argv=None) -> int:
                             best_of=args.best_of, boot=args.bootstrap, lowpass=bool(args.lowpass), stored_pilot=stored_pilot)
         out["end_to_end"].update(key=args.end_to_end_key, sha256=args.end_to_end_sha256)
     else:
-        if not (args.val1000_verdict_key and args.sentences_key and args.sentences_sha256):
-            p.error("c20: give --val1000-verdict-key, --sentences-key and --sentences-sha256")
+        if not (args.val1000_verdict_key and args.val1000_arm_key and args.sentences_key and args.sentences_sha256):
+            p.error("c20: give --val1000-verdict-key, --val1000-arm-key, --sentences-key and --sentences-sha256")
         if not store.exists(args.val1000_verdict_key):
             raise SystemExit(f"C20 refused: no stored verdict {args.val1000_verdict_key}")
+        spec = C20_DECLARED.get(args.c20_declared) if args.c20_declared else None
+        stack_key = f"{args.out.rstrip('/')}/verdict-{spec['stack']}.json" if spec else None
         out = judge_c20(arm, json.loads(store.get(args.val1000_verdict_key)), prior_checkpoint=args.prior_checkpoint_key,
-                        no_gains=bool(args.no_gains), best_of=args.best_of, comparator=comparator,
-                        lowpass=bool(args.lowpass),
-                        sentences=dict(key=args.sentences_key, sha256=args.sentences_sha256))
+                        no_gains=bool(args.no_gains), best_of=args.best_of, val_report=json.loads(store.get(args.val1000_arm_key)),
+                        lowpass=bool(args.lowpass), sentences=dict(key=args.sentences_key, sha256=args.sentences_sha256),
+                        c20_declared=args.c20_declared,
+                        stack_verdict=json.loads(store.get(stack_key)) if stack_key and store.exists(stack_key) else None)
         out["val1000_verdict_key"] = args.val1000_verdict_key
     out.update(declared_replacement=declared, other_arms=others)
     if declared:
@@ -743,7 +808,8 @@ def main(argv=None) -> int:
     out["arm"] = dict(key=args.arm_key, sha256=sha(arm_payload), prior=args.prior,
                       prior_checkpoint_key=args.prior_checkpoint_key, no_decoder_gains=bool(args.no_gains),
                       best_of=args.best_of, lowpass=bool(args.lowpass))
-    out.setdefault("comparator", {}).update(key=args.comparator_key, sha256=args.comparator_sha256)
+    if comparator is not None:
+        out["comparator"].update(key=args.comparator_key, sha256=args.comparator_sha256)
     data = json.dumps(out, indent=1).encode()
     print(data.decode(), flush=True)
     if not out["complete"]:
