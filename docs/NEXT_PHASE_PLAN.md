@@ -5573,3 +5573,19 @@ Continuous-form oracle under `r10` on D20 (`phase-a/a2-continuous-r10.json`; 82%
 **Process breach, disclosed.** During its first survey the audit printed metadata from one test utterance and one test-partition record (annotations only, no states), against its brief. Nothing above uses them.
 
 **Open:** on ASLLRP's own sentences the audit read isolated clips at +0.221 against real +0.26 on likelihood minus blank. How those words were chosen is being checked; nothing follows from it yet.
+
+**Closed (03:37 UTC): no evidence for a gloss path.** Those words came from annotated glosses in ASL order (75.1% of signs had an entry). Run through English matching too (53.0% matched, 29.7% unmatched), on 400 ASLLRP utterances (10.3 tokens, 4.4 s; D20 19.6 tokens, 6.0 s):
+
+| Form | BLEU [95%] | Likelihood minus blank [95%] |
+|---|---|---|
+| real | 0.708 [0.39, 1.01] | +0.260 [+0.213, +0.306] |
+| blank | 0.637 [0.33, 0.93] | 0 |
+| own cuts | 0.675 [0.44, 0.92] | +0.186 [+0.144, +0.231] |
+| isolated, gloss | 0.675 [0.41, 0.94] | +0.221 [+0.177, +0.269] |
+| isolated, gloss, shuffled | 0.420 [0.00, 0.62] | +0.168 [+0.125, +0.214] |
+| isolated, English | 0.932 [0.62, 1.24] | +0.284 [+0.238, +0.335] |
+| isolated, English, shuffled | 0.818 [0.54, 1.08] | +0.156 [+0.113, +0.198] |
+
+Paired: English minus real BLEU +0.224 [−0.21, +0.62], likelihood +0.024 [−0.029, +0.081]; gloss minus real −0.033 [−0.37, +0.29], −0.039 [−0.089, +0.013].
+
+**Reading:** perfect gloss word choice did not read higher than English matching, so this gives no case for a gloss path. Instrument v1 also cannot separate real ASLLRP signing from blank on BLEU, and it reads isolated clips in English order at or above real signing on likelihood. Its reads on this corpus are therefore weak evidence of comprehension. Instrument v2 and Deaf raters remain the checks.
