@@ -25,7 +25,15 @@
 # C20's gate refuse the same way. R20B_DECLARED_REPLACEMENT=<plan commit> opens only the arm that commit declares, hard-coded here
 # and in the verdict script's DECLARED_ARMS: today amendment 6's second arm on the 1,000 (cf4b1559a3: PRIOR=w14b NO_GAINS=1 BEST_OF=16
 # LOWPASS=0 SET=val1000, for run and verdict, beside exactly the first arm w14b-gains-n16-val1000). The stack-check still runs and is
-# logged, its refusal overridden and recorded with the commit; the first arm's keys are never written. C20's gate stays shut.
+# logged, its refusal overridden and recorded with the commit; the first arm's keys are never written.
+#
+# C20 is read once, by one arm (amendment 7, a post-result relaxation): every SET=c20 phase needs R20B_C20_DECLARED=945638e703 and
+# exactly PRIOR=w14b NO_GAINS=0 BEST_OF=16 LOWPASS=0, hard-coded here and in the verdict script's C20_DECLARED. The gate reads only
+# stored verdicts of the 1,000: this arm's point estimate >= 2.55, the stack's c20_arm_choice naming this arm, the 1,000 holding only
+# these two arms; rule_passed false is lifted and recorded. The cache reads C20's sentence text and vocabulary only (no state, no
+# score against a reference), and refuses another arm's C20 cache or report; only run reads C20's clips and scores them, and a stored
+# C20 report refuses a second run. No comparator, pilot or stage-1 report is read for C20. Estimate on one L40S: cache about 5 h
+# (the 1,000's 894 entries x 16 took 4.9 h), run about 45 min (44 measured on the 1,000), verdict seconds.
 #
 # Order and pods (one L40S as in Phase A, wall-clock = GPU-hours; the 1,000 hold 894 entries under r10, against D20's 705):
 #   e2e        (GPU, only if NO_GAINS=1, any time before run; about 50 min, as the R16 pilot job)  the prior's own end-to-end
@@ -38,7 +46,7 @@
 #              sequence on one pod (shards change no clip's seeds or translation batch): from a cache about 1 h; fresh words
 #              (BEST_OF=0, 4 word workers) about 6 h, from a0's 21 s per clip and the comparator's 20 s.
 #   3. verdict (CPU, or the same pod; seconds)  scripts/round20_phase_b_verdict.py: stored reports only, write-once.
-#   SET=c20 repeats 1-3, and is refused unless the val1000 verdict of this same arm passed with a point estimate >= 2.55.
+#   SET=c20 repeats cache, run and verdict for amendment 7's one read (above).
 #
 # The comparator is $CMP: --clips 1000 --shards 4 --selection stage1 --timing sign-fitted --core-margin 0.1 --stage1-report-key
 # $S1 --generator-mix-key $R14B (the "declared run's command", runpod/fleet/state_back_translator.sh), settings confirmed from
@@ -125,6 +133,13 @@ if [ -n "$DECLARED" ]; then
   esac
   { [ "$PHASE" = run ] || [ "$PHASE" = verdict ]; } && [ "${SMOKE:-0}" != 1 ] || die "R20B_DECLARED_REPLACEMENT belongs to a full run or verdict"
 fi
+C20_DECLARED=${R20B_C20_DECLARED:-}
+if [ -n "$C20_DECLARED" ] || [ "$SET" = c20 ]; then
+  case "$C20_DECLARED:$PRIOR:$NO_GAINS:$BEST_OF:${LOWPASS:-0}:$SET" in
+    945638e703:w14b:0:16:0:c20) ;;      # amendment 7's one read; nothing else opens C20 (and C20_DECLARED in the verdict script)
+    *) die "C20 is read once: only R20B_C20_DECLARED=945638e703 with PRIOR=w14b NO_GAINS=0 BEST_OF=16 LOWPASS=0 SET=c20 (amendment 7)" ;;
+  esac
+fi
 [ "$PHASE" = verdict ] && [ "${SMOKE:-0}" = 1 ] && die "verdict: no smoke (a smoke run has no comparator)"
 LOWPASS=${LOWPASS:-0}
 case $LOWPASS in
@@ -138,19 +153,24 @@ uv pip install -q 'transformers>=4.40,<5' sentencepiece
 ARM=$PRIOR-$GAINS-n$BEST_OF$LPTAG      # the cache's prefix has no LOWPASS: the filter comes after rendering
 REPORT=$ARM-$SET
 VAL_VERDICT=$OUT/verdict-$ARM-val1000.json
-# C20 stays untouched until an M1 claim: no key of it is read, not even to pin it, before this arm's val1000 verdict opens it
+# C20 stays untouched until the stored verdicts open it: no key of it is read, not even to pin it, before that; a smoke never reads it
 if [ "$SET" = c20 ]; then
   exists $VAL_VERDICT || die "c20: no stored val1000 verdict of this arm ($VAL_VERDICT)"
   python scripts/round20_phase_b_verdict.py c20-gate --verdict-key $VAL_VERDICT --out $OUT --report $ARM-val1000 --prior $PRIOR \
-    --prior-checkpoint-key $CK --no-gains $NO_GAINS --best-of $BEST_OF --lowpass $LOWPASS || die "c20: the val1000 verdict does not open it"
-  pin $C20 $C20SHA
+    --prior-checkpoint-key $CK --no-gains $NO_GAINS --best-of $BEST_OF --lowpass $LOWPASS --c20-declared $C20_DECLARED \
+    || die "c20: the val1000 verdicts do not open it"
+  [ "${SMOKE:-0}" = 1 ] || pin $C20 $C20SHA
 fi
-for p in "$R10 $R10SHA" "$R14B $R14BSHA" "$D20 $D20SHA" "$CMP $CMPSHA" "$S1 $S1SHA" \
-         "${CMP%.json}-shard0.json $CMPS0" "${CMP%.json}-shard1.json $CMPS1" "${CMP%.json}-shard2.json $CMPS2" \
-         "${CMP%.json}-shard3.json $CMPS3" "$STORED_E2E $E2ESHA" "$SPLIT $SPLITSHA" "$BT/best.json $BTSHA" "$BTCK $BTCKSHA" \
+for p in "$R10 $R10SHA" "$R14B $R14BSHA" "$D20 $D20SHA" "$SPLIT $SPLITSHA" "$BT/best.json $BTSHA" "$BTCK $BTCKSHA" \
          "$V2/best.json $V2SHA" "$V2CK $V2CKSHA" "$V3D/best.json $V3DSHA" "$V3DCK $V3DCKSHA"; do
   set -- $p; pin "$1" "$2"
 done
+if [ "$SET" = val1000 ]; then      # what the 1,000 are compared with; nothing of it is read for C20
+  for p in "$CMP $CMPSHA" "$S1 $S1SHA" "${CMP%.json}-shard0.json $CMPS0" "${CMP%.json}-shard1.json $CMPS1" \
+           "${CMP%.json}-shard2.json $CMPS2" "${CMP%.json}-shard3.json $CMPS3" "$STORED_E2E $E2ESHA"; do
+    set -- $p; pin "$1" "$2"
+  done
+fi
 # the stored D20 reads decide whether this arm may read the 1,000; caches and e2e read none of them, so they can be built ahead
 if { [ "$PHASE" = run ] || [ "$PHASE" = verdict ]; } && [ "${SMOKE:-0}" != 1 ]; then
   python scripts/round20_phase_b_verdict.py stack-check --phase-a-out $A --prior $PRIOR --w14b-checkpoint-key $W14B \
@@ -226,6 +246,10 @@ case $PHASE in
   cache)
     if exists $PREFIX/index.json; then echo "stored: $PREFIX/index.json"
     else
+      if [ "$SET" = c20 ] && [ "${SMOKE:-0}" != 1 ]; then
+        python scripts/round20_phase_b_verdict.py one-arm --out $OUT --set c20 --report $REPORT \
+          || die "cache $REPORT: another arm's C20 cache or report is stored"
+      fi
       pin $CK $CKSHA
       cache_shards
       echo "R20B cache $PREFIX/index.json $(sha $PREFIX/index.json)"
@@ -252,7 +276,8 @@ case $PHASE in
       WORDS="--word-cache-key $IDX --word-cache-sha256 $(sha $IDX) --word-cache-n $NCH"     # its gains are the cache's
     fi
     MERGED=$OUT/$REPORT.json
-    if exists $MERGED; then echo "stored: $MERGED (not rerun)"
+    if [ "$SET" = c20 ] && exists $MERGED; then die "run: C20 is read once, and $MERGED is stored"
+    elif exists $MERGED; then echo "stored: $MERGED (not rerun)"
     else
       if [ "${SMOKE:-0}" != 1 ]; then
         python scripts/round20_phase_b_verdict.py one-arm --out $OUT --set $SET --report $REPORT \
@@ -281,8 +306,9 @@ case $PHASE in
           exists $E2E || die "verdict: the own end-to-end without gains $E2E is not stored"
           FOR_SET="--end-to-end-key $E2E --end-to-end-sha256 $(sha $E2E) --stored-pilot-key $STORED_E2E --stored-pilot-sha256 $E2ESHA"
         else FOR_SET="--end-to-end-key $E2E --end-to-end-sha256 $E2ESHA"; fi
-      else FOR_SET="--val1000-verdict-key $VAL_VERDICT --sentences-key $C20 --sentences-sha256 $C20SHA"; fi
-      python scripts/round20_phase_b_verdict.py verdict --arm-key $MERGED --comparator-key $CMP --comparator-sha256 $CMPSHA \
+      else FOR_SET="--val1000-verdict-key $VAL_VERDICT --val1000-arm-key $OUT/$ARM-val1000.json --c20-declared $C20_DECLARED --sentences-key $C20 --sentences-sha256 $C20SHA"; fi
+      if [ "$SET" = val1000 ]; then CMPARGS="--comparator-key $CMP --comparator-sha256 $CMPSHA"; else CMPARGS=""; fi
+      python scripts/round20_phase_b_verdict.py verdict --arm-key $MERGED $CMPARGS \
         $FOR_SET ${DECLARED:+--declared-replacement $DECLARED --phase-a-out $A --w14b-checkpoint-key $W14B --r16-checkpoint-key $R16 --d20-sha256 $D20SHA} \
         --out $OUT --report $REPORT --lowpass $LOWPASS --prior $PRIOR --prior-checkpoint-key $CK --no-gains $NO_GAINS --best-of $BEST_OF --set $SET \
         --output-key $V || die "verdict $REPORT, nothing stored (exit 2: a rule item is unavailable; 1: refused)"

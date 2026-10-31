@@ -263,38 +263,108 @@ def test_other_refusals(tmp_path):
     assert code == 1 and "run the run phase first" in out and not scripts_run(commands)
 
 
-def test_c20_stays_closed_until_a_stored_verdict_opens_it(tmp_path):
-    verdict = f"{OUT}/verdict-w14b-nogains-n8-val1000.json"
-    for phase in ("cache", "run", "verdict"):
-        code, out, commands = job(tmp_path, phase, sentence_set="c20")               # no stored verdict
-        assert code == 1 and "no stored val1000 verdict" in out and not commands
-        code, out, commands = job(tmp_path, phase, sentence_set="c20", stored=[verdict], gate=False)  # below 2.55 or failed
-        assert code == 1 and "does not open it" in out
-        assert len(commands) == 1 and f"round20_phase_b_verdict.py c20-gate --verdict-key {verdict} " in commands[0]   # nothing of C20
-        assert (f"--out {OUT} --report w14b-nogains-n8-val1000 --prior w14b --prior-checkpoint-key {W14B} --no-gains 1 "
-                "--best-of 8 --lowpass 0") in commands[0]
-    code, out, commands = job(tmp_path, "cache", sentence_set="c20", stored=[verdict], smoke=True)    # nor by a smoke
-    code2, out2, _ = job(tmp_path, "cache", sentence_set="c20", smoke=True)
-    assert code == 0 and code2 == 1 and "no stored val1000 verdict" in out2
-    # another arm's verdict does not open it
-    code, out, commands = job(tmp_path, "cache", prior="r16", sentence_set="c20", stored=[verdict])
+C20_COMMIT = "945638e703"
+C20_ARM = dict(prior="w14b", no_gains="0", best_of="16", sentence_set="c20")
+C20_VAL_VERDICT = f"{OUT}/verdict-w14b-gains-n16-val1000.json"
+C20_REPORT = f"{OUT}/w14b-gains-n16-c20"
+C20_INDEX = f"{OUT}/cache-w14b-gains-c20-n16/index.json"
+C20_PIN = "24ac16f220139365af2bc7a62e7555ab88d13e9adb9b0a5f078c8b4107f72956"
+C20_SENTENCES = f"--sentences-key {O}/round20/c20.json --sentences-sha256 {C20_PIN}"
+
+
+def c20(tmp_path, phase, stored=(), **kw):
+    return job(tmp_path, phase, **{**C20_ARM, **kw}, stored=[C20_VAL_VERDICT, *stored], R20B_C20_DECLARED=C20_COMMIT)
+
+
+@pytest.mark.parametrize("phase", ["cache", "run", "verdict"])
+def test_every_c20_phase_needs_the_variable_and_exactly_this_arm(tmp_path, phase):
+    for smoke in (False, True):
+        code, out, commands = job(tmp_path, phase, **C20_ARM, stored=[C20_VAL_VERDICT], smoke=smoke)      # unset
+        if not (phase == "verdict" and smoke):
+            assert code == 1 and "C20 is read once" in out and not commands
+    for commit in ("abc1234", "945638e", "945638e703a", "cf4b1559a3"):                                     # another commit
+        code, out, commands = job(tmp_path, phase, **C20_ARM, stored=[C20_VAL_VERDICT], R20B_C20_DECLARED=commit)
+        assert code == 1 and "C20 is read once" in out and not commands
+    for arm in (dict(no_gains="1"), dict(best_of="8"), dict(best_of="4"), dict(prior="r16"), dict(LOWPASS="1", no_gains="1")):
+        code, out, commands = c20(tmp_path, phase, **arm)
+        assert code == 1 and "ALERT" in out and not commands
+    # the variable opens nothing on the 1,000
+    code, out, commands = job(tmp_path, phase, **{**C20_ARM, "sentence_set": "val1000"}, R20B_C20_DECLARED=C20_COMMIT)
+    assert code == 1 and "C20 is read once" in out and not commands
+    # no stored verdict of this arm: no gate is run; the gate refusing: only the gate ran, nothing of C20 is read
+    code, out, commands = job(tmp_path, phase, **C20_ARM, R20B_C20_DECLARED=C20_COMMIT)
     assert code == 1 and "no stored val1000 verdict" in out and not commands
-    # open: the gate first, then the pin, then the set; the comparator and the pilots cannot pair with it
-    c20 = f"--sentences-key {O}/round20/c20.json --sentences-sha256 24ac16f220139365af2bc7a62e7555ab88d13e9adb9b0a5f078c8b4107f72956"
-    code, out, commands = job(tmp_path, "cache", sentence_set="c20", stored=[verdict])
-    assert code == 0 and f"c20-gate --verdict-key {verdict} " in commands[0] and commands[1] == f"pin {O}/round20/c20.json"
-    assert all(c20 in c and f"--prefix {OUT}/cache-w14b-nogains-c20-n8 " in c for c in commands if " run " in c)
-    index = f"{OUT}/cache-w14b-nogains-c20-n8/index.json"
-    code, out, commands = job(tmp_path, "run", sentence_set="c20", stored=[verdict, index])
-    runs = [c for c in commands if "round15_compose_eval.py run" in c]
-    assert code == 0 and len(runs) == 4 and all(c20 in c and "--stage1-report-key" not in c for c in runs)
-    assert all("--clips 1000" in c and f"--output-key {OUT}/w14b-nogains-n8-c20-shard" in c for c in runs)
-    merge = next(c for c in commands if "round15_compose_eval.py merge" in c)
+    code, out, commands = c20(tmp_path, phase, gate=False)
+    assert code == 1 and "do not open it" in out and len(commands) == 1
+    assert (f"round20_phase_b_verdict.py c20-gate --verdict-key {C20_VAL_VERDICT} --out {OUT} --report w14b-gains-n16-val1000 --prior w14b "
+            f"--prior-checkpoint-key {W14B} --no-gains 0 --best-of 16 --lowpass 0 --c20-declared {C20_COMMIT}") in commands[0]
+
+
+def test_the_c20_cache(tmp_path):
+    code, out, commands = c20(tmp_path, "cache")
+    assert code == 0 and "c20-gate" in commands[0] and commands[1] == f"pin {O}/round20/c20.json"     # the SHA pin, on the bytes
+    check = next(k for k, c in enumerate(commands) if " one-arm " in c)
+    assert commands[check] == f"scripts/round20_phase_b_verdict.py one-arm --out {OUT} --set c20 --report w14b-gains-n16-c20"
+    runs = [c for c in commands if " run " in c]
+    assert len(runs) == 4 and check < commands.index(runs[0])
+    assert all(C20_SENTENCES in c and f"--prefix {OUT}/cache-w14b-gains-c20-n16 " in c and "--clips 1000" in c for c in runs)
+    assert all("--no-decoder-gains" not in c and "--vocabulary-mix-key" not in c and f"--mix-key {COMPARATOR['mix_key']} " in c for c in runs)
+    assert not any(k in " ".join(commands) for k in (CMP, "stage1", "pilot", "stack-check"))          # nothing else is read
+    code, out, commands = c20(tmp_path, "cache", STUB_ONE_ARM="1")
+    assert code == 1 and "another arm's C20 cache or report" in out and not any(" run " in c for c in commands)
+    code, out, commands = c20(tmp_path, "cache", stored=[C20_INDEX])                                  # write-once
+    assert code == 0 and "stored:" in out and not any(" run " in c for c in commands)
+
+
+def test_the_c20_run(tmp_path):
+    code, out, commands = c20(tmp_path, "run", stored=[C20_INDEX])
+    runs = [c for c in commands if "compose_eval.py run" in c]
+    assert code == 0 and len(runs) == 4 and [c.split("--output-key ")[1] for c in runs] == [f"{C20_REPORT}-shard{s}.json" for s in range(4)]
+    assert all(C20_SENTENCES in c and "--clips 1000" in c and "--likelihood" in c and "--stage1-report-key" not in c
+               and "--paired-with" not in c and "--no-decoder-gains" not in c and "--lowpass" not in c for c in runs)
+    assert all(f"--word-cache-key {C20_INDEX} --word-cache-sha256 stubsha --word-cache-n 16 " in c for c in runs)
+    merge = next(c for c in commands if " merge " in c)
+    assert merge.endswith(f"--rule bleu:mismatched_words,spotting --output-key {C20_REPORT}.json")
     assert "--paired-with" not in merge and "--end-to-end-report" not in merge
-    code, out, commands = job(tmp_path, "verdict", sentence_set="c20", stored=[verdict, f"{OUT}/w14b-nogains-n8-c20.json"])
+    assert not any(k in " ".join(commands) for k in (CMP, "compositional-f12", "pilot-", "--declared-replacement"))   # no comparator path
+    assert f"scripts/round20_phase_b_verdict.py one-arm --out {OUT} --set c20 --report w14b-gains-n16-c20" in commands
+    # read once: a stored report refuses a second run; a lost pod's stored shards are resumed, not repeated
+    code, out, commands = c20(tmp_path, "run", stored=[C20_INDEX, f"{C20_REPORT}.json"])
+    assert code == 1 and "C20 is read once" in out and not any("compose_eval" in c for c in commands)
+    code, out, commands = c20(tmp_path, "run", stored=[C20_INDEX, f"{C20_REPORT}-shard0.json"])
+    assert code == 0 and sum("compose_eval.py run" in c for c in commands) == 3
+    assert f"{C20_REPORT}-shard0.json" in next(c for c in commands if " merge " in c)
+    code, out, commands = c20(tmp_path, "run", stored=[C20_INDEX], STUB_ONE_ARM="1")
+    assert code == 1 and not any("compose_eval" in c for c in commands)
+    code, out, commands = c20(tmp_path, "run")
+    assert code == 1 and "run the cache phase first" in out
+
+
+def test_the_c20_verdict_phase_names_no_comparator(tmp_path):
+    code, out, commands = c20(tmp_path, "verdict", stored=[f"{C20_REPORT}.json"])
     line = next(c for c in commands if " verdict " in c)
-    assert code == 0 and f"--val1000-verdict-key {verdict}" in line and "--end-to-end-key" not in line
-    assert f"--set c20 --output-key {OUT}/verdict-w14b-nogains-n8-c20.json" in line
+    assert code == 0 and f"--arm-key {C20_REPORT}.json --val1000-verdict-key {C20_VAL_VERDICT} " in line
+    assert f"--val1000-arm-key {OUT}/w14b-gains-n16-val1000.json --c20-declared {C20_COMMIT} {C20_SENTENCES} " in line
+    assert line.endswith(f"--set c20 --output-key {OUT}/verdict-w14b-gains-n16-c20.json")
+    assert not any(k in line for k in ("--comparator", "--end-to-end", "--stored-pilot"))
+    assert not any(CMP in c for c in commands)
+    code, out, commands = c20(tmp_path, "verdict", stored=[f"{OUT}/verdict-w14b-gains-n16-c20.json"])
+    assert code == 0 and "stored:" in out and not any(" verdict " in c for c in commands)
+    code, out, commands = c20(tmp_path, "verdict")
+    assert code == 1 and "run the run phase first" in out
+
+
+def test_the_c20_smoke_with_the_variable_touches_no_c20(tmp_path):
+    d20 = f"--sentences-key {O}/round20/d20.json"
+    code, out, commands = c20(tmp_path, "cache", smoke=True, gpu=False)
+    assert code == 0 and "c20-gate" in commands[0]
+    assert not any("round20/c20" in c for c in commands)                  # not even a pin
+    runs = [c for c in commands if " run " in c]
+    assert runs and all(d20 in c and "--clips 5" in c and "/smoke/" in c for c in runs) and not any(" one-arm " in c for c in commands)
+    code, out, commands = c20(tmp_path, "run", smoke=True, gpu=False, CACHE_KEY="k/i.json", stored=["k/i.json"])
+    run = next(c for c in commands if "compose_eval.py run" in c)
+    assert code == 0 and d20 in run and "--clips 5 " in run and "/smoke/" in run and not any("round20/c20" in c for c in commands)
+    assert "--rule bleu:mismatched_words,spotting" in next(c for c in commands if " merge " in c)
 
 
 def test_a_smoke_reads_d20_only_with_write_once_keys_of_its_own(tmp_path):
@@ -717,11 +787,14 @@ def test_the_c20_gate_opens_and_needs_a_stored_verdict(tmp_path):
 def c20_arm(hyp_arm=REFS):
     r = reports(hyp_arm=hyp_arm)
     r["arm"]["settings"]["round20"]["sentences"] = dict(key="c20.json", sha256="c" * 64, set="C20", stored=1000, used=1000)
+    row = r["arm"]["forms"][FORM]
+    row.update(minus_blank=dict(difference=.5, ci95=[.1, .9]), minus_shuffled=dict(difference=.3, ci95=[-.1, .6]))
+    r["arm"]["spotting"] = dict(scores={FORM: dict(recall=dict(mean=.41), order=dict(mean=.9))})
     return r
 
 
 def judge_c20(r, verdict):
-    return pv.judge_c20(r["arm"], verdict, prior_checkpoint=W14B, no_gains=True, best_of=8, comparator=r["comparator"],
+    return pv.judge_c20(r["arm"], verdict, prior_checkpoint=W14B, no_gains=True, best_of=8, val_report=r["comparator"],
                         sentences=dict(key="c20.json", sha256="c" * 64))
 
 
@@ -1029,14 +1102,9 @@ def test_lowpass_is_one_more_option_on_the_stack(tmp_path, monkeypatch):
     code, out, commands = job(tmp_path, "verdict", **STACK, stored=[f"{report}.json"], LOWPASS="1")
     line = next(c for c in commands if " verdict " in c)
     assert code == 0 and "--lowpass 1 " in line and f"--output-key {OUT}/verdict-w14b-nogains-n8-lp6-val1000.json" in line
-    code, out, commands = job(tmp_path, "cache", **STACK, sentence_set="c20", LOWPASS="1",
-                              stored=[f"{OUT}/verdict-w14b-nogains-n8-val1000.json"])
-    assert code == 1 and "no stored val1000 verdict" in out      # the unfiltered arm's verdict does not open it
-    verdict = f"{OUT}/verdict-w14b-nogains-n8-lp6-val1000.json"
-    code, out, commands = job(tmp_path, "cache", **STACK, sentence_set="c20", LOWPASS="1", stored=[verdict])
-    gate = next(c for c in commands if " c20-gate " in c)
-    assert code == 0 and f"--verdict-key {verdict} " in gate and gate.endswith("--best-of 8 --lowpass 1")
-    assert "--report w14b-nogains-n8-lp6-val1000 " in gate
+    code, out, commands = job(tmp_path, "cache", **STACK, sentence_set="c20", LOWPASS="1", R20B_C20_DECLARED="945638e703",
+                              stored=[f"{OUT}/verdict-w14b-nogains-n8-lp6-val1000.json"])
+    assert code == 1 and "C20 is read once" in out and not commands     # nor does a low-passed arm read C20
 
 
 @pytest.mark.parametrize("kwargs,message", [
@@ -1219,9 +1287,7 @@ def test_a_no_gains_arm_needs_its_own_end_to_end(tmp_path):
     code, out, commands = job(tmp_path, "verdict", no_gains="0", stored=[f"{OUT}/w14b-gains-n8-val1000.json"], pilots=False)
     assert code == 0 and "--stored-pilot-key" not in next(c for c in commands if " verdict " in c)
     # C20 has no pilot at all
-    verdict = f"{OUT}/verdict-w14b-nogains-n8-val1000.json"
-    code, out, commands = job(tmp_path, "run", sentence_set="c20", stored=[verdict, f"{OUT}/cache-w14b-nogains-c20-n8/index.json"],
-                              pilots=False)
+    code, out, commands = c20(tmp_path, "run", stored=[C20_INDEX], pilots=False)
     assert code == 0 and "--end-to-end-report" not in next(c for c in commands if " merge " in c)
 
 
@@ -1414,7 +1480,10 @@ def test_the_job_and_the_verdict_declare_the_same_arm():
     text = SCRIPT.read_text()
     spec = pv.DECLARED_ARMS
     assert list(spec) == [DECLARED] and spec[DECLARED]["report"] == SECOND_ARM and spec[DECLARED]["replaces"] == FIRST_ARM
-    assert f"    {DECLARED}:w14b:1:16:0:val1000) ;;" in text and len(re.findall(r"^    [0-9a-f]{7,}:", text, flags=re.M)) == 1
+    assert f"    {DECLARED}:w14b:1:16:0:val1000) ;;" in text
+    assert list(pv.C20_DECLARED) == [C20_COMMIT] and pv.C20_DECLARED[C20_COMMIT]["report"] == FIRST_ARM
+    assert pv.C20_DECLARED[C20_COMMIT]["stack"] == SECOND_ARM and f"    {C20_COMMIT}:w14b:0:16:0:c20) ;;" in text
+    assert len(re.findall(r"^    [0-9a-f]{7,}:", text, flags=re.M)) == 2      # one line each: nothing else opens
 
 
 # ---- amendment 6: c20_arm_choice -------------------------------------------------------------------------------------------------
@@ -2191,3 +2260,239 @@ def test_the_verdict_takes_an_r16_stack_with_its_own_pilot():
     w14b_pilot["pilot"]["checkpoint_key"] = W14B
     with pytest.raises(SystemExit, match="not the arm's prior"):
         judge(w14b_pilot, prior_checkpoint=R16, best_of=16)
+
+
+# ---- amendment 7: C20's one read ---------------------------------------------------------------------------------------------------
+
+def first_arm_verdict(*, point=2.5701, rule_passed=False, **arm):
+    return dict(kind="round20-phase-b-verdict", set="val1000", complete=True, rule_passed=rule_passed,
+                m1=dict(threshold=2.55, point_estimate=point, met=point >= 2.55),
+                arm=dict(dict(prior="w14b", prior_checkpoint_key=W14B, no_decoder_gains=False, best_of=16, lowpass=False), **arm))
+
+
+def stack_verdict(choice=FIRST_ARM, **over):
+    return dict(dict(kind="round20-phase-b-verdict", set="val1000", complete=True, rule_passed=False,
+                     c20_arm_choice=dict(arm=choice, all_hold=False)), **over)
+
+
+GATE_ARM = dict(prior="w14b", prior_checkpoint_key=W14B, no_decoder_gains=False, best_of=16, lowpass=False)
+
+
+def test_the_gate_lifts_rule_passed_for_this_arm_and_says_so():
+    record = pv.gate_c20(first_arm_verdict(), expected_arm=GATE_ARM, c20_declared=C20_COMMIT, stack_verdict=stack_verdict())
+    assert record["opened_by"] == C20_COMMIT and record["amendment"] == "amendment 7" and record["rule_passed"] is False
+    assert record["rule_passed_lifted"] is True and "Post-result relaxation" in record["note"] and record["c20_arm_choice"] == FIRST_ARM
+    # without the variable: as before
+    with pytest.raises(SystemExit, match="rule did not pass"):
+        pv.gate_c20(first_arm_verdict(), expected_arm=GATE_ARM)
+    assert pv.gate_c20(first_arm_verdict(rule_passed=True), expected_arm=GATE_ARM) == dict(opened_by="rule_passed")
+
+
+@pytest.mark.parametrize("verdict,stack,commit,match", [
+    (first_arm_verdict(), stack_verdict(), "abc1234", "declares no read"),                        # wrong commit
+    (first_arm_verdict(), stack_verdict(), "945638e", "declares no read"),
+    (first_arm_verdict(no_decoder_gains=True), stack_verdict(), C20_COMMIT, "another arm's"),      # wrong arm
+    (first_arm_verdict(best_of=8), stack_verdict(), C20_COMMIT, "another arm's"),
+    (first_arm_verdict(prior="r16"), stack_verdict(), C20_COMMIT, "another arm's"),
+    (first_arm_verdict(lowpass=True), stack_verdict(), C20_COMMIT, "another arm's"),
+    (first_arm_verdict(), stack_verdict(SECOND_ARM), C20_COMMIT, "c20_arm_choice is"),             # wrong stack choice
+    (first_arm_verdict(), stack_verdict(None), C20_COMMIT, "c20_arm_choice is"),
+    (first_arm_verdict(), None, C20_COMMIT, "no complete stored verdict of the stack"),            # missing verdict
+    (first_arm_verdict(), stack_verdict(complete=False), C20_COMMIT, "no complete stored verdict of the stack"),
+    (first_arm_verdict(), stack_verdict(set="c20"), C20_COMMIT, "no complete stored verdict of the stack"),
+    (first_arm_verdict(point=2.5499), stack_verdict(), C20_COMMIT, "below 2.55"),                  # below 2.55
+    (dict(first_arm_verdict(), complete=False), stack_verdict(), C20_COMMIT, "not a complete"),
+])
+def test_the_gate_stays_shut_under_the_variable(verdict, stack, commit, match):
+    expected = {k: verdict["arm"][k] for k in GATE_ARM}                        # the arm asked for is the verdict's: the table decides
+    with pytest.raises(SystemExit, match=match):
+        pv.gate_c20(verdict, expected_arm=expected, c20_declared=commit, stack_verdict=stack)
+
+
+def gate_cli(tmp_path, *extra, report=FIRST_ARM, **over):
+    return ["c20-gate", "--store", f"dir:{tmp_path / 'c'}", "--verdict-key", f"o/verdict-{report}.json", "--out", "o", "--report", report,
+            "--prior", "w14b", "--prior-checkpoint-key", W14B, "--no-gains", "0", "--best-of", "16", "--lowpass", "0",
+            "--c20-declared", over.get("commit", C20_COMMIT), *extra]
+
+
+def test_the_gate_cli_reads_both_verdicts_and_the_arms_on_the_1000(tmp_path, capsys):
+    from train_text_to_motion import make_store
+    store = make_store(f"dir:{tmp_path / 'c'}")
+    with pytest.raises(SystemExit, match="no stored verdict"):
+        pv.main(gate_cli(tmp_path))
+    store.put(f"o/verdict-{FIRST_ARM}.json", json.dumps(first_arm_verdict()).encode())
+    with pytest.raises(SystemExit, match="no complete stored verdict of the stack"):
+        pv.main(gate_cli(tmp_path))
+    store.put(f"o/verdict-{SECOND_ARM}.json", json.dumps(stack_verdict()).encode())
+    with pytest.raises(SystemExit, match="beside exactly"):                    # the stack's report is not stored: not the two arms
+        pv.main(gate_cli(tmp_path))
+    store.put(f"o/{FIRST_ARM}.json", b"{}")
+    store.put(f"o/{SECOND_ARM}.json", b"{}")
+    capsys.readouterr()
+    assert pv.main(gate_cli(tmp_path)) == 0
+    out = capsys.readouterr().out
+    assert "C20 gate open" in out and json.loads(out.split("\n", 1)[1])["rule_passed_lifted"] is True
+    store.put("o/w14b-gains-n8-val1000-shard0.json", b"{}")                    # a third arm on the 1,000
+    with pytest.raises(SystemExit, match="beside exactly"):
+        pv.main(gate_cli(tmp_path))
+    (tmp_path / "c/o/w14b-gains-n8-val1000-shard0.json").unlink()
+    argv = gate_cli(tmp_path)
+    argv[argv.index("--report") + 1] = SECOND_ARM                              # the arm's verdict and another name
+    with pytest.raises(SystemExit, match="beside exactly"):
+        pv.main(argv)
+    # the variable unset: as before, the rule's failure keeps it shut
+    argv = gate_cli(tmp_path)
+    k = argv.index("--c20-declared")
+    with pytest.raises(SystemExit, match="rule did not pass"):
+        pv.main(argv[:k] + argv[k + 2:])
+
+
+def test_another_arms_c20_cache_or_report_counts():
+    keys = [f"o/{k}" for k in ("cache-w14b-gains-c20-n16/index.json", "cache-w14b-gains-val1000-n16/index.json",
+                               "cache-w14b-nogains-val1000-n16/shard-0-of-4.json", "w14b-gains-n16-c20-shard0.json")]
+    assert pv.other_arms(keys, "o", "c20", "w14b-gains-n16-c20") == []          # this arm's own, and the 1,000's caches
+    assert pv.other_arms(keys + ["o/cache-w14b-nogains-c20-n16/index.json"], "o", "c20", "w14b-gains-n16-c20") == ["w14b-nogains-n16-c20"]
+    assert pv.other_arms(keys + ["o/cache-w14b-gains-c20-n8/shard-1-of-4.json"], "o", "c20", "w14b-gains-n16-c20") == ["w14b-gains-n8-c20"]
+    assert pv.other_arms(keys + ["o/r16-gains-n0-c20.json"], "o", "c20", "w14b-gains-n16-c20") == ["r16-gains-n0-c20"]
+    # a cache is no arm on the 1,000: both arms' caches are stored there
+    assert pv.other_arms(keys, "o", "val1000", FIRST_ARM) == []
+    assert pv.other_arms(keys + ["o/smoke/x/cache-w14b-nogains-c20-n16/index.json"], "o", "c20", "w14b-gains-n16-c20") == []
+
+
+def test_the_cache_reads_sentence_text_and_vocabulary_only():
+    source = (ROOT / "scripts/round20_word_cache.py").read_text()
+    for read in ("load_state", '"continuous"', "translate", "bleu", "reference_log_likelihood", "corpus_bleu", "sentence_word_spotting", "at_rate(load"):
+        assert read not in source, read                                        # no clip of the set, no score against a reference
+    body = source.split("def select_entries")[1].split("def run")[0]
+    assert '[r["text"] for r in val]' in body and "stage1_selection" in body   # what it takes from a set: the text
+
+
+def c20_view(hyp_arm=REFS):
+    r = c20_arm(hyp_arm)
+    settings = r["arm"]["settings"]
+    settings["round20"]["word_cache"] = cache_settings(no_gains=False, n=16)
+    r["arm"].pop("comparators")
+    for name in ("paired:" + FORM, "end_to_end"):
+        r["arm"]["forms"].pop(name)
+    return r
+
+
+def judge_declared(r, verdict=None, stack=None, **over):
+    return pv.judge_c20(r["arm"], first_arm_verdict() if verdict is None else verdict, prior_checkpoint=W14B, no_gains=False, best_of=16,
+                        sentences=dict(key="c20.json", sha256="c" * 64), val_report=dict(settings=dict(COMPARATOR, rerank=1)),
+                        c20_declared=C20_COMMIT, stack_verdict=stack_verdict() if stack is None else stack, **over)
+
+
+def test_the_c20_verdict_reports_everything_and_needs_no_comparator():
+    v = judge_declared(c20_view())
+    assert v["complete"] and v["set"] == "c20" and v["m1"]["met"] and v["m1_claim"] and "comparator" not in v and "rule_passed" not in v
+    assert v["amendment"] == "amendment 7" and "Post-result relaxation" in v["post_result_relaxation"]
+    assert v["gate"]["rule_passed"] is False and v["gate"]["rule_passed_lifted"] is True and v["gate"]["opened_by"] == C20_COMMIT
+    got = v["reported"]
+    assert got["point_estimate"] == 100. and got["ci95"] == [0., 9.] and got["minus_blank"]["difference"] == .5
+    assert got["minus_mismatched_words"]["difference"] == .4 and got["minus_shuffled"]["difference"] == .3
+    assert got["likelihood_minus_blank"]["difference"] == .02 and got["spotting_recall"] == dict(mean=.41) and got["spotting_order"] == dict(mean=.9)
+    assert got["length_ratio"][FORM] == 1. and got["wrist_speed_ratio_to_real"] == 2.1
+    assert got["loop_share"]["available"] is False and "no definition" in got["loop_share"]["reason"]
+    assert v["items"]["wrist_speed_reported"]["comparator_ratio_to_real"] is None
+
+
+def test_the_c20_verdict_below_2_55_is_a_stored_answer_not_a_refusal():
+    v = judge_declared(c20_view(hyp_arm=["word"] * 6))
+    assert v["complete"] and v["m1"]["met"] is False and v["m1_claim"] is False and "Post-result relaxation" in v["post_result_relaxation"]
+
+
+@pytest.mark.parametrize("edit,says", [
+    (lambda r: r["arm"]["forms"][FORM].pop("minus_blank"), "minus_blank"),
+    (lambda r: r["arm"]["forms"][FORM].pop("minus_shuffled"), "minus_shuffled"),
+    (lambda r: r["arm"]["forms"][FORM].pop("minus_mismatched_words"), "minus_mismatched_words"),
+    (lambda r: r["arm"]["forms"][FORM].pop("ci95"), "ci95"),
+    (lambda r: r["arm"].pop("likelihood"), "likelihood_minus_blank"),
+    (lambda r: r["arm"].pop("spotting"), "spotting_recall"),
+    (lambda r: r["arm"].pop("motion_ratio_to_real"), "wrist_speed"),
+])
+def test_a_missing_c20_read_is_incomplete(edit, says):
+    r = c20_view()
+    edit(r)
+    v = judge_declared(r)
+    assert v["complete"] is False and v["m1_claim"] is False and says in " ".join(v["missing"])
+
+
+@pytest.mark.parametrize("verdict,stack,match", [
+    (first_arm_verdict(point=2.5), None, "below 2.55"),
+    (first_arm_verdict(best_of=8), None, "another arm's"),
+    (None, stack_verdict(SECOND_ARM), "c20_arm_choice is"),
+])
+def test_the_c20_verdict_applies_the_gate(verdict, stack, match):
+    with pytest.raises(SystemExit, match=match):
+        judge_declared(c20_view(), verdict, stack)
+
+
+def test_the_c20_verdict_checks_settings_against_the_arm_on_the_1000():
+    for field, value, match in (("guidance", 2., "settings.guidance"), ("shards", 1, "settings.shards"), ("timing", "asllrp", "settings.timing")):
+        r = c20_view()
+        r["arm"]["settings"][field] = value
+        with pytest.raises(SystemExit, match=match):
+            judge_declared(r)
+    r = c20_view()
+    r["arm"]["settings"]["round20"]["sentences"] = dict(key="d20.json", sha256="d" * 64)   # not C20
+    with pytest.raises(SystemExit, match="round20.sentences"):
+        judge_declared(r)
+
+
+def test_c20_end_to_end_on_real_merges(tmp_path, stage2_store, likelihood_stub, monkeypatch):  # noqa: F811
+    """The job's flags on a stored sentence set: the cache from its text, the run, ``--rule bleu:mismatched_words,spotting`` with no
+    comparator, pilot or stage-1 report, and the verdict from the stored reports."""
+    import torch
+    import validate_sign_recognizer as vsr
+    from tests.test_round20_eval import put_set
+    store, sha, s1, *_ = stage2_store
+    ssha, texts = put_set(store, sha)
+    labels = ["CUT", "ONION", "SALT", "HEAT", "KNIFE", "HALF", "NOW", "STIR"]
+    monkeypatch.setattr(vsr, "load_model", lambda store, run, device: (None, labels, {"checkpoint_key": "r.pt"}))
+    monkeypatch.setattr(vsr, "logits_of", lambda model, states, device, batch=64: torch.zeros(len(states), len(labels)))
+    root = f"dir:{tmp_path / 'store'}"
+    sentences = ["--sentences-key", "sets/d20.json", "--sentences-sha256", ssha]
+    common = ["--store", root, "--prefix", "o/cache-w14b-gains-c20-n4"]
+    for s in (0, 1):
+        assert cw.main(["run", *common, "--mix-key", "mix.json", "--mix-sha256", sha, *sentences, "--checkpoint-key", "prior.pt",
+                        "--samples", "4", "--choose", "4", "--device", "cpu", "--shards", "2", "--shard", str(s)]) == 0
+    assert cw.main(["merge", *common, "--shards", "2"]) == 0
+    index = hashlib.sha256(store.get("o/cache-w14b-gains-c20-n4/index.json")).hexdigest()
+    args = run_args(tmp_path, sha, "--variants", FORM, "--shards", "2", "--likelihood", *sentences, "--word-cache-key",
+                    "o/cache-w14b-gains-c20-n4/index.json", "--word-cache-sha256", index, "--word-cache-n", "4")
+    k = args.index("--checkpoint-key")
+    args = args[:k] + args[k + 2:]
+    report = "w14b-gains-n4-c20"
+    for s in (0, 1):
+        assert ce.main([*args, "--shard", str(s), "--output-key", f"o/{report}-shard{s}.json"]) == 0
+    rule = "bleu:mismatched_words,spotting"
+    assert ce.main(["merge", "--store", root, "--bootstrap", "50", "--shard-keys", f"o/{report}-shard0.json,o/{report}-shard1.json",
+                    "--rule", rule, "--output-key", f"o/{report}.json"]) == 0
+    merged = json.loads(store.get(f"o/{report}.json"))
+    assert merged["references"] == texts and merged["stage1_check"] is None and merged["comparators"] == {}
+    assert merged["rule"] == rule and FORM in merged["verdicts"] and "end_to_end" not in merged["forms"]
+    assert {"minus_blank", "minus_mismatched_words", "minus_shuffled"} <= set(merged["forms"][FORM]) and "minus_end_to_end" not in merged["forms"][FORM]
+    # the arm's report on "the 1,000" has these settings apart from its words' set
+    store.put("o/val.json", json.dumps(dict(settings=merged["settings"])).encode())
+    first, stack = "w14b-gains-n4-val1000", "w14b-nogains-n4-val1000"
+    monkeypatch.setitem(pv.C20_DECLARED, "abc1234", dict(report=first, stack=stack, prior="w14b", no_gains=False, best_of=4, lowpass=False,
+                                                         amendment="amendment 7"))
+    store.put(f"o/verdict-{first}.json", json.dumps(first_arm_verdict(best_of=4, prior_checkpoint_key="prior.pt")).encode())
+    store.put(f"o/verdict-{stack}.json", json.dumps(stack_verdict(first)).encode())
+    argv = ["verdict", "--store", root, "--arm-key", f"o/{report}.json", "--val1000-verdict-key", f"o/verdict-{first}.json",
+            "--val1000-arm-key", "o/val.json", "--c20-declared", "abc1234", "--sentences-key", "sets/d20.json", "--sentences-sha256", ssha,
+            "--out", "o", "--report", report, "--lowpass", "0", "--prior", "w14b", "--prior-checkpoint-key", "prior.pt", "--no-gains", "0",
+            "--best-of", "4", "--set", "c20", "--bootstrap", "50", "--output-key", f"o/verdict-{report}.json"]
+    assert pv.main(argv) == 0
+    v = json.loads(store.get(f"o/verdict-{report}.json"))
+    assert v["complete"] and v["clips"] == len(texts) and v["reported"]["spotting_recall"] is not None and "comparator" not in v
+    assert v["gate"]["rule_passed_lifted"] and v["amendment"] == "amendment 7" and v["arm"]["best_of"] == 4
+    assert v["reported"]["length_ratio"][FORM] > 0 and v["reported"]["wrist_speed_ratio_to_real"] is not None
+    with pytest.raises(SystemExit, match="refusing to overwrite"):               # written once
+        pv.main(argv)
+    # another arm's C20 cache: refused, nothing more stored
+    store.put("o/cache-w14b-nogains-c20-n4/index.json", b"{}")
+    with pytest.raises(SystemExit, match="no amendment declares"):
+        pv.main([*argv[:argv.index("--output-key") + 1], "o/other.json"])
+    assert not store.exists("o/other.json")
