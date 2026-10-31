@@ -5766,3 +5766,25 @@ The word caches for the 1,000 under W14b keep building. An R16 cache for the 1,0
 3. **Risk (independent audit):** P(C20 ≥ 2.55) is 7% if the arm is truly 2.306, 27% at 2.45, about 35% pooled. Content alone on the 1,000 reads about 2.45.
 4. **Cost:** at most 562 fresh clips remain, so there is no second fresh 1,000. Accepted, because composition's Phase A levers are spent and both outcomes point to a clear next step.
 5. **Outcomes.** C20 ≥ 2.55: M1 is met on instrument v1, reported with item 1's failure, the loop share and motion figures beside it; the realistic-scenario evaluation and 3.8 pursuit follow. C20 < 2.55: M1 is not met; no further composition arm reads C20, and work moves to the structural track with this evidence. Either way instrument v2 re-reads the same arm when it exists.
+
+### Road to 3.8: S2 design received, and probe bars declared (2026-10-31, 18:10 UTC; before any probe runs)
+
+Full design: `reports/s2_design.md`. **The one question:** does removing the history path let text reach the codes of unseen sentences, or does this data hold too little generalising text-to-motion information for any decoder? By the chain rule, masking cannot create information; it can only stop the autoregressive prior underfitting it.
+
+**Plan corrections it found:**
+- S1's second condition fails below stage 4 (share of d2's BLEU gap: stage 1 0.25, stages 1–2 0.62, stages 1–4 0.93; bar 0.8).
+- The bar ρ_faith < 0.8 is void: on DTW, blank reads 0.778 and W14b 0.788. Time-averaged ρ works: blank 1.004, W14b 0.984, stages 1–4 0.192.
+- Likelihood minus blank: stages 1–4 +0.019, all stages +0.055, composition +0.055 to +0.080. A faithful decode through d2 cannot beat composition on likelihood. Any claim of replacing composition must disclose this.
+
+**Top option:** masked stage 1, then three text-conditioned parallel passes for stages 2–4, frozen multi-token flan-T5 cross-attention, d2 frozen, no gains, predicted lengths. S2 cannot reach 3.8 (stages 1–4 ceiling 3.263); S5 stays a precondition.
+
+**Probe bars, declared now (D20 only; never the 1,000, C20 or the remaining fresh clips):**
+| Probe | Pass bar |
+|---|---|
+| **P1, text without history** (small masked head, 3.3M parameters, cached stage-1 codes, flan-T5 tokens) | Chain-rule gain ≥ 2.84 nats/s and ≥ 2× flan-T5 AR on the same clips; shuffled ≤ 0.2; each signer group > 0; own text among 100 top-5 ≥ 15% on 86 short clips; word-clip 64-way top-1 ≥ 0.3 on held-out signers, else void |
+| **P2, code noise** (D20 stages 1–4) | 0.25 s blocks at 25%: BLEU ≥ 2.328, lower bound above blank; ±0.25 s jitter within 0.3 of clean; keyframes ≥ 0.9× stages 1–4 share, else option 2 drops |
+| **P3, length** | Pooled ratio in [0.95, 1.10]; paired ΔNLL lower bound > −0.03 (not blind: the design saw a 1.08× metadata fit) |
+| **P4, amplitude** | Not a stop. If rotations × 0.8 has ΔNLL lower bound > 0, motion bands bind and v1-only gains do not count |
+| **B0, baselines** | W14b end-to-end on D20, gains and no gains, reference and predicted lengths |
+
+**No S2 training unless, on D20:** P1 passes; P2's curve at P1-head samples' error predicts BLEU at least 0.2 above B0's no-gains read and ΔNLL at least 0.10 above W14b's; those samples' time-averaged ρ is below W14b's with lower bound above 0. The design's own estimate is about one chance in three that P1 passes, a judgement rather than a measurement. A P1 fail closes S2 untrained, confirmed once on a pod. Probes run after review; S2 training also still needs M1 or the structural branch as declared. The pilot's gates in the design's section 6 are not declared yet.
