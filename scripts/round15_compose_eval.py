@@ -902,7 +902,9 @@ def merge(args, store) -> dict:
         other_ll = (json.loads(store.get(args.paired_with)).get("likelihood") if args.paired_with else None)
         extra["likelihood"] = likelihood_summary(rows, list(rows[0]["likelihood"]), pairs, boot=args.bootstrap,
                                                  other=other_ll)
-    declared = {"declared_replacement": args.declared_replacement} if getattr(args, "declared_replacement", None) else {}
+    declared = (dict(declared_replacement=args.declared_replacement,
+                     set_read="the set's second read of Round 20, declared by that plan commit; the first read stays on record")
+                if getattr(args, "declared_replacement", None) else {})
     return dict(kind="round15-compose-eval", **declared, **extra, settings=s, clips=n, references=texts, signs=merged["signs"], indexing=INDEXING,
                 shards=sorted(p["shard"] for p in partials), stage1_check=partials[0]["stage1_check"],
                 comparators=comparators, rule=args.rule, rule_checks=checks, bootstrap=args.bootstrap, forms=scores,
