@@ -5697,7 +5697,7 @@ Against `a0-w14b-r10` (BLEU 1.943), on D20. All three meet the rule. Spotting is
 
 The word caches for the 1,000 under W14b keep building. An R16 cache for the 1,000 is built only if R16 wins.
 
-### Round 20 stack read and Phase A verdict, recorded (2026-10-31, 13:10 UTC)
+### Round 20 stack read and Phase A verdict, recorded (2026-10-31, 13:09 UTC)
 
 **R16 at best of 16.** `a4-r16-n16-r10`: BLEU 2.164; against `a0-w14b-r10` +0.220 [−0.231, +0.683], likelihood +0.026 [+0.004, +0.047], spotting +0.042 [+0.024, +0.058]; wrist speed 2.59× real. Against `a4-w14b-n16-r10`: BLEU −0.165 [−0.591, +0.304], likelihood −0.022 [−0.044, −0.001], spotting −0.024 [−0.040, −0.009].
 
