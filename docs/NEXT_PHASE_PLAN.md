@@ -5669,3 +5669,17 @@ Minus blank +0.505 [+0.068, +0.953]; minus shuffled +0.273 [−0.098, +0.651]; m
 3. **Stack rule:** the stack proceeds to the 1,000 only if both point estimates are above 0 against **both** single levers' arms, or, failing that, the better single lever goes alone, by highest likelihood against a0.
 4. **A6 is reopened only inside the stack.** It was rejected on gained forms, where the metrics disagreed. It enters Phase B only if the stack's `@lowpass` has both point estimates above 0 against the stack. A7's `@lowpass` read does not adopt it alone.
 5. **A5:** a8 is judged by amendment 3. If it is adopted, the stack question is repeated with R16's words before Phase B; a8 ending after the stack read does not hold up the cache for the 1,000.
+
+### Round 20 A4 complete, recorded (2026-10-31, 08:38 UTC): best of 16
+
+Against `a0-w14b-r10` (BLEU 1.943), on D20. All three meet the rule. Spotting is recogniser v2 paired; v3d chose the words.
+
+| N | BLEU | Paired BLEU | Likelihood minus blank | Paired likelihood | Spotting recall, paired | Minus blank (BLEU) | Wrist speed / real |
+|---|---|---|---|---|---|---|---|
+| 4 | 2.252 | +0.309 [−0.076, +0.673] | +0.057 | +0.041 [+0.017, +0.064] | 0.383, +0.056 [+0.039, +0.073] | +0.572 [+0.139, +1.024] | 2.65× |
+| 8 | 2.104 | +0.161 [−0.27, +0.646] | +0.063 | +0.046 [+0.022, +0.070] | 0.382, +0.054 [+0.037, +0.071] | +0.424 [−0.044, +0.949] | 2.67× |
+| **16** | **2.328** [1.96, 2.72] | **+0.385 [+0.014, +0.791]** | **+0.065** | **+0.048 [+0.026, +0.072]** | **0.393, +0.066 [+0.050, +0.082]** | **+0.648 [+0.217, +1.11]** | 2.57× |
+
+**N = 16** by amendment 4, rule 1 (highest paired likelihood). It is the only arm whose paired BLEU interval is above 0, and it also has the highest BLEU and spotting. Controls: shuffled 1.978, mismatched words 1.365; minus shuffled +0.35 [−0.104, +0.79], likelihood minus shuffled +0.162 [+0.138, +0.186]. **A4 is adopted at N = 16.** `a9-nogains-n16-r10` is the stack read.
+
+**Skepticism:** BLEU is not monotonic in N (2.252, 2.104, 2.328), so its size is uncertain; likelihood and spotting rise smoothly. N was chosen on this same D20 read, so these figures are optimistic for N = 16, and Phase B on the 1,000 does not share that selection. Word choice by v3d shares ASLLVD roots with the v2 guard.
