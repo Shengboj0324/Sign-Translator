@@ -5683,3 +5683,16 @@ Against `a0-w14b-r10` (BLEU 1.943), on D20. All three meet the rule. Spotting is
 **N = 16** by amendment 4, rule 1 (highest paired likelihood). It is the only arm whose paired BLEU interval is above 0, and it also has the highest BLEU and spotting. Controls: shuffled 1.978, mismatched words 1.365; minus shuffled +0.35 [−0.104, +0.79], likelihood minus shuffled +0.162 [+0.138, +0.186]. **A4 is adopted at N = 16.** `a9-nogains-n16-r10` is the stack read.
 
 **Skepticism:** BLEU is not monotonic in N (2.252, 2.104, 2.328), so its size is uncertain; likelihood and spotting rise smoothly. N was chosen on this same D20 read, so these figures are optimistic for N = 16, and Phase B on the 1,000 does not share that selection. Word choice by v3d shares ASLLVD roots with the v2 guard.
+
+### Round 20 A5 sentence read, recorded (2026-10-31, 09:28 UTC); amendment 5
+
+**`a8-r16-r10` against `a0-w14b-r10`, form `core_crossfade`:** BLEU 1.987 [1.66, 2.32], paired +0.044 [−0.315, +0.391]; likelihood minus blank +0.032 [−0.002, +0.063], paired +0.015 [−0.011, +0.037]; recogniser v2 spotting 0.343, paired +0.016 [+0.001, +0.031]; wrist speed 2.58× real, spread 2.09×, hands tracked 1.19×. Minus blank +0.307 [−0.092, +0.723]; minus shuffled +0.237 [−0.10, +0.568]; minus mismatched words +0.663 [+0.238, +1.093]. `@lowpass` 2.206, +0.219 [−0.044, +0.484]; likelihood +0.002 [−0.003, +0.007].
+
+**Verdict by amendment 3: met.** Both point estimates are above 0 and the spotting bound is above −0.02. This is the weakest pass of the round: both intervals include 0, and A5's word read shows best-of-N erases R16's word advantage (best of 16: label probability +0.001, top-1 −0.002).
+
+**Amendment 5 (declared after this read and before any R16 stack read, and stricter than amendment 3).** Amendment 3 said Phase B uses R16's words if a8 was adopted. Given the weak pass and the word read, R16 must also beat W14b inside the stack:
+1. Read `a4-r16-n16-r10` from the stored R16 cache, and build the R16 no-gains cache on D20 for `a9-r16-nogains-n16-r10`.
+2. Phase B uses R16's words **only if** the R16 stack has both point estimates above 0 against the W14b stack `a9-nogains-n16-r10`, with recogniser v2 spotting paired lower bound above −0.02. Otherwise Phase B uses W14b's words and amendment 4 rules 1–4 decide the rest.
+3. If the W14b stack fails rule 3 of amendment 4, the same comparison is made between the corresponding single arms (`a4-r16-n16-r10` against `a4-w14b-n16-r10`).
+
+The word caches for the 1,000 under W14b keep building. An R16 cache for the 1,000 is built only if R16 wins.
