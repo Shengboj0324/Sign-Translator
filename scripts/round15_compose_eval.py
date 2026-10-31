@@ -115,6 +115,7 @@ SETTINGS = ("clips", "shards", "block", "seed", "mix_key", "mix_sha256", "corpor
             "tighten_cores", "space_stats", "refiner", "extra_translators", "round20")
 REST_ONLY = "/rest_only"
 PREDICTED = "@predicted"             # round 20, report-only: the main form at the text-predicted sentence duration
+BLANK_PREDICTED = f"blank{PREDICTED}"  # the blank at the same predicted length (blank BLEU depends on the frame count)
 LOWPASS = "@lowpass"                 # round 20 A6: the main form low-passed, from the same material
 REFINED, RECON = "@refined", "@recon"
 INSTRUMENT = "sign-recognizer-v3d"   # the spotting instrument of the refined rule (recogniser v3 amendment 2)
@@ -429,9 +430,10 @@ def check_duration_model(fitted: dict, pin: str | None) -> None:
 
 def predicted_report(rows, variants, texts, settings: dict) -> dict:
     """``{"predicted_timing": ...}`` when the forms include ``<variant>@predicted``, else ``{}``. Report-only. Per such
-    form, over the clips rendered at the predicted length (a clip without words stays its blank at the reference's
-    length, counted apart): predicted over true length (pooled, per-clip mean and median, the share shorter than true),
-    the plan fits, and the hypotheses' length over the references' beside the main form's, real's and blank's."""
+    form: the count of clips with no selected word (each is ``blank@predicted``, so the form is text-only throughout);
+    over the clips with words, predicted over true length (pooled, per-clip mean and median, the shares shorter than true
+    and above twice true) and the plan fits; over all clips, the hypotheses' length over the references' beside the main
+    form's, real's and both blanks'."""
     from sentence_exposure_diagnostic import bleu_stats
     from signtranslator.eval.s0_metrics import length_ratio
     forms = {}
@@ -446,14 +448,15 @@ def predicted_report(rows, variants, texts, settings: dict) -> dict:
         true = np.array([r["frames_reference"] for r in timed], dtype=float)
         ratio = predicted / true
         forms[name] = dict(
-            clips=len(timed), blank_clips_at_reference_length=len(rows) - len(timed),
+            clips_with_words=len(timed), wordless_clips=len(rows) - len(timed),
             seconds_over_reference=dict(pooled=round(float(predicted.sum() / true.sum()), 4),
                                         mean_per_clip=round(float(ratio.mean()), 4),
                                         median_per_clip=round(float(np.median(ratio)), 4),
-                                        shorter_than_reference=round(float((ratio < 1).mean()), 4)),
+                                        shorter_than_reference=round(float((ratio < 1).mean()), 4),
+                                        over_twice_reference=round(float((ratio > 2).mean()), 4)),
             fits=dict(collections.Counter(r["plans"][v]["predicted"]["fit"] for r in timed)),
             hypothesis_length_ratio={n: length_ratio(bleu_stats([r["hypotheses"][n] for r in rows], texts))
-                                     for n in (name, v, "real", "blank")})
+                                     for n in (name, v, "real", "blank", BLANK_PREDICTED)})
     if not forms:
         return {}
     s = settings.get("round20") or {}
@@ -681,11 +684,14 @@ def run(args) -> dict:
             if "duration_model" not in r20_info:
                 r20_info["duration_model"] = fit_duration_model(manifest)
                 check_duration_model(r20_info["duration_model"], args.expect_duration_model)
+            if BLANK_PREDICTED not in forms:           # as compositional_grammar's plans round a total to frames
+                forms[BLANK_PREDICTED] = {i: held(blanks[i], max(1, int(round(
+                    predicted_seconds(r20_info["duration_model"], texts[i]) * FPS)))) for i in mine}
             states = {}
             for i in mine:
                 job = jobs[(v, "", i)]
                 if job is None:
-                    states[i] = blanks[i]
+                    states[i] = forms[BLANK_PREDICTED][i]
                     continue
                 states[i], fp = render_round20(args, material[(v, "", i)], job,
                                                predicted_seconds(r20_info["duration_model"], texts[i]), model, vocab,
@@ -796,7 +802,7 @@ def run(args) -> dict:
             other = sws.score_form([pred], [spot_words[(i + 1) % n]], index)[0]
             spot[v][i] = dict(own=own, mismatched=other)
     motion = {name: dict(zip(mine, motion_rows([states[i] for i in mine], [refs[i] for i in mine], translator_fps)))
-              for name, states in forms.items() if name != "blank"}
+              for name, states in forms.items() if name not in ("blank", BLANK_PREDICTED)}
     clock["scoring"] = time.time()
     rows = []
     for i in mine:
@@ -812,6 +818,8 @@ def run(args) -> dict:
                                      for block, c in (("matched", ""), ("mismatched_words", "/mismatched_words"))
                                      if (v, c, i) in material}
                                  for v in variants if v in r2.GENERATED} if args.rerank > 1 else None,
+                         **({"frames_blank_predicted": len(forms[BLANK_PREDICTED][i].timestamps)}
+                            if BLANK_PREDICTED in forms else {}),
                          **({"likelihood": likelihood[i]} if likelihood is not None else {})))
     settings = dict(clips=n, shards=args.shards, block=args.block, seed=args.seed, mix_key=args.mix_key,
                     mix_sha256=args.mix_sha256, corpora=list(corpora), variants=variants, selection=args.selection,
@@ -923,7 +931,8 @@ def merge(args, store) -> dict:
     pairs = form_pairs(variants, paired, refined=refined)
     for v in variants:                                 # round 20, report-only: present only with --predicted-duration
         if f"{v}{PREDICTED}" in hyps:
-            pairs[f"{v}{PREDICTED}"] = {"end_to_end": "end_to_end", "reference_duration": v}
+            pairs[f"{v}{PREDICTED}"] = {"end_to_end": "end_to_end", "reference_duration": v,
+                                        "blank_at_predicted_length": BLANK_PREDICTED}
         if f"{v}{LOWPASS}" in hyps:
             pairs[f"{v}{LOWPASS}"] = {"end_to_end": "end_to_end", "unfiltered": v}
     for flag, cs, names in (("--rule", checks, variants),
@@ -951,8 +960,8 @@ def merge(args, store) -> dict:
                 [r["spotting"][f"{v}{PREDICTED}"]["own"] for r in rows], [r["spotting"][v]["own"] for r in rows])
     motion = {name: mean_statistics([r["motion"][name] for r in rows]) for name in rows[0]["motion"]}
     motion_ratio = {name: ratio_to(m, motion["real"]) for name, m in motion.items()}
-    verdicts = {v: r2.verdict(checks, scores[v], spotting[v]["recall"], spotting[f"{v}_mismatched"]["recall"])
-                for v in variants}
+    verdicts = {} if args.report_only else {
+        v: r2.verdict(checks, scores[v], spotting[v]["recall"], spotting[f"{v}_mismatched"]["recall"]) for v in variants}
     if refined:
         verdicts.update({f"{v}{REFINED}": r2.verdict(refined_checks, scores[f"{v}{REFINED}"],
                                                      spotting[f"{v}{REFINED}"]["recall"],
@@ -969,7 +978,7 @@ def merge(args, store) -> dict:
     declared = (dict(declared_replacement=args.declared_replacement,
                      set_read="the set's second read of Round 20, declared by that plan commit; the first read stays on record")
                 if getattr(args, "declared_replacement", None) else {})
-    return dict(kind="round15-compose-eval", **declared, **extra, settings=s, clips=n, references=texts, signs=merged["signs"], indexing=INDEXING,
+    return dict(kind="round15-compose-eval", **({"report_only": True} if args.report_only else {}), **declared, **extra, settings=s, clips=n, references=texts, signs=merged["signs"], indexing=INDEXING,
                 shards=sorted(p["shard"] for p in partials), stage1_check=partials[0]["stage1_check"],
                 comparators=comparators, rule=args.rule, rule_checks=checks, bootstrap=args.bootstrap, forms=scores,
                 **(dict(refined_rule=args.refined_rule, refined_rule_checks=refined_checks, refiner=s["refiner"],
@@ -1195,9 +1204,9 @@ def main(argv=None) -> int:
                    "under the back-translator, every form (and its deranged reference)")
     g.add_argument("--predicted-duration", action="store_true", help="report-only <variant>@predicted forms: the main "
                    "form's words and plan rule (under any --retime) at a text-predicted sentence duration (How2Sign train "
-                   "least squares on tokens), with spotting and motion; the main form and its controls keep the reference "
-                   "duration; a sentence with no selected word stays its blank clip at the reference duration, as in "
-                   "every form")
+                   "least squares on tokens), with spotting and motion, and blank@predicted, the blank at that length "
+                   "(a sentence with no selected word is that blank in @predicted); the main form and its controls keep "
+                   "the reference duration")
     g.add_argument("--expect-duration-model", help="INTERCEPT,SLOPE,RECORDS: stop unless --predicted-duration's fit is on "
                    "How2Sign train with exactly these")
     g.add_argument("--semlex-oracle-tracked", action="store_true", help="oracle_stage2: draw a Sem-Lex-only entry's "
@@ -1220,6 +1229,8 @@ def main(argv=None) -> int:
     m.add_argument("--bootstrap", type=int, default=1000)
     m.add_argument("--declared-replacement", help="round 20 Phase B: the plan commit of the amendment that declares this arm a "
                    "replacement of another on the same set; recorded in the report")
+    m.add_argument("--report-only", action="store_true", help="round 20 a10: nothing adopts from this report: report_only "
+                   "true at its top level and no verdicts (refused with --rule or --refined-rule)")
     for q in (r, m):
         q.add_argument("--store", default="r2", help="r2, or dir:/path (tests)")
         q.add_argument("--output-key")
@@ -1267,6 +1278,8 @@ def main(argv=None) -> int:
     else:
         if not (args.shard_keys or args.shard_files):
             p.error("give --shard-keys or --shard-files")
+        if args.report_only and (args.rule or args.refined_rule):
+            p.error("--report-only has no rule")
         payload = merge(args, store)
         summary(payload)
     _write(store, args, payload)

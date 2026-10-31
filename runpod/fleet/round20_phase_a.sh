@@ -38,10 +38,13 @@
 #                the adopted arm. ARM=gains (a4's W14b n16, from cache-w14b-r10) or nogains (a9's, from
 #                cache-w14b-nogains-r10), a4's or a9's options plus
 #                --predicted-duration. core_crossfade and its controls stay at each reference's true length, so the main form
-#                is the stored read's: its per-clip motion must equal the stored shard's exactly on every clip this run read,
-#                or ALERT, no merge. core_crossfade@predicted has the same words and sign-fitted plan filling
-#                round(predicted seconds x 24) frames (its comparators: blank, deranged references, reference_duration; no
-#                /shuffled or /mismatched_words of its own). SMOKE=1: the stored cache's words on the first 5 clips
+#                is the stored read's: every stored form's per-clip motion and the plans must equal the stored shard's exactly
+#                on every clip this run read, or ALERT, no merge; main-form hypotheses that differ ALERT without stopping (the
+#                count is in $NAME-reproduces.json, and comparisons inside this run stay paired). core_crossfade@predicted has
+#                the same words and sign-fitted plan filling round(predicted seconds x 24) frames; a clip with no word is
+#                blank@predicted, the blank at that length. Its comparators: blank@predicted and the true-length blank, deranged
+#                references, reference_duration; no /shuffled or /mismatched_words of its own.
+#                SMOKE=1 READS 5 REAL D20 CLIPS with both instruments, from the stored caches, under smoke/; nothing decides on them
 # a4 and a9 take PRIOR=w14b (default, keys as above) or PRIOR=r16 (amendment 5): a4-r16-$ARM-$VOCAB from cache-r16-$VOCAB, and
 #                a9-r16-nogains-$ARM-$VOCAB from cache-r16-nogains-$VOCAB; the same options
 # Comparisons (CPU, seconds): scripts/round20_compare.py forms --a KEY:FORM --b KEY:FORM (paired BLEU + likelihood).
@@ -231,11 +234,20 @@ case $PHASE in
       exists $PART || python scripts/round15_compose_eval.py run $BASE --variants core_crossfade $VMIX --word-cache-key $IDX \
         --word-cache-sha256 $IDXSHA --word-cache-n 16 --recognizer-run sign-recognizer-v2 $LP --predicted-duration \
         --expect-duration-model=-0.083,0.3691,18289 --output-key $PART || die "run $NAME"
-      exists $CHECK || python scripts/round20_compare.py same-codes --a $PART --b $READ-shard0.json --form core_crossfade \
-        --first $CLIPS --output-key $CHECK || die "a10: the main form differs from the stored $READ, nothing merged"
+      echo "R20 a10 device $DEV, transformers $(python -c 'import transformers; print(transformers.__version__)')"
+      if ! exists $CHECK; then
+        python scripts/round20_compare.py same-codes --whole-read --a $PART --b $READ-shard0.json --form core_crossfade \
+          --first $CLIPS --output-key $CHECK
+        case $? in
+          0) ;;
+          3) echo "ALERT a10: main-form hypotheses differ from the stored $READ with equal motion; merging (counts in $CHECK)" ;;
+          *) die "a10: the read differs from the stored $READ, nothing merged" ;;
+        esac
+      fi
       PAIRED="--paired-with $READ.json"; [ "${SMOKE:-0}" = 1 ] && PAIRED=""   # a smoke's clips are not the stored report's
-      python scripts/round15_compose_eval.py merge --shard-keys $PART $PAIRED --output-key $MERGED || die "merge $NAME"
-      echo "R20 $NAME $MERGED $(sha $MERGED)"
+      python scripts/round15_compose_eval.py merge --report-only --shard-keys $PART $PAIRED --output-key $MERGED || die "merge $NAME"
+      HASH=$(sha $MERGED); [ -n "$HASH" ] || die "a10: no hash of $MERGED"
+      echo "R20 $NAME $MERGED $HASH"
     fi ;;
   a5)
     A=${A5_A:-$OUT/cache-r16-$VOCAB/index.json}; B=${A5_B:-$OUT/cache-w14b-$VOCAB/index.json}

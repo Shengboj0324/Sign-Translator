@@ -39,7 +39,8 @@ Validity, observation and confidence are unchanged.
 on their normalised token count; deployment cannot read the reference clip's duration, so the ``@predicted`` forms
 replace it by this text-only prediction, under either plan: the same words, with ``--retime reference`` the
 ``--timing`` plan and with ``--retime continuous`` the continuous plan, filling round(predicted x 24) frames. Only the
-sentence's total changes; the main form and its controls keep the reference's duration.
+sentence's total changes; the main form and its controls keep the reference's duration. A sentence with no selected word
+is the blank at the predicted length in that form, and ``blank@predicted`` is its comparator, so the form is text-only.
 """
 from __future__ import annotations
 

@@ -14,12 +14,19 @@ does not compare them). The **spotting guard** (``spotting_guard``, its 95% lowe
 withheld across word sources (real words against generated ones: the recogniser reads them with different biases), where a
 cached generated word counts as generated.
 
+A form with ``@predicted``, or a report marked ``report_only``, is compared as a read only: the output says ``report_only`` and
+has no ``rule``, ``both_improve`` or ``spotting_guard_lower_bound``, and ``@predicted`` likelihood is read against
+``blank@predicted`` where the report has it (``likelihood_minus_blank.blanks`` names the two).
+
 ``same-codes``: ``--a SHARD --b SHARD``: a short run's clips (a0's smoke) against the same clips of a stored run, before a
 paired re-decode (A7) relies on sampling the same codes. Exits non-zero unless ``--form``'s per-clip motion is exactly equal
 on the first ``--first`` clips and the two runs share their generation settings. Reports store no codes, so equality is
 necessary, not sufficient: only these clips are read, and a draw that changes neither the kept frames nor the keypoint
-statistics goes unseen. Phase a10 uses it with ``--first`` = every clip it read: its word-cache main form must be the stored
-a4 or a9 read's (the settings compared include the cache's hash and best-of-N).
+statistics goes unseen. ``--whole-read`` (phase a10: a word-cache run, ``--first`` = every clip it read, against the stored a4
+or a9 shard) also requires every stored form's motion and each clip's plans to be equal, apart from the run's @predicted rows
+and, between runs of different lengths, /mismatched_words (its partners follow the run's length). It records how many
+hypotheses of each form are identical; main-form hypotheses that differ exit 3 after the report is written, because the
+device or an unpinned ``transformers`` can move them without moving any motion.
 
 ``words``: two ``round20_word_cache.py`` indexes (``--a KEY``, ``--b KEY``; A5: two priors on the same entries)
 compared entry by entry over the entries labelled in both: the probability of the label, top-1 and top-5, on sample 0,
@@ -31,6 +38,7 @@ Writes JSON to ``--output-key`` / ``--output-file`` (write-once) or prints it.
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 from pathlib import Path
 import sys
@@ -61,6 +69,7 @@ def check_pairable(a: dict, b: dict) -> None:
         raise SystemExit(f"the two reports are not paired: other {', '.join(differ)}")
 
 
+PREDICTED = "@predicted"
 SPOTTING_RECOGNISER = "sign-recognizer-v2"
 SOURCE_NOTE = ("meaningful only between forms of the same word source: real words and generated words are read by the "
                "recogniser with different biases")
@@ -113,7 +122,12 @@ def spotting_guard(a: dict, form_a: str, b: dict, form_b: str, shards_a, shards_
                 a=paired_mean(ra, boot=boot), b=paired_mean(rb, boot=boot), difference=d, note=SOURCE_NOTE)
 
 
-def same_codes_check(short: dict, stored: dict, form: str = "core_crossfade", *, first: int = 5) -> dict:
+def plans_without_predicted(row: dict) -> dict:
+    return {v: {k: x for k, x in plan.items() if k != "predicted"} for v, plan in row.get("plans", {}).items()}
+
+
+def same_codes_check(short: dict, stored: dict, form: str = "core_crossfade", *, first: int = 5,
+                     whole_read: bool = False) -> dict:
     """Stop unless the short run's first clips are the stored run's and read exactly the same (module docstring)."""
     wrong = []
     sa, sb = short.get("settings") or {}, stored.get("settings") or {}
@@ -127,6 +141,8 @@ def same_codes_check(short: dict, stored: dict, form: str = "core_crossfade", *,
         wrong.append(f"--first {first}: the runs have {sa.get('clips')} and {sb.get('clips')} clips")
     clips_a, clips_b = ({r["clip"]: r for r in x.get("clips", [])} for x in (short, stored))
     words = 0
+    identical, main_differ, compared = collections.Counter(), [], set()
+    same_length = sa.get("clips") == sb.get("clips")
     for i in range(first):
         x, y = clips_a.get(i), clips_b.get(i)
         if x is None or y is None:
@@ -142,12 +158,30 @@ def same_codes_check(short: dict, stored: dict, form: str = "core_crossfade", *,
             for k in sorted(set(mx) | set(my)):      # by repr: exact, and NaN equals NaN
                 if repr(mx.get(k)) != repr(my.get(k)):
                     wrong.append(f"clip {i} motion.{form}.{k}: {mx.get(k)!r} against {my.get(k)!r}")
+        if whole_read:
+            read = [n for n in y.get("motion", {}) if n != form and (same_length or not n.endswith("/mismatched_words"))]
+            compared.update(read)
+            for n in read:
+                ma, mb = x.get("motion", {}).get(n), y["motion"][n]
+                if repr(ma) != repr(mb):
+                    wrong.append(f"clip {i} motion.{n}: {ma!r} against {mb!r}")
+            if repr(plans_without_predicted(x)) != repr(plans_without_predicted(y)):
+                wrong.append(f"clip {i} plans: {plans_without_predicted(x)!r} against {plans_without_predicted(y)!r}")
+            for n, h in y.get("hypotheses", {}).items():
+                if same_length or not n.endswith("/mismatched_words"):
+                    identical[n] += x.get("hypotheses", {}).get(n) == h
+            if x.get("hypotheses", {}).get(form) != y.get("hypotheses", {}).get(form):
+                main_differ.append(i)
         words += len(x.get("entries") or ())
     if not words and not wrong:
         wrong.append(f"no word in the first {first} clips: nothing was compared")
     if wrong:
         raise SystemExit("not the same codes: " + "; ".join(wrong[:20]))
-    return dict(same=True, form=form, clips=first, words=words)
+    out = dict(same=True, form=form, clips=first, words=words)
+    if whole_read:
+        out.update(controls_compared=sorted(compared), plans_compared=True, hypotheses_identical=dict(identical),
+                   main_hypotheses_differ=main_differ)
+    return out
 
 
 def report_shards(store, key: str, report: dict, given: str | None):
@@ -169,6 +203,11 @@ def provenance(report: dict) -> dict:
                 vocabulary_mix_key=((s.get("round20") or {}).get("vocabulary_mix") or {}).get("key"))
 
 
+def blank_of(form: str, likelihood: dict) -> str:
+    """The blank a form's likelihood is read against: the one at its own length where the report has it."""
+    return f"blank{PREDICTED}" if PREDICTED in form and f"blank{PREDICTED}" in likelihood else "blank"
+
+
 def compare_forms(a: dict, form_a: str, b: dict, form_b: str, *, boot: int = 1000, shards_a=None, shards_b=None) -> dict:
     from sentence_exposure_diagnostic import paired_bleu_difference
     from round20_lib import paired_mean
@@ -182,17 +221,21 @@ def compare_forms(a: dict, form_a: str, b: dict, form_b: str, *, boot: int = 100
     out = dict(sentences=len(refs), a=dict(form=form_a, bleu=a["forms"][form_a]["bleu"], **provenance(a)),
                b=dict(form=form_b, bleu=b["forms"][form_b]["bleu"], **provenance(b)), bleu=bleu)
     la, lb = (r.get("likelihood", {}).get("per_form", {}) for r in (a, b))
-    if form_a in la and form_b in lb and "blank" in la and "blank" in lb:
-        da = [None if x is None or y is None else x - y for x, y in zip(la[form_a], la["blank"])]
-        db = [None if x is None or y is None else x - y for x, y in zip(lb[form_b], lb["blank"])]
+    blank_a, blank_b = blank_of(form_a, la), blank_of(form_b, lb)
+    if form_a in la and form_b in lb and blank_a in la and blank_b in lb:
+        da = [None if x is None or y is None else x - y for x, y in zip(la[form_a], la[blank_a])]
+        db = [None if x is None or y is None else x - y for x, y in zip(lb[form_b], lb[blank_b])]
         out["likelihood_minus_blank"] = dict(a=paired_mean(da, boot=boot), b=paired_mean(db, boot=boot),
-                                             difference=paired_mean(da, db, boot=boot))
+                                             difference=paired_mean(da, db, boot=boot), blanks=[blank_a, blank_b])
     ll = out.get("likelihood_minus_blank", {}).get("difference")
+    guard = out["spotting_guard"] = spotting_guard(a, form_a, b, form_b, shards_a, shards_b, boot=boot)
+    if a.get("report_only") or b.get("report_only") or PREDICTED in form_a or PREDICTED in form_b:
+        out.update(report_only=True, note="report-only: predicted timing is a read, and no rule applies to it")
+        return out
     out["both_improve"] = bool(bleu["difference"] > 0 and ll is not None and ll["difference"] > 0)
     out["rule"] = "adopt only if both point estimates (paired BLEU, likelihood minus blank) are above 0"
     if ll is None:
         out["note"] = "no likelihood in one of the reports (run with --likelihood): the rule cannot be applied"
-    guard = out["spotting_guard"] = spotting_guard(a, form_a, b, form_b, shards_a, shards_b, boot=boot)
     out["spotting_guard_lower_bound"] = guard["difference"]["ci95"][0] if guard["available"] else None
     return out
 
@@ -237,6 +280,8 @@ def main(argv=None) -> int:
     p.add_argument("--b-shard-keys", help="forms: report b's shards")
     p.add_argument("--form", default="core_crossfade", help="same-codes: the form whose motion is compared")
     p.add_argument("--first", type=int, default=5, help="same-codes: how many first clips")
+    p.add_argument("--whole-read", action="store_true", help="same-codes: also every stored form's motion and the plans, "
+                   "counting identical hypotheses; main-form hypotheses that differ exit 3 after the report is written")
     p.add_argument("--bootstrap", type=int, default=1000)
     p.add_argument("--store", default="r2")
     p.add_argument("--output-key")
@@ -256,7 +301,8 @@ def main(argv=None) -> int:
                             shards_b=report_shards(store, kb, rb, args.b_shard_keys))
         out.update(a_key=ka, b_key=kb)
     elif args.mode == "same-codes":
-        out = same_codes_check(json.loads(store.get(args.a)), json.loads(store.get(args.b)), args.form, first=args.first)
+        out = same_codes_check(json.loads(store.get(args.a)), json.loads(store.get(args.b)), args.form, first=args.first,
+                               whole_read=args.whole_read)
         out.update(a_key=args.a, b_key=args.b)
     else:
         out = compare_words(json.loads(store.get(args.a)), json.loads(store.get(args.b)), boot=args.bootstrap)
@@ -268,7 +314,7 @@ def main(argv=None) -> int:
     if args.output_key:
         store.put(args.output_key, data)
     print(data.decode(), flush=True)
-    return 0
+    return 3 if out.get("main_hypotheses_differ") else 0
 
 
 if __name__ == "__main__":
