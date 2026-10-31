@@ -165,3 +165,146 @@ def test_run_pins_the_model_and_takes_a_generator_mix(tmp_path, stage2_store):  
     with pytest.raises(SystemExit, match="differs"):
         ce.main(run_args(tmp_path, sha, "--clips", "5", "--stage1-report-key", "bad.json", "--output-file",
                          str(tmp_path / "z.json")))
+
+
+# ---- composed-state export -----------------------------------------------------------------------------------------
+
+def export_setup(tmp_path, store, sha, monkeypatch, *, signs_of=(1, 3)):
+    """A D20-like set, a word cache on it, and a named sentence list. {args of a composition from the cache}."""
+    import hashlib
+    import torch
+    import numpy as np
+    import validate_sign_recognizer as vsr
+    from scripts.round20_word_cache import main as cache_main
+    from tests.test_round20_eval import put_set, manifest_of
+    import scripts.round20_lib as lib
+    set_sha, _ = put_set(store, sha, order=(4, 2, 0, 3))
+    labels = ["CUT", "ONION", "SALT", "HEAT", "KNIFE", "HALF", "NOW"]
+    monkeypatch.setattr(vsr, "load_model", lambda store, run, device: (None, labels, {"checkpoint_key": "r.pt"}))
+
+    def logits(model, states, device, batch=64):
+        out = []
+        for s in states:
+            rh = s.channels["right_hand"]
+            level = float(np.abs(rh.values[rh.valid]).mean()) if rh.valid.any() else 0.
+            out.append(torch.tensor([np.sin(level * (k + 3) * 50.) for k in range(len(labels))]))
+        return torch.stack(out)
+    monkeypatch.setattr(vsr, "logits_of", logits)
+    assert cache_main(["run", "--store", f"dir:{tmp_path / 'store'}", "--prefix", "cache/w", "--mix-key", "mix.json",
+                       "--mix-sha256", sha, "--sentences-key", "sets/d20.json", "--sentences-sha256", set_sha,
+                       "--clips", "4", "--checkpoint-key", "prior.pt", "--samples", "3", "--choose", "1,3",
+                       "--device", "cpu"]) == 0
+    assert cache_main(["merge", "--store", f"dir:{tmp_path / 'store'}", "--prefix", "cache/w"]) == 0
+    cache_sha = hashlib.sha256(store.get("cache/w/index.json")).hexdigest()
+    pool = lib.validation_pool(manifest_of(store, sha))
+    order = [pool[k]["sign"] for k in (4, 2, 0, 3)]
+    listed = [order[k] for k in signs_of]
+    listing = tmp_path / "list.json"
+    listing.write_text(json.dumps(dict(name="rater-test", signs=listed)))
+    list_sha = hashlib.sha256(listing.read_bytes()).hexdigest()
+    args = [a for a in run_args(tmp_path, sha) if a not in ("--checkpoint-key", "prior.pt")]
+    args[args.index("core_crossfade,oracle_stage2")] = "core_crossfade"
+    args += ["--clips", "4", "--sentences-key", "sets/d20.json", "--sentences-sha256", set_sha,
+             "--word-cache-key", "cache/w/index.json", "--word-cache-sha256", cache_sha, "--word-cache-n", "3"]
+    export = ["--export-arm", "arm-a", "--export-sentences-file", str(listing), "--export-sentences-sha256", list_sha]
+    return args, export, dict(cache_sha=cache_sha, set_sha=set_sha, list_sha=list_sha, listed=listed, order=order,
+                              listing=listing)
+
+
+def without_seconds(report):
+    return {k: v for k, v in report.items() if k != "seconds"}
+
+
+def test_the_export_records_arm_cache_and_seeds_and_changes_nothing_else(tmp_path, stage2_store, monkeypatch):  # noqa: F811
+    import hashlib
+    from evaluate_text_to_motion import load_state
+    store, sha, s1, oracle, argv = stage2_store
+    args, export, info = export_setup(tmp_path, store, sha, monkeypatch)
+    assert ce.main(args + ["--output-key", "e/plain.json"]) == 0
+    assert ce.main(args + ["--export-prefix", "x/full", *export, "--output-key", "e/full.json"]) == 0
+    plain, full = json.loads(store.get("e/plain.json")), json.loads(store.get("e/full.json"))
+    assert without_seconds(plain) == without_seconds(full)                 # the report does not know about the export
+    index = json.loads(store.get("x/full/index.json"))
+    assert index["kind"] == "round15-composed-states" and index["arm"] == "arm-a"
+    assert index["sentences"] == dict(name="rater-test", sha256=info["list_sha"], listed=2)
+    assert index["sentence_set"]["sha256"] == info["set_sha"] and index["sentence_set"]["set"] == "D20"
+    assert index["word_cache"]["sha256"] == info["cache_sha"] and index["word_cache"]["n"] == 3
+    assert index["settings"]["guidance"] == 1.5 and index["settings"]["timing"] == "sign-fitted"
+    assert index["model_sha256"] == plain["settings"]["model_sha256"]
+    assert sorted(r["sign"] for r in index["states"]) == sorted(info["listed"])
+    picks = {r["entry"]: r["chosen"]["3"] for r in json.loads(store.get("cache/w/index.json"))["entries"]}
+    by_clip = {r["clip"]: r for r in plain["clips"]}
+    assert len(index["states"]) == 2
+    for row in index["states"]:
+        assert row["sign"] == info["order"][row["clip"]] and row["form"] == "core_crossfade" and not row["empty"]
+        payload = store.get(row["state_key"])
+        assert hashlib.sha256(payload).hexdigest() == row["state_sha256"]
+        state = load_state(store, row["state_key"], row["state_sha256"])
+        assert len(state.timestamps) == row["frames"] == row["reference_frames"]
+        assert [w["word"] for w in row["words"]] == by_clip[row["clip"]]["entries"]
+        assert row["words"]
+        for w in row["words"]:
+            pick = picks[w["word"]]
+            assert w["seed"] == pick["seed"] is not None and w["sample"] == pick["index"]
+            assert w["clip_key"] == pick["state_key"] and w["clip_sha256"] == pick["state_sha256"]
+    # export only: the same states, bit for bit, without an instrument
+    monkeypatch.setattr(ce, "SPOT", None)                                   # spotting would fail if reached
+    assert ce.main(args + ["--export-prefix", "x/only", *export, "--export-only", "--export-forms", "core_crossfade",
+                           "--output-file", str(tmp_path / "only.json")]) == 0
+    only = json.loads((tmp_path / "only.json").read_text())
+    assert only["kind"] == "round15-composed-states" and json.loads(store.get("x/only/index.json")) == only
+    assert ([(r["sign"], r["state_sha256"], r["words"]) for r in only["states"]]
+            == [(r["sign"], r["state_sha256"], r["words"]) for r in index["states"]])
+    # write once
+    with pytest.raises(SystemExit, match="refusing to overwrite"):
+        ce.main(args + ["--export-prefix", "x/only", *export, "--output-file", str(tmp_path / "again.json")])
+
+
+def test_the_export_is_refused_when_it_cannot_be_trusted(tmp_path, stage2_store, monkeypatch):  # noqa: F811
+    store, sha, s1, oracle, argv = stage2_store
+    args, export, info = export_setup(tmp_path, store, sha, monkeypatch)
+    out = ["--output-file", str(tmp_path / "x.json")]
+    with pytest.raises(SystemExit):                                        # options without the prefix
+        ce.main(args + export + out)
+    with pytest.raises(SystemExit):                                        # the prefix without its options
+        ce.main(args + ["--export-prefix", "x/a"] + out)
+    with pytest.raises(SystemExit):                                        # one shard only
+        ce.main(args + ["--export-prefix", "x/a", *export, "--shards", "2"] + out)
+    no_set = [a for a in args]
+    k = no_set.index("--sentences-key")
+    del no_set[k:k + 4]
+    with pytest.raises(SystemExit):                                        # only from a stored set
+        ce.main(no_set + ["--export-prefix", "x/a", *export] + out)
+    with pytest.raises(SystemExit):                                        # a form the run does not make
+        ce.main(args + ["--export-prefix", "x/a", *export, "--export-forms", "core_crossfade@predicted"] + out)
+    bad = list(export)
+    bad[bad.index(info["list_sha"])] = "0" * 64
+    with pytest.raises(SystemExit, match="does not match"):
+        ce.main(args + ["--export-prefix", "x/a", *bad] + out)
+    import hashlib
+    outside = tmp_path / "outside.json"
+    outside.write_text(json.dumps(dict(name="x", signs=["clip-not-in-the-set"])))
+    other = list(export)
+    other[other.index(str(info["listing"]))] = str(outside)
+    other[other.index(info["list_sha"])] = hashlib.sha256(outside.read_bytes()).hexdigest()
+    with pytest.raises(SystemExit, match="not in this run's set"):
+        ce.main(args + ["--export-prefix", "x/a", *other] + out)
+    assert not store.exists("x/a/index.json")
+
+
+def test_a_sentence_with_no_word_is_exported_as_empty(tmp_path, stage2_store, monkeypatch):  # noqa: F811
+    store, sha, s1, oracle, argv = stage2_store
+    args, export, info = export_setup(tmp_path, store, sha, monkeypatch)
+    real = ce.stage1_selection
+
+    def no_words_for_the_first_listed(texts, vocab):
+        details, words = real(texts, vocab)
+        k = info["order"].index(info["listed"][0])
+        details[k], words[k] = [], []
+        return details, words
+    monkeypatch.setattr(ce, "stage1_selection", no_words_for_the_first_listed)
+    assert ce.main(args + ["--export-prefix", "x/e", *export, "--export-only", "--output-file",
+                           str(tmp_path / "e.json")]) == 0
+    rows = {r["sign"]: r for r in json.loads((tmp_path / "e.json").read_text())["states"]}
+    assert rows[info["listed"][0]]["empty"] is True and rows[info["listed"][0]]["words"] == []
+    assert rows[info["listed"][1]]["empty"] is False

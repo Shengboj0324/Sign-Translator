@@ -93,6 +93,15 @@ differences (``score_forms``) of each variant against its controls and the other
 order) and against ``--paired-with`` (another merged report on the same clips: each variant against the same variant
 there, ``paired_<variant>``); the declared rule (``--rule``); spotting recall against its mismatched control (and the
 paired difference); motion statistics with wrist speed as ratios to real.
+
+**--export-prefix** (for the rater packet, ``scripts/build_human_eval_packet.py how2sign-packet``; off by default, and
+then nothing in the run or its report changes): the run saves each composed state of a named sentence list, write-once,
+as ``<prefix>/states/<sign hash>-<form>.npz``, and ``<prefix>/index.json`` records per state its hash, the arm
+(``--export-arm``), the word cache's key and hash, and each word's seed, sample and clip hash; the run's options are in
+``settings``. It needs a stored ``--sentences-key`` set (positions, so the composition, are that set's) and one shard.
+The report is unchanged by the option. ``--export-only`` stops after the export: only the listed clips' forms are composed
+and nothing is read by an instrument; the states are the full run's, bit for bit. A sentence with no selected word has
+no signing (it is its blank clip in every read): its row says ``empty``, and the packet builder refuses it.
 """
 from __future__ import annotations
 
@@ -526,6 +535,121 @@ def predicted_report(rows, variants, texts, settings: dict) -> dict:
     s = settings.get("round20") or {}
     return {"predicted_timing": dict(report_only=True, note="report-only: nothing is adopted from these forms",
                                      timing=PREDICTED_TIMING[s.get("retime", "reference")], forms=forms)}
+# ---- composed-state export (module docstring; off by default) --------------------------------------------------------
+
+def load_export_list(args, val) -> dict:
+    """The named sentence list (JSON with ``name`` and ``signs``), pinned by its hash; every sign must be in the run."""
+    import hashlib
+    payload = Path(args.export_sentences_file).read_bytes()
+    sha = hashlib.sha256(payload).hexdigest()
+    if sha != args.export_sentences_sha256:
+        raise SystemExit(f"{args.export_sentences_file} does not match --export-sentences-sha256")
+    listing = json.loads(payload)
+    signs = list(listing["signs"])
+    if not signs or len(set(signs)) != len(signs):
+        raise SystemExit("the export list is empty or repeats a sentence")
+    known = {r["sign"] for r in val}
+    outside = sorted(s for s in signs if s not in known)
+    if outside:
+        raise SystemExit(f"{len(outside)} listed sentences are not in this run's set: {outside[:5]}")
+    return dict(name=listing["name"], sha256=sha, signs=frozenset(signs))
+
+
+def word_provenance(segments, picks) -> list[dict]:
+    """Each word of a composed form: its core cut and where its clip came from. A cached word: the cache's chosen
+    sample from ``picks`` (seed, index, stored clip); otherwise the segment's own seed."""
+    out = []
+    for s in segments:
+        row = dict(word=s["word"], lo=s.get("lo"), hi=s.get("hi"), reason=s.get("reason"), seed=s.get("seed"),
+                   **{k: s[k] for k in ("sign", "corpus") if k in s})        # oracle words: the real clip's source
+        if s.get("cached"):
+            pick = picks[s["word"]]
+            row.update(seed=pick["seed"], sample=pick["index"], clip_key=pick["state_key"],
+                       clip_sha256=pick["state_sha256"])
+        out.append(row)
+    return out
+
+
+def export_states(store, args, export, forms, jobs, material, val, plans_out, refs, *, model, corpora, sentence_set,
+                  generator_mix, word_cache) -> dict:
+    """Save each form of the listed clips and write the index (module docstring); returns the index."""
+    import hashlib
+    picks = None
+    if word_cache:                                   # the same bytes load_word_cache checked
+        payload = store.get(args.word_cache_key)
+        if hashlib.sha256(payload).hexdigest() != args.word_cache_sha256:
+            raise SystemExit(f"{args.word_cache_key} does not match --word-cache-sha256")
+        picks = {r["entry"]: r["chosen"][str(args.word_cache_n)] for r in json.loads(payload)["entries"]}
+    rows = []
+    for name in [f for f in (args.export_forms or args.variants).split(",") if f]:
+        variant = name.split("@")[0]
+        tag = name.replace("@", "-").replace("/", "-")
+        for i in sorted(forms[name]):
+            if val[i]["sign"] not in export["signs"]:
+                continue
+            job = jobs[(variant, "", i)]
+            key = (f"{args.export_prefix}/states/"
+                   f"{hashlib.sha256(val[i]['sign'].encode()).hexdigest()[:20]}-{tag}.npz")
+            with tempfile.TemporaryDirectory() as t:
+                path = Path(t) / "s.npz"
+                sha = forms[name][i].save(path)
+                data = path.read_bytes()
+            if store.exists(key):
+                if hashlib.sha256(store.get(key)).hexdigest() != sha:
+                    raise SystemExit(f"{key} exists with other content: written once")
+            else:
+                store.put(key, data)
+            plan = plans_out[i].get(variant) or {}
+            if name.endswith(PREDICTED):
+                plan = plan.get("predicted") or {}
+            rows.append(dict(clip=i, sign=val[i]["sign"], text=val[i]["text"], form=name, empty=job is None,
+                             state_key=key, state_sha256=sha, sample_id=forms[name][i].sample_id,
+                             frames=len(forms[name][i].timestamps), reference_frames=len(refs[i].timestamps),
+                             reference_sha256=val[i]["continuous"]["state_sha256"], fit=plan.get("fit"),
+                             overlong=plan.get("overlong"),
+                             words=([] if job is None
+                                    else word_provenance(material[(variant, "", i)]["segments"], picks))))
+    settings = {k: v for k, v in sorted(vars(args).items())
+                if k not in ("output_key", "output_file", "cache_dir", "store", "command", "export_prefix", "export_arm")}
+    index = dict(kind="round15-composed-states", arm=args.export_arm, prefix=args.export_prefix,
+                 sentences=dict(name=export["name"], sha256=export["sha256"], listed=len(export["signs"])),
+                 sentence_set=sentence_set, word_cache=word_cache, generator_mix=generator_mix,
+                 model_sha256=model["sha256"], corpora=list(corpora), settings=settings, indexing=INDEXING, states=rows)
+    data = json.dumps(index, indent=1, default=float).encode()
+    key = f"{args.export_prefix}/index.json"
+    if store.exists(key):
+        raise SystemExit(f"{key} appeared during the run: refusing to overwrite")
+    store.put(key, data)
+    print(f"{key} {hashlib.sha256(data).hexdigest()}", flush=True)
+    return index
+
+
+def export_errors(p, args, variants, store) -> None:
+    """Refuse export options that do not apply (before anything is loaded)."""
+    given = [flag for flag, on in (("--export-arm", args.export_arm),
+                                   ("--export-sentences-file", args.export_sentences_file),
+                                   ("--export-sentences-sha256", args.export_sentences_sha256),
+                                   ("--export-forms", args.export_forms), ("--export-only", args.export_only)) if on]
+    if not args.export_prefix:
+        if given:
+            p.error(f"{', '.join(given)}: given without --export-prefix")
+        return
+    if not (args.export_arm and args.export_sentences_file and args.export_sentences_sha256):
+        p.error("--export-prefix needs --export-arm, --export-sentences-file and --export-sentences-sha256")
+    if not args.sentences_key:
+        p.error("--export-prefix exports from a stored sentence set: give --sentences-key")
+    if args.shards != 1:
+        p.error("--export-prefix writes one index: one shard")
+    if args.export_only and (args.refiner_checkpoint_key or args.likelihood or args.also_translator_run):
+        p.error("--export-only reads nothing: not with a refiner, --likelihood or --also-translator-run")
+    for name in [f for f in args.export_forms.split(",") if f] if args.export_forms else variants:
+        variant, _, mark = name.partition("@")
+        known = variant in variants and (not mark or (mark == PREDICTED[1:] and args.predicted_duration)
+                                         or (mark == LOWPASS[1:] and args.lowpass_report_hz))
+        if not known:
+            p.error(f"--export-forms: {name} is not a form of this run")
+    if store.exists(f"{args.export_prefix}/index.json"):
+        raise SystemExit(f"{args.export_prefix}/index.json exists: refusing to overwrite")
 
 
 # ---- run -----------------------------------------------------------------------------------------------------------
@@ -638,6 +762,10 @@ def run(args) -> dict:
     reference_perm, content_perm = derangement(n, args.seed), derangement(n, args.seed + 1)
     orders = [shuffle_order(len(pl["entries"]), i, 0) for i, pl in enumerate(plans)]
     mine = shard_clips(n, args.shard, args.shards, args.block)
+    export = load_export_list(args, val) if getattr(args, "export_prefix", None) else None
+    export_only = bool(export) and args.export_only
+    if export_only:                                  # only the listed clips' forms; positions stay the whole set's
+        mine = [i for i in mine if val[i]["sign"] in export["signs"]]
     refs = {i: at_rate(load_state(store, val[i]["continuous"]["state_key"], val[i]["continuous"]["state_sha256"]), FPS)
             for i in mine}
     seconds = [float(refs[i].timestamps[-1] - refs[i].timestamps[0]) + 1 / FPS if i in refs else 1. for i in range(n)]
@@ -645,7 +773,7 @@ def run(args) -> dict:
     overlap = crossfade_frames(.15)                                  # stage 1's 4 frames
     jobs = r2.plan_jobs(variants, plans, content_perm, orders, seconds=seconds, vocab=vocab, timing=args.timing,
                         overlap=overlap)
-    jobs = {k: j for k, j in jobs.items() if k[2] in refs}
+    jobs = {k: j for k, j in jobs.items() if k[2] in refs and (k[1] == "" or not export_only)}
     margin = args.core_margin if args.core_margin is not None else (.1 if args.timing == "sign-fitted" else 0.)
     rule = dict(CORE_RULE, margin=margin)
     fractions = fit.sign_fractions(vmanifest, vocab) if args.timing == "sign-fitted" else None
@@ -780,7 +908,7 @@ def run(args) -> dict:
     forms = {"real": dict(refs), "blank": blanks}
     plans_out = {i: {} for i in mine}
     refining = bool(args.refiner_checkpoint_key)
-    controls = CONTROLS + ((REST_ONLY,) if refining else ())
+    controls = ("",) if export_only else CONTROLS + ((REST_ONLY,) if refining else ())
     for v in variants:
         for c in controls:
             states = {}
@@ -850,6 +978,12 @@ def run(args) -> dict:
             comp_motion[i]["real"] = motion_row(refs[i])
             if REAL_SCALED in forms:
                 comp_motion[i][REAL_SCALED] = motion_row(forms[REAL_SCALED][i])
+    if export:
+        exported = export_states(store, args, export, forms, jobs, material, val, plans_out, refs, model=model,
+                                 corpora=corpora, sentence_set=sentence_set, generator_mix=generator_mix,
+                                 word_cache=word_cache)
+        if export_only:
+            return exported
     refiner_info = None
     if refining:                     # every composed form refined, per global block (module docstring)
         from signtranslator.generation.refiner import load_refiner, load_target_index, refine_states, tokenize_state
@@ -1449,6 +1583,16 @@ def main(argv=None) -> int:
     q.add_argument("--hold-left-file", help="the committed statistics (scripts/comp_a_hold_stats.py): the left arm held across one-handed stretches")
     q.add_argument("--hold-left-sha256")
     q.add_argument("--comp-a-read", action="store_true", help="the margin-0 comparator's read: D20 only, report-only, per-side motion and contact, no other change")
+    e = r.add_argument_group("composed-state export (module docstring; off by default: the run and its report "
+                             "unchanged)")
+    e.add_argument("--export-prefix", help="store prefix: save each composed state of the listed sentences, write-once")
+    e.add_argument("--export-arm", help="the arm's name, recorded in the index")
+    e.add_argument("--export-sentences-file", help="JSON with name and signs: the named sentence list")
+    e.add_argument("--export-sentences-sha256")
+    e.add_argument("--export-forms", help="forms to save, comma-separated (default: every variant's main form; "
+                   "<variant>@predicted and <variant>@lowpass with their options)")
+    e.add_argument("--export-only", action="store_true", help="stop after the export: only the listed clips' forms, "
+                   "no instrument read; --output-file/--output-key receive the index")
     m = sub.add_parser("merge", help="combine the shards and score")
     m.add_argument("--shard-keys", default="")
     m.add_argument("--shard-files")
@@ -1485,6 +1629,7 @@ def main(argv=None) -> int:
         if any(v in r2.GENERATED for v in variants) and not (args.checkpoint_key or args.word_cache_key):
             p.error("--checkpoint-key is required for generated variants")
         round20_errors(p, args, variants)
+        export_errors(p, args, variants, store)
         if bool(args.generator_mix_key) != bool(args.generator_mix_sha256):
             p.error("--generator-mix-key and --generator-mix-sha256 go together")
         if args.timing != "asllrp" and args.total_fit != "pad":

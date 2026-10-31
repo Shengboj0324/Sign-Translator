@@ -5,6 +5,10 @@ problems are reported and left out, as are reviewers who answered sheets of two 
 The report gives per system: four-way comprehension choice (Wilson 95% interval, chance 25%), sentence-type / negation /
 topic recovery, naturalness (bootstrap interval), indicative BLEU of the free translations; each system against
 ``--reference`` paired by utterance (sign-flip permutation p); and Fleiss' kappa between reviewers of the same group.
+
+``--bar`` adds the release-bar read (``report["bar"]``, ``human_study.bar_read``): the declared terms only
+(docs/HUMAN_EVALUATION_PROTOCOL.md section 6, docs/NEXT_PHASE_PLAN.md "Rater read terms defined"), a pass or fail per
+condition and per system. Wrist speed, timing and unseen signers are read elsewhere, so it never allows a release.
 """
 from __future__ import annotations
 
@@ -16,7 +20,8 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from signtranslator.eval_framework.human_study import key_sha256, merge_answers, parse_sheet, score_study  # noqa: E402
+from signtranslator.eval_framework.human_study import (bar_read, key_sha256, merge_answers, parse_sheet,  # noqa: E402
+                                                       score_study)
 
 
 def main(argv=None) -> int:
@@ -25,6 +30,10 @@ def main(argv=None) -> int:
     parser.add_argument("--sheet", type=Path, action="append", required=True, help="a returned sheet (repeatable)")
     parser.add_argument("--reference", default="reference", help="system label the others are paired against")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--bar", action="store_true", help="also read the release-bar terms (the key needs a negated "
+                        "share)")
+    parser.add_argument("--bootstrap", type=int, default=2000, help="--bar: two-way cluster bootstrap replicates")
+    parser.add_argument("--bootstrap-seed", type=int, default=0)
     args = parser.parse_args(argv)
     key = json.loads(args.key.read_text())
     recorded = key.pop("key_sha256", None)
@@ -39,9 +48,15 @@ def main(argv=None) -> int:
     report = score_study(answers, key, reference=args.reference if args.reference in key["systems"] else None)
     report.update(problems=problems + merge_problems, sheets=len(args.sheet), key_sha256=recorded,
                   partition=key.get("partition"), manifest_sha256=key.get("manifest_sha256"))
+    if args.bar:
+        report["bar"] = bar_read(answers, key, reference=args.reference, boot=args.bootstrap, seed=args.bootstrap_seed)
     args.output.write_text(json.dumps(report, indent=1, sort_keys=True) + "\n")
     print(json.dumps({s: dict(choice=v["comprehension_choice"], naturalness=v.get("naturalness"))
                       for s, v in report["systems"].items()}))
+    if args.bar:
+        print(json.dumps({s: dict(passes_rater_terms=v["passes_rater_terms"],
+                                  conditions={c: d["result"] for c, d in v["conditions"].items()})
+                          for s, v in report["bar"]["systems"].items() if "conditions" in v}))
     if problems or merge_problems:
         print(f"{len(problems) + len(merge_problems)} problems: see {args.output}", file=sys.stderr)
     return 0
