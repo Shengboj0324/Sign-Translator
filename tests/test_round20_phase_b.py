@@ -877,8 +877,14 @@ def test_phase_a_no_gains_cache(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("phase,kwargs,message", [
-    ("cache", dict(arm="r16", NO_GAINS="1"), "ARM=w14b only"),
+    ("a4", dict(arm="n8", PRIOR="f12"), "PRIOR must be"),
+    ("a9", dict(arm="n8", PRIOR="f12"), "PRIOR must be"),
+    ("cache", dict(arm="r16", PRIOR="r16"), "PRIOR belongs"),
+    ("a0", dict(PRIOR="r16"), "PRIOR belongs"),
+    ("a8", dict(PRIOR="r16"), "PRIOR belongs"),
+    ("a9", dict(arm="n16", PRIOR="r16"), "is not stored"),
     ("cache", dict(arm="w14b", vocab="r14b-fraction", NO_GAINS="1"), "VOCAB=r10 only"),
+    ("cache", dict(arm="r16", vocab="r14b-fraction", NO_GAINS="1"), "VOCAB=r10 only"),
     ("cache", dict(arm="w14b", NO_GAINS="2"), "NO_GAINS must be"),
     ("a4", dict(arm="n8", NO_GAINS="1"), "belongs to the cache phase"),
     ("a0", dict(NO_GAINS="1"), "belongs to the cache phase"),
@@ -1033,10 +1039,11 @@ def test_lowpass_is_one_more_option_on_the_stack(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("kwargs,message", [
-    (dict(prior="w14b", no_gains="0", best_of="8"), "LOWPASS=1: only on the stack"),   # gained words
-    (dict(prior="w14b", no_gains="1", best_of="0"), "LOWPASS=1: only on the stack"),   # fresh words: other seeds
-    (dict(prior="r16", no_gains="1", best_of="8"), "LOWPASS=1: only on the stack"),    # other codes
-    (dict(prior="r16", no_gains="0", best_of="0"), "LOWPASS=1: only on the stack"),
+    (dict(prior="w14b", no_gains="0", best_of="8"), "LOWPASS=1: only on a stack"),   # gained words
+    (dict(prior="w14b", no_gains="1", best_of="0"), "LOWPASS=1: only on a stack"),   # fresh words: other seeds
+    (dict(prior="r16", no_gains="0", best_of="8"), "LOWPASS=1: only on a stack"),
+    (dict(prior="r16", no_gains="1", best_of="0"), "LOWPASS=1: only on a stack"),
+    (dict(prior="r16", no_gains="0", best_of="0"), "LOWPASS=1: only on a stack"),
 ])
 def test_lowpass_is_refused_off_the_stack(tmp_path, kwargs, message):
     for phase in ("run", "verdict"):
@@ -1358,6 +1365,7 @@ A0 = ["the cat ran on a rug", "a dog sat in a lake", "she has a long book", "we 
 LOW, MID, TOP = A0, HYP_ARM, REFS          # BLEU rises along these (LOW reads 0)
 LOWER = ["the cat sat on a mat", "a dog ran on the hill", "she reads a tale at home", "we walk a long road", "he made a pie",
          "they sing a tune now"]               # above LOW and below MID
+HYP_LOW2 = ["the cat sat on a bed", "a dog ran off", "she reads", "we walk", "he made", "they sing"]    # above LOW and below LOWER
 
 
 def d20(checkpoint=W14B, *, n=0, gains_off=False, hyps=MID, ll=-2.5, lowpass=None, lowpass_ll=None, sentences=D20_SHA):
@@ -1388,11 +1396,11 @@ def world(**over):
     return {k: v for k, v in w.items() if v is not None}
 
 
-def check(w, *, prior="w14b", no_gains=True, best_of=16, lowpass=False, a8_delta=0., shards=True):
+def check(w, *, prior="w14b", no_gains=True, best_of=16, lowpass=False, a8_delta=0., r16_delta=0., shards=True):
     def load_shards(name, report):
         if not shards:
             return None
-        return [shard(report["settings"], a8_delta if name.startswith("a8") else 0.)]
+        return [shard(report["settings"], a8_delta if name.startswith("a8") else r16_delta if "-r16-" in name else 0.)]
     return pv.stack_check(w.get, load_shards, prior=prior, w14b_checkpoint=W14B, r16_checkpoint=R16, no_gains=no_gains,
                           best_of=best_of, lowpass=lowpass, sentences_sha256=D20_SHA)
 
@@ -1490,50 +1498,169 @@ def test_no_a4_arm_meets_the_rule():
         check(w, **A7_ALONE)
 
 
-def test_a8_decides_first():
-    for arm in (dict(), A7_ALONE, A4_AT(16)):
-        with pytest.raises(SystemExit, match="until a8 is judged"):               # not stored
-            check(world(**{"a8-r16-r10": None}), **arm)
-        with pytest.raises(SystemExit, match="repeated with R16's words"):        # both estimates up, spotting holds
-            check(world(**{"a8-r16-r10": d20(R16, ll=-2.4)}), **arm)
-        with pytest.raises(SystemExit, match="cannot be judged"):                 # no spotting: not silently a failure
-            check(world(**{"a8-r16-r10": d20(R16, ll=-2.4)}), shards=False, **arm)
-    met = world(**{"a8-r16-r10": d20(R16, ll=-2.4)})
-    with pytest.raises(SystemExit, match="repeated with R16's words"):
-        check(met, a8_delta=-.019)                                                # just above the floor
-    for delta in (-.02, -.05):                                                    # at or below it: a8 fails, W14b proceeds
-        out = check(met, a8_delta=delta)
-        assert out["a8"]["met"] is False and out["a8"]["both_improve"] is True and out["a8"]["spotting_lower_bound"] == pytest.approx(delta)
-    # estimates: BLEU not above a0's, or likelihood not
-    for a8 in (d20(R16, hyps=LOW, ll=-2.4), d20(R16, ll=-2.5), d20(R16, ll=-2.6)):
-        assert check(world(**{"a8-r16-r10": a8}))["a8"]["met"] is False
-
-
-def r16_world(**over):
+def met_world(**over):
+    """a8 meets amendment 3. W14b: a0 LOW, a7 and a4 LOWER, the stack MID; R16's stack and single arm above W14b's."""
     w = world(**{"a8-r16-r10": d20(R16, hyps=LOWER, ll=-2.4),
-                 "a7-nogains-r16-r10": d20(R16, gains_off=True, ll=-2.35),
-                 "a4-r16-n4-r10": d20(R16, n=4, ll=-2.3), "a4-r16-n8-r10": d20(R16, n=8, ll=-2.2), "a4-r16-n16-r10": d20(R16, n=16, ll=-2.25),
-                 "a9-nogains-r16-n8-r10": d20(R16, n=8, gains_off=True, hyps=TOP, ll=-2.1)})
+                 "a7-nogains-r10": d20(gains_off=True, hyps=LOWER, ll=-2.45),
+                 **{f"a4-w14b-n{n}-r10": d20(n=n, hyps=LOWER, ll=-2.5 + .1 * k) for k, n in enumerate((4, 8, 16), 1)},
+                 "a9-nogains-n16-r10": d20(n=16, gains_off=True, hyps=MID, ll=-2.1),
+                 "a9-r16-nogains-n16-r10": d20(R16, n=16, gains_off=True, hyps=TOP, ll=-2.0),
+                 "a4-r16-n16-r10": d20(R16, n=16, hyps=MID, ll=-2.1)})
     w.update(over)
     return {k: v for k, v in w.items() if v is not None}
 
 
-def test_r16_asks_the_same_question_against_a8():
-    assert check(r16_world(), prior="r16", best_of=8)["decision"] == "stack, best of 8"
-    below_a8 = {f"a4-r16-n{n}-r10": d20(R16, n=n, ll=-2.45) for n in (4, 8, 16)}     # above a0 (-2.5), below a8 (-2.4)
-    with pytest.raises(SystemExit, match="no best-of-N arm goes"):
-        check(r16_world(**below_a8), prior="r16", best_of=8)
-    with pytest.raises(SystemExit, match="R16's words are not adopted"):
-        check(world(), prior="r16", best_of=8)                                    # a8 failed
-    with pytest.raises(SystemExit, match="unread: a4-r16-n4-r10"):                # today: no such phase has run
-        check(world(**{"a8-r16-r10": d20(R16, ll=-2.4)}), prior="r16", best_of=8)
-    with pytest.raises(SystemExit, match="a lever on R16's words meets its rule"):
-        check(r16_world(), prior="r16", no_gains=False, best_of=0)
-    flat = {f"a4-r16-n{n}-r10": d20(R16, n=n, hyps=LOW, ll=-2.2) for n in (4, 8, 16)}
-    flat["a7-nogains-r16-r10"] = d20(R16, gains_off=True, hyps=LOW, ll=-2.3)
-    assert check(r16_world(**flat), prior="r16", no_gains=False, best_of=0)["decision"].startswith("r16 alone")
-    with pytest.raises(SystemExit, match="no lever adopted"):
-        check(world(), no_gains=False, best_of=0)
+W14B_STACK_FAILED = {"a9-nogains-n16-r10": d20(n=16, gains_off=True, hyps=MID, ll=-2.3)}       # likelihood below a4-n16's -2.2
+R16_STACK = dict(prior="r16", no_gains=True, best_of=16)
+R16_SINGLE = dict(prior="r16", no_gains=False, best_of=16)
+
+
+def test_a8_stored_and_judged_first():
+    for arm in (dict(), A7_ALONE, A4_AT(16), R16_STACK, R16_SINGLE):
+        with pytest.raises(SystemExit, match="until a8 is judged"):               # not stored
+            check(world(**{"a8-r16-r10": None}), **arm)
+        with pytest.raises(SystemExit, match="cannot be judged"):                 # no spotting: not silently a failure
+            check(met_world(), shards=False, **arm)
+
+
+def test_a8_failing_needs_no_r16_read_and_w14b_goes():
+    assert not any("-r16-n" in k or "a9-r16" in k for k in world())
+    out = check(world())
+    assert out["a8"]["met"] is False and "amendment5" not in out and out["decision"] == "stack, best of 16"
+    for a8 in (d20(R16, hyps=LOW, ll=-2.4), d20(R16, ll=-2.5), d20(R16, ll=-2.6)):                # BLEU, or likelihood, not above
+        assert check(world(**{"a8-r16-r10": a8}))["a8"]["met"] is False
+    for delta in (-.02, -.05):                                                    # both estimates up, spotting at or below the floor
+        out = check(world(**{"a8-r16-r10": d20(R16, ll=-2.4)}), a8_delta=delta)
+        assert out["a8"]["met"] is False and out["a8"]["both_improve"] is True and "amendment5" not in out
+        assert out["a8"]["spotting_lower_bound"] == pytest.approx(delta)
+    for arm in (R16_STACK, R16_SINGLE, dict(prior="r16", no_gains=False, best_of=0)):
+        with pytest.raises(SystemExit, match="R16's words are not adopted"):
+            check(world(), **arm)
+
+
+def test_a8_met_w14b_needs_the_r16_read():
+    with pytest.raises(SystemExit, match="unread: a9-r16-nogains-n16-r10"):
+        check(met_world(**{"a9-r16-nogains-n16-r10": None}))
+    with pytest.raises(SystemExit, match="unread: a4-r16-n16-r10"):               # W14b's stack failed: the single arm's read
+        check(met_world(**W14B_STACK_FAILED, **{"a4-r16-n16-r10": None}), **A4_AT(16))
+    # each route needs only its own read
+    assert check(met_world(**{"a4-r16-n16-r10": None}), **R16_STACK)["decision"].startswith("r16 stack")
+    assert check(met_world(**W14B_STACK_FAILED, **{"a9-r16-nogains-n16-r10": None}), **R16_SINGLE)["decision"].startswith("r16 a4")
+
+
+def test_the_r16_stack_wins_inside_the_stack():
+    out = check(met_world(), **R16_STACK)
+    assert out["decision"] == "r16 stack, best of 16" and out["a8"]["met"] and out["rule3"]["passed"]
+    route = out["amendment5"]
+    assert route["met"] and route["words"] == "r16" and route["r16"] == "a9-r16-nogains-n16-r10"
+    assert route["w14b"] == "a9-nogains-n16-r10" and route["likelihood"] == pytest.approx(.1) and route["spotting_lower_bound"] == 0.
+    for arm in (dict(), A7_ALONE, A4_AT(16)):                                     # W14b's arms are refused
+        with pytest.raises(SystemExit, match="amendment 5 gives r16's words, not w14b's"):
+            check(met_world(), **arm)
+    for arm in (R16_SINGLE, dict(prior="r16", no_gains=False, best_of=0), dict(prior="r16", no_gains=True, best_of=0)):
+        with pytest.raises(SystemExit, match="R16's words go as the read that won, NO_GAINS=1 BEST_OF=16"):
+            check(met_world(), **arm)
+    with pytest.raises(SystemExit, match="rule 1 chooses best of 16, not 8"):
+        check(met_world(), prior="r16", no_gains=True, best_of=8)
+
+
+@pytest.mark.parametrize("a9,delta,why", [
+    (d20(R16, n=16, gains_off=True, hyps=MID, ll=-2.0), 0., "BLEU equal"),
+    (d20(R16, n=16, gains_off=True, hyps=LOWER, ll=-2.0), 0., "BLEU below"),
+    (d20(R16, n=16, gains_off=True, hyps=TOP, ll=-2.1), 0., "likelihood equal"),
+    (d20(R16, n=16, gains_off=True, hyps=TOP, ll=-2.2), 0., "likelihood below"),
+    (d20(R16, n=16, gains_off=True, hyps=TOP, ll=-2.0), -.02, "spotting at the floor"),
+    (d20(R16, n=16, gains_off=True, hyps=TOP, ll=-2.0), -.05, "spotting below it"),
+])
+def test_the_r16_stack_loses_and_w14b_goes_by_amendment_4(a9, delta, why):
+    w = met_world(**{"a9-r16-nogains-n16-r10": a9})
+    out = check(w, r16_delta=delta)
+    assert out["decision"] == "stack, best of 16" and out["amendment5"]["met"] is False and out["amendment5"]["words"] == "w14b"
+    for arm in (R16_STACK, R16_SINGLE):
+        with pytest.raises(SystemExit, match="amendment 5 gives w14b's words, not r16's"):
+            check(w, r16_delta=delta, **arm)
+    for arm, match in ((A7_ALONE, "the stack goes, not a single"), (A4_AT(16), "the stack goes, not a single"),
+                       (A4_AT(8), "rule 1 chooses best of 16")):                   # and rules 1 and 3 still decide
+        with pytest.raises(SystemExit, match=match):
+            check(w, r16_delta=delta, **arm)
+
+
+def test_the_r16_stack_just_above_the_spotting_floor_wins():
+    assert check(met_world(), r16_delta=-.019, **R16_STACK)["amendment5"]["met"] is True
+
+
+def test_w14b_stack_failing_moves_the_comparison_to_the_single_arms():
+    w = met_world(**W14B_STACK_FAILED)
+    out = check(w, **R16_SINGLE)
+    route = out["amendment5"]
+    assert out["decision"].startswith("r16 a4 alone") and out["rule3"]["passed"] is False
+    assert route["r16"] == "a4-r16-n16-r10" and route["w14b"] == "a4-w14b-n16-r10" and route["met"]
+    for arm in (dict(), A7_ALONE, A4_AT(16)):
+        with pytest.raises(SystemExit, match="amendment 5 gives r16's words, not w14b's"):
+            check(w, **arm)
+    for arm in (R16_STACK, dict(prior="r16", no_gains=True, best_of=0)):
+        with pytest.raises(SystemExit, match="R16's words go as the read that won, NO_GAINS=0 BEST_OF=16"):
+            check(w, **arm)
+    with pytest.raises(SystemExit, match="only inside the stack"):
+        check(w, lowpass=True, **R16_SINGLE)
+    # R16's single arm loses, on each test: W14b goes, and rule 3 names the better single
+    for a4, delta in ((d20(R16, n=16, hyps=LOWER, ll=-2.1), 0.), (d20(R16, n=16, hyps=MID, ll=-2.2), 0.),
+                      (d20(R16, n=16, hyps=MID, ll=-2.1), -.02)):
+        lost = met_world(**W14B_STACK_FAILED, **{"a4-r16-n16-r10": a4})
+        out = check(lost, r16_delta=delta, **A4_AT(16))
+        assert out["decision"].startswith("a4 alone") and out["amendment5"]["words"] == "w14b"
+        with pytest.raises(SystemExit, match="better single lever is a4"):
+            check(lost, r16_delta=delta, **A7_ALONE)
+        with pytest.raises(SystemExit, match="amendment 5 gives w14b's words, not r16's"):
+            check(lost, r16_delta=delta, **R16_SINGLE)
+
+
+def test_rule_4_reads_the_stack_actually_chosen():
+    up = dict(lowpass=TOP, lowpass_ll=-1.9)
+    # R16 chosen: R16's @lowpass decides, W14b's is not consulted
+    r16_up = d20(R16, n=16, gains_off=True, hyps=MID, ll=-2.0, **up)
+    w = met_world(**{"a9-nogains-n16-r10": d20(n=16, gains_off=True, hyps=LOWER, ll=-2.1),
+                     **{f"a4-w14b-n{n}-r10": d20(n=n, hyps=HYP_LOW2, ll=-2.5 + .1 * k) for k, n in enumerate((4, 8, 16), 1)},
+                     "a7-nogains-r10": d20(gains_off=True, hyps=HYP_LOW2, ll=-2.45), "a9-r16-nogains-n16-r10": r16_up})
+    w["a8-r16-r10"] = d20(R16, hyps=HYP_LOW2, ll=-2.4)
+    out = check(w, lowpass=True, **R16_STACK)
+    assert out["decision"] == "r16 stack, best of 16 with its @lowpass" and out["rule4"]["both_improve"]
+    with pytest.raises(SystemExit, match="must run with LOWPASS=1"):
+        check(w, **R16_STACK)
+    # R16's @lowpass not above it, though W14b's is: LOWPASS=1 refused, LOWPASS=0 goes
+    w2 = dict(w, **{"a9-r16-nogains-n16-r10": d20(R16, n=16, gains_off=True, hyps=MID, ll=-2.0),
+                    "a9-nogains-n16-r10": d20(n=16, gains_off=True, hyps=LOWER, ll=-2.1, lowpass=MID, lowpass_ll=-2.)})
+    assert check(w2, **R16_STACK)["rule4"]["both_improve"] is False
+    with pytest.raises(SystemExit, match="the stack's @lowpass does not have both"):
+        check(w2, lowpass=True, **R16_STACK)
+    # W14b chosen: W14b's own @lowpass decides, R16's is not consulted
+    w3 = met_world(**{"a9-nogains-n16-r10": d20(n=16, gains_off=True, hyps=MID, ll=-2.1, lowpass=TOP, lowpass_ll=-2.),
+                      "a9-r16-nogains-n16-r10": d20(R16, n=16, gains_off=True, hyps=MID, ll=-2.0, lowpass=TOP, lowpass_ll=-1.)})
+    out = check(w3, lowpass=True)
+    assert out["amendment5"]["words"] == "w14b" and out["rule4"]["both_improve"]
+    with pytest.raises(SystemExit, match="must run with LOWPASS=1"):
+        check(w3)
+    w4 = met_world(**{"a9-r16-nogains-n16-r10": d20(R16, n=16, gains_off=True, hyps=MID, ll=-2.0, lowpass=TOP, lowpass_ll=-1.)})
+    assert check(w4)["rule4"]["both_improve"] is False                            # R16 lost: its @lowpass adopts nothing
+    # a read without the form
+    unread = d20(R16, n=16, gains_off=True, hyps=TOP, ll=-2.0)
+    del unread["forms"][f"{FORM}@lowpass"], unread["likelihood"]["per_form"][f"{FORM}@lowpass"]
+    with pytest.raises(SystemExit, match="not in the report"):
+        check(met_world(**{"a9-r16-nogains-n16-r10": unread}), **R16_STACK)
+
+
+@pytest.mark.parametrize("name,report,match", [
+    ("a9-r16-nogains-n16-r10", d20(n=16, gains_off=True, hyps=TOP, ll=-2.), "word_cache.checkpoint_key"),      # W14b's words
+    ("a9-r16-nogains-n16-r10", d20(R16, n=16, hyps=TOP, ll=-2.), "word_cache.no_decoder_gains"),               # gained
+    ("a9-r16-nogains-n16-r10", d20(R16, n=8, gains_off=True, hyps=TOP, ll=-2.), "word_cache.n"),
+])
+def test_the_r16_reads_must_be_what_their_names_say(name, report, match):
+    with pytest.raises(SystemExit, match=match):
+        check(met_world(**{name: report}))
+    for wrong, why in ((d20(n=16, hyps=MID, ll=-2.1), "word_cache.checkpoint_key"), (d20(R16, n=16, gains_off=True, hyps=MID, ll=-2.1),
+                                                                                    "word_cache.no_decoder_gains")):
+        with pytest.raises(SystemExit, match=why):
+            check(met_world(**W14B_STACK_FAILED, **{"a4-r16-n16-r10": wrong}))
 
 
 def test_lowpass_only_on_a_passing_stack_above_it():
@@ -1598,7 +1725,7 @@ def test_stack_check_cli_reads_the_prefix_and_the_shards(tmp_path, capsys):
         pv.main(argv)
     for name, report in world().items():
         store.put(f"a/{name}.json", json.dumps(report).encode())
-    with pytest.raises(SystemExit, match="a8 cannot be judged"):                  # no shard stored: never silently a pass
+    with pytest.raises(SystemExit, match="a8-r16-r10 against a0-w14b-r10 cannot be judged"):   # no shard stored: never silently a pass
         pv.main(argv)
     for name in ("a0-w14b-r10", "a8-r16-r10"):
         store.put(f"a/{name}-shard0.json", json.dumps(shard(world()[name]["settings"])).encode())
@@ -1690,3 +1817,89 @@ def test_the_c20_verdict_is_this_arms_only():
     for arm in (dict(best_of=4), dict(no_decoder_gains=False), dict(lowpass=True), dict(prior_checkpoint_key=R16)):
         with pytest.raises(SystemExit, match="another arm's"):
             judge_c20(c20_arm(), val_verdict(**arm))
+
+
+# ---- amendment 5: R16's reads in Phase A, and its route in Phase B ------------------------------------------------------------
+
+def test_phase_a_r16_no_gains_cache(tmp_path):
+    code, out, commands = phase_a(tmp_path, "cache", arm="r16", NO_GAINS="1")
+    runs = [c for c in commands if "round20_word_cache.py run" in c]
+    assert code == 0 and len(runs) == 4 and f"R20 cache-r16-nogains-r10 {OUT_A}/cache-r16-nogains-r10/index.json" in out
+    plain = sorted(c for c in phase_a(tmp_path, "cache", arm="r16")[2] if " run " in c)
+    assert sorted(c.replace(" --no-decoder-gains", "").replace("cache-r16-nogains-r10", "cache-r16-r10") for c in runs) == plain
+    assert all(f"--checkpoint-key {R16} " in c and "--no-decoder-gains" in c for c in runs)
+
+
+@pytest.mark.parametrize("arm,n", [("n4", 4), ("n8", 8), ("n16", 16)])
+def test_phase_a_r16_reads_are_the_w14b_arms_with_r16s_caches(tmp_path, monkeypatch, arm, n):
+    def run_line(phase, **kw):
+        code, out, commands = phase_a(tmp_path, phase, arm=arm, **kw)
+        assert code == 0
+        return next(c for c in commands if "round15_compose_eval.py run" in c)
+    gained = f"{OUT_A}/cache-r16-r10/index.json"
+    plain = f"{OUT_A}/cache-r16-nogains-r10/index.json"
+    a4 = run_line("a4", PRIOR="r16", stored=[gained])
+    assert f"--word-cache-key {gained} " in a4 and a4.endswith(f"--output-key {OUT_A}/a4-r16-{arm}-r10-shard0.json")
+    assert a4.replace("cache-r16-r10", "cache-w14b-r10").replace(f"a4-r16-{arm}", f"a4-w14b-{arm}") == run_line("a4")
+    a9 = run_line("a9", PRIOR="r16", stored=[plain])
+    assert f"--word-cache-key {plain} " in a9 and a9.endswith(f"--output-key {OUT_A}/a9-r16-nogains-{arm}-r10-shard0.json")
+    w14b = run_line("a9", stored=[f"{OUT_A}/cache-w14b-nogains-r10/index.json"])
+    assert w14b.endswith(f"--output-key {OUT_A}/a9-nogains-{arm}-r10-shard0.json")     # W14b's keys are unchanged
+    assert a9.replace("cache-r16-nogains-r10", "cache-w14b-nogains-r10").replace(f"a9-r16-nogains-{arm}", f"a9-nogains-{arm}") == w14b
+    assert run_line("a9", PRIOR="w14b", stored=[f"{OUT_A}/cache-w14b-nogains-r10/index.json"]) == w14b
+    seen = parsed_run(tmp_path, monkeypatch, a9, f"r{n}")
+    assert seen["word_cache_n"] == n and seen["lowpass_report_hz"] == 6. and seen["no_decoder_gains"] is False
+    # the a9 smoke, and the a4 smoke, take their cache
+    smoke = phase_a(tmp_path, "a9", arm=arm, PRIOR="r16", smoke=True, gpu=False, CACHE_KEY="s/i.json", stored=["s/i.json"])
+    assert smoke[0] == 0 and any(f"a9-r16-nogains-{arm}-r10-shard0" in c for c in smoke[2])
+
+
+def test_phase_b_r16_route(tmp_path, monkeypatch):
+    """R16's stack through the job: its own cache, its pilot without gains, the W14b comparator, its @lowpass by LOWPASS."""
+    r16 = dict(prior="r16", no_gains="1", best_of="16")
+    code, out, commands = job(tmp_path, "cache", **r16, pilots=False)
+    assert code == 0 and all(f"--prefix {OUT}/cache-r16-nogains-val1000-n16 " in c and f"--checkpoint-key {R16} " in c
+                             and "--no-decoder-gains" in c for c in commands if " run " in c)
+    code, out, commands = job(tmp_path, "e2e", **r16, pilots=False)
+    line = next(c for c in commands if "pilot_content_check.py" in c)
+    assert code == 0 and f"--checkpoint-key {R16} " in line and f"--output-key {OUT}/pilot-r16-nogains-val1000.json" in line
+    assert "--recognizer-run sign-recognizer-v3d" in line and "--word-list-key" in line and "--no-decoder-gains" in line
+    index = f"{OUT}/cache-r16-nogains-val1000-n16/index.json"
+    code, out, commands = job(tmp_path, "run", **r16, stored=[index], pilots=False)
+    assert code == 1 and "run the e2e phase first" in out
+    code, out, commands = job(tmp_path, "run", **r16, stored=[index], LOWPASS="1")
+    assert code == 0 and "--prior r16 " in next(c for c in commands if " stack-check " in c)
+    assert "--lowpass 1 " in next(c for c in commands if " stack-check " in c)
+    runs = [c for c in commands if "compose_eval.py run" in c]
+    assert len(runs) == 4 and all(f"--word-cache-key {index} " in c and "--lowpass-hz 6" in c and "--no-decoder-gains" not in c for c in runs)
+    merge = next(c for c in commands if " merge " in c)
+    assert f"--end-to-end-report {OUT}/pilot-r16-nogains-val1000.json --paired-with {CMP} " in merge
+    code, out, commands = job(tmp_path, "verdict", **r16, LOWPASS="1", stored=[f"{OUT}/r16-nogains-n16-lp6-val1000.json"])
+    line = next(c for c in commands if " verdict " in c)
+    assert code == 0 and f"--end-to-end-key {OUT}/pilot-r16-nogains-val1000.json " in line
+    assert f"--stored-pilot-key {O}/round16/pilot-r16.json " in line and f"--comparator-key {CMP} " in line
+    assert f"--prior r16 --prior-checkpoint-key {R16} --no-gains 1 --best-of 16" in line
+    # R16's single arm: the gained cache and the stored pilot, no e2e
+    index = f"{OUT}/cache-r16-gains-val1000-n16/index.json"
+    code, out, commands = job(tmp_path, "run", prior="r16", no_gains="0", best_of="16", stored=[index], pilots=False)
+    assert code == 0 and f"--end-to-end-report {O}/round16/pilot-r16.json " in next(c for c in commands if " merge " in c)
+    # the W14b comparator stays the comparator, whichever words
+    assert "--paired-with " + CMP in next(c for c in commands if " merge " in c)
+
+
+def test_the_verdict_takes_an_r16_stack_with_its_own_pilot():
+    r = reports()
+    r["arm"]["settings"]["round20"]["word_cache"] = cache_settings(checkpoint=R16, n=16)
+    r["arm"]["comparators"]["end_to_end"]["checkpoint_key"] = R16
+    r["pilot"]["checkpoint_key"] = r["stored_pilot"]["checkpoint_key"] = R16
+    v = judge(r, prior_checkpoint=R16, best_of=16)
+    assert v["rule_passed"] and "WITHOUT gains" in v["items"]["bleu_vs_own_end_to_end"]["note"]
+    gained_pilot = copy.deepcopy(r)
+    gained_pilot["pilot"] = gained_pilot["stored_pilot"]
+    gained_pilot["arm"]["forms"]["end_to_end"]["hypotheses"] = gained_pilot["pilot"]["meaning"]["generated"]["hypotheses"]
+    with pytest.raises(SystemExit, match="lenient"):
+        judge(gained_pilot, prior_checkpoint=R16, best_of=16)
+    w14b_pilot = copy.deepcopy(r)
+    w14b_pilot["pilot"]["checkpoint_key"] = W14B
+    with pytest.raises(SystemExit, match="not the arm's prior"):
+        judge(w14b_pilot, prior_checkpoint=R16, best_of=16)

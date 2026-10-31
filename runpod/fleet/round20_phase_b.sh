@@ -11,15 +11,15 @@
 # Tempo (A3), vocabulary (A1) and continuous words (A2) were not adopted: their options stay off.
 # LOWPASS=1 (amendment 4, rule 4: A6 enters only if the stack's @lowpass has both point estimates above 0 against the stack):
 # --lowpass-hz 6 on the main form and its controls, applied after rendering, so seeds, codes, plans and the cache are the
-# unfiltered arm's; real and blank stay unfiltered. Its only evidence is a9's read of the W14b no-gains stack, so it is refused
-# on anything else: gained words (A6 was rejected there), fresh words (position seeds, not a9's entry seeds), R16 (other codes).
+# unfiltered arm's; real and blank stay unfiltered. Its only evidence is the chosen stack's own a9 read (R16's: a9-r16-nogains),
+# so it is refused off a stack: gained words (A6 was rejected there), fresh words (position seeds, not a9's entry seeds).
 #
 # Stored D20 reads gate run and verdict (scripts/round20_phase_b_verdict.py stack-check; cache and e2e read none, so they can be
-# built ahead). Amendment 3 and rule 5: nothing runs until a8 is stored; if a8 meets amendment 3, W14b arms wait for the stack
-# question repeated with R16's words (a4-r16-nN-r10, a7-nogains-r16-r10, a9-nogains-r16-nN-r10; Phase A has no such phases yet,
-# so R16 arms are refused today); if it fails, W14b proceeds. Rule 1: N is computed from the a4 reads. Rule 3: the stack, or
-# only if its stored read failed, the better single lever. Rule 4: the stack's @lowpass above the stack requires LOWPASS=1, and
-# otherwise LOWPASS=1 is refused.
+# built ahead). Nothing runs until a8 is stored. If a8 fails amendment 3, W14b's words go and no R16 read is needed. If it meets
+# it, amendment 5: R16's words go only if a9-r16-nogains-nN has both point estimates above 0 against a9-nogains-nN with v2 spotting
+# above -0.02 (if W14b's stack failed rule 3: a4-r16-nN against a4-w14b-nN); otherwise W14b's. Rule 1: N is computed from W14b's a4
+# reads. Rule 3: the stack, or only if its stored read failed, the better single lever. Rule 4, on the stack actually chosen: its
+# @lowpass above it requires LOWPASS=1, and otherwise LOWPASS=1 is refused. R16's words go as that stack, or that single a4 arm.
 #
 # One arm on a set ("one stacked arm"): run refuses if any other arm's report or shard is stored on that set, and the verdict and
 # C20's gate refuse the same way. R20B_DECLARED_REPLACEMENT=<plan commit> lifts that for run only when an amendment declares a
@@ -126,8 +126,7 @@ fi
 LOWPASS=${LOWPASS:-0}
 case $LOWPASS in
   0) LP=""; LPTAG="" ;;
-  1) { [ "$PRIOR" = w14b ] && [ "$NO_GAINS" = 1 ] && [ "$BEST_OF" != 0 ]; } ||
-       die "LOWPASS=1: only on the stack a9 read (PRIOR=w14b NO_GAINS=1, BEST_OF 4, 8 or 16)"
+  1) { [ "$NO_GAINS" = 1 ] && [ "$BEST_OF" != 0 ]; } || die "LOWPASS=1: only on a stack (NO_GAINS=1, BEST_OF 4, 8 or 16)"
      LP="--lowpass-hz 6"; LPTAG=-lp6 ;;
   *) die "LOWPASS must be 0 or 1" ;;
 esac

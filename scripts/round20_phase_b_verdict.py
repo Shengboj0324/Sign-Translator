@@ -49,15 +49,16 @@ nothing of C20.
 
 ``stack-check``: whether the stored D20 reads allow this arm on the 1,000, printing which rule held; every read is checked to be
 what its name says, and "above 0" is ``round20_compare.compare_forms``'s ``both_improve``:
-- amendment 3 and rule 5: a8 must be stored. If it meets amendment 3 (both point estimates above 0 against a0, v2 spotting's paired
-  lower bound above -0.02), W14b arms are refused until the stack question is repeated with R16's words; if not, R16 arms are;
-- rule 1: all three a4 reads stored, N computed from those meeting the rule; a best-of-N arm must use that N;
+- amendment 3: a8 must be stored, and meet it (both point estimates above 0 against a0, v2 spotting's paired lower bound above
+  -0.02) for R16's words to be considered. If it fails, no R16 read is needed;
+- rule 1: all three of W14b's a4 reads stored, N computed from those meeting the rule; a best-of-N arm must use that N;
+- amendment 5, when a8 met amendment 3: R16's words go only if ``a9-r16-nogains-nN`` beats ``a9-nogains-nN`` by that same test (if
+  W14b's stack failed rule 3, ``a4-r16-nN`` beats ``a4-w14b-nN``), and then as that stack, or that single arm. Otherwise W14b's;
 - rule 3: the stack goes only if its stored a9 read at that N has both point estimates above 0 against both a7 and a4-nN. A single
-  lever goes only if that read is stored and failed, and only the better one by likelihood against a0 (R16's: against a8);
-- rule 4: the stack's ``@lowpass`` is always read. Both point estimates above 0 against the stack: the arm must have LOWPASS=1;
-  otherwise LOWPASS=1 is refused. LOWPASS is refused on any arm but a passing stack.
-If no a4 arm meets the rule there is no stack question, and a7 goes alone if it meets its own. R16 alone goes only if no lever on it
-meets its rule.
+  lever goes only if that read is stored and failed, and only the better one by likelihood against a0;
+- rule 4, on the stack actually chosen (R16's: its own a9 read): its ``@lowpass`` is always read. Both point estimates above 0
+  against that stack: the arm must have LOWPASS=1; otherwise LOWPASS=1 is refused. LOWPASS is refused on any arm but a stack.
+If no a4 arm meets the rule there is no stack question, and a7 goes alone if it meets its own.
 """
 from __future__ import annotations
 
@@ -200,13 +201,6 @@ def read_errors(settings: dict, *, prior_checkpoint: str, no_gains: bool, best_o
     return out
 
 
-def read_names(prior: str) -> dict:
-    """The stored D20 reads of a prior's stack question; R16's are the repeat rule 5 asks for, against a8 as W14b's against a0."""
-    if prior == "w14b":
-        return dict(base="a0-w14b-r10", a4="a4-w14b-n{}-r10", a7="a7-nogains-r10", a9="a9-nogains-n{}-r10")
-    return dict(base="a8-r16-r10", a4="a4-r16-n{}-r10", a7="a7-nogains-r16-r10", a9="a9-nogains-r16-n{}-r10")
-
-
 def estimates(comparison: dict) -> dict:
     ll = (comparison.get("likelihood_minus_blank") or {}).get("difference") or {}
     return dict(bleu=comparison["bleu"]["difference"], likelihood=ll.get("difference"), both_improve=comparison["both_improve"])
@@ -227,9 +221,8 @@ def stack_check(load, load_shards, *, prior: str, w14b_checkpoint: str, r16_chec
     """Whether the stored D20 reads allow this arm on the 1,000 (module docstring), and which rule held; SystemExit when they
     do not. ``load(name)``: a stored merged read or None; ``load_shards(name, report)``: its shards or None."""
     from round20_compare import compare_forms
-    checkpoint = w14b_checkpoint if prior == "w14b" else r16_checkpoint
 
-    def read(name, gains_off, n, ck=checkpoint):
+    def read(name, gains_off, n, ck=w14b_checkpoint):
         report = load(name)
         if report is None:
             raise SystemExit(f"unread: {name} is not stored")
@@ -242,56 +235,17 @@ def stack_check(load, load_shards, *, prior: str, w14b_checkpoint: str, r16_chec
     def against(a, b):
         return estimates(compare_forms(a, FORM, b, FORM, boot=100))
 
-    # amendment 3 and rule 5: a8 first, whatever the arm
-    a0 = read("a0-w14b-r10", False, 0, w14b_checkpoint)
-    if load("a8-r16-r10") is None:
-        raise SystemExit("a8-r16-r10 is not stored: nothing reads the 1,000 until a8 is judged (amendment 4, rule 5)")
-    a8 = read("a8-r16-r10", False, 0, r16_checkpoint)
-    comparison = compare_forms(a8, FORM, a0, FORM, boot=1000, shards_a=load_shards("a8-r16-r10", a8),
-                               shards_b=load_shards("a0-w14b-r10", a0))
-    guard = comparison["spotting_guard_lower_bound"]
-    if guard is None:
-        raise SystemExit(f"a8 cannot be judged: {comparison['spotting_guard'].get('reason')}")
-    held = dict(estimates(comparison), spotting_lower_bound=guard, spotting_floor=SPOTTING_FLOOR,
-                met=bool(comparison["both_improve"] and guard > SPOTTING_FLOOR))
-    out = dict(a8=held)
-    if prior == "w14b" and held["met"]:
-        raise SystemExit("a8 meets amendment 3 (both point estimates above 0 against a0, spotting lower bound above -0.02): W14b "
-                         "arms are refused pending the stack question repeated with R16's words (amendment 4, rule 5). "
-                         f"{held}")
-    if prior == "r16" and not held["met"]:
-        raise SystemExit(f"a8 does not meet amendment 3: R16's words are not adopted. {held}")
-    names = read_names(prior)
-    base = a0 if prior == "w14b" else a8
-    a4 = {n: read(names["a4"].format(n), False, n) for n in (4, 8, 16)}
-    rows = {n: against(report, base) for n, report in a4.items()}
-    chosen = rule1_n(rows)
-    a7 = read(names["a7"], True, 0)
-    a7_row = against(a7, base)
-    out.update(rule1=dict(n=chosen, arms={str(n): row for n, row in rows.items()}), a7=a7_row)
-    if not no_gains and not best_of:                                     # the base alone: for R16 only, with no lever on it
-        if prior == "w14b":
-            raise SystemExit("no lever adopted: this arm is the stored W14b composition itself")
-        if chosen is not None or a7_row["both_improve"]:
-            raise SystemExit(f"a lever on R16's words meets its rule, so R16 alone does not go: {out}")
-        return dict(out, decision="r16 alone: a8 met amendment 3 and no lever on it met its rule")
-    if chosen is None:
-        if best_of:
-            raise SystemExit(f"no a4 arm meets the rule: no best-of-N arm goes. {out}")
-        if not a7_row["both_improve"]:
-            raise SystemExit(f"neither a4 nor a7 meets its rule. {out}")
-        return dict(out, decision="a7 alone: no a4 arm meets the rule, so there is no stack question")
-    if best_of and best_of != chosen:
-        raise SystemExit(f"rule 1 chooses best of {chosen}, not {best_of}: {out['rule1']}")
-    a9 = read(names["a9"].format(chosen), True, chosen)
-    stack = dict(n=chosen, against_a7=against(a9, a7), against_a4=against(a9, a4[chosen]))
-    stack["passed"] = bool(stack["against_a7"]["both_improve"] and stack["against_a4"]["both_improve"])
-    out["rule3"] = stack
-    if no_gains and best_of:
-        if not stack["passed"]:
-            raise SystemExit(f"the stack does not have both point estimates above 0 against both a7 and a4-n{chosen}. {stack}")
-        out["decision"] = f"stack, best of {chosen}"
-        row = estimates(compare_forms(a9, f"{FORM}@lowpass", a9, FORM, boot=100))    # refused if the read lacks the form
+    def beats(name_a, a, name_b, b):
+        """Amendment 3's test, and amendment 5's: both point estimates above 0 and v2 spotting's lower bound above the floor."""
+        c = compare_forms(a, FORM, b, FORM, boot=1000, shards_a=load_shards(name_a, a), shards_b=load_shards(name_b, b))
+        guard = c["spotting_guard_lower_bound"]
+        if guard is None:
+            raise SystemExit(f"{name_a} against {name_b} cannot be judged: {c['spotting_guard'].get('reason')}")
+        return dict(estimates(c), spotting_lower_bound=guard, spotting_floor=SPOTTING_FLOOR,
+                    met=bool(c["both_improve"] and guard > SPOTTING_FLOOR))
+
+    def rule4(stack_read, out):
+        row = estimates(compare_forms(stack_read, f"{FORM}@lowpass", stack_read, FORM, boot=100))    # refused if the form is absent
         out["rule4"] = row
         if lowpass and not row["both_improve"]:
             raise SystemExit(f"the stack's @lowpass does not have both point estimates above 0 against the stack: {row}")
@@ -301,6 +255,69 @@ def stack_check(load, load_shards, *, prior: str, w14b_checkpoint: str, r16_chec
         if lowpass:
             out["decision"] += " with its @lowpass"
         return out
+
+    # amendment 3: a8 first, whatever the arm
+    a0 = read("a0-w14b-r10", False, 0)
+    if load("a8-r16-r10") is None:
+        raise SystemExit("a8-r16-r10 is not stored: nothing reads the 1,000 until a8 is judged (amendment 4, rule 5)")
+    a8 = read("a8-r16-r10", False, 0, r16_checkpoint)
+    held = beats("a8-r16-r10", a8, "a0-w14b-r10", a0)
+    out = dict(a8=held)
+    if prior == "r16" and not held["met"]:
+        raise SystemExit(f"a8 does not meet amendment 3: R16's words are not adopted. {held}")
+    # amendment 4, on W14b's reads
+    a4 = {n: read(f"a4-w14b-n{n}-r10", False, n) for n in (4, 8, 16)}
+    rows = {n: against(report, a0) for n, report in a4.items()}
+    chosen = rule1_n(rows)
+    a7 = read("a7-nogains-r10", True, 0)
+    a7_row = against(a7, a0)
+    out.update(rule1=dict(n=chosen, arms={str(n): row for n, row in rows.items()}), a7=a7_row)
+    if prior == "w14b" and not no_gains and not best_of:
+        raise SystemExit("no lever adopted: this arm is the stored W14b composition itself")
+    if chosen is None:
+        if prior == "r16":
+            raise SystemExit(f"no a4 arm meets the rule, so amendment 5 has no comparison for R16's words. {out}")
+        if best_of:
+            raise SystemExit(f"no a4 arm meets the rule: no best-of-N arm goes. {out}")
+        if not a7_row["both_improve"]:
+            raise SystemExit(f"neither a4 nor a7 meets its rule. {out}")
+        return dict(out, decision="a7 alone: no a4 arm meets the rule, so there is no stack question")
+    if best_of and best_of != chosen:
+        raise SystemExit(f"rule 1 chooses best of {chosen}, not {best_of}: {out['rule1']}")
+    a9_name = f"a9-nogains-n{chosen}-r10"
+    a9 = read(a9_name, True, chosen)
+    stack = dict(n=chosen, against_a7=against(a9, a7), against_a4=against(a9, a4[chosen]))
+    stack["passed"] = bool(stack["against_a7"]["both_improve"] and stack["against_a4"]["both_improve"])
+    out["rule3"] = stack
+    # amendment 5: with a8 met, R16's words must also beat W14b's, inside the stack or, if that failed, in the single arms
+    r16_read = None
+    if held["met"]:
+        if stack["passed"]:
+            r16_name, other_name, other = f"a9-r16-nogains-n{chosen}-r10", a9_name, a9
+            r16_read = read(r16_name, True, chosen, r16_checkpoint)
+        else:
+            r16_name, other_name, other = f"a4-r16-n{chosen}-r10", f"a4-w14b-n{chosen}-r10", a4[chosen]
+            r16_read = read(r16_name, False, chosen, r16_checkpoint)
+        route = beats(r16_name, r16_read, other_name, other)
+        winner = "r16" if route["met"] else "w14b"
+        out["amendment5"] = dict(route, r16=r16_name, w14b=other_name, words=winner)
+        if prior != winner:
+            raise SystemExit(f"amendment 5 gives {winner}'s words, not {prior}'s: {out['amendment5']}")
+    if prior == "r16":
+        want = (True, chosen) if stack["passed"] else (False, chosen)
+        if (no_gains, best_of) != want:
+            raise SystemExit(f"R16's words go as the read that won, NO_GAINS={int(want[0])} BEST_OF={want[1]}: {out['amendment5']}")
+        if stack["passed"]:
+            out["decision"] = f"r16 stack, best of {chosen}"
+            return rule4(r16_read, out)
+        if lowpass:
+            raise SystemExit("A6 enters only inside the stack (amendment 4, rule 4)")
+        return dict(out, decision=f"r16 a4 alone, best of {chosen}: W14b's stack failed rule 3 and R16's single arm won")
+    if no_gains and best_of:
+        if not stack["passed"]:
+            raise SystemExit(f"the stack does not have both point estimates above 0 against both a7 and a4-n{chosen}. {stack}")
+        out["decision"] = f"stack, best of {chosen}"
+        return rule4(a9, out)
     if lowpass:
         raise SystemExit("A6 enters only inside the stack (amendment 4, rule 4)")
     if stack["passed"]:
@@ -313,7 +330,7 @@ def stack_check(load, load_shards, *, prior: str, w14b_checkpoint: str, r16_chec
         raise SystemExit(f"the single levers tie on likelihood, which no rule decides: {singles}")
     asked = "a7" if no_gains else "a4"
     if asked != best[0]:
-        raise SystemExit(f"the better single lever is {best[0]} by likelihood against the base, not {asked}: {singles}")
+        raise SystemExit(f"the better single lever is {best[0]} by likelihood against a0, not {asked}: {singles}")
     return dict(out, decision=f"{asked} alone: the stack's stored read failed rule 3", singles=singles)
 
 
