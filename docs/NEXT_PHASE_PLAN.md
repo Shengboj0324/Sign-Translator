@@ -5486,3 +5486,22 @@ Paired against `r10`: `r14b-fraction` BLEU −0.007 [−0.476, +0.455], likeliho
 **Reading (not a rule):** doubling coverage (unmatched tokens 34.7% to 17.4%) did not raise the oracle. The added Sem-Lex material has hands tracked at 0.57× real, and 214 of 388 Sem-Lex-only entries needed the best-tracked fallback, so this oracle may understate the vocabulary on generated words, whose hands do not inherit that tracking loss.
 
 **Report-only read, declared before any a0 result exists:** `a0` under `r14b-fraction` continues on its own pod. It cannot change W. If it beats `a0` under `r10` on both BLEU and likelihood, that is evidence for a new, separately declared vocabulary lever on tracked material, judged on its own comparison; it is not adopted from this read. `a0` under `r14b-activity` was stopped (it cannot pass, and it lost to `r14b-fraction`).
+
+### Round 20: a0 under `r10`, recorded (2026-10-31, 01:33 UTC)
+
+Generated W14b words, composed with `core_crossfade`, on D20 (`phase-a/a0-w14b-r10.json`; real 4.493, blank 1.68):
+
+| Form | BLEU | Likelihood minus blank |
+|---|---|---|
+| `core_crossfade` | 1.943 [1.57, 2.32] | +0.017 [−0.014, +0.047] |
+| shuffled | 1.776 | −0.107 |
+| mismatched words | 1.133 | −0.326 |
+| `@lowpass` (6 Hz) | 1.872 | +0.021 |
+
+- Paired: minus blank +0.263 [−0.17, +0.68]; minus shuffled +0.167 [−0.22, +0.57]; minus mismatched words +0.811 [+0.43, +1.24]. Likelihood minus shuffled +0.123 [+0.101, +0.145], minus mismatched words +0.343 [+0.310, +0.377].
+- Spotting recall 0.328 (mismatched 0.089); order 0.902. Wrist speed 2.60× real, spread 2.12×, hands tracked 1.19×.
+- **A6 is not adopted.** Under `r10`, BLEU and likelihood disagree on both reads: oracle +0.026 and −0.003; generated −0.071 [−0.34, +0.18] and +0.004 [−0.001, +0.009].
+
+**Warning for M1.** On the disjoint D20, generated composition sits below its own real-word oracle (1.943 against 2.219), and its lower bound against blank is below 0. On the 1,000 it read 2.306 against an oracle of 2.17. The intervals overlap, so this does not show the 1,000's figure is inflated, but that set has been read for many earlier selections, so an inflation of some size is possible. It is why M1 needs C20, and 2.55 on a fresh set may be harder than the 0.244 distance on the 1,000 suggests. Nothing changes in the rule: Phase B stays on the 1,000 and M1 needs both sets.
+
+The two reads were on different devices (a1 CPU, a0 GPU). Real reads 4.495 against 4.493, so cross-device reads differ by about 0.002.
