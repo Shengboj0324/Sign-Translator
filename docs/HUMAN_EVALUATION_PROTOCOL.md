@@ -112,6 +112,16 @@ example NIC/RID certification or ASL teaching credentials).
 - Rows a reviewer marks `viewable = no` are counted and excluded.
 - A generator result is credible only beside the reference's result on the same utterances.
 
+**Release bar (owner's rule, 2026-10-31, 22:00 UTC; fixed before any sheet returns).** A lower bound above chance shows
+that meaning gets through; it does not allow release. A system may be released only if all of these hold:
+- comprehension Wilson 95% lower bound ≥ 70%;
+- comprehension within 10 points of the reference on the same utterances;
+- negation recovered, with its false-alarm rate reported;
+- wrist speed 0.8–1.25× real;
+- all of it read at predicted timing, on unseen signers.
+
+The instrument, realism, serving and licensing requirements still apply (`docs/NEXT_PHASE_PLAN.md`).
+
 ## 7. Use of the results
 
 - The human scores are the target that the automatic instruments are validated against. Report each instrument's

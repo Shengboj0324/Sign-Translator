@@ -5794,3 +5794,7 @@ Full design: `reports/s2_design.md`. **The one question:** does removing the his
 The declared layers are: instruments (3.8 with instrument v2 agreeing); exit gate and strict review R1–R7, with the test partition read once on unseen signers; Deaf raters (`docs/HUMAN_EVALUATION_PROTOCOL.md`); serving (`docs/DEPLOYMENT.md`); licensing. The declared human bar, comprehension lower bound above chance (25%), shows meaning gets through and is not a release bar.
 
 **Proposed, before raters start:** comprehension lower bound ≥ 70%; within 10 points of real signing on the same sentences; negation recovered, with false alarms reported; wrist speed 0.8–1.25× real; all at predicted timing, on unseen signers. Current forms use each reference's true length, so 2.57 is not a deployable form.
+
+### Release bar: the owner's rule (2026-10-31, 22:00 UTC)
+
+The owner approved the proposed bar and set it as a rule. **A system may be released only if all hold:** comprehension Wilson 95% lower bound ≥ 70%; within 10 points of real signing on the same sentences; negation recovered, with false alarms reported; wrist speed 0.8–1.25× real; all at predicted timing, on unseen signers. It adds to the instrument, exit-gate and strict-review, serving and licensing layers, and replaces none of them. Recorded in `docs/HUMAN_EVALUATION_PROTOCOL.md` §6, before any rater sheet.
