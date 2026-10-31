@@ -26,10 +26,14 @@
 #   a3    (CPU)  continuous retiming, velocity-bounded bridges, ARM=tempo-0.8 | tempo-1.0 | tempo-1.25 | tempo-1.5
 #                (tempo-1.0 also renders the report-only, deployable @predicted form)
 #   cache (GPU)  best-of-16 word cache, ARM=w14b | r16, on VOCAB's D20 entries (choices 4, 8, 16); CACHE_PROCS shard
-#                processes on one GPU (a failed shard stops the others), then the merge
+#                processes on one GPU (a failed shard stops the others), then the merge. NO_GAINS=1 (ARM=w14b, VOCAB=r10
+#                only; amendment 4): the words decode without gains, under the prefix cache-w14b-nogains-r10
 #   a4    (CPU or GPU)  composition from the W14b cache, ARM=n4 | n8 | n16 (v2 spotting: the independent guard)
 #   a5    (CPU)  A5: R16 step 10000 against W14b, word-level v3d reads entry by entry (both caches first)
 #   a8    (GPU)  A5's sentence read: a0 with R16 step 10000's words instead of W14b's, against a0 (amendment 3)
+#   a9    (CPU or GPU, VOCAB=r10 only)  amendment 4's stack read: composition from the no-gains cache, ARM=n4 | n8 | n16, with
+#                @lowpass; against both a7-nogains-r10 and a4-w14b-nN-r10. It passes no --no-decoder-gains: the gains are the
+#                cache's, and the report records them (settings.round20.word_cache.no_decoder_gains)
 # Comparisons (CPU, seconds): scripts/round20_compare.py forms --a KEY:FORM --b KEY:FORM (paired BLEU + likelihood).
 # Thread counts come from the cgroup CPU quota or sched_getaffinity, never nproc.
 set -uo pipefail
@@ -70,7 +74,7 @@ for p in "$R10 $R10SHA" "$R14B $R14BSHA" "$D20 $D20SHA" "$GLOSS $GLOSSSHA" "$BT/
          "$V2/best.json $V2SHA" "$V2CK $V2CKSHA" "$V3D/best.json $V3DSHA" "$V3DCK $V3DCKSHA"; do
   set -- $p; pin "$1" "$2"
 done
-PHASE=${R20_PHASE:?set R20_PHASE: a1 a0 a7 a2 a3 cache a4 a5 a8}
+PHASE=${R20_PHASE:?set R20_PHASE: a1 a0 a7 a2 a3 cache a4 a5 a8 a9}
 ARM=${ARM:-}
 VOCAB=${VOCAB:?set VOCAB: r10, r14b-fraction or r14b-activity}
 case $VOCAB in
@@ -80,6 +84,8 @@ case $VOCAB in
                  VCACHE="--vocabulary-mix-key $R14B --vocabulary-mix-sha256 $R14BSHA" ;;
   *) die "VOCAB must be r10, r14b-fraction or r14b-activity" ;;
 esac
+case ${NO_GAINS:-0} in 0) ;; 1) [ "$PHASE" = cache ] || die "NO_GAINS=1 belongs to the cache phase (a7 and a9 have their own)" ;;
+  *) die "NO_GAINS must be 0 or 1" ;; esac
 CLIPS=500; SAMPLES=16; CHOOSE=4,8,16
 if [ "${SMOKE:-0}" = 1 ]; then
   OUT=$OUT/smoke/$(date -u +%Y%m%dT%H%M%SZ); CLIPS=5; SAMPLES=4; CHOOSE=1,4
@@ -142,7 +148,13 @@ case $PHASE in
       w14b) CK=$W14B; CKSHA=$W14BSHA ;; r16) CK=$R16; CKSHA=$R16SHA ;; *) die "cache: ARM w14b or r16" ;;
     esac
     pin $CK $CKSHA
-    PREFIX=$OUT/cache-$ARM-$VOCAB
+    TAG=$ARM; NG=""
+    if [ "${NO_GAINS:-0}" = 1 ]; then
+      [ "$ARM" = w14b ] || die "cache: NO_GAINS=1 is for ARM=w14b only"
+      [ "$VOCAB" = r10 ] || die "cache: NO_GAINS=1 is for VOCAB=r10 only"
+      TAG=$ARM-nogains; NG=--no-decoder-gains
+    fi
+    PREFIX=$OUT/cache-$TAG-$VOCAB
     exists $PREFIX/index.json && { echo "stored: $PREFIX/index.json"; echo "R20-PHASE-A-DONE 0"; exit 0; }
     N=${CACHE_PROCS:-4}; pids=()
     for s in $(seq 0 $(( N - 1 ))); do
@@ -150,8 +162,8 @@ case $PHASE in
       OMP_NUM_THREADS=$(( T / N > 0 ? T / N : 1 )) python scripts/round20_word_cache.py run --prefix $PREFIX \
         --mix-key $R10 --mix-sha256 $R10SHA $VCACHE --sentences-key $D20 --sentences-sha256 $D20SHA \
         --checkpoint-key $CK --generator-mix-sha256 $R14BSHA --samples $SAMPLES --choose $CHOOSE \
-        --recognizer-run sign-recognizer-v3d --device $DEV --shards $N --shard $s --clips $CLIPS \
-        > /root/r20-cache-$ARM-$s.log 2>&1 & pids+=($!)
+        --recognizer-run sign-recognizer-v3d --device $DEV --shards $N --shard $s --clips $CLIPS $NG \
+        > /root/r20-cache-$TAG-$s.log 2>&1 & pids+=($!)
     done
     failed=0; ended=" "   # poll every shard: an early failure stops the others at once (re-review; any bash, no wait -n)
     while :; do
@@ -166,9 +178,9 @@ case $PHASE in
       sleep 10
     done
     wait
-    [ $failed = 0 ] || die "a cache shard failed; the others were stopped (logs /root/r20-cache-$ARM-*.log)"
+    [ $failed = 0 ] || die "a cache shard failed; the others were stopped (logs /root/r20-cache-$TAG-*.log)"
     python scripts/round20_word_cache.py merge --prefix $PREFIX --shards $N || die "cache merge"
-    echo "R20 cache-$ARM-$VOCAB $PREFIX/index.json $(sha $PREFIX/index.json)" ;;
+    echo "R20 cache-$TAG-$VOCAB $PREFIX/index.json $(sha $PREFIX/index.json)" ;;
   a4)
     case $ARM in n4|n8|n16) ;; *) die "a4: ARM n4, n8 or n16" ;; esac
     if [ "${SMOKE:-0}" = 1 ]; then      # a smoke cache holds best-of-1 and best-of-4 only
@@ -176,6 +188,15 @@ case $PHASE in
     else IDX=$OUT/cache-w14b-$VOCAB/index.json; NCH=${ARM#n}; fi
     compose a4-w14b-$ARM-$VOCAB --variants core_crossfade $VMIX --word-cache-key $IDX \
       --word-cache-sha256 $(sha $IDX) --word-cache-n $NCH --recognizer-run sign-recognizer-v2 ;;
+  a9)
+    case $ARM in n4|n8|n16) ;; *) die "a9: ARM n4, n8 or n16" ;; esac
+    [ "$VOCAB" = r10 ] || die "a9: VOCAB must be r10"
+    if [ "${SMOKE:-0}" = 1 ]; then      # a smoke cache holds best-of-1 and best-of-4 only
+      [ -n "${CACHE_KEY:-}" ] || die "a9 smoke: give CACHE_KEY (a no-gains smoke cache's index.json)"; IDX=$CACHE_KEY; NCH=4
+    else IDX=$OUT/cache-w14b-nogains-$VOCAB/index.json; NCH=${ARM#n}; fi
+    exists $IDX || die "a9: the no-gains cache $IDX is not stored"
+    compose a9-nogains-$ARM-$VOCAB --variants core_crossfade $VMIX --word-cache-key $IDX \
+      --word-cache-sha256 $(sha $IDX) --word-cache-n $NCH --recognizer-run sign-recognizer-v2 --lowpass-report-hz 6 ;;
   a5)
     A=${A5_A:-$OUT/cache-r16-$VOCAB/index.json}; B=${A5_B:-$OUT/cache-w14b-$VOCAB/index.json}
     K=$OUT/a5-r16-vs-w14b-$VOCAB.json
