@@ -5815,3 +5815,30 @@ Stricter than the release bar's wording, never looser. Paired by sentence; inter
 - **Sentence draw:** every eligible negated sentence is kept among the 200, to give negation enough ratings. Comprehension is read weighted to D20's negated share, and the unweighted value is reported beside it.
 - **Unviewable rows:** counted and excluded as in the protocol; a system with over 5% does not pass.
 - **Wrist speed and timing:** measured on the exact clips rated, at predicted timing, unseen signers. The first read fails these by construction and stays diagnostic.
+
+### C20 verdict: M1 not met (read 2026-10-31, recorded 23:23 UTC)
+
+Amendment 7's single read, W14b with gains and best of 16, instrument v1 (`verdict-w14b-gains-n16-c20.json`, sha `f61af625…`). **BLEU 2.400 [2.06, 2.737], against the 2.55 threshold. M1 is not met.** No retry, and no other composition arm reads C20.
+
+| C20 read | Value | The 1,000, same arm |
+|---|---|---|
+| Composition | 2.400 [2.06, 2.737] | 2.570 [2.236, 2.892] |
+| Real | 4.033 | 4.136 |
+| Blank | 2.053 | 1.859 |
+| Minus blank | +0.347 [+0.011, +0.692] | +0.711 |
+| Minus shuffled words | +0.609 [+0.262, +0.948] | +0.277 |
+| Minus other sentences' words | +1.238 [+0.89, +1.567] | +1.496 |
+| Likelihood minus blank (real) | +0.0765 [+0.0525, +0.099] (+0.3102) | +0.055 |
+| Spotting recall | 0.4001 [0.3871, 0.4138] | 0.4125 |
+| Spotting order | 0.9308 [0.921, 0.9406] | not compared here |
+| Wrist speed | 2.64× | 2.60× |
+| Length ratio (real, blank) | 1.607 (1.330, 1.441) | 1.60 |
+
+**Reading:**
+- The content signal replicates on fresh sentences: the output beats other sentences' words and its own shuffled order, and word order counts for more here than on the 1,000.
+- The 2.57 did not replicate. The result sits near the audit's content-only estimate of about 2.45.
+- Blank reads higher on C20 than on the 1,000, so the margin over blank is barely above zero.
+- The threshold was never relaxed. The interval includes 2.55, but the rule reads the point estimate; that doesn't reopen the question.
+- Unchanged by this read: the consent list (after the model finishes) and the release bar.
+
+**Consequence, as declared:** the structural track. S2's probes and evidence test decide whether anything trains, under the owner's rule that training needs evidence of a higher chance than the previous round. Composition stays the best reader we have and the comparator; instrument v2 re-reads this arm as planned, and those re-reads don't change this verdict. The at most 562 fresh clips stay unread.
