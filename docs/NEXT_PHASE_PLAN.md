@@ -5842,3 +5842,9 @@ Amendment 7's single read, W14b with gains and best of 16, instrument v1 (`verdi
 - Unchanged by this read: the consent list (after the model finishes) and the release bar.
 
 **Consequence, as declared:** the structural track. S2's probes and evidence test decide whether anything trains, under the owner's rule that training needs evidence of a higher chance than the previous round. Composition stays the best reader we have and the comparator; instrument v2 re-reads this arm as planned, and those re-reads don't change this verdict. The at most 562 fresh clips stay unread.
+
+### Phase a10 declared: predicted timing, report only (2026-10-31, 23:47 UTC, before any read)
+
+Best of 16, W14b, r10 vocabulary, gains and no gains, on D20's 500 sentences, from stored a4 and a9 caches (no generation). Sentence lengths come from text alone, by the fit on training records. **It decides nothing:** no lever, M1, C20 or gate depends on it. Reported: BLEU and likelihood against a blank at predicted length and at true length, shuffled and mismatched words, spotting, wrist speed, length ratio. Six word-less clips use the predicted-length blank.
+
+**Read with care:** predicted lengths run 1.198× true pooled, 1.3445× per clip, and fall outside P3's [0.95, 1.10]. Stretching the same words lowers wrist speed by construction, so a lower speed here isn't progress toward the release bar. The main form must reproduce the stored reads, checked on all 500 clips; a difference raises an alert in the report.
