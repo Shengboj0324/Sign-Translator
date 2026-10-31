@@ -5551,3 +5551,25 @@ Evidence for a higher chance than a0, from before any A7 read:
 - spotting recall (recogniser v2, the independent guard) paired lower bound above −0.02.
 
 The extra guards exist because the instrument reads damped motion more easily (recorded at round 3d), so a BLEU gain alone would not show better signing. If adopted, the departure from amendment 5 ("gains on every generated state") is recorded for composition only, the word caches are rebuilt without gains for a4, and Phase B stacks it. Independent review comes before any pod runs it.
+
+### Round 20 A2 result, recorded (2026-10-31, 03:10 UTC): not adopted, and the read is real
+
+Continuous-form oracle under `r10` on D20 (`phase-a/a2-continuous-r10.json`; 82% of words from continuous segments): BLEU 1.879 [1.54, 2.21] against isolated 2.219, paired −0.340 [−0.764, +0.044]; likelihood −0.122 [−0.153, −0.090]; shuffled 1.902; spotting 0.172 against 0.438; hands tracked 0.82× real. Not both above 0, so A2 is not adopted.
+
+**Independent audit (verdict: real, no cutting error).** A local harness reproduced the stored A1 and A2 hypotheses on 494 of 494 sentences.
+- **Timing:** boundaries are native frames. Cross-signer handshape retrieval peaks at shift 0 ±1 frame (0.42–0.45, about 0.10 at ±16–24); scale peaks at 1.0–1.05.
+- **Identity:** 0 key mismatches in 2,068 utterances, no mirroring.
+- **Labels:** cross-signer same-gloss retrieval 0.40–0.43 (chance 0.08); about 2% of draws mismapped.
+- **Composition:** no isolated-style trimming reaches segments.
+- **Recogniser top-5 on segments:** 0.078, mismatched 0.002, shifted ±0.4 s under 0.01.
+
+**Limits of this read:** it tests ASLLRP segments moved between sentences. It does not test How2Sign's own segments, so it does not refute arXiv 2405.07663, which the audit did not read.
+
+**Other findings:**
+- **Recogniser v2 spotting is inflated on ASLLVD words.** v2 trained on ASLLVD train signers: ASLLVD cores read 0.96, other isolated clips 0.37. Without ASLLVD, A1's spotting falls from 0.433 to 0.284 (A2 0.199, 100 sentences). Spotting comparisons across different word sources are therefore biased; paired ones on the same words (A4, A7) are not affected in the same way.
+- **The read depends strongly on the signer.** Using one ASLLRP signer's segments (68% continuous) gives likelihood +0.001 and BLEU 2.226, still −0.031 [−0.058, −0.003] behind A1.
+- **Hand tracking is poor for some signers:** 21% of tokens have no right hand tracked.
+
+**Process breach, disclosed.** During its first survey the audit printed metadata from one test utterance and one test-partition record (annotations only, no states), against its brief. Nothing above uses them.
+
+**Open:** on ASLLRP's own sentences the audit read isolated clips at +0.221 against real +0.26 on likelihood minus blank. How those words were chosen is being checked; nothing follows from it yet.
