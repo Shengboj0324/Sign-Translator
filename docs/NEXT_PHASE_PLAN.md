@@ -5733,3 +5733,19 @@ The word caches for the 1,000 under W14b keep building. An R16 cache for the 1,0
 3. **Only one arm reads C20, chosen by this rule, fixed now.** The stack replaces the first arm **only if all hold** on the 1,000: BLEU point estimate ≥ 2.55; paired likelihood against the first arm with lower bound above 0; v2 spotting paired lower bound above −0.02; wrist speed ratio closer to 1 than the first arm's 2.60×. Otherwise the first arm stays. BLEU is not compared directly, because D20 showed the difference between these two arms is far inside noise, and BLEU has the known tempo artefact.
 4. **Skepticism carried over.** Removing gains yields damped motion, which this instrument reads more easily, so the likelihood gain may partly be that preference. Wrist speed is the instrument-free check; instrument v2 and raters still decide.
 5. **Whether C20 runs at all** follows the audit and is recorded separately before any C20 read. Nothing here reads C20.
+
+### Independent audit of Phase B's first read, recorded (2026-10-31, 15:35 UTC)
+
+**Verdict: the gain is real, but crossing 2.55 is not established** (margin +0.020, standard error 0.167).
+- **Setup checks:** references, order, words and frames match on 1,000 of 1,000. All 8,517 words came from the cache. Recomputed choices differ on 0 of 894 entries. The 569 entries shared with D20's cache have identical seeds, choices and state hashes, so no sentence data entered.
+- **About half of the gain is fewer loops, not more content.** No tempo change, no empties, brevity penalty 1. Length ratio 1.679 → 1.602, loops 36.6% → 31.7%. N-gram matches alone give +0.140 and length alone +0.117, so **content alone reaches about 2.45.** Matches for n = 1–4: 5,463 → 5,924, 1,042 → 1,178, 400 → 427, 180 → 174. With loops collapsed: +0.110 [−0.352, +0.625]. Fewer loops is a legitimate gain in the output, not more content read.
+- **Content evidence:** v2 spotting +0.078. Shuffled rose +0.285, so word-order signal did not grow.
+- **Concentration:** P(gain > 0) 0.94. Dropping the top 10 sentences gives −0.027, the bottom 10 +0.569, both +0.280: symmetric noise. All signer-group intervals include 0.
+- **Hypotheses:** the arm loops less and sometimes keeps a clause. Both arms still mostly invent content.
+
+**The C20 question: permitted, not required.** The M1 sentence names only point estimates, and no plan text ties Phase B's rule to C20. The job's gate (5b238bb) and the lead's message to the owner were pre-result commitments, so lifting them would be a post-result relaxation and must be disclosed as one.
+- **Power:** item 1's half-width is 0.344, so it needs about 2.65; an arm truly at 2.55 passes 28% of the time.
+- **Risk:** P(C20 ≥ 2.55) is 7% if the arm is truly 2.306, 27% at 2.45; pooled forecast 35%.
+- **Cost:** at most 562 fresh clips remain (±0.44), so **there is no second fresh 1,000.**
+
+**Not verified:** seed noise; best-of against a fixed per-entry choice; v3d's corpora; code equivalence since 10-29. `c20.json` was not read. The C20 decision is recorded after the stack's read, before any C20 read.
