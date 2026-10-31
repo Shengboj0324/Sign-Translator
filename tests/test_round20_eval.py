@@ -3,10 +3,12 @@ sentence set, the Sem-Lex activity core, continuous retiming with tempo, the low
 report-only predicted-duration form, the continuous-form oracle, the word cache (and its circularity note), the
 paired comparison and the pod script's syntax. The default run keeps the round-15 report (no round-20 rows)."""
 import hashlib
+import io
 import json
 from pathlib import Path
 import subprocess
 import tempfile
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -16,6 +18,7 @@ import scripts.round20_lib as lib
 from tests.test_round15_compose_eval import run_args
 from tests.test_round15_stage2 import stage2_store, generator_store  # noqa: F401  (fixtures)
 from tests.test_round15_compositional import stubbed  # noqa: F401
+from tests.test_sentence_exposure_diagnostic import TEMPERATURE
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -297,3 +300,255 @@ def test_the_pod_script_parses():
                    "--lowpass-report-hz", "round20_word_cache.py", "--likelihood", "SMOKE", "r14b-fraction",
                    "--semlex-oracle-tracked", "kill $q", "an early failure stops the others at once"):
         assert needle in text, needle
+
+
+# ---- A7: composition without the accepted decoder gains ----------------------------------------------------------------
+
+GAINS = {"body": 1.4, "head_rotation": 1.25}
+FRACTIONS = dict(entries={"cut": (.25, .75)}, all=(.3, .6))
+JOB_SETTINGS = dict(guidance=1.5, temperature=TEMPERATURE, rule=None, timing="sign-fitted", fractions=FRACTIONS, margin=.1)
+
+
+def put_gains(store):
+    """The tiny prior now names a tokenizer whose accepted gains are stored, as W14b's does."""
+    import torch
+    from fit_tokenizer_gains import decoder_gains_key
+    tokenizer_key = "training-runs/tok/checkpoints/step-00000001.pt"
+    checkpoint = torch.load(io.BytesIO(store.get("prior.pt")), map_location="cpu", weights_only=False)
+    buffer = io.BytesIO()
+    torch.save(dict(checkpoint, tokenizer_key=tokenizer_key), buffer)
+    store.put("prior.pt", buffer.getvalue())
+    store.put(decoder_gains_key(tokenizer_key), json.dumps(dict(tokenizer_key=tokenizer_key, gains=GAINS)).encode())
+
+
+def loaded(store, sha, **kw):
+    from evaluate_text_to_motion import load_generator
+    return load_generator(store, "prior.pt", sha, "cpu", temperature=TEMPERATURE, **kw)[2]
+
+
+def assert_same_state(a, b):
+    assert set(a.channels) == set(b.channels)
+    for name in a.channels:
+        np.testing.assert_array_equal(a.channels[name].values, b.channels[name].values)
+        np.testing.assert_array_equal(a.channels[name].valid, b.channels[name].valid)
+
+
+def differs(a, b, channel):
+    return not np.array_equal(a.channels[channel].values, b.channels[channel].values)
+
+
+WORDS = dict(mode="core_crossfade", words=["cut", "onion"], generate=[.5, .4], seeds=[3, 4])
+
+
+def test_a_word_without_gains_is_the_plain_decode_plus_head_smoothing(tmp_path, stage2_store):  # noqa: F811
+    import torch
+    import scripts.round15_stage2 as r2
+    from exposure_diagnostic import make_post
+    from signtranslator.generation.compositional import generate_word
+    from signtranslator.generation.motion_rvq import generate_rvq_motion
+    store, sha, *_ = stage2_store
+    put_gains(store)
+    on, off = loaded(store, sha), loaded(store, sha, decoder_gains=False)
+    assert on.decoder_gains == GAINS and off.decoder_gains is None
+    a, b = (r2.generate_job(s, WORDS, **JOB_SETTINGS) for s in (on, off))
+    assert a["segments"] == b["segments"]                                        # same seeds and same (fractional) cuts
+    for k, (w, d, s) in enumerate(zip(WORDS["words"], WORDS["generate"], WORDS["seeds"])):
+        codes = [generate_rvq_motion(x.prior, x.tokenizer, [w], fps=24., durations=[d], guidance=1.5,
+                                     temperature=TEMPERATURE, seed=s, return_codes=True)[1][0] for x in (on, off)]
+        assert torch.equal(*codes)                                               # the same seed samples the same codes
+        plain = generate_word(off.prior, off.tokenizer, w, d, s, guidance=1.5, temperature=TEMPERATURE, post=lambda x: x)
+        assert_same_state(b["pieces"][k]["state"], make_post(None)(plain))
+        assert_same_state(a["pieces"][k]["state"], make_post(GAINS)(plain))
+        assert differs(b["pieces"][k]["state"], plain, "head_rotation")          # head smoothing stays on
+        assert differs(b["pieces"][k]["state"], a["pieces"][k]["state"], "body")  # the gain is off
+        assert not differs(b["pieces"][k]["state"], a["pieces"][k]["state"], "right_hand")   # no gain there: same codes
+    # the sample wrapper has no gain either, and the default load is the gained one
+    args = ("cut", 24., .5, 1.5, None, 3)
+    from fit_tokenizer_gains import apply_gains
+    plain = generate_rvq_motion(off.prior, off.tokenizer, ["cut"], fps=24., durations=[.5], guidance=1.5,
+                                temperature=TEMPERATURE, seed=3)[0]
+    assert_same_state(off(*args), plain)
+    assert_same_state(on(*args), apply_gains(plain, GAINS))
+    # the chained sampler and the stage-1 timing go through the same post
+    chained = dict(WORDS, mode="core_chained", durations=[.3, .35], overlap=4)
+    a, b = (r2.generate_job(s, chained, **JOB_SETTINGS) for s in (on, off))
+    assert a["segments"] == b["segments"]
+    assert differs(b["parts"]["cores"][0], a["parts"]["cores"][0], "body")
+    assert not differs(b["parts"]["cores"][0], a["parts"]["cores"][0], "right_hand")
+    timing = dict(JOB_SETTINGS, timing="stage1")
+    a, b = (r2.generate_job(s, chained, **timing) for s in (on, off))
+    assert differs(b["state"], a["state"], "body") and not differs(b["state"], a["state"], "right_hand")
+
+
+def test_no_gains_reach_a_spawned_workers_job(tmp_path, stage2_store):  # noqa: F811
+    import scripts.round15_stage2 as r2
+    store, sha, *_ = stage2_store
+    put_gains(store)
+    on, off = loaded(store, sha), loaded(store, sha, decoder_gains=False)
+    jobs = [WORDS, dict(WORDS, words=["go", "cut"], seeds=[5, 6])]
+    worker = (f"dir:{tmp_path / 'store'}", "prior.pt", sha, "cpu", TEMPERATURE, 1)
+    here = r2.run_jobs(off, jobs, JOB_SETTINGS, decoder_gains=False)
+    there = r2.run_jobs(None, jobs, JOB_SETTINGS, workers=2, worker_args=worker, decoder_gains=False)
+    gained = r2.run_jobs(None, jobs, JOB_SETTINGS, workers=2, worker_args=worker)       # default: the gains stay
+    for h, t, g, plain in zip(here, there, gained, r2.run_jobs(on, jobs, JOB_SETTINGS)):
+        for p, q, r, s in zip(h["pieces"], t["pieces"], g["pieces"], plain["pieces"]):
+            assert_same_state(p["state"], q["state"])
+            assert_same_state(r["state"], s["state"])
+            assert differs(q["state"], r["state"], "body")
+    with pytest.raises(ValueError, match="without the gains"):                   # a gained parent cannot claim otherwise
+        r2.run_jobs(on, jobs, JOB_SETTINGS, decoder_gains=False)
+
+
+def test_a7_shares_a0s_jobs_and_codes_in_spawned_workers_and_pairs_with_it(tmp_path, stage2_store, likelihood_stub,  # noqa: F811
+                                                                            monkeypatch):
+    import round15_stage2
+    from scripts.round20_compare import main as compare_main
+    store, sha, *_ = stage2_store
+    put_gains(store)
+    ssha, texts = put_set(store, sha)
+    real, runs = round15_stage2.run_jobs, []
+
+    def recording(sample, jobs, settings, **kw):
+        out = real(sample, jobs, settings, **kw)
+        runs.append(dict(jobs=jobs, settings=settings, material=out))
+        return out
+    monkeypatch.setattr(round15_stage2, "run_jobs", recording)
+    a0 = ["--sentences-key", "sets/d20.json", "--sentences-sha256", ssha, "--variants", "core_crossfade", "--likelihood",
+          "--lowpass-report-hz", "6"]
+    assert ce.main(run_args(tmp_path, sha, *a0, "--output-key", "e/a0.json")) == 0
+    assert ce.main(run_args(tmp_path, sha, *a0, "--no-decoder-gains", "--output-key", "e/a7.json")) == 0
+    # the CLI's own worker path: a fix in the parent process alone leaves the gains on here, and this fails
+    assert ce.main(run_args(tmp_path, sha, *a0, "--no-decoder-gains", "--word-workers", "2",
+                            "--output-key", "e/a7w.json")) == 0
+    gained, here, there = runs
+    assert gained["jobs"] == here["jobs"] == there["jobs"] and gained["settings"] == here["settings"]
+    assert any(len(j["seeds"]) for j in there["jobs"])
+    body = 0
+    for g, h, t in zip(gained["material"], here["material"], there["material"]):
+        assert g["segments"] == h["segments"] == t["segments"]
+        for p, q, r in zip(g["pieces"], h["pieces"], t["pieces"]):
+            assert_same_state(q["state"], r["state"])                            # one worker or two: the same words
+            assert not differs(p["state"], r["state"], "right_hand")             # same codes as a0
+            body += differs(p["state"], r["state"], "body")
+    assert body > 0
+    x, y = (json.loads(store.get(f"e/{k}.json")) for k in ("a0", "a7"))
+    assert "no_decoder_gains" not in x["settings"]["round20"] and y["settings"]["round20"]["no_decoder_gains"] is True
+    y_settings = dict(y["settings"], round20={k: v for k, v in y["settings"]["round20"].items() if k != "no_decoder_gains"})
+    assert x["settings"] == y_settings                                           # every other setting is a0's
+    merge(tmp_path, "e/a0.json", "e/a0-w14b-r10.json")
+    merge(tmp_path, "e/a7w.json", "e/a7-nogains-r10.json")
+    m0, m7 = (json.loads(store.get(k)) for k in ("e/a0-w14b-r10.json", "e/a7-nogains-r10.json"))
+    assert m7["round20"]["settings"]["no_decoder_gains"] is True and m7["references"] == m0["references"] == texts
+    assert "no_decoder_gains" not in m0["round20"]["settings"]
+    assert m7["forms"]["real"]["hypotheses"] == m0["forms"]["real"]["hypotheses"]
+    out = tmp_path / "pair.json"
+    assert compare_main(["forms", "--store", f"dir:{tmp_path / 'store'}", "--a", "e/a7-nogains-r10.json:core_crossfade",
+                         "--b", "e/a0-w14b-r10.json:core_crossfade", "--bootstrap", "20", "--output-file", str(out)]) == 0
+    pair = json.loads(out.read_text())
+    assert pair["sentences"] == len(texts) and "likelihood_minus_blank" in pair
+
+
+def test_the_option_off_changes_nothing(tmp_path, stage2_store):  # noqa: F811
+    store, sha, *_ = stage2_store
+    put_gains(store)
+    assert ce.ROUND20_DEFAULTS["no_decoder_gains"] is False
+    assert ce.main(run_args(tmp_path, sha, "--clips", "5", "--output-key", "e/d.json")) == 0
+    assert ce.main(run_args(tmp_path, sha, "--clips", "5", "--lowpass-report-hz", "6", "--output-key", "e/r.json")) == 0
+    plain, r20 = (json.loads(store.get(k)) for k in ("e/d.json", "e/r.json"))
+    assert "round20" not in plain and "round20" not in plain["settings"]         # the option alone adds no row
+    assert "no_decoder_gains" not in json.dumps(plain) and "no_decoder_gains" not in json.dumps(r20)
+    assert set(r20["settings"]["round20"]) == {           # the settings already in the stored round-20 reports
+        "sentences", "vocabulary_mix", "semlex_core", "activity_margin", "oracle_source", "gloss_manifest", "retime",
+        "tempo", "bridge_velocity", "lowpass_hz", "word_cache", "likelihood", "predicted_duration",
+        "semlex_oracle_tracked", "lowpass_report_hz"}
+    assert loaded(store, sha).decoder_gains == GAINS == loaded(store, sha, decoder_gains=True).decoder_gains
+
+
+def test_no_gains_refusals(tmp_path, stage2_store, capsys, monkeypatch):  # noqa: F811
+    import round15_stage2
+    import torch
+    from evaluate_text_to_motion import load_generator
+    from scripts.round20_word_cache import main as cache_main
+    store, sha, *_ = stage2_store
+    off = ["--no-decoder-gains", "--output-file", str(tmp_path / "o.json")]
+    with pytest.raises(SystemExit, match="no accepted decoder gains"):           # the tiny prior names no tokenizer
+        ce.main(run_args(tmp_path, sha, "--clips", "5", *off))
+    with pytest.raises(SystemExit, match="no accepted decoder gains"):
+        cache_main(["run", "--store", f"dir:{tmp_path / 'store'}", "--prefix", "cache/none", "--mix-key", "mix.json",
+                    "--mix-sha256", sha, "--clips", "5", "--checkpoint-key", "prior.pt", "--samples", "1", "--choose",
+                    "1", "--device", "cpu", "--no-decoder-gains"])
+    buffer = io.BytesIO()
+    torch.save(dict(kind="motion_token_prior", manifest_sha256=sha), buffer)
+    store.put("old.pt", buffer.getvalue())
+    with pytest.raises(SystemExit, match="not an rvq prior"):
+        load_generator(store, "old.pt", sha, decoder_gains=False)
+    put_gains(store)
+    args = [a for a in run_args(tmp_path, sha) if a not in ("--checkpoint-key", "prior.pt")]
+    args[args.index("core_crossfade,oracle_stage2")] = "oracle_stage2"
+    with pytest.raises(SystemExit):                                              # oracle-only: no generated word
+        ce.main(args + ["--clips", "5", *off])
+    assert "needs a generated variant" in capsys.readouterr().err
+    with pytest.raises(SystemExit):                                              # a cache's gains are already fixed
+        ce.main([a for a in run_args(tmp_path, sha) if a not in ("--checkpoint-key", "prior.pt")]
+                + ["--variants", "core_crossfade", "--clips", "5", "--word-cache-key", "c.json", "--word-cache-sha256",
+                   "0" * 64, *off])
+    assert "a cache's gains are fixed" in capsys.readouterr().err
+    plan_jobs = round15_stage2.plan_jobs                                         # no sentence selects a word
+    monkeypatch.setattr(round15_stage2, "plan_jobs", lambda *a, **k: {
+        key: None if key[0] in round15_stage2.GENERATED else job for key, job in plan_jobs(*a, **k).items()})
+    with pytest.raises(SystemExit, match="generates no word"):
+        ce.main(run_args(tmp_path, sha, "--clips", "5", *off))
+    assert not (tmp_path / "o.json").exists()
+
+
+def test_a_word_cache_without_gains(tmp_path, stage2_store, monkeypatch):  # noqa: F811
+    import torch
+    import validate_sign_recognizer as vsr
+    from evaluate_text_to_motion import load_state
+    from exposure_diagnostic import make_post
+    from scripts.round20_word_cache import main as cache_main
+    from signtranslator.generation.compositional import generate_word
+    store, sha, *_ = stage2_store
+    put_gains(store)
+    labels = ["CUT", "ONION", "SALT", "HEAT", "KNIFE", "HALF", "NOW", "STIR"]
+    monkeypatch.setattr(vsr, "load_model", lambda store, run, device: (None, labels, {"checkpoint_key": "r.pt"}))
+    monkeypatch.setattr(vsr, "logits_of", lambda model, states, device, batch=64: torch.zeros(len(states), len(labels)))
+
+    def build(prefix, *extra):
+        common = ["--store", f"dir:{tmp_path / 'store'}", "--prefix", prefix]
+        assert cache_main(["run", *common, "--mix-key", "mix.json", "--mix-sha256", sha, "--clips", "5", "--limit", "2",
+                           "--checkpoint-key", "prior.pt", "--samples", "2", "--choose", "1,2", "--device", "cpu",
+                           *extra]) == 0
+        assert cache_main(["merge", *common]) == 0
+        payload = store.get(f"{prefix}/index.json")
+        return json.loads(payload), hashlib.sha256(payload).hexdigest()
+    on, _ = build("cache/on")
+    off, off_sha = build("cache/off", "--no-decoder-gains")
+    assert "no_decoder_gains" not in on["settings"] and off["settings"]["no_decoder_gains"] is True
+    assert json.loads(store.get("cache/off/shard-0-of-1.json"))["settings"]["no_decoder_gains"] is True
+    sample = loaded(store, sha, decoder_gains=False)
+    for r, s in zip(on["entries"], off["entries"]):
+        assert r["entry"] == s["entry"] and r["seeds"] == s["seeds"]             # the same seeds
+        plain = generate_word(sample.prior, sample.tokenizer, r["entry"], r["seconds"], r["seeds"][0], guidance=1.5,
+                              temperature=TEMPERATURE, post=lambda x: x)
+        for row, gains in ((r, GAINS), (s, None)):
+            pick = row["chosen"]["1"]
+            assert_same_state(load_state(store, pick["state_key"], pick["state_sha256"]), make_post(gains)(plain))
+    # a composition from the no-gains cache states it (load_word_cache: the sentences' words must be in the cache)
+    args = SimpleNamespace(word_cache_key="cache/off/index.json", word_cache_sha256=off_sha, word_cache_n=1,
+                           vocabulary_mix_key=None, vocabulary_mix_sha256=None, mix_key="mix.json", mix_sha256=sha)
+    words = [r["entry"] for r in off["entries"]]
+    info, states = ce.load_word_cache(store, args, dict.fromkeys(words), off["settings"]["corpora"], words)
+    assert info["no_decoder_gains"] is True and set(states) == set(words)
+    on_payload = store.get("cache/on/index.json")
+    args.word_cache_key, args.word_cache_sha256 = "cache/on/index.json", hashlib.sha256(on_payload).hexdigest()
+    assert "no_decoder_gains" not in ce.load_word_cache(store, args, dict.fromkeys(words), on["settings"]["corpora"],
+                                                        words)[0]
+
+
+def test_the_pod_script_runs_a7_as_a0_plus_the_option():
+    text = (ROOT / "runpod/fleet/round20_phase_a.sh").read_text()
+    a0 = text.split("  a0) pin $W14B $W14BSHA\n      compose a0-w14b-$VOCAB ")[1].split(" ;;")[0]
+    a7 = text.split("  a7) pin $W14B $W14BSHA\n      compose a7-nogains-$VOCAB ")[1].split(" ;;")[0]
+    assert a7 == a0 + " --no-decoder-gains" and "$GEN --lowpass-report-hz 6" in a0
+    assert "#   a7    (GPU)" in text and "a1 a0 a7 a2" in text

@@ -86,15 +86,21 @@ def load_plan_prior(store, plan: dict, detail: dict, manifest_sha256: str):
 
 
 def load_generator(store, key: str, manifest_sha256: str, device: str = "cpu", *, temperature: float = 1., top_k: int = 0,
-                   plan: dict | None = None):
+                   plan: dict | None = None, decoder_gains: bool = True):
     """(label, trained channels, sample(text, fps, seconds, guidance, steps, seed)) for any checkpoint kind.
 
     Round 17: a plan-conditioned rvq prior needs ``plan`` (``load_plan_prior``'s keys, optionally ``temperature`` and
     ``guidance`` of the plan sampler: by default the detail's); it then samples plan, then detail
-    (``plan_codes.generate_plan_detail_batch``). Without ``plan`` every other checkpoint loads as before."""
+    (``plan_codes.generate_plan_detail_batch``). Without ``plan`` every other checkpoint loads as before.
+
+    Round 20 A7: ``decoder_gains=False`` loads an rvq prior without its tokenizer's accepted gains: no gain wrapper on
+    ``sample`` and ``sample.decoder_gains`` None (so ``make_post(sample.decoder_gains)`` only smooths the head). Sampling
+    is untouched. Refused when the tokenizer has no accepted gains (there is nothing to switch off)."""
     checkpoint = torch.load(io.BytesIO(store.get(key)), map_location="cpu", weights_only=False)
     if checkpoint["manifest_sha256"] != manifest_sha256:
         raise SystemExit(f"{key} was trained on a different manifest")
+    if not decoder_gains and checkpoint.get("kind") != "motion_rvq_prior":
+        raise SystemExit(f"{key} is not an rvq prior: it has no accepted decoder gains to switch off")
     weights = checkpoint.get("ema") or checkpoint["model"]          # EMA weights when the run kept them
     if plan is not None and (checkpoint.get("kind") != "motion_rvq_prior"
                              or not checkpoint["config"].get("plan_window")):
@@ -140,6 +146,11 @@ def load_generator(store, key: str, manifest_sha256: str, device: str = "cpu", *
         sample.batch = sample_batch
         sample.decoder_gains = None
         gains = accepted_decoder_gains(store, checkpoint.get("tokenizer_key"))
+        if not decoder_gains:          # round 20 A7: the same codes, decoded without them
+            if not gains:
+                raise SystemExit(f"{key}: its tokenizer has no accepted decoder gains to switch off")
+            print(f"decoder gains NOT applied: {gains}", flush=True)
+            gains = None
         if gains:                      # amendment 5: the accepted gains are part of this tokenizer's decoder
             from fit_tokenizer_gains import apply_gains
             plain, plain_batch = sample, sample_batch

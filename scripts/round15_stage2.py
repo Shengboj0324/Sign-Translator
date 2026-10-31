@@ -397,7 +397,7 @@ def generate_job(sample, job: dict, *, guidance: float, temperature, rule: dict,
 _WORKER = {}
 
 
-def _init_worker(store_spec, checkpoint_key, mix_sha256, device, temperature, threads, settings):
+def _init_worker(store_spec, checkpoint_key, mix_sha256, device, temperature, threads, settings, decoder_gains=True):
     import warnings
     warnings.simplefilter("ignore")
     import torch
@@ -405,7 +405,7 @@ def _init_worker(store_spec, checkpoint_key, mix_sha256, device, temperature, th
     from train_text_to_motion import make_store
     torch.set_num_threads(threads)
     _WORKER["sample"] = load_generator(make_store(store_spec), checkpoint_key, mix_sha256, device,
-                                       temperature=temperature)[2]
+                                       temperature=temperature, decoder_gains=decoder_gains)[2]
     _WORKER["settings"] = settings
 
 
@@ -414,9 +414,12 @@ def _run(job):
 
 
 def run_jobs(sample, jobs: list, settings: dict, *, workers: int = 1, worker_args=None, progress=None,
-             every: int = 50) -> list:
+             every: int = 50, decoder_gains: bool = True) -> list:
     """``generate_job`` of each job in order, here or in ``workers`` spawned processes (longest first); every job
-    has its own seeds, so the result does not depend on the workers."""
+    has its own seeds, so the result does not depend on the workers. ``decoder_gains=False`` (round 20 A7): ``sample``
+    was loaded without the accepted gains, and each spawned worker loads its generator the same way."""
+    if not decoder_gains and getattr(sample, "decoder_gains", None):
+        raise ValueError("decoder_gains=False needs a sample loaded without the gains")
     if workers <= 1:
         out = []
         for k, job in enumerate(jobs):
@@ -428,7 +431,7 @@ def run_jobs(sample, jobs: list, settings: dict, *, workers: int = 1, worker_arg
     order = sorted(range(len(jobs)), key=lambda k: -sum(jobs[k]["generate"]))
     out = [None] * len(jobs)
     with multiprocessing.get_context("spawn").Pool(workers, initializer=_init_worker,
-                                                   initargs=(*worker_args, settings)) as pool:
+                                                   initargs=(*worker_args, settings, decoder_gains)) as pool:
         for done, (k, result) in enumerate(zip(order, pool.imap(_run, [jobs[k] for k in order], chunksize=1))):
             out[k] = result
             if progress and ((done + 1) % every == 0 or done + 1 == len(jobs)):

@@ -17,6 +17,8 @@
 #   a1    (CPU)  real-word oracle; also renders oracle_stage2@lowpass (6 Hz, same material: A6 on real words)
 #   a0    (GPU)  W14b fresh composition (4 word workers); also core_crossfade@lowpass (6 Hz, same material: A6).
 #                Run under EVERY VOCAB: the A1 winner is named from a1 and a0 together (reports/round20_dev.md)
+#   a7    (GPU)  a0 with the tokenizer's accepted decoder gains off: a0's arguments, jobs and seeds, so the same codes
+#                decode without the gain. Use a0's GPU type: logits differ by device, which can change sampled codes
 #   a2    (CPU)  continuous-form oracle (ASLLRP segments where available, else isolated) on VOCAB (the A1 winner)
 #   a3    (CPU)  continuous retiming, velocity-bounded bridges, ARM=tempo-0.8 | tempo-1.0 | tempo-1.25 | tempo-1.5
 #                (tempo-1.0 also renders the report-only, deployable @predicted form)
@@ -64,7 +66,7 @@ for p in "$R10 $R10SHA" "$R14B $R14BSHA" "$D20 $D20SHA" "$GLOSS $GLOSSSHA" "$BT/
          "$V2/best.json $V2SHA" "$V2CK $V2CKSHA" "$V3D/best.json $V3DSHA" "$V3DCK $V3DCKSHA"; do
   set -- $p; pin "$1" "$2"
 done
-PHASE=${R20_PHASE:?set R20_PHASE: a1 a0 a2 a3 cache a4 a5}
+PHASE=${R20_PHASE:?set R20_PHASE: a1 a0 a7 a2 a3 cache a4 a5}
 ARM=${ARM:-}
 VOCAB=${VOCAB:?set VOCAB: r10, r14b-fraction or r14b-activity}
 case $VOCAB in
@@ -100,6 +102,8 @@ case $PHASE in
   a1) compose a1-oracle-$VOCAB $ORACLE --lowpass-report-hz 6 ;;
   a0) pin $W14B $W14BSHA
       compose a0-w14b-$VOCAB $GEN --lowpass-report-hz 6 ;;
+  a7) pin $W14B $W14BSHA
+      compose a7-nogains-$VOCAB $GEN --lowpass-report-hz 6 --no-decoder-gains ;;
   a2) compose a2-continuous-$VOCAB $ORACLE --oracle-source continuous \
         --gloss-manifest-key $GLOSS --gloss-manifest-sha256 $GLOSSSHA ;;
   a3)
