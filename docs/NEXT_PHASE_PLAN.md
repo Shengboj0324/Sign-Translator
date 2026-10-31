@@ -5645,3 +5645,27 @@ Against `a1-oracle-r10` (BLEU 2.219, likelihood minus blank +0.032), on D20:
 | tempo 1.5 | 2.130 | −0.090 [−0.499, +0.304] | +0.033 | +0.001 [−0.011, +0.014] | +0.435 [+0.024, +0.842] | 2.26× |
 
 **Verdict:** no arm has both point estimates above 0, so A3 is not adopted. Tempo 1.25 misses by −0.0003 on likelihood; the rule is applied as declared and not relaxed. Tempo 0.8 also fails amendment 1's guard. BLEU across the tempos is not monotonic and all intervals overlap, so the 1.25 peak may be noise. Retiming at reference length does not lower wrist speed (2.26–2.31× against 2.17×); only predicted lengths do (1.88×), at 1.34× the reference's length.
+
+### Round 20 A7 result and A4 first read, recorded (2026-10-31, 07:28 UTC); amendment 4
+
+**A7, generated words without decoder gains: ADOPTED by its rule.** `a7-nogains-r10` against `a0-w14b-r10`, form `core_crossfade`, same codes (gate passed):
+
+| Measure | a0 | A7 | Paired |
+|---|---|---|---|
+| BLEU | 1.943 | 2.186 [1.82, 2.55] | +0.242 [−0.005, +0.508] |
+| Likelihood minus blank | +0.017 | +0.043 [+0.013, +0.072] | +0.027 [+0.020, +0.034] |
+| Wrist speed / real | 2.60× | 2.36× | closer to 1 |
+| Spotting recall (recogniser v2) | 0.328 | 0.320 | −0.007 [−0.016, +0.002]: lower bound above −0.02 |
+
+Minus blank +0.505 [+0.068, +0.953]; minus shuffled +0.273 [−0.098, +0.651]; minus mismatched words +1.096 [+0.686, +1.532]. `@lowpass` on A7: BLEU 2.383 [1.97, 2.79], +0.197 [−0.087, +0.484]; likelihood +0.002 [−0.002, +0.006].
+
+**Skepticism:** this instrument reads damped motion more easily (round 3d), and A7 is damped motion. Spotting did not rise and BLEU's interval touches 0. Wrist speed moving toward real is the evidence that does not depend on the instrument. Instrument v2 and raters must confirm.
+
+**A4, best of 8: passes the both-estimates rule.** `a4-w14b-n8-r10` against `a0-w14b-r10`: BLEU 2.104 [1.74, 2.50], +0.161 [−0.27, +0.646]; likelihood minus blank +0.063 [+0.033, +0.093], paired +0.046 [+0.022, +0.070]; recogniser v2 spotting 0.382, paired +0.054 [+0.037, +0.071]; wrist speed 2.67×. Best of 4 and best of 16 are pending.
+
+**Amendment 4 (before best of 4, best of 16, a8 and any stack read):**
+1. **N:** among the a4 arms meeting the rule, the highest paired likelihood; a tie (equal to 3 decimals) goes to the smaller N.
+2. **D20 stack read before Phase B.** A7 and A4 were each read alone, and the cached words carry gains. So a word cache without gains is built on D20 (`cache-w14b-nogains-r10`), and `a9-nogains-nN-r10` composes from it with `--lowpass-report-hz 6`, N from rule 1. Read against both `a7-nogains-r10` and `a4-w14b-nN-r10`.
+3. **Stack rule:** the stack proceeds to the 1,000 only if both point estimates are above 0 against **both** single levers' arms, or, failing that, the better single lever goes alone, by highest likelihood against a0.
+4. **A6 is reopened only inside the stack.** It was rejected on gained forms, where the metrics disagreed. It enters Phase B only if the stack's `@lowpass` has both point estimates above 0 against the stack. A7's `@lowpass` read does not adopt it alone.
+5. **A5:** a8 is judged by amendment 3. If it is adopted, the stack question is repeated with R16's words before Phase B; a8 ending after the stack read does not hold up the cache for the 1,000.
