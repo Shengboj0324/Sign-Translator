@@ -32,9 +32,6 @@ CMP = f"{O}/round15/eval1000/w14b-step30000.json"
 W14B = "training-runs/tokens-rvq-d0b-prior-r14b-w14b/checkpoints/step-00030000.pt"
 R16 = "training-runs/tokens-rvq-d0b-prior-r16-rollout/checkpoints/step-00010000.pt"
 FORM = "core_crossfade"
-READS = [f"{OUT_A}/{k}.json" for k in ("a0-w14b-r10", "a8-r16-r10", "a7-nogains-r10", "a7-nogains-r16-r10",
-                                       *(f"{p}-n{n}-r10" for p in ("a4-w14b", "a4-r16", "a9-nogains", "a9-nogains-r16")
-                                         for n in (4, 8, 16)))]
 PILOTS = [f"{OUT}/pilot-{p}-nogains-val1000.json" for p in ("w14b", "r16")]
 # read from the stored comparator's settings (2026-10-31)
 COMPARATOR = dict(
@@ -55,10 +52,10 @@ COMPARATOR = dict(
 # ---- the job on stubs --------------------------------------------------------------------------------------------------
 
 def job(tmp_path, phase, *, prior="w14b", no_gains="1", best_of="8", sentence_set="val1000", smoke=False, gpu=True, gate=True,
-        stored=(), fail_shard="", hang=False, reads=True, pilots=True, **env):
+        stored=(), fail_shard="", hang=False, pilots=True, **env):
     """The real job on stubs. Returns (exit code, stdout, [logged lines])."""
     e = dict(R20B_PHASE=phase, PRIOR=prior, NO_GAINS=no_gains, BEST_OF=best_of, SET=sentence_set, STUB_GATE=str(int(gate)),
-             STUB_EXISTS=" ".join([*stored, *(READS if reads else ()), *(PILOTS if pilots else ())]),
+             STUB_EXISTS=" ".join([*stored, *(PILOTS if pilots else ())]),
              STUB_FAIL_SHARD=fail_shard, STUB_HANG="1" if hang else "", **env)
     return on_stubs(tmp_path, SCRIPT.read_text(), e, smoke=smoke, gpu=gpu)
 
@@ -1318,145 +1315,289 @@ def test_run_refuses_a_second_arm_and_logs_a_declared_replacement(tmp_path):
     assert code == 0 and not any(" one-arm " in c for c in commands)
 
 
-@pytest.mark.parametrize("prior,no_gains,best_of,read,against", [
-    ("w14b", "0", "4", "a4-w14b-n4-r10", ["a0-w14b-r10"]),
-    ("w14b", "1", "0", "a7-nogains-r10", ["a0-w14b-r10"]),
-    ("w14b", "1", "8", "a9-nogains-n8-r10", ["a7-nogains-r10", "a4-w14b-n8-r10"]),
-    ("r16", "0", "0", "a8-r16-r10", ["a0-w14b-r10"]),
-    ("r16", "0", "16", "a4-r16-n16-r10", ["a8-r16-r10"]),
-    ("r16", "1", "0", "a7-nogains-r16-r10", ["a8-r16-r10"]),
-    ("r16", "1", "4", "a9-nogains-r16-n4-r10", ["a7-nogains-r16-r10", "a4-r16-n4-r10"]),
-])
-def test_every_full_phase_checks_the_stored_read_of_its_combination(tmp_path, prior, no_gains, best_of, read, against):
-    keys = [f"{OUT_A}/{k}.json" for k in (read, *against)]
-    phase = "cache" if best_of != "0" else "e2e" if no_gains == "1" else "verdict"
-    stored = [f"{OUT}/{prior}-gains-n0-val1000.json"]
-    code, out, commands = job(tmp_path, phase, prior=prior, no_gains=no_gains, best_of=best_of, stored=stored + keys, reads=False)
-    line = next(c for c in commands if " stack-check " in c)
-    assert code == 0 and f"--read-key {keys[0]} " in line and all(f"--against-key {k}" in line for k in keys[1:])
-    assert line.count("--against-key") == len(against)
-    ck = R16 if prior == "r16" else W14B
-    assert (f"--prior-checkpoint-key {ck} --no-gains {no_gains} --best-of {best_of} --lowpass 0 "
-            "--sentences-sha256 d311703b748821822f65f8e65c5e6bd81422d5e16231171f0ab1ea54e185dabe") in line
-    for k in keys:                                                               # either read missing: an unread combination
-        code, out, commands = job(tmp_path, phase, prior=prior, no_gains=no_gains, best_of=best_of, reads=False,
-                                  stored=stored + [x for x in keys if x != k])
-        assert code == 1 and "unread combination" in out and k in out and not scripts_run(commands)
-    code, out, commands = job(tmp_path, phase, prior=prior, no_gains=no_gains, best_of=best_of, stored=stored + keys, reads=False,
-                              STUB_STACK="1")
-    assert code == 1 and "do not support this combination" in out and not scripts_run(commands)
+@pytest.mark.parametrize("prior,no_gains,best_of", [("w14b", "1", "8"), ("w14b", "1", "0"), ("w14b", "0", "4"), ("r16", "0", "0"),
+                                                    ("r16", "1", "16")])
+def test_only_run_and_verdict_consult_the_stored_reads(tmp_path, prior, no_gains, best_of):
+    gains = "nogains" if no_gains == "1" else "gains"
+    report = f"{OUT}/{prior}-{gains}-n{best_of}-val1000"
+    stored = [report + ".json", f"{OUT}/cache-{prior}-{gains}-val1000-n{best_of}/index.json"]
+    for phase in ("run", "verdict"):
+        code, out, commands = job(tmp_path, phase, prior=prior, no_gains=no_gains, best_of=best_of, stored=stored)
+        line = next(c for c in commands if " stack-check " in c)
+        assert code == 0 and line == (
+            f"scripts/round20_phase_b_verdict.py stack-check --phase-a-out {OUT_A} --prior {prior} --w14b-checkpoint-key {W14B} "
+            f"--r16-checkpoint-key {R16} --no-gains {no_gains} --best-of {best_of} --lowpass 0 --sentences-sha256 "
+            "d311703b748821822f65f8e65c5e6bd81422d5e16231171f0ab1ea54e185dabe")
+        code, out, commands = job(tmp_path, phase, prior=prior, no_gains=no_gains, best_of=best_of, stored=stored, STUB_STACK="1")
+        assert code == 1 and "do not allow this arm" in out and "R20-PHASE-B-DONE 1" in out and not scripts_run(commands)
+    # a cache and an e2e are built ahead: no D20 read is opened, or even looked for, and a failing check cannot reach them
+    phases = (["cache"] if best_of != "0" else []) + (["e2e"] if no_gains == "1" else [])
+    for phase in phases:
+        code, out, commands = job(tmp_path, phase, prior=prior, no_gains=no_gains, best_of=best_of, pilots=False, STUB_STACK="1")
+        assert code == 0 and "R20-PHASE-B-DONE 0" in out and not any(" stack-check " in c or "phase-a" in c for c in commands)
 
 
-def test_lowpass_is_checked_by_the_stored_read_and_a_smoke_is_not(tmp_path):
+def test_the_jobs_exists_never_asks_for_a_d20_read():
+    text = SCRIPT.read_text()
+    assert "exists $A/" not in text and "$A/" not in text and " --phase-a-out $A " in text
+    assert not re.search(r"(a0|a4|a7|a8|a9)-[a-z0-9-]*r10", text.split("# ---- the sentences")[1])
+
+
+def test_lowpass_reaches_the_check_and_a_smoke_never_does(tmp_path):
     code, out, commands = job(tmp_path, "run", **STACK, stored=[STACK_INDEX], LOWPASS="1", STUB_STACK="1")
-    assert code == 1 and "do not support" in out and not any("compose_eval" in c for c in commands)
-    code, out, commands = job(tmp_path, "cache", **STACK, LOWPASS="1")
+    assert code == 1 and "do not allow" in out and not any("compose_eval" in c for c in commands)
+    code, out, commands = job(tmp_path, "run", **STACK, stored=[STACK_INDEX], LOWPASS="1")
     assert "--lowpass 1 " in next(c for c in commands if " stack-check " in c)
-    code, out, commands = job(tmp_path, "cache", smoke=True, gpu=False, reads=False)
+    code, out, commands = job(tmp_path, "run", smoke=True, gpu=False, CACHE_KEY="k/i.json", stored=["k/i.json"], STUB_STACK="1")
     assert code == 0 and not any(" stack-check " in c for c in commands)
 
 
 D20_SHA = "d" * 64
 A0 = ["the cat ran on a rug", "a dog sat in a lake", "she has a long book", "we go to the town", "he ate a cold soup",
       "they sing at the start"]
-BETTER = HYP_ARM
+LOW, MID, TOP = A0, HYP_ARM, REFS          # BLEU rises along these (LOW reads 0)
+LOWER = ["the cat sat on a mat", "a dog ran on the hill", "she reads a tale at home", "we walk a long road", "he made a pie",
+         "they sing a tune now"]               # above LOW and below MID
 
 
-def d20_read(hyps=BETTER, ll=-2., lowpass=None, lowpass_ll=None, **over):
-    """A stored D20 read: per sentence the likelihood, blank at -3. ``over``: settings.round20 fields."""
+def d20(checkpoint=W14B, *, n=0, gains_off=False, hyps=MID, ll=-2.5, lowpass=None, lowpass_ll=None, sentences=D20_SHA):
+    """A stored D20 read: per-sentence likelihood ``ll``, blank at -3."""
+    cache = dict(n=n, checkpoint_key=checkpoint, **({"no_decoder_gains": True} if gains_off else {})) if n else None
+    r20 = dict(sentences=dict(sha256=sentences), vocabulary_mix=None, lowpass_hz=None, retime="reference", word_cache=cache,
+               **({"no_decoder_gains": True} if gains_off and not n else {}))
     forms = {FORM: hyp_form(hyps), "blank": hyp_form(["the"] * 6)}
     per = {FORM: [ll] * 6, "blank": [-3.] * 6}
     if lowpass is not None:
         forms[f"{FORM}@lowpass"] = hyp_form(lowpass)
         per[f"{FORM}@lowpass"] = [lowpass_ll] * 6
-    r20 = dict(sentences=dict(sha256=D20_SHA), vocabulary_mix=None, lowpass_hz=None, retime="reference",
-               word_cache=cache_settings(), **over) if "word_cache" not in over else dict(
-        sentences=dict(sha256=D20_SHA), vocabulary_mix=None, lowpass_hz=None, retime="reference", **over)
-    return dict(settings=dict(seed=0, translator_key="t.pt", recognizer_run="sign-recognizer-v2", checkpoint_key=None, round20=r20),
-                references=REFS, signs=SIGNS, forms=forms, likelihood=dict(per_form=per))
+    return dict(settings=dict(seed=0, translator_key="t.pt", recognizer_run="sign-recognizer-v2",
+                              checkpoint_key=None if n else checkpoint, round20=r20),
+                references=REFS, signs=SIGNS, shards=[0], forms=forms, likelihood=dict(per_form=per))
 
 
-def worse(**over):
-    return d20_read(hyps=A0, ll=-2.5, **over)
+def world(**over):
+    """The stored reads: n16 is rule 1's N (+0.3 against a0), a7 is +0.05, the stack is above both, a8 misses amendment 3."""
+    w = {"a0-w14b-r10": d20(hyps=LOW, ll=-2.5),
+         "a8-r16-r10": d20(R16, hyps=LOW, ll=-2.6),
+         "a7-nogains-r10": d20(gains_off=True, ll=-2.45),
+         "a4-w14b-n4-r10": d20(n=4, ll=-2.4), "a4-w14b-n8-r10": d20(n=8, ll=-2.3), "a4-w14b-n16-r10": d20(n=16, ll=-2.2),
+         "a9-nogains-n16-r10": d20(n=16, gains_off=True, hyps=TOP, ll=-2.1)}
+    w.update(over)
+    return {k: v for k, v in w.items() if v is not None}
 
 
-def stack(read, against, **over):
-    args = dict(prior_checkpoint=W14B, no_gains=True, best_of=8, lowpass=False, sentences_sha256=D20_SHA)
-    return pv.stack_check(read, against, **{**args, **over})
+def check(w, *, prior="w14b", no_gains=True, best_of=16, lowpass=False, a8_delta=0., shards=True):
+    def load_shards(name, report):
+        if not shards:
+            return None
+        return [shard(report["settings"], a8_delta if name.startswith("a8") else 0.)]
+    return pv.stack_check(w.get, load_shards, prior=prior, w14b_checkpoint=W14B, r16_checkpoint=R16, no_gains=no_gains,
+                          best_of=best_of, lowpass=lowpass, sentences_sha256=D20_SHA)
 
 
-def test_stack_check_passes_a_stack_above_both_single_levers():
-    out = stack(d20_read(), {"a7": worse(), "a4": worse()})
-    assert out["a7"]["both_improve"] and out["a4"]["both_improve"] and out["a7"]["bleu"] > 0 and out["a7"]["likelihood"] == .5
+# what today's reads looked like when A7 alone and the wrong N passed
+A7_ALONE = dict(no_gains=True, best_of=0)
+A4_AT = lambda n: dict(no_gains=False, best_of=n)   # noqa: E731
 
 
-@pytest.mark.parametrize("other,match", [
-    (d20_read(hyps=REFS, ll=-2.5), "both point estimates are not above 0"),     # BLEU below
-    (d20_read(hyps=A0, ll=-1.5), "both point estimates are not above 0"),       # likelihood below
-    (d20_read(), "both point estimates are not above 0"),                       # equal is not above
+def test_the_stack_goes_at_rule_1s_n_and_the_check_says_what_held():
+    out = check(world())
+    assert out["decision"] == "stack, best of 16" and out["rule1"]["n"] == 16
+    assert out["a8"]["met"] is False and out["a8"]["spotting_lower_bound"] == 0. and out["a8"]["spotting_floor"] == -.02
+    assert out["rule3"]["passed"] and out["rule3"]["against_a7"]["both_improve"] and out["rule3"]["against_a4"]["both_improve"]
+    assert out["rule1"]["arms"]["16"]["likelihood"] == .3 and out["a7"]["likelihood"] == .05
+
+
+@pytest.mark.parametrize("n", [4, 8])
+def test_a_stack_or_a4_at_another_n_is_refused(n):
+    w = world(**{f"a9-nogains-n{n}-r10": d20(n=n, gains_off=True, hyps=TOP, ll=-2.1)})
+    with pytest.raises(SystemExit, match="rule 1 chooses best of 16, not " + str(n)):
+        check(w, best_of=n)
+    with pytest.raises(SystemExit, match="rule 1 chooses best of 16, not " + str(n)):
+        check(w, **A4_AT(n))
+
+
+def test_rule_1_ties_and_arms_that_miss_the_rule():
+    assert pv.rule1_n({4: dict(likelihood=.3001, both_improve=True), 8: dict(likelihood=.3004, both_improve=True),
+                       16: dict(likelihood=.2, both_improve=True)}) == 4
+    assert pv.rule1_n({4: dict(likelihood=.3, both_improve=True), 8: dict(likelihood=.301, both_improve=True)}) == 8
+    assert pv.rule1_n({4: dict(likelihood=.9, both_improve=False), 8: dict(likelihood=.1, both_improve=True)}) == 8
+    assert pv.rule1_n({4: dict(likelihood=.9, both_improve=False)}) is None
+    # n16 highest on likelihood but BLEU not above a0's: rule 1 falls to n8, and the n8 stack is the one that must exist
+    w = world(**{"a4-w14b-n16-r10": d20(n=16, hyps=LOW, ll=-2.2)})
+    with pytest.raises(SystemExit, match="unread: a9-nogains-n8-r10"):
+        check(w, best_of=8)
+    w["a9-nogains-n8-r10"] = d20(n=8, gains_off=True, hyps=TOP, ll=-2.1)
+    assert check(w, best_of=8)["rule1"]["n"] == 8
+
+
+@pytest.mark.parametrize("gone", ["a0-w14b-r10", "a4-w14b-n4-r10", "a4-w14b-n8-r10", "a4-w14b-n16-r10", "a7-nogains-r10",
+                                  "a9-nogains-n16-r10"])
+def test_every_read_of_the_question_must_be_stored(gone):
+    for arm in (dict(), A7_ALONE, A4_AT(16)):
+        with pytest.raises(SystemExit, match=f"unread: {gone}"):
+            check(world(**{gone: None}), **arm)
+
+
+@pytest.mark.parametrize("edit", [dict(ll=-2.5), dict(ll=-2.2), dict(hyps=MID, ll=-2.1)])
+def test_the_stack_must_be_above_both_single_levers(edit):
+    """Likelihood below a7's or equal to a4-n16's, or BLEU equal to both: rule 3 is not met."""
+    a9 = d20(n=16, gains_off=True, **{"hyps": TOP, **edit})
+    with pytest.raises(SystemExit, match="both a7 and a4-n16"):
+        check(world(**{"a9-nogains-n16-r10": a9}))
+
+
+def test_a_single_lever_needs_the_stacks_stored_failure_and_must_be_the_better():
+    failed = d20(n=16, gains_off=True, hyps=TOP, ll=-2.3)                         # below a4-n16
+    # today's case: the stack is unread, so nothing single goes
+    for arm in (A7_ALONE, A4_AT(16)):
+        with pytest.raises(SystemExit, match="unread: a9-nogains-n16-r10"):
+            check(world(**{"a9-nogains-n16-r10": None}), **arm)
+    # the stack passes: no single lever
+    for arm in (A7_ALONE, A4_AT(16)):
+        with pytest.raises(SystemExit, match="the stack goes, not a single lever"):
+            check(world(), **arm)
+    # it failed: the better one by likelihood against a0 goes, the other does not
+    w = world(**{"a9-nogains-n16-r10": failed})
+    out = check(w, **A4_AT(16))
+    assert out["decision"].startswith("a4 alone") and out["singles"] == dict(a4=.3, a7=.05) and out["rule3"]["passed"] is False
+    with pytest.raises(SystemExit, match="better single lever is a4"):            # A7 at +0.05 though A4-n16 is +0.3
+        check(w, **A7_ALONE)
+    with pytest.raises(SystemExit, match="does not have both point estimates above 0 against both"):
+        check(w)                                                                  # and the stack itself is refused
+    w = world(**{"a7-nogains-r10": d20(gains_off=True, ll=-2.15), "a9-nogains-n16-r10": d20(n=16, gains_off=True, hyps=TOP, ll=-2.18)})
+    assert check(w, **A7_ALONE)["decision"].startswith("a7 alone")
+    with pytest.raises(SystemExit, match="better single lever is a7"):
+        check(w, **A4_AT(16))
+    w = world(**{"a7-nogains-r10": d20(gains_off=True, ll=-2.2), "a9-nogains-n16-r10": failed})
+    with pytest.raises(SystemExit, match="tie on likelihood"):
+        check(w, **A7_ALONE)
+    # a7 missing its own rule cannot be the better single
+    w = world(**{"a7-nogains-r10": d20(gains_off=True, hyps=LOW, ll=-2.0), "a9-nogains-n16-r10": failed})
+    with pytest.raises(SystemExit, match="better single lever is a4"):
+        check(w, **A7_ALONE)
+
+
+def test_no_a4_arm_meets_the_rule():
+    w = world(**{f"a4-w14b-n{n}-r10": d20(n=n, hyps=LOW, ll=-2.2) for n in (4, 8, 16)})
+    assert check(w, **A7_ALONE)["decision"].startswith("a7 alone: no a4 arm")
+    with pytest.raises(SystemExit, match="no best-of-N arm goes"):
+        check(w, best_of=8)
+    w["a7-nogains-r10"] = d20(gains_off=True, hyps=LOW, ll=-2.45)
+    with pytest.raises(SystemExit, match="neither a4 nor a7"):
+        check(w, **A7_ALONE)
+
+
+def test_a8_decides_first():
+    for arm in (dict(), A7_ALONE, A4_AT(16)):
+        with pytest.raises(SystemExit, match="until a8 is judged"):               # not stored
+            check(world(**{"a8-r16-r10": None}), **arm)
+        with pytest.raises(SystemExit, match="repeated with R16's words"):        # both estimates up, spotting holds
+            check(world(**{"a8-r16-r10": d20(R16, ll=-2.4)}), **arm)
+        with pytest.raises(SystemExit, match="cannot be judged"):                 # no spotting: not silently a failure
+            check(world(**{"a8-r16-r10": d20(R16, ll=-2.4)}), shards=False, **arm)
+    met = world(**{"a8-r16-r10": d20(R16, ll=-2.4)})
+    with pytest.raises(SystemExit, match="repeated with R16's words"):
+        check(met, a8_delta=-.019)                                                # just above the floor
+    for delta in (-.02, -.05):                                                    # at or below it: a8 fails, W14b proceeds
+        out = check(met, a8_delta=delta)
+        assert out["a8"]["met"] is False and out["a8"]["both_improve"] is True and out["a8"]["spotting_lower_bound"] == pytest.approx(delta)
+    # estimates: BLEU not above a0's, or likelihood not
+    for a8 in (d20(R16, hyps=LOW, ll=-2.4), d20(R16, ll=-2.5), d20(R16, ll=-2.6)):
+        assert check(world(**{"a8-r16-r10": a8}))["a8"]["met"] is False
+
+
+def r16_world(**over):
+    w = world(**{"a8-r16-r10": d20(R16, hyps=LOWER, ll=-2.4),
+                 "a7-nogains-r16-r10": d20(R16, gains_off=True, ll=-2.35),
+                 "a4-r16-n4-r10": d20(R16, n=4, ll=-2.3), "a4-r16-n8-r10": d20(R16, n=8, ll=-2.2), "a4-r16-n16-r10": d20(R16, n=16, ll=-2.25),
+                 "a9-nogains-r16-n8-r10": d20(R16, n=8, gains_off=True, hyps=TOP, ll=-2.1)})
+    w.update(over)
+    return {k: v for k, v in w.items() if v is not None}
+
+
+def test_r16_asks_the_same_question_against_a8():
+    assert check(r16_world(), prior="r16", best_of=8)["decision"] == "stack, best of 8"
+    below_a8 = {f"a4-r16-n{n}-r10": d20(R16, n=n, ll=-2.45) for n in (4, 8, 16)}     # above a0 (-2.5), below a8 (-2.4)
+    with pytest.raises(SystemExit, match="no best-of-N arm goes"):
+        check(r16_world(**below_a8), prior="r16", best_of=8)
+    with pytest.raises(SystemExit, match="R16's words are not adopted"):
+        check(world(), prior="r16", best_of=8)                                    # a8 failed
+    with pytest.raises(SystemExit, match="unread: a4-r16-n4-r10"):                # today: no such phase has run
+        check(world(**{"a8-r16-r10": d20(R16, ll=-2.4)}), prior="r16", best_of=8)
+    with pytest.raises(SystemExit, match="a lever on R16's words meets its rule"):
+        check(r16_world(), prior="r16", no_gains=False, best_of=0)
+    flat = {f"a4-r16-n{n}-r10": d20(R16, n=n, hyps=LOW, ll=-2.2) for n in (4, 8, 16)}
+    flat["a7-nogains-r16-r10"] = d20(R16, gains_off=True, hyps=LOW, ll=-2.3)
+    assert check(r16_world(**flat), prior="r16", no_gains=False, best_of=0)["decision"].startswith("r16 alone")
+    with pytest.raises(SystemExit, match="no lever adopted"):
+        check(world(), no_gains=False, best_of=0)
+
+
+def test_lowpass_only_on_a_passing_stack_above_it():
+    assert check(world(), lowpass=False)["decision"] == "stack, best of 16"
+    a9 = d20(n=16, gains_off=True, hyps=TOP, ll=-2.1, lowpass=TOP, lowpass_ll=-2.0)
+    with pytest.raises(SystemExit, match="the stack's @lowpass does not have both"):
+        check(world(**{"a9-nogains-n16-r10": a9}), lowpass=True)                  # BLEU not above
+    a9 = d20(n=16, gains_off=True, hyps=TOP, ll=-2.1, lowpass=MID, lowpass_ll=-2.0)
+    with pytest.raises(SystemExit, match="the stack's @lowpass does not have both"):
+        check(world(**{"a9-nogains-n16-r10": a9}), lowpass=True)
+    with pytest.raises(SystemExit, match="not in the report"):
+        check(world(), lowpass=True)                                              # never read
+    # a stack whose BLEU leaves room: above both levers on BLEU, its @lowpass above it
+    w = world(**{"a7-nogains-r10": d20(gains_off=True, hyps=LOW, ll=-2.45),
+                 **{f"a4-w14b-n{n}-r10": d20(n=n, hyps=LOWER, ll=-2.5 + .1 * k) for k, n in enumerate((4, 8, 16), 1)},
+                 "a9-nogains-n16-r10": d20(n=16, gains_off=True, hyps=MID, ll=-2.1, lowpass=TOP, lowpass_ll=-2.0)})
+    out = check(w, lowpass=True)
+    assert out["rule4"]["both_improve"] and out["decision"] == "stack, best of 16 with its @lowpass"
+    w["a9-nogains-n16-r10"] = d20(n=16, gains_off=True, hyps=MID, ll=-2.1, lowpass=TOP, lowpass_ll=-2.1)
+    with pytest.raises(SystemExit, match="the stack's @lowpass does not have both"):
+        check(w, lowpass=True)                                                    # likelihood equal
+    # not on a stack that failed, nor on a single lever (a7's @lowpass read adopts nothing)
+    failed = {"a9-nogains-n16-r10": d20(n=16, gains_off=True, hyps=TOP, ll=-2.3, lowpass=TOP, lowpass_ll=-1.)}
+    with pytest.raises(SystemExit, match="against both a7"):
+        check(world(**failed), lowpass=True)
+    with pytest.raises(SystemExit, match="only inside the stack"):
+        check(world(**failed), lowpass=True, **A7_ALONE)
+    with pytest.raises(SystemExit, match="only inside the stack"):
+        check(world(**failed), lowpass=True, **A4_AT(16))
+
+
+@pytest.mark.parametrize("name,report,match", [
+    ("a9-nogains-n16-r10", d20(n=16, hyps=TOP, ll=-2.1), "word_cache.no_decoder_gains"),           # a gained stack
+    ("a9-nogains-n16-r10", d20(n=8, gains_off=True, hyps=TOP, ll=-2.1), "word_cache.n"),
+    ("a9-nogains-n16-r10", d20(R16, n=16, gains_off=True, hyps=TOP, ll=-2.1), "word_cache.checkpoint_key"),
+    ("a9-nogains-n16-r10", d20(hyps=TOP, gains_off=True, ll=-2.1), "has no word cache"),
+    ("a7-nogains-r10", d20(ll=-2.45), "no_decoder_gains"),                                          # a7 with gains
+    ("a7-nogains-r10", d20(n=16, gains_off=True, ll=-2.45), "used a word cache"),
+    ("a4-w14b-n8-r10", d20(n=8, gains_off=True, ll=-2.3), "word_cache.no_decoder_gains"),
+    ("a4-w14b-n8-r10", d20(n=4, ll=-2.3), "word_cache.n"),
+    ("a0-w14b-r10", d20(R16, hyps=LOW, ll=-2.5), "settings.checkpoint_key"),
+    ("a8-r16-r10", d20(hyps=LOW, ll=-2.6), "settings.checkpoint_key"),
+    ("a8-r16-r10", d20(R16, hyps=LOW, ll=-2.6, sentences="0" * 64), "did not read D20"),
 ])
-def test_stack_check_refuses_a_stack_below_one_single_lever(other, match):
+def test_every_read_must_be_what_its_name_says(name, report, match):
     with pytest.raises(SystemExit, match=match):
-        stack(d20_read(), {"a7": worse(), "a4": other})
+        check(world(**{name: report}))
 
 
-def test_stack_check_for_lowpass_reads_the_stacks_own_form():
-    against = {"a7": worse(), "a4": worse()}
-    good = d20_read(hyps=BETTER, ll=-2., lowpass=REFS, lowpass_ll=-1.5)
-    out = stack(good, against, lowpass=True)
-    assert out[f"{FORM}@lowpass"]["both_improve"]
-    for read, match in ((d20_read(lowpass=A0, lowpass_ll=-1.5), "the stack's @lowpass does not have both"),    # BLEU below
-                        (d20_read(lowpass=REFS, lowpass_ll=-2.5), "the stack's @lowpass does not have both"),  # likelihood below
-                        (d20_read(lowpass=BETTER, lowpass_ll=-2.), "the stack's @lowpass does not have both"), # equal
-                        (d20_read(), "not in the report")):                                                    # never read
-        with pytest.raises(SystemExit, match=match):
-            stack(read, against, lowpass=True)
-    with pytest.raises(SystemExit, match="only inside the stack"):               # a7's @lowpass read adopts nothing
-        fresh = d20_read(word_cache=None, no_decoder_gains=True, lowpass=BETTER, lowpass_ll=-1.5)
-        fresh["settings"]["checkpoint_key"] = W14B
-        stack(fresh, {"a0": worse()}, best_of=0, lowpass=True)
-
-
-@pytest.mark.parametrize("read,over,match", [
-    (d20_read(), dict(best_of=4), "word_cache.n"),
-    (d20_read(), dict(no_gains=False), "word_cache.no_decoder_gains"),
-    (d20_read(), dict(prior_checkpoint=R16), "word_cache.checkpoint_key"),
-    (d20_read(), dict(sentences_sha256="0" * 64), "did not read D20"),
-    (d20_read(), dict(best_of=0), "used a word cache"),
-    (d20_read(word_cache=None), {}, "has no word cache"),
-])
-def test_stack_check_refuses_a_read_of_another_combination(read, over, match):
-    with pytest.raises(SystemExit, match=match):
-        stack(read, {"a7": worse()}, **over)
-
-
-def test_stack_check_refuses_filtered_retimed_or_other_vocabulary_reads():
-    for field, value, match in (("lowpass_hz", 6., "lowpass_hz"), ("vocabulary_mix", dict(key="m"), "vocabulary_mix"),
-                                ("retime", "continuous", "retime")):
-        read = d20_read()
-        read["settings"]["round20"][field] = value
-        with pytest.raises(SystemExit, match=match):
-            stack(read, {"a7": worse()})
-    with pytest.raises(SystemExit, match="no read to compare"):
-        stack(d20_read(), {})
-
-
-def test_stack_check_cli(tmp_path, capsys):
+def test_stack_check_cli_reads_the_prefix_and_the_shards(tmp_path, capsys):
     from train_text_to_motion import make_store
     store = make_store(f"dir:{tmp_path / 's'}")
-    argv = ["stack-check", "--store", f"dir:{tmp_path / 's'}", "--read-key", "a/a9.json", "--against-key", "a/a7.json",
-            "--against-key", "a/a4.json", "--prior-checkpoint-key", W14B, "--no-gains", "1", "--best-of", "8", "--lowpass", "0",
-            "--sentences-sha256", D20_SHA]
-    with pytest.raises(SystemExit, match="unread combination"):
+    argv = ["stack-check", "--store", f"dir:{tmp_path / 's'}", "--phase-a-out", "a", "--prior", "w14b", "--w14b-checkpoint-key", W14B,
+            "--r16-checkpoint-key", R16, "--no-gains", "1", "--best-of", "16", "--lowpass", "0", "--sentences-sha256", D20_SHA]
+    with pytest.raises(SystemExit, match="unread: a0-w14b-r10"):
         pv.main(argv)
-    store.put("a/a9.json", json.dumps(d20_read()).encode())
-    store.put("a/a7.json", json.dumps(worse()).encode())
-    with pytest.raises(SystemExit, match="unread combination.*a4"):
+    for name, report in world().items():
+        store.put(f"a/{name}.json", json.dumps(report).encode())
+    with pytest.raises(SystemExit, match="a8 cannot be judged"):                  # no shard stored: never silently a pass
         pv.main(argv)
-    store.put("a/a4.json", json.dumps(worse()).encode())
+    for name in ("a0-w14b-r10", "a8-r16-r10"):
+        store.put(f"a/{name}-shard0.json", json.dumps(shard(world()[name]["settings"])).encode())
     capsys.readouterr()
     assert pv.main(argv) == 0
-    assert json.loads(capsys.readouterr().out)["a/a7.json"]["both_improve"] is True
+    out = json.loads(capsys.readouterr().out)
+    assert out["decision"] == "stack, best of 16" and out["a8"]["met"] is False and out["rule1"]["n"] == 16
 
 
 # ---- review fix 3 ---------------------------------------------------------------------------------------------------------------

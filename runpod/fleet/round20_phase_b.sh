@@ -14,11 +14,11 @@
 # unfiltered arm's; real and blank stay unfiltered. Its only evidence is a9's read of the W14b no-gains stack, so it is refused
 # on anything else: gained words (A6 was rejected there), fresh words (position seeds, not a9's entry seeds), R16 (other codes).
 #
-# Stored D20 reads gate every full phase (scripts/round20_phase_b_verdict.py stack-check): a combination Phase A has not read is
-# refused, as is one whose read misses the declared rule: both point estimates above 0 against a0 for a single lever (R16's
-# others against a8), against both single levers for a stack (amendment 4, rule 3), and for LOWPASS=1 the stack's @lowpass
-# against the stack (rule 4). R16's names a4-r16-nN-r10, a7-nogains-r16-r10, a9-nogains-r16-nN-r10 are for the repeat rule 5
-# asks; Phase A has no such phases yet, so those combinations are refused today.
+# Stored D20 reads gate run and verdict (scripts/round20_phase_b_verdict.py stack-check; cache and e2e read none, so they can be
+# built ahead). Amendment 3 and rule 5: nothing runs until a8 is stored; if a8 meets amendment 3, W14b arms wait for the stack
+# question repeated with R16's words (a4-r16-nN-r10, a7-nogains-r16-r10, a9-nogains-r16-nN-r10; Phase A has no such phases yet,
+# so R16 arms are refused today); if it fails, W14b proceeds. Rule 1: N is computed from the a4 reads. Rule 3: the stack, or
+# only if its stored read failed, the better single lever. Rule 4: LOWPASS=1 needs the stack's @lowpass above the stack.
 #
 # One arm on a set ("one stacked arm"): run refuses if any other arm's report or shard is stored on that set, and the verdict and
 # C20's gate refuse the same way. R20B_DECLARED_REPLACEMENT=<plan commit> lifts that for run only when an amendment declares a
@@ -102,9 +102,9 @@ V3DCK=$V3D/checkpoints/step-00012000.pt; V3DCKSHA=0c6c10e232037e869f3983ed6df16d
 PHASE=${R20B_PHASE:-}; PRIOR=${PRIOR:-}; NO_GAINS=${NO_GAINS:-}; BEST_OF=${BEST_OF:-}; SET=${SET:-}
 case $PHASE in e2e|cache|run|verdict) ;; *) die "R20B_PHASE must be e2e, cache, run or verdict" ;; esac
 case $PRIOR in
-  w14b) CK=$W14B; CKSHA=$W14BSHA; STORED_E2E=$E2E_W14B; E2ESHA=$E2E_W14BSHA; A4=a4-w14b; A7=a7-nogains-r10; A9=a9-nogains
+  w14b) CK=$W14B; CKSHA=$W14BSHA; STORED_E2E=$E2E_W14B; E2ESHA=$E2E_W14BSHA
         WORDS_E2E="--word-split-key $SPLIT --word-split-sha256 $SPLITSHA --recognizer-run sign-recognizer-v2" ;;
-  r16)  CK=$R16;  CKSHA=$R16SHA;  STORED_E2E=$E2E_R16;  E2ESHA=$E2E_R16SHA; A4=a4-r16; A7=a7-nogains-r16-r10; A9=a9-nogains-r16
+  r16)  CK=$R16;  CKSHA=$R16SHA;  STORED_E2E=$E2E_R16;  E2ESHA=$E2E_R16SHA
         WORDS_E2E="--word-split-key $SPLIT --word-split-sha256 $SPLITSHA --word-list-key $SPLIT --word-list-sha256 $SPLITSHA --recognizer-run sign-recognizer-v3d" ;;
   *) die "PRIOR must be w14b or r16" ;;
 esac
@@ -148,21 +148,11 @@ for p in "$R10 $R10SHA" "$R14B $R14BSHA" "$D20 $D20SHA" "$CMP $CMPSHA" "$S1 $S1S
          "$V2/best.json $V2SHA" "$V2CK $V2CKSHA" "$V3D/best.json $V3DSHA" "$V3DCK $V3DCKSHA"; do
   set -- $p; pin "$1" "$2"
 done
-# the stored D20 read of this combination, and what it must beat (the header)
-if [ "$BEST_OF" = 0 ] && [ "$NO_GAINS" = 1 ]; then READ=$A/$A7.json
-elif [ "$BEST_OF" = 0 ]; then READ=$A/a8-r16-r10.json     # W14b, gains, no cache is the comparator: refused above
-elif [ "$NO_GAINS" = 0 ]; then READ=$A/$A4-n$BEST_OF-r10.json
-else READ=$A/$A9-n$BEST_OF-r10.json; fi
-if [ "$BEST_OF" != 0 ] && [ "$NO_GAINS" = 1 ]; then AGAINST="$A/$A7.json $A/$A4-n$BEST_OF-r10.json"
-elif [ "$PRIOR" = r16 ] && [ "$READ" != "$A/a8-r16-r10.json" ]; then AGAINST=$A/a8-r16-r10.json
-else AGAINST=$A/a0-w14b-r10.json; fi
-if [ "${SMOKE:-0}" != 1 ]; then
-  CHECK="--read-key $READ --prior-checkpoint-key $CK --no-gains $NO_GAINS --best-of $BEST_OF --lowpass $LOWPASS --sentences-sha256 $D20SHA"
-  for k in $READ $AGAINST; do
-    exists $k || die "unread combination PRIOR=$PRIOR NO_GAINS=$NO_GAINS BEST_OF=$BEST_OF: the D20 read $k is not stored"
-    [ "$k" = "$READ" ] || CHECK="$CHECK --against-key $k"
-  done
-  python scripts/round20_phase_b_verdict.py stack-check $CHECK || die "the stored D20 reads do not support this combination"
+# the stored D20 reads decide whether this arm may read the 1,000; caches and e2e read none of them, so they can be built ahead
+if { [ "$PHASE" = run ] || [ "$PHASE" = verdict ]; } && [ "${SMOKE:-0}" != 1 ]; then
+  python scripts/round20_phase_b_verdict.py stack-check --phase-a-out $A --prior $PRIOR --w14b-checkpoint-key $W14B \
+    --r16-checkpoint-key $R16 --no-gains $NO_GAINS --best-of $BEST_OF --lowpass $LOWPASS --sentences-sha256 $D20SHA \
+    || die "the stored D20 reads do not allow this arm on the 1,000"
 fi
 
 # ---- the sentences: the 1,000 are validation_sentences(round10, 1000), so no --sentences-key: the comparator's own list ----
