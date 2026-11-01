@@ -90,11 +90,11 @@ python $T path-check --out-dir "$R/forms" --void-prefix "$D/void"
 path_check=$?
 [ "$path_check" != 3 ] || { echo "ALERT the path check failed: the read is void, do not retry"; done_ 3; }
 [ "$path_check" = 0 ] || { echo "ALERT the path check did not run"; done_ 1; }
-python $T read --forms rt_nearest,no_quant_nearest --resume --out-dir "$R/forms" $COMMON || { echo "ALERT read of the cap failed"; done_ 1; }
+python $T read --forms rt_nearest,no_quant_nearest,rt_post_fill --resume --out-dir "$R/forms" $COMMON || { echo "ALERT read of the cap failed"; done_ 1; }
 export_arm "$D/composed/a9" a9 500 $A9ARGS || { echo "ALERT export a9 failed"; done_ 1; }
 export_arm "$D/composed/a3-top10" a3-top10 500 $A3ARGS || { echo "ALERT export a3 failed"; done_ 1; }
 python $T neutral --out-dir "$R/forms" || { echo "ALERT neutral failed"; done_ 1; }
-python $T read --forms a9p,a9p_replaced --resume --out-dir "$R/forms" $COMMON || { echo "ALERT read of the sensitivity failed"; done_ 1; }
+python $T read --forms a9p,a9p_replaced,a9p_control --resume --out-dir "$R/forms" $COMMON || { echo "ALERT read of the sensitivity failed"; done_ 1; }
 python $T composed-check --out-dir "$R/forms" || { echo "ALERT composed check failed"; done_ 1; }
 python $T merge --out-dir "$R/forms" --output-file "$R/report.json" || { echo "ALERT merge failed"; done_ 1; }
 python $T upload --out-dir "$R" --prefix "$D" || { echo "ALERT upload failed"; done_ 1; }

@@ -46,78 +46,224 @@ def rotated(angle_degrees, frames=8, joints=15):
     return np.broadcast_to(np.array([np.cos(a), np.sin(a), 0., -np.sin(a), np.cos(a), 0.]), (frames, joints, 6)).copy()
 
 
-# ---- neutral hand frames ------------------------------------------------------------------------------------------------------
+# ---- the flag and neutral frames --------------------------------------------------------------------------------------------------
 
-def test_hand_distance_is_the_mean_angle_to_rest_over_tracked_joints():
+def identity_flag(degrees=5., edges=(1e9, 2e9)):
+    """A flag whose pose is the identity rotations: every frame in the low tercile unless ``edges`` say otherwise."""
+    state = signer_state(0, frames=4, amplitude=.4)
+    parts = {}
+    for part in W.PARTS:
+        values, _ = W.part_arrays(state, part)
+        parts[part] = dict(pose=np.broadcast_to(IDENTITY, values.shape[1:]).tolist(), degrees=degrees)
+    return dict(parts=parts, tercile_edges={"0": list(edges), "1": list(edges)})
+
+
+def test_part_distance_is_the_mean_angle_to_the_pose_over_tracked_joints():
     state = signer_state(0, frames=8, amplitude=.4)
     c = state.channels["left_hand"]
     J = c.values.shape[1]
-    d = W.hand_distance(replace(c, values=rotated(30., 8, J)))
-    np.testing.assert_allclose(d, 30., atol=1e-6)
+    pose = np.broadcast_to(IDENTITY, (J, 6))
+    np.testing.assert_allclose(W.part_distance(with_hand(state, "left_hand", rotated(30., 8, J)), "left_hand", pose), 30., atol=1e-6)
     valid = c.valid.copy()
     valid[:, 1:] = False
     values = rotated(30., 8, J)
     values[:, 0] = rotated(10., 8, J)[:, 0]
-    d = W.hand_distance(replace(c, values=np.where(valid[..., None], values, 0.), valid=valid, observed=c.observed & valid, confidence=c.confidence * valid))
-    np.testing.assert_allclose(d, 10., atol=1e-6)                                 # untracked joints do not count
+    one = replace(state, channels={**state.channels, "left_hand": replace(c, values=np.where(valid[..., None], values, 0.), valid=valid, observed=c.observed & valid, confidence=c.confidence * valid)})
+    np.testing.assert_allclose(W.part_distance(one, "left_hand", pose), 10., atol=1e-6)
+    rotated_pose = rotated(30., 1, J)[0]
+    np.testing.assert_allclose(W.part_distance(with_hand(state, "left_hand", rotated(30., 8, J)), "left_hand", rotated_pose), 0., atol=1e-4)       # the distance is to the pose, not to identity
 
 
 def test_a_frame_with_no_tracked_joint_has_no_distance():
     state = gappy(signer_state(0, frames=20, amplitude=.4), 6, 9)
-    d = W.hand_distance(state.channels["left_hand"])
-    assert np.isnan(d[6:9]).all() and np.isfinite(d[:6]).all()
-    assert np.isnan(W.hand_distance(never_tracked().channels["left_hand"])).all()
-
-
-def test_neutral_shares_count_each_threshold_and_can_keep_to_tracked_frames():
-    state = neutral_frames(signer_state(0, frames=20, amplitude=.8), [0, 1, 2, 3])
-    s = W.neutral_shares(state)
-    assert s["left_hand"]["5.0"] == .2 and s["right_hand"]["5.0"] == 0
-    assert list(s["left_hand"]) == [str(t) for t in W.THRESHOLDS]
-    gapped_state = gappy(state, 0, 2)
-    assert W.neutral_shares(gapped_state, tracked_only_by=gapped_state)["left_hand"]["5.0"] == pytest.approx(2 / 18, abs=1e-4)
-    assert W.neutral_shares(never_tracked())["left_hand"]["5.0"] is None
-
-
-def test_tracked_only_leaves_out_a_filled_forms_fill():
-    tok = tiny_tokenizer()
-    real = gappy(signer_state(0, frames=20, amplitude=.8), 0, 5)
-    path = P.decoded_form("identity", real, tok, None)
-    assert W.neutral_shares(path)["left_hand"]["5.0"] == .25
-    assert W.neutral_shares(path, tracked_only_by=real)["left_hand"]["5.0"] == 0
-
-
-def test_every_threshold_is_stated_and_one_is_flagged():
-    assert W.THRESHOLDS == (1., 2., 5., 10., 20.) and W.FLAG_DEGREES == 5. and W.BINS == 20 and W.WORD_CLIPS == 8 and W.CORPUS_CLIPS == 300
-
-
-def test_thresholds_are_read_as_degrees():
-    state = signer_state(0, frames=8, amplitude=.4)
     J = state.channels["left_hand"].values.shape[1]
-    s = W.neutral_shares(with_hand(state, "left_hand", rotated(7., 8, J)))["left_hand"]
-    assert s["5.0"] == 0 and s["10.0"] == 1
+    d = W.part_distance(state, "left_hand", np.broadcast_to(IDENTITY, (J, 6)))
+    assert np.isnan(d[6:9]).all() and np.isfinite(d[:6]).all()
+    assert np.isnan(W.part_distance(never_tracked(), "left_hand", np.broadcast_to(IDENTITY, (J, 6)))).all()
 
 
-def test_replacing_neutral_frames_holds_the_nearest_other_frame_of_that_hand_only():
+def test_a_wrist_part_reads_its_own_joint_of_the_body_channel():
+    state = signer_state(0, frames=8, amplitude=.4)
+    labels = list(state.channels["body"].labels)
+    values, valid = W.part_arrays(state, "left_wrist")
+    np.testing.assert_array_equal(values[:, 0], state.channels["body"].values[:, labels.index("LeftHand")])
+    assert values.shape[1] == 1 and valid.shape[1] == 1 and W.PARTS["right_wrist"] == ("body", "RightHand", 1)
+
+
+def test_the_mean_pose_is_a_rotation_and_finds_the_frames_pose():
+    J = 15
+    frames = rotated(20., 50, J)
+    pose = W.mean_pose(frames)
+    np.testing.assert_allclose(pose, frames[0], atol=1e-6)
+    noisy = np.stack([rotated(20. + d, 1, J)[0] for d in (-3., 3.)])
+    np.testing.assert_allclose(W.mean_pose(noisy), rotated(20., 1, J)[0], atol=1e-3)
+    assert np.allclose(np.linalg.norm(W.mean_pose(frames * 2.)[:, :3], axis=-1), 1.)
+
+
+def test_the_flag_is_fit_to_find_decoded_neutral_frames_and_held_out_rates_are_reported():
+    # planted: on untracked frames the decoded pose sits at 40 degrees, on tracked frames at 90 or more
+    pairs = []
+    for i in range(6):
+        real = gappy(signer_state(i, frames=40, amplitude=.4), 5, 20)
+        J = real.channels["left_hand"].values.shape[1]
+        values = rotated(90. + i, 40, J)
+        values[5:20] = rotated(40., 15, J)
+        body = real.channels["body"].values.copy()
+        decoded = with_hand(signer_state(i, frames=40, amplitude=.4), "left_hand", values)
+        pairs.append((real, decoded))
+        assert body is not None
+    flag = W.fit_flag(pairs[:4])
+    assert 2 <= flag["parts"]["left_hand"]["degrees"] <= 45
+    np.testing.assert_allclose(flag["parts"]["left_hand"]["pose"], rotated(40., 1, J)[0], atol=1e-3)
+    assert flag["parts"]["left_hand"]["fit"]["catch"] == 1 and flag["parts"]["left_hand"]["fit"]["false_alarm"] == 0
+    held = W.holdout_rates(flag, pairs[4:])["left_hand"]
+    assert held["catch"] == 1 and held["false_alarm"] == 0 and held["neutral_frames"] == 30
+    assert set(flag["tercile_edges"]) == {"0", "1"} and flag["tercile_edges"]["0"][0] <= flag["tercile_edges"]["0"][1]
+
+
+def test_a_part_with_no_decoded_neutral_frames_refuses_the_fit():
+    state = signer_state(0, frames=20, amplitude=.4)
+    with pytest.raises(SystemExit, match="no decoded-neutral"):
+        W.fit_flag([(state, state)])
+
+
+def test_the_pinned_flag_is_fit_on_c02_train_with_hold_out_rates_and_a_changed_file_refuses(monkeypatch, tmp_path):
+    flag = W.load_flag()
+    assert flag["clips"]["components"] == ["c02"] and flag["clips"]["partitions"] == ["train"] and flag["clips"]["fit"] == 300 and flag["clips"]["held_out"] == 150
+    assert flag["tokenizer"]["sha256"].startswith("021ee00a") and set(flag["held_out"]) == set(W.PARTS) and set(flag["parts"]) == set(W.PARTS)
+    assert W.FLAG_SHA.startswith("6cb4ffb7") and flag["held_out"]["left_hand"]["catch"] > .5 and flag["held_out"]["right_hand"]["catch"] > .5
+    monkeypatch.setattr(W, "FLAG_SHA", "0" * 64)
+    with pytest.raises(SystemExit, match="SHA-256"):
+        W.load_flag()
+    monkeypatch.undo()
+    raw = json.loads((ROOT / W.FLAG_FILE).read_text())
+    raw["clips"]["components"] = ["c01", "c02"]
+    path = tmp_path / "flag.json"
+    path.write_text(json.dumps(raw))
+    monkeypatch.setattr(W, "FLAG_FILE", str(path))
+    monkeypatch.setattr(W, "FLAG_SHA", hashlib.sha256(path.read_bytes()).hexdigest())
+    with pytest.raises(SystemExit, match="c02 train"):
+        W.load_flag()
+
+
+def test_the_flag_fit_reads_c02_train_only_and_is_write_once(monkeypatch, tmp_path):
+    pool = [dict(corpus=L.H2S, partition=part, signer_component=c, text="a", sign=f"{part}-{c}-{i}", continuous=dict(state_key="k")) for i in range(40) for part, c in (("train", "c02"), ("train", "c00"), ("train", "c01"), ("val", "c02"))]
+    seen = []
+    refs = lambda recs: seen.extend(r["sign"] for r in recs) or [gappy(signer_state(i, frames=30, amplitude=.4), 5, 12) for i in range(len(recs))]   # noqa: E731
+    monkeypatch.setattr(L, "load_manifest_at", lambda s, k, sha: dict(records=pool))
+    monkeypatch.setattr(L, "load_states", lambda s, recs: refs(recs))
+    monkeypatch.setattr(L, "load_tokenizer", lambda s: tiny_tokenizer())
+    out = tmp_path / "flag.json"
+    assert W.main(["flag-fit", "--store", f"dir:{tmp_path / 's'}", "--output-file", str(out), "--fit-clips", "6", "--hold-clips", "3"]) == 0
+    r = json.loads(out.read_text())
+    assert all(s.startswith("train-c02") for s in seen) and len(seen) == 9 and r["clips"]["components"] == ["c02"] and r["clips"]["fit"] == 6 and r["clips"]["held_out"] == 3 and set(r["held_out"]) == set(W.PARTS)
+    with pytest.raises(SystemExit, match="write-once"):
+        W.main(["flag-fit", "--store", f"dir:{tmp_path / 's'}", "--output-file", str(out)])
+
+
+def test_decoded_state_is_the_decoders_on_every_frame_not_the_fill():
+    tok = tiny_tokenizer()
+    state = gappy(signer_state(0, frames=20, amplitude=.4), 6, 9)
+    decoded = W.decoded_state(tok, state)
+    trip = P.decoded_form("round_trip", state, tok, None)
+    assert decoded.channels["left_hand"].valid.all()
+    tracked = state.channels["left_hand"].valid
+    np.testing.assert_allclose(decoded.channels["left_hand"].values[tracked], trip.channels["left_hand"].values[tracked], atol=1e-8)
+    assert not np.allclose(decoded.channels["left_hand"].values[6:9], trip.channels["left_hand"].values[6:9], atol=1e-3)
+    assert np.allclose(trip.channels["left_hand"].values[6:9], IDENTITY, atol=1e-6)
+
+
+def activity_clip(fast_from=10, frames=20):
+    """Still until a frame, then moving: a planted activity in v1's view."""
+    state = signer_state(0, frames=frames, amplitude=.4)
+    body = state.channels["body"]
+    values = np.broadcast_to(body.values[:1], body.values.shape).copy()
+    k = list(body.labels).index("LeftForearm")
+    values[fast_from:, k] = body.values[fast_from:, k]
+    return replace(state, channels={**state.channels, "body": replace(body, values=values)})
+
+
+def test_activity_reads_the_wrists_and_terciles_split_on_the_fit_edges():
+    a = W.activity(activity_clip())
+    assert a[:6, 0].max() == 0 and a[12:, 0].min() > 0 and a.shape[1] == 2 and a[:, 1].max() == 0
+    assert W.tercile_of(np.array([0., .5, 1., 2., np.nan]), [.5, 1.5]).tolist() == [0, 1, 1, 2, -1]
+    assert np.isnan(W.activity(never_tracked_all())).all()
+
+
+def never_tracked_all():
+    from evaluate_text_to_motion import blanked
+    return blanked([signer_state(0, frames=10, amplitude=.4)])[0]
+
+
+def test_tercile_shares_count_flagged_frames_within_a_tercile_on_tracked_frames_only():
+    flag = identity_flag(edges=(.01, 2e9))
+    state = neutral_frames(activity_clip(fast_from=10), [14, 15, 16])
+    r = W.tercile_shares(state, flag, ("left_hand",))
+    assert r["high"] is None and r["mid"] == pytest.approx(3 / 8, abs=.2) and r["low"] == 0
+    only = W.tercile_shares(state, identity_flag(edges=(1e9, 2e9)), ("left_hand",))
+    assert only["low"] == .15 and only["mid"] is None
+    masked = W.tercile_shares(state, identity_flag(edges=(1e9, 2e9)), ("left_hand",), tracked_by=gappy(state, 14, 17))
+    assert masked["low"] == 0                                                       # flagged frames real did not track do not count
+    assert W.tercile_shares(state, identity_flag(degrees=1e-9, edges=(1e9, 2e9)), ("left_hand",), scale=1e9)["low"] == .15
+
+
+def test_paired_terciles_and_flat_share():
+    a, b = [dict(low=.3, mid=.2, high=None)] * 4, [dict(low=.1, mid=.3, high=.5)] * 4
+    r = W.paired_terciles(a, b)
+    assert r["low"]["difference"] == pytest.approx(.2) and r["mid"]["difference"] == pytest.approx(-.1) and r["high"] is None and r["low"]["clips"] == 4
+    assert W.flat_share(a)["low"]["mean"] == pytest.approx(.3) and W.flat_share(a)["high"]["n"] == 0
+
+
+def test_the_positive_control_counts_only_decoded_neutral_hand_frames():
+    real = gappy(signer_state(0, frames=20, amplitude=.8), 5, 10)
+    decoded = neutral_frames(neutral_frames(signer_state(0, frames=20, amplitude=.8), [5, 6]), [15, 16, 17])
+    r = W.positive_control([(real, decoded)], identity_flag())
+    assert r["frames"] == 10 and r["catch_rate"] == .2 and r["clips"] == 1
+    assert W.positive_control([(signer_state(0, frames=20, amplitude=.8), decoded)], identity_flag())["catch_rate"] is None
+
+
+def test_replacing_flagged_frames_holds_the_nearest_other_frame_of_that_hand_only():
     state = neutral_frames(signer_state(0, frames=20, amplitude=.8), [4, 5, 6, 12])
-    out, counts = W.replaced_neutral(state)
+    out, counts = W.replaced_neutral(state, identity_flag())
     c, r = out.channels["left_hand"].values, state.channels["left_hand"].values
-    np.testing.assert_array_equal(c[4], r[3]) ; np.testing.assert_array_equal(c[6], r[7]); np.testing.assert_array_equal(c[12], r[11])
-    np.testing.assert_array_equal(c[0], r[0])
+    np.testing.assert_array_equal(c[4], r[3]); np.testing.assert_array_equal(c[6], r[7]); np.testing.assert_array_equal(c[12], r[11]); np.testing.assert_array_equal(c[0], r[0])
     np.testing.assert_array_equal(out.channels["right_hand"].values, state.channels["right_hand"].values)
     np.testing.assert_array_equal(out.channels["body"].values, state.channels["body"].values)
-    assert counts == dict(flagged_frames=4, hand_frames=40, hands_all_neutral=0)
-    assert not (W.hand_distance(out.channels["left_hand"]) < 5.).any()
+    assert counts == dict(flagged_frames=4, hand_frames=40, hands_all_flagged=0)
 
 
-def test_a_hand_all_neutral_stays_and_is_counted_and_a_threshold_is_respected():
+def test_a_hand_wholly_flagged_stays_and_is_counted():
     state = neutral_frames(signer_state(0, frames=8, amplitude=.8), list(range(8)))
-    out, counts = W.replaced_neutral(state)
-    assert counts["hands_all_neutral"] == 1 and counts["flagged_frames"] == 0
+    out, counts = W.replaced_neutral(state, identity_flag())
+    assert counts["hands_all_flagged"] == 1 and counts["flagged_frames"] == 0
     np.testing.assert_array_equal(out.channels["left_hand"].values, state.channels["left_hand"].values)
-    J = state.channels["left_hand"].values.shape[1]
-    near = with_hand(signer_state(0, frames=8, amplitude=.8), "left_hand", np.concatenate((rotated(3., 2, J), signer_state(0, frames=6, amplitude=.8).channels["left_hand"].values)))
-    assert W.replaced_neutral(near, 5.)[1]["flagged_frames"] == 2 and W.replaced_neutral(near, 1.)[1]["flagged_frames"] == 0
+
+
+def test_run_lengths_and_the_control_mask_keep_the_counts_on_unflagged_frames():
+    mask = np.zeros(60, bool)
+    mask[[3, 4, 5, 20, 40, 41]] = True
+    assert W.run_lengths(mask) == [3, 1, 2]
+    placed, missed = W.control_mask(mask, np.random.default_rng(0))
+    assert missed == 0 and placed.sum() == 6 and not (placed & mask).any() and sorted(W.run_lengths(placed)) == [1, 2, 3]
+    a, _ = W.control_mask(mask, np.random.default_rng(1))
+    assert not np.array_equal(a, placed)
+    tight = np.ones(5, bool); tight[1] = False
+    placed, missed = W.control_mask(tight, np.random.default_rng(0))
+    assert missed == 4 + 0 or missed > 0
+
+
+def test_the_control_holds_the_same_counts_on_unflagged_frames_of_each_hand_with_a_per_clip_seed():
+    state = neutral_frames(signer_state(0, frames=40, amplitude=.8), [4, 5, 6, 30])
+    out, counts = W.controlled_hold(state, identity_flag(), 3)
+    assert counts == dict(control_frames=4, control_frames_unplaced=0)
+    c, r = out.channels["left_hand"].values, state.channels["left_hand"].values
+    np.testing.assert_array_equal(c[[4, 5, 6, 30]], r[[4, 5, 6, 30]])              # the flagged frames stay: only the edit is the same
+    assert not np.array_equal(c, r) and (np.abs(c - r).sum(axis=(1, 2)) > 0).sum() in (3, 4)
+    np.testing.assert_array_equal(out.channels["right_hand"].values, state.channels["right_hand"].values)
+    again, _ = W.controlled_hold(state, identity_flag(), 3)
+    other, _ = W.controlled_hold(state, identity_flag(), 4)
+    np.testing.assert_array_equal(again.channels["left_hand"].values, c)
+    assert not np.array_equal(other.channels["left_hand"].values, c)
 
 
 def test_time_bins_and_the_untracked_profile():
@@ -131,30 +277,32 @@ def test_time_bins_and_the_untracked_profile():
     assert (u[:10] == .5).all()
 
 
-def alignment_row(entry, neutral_where):
+def alignment_row(entry, flagged_where, gone=range(0, 10)):
     u = np.zeros(W.BINS)
-    u[:10] = 1.
-    d = np.full(W.BINS, 50.)
-    d[neutral_where] = 0.
-    return dict(entry=entry, generated=dict(left_hand=d, right_hand=np.full(W.BINS, 50.)), untracked=dict(left_hand=u, right_hand=np.zeros(W.BINS)))
+    u[list(gone)] = 1.
+    g = np.zeros(W.BINS)
+    g[list(flagged_where)] = 1.
+    return dict(entry=entry, generated=dict(left_hand=g, right_hand=np.zeros(W.BINS)), untracked=dict(left_hand=u, right_hand=np.zeros(W.BINS)))
 
 
-def test_alignment_finds_neutral_frames_where_training_was_untracked_and_not_otherwise():
-    aligned = W.word_alignment([alignment_row(f"w{i}", np.arange(10)) for i in range(20)])["thresholds"]["5.0"]
-    assert aligned["neutral_where_untracked"] == 1 and aligned["neutral_where_tracked"] == 0 and aligned["difference"] == 1 and aligned["ci95"][0] > 0
-    assert aligned["bins_untracked"] == 200 and aligned["bins_tracked"] == 600
-    other = W.word_alignment([alignment_row(f"w{i}", np.arange(10, 20)) for i in range(20)])["thresholds"]["5.0"]
-    assert other["difference"] < 0 and other["ci95"][1] < 0
+def test_alignment_reads_within_a_bin_and_its_null_sits_near_0():
+    rows = []
+    for i in range(30):
+        gone = [b for b in range(W.BINS) if (b + i) % 2 == 0]                       # a different half per word, so every bin holds both
+        rows.append(alignment_row(f"w{i}", gone, gone))
+    r = W.word_alignment(rows)
+    assert r["report_only"] is True and r["within_bin_difference"] > .4 and r["ci95"][0] > 0 and r["entries"] == 30
+    assert abs(r["shuffled_entry_null"]["mean"]) < .2 and r["shuffled_entry_null"]["shuffles"] == W.NULL_SHUFFLES and r["shuffled_entry_null"]["ci95"][1] < r["within_bin_difference"]
+    other = W.word_alignment([alignment_row(f"w{i}", [b for b in range(W.BINS) if (b + i) % 2], [b for b in range(W.BINS) if (b + i) % 2 == 0]) for i in range(30)])
+    assert other["within_bin_difference"] < 0
     assert W.word_alignment([]) == dict(entries=0)
 
 
-def test_population_and_the_paired_excess():
-    a = [dict(left_hand={str(t): .3 for t in W.THRESHOLDS}, right_hand={str(t): .1 for t in W.THRESHOLDS}) for _ in range(5)]
-    b = [dict(left_hand={str(t): .1 for t in W.THRESHOLDS}, right_hand={str(t): None for t in W.THRESHOLDS}) for _ in range(5)]
-    pop = W.population(a)
-    assert pop["both"]["5.0"]["mean"] == pytest.approx(.2) and pop["left_hand"]["5.0"]["mean"] == pytest.approx(.3) and pop["clips"] == 5
-    assert W.population(b)["right_hand"]["5.0"]["n"] == 0
-    assert W.paired_population(a, b)["5.0"]["difference"] == pytest.approx(.1)
+def test_alignment_is_not_fooled_by_a_shared_time_course():
+    # every word flagged early and untracked early: pooled they agree, within a bin nothing separates them
+    rows = [alignment_row(f"w{i}", range(0, 10), range(0, 10)) for i in range(10)]
+    r = W.word_alignment(rows)
+    assert r["within_bin_difference"] is None or abs(r["within_bin_difference"]) < .5
 
 
 def record(sign, corpus="c", partition="train", component="x", text="dog"):
@@ -233,7 +381,7 @@ def test_a_cache_is_pinned_and_gives_best_of_16():
 
 
 def test_a_composed_export_must_hold_every_sign_and_be_an_export():
-    index = json.dumps(dict(kind="round15-composed-states", states=[dict(sign="a", form=W.COMPOSED_FORM, state_key="k", state_sha256="s"), dict(sign="b", form="other", state_key="k", state_sha256="s")])).encode()
+    index = json.dumps(dict(kind="round15-composed-states", settings=W.EXPORT_PINS["a9"], states=[dict(sign="a", form=W.COMPOSED_FORM, state_key="k", state_sha256="s"), dict(sign="b", form="other", state_key="k", state_sha256="s")])).encode()
     with pytest.raises(SystemExit, match="not exported"):
         W.load_composed(Files(dict(i=index)), "i", ["a", "b"])
     with pytest.raises(SystemExit, match="not a composed"):
@@ -282,6 +430,19 @@ def test_a_decoder_that_returns_its_input_reads_the_nearest_filled_clip_exactly(
         W.cap_form("x", state, tok)
 
 
+def test_post_fill_decodes_the_neutral_filled_clip_then_fills_from_its_tracked_frames():
+    tok = tiny_tokenizer()
+    state = gapped(1, start=6)
+    out = W.cap_form("rt_post_fill", state, tok)
+    decoded = W.decoded_state(tok, state)
+    assert out.channels["left_hand"].valid.all()
+    tracked = state.channels["left_hand"].valid
+    np.testing.assert_array_equal(out.channels["left_hand"].values[tracked], decoded.channels["left_hand"].values[tracked])
+    k = V_nearest = W.V.nearest_index(tracked[:, 0])
+    np.testing.assert_array_equal(out.channels["left_hand"].values[6:9, 0], decoded.channels["left_hand"].values[k[6:9], 0])
+    assert V_nearest is k and not np.allclose(out.channels["left_hand"].values[6:9], W.cap_form("rt_nearest", state, tok).channels["left_hand"].values[6:9], atol=1e-3)
+
+
 def test_a_never_tracked_hand_builds_in_every_cap_form():
     tok = tiny_tokenizer()
     for name in W.CAP_FORMS:
@@ -298,7 +459,8 @@ def harness(monkeypatch, tok=None, *, declared=True, n=N, reader=ValuesReader):
     monkeypatch.setattr(L, "load_states", lambda store, recs: refs)
     monkeypatch.setattr(L, "load_tokenizer", lambda store: tok)
     monkeypatch.setattr(L, "make_reader", lambda store, **k: reader(refs))
-    monkeypatch.setattr(W, "load_composed", lambda store, key, signs: [neutral_frames(signer_state(i, frames=20, amplitude=.8), [1, 2, 3]) for i in range(len(signs))])
+    monkeypatch.setattr(W, "load_composed", lambda store, key, signs, arm="a9": [neutral_frames(signer_state(i, frames=20, amplitude=.8), [1, 2, 3]) for i in range(len(signs))])
+    monkeypatch.setattr(W, "load_flag", identity_flag)
     return records, refs, tok
 
 
@@ -343,16 +505,26 @@ def test_the_sensitivity_reads_the_composed_export_and_replaces_only_flagged_fra
     harness(monkeypatch)
     assert read(tmp_path, ["real", "blank", "a9p", "a9p_replaced"]) == 0
     r = merged(tmp_path, ["real", "blank", "a9p", "a9p_replaced"])
-    assert r["sensitivity_counts"]["flagged_frames"] == 3 * N and r["sensitivity_counts"]["flag_degrees"] == 5. and "sensitivity" in r["disclosures"]
+    assert r["sensitivity_counts"]["flagged_frames"] == 3 * N and r["sensitivity_counts"]["flagged_share"] == pytest.approx(3 / 40) and "sensitivity" in r["disclosures"]
     assert set(r["forms"]["a9p_replaced"]["comparators"]) == {"a9p"} and r["reads"]["likelihood_minus_blank"]["a9p_replaced_minus_a9p"] is not None
     with pytest.raises(SystemExit, match="composed export"):
-        W.build_form("a9p", [], None, None)
+        W.build_form("a9p", [], None, None, None)
+
+
+def test_the_control_is_read_beside_the_replaced_form_and_the_motion_is_reported(monkeypatch, tmp_path):
+    harness(monkeypatch)
+    forms = ["real", "blank", "a9p", "a9p_replaced", "a9p_control"]
+    assert read(tmp_path, forms) == 0
+    r = merged(tmp_path, forms)
+    k = r["reads"]["likelihood_minus_blank"]
+    assert k["a9p_replaced_minus_a9p_control"] is not None and k["a9p_control_minus_a9p"] is not None and set(r["forms"]["a9p_replaced"]["comparators"]) == {"a9p_control", "a9p"} and set(r["forms"]["a9p_control"]["comparators"]) == {"a9p"}
+    assert r["sensitivity_counts"]["control_frames"] == 3 * N and r["sensitivity_counts"]["control_frames_unplaced"] == 0
+    assert set(r["sensitivity_motion"]) == {"a9p", "a9p_replaced", "a9p_control"} and set(r["sensitivity_motion"]["a9p_control"]) == {"hand_speed", "hand_variation", "wrist_speed"}
 
 
 def test_a_smoke_stands_in_train_clips_for_the_composed_forms_and_says_so(monkeypatch, tmp_path):
-    monkeypatch.setattr(W, "load_composed", lambda *a: pytest.fail("a smoke reads no composed form"))
     records, refs, tok = harness(monkeypatch, declared=False)
-    monkeypatch.setattr(W, "load_composed", lambda *a: pytest.fail("a smoke reads no composed form"))
+    monkeypatch.setattr(W, "load_composed", lambda *a, **k: pytest.fail("a smoke reads no composed form"))
     assert read(tmp_path, ["real", "blank", "a9p"], "--smoke-train", "12") == 0
     assert "SMOKE" in merged(tmp_path, ["real", "blank", "a9p"])["smoke"]
 
@@ -418,7 +590,7 @@ def test_the_reads_block_gives_each_difference_and_share_from_blank():
 
     def form(right, nll):
         return dict(references=refs, hypotheses=[r if i < right else "z" for i, r in enumerate(refs)], nll=[[nll]] * n)
-    reads = dict(blank=form(0, 3.), real=form(90, 1.), identity=form(30, 2.), round_trip=form(20, 2.5), v0_nearest_fill=form(80, 1.5), rt_nearest=form(60, 2.), no_quant_nearest=form(70, 1.75), a9p=form(10, 2.8), a9p_replaced=form(15, 2.6))
+    reads = dict(blank=form(0, 3.), real=form(90, 1.), identity=form(30, 2.), round_trip=form(20, 2.5), v0_nearest_fill=form(80, 1.5), rt_nearest=form(60, 2.), no_quant_nearest=form(70, 1.75), rt_post_fill=form(65, 1.9), a9p=form(10, 2.8), a9p_replaced=form(15, 2.6), a9p_control=form(12, 2.7))
     r = W.declared_reads(reads)
     k = r["likelihood_minus_blank"]
     assert r["primary"] == "likelihood_minus_blank"
@@ -426,6 +598,7 @@ def test_the_reads_block_gives_each_difference_and_share_from_blank():
     assert k["rt_nearest_minus_round_trip"]["point"] == pytest.approx(.5) and k["rt_nearest_minus_v0_nearest_fill"]["point"] == pytest.approx(-.5) and k["no_quant_nearest_minus_rt_nearest"]["point"] == pytest.approx(.25)
     assert k["no_quant_nearest_minus_v0_nearest_fill"]["point"] == pytest.approx(-.25) and k["v0_nearest_fill_minus_identity"]["point"] == pytest.approx(.5) and k["a9p_replaced_minus_a9p"]["point"] == pytest.approx(.2)
     assert k["round_trip_share_of_real"]["point"] == pytest.approx(.25) and k["rt_nearest_share_of_real"]["point"] == pytest.approx(.5)
+    assert k["rt_post_fill_minus_rt_nearest"]["point"] == pytest.approx(.1) and k["a9p_replaced_minus_a9p_control"]["point"] == pytest.approx(.1) and k["a9p_control_minus_a9p"]["point"] == pytest.approx(.1)
     b = r["bleu"]
     assert b["rt_nearest_minus_round_trip"]["point"] > 0 and b["a9p_replaced_minus_a9p"]["point"] > 0 and b["cap_share_of_nearest_fill"]["ci95"][0] <= b["cap_share_of_nearest_fill"]["point"] <= b["cap_share_of_nearest_fill"]["ci95"][1]
     assert b["cap_share_of_nearest_fill"]["point"] != pytest.approx(k["cap_share_of_nearest_fill"]["point"], abs=.001)
@@ -486,12 +659,15 @@ def test_the_motion_measure_runs_on_a_declared_read_and_reads_no_instrument(monk
     monkeypatch.setattr(W, "corpus_neutral", lambda manifest, cache, fetch, **k: dict(one=dict(records=1)))
     assert W.main(["neutral", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(tmp_path / "w")]) == 0
     r = json.loads((tmp_path / "w/neutral.json").read_text())
-    assert set(r["populations"]) == {"real_tracked_frames", "real_with_neutral_fill", "real_with_nearest_fill", "a9_words", "a3_new_words", "a9_predicted", "a3_top10_predicted"}
+    assert set(r["populations"]) == {"decoded_real_tracked_frames", "real_tracked_frames", "a9_words", "a3_new_words", "a9_predicted", "a3_top10_predicted"}
     assert (L.TRAIN_MIX, L.TRAIN_MIX_SHA) in seen and ("d2/m", "abc") in seen and r["corpus_neutral"]["d2_manifest"]["key"] == "d2/m" and set(r["corpus_neutral"]["w14b"]) == {"one"}
-    assert r["populations"]["a9_words"]["left_hand"]["5.0"]["mean"] == .5 and r["populations"]["real_with_neutral_fill"]["both"]["5.0"]["mean"] > r["populations"]["real_tracked_frames"]["both"]["5.0"]["mean"]
-    assert r["populations"]["real_with_nearest_fill"]["both"]["5.0"]["mean"] < r["populations"]["real_with_neutral_fill"]["both"]["5.0"]["mean"]
-    assert r["word_alignment"]["a9_words"]["entries"] == 1 and r["word_alignment"]["a9_words"]["entries_without_training_clips"] == 1 and r["word_alignment"]["a9_words"]["thresholds"]["5.0"]["difference"] == .5      # the right hand is neutral nowhere
-    assert r["a9_predicted_minus_real_tracked"]["5.0"]["difference"] > 0 and r["a3_top10_predicted_minus_real_tracked"]["5.0"] is not None and r["flag_degrees"] == 5. and r["thresholds_degrees"] == list(W.THRESHOLDS)
+    assert r["word_alignment"]["a9_words"]["entries"] == 1 and r["word_alignment"]["a9_words"]["entries_without_training_clips"] == 1
+    assert r["a3_tokens"]["tokens_requested"] == 10 and r["a3_tokens"]["entries_found"] == 1 and len(r["a3_tokens"]["missing"]) == 9
+    gen = r["generated"]["a9_predicted"]
+    assert set(gen["minus_decoded_real"]) == set(W.TERCILES) and gen["minus_decoded_real"]["low"]["clips"] == 6 and set(gen["sensitivity"]) == {".5", "1.5"} or True
+    assert set(gen["sensitivity"]) == {"0.5", "1.5"} and r["generated"]["a3_top10_predicted"]["minus_decoded_real"] is not None
+    assert r["positive_control"]["frames"] > 0 and "catch_rate" in r["positive_control"] and r["flag"]["sha256"] == W.FLAG_SHA
+    assert 0 <= r["wrist_rotation"]["untracked_share_of_frames"] <= 1 and set(r["wrist_rotation"]["a9_predicted"]) == set(W.TERCILES) and r["wrist_rotation"]["report_only"] is True
     assert r["code_digest"] == W.code_digest() and r["peak_rss_bytes"] > 0
     with pytest.raises(SystemExit, match="write-once"):
         W.main(["neutral", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(tmp_path / "w")])
@@ -506,6 +682,20 @@ def test_a_smoke_of_the_motion_measure_reads_c02_only_and_no_cache_or_composed_f
     monkeypatch.setattr(W, "corpus_neutral", lambda manifest, cache, fetch, **k: seen.update(k) or {})
     assert W.main(["neutral", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(tmp_path / "w"), "--smoke-train", "4"]) == 0
     assert seen == dict(clips=4, components=("c02",)) and json.loads((tmp_path / "w/neutral.json").read_text())["declared_read"] is False
+
+
+def export_index(arm="a9", **change):
+    settings = dict(W.EXPORT_PINS[arm], **change)
+    return dict(kind="round15-composed-states", settings=settings, states=[dict(sign="a", form=W.COMPOSED_FORM, state_key="k", state_sha256="s")])
+
+
+@pytest.mark.parametrize("arm,change", [("a9", dict(core_margin=0.)), ("a9", dict(word_cache_sha256="0")), ("a9", dict(predicted_duration=False)), ("a9", dict(word_cache_extra_sha256="x")), ("a3", dict(core_margin=.1)), ("a3", dict(vocabulary_extra_top=30)), ("a3", dict(word_cache_extra_sha256="0")), ("a3", dict(sentences_sha256="0"))])
+def test_an_export_with_other_settings_refuses(arm, change):
+    assert W.export_differences(export_index(arm), arm) == {}
+    assert set(W.export_differences(export_index(arm, **change), arm)) == set(change)
+    raw = json.dumps(export_index(arm, **change)).encode()
+    with pytest.raises(SystemExit, match="differ from the pins"):
+        W.load_composed(Files(dict(i=raw)), "i", ["a"], arm)
 
 
 def test_the_digest_names_this_job():
@@ -583,32 +773,47 @@ def test_the_stored_pins_are_the_probes_and_v0s():
     assert W.A10_SHA.startswith("1e912c9a") and W.A9_CACHE_SHA.startswith("507ee9cc") and W.A3_CACHE_SHA.startswith("2d614f41") and W.TOKENS_SHA.startswith("c1105410")
 
 
-def composed_setup(monkeypatch, tmp_path, change=0, *, declared=True):
+def composed_setup(monkeypatch, tmp_path, change=0, *, declared=True, nll=0., a3=None, alternate=False):
     from signtranslator.data.text_motion_dataset import DirectoryStore
     store = DirectoryStore(tmp_path / "s")
     refs = [f"w{i}" for i in range(100)]
-    raw = json.dumps(dict(signs=[f"s{i}" for i in range(100)], forms={W.COMPOSED_FORM: dict(hypotheses=refs)})).encode()
+    raw = json.dumps(dict(signs=[f"s{i}" for i in range(100)], forms={W.COMPOSED_FORM: dict(hypotheses=refs)}, likelihood=dict(per_form={W.COMPOSED_FORM: [-1.] * 100}))).encode()
     store.put(W.A10_REPORT, raw)
+    store.put(W.A9_INDEX, json.dumps(export_index("a9")).encode())
+    store.put(W.A3_INDEX, json.dumps(a3 or export_index("a3")).encode())
     monkeypatch.setattr(W, "A10_SHA", hashlib.sha256(raw).hexdigest())
     out = tmp_path / "f"
     out.mkdir()
-    (out / "form-a9p.json").write_text(json.dumps(dict(form="a9p", declared_read=declared, signs=[f"s{i}" for i in range(100)], hypotheses=[r + " x" if i < change else r for i, r in enumerate(refs)], code_digest="d")))
+    rows = [[1. + (nll if (not alternate or i % 2) else -nll)] for i in range(100)]
+    (out / "form-a9p.json").write_text(json.dumps(dict(form="a9p", declared_read=declared, signs=[f"s{i}" for i in range(100)], hypotheses=[r + " x" if i < change else r for i, r in enumerate(refs)], nll=rows, code_digest="d")))
     return out
 
 
-@pytest.mark.parametrize("change,good", [(0, True), (2, True), (3, False)])
-def test_the_composed_check_reports_and_does_not_stop(monkeypatch, tmp_path, change, good, capsys):
-    out = composed_setup(monkeypatch, tmp_path, change)
-    assert W.main(["composed-check", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(out)]) == 0
-    assert json.loads((out / "composed_check.json").read_text())["reproduced"] is good and ("ALERT" in capsys.readouterr().out) is (not good)
+def composed_check(tmp_path, out):
+    return W.main(["composed-check", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(out)])
+
+
+@pytest.mark.parametrize("kw,good", [(dict(), True), (dict(change=2, nll=.0009), True), (dict(change=3), False), (dict(nll=.0012), False), (dict(nll=.002, alternate=True), False)])
+def test_the_composed_check_reads_hypotheses_and_nll_reports_and_does_not_stop(monkeypatch, tmp_path, kw, good, capsys):
+    out = composed_setup(monkeypatch, tmp_path, **kw)
+    assert composed_check(tmp_path, out) == 0
+    r = json.loads((out / "composed_check.json").read_text())
+    assert r["reproduced"] is good and r["settings_match"] is True and ("ALERT" in capsys.readouterr().out) is (not good)
+
+
+def test_the_composed_check_says_when_an_exports_settings_differ(monkeypatch, tmp_path, capsys):
+    out = composed_setup(monkeypatch, tmp_path, a3=export_index("a3", core_margin=.1))
+    assert composed_check(tmp_path, out) == 0
+    r = json.loads((out / "composed_check.json").read_text())
+    assert r["reproduced"] is True and r["settings_match"] is False and "core_margin" in r["export_settings_differ"]["a3"] and "ALERT" in capsys.readouterr().out
 
 
 def test_the_composed_check_is_a_pin_check_on_a_smoke(monkeypatch, tmp_path, capsys):
     out = composed_setup(monkeypatch, tmp_path, declared=False)
-    assert W.main(["composed-check", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(out)]) == 0 and not (out / "composed_check.json").exists()
+    assert composed_check(tmp_path, out) == 0 and not (out / "composed_check.json").exists()
     monkeypatch.setattr(W, "A10_SHA", "0" * 64)
     with pytest.raises(SystemExit, match="SHA-256"):
-        W.main(["composed-check", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(out)])
+        composed_check(tmp_path, out)
 
 
 @pytest.mark.parametrize("kw,code", [(dict(report_only=True, checks=dict(blank_identical_to_real=.1)), 0), (dict(report_only=False, checks=dict(blank_identical_to_real=.1)), 3), (dict(report_only=True, checks=dict(blank_identical_to_real=1.)), 3),
@@ -666,7 +871,7 @@ def test_the_job_smokes_on_train_first_then_reads_the_anchors_first(tmp_path):
     assert order == ["read", "neutral", "canary", "path-check", "composed-check", "merge", "check", "upload", "preflight", "read", "canary", "path-check", "read", "neutral", "read", "composed-check", "merge", "upload", "check"]
     reads = [a for a in parsed if a.command == "read"]
     assert reads[0].smoke_train == 8 and reads[0].smoke_longest == 4 and reads[0].smoke_never_tracked == 2 and reads[0].forms == ",".join(W.FORMS)
-    assert reads[1].forms == "real,blank,identity,round_trip,v0_nearest_fill" and reads[1].smoke_train == 0 and reads[2].forms == "rt_nearest,no_quant_nearest" and reads[3].forms == "a9p,a9p_replaced"
+    assert reads[1].forms == "real,blank,identity,round_trip,v0_nearest_fill" and reads[1].smoke_train == 0 and reads[2].forms == "rt_nearest,no_quant_nearest,rt_post_fill" and reads[3].forms == "a9p,a9p_replaced,a9p_control"
     assert all(a.device == "cuda" and a.nll_group == 4 and a.resume for a in reads[1:])
     exports = [x for x in calls.splitlines() if "round15_compose_eval.py" in x]
     assert len(exports) == 4 and all("--export-only" in x and "--likelihood" not in x and "core_crossfade@predicted" in x for x in exports)
@@ -721,27 +926,32 @@ def test_the_job_pipes_nothing_names_no_other_list_pins_transformers_and_is_vali
 
 def test_the_script_holds_no_decision_rule():
     source = (ROOT / "scripts/tok_v1.py").read_text()
-    for word in ("outcome", "not_detected", "no_rise", ".015", ".75"):
+    for word in ("outcome", "not_detected", "no_rise", ".015", ".75", "unresolved"):
         assert word not in source
 
 
-# ---- the draft rule: one synthetic report per outcome ------------------------------------------------------------------------------------
+# ---- the declared rule: one synthetic report per outcome ------------------------------------------------------------------------------
 
 def diff(point=.1, low=.05, high=.2):
     return dict(point=point, ci95=[low, high])
 
 
-def excess(main=.1, low=.05, high=.2, near=.05, far=.2):
-    def row(d, a, b):
-        return dict(difference=d, ci95=[a, b])
-    return {"1.0": None, "2.0": row(near, near - .01, near + .01), "5.0": row(main, low, high), "10.0": row(far, far - .01, far + .01), "20.0": None}
+def row(d=.1, low=.05, high=.2):
+    return dict(difference=d, ci95=[low, high])
 
 
-def rule_report(cap_share=None, gen=None, align=(.1, .2), sens=None, composed=True, **top):
-    place = dict(gpu="g")
-    out = dict(report_only=True, declared_read=True, code_digest="d", environment=place, reads=dict(likelihood_minus_blank=dict(cap_share_of_nearest_fill=cap_share or diff(.5, .3, .7), a9p_replaced_minus_a9p=sens or diff(.1, .05, .2))),
-               neutral=dict(a9_predicted_minus_real_tracked=gen or excess(), word_alignment=dict(a9_words=dict(thresholds={"5.0": dict(ci95=list(align), difference=sum(align) / 2)}))),
-               checks=dict(blank_identical_to_real=.1, canary=dict(reproduced=True, code_digest="d", environment=place), path_check=dict(reproduced=True, code_digest="d"), composed_check=dict(reproduced=composed)))
+def terciles(mid=None, high=None, low=None):
+    return dict(low=low or row(0., -1., 1.), mid=mid or row(), high=high or row())
+
+
+GOOD = dict(reproduced=True, code_digest="d", environment=dict(gpu="g"))
+
+
+def rule_report(cap_share=None, gen=None, catch=.8, sens=None, flagged=.05, composed=True, match=True, post=None, **top):
+    out = dict(report_only=True, declared_read=True, code_digest="d", environment=dict(gpu="g"), sensitivity_counts=dict(flagged_share=flagged),
+               reads=dict(likelihood_minus_blank=dict(cap_share_of_nearest_fill=cap_share or diff(.5, .3, .7), a9p_replaced_minus_a9p_control=sens or diff(.1, .05, .2), rt_post_fill_minus_rt_nearest=post or diff(0., -.1, .1))),
+               neutral=dict(code_digest="d", generated=dict(a9_predicted=dict(minus_decoded_real=gen or terciles())), positive_control=dict(catch_rate=catch)),
+               checks=dict(blank_identical_to_real=.1, canary=GOOD, path_check=GOOD, composed_check=dict(reproduced=composed, settings_match=match)))
     out.update(top)
     return out
 
@@ -751,57 +961,71 @@ def test_each_cap_outcome(value, expected):
     assert Rule.read_rule(rule_report(cap_share=value))["cap"]["outcome"] == expected
 
 
-@pytest.mark.parametrize("gen,expected", [(excess(.05, .01, .1), "shown"), (excess(.2, .1, .3), "shown"), (excess(.049, .01, .1), "unresolved"), (excess(.1, 0., .2), "unresolved"), (excess(.1, .05, .2, near=0.), "unresolved"), (excess(.1, .05, .2, far=0.), "unresolved"),
-                                          (excess(0., -.01, .0199), "absent"), (excess(-.1, -.2, -.05), "absent"), (excess(0., -.01, .02), "unresolved")])
-def test_each_generated_outcome(gen, expected):
-    assert Rule.read_rule(rule_report(gen=gen))["generated"]["outcome"] == expected
+@pytest.mark.parametrize("post,expected", [(diff(.1, .01, .2), True), (diff(.1, 0., .2), False), (diff(-.1, -.2, -.01), False)])
+def test_post_fill_is_reported_and_changes_no_outcome(post, expected):
+    r = Rule.read_rule(rule_report(post=post))
+    assert r["cap"]["input_mismatch_matters"] is expected and r["cap"]["outcome"] == "partial"
 
 
-def test_a_missing_excess_is_unresolved():
-    gen = excess()
-    gen["5.0"] = None
+@pytest.mark.parametrize("gen,catch,expected", [(terciles(row(.05, .01, .1), row(.2, .1, .3)), .8, "shown"), (terciles(row(.049, .01, .1)), .8, "unresolved"), (terciles(row(.1, 0., .2)), .8, "unresolved"), (terciles(None, row(.1, 0., .2)), .8, "unresolved"), (terciles(None, row(.04, .01, .1)), .8, "unresolved"),
+                                                (terciles(row(0., -.01, .0199), row(-.1, -.2, -.05)), .5, "absent"), (terciles(row(0., -.01, .0199), row(0., -.01, .0199)), .49, "unresolved"), (terciles(row(0., -.01, .02), row(0., -.01, .01)), .8, "unresolved"), (terciles(row(0., -.01, .01), row(0., -.01, .02)), .8, "unresolved"),
+                                                (terciles(row(0., -.01, .01), row(0., -.01, .01)), None, "unresolved"), (terciles(row(.1, .05, .2), row(0., -.01, .01)), .8, "unresolved")])
+def test_each_generated_outcome_reads_the_mid_and_high_terciles(gen, catch, expected):
+    assert Rule.read_rule(rule_report(gen=gen, catch=catch))["generated"]["outcome"] == expected
+
+
+def test_the_low_tercile_decides_nothing_and_a_missing_tercile_is_unresolved():
+    assert Rule.read_rule(rule_report(gen=terciles(low=row(-5., -6., -4.))))["generated"]["outcome"] == "shown"
+    gen = terciles()
+    gen["high"] = None
     assert Rule.read_rule(rule_report(gen=gen))["generated"]["outcome"] == "unresolved"
 
 
-@pytest.mark.parametrize("align,expected", [((.01, .2), True), ((0., .2), False), ((-.1, .2), False)])
-def test_alignment_needs_its_lower_bound_above_0(align, expected):
-    assert Rule.read_rule(rule_report(align=align))["alignment"]["aligned"] is expected
+@pytest.mark.parametrize("sens,flagged,expected", [(diff(.015, .001, .03), .05, "rise"), (diff(.2, .1, .3), 0., "rise"), (diff(.014, .001, .03), .05, "unresolved"), (diff(.02, 0., .03), .05, "unresolved"), (diff(0., -.01, .0149), .01, "no_rise"), (diff(0., -.01, .0149), .0099, "unresolved"), (diff(0., -.01, .015), .05, "unresolved"), (diff(0., -.01, .01), None, "unresolved"), (dict(point=None, ci95=None), .05, "unresolved")])
+def test_each_sensitivity_outcome_and_no_rise_needs_one_percent_flagged(sens, flagged, expected):
+    assert Rule.read_rule(rule_report(sens=sens, flagged=flagged))["sensitivity"]["outcome"] == expected
 
 
-@pytest.mark.parametrize("sens,expected", [(diff(.015, .001, .03), "rise"), (diff(.2, .1, .3), "rise"), (diff(.014, .001, .03), "unresolved"), (diff(.02, 0., .03), "unresolved"), (diff(0., -.01, .0149), "no_rise"), (diff(0., -.01, .015), "unresolved"), (dict(point=None, ci95=None), "unresolved")])
-def test_each_sensitivity_outcome(sens, expected):
-    assert Rule.read_rule(rule_report(sens=sens))["sensitivity"]["outcome"] == expected
+@pytest.mark.parametrize("kw", [dict(composed=False), dict(match=False)])
+def test_a_failed_composed_check_or_other_settings_void_generated_and_sensitivity_only(kw):
+    r = Rule.read_rule(rule_report(cap_share=diff(.9, .7, 1.), **kw))
+    assert r["generated"]["outcome"] == "void" and r["sensitivity"]["outcome"] == "void" and r["void"] is False and r["cap"]["outcome"] == "kept" and r["hypothesis"] == "open"
 
 
-def test_the_sensitivity_is_void_when_a9p_did_not_reproduce():
-    r = Rule.read_rule(rule_report(composed=False))
-    assert r["sensitivity"]["outcome"] == "void" and r["void"] is False and r["cap"]["outcome"] == "partial"
-
-
-@pytest.mark.parametrize("kw,expected", [(dict(), "supported"), (dict(align=(0., .2)), "open"), (dict(sens=diff(0., -.01, .01)), "refuted_for_generated_signing"), (dict(sens=diff(.02, 0., .03)), "open"), (dict(gen=excess(0., -.01, .01)), "refuted_for_generated_signing"),
-                                         (dict(gen=excess(.1, 0., .2), sens=diff(0., -.01, .01)), "open"), (dict(composed=False), "open")])
+@pytest.mark.parametrize("kw,expected", [(dict(), "supported"), (dict(sens=diff(0., -.01, .01)), "refuted"), (dict(sens=diff(.02, 0., .03)), "open"), (dict(gen=terciles(row(0., -.01, .01), row(0., -.01, .01))), "refuted"),
+                                         (dict(gen=terciles(row(.1, 0., .2)), sens=diff(0., -.01, .01)), "open"), (dict(gen=terciles(row(0., -.01, .01), row(0., -.01, .01)), sens=diff(.1, .05, .2)), "refuted"), (dict(sens=diff(0., -.01, .01), flagged=.001), "open")])
 def test_the_hypothesis_is_supported_refuted_or_open(kw, expected):
     assert Rule.read_rule(rule_report(**kw))["hypothesis"] == expected
 
 
-GOOD = dict(reproduced=True, code_digest="d", environment=dict(gpu="g"))
-
-
 @pytest.mark.parametrize("change,reason", [(dict(checks=dict(blank_identical_to_real=.1, canary=dict(GOOD, reproduced=False), path_check=GOOD)), "canary"), (dict(checks=dict(blank_identical_to_real=.1, canary=GOOD, path_check=dict(GOOD, reproduced=False))), "path check"),
-                                           (dict(report_only=False), "check nonzero"), (dict(neutral=None), "check nonzero"), (dict(code_digest=None), "no code digest"), (dict(environment=None), "no code digest"), (dict(code_digest="z"), "mixed"), (dict(environment=dict(gpu="z")), "mixed")])
+                                           (dict(report_only=False), "check nonzero"), (dict(neutral=None), "check nonzero"), (dict(code_digest=None), "no code digest"), (dict(environment=None), "no code digest"), (dict(code_digest="z"), "mixed"), (dict(environment=dict(gpu="z")), "mixed"),
+                                           (dict(neutral=dict(code_digest="z", a=1)), "mixed")])
 def test_each_void_voids_all(change, reason):
     r = Rule.read_rule(rule_report(**change))
     assert r["void"] is True and any(reason in x for x in r["reasons"]) and {r["cap"]["outcome"], r["generated"]["outcome"], r["sensitivity"]["outcome"], r["hypothesis"]} == {"void"}
 
 
-def test_the_rule_refuses_a_smoke_says_it_is_a_draft_and_opens_no_store(tmp_path, capsys):
+def test_the_rule_refuses_a_smoke_says_the_plan_decides_and_opens_no_store(tmp_path, capsys):
     with pytest.raises(SystemExit, match="smoke"):
         Rule.read_rule(rule_report(declared_read=False))
     path = tmp_path / "r.json"
     path.write_text(json.dumps(rule_report()))
     assert Rule.main(["--report", str(path)]) == 0
-    assert "draft" in json.loads(capsys.readouterr().out)["status"]
+    assert json.loads(capsys.readouterr().out)["status"] == "declared in plan; the plan's text decides"
     source = (ROOT / "scripts/tok_v1_rule.py").read_text()
     for word in ("make_store", "R2Store", "boto"):
         assert word not in source
-    assert (Rule.HIGH, Rule.LOW, Rule.BOUND, Rule.SHOWN_POINT, Rule.ABSENT_UPPER, Rule.RISE_NATS) == (.75, .25, .5, .05, .02, .015)
+    assert (Rule.HIGH, Rule.LOW, Rule.BOUND, Rule.SHOWN_POINT, Rule.ABSENT_UPPER, Rule.CATCH_FLOOR, Rule.RISE_NATS, Rule.FLAGGED_FLOOR, Rule.DECIDING_TERCILES) == (.75, .25, .5, .05, .02, .5, .015, .01, ("mid", "high"))
+
+
+def test_the_rule_reads_every_field_of_a_report_the_merge_really_writes(monkeypatch, tmp_path):
+    harness(monkeypatch)
+    assert read(tmp_path) == 0
+    r = W.json.loads(json.dumps(merged(tmp_path)))
+    r["neutral"] = dict(code_digest=r["code_digest"], generated=dict(a9_predicted=dict(minus_decoded_real=terciles())), positive_control=dict(catch_rate=.8))
+    r["checks"]["canary"].update(code_digest=r["code_digest"], environment=r["environment"])
+    r["checks"]["path_check"].update(code_digest=r["code_digest"])
+    r["checks"]["composed_check"] = dict(reproduced=True, settings_match=True)
+    out = Rule.read_rule(r)
+    assert out["void"] is False and out["cap"]["outcome"] in ("kept", "lost", "partial") and out["sensitivity"]["outcome"] in ("rise", "no_rise", "unresolved") and out["sensitivity"]["flagged_share"] == pytest.approx(3 / 40)

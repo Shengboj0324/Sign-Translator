@@ -1,15 +1,17 @@
-"""Reads a merged V1 report and applies the DRAFT rule (for review; the plan's declaration decides, not this script). ``tok_v1.py`` holds no rule, and the job never calls this. It reads a local file only.
+"""Reads a merged V1 report and applies the declared rule. **The plan's text decides, not this script**; any difference from it is a bug here. ``tok_v1.py`` holds no rule, and the job never calls this. It reads a local file only.
 
-**Void all:** canary or path check not passed, ``check`` nonzero, mixed or missing digest or environment. A smoke's report is refused.
+**Scope.** D20, instrument v1, one digest and environment; likelihood minus blank primary.
 
-**Cap,** on likelihood minus blank: c = (rt_nearest − blank) / (v0_nearest_fill − blank). Kept: c at least 0.75 with a lower bound of at least 0.5. Lost: c at most 0.25 with an upper bound of at most 0.5. Else partial.
+**Void all** on a failed canary, path check or ``check``, or mixed digests. **Void Generated and Sensitivity** if composed-check fails or export settings differ from the pins.
 
-**Generated,** a9@predicted's neutral share at 5° minus real's on tracked frames, clip by clip. Shown: lower bound above 0, point at least 0.05, and the point above 0 at 2° and at 10° too. Absent: upper bound below 0.02. Else unresolved.
-**Alignment,** a9's word clips at 5°: neutral where training was untracked minus where tracked, lower bound above 0.
+**Cap.** c = (rt_nearest − blank) / (v0_nearest_fill − blank). Kept: c ≥ 0.75 and lower bound ≥ 0.5. Lost: c ≤ 0.25 and upper bound ≤ 0.5. Else partial. rt_post_fill − rt_nearest is reported: its lower bound above 0 means the input mismatch matters.
 
-**Sensitivity,** a9p_replaced − a9p on likelihood. Void if composed-check did not reproduce. Rise: lower bound above 0 and point at least 0.015 nats. No rise: upper bound below 0.015. Else unresolved. Never a score.
+**Generated.** The share of a9@predicted's hand frames within the flag of decoded-neutral, minus decoded real on tracked frames, in the same tercile. Shown: lower bound > 0 and point ≥ 0.05 in the mid and high terciles. Absent: upper bound < 0.02 in the mid and high terciles, and the flag catches
+at least half of D20's decoded-neutral. Else unresolved.
 
-**The hypothesis** (generated hands carry trained neutral fill, and v1 reads it badly). Supported: generated shown, aligned, a rise. Refuted for generated signing: generated absent, or no rise with generated shown. Otherwise open.
+**Sensitivity.** a9p_replaced − a9p_control. Rise: lower bound > 0 and point ≥ 0.015 nats. No rise: upper bound < 0.015 and at least 1% flagged. Else unresolved.
+
+**Hypothesis.** Supported: Shown and Rise. Refuted: Absent, or Shown and No rise. Else open.
 """
 from __future__ import annotations
 
@@ -24,13 +26,15 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 
-STATUS = "draft, not declared; the plan's text decides"
+STATUS = "declared in plan; the plan's text decides"
 HIGH, LOW, BOUND = .75, .25, .5
-SHOWN_POINT, ABSENT_UPPER, RISE_NATS = .05, .02, .015
-FLAG, NEAR, FAR = "5.0", "2.0", "10.0"
+SHOWN_POINT, ABSENT_UPPER, CATCH_FLOOR = .05, .02, .5
+RISE_NATS, FLAGGED_FLOOR = .015, .01
+DECIDING_TERCILES = ("mid", "high")
 
 
 def check_nonzero(report: dict) -> bool:
+    """``tok_v1 check``'s own verdict on this report, so the two cannot differ."""
     import tok_v1
     with tempfile.TemporaryDirectory() as t:
         path = Path(t) / "report.json"
@@ -53,59 +57,56 @@ def void_reasons(report: dict) -> list[str]:
         reasons.append("check nonzero")
     if not report.get("code_digest") or not report.get("environment"):
         reasons.append("no code digest or environment")
-    if canary and (canary.get("code_digest") != report.get("code_digest") or canary.get("environment") != report.get("environment")):
-        reasons.append("mixed digest or environment")
-    if path_check and path_check.get("code_digest") != report.get("code_digest"):
-        reasons.append("mixed digest or environment")
+    digest = report.get("code_digest")
+    if (canary and canary.get("code_digest") != digest) or (path_check and path_check.get("code_digest") != digest) or (canary and canary.get("environment") != report.get("environment")):
+        reasons.append("mixed digests or environments")
+    if (report.get("neutral") or {}).get("code_digest") != digest:
+        reasons.append("mixed digests or environments")
     return reasons
 
 
-def cap(block: dict | None) -> dict:
-    if not block or not block.get("point") and block.get("point") != 0 or block.get("ci95") is None:
-        return dict(outcome="partial", share=block)
-    point, interval = block["point"], block["ci95"]
+def cap(share: dict | None, post_fill: dict | None) -> dict:
+    out = dict(share=share, rt_post_fill_minus_rt_nearest=post_fill, input_mismatch_matters=bool(post_fill and post_fill.get("ci95") and post_fill["ci95"][0] > 0))
+    if not share or share.get("point") is None or share.get("ci95") is None:
+        return dict(out, outcome="partial")
+    point, interval = share["point"], share["ci95"]
     if point >= HIGH and interval[0] >= BOUND:
-        return dict(outcome="kept", share=block)
+        return dict(out, outcome="kept")
     if point <= LOW and interval[1] <= BOUND:
-        return dict(outcome="lost", share=block)
-    return dict(outcome="partial", share=block)
+        return dict(out, outcome="lost")
+    return dict(out, outcome="partial")
 
 
-def generated(differences: dict) -> dict:
-    main, near, far = differences[FLAG], differences[NEAR], differences[FAR]
-    if main is None:
-        return dict(outcome="unresolved", excess=None)
-    interval = main["ci95"]
-    if interval[0] > 0 and main["difference"] >= SHOWN_POINT and near is not None and far is not None and near["difference"] > 0 and far["difference"] > 0:
-        return dict(outcome="shown", excess=main)
-    if interval[1] < ABSENT_UPPER:
-        return dict(outcome="absent", excess=main)
-    return dict(outcome="unresolved", excess=main)
+def generated(terciles: dict | None, control: dict | None) -> dict:
+    rows = [(terciles or {}).get(t) for t in DECIDING_TERCILES]
+    catch = (control or {}).get("catch_rate")
+    out = dict(excess=terciles, catch_rate=catch)
+    if any(r is None or r.get("ci95") is None for r in rows):
+        return dict(out, outcome="unresolved")
+    if all(r["ci95"][0] > 0 and r["difference"] >= SHOWN_POINT for r in rows):
+        return dict(out, outcome="shown")
+    if all(r["ci95"][1] < ABSENT_UPPER for r in rows) and catch is not None and catch >= CATCH_FLOOR:
+        return dict(out, outcome="absent")
+    return dict(out, outcome="unresolved")
 
 
-def aligned(block: dict | None) -> dict:
-    row = ((block or {}).get("thresholds") or {}).get(FLAG) or {}
-    return dict(aligned=bool(row.get("ci95")) and row["ci95"][0] > 0, row=row or None)
-
-
-def sensitivity(block: dict | None, composed: dict | None) -> dict:
-    if not (composed or {}).get("reproduced"):
-        return dict(outcome="void", reason="a9p did not reproduce the stored a10 read")
+def sensitivity(block: dict | None, flagged_share) -> dict:
+    out = dict(difference=block, flagged_share=flagged_share)
     if not block or block.get("ci95") is None:
-        return dict(outcome="unresolved", difference=block)
+        return dict(out, outcome="unresolved")
     point, interval = block["point"], block["ci95"]
     if interval[0] > 0 and point >= RISE_NATS:
-        return dict(outcome="rise", difference=block)
-    if interval[1] < RISE_NATS:
-        return dict(outcome="no_rise", difference=block)
-    return dict(outcome="unresolved", difference=block)
+        return dict(out, outcome="rise")
+    if interval[1] < RISE_NATS and flagged_share is not None and flagged_share >= FLAGGED_FLOOR:
+        return dict(out, outcome="no_rise")
+    return dict(out, outcome="unresolved")
 
 
-def hypothesis(gen: str, is_aligned: bool, sens: str) -> str:
-    if gen == "shown" and is_aligned and sens == "rise":
+def hypothesis(gen: str, sens: str) -> str:
+    if gen == "shown" and sens == "rise":
         return "supported"
     if gen == "absent" or (gen == "shown" and sens == "no_rise"):
-        return "refuted_for_generated_signing"
+        return "refuted"
     return "open"
 
 
@@ -118,10 +119,14 @@ def read_rule(report: dict) -> dict:
         return dict(out, void=True, reasons=reasons, cap=dict(outcome="void"), generated=dict(outcome="void"), sensitivity=dict(outcome="void"), hypothesis="void")
     reads = report["reads"]["likelihood_minus_blank"]
     neutral = report["neutral"]
-    gen = generated(neutral["a9_predicted_minus_real_tracked"])
-    align = aligned(neutral.get("word_alignment", {}).get("a9_words"))
-    sens = sensitivity(reads["a9p_replaced_minus_a9p"], report["checks"].get("composed_check"))
-    return dict(out, void=False, reasons=[], cap=cap(reads["cap_share_of_nearest_fill"]), generated=gen, alignment=align, sensitivity=sens, hypothesis=hypothesis(gen["outcome"], align["aligned"], sens["outcome"]))
+    composed = report["checks"].get("composed_check") or {}
+    usable = composed.get("reproduced") is True and composed.get("settings_match") is True
+    out.update(void=False, reasons=[], cap=cap(reads["cap_share_of_nearest_fill"], reads.get("rt_post_fill_minus_rt_nearest")))
+    if not usable:
+        return dict(out, generated=dict(outcome="void", reason="composed-check failed or export settings differ"), sensitivity=dict(outcome="void", reason="composed-check failed or export settings differ"), hypothesis="open")
+    gen = generated(((neutral.get("generated") or {}).get("a9_predicted") or {}).get("minus_decoded_real"), neutral.get("positive_control"))
+    sens = sensitivity(reads.get("a9p_replaced_minus_a9p_control"), (report.get("sensitivity_counts") or {}).get("flagged_share"))
+    return dict(out, generated=gen, sensitivity=sens, hypothesis=hypothesis(gen["outcome"], sens["outcome"]))
 
 
 def main(argv=None) -> int:
