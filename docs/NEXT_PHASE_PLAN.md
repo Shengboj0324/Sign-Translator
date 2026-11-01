@@ -6073,3 +6073,5 @@ Report only; nothing here starts training. Flag fitted on c02 train, tested on h
 - **Refuted:** close the neutral-hands route. Move to the wrist row if it shows, then v2 reads.
 - **Open:** no retrain, and report what stayed unresolved.
 - **Any 32- or 53-hour spend** needs its own declared evidence and the owner's rule met.
+
+**A5 re-declared (2026-11-01, 08:31 UTC).** All four first-wave pods stopped in their top10 smoke: the 5-clip cache lacked `not`, which top10 reaches only through n't. No full read ran and no draw's numbers exist; smokes read 5 D20 clips and decide nothing. Fixed for smokes only; full-run code and seeds unchanged; the rule above stands word for word (hash `91d55dab…`). The digest moved with this fix and other merged scripts, so the record is replaced by a later commit.
