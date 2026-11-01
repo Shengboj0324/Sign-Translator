@@ -6,6 +6,7 @@
 #
 # One process at a time. The first step checks the instruments against their run records; no checkpoint is fetched for that. On D20, real_two_view and blank under v1 are read first and must reproduce the pinned stored report (`control`). A miss stops
 # the job before any other form and voids the read, and `read` itself refuses another form without a passed control. No automatic retry: this code never reads again, and a rerun needs new code and RERUN_CAUSE, which the report records.
+# The unfitted instrument's positive control (`monitor-control`) fetches its 180 UWB shards, about 6.6 GB. A miss voids Question 2 only: the job goes on, the report stands, and `check` ends it with status 1.
 # Outputs (write-once) under $D, the log under $D/logs/. A failure uploads the work so far to $D/partial/<UTC>/; rerunning on the same pod resumes what stands in $WORK. Use the L40S: the control compares hypotheses, and a miss voids the read.
 # Ends with PATH-PARTS-DONE <status> (0 read done, 1 the read failed, 2 the smoke stopped the job, 3 the read is void: do not retry). The exit status is the same.
 # Every step's output and every ALERT passes through tee to $LOG, and `step` returns the failing side's status from PIPESTATUS, so no pipe hides a failure.
@@ -25,8 +26,8 @@ S=$W/smoke-$TS
 R=$W/d20
 LOG=$W/path_parts.log
 COMMON="--device $DEV --threads $THREADS --instrument-cache $W/instrument --nll-group 4"
-V1_REST=monocular_values_two_view_marks,mono_body_two_view_hands,two_view_body_mono_hands,mono_arms_only,mono_hand_pose_only,nearest_two_view,nearest_monocular
-UNFITTED=uwb_blank,uwb_nearest_two_view,uwb_nearest_monocular
+V1_REST=monocular_values_two_view_marks,mono_body_two_view_hands,two_view_body_mono_hands,mono_arms_only,mono_hand_pose_only,mono_hand_orientation_only,nearest_two_view,nearest_monocular
+UNFITTED=uwb_blank,uwb_real_two_view,uwb_nearest_two_view,uwb_nearest_monocular
 
 # a command's output to the log and the console; its status, or the log's failure, comes back
 step() {
@@ -60,6 +61,8 @@ step python $T instruments || { alert "the instruments are not as the header sta
 # ---- smoke: c02 train clips through every form, on both instruments; no D20 state, no instrument on D20 ----------------------------------
 step python $T read --out-dir "$S/forms" --smoke-train 5 --smoke-longest 4 --smoke-never-tracked 2 --smoke-other-rate 1 $COMMON || { alert "smoke read failed"; done_ 2; }
 step python $T control --out-dir "$S/forms" --void-prefix "$D/void" || { alert "smoke control failed"; done_ 2; }
+step python $T monitor-control --out-dir "$S/forms" --device "$DEV" --instrument-cache "$W/instrument" --smoke-clips 64 || { alert "smoke monitor control failed"; done_ 2; }
+step python $T marginals --out-dir "$S/forms" --clips 3 --uwb-clips 100 || { alert "smoke marginals failed"; done_ 2; }
 step python $T merge --out-dir "$S/forms" --output-file "$S/report.json" || { alert "smoke merge failed"; done_ 2; }
 step python $T upload --out-dir "$S" --prefix "$D/smoke/$TS" || { alert "smoke upload failed"; done_ 2; }
 step python $T check --report "$S/report.json" || { alert "smoke check failed: its report is stored"; done_ 2; }
@@ -76,6 +79,8 @@ control=$?
 [ "$control" != 3 ] || { alert "the control failed: the read is void, do not retry"; done_ 3; }
 [ "$control" = 0 ] || { alert "the control did not run"; done_ 1; }
 step python $T read --forms "$V1_REST" --resume --out-dir "$R/forms" $COMMON || { alert "read of v1's forms failed"; done_ 1; }
+[ -f "$R/forms/monitor_control.json" ] || step python $T monitor-control --out-dir "$R/forms" --device "$DEV" --instrument-cache "$W/instrument" || { alert "the monitor control did not run"; done_ 1; }
+[ -f "$R/forms/marginals.json" ] || step python $T marginals --out-dir "$R/forms" || { alert "marginals failed"; done_ 1; }
 step python $T read --forms "$UNFITTED" --resume --out-dir "$R/forms" $COMMON || { alert "read of the unfitted instrument failed"; done_ 1; }
 step python $T merge --out-dir "$R/forms" --output-file "$R/report.json" || { alert "merge failed"; done_ 1; }
 step python $T upload --out-dir "$R" --prefix "$D" || { alert "upload failed"; done_ 1; }
