@@ -6173,3 +6173,30 @@ Branch `path-read` 52fd48d1 (digest 5a48d7da), independent review applied, not m
 **YouTube arms.** All 99,918 YouTube records are in both the generator's and the tokenizer's mixes. No wrist on either side 42.3% [38.3, 46.3] of records, 20.4% of the generator's sampled weight and 29.5% of the tokenizer's; missing at least one side 44.4%, 21.4%, 30.8%; under half the frames on a side 58.4%, 28.1%, 40.7%. Round 13 dropped these clips and this plan says that "stands", but W14b's mix extends round 10's and holds them all: the record and the mix disagree. Two paths remain unmeasured: neutral-valued body codes as history for hand codes, and the tokenizer's encoder seeing neutral fill. The only direct test, C13 against F12, showed no gain (lexicon 0.000 [−0.047, +0.047], BLEU −0.038 [−0.411, +0.318]) on a short warm start, end to end. No training on this; a measurement is proposed after A5.
 
 **Path read, amendment (18:00 UTC, before any monocular D20 read).** The first run stopped at its slice check, with the control exact (real 4.493, blank 1.68, every hypothesis identical). The check compared clips after resampling each to 24 fps from its own first frame, a bug in the check, not a mismatch: stored clocks agree exactly on 46 of 46 clips read (clocks and hashes only). It now compares stored clocks and stops above a quarter of the clip's own frame or on non-consecutive frames; any offset above 0.001 s raises an alert and withholds the label. `STORED_RT` is now pinned (4577be5a). Commit 2099fe43, digest d1139ed9. The reading is unchanged.
+
+### Path read result: v1 reads the single-camera path far lower (read 2026-11-01, recorded 18:24 UTC)
+
+`round20/path-read/report.json` sha 67f858b8, commit 2099fe43, D20, 500 of 500 clips shared, no alert, control exact, every stored clock agreeing and every source hash matching. **Case (b) on both metrics and both pairs.**
+
+| Form | BLEU | Likelihood − blank |
+|---|---|---|
+| Real, two-view | 4.493 [3.733, 5.195] | +0.292 |
+| Real, monocular | 2.849 [2.373, 3.348] | +0.056 |
+| Real, monocular, trimmed to the same frames | 2.844 [2.356, 3.326] | +0.063 |
+| Nearest fill, two-view (stored) | 4.621 [3.837, 5.369] | +0.234 |
+| Nearest fill, monocular | 2.653 [2.165, 3.077] | +0.041 |
+| Round trip, two-view | 4.124 [3.485, 4.764] | +0.188 |
+| Round trip, monocular | 2.391 [1.947, 2.838] | +0.024 |
+| Monocular values, two-view marks | 2.546 [2.072, 2.999] | +0.097 |
+| Two-view values, monocular marks | 4.497 [3.727, 5.242] | +0.235 |
+| Blank | 1.68 | 0 |
+
+- **Marks-free difference:** −1.968 [−2.619, −1.317] BLEU, −0.193 [−0.220, −0.167] likelihood. Marked: −1.644, −0.236.
+- **It's the values, not the marks and not the length:** swapping marks barely moves either path, and trimming changes nothing.
+- **Same-path ratio:** the monocular gap is 0.331 [0.200, 0.468] of the two-view gap, marks free; 0.416 marked.
+- **Round trip is below 3.8 by 1.41**, with the upper bound below it.
+- **Distance between paths, in the canonical skeleton:** hands 0.587 (mirrored control 1.286), wrists 0.231 (0.474), elbows 0.128, shoulders 0.100.
+
+**What this shows and doesn't.** v1 reads this path lower. Lost content and v1's fit to two-view keypoints aren't separated, as declared. It makes no claim about composition. Arithmetic only, on the declared division: top10's stored share of 33.0% reads about 100% against the marks-free monocular gap, with an interval from about 70% to 165%, on a single draw, with A5 still running. Composition's clips aren't simply monocular (d2's decoder and How2Sign's weighting differ), so that is an inference, and top10's +0.089 likelihood sits above real monocular's +0.056 and the round trip's +0.024.
+
+**If it holds, it changes the road to 3.8.** Word clips trained almost entirely on monocular data may already read about as high on v1 as real signing through that path, so composition tuning may have little room left on this instrument. Either the data needs better arms and hands, or v1 underrates this path and we have no instrument to say so (v2 was not accepted). **Next, report only: which part loses it (body against hands), and whether an instrument not fitted to two-view reads the same gap.**
