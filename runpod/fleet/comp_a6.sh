@@ -3,18 +3,19 @@
 # THE LAUNCH MUST WAIT: A5's record is code digest 08b9a150, and this branch moves the digest of everything it merges into. Don't merge it into A5's code. A6's draws wait for A5's summary, and run only if it reads confirmed or direction only.
 # PREPARED, NOT LAUNCHED. NOTHING IS DECLARED BY THIS FILE: a full run stops unless COMP_A_DECLARED passes scripts/comp_a6_declared.py, a declaration apart from A1 to A5's.
 #
-#   COMP_PHASE=<phase> WORDS=<a3|1..8> [ATTEMPT=<n, default 1>] [SMOKE=1] [SMOKE_STAMP=<stamp>] [COMP_A_DECLARED=<plan commit>] [hashes] bash runpod/fleet/comp_a6.sh
+#   COMP_PHASE=<phase> WORDS=<a3|1..8|draws> [ATTEMPT=<n, default 1>] [SMOKE=1] [SMOKE_STAMP=<stamp>] [COMP_A_DECLARED=<plan commit>] [hashes] bash runpod/fleet/comp_a6.sh
 #
 # D20 only, pinned; no option for another set. Reports are --report-only and write-once under $OUT. No word is generated: every arm reads stored caches. SMOKE=1 reads at most 5 real D20 clips under $OUT/smoke/<stamp>/.
 # Nothing decides on a smoke, a smoke has no summary, and a smoke reads A3's words alone: never A5's draws before their summary.
 # WORDS: a3 is A3's stored words, a screen that decides nothing and adds hold-xr, report only. 1 to 8 is A5's stored draw, found by the hash in CACHE_SHA and EXTRA_SHA from its COMP-A5 lines.
 # Attempts: a draw with all arms stored is final, so an attempt is refused once another has its last arm. An arm that started and did not finish stays unfinished: the next attempt reruns all arms on the same words.
 # Phases, on one pod per draw (runpod/fleet/comp_a6_chain.sh runs them in order):
-#   base           top10 at today's length: hold-x's and length's comparator.
+#   base           top10 at today's length: hold-x's and length's comparator. On a draw, A5T_SHA pins A5's top10 for that draw: base must match it on the same GPU, or the draw stops.
 #   hold-x         entries with at least 25% two-handed records and the list's new entries stay anchors; the arm is held between anchors. Read beside the rule.
 #   length         top10 at the length fitted signer-balanced on c02 + c04: the length rule's arm.
 #   hold-x-length  both: the hold rule's arm, against length (LENGTH_SHA).
 #   hold-xr        WORDS=a3 only, report only: hold-x's anchors, and the held arm goes toward the rest pose and back on the longest ramps.
+#   smoke-read     SMOKE=1, WORDS=a3: the five smoke reports through the reader's every check and summary. It prints no number and decides nothing.
 #   summary        WORDS=a3 or WORDS=draws: each draw's one attempt with all arms, pinned by B<k>_SHA, HX<k>_SHA, L<k>_SHA, HXL<k>_SHA (and HXRa3_SHA); the rules on the draws, nothing on a3. A5T<k>_SHA pins A5's top10 for a free instrument check.
 # A merge's output, which holds the arm's numbers, goes to a file on the pod, not this log: no per-draw number is read until the summary.
 # Ends with one line: COMP-A6-DONE <0|1> phase=<phase> words=<words> smoke=<0|1>. Any other way out prints ALERT and COMP-A6-DONE 1.
@@ -34,7 +35,9 @@ export PATH=/root/venv/bin:$PATH OMP_NUM_THREADS=$T MKL_NUM_THREADS=$T OPENBLAS_
 uv pip install -q 'transformers==4.57.6' 'tokenizers==0.22.2' sentencepiece || die "uv pip install failed"
 python scripts/comp_a6_guard.py env || die "this pod's python, torch, transformers or tokenizers are not the pinned ones"
 sha() { python -c "import os,sys,hashlib; from signtranslator.data.text_motion_dataset import R2Store; print(hashlib.sha256(R2Store(os.environ).get(sys.argv[1])).hexdigest())" "$1"; }
-exists() { python -c "import os,sys; from signtranslator.data.text_motion_dataset import R2Store; sys.exit(0 if R2Store(os.environ).exists(sys.argv[1]) else 1)" "$1"; }
+# 0 stored, 3 absent; anything else is a store error (Python exits 1 on one), and stops the job
+exists() { python -c "import os,sys; from signtranslator.data.text_motion_dataset import R2Store; sys.exit(0 if R2Store(os.environ).exists(sys.argv[1]) else 3)" "$1"; local rc=$?; [ $rc = 0 ] && return 0; [ $rc = 3 ] && return 1; die "store error on $1"; }
+next_attempt() { if [ "$A" -lt 5 ]; then echo "rerun every arm under ATTEMPT=$(( A + 1 ))"; else echo "attempt 5 was the last: this draw needs a decision"; fi; }
 pin() { [ "$(sha "$1")" = "$2" ] || die "$1 differs from its pin"; }
 said() { local hash; hash=$(sha "$2"); [ -n "$hash" ] || die "$1: no hash of $2"; echo "COMP-A6 $1 $2 $hash"; }
 case $A in 1|2|3|4|5) ;; *) die "ATTEMPT must be 1 to 5" ;; esac
@@ -44,8 +47,9 @@ case ${SMOKE:-0} in 0) ;; 1) SMOKING=1 ;; *) die "SMOKE must be 0 or 1" ;; esac
 case $PHASE in
   base|hold-x|length|hold-x-length) case $K in a3|1|2|3|4|5|6|7|8) ;; *) die "WORDS must be a3 or 1 to 8" ;; esac ;;
   hold-xr) [ "$K" = a3 ] || die "hold-xr: WORDS=a3 only, report only; it is not on the draws" ;;
+  smoke-read) [ $SMOKING = 1 ] && [ "$K" = a3 ] || die "smoke-read: SMOKE=1 and WORDS=a3" ;;
   summary) case $K in a3|draws) ;; *) die "summary: WORDS=a3 or WORDS=draws" ;; esac ;;
-  *) die "unknown COMP_PHASE $PHASE: base hold-x length hold-x-length hold-xr summary" ;; esac
+  *) die "unknown COMP_PHASE $PHASE: base hold-x length hold-x-length hold-xr smoke-read summary" ;; esac
 [ $SMOKING = 0 ] || [ "$K" = a3 ] || die "a smoke reads WORDS=a3 only: never A5's draws before their summary"
 if [ $SMOKING = 0 ]; then
   [ -n "${COMP_A_DECLARED:-}" ] || die "a full run needs COMP_A_DECLARED=<plan commit>: nothing is declared yet"
@@ -88,8 +92,8 @@ FITTED="--core-margin 0 --predicted-duration --duration-balanced --expect-durati
 EXTRA="--vocabulary-extra-file $TOKENS --vocabulary-extra-sha256 $TOKENSSHA --vocabulary-extra-top 10"
 HOLDX="--hold-left-file $HOLDSTATS --hold-left-sha256 $HOLDSHA --hold-left-exclude 0.25"
 
-# A5's stored cache of this draw with this hash, whatever its attempt
-stored_a5() { local j key; for j in 1 2 3 4 5; do key=$A5OUT/draw$K-$1/attempt$j/index.json; if exists $key && [ "$(sha $key)" = "$2" ]; then echo $key; return 0; fi; done; return 0; }
+# A5's stored file with this hash, whatever its attempt, in FOUND (no subshell: a store error must stop the job): stored_a5 CACHE|TOP10 HASH
+stored_a5() { local j key; FOUND=""; for j in 1 2 3 4 5; do if [ "$1" = top10 ]; then key=$A5OUT/draw$K-attempt$j-top10.json; else key=$A5OUT/draw$K-$1/attempt$j/index.json; fi; if exists $key && [ "$(sha $key)" = "$2" ]; then FOUND=$key; return 0; fi; done; return 0; }
 # this words' stored caches, pinned: A3's by this file, a draw's by the ledger's COMP-A5 lines
 words() {
   if [ "$K" = a3 ]; then
@@ -97,7 +101,7 @@ words() {
   else
     [ -n "${CACHE_SHA:-}" ] && [ -n "${EXTRA_SHA:-}" ] || die "draw $K: give CACHE_SHA and EXTRA_SHA from A5's COMP-A5 lines"
     IDXSHA=$CACHE_SHA; XSHA=$EXTRA_SHA
-    IDX=$(stored_a5 cache $IDXSHA); X=$(stored_a5 extra $XSHA)
+    stored_a5 cache $IDXSHA; IDX=$FOUND; stored_a5 extra $XSHA; X=$FOUND
     [ -n "$IDX" ] && [ -n "$X" ] || die "draw $K: no stored cache of A5's has those hashes"
   fi
   pin $IDX $IDXSHA; pin $X $XSHA
@@ -111,7 +115,7 @@ arm() {
   local name=$K-attempt$A-$1; shift
   local part=$OUT/$name-shard0.json merged=$OUT/$name.json started=$OUT/$name.started
   if exists $merged; then echo "stored: $merged (not rerun)"; said $name $merged; return 0; fi
-  exists $started && die "$name started and did not finish: rerun every arm under ATTEMPT=$(( A + 1 ))"
+  exists $started && die "$name started and did not finish: $(next_attempt)"
   python scripts/comp_a6_guard.py started $started || die "$name: cannot mark its start"
   python scripts/round15_compose_eval.py run $BASE $WORDARGS "$@" --output-key $part || die "run $name"
   python scripts/round15_compose_eval.py merge --report-only --shard-keys $part --output-key $merged > /root/r20-a6-$name-merge.log 2>&1 || die "merge $name (log /root/r20-a6-$name-merge.log)"
@@ -126,18 +130,29 @@ comparator() {
     pin $B0 "$2"
   fi
   if exists $B0; then
-    exists $OUT/$K-attempt$A-$PHASE.json || python scripts/comp_a6_guard.py same-pod $B0 || die "$PHASE: $1 came from other code or another environment; rerun every arm under ATTEMPT=$(( A + 1 ))"
+    exists $OUT/$K-attempt$A-$PHASE.json || python scripts/comp_a6_guard.py same-pod $B0 || die "$PHASE: $1 came from other code or another environment; $(next_attempt)"
   fi
 }
 
-if [ "$PHASE" != summary ]; then
+if [ "$PHASE" != summary ] && [ "$PHASE" != smoke-read ]; then
   if [ "$K" != a3 ] && [ $SMOKING = 0 ]; then python scripts/comp_a6_guard.py a5-done || die "draw $K: A6's draws wait for A5's summary"; fi
   refuse_after_final
 fi
 case $PHASE in
   base)
     words
-    arm base $TODAY ;;
+    TOP=""
+    if [ "$K" != a3 ]; then
+      [ -n "${A5T_SHA:-}" ] || die "draw $K: give A5T_SHA, A5's top10 of this draw"
+      stored_a5 top10 "$A5T_SHA"; TOP=$FOUND
+      [ -n "$TOP" ] || die "draw $K: no stored top10 of A5's has A5T_SHA"
+    fi
+    arm base $TODAY
+    if [ -n "$TOP" ]; then python scripts/comp_a6_guard.py a5-match $OUT/$K-attempt$A-base.json $TOP || die "draw $K: base differs from A5's top10 on the same GPU"; fi ;;
+  smoke-read)
+    keys=""; for a in base hold-x length hold-x-length hold-xr; do keys="$keys,$OUT/a3-attempt$A-$a.json"; done
+    python scripts/comp_a6_read.py --smoke --draw a3=${keys#,} --output-key $OUT/a3-smoke-read.json > /root/r20-a6-smoke-read.log 2>&1 || die "smoke-read (log /root/r20-a6-smoke-read.log)"
+    echo "A6 smoke read passed: five reports through every check and summary; no number printed" ;;
   hold-x)
     words; comparator base "${BASE_SHA:-}"
     arm hold-x $TODAY $HOLDX ;;
@@ -178,9 +193,9 @@ case $PHASE in
         ARGS="$ARGS --draw $d=${keys#,} --attempts $d=$log"
         if [ "$K" = draws ]; then      # the free instrument check: base against A5's top10 on the same words
           var=A5T$d"_SHA"; [ -n "${!var:-}" ] || die "summary: give $var, A5's top10 of draw $d"
-          found=""; for j in 1 2 3 4 5; do key=$A5OUT/draw$d-attempt$j-top10.json; if exists $key && [ "$(sha $key)" = "${!var}" ]; then found=$key; break; fi; done
-          [ -n "$found" ] || die "summary: no stored top10 of A5's draw $d has $var"
-          ARGS="$ARGS --a5-top10 $d=$found"
+          K=$d; stored_a5 top10 "${!var}"; K=draws
+          [ -n "$FOUND" ] || die "summary: no stored top10 of A5's draw $d has $var"
+          ARGS="$ARGS --a5-top10 $d=$FOUND"
         fi
       done
       python scripts/comp_a6_read.py $ARGS $DECL --output-key $KEY || die "summary"

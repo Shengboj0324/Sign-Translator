@@ -117,3 +117,27 @@ def test_youtube_on_the_monocular_path_is_over_d20s_monocular_row():
                  c03=dict(clips=300, monocular_only=dict(raw=dict(wrist_speed_over_d20=2.), **{"6hz": dict(wrist_speed_over_d20=1.), "3hz": dict(wrist_speed_over_d20=1.)})), c05=dict(clips=0))
     out = w.path_matched(pairs, dict(raw=dict(wrist_speed_over_d20=3.5), **{"6hz": dict(wrist_speed_over_d20=2.), "3hz": dict(wrist_speed_over_d20=1.)}))
     assert out["raw"]["d20_monocular_over_d20_two_view"] == 1.75 and out["raw"]["youtube_over_d20_monocular"] == 2. and out["6hz"]["youtube_over_d20_monocular"] == 2.
+
+
+def mono_row(value):
+    one = {f"{k}_over_d20": value for k in w.KEYS}
+    return dict(raw=dict(one), **{"6hz": dict(one), "3hz": dict(one)})
+
+
+def test_composition_is_read_against_d20_through_the_monocular_path():
+    pairs = dict(c01=dict(clips=100, monocular_only=mono_row(1.)), c03=dict(clips=300, monocular_only=mono_row(2.)), c05=dict(clips=0))
+    composition = {n: mono_row(3.5) for n in ("base", "hold_x", "length_tokens", "hold_x_length")}
+    out = w.composition_on_monocular(pairs, composition)
+    assert out["d20_monocular_over_d20_two_view"]["raw"]["wrist_speed"] == 1.75 and out["base"]["raw"]["left_speed"] == 2. and out["hold_x"]["3hz"]["right_speed"] == 2.
+
+
+def test_per_side_rows_are_monocular_over_two_view():
+    row = {r: {k: dict(monocular_over_two_view=1.2) for k in ("left_speed", "right_speed", "left_spread", "right_spread")} for r in w.RATES}
+    out = w.per_side_rows(dict(c01=dict(clips=3, **row), c05=dict(clips=0)))
+    assert set(out) == {"c01"} and out["c01"]["3hz"]["left_speed"] == 1.2 and out["c01"]["raw"]["right_speed"] == 1.2 and out["c01"]["6hz"]["left_spread"] == 1.2 and out["c01"]["3hz"]["right_spread"] == 1.2
+
+
+def test_the_note_states_both_directions_and_its_limits():
+    for phrase in ("monocular inflation fits the left-arm asymmetry at least as well as two-view shrinkage", "Per side it is not every signer", "1.00-1.05x", "not called jitter", "5 clips each"):
+        assert phrase in w.NOTE, phrase
+    assert "jitter is filtered" not in w.NOTE

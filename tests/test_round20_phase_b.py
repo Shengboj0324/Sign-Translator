@@ -82,7 +82,7 @@ def on_stubs(tmp_path, text, env, *, smoke, gpu):
         'case "$*" in *c20-gate*) [ "$STUB_GATE" = 1 ] || exit 1 ;; esac\n'
         'case "$*" in *" same-codes "*) [ "${STUB_SAME:-0}" = 0 ] || exit "$STUB_SAME" ;; esac\n'
         'if [ -n "${STUB_FAIL_MATCH:-}" ]; then case "$*" in *"$STUB_FAIL_MATCH"*) exit 1 ;; esac; fi\n'
-        'if [ -n "${STUB_PRINT:-}" ]; then case "$*" in *" merge "*) echo "$STUB_PRINT" ;; esac; fi\n'
+        'if [ -n "${STUB_PRINT:-}" ]; then case "$*" in *"${STUB_PRINT_MATCH:- merge }"*) echo "$STUB_PRINT" ;; esac; fi\n'
         'case "$*" in *"round20_phase_b_verdict.py verdict "*) exit ${STUB_VERDICT:-0} ;; esac\n'
         'case "$*" in *" stack-check "*) exit ${STUB_STACK:-0} ;; *" one-arm "*) exit ${STUB_ONE_ARM:-0} ;; esac\n'
         'if [ -n "$STUB_FAIL_SHARD" ]; then case "$*" in *"--shard $STUB_FAIL_SHARD "*) exit 1 ;; esac; fi\n'

@@ -142,6 +142,7 @@ def main(argv=None) -> int:
     holds, uses = {k: [] for k in FORMS}, {k: dict(uses=0, held=0, held_two_handed_entries=0) for k in ("hold_a1", "hold_x")}
     frames, true_frames, frames_with_words, true_with_words = {k: [] for k in ("old", "tokens", "words")}, [], {k: [] for k in ("old", "tokens", "words")}, []
     real_rows, built, cached, replaced = [], [], {}, {k: [0, 0] for k in FORMS}
+    state_true_with_words = []
     speeds = {hz: {k: [] for k in ("real", *LOW_PASSED)} for hz in RATES}
     for i, record in enumerate(val):
         ref = at_rate(load_state(store, record["continuous"]["state_key"], record["continuous"]["state_sha256"]), FPS)
@@ -161,6 +162,7 @@ def main(argv=None) -> int:
         true_frames.append(true_f)
         for k, v in seconds.items():
             frames[k].append(int(round(v * FPS)))
+        state_true = len(ref.timestamps)
         words = words1[i]
         if not words:
             for k in FORMS:
@@ -168,6 +170,7 @@ def main(argv=None) -> int:
                 pooled[k].append((None, real_row["wrist_speed"], None, real_row["wrist_spread"]))
             continue
         true_with_words.append(true_f)
+        state_true_with_words.append(state_true)
         for k in seconds:
             frames_with_words[k].append(frames[k][-1])
         plan_words = r2.plan_words(words, plan_model, vocab, rows=details[i])
@@ -214,7 +217,8 @@ def main(argv=None) -> int:
         raise SystemExit(f"the rebuild does not reproduce A3's stored wrist speeds: largest difference {worst}")
     out = dict(kind="comp-a6-motion", report_only=True, clips=len(val), set=dict(key=D20_KEY, sha256=D20_SHA), note="no hypothesis was read; motion of stored generated words only",
                word_caches=dict(main=dict(key=CACHE_KEY, sha256=CACHE_SHA), extra=dict(key=EXTRA_KEY, sha256=EXTRA_SHA)), rebuild_check=dict(clips=len(built), max_abs_difference=round(float(worst), 9), against=STORED_KEY),
-               exclude=EXCLUDE, held_uses=uses, lengths=dict(all_clips={k: length_row(v, true_frames) for k, v in frames.items()}, clips_with_words={k: length_row(v, true_with_words) for k, v in frames_with_words.items()}),
+               exclude=EXCLUDE, held_uses=uses, lengths=dict(all_clips={k: length_row(v, true_frames) for k, v in frames.items()}, clips_with_words={k: length_row(v, true_with_words) for k, v in frames_with_words.items()},
+                                                                                                                    report_state_frames={k: length_row(v, state_true_with_words) for k, v in frames_with_words.items()}, note="report_state_frames is the report's own ratio: predicted frames over the reference state's frames, on clips with words"),
                forms={})
     for name in FORMS:
         report = operating_report(rows[name], real_rows, pooled[name])

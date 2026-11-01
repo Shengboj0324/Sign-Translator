@@ -1298,6 +1298,9 @@ def merge(args, store) -> dict:
             extra["hold_left"].update(cap=holds[0]["cap"], peak=max(h["peak"] for h in holds))
             if "rest_frames" in holds[0]:
                 extra["hold_left"].update({k: int(sum(h[k] for h in holds)) for k in ("rest_ramps", "rest_whole", "rest_too_short", "rest_frames")})
+            if ((s.get("round20") or {}).get("hold_left") or {}).get("exclude"):      # post-S2 A6: the predicted form alone, like its motion figures
+                predicted = [h for h in (((r["plans"].get(v) or {}).get("predicted") or {}).get("hold") for r in rows for v in variants) if h]
+                extra["hold_left_predicted"] = dict(cap_bound=int(sum(h["cap_bound"] for h in predicted)), peak=max(h["peak"] for h in predicted), stretches=int(sum(h["stretches"] for h in predicted))) if predicted else {}
     if rows[0].get("likelihood"):                      # round 20's selection metric (--likelihood)
         from round20_lib import likelihood_summary
         other_ll = (json.loads(store.get(args.paired_with)).get("likelihood") if args.paired_with else None)

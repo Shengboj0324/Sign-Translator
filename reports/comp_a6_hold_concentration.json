@@ -1,0 +1,130 @@
+{
+ "exclude": 0.25,
+ "excluded_entries": 34,
+ "excluded_uses": 226,
+ "excluded_with_two_handed_records": 34,
+ "inputs": {
+  "hold": {
+   "key": "acquisition/2026-10-17-v1/youtube-asl-v1/round20/comp-a/a1-hold.json",
+   "sha256": "d368d30713e8ca9ed268752f101491f70652d7b3babc5758854480f92bc0fd3d"
+  },
+  "margin0": {
+   "key": "acquisition/2026-10-17-v1/youtube-asl-v1/round20/comp-a/a1-margin0.json",
+   "sha256": "390005db4a98ce1c44baba155ac25345479c1059752d87b2b359d7bd3c990190"
+  }
+ },
+ "kind": "comp-a6-hold-concentration",
+ "metrics": {
+  "likelihood": {
+   "ceiling": 0.393,
+   "ceiling_reaches_needed": false,
+   "ci95": {
+    "ceiling": [
+     0.1939,
+     0.6563
+    ],
+    "mean": [
+     -0.0411,
+     -0.0153
+    ],
+    "mean_with": [
+     -0.053,
+     -0.0133
+    ],
+    "mean_without": [
+     -0.0416,
+     -0.0094
+    ],
+    "regression": [
+     -0.2332,
+     0.41
+    ],
+    "scaled": [
+     -0.0055,
+     0.2298
+    ],
+    "slope_excluded": [
+     -0.0211,
+     0.0141
+    ],
+    "slope_other": [
+     -0.0022,
+     0.0052
+    ]
+   },
+   "clips": 500,
+   "clips_with_excluded": 170,
+   "mean": -0.0276,
+   "mean_with": -0.0319,
+   "mean_without": -0.0254,
+   "needed_share_at_current_floor": 0.721,
+   "needed_share_at_earlier_floor": 0.6377,
+   "needed_share_quoted_by_review": 0.71,
+   "regression": 0.0489,
+   "regression_reaches_needed": false,
+   "scaled": 0.1129,
+   "share_of_clips_with_excluded": 0.34,
+   "share_of_held_uses_excluded": 0.1237,
+   "slope_excluded": -0.003,
+   "slope_other": 0.0015
+  },
+  "spotting": {
+   "ceiling": 0.3977,
+   "ceiling_reaches_needed": false,
+   "ci95": {
+    "ceiling": [
+     0.283,
+     0.5315
+    ],
+    "mean": [
+     -0.0508,
+     -0.0299
+    ],
+    "mean_with": [
+     -0.0605,
+     -0.0337
+    ],
+    "mean_without": [
+     -0.0507,
+     -0.0237
+    ],
+    "regression": [
+     -0.0931,
+     0.1938
+    ],
+    "scaled": [
+     0.0753,
+     0.1596
+    ],
+    "slope_excluded": [
+     -0.0156,
+     0.0086
+    ],
+    "slope_other": [
+     -0.0077,
+     -0.0026
+    ]
+   },
+   "clips": 493,
+   "clips_with_excluded": 170,
+   "mean": -0.0405,
+   "mean_with": -0.0467,
+   "mean_without": -0.0372,
+   "needed_share_at_current_floor": 0.7802,
+   "needed_share_at_earlier_floor": 0.5062,
+   "needed_share_quoted_by_review": 0.54,
+   "regression": 0.0336,
+   "regression_reaches_needed": false,
+   "scaled": 0.1138,
+   "share_of_clips_with_excluded": 0.3448,
+   "share_of_held_uses_excluded": 0.1238,
+   "slope_excluded": -0.003,
+   "slope_other": -0.005
+  }
+ },
+ "note": "A1's stored forms only, already read; A1's words (a9's list), not top10's; none of these is a read of hold-x",
+ "other_held_uses": 1601,
+ "power_note": "slot: filled at declaration from A5's paired SD (comp_a6_hold_concentration.py power)",
+ "power_table_at_declaration": null,
+ "report_only": true
+}

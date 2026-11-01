@@ -333,7 +333,7 @@
    }
   }
  },
- "cannot_decide": "Which path is right: two-view is the reference elsewhere in this project, yet no ground truth for arm amplitude exists here, so this cannot say whether two-view shrinks motion or monocular inflates it. Whether YouTube's remainder is signers, clip cutting (0.57 s per token, against D20's 0.30) or framing. Whether a stored 24 fps is the sources' true rate: the clock check moves with signers too. A channel is not a signer. ASLLRP's path was not compared on the same clips. Carry: the word is defined nowhere in the repository, so 1.44x is neither confirmed nor refuted: on hold-x it needs the right wrist at the row's right_needed_for_1_44.",
+ "cannot_decide": "Which path is right: no ground truth for arm amplitude exists here, so this cannot say whether two-view shrinks motion or monocular inflates it, and hold-x's motivation depends on that. Whether YouTube's remainder is signers, clip cutting (0.57 s per token, against D20's 0.30) or framing. Whether a stored 24 fps is the sources' true rate: the clock check moves with signers too. A channel is not a signer. ASLLRP's path was not compared on the same clips. Carry: the word is defined nowhere in the repository, so 1.44x is neither confirmed nor refuted: on hold-x it needs the right wrist at the row's right_needed_for_1_44.",
  "carry": {
   "check_top10": 1.7733,
   "hold_x_left_cut": 0.804,
@@ -497,6 +497,138 @@
     "right_spread_over_d20": 1.6552,
     "wrist_speed_over_d20": 2.0191,
     "wrist_spread_over_d20": 2.0451
+   }
+  }
+ },
+ "composition_on_monocular": {
+  "base": {
+   "3hz": {
+    "left_speed": 1.7712,
+    "left_spread": 1.6198,
+    "right_speed": 1.7338,
+    "right_spread": 1.5535,
+    "wrist_speed": 1.7544,
+    "wrist_spread": 1.591
+   },
+   "6hz": {
+    "left_speed": 1.8534,
+    "left_spread": 1.6197,
+    "right_speed": 1.8554,
+    "right_spread": 1.5565,
+    "wrist_speed": 1.8557,
+    "wrist_spread": 1.5922
+   },
+   "raw": {
+    "left_speed": 1.876,
+    "left_spread": 1.6289,
+    "right_speed": 1.8978,
+    "right_spread": 1.5593,
+    "wrist_speed": 1.8834,
+    "wrist_spread": 1.5925
+   }
+  },
+  "d20_monocular_over_d20_two_view": {
+   "3hz": {
+    "left_speed": 1.5607,
+    "left_spread": 1.5412,
+    "right_speed": 1.0302,
+    "right_spread": 1.0695,
+    "wrist_speed": 1.2538,
+    "wrist_spread": 1.2936
+   },
+   "6hz": {
+    "left_speed": 1.3913,
+    "left_spread": 1.5388,
+    "right_speed": 0.9048,
+    "right_spread": 1.0667,
+    "wrist_speed": 1.1066,
+    "wrist_spread": 1.2904
+   },
+   "raw": {
+    "left_speed": 1.1874,
+    "left_spread": 1.5335,
+    "right_speed": 0.7684,
+    "right_spread": 1.0614,
+    "wrist_speed": 0.9419,
+    "wrist_spread": 1.2849
+   }
+  },
+  "hold_x": {
+   "3hz": {
+    "left_speed": 1.3962,
+    "left_spread": 1.4246,
+    "right_speed": 1.7338,
+    "right_spread": 1.5535,
+    "wrist_speed": 1.5594,
+    "wrist_spread": 1.4806
+   },
+   "6hz": {
+    "left_speed": 1.4847,
+    "left_spread": 1.4244,
+    "right_speed": 1.8554,
+    "right_spread": 1.5565,
+    "wrist_speed": 1.6651,
+    "wrist_spread": 1.4819
+   },
+   "raw": {
+    "left_speed": 1.5083,
+    "left_spread": 1.4327,
+    "right_speed": 1.8978,
+    "right_spread": 1.5593,
+    "wrist_speed": 1.6938,
+    "wrist_spread": 1.4824
+   }
+  },
+  "hold_x_length": {
+   "3hz": {
+    "left_speed": 1.5392,
+    "left_spread": 1.419,
+    "right_speed": 1.9036,
+    "right_spread": 1.5446,
+    "wrist_speed": 1.7155,
+    "wrist_spread": 1.4735
+   },
+   "6hz": {
+    "left_speed": 1.6625,
+    "left_spread": 1.4222,
+    "right_speed": 2.0796,
+    "right_spread": 1.5545,
+    "wrist_speed": 1.8656,
+    "wrist_spread": 1.4798
+   },
+   "raw": {
+    "left_speed": 1.711,
+    "left_spread": 1.4313,
+    "right_speed": 2.1623,
+    "right_spread": 1.5594,
+    "wrist_speed": 1.9263,
+    "wrist_spread": 1.4816
+   }
+  },
+  "length_tokens": {
+   "3hz": {
+    "left_speed": 1.9623,
+    "left_spread": 1.6132,
+    "right_speed": 1.9036,
+    "right_spread": 1.5446,
+    "wrist_speed": 1.9354,
+    "wrist_spread": 1.5835
+   },
+   "6hz": {
+    "left_speed": 2.0809,
+    "left_spread": 1.6172,
+    "right_speed": 2.0796,
+    "right_spread": 1.5545,
+    "wrist_speed": 2.0818,
+    "wrist_spread": 1.59
+   },
+   "raw": {
+    "left_speed": 2.1321,
+    "left_spread": 1.6275,
+    "right_speed": 2.1623,
+    "right_spread": 1.5594,
+    "wrist_speed": 2.1436,
+    "wrist_spread": 1.5917
    }
   }
  },
@@ -2077,7 +2209,109 @@
   }
  },
  "monocular_indexed": 32786,
- "note": "Real signing's wrist differs by signer and by corpus far more than the review's first numbers show one by one. Same clips through both paths: the monocular path reads 18-39% more wrist motion at 3 Hz and 23-37% more spread than two-view on every How2Sign signer, while its raw speed is 0.83-1.11x, so How2Sign's small motion could partly come from how it was lifted. Both stored clocks are 24 fps. After the path is matched, YouTube still reads about 1.5x D20 at both raw and 3 Hz. Composition's excess over real grows when jitter is filtered: top10 1.77x raw, 2.20x at 3 Hz.",
+ "monocular_per_side": {
+  "c01": {
+   "3hz": {
+    "left_speed": 1.6504,
+    "left_spread": 1.5949,
+    "right_speed": 1.17,
+    "right_spread": 1.1587
+   },
+   "6hz": {
+    "left_speed": 1.3786,
+    "left_spread": 1.5929,
+    "right_speed": 0.9679,
+    "right_spread": 1.1576
+   },
+   "raw": {
+    "left_speed": 1.1715,
+    "left_spread": 1.5876,
+    "right_speed": 0.8137,
+    "right_spread": 1.1512
+   }
+  },
+  "c02": {
+   "3hz": {
+    "left_speed": 1.5169,
+    "left_spread": 1.4267,
+    "right_speed": 1.234,
+    "right_spread": 1.2943
+   },
+   "6hz": {
+    "left_speed": 1.3983,
+    "left_spread": 1.4258,
+    "right_speed": 1.0954,
+    "right_spread": 1.2858
+   },
+   "raw": {
+    "left_speed": 1.2781,
+    "left_spread": 1.4221,
+    "right_speed": 0.9827,
+    "right_spread": 1.2776
+   }
+  },
+  "c03": {
+   "3hz": {
+    "left_speed": 1.5401,
+    "left_spread": 1.5486,
+    "right_speed": 0.9416,
+    "right_spread": 0.9821
+   },
+   "6hz": {
+    "left_speed": 1.4285,
+    "left_spread": 1.5459,
+    "right_speed": 0.8533,
+    "right_spread": 0.9789
+   },
+   "raw": {
+    "left_speed": 1.2271,
+    "left_spread": 1.5407,
+    "right_speed": 0.7329,
+    "right_spread": 0.9745
+   }
+  },
+  "c04": {
+   "3hz": {
+    "left_speed": 1.5101,
+    "left_spread": 1.5104,
+    "right_speed": 1.198,
+    "right_spread": 1.1954
+   },
+   "6hz": {
+    "left_speed": 1.2256,
+    "left_spread": 1.5125,
+    "right_speed": 0.9446,
+    "right_spread": 1.193
+   },
+   "raw": {
+    "left_speed": 0.9715,
+    "left_spread": 1.5023,
+    "right_speed": 0.7294,
+    "right_spread": 1.1832
+   }
+  },
+  "c05": {
+   "3hz": {
+    "left_speed": 1.3649,
+    "left_spread": 1.345,
+    "right_speed": 1.2022,
+    "right_spread": 1.2587
+   },
+   "6hz": {
+    "left_speed": 1.2319,
+    "left_spread": 1.3425,
+    "right_speed": 1.0505,
+    "right_spread": 1.2546
+   },
+   "raw": {
+    "left_speed": 1.0367,
+    "left_spread": 1.3375,
+    "right_speed": 0.8517,
+    "right_spread": 1.248
+   }
+  }
+ },
+ "note": "Real signing's wrist differs by signer and by corpus far more than the review's first numbers show one by one. Same clips through both paths: pooled, the monocular path reads 18-39% more wrist motion at 3 Hz and 23-37% more spread than two-view on every How2Sign signer, while its raw speed is 0.83-1.11x. Per side it is not every signer: at 3 Hz the left is 1.36-1.65x and the right 0.94-1.23x (c03's right is below 1), and raw the right is 0.73-0.98x. Either direction fits: two-view could shrink the motion, or the monocular path could inflate it, and monocular inflation fits the left-arm asymmetry at least as well as two-view shrinkage. Median clip seconds differ 1.00-1.05x between the paths, so frames are not exactly paired. Content above 3 Hz is not called jitter here: nothing shows how much of it is tracker noise. Both How2Sign paths store 24 fps. With the path matched, YouTube still reads about 1.5x D20 raw and at 3 Hz. The word clips carry the monocular path (word_clip_path), so composition's ratio against D20 through the same path is the like-for-like one (composition_on_monocular): top10 1.88x raw and 1.75x at 3 Hz, against 1.77x and 2.20x on two-view. YouTube's channel ranges rest on 5 clips each.",
  "path_matched": {
   "3hz": {
    "d20_monocular_over_d20_two_view": 1.2538,
@@ -2364,6 +2598,145 @@
   "youtube": 0.5695
  },
  "seed": "wrist-by-signer",
+ "word_clip_path": {
+  "answer": "monocular, overwhelmingly: every corpus that teaches a word alone is monocular; How2Sign two-view enters as sentences, and its layout is the conform target",
+  "caches": {
+   "acquisition/2026-10-17-v1/youtube-asl-v1/round20/comp-a/cache-a3-top30-nogains/index.json": {
+    "checkpoint_key": "training-runs/tokens-rvq-d0b-prior-r14b-w14b/checkpoints/step-00030000.pt",
+    "corpora": [
+     "asllvd-text-v1",
+     "rit-text-r6",
+     "wlasl-text-r6",
+     "semlex-text-v1"
+    ],
+    "generator_mix_sha256": "710a3941dce4abf099a336705203a719f441c8cac5847b0e59ed7679d515eb7d",
+    "sha256": "2d614f416abf2d7558c36b7ba117d6042aac81be31373f31878654dab2dfff5c"
+   },
+   "acquisition/2026-10-17-v1/youtube-asl-v1/round20/phase-a/cache-w14b-nogains-r10/index.json": {
+    "checkpoint_key": "training-runs/tokens-rvq-d0b-prior-r14b-w14b/checkpoints/step-00030000.pt",
+    "corpora": [
+     "asllvd-text-v1",
+     "rit-text-r6",
+     "wlasl-text-r6",
+     "semlex-text-v1"
+    ],
+    "generator_mix_sha256": "710a3941dce4abf099a336705203a719f441c8cac5847b0e59ed7679d515eb7d",
+    "sha256": "507ee9cc8f436107863d203ec844e46114d55d7a053883f030d901b07c7f137b"
+   }
+  },
+  "entries": 721,
+  "generator": {
+   "checkpoint_key": "training-runs/tokens-rvq-d0b-prior-r14b-w14b/checkpoints/step-00030000.pt",
+   "conform_to_corpus": "how2sign-two-view-text-v1",
+   "corpus_weight": [
+    "asllvd-text-v1=3",
+    "rit-text-r6=3",
+    "wlasl-text-r6=3",
+    "asllvd-text-v1=3",
+    "semlex-text-v2=2"
+   ],
+   "manifest_key": "acquisition/2026-10-17-v1/youtube-asl-v1/round14b-mixed-v1/manifest.json",
+   "manifest_sha256": "710a3941dce4abf099a336705203a719f441c8cac5847b0e59ed7679d515eb7d",
+   "run_key": "training-runs/tokens-rvq-d0b-prior-r14b-w14b/run.json",
+   "run_sha256": "c0e0fa46a68bac75f610cd9910b3fe72eb69881d56cf7298d34d6c5df2537607"
+  },
+  "new_entries_source_kinds": {
+   "i": "segment",
+   "it": "segment",
+   "or": "segment",
+   "so": "segment",
+   "this": "segment",
+   "you": "segment",
+   "your": "segment"
+  },
+  "note": "New entries' sources are ASLLRP segments or isolated clips of the same mix, both monocular. A corpus's path is read from its state prefix and the script that built it; no state was re-extracted to confirm it.",
+  "one_word_weight_by_corpus": {
+   "asllvd-text-v1": 4836.0,
+   "how2sign-two-view-text-v1": 78.0,
+   "rit-text-r6": 4629.0,
+   "semlex-text-v2": 18508.0,
+   "wlasl-text-r6": 1293.0
+  },
+  "one_word_weight_two_view_share": 0.0027,
+  "real_word_pools_by_corpus": {
+   "asllvd-text-v1": 5155,
+   "rit-text-r6": 5295,
+   "wlasl-text-r6": 1045
+  },
+  "sampling_two_view_share": 0.088,
+  "sentence_token_weight_two_view_share": 0.2721,
+  "tokenizer": {
+   "conform_to_corpus": "how2sign-two-view-text-v1",
+   "corpus_weight": [
+    "how2sign-two-view-text-v1=2"
+   ],
+   "init_key": "training-runs/tokens-rvq-d0b-r3c-s8/checkpoints/step-00034000.pt",
+   "key": "training-runs/tokens-rvq-d0b-r3d-d2/checkpoints/step-00005000.pt",
+   "manifest_key": "acquisition/2026-10-17-v1/youtube-asl-v1/round3c-mixed-v1/manifest.json",
+   "manifest_sha256": "004bf6596a2330ee5f840bfeef0d233174f63d0602f72465b6c28a21078d00fd",
+   "run_key": "training-runs/tokens-rvq-d0b-r3d-d2/run.json",
+   "run_sha256": "6bceb2c2e07fdd1e66fed343ac4339f2d87d6a220f714cf200079e17a9e843bb",
+   "sha256": "021ee00a777261f915c2738efb671115c71eaf790f953ffc791931761dda08de"
+  },
+  "training_corpora": {
+   "asllrp-dai2-plan-v2": {
+    "path": "monocular (derived/asllrp-dai2-v1, the same extraction)",
+    "records": 1652,
+    "sampling_share": 0.008,
+    "seconds": 6874.0,
+    "state_prefix": "acquisition/2026-10-17-v1/derived/asllrp-dai2-v1/asllrp-continuous-utterances",
+    "weight": 1.0
+   },
+   "asllvd-text-v1": {
+    "path": "monocular (scripts/extract_video_states.py, per scripts/build_asllvd_sign_manifest.py)",
+    "records": 5155,
+    "sampling_share": 0.0744,
+    "seconds": 9066.5,
+    "state_prefix": "acquisition/2026-10-17-v1/derived/asllrp-dai2-v1/asllvd-sign-videos",
+    "weight": 3.0
+   },
+   "how2sign-two-view-text-v1": {
+    "path": "two-view (Sapiens triangulation; scripts/elbow_outside_accuracy.py names it the truth)",
+    "records": 18289,
+    "sampling_share": 0.088,
+    "seconds": 122090.5,
+    "state_prefix": "acquisition/2026-10-17-v1/derived/full-v1/how2sign-two-view-v1",
+    "weight": 1.0
+   },
+   "rit-text-r6": {
+    "path": "monocular (scripts/extract_video_states.py, per scripts/build_rit_citation_manifest.py)",
+    "records": 5295,
+    "sampling_share": 0.0765,
+    "seconds": 9880.0,
+    "state_prefix": "acquisition/2026-10-17-v1/derived/asllrp-dai2-v1/rit-citation-sign-videos-v2",
+    "weight": 3.0
+   },
+   "semlex-text-v2": {
+    "path": "monocular (scripts/extract_semlex_videos.py: 'exactly the extraction and solver of our other corpora')",
+    "records": 26698,
+    "sampling_share": 0.257,
+    "seconds": 35584.1,
+    "state_prefix": "acquisition/2026-10-17-v1/sem-lex-mirror-v1/states-video-v1/train",
+    "weight": 2.0
+   },
+   "wlasl-text-r6": {
+    "path": "monocular (extraction reports, per scripts/build_wlasl_manifest.py)",
+    "records": 1045,
+    "sampling_share": 0.0151,
+    "seconds": 2212.3,
+    "state_prefix": "acquisition/2026-10-17-v1/derived/wlasl-v0.3/states",
+    "weight": 3.0
+   },
+   "youtube-asl-v1": {
+    "path": "monocular (scripts/extract_video_corpus.py: MediaPipe Tasks)",
+    "records": 99918,
+    "sampling_share": 0.481,
+    "seconds": 544230.0,
+    "state_prefix": "acquisition/2026-10-17-v1/youtube-asl-v1/states/--6bmFM9wT4-0000.npz",
+    "weight": 1.0
+   }
+  }
+ },
  "youtube": {
   "3hz": {
    "left_speed_over_d20": 2.4166,

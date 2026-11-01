@@ -196,10 +196,95 @@ def path_matched(pairs: dict, youtube: dict) -> dict:
     return out
 
 
-NOTE = ("Real signing's wrist differs by signer and by corpus far more than the review's first numbers show one by one. Same clips through both paths: the monocular path reads 18-39% more wrist motion at 3 Hz and 23-37% more spread than two-view on every How2Sign signer, while its raw speed "
-        "is 0.83-1.11x, so How2Sign's small motion could partly come from how it was lifted. Both stored clocks are 24 fps. After the path is matched, YouTube still reads about 1.5x D20 at both raw and 3 Hz. Composition's excess over real grows when jitter is filtered: top10 1.77x raw, 2.20x at 3 Hz.")
-UNDECIDED = ("Which path is right: two-view is the reference elsewhere in this project, yet no ground truth for arm amplitude exists here, so this cannot say whether two-view shrinks motion or monocular inflates it. Whether YouTube's remainder is signers, clip cutting (0.57 s per token, against D20's 0.30) or framing. "
-             "Whether a stored 24 fps is the sources' true rate: the clock check moves with signers too. A channel is not a signer. ASLLRP's path was not compared on the same clips. Carry: the word is defined nowhere in the repository, so 1.44x is neither confirmed nor refuted: on hold-x it needs the right wrist at the row's right_needed_for_1_44.")
+def composition_on_monocular(pairs: dict, composition: dict) -> dict:
+    """top10 and hold-x against D20 read through the monocular path, per side and pooled: composition's ratio over D20's monocular ratio, both against D20 two-view at the same rate."""
+    d20 = {}
+    for rate in RATES:
+        d20[rate] = {}
+        for key in KEYS:
+            rows = [(pairs[c]["clips"], pairs[c]["monocular_only"][rate].get(f"{key}_over_d20")) for c in ("c01", "c03", "c05") if pairs[c].get("clips")]
+            d20[rate][key] = sum(n * x for n, x in rows) / sum(n for n, _ in rows)
+    out = dict(d20_monocular_over_d20_two_view={r: {k: round(v, 4) for k, v in row.items()} for r, row in d20.items()})
+    for name in ("base", "hold_x", "length_tokens", "hold_x_length"):
+        out[name] = {r: {k: round(composition[name][r][f"{k}_over_d20"] / d20[r][k], 4) for k in KEYS if composition[name][r].get(f"{k}_over_d20")} for r in RATES}
+    return out
+
+
+def per_side_rows(pairs: dict) -> dict:
+    """Monocular over two-view per signer, rate and side."""
+    return {c: {r: {k: g[r][k]["monocular_over_two_view"] for k in ("left_speed", "right_speed", "left_spread", "right_spread")} for r in RATES} for c, g in pairs.items() if g.get("clips")}
+
+
+PATHS = {H2S: "two-view (Sapiens triangulation; scripts/elbow_outside_accuracy.py names it the truth)", "asllvd-text-v1": "monocular (scripts/extract_video_states.py, per scripts/build_asllvd_sign_manifest.py)", "rit-text-r6": "monocular (scripts/extract_video_states.py, per scripts/build_rit_citation_manifest.py)",
+         "wlasl-text-r6": "monocular (extraction reports, per scripts/build_wlasl_manifest.py)", "semlex-text-v2": "monocular (scripts/extract_semlex_videos.py: 'exactly the extraction and solver of our other corpora')", "semlex-text-v1": "monocular (scripts/extract_semlex_videos.py)",
+         YOUTUBE: "monocular (scripts/extract_video_corpus.py: MediaPipe Tasks)", "asllrp-dai2-plan-v2": "monocular (derived/asllrp-dai2-v1, the same extraction)"}
+
+
+def word_clip_path(store, vocabulary_manifest) -> dict:
+    """Which lifting path the word clips carry: the caches A3 used, the generator and tokenizer behind them, and every training record that teaches a cached entry. Evidence is keys and hashes."""
+    import ast
+    from comp_a6_motion import CACHE_KEY, CACHE_SHA, EXTRA_KEY, EXTRA_SHA, TOKENS, TOKENS_SHA
+    from comp_a_lib import arm_of, load_token_list
+    from round15_oracle import word_pools
+    from s2_lib import load_manifest_at
+    from signtranslator.generation.compositional import isolated_corpora, normalise
+    entries, cache_settings = set(), {}
+    for key, sha in ((CACHE_KEY, CACHE_SHA), (EXTRA_KEY, EXTRA_SHA)):
+        raw = store.get(key)
+        if hashlib.sha256(raw).hexdigest() != sha:
+            raise SystemExit(f"{key} differs from its pin")
+        payload = json.loads(raw)
+        entries |= {r["entry"] for r in payload["entries"]}
+        cache_settings[key] = dict(sha256=sha, checkpoint_key=payload["settings"]["checkpoint_key"], generator_mix_sha256=payload["settings"]["generator_mix_sha256"], corpora=payload["settings"]["corpora"])
+    checkpoint = cache_settings[CACHE_KEY]["checkpoint_key"]
+    run_key = checkpoint.split("/checkpoints/")[0] + "/run.json"
+    raw = store.get(run_key)
+    run = json.loads(raw)
+    args = run["args"] if isinstance(run["args"], dict) else ast.literal_eval(run["args"])
+    weights = {k: float(v) for k, v in (w.split("=", 1) for w in args["corpus_weight"])}          # as train_motion_tokens.py: the last of a repeated name holds
+    mix = load_manifest_at(store, run["manifest_key"], run["manifest_sha256"])
+    corpora, one_word, sentence = {}, {}, {}
+    for r in mix["records"]:
+        if r.get("partition") != "train":
+            continue
+        c = r.get("corpus")
+        w = weights.get(c, 1.)
+        row = corpora.setdefault(c, dict(records=0, seconds=0., weight=w, state_prefix="/".join(((r.get("continuous") or {}).get("state_key") or "").split("/")[:5]), path=PATHS.get(c, "unknown")))
+        row["records"] += 1
+        row["seconds"] += float((r.get("continuous") or {}).get("seconds") or 0.)
+        tokens = normalise(r.get("text") or "")
+        if len(tokens) == 1 and tokens[0] in entries:
+            one_word[c] = one_word.get(c, 0.) + w
+        hits = sum(t in entries for t in tokens)
+        if hits:
+            sentence[c] = sentence.get(c, 0.) + w * hits
+    total = sum(v["records"] * v["weight"] for v in corpora.values())
+    for v in corpora.values():
+        v["sampling_share"] = round(v["records"] * v["weight"] / total, 4)
+        v["seconds"] = round(v["seconds"], 1)
+    share = lambda d, want: round(sum(x for c, x in d.items() if want(c)) / sum(d.values()), 4) if d else None     # noqa: E731
+    two_view = lambda c: c == H2S       # noqa: E731
+    pools = word_pools(vocabulary_manifest, isolated_corpora(vocabulary_manifest))
+    arm = arm_of(load_token_list(TOKENS, TOKENS_SHA), 10)
+    tok_key = args["tokenizer_key"].split("/checkpoints/")[0] + "/run.json"
+    raw_tok = store.get(tok_key)
+    tok = json.loads(raw_tok)
+    tok_args = tok["args"] if isinstance(tok["args"], dict) else ast.literal_eval(tok["args"])
+    return dict(answer="monocular, overwhelmingly: every corpus that teaches a word alone is monocular; How2Sign two-view enters as sentences, and its layout is the conform target",
+                caches=cache_settings, generator=dict(checkpoint_key=checkpoint, run_key=run_key, run_sha256=hashlib.sha256(raw).hexdigest(), manifest_key=run["manifest_key"], manifest_sha256=run["manifest_sha256"], corpus_weight=args["corpus_weight"], conform_to_corpus=args["conform_to_corpus"]),
+                tokenizer=dict(key=args["tokenizer_key"], sha256=args["tokenizer_sha256"], run_key=tok_key, run_sha256=hashlib.sha256(raw_tok).hexdigest(), manifest_key=tok["manifest_key"], manifest_sha256=tok["manifest_sha256"], corpus_weight=tok_args["corpus_weight"], conform_to_corpus=tok_args["conform_to_corpus"], init_key=tok_args.get("init_key")),
+                training_corpora=corpora, entries=len(entries), one_word_weight_two_view_share=share(one_word, two_view), one_word_weight_by_corpus={k: round(v, 1) for k, v in sorted(one_word.items())}, sentence_token_weight_two_view_share=share(sentence, two_view),
+                sampling_two_view_share=corpora.get(H2S, {}).get("sampling_share"), real_word_pools_by_corpus=dict(sorted({c: sum(1 for v in pools.values() for r in v if r.get("corpus") == c) for c in {r.get("corpus") for v in pools.values() for r in v}}.items())),
+                new_entries_source_kinds={e: r["source_kind"] for e, r in arm["entries"].items()},
+                note="New entries' sources are ASLLRP segments or isolated clips of the same mix, both monocular. A corpus's path is read from its state prefix and the script that built it; no state was re-extracted to confirm it.")
+
+
+NOTE = ("Real signing's wrist differs by signer and by corpus far more than the review's first numbers show one by one. Same clips through both paths: pooled, the monocular path reads 18-39% more wrist motion at 3 Hz and 23-37% more spread than two-view on every How2Sign signer, while its raw speed is 0.83-1.11x. Per side it is not every signer: "
+        "at 3 Hz the left is 1.36-1.65x and the right 0.94-1.23x (c03's right is below 1), and raw the right is 0.73-0.98x. Either direction fits: two-view could shrink the motion, or the monocular path could inflate it, and monocular inflation fits the left-arm asymmetry at least as well as two-view shrinkage. Median clip seconds differ 1.00-1.05x between the "
+        "paths, so frames are not exactly paired. Content above 3 Hz is not called jitter here: nothing shows how much of it is tracker noise. Both How2Sign paths store 24 fps. With the path matched, YouTube still reads about 1.5x D20 raw and at 3 Hz. The word clips carry the monocular path (word_clip_path), so composition's ratio against D20 through the same "
+        "path is the like-for-like one (composition_on_monocular): top10 1.88x raw and 1.75x at 3 Hz, against 1.77x and 2.20x on two-view. YouTube's channel ranges rest on 5 clips each.")
+UNDECIDED = ("Which path is right: no ground truth for arm amplitude exists here, so this cannot say whether two-view shrinks motion or monocular inflates it, and hold-x's motivation depends on that. Whether YouTube's remainder is signers, clip cutting (0.57 s per token, against D20's 0.30) or framing. Whether a stored 24 fps is the sources' true rate: the clock check "
+             "moves with signers too. A channel is not a signer. ASLLRP's path was not compared on the same clips. Carry: the word is defined nowhere in the repository, so 1.44x is neither confirmed nor refuted: on hold-x it needs the right wrist at the row's right_needed_for_1_44.")
 
 
 def main(argv=None) -> int:
@@ -278,8 +363,9 @@ def main(argv=None) -> int:
             low, real = motion["low_passed"][hz][name], motion["low_passed"][hz]["real"]
             composition[name][label] = {f"{k}_over_d20": round(low[k] / real[k], 4) for k in KEYS if low.get(k) and real.get(k)}
     motion["raw_real_weights"] = dict(left=mean_key(reference, "raw", "left_speed"), right=mean_key(reference, "raw", "right_speed"))
+    word_path = word_clip_path(store, manifest)
     youtube_row = equal_weight(youtube, reference)
-    out = dict(kind="wrist-by-signer", report_only=True, seed=SEED, path_matched=path_matched(pairs, youtube_row), reference=dict(key=D20_KEY, sha256=D20_SHA, note="D20 metadata and motion are the reference only; nothing is fitted on them", row=group_row(reference, reference), by_signer={c: group_row(v, reference) for c, v in d20_by_signer.items()}),
+    out = dict(kind="wrist-by-signer", report_only=True, seed=SEED, path_matched=path_matched(pairs, youtube_row), composition_on_monocular=composition_on_monocular(pairs, composition), monocular_per_side=per_side_rows(pairs), word_clip_path=word_path, reference=dict(key=D20_KEY, sha256=D20_SHA, note="D20 metadata and motion are the reference only; nothing is fitted on them", row=group_row(reference, reference), by_signer={c: group_row(v, reference) for c, v in d20_by_signer.items()}),
                how2sign_two_view={s: group_row(v, reference) for s, v in rows.items()}, youtube=dict(youtube_row, note="no signer field: one row per channel, equal weight; a channel may hold several signers", pooled=group_row([r for v in youtube.values() for r in v], reference)),
                asllrp=dict(equal_weight(asllrp_rows, reference), signers={k: group_row(v, reference) for k, v in asllrp_rows.items()}), composition=composition, carry=carry_arithmetic(motion), monocular_against_two_view=pairs, seconds_per_token=clock, review_first_numbers=REVIEW,
                monocular_indexed=len(monocular_index), note=NOTE, cannot_decide=UNDECIDED)

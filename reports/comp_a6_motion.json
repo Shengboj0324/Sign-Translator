@@ -1985,6 +1985,33 @@
     "median_ratio": 1.1333,
     "pooled_ratio": 1.0727
    }
+  },
+  "note": "report_state_frames is the report's own ratio: predicted frames over the reference state's frames, on clips with words",
+  "report_state_frames": {
+   "old": {
+    "clips": 499,
+    "mean_ratio": 1.342,
+    "median_abs_relative_error": 0.3125,
+    "median_abs_seconds": 1.375,
+    "median_ratio": 1.2867,
+    "pooled_ratio": 1.1977
+   },
+   "tokens": {
+    "clips": 499,
+    "mean_ratio": 1.1678,
+    "median_abs_relative_error": 0.2453,
+    "median_abs_seconds": 1.083,
+    "median_ratio": 1.1282,
+    "pooled_ratio": 1.0712
+   },
+   "words": {
+    "clips": 499,
+    "mean_ratio": 1.1624,
+    "median_abs_relative_error": 0.2296,
+    "median_abs_seconds": 1.083,
+    "median_ratio": 1.1228,
+    "pooled_ratio": 1.0652
+   }
   }
  },
  "low_passed": {
