@@ -5,7 +5,8 @@ first, from stored caches and metadata (``reports/comp_a6_motion.json``, ``repor
 (both). The hold rule reads ``hold-x-length`` against ``length``, with ``hold-x`` against ``base`` beside it deciding nothing; the length rule reads ``length`` against ``base``.
 
 **Word draws.** The rules read all eight of A5's stored draws, paired within each, with a t interval over draws and a two-way bootstrap; fewer is ``incomplete``, never a smaller test. A read on A3's stored words (``SCREEN``) adds ``hold-xr`` (exclusion plus a
-rest pose, longest ramps), report only, and has no rule: one draw of words has no draw variance, so it can change no arm, threshold or primary.
+rest pose, longest ramps), report only, and has no rule: one draw of words has no draw variance, so it can change no threshold or primary. It does gate the hold arms (``hold_gate``): hold-x and hold-x-length run on the draws only if the screen's point estimates of hold-x minus
+base sit above the hold floors on likelihood and spotting. Otherwise the draws run base and length, the length rule still reads, and the hold rule reads ``HOLD_NOT_RUN``.
 
 **Order of the metrics:** likelihood minus its own-length blank, then v2 spotting, then BLEU over draws. A shorter form gains BLEU without content, so the length rule reads BLEU net of its blank's own change. With A5's summary stored, each draw's ``base`` is
 compared with A5's top10 hypotheses: a free instrument check that decides nothing.
@@ -40,6 +41,8 @@ BOTH = "hold-x-length"
 HOLD_REST = "hold-xr"
 ARMS = (BASE, HOLD, LENGTH, BOTH)
 SCREEN_ARMS = (*ARMS, HOLD_REST)
+GATE_CLOSED_ARMS = (BASE, LENGTH)
+HOLD_NOT_RUN = "not run, screen failed"
 COMPARATOR = {HOLD: BASE, LENGTH: BASE, BOTH: LENGTH, HOLD_REST: BASE}
 EXCLUDE = .25
 HOLD_SHA = "1b7c24a81aa75c58c523096595b40df537fcd4a49094b88b1eb19686c17440d7"
@@ -76,17 +79,20 @@ SINGLE_STEP = ("Each pass is a single step: the hold rule reads hold-x at the fi
                "difference in differences are reported and decide nothing. ")
 NOT_FRESH = "D20 chose top10 and A5's draws read its sentences, so D20's sentences are not fresh. "
 GATE = "A6's draws run only if A5's summary reads confirmed or direction only."
+HOLD_GATE = ("The gate: the screen on A3's stored words reads hold-x against top10 at today's length, report only, and hold-x and hold-x at the fitted length run on the eight draws only if the screen's point estimates of likelihood and spotting sit above the two floors above. Otherwise "
+             "the draws run top10 and length only, the length rule still reads, and this rule reads not run, screen failed, which is printed. Known from A1's stored rows before this gate was set: the 34% of clips holding the excluded uses hold 39% of A1's likelihood loss and 40% of its spotting "
+             "loss, and excluding those uses is estimated to remove 3-11% against the 72% and 78% these floors need, so the screen may well stop the hold arms; that estimate is no read of hold-x. ")
 RULES = dict(
     hold=("Primary arm: hold-x at the fitted length, against top10 at the fitted length, paired within each of A5's eight stored word draws, on D20, report only. hold-x keeps the left arm on entries with at least 25% two-handed records, on unannotated entries and on the list's new "
           "entries; the 25% cut was set after A1's D20 failure. hold-x at today's length is read beside it and decides nothing. Passed only if all hold: mean paired likelihood minus each form's own-length blank, its 95% lower bound above " + f"{LIKELIHOOD_FLOOR:.4f}" + " on both the two-way "
           "bootstrap and the t interval over the eight draws; v2 spotting's 95% lower bound above " + f"{SPOTTING_FLOOR:.4f}" + " on both; BLEU over draws, the t interval's lower bound above " + f"{BLEU_FLOOR:.4f}" + "; mean hands at least 0.9x its comparator's. These are small-loss bars, "
           "set as shares of the mean paired gains of " + BARS_AGAINST + ": 44% of BLEU's, 60% of likelihood's and of spotting's. A pass means any loss is small, possibly up to those shares, with less motion, and not that the arm reads better. Known before any read, and not evidence: "
-          "pooled wrist 2.019x to 1.814x, contact unchanged by construction. The form stays far outside the 0.8-1.25x band, so a pass is no progress against the release bar. " + SINGLE_STEP + NOT_FRESH + "Anything else is not passed, the failed check is reported, and not passed is not "
+          "pooled wrist 2.019x to 1.814x, contact unchanged by construction. The form stays far outside the 0.8-1.25x band, so a pass is no progress against the release bar. " + HOLD_GATE + SINGLE_STEP + NOT_FRESH + "Anything else is not passed, the failed check is reported, and not passed is not "
           "evidence of a loss. " + GATE),
     length=("Primary arm: length, the fit signer-balanced on How2Sign train's c02 + c04 (seconds = -0.3577 + 0.3445 x tokens), chosen by a train-only rule after its D20 ratio of about 1.08 was known, and never fitted on D20's lengths. Against top10 at today's length, paired within each "
             "of A5's eight stored word draws, on D20, report only. Passed only if all hold: likelihood and spotting as the hold rule; BLEU, the t interval's lower bound above " + f"{BLEU_FLOOR:.4f}" + " on the lower of raw BLEU and BLEU net of the blank's own change; mean hands at least 0.9x "
             "top10's. Pooled predicted over true length is reported and decides nothing: known on the report's state frames, 1.071 against today's 1.198, median per clip 1.128 against 1.287. Today's length runs 1.20x true, which lowers wrist by construction; the fitted length removes "
-            "that, so wrist rises from 1.774x to 2.019x. Wrist is reported, decides nothing, and this rise is neither a loss nor progress. A pass means a nearer length costs little content, not that it adds any. " + SINGLE_STEP + NOT_FRESH + GATE))
+            "that, so wrist rises from 1.774x to 2.019x. Wrist is reported, decides nothing, and this rise is neither a loss nor progress. A pass means a nearer length costs little content, not that it adds any. This rule reads whether or not the screen lets the hold arms run. " + SINGLE_STEP + NOT_FRESH + GATE))
 KNOWN_AT_WRITING = ("A1's hold had failed its rule on D20: likelihood -0.0276, spotting -0.0405, replacing the left arm on 46.6% of frames, 226 of its held uses from entries with at least 25% two-handed records. The 25% cut was set after that failure, and hold-x's motivation depends on two-view being the "
                     "right reference: the same clips read through the monocular path show more left-arm motion and spread (reports/wrist_by_signer.json), and the word clips carry mostly that path. A1's loss does not concentrate in the sentences holding the excluded uses: 34% of clips hold 39% of the "
                     "likelihood loss and 40% of the spotting loss, and the estimates of what excluding them removes are 3-11% against the 72% and 78% the floors need (reports/comp_a6_hold_concentration.json). A3 generated top10's stored read was known: BLEU +0.343 [-0.018, +0.718], likelihood +0.0128, "
@@ -98,7 +104,8 @@ KNOWN_AT_WRITING = ("A1's hold had failed its rule on D20: likelihood -0.0276, s
                     "them as declared shares of the mean gains, restated against A5's mean at declaration, with A3's and A5's gains known. Known about lengths: today's fit runs 1.198x true on the report's state frames (1.206x on metadata seconds); the balanced line had read about 1.08x earlier, in S2's probe "
                     "design, before the train-only rule was written, so that rule was not blind to it. By that rule the choice went to the line, on its tie to fewer parameters: train error 0.2479 against the word model's 0.2450, within the 0.005 tie. D20 then read, on state frames, pooled 1.071x, median per "
                     "clip 1.128, median per-clip error 0.245 for the line, and 1.065x, 1.123, 0.230 for the word model, which reads slightly better on both sets and was not chosen. The first train read split folds by clip instead of video. That was fixed after D20's ratios had been read; the fits and the "
-                    "choice did not change, only the cross-validated errors. S0 had shown a faster form gains BLEU without content. Five-clip smokes of these arms had not been run when this was written.")
+                    "choice did not change, only the cross-validated errors. S0 had shown a faster form gains BLEU without content. The screen's gate on the hold arms was set after the concentration result above, with both it and A1's failure known, on point estimates of one word draw on D20's own "
+                    "sentences; it was accepted that the screen waits for A5's summary. Five-clip smokes of these arms had not been run when this was written.")
 
 
 def settings_of(report: dict) -> dict:
@@ -124,14 +131,14 @@ def check_arm_name(name: str, report: dict) -> None:
         raise SystemExit(f"{name}: its fit is {model}, not today's")
 
 
-def arms_of(k) -> tuple:
-    return SCREEN_ARMS if k == SCREEN else ARMS
+def arms_of(k, gate_open: bool = True) -> tuple:
+    return SCREEN_ARMS if k == SCREEN else ARMS if gate_open else GATE_CLOSED_ARMS
 
 
-def check_draw(k, arms: dict, *, smoke: bool = False) -> None:
+def check_draw(k, arms: dict, *, smoke: bool = False, gate_open: bool = True) -> None:
     """One draw's reports: D20, report-only, all of it, what their names say, paired, the same words, and one pod's code and environment."""
     from round20_compare import check_pairable
-    names = arms_of(k)
+    names = arms_of(k, gate_open)
     if set(arms) != set(names):
         raise SystemExit(f"{k}: its arms are {sorted(arms)}, not {list(names)}")
     for name in names:
@@ -151,7 +158,7 @@ def check_draw(k, arms: dict, *, smoke: bool = False) -> None:
         raise SystemExit(f"{k}: its arms came from other code or another environment")
 
 
-def check_set(draws: dict, *, smoke: bool = False) -> None:
+def check_set(draws: dict, *, smoke: bool = False, gate_open: bool = True) -> None:
     """All eight of A5's draws, or the screen alone; one digest and packages; no two draws sharing words; the same sentences. The GPU may differ between draws, never within one."""
     keys = tuple(sorted(draws, key=str))
     if keys != (SCREEN,) and tuple(sorted(k for k in draws if k != SCREEN)) != DRAWS or (SCREEN in draws and len(draws) > 1):
@@ -159,7 +166,7 @@ def check_set(draws: dict, *, smoke: bool = False) -> None:
     if smoke and SCREEN not in draws:
         raise SystemExit("a smoke reads A3's words alone")
     for k, arms in draws.items():
-        check_draw(k, arms, smoke=smoke)
+        check_draw(k, arms, smoke=smoke, gate_open=gate_open)
     bases = [arms[BASE] for arms in draws.values()]
     prov = settings_of(bases[0])["provenance"]
     packages = {x: prov["environment"].get(x) for x in a5.PINNED}
@@ -298,21 +305,46 @@ def check_digest(draws: dict, declared_commit: str | None, job_file: str, amendm
         raise SystemExit(f"this reader's code is {here}, its arms' {other}: a declared read needs an explicit --reader-amendment")
 
 
-def read(draws: dict, shards: dict, *, boot: int = 1000, declared_commit: str | None = None, job_file: str = JOB_FILE, attempts: dict | None = None, a5_top10: dict | None = None, smoke: bool = False, amendment: str | None = None) -> dict:
-    check_set(draws, smoke=smoke)
-    check_digest(draws, declared_commit, job_file, amendment)
+def gate_of(likelihood, spotting) -> dict:
+    """The hold arms' gate: both point estimates of hold-x minus base above their floors, an unknown number closing it."""
+    passed = _above(likelihood, LIKELIHOOD_FLOOR) and _above(spotting, SPOTTING_FLOOR)
+    return dict(passed=passed, likelihood=likelihood, spotting=spotting, likelihood_floor=LIKELIHOOD_FLOOR, spotting_floor=SPOTTING_FLOOR, hold_arms="run on the draws" if passed else HOLD_NOT_RUN)
+
+
+def hold_gate(screen: dict, *, job_file: str = JOB_FILE) -> dict:
+    """The gate a stored screen sets for the draws: the screen must be a screen, on this code and these floors."""
+    if screen.get("mode") != "screen":
+        raise SystemExit(f"the hold gate reads a screen's summary, not {screen.get('mode')}")
+    if (screen.get("provenance") or {}).get("code_digest") != lib.provenance_row(job_file)["code_digest"]:
+        raise SystemExit("the screen's summary came from other code")
+    if {k: (screen.get("floors") or {}).get(k) for k in FLOORS} != FLOORS:
+        raise SystemExit(f"the screen's floors {screen.get('floors')} are not this code's {FLOORS}")
+    row = screen["arms"][HOLD]
+    return gate_of(row["likelihood_minus_blank"]["mean"], row["spotting"]["mean"])
+
+
+def read(draws: dict, shards: dict, *, boot: int = 1000, declared_commit: str | None = None, job_file: str = JOB_FILE, attempts: dict | None = None, a5_top10: dict | None = None, smoke: bool = False, amendment: str | None = None, screen_summary: dict | None = None) -> dict:
     screen = SCREEN in draws
+    if not screen and screen_summary is None:
+        raise SystemExit("the draws need the screen's summary: it gates the hold arms")
+    gate = None if screen else hold_gate(screen_summary, job_file=job_file)
+    gate_open = screen or gate["passed"]
+    check_set(draws, smoke=smoke, gate_open=gate_open)
+    check_digest(draws, declared_commit, job_file, amendment)
     if not screen and set(a5_top10 or ()) != set(DRAWS):
         raise SystemExit(f"the draws need all eight of A5's top10 reports: {sorted(a5_top10 or ())}")
-    arms = {name: arm_summary(draws, shards, name, boot=boot) for name in (SCREEN_ARMS if screen else ARMS) if name != BASE}
-    both_on_base = arm_summary(draws, shards, BOTH, boot=boot, other=BASE)
+    arms = {name: arm_summary(draws, shards, name, boot=boot) for name in (SCREEN_ARMS if screen else ARMS if gate_open else GATE_CLOSED_ARMS) if name != BASE}
+    both_on_base = arm_summary(draws, shards, BOTH, boot=boot, other=BASE) if gate_open else None
+    if screen and not smoke:
+        gate = gate_of(arms[HOLD]["likelihood_minus_blank"]["mean"], arms[HOLD]["spotting"]["mean"])
     note = "evaluated for reading only; this field adopts nothing" if declared_commit else "DRAFT, NOT DECLARED: adopts nothing"
     if screen:
         rule = dict(hold=dict(arm=BOTH, comparator=LENGTH, outcome="smoke_decides_nothing" if smoke else "screen_decides_nothing", checks=None, text=RULES["hold"]), length=dict(arm=LENGTH, comparator=BASE, outcome="smoke_decides_nothing" if smoke else "screen_decides_nothing", checks=None, text=RULES["length"]))
     else:
-        rule = dict(hold=dict(arm=BOTH, comparator=LENGTH, text=RULES["hold"], **decide_hold(arms[BOTH])), length=dict(arm=LENGTH, comparator=BASE, text=RULES["length"], **decide_length(arms[LENGTH])))
+        hold_rule = decide_hold(arms[BOTH]) if gate_open else dict(checks=None, outcome=HOLD_NOT_RUN)
+        rule = dict(hold=dict(arm=BOTH, comparator=LENGTH, text=RULES["hold"], **hold_rule), length=dict(arm=LENGTH, comparator=BASE, text=RULES["length"], **decide_length(arms[LENGTH])))
     return dict(kind="comp-a6-read", report_only=True, mode="smoke" if smoke else "screen" if screen else "draws", declared=bool(declared_commit), declared_commit=declared_commit, draws=sorted(draws, key=str), set=dict(key=lib.D20_KEY, sha256=lib.D20_SHA),
-                arms=arms, both_on_base=both_on_base, difference_in_differences=interaction(arms[BOTH], arms[HOLD]), report_only_rows="both_on_base and difference_in_differences decide nothing", floors=dict(FLOORS, against=BARS_AGAINST), amendment=amendment, rule=rule, known_when_written=KNOWN_AT_WRITING, note=note, reported_only=[HOLD, HOLD_REST] if screen else [HOLD], attempts=attempts or {}, a5_instrument_check=a5_instrument_check(draws, a5_top10 or {}), provenance=lib.provenance_row(job_file))
+                arms=arms, hold_gate=gate, both_on_base=both_on_base, difference_in_differences=interaction(arms[BOTH], arms[HOLD]) if gate_open else None, report_only_rows="both_on_base and difference_in_differences decide nothing", floors=dict(FLOORS, against=BARS_AGAINST), amendment=amendment, rule=rule, known_when_written=KNOWN_AT_WRITING, note=note, reported_only=[HOLD, HOLD_REST] if screen else [HOLD] if gate_open else [], attempts=attempts or {}, a5_instrument_check=a5_instrument_check(draws, a5_top10 or {}), provenance=lib.provenance_row(job_file))
 
 
 def main(argv=None) -> int:
@@ -323,6 +355,7 @@ def main(argv=None) -> int:
     p.add_argument("--attempts", action="append", default=[], help="K=A:arms;A:arms: every attempt of draw K and the arms it stored")
     p.add_argument("--smoke", action="store_true", help="a smoke's reports, A3's words: every check and summary runs, nothing decides and no number is printed")
     p.add_argument("--reader-amendment", help="why this declared read runs on a reader other than its arms' code: a real reader bug, printed in the report")
+    p.add_argument("--screen-key", help="the draws: the screen's stored summary, which gates the hold arms")
     p.add_argument("--a5-top10", action="append", default=[], help="K=KEY: A5's top10 of draw K, compared with base: the free instrument check")
     p.add_argument("--bootstrap", type=int, default=1000)
     p.add_argument("--store", default="r2")
@@ -332,12 +365,14 @@ def main(argv=None) -> int:
     store = make_store(args.store)
     if store.exists(args.output_key):
         raise SystemExit(f"{args.output_key} exists: refusing to overwrite")
+    screen_summary = json.loads(store.get(args.screen_key)) if args.screen_key else None
+    gate_open = hold_gate(screen_summary)["passed"] if screen_summary else True
     draws, shards = {}, {}
     for spec in args.draw:
         k, _, keys = spec.partition("=")
         parts = keys.split(",")
         name = SCREEN if k == SCREEN else int(k) if k.isdigit() else None
-        names = arms_of(name) if name is not None else ()
+        names = arms_of(name, gate_open) if name is not None else ()
         if name is None or len(parts) != len(names) or not all(parts) or name in draws:
             p.error(f"--draw {spec!r}: K={','.join(a.upper() for a in (names or ARMS))}, once each")
         draws[name] = {a: json.loads(store.get(key)) for a, key in zip(names, parts)}
@@ -349,7 +384,7 @@ def main(argv=None) -> int:
         if not k.isdigit() or int(k) not in draws or not key:
             p.error(f"--a5-top10 {spec!r}: K=KEY, a draw of this read")
         a5_top10[int(k)] = json.loads(store.get(key))
-    out = read(draws, shards, boot=args.bootstrap, declared_commit=args.declared_commit, attempts=attempts, a5_top10=a5_top10, smoke=args.smoke, amendment=args.reader_amendment)
+    out = read(draws, shards, boot=args.bootstrap, declared_commit=args.declared_commit, attempts=attempts, a5_top10=a5_top10, smoke=args.smoke, amendment=args.reader_amendment, screen_summary=screen_summary)
     store.put(args.output_key, json.dumps(out, indent=1, default=float).encode())
     print(f"A6 {out['mode']}: hold {out['rule']['hold']['outcome']}, length {out['rule']['length']['outcome']}", flush=True)
     return 0

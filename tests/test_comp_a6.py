@@ -468,10 +468,18 @@ def tops(d):
     return {k: copy.deepcopy(arms[a6.BASE]) for k, arms in d.items() if k != a6.SCREEN}
 
 
+def screen_summary(likelihood=.01, spotting=.01, **kw):
+    """A stored screen's summary, as far as the gate reads it."""
+    row = {a6.HOLD: dict(likelihood_minus_blank=dict(mean=likelihood), spotting=dict(mean=spotting))}
+    return dict(dict(mode="screen", arms=row, floors=dict(a6.FLOORS, against=a6.BARS_AGAINST), provenance=lib.provenance_row(a6.JOB_FILE)), **kw)
+
+
 def read(d=None, s=None, boot=60, **kw):
     if d is None:
         d, s = draws()
     kw.setdefault("a5_top10", tops(d))
+    if a6.SCREEN not in d:
+        kw.setdefault("screen_summary", screen_summary())
     return a6.read(d, s, boot=boot, **kw)
 
 
@@ -598,7 +606,7 @@ def test_the_draws_need_all_eight_of_a5s_top10(drop):
     else:
         del a5s[drop]
     with pytest.raises(SystemExit, match="all eight of A5's top10"):
-        a6.read(d, s, boot=20, a5_top10=a5s)
+        a6.read(d, s, boot=20, a5_top10=a5s, screen_summary=screen_summary())
     d, s = draws((a6.SCREEN,))
     assert a6.read(d, s, boot=20)["a5_instrument_check"] is None                    # a screen has none to compare
 
@@ -638,8 +646,8 @@ def length_row(**kw):
     return out
 
 
-RULE_HOLD = ("Primary arm: hold-x at the fitted length, against top10 at the fitted length, paired within each of A5's eight stored word draws, on D20, report only. hold-x keeps the left arm on entries with at least 25% two-handed records, on unannotated entries and on the list's new entries; the 25% cut was set after A1's D20 failure. hold-x at today's length is read beside it and decides nothing. Passed only if all hold: mean paired likelihood minus each form's own-length blank, its 95% lower bound above -0.0077 on both the two-way bootstrap and the t interval over the eight draws; v2 spotting's 95% lower bound above -0.0089 on both; BLEU over draws, the t interval's lower bound above -0.1509; mean hands at least 0.9x its comparator's. These are small-loss bars, set as shares of the mean paired gains of A3's stored read, until A5's summary fills the slot at declaration: 44% of BLEU's, 60% of likelihood's and of spotting's. A pass means any loss is small, possibly up to those shares, with less motion, and not that the arm reads better. Known before any read, and not evidence: pooled wrist 2.019x to 1.814x, contact unchanged by construction. The form stays far outside the 0.8-1.25x band, so a pass is no progress against the release bar. Each pass is a single step: the hold rule reads hold-x at the fitted length and the length rule reads the fitted length against today's, so passing both does not show that the two together lose little; both together against top10 at today's length and the difference in differences are reported and decide nothing. D20 chose top10 and A5's draws read its sentences, so D20's sentences are not fresh. Anything else is not passed, the failed check is reported, and not passed is not evidence of a loss. A6's draws run only if A5's summary reads confirmed or direction only.")
-RULE_LENGTH = ("Primary arm: length, the fit signer-balanced on How2Sign train's c02 + c04 (seconds = -0.3577 + 0.3445 x tokens), chosen by a train-only rule after its D20 ratio of about 1.08 was known, and never fitted on D20's lengths. Against top10 at today's length, paired within each of A5's eight stored word draws, on D20, report only. Passed only if all hold: likelihood and spotting as the hold rule; BLEU, the t interval's lower bound above -0.1509 on the lower of raw BLEU and BLEU net of the blank's own change; mean hands at least 0.9x top10's. Pooled predicted over true length is reported and decides nothing: known on the report's state frames, 1.071 against today's 1.198, median per clip 1.128 against 1.287. Today's length runs 1.20x true, which lowers wrist by construction; the fitted length removes that, so wrist rises from 1.774x to 2.019x. Wrist is reported, decides nothing, and this rise is neither a loss nor progress. A pass means a nearer length costs little content, not that it adds any. Each pass is a single step: the hold rule reads hold-x at the fitted length and the length rule reads the fitted length against today's, so passing both does not show that the two together lose little; both together against top10 at today's length and the difference in differences are reported and decide nothing. D20 chose top10 and A5's draws read its sentences, so D20's sentences are not fresh. A6's draws run only if A5's summary reads confirmed or direction only.")
+RULE_HOLD = ("Primary arm: hold-x at the fitted length, against top10 at the fitted length, paired within each of A5's eight stored word draws, on D20, report only. hold-x keeps the left arm on entries with at least 25% two-handed records, on unannotated entries and on the list's new entries; the 25% cut was set after A1's D20 failure. hold-x at today's length is read beside it and decides nothing. Passed only if all hold: mean paired likelihood minus each form's own-length blank, its 95% lower bound above -0.0077 on both the two-way bootstrap and the t interval over the eight draws; v2 spotting's 95% lower bound above -0.0089 on both; BLEU over draws, the t interval's lower bound above -0.1509; mean hands at least 0.9x its comparator's. These are small-loss bars, set as shares of the mean paired gains of A3's stored read, until A5's summary fills the slot at declaration: 44% of BLEU's, 60% of likelihood's and of spotting's. A pass means any loss is small, possibly up to those shares, with less motion, and not that the arm reads better. Known before any read, and not evidence: pooled wrist 2.019x to 1.814x, contact unchanged by construction. The form stays far outside the 0.8-1.25x band, so a pass is no progress against the release bar. The gate: the screen on A3's stored words reads hold-x against top10 at today's length, report only, and hold-x and hold-x at the fitted length run on the eight draws only if the screen's point estimates of likelihood and spotting sit above the two floors above. Otherwise the draws run top10 and length only, the length rule still reads, and this rule reads not run, screen failed, which is printed. Known from A1's stored rows before this gate was set: the 34% of clips holding the excluded uses hold 39% of A1's likelihood loss and 40% of its spotting loss, and excluding those uses is estimated to remove 3-11% against the 72% and 78% these floors need, so the screen may well stop the hold arms; that estimate is no read of hold-x. Each pass is a single step: the hold rule reads hold-x at the fitted length and the length rule reads the fitted length against today's, so passing both does not show that the two together lose little; both together against top10 at today's length and the difference in differences are reported and decide nothing. D20 chose top10 and A5's draws read its sentences, so D20's sentences are not fresh. Anything else is not passed, the failed check is reported, and not passed is not evidence of a loss. A6's draws run only if A5's summary reads confirmed or direction only.")
+RULE_LENGTH = ("Primary arm: length, the fit signer-balanced on How2Sign train's c02 + c04 (seconds = -0.3577 + 0.3445 x tokens), chosen by a train-only rule after its D20 ratio of about 1.08 was known, and never fitted on D20's lengths. Against top10 at today's length, paired within each of A5's eight stored word draws, on D20, report only. Passed only if all hold: likelihood and spotting as the hold rule; BLEU, the t interval's lower bound above -0.1509 on the lower of raw BLEU and BLEU net of the blank's own change; mean hands at least 0.9x top10's. Pooled predicted over true length is reported and decides nothing: known on the report's state frames, 1.071 against today's 1.198, median per clip 1.128 against 1.287. Today's length runs 1.20x true, which lowers wrist by construction; the fitted length removes that, so wrist rises from 1.774x to 2.019x. Wrist is reported, decides nothing, and this rise is neither a loss nor progress. A pass means a nearer length costs little content, not that it adds any. This rule reads whether or not the screen lets the hold arms run. Each pass is a single step: the hold rule reads hold-x at the fitted length and the length rule reads the fitted length against today's, so passing both does not show that the two together lose little; both together against top10 at today's length and the difference in differences are reported and decide nothing. D20 chose top10 and A5's draws read its sentences, so D20's sentences are not fresh. A6's draws run only if A5's summary reads confirmed or direction only.")
 
 
 def test_the_rules_are_the_texts_as_given():
@@ -690,7 +698,7 @@ def test_a_declaration_needs_the_a5_slot(tmp_path):
 
 def test_what_was_known_is_stated():
     known = a6.KNOWN_AT_WRITING
-    for phrase in ("-0.0276", "-0.0405", "+0.343", "37c8d18", "fbe9b29", "1.376", "90% of stretches", "1.198x", "1.071x", "before the train-only rule was written", "08b9a150", "not stored when this was written", "A5's summary at declaration", "two-view being the right reference", "39% of the likelihood loss", "72% and 78%"):
+    for phrase in ("-0.0276", "-0.0405", "+0.343", "37c8d18", "fbe9b29", "1.376", "90% of stretches", "1.198x", "1.071x", "before the train-only rule was written", "08b9a150", "not stored when this was written", "A5's summary at declaration", "two-view being the right reference", "39% of the likelihood loss", "72% and 78%", "The screen's gate on the hold arms was set after the concentration result"):
         assert phrase in known, phrase
     assert "chosen on train alone" not in known and "chosen on train alone" not in a6.RULES["length"]
 
@@ -765,6 +773,98 @@ def test_each_rule_reads_its_own_arm_and_hold_x_decides_nothing(name, key):
     d, s = draws(by_arm={a6.HOLD: dict(ll=-.5)})
     out = read(d, s)
     assert out["rule"]["hold"]["checks"]["likelihood_t_lower_bound_above_floor"] is True and out["rule"]["length"]["checks"]["likelihood_t_lower_bound_above_floor"] is True
+
+
+# ---- the screen gates the hold arms -----------------------------------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("likelihood,spotting,passed", [
+    (.01, .01, True), (0., 0., True), (-.0076, -.0088, True), (-.0077, .01, False), (.01, -.0089, False), (-.0276, -.0405, False), (None, .01, False), (.01, None, False),
+])
+def test_the_gate_is_both_point_estimates_above_the_hold_floors(likelihood, spotting, passed):
+    out = a6.hold_gate(screen_summary(likelihood, spotting))
+    assert out["passed"] is passed and out["hold_arms"] == ("run on the draws" if passed else "not run, screen failed") and out["likelihood_floor"] == a6.LIKELIHOOD_FLOOR and out["spotting_floor"] == a6.SPOTTING_FLOOR
+
+
+def test_the_gate_reads_a_screen_on_this_code_and_these_floors():
+    for bad, message in ((dict(mode="draws"), "reads a screen's summary"), (dict(mode="smoke"), "reads a screen's summary"), (dict(provenance=dict(code_digest="e" * 64)), "other code"), (dict(floors=dict(bleu=-1., likelihood=-1., spotting=-1.)), "are not this code's")):
+        with pytest.raises(SystemExit, match=message):
+            a6.hold_gate(screen_summary(**bad))
+
+
+def test_a_real_screen_summary_sets_the_gate_from_hold_x_against_base():
+    d, s = draws((a6.SCREEN,))
+    out = a6.read(d, s, boot=20)
+    assert out["hold_gate"]["passed"] is True and out["hold_gate"]["likelihood"] == pytest.approx(.01, abs=1e-6) and a6.hold_gate(out)["passed"] is True
+    d, s = draws((a6.SCREEN,), by_arm={a6.HOLD: dict(ll=-.5)})
+    out = a6.read(d, s, boot=20)
+    assert out["hold_gate"]["passed"] is False and a6.hold_gate(out)["hold_arms"] == "not run, screen failed" and out["rule"]["hold"]["outcome"] == "screen_decides_nothing"
+    d, s = draws((a6.SCREEN,), by_arm={a6.BOTH: dict(ll=-.5), a6.LENGTH: dict(ll=-.5)})     # only hold-x against base gates
+    assert a6.read(d, s, boot=20)["hold_gate"]["passed"] is True
+    d, s = draws((a6.SCREEN,))
+    for name in a6.SCREEN_ARMS:
+        d[a6.SCREEN][name]["clips"] = 5
+    assert a6.read(d, s, boot=20, smoke=True)["hold_gate"] is None                         # a smoke sets no gate
+
+
+def closed_draws(**kw):
+    d, s = draws(**kw)
+    for k in a6.DRAWS:
+        for name in (a6.HOLD, a6.BOTH):
+            del d[k][name], s[k][name]
+    return d, s
+
+
+def test_a_closed_gate_runs_base_and_length_and_says_so():
+    d, s = closed_draws()
+    out = read(d, s, screen_summary=screen_summary(-.5, .01))
+    assert out["rule"]["hold"]["outcome"] == "not run, screen failed" and out["rule"]["hold"]["checks"] is None and out["rule"]["length"]["outcome"] == "passed" and out["rule"]["length"]["checks"]
+    assert set(out["arms"]) == {a6.LENGTH} and out["both_on_base"] is None and out["difference_in_differences"] is None and out["reported_only"] == [] and out["hold_gate"]["passed"] is False
+
+
+def test_a_closed_gate_refuses_hold_arms_and_an_open_gate_needs_them():
+    d, s = draws()
+    with pytest.raises(SystemExit, match="its arms are"):
+        read(d, s, screen_summary=screen_summary(-.5, .01))                                 # a hold arm that should not have run
+    d, s = closed_draws()
+    with pytest.raises(SystemExit, match="its arms are"):
+        read(d, s)                                                                          # the screen let them run
+    d, s = draws()
+    with pytest.raises(SystemExit, match="need the screen's summary"):
+        a6.read(d, s, boot=20, a5_top10=tops(d))
+    assert read(d, s)["rule"]["hold"]["outcome"] == "passed" and read(d, s)["hold_gate"]["passed"] is True
+
+
+def test_the_reader_prints_not_run_and_parses_the_closed_arms(tmp_path, monkeypatch, capsys):
+    import round20_compare
+    from signtranslator.data.text_motion_dataset import DirectoryStore
+    import train_text_to_motion
+    store = DirectoryStore(tmp_path)
+    d, s = closed_draws()
+    argv = []
+    for k, arms in d.items():
+        for name, report in arms.items():
+            store.put(f"{k}|{name}", json.dumps(report).encode())
+        argv += ["--draw", f"{k}=" + ",".join(f"{k}|{n}" for n in a6.GATE_CLOSED_ARMS), "--a5-top10", f"{k}={k}|{a6.BASE}"]
+    store.put("screen.json", json.dumps(screen_summary(.01, -.5)).encode())
+    monkeypatch.setattr(train_text_to_motion, "make_store", lambda name: store)
+    monkeypatch.setattr(round20_compare, "report_shards", lambda st, key, report, _: s[int(key.split("|")[0])][key.split("|")[1]])
+    assert a6.main([*argv, "--screen-key", "screen.json", "--bootstrap", "20", "--output-key", "out.json"]) == 0
+    assert "hold not run, screen failed" in capsys.readouterr().out
+    assert json.loads(store.get("out.json"))["rule"]["hold"]["outcome"] == "not run, screen failed"
+
+
+def test_the_guards_gate_exit_codes(tmp_path, monkeypatch, capsys):
+    from signtranslator.data.text_motion_dataset import DirectoryStore
+    import train_text_to_motion
+    store = DirectoryStore(tmp_path)
+    monkeypatch.setattr(train_text_to_motion, "make_store", lambda name: store)
+    store.put("open.json", json.dumps(screen_summary()).encode())
+    store.put("closed.json", json.dumps(screen_summary(-.5, .01)).encode())
+    assert guard.main(["hold-gate", "open.json"]) == 0 and "COMP-A6-HOLD-GATE open" in capsys.readouterr().out
+    assert guard.main(["hold-gate", "closed.json"]) == 3 and "not run, screen failed" in capsys.readouterr().out
+    store.put("bad.json", json.dumps(dict(mode="draws")).encode())
+    with pytest.raises(SystemExit, match="reads a screen's summary"):
+        guard.main(["hold-gate", "bad.json"])
 
 
 # ---- what counts ------------------------------------------------------------------------------------------------------------------------------------
@@ -927,6 +1027,8 @@ def test_the_read_keeps_the_attempts_and_refuses_to_overwrite(tmp_path, monkeypa
             store.put(f"{k}|{name}", json.dumps(report).encode())
         argv += ["--draw", f"{k}=" + ",".join(f"{k}|{n}" for n in a6.ARMS), "--a5-top10", f"{k}={k}|{a6.BASE}"]
     monkeypatch.setattr(train_text_to_motion, "make_store", lambda name: store)
+    store.put("screen.json", json.dumps(screen_summary()).encode())
+    argv += ["--screen-key", "screen.json"]
     monkeypatch.setattr(round20_compare, "report_shards", lambda st, key, report, _: s[int(key.split("|")[0])][key.split("|")[1]])
     args = [*argv, "--attempts", "3=1:base+;2:base+hold-x+length+hold-x-length+;", "--bootstrap", "30", "--output-key", "out.json"]
     assert a6.main(args) == 0
@@ -1137,7 +1239,7 @@ def test_five_smoke_reports_run_merge_and_read_and_print_no_numbers(d20, monkeyp
 def test_a_smoke_read_refuses_draws_and_more_than_five_clips():
     d, s = draws()
     with pytest.raises(SystemExit, match="A3's words alone"):
-        a6.read(d, s, boot=20, smoke=True, a5_top10=tops(d))
+        a6.read(d, s, boot=20, smoke=True, a5_top10=tops(d), screen_summary=screen_summary())
     d, s = draws((a6.SCREEN,))
     for name in a6.SCREEN_ARMS:
         d[a6.SCREEN][name]["clips"] = 6
@@ -1167,11 +1269,14 @@ def a5_top10(k, attempt=1):
     return f"{A5OUT}/draw{k}-attempt{attempt}-top10.json"
 
 
-DRAW_ENV = dict(CACHE_SHA="stubsha", EXTRA_SHA="stubsha", A5T_SHA="stubsha")
+DRAW_ENV = dict(CACHE_SHA="stubsha", EXTRA_SHA="stubsha", A5T_SHA="stubsha", SCREEN_SHA="s")
+SCREEN_KEY = f"{OUT}/a6-summary-a3.json"
+CLOSED = dict(STUB_EXIT_MATCH="comp_a6_guard.py hold-gate", STUB_EXIT_CODE="3")
 
 
 def job(tmp_path, phase, *, words="a3", smoke=False, gpu=True, stored=(), declared="abc1234", text=None, **env):
-    e = dict(COMP_PHASE=phase, STUB_EXISTS=" ".join(stored), STUB_GATE="1", STUB_FAIL_SHARD="", STUB_HANG="")
+    numeric = words not in (None, "a3", "draws", "0", "9")
+    e = dict(COMP_PHASE=phase, STUB_EXISTS=" ".join([*stored, *([SCREEN_KEY] if numeric or words == "draws" else [])]), STUB_GATE="1", STUB_FAIL_SHARD="", STUB_HANG="")
     e.update(env)
     if words:
         e["WORDS"] = words
@@ -1249,16 +1354,84 @@ def hashed_job(by_key):
 def test_a_draw_finds_a5s_caches_by_hash_not_by_lowest_attempt(tmp_path, monkeypatch):
     stored = [*caches(), *caches(attempt=2), a5_top10(3)]
     by = {caches()[0]: "old", caches()[1]: "oldx", caches(attempt=2)[0]: "new", caches(attempt=2)[1]: "newx", a5_top10(3): "top"}
-    code, _, commands = job(tmp_path, "base", words="3", stored=stored, text=hashed_job(by), CACHE_SHA="new", EXTRA_SHA="newx", A5T_SHA="top")
+    code, _, commands = job(tmp_path, "base", words="3", stored=stored, text=hashed_job(by), CACHE_SHA="new", EXTRA_SHA="newx", A5T_SHA="top", SCREEN_SHA="s")
     assert code == 0
     seen = parsed(tmp_path, monkeypatch, run_line(commands), "d3")
     assert seen["word_cache_key"] == caches(attempt=2)[0] and seen["word_cache_sha256"] == "new" and seen["word_cache_extra_key"] == caches(attempt=2)[1] and seen["word_cache_extra_sha256"] == "newx"
-    code, _, commands = job(tmp_path, "base", words="3", stored=stored, text=hashed_job(by), CACHE_SHA="old", EXTRA_SHA="newx", A5T_SHA="top")
+    code, _, commands = job(tmp_path, "base", words="3", stored=stored, text=hashed_job(by), CACHE_SHA="old", EXTRA_SHA="newx", A5T_SHA="top", SCREEN_SHA="s")
     assert code == 0 and f"--word-cache-key {caches()[0]} " in run_line(commands)
-    code, out, commands = job(tmp_path, "base", words="3", stored=stored, text=hashed_job(by), CACHE_SHA="other", EXTRA_SHA="newx", A5T_SHA="top")
+    code, out, commands = job(tmp_path, "base", words="3", stored=stored, text=hashed_job(by), CACHE_SHA="other", EXTRA_SHA="newx", A5T_SHA="top", SCREEN_SHA="s")
     assert code == 1 and "no stored cache of A5's has those hashes" in out and "round15_compose_eval.py" not in "\n".join(commands)
     code, _, commands = job(tmp_path, "base", words="3", stored=[*caches(), a5_top10(3)], **DRAW_ENV)
     assert code == 0 and f"pin {caches()[0]}" in commands and f"pin {caches()[1]}" in commands
+
+
+def test_a_draw_needs_the_pinned_screen(tmp_path):
+    stored = [*caches(), a5_top10(3)]
+    env = {k: v for k, v in DRAW_ENV.items() if k != "SCREEN_SHA"}
+    code, out, commands = job(tmp_path, "base", words="3", stored=stored, **env)
+    assert code == 1 and "give SCREEN_SHA" in out and "round15_compose_eval.py" not in "\n".join(commands)
+    code, out, _ = job(tmp_path, "base", words="3", stored=stored, STUB_PIN_FAIL=SCREEN_KEY, **DRAW_ENV)
+    assert code == 1 and "differs from its pin" in out
+    code, out, commands = job(tmp_path, "base", words="3", stored=stored, STUB_EXIT_MATCH="comp_a6_guard.py hold-gate", STUB_EXIT_CODE="1", **DRAW_ENV)
+    assert code == 1 and "the hold gate cannot read the screen" in out and "round15_compose_eval.py" not in "\n".join(commands)
+    one_done(out, 1)
+    code, _, commands = job(tmp_path, "base")
+    assert code == 0 and "hold-gate" not in "\n".join(commands)                              # the screen sets the gate and needs none
+
+
+def test_the_screens_absence_stops_a_draw(tmp_path):
+    text = JOB.read_text().replace('exists $SCREENKEY ||', 'false ||')
+    code, out, _ = job(tmp_path, "base", words="3", stored=[*caches(), a5_top10(3)], text=text, **DRAW_ENV)
+    assert code == 1 and "the screen's summary is not stored" in out
+
+
+@pytest.mark.parametrize("phase,comparator", [(a6.HOLD, a6.BASE), (a6.BOTH, a6.LENGTH)])
+def test_a_closed_gate_refuses_the_hold_arms_in_the_job(tmp_path, phase, comparator):
+    stored = [*caches(), key(3, comparator), a5_top10(3)]
+    code, out, commands = job(tmp_path, phase, words="3", stored=stored, **PINS, **DRAW_ENV, **CLOSED)
+    assert code == 1 and f"{phase}: not run, screen failed" in out and "round15_compose_eval.py" not in "\n".join(commands)
+    one_done(out, 1)
+    code, _, commands = job(tmp_path, phase, words="3", stored=stored, **PINS, **DRAW_ENV)
+    assert code == 0 and "round15_compose_eval.py run" in "\n".join(commands)
+
+
+@pytest.mark.parametrize("phase", [a6.BASE, a6.LENGTH])
+def test_a_closed_gate_still_runs_base_and_length(tmp_path, phase):
+    code, _, commands = job(tmp_path, phase, words="3", stored=[*caches(), key(3, "base"), a5_top10(3)] if phase == a6.LENGTH else [*caches(), a5_top10(3)], **PINS, **DRAW_ENV, **CLOSED)
+    assert code == 0 and "round15_compose_eval.py run" in "\n".join(commands)
+
+
+def test_the_gate_phase_says_which(tmp_path):
+    code, out, _ = job(tmp_path, "gate", words="3", **DRAW_ENV)
+    assert code == 0 and "COMP-A6-GATE open" in out and "not run" not in out
+    code, out, _ = job(tmp_path, "gate", words="3", **DRAW_ENV, **CLOSED)
+    assert code == 0 and "COMP-A6-GATE closed" in out and "COMP-A6-HOLD not run, screen failed" in out
+    code, out, _ = job(tmp_path, "gate")
+    assert code == 1 and "gate: WORDS must be 1 to 8" in out
+
+
+def test_a_closed_draw_is_final_at_length(tmp_path):
+    stored = [*caches(), key(3, "base"), key(3, "length"), a5_top10(3)]
+    code, out, _ = job(tmp_path, "base", words="3", stored=stored, ATTEMPT="2", **DRAW_ENV, **CLOSED)
+    assert code == 1 and "a finished draw is final" in out
+    code, _, _ = job(tmp_path, "base", words="3", stored=stored, ATTEMPT="2", **DRAW_ENV)
+    assert code == 0                                                                          # with the gate open, length is not the last arm
+
+
+CLOSED_EVERY = [key(d, n) for d in a6.DRAWS for n in a6.GATE_CLOSED_ARMS] + [a5_top10(d) for d in a6.DRAWS]
+CLOSED_SHAS = {f"{p}{d}_SHA": f"{p.lower()}{d}" for p in ("B", "L") for d in a6.DRAWS}
+
+
+def test_the_summary_on_a_closed_gate_needs_base_and_length_alone(tmp_path):
+    code, out, commands = job(tmp_path, "summary", words="draws", stored=CLOSED_EVERY, SCREEN_SHA="s", **CLOSED_SHAS, **A5T, **CLOSED)
+    assert code == 0 and "COMP-A6-HOLD not run, screen failed" in out
+    run = next(c for c in commands if "comp_a6_read.py" in c)
+    assert f"--screen-key {SCREEN_KEY}" in run and "--draw 3=" + ",".join(key(3, n) for n in a6.GATE_CLOSED_ARMS) + " " in run and "hold-x" not in run
+    code, _, commands = job(tmp_path, "summary", words="draws", stored=CLOSED_EVERY, SCREEN_SHA="s", **CLOSED_SHAS, **A5T)
+    assert code == 1 and "comp_a6_read.py" not in "\n".join(commands)                         # open: the hold arms are missing
+    code, out, _ = job(tmp_path, "summary", words="draws", stored=CLOSED_EVERY, **CLOSED_SHAS, **A5T, **CLOSED)
+    assert code == 1 and "give SCREEN_SHA" in out
 
 
 def test_a_draws_base_is_matched_with_a5s_top10(tmp_path):
@@ -1271,7 +1444,7 @@ def test_a_draws_base_is_matched_with_a5s_top10(tmp_path):
     one_done(out, 1)
     code, out, commands = job(tmp_path, "base", words="3", stored=caches(), **DRAW_ENV)
     assert code == 1 and "no stored top10 of A5's has A5T_SHA" in out and "round15_compose_eval.py" not in "\n".join(commands)
-    code, out, commands = job(tmp_path, "base", words="3", stored=stored, CACHE_SHA="stubsha", EXTRA_SHA="stubsha")
+    code, out, commands = job(tmp_path, "base", words="3", stored=stored, CACHE_SHA="stubsha", EXTRA_SHA="stubsha", SCREEN_SHA="s")
     assert code == 1 and "give A5T_SHA" in out and "round15_compose_eval.py" not in "\n".join(commands)
     code, _, commands = job(tmp_path, "base")
     assert code == 0 and "a5-match" not in "\n".join(commands)                      # the screen has none
@@ -1311,7 +1484,7 @@ def test_the_smoke_read_runs_the_five_reports_and_prints_no_number(tmp_path):
 def test_a_draw_refuses_without_caches_pins_or_a5s_summary(tmp_path):
     code, out, _ = job(tmp_path, "base", words="3", **DRAW_ENV)
     assert code == 1 and "no stored cache of A5's has those hashes" in out
-    code, out, _ = job(tmp_path, "base", words="3", stored=caches())
+    code, out, _ = job(tmp_path, "base", words="3", stored=caches(), SCREEN_SHA="s")
     assert code == 1 and "give CACHE_SHA and EXTRA_SHA" in out
     code, out, _ = job(tmp_path, "base", words="3", stored=caches(), STUB_PIN_FAIL=caches()[0], **DRAW_ENV)
     assert code == 1 and "differs from its pin" in out
@@ -1396,10 +1569,11 @@ def test_an_unfinished_attempt_reruns_every_arm(tmp_path):
 
 
 EVERY = [k for d in a6.DRAWS for k in full(d)] + [a5_top10(d) for d in a6.DRAWS]
+OPEN = dict(SHAS, **A5T, SCREEN_SHA="s")
 
 
 def test_the_summary_of_the_draws_needs_all_eight_pinned(tmp_path):
-    code, out, commands = job(tmp_path, "summary", words="draws", stored=EVERY, **SHAS, **A5T)
+    code, out, commands = job(tmp_path, "summary", words="draws", stored=EVERY, **OPEN)
     assert code == 0
     one_done(out, 0)
     run = next(c for c in commands if "comp_a6_read.py" in c)
@@ -1408,27 +1582,27 @@ def test_the_summary_of_the_draws_needs_all_eight_pinned(tmp_path):
         for k in full(d):
             assert f"pin {k}" in commands
     assert "--declared-commit abc1234" in run and f"--output-key {OUT}/a6-summary-draws.json" in run and "hold-xr" not in run
-    code, out, commands = job(tmp_path, "summary", words="draws", stored=[k for k in EVERY if k != key(8, a6.BOTH)], **SHAS, **A5T)
+    code, out, commands = job(tmp_path, "summary", words="draws", stored=[k for k in EVERY if k != key(8, a6.BOTH)], **OPEN)
     assert code == 1 and "incomplete: 8 has no attempt with all its arms" in out and "comp_a6_read.py" not in "\n".join(commands)
-    env = dict(SHAS, **A5T)
+    env = dict(OPEN)
     env.pop("HXL3_SHA")
     code, out, _ = job(tmp_path, "summary", words="draws", stored=EVERY, **env)
     assert code == 1 and "give HXL3_SHA" in out
-    code, out, _ = job(tmp_path, "summary", words="draws", stored=EVERY, STUB_PIN_FAIL=EVERY[4], **SHAS, **A5T)
+    code, out, _ = job(tmp_path, "summary", words="draws", stored=EVERY, STUB_PIN_FAIL=EVERY[4], **OPEN)
     assert code == 1 and "differs from its pin" in out
     code, out, commands = job(tmp_path, "summary", words="draws", stored=[f"{OUT}/a6-summary-draws.json"])
     assert code == 0 and "stored:" in out and "comp_a6_read.py" not in "\n".join(commands)
 
 
 def test_the_instrument_check_finds_a5s_top10_by_hash(tmp_path):
-    env = dict(SHAS, **A5T)
+    env = dict(OPEN)
     env.pop("A5T4_SHA")
     code, out, _ = job(tmp_path, "summary", words="draws", stored=EVERY, **env)
     assert code == 1 and "give A5T4_SHA" in out
-    code, out, _ = job(tmp_path, "summary", words="draws", stored=[k for k in EVERY if k != a5_top10(4)], **SHAS, **A5T)
+    code, out, _ = job(tmp_path, "summary", words="draws", stored=[k for k in EVERY if k != a5_top10(4)], **OPEN)
     assert code == 1 and "no stored top10 of A5's draw 4" in out
     stored = [k for k in EVERY if k != a5_top10(5)] + [a5_top10(5, 1), a5_top10(5, 3)]
-    code, _, commands = job(tmp_path, "summary", words="draws", stored=stored, text=hashed_job({a5_top10(5, 1): "old", a5_top10(5, 3): "new", **{a5_top10(d): "stubsha" for d in a6.DRAWS if d != 5}}), **SHAS, **dict(A5T, A5T5_SHA="new"))
+    code, _, commands = job(tmp_path, "summary", words="draws", stored=stored, text=hashed_job({a5_top10(5, 1): "old", a5_top10(5, 3): "new", **{a5_top10(d): "stubsha" for d in a6.DRAWS if d != 5}}), **dict(OPEN, A5T5_SHA="new"))
     assert code == 0 and f"--a5-top10 5={a5_top10(5, 3)}" in next(c for c in commands if "comp_a6_read.py" in c)
 
 
@@ -1442,14 +1616,14 @@ def test_the_summary_of_the_screen_reads_a3_alone_with_hold_xr(tmp_path):
 
 def test_the_summary_lists_every_attempt_and_takes_the_one_with_all_its_arms(tmp_path):
     stored = [k for k in EVERY if "/3-attempt" not in k] + full(3, 2) + [key(3, "base", 1), key(3, "hold-x", 1)]
-    code, out, commands = job(tmp_path, "summary", words="draws", stored=stored, **SHAS, **A5T)
+    code, out, commands = job(tmp_path, "summary", words="draws", stored=stored, **OPEN)
     assert code == 0 and "COMP-A6-ATTEMPTS words=3 attempts=1:base+hold-x+;2:base+hold-x+length+hold-x-length+; used=2" in out and "COMP-A6-ATTEMPTS words=4 attempts=1:base+hold-x+length+hold-x-length+; used=1" in out
     run = next(c for c in commands if "comp_a6_read.py" in c)
     assert "--draw 3=" + ",".join(full(3, 2)) in run and "--attempts 3=1:base+hold-x+;2:base+hold-x+length+hold-x-length+;" in run
 
 
 def test_the_summary_refuses_two_finished_attempts(tmp_path):
-    code, out, commands = job(tmp_path, "summary", words="draws", stored=[*EVERY, *full(2, 4)], **SHAS, **A5T)
+    code, out, commands = job(tmp_path, "summary", words="draws", stored=[*EVERY, *full(2, 4)], **OPEN)
     assert code == 1 and "2 has two finished attempts, 1 and 4" in out and "comp_a6_read.py" not in "\n".join(commands)
     one_done(out, 1)
 
@@ -1513,6 +1687,8 @@ def test_no_per_draw_number_reaches_the_log(tmp_path, phase):
 # ---- the chain, on a fake job -------------------------------------------------------------------------------------------------------------------------
 
 FAKE_JOB = '''#!/bin/bash
+[ "$COMP_PHASE" = gate ] && echo "COMP-A6-GATE ${FAKE_GATE-open}" && [ -n "${FAKE_GATE-open}" ] && echo "$COMP_PHASE words=$WORDS" >> "$FAKE_CALLS" && exit 0
+[ "$COMP_PHASE" = gate ] && exit 0
 echo "$COMP_PHASE words=$WORDS smoke=${SMOKE:-0} attempt=${ATTEMPT:-} base=${BASE_SHA:-} length=${LENGTH_SHA:-} declared=${COMP_A_DECLARED:-}" >> "$FAKE_CALLS"
 [ "${FAKE_FAIL:-}" = "$COMP_PHASE" ] && [ -z "${SMOKE:-}" ] && exit 1
 [ "${FAKE_FAIL_SMOKE:-}" = "$COMP_PHASE" ] && [ -n "${SMOKE:-}" ] && exit 1
@@ -1547,14 +1723,27 @@ SMOKES = [f"{p} words=a3 smoke=1 attempt=1 base= length= declared=" for p in (a6
 def test_a_draws_chain_smokes_on_a3_runs_in_order_and_prints_the_hashes(tmp_path):
     code, out, _, calls = chain(tmp_path, "3", "abc1234")
     assert code == 0 and last_line(out) == "COMP-A6-CHAIN-DONE 0" and "ALERT" not in out
-    assert "COMP-A6-HASHES words=3 attempt=1 B3_SHA=hash-base HX3_SHA=hash-hold-x L3_SHA=hash-length HXL3_SHA=hash-hold-x-length\n" in out
-    assert calls == [*SMOKES, "base words=3 smoke=0 attempt=1 base= length= declared=abc1234", "hold-x words=3 smoke=0 attempt=1 base=hash-base length= declared=abc1234",
+    assert "COMP-A6-HASHES words=3 attempt=1 B3_SHA=hash-base L3_SHA=hash-length HX3_SHA=hash-hold-x HXL3_SHA=hash-hold-x-length gate=open\n" in out
+    assert calls == [*SMOKES, "gate words=3", "base words=3 smoke=0 attempt=1 base= length= declared=abc1234", "hold-x words=3 smoke=0 attempt=1 base=hash-base length= declared=abc1234",
                      "length words=3 smoke=0 attempt=1 base=hash-base length= declared=abc1234", "hold-x-length words=3 smoke=0 attempt=1 base= length=hash-length declared=abc1234"]
+
+
+def test_a_closed_gate_runs_base_and_length_and_prints_it(tmp_path):
+    code, out, _, calls = chain(tmp_path, "3", "abc1234", FAKE_GATE="closed")
+    assert code == 0 and last_line(out) == "COMP-A6-CHAIN-DONE 0" and "COMP-A6-HOLD not run, screen failed" in out
+    assert calls == [*SMOKES, "gate words=3", "base words=3 smoke=0 attempt=1 base= length= declared=abc1234", "length words=3 smoke=0 attempt=1 base=hash-base length= declared=abc1234"]
+    assert "COMP-A6-HASHES words=3 attempt=1 B3_SHA=hash-base L3_SHA=hash-length gate=closed" in out and "HX3" not in out and "HXL3" not in out
+
+
+@pytest.mark.parametrize("gate", ["", "maybe"])
+def test_no_readable_gate_stops_the_chain(tmp_path, gate):
+    code, out, _, calls = chain(tmp_path, "3", "abc1234", FAKE_GATE=gate)
+    assert code == 1 and "ALERT chain: no hold gate for 3" in out and last_line(out) == "COMP-A6-CHAIN-DONE 1" and not any("smoke=0" in c for c in calls)
 
 
 def test_the_screens_chain_adds_hold_xr_and_a_later_attempt_keeps_its_number(tmp_path):
     code, out, _, calls = chain(tmp_path, "a3", "abc1234", "2")
-    assert code == 0 and "COMP-A6-HASHES words=a3 attempt=2 Ba3_SHA=hash-base HXa3_SHA=hash-hold-x La3_SHA=hash-length HXLa3_SHA=hash-hold-x-length HXRa3_SHA=hash-hold-xr" in out
+    assert code == 0 and "COMP-A6-HASHES words=a3 attempt=2 Ba3_SHA=hash-base La3_SHA=hash-length HXa3_SHA=hash-hold-x HXLa3_SHA=hash-hold-x-length HXRa3_SHA=hash-hold-xr gate=open" in out and "gate words" not in "\n".join(calls)
     assert "hold-xr words=a3 smoke=0 attempt=2 base=hash-base length= declared=abc1234" in calls and calls[-1] == "hold-x-length words=a3 smoke=0 attempt=2 base= length=hash-length declared=abc1234"
 
 

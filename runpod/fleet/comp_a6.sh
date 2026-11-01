@@ -8,6 +8,8 @@
 # D20 only, pinned; no option for another set. Reports are --report-only and write-once under $OUT. No word is generated: every arm reads stored caches. SMOKE=1 reads at most 5 real D20 clips under $OUT/smoke/<stamp>/.
 # Nothing decides on a smoke, a smoke has no summary, and a smoke reads A3's words alone: never A5's draws before their summary.
 # WORDS: a3 is A3's stored words, a screen that decides nothing and adds hold-xr, report only. 1 to 8 is A5's stored draw, found by the hash in CACHE_SHA and EXTRA_SHA from its COMP-A5 lines.
+# The hold gate: WORDS=1..8 and WORDS=draws need the screen's stored summary, pinned by SCREEN_SHA. hold-x and hold-x-length run on the draws only if its point estimates of hold-x minus base sit above the hold floors on likelihood and spotting. Otherwise
+# the draws run base and length, the length rule still reads, and the hold rule reads "not run, screen failed".
 # Attempts: a draw with all arms stored is final, so an attempt is refused once another has its last arm. An arm that started and did not finish stays unfinished: the next attempt reruns all arms on the same words.
 # Phases, on one pod per draw (runpod/fleet/comp_a6_chain.sh runs them in order):
 #   base           top10 at today's length: hold-x's and length's comparator. On a draw, A5T_SHA pins A5's top10 for that draw: base must match it on the same GPU, or the draw stops.
@@ -15,6 +17,7 @@
 #   length         top10 at the length fitted signer-balanced on c02 + c04: the length rule's arm.
 #   hold-x-length  both: the hold rule's arm, against length (LENGTH_SHA).
 #   hold-xr        WORDS=a3 only, report only: hold-x's anchors, and the held arm goes toward the rest pose and back on the longest ramps.
+#   gate           WORDS=1..8: prints COMP-A6-GATE open or closed for the chain.
 #   smoke-read     SMOKE=1, WORDS=a3: the five smoke reports through the reader's every check and summary. It prints no number and decides nothing.
 #   summary        WORDS=a3 or WORDS=draws: each draw's one attempt with all arms, pinned by B<k>_SHA, HX<k>_SHA, L<k>_SHA, HXL<k>_SHA (and HXRa3_SHA); the rules on the draws, nothing on a3. A5T<k>_SHA pins A5's top10 for a free instrument check.
 # A merge's output, which holds the arm's numbers, goes to a file on the pod, not this log: no per-draw number is read until the summary.
@@ -47,9 +50,10 @@ case ${SMOKE:-0} in 0) ;; 1) SMOKING=1 ;; *) die "SMOKE must be 0 or 1" ;; esac
 case $PHASE in
   base|hold-x|length|hold-x-length) case $K in a3|1|2|3|4|5|6|7|8) ;; *) die "WORDS must be a3 or 1 to 8" ;; esac ;;
   hold-xr) [ "$K" = a3 ] || die "hold-xr: WORDS=a3 only, report only; it is not on the draws" ;;
+  gate) case $K in 1|2|3|4|5|6|7|8) ;; *) die "gate: WORDS must be 1 to 8" ;; esac ;;
   smoke-read) [ $SMOKING = 1 ] && [ "$K" = a3 ] || die "smoke-read: SMOKE=1 and WORDS=a3" ;;
   summary) case $K in a3|draws) ;; *) die "summary: WORDS=a3 or WORDS=draws" ;; esac ;;
-  *) die "unknown COMP_PHASE $PHASE: base hold-x length hold-x-length hold-xr smoke-read summary" ;; esac
+  *) die "unknown COMP_PHASE $PHASE: base hold-x length hold-x-length hold-xr gate smoke-read summary" ;; esac
 [ $SMOKING = 0 ] || [ "$K" = a3 ] || die "a smoke reads WORDS=a3 only: never A5's draws before their summary"
 if [ $SMOKING = 0 ]; then
   [ -n "${COMP_A_DECLARED:-}" ] || die "a full run needs COMP_A_DECLARED=<plan commit>: nothing is declared yet"
@@ -107,9 +111,17 @@ words() {
   pin $IDX $IDXSHA; pin $X $XSHA
   WORDARGS="--variants core_crossfade --word-cache-key $IDX --word-cache-sha256 $IDXSHA --word-cache-n 16 --recognizer-run sign-recognizer-v2 --word-cache-extra-key $X --word-cache-extra-sha256 $XSHA $EXTRA"
 }
-LAST=hold-x-length
+# the hold gate, from the screen's stored summary: open on the screen itself and on a smoke, which read A3's words
+GATE=open; SCREENKEY=$OUT/a6-summary-a3.json
+hold_gate() {
+  [ -n "${SCREEN_SHA:-}" ] || die "$K: give SCREEN_SHA, the hash of the screen's summary: it gates the hold arms"
+  exists $SCREENKEY || die "$K: the screen's summary is not stored: the screen comes first"
+  pin $SCREENKEY "$SCREEN_SHA"
+  python scripts/comp_a6_guard.py hold-gate $SCREENKEY; local rc=$?
+  case $rc in 0) GATE=open ;; 3) GATE=closed ;; *) die "$K: the hold gate cannot read the screen" ;; esac
+}
 # a draw with all arms stored is final: no other attempt runs
-refuse_after_final() { local j; for j in 1 2 3 4 5; do [ "$j" != "$A" ] || continue; exists $OUT/$K-attempt$j-$LAST.json && die "$K attempt $j has all its arms: a finished draw is final"; done; return 0; }
+refuse_after_final() { local j LAST=hold-x-length; [ "$GATE" = open ] || LAST=length; for j in 1 2 3 4 5; do [ "$j" != "$A" ] || continue; exists $OUT/$K-attempt$j-$LAST.json && die "$K attempt $j has all its arms: a finished draw is final"; done; return 0; }
 # one write-once arm under this attempt and its report-only merge: arm ARM ARGS...
 arm() {
   local name=$K-attempt$A-$1; shift
@@ -135,7 +147,10 @@ comparator() {
 }
 
 if [ "$PHASE" != summary ] && [ "$PHASE" != smoke-read ]; then
-  if [ "$K" != a3 ] && [ $SMOKING = 0 ]; then python scripts/comp_a6_guard.py a5-done || die "draw $K: A6's draws wait for A5's summary"; fi
+  if [ "$K" != a3 ] && [ $SMOKING = 0 ]; then
+    python scripts/comp_a6_guard.py a5-done || die "draw $K: A6's draws wait for A5's summary"
+    hold_gate
+  fi
   refuse_after_final
 fi
 case $PHASE in
@@ -153,13 +168,18 @@ case $PHASE in
     keys=""; for a in base hold-x length hold-x-length hold-xr; do keys="$keys,$OUT/a3-attempt$A-$a.json"; done
     python scripts/comp_a6_read.py --smoke --draw a3=${keys#,} --output-key $OUT/a3-smoke-read.json > /root/r20-a6-smoke-read.log 2>&1 || die "smoke-read (log /root/r20-a6-smoke-read.log)"
     echo "A6 smoke read passed: five reports through every check and summary; no number printed" ;;
+  gate)
+    echo "COMP-A6-GATE $GATE"
+    [ "$GATE" = open ] || echo "COMP-A6-HOLD not run, screen failed" ;;
   hold-x)
+    [ "$GATE" = open ] || die "hold-x: not run, screen failed"
     words; comparator base "${BASE_SHA:-}"
     arm hold-x $TODAY $HOLDX ;;
   length)
     words; comparator base "${BASE_SHA:-}"
     arm length $FITTED ;;
   hold-x-length)
+    [ "$GATE" = open ] || die "hold-x-length: not run, screen failed"
     words; comparator length "${LENGTH_SHA:-}"
     arm hold-x-length $FITTED $HOLDX ;;
   hold-xr)
@@ -170,7 +190,12 @@ case $PHASE in
     if exists $KEY; then echo "stored: $KEY"; said a6-summary-$K $KEY
     else
       ARGS=""; LIST="1 2 3 4 5 6 7 8"; ALLARMS="base hold-x length hold-x-length"; SHAS="B:base HX:hold-x L:length HXL:hold-x-length"
-      if [ "$K" = a3 ]; then LIST=a3; ALLARMS="$ALLARMS hold-xr"; SHAS="$SHAS HXR:hold-xr"; fi
+      if [ "$K" = a3 ]; then LIST=a3; ALLARMS="$ALLARMS hold-xr"; SHAS="$SHAS HXR:hold-xr"
+      else
+        hold_gate
+        ARGS="--screen-key $SCREENKEY"
+        if [ "$GATE" = closed ]; then ALLARMS="base length"; SHAS="B:base L:length"; echo "COMP-A6-HOLD not run, screen failed"; fi
+      fi
       WANT=""; for a in $ALLARMS; do WANT="$WANT$a+"; done
       for d in $LIST; do
         finished=""; log=""
