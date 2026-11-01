@@ -6077,3 +6077,23 @@ Report only; nothing here starts training. Flag fitted on c02 train, tested on h
 **A5 re-declared (2026-11-01, 08:31 UTC).** All four first-wave pods stopped in their top10 smoke: the 5-clip cache lacked `not`, which top10 reaches only through n't. No full read ran and no draw's numbers exist; smokes read 5 D20 clips and decide nothing. Fixed for smokes only; full-run code and seeds unchanged; the rule above stands word for word (hash `91d55dab…`). The digest moved with this fix and other merged scripts, so the record is replaced by a later commit.
 
 **Instrument v2, acceptance order changed (2026-11-01, 08:40 UTC, before any gate read).** The full evaluation regenerates 1,000 composed clips first, about 11 hours on one pod at the observed rate (100 of 506 in 1,993 s). Its first gates need only real, blank, static and mismatched forms. So the gates that need no regeneration (`acceptance-first-gates.json`, step 2,000 as selected) read first. If G1, G2 or G6 fail, v2 is not accepted and the regeneration isn't run; if all pass, the full evaluation follows. No gate value changes.
+
+### V1 result: tokenizer's cap kept; neutral-hands hypothesis refuted (read 2026-11-01, recorded 09:30 UTC)
+
+D20, instrument v1, report only, `tok-probes-v1/report.json` sha `7d73f6bd…`, L40S. Canary, path and composed checks reproduced (composed a9@predicted identical to a10). **Declared outcomes: Cap kept; Generated absent; Sensitivity no rise; Hypothesis refuted.**
+
+- **Cap, kept:** c = 0.806 [0.751, 0.861]. `rt_post_fill` − `rt_nearest` −0.0013 [−0.0057, +0.0027], so input mismatch doesn't matter. **Action as declared: no tokenizer retrain on cap grounds, neither the 32- nor the 53-pod-hour route.**
+- **Generated, absent:** a9@predicted's excess over decoded real: high tercile −0.0087 [−0.0122, −0.0049]; mid −0.0077 [−0.0118, −0.0034]; low −0.0016 [−0.0074, +0.0047]. The flag caught 77.7% of D20's decoded-neutral frames.
+- **Sensitivity, no rise:** −0.0004 [−0.0015, +0.0006], with 1.07% of hand frames flagged.
+- **Action as declared:** the neutral-hands route closes.
+
+| Form | BLEU | Gap share | Likelihood minus blank | Likelihood share |
+|---|---|---|---|---|
+| Real | 4.493 | 100% | +0.2920 | 100% |
+| Real values, nearest fill | 4.621 | 104.5% | +0.2337 | 80.0% |
+| d2, no quantiser, nearest fill | 4.255 | 91.5% | +0.1906 | 65.3% |
+| **d2 round trip, nearest fill** | **4.124** [3.485, 4.764] | **86.9%** | **+0.1883** | **64.5%** |
+| d2 round trip, neutral fill (old read) | 3.484 | 64.1% | +0.0402 | 13.8% |
+| a9@predicted, generated | 2.241 | 19.9% against this blank | +0.0578 | 19.8% |
+
+**Reading, not a rule.** d2's measured cap was mostly the neutral fill. Without it the round trip reads 4.124 on D20, where 3.8 is 75.5% of the gap, so the tokenizer isn't what stands between composition and 3.8 on v1. The earlier "3.8 unreachable with d2" is withdrawn as stated; v1's cap on the 1,000 hasn't been re-measured. Generated output doesn't carry neutral frames more than decoded real, so v1 isn't under-reading composition on this account, and composition's roughly 20–33% is a real limit of words, coverage, timing and stitching, on this scorer. Likelihood still loses about 35% of its gap at this cap, and Q1 showed real's marks hold a little content. This is one read on D20.
