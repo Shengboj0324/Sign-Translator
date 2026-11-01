@@ -1175,12 +1175,13 @@ def test_the_bracket_sits_on_activity_maxima_where_the_minima_form_sits_on_holds
     for a, b in ((20, 28), (60, 68)):
         hold[a:b] = hold[a]
     moved = replace(state, channels={**state.channels, "body": replace(body, values=hold)})
-    low = P.seam_form("seam_cmin30", moved, TEXT, 0, 3)[1]["path_share"]
+    low = P.seam_form("seam_cmin45", moved, TEXT, 0, 3)[1]["path_share"]
     high = P.seam_form("seam_cmax45", moved, TEXT, 0, 3)[1]["path_share"]
+    assert not np.allclose(P.seam_form("seam_cmin45", moved, TEXT, 0, 3)[0].channels["body"].values, P.seam_form("seam_cmax45", moved, TEXT, 0, 3)[0].channels["body"].values)
     activity = P.wrist_activity(moved)
     cut_low, _ = P.minima_cuts(activity, 2)
     cut_high, _ = P.minima_cuts(-activity, 2)
-    assert activity[cut_high].mean() > activity[cut_low].mean() and low is not None and high is not None
+    assert activity[cut_high].mean() > activity[cut_low].mean() and high > low
 
 
 def test_activity_reads_the_wrists_not_the_elbows():
@@ -1219,6 +1220,17 @@ def test_each_fit_stage_lowers_the_error_and_starts_from_the_last_stages_residua
         assert b["mse_before"] == a["mse_after"]                              # the residual, not the latents again
     assert rows[-1]["mse_after"] < rows[0]["mse_before"]
     assert all(r["mse_after"] <= r["mse_before"] * 1.0001 for r in rows)
+
+
+def test_the_hand_extension_fits_d2s_residual_not_the_latents(monkeypatch, tmp_path):
+    tok = tiny_tokenizer()
+    fit_harness(monkeypatch, tok)
+    assert fit(tmp_path) == 0
+    first = json.loads((tmp_path / "fit" / "fit.json").read_text())["statistics"]["hands_extension"]["left_hand"][0]
+    with np.load(tmp_path / "fit" / "latents.npz") as stored:
+        z = {p: torch.as_tensor(stored[p])[None] for p in stored.files}
+    residual = (z["left_hand"] - tok.quantize(z)[0]["left_hand"])[0]
+    assert first["mse_before"] == pytest.approx(float(residual.pow(2).sum(-1).mean()), abs=1e-4)
 
 
 def test_fsq_reads_the_top_principal_directions_with_the_most_levels_on_the_largest():
@@ -1280,9 +1292,12 @@ def test_every_paired_difference_is_the_form_minus_its_anchor(monkeypatch, tmp_p
             looped = [h if "x" not in h.split() else "x y z x y z x y z" for h in raw["hypotheses"]]
             return dict(raw, hypotheses=looped)
     monkeypatch.setattr(L, "make_reader", lambda store, **k: Short(refs))
-    forms = ["real", "blank", "rt_only_left", "round_trip_masked"]
+    forms = ["real", "blank", "rt_only_left", "round_trip_masked", "real_only_left"]
     assert read(tmp_path, forms) == 0
-    f = merged(tmp_path, forms)["forms"]["rt_only_left"]
+    every = merged(tmp_path, forms)["forms"]
+    better = every["real_only_left"]["comparators"]["round_trip_masked"]         # the fault swapped away, against the form that has it
+    assert better["bleu"]["difference"] > 0 and better["likelihood_minus_blank"]["difference"] > 0 and better["loop_share"]["difference"] == -1
+    f = every["rt_only_left"]
     assert f["paired"]["real"]["bleu"]["difference"] < 0 and f["paired"]["real"]["likelihood_minus_blank"]["difference"] < 0
     assert f["paired"]["real"]["loop_share"]["difference"] == 1
     assert f["length_ratio"]["paired"]["real"]["difference"] < 0
@@ -1293,6 +1308,30 @@ def test_every_paired_difference_is_the_form_minus_its_anchor(monkeypatch, tmp_p
     assert share["likelihood_ci95"][0] - 1e-6 <= share["likelihood"] <= share["likelihood_ci95"][1] + 1e-6 and 0 < share["likelihood"] < 1
     speed = merged(tmp_path, forms)["forms"]["real"]["wrist_speed"]["over_real"]
     assert speed["difference"] == 0 and speed["ratio"] == 1
+
+
+def crafted_read(name, n=8, *, speed=1., nll=1.):
+    refs = [f"w{i} a b c d e" for i in range(n)]
+    hands = {h: dict(speed=[speed] * n, variation=[speed] * n) for h in P.HANDS}
+    return dict(form=name, references=refs, hypotheses=refs if speed == 1. else ["z"] * n, nll=[[nll]] * n, seconds_over_reference=[1.] * n,
+                motion=dict(wrist_speed=[speed] * n, wrist_spread=[speed] * n), hands=hands, tracked=dict(wrists=[1.] * n, hands=[1.] * n))
+
+
+def test_motion_pairs_read_the_form_over_real():
+    reads = dict(real=crafted_read("real"), blank=crafted_read("blank", speed=.1, nll=3.), slow=crafted_read("slow", speed=.5, nll=2.))
+    f = P.form_panel(reads, "slow")
+    assert f["wrist_speed"]["over_real"]["ratio"] == .5 and f["wrist_speed"]["over_real"]["difference"] == -.5
+    assert f["wrist_spread"]["over_real"]["ratio"] == .5 and f["hand_variation"]["left_hand"]["over_real"]["ratio"] == .5
+    assert f["hand_speed"]["right_hand"]["over_real"]["ratio"] == .5
+
+
+def test_word_pairs_read_the_form_minus_its_anchor():
+    def word(ranks):
+        return dict(corpora=dict(rit=dict(ranks=ranks, signs=list(range(len(ranks))))))
+    words = dict(real=word([0] * 6), blank=word([100] * 6), form=word([0, 0, 0, 100, 100, 100]))
+    panel = P.word_panel(words, "form", "rit")
+    assert panel["top5"]["mean"] == .5 and panel["top5_minus_real"]["difference"] == -.5 and panel["top5_minus_blank"]["difference"] == .5
+    assert panel["top1_minus_real"]["difference"] == -.5
 
 
 def test_the_declared_comparators_are_named():
@@ -1503,6 +1542,7 @@ def test_a_failed_job_uploads_its_work_to_partial_keeps_its_status_and_ends_with
     assert result.returncode == 1 and done_line(result) == 1
     partial = [x for x in calls.splitlines() if " upload --partial " in x]
     assert partial and all("/partial/" in x for x in partial)
+    assert " upload --partial " in calls.splitlines()[-1]                       # on exit, after the step that failed
 
 
 def test_a_passing_job_uploads_no_partial_on_exit_and_a_failed_partial_upload_hides_no_status(tmp_path):
@@ -1591,6 +1631,13 @@ def test_restore_skips_other_commits_smokes_and_an_unknown_commit(tmp_path, monk
     partial_store(tmp_path, "abc", **kw)
     assert restore(tmp_path) == 0
     assert not list((tmp_path / "out").rglob("*.json")) if (tmp_path / "out").exists() else True
+
+
+def test_restore_takes_nothing_when_no_commit_is_known_on_either_side(tmp_path, monkeypatch):
+    monkeypatch.setattr(P, "code_commit", lambda: None)
+    partial_store(tmp_path, None)
+    assert restore(tmp_path) == 0
+    assert not (tmp_path / "out" / "forms" / "form-real.json").exists() and not (tmp_path / "out" / "fit" / "fit.json").exists()
 
 
 def test_restore_refuses_a_changed_codebook_and_a_finished_read(tmp_path, monkeypatch):
