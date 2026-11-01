@@ -6152,3 +6152,22 @@ Branch `path-read` 52fd48d1 (digest 5a48d7da), independent review applied, not m
 - **Confound, stated:** v1 was fine-tuned on two-view keypoints.
 - **Plumbing alerts** suppress the case label: per-part validity, keypoint distance with a mirrored control, 475 shared clips at least. `real_two_view` and blank must reproduce the stored read, or the read is void.
 - **`STORED_RT`** isn't SHA-pinned; `stored-check` verifies its figures and prints its hash. Disclosed.
+
+### Real-signer wrist span, rerun with clips counted (2026-11-01, 17:34 UTC; not reviewed, read by no rule)
+
+`comp-a6` 5d38e92, `reports/wrist_by_signer.json` sha 78909b93. Groups need at least 30 clips with a number per rate and side: 75 groups, 9 named signers and 66 channels; 54 of the 120 channels read were refused. Absolute speeds, shoulder widths per second. * = outside.
+
+| | Raw pooled | Raw left | Raw right | 3 Hz pooled | 3 Hz left | 3 Hz right | Passes |
+|---|---|---|---|---|---|---|---|
+| Span | 0.859–1.546 | 0.910–1.615 | 0.796–1.608 | 0.728–1.364 | 0.772–1.399 | 0.670–1.289 | |
+| top10, predicted | 1.557* | 1.606 | 1.515 | 1.257 | 1.320 | 1.195 | 5 |
+| hold-x | 1.400 | 1.291 | 1.515 | 1.117 | 1.040 | 1.195 | 6 |
+| hold-x + length | 1.593* | 1.465 | 1.727* | 1.229 | 1.147 | 1.312* | 3 |
+| length | 1.772* | 1.825* | 1.727* | 1.387* | 1.462* | 1.312* | 0 |
+| top10 at true length, rough, probably low | 1.865* | 1.924* | 1.815* | 1.506* | 1.580* | 1.431* | 0 |
+
+**The earlier statement that top10 sits inside on all six is withdrawn: it fails raw pooled, by a small margin.** top10 is at p85–89 of groups and faster than 7–8 of the 9 named signers. Named signers' passes of six: Cory, RIT-P03, c02 6; c03 5; RIT-P02, Rachel 2; c04 1; c01, c05 0. D20 pooled passes 2. **D20's own signers mostly fail this span, so as a bar it rejects real people; the owner is to see this before any claim uses it.** Named-signers-only span: 0.749–1.613 raw pooled; channels only: 0.937–1.508.
+
+**A tension to carry forward:** longer, truer timing scores better on the instrument (top10 2.526 predicted, 2.855 true) and moves wrist speed outside the span, since speed rises as the same motion is packed into less time. Length and wrist pull opposite ways. Within kept channels, the clips are those with a tracked body; channels are not signers; only 120 of the 355 qualifying channels were read.
+
+**YouTube arms.** All 99,918 YouTube records are in both the generator's and the tokenizer's mixes. No wrist on either side 42.3% [38.3, 46.3] of records, 20.4% of the generator's sampled weight and 29.5% of the tokenizer's; missing at least one side 44.4%, 21.4%, 30.8%; under half the frames on a side 58.4%, 28.1%, 40.7%. Round 13 dropped these clips and this plan says that "stands", but W14b's mix extends round 10's and holds them all: the record and the mix disagree. Two paths remain unmeasured: neutral-valued body codes as history for hand codes, and the tokenizer's encoder seeing neutral fill. The only direct test, C13 against F12, showed no gain (lexicon 0.000 [−0.047, +0.047], BLEU −0.038 [−0.411, +0.318]) on a short warm start, end to end. No training on this; a measurement is proposed after A5.
