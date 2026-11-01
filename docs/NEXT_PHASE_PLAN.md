@@ -6035,3 +6035,41 @@ Report only, D20. About 39 GPU-hours and $43, from stored timings. Four pods per
 S2 masked decoding: closed untrained, result "not shown". The P1 gauge failed calibration on planted signals (read 2.0× and negative against known truth), and its ratio bar cannot pass under calibration. A calibration failure counts as "not shown", never as evidence that text-to-motion information is absent or present. No further S2 spending: no planted job, P1, confirmation seed, or P2–P4. Effort moves to composition. S2 may reopen only on a new, separately declared direct read in which a history-free generator beats composition at predicted timing on likelihood and BLEU, paired over several word draws, on instrument v1 and on v2 if accepted. V1's result may justify a nearest-fill prior retrain as its own decision; that is not S2.
 
 Independent review of `s2-probes` 0f45690: do not run. Planted 200 words, truth 4.13, read 8.25 masked; 2,000 words, truth 5.92, read −1.06 masked. The contrastive bound isn't conditioned on corpus or duration. Other evidence, none of it a paired read: W14b end-to-end 1.364 and 1.735 at predicted timing against composition's 2.526, itself one word draw selected on D20; rounds 4, 16 and 19 null. The code stays on branch `s2-probes`, unmerged except for B0.
+
+### V1 declared: tokenizer's cap without neutral fill, and neutral hands (2026-11-01, 08:23 UTC, before any V1 D20 form is read)
+
+Report only; nothing here starts training. Flag fitted on c02 train, tested on held-out c02, pinned (`reports/tok_v1_flag.json`): left hand 9°, held-out catch 88.8%, false alarm 1.2%; right hand 11°, 68.2%, 3.3%.
+
+**Scope.** D20, instrument v1, one digest and environment. Likelihood minus blank is primary; BLEU is reported and decides nothing. Void all on a failed canary, path check or `check`, or mixed digests. Void Generated and Sensitivity if `composed-check` fails on hypotheses ≥ 0.98 or mean NLL ≤ 0.001, or if export settings differ from their pins. Flag pose and threshold were fitted on c02 train and fixed before any read.
+
+**Cap.** c = (rt_nearest − blank) / (v0_nearest_fill − blank).
+- **Kept:** c ≥ 0.75 and lower bound ≥ 0.5.
+- **Lost:** c ≤ 0.25 and upper bound ≤ 0.5.
+- **Otherwise partial.**
+- `rt_post_fill` − `rt_nearest` is reported; lower bound above 0 means input mismatch matters.
+
+**Generated.** Share of a9@predicted hand frames within the flag of the decoded-neutral pose, minus decoded real (`round_trip`) on tracked frames, in the same activity tercile.
+- **Shown:** lower bound > 0 and point ≥ 0.05 in the mid and high terciles.
+- **Absent:** upper bound < 0.02 in the mid and high terciles, and the flag catches at least half of D20's decoded-neutral frames.
+- **Otherwise unresolved.**
+- The same read on wrist rotation is reported as its own row.
+
+**Sensitivity (never a score, never M1, never selection).** a9p_replaced − a9p_control.
+- **Rise:** lower bound > 0 and point ≥ 0.015 nats.
+- **No rise:** upper bound < 0.015 and at least 1% of hand frames flagged.
+- **Otherwise unresolved.**
+
+**Hypothesis** (generated hands carry neutral and v1 reads it badly).
+- **Supported:** Shown and Rise.
+- **Refuted:** Absent, or Shown and No rise.
+- **Otherwise open.**
+- Alignment is report-only.
+
+**What follows (nothing here starts training).**
+- **Kept:** no tokenizer retrain on cap grounds; neither the 32- nor the 53-pod-hour retrain.
+- **Lost:** a decoder-first candidate may go to local evidence, the 200-clip overfit beating d2, as the owner's rule requires, before any pod.
+- **Partial:** tokenizer stays held, and the body is measured the same way.
+- **Supported:** the fix is in the prior's history or decoding, tested locally first. A tokenizer retrain doesn't follow, since hands' CE is already masked.
+- **Refuted:** close the neutral-hands route. Move to the wrist row if it shows, then v2 reads.
+- **Open:** no retrain, and report what stayed unresolved.
+- **Any 32- or 53-hour spend** needs its own declared evidence and the owner's rule met.
