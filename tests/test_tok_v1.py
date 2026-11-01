@@ -79,6 +79,14 @@ def test_neutral_shares_count_each_threshold_and_can_keep_to_tracked_frames():
     assert W.neutral_shares(never_tracked())["left_hand"]["5.0"] is None
 
 
+def test_tracked_only_leaves_out_a_filled_forms_fill():
+    tok = tiny_tokenizer()
+    real = gappy(signer_state(0, frames=20, amplitude=.8), 0, 5)
+    path = P.decoded_form("identity", real, tok, None)
+    assert W.neutral_shares(path)["left_hand"]["5.0"] == .25
+    assert W.neutral_shares(path, tracked_only_by=real)["left_hand"]["5.0"] == 0
+
+
 def test_every_threshold_is_stated_and_one_is_flagged():
     assert W.THRESHOLDS == (1., 2., 5., 10., 20.) and W.FLAG_DEGREES == 5. and W.BINS == 20 and W.WORD_CLIPS == 8 and W.CORPUS_CLIPS == 300
 
@@ -171,12 +179,27 @@ def test_corpus_neutral_counts_untracked_hand_frames_per_corpus_and_never_c00_or
     assert only["one"]["sampled"] == 1
 
 
+def test_corpus_neutral_tells_a_partly_tracked_hand_from_an_untracked_one(monkeypatch):
+    def load(r, field, cache=None, fetch=None):
+        state = signer_state(0, frames=20, amplitude=.4)
+        out = {}
+        for hand in W.HANDS:
+            c = state.channels[hand]
+            valid = c.valid.copy()
+            valid[:10, 0] = False                                                  # one joint, half the frames
+            out[hand] = replace(c, valid=valid, values=np.where(valid[..., None], c.values, 0.), observed=c.observed & valid, confidence=c.confidence * valid)
+        return replace(state, channels={**state.channels, **out})
+    monkeypatch.setattr("signtranslator.data_engineering.corpus_manifest.load_sample", load)
+    out = W.corpus_neutral(dict(records=[record("a", "one")]), None, None)["one"]
+    assert out["every_joint_untracked"]["mean"] == 0 and out["any_joint_untracked"]["mean"] == .5
+
+
 def test_a_words_training_clips_are_its_own_never_c00_or_test_and_capped(monkeypatch):
     fake_load(monkeypatch, {})
     rows = [record(f"s{i}", "asllvd-text-v1") for i in range(12)] + [record("z", "asllvd-text-v1", component="c00"), record("t", "asllvd-text-v1", partition="test"), record("o", "asllvd-text-v1", text="cat"), record("h", "how2sign-two-view-text-v1")]
     out = W.word_training_clips(dict(records=rows), None, None, ["dog", "fish"])
     assert list(out) == ["dog"] and len(out["dog"]) == W.WORD_CLIPS
-    assert W.word_training_clips(dict(records=rows), None, None, ["dog"], clips=3)["dog"] is not None
+    assert len(W.word_training_clips(dict(records=rows), None, None, ["dog"], clips=99)["dog"]) == 12      # only its own train clips of its corpora
 
 
 def test_top_tokens_are_the_committed_lists_first_ranks_and_a_changed_list_refuses(monkeypatch):
@@ -380,6 +403,60 @@ def test_a_declared_merge_refuses_without_its_checks(monkeypatch, tmp_path, bad,
         W.main(["merge", "--store", "dir:x", "--out-dir", str(w), "--forms", "real,blank", "--output-file", str(tmp_path / "x.json")])
 
 
+def test_a_stored_motion_measure_refuses_before_anything_is_read(monkeypatch, tmp_path):
+    harness(monkeypatch, n=3)
+    (tmp_path / "w").mkdir()
+    (tmp_path / "w/neutral.json").write_text("{}")
+    monkeypatch.setattr(L, "open_read_list", lambda *a: pytest.fail("read before the write-once check"))
+    with pytest.raises(SystemExit, match="write-once"):
+        W.main(["neutral", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(tmp_path / "w")])
+
+
+def test_the_reads_block_gives_each_difference_and_share_from_blank():
+    n = 100
+    refs = [f"w{i} a b c d e f" for i in range(n)]
+
+    def form(right, nll):
+        return dict(references=refs, hypotheses=[r if i < right else "z" for i, r in enumerate(refs)], nll=[[nll]] * n)
+    reads = dict(blank=form(0, 3.), real=form(90, 1.), identity=form(30, 2.), round_trip=form(20, 2.5), v0_nearest_fill=form(80, 1.5), rt_nearest=form(60, 2.), no_quant_nearest=form(70, 1.75), a9p=form(10, 2.8), a9p_replaced=form(15, 2.6))
+    r = W.declared_reads(reads)
+    k = r["likelihood_minus_blank"]
+    assert r["primary"] == "likelihood_minus_blank"
+    assert k["cap_share_of_nearest_fill"]["point"] == pytest.approx(1 / 1.5, abs=1e-3) and k["cap_share_of_nearest_fill"]["ci95"] == [pytest.approx(.6667, abs=1e-3)] * 2
+    assert k["rt_nearest_minus_round_trip"]["point"] == pytest.approx(.5) and k["rt_nearest_minus_v0_nearest_fill"]["point"] == pytest.approx(-.5) and k["no_quant_nearest_minus_rt_nearest"]["point"] == pytest.approx(.25)
+    assert k["no_quant_nearest_minus_v0_nearest_fill"]["point"] == pytest.approx(-.25) and k["v0_nearest_fill_minus_identity"]["point"] == pytest.approx(.5) and k["a9p_replaced_minus_a9p"]["point"] == pytest.approx(.2)
+    assert k["round_trip_share_of_real"]["point"] == pytest.approx(.25) and k["rt_nearest_share_of_real"]["point"] == pytest.approx(.5)
+    b = r["bleu"]
+    assert b["rt_nearest_minus_round_trip"]["point"] > 0 and b["a9p_replaced_minus_a9p"]["point"] > 0 and b["cap_share_of_nearest_fill"]["ci95"][0] <= b["cap_share_of_nearest_fill"]["point"] <= b["cap_share_of_nearest_fill"]["ci95"][1]
+    assert b["cap_share_of_nearest_fill"]["point"] != pytest.approx(k["cap_share_of_nearest_fill"]["point"], abs=.001)
+
+
+def test_a_share_and_its_interval_start_from_blank():
+    n = 200
+    refs = [f"w{i} a b c d e f" for i in range(n)]
+
+    def form(right):
+        return dict(references=refs, hypotheses=[r if i < right else "z" for i, r in enumerate(refs)], nll=[[2.]] * n)
+    r = W.declared_reads(dict(blank=form(30), real=form(190), v0_nearest_fill=form(180), rt_nearest=form(40)))["bleu"]["cap_share_of_nearest_fill"]
+    assert r["point"] < .2 and r["ci95"][0] <= r["point"] <= r["ci95"][1] and r["ci95"][1] < .3                # against 0.5 or so without blank
+
+
+def test_preflight_refuses_a_finished_read_and_a_void(tmp_path, monkeypatch):
+    from signtranslator.data.text_motion_dataset import DirectoryStore
+    store = DirectoryStore(tmp_path / "s")
+    monkeypatch.setattr(W, "code_digest", lambda: "abc")
+
+    def preflight(*extra):
+        return W.main(["preflight", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(tmp_path / "w"), "--final-key", "v/report.json", "--void-prefix", "v/void", *extra])
+    assert preflight() == 0
+    store.put("v/void/old.json", b"{}")
+    with pytest.raises(SystemExit, match="rerun-cause"):
+        preflight()
+    store.put("v/report.json", b"{}")
+    with pytest.raises(SystemExit, match="finished"):
+        preflight("--rerun-cause", "why")
+
+
 def test_a_merge_refuses_a_motion_measure_of_another_run(monkeypatch, tmp_path):
     harness(monkeypatch, n=4)
     assert read(tmp_path, ["real", "blank"]) == 0
@@ -478,6 +555,14 @@ def test_a_path_miss_exits_3_and_stores_a_void(monkeypatch, tmp_path, kw, miss):
     store, out = path_setup(monkeypatch, tmp_path, **kw)
     assert path_check(tmp_path, out) == 3
     assert json.loads((out / "path_check.json").read_text())["misses"] == [miss] and store.exists("v/void/d.json")
+
+
+def test_nll_differences_of_either_sign_do_not_cancel_in_the_path_check(monkeypatch, tmp_path):
+    _, out = path_setup(monkeypatch, tmp_path)
+    r = json.loads((out / "form-round_trip.json").read_text())
+    r["nll"] = [[1. + (.002 if i % 2 else -.002)] for i in range(100)]
+    (out / "form-round_trip.json").write_text(json.dumps(r))
+    assert path_check(tmp_path, out) == 3
 
 
 def test_the_path_check_refuses_other_clips_a_changed_pin_and_a_smoke_checks_pins_only(monkeypatch, tmp_path, capsys):
