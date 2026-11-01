@@ -6200,3 +6200,17 @@ Branch `path-read` 52fd48d1 (digest 5a48d7da), independent review applied, not m
 **What this shows and doesn't.** v1 reads this path lower. Lost content and v1's fit to two-view keypoints aren't separated, as declared. It makes no claim about composition. Arithmetic only, on the declared division: top10's stored share of 33.0% reads about 100% against the marks-free monocular gap, with an interval from about 70% to 165%, on a single draw, with A5 still running. Composition's clips aren't simply monocular (d2's decoder and How2Sign's weighting differ), so that is an inference, and top10's +0.089 likelihood sits above real monocular's +0.056 and the round trip's +0.024.
 
 **If it holds, it changes the road to 3.8.** Word clips trained almost entirely on monocular data may already read about as high on v1 as real signing through that path, so composition tuning may have little room left on this instrument. Either the data needs better arms and hands, or v1 underrates this path and we have no instrument to say so (v2 was not accepted). **Next, report only: which part loses it (body against hands), and whether an instrument not fitted to two-view reads the same gap.**
+
+### A5 result: added words not confirmed over eight draws (read 2026-11-01, recorded 21:03 UTC)
+
+`round20/comp-a5/a5-summary.json` sha 4f3d1f38, declared 84fb608bd5, eight draws, attempt 1 each, none failed. **Outcome: not_confirmed.** Top10 minus margin0, D20, predicted timing:
+
+| | Mean | t 95% | Two-way 95% | Positive | Between-draw SD |
+|---|---|---|---|---|---|
+| BLEU | +0.0953 | [−0.0781, +0.2688] | [−0.1054, +0.3117] | 6 of 8 | 0.2075 |
+| Likelihood − blank | −0.0022 | [−0.0227, +0.0182] | [−0.0226, +0.0156] | 5 of 8 | 0.0245 |
+| Spotting | +0.0131 | [+0.0073, +0.0188] | [+0.0064, +0.0206] | 8 of 8 | 0.0069 |
+
+Means: top10 2.402 (draws 2.08 to 2.687), margin0 2.307 (2.038 to 2.592); gap share 32.5% against 25.7%. Wrist 1.813× against 1.543×; hands 1.203 against 1.191. True length, deciding nothing: 2.780 against 2.623, +0.156 [−0.0526, +0.3646], likelihood +0.004. Passed: spotting, wrist no further than a9, hands. Failed: BLEU's lower bound and floor, both likelihood bounds, both 7-of-8 counts.
+
+**Reading.** Added words are detectably there, but a sentence-level gain isn't shown, and the stored 2.526 was a high draw. As declared, this isn't evidence against the form: nothing is adopted, and the paired draw SD of 0.2075 gives limited power. **A6's gate refuses unless A5 reads confirmed or direction only, so A6 does not run.** Its bars would have rested on no established gain. Fitted length stays a question for later. Next: the parts read, since the single-camera result now matters more than composition tuning.

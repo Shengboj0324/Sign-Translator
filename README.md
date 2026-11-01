@@ -38,10 +38,10 @@ This README is a procedural account of the project: what was built, how it was t
 |---|---|---|---|---|---|
 | **Fresh sentences, one read, C20** | Gains, best of 16, true length | **2.400** [2.06, 2.737] | 4.033 | 2.053 | 17.5% |
 | Pilot sentences, the 1,000 | Gains, best of 16, true length | 2.570 [2.236, 2.892] | 4.136 | 1.859 | 31.2% |
-| Development set, D20, one word draw | No gains, added words, predicted length | 2.526 [2.111, 2.925] | 4.493 | 1.559 at predicted length (1.68 at true length) | 33.0% |
+| Development set, D20, mean of eight word draws | No gains, added words, predicted length | 2.402 (draws 2.08 to 2.687) | 4.493 | 1.559 at predicted length (1.68 at true length) | 32.5% |
 | Best end-to-end generator, the 1,000 | W14b, no gains | 2.000 [1.66, 2.319] | 4.136 | 1.859 | 6.2%, not resolved above blank |
 
-Each read uses the blank at its own length; 2.526 against the true-length blank would be 30.1%. True-length forms need the answer's length, so they can't be deployed. C20's form at predicted length read 1.985 [1.615, 2.359] on D20. "Gains" are fixed decoder multipliers (body 1.17, hands 1.28, 1.27).
+Each read uses the blank at its own length. True-length forms need the answer's length, so they can't be deployed. C20's form at predicted length read 1.985 [1.615, 2.359] on D20. "Gains" are fixed decoder multipliers (body 1.17, hands 1.28, 1.27).
 
 | Target | Value | State |
 |---|---|---|
@@ -49,7 +49,7 @@ Each read uses the blank at its own length; 2.526 against the true-length blank 
 | Long-term instrument target | 3.8 | Not reached by any form |
 | Release bar with Deaf raters | Comprehension lower bound at least 70%, within 10 points of real | Not started |
 
-**The newest result, which may change the plan.** Most of our word clips were learned from single-camera data, while the real signing we compare against was recovered from two cameras. Read through the single-camera path, that same real signing scores **2.85, not 4.49**. Composition's 2.53, one draw chosen on D20, is already close to that (the declared comparison without tracking marks is 2.65 against 4.62). Either single-camera recovery loses real detail, or our instrument underrates it; we have not yet separated the two ([section 7.3](#73-the-single-camera-result)).
+**The newest result, which may change the plan.** Most of our word clips were learned from single-camera data, while the real signing we compare against was recovered from two cameras. Read through the single-camera path, that same real signing scores **2.85, not 4.49**. Composition's 2.40, the mean of eight draws of a form chosen on D20, is already close to that (the declared comparison without tracking marks is 2.65 against 4.62). Either single-camera recovery loses real detail, or our instrument underrates it; we have not yet separated the two ([section 7.3](#73-the-single-camera-result)).
 
 ---
 
@@ -157,7 +157,7 @@ A causal temporal transformer (6 layers) runs over frames, with cross-attention 
 4. Predict the sentence's length from text alone: `seconds = −0.083 + 0.369 × tokens`.
 5. Place the word cores and crossfade them over 4 frames.
 
-Variants tested on D20 include added common words, left-arm holds, tempo changes and low-pass filtering; [section 7](#7-results) lists the main ones. A fitted-length test is built and not yet declared.
+Variants tested on D20 include added common words, left-arm holds, tempo changes and low-pass filtering; [section 7](#7-results) lists the main ones. A fitted-length test was built, but its declared gate needed A5 to pass, so it hasn't run.
 
 ### 4.5 Instruments
 
@@ -254,7 +254,7 @@ About half of the 2.306 to 2.570 gain came from fewer loops rather than more con
 
 ### 7.2 Development set D20
 
-![Bar chart on D20: real two-camera 4.493, tokenizer round trip 4.124, real single-camera 2.849, composition with added words 2.526, single-camera round trip 2.391, composition 2.183 and 1.943, blank 1.68](docs/figures/demo/results_d20.png)
+![Bar chart on D20: real two-camera 4.493, tokenizer round trip 4.124, real single-camera 2.849, composition with added words 2.402, single-camera round trip 2.391, composition before added words 2.307, first form 1.943, blanks 1.68 and 1.559](docs/figures/demo/results_d20.png)
 
 | Test on D20 | BLEU | Likelihood above blank | Wrist vs real | Outcome |
 |---|---|---|---|---|
@@ -262,12 +262,13 @@ About half of the 2.306 to 2.570 gain came from fewer loops rather than more con
 | Best of 16 samples | 2.328, +0.385 [+0.014, +0.791] | | 2.57× | **Adopted** |
 | At predicted timing, no gains | 2.183 | +0.0764 | 1.53× | Comparator |
 | Left-arm hold | 2.265 | +0.0487 | 1.29× | **Failed**, loses likelihood and spotting |
-| **Added common words** | **2.526** [2.111, 2.925] | +0.0891 | 1.77× | Passed its rule, **one draw, report only** |
+| Added common words, first draw | 2.526 [2.111, 2.925] | +0.0891 | 1.77× | Passed its rule, one draw, report only |
+| **Added common words, eight fresh draws** | **Mean 2.402, against 2.307 without.** Paired +0.095 [−0.078, +0.269] | Paired −0.0022 [−0.0227, +0.0182] | 1.81× | **Not confirmed. Not adopted** |
 | Same, at the true length | 2.855 [2.371, 3.283] | | | Not deployable: needs the answer's length |
 
-**Limits on added words:** the paired gain is +0.343 [−0.018, +0.718] on BLEU and +0.0128 [+0.0015, +0.0235] on likelihood. Wrist speed rose, loop share is 54.0%, and echo of the new words did not rise, so part of the gain may be speed rather than coverage. D20 chose this arm, the read ran under a disclosed GPU exemption after its number had been seen, and pointing and fingerspelled entries need Deaf review. Stitched real word clips read no higher (2.17 against 2.306 on the 1,000; 2.176 against 2.526 for added words on D20), which better words alone won't fix and which may say something about the instrument.
+**Added words did not hold up.** Eight fresh draws, read once under a rule declared in advance, did not confirm the first draw's +0.343 [−0.018, +0.718] on BLEU and +0.0128 [+0.0015, +0.0235] on likelihood: the first draw was a high one. BLEU rose in 6 of 8 draws and likelihood in 5 of 8. Word spotting did rise in all 8, +0.0131 [+0.0073, +0.0188], so the added words are detectably there, but a sentence-level gain isn't shown. This isn't evidence against the form either: the test had limited power, with a paired draw SD of 0.2075. On the first draw, wrist speed rose, loop share was 54.0%, and echo of the new words did not rise, so part of the gain may be speed rather than coverage. D20 chose this arm, the read ran under a disclosed GPU exemption after its number had been seen, and pointing and fingerspelled entries need Deaf review. Stitched real word clips read no higher (2.17 against 2.306 on the 1,000; 2.176 against 2.526 for added words on D20), which better words alone won't fix and which may say something about the instrument.
 
-**Word draws matter.** Five real-clip draws moved D20 between 1.821 and 2.414 (SD 0.237). Our intervals leave that out, so every single-draw result, including the fresh read, looks surer than it is. A test called A5 (plan section "A5, eight word draws, declared"; earlier A5s in the plan are other tests) repeats the added-words test over eight fresh draws. A pass would still not be a fresh-sentence result.
+**Word draws matter.** Five real-clip draws moved D20 between 1.821 and 2.414 (SD 0.237). Our intervals leave that out, so every single-draw result, including the fresh read, looks surer than it is. The eight-draw test above is called A5 in the plan (section "A5, eight word draws, declared"; earlier A5s in the plan are other tests). Its result is what a single draw can't show. Even a pass would not have been a fresh-sentence result.
 
 **Tokenizer.** We suspected the tokenizer capped scores, and on two-camera input that doesn't hold as stated. Without neutral fill on untracked frames, a real-signing round trip reads 4.124 [3.485, 4.764], or 86.9% of the BLEU gap and 64.5% of the likelihood gap, on one D20 read. We kept d2 and skipped a retrain. The single-camera round trip reads 2.391, with its upper bound below 3.8. A control also showed real's tracking marks carry some sentence content no generator can emit, about 7% of its likelihood gap, so shares against 4.493 are somewhat understated.
 
@@ -289,11 +290,11 @@ Same 500 clips, instrument v1, all safety checks clean, control exact:
 - **The drop is in the motion values:** swapping tracking marks barely moves either path, and trimming clips to the same frames changes nothing.
 - **Hands differ most:** distance between paths is 0.587 for hands (a deliberately mirrored control reads 1.286), 0.231 for wrists, 0.128 for elbows and 0.100 for shoulders.
 - **What it can't tell us:** whether detail is really lost, or whether v1 underrates this path because it was fine-tuned on two-camera motion. We wrote that limit down before the read.
-- **Why it matters:** if it's real, composition may have little room left on this instrument. By arithmetic on one draw, its 33% share is about 100% (roughly 70-165%) of the single-camera gap. That is an inference, not a measurement. Composition's clips aren't simply single-camera, since d2's decoder and How2Sign's weighting differ, and its likelihood +0.089 sits above real single-camera's +0.056.
+- **Why it matters:** if it's real, composition may have little room left on this instrument. By arithmetic on the eight-draw mean, its 32.5% share is about 100% (roughly 70-165%) of the single-camera gap. That is an inference, not a measurement. Composition's clips aren't simply single-camera, since d2's decoder and How2Sign's weighting differ, and its likelihood +0.089 sits above real single-camera's +0.056.
 
 ### 7.4 Motion quality
 
-Composed wrists run too fast. Length fitting squeezes word cores 1.96×, and joining adds movement. Against D20's signers, the best form is 1.77× real (left 2.23×, right 1.46×), and through the same single-camera path both arms read about 1.9×.
+Composed wrists run too fast. Length fitting squeezes word cores 1.96×, and joining adds movement. Against D20's signers, the added-words form is 1.77× real on its first draw (left 2.23×, right 1.46×), 1.81× over eight draws, and through the same single-camera path both arms read about 1.9×.
 
 We then compared against 75 groups: 9 named signers and 66 YouTube channels (120 of 355 qualifying channels read). The form sits inside their 10th-90th percentile range on 5 of 6 readings, at the 85th-89th percentile and faster than 7-8 of the 9 named signers. This rerun is unreviewed and no rule reads it, and D20's own signers mostly fail that range, so it is not a pass. **Timing and speed also pull against each other:** truer timing scores higher but moves wrists further out of range.
 
@@ -329,7 +330,7 @@ Dates are 2026, UTC. Numbers are BLEU unless stated. "Lexicon" is the share of g
 | Nov 1 | Masked decoding, the last end-to-end route | Gauge read 8.25 on truth 4.13 | Closed untrained, "not shown"; reopens only on a declared direct read |
 | Nov 1 | Back-translator v2 | Real 1.871, gap +0.019 | **Not accepted** |
 | Nov 1 | **Single-camera read** | **2.849 vs 4.493** | Possible root cause, unresolved |
-| Nov 1 | A5, eight word draws | All 8 finished, none failed; summary running | Pending |
+| Nov 1 | **A5, added words over eight draws** | **+0.095 [−0.078, +0.269]; likelihood −0.0022** | **Not confirmed**, not adopted; follow-up A6 not run |
 
 ---
 
@@ -391,8 +392,7 @@ Some changes loosened a rule after we saw numbers. Each is disclosed in the plan
 
 **Open questions:**
 
-1. Does added-words hold up over eight draws? (A5, due today.)
-2. Does single-camera recovery lose real detail, or is the instrument biased? And is it hands or body? (The next read is built and under review. Neither instrument is independent, so a clear answer may need human readers.)
+1. Does single-camera recovery lose real detail, or is the instrument biased? And is it hands or body? (The next read is built and under review. Neither instrument is independent, so a clear answer may need human readers.)
 3. Do arm-less YouTube clips hurt the generator? (Unmeasured. The one direct test showed no gain, but it was short.)
 4. Would Deaf readers understand any of this? (Unknown, and the most important question.)
 5. Which wrist range is right, given that real signers fail the current one?
@@ -403,7 +403,6 @@ Some changes loosened a rule after we saw numbers. Each is disclosed in the plan
 |---|---|
 | Single-camera detail is really lost | Better hand and arm data, or better recovery, comes before more composition tuning |
 | The instrument is biased | Build a fairer instrument. Scores so far may understate composition |
-| Added words hold | Test fitted length next (A6, prepared and reviewed, not yet declared) |
 | Any of these reaches a credible level | First Deaf rater read, at least nine raters. That read is diagnostic: it fails the wrist and timing conditions by construction |
 
 **Our own odds, as judgement rather than measurement, all before the single-camera read:** on Oct 31, under 5% each for deployable or 3.8 by Nov 15; on Nov 1, an AI agent's estimate of 5-10% for 3.8 within three months and under 5% for the release bar.
