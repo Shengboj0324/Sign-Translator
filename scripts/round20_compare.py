@@ -56,10 +56,28 @@ def _split(spec: str) -> tuple[str, str]:
     return key, form
 
 
-def check_pairable(a: dict, b: dict) -> None:
-    """Stop unless the two merged reports read the same clips (ids and references, in order) with the same reference
-    derangement seed, the same back-translator checkpoint and the same sentence set (its hash)."""
+PAIRING_SETTINGS = ("core_margin", "timing", "total_fit")
+PAIRING_ROUND20 = ("retime", "tempo", "lowpass_hz", "arm_scale", "hold_left", "word_cache", "word_cache_extra", "vocabulary_extra", "oracle_choice",
+                   "no_decoder_gains", "semlex_core", "vocabulary_mix")
+ANY_DIFFERENCE = "any"                  # stored rounds whose own declared rule names the comparison (Round 20 Phase A and B)
+
+
+def setting_differences(a: dict, b: dict) -> list[str]:
+    """Which margin, timing, scale, hold, cache or vocabulary settings differ between two reports."""
     sa, sb = a.get("settings") or {}, b.get("settings") or {}
+    ra, rb = sa.get("round20") or {}, sb.get("round20") or {}
+    return [k for k in PAIRING_SETTINGS if sa.get(k) != sb.get(k)] + [k for k in PAIRING_ROUND20 if ra.get(k) != rb.get(k)]
+
+
+def check_pairable(a: dict, b: dict, declared=()) -> None:
+    """Stop unless the two merged reports read the same clips (ids and references, in order) with the same reference
+    derangement seed, the same back-translator checkpoint and the same sentence set (its hash), and unless they differ in margin,
+    timing, scale, cache or vocabulary only as ``declared`` says: an undeclared difference, or a declared one that is not there, stops."""
+    sa, sb = a.get("settings") or {}, b.get("settings") or {}
+    if declared != ANY_DIFFERENCE:
+        found, named = set(setting_differences(a, b)), set(declared)
+        if found - named or named - found:
+            raise SystemExit(f"the two reports are not paired: undeclared differences {sorted(found - named)}, declared but absent {sorted(named - found)}")
     differ = [name for name, x, y in (
         ("references", a.get("references"), b.get("references")), ("clip ids", a.get("signs"), b.get("signs")),
         ("seed", sa.get("seed"), sb.get("seed")), ("translator", sa.get("translator_key"), sb.get("translator_key")),
@@ -77,7 +95,7 @@ SOURCE_NOTE = ("meaningful only between forms of the same word source: real word
 GENERATION_SETTINGS = ("checkpoint_key", "generator_mix", "mix_key", "mix_sha256", "corpora", "selection", "timing",
                        "core_margin", "rerank", "total_fit", "guidance", "part_temperature", "model_sha256")
 GENERATION_ROUND20 = ("vocabulary_mix", "semlex_core", "activity_margin", "retime", "tempo", "lowpass_hz", "word_cache",
-                      "no_decoder_gains", "arm_scale", "vocabulary_extra", "word_cache_extra", "oracle_choice")
+                      "no_decoder_gains", "arm_scale", "hold_left", "vocabulary_extra", "word_cache_extra", "oracle_choice")
 
 
 def word_source(report: dict, form: str) -> list[str]:
@@ -208,10 +226,10 @@ def blank_of(form: str, likelihood: dict) -> str:
     return f"blank{PREDICTED}" if PREDICTED in form and f"blank{PREDICTED}" in likelihood else "blank"
 
 
-def compare_forms(a: dict, form_a: str, b: dict, form_b: str, *, boot: int = 1000, shards_a=None, shards_b=None) -> dict:
+def compare_forms(a: dict, form_a: str, b: dict, form_b: str, *, boot: int = 1000, shards_a=None, shards_b=None, declared=()) -> dict:
     from sentence_exposure_diagnostic import paired_bleu_difference
     from round20_lib import paired_mean
-    check_pairable(a, b)
+    check_pairable(a, b, declared)
     refs = a["references"]
     for r, f in ((a, form_a), (b, form_b)):
         if f not in r["forms"]:
@@ -283,6 +301,8 @@ def main(argv=None) -> int:
     p.add_argument("--whole-read", action="store_true", help="same-codes: also every stored form's motion and the plans, "
                    "counting identical hypotheses; main-form hypotheses that differ exit 3 after the report is written")
     p.add_argument("--bootstrap", type=int, default=1000)
+    p.add_argument("--declared-difference", default="", help="forms: the settings the two reports may differ in, comma-separated ("
+                   f"{', '.join(PAIRING_SETTINGS + PAIRING_ROUND20)}), or '{ANY_DIFFERENCE}' for a stored round whose declared rule names the pair")
     p.add_argument("--store", default="r2")
     p.add_argument("--output-key")
     p.add_argument("--output-file")
@@ -298,7 +318,8 @@ def main(argv=None) -> int:
         (ka, fa), (kb, fb) = _split(args.a), _split(args.b)
         ra, rb = json.loads(store.get(ka)), json.loads(store.get(kb))
         out = compare_forms(ra, fa, rb, fb, boot=args.bootstrap, shards_a=report_shards(store, ka, ra, args.a_shard_keys),
-                            shards_b=report_shards(store, kb, rb, args.b_shard_keys))
+                            shards_b=report_shards(store, kb, rb, args.b_shard_keys),
+                            declared=ANY_DIFFERENCE if args.declared_difference == ANY_DIFFERENCE else tuple(x for x in args.declared_difference.split(",") if x))
         out.update(a_key=ka, b_key=kb)
     elif args.mode == "same-codes":
         out = same_codes_check(json.loads(store.get(args.a)), json.loads(store.get(args.b)), args.form, first=args.first,

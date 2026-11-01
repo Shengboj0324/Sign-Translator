@@ -1,0 +1,111 @@
+{
+ "asllrp_train_left": {
+  "clip_speed_mean": 1.3929,
+  "height": {
+   "mean": -0.8076,
+   "n": 12159,
+   "p50": -0.7906,
+   "p90": -0.2821,
+   "p99": 0.0332
+  },
+  "utterances": 120
+ },
+ "how2sign_train": {
+  "chest_speed": {
+   "left": {
+    "mean": 0.3344,
+    "n": 53361,
+    "p50": 0.2572,
+    "p90": 0.6919,
+    "p99": 1.3542
+   },
+   "right": {
+    "mean": 0.4765,
+    "n": 53613,
+    "p50": 0.3667,
+    "p90": 0.8915,
+    "p99": 1.9434
+   }
+  },
+  "clips": 400,
+  "left_speed_p99": 1.3542,
+  "ready_pose": {
+   "LeftForearm": [
+    -0.197222,
+    -0.502186,
+    0.841969,
+    0.502186,
+    0.685852,
+    0.526703
+   ],
+   "LeftUpperArm": [
+    0.290222,
+    -0.94529,
+    0.148992,
+    0.94529,
+    0.307427,
+    0.109161
+   ]
+  },
+  "right_over_left_clip_speed": 1.388,
+  "sides": {
+   "left": {
+    "clip_speed_mean": 0.7794,
+    "clip_spread_mean": 0.137,
+    "height": {
+     "mean": -0.411,
+     "n": 55632,
+     "p50": -0.332,
+     "p90": -0.0968,
+     "p99": 0.2437
+    },
+    "step_speed": {
+     "mean": 0.7505,
+     "n": 53361,
+     "p50": 0.5447,
+     "p90": 1.6119,
+     "p99": 3.3221
+    },
+    "travel_over_window": {
+     "mean": 0.1268,
+     "n": 49906,
+     "p50": 0.0799,
+     "p90": 0.299,
+     "p99": 0.6647
+    }
+   },
+   "right": {
+    "clip_speed_mean": 1.0818,
+    "clip_spread_mean": 0.1308,
+    "height": {
+     "mean": -0.2474,
+     "n": 55945,
+     "p50": -0.1985,
+     "p90": -0.0116,
+     "p99": 0.2409
+    },
+    "step_speed": {
+     "mean": 1.0406,
+     "n": 53613,
+     "p50": 0.7777,
+     "p90": 2.0727,
+     "p99": 4.4542
+    },
+    "travel_over_window": {
+     "mean": 0.1467,
+     "n": 50078,
+     "p50": 0.1099,
+     "p90": 0.3043,
+     "p99": 0.6857
+    }
+   }
+  },
+  "window_frames": 7
+ },
+ "inputs": {
+  "key": "acquisition/2026-10-17-v1/youtube-asl-v1/round10-mixed-v1/manifest.json",
+  "sha256": "ccfd10b8961e95523ac7938c84261c89f22c8ae786af961908fbeba21fa5647a"
+ },
+ "kind": "comp-a-hold-stats",
+ "seed": "comp-a-hold-stats"
+}

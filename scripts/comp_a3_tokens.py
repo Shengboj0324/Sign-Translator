@@ -5,14 +5,19 @@ Local, read-only on the store, nothing trains. The output is committed and pinne
 composition's own selection on r10's vocabulary: a token ranks when ``selection_details`` calls it ``unmatched``. Ties go
 alphabetically. D20's texts are used only for the coverage line, which no rank depends on.
 
-**Sources, in order.**
-1. A contraction takes its first piece's entry (``it's`` -> ``it``), adding no clip: ``alias_r10`` when that is an r10 entry,
-   ``alias_list`` when it is a token of this list. ``don't`` has no such piece, so it stays unsigned and is flagged as negation.
-2. Isolated clips: train records of the round-14b mix whose normalised text is the token, in the allowed corpora. A single-letter
-   entry takes no isolated clip: the selection's own rule treats those as letters (ASLLVD's ``i`` is annotated handshape I).
-3. ASLLRP continuous segments, train utterances only, by the repository's existing tables (``asllrp_gloss_corpus.PRONOUNS`` for
-   index signs, ``name_candidates`` for lexical glosses): no new mapping, no ASL Citizen map and no gloss in the selection.
-The first kind with a well-tracked clip serves the token, so one token has one kind of source.
+**Contractions** (``contraction_entry``), adding no clip. ``n't`` always means ``not`` (``asllrp_gloss_corpus._CONTRACTIONS``), including
+``can't`` and ``won't``: the first piece would reverse the meaning, so it is never used. Any other contraction takes its first piece's entry
+(``it's`` -> ``it``): ``alias_r10`` when that is an r10 entry, ``alias_list`` when it is a token of this list. Every ``n't`` token of the train
+texts is listed in ``negation_tokens`` and maps in every arm, whatever its rank.
+
+**Sources: two kinds, and the one with more well-tracked clips serves the token** (a tie goes to isolated). The count of each is stated per
+token in ``source_rule``, before any read.
+- Isolated clips: train records of the round-14b mix whose normalised text is the token, in the allowed corpora. A single-letter entry takes
+  no isolated clip: the selection's own rule treats those as letters (ASLLVD's ``i`` is annotated handshape I).
+- ASLLRP continuous segments, train utterances only, by the repository's existing tables: ``PRONOUNS`` for index signs, ``spelled_word`` for
+  lexicalised and fingerspelled glosses (``#SO``, ``fs-OR``; never a name sign), ``name_candidates`` for lexical glosses. No new mapping, no
+  ASL Citizen map and no gloss in the selection. A fingerspelled source is flagged: it is a spelling, not the lexical sign.
+Partial-meaning substitutes (``RECENT-PAST`` for ``just``, ``REALLY`` for ``actually``) are not used; ``options_not_used`` lists them for a person.
 
 **Short spans.** ASLLRP annotates most index signs on one to three frames (the hold of the point), so at margin 0 such a piece would be
 one still pose. A segment's piece is therefore widened evenly to at least ``MIN_SEGMENT_SECONDS`` (``min_seconds`` in its row), about
@@ -53,9 +58,10 @@ MIN_ARM, MIN_HAND = .8, .5
 MAX_CHECKED, MAX_KEPT = 40, 16
 MIN_SEGMENT_SECONDS = .2
 RANKS = max(TOPS)
+PARTIAL_OPTIONS = dict(just=["RECENT-PAST"], actually=["REALLY"])     # listed for a person, never used
 RULE = (f"ranks: How2Sign train texts, unmatched under r10 by the composition's selection, ties alphabetical. Well tracked: dominant "
         f"arm >= {MIN_ARM} and dominant hand >= {MIN_HAND} of the piece's frames; a segment's piece widened to at least "
-        f"{MIN_SEGMENT_SECONDS} s. A rank without a source stays unsigned; nothing "
+        f"{MIN_SEGMENT_SECONDS} s; the kind with more well-tracked clips serves a token. A rank without a source stays unsigned; nothing "
         "slides up. Vocabulary is train only; ASL Citizen, STEM Wiki, c00, test and held-out are refused.")
 
 
@@ -72,6 +78,22 @@ def ranked_tokens(manifest, vocab) -> list[tuple[str, int]]:
             if row["kind"] == "unmatched":
                 counts.update(row["tokens"])
     return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
+def contraction_entry(token: str, vocab, listed) -> tuple[str | None, str | None]:
+    """(entry, status) of a contraction (module docstring); (None, "no_source") when its entry is neither r10's nor this list's."""
+    from signtranslator.generation.compositional import _matchable
+    if token.endswith("n't"):
+        return ("not", "alias_r10") if _matchable("not", vocab) else (None, "no_source")
+    piece = token.split("'")[0]
+    if _matchable(piece, vocab):
+        return piece, "alias_r10"
+    return (piece, "alias_list") if piece in listed else (None, "no_source")
+
+
+def negation_tokens(manifest, vocab) -> list[str]:
+    """Every token the selection leaves unmatched in How2Sign train texts that ends in n't (rank does not matter)."""
+    return sorted(t for t, _ in ranked_tokens(manifest, vocab) if t.endswith("n't"))
 
 
 def isolated_candidates(manifest, tokens) -> dict:
@@ -110,14 +132,17 @@ def token_segments(utterances, gloss_manifest, tokens) -> tuple[dict, dict]:
             a, b = (s.get("frames") or [None, None])[:2]
             if not gloss or None in (a, b) or not u0 <= a <= b <= u1:
                 continue
-            if agc.category(gloss, s.get("sign_type", "")) == "index":
+            kind = agc.category(gloss, s.get("sign_type", ""))
+            if kind == "index":
                 served = agc.PRONOUNS.get(agc.index_key(gloss, s.get("occurrence", "")), ())
+            elif kind in ("lexicalised_fs", "fingerspelled"):
+                served = (agc.spelled_word(gloss),)
             else:
                 served = tuple(alt[0] for alt in agc.name_candidates(gloss) if len(alt) == 1)
             hits = [w for w in served if w in wanted]
             for w in hits:
                 shared[w].update(x for x in hits if x != w)
-                pools[w].append(dict(sign=f"{sign_id}#{k}", corpus=SEGMENT_CORPUS, gloss=gloss, occurrence=s.get("occurrence", ""),
+                pools[w].append(dict(sign=f"{sign_id}#{k}", corpus=SEGMENT_CORPUS, gloss=gloss, gloss_kind=kind, occurrence=s.get("occurrence", ""),
                                      partition="train", record_sign=sign_id, start=int(a - u0), end=int(b - u0),
                                      utterance_frames=int(u1 - u0 + 1), min_seconds=MIN_SEGMENT_SECONDS))
     return {t: sorted(v, key=lambda x: x["sign"]) for t, v in pools.items()}, {t: sorted(v) for t, v in shared.items()}
@@ -140,6 +165,13 @@ def draw(candidates: list, token: str, k: int = MAX_CHECKED) -> list:
     return sorted(random.Random(f"comp-a3|{token}").sample(candidates, k), key=lambda c: c["sign"])
 
 
+def pick_source(isolated: int, segments: int) -> str | None:
+    """The kind with more well-tracked clips serves a token; a tie goes to isolated, the form every r10 word uses."""
+    if not isolated and not segments:
+        return None
+    return "isolated" if isolated >= segments else "segment"
+
+
 def is_pointing(token: str, sources) -> bool:
     import asllrp_gloss_corpus as agc
     return token in agc.WORD_CLASSES["pronoun"] or any(s.get("corpus") == SEGMENT_CORPUS and agc.category(s["gloss"]) == "index"
@@ -150,91 +182,99 @@ def build(manifest10, manifest14, utterances, gloss_manifest, *, load_clip, load
           ranks: int = RANKS, d20_texts=None) -> dict:
     """The list. ``load_clip(record)``: a word clip as the composition serves it. ``load_utterance(record)``: as
     ``round20_lib.utterance_clip``."""
-    from signtranslator.generation.compositional import _matchable, isolated_corpora, training_vocabulary
+    from signtranslator.generation.compositional import isolated_corpora, training_vocabulary
     from round20_lib import segment_clip
     vocab = training_vocabulary(manifest10, isolated_corpora(manifest10))
-    ranked = ranked_tokens(manifest10, vocab)[:ranks]
+    every = ranked_tokens(manifest10, vocab)
+    ranked = every[:ranks]
     listed = {t for t, _ in ranked}
+    negations = sorted(t for t, _ in every if t.endswith("n't"))
     plain = [t for t in listed if "'" not in t]
     iso = isolated_candidates(manifest14, plain)
     segs, shared = token_segments(utterances, gloss_manifest, plain)
     prior_records = {t: len(iso.get(t, ())) for t in plain}
     rows, utterance_cache = [], {}
+    by_sign = {r["sign"]: r for r in gloss_manifest["records"]}
     for rank, (token, count) in enumerate(ranked, 1):
         row = dict(rank=rank, token=token, train_count=count, status="no_source", entry=None, source_kind=None, sources=[],
                    typical_seconds=None, candidates=dict(isolated=len(iso.get(token, ())), segments=len(segs.get(token, ()))),
                    checked=0, flags={})
         if "'" in token:
-            piece = token.split("'")[0]
-            if _matchable(piece, vocab):
-                row.update(status="alias_r10", entry=piece)
-            elif piece in listed:
-                row.update(status="alias_list", entry=piece)
-            row["flags"].update(contraction=True, negation=token.endswith("n't"))
-            row["flags"]["pointing"] = is_pointing(piece, ())
+            entry, status = contraction_entry(token, vocab, listed)
+            row.update(status=status, entry=entry)
+            row["flags"].update(contraction=True, negation=token.endswith("n't"),
+                                pointing=is_pointing(token.split("'")[0], ()) if not token.endswith("n't") else False)
+            row["source_rule"] = f"contraction: {status}, entry {entry}"
             rows.append(row)
             continue
         single = len(token) == 1
         row["flags"]["single_letter"] = single
-        kept, kind = [], None
+        kept_iso, kept_seg, checked_iso, checked_seg = [], [], 0, 0
         if not single:
-            checks = []
             for r in draw(iso.get(token, []), token):
+                checked_iso += 1
                 shares = tracked_shares(load_clip(r))
-                checks.append(shares)
                 if well_tracked(shares):
-                    kept.append(dict(sign=r["sign"], corpus=r["corpus"], partition=r["partition"],
-                                     signer_component=r.get("signer_component"), tracked=shares))
-            row["checked"] += len(checks)
-            if kept:
-                kind = "isolated"
-        if not kept:
-            for s in draw(segs.get(token, []), token):
-                sign = s["record_sign"]
-                if sign not in utterance_cache:
-                    utterance_cache[sign] = load_utterance(next(r for r in gloss_manifest["records"] if r["sign"] == sign))
-                piece = segment_clip(s, *utterance_cache[sign], margin=0.)
-                row["checked"] += 1
-                if piece is None:
-                    continue
-                shares = tracked_shares(piece["state"])
-                if well_tracked(shares):
-                    kept.append(dict(s, tracked=shares, seconds=round(len(piece["state"].timestamps) / 24., 4)))
-            if kept:
-                kind = "segment"
-        kept = kept[:MAX_KEPT]
+                    kept_iso.append(dict(sign=r["sign"], corpus=r["corpus"], partition=r["partition"],
+                                         signer_component=r.get("signer_component"), tracked=shares))
+        for s in draw(segs.get(token, []), token):
+            sign = s["record_sign"]
+            if sign not in utterance_cache:
+                utterance_cache[sign] = load_utterance(by_sign[sign])
+            piece = segment_clip(s, *utterance_cache[sign], margin=0.)
+            checked_seg += 1
+            if piece is None:
+                continue
+            shares = tracked_shares(piece["state"])
+            if well_tracked(shares):
+                kept_seg.append(dict(s, tracked=shares, seconds=round(len(piece["state"].timestamps) / 24., 4)))
+        kind = pick_source(len(kept_iso), len(kept_seg))
+        kept = (kept_iso if kind == "isolated" else kept_seg)[:MAX_KEPT]
+        row["checked"] = checked_iso + checked_seg
+        row["source_rule"] = (f"most well-tracked clips: isolated {len(kept_iso)} of {checked_iso} checked, segment {len(kept_seg)} of "
+                              f"{checked_seg} checked; {kind or 'none'} serves it")
         for source in kept:
             check_source_record(source)
         if kept:
             typical = (median_seconds([r["continuous"]["seconds"] for r in iso[token]]) if kind == "isolated"
                        else median_seconds([k["seconds"] for k in kept]) * trimmed_over_annotated)
             row.update(status="clips", entry=token, source_kind=kind, sources=kept, typical_seconds=round(typical, 4))
+        gloss_kinds = sorted({k.get("gloss_kind") for k in kept if k.get("gloss_kind")})
         row["flags"].update(pointing=is_pointing(token, kept or segs.get(token, [])), shared_gloss=shared.get(token, []),
-                            prior_train_records=prior_records[token], no_well_tracked_source=not kept, single_clip=len(kept) == 1)
+                            prior_train_records=prior_records[token], no_well_tracked_source=not kept, single_clip=len(kept) == 1,
+                            fingerspelled_source=any(k in ("lexicalised_fs", "fingerspelled") for k in gloss_kinds))
+        if token in PARTIAL_OPTIONS:
+            row["options_not_used"] = PARTIAL_OPTIONS[token]
         rows.append(row)
     entries = {r["token"] for r in rows if r["status"] == "clips"}
     for r in rows:                    # a contraction whose entry found no clip has no source after all
         if r["status"] == "alias_list" and r["entry"] not in entries:
             r["flags"]["no_well_tracked_source"] = True
     out = dict(kind="comp-a3-tokens", rule=RULE, min_arm=MIN_ARM, min_hand=MIN_HAND, trimmed_over_annotated=trimmed_over_annotated,
+               min_segment_seconds=MIN_SEGMENT_SECONDS, negation_tokens=negations,
                inputs=dict(rank_mix=dict(key=EVAL_MIX, sha256=EVAL_MIX_SHA), source_mix=dict(key=SOURCE_MIX, sha256=SOURCE_MIX_SHA)),
                tokens=rows)
     if d20_texts is not None:
-        out["d20_coverage_text_only"] = coverage_lines(d20_texts, vocab, rows)
+        out["d20_coverage_text_only"] = coverage_lines(d20_texts, vocab, rows, negations)
     return out
 
 
-def coverage_lines(texts, vocab, rows) -> dict:
+def unsigned_negation(details) -> int:
+    """Sentences holding an n't token that stays unmatched."""
+    return int(sum(any(r["kind"] == "unmatched" and r["tokens"][0].endswith("n't") for r in rows) for rows in details))
+
+
+def coverage_lines(texts, vocab, rows, negations=()) -> dict:
     """Words per sentence and token shares on D20's text under r10 and each arm. No rank depends on this; no motion is read."""
     from signtranslator.generation.compositional import selection_details, selection_statistics
     from comp_a_lib import apply_token_map, arm_of
     base = [selection_details(t, vocab) for t in texts]
-    out = dict(r10=_coverage(base, selection_statistics))
+    out = dict(r10=dict(_coverage(base, selection_statistics), sentences_with_unsigned_negation=unsigned_negation(base)))
     for top in TOPS:
-        arm = arm_of(dict(tokens=rows), top)
+        arm = arm_of(dict(tokens=rows, negation_tokens=list(negations)), top)
         details, _ = apply_token_map(base, arm["token_map"])
         out[f"top{top}"] = dict(_coverage(details, selection_statistics), new_entries=sorted(arm["entries"]),
-                                unsigned_ranks=sorted(arm["dropped"]))
+                                unsigned_ranks=sorted(arm["dropped"]), sentences_with_unsigned_negation=unsigned_negation(details))
     return out
 
 

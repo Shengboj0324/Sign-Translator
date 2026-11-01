@@ -43,10 +43,20 @@ sentence's total changes; the main form and its controls keep the reference's du
 is the blank at the predicted length in that form, and ``blank@predicted`` is its comparator, so the form is text-only.
 
 **Arm scale** (``arm_scale_state``, post-S2 plan A1; off unless asked for): each listed side's upper arm and forearm rotations
-are pulled toward their mean over the state's valid frames by the rotation power R -> M (M^T R)^f, f the scale. Timing, hands,
-torso, face and validity are untouched; f = 1 leaves the side exactly as it is. This is the amplitude change of the motion
-diagnosis (ledger 2026-10-31 22:58). It shrinks motion: it can pass a speed band by moving less, so it is read only beside real
-clips scaled the same way.
+are pulled toward their mean over the state's valid frames by the rotation power R -> M (M^T R)^f, f the scale. Timing, torso, face,
+validity and the hand channels' own values are untouched; the hands themselves do move, because they ride on the wrist the arm carries.
+f = 1 leaves the side exactly as it is. This is the amplitude change of the motion diagnosis (ledger 2026-10-31 22:58). It shrinks
+motion: it can pass a speed band by moving less, so it is read only beside real clips scaled the same way, and only as a sensitivity.
+
+**Left-arm hold** (``hold_left_arm``, post-S2 A1's ``hold`` arm; off unless asked for). A word annotated one-handed has no use for the
+left arm, yet composition sends that arm from each two-handed word down to the clip's rest and back up, inside a bridge. For each stretch
+between two anchor cores (any core not annotated one-handed) that holds a one-handed core, the left upper arm and forearm rotations follow
+a minimum-jerk slerp from the last pose of the anchor before to the first pose of the anchor after. At a sentence's edge the neighbouring
+anchor's pose is held; a sentence with no anchor holds the ready pose from How2Sign train. Everything else stays bit-exact: the right arm,
+the anchors, the hands' own values, every frame outside a stretch, and the plan. The wrist's chest-frame speed is capped at ``cap``: a
+stretch whose minimum-jerk peak exceeds it runs at constant speed, which has the lowest peak its frames allow; if even that exceeds the cap
+the plan's frames cannot satisfy it, and the stretch is counted as ``cap_bound``, never stretched and never left with a jump. No learned
+stage and no gloss; the annotation is read from the manifest's isolated records.
 """
 from __future__ import annotations
 
@@ -266,6 +276,128 @@ def arm_scale_state(state, *, left: float = 1., right: float = 1.):
     return replace(state, channels=dict(state.channels, body=replace(body, values=values.astype(body.values.dtype))))
 
 
+# ---- left-arm hold ---------------------------------------------------------------------------------------------------
+
+HOLD_JOINTS = ("LeftUpperArm", "LeftForearm")
+
+
+def frame_labels(plan: dict) -> np.ndarray:
+    """Per frame of a rendered plan: the core index k >= 0, -1 for a bridge, -2 for the lead-in or lead-out."""
+    labels = [-2] * plan["lead"]
+    for k, c in enumerate(plan["cores"]):
+        labels += [k] * c
+        if k < len(plan["gaps"]):
+            labels += [-1] * plan["gaps"][k]
+    labels += [-2] * plan["trail"]
+    return np.asarray(labels, dtype=int)
+
+
+def minimum_jerk(t: np.ndarray) -> np.ndarray:
+    t = np.asarray(t, dtype=np.float64)
+    return 10 * t ** 3 - 15 * t ** 4 + 6 * t ** 5
+
+
+def hold_stretches(labels: np.ndarray, one_handed) -> list[tuple[int, int]]:
+    """[(first, last)] inclusive frame ranges: each maximal stretch without an anchor core's frame that holds a one-handed core's frame.
+    ``one_handed[k]``: True for an annotated one-handed word; False or None (no annotation) makes the core an anchor."""
+    labels = np.asarray(labels)
+    is_one = np.array([k >= 0 and one_handed[k] is True for k in labels], dtype=bool)
+    anchor = np.array([k >= 0 and one_handed[k] is not True for k in labels], dtype=bool)
+    out, start = [], None
+    for i in range(len(labels) + 1):
+        if i == len(labels) or anchor[i]:
+            if start is not None and is_one[start:i].any():
+                out.append((start, i - 1))
+            start = None
+        elif start is None:
+            start = i
+    return out
+
+
+def _slerp(a: np.ndarray, b: np.ndarray, s: np.ndarray) -> np.ndarray:
+    """(n, 3, 3) from rotation ``a`` toward ``b`` by the fractions ``s``, along the geodesic."""
+    from scipy.spatial.transform import Rotation
+    vector = Rotation.from_matrix(a.T @ b).as_rotvec()
+    return a @ Rotation.from_rotvec(np.outer(s, vector)).as_matrix()
+
+
+def _anchor_pose(R, valid, start: int, step: int):
+    """The nearest valid pose from ``start`` going by ``step``, inside the run of frames ``valid`` marks; None past either end."""
+    i = start
+    while 0 <= i < len(valid):
+        if valid[i]:
+            return R[i]
+        i += step
+    return None
+
+
+def hold_left_arm(state, plan: dict, one_handed, *, ready: dict, cap: float, fps: float = FPS):
+    """(state, info): ``state`` with the left arm held across one-handed stretches (module docstring). ``ready``: {joint: 6D values} of
+    How2Sign train's ready pose; ``cap``: the wrist's chest-frame speed in metres per second."""
+    from .composition_space import to_6d, wrist_of_rotations
+    from .motion_metrics import _matrices
+    labels = frame_labels(plan)
+    body = state.channels["body"]
+    if len(labels) != len(body.values):
+        raise ValueError("the plan and the state differ in length")
+    index = {j: list(body.labels).index(j) for j in HOLD_JOINTS}
+    stretches = hold_stretches(labels, list(one_handed))
+    info = dict(stretches=len(stretches), frames=int(sum(b - a + 1 for a, b in stretches)), minimum_jerk=0, constant_speed=0, held=0, ready_pose=0,
+                cap_bound=0, cap=float(cap), peak=0.)
+    if not stretches:
+        return state, info
+    values = body.values.copy()
+    rotations = {j: _matrices(body.values[:, k].astype(np.float64)) for j, k in index.items()}
+    anchors = np.array([k >= 0 and one_handed[k] is not True for k in labels], dtype=bool)
+
+    def planned(a, b, profile):
+        out = {}
+        n = b - a + 1
+        for j, k in index.items():
+            ok = body.valid[:, k] & anchors
+            before = _anchor_pose(rotations[j], ok, a - 1, -1) if a > 0 else None
+            after = _anchor_pose(rotations[j], ok, b + 1, 1) if b < len(labels) - 1 else None
+            if before is None and after is None:
+                pose = _matrices(np.asarray(ready[j], dtype=np.float64))
+                out[j], kind = np.repeat(pose[None], n, 0), "ready_pose"
+            elif before is None or after is None:
+                pose = before if after is None else after
+                out[j], kind = np.repeat(pose[None], n, 0), "held"
+            else:
+                t = np.arange(1, n + 1) / (n + 1)
+                out[j], kind = _slerp(before, after, minimum_jerk(t) if profile == "minimum_jerk" else t), "moved"
+        return out, kind
+
+    def peak_of(a, b, poses):
+        """The wrist's peak chest-frame speed over the stretch, its entry step and its exit step included."""
+        lo, hi = max(a - 1, 0), min(b + 1, len(labels) - 1)
+        upper, fore = (rotations[j][lo:hi + 1].copy() for j in HOLD_JOINTS)
+        upper[a - lo:b - lo + 1], fore[a - lo:b - lo + 1] = poses[HOLD_JOINTS[0]], poses[HOLD_JOINTS[1]]
+        p = wrist_of_rotations(upper, fore, "Left")
+        seen = body.valid[lo:hi + 1, index[HOLD_JOINTS[0]]] & body.valid[lo:hi + 1, index[HOLD_JOINTS[1]]]
+        good = seen[1:] & seen[:-1]
+        return float(np.linalg.norm(p[1:] - p[:-1], axis=-1)[good].max() * fps) if good.any() else 0.
+
+    for a, b in stretches:
+        poses, kind = planned(a, b, "minimum_jerk")
+        peak = peak_of(a, b, poses)
+        if kind == "moved":
+            if peak > cap:
+                poses, _ = planned(a, b, "constant_speed")
+                peak = peak_of(a, b, poses)
+                info["constant_speed"] += 1
+                info["cap_bound"] += int(peak > cap)
+            else:
+                info["minimum_jerk"] += 1
+        else:
+            info[kind] += 1
+        info["peak"] = max(info["peak"], round(peak, 4))
+        for j, k in index.items():
+            ok = body.valid[a:b + 1, k]
+            values[a:b + 1, k][ok] = to_6d(poses[j])[ok].astype(values.dtype)
+    return replace(state, channels=dict(state.channels, body=replace(body, values=values))), info
+
+
 # ---- predicted sentence duration (report-only) -----------------------------------------------------------------------
 
 def fit_duration_model(manifest, corpus: str = H2S, partition: str = "train", *, components=None,
@@ -311,5 +443,6 @@ def predicted_seconds(model: dict, text: str, floor: float = .5) -> float:
 
 
 __all__ = ["FPS", "CONTINUOUS_RATIO", "SIDES", "MIN_SPEED", "MAX_GAP_SECONDS", "TOTAL_FITS", "continuous_seconds",
-           "boundary_speed", "bridge_frames", "continuous_plan", "lowpass_values", "lowpass_state", "arm_scale_state",
+           "boundary_speed", "bridge_frames", "continuous_plan", "lowpass_values", "lowpass_state", "arm_scale_state", "frame_labels",
+           "minimum_jerk", "hold_stretches", "hold_left_arm", "HOLD_JOINTS",
            "fit_duration_model", "predicted_seconds"]

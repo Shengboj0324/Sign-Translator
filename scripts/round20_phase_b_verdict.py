@@ -159,7 +159,7 @@ def checked_under_declaration(commit: str, run_check) -> dict:
 def c20_arm_choice(arm: dict, first: dict, *, shards_arm, shards_first, spec: dict, boot: int = 1000) -> dict:
     """Amendment 6, item 3, each item separately: which arm reads C20 if C20 runs. BLEU is not compared directly, only reported."""
     from round20_compare import compare_forms
-    c = compare_forms(arm, FORM, first, FORM, boot=boot, shards_a=shards_arm, shards_b=shards_first)
+    c = compare_forms(arm, FORM, first, FORM, boot=boot, declared="any", shards_a=shards_arm, shards_b=shards_first)
     point = exact_bleu(arm)
     likelihood = lower_bound_item((c.get("likelihood_minus_blank") or {}).get("difference"), 0.,
                                   "paired likelihood minus blank against the first arm")
@@ -306,11 +306,11 @@ def stack_check(load, load_shards, *, prior: str, w14b_checkpoint: str, r16_chec
         return report
 
     def against(a, b):
-        return estimates(compare_forms(a, FORM, b, FORM, boot=100))
+        return estimates(compare_forms(a, FORM, b, FORM, boot=100, declared="any"))
 
     def beats(name_a, a, name_b, b):
         """Amendment 3's test, and amendment 5's: both point estimates above 0 and v2 spotting's lower bound above the floor."""
-        c = compare_forms(a, FORM, b, FORM, boot=1000, shards_a=load_shards(name_a, a), shards_b=load_shards(name_b, b))
+        c = compare_forms(a, FORM, b, FORM, boot=1000, declared="any", shards_a=load_shards(name_a, a), shards_b=load_shards(name_b, b))
         guard = c["spotting_guard_lower_bound"]
         if guard is None:
             raise SystemExit(f"{name_a} against {name_b} cannot be judged: {c['spotting_guard'].get('reason')}")
@@ -463,7 +463,7 @@ def judge_val1000(arm: dict, comparator: dict, pilot: dict, *, shards_arm, shard
     check_arm_form(arm)
     if FORM not in (comparator.get("forms") or {}):
         raise SystemExit(f"the comparator has no {FORM} form")
-    check_pairable(arm, comparator)
+    check_pairable(arm, comparator, "any")          # the round's declared rule names this pair
     wrong = settings_differences(arm["settings"], comparator["settings"])
     wrong += arm_errors(arm["settings"], prior_checkpoint=prior_checkpoint, no_gains=no_gains, best_of=best_of, sentences=None,
                         lowpass=lowpass)

@@ -96,6 +96,9 @@ def on_stubs(tmp_path, text, env, *, smoke, gpu):
     if not gpu:
         smi.unlink()
     text = text.replace("source /root/r2env.sh\n", "").replace("cd /root/work/Sign-Translator\n", "")
+    # the launcher's own lines must never find a real interpreter or real credentials: only the stubs run, on a store that does not exist
+    text = text.replace("export PATH=/root/venv/bin:$PATH ", "export ")
+    assert "/root/venv/bin:" not in text
     text = text.replace("/root/venv/bin/python", "python").replace("/root/r20b-", f"{tmp_path}/r20b-")
     text = text.replace("/root/r20-", f"{tmp_path}/r20-")
     text = re.sub(r"^sha\(\) .*$", 'sha() { [ -n "${STUB_SHA_EMPTY:-}" ] || echo stubsha; }', text, flags=re.M)
@@ -105,7 +108,8 @@ def on_stubs(tmp_path, text, env, *, smoke, gpu):
                   flags=re.M)
     script = tmp_path / "job.sh"
     script.write_text(text)
-    e = dict(os.environ, PATH=f"{stubs}:/usr/bin:/bin", THREADS="8", STUB_LOG=str(log))
+    e = {k: v for k, v in os.environ.items() if not re.match(r"(R2_|AWS_|RUNPOD|HF_|HUGGING|OPENAI|ANTHROPIC|.*(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL))", k, re.I)}
+    e.update(PATH=f"{stubs}:/usr/bin:/bin", THREADS="8", STUB_LOG=str(log))
     for k in ("SMOKE", "LOWPASS", "NO_GAINS", "ARM", "CACHE_KEY"):
         e.pop(k, None)
     e.update(env)
@@ -1063,7 +1067,7 @@ def test_a9_states_its_origin_and_pairs_with_a7_and_a4_with_the_guard(tmp_path, 
     # forms pairs it with both, and the guard is not withheld: all three are generated words
     for other, shards, sources in ((a7, s7, {"generated"}), (a4, s4, {"cache"})):
         assert set(other["round20"]["per_variant"][FORM]["sources"]) == sources
-        c = compare_forms(a9, FORM, other, FORM, boot=20, shards_a=s9, shards_b=shards)
+        c = compare_forms(a9, FORM, other, FORM, boot=20, shards_a=s9, shards_b=shards, declared="any")
         assert c["sentences"] == 4 and "difference" in c["likelihood_minus_blank"]["difference"]
         assert c["spotting_guard"]["available"] and c["spotting_guard"]["word_source"] == ["generated"]
         assert c["spotting_guard_lower_bound"] is not None

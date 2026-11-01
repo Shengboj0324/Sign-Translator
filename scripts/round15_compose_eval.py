@@ -82,7 +82,9 @@ level of both.
 ``real@armscale``, the real clip with the same scales, read beside ``real``. ``--vocabulary-extra-file/-sha256/-top`` adds the
 pre-registered list's first ranks after the unchanged selection (``comp_a_lib.apply_token_map``); oracle words draw from the
 list's clips only, and generated words need ``--word-cache-extra-key/-sha256``, a cache of the new entries alone.
-``--oracle-choice-key/-sha256/-n`` serves oracle_stage2 one chosen real clip per entry (``comp_a_real_choice.py``).
+``--oracle-choice-key/-sha256/-pick`` serves oracle_stage2 one real clip per entry (``comp_a_clip_choice.py``). ``--hold-left-file/-sha256``
+holds the left arm across one-handed stretches of every composed form (``composition_v2.hold_left_arm``). Every such run also stores each
+form's per-side wrist read and two-handed contact read (``comp_a_lib.motion_row``), merged as ``comp_a_motion``.
 
 **merge** (CPU): the shards' partial reports (all of 0..K-1, the same settings and clips, disjoint and complete) are
 combined in clip order and scored as ``round15_stage2`` scores: corpus BLEU with the pilot's bootstrap, paired
@@ -269,8 +271,8 @@ ROUND20_DEFAULTS = dict(sentences_key=None, vocabulary_mix_key=None, semlex_core
                         retime="reference", tempo=1., lowpass_hz=None, word_cache_key=None, likelihood=False,
                         predicted_duration=False, semlex_oracle_tracked=False, lowpass_report_hz=None,
                         no_decoder_gains=False, arm_scale=None, vocabulary_extra_file=None, word_cache_extra_key=None,
-                        oracle_choice_key=None)
-COMP_A_OPTIONS = ("arm_scale", "vocabulary_extra", "word_cache_extra", "oracle_choice")   # settings.round20 keys, absent when off
+                        oracle_choice_key=None, hold_left_file=None, comp_a_read=False)
+COMP_A_OPTIONS = ("comp_a_read", "arm_scale", "hold_left", "vocabulary_extra", "word_cache_extra", "oracle_choice")   # settings.round20 keys, absent when off
 
 
 def round20_on(args) -> bool:
@@ -301,14 +303,18 @@ def comp_a_settings(args) -> dict:
     """The post-S2 options that are on, and only those, so a run without them has exactly the settings it had."""
     from comp_a_lib import parse_arm_scale
     out = {}
+    if args.comp_a_read:
+        out["comp_a_read"] = True
     if args.arm_scale:
         out["arm_scale"] = parse_arm_scale(args.arm_scale)
+    if args.hold_left_file:
+        out["hold_left"] = dict(sha256=args.hold_left_sha256)
     if args.vocabulary_extra_file:
         out["vocabulary_extra"] = dict(sha256=args.vocabulary_extra_sha256, top=args.vocabulary_extra_top)
     if args.word_cache_extra_key:
         out["word_cache_extra"] = dict(key=args.word_cache_extra_key, sha256=args.word_cache_extra_sha256)
     if args.oracle_choice_key:
-        out["oracle_choice"] = dict(key=args.oracle_choice_key, sha256=args.oracle_choice_sha256, n=args.oracle_choice_n)
+        out["oracle_choice"] = dict(key=args.oracle_choice_key, sha256=args.oracle_choice_sha256, pick=args.oracle_choice_pick)
     return out
 
 
@@ -404,6 +410,11 @@ def render_round20(args, material, job, reference_seconds, model, vocab, *, orde
     if getattr(args, "arm_scale", None):
         from comp_a_lib import parse_arm_scale
         state = cv2.arm_scale_state(state, **parse_arm_scale(args.arm_scale))
+    hold = getattr(args, "hold_config", None)
+    if hold:
+        words = [job["words"][k] for k in (range(len(job["words"])) if order is None else order)]
+        state, info = cv2.hold_left_arm(state, plan, [hold["annotations"].get(w) for w in words], ready=hold["ready"], cap=hold["cap"])
+        plan = dict(plan, hold=info)
     return state, plan
 
 
@@ -578,6 +589,7 @@ def run(args) -> dict:
         token_list = load_token_list(args.vocabulary_extra_file, args.vocabulary_extra_sha256)
         arm = arm_of(token_list, args.vocabulary_extra_top)
         vocab = dict(vocab, **extra_vocabulary(arm))
+        widening = token_list.get("min_segment_seconds")
         # a new entry's timing is its own: never that of a letter clip of the same spelling (ASLLVD's "i")
         plan_model = dict(model, timing=dict(model["timing"], annotated={k: v for k, v in model["timing"]["annotated"].items()
                                                                          if k not in arm["entries"]}))
@@ -664,12 +676,11 @@ def run(args) -> dict:
                                         model_corpora=list(model_corpora)))
         if args.semlex_core == "activity":
             fractions = dict(fractions, activity=frozenset(semlex_only), activity_margin=args.activity_margin)
-        if arm:                                          # the new entries' cores: the activity rule on the clip itself
+        if arm:     # the new entries' cores: the pooled annotated fraction, the rule their plan weight assumes; never a letter's own fraction
             fractions = dict(fractions, entries={k: v for k, v in fractions["entries"].items() if k not in arm["entries"]},
-                             activity=frozenset(set(fractions.get("activity") or ()) | set(arm["entries"])),
-                             activity_margin=args.activity_margin)
+                             min_seconds={e: widening for e in arm["entries"]} if widening else {})
             selected = collections.Counter(r["tokens"][0] for rows in details for r in rows if r.get("extra"))
-            r20_info["vocabulary_extra"] = dict(top=arm["top"], tokens=dict(selected), new_entries=sorted(arm["entries"]),
+            r20_info["vocabulary_extra"] = dict(top=arm["top"], tokens=dict(selected), new_entries=sorted(arm["entries"]), min_segment_seconds=widening,
                                                 unsigned_ranks=arm["dropped"], source_kinds={
                                                     e: r["source_kind"] for e, r in arm["entries"].items()})
     mode = dict(timing=args.timing, fractions=fractions, margin=margin, tighten=args.tighten_cores)
@@ -721,7 +732,7 @@ def run(args) -> dict:
                 pools, needed & set(semlex_only_entries(pools)), load=load, loaded=loaded, floor=TRACKED_FLOOR)
         choice = None
         if getattr(args, "oracle_choice_key", None):      # post-S2 A4: one chosen real clip per entry
-            from comp_a_real_choice import load_choice
+            from comp_a_clip_choice import load_choice
             choice = load_choice(store, args, pools, corpora)
             r20_info["oracle_choice"] = choice["info"]
         if extra_segments:                                # post-S2 A3: the list's segments; every other word as the oracle's
@@ -745,6 +756,14 @@ def run(args) -> dict:
                     material[k] = r2.oracle_material(j, k[2], pools, loaded=loaded, load=load, rule=rule, **mode,
                                                      **({"records": [choice["records"][w] for w in j["words"]]} if choice else {}))
     clock["compose"] = time.time()
+    comp_on = comp_a_on(args)
+    annotations = {}
+    if comp_on:                                      # post-S2: the manifest's annotation, for the contact read and the hold
+        from comp_a_lib import entry_annotations, load_hold_stats, motion_row
+        annotations = entry_annotations(word_pools(vmanifest, corpora))
+        if args.hold_left_file:
+            args.hold_config = dict(load_hold_stats(args.hold_left_file, args.hold_left_sha256), annotations=annotations)
+    comp_motion = {i: {} for i in mine}
     if r20:                                          # each word clip's dominant-arm tracked share (reported per variant)
         from round20_lib import right_tracked_share
         for m in material.values():
@@ -780,6 +799,10 @@ def run(args) -> dict:
                                                    bridge=args.bridge)
                 if c == "":
                     plans_out[i][v] = dict(frames=fp["frames"], fit=fp["fit"], overlong=fp["overlong"])
+                    if comp_on:
+                        comp_motion[i][v] = motion_row(states[i], fp, [annotations.get(w) for w in job["words"]])
+                        if fp.get("hold"):
+                            plans_out[i][v]["hold"] = fp["hold"]
                     if knobs_on:
                         plans_out[i][v].update(space=fp.get("space"), bridge=args.bridge, cores=[
                             {k2: s.get(k2) for k2 in ("reason", "lo", "hi", "tightened")}
@@ -805,6 +828,10 @@ def run(args) -> dict:
                                                predicted_seconds(r20_info["duration_model"], texts[i]), model, vocab,
                                                order=None, sample_id=f"round15-eval-{v}{PREDICTED}:{i}", space=space)
                 plans_out[i][v]["predicted"] = dict(frames=fp["frames"], fit=fp["fit"])
+                if comp_on:
+                    comp_motion[i][f"{v}{PREDICTED}"] = motion_row(states[i], fp, [annotations.get(w) for w in job["words"]])
+                    if fp.get("hold"):
+                        plans_out[i][v]["predicted"]["hold"] = fp["hold"]
             forms[f"{v}{PREDICTED}"] = states
         if r20 and args.lowpass_report_hz:         # A6: the same rendered main forms, low-passed (same material)
             from signtranslator.generation.composition_v2 import lowpass_state
@@ -813,6 +840,11 @@ def run(args) -> dict:
         from comp_a_lib import parse_arm_scale
         from signtranslator.generation.composition_v2 import arm_scale_state
         forms[REAL_SCALED] = {i: arm_scale_state(refs[i], **parse_arm_scale(args.arm_scale)) for i in mine}
+    if comp_on:
+        for i in mine:
+            comp_motion[i]["real"] = motion_row(refs[i])
+            if REAL_SCALED in forms:
+                comp_motion[i][REAL_SCALED] = motion_row(forms[REAL_SCALED][i])
     refiner_info = None
     if refining:                     # every composed form refined, per global block (module docstring)
         from signtranslator.generation.refiner import load_refiner, load_target_index, refine_states, tokenize_state
@@ -933,6 +965,7 @@ def run(args) -> dict:
                                  for v in variants if v in r2.GENERATED} if args.rerank > 1 else None,
                          **({"frames_blank_predicted": len(forms[BLANK_PREDICTED][i].timestamps)}
                             if BLANK_PREDICTED in forms else {}),
+                         **({"comp_a_motion": comp_motion[i]} if comp_on else {}),
                          **({"likelihood": likelihood[i]} if likelihood is not None else {})))
     settings = dict(clips=n, shards=args.shards, block=args.block, seed=args.seed, mix_key=args.mix_key,
                     mix_sha256=args.mix_sha256, corpora=list(corpora), variants=variants, selection=args.selection,
@@ -1090,6 +1123,14 @@ def merge(args, store) -> dict:
     overlong = {v: int(sum(bool((r["plans"].get(v) or {}).get("overlong")) for r in rows)) for v in variants}
     extra = merge_round20(partials, rows, variants)
     extra.update(predicted_report(rows, variants, texts, s))
+    if rows[0].get("comp_a_motion"):
+        from comp_a_lib import motion_report
+        extra["comp_a_motion"] = motion_report(rows)
+        holds = [p for r in rows for v in variants for p in ((r["plans"].get(v) or {}).get("hold"),
+                                                             ((r["plans"].get(v) or {}).get("predicted") or {}).get("hold")) if p]
+        if holds:
+            extra["hold_left"] = {k: int(sum(h[k] for h in holds)) for k in ("stretches", "frames", "minimum_jerk", "constant_speed", "held", "ready_pose", "cap_bound")}
+            extra["hold_left"].update(cap=holds[0]["cap"], peak=max(h["peak"] for h in holds))
     if rows[0].get("likelihood"):                      # round 20's selection metric (--likelihood)
         from round20_lib import likelihood_summary
         other_ll = (json.loads(store.get(args.paired_with)).get("likelihood") if args.paired_with else None)
@@ -1161,7 +1202,8 @@ def _write(store, args, payload: dict) -> None:
 
 
 def comp_a_on(args) -> bool:
-    return any(getattr(args, k, None) for k in ("arm_scale", "vocabulary_extra_file", "word_cache_extra_key", "oracle_choice_key"))
+    return any(getattr(args, k, None) for k in ("arm_scale", "hold_left_file", "vocabulary_extra_file", "word_cache_extra_key", "oracle_choice_key",
+                                                "comp_a_read"))
 
 
 def comp_a_errors(p, args, variants) -> None:
@@ -1170,7 +1212,7 @@ def comp_a_errors(p, args, variants) -> None:
     if not comp_a_on(args):
         given = [f for f, v in (("--vocabulary-extra-sha256", args.vocabulary_extra_sha256), ("--vocabulary-extra-top", args.vocabulary_extra_top),
                                 ("--word-cache-extra-sha256", args.word_cache_extra_sha256), ("--oracle-choice-sha256", args.oracle_choice_sha256),
-                                ("--oracle-choice-n", args.oracle_choice_n)) if v]
+                                ("--oracle-choice-pick", args.oracle_choice_pick), ("--hold-left-sha256", args.hold_left_sha256)) if v]
         if given:
             p.error(f"{', '.join(given)}: given without the option they qualify")
         return
@@ -1196,9 +1238,14 @@ def comp_a_errors(p, args, variants) -> None:
             p.error("--vocabulary-extra-file with generated words needs --word-cache-extra-key (no fresh generation)")
     if args.word_cache_extra_key and (not args.word_cache_extra_sha256 or not args.word_cache_key or not args.vocabulary_extra_file):
         p.error("--word-cache-extra-key needs --word-cache-extra-sha256, --word-cache-key and --vocabulary-extra-file")
+    if args.hold_left_file:
+        if not args.hold_left_sha256:
+            p.error("--hold-left-file needs --hold-left-sha256")
+        if args.arm_scale or variants != ["core_crossfade"] or args.selection != "stage1" or args.timing != "sign-fitted" or args.retime != "reference":
+            p.error("--hold-left-file: core_crossfade alone, stage-1 selection, sign-fitted timing, reference retiming, no arm scale")
     if args.oracle_choice_key:
-        if not args.oracle_choice_sha256 or not args.oracle_choice_n:
-            p.error("--oracle-choice-key needs --oracle-choice-sha256 and --oracle-choice-n")
+        if not args.oracle_choice_sha256 or not args.oracle_choice_pick:
+            p.error("--oracle-choice-key needs --oracle-choice-sha256 and --oracle-choice-pick")
         if variants != ["oracle_stage2"] or args.oracle_source != "isolated" or args.vocabulary_extra_file:
             p.error("--oracle-choice-key serves oracle_stage2 alone, isolated, on r10's vocabulary")
 
@@ -1391,9 +1438,12 @@ def main(argv=None) -> int:
     q.add_argument("--vocabulary-extra-top", type=int, help="how many ranks")
     q.add_argument("--word-cache-extra-key", help="a word cache of the list's new entries alone (generated words)")
     q.add_argument("--word-cache-extra-sha256")
-    q.add_argument("--oracle-choice-key", help="scripts/comp_a_real_choice.py's index: one chosen real clip per entry")
+    q.add_argument("--oracle-choice-key", help="scripts/comp_a_clip_choice.py's index: one real clip per entry")
     q.add_argument("--oracle-choice-sha256")
-    q.add_argument("--oracle-choice-n", type=int, help="which best-of-N choice of that index")
+    q.add_argument("--oracle-choice-pick", help="which pick of that index: 4, 8, 16, sample0, draw1 ...")
+    q.add_argument("--hold-left-file", help="the committed statistics (scripts/comp_a_hold_stats.py): the left arm held across one-handed stretches")
+    q.add_argument("--hold-left-sha256")
+    q.add_argument("--comp-a-read", action="store_true", help="the margin-0 comparator's read: D20 only, report-only, per-side motion and contact, no other change")
     m = sub.add_parser("merge", help="combine the shards and score")
     m.add_argument("--shard-keys", default="")
     m.add_argument("--shard-files")

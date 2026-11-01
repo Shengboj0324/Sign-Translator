@@ -443,7 +443,7 @@ def test_a7_shares_a0s_jobs_and_codes_in_spawned_workers_and_pairs_with_it(tmp_p
     assert "no_decoder_gains" not in m0["round20"]["settings"]
     assert m7["forms"]["real"]["hypotheses"] == m0["forms"]["real"]["hypotheses"]
     out = tmp_path / "pair.json"
-    assert compare_main(["forms", "--store", f"dir:{tmp_path / 'store'}", "--a", "e/a7-nogains-r10.json:core_crossfade",
+    assert compare_main(["forms", "--declared-difference", "no_decoder_gains", "--store", f"dir:{tmp_path / 'store'}", "--a", "e/a7-nogains-r10.json:core_crossfade",
                          "--b", "e/a0-w14b-r10.json:core_crossfade", "--bootstrap", "20", "--output-file", str(out)]) == 0
     pair = json.loads(out.read_text())
     assert pair["sentences"] == len(texts) and "likelihood_minus_blank" in pair
@@ -727,14 +727,14 @@ def test_the_spotting_guard_reads_the_shards_and_leaves_the_rule_alone(tmp_path,
     merge(tmp_path, "e/a7-shard0.json", "e/a7.json")
     s0, s7, m0, m7 = (json.loads(store.get(f"e/{k}.json")) for k in ("a0-shard0", "a7-shard0", "a0", "a7"))
     recall = lambda s, f: [r["spotting"][f]["own"]["recall"] for r in s["clips"]]  # noqa: E731
-    out = compare_forms(m7, "core_crossfade", m0, "core_crossfade", boot=50, shards_a=[s7], shards_b=[s0])
+    out = compare_forms(m7, "core_crossfade", m0, "core_crossfade", boot=50, declared=("no_decoder_gains",), shards_a=[s7], shards_b=[s0])
     g = out["spotting_guard"]
     assert g["available"] and g["recogniser"] == "sign-recognizer-v2" and g["word_source"] == ["generated"]
     assert g["difference"] == lib.paired_mean(recall(s7, "core_crossfade"), recall(s0, "core_crossfade"), boot=50)
     assert g["a"] == lib.paired_mean(recall(s7, "core_crossfade"), boot=50)
     assert out["spotting_guard_lower_bound"] == g["difference"]["ci95"][0] and "same word source" in g["note"]
     # the adoption rule does not read it, and no shards simply means no guard
-    plain = compare_forms(m7, "core_crossfade", m0, "core_crossfade", boot=50)
+    plain = compare_forms(m7, "core_crossfade", m0, "core_crossfade", boot=50, declared=("no_decoder_gains",))
     assert plain["both_improve"] == out["both_improve"] == (
         out["bleu"]["difference"] > 0 and out["likelihood_minus_blank"]["difference"]["difference"] > 0)
     assert not plain["spotting_guard"]["available"] and plain["spotting_guard_lower_bound"] is None
@@ -745,7 +745,7 @@ def test_the_spotting_guard_reads_the_shards_and_leaves_the_rule_alone(tmp_path,
             r["spotting"]["core_crossfade"] = dict(r["spotting"]["core_crossfade"], own=dict(recall=x),
                                                    mismatched=dict(recall=y))
         return dict(shard, clips=rows)
-    known = compare_forms(m7, "core_crossfade", m0, "core_crossfade", boot=50,
+    known = compare_forms(m7, "core_crossfade", m0, "core_crossfade", boot=50, declared=("no_decoder_gains",),
                           shards_a=[with_recalls(s7, [1., .5, None, 0.], [0.] * 4)],
                           shards_b=[with_recalls(s0, [.5, .5, 1., 1.], [1.] * 4)])["spotting_guard"]
     assert known["difference"]["difference"] == pytest.approx((.5 + 0. - 1.) / 3, abs=1e-4) and known["difference"]["n"] == 3
@@ -756,30 +756,30 @@ def test_the_spotting_guard_reads_the_shards_and_leaves_the_rule_alone(tmp_path,
         [x + 1. if x is not None else None for x in row] if isinstance(row, list) else row + 1.
         for row in m0["likelihood"]["per_form"]["core_crossfade"]]
     bad = [with_recalls(s7, [0.] * 4, [0.] * 4)], [with_recalls(s0, [1.] * 4, [0.] * 4)]
-    worse = compare_forms(better, "core_crossfade", m0, "core_crossfade", boot=50, shards_a=bad[0], shards_b=bad[1])
+    worse = compare_forms(better, "core_crossfade", m0, "core_crossfade", boot=50, declared=("no_decoder_gains",), shards_a=bad[0], shards_b=bad[1])
     assert worse["both_improve"] and worse["spotting_guard_lower_bound"] == -1.
-    assert compare_forms(better, "core_crossfade", m0, "core_crossfade", boot=50)["both_improve"]
+    assert compare_forms(better, "core_crossfade", m0, "core_crossfade", boot=50, declared=("no_decoder_gains",))["both_improve"]
     # the checkpoint and mix keys are reported, not compared
     assert out["a"]["checkpoint_key"] == out["b"]["checkpoint_key"] == "prior.pt"
     assert out["a"]["mix_key"] == "mix.json" and out["a"]["generator_mix_key"] == "mix.json"
     other = dict(m0, settings=dict(m0["settings"], checkpoint_key="other.pt"))
-    assert compare_forms(m7, "core_crossfade", other, "core_crossfade", boot=20)["b"]["checkpoint_key"] == "other.pt"
+    assert compare_forms(m7, "core_crossfade", other, "core_crossfade", boot=20, declared=("no_decoder_gains",))["b"]["checkpoint_key"] == "other.pt"
     # withheld across word sources, for other recognisers and for forms without per-clip spotting
-    cross = compare_forms(m7, "core_crossfade", m0, "oracle_stage2", boot=20, shards_a=[s7], shards_b=[s0])
+    cross = compare_forms(m7, "core_crossfade", m0, "oracle_stage2", boot=20, declared=("no_decoder_gains",), shards_a=[s7], shards_b=[s0])
     assert not cross["spotting_guard"]["available"] and "word sources" in cross["spotting_guard"]["reason"]
     assert cross["spotting_guard_lower_bound"] is None and "difference" not in cross["spotting_guard"]
     v3 = dict(m0, settings=dict(m0["settings"], recognizer_run="sign-recognizer-v3d"))
-    assert "not sign-recognizer-v2" in compare_forms(m7, "core_crossfade", v3, "core_crossfade", boot=20, shards_a=[s7],
+    assert "not sign-recognizer-v2" in compare_forms(m7, "core_crossfade", v3, "core_crossfade", boot=20, declared=("no_decoder_gains",), shards_a=[s7],
                                                      shards_b=[s0])["spotting_guard"]["reason"]
-    assert not compare_forms(m7, "core_crossfade/shuffled", m0, "core_crossfade/shuffled", boot=20, shards_a=[s7],
+    assert not compare_forms(m7, "core_crossfade/shuffled", m0, "core_crossfade/shuffled", boot=20, declared=("no_decoder_gains",), shards_a=[s7],
                              shards_b=[s0])["spotting_guard"]["available"]
     with pytest.raises(SystemExit, match="not this report's"):                   # shards of other clips
-        compare_forms(m7, "core_crossfade", m0, "core_crossfade", boot=20, shards_a=[s7],
+        compare_forms(m7, "core_crossfade", m0, "core_crossfade", boot=20, declared=("no_decoder_gains",), shards_a=[s7],
                       shards_b=[dict(s0, clips=list(reversed(s0["clips"]))[1:])])
     with pytest.raises(SystemExit, match="not this report's"):                   # or of another run
-        compare_forms(m7, "core_crossfade", m0, "core_crossfade", boot=20, shards_a=[s0], shards_b=[s0])
+        compare_forms(m7, "core_crossfade", m0, "core_crossfade", boot=20, declared=("no_decoder_gains",), shards_a=[s0], shards_b=[s0])
     # the command line: shards by the phase script's names, by given keys, or none
-    root = ["forms", "--store", f"dir:{tmp_path / 'store'}", "--bootstrap", "20"]
+    root = ["forms", "--declared-difference", "no_decoder_gains", "--store", f"dir:{tmp_path / 'store'}", "--bootstrap", "20"]
     pair = ["--a", "e/a7.json:core_crossfade", "--b", "e/a0.json:core_crossfade"]
     assert compare_main([*root, *pair, "--output-file", str(tmp_path / "p1.json")]) == 0
     assert json.loads((tmp_path / "p1.json").read_text())["spotting_guard"]["available"]

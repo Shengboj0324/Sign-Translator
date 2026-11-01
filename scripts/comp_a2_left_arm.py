@@ -19,6 +19,14 @@ is not tracked. A generated word takes its entry's majority annotation. ``annota
 
 **The defect the scale could hide** is a resting arm travelling between rest poses. ``what_if`` gives the arithmetic bound for each
 candidate: the left speed ratio if that path were zero with the same steps. These are bounds on a metric, not new motion.
+
+**One set of joins** (``comp_a_lib.bridge_kind``) serves the medians and the region shares alike, so a median and a share always describe the
+same joins. ``one_to_two`` is an annotated one-handed word against an annotated two-handed one.
+
+**Operating points.** ``a9_predicted_margin01`` is a10's a9@predicted, ``a9_predicted_margin0`` is A1's margin0 arm, and ``hold`` is that arm with the
+left arm really held (``composition_v2.hold_left_arm``): real rotations, real spread, per side, contact, and how the speed cap fell. Motion only: no
+reader runs. The right wrist is no reference for the left, because real signing has the same asymmetry: read rest depth (``left_height``), frames and
+How2Sign train's own distribution (``reports/comp_a_hold_stats.json``).
 """
 from __future__ import annotations
 
@@ -35,7 +43,8 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 
-from comp_a_lib import D20_KEY, D20_SHA, check_d20_payload, require_d20  # noqa: E402
+from comp_a_lib import (D20_KEY, D20_SHA, annotated_label, annotated_two_handed, bridge_kind, check_d20_payload, contact_counts, entry_annotations,  # noqa: E402
+                        require_d20, side_read)
 
 FPS = 24.
 O = "acquisition/2026-10-17-v1/youtube-asl-v1"
@@ -51,8 +60,8 @@ ONE_HANDED = .35
 SIDES = ("left", "right")
 WRISTS = (4, 5)                      # the left and right wrists in the keypoint view (keypoints2d)
 REGIONS = ("core_one_handed", "core_two_handed", "bridge", "lead_trail")
-ANNOTATED_REGIONS = ("core_annotated_one", "core_annotated_two", "core_unannotated", "bridge_one_to_one", "bridge_touching_one",
-                     "bridge_other", "lead_trail")
+ANNOTATED_REGIONS = ("core_annotated_one", "core_annotated_two", "core_unannotated", "bridge_one_to_one", "bridge_one_to_two",
+                     "bridge_one_to_unannotated", "bridge_other", "lead_trail")
 
 
 # ---- pure pieces ---------------------------------------------------------------------------------------------------------
@@ -67,14 +76,8 @@ def side_steps(points: np.ndarray, valid: np.ndarray, fps: float = FPS) -> dict:
 
 
 def frame_labels(plan: dict) -> np.ndarray:
-    """Per frame of a rendered plan: the core index k >= 0, -1 for a bridge, -2 for the lead-in or lead-out."""
-    labels = [-2] * plan["lead"]
-    for k, c in enumerate(plan["cores"]):
-        labels += [k] * c
-        if k < len(plan["gaps"]):
-            labels += [-1] * plan["gaps"][k]
-    labels += [-2] * plan["trail"]
-    return np.asarray(labels)
+    from signtranslator.generation.composition_v2 import frame_labels as labels_of
+    return labels_of(plan)
 
 
 def step_regions(labels: np.ndarray, one_handed) -> list[str]:
@@ -92,8 +95,8 @@ def step_regions(labels: np.ndarray, one_handed) -> list[str]:
 
 
 def annotated_step_regions(labels: np.ndarray, one_handed) -> list[str]:
-    """``step_regions`` by the annotation: ``one_handed[k]`` True, False or None (no annotation). A bridge step takes the core
-    before it and the core after it: both one-handed, one of them, or neither."""
+    """``step_regions`` by the annotation: ``one_handed[k]`` True, False or None (no annotation). A bridge step takes the core before it and the
+    core after it, by ``comp_a_lib.bridge_kind``: the same set the join tables use."""
     labels = np.asarray(labels)
     last, before = None, []
     for x in labels:
@@ -114,7 +117,7 @@ def annotated_step_regions(labels: np.ndarray, one_handed) -> list[str]:
             out.append("lead_trail")
         else:
             x, y = one_handed[before[i]] if before[i] is not None else None, one_handed[after[i + 1]] if after[i + 1] is not None else None
-            out.append("bridge_one_to_one" if x is True and y is True else "bridge_touching_one" if x is True or y is True else "bridge_other")
+            out.append(f"bridge_{bridge_kind(x, y)}")
     return out
 
 
@@ -166,12 +169,6 @@ def join_kind(left_is_one: bool, right_is_one: bool) -> str:
     return f"{'one' if left_is_one else 'two'}_to_{'one' if right_is_one else 'two'}"
 
 
-def annotated_join(a, b) -> str:
-    if a is None or b is None:
-        return "unannotated"
-    return "one_to_one" if a and b else "touching_one" if a or b else "two_to_two"
-
-
 def summary(values) -> dict | None:
     v = [float(x) for x in values if x is not None and np.isfinite(x)]
     if not v:
@@ -215,31 +212,6 @@ def native_core_read(piece) -> dict:
     return out
 
 
-def annotated_label(record) -> bool | None:
-    """True for an annotated one-handed record, False for two-handed, None without an annotation."""
-    two = annotated_two_handed(record)
-    return None if two is None else not two
-
-
-def entry_annotations(pools) -> dict:
-    """{entry: True / False}: the majority annotation of an entry's records, for words with no record of their own (generated)."""
-    out = {}
-    for entry, records in pools.items():
-        labels = [x for x in map(annotated_label, records) if x is not None]
-        if labels:
-            out[entry] = sum(labels) * 2 > len(labels)
-    return out
-
-
-def annotated_two_handed(record) -> bool | None:
-    """ASLLVD's annotation: a non-dominant handshape means two hands. None where a corpus has no annotation."""
-    gloss = (record or {}).get("gloss") or {}
-    shapes = gloss.get("handshapes")
-    if shapes is None:
-        return None
-    return any(k.lower().startswith("non-dominant") and v for k, v in shapes.items())
-
-
 def read_clip(material, plan, state, *, records=None, annotations=None) -> dict:
     """One rebuilt sentence: per side the paths by region, each word's read and each join's. ``annotations``: the entry-level
     label for words without a record."""
@@ -270,7 +242,7 @@ def read_clip(material, plan, state, *, records=None, annotations=None) -> dict:
         a, b = start - 1, start + frames              # the last frame of core k and the first of core k + 1
         row = dict(kind=join_kind(words[k]["one_handed"], words[k + 1]["one_handed"]), frames=frames,
                    same_corpus=words[k]["corpus"] == words[k + 1]["corpus"], corpora=[words[k]["corpus"], words[k + 1]["corpus"]],
-                   annotated_kind=annotated_join(words[k]["annotated_one"], words[k + 1]["annotated_one"]),
+                   annotated_kind=bridge_kind(words[k]["annotated_one"], words[k + 1]["annotated_one"]),
                    same_performer=words[k]["performer"] is not None and words[k]["performer"] == words[k + 1]["performer"])
         if b < len(points) and a >= 0:
             for name, w in zip(SIDES, WRISTS):
@@ -345,6 +317,9 @@ def left_active(words) -> dict:
     return {c: dict(words=len(v), share=round(float(np.mean(v)), 4)) for c, v in sorted(by.items())}
 
 
+TOUCHING = ("bridge_one_to_one", "bridge_one_to_two", "bridge_one_to_unannotated")
+
+
 def annotated_tables(words, joins, paths, real: dict, scale: dict) -> dict:
     """The tables on the annotation's label: left against right on annotated one- and two-handed words, per corpus and per
     performer; joins by that label; and the arithmetic bound of each candidate defect."""
@@ -375,9 +350,10 @@ def annotated_tables(words, joins, paths, real: dict, scale: dict) -> dict:
                                                     for k, v in sorted(grouped.items())},
                 what_if={s: {"as_is": bound(s, ()), "no_path_on_annotated_one_handed_cores": bound(s, ("core_annotated_one",)),
                              "no_path_in_one_to_one_bridges": bound(s, ("bridge_one_to_one",)),
-                             "no_path_in_bridges_touching_one": bound(s, ("bridge_one_to_one", "bridge_touching_one")),
-                             "no_path_on_annotated_one_cores_or_bridges_touching_one": bound(s, ("core_annotated_one", "bridge_one_to_one", "bridge_touching_one")),
-                             "no_path_in_any_bridge": bound(s, ("bridge_one_to_one", "bridge_touching_one", "bridge_other"))} for s in SIDES})
+                             "no_path_in_one_to_two_bridges": bound(s, ("bridge_one_to_two",)),
+                             "no_path_in_bridges_touching_one": bound(s, TOUCHING),
+                             "no_path_on_annotated_one_cores_or_bridges_touching_one": bound(s, ("core_annotated_one", *TOUCHING)),
+                             "no_path_in_any_bridge": bound(s, (*TOUCHING, "bridge_other"))} for s in SIDES})
 
 
 def annotation_check(words) -> dict:
@@ -421,6 +397,66 @@ def form_report(clips, real_speeds) -> dict:
                 annotated=annotated_tables(words, joins, annotated, real, scales))
 
 
+def read_operating(state, plan, flags, hold_info=None) -> dict:
+    """One clip at an operating point, motion only: per side, contact, paths by the annotation's regions, joins and the left arm's rest depth."""
+    labels = frame_labels(plan)
+    points, valid = keypoints(state)
+    steps = side_steps(points, valid)
+    regions = annotated_step_regions(labels, flags)
+    sides = side_read(points, valid)
+    w = WRISTS[0]
+    ones = np.array([k >= 0 and flags[k] is True for k in labels], dtype=bool) & valid[:, w]
+    joins, start = [], plan["lead"]
+    for k in range(len(flags) - 1):
+        start += plan["cores"][k]
+        frames = plan["gaps"][k]
+        a, b = start - 1, start + frames
+        row = dict(annotated_kind=bridge_kind(flags[k], flags[k + 1]), frames=frames)
+        if a >= 0 and b < len(points):
+            for name, wr in zip(SIDES, WRISTS):
+                row[name] = float(np.linalg.norm(points[b, wr] - points[a, wr])) if valid[a, wr] and valid[b, wr] else None
+        joins.append(row)
+        start += frames
+    return dict(paths=path_by_region(steps, regions, ANNOTATED_REGIONS), sides=sides, contact=contact_counts(points, valid, labels, flags), joins=joins,
+                left_heights=points[ones, w, 1].tolist(), hold=hold_info)
+
+
+def operating_report(clips, real_rows, pooled, hold_stats=None) -> dict:
+    """The tables of one operating point, on one set of joins (module docstring)."""
+    good = [(c, r) for c, r in zip(clips, real_rows) if c is not None]
+    ratio = {}
+    for key in ("left_speed", "right_speed", "left_spread", "right_spread"):
+        pairs = [(c["sides"][key], r[key]) for c, r in good if c["sides"].get(key) is not None and r.get(key) is not None]
+        ratio[key] = round(float(np.mean([a for a, _ in pairs]) / np.mean([b for _, b in pairs])), 4)
+    paths = empty_paths(ANNOTATED_REGIONS)
+    joins, heights, holds, contact = [], [], [], [0, 0]
+    for c, _ in good:
+        add_paths(paths, c["paths"])
+        joins += c["joins"]
+        heights += c["left_heights"]
+        contact = [contact[0] + c["contact"][0], contact[1] + c["contact"][1]]
+        if c.get("hold"):
+            holds.append(c["hold"])
+    table = {}
+    for kind in ("one_to_one", "one_to_two", "one_to_unannotated", "other"):
+        rows = [j for j in joins if j["annotated_kind"] == kind]
+        table[kind] = dict(joins=len(rows), frames=summary(j["frames"] for j in rows), left_travel=summary(j.get("left") for j in rows),
+                           right_travel=summary(j.get("right") for j in rows))
+    def pooled_ratio(k):
+        """As ``mean_statistics`` and ``ratio_to``: each mean over the clips that have the number, a word-less clip counted for real only."""
+        form_values, real_values = [p[k] for p in pooled if p[k] is not None], [p[k + 1] for p in pooled if p[k + 1] is not None]
+        return round(float(np.mean(form_values) / np.mean(real_values)), 4) if form_values and real_values else None
+    out = dict(clips=len(good), ratio_to_real=dict(left=ratio["left_speed"], right=ratio["right_speed"]),
+               spread_to_real=dict(left=ratio["left_spread"], right=ratio["right_spread"]),
+               pooled_wrist_ratio=pooled_ratio(0), pooled_spread_ratio=pooled_ratio(2),
+               regions=region_table(paths), joins=table, contact_share=round(contact[0] / contact[1], 4) if contact[1] else None, contact_frames=contact[1],
+               left_height_on_annotated_one=summary(heights), left_path={k: v for k, v in paths["left"].items()})
+    if holds:
+        out["hold"] = {k: int(sum(h[k] for h in holds)) for k in ("stretches", "frames", "minimum_jerk", "constant_speed", "held", "ready_pose", "cap_bound")}
+        out["hold"].update(cap=holds[0]["cap"], peak=max(h["peak"] for h in holds))
+    return out
+
+
 def rebuild_check(stored_speed, built_speed) -> dict:
     d = [abs(a - b) for a, b in zip(stored_speed, built_speed) if a is not None and b is not None]
     return dict(clips=len(d), max_abs_difference=round(float(max(d)), 9) if d else None)
@@ -433,11 +469,13 @@ def main(argv=None) -> int:
     p.add_argument("--store", default="r2")
     p.add_argument("--clips", type=int, default=500)
     p.add_argument("--cache-dir", default=str(Path(tempfile.gettempdir()) / "sign-translator-cache"))
+    p.add_argument("--hold-stats-file", default=str(ROOT / "reports/comp_a_hold_stats.json"))
     p.add_argument("--output-file", required=True)
     args = p.parse_args(argv)
     if Path(args.output_file).exists():
         raise SystemExit(f"{args.output_file} exists: refusing to overwrite")
     from signtranslator.data_engineering.corpus_manifest import ContentCache
+    from signtranslator.generation.composition_v2 import fit_duration_model, hold_left_arm, predicted_seconds
     from signtranslator.generation import compositional_grammar as cg
     from signtranslator.generation.compositional import CORE_RULE, isolated_corpora, render, training_vocabulary
     from compositional_baseline import motion_rows
@@ -480,6 +518,15 @@ def main(argv=None) -> int:
     template = layout_template(manifest, TEMPLATE_CORPUS, cache, store.get)
     load = lambda r: word_clip(r, cache=cache, fetch=store.get, template=template)    # noqa: E731
     annotations = entry_annotations(pools)
+    duration = fit_duration_model(manifest)
+    if (duration["intercept"], duration["slope"], duration["records"]) != (-.083, .3691, 18289):
+        raise SystemExit(f"the duration model is {duration}, not a10's")
+    stats = json.loads(Path(args.hold_stats_file).read_bytes())["how2sign_train"]
+    cores0 = partial(r2.sign_core, fractions=fractions, margin=0., tighten=False)
+    rule0 = dict(CORE_RULE, margin=0.)
+    operating = {k: [] for k in ("a9_predicted_margin01", "a9_predicted_margin0", "hold")}
+    pooled = {k: [] for k in operating}
+    real_rows = []
     cached_states = {}
     stored = {name: {r["sign"]: (r["motion"].get(STORED_FORM[name]) or {}).get("wrist_speed")
                      for r in json.loads(store.get(key))["clips"]} for name, key in STORED.items()}
@@ -492,10 +539,15 @@ def main(argv=None) -> int:
         points, valid = keypoints(ref)
         steps = side_steps(points, valid)
         real_speeds.append({n: (float(sp[ok].mean()) if ok.any() else None) for n, (sp, ok) in steps.items()})
+        real_rows.append(side_read(points, valid))
         words = words1[i]
         if not words:
             clips["oracle"].append(None)
             clips["a9"].append(None)
+            real_row = motion_rows([ref], [ref], FPS)[0]
+            for k in operating:
+                operating[k].append(None)
+                pooled[k].append((None, real_row["wrist_speed"], None, real_row["wrist_spread"]))
             continue
         seconds = float(ref.timestamps[-1] - ref.timestamps[0]) + 1 / FPS
         plan_words = r2.plan_words(words, model, vocab, rows=details[i])
@@ -515,12 +567,32 @@ def main(argv=None) -> int:
         state = render(material["parts"], plan, sample_id=f"a2-a9:{i}")
         clips["a9"].append(read_clip(material, plan, state, annotations=annotations))
         built["a9"].append((stored["a9"].get(record["sign"]), motion_rows([state], [ref], FPS)[0]["wrist_speed"]))
+        predicted = predicted_seconds(duration, record["text"])
+        plan_p = cg.fitted_plan(job["weights"], cg.gap_ratio(model["timing"]), predicted)
+        flags = [annotations.get(w) for w in words]
+
+        def at_point(name, state_p, plan_used, hold_info=None):
+            row = motion_rows([state_p], [ref], FPS)[0]
+            real_row = motion_rows([ref], [ref], FPS)[0]
+            operating[name].append(read_operating(state_p, plan_used, flags, hold_info))
+            pooled[name].append((row["wrist_speed"], real_row["wrist_speed"], row["wrist_spread"], real_row["wrist_spread"]))
+        at_point("a9_predicted_margin01", render(material["parts"], plan_p, sample_id=f"a2-p:{i}"), plan_p)
+        material0 = cached_material(job9, cached_states, cores=cores0, rule=rule0)
+        state0 = render(material0["parts"], plan_p, sample_id=f"a2-p0:{i}")
+        at_point("a9_predicted_margin0", state0, plan_p)
+        held, info = hold_left_arm(state0, plan_p, flags, ready=stats["ready_pose"], cap=stats["left_speed_p99"])
+        at_point("hold", held, plan_p, info)
         if (i + 1) % 25 == 0:
             print(f"{i + 1}/{len(val)} clips", flush=True)
     out = dict(kind="comp-a2-left-arm", report_only=True, clips=len(val), set=dict(key=D20_KEY, sha256=D20_SHA),
                cache=dict(key=CACHE_KEY, sha256=CACHE_SHA), note="no hypothesis was read; motion of stored words and clips only",
                rebuild_check={k: rebuild_check([a for a, _ in v], [b for _, b in v]) for k, v in built.items()},
                forms={k: form_report(v, real_speeds) for k, v in clips.items()})
+    for name, rows in operating.items():
+        out["forms"][name] = operating_report(rows, real_rows, pooled[name])
+    out["how2sign_train"] = {k: stats[k] for k in ("clips", "window_frames", "right_over_left_clip_speed", "left_speed_p99")}
+    out["how2sign_train"]["left"] = stats["sides"]["left"]
+    out["kept_from_two_definitions"] = "joins and regions share comp_a_lib.bridge_kind"
     data = json.dumps(out, indent=1).encode()
     with open(args.output_file, "xb") as stream:
         stream.write(data)

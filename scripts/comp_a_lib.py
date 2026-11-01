@@ -10,7 +10,8 @@ Wiki are refused by name, and any c00, test or held-out record is refused, which
 
 **Token list.** ``reports/comp_a3_tokens.json`` (``scripts/comp_a3_tokens.py``): ranked on How2Sign train texts only, committed
 before any read, pinned by its hash. ``arm_of`` turns it into one arm: the first ``top`` ranks. A rank with no source stays
-unsigned and is reported: nothing slides up into its place, so "top 10" means the same ten ranks however the sources fall.
+unsigned and is reported: nothing slides up into its place, so "top 10" means the same ten ranks however the sources fall. Every ``n't``
+token maps to ``not`` in every arm, whatever its rank: negation is meaning, and ``not`` is already an r10 entry, so this adds no clip.
 
 **Selection.** ``apply_token_map`` runs after the unchanged round-15 selection on the unchanged vocabulary: only tokens the
 selection left unmatched can change, so every r10 word, its position and its kind are exactly today's.
@@ -117,12 +118,14 @@ def arm_of(token_list: dict, top: int) -> dict:
         raise SystemExit(f"the token list does not hold ranks 1 to {top}")
     entries = {r["entry"]: r for r in rows if r["status"] == "clips"}
     token_map, dropped = {r["token"]: r["entry"] for r in rows if r["status"] == "clips"}, {}
+    for token in token_list.get("negation_tokens") or ():
+        token_map[token] = "not"
     for r in rows:
         if r["status"] == "clips":
             continue
         if r["status"] == "alias_r10" or (r["status"] == "alias_list" and r["entry"] in entries):
             token_map[r["token"]] = r["entry"]
-        else:
+        elif r["token"] not in token_map:
             dropped[r["token"]] = r["status"] if r["status"] != "alias_list" else f"its entry {r['entry']} is not in this arm"
     return dict(top=top, token_map=token_map, entries=entries, dropped=dropped)
 
@@ -141,6 +144,11 @@ def apply_token_map(details, token_map: dict) -> tuple[list, list]:
                 new.append(row)
         out.append(new)
     return out, [[r["entry"] for r in rows if r["kind"] in KEPT] for rows in out]
+
+
+def segment_widening(token_list: dict) -> float | None:
+    """The floor of a segment's piece the list declares (part of the arm: disclosed in its settings)."""
+    return token_list.get("min_segment_seconds")
 
 
 def extra_vocabulary(arm: dict) -> dict:
@@ -178,6 +186,123 @@ def extra_pools(arm: dict, manifest_records, gloss_records) -> tuple[dict, dict]
 
 def median_seconds(values) -> float:
     return float(statistics.median(values))
+
+
+# ---- annotation and motion, per side ------------------------------------------------------------------------------------
+
+WRISTS = dict(left=4, right=5)        # the wrists in the keypoint view (keypoints2d)
+CONTACT_WIDTHS = .5                   # both wrists within half a shoulder width: the keypoint view's own unit is one shoulder width
+
+
+def annotated_two_handed(record) -> bool | None:
+    """ASLLVD's and RIT's annotation: a non-dominant handshape means two hands. None where a record has no annotation."""
+    shapes = ((record or {}).get("gloss") or {}).get("handshapes")
+    if shapes is None:
+        return None
+    return any(k.lower().startswith("non-dominant") and v for k, v in shapes.items())
+
+
+def annotated_label(record) -> bool | None:
+    """True for an annotated one-handed record, False for two-handed, None without an annotation."""
+    two = annotated_two_handed(record)
+    return None if two is None else not two
+
+
+def entry_annotations(pools) -> dict:
+    """{entry: True / False}: the majority annotation of an entry's records, for words with no record of their own (generated). A tie is
+    not a majority of one-handed records, so it is two-handed; an entry with no annotation has no label."""
+    out = {}
+    for entry, records in pools.items():
+        labels = [x for x in map(annotated_label, records) if x is not None]
+        if labels:
+            out[entry] = sum(labels) * 2 > len(labels)
+    return out
+
+
+def bridge_kind(a, b) -> str:
+    """The one set of joins every table uses: both sides annotated one-handed; one-handed against annotated two-handed; one-handed against
+    an unannotated word; anything else."""
+    if a is True and b is True:
+        return "one_to_one"
+    if (a is True and b is False) or (a is False and b is True):
+        return "one_to_two"
+    if a is True or b is True:
+        return "one_to_unannotated"
+    return "other"
+
+
+def keypoint_view(state):
+    """(points, valid) in the report's own view (``compositional_baseline.motion_rows``'s path)."""
+    from signtranslator.data.keypoints2d import from_state, normalise
+    from evaluate_text_to_motion import at_rate
+    points, valid = from_state(at_rate(state, 24.))
+    return normalise(points, valid, y_down=False), valid
+
+
+def side_read(points, valid, fps: float = 24.) -> dict:
+    """Each wrist's speed and spread, exactly as ``keypoint_statistics`` reads both together."""
+    import numpy as np
+    out = {}
+    for side, w in WRISTS.items():
+        ok = valid[1:, w] & valid[:-1, w]
+        out[f"{side}_speed"] = float((np.linalg.norm(points[1:, w] - points[:-1, w], axis=-1)[ok] * fps).mean()) if ok.any() else None
+        seen = valid[:, w]
+        out[f"{side}_spread"] = float(points[seen, w].std(0).mean()) if seen.sum() >= 2 else None
+    return out
+
+
+def contact_counts(points, valid, labels, one_handed) -> list[int]:
+    """[frames with both wrists within ``CONTACT_WIDTHS``, frames with both wrists seen], on the cores of words annotated two-handed."""
+    import numpy as np
+    labels = np.asarray(labels)
+    two = np.array([k >= 0 and one_handed[k] is False for k in labels], dtype=bool)
+    seen = two & valid[:, WRISTS["left"]] & valid[:, WRISTS["right"]]
+    near = np.linalg.norm(points[:, WRISTS["left"]] - points[:, WRISTS["right"]], axis=-1) <= CONTACT_WIDTHS
+    return [int((near & seen).sum()), int(seen.sum())]
+
+
+def motion_row(state, plan=None, one_handed=None) -> dict:
+    """One rendered form's per-side read, and its contact counts when given its plan and labels."""
+    points, valid = keypoint_view(state)
+    row = side_read(points, valid)
+    if plan is not None:
+        from signtranslator.generation.composition_v2 import frame_labels
+        row["contact"] = contact_counts(points, valid, frame_labels(plan), one_handed)
+    return row
+
+
+def motion_report(rows) -> dict:
+    """Per form over the clips that read it, against ``real`` on the same clips: each side's mean speed and spread as a ratio to real's,
+    and the contact share of frames."""
+    import numpy as np
+    forms = sorted({f for r in rows for f in r.get("comp_a_motion", {})})
+    out = {}
+    for form in forms:
+        have = [r["comp_a_motion"] for r in rows if form in r.get("comp_a_motion", {})]
+        row = {}
+        for key in ("left_speed", "right_speed", "left_spread", "right_spread"):
+            pairs = [(x[form][key], x["real"][key]) for x in have if x[form].get(key) is not None and x["real"].get(key) is not None]
+            row[f"{key}_over_real"] = round(float(np.mean([a for a, _ in pairs]) / np.mean([b for _, b in pairs])), 4) if pairs else None
+        counts = [x[form]["contact"] for x in have if x[form].get("contact")]
+        total = sum(b for _, b in counts)
+        row["contact_share"] = round(sum(a for a, _ in counts) / total, 4) if total else None
+        row["contact_frames"] = total
+        row["clips"] = len(have)
+        out[form] = row
+    return out
+
+
+def load_hold_stats(path, sha: str) -> dict:
+    """The committed How2Sign train numbers of the hold: {"ready": {joint: 6D}, "cap": m/s}."""
+    raw = Path(path).read_bytes()
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest != sha:
+        raise SystemExit(f"{path}: SHA-256 {digest}, expected {sha}")
+    payload = json.loads(raw)
+    if payload.get("kind") != "comp-a-hold-stats":
+        raise SystemExit(f"{path}: not the hold's statistics")
+    train = payload["how2sign_train"]
+    return dict(ready=train["ready_pose"], cap=float(train["left_speed_p99"]), sha256=sha)
 
 
 # ---- reads on hypotheses -------------------------------------------------------------------------------------------------
@@ -222,6 +347,7 @@ def echo_share(rows) -> float | None:
     return sum(a for a, _ in rows) / total if total else None
 
 
-__all__ = ["D20_KEY", "D20_SHA", "ALLOWED_CORPORA", "FORBIDDEN_SOURCE", "TOPS", "REAL_SCALED", "require_d20", "check_d20_payload",
+__all__ = ["annotated_label", "annotated_two_handed", "entry_annotations", "bridge_kind", "keypoint_view", "side_read", "contact_counts", "motion_row",
+           "motion_report", "load_hold_stats", "segment_widening", "D20_KEY", "D20_SHA", "ALLOWED_CORPORA", "FORBIDDEN_SOURCE", "TOPS", "REAL_SCALED", "require_d20", "check_d20_payload",
            "check_source_record", "parse_arm_scale", "load_token_list", "arm_of", "apply_token_map", "extra_vocabulary",
            "extra_pools", "median_seconds", "is_loop", "loop_flags", "echo_rows", "new_entry_echo", "echo_share"]
