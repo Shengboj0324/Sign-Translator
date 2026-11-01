@@ -5877,3 +5877,9 @@ Report only, on D20: nothing here adopts a lever, reads C20 or the 562 clips, or
 **A4, clip choice.** Primary arm: n16. Read in the decomposition: n16's entry-and-sentence bootstrap lower bound against sample0 above 0, paired likelihood above 0, and n16's BLEU above each of sample0 and draw1 to draw4. Repetition is the mean of those five draws minus a1. All of these reopen section 1's tokenizer bound, which is then re-stated. Any other result is not informative, and the bound stands without support from this read. This is no ceiling, and nothing is adopted.
 
 *Known when written:* a1's and a4's D20 reads were known, and a v3d word read on 50 entries. No D20 read of any clip-choice arm existed.
+
+### Instrument v2, amendment 2: training resumes after a false early stop (declared 2026-11-01, 04:28 UTC, after selection reads, before any gate read)
+
+The full run stopped at step 14,000 of 60,000 with step 2,000 as best, and is not accepted as trained. Its pooled gap on the selection set read 1.513, 1.146, 1.008, 1.057, 1.360, 1.384, 1.467 at steps 2,000 to 14,000. Step 2,000's lead comes from a low blank (0.484, against 0.74–0.91 later), while pooled real rose from 1.997 to 2.303 and selection loss kept falling (How2Sign c04 3.194 to about 3.09). Held-out STEM read 0 until step 10,000.
+
+**Change:** training resumes from step 14,000 with patience 12 (24,000 steps) instead of 6, up to the declared 60,000. **The selection criterion stays pooled gap, step 2,000 stays eligible, and gates G1–G6 are unchanged and unread.** No gate, test set, C20 or val read informed this; only the selection set and training monitors did, so it is disclosed as a post-read change to patience.

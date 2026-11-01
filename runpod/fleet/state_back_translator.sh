@@ -86,7 +86,7 @@ if [ "$PHASE" = train ]; then
     rc=$?; set -e; [ $rc = 0 ] || [ $rc = 4 ] || [ $rc = 2 ] || { echo "smoke acceptance crashed ($rc)"; exit 1; }
   fi
   exists training-runs/$RUN/DONE || { python scripts/train_state_to_text_t5.py $TRAIN --run $RUN --steps 60000 \
-    --val-every 2000 --checkpoint-every 4000 --patience 6; mark training-runs/$RUN/DONE; }
+    --val-every 2000 --checkpoint-every 4000 --patience 12; mark training-runs/$RUN/DONE; }
   echo "INSTRUMENT-V2 $(best $RUN) $(sha $(best $RUN))"
   echo STATE-BT-TRAIN-DONE; exit 0
 fi
