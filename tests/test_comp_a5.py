@@ -96,6 +96,107 @@ def test_a_draws_new_entries_must_be_that_draw(d20, monkeypatch, recogniser):  #
     assert shard["settings"]["round20"]["provenance"]["code_digest"] == code_digest(extra_files=JOBS)
 
 
+# ---- a smoke's cache covers what top10's few sentences need ---------------------------------------------------------------------------------
+
+def only_through_a_contraction(c, monkeypatch):
+    """Every sentence reads ``didn't`` and none reads ``not``; r10's vocabulary has ``not``; the list maps n't to it. The base selection never asks for ``not``."""
+    from signtranslator.generation import compositional as comp
+    load = round20_lib.load_sentence_set
+    monkeypatch.setattr(round20_lib, "load_sentence_set", lambda *a, **k: [dict(r, text=f"{r['text']} didn't") for r in load(*a, **k)])
+    vocabulary = comp.training_vocabulary
+    monkeypatch.setattr(comp, "training_vocabulary", lambda *a, **k: dict(vocabulary(*a, **k), **{"not": 1.}))
+    path, sha = write_list(c, token_rows(c, monkeypatch), negation_tokens=["didn't"])
+    cover = ("--smoke-cover-file", str(path), "--smoke-cover-sha256", sha, "--smoke-cover-top", "10", "--clips", "4")
+    extra = ("--vocabulary-extra-file", str(path), "--vocabulary-extra-sha256", sha, "--vocabulary-extra-top", "10")
+    return cover, extra
+
+
+def top10_args(c, cache_sha, extra_sha, extra, *more):
+    return generated_args(c, "--word-cache-key", "cache/main/index.json", "--word-cache-sha256", cache_sha, "--word-cache-n", "4", "--core-margin", "0", *extra,
+                          "--word-cache-extra-key", "cache/x/index.json", "--word-cache-extra-sha256", extra_sha, "--clips", "4", "--comp-a-job-file", a5.JOB_FILE, *more)
+
+
+def test_a_sentence_needing_not_only_through_a_contraction(d20, monkeypatch, recogniser):  # noqa: F811
+    """The failure of the first A5 smokes, then the fix: top10 stops on the plain cache and runs on the covered one."""
+    c = d20
+    cover, extra = only_through_a_contraction(c, monkeypatch)
+    extra_sha = cache_for_words(c, "cache/x", "--draw", "3", "--clips", "4", *extra)
+    assert "not" not in {r["entry"] for r in part(c, "cache/x/index.json")["entries"]}             # the extra phase only generates new entries
+    plain = cache_for_words(c, "cache/plain", "--draw", "3", "--clips", "4")
+    plain_rows = {r["entry"]: r for r in part(c, "cache/plain/index.json")["entries"]}
+    assert "not" not in plain_rows
+    with pytest.raises(SystemExit, match=r"lacks 1 entries the sentences need: \['not'\]"):
+        ce.main([*top10_args(c, plain, extra_sha, extra)[:-4], "--word-cache-key", "cache/plain/index.json", "--word-cache-sha256", plain, "--clips", "4", "--output-key", "e/lacks.json"])
+    main_sha = cache_for_words(c, "cache/main", "--draw", "3", *cover)
+    index = part(c, "cache/main/index.json")
+    rows = {r["entry"]: r for r in index["entries"]}
+    assert set(rows) == set(plain_rows) | {"not"} and index["settings"]["smoke_cover"]["top"] == 10 and index["settings"]["entries_total"] == len(rows)
+    assert rows["not"]["seeds"][0] == round20_lib.draw_seed("not", 3)
+    for entry, row in plain_rows.items():                                                          # nothing else moves: same seeds, same words
+        assert rows[entry]["seeds"] == row["seeds"] and rows[entry]["chosen"] == {k: dict(v, state_key=v["state_key"].replace("cache/plain", "cache/main")) for k, v in row["chosen"].items()}
+    assert ce.main([*top10_args(c, main_sha, extra_sha, extra), "--output-key", "e/top10.json"]) == 0
+    shard = part(c, "e/top10.json")
+    assert all("not" in row["stage1_words"] for row in shard["clips"]) and shard["round20"]["vocabulary_extra"]["tokens"]["didn't"] == 4
+
+
+def test_the_default_cache_has_no_cover(d20, recogniser):  # noqa: F811
+    c = d20
+    cache_for_words(c, "cache/d", "--draw", "1")
+    assert "smoke_cover" not in part(c, "cache/d/index.json")["settings"]
+
+
+@pytest.mark.parametrize("flags,message", [
+    (["--clips", "6"], "at most 5 clips"), (["--clips", "500"], "at most 5 clips"), ([], "at most 5 clips"),
+    (["--clips", "5", "--smoke-cover-top", "7"], "go together"), (["--clips", "5", "--drop-sha"], "go together"), (["--clips", "5", "--drop-top"], "go together"),
+    (["--clips", "5", "--sentences-key", "sets/c20.json", "--sentences-sha256", "0" * 64], "D20 only"),
+    (["--clips", "5", "--vocabulary-extra-file", "x", "--vocabulary-extra-sha256", "0" * 64, "--vocabulary-extra-top", "10"], "main cache"),
+])
+def test_the_cover_is_a_smokes_and_nothing_elses(d20, capsys, flags, message):  # noqa: F811
+    c = d20
+    args = ["run", "--store", f"dir:{c['tmp'] / 'store'}", "--prefix", "cache/x", "--mix-key", "mix.json", "--mix-sha256", c["sha"], "--sentences-key", "sets/d20.json", "--sentences-sha256", c["ssha"],
+            "--checkpoint-key", "prior.pt", "--device", "cpu", "--smoke-cover-file", "x", "--smoke-cover-sha256", "0" * 64, "--smoke-cover-top", "10", *flags]
+    if "--drop-sha" in args:
+        at = args.index("--smoke-cover-sha256")
+        args = [a for k, a in enumerate(args) if k not in (at, at + 1) and a != "--drop-sha"]
+    if "--drop-top" in args:
+        at = args.index("--smoke-cover-top")
+        args = [a for k, a in enumerate(args) if k not in (at, at + 1) and a != "--drop-top"]
+    with pytest.raises(SystemExit):
+        cw.main(args)
+    assert message in capsys.readouterr().err
+
+
+def test_the_cover_refuses_the_wrong_list_and_an_entry_outside_r10(d20, monkeypatch, recogniser):  # noqa: F811
+    c = d20
+    cover, _ = only_through_a_contraction(c, monkeypatch)
+    wrong = list(cover)
+    wrong[wrong.index("--smoke-cover-sha256") + 1] = "0" * 64
+    with pytest.raises(SystemExit, match="expected"):
+        cache_for_words(c, "cache/w", "--draw", "1", *wrong)
+    from signtranslator.generation import compositional as comp
+    with_not = comp.training_vocabulary
+    monkeypatch.setattr(comp, "training_vocabulary", lambda *a, **k: {w: s for w, s in with_not(*a, **k).items() if w != "not"})
+    with pytest.raises(SystemExit, match="outside r10's vocabulary"):
+        cache_for_words(c, "cache/o", "--draw", "1", *cover)
+
+
+def test_a_full_composition_refuses_a_smokes_covered_cache(d20, monkeypatch, recogniser):  # noqa: F811
+    c = d20
+    cover, _ = only_through_a_contraction(c, monkeypatch)
+    sha = cache_for_words(c, "cache/main", "--draw", "1", *cover)
+    words = ("--word-cache-key", "cache/main/index.json", "--word-cache-sha256", sha, "--word-cache-n", "4", "--core-margin", "0")
+    with pytest.raises(SystemExit, match="is a smoke's"):
+        ce.main([*generated_args(c, *words, "--clips", "6"), "--output-key", "e/full.json"])
+
+
+def test_not_is_the_only_r10_entry_the_committed_list_maps_to():
+    """A full cache needs no cover: at top 10 the map reaches r10 only at ``not``, and ``select_entries`` never reads the draw, so a draw selects what any other selects."""
+    import inspect
+    arm = lib.arm_of(lib.load_token_list(ROOT / "reports/comp_a3_tokens.json", hashlib.sha256((ROOT / "reports/comp_a3_tokens.json").read_bytes()).hexdigest()), 10)
+    assert set(arm["token_map"].values()) - set(arm["entries"]) == {"not"}
+    assert "draw" not in inspect.getsource(cw.select_entries)
+
+
 # ---- a synthetic set of draws -------------------------------------------------------------------------------------------------------
 
 def report(k, hyps=None, *, top=False, ll_shift=0., env=None, digest=None, words=None):
@@ -500,6 +601,19 @@ def test_the_cache_phase_is_the_recipe_at_this_draw(tmp_path):
         assert "--recognizer-run sign-recognizer-v3d" in line and "--vocabulary-extra" not in line and "--clips 500" in line
     assert any(f"round20_word_cache.py merge --prefix {OUT}/draw3-cache/attempt1 --shards 4" in c for c in commands)
     assert f"--comp-a-job-file {a5.JOB_FILE} " in runs[0]
+
+
+def test_only_a_smokes_cache_phase_is_covered(tmp_path):
+    text = JOB.read_text()
+    sha = re.search(r"TOKENSSHA=([0-9a-f]{64})", text).group(1)
+    cover = f"--smoke-cover-file reports/comp_a3_tokens.json --smoke-cover-sha256 {sha} --smoke-cover-top 10"
+    _, _, commands = job(tmp_path, "cache", smoke=True, gpu=False, declared="", CACHE_PROCS="1", SMOKE_STAMP="s1")
+    assert cover in next(c for c in commands if "round20_word_cache.py run" in c)
+    _, _, commands = job(tmp_path, "extra", smoke=True, gpu=False, declared="", SMOKE_STAMP="s1")
+    assert "--smoke-cover" not in "\n".join(commands)
+    _, _, commands = job(tmp_path, "cache", draw="3")
+    runs = [c for c in commands if "round20_word_cache.py run" in c]
+    assert len(runs) == 4 and "--smoke-cover" not in "\n".join(commands)
 
 
 def test_a_failed_shard_stops_the_draw(tmp_path):

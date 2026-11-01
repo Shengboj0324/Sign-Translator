@@ -342,6 +342,8 @@ def load_word_cache(store, args, vocab, corpora, words) -> tuple[dict, dict]:
     s = index["settings"]
     if s.get("vocabulary_extra"):
         raise SystemExit("--word-cache-key: this index holds a list's new entries; give it as --word-cache-extra-key")
+    if s.get("smoke_cover") and args.clips > 5:
+        raise SystemExit("--word-cache-key: this index is a smoke's, built with --smoke-cover-file; it serves at most 5 clips")
     want = dict(key=args.vocabulary_mix_key or args.mix_key,
                 sha256=args.vocabulary_mix_sha256 if args.vocabulary_mix_key else args.mix_sha256)
     if s["vocabulary_mix"] != want or list(s["corpora"]) != list(corpora):
