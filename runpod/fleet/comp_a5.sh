@@ -1,20 +1,23 @@
 #!/usr/bin/env bash
-# comp_a5.sh — post-S2 A5 on D20: A3 generated top10 against margin0, paired within each of five fresh word draws (scripts/comp_a5_read.py). Evaluation only: NOTHING TRAINS.
+# comp_a5.sh — post-S2 A5 on D20: A3 generated top10 against margin0, paired within each of eight fresh word draws (scripts/comp_a5_read.py). Evaluation only: NOTHING TRAINS.
 # PREPARED, NOT LAUNCHED. NOTHING IS DECLARED BY THIS FILE: a full run stops unless COMP_A_DECLARED passes scripts/comp_a5_declared.py, a declaration apart from A1 to A4's.
 #
-#   COMP_PHASE=<phase> DRAW=<1..5> [SMOKE=1] [SMOKE_STAMP=<stamp>] [COMP_A_DECLARED=<plan commit>] [hashes] bash runpod/fleet/comp_a5.sh
+#   COMP_PHASE=<phase> DRAW=<1..8> [ATTEMPT=<n, default 1>] [SMOKE=1] [SMOKE_STAMP=<stamp>] [COMP_A_DECLARED=<plan commit>] [hashes] bash runpod/fleet/comp_a5.sh
 #
 # D20 only, pinned; no option for another set. Reports are --report-only and write-once under $OUT. SMOKE=1 reads at most 5 real D20 clips under $OUT/smoke/<stamp>/ at 4 samples per
 # word. Nothing decides on a smoke, and a smoke has no summary.
+# Attempts: a draw with both arms stored is final, so an attempt is refused once another has its top10. An arm that started and did not finish stays unfinished: the next attempt
+# reruns both arms on the same words. A cache's shards live in an attempt folder, and a complete stored cache of any attempt is reused, because its words are fixed.
 # Phases, on one pod per draw (GPU for a full run; runpod/fleet/comp_a5_chain.sh runs a draw in order):
 #   cache    The draw's r10 entries: 16 samples, best by v3d, no gains, on CACHE_PROCS processes (a failed shard stops the others).
 #   extra    The draw's seven new entries of the top-10 arm, the same recipe.
 #   margin0  a9's list at margin 0 and predicted timing, on this draw's words.
-#   top10    margin0's list plus the top-10 arm. MARGIN0_SHA pins its comparator.
-#   summary  All five draws (no DRAW; every report pinned by M1_SHA..M5_SHA, T1_SHA..T5_SHA): mean, between-draw SD, two-way bootstrap, the rule.
+#   top10    margin0's list plus the top-10 arm. MARGIN0_SHA pins its comparator, whose code and environment must be this pod's.
+#   summary  All eight draws (no DRAW, every report pinned by M1_SHA..M8_SHA, T1_SHA..T8_SHA): each draw's one attempt with both arms; the rule.
+# A merge's output, which holds the arm's numbers, goes to a file on the pod, not this log: no per-draw number is read until the summary.
 # Ends with one line: COMP-A5-DONE <0|1> phase=<phase> draw=<draw> smoke=<0|1>. Any other way out prints ALERT and COMP-A5-DONE 1.
 set -uo pipefail
-PHASE=${COMP_PHASE:-none}; K=${DRAW:-}; ENDED=""; SMOKING=0
+PHASE=${COMP_PHASE:-none}; K=${DRAW:-}; A=${ATTEMPT:-1}; ENDED=""; SMOKING=0
 done_line() { ENDED=1; echo "COMP-A5-DONE $1 phase=$PHASE draw=${K:-none} smoke=$SMOKING"; }
 die() { echo "ALERT $*"; done_line 1; exit 1; }
 unexpected() { code=$?; if [ -z "$ENDED" ]; then echo "ALERT comp_a5 stopped unexpectedly, exit $code"; done_line 1; exit 1; fi; }
@@ -26,23 +29,24 @@ else Q=$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us 2>/dev/null || echo -1) P=$(cat
 if [ "$Q" -gt 0 ]; then C=$(( Q / P )); else C=$(/root/venv/bin/python -c "import os; print(len(os.sched_getaffinity(0)))"); fi
 T=${THREADS:-$C}
 export PATH=/root/venv/bin:$PATH OMP_NUM_THREADS=$T MKL_NUM_THREADS=$T OPENBLAS_NUM_THREADS=$T
-uv pip install -q 'transformers>=4.40,<5' sentencepiece || die "uv pip install failed"
+uv pip install -q 'transformers==4.57.6' 'tokenizers==0.22.2' sentencepiece || die "uv pip install failed"
+python scripts/comp_a5_guard.py env || die "this pod's python, torch, transformers or tokenizers are not the pinned ones"
 sha() { python -c "import os,sys,hashlib; from signtranslator.data.text_motion_dataset import R2Store; print(hashlib.sha256(R2Store(os.environ).get(sys.argv[1])).hexdigest())" "$1"; }
 exists() { python -c "import os,sys; from signtranslator.data.text_motion_dataset import R2Store; sys.exit(0 if R2Store(os.environ).exists(sys.argv[1]) else 1)" "$1"; }
 pin() { [ "$(sha "$1")" = "$2" ] || die "$1 differs from its pin"; }
 said() { local hash; hash=$(sha "$2"); [ -n "$hash" ] || die "$1: no hash of $2"; echo "COMP-A5 $1 $2 $hash"; }
+case $A in 1|2|3|4|5) ;; *) die "ATTEMPT must be 1 to 5" ;; esac
 
 [ -z "${SET:-}" ] || [ "$SET" = d20 ] || die "SET: this read is D20 only; C20, the 1,000 and test are refused"
 case ${SMOKE:-0} in 0) ;; 1) SMOKING=1 ;; *) die "SMOKE must be 0 or 1" ;; esac
-case $PHASE in cache|extra|margin0|top10) case $K in 1|2|3|4|5) ;; *) die "DRAW must be 1, 2, 3, 4 or 5: the rule names five, and no other" ;; esac ;;
-  summary) [ -z "$K" ] || die "summary reads all five draws: no DRAW" ;;
+case $PHASE in cache|extra|margin0|top10) case $K in 1|2|3|4|5|6|7|8) ;; *) die "DRAW must be 1 to 8: the rule names eight, and no other" ;; esac ;;
+  summary) [ -z "$K" ] || die "summary reads all eight draws: no DRAW" ;;
   *) die "unknown COMP_PHASE $PHASE: cache extra margin0 top10 summary" ;; esac
 if [ $SMOKING = 0 ]; then
   [ -n "${COMP_A_DECLARED:-}" ] || die "a full run needs COMP_A_DECLARED=<plan commit>: nothing is declared yet"
   python scripts/comp_a5_declared.py "$COMP_A_DECLARED" || die "COMP_A_DECLARED $COMP_A_DECLARED does not declare A5 for this code"
 fi
 O=acquisition/2026-10-17-v1/youtube-asl-v1
-A=$O/round20/phase-a
 OUT=$O/round20/comp-a5
 R10=$O/round10-mixed-v1/manifest.json; R10SHA=ccfd10b8961e95523ac7938c84261c89f22c8ae786af961908fbeba21fa5647a
 R14B=$O/round14b-mixed-v1/manifest.json; R14BSHA=710a3941dce4abf099a336705203a719f441c8cac5847b0e59ed7679d515eb7d
@@ -59,7 +63,7 @@ V3DCK=$V3D/checkpoints/step-00012000.pt; V3DCKSHA=0c6c10e232037e869f3983ed6df16d
 TOKENS=reports/comp_a3_tokens.json; TOKENSSHA=c1105410ef8d502cfcf145768329fe1f72886106afdf83cd0474bfdd654cb776
 A2FILE=reports/comp_a2_left_arm.json; A2SHA=1dab85c88ba9380cdba89fe4b830d0987cfbeb29d0dec638636af5034e84644a
 DURATION=-0.083,0.3691,18289
-JOBFILE=runpod/fleet/comp_a5.sh
+JOBFILE=runpod/fleet/comp_a5.sh,runpod/fleet/comp_a5_chain.sh
 for p in "$R10 $R10SHA" "$R14B $R14BSHA" "$D20 $D20SHA" "$BT/best.json $BTSHA" "$BTCK $BTCKSHA" "$V2/best.json $V2SHA" "$V2CK $V2CKSHA" "$V3D/best.json $V3DSHA" "$V3DCK $V3DCKSHA"; do
   set -- $p; pin "$1" "$2"
 done
@@ -79,32 +83,40 @@ BASE="--mix-key $R10 --mix-sha256 $R10SHA --sentences-key $D20 --sentences-sha25
 PREDICT="--core-margin 0 --predicted-duration --expect-duration-model=$DURATION"
 EXTRA="--vocabulary-extra-file $TOKENS --vocabulary-extra-sha256 $TOKENSSHA --vocabulary-extra-top 10"
 
-# one write-once run and its report-only merge: arm NAME ARGS...
+# the first attempt's complete cache at this draw, or nothing: its words are fixed
+stored_cache() { local j; for j in 1 2 3 4 5; do if exists $OUT/draw$K-$1/attempt$j/index.json; then echo $OUT/draw$K-$1/attempt$j/index.json; return 0; fi; done; return 0; }
+# a draw with both arms stored is final: no other attempt runs
+refuse_after_final() { local j; for j in 1 2 3 4 5; do [ "$j" != "$A" ] || continue; exists $OUT/draw$K-attempt$j-top10.json && die "draw $K attempt $j has both arms: a finished pair is final"; done; return 0; }
+# one write-once arm under this attempt and its report-only merge: arm ROLE ARGS...
 arm() {
-  local name=$1; shift
-  local part=$OUT/$name-shard0.json merged=$OUT/$name.json
-  if exists $merged; then echo "stored: $merged (not rerun)"; return 0; fi
-  exists $part || python scripts/round15_compose_eval.py run $BASE "$@" --output-key $part || die "run $name"
-  python scripts/round15_compose_eval.py merge --report-only --shard-keys $part --output-key $merged || die "merge $name"
+  local name=draw$K-attempt$A-$1; shift
+  local part=$OUT/$name-shard0.json merged=$OUT/$name.json started=$OUT/$name.started
+  if exists $merged; then echo "stored: $merged (not rerun)"; said $name $merged; return 0; fi
+  exists $started && die "$name started and did not finish: rerun both arms under ATTEMPT=$(( A + 1 ))"
+  python scripts/comp_a5_guard.py started $started || die "$name: cannot mark its start"
+  python scripts/round15_compose_eval.py run $BASE "$@" --output-key $part || die "run $name"
+  python scripts/round15_compose_eval.py merge --report-only --shard-keys $part --output-key $merged > /root/r20-a5-$name-merge.log 2>&1 || die "merge $name (log /root/r20-a5-$name-merge.log)"
   said $name $merged
 }
 words9() {
-  local idx=$OUT/draw$K-cache/index.json idxsha
-  exists $idx || die "$PHASE: the draw's cache $idx is not stored"
+  local idx idxsha
+  idx=$(stored_cache cache); [ -n "$idx" ] || die "$PHASE: the draw's cache is not stored"
   idxsha=$(sha $idx); [ -n "$idxsha" ] || die "$PHASE: no hash of $idx"
   WORDS9="--variants core_crossfade --word-cache-key $idx --word-cache-sha256 $idxsha --word-cache-n $N --recognizer-run sign-recognizer-v2"
 }
 
+[ "$PHASE" = summary ] || refuse_after_final
 case $PHASE in
   cache)
-    PREFIX=$OUT/draw$K-cache
-    if exists $PREFIX/index.json; then echo "stored: $PREFIX/index.json"
+    STORED=$(stored_cache cache)
+    PREFIX=$OUT/draw$K-cache/attempt$A
+    if [ -n "$STORED" ]; then echo "stored: $STORED"; said draw$K-cache $STORED
     else
       pin $W14B $W14BSHA
       P=${CACHE_PROCS:-4}; pids=()
       for s in $(seq 0 $(( P - 1 ))); do
         exists $PREFIX/shard-$s-of-$P.json && continue
-        OMP_NUM_THREADS=$(( T / P > 0 ? T / P : 1 )) python scripts/round20_word_cache.py run --prefix $PREFIX $CACHEARGS --shards $P --shard $s --draw $K > /root/r20-a5-cache-$K-$s.log 2>&1 & pids+=($!)
+        OMP_NUM_THREADS=$(( T / P > 0 ? T / P : 1 )) python scripts/round20_word_cache.py run --prefix $PREFIX $CACHEARGS --shards $P --shard $s --draw $K > /root/r20-a5-cache-$K-$A-$s.log 2>&1 & pids+=($!)
       done
       failed=0; ended=" "
       while :; do
@@ -120,45 +132,57 @@ case $PHASE in
         sleep 10
       done
       wait
-      [ $failed = 0 ] || die "a cache shard failed; the others were stopped (logs /root/r20-a5-cache-$K-*.log)"
-      python scripts/round20_word_cache.py merge --prefix $PREFIX --shards $P || die "cache merge"
+      [ $failed = 0 ] || die "a cache shard failed; the others were stopped (logs /root/r20-a5-cache-$K-$A-*.log)"
+      python scripts/round20_word_cache.py merge --prefix $PREFIX --shards $P > /root/r20-a5-cache-$K-$A-merge.log 2>&1 || die "cache merge (log /root/r20-a5-cache-$K-$A-merge.log)"
       said draw$K-cache $PREFIX/index.json
     fi ;;
   extra)
-    PREFIX=$OUT/draw$K-extra
-    if exists $PREFIX/index.json; then echo "stored: $PREFIX/index.json"
+    STORED=$(stored_cache extra)
+    PREFIX=$OUT/draw$K-extra/attempt$A
+    if [ -n "$STORED" ]; then echo "stored: $STORED"; said draw$K-extra $STORED
     else
       pin $W14B $W14BSHA
-      exists $PREFIX/shard-0-of-1.json || python scripts/round20_word_cache.py run --prefix $PREFIX $CACHEARGS --draw $K $EXTRA || die "extra run"
-      python scripts/round20_word_cache.py merge --prefix $PREFIX || die "extra merge"
+      exists $PREFIX/shard-0-of-1.json || python scripts/round20_word_cache.py run --prefix $PREFIX $CACHEARGS $EXTRA --draw $K || die "extra run"
+      python scripts/round20_word_cache.py merge --prefix $PREFIX > /root/r20-a5-extra-$K-$A-merge.log 2>&1 || die "extra merge (log /root/r20-a5-extra-$K-$A-merge.log)"
       said draw$K-extra $PREFIX/index.json
     fi ;;
   margin0)
     words9
-    arm draw$K-margin0 $WORDS9 $PREDICT --comp-a-read ;;
+    arm margin0 $WORDS9 $PREDICT --comp-a-read ;;
   top10)
     words9
-    X=$OUT/draw$K-extra/index.json
-    exists $X || die "top10: the draw's new entries $X are not stored"
+    X=$(stored_cache extra)
+    [ -n "$X" ] || die "top10: the draw's new entries are not stored"
     XSHA=$(sha $X); [ -n "$XSHA" ] || die "top10: no hash of $X"
+    M0=$OUT/draw$K-attempt$A-margin0.json
     if [ $SMOKING = 0 ]; then
-      exists $OUT/draw$K-margin0.json || die "top10: its comparator draw$K-margin0 comes first"
+      exists $M0 || die "top10: its comparator $M0 comes first"
       [ -n "${MARGIN0_SHA:-}" ] || die "top10: give MARGIN0_SHA, the hash of its comparator"
-      pin $OUT/draw$K-margin0.json "$MARGIN0_SHA"
+      pin $M0 "$MARGIN0_SHA"
     fi
-    arm draw$K-top10 $WORDS9 $PREDICT $EXTRA --word-cache-extra-key $X --word-cache-extra-sha256 $XSHA ;;
+    if exists $M0; then
+      exists $OUT/draw$K-attempt$A-top10.json || python scripts/comp_a5_guard.py same-pod $M0 || die "top10: margin0 came from other code or another environment; rerun both arms under ATTEMPT=$(( A + 1 ))"
+    fi
+    arm top10 $WORDS9 $PREDICT $EXTRA --word-cache-extra-key $X --word-cache-extra-sha256 $XSHA ;;
   summary)
     KEY=$OUT/a5-summary.json
-    if exists $KEY; then echo "stored: $KEY"
+    if exists $KEY; then echo "stored: $KEY"; said a5-summary $KEY
     else
       ARGS=""
-      for d in 1 2 3 4 5; do
-        m=$OUT/draw$d-margin0.json; t=$OUT/draw$d-top10.json
-        exists $m && exists $t || die "incomplete: draw $d is not stored; fewer than five finished draws is no smaller test"
+      for d in 1 2 3 4 5 6 7 8; do
+        finished=""; log=""
+        for j in 1 2 3 4 5; do
+          has=""; exists $OUT/draw$d-attempt$j-margin0.json && has=m; exists $OUT/draw$d-attempt$j-top10.json && has=${has}t
+          [ -z "$has" ] || log="$log$j:$has;"
+          if [ "$has" = mt ]; then [ -z "$finished" ] || die "draw $d has two finished attempts, $finished and $j: a finished pair is final"; finished=$j; fi
+        done
+        [ -n "$finished" ] || die "incomplete: draw $d has no attempt with both arms ($log); fewer than eight finished draws is no smaller test"
+        echo "COMP-A5-ATTEMPTS draw=$d attempts=$log used=$finished"
+        m=$OUT/draw$d-attempt$finished-margin0.json; t=$OUT/draw$d-attempt$finished-top10.json
         ms=M${d}_SHA; ts=T${d}_SHA
         [ -n "${!ms:-}" ] && [ -n "${!ts:-}" ] || die "summary: give $ms and $ts"
         pin $m "${!ms}"; pin $t "${!ts}"
-        ARGS="$ARGS --draw $d=$m,$t"
+        ARGS="$ARGS --draw $d=$m,$t --attempts $d=$log"
       done
       python scripts/comp_a5_read.py $ARGS --a9-sides-file $A2FILE --a9-sides-sha256 $A2SHA $DECL --output-key $KEY || die "summary"
       said a5-summary $KEY

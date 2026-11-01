@@ -46,7 +46,7 @@ def git(root: Path, *args) -> subprocess.CompletedProcess:
 def make_record(commit: str, *, job: str = JOB, rules=None) -> dict:
     """The record of a declaration at COMMIT, for this code."""
     from comp_a_read import DRAFT_RULES
-    return dict(commit=commit, code_digest=code_digest(extra_files=(job,)), rules={t: rule_hash(r) for t, r in (rules or DRAFT_RULES).items()})
+    return dict(commit=commit, code_digest=code_digest(extra_files=tuple(job.split(","))), rules={t: rule_hash(r) for t, r in (rules or DRAFT_RULES).items()})
 
 
 def check(commit: str, test: str, root: Path = ROOT, *, record_path: str = RECORD, job: str = JOB, rules=None) -> str:
@@ -66,7 +66,7 @@ def check(commit: str, test: str, root: Path = ROOT, *, record_path: str = RECOR
         raise SystemExit(f"{record_path} names {payload.get('commit')}, not {commit}")
     if payload.get("rules", {}).get(test) != rule_hash(rule):
         raise SystemExit(f"{record_path} does not hold this rule of {test}")
-    digest = code_digest(extra_files=(job,))
+    digest = code_digest(extra_files=tuple(job.split(",")))
     if payload.get("code_digest") != digest:
         raise SystemExit(f"{record_path} was declared for code {payload.get('code_digest')}; this code is {digest}")
     if (root / ".git").exists():
