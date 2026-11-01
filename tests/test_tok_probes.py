@@ -122,6 +122,7 @@ def harness(monkeypatch, tokenizer, *, declared=True, n=CLIPS, reader=None):
     monkeypatch.setattr(L, "load_states", lambda store, recs: refs)
     monkeypatch.setattr(L, "load_tokenizer", lambda store: tokenizer)
     monkeypatch.setattr(L, "make_reader", lambda store, **k: reader or PartReader(refs))
+    monkeypatch.setattr(P, "composition_entries", lambda store, recs, declared: [5] * len(recs))
     return records, refs
 
 
@@ -301,7 +302,7 @@ def test_a_blanked_part_drops_where_it_is_decoded_and_only_there(monkeypatch, tm
             assert rt == real and r[f"rt_only_{p}"]["identical_to_real"] == 1
             assert kept < real
     assert r["round_trip_masked"]["bleu"]["bleu"] < real
-    assert r[f"rt_only_{channel}"]["comparator"]["form"] == r[f"real_only_{channel}"]["comparator"]["form"] == "round_trip_masked"
+    assert set(r[f"rt_only_{channel}"]["comparators"]) == set(r[f"real_only_{channel}"]["comparators"]) == {"round_trip_masked"}
 
 
 def test_fingers_wrist_and_arms_swap_their_own_joints_only():
@@ -733,7 +734,7 @@ def test_a_seam_read_says_how2sign_has_no_boundaries_and_names_the_fallback(monk
     r = merged(tmp_path, forms)
     assert "none" in r["boundaries"]["sign_boundaries"] and "minima" in r["boundaries"]["used"]
     assert r["boundaries"]["records_with_boundaries"] == 0
-    assert r["forms"]["seam_min30"]["comparator"]["form"] == "seam_rnd30"
+    assert set(r["forms"]["seam_min30"]["comparators"]) == {"seam_rnd30"} and r["sensitivity_only"] == ["seam_min30", "seam_rnd30"]
     assert r["forms"]["seam_min30"]["seam"]["bridged_frame_share"] == pytest.approx(.3, abs=.03)
     assert r["forms"]["seam_min30"]["bleu"]["bleu"] < r["forms"]["real"]["bleu"]["bleu"]
     assert r["forms"]["seam_min30"]["loop_share"]["mean"] is not None and r["tokenizer"] is None
@@ -749,10 +750,17 @@ def test_boundary_records_would_be_counted_not_used_silently(monkeypatch, tmp_pa
 
 # ---- metrics ---------------------------------------------------------------------------------------------------------------
 
-@pytest.mark.parametrize("text,expected", [("a b c a b c a b c", True), ("a a a a a", True), ("a b c a b c", False), ("", False), ("a b", False),
-                                           ("A B C. a b c, A b C", True), ("a b c d a b c d e a b x", False)])
-def test_loop_share_is_a_three_gram_at_least_three_times(text, expected):
-    assert P.has_loop(text) is expected
+def test_the_panel_reads_loops_on_whitespace_tokens_so_a_contraction_is_one_token(monkeypatch, tmp_path):
+    class Says(PartReader):
+        def read(self, states, texts, candidates, group=2):
+            raw = super().read(states, texts, candidates, group)
+            return dict(raw, hypotheses=[("you've you've you've" if s.channels["body"].valid.any() else "x y z x y z x y z") for s in states])
+    refs = harness(monkeypatch, tiny_tokenizer(), n=CLIPS)[1]
+    monkeypatch.setattr(L, "make_reader", lambda store, **k: Says(refs))
+    assert read(tmp_path, ["real", "blank"]) == 0
+    f = merged(tmp_path, ["real", "blank"])["forms"]
+    assert f["real"]["loop_share"]["mean"] == 0 and f["blank"]["loop_share"]["mean"] == 1
+    assert f["real"]["paired"]["blank"]["loop_share"]["difference"] == -1
 
 
 def test_hand_statistics_are_compares_own_ratio():
@@ -811,7 +819,12 @@ def test_every_panel_has_every_number_paired_against_real_and_blank_and_blank_mo
     assert r["forms"]["blank"]["wrist_speed"]["over_real"] is None
     assert r["forms"]["blank"]["hand_variation"]["left_hand"]["over_real"] is None
     assert r["forms"]["no_quant"]["hand_variation"]["left_hand"]["over_real"]["ratio"] > 0
-    assert r["forms"]["no_quant"]["comparator"]["form"] == "round_trip" and r["forms"]["q_left1"]["comparator"]["form"] == "round_trip"
+    assert set(r["forms"]["no_quant"]["comparators"]) == {"round_trip"} and set(r["forms"]["q_left1"]["comparators"]) == {"round_trip"}
+    for name in ("real", "round_trip"):
+        tracked = r["forms"][name]["tracked_share"]["hands"]
+        assert 0 < tracked["mean"] <= 1 and tracked["ci95"]
+    assert r["forms"]["round_trip"]["tracked_share"]["hands"]["minus_real"]["difference"] > 0     # the path marks every frame valid
+    assert r["forms"]["blank"]["tracked_share"]["hands"]["mean"] == 0
 
 
 def forbidden_keys(value, found=None):
@@ -862,7 +875,7 @@ def test_a_form_read_alone_equals_it_read_with_others(monkeypatch, tmp_path):
 # ---- check -----------------------------------------------------------------------------------------------------------------
 
 @pytest.mark.parametrize("change,code", [(dict(identity_masked_identical_to_real=1., blank_identical_to_real=.1), 0),
-                                         (dict(identity_masked_identical_to_real=.99, blank_identical_to_real=.1), 3),
+                                         (dict(identity_masked_identical_to_real=.98, blank_identical_to_real=.1), 3),
                                          (dict(identity_masked_identical_to_real=1., blank_identical_to_real=1.), 3)])
 def test_check_alerts_on_the_path_failing_its_planted_case(tmp_path, change, code):
     path = tmp_path / "r.json"
@@ -941,7 +954,7 @@ def test_words_read_each_form_report_top5_paired_and_records_who_chose_the_list(
     states = [gappy(signer_state(i, frames=20, amplitude=.4)) for i in range(6)]
     monkeypatch.setattr(P, "load_v3d", lambda store, device: (object(), ["BOOK", "CAT"]))
     monkeypatch.setattr(P, "word_records", lambda store, labels: rows["rit"] + rows["asllvd"])
-    monkeypatch.setattr(P, "word_states", lambda store, rs, labels, limit, cache: (states, [0] * 6, [r["sign"] for r in rs]))
+    monkeypatch.setattr(P, "word_states", lambda store, rs, labels, limit, cache, longest=False: (states, [0] * 6, [r["sign"] for r in rs]))
     monkeypatch.setattr(L, "load_tokenizer", lambda store: tok)
 
     def logits(model, forms, device):                                       # reads the label when the left hand moves at all
@@ -1037,7 +1050,7 @@ def test_the_job_smokes_on_train_first_then_reads_and_ends_with_a_parseable_done
 def test_every_call_the_job_makes_parses_with_the_real_parser(tmp_path):
     _, calls = run_job(tmp_path)
     lines = [x.split()[1:] for x in calls.splitlines() if x.startswith("scripts/tok_probes.py ")]
-    assert {x[0] for x in lines} == {"fit", "read", "words", "merge", "check", "upload", "groups"}
+    assert {x[0] for x in lines} == {"fit", "read", "words", "merge", "check", "upload", "groups", "restore", "canary"}
     for line in lines:
         P.build_parser().parse_args(line)
 
@@ -1049,9 +1062,10 @@ def test_smoke_only_stops_before_any_declared_read(tmp_path):
     assert "d20/forms" not in calls
 
 
-@pytest.mark.parametrize("fail_when,expected", [("--smoke-train 16", 2), ("--smoke-train 8", 2), ("--smoke-train 4", 2), ("smoke/forms --output-file", 2),
-                                                ("check --report*smoke/report.json", 2), ("d20/fit --device", 1), ("--forms a,b --out-dir*d20", 1), ("d20/forms --output-file", 1),
-                                                ("check --report*d20/report.json", 1), ("upload*d20", 1)])
+@pytest.mark.parametrize("fail_when,expected", [("--smoke-train 16", 2), ("--smoke-train 8", 2), ("--smoke-train 4", 2), ("merge*smoke-", 2), ("check --report*smoke-", 2),
+                                                ("upload --out-dir*smoke-", 2), ("restore", 1), ("d20/fit --device", 1), ("--forms real,blank*d20", 1), ("canary*d20", 1),
+                                                ("--forms a,b --out-dir*d20", 1), ("words*d20", 1), ("d20/forms --output-file", 1),
+                                                ("check --report*d20/report.json", 1), ("upload --out-dir*d20", 1)])
 def test_any_failure_exits_nonzero_with_its_done_line_and_a_background_read_is_not_lost(tmp_path, fail_when, expected):
     result, _ = run_job(tmp_path, fail_when=fail_when)
     assert result.returncode == expected and done_line(result) == expected, result.stdout + result.stderr
@@ -1090,3 +1104,542 @@ def test_upload_is_write_once_and_refused_whole(tmp_path):
     assert s.exists("p/report.json") and s.exists("p/fit/codebooks.npz") and not s.exists("p/fit/latents.npz") and not s.exists("p/read-0.log")
     with pytest.raises(SystemExit, match="write-once"):
         P.main(["upload", "--store", store, "--out-dir", str(work), "--prefix", "p"])
+
+
+# ---- review of 172be02: composition density, healing, the bracket ------------------------------------------------------------
+
+def test_composition_density_takes_junctions_from_the_sentences_entries_and_word_count_stays_a_sensitivity():
+    state, text = seam_state(), " ".join(["w"] * 30)
+    assert P.seam_form("seam_cmin45", state, text, 0, 5)[1]["junctions"] == 4
+    assert P.seam_form("seam_min45", state, text, 0, 5)[1]["junctions"] == 29
+    assert P.seam_form("seam_cmin30", state, text, 0, 9)[1]["bridged_frames"] == round(.3 * 120)
+    assert P.seam_form("seam_csq196_min", state, text, 0, 3)[1]["windows"] == 2
+    assert set(P.SEAM_COMPOSITION_FORMS) == {"seam_cmin30", "seam_cmin45", "seam_crnd30", "seam_crnd45", "seam_csq196_min", "seam_csq196_rnd", "seam_cval45", "seam_cmax45"}
+    assert not set(P.SEAM_WORD_FORMS) & set(P.SEAM_COMPOSITION_FORMS)
+
+
+@pytest.mark.parametrize("entries", [0, 1])
+def test_a_sentence_with_no_junction_stays_real_and_says_so(entries):
+    state = seam_state()
+    form, info = P.seam_form("seam_cmin45", state, TEXT, 0, entries)
+    assert form is state and info["skipped"] and info["entries"] == entries and info["bridged_frames"] == 0
+
+
+def test_a_composition_form_without_entries_refuses():
+    with pytest.raises(SystemExit, match="entries"):
+        P.seam_form("seam_cmin45", seam_state(), TEXT, 0)
+
+
+def test_composition_entries_are_the_stage_1_selection_on_r10s_vocabulary_and_d20s_figures_guard_them(monkeypatch):
+    manifest = dict(records=[dict(corpus=c, partition="train", text=w, sign=w, continuous=dict(state_key="k", seconds=1., channels=["body"]))
+                             for c, w in (("asllvd-text-v1", "dog"), ("rit-text-r6", "cat"), ("how2sign-two-view-text-v1", "fish"))])
+    monkeypatch.setattr(L, "load_manifest_at", lambda store, k, s: manifest)
+    monkeypatch.setattr("signtranslator.generation.compositional.usable_channels", lambda r, n: True, raising=False)
+    monkeypatch.setattr("signtranslator.data_engineering.corpus_manifest.usable_channels", lambda r, n: True)
+    rows = [dict(text="the dog and the cat"), dict(text="fish fish"), dict(text="dog")]
+    assert P.composition_entries(None, rows, False) == [2, 0, 1]             # How2Sign sentences are no vocabulary, stop words go
+    with pytest.raises(SystemExit, match="recorded"):
+        P.composition_entries(None, rows, True)
+    P.check_d20_entries([0] * 6 + [7] * 260 + [11] * 83 + [12] * 151)          # mean 9.09, median 7, 6 empty
+    with pytest.raises(SystemExit, match="recorded"):
+        P.check_d20_entries([0] * 5 + [7] * 261 + [11] * 83 + [12] * 151)
+
+
+def test_the_values_only_seam_keeps_reals_validity_and_the_others_heal_tracking():
+    state = gappy(seam_state(40), 12, 20)
+    entries = 2
+    healed, _ = P.seam_form("seam_cmin45", state, TEXT, 0, entries)
+    kept, info = P.seam_form("seam_cval45", state, TEXT, 0, entries)
+    for name in state.channels:
+        np.testing.assert_array_equal(kept.channels[name].valid, state.channels[name].valid)
+    before, after, values = (P.tracked_statistics([x])["hands"][0] for x in (state, healed, kept))
+    assert after > before == values
+    assert info["windows"] == 1
+    moved = np.any(kept.channels["right_hand"].values != state.channels["right_hand"].values, axis=(1, 2))
+    assert moved.any() and not moved[12:20].any()                             # bridged where tracked, and untracked frames stay empty
+
+
+def test_a_tracked_joint_with_no_bridge_keeps_its_real_value():
+    state = seam_state(20)
+    form = P.apply_windows(state, [(5, 10)])
+    c = form.channels["left_hand"]
+    form = replace(form, channels={**form.channels, "left_hand": replace(c, valid=np.zeros_like(c.valid), observed=np.zeros_like(c.valid), confidence=np.zeros_like(c.confidence), values=np.zeros_like(c.values))})
+    out = P.values_only(state, form)
+    np.testing.assert_array_equal(out.channels["left_hand"].values, state.channels["left_hand"].values)
+
+
+def test_the_bracket_sits_on_activity_maxima_where_the_minima_form_sits_on_holds():
+    state = seam_state(96)
+    body = state.channels["body"]
+    hold = body.values.copy()
+    for a, b in ((20, 28), (60, 68)):
+        hold[a:b] = hold[a]
+    moved = replace(state, channels={**state.channels, "body": replace(body, values=hold)})
+    low = P.seam_form("seam_cmin30", moved, TEXT, 0, 3)[1]["path_share"]
+    high = P.seam_form("seam_cmax45", moved, TEXT, 0, 3)[1]["path_share"]
+    activity = P.wrist_activity(moved)
+    cut_low, _ = P.minima_cuts(activity, 2)
+    cut_high, _ = P.minima_cuts(-activity, 2)
+    assert activity[cut_high].mean() > activity[cut_low].mean() and low is not None and high is not None
+
+
+def test_activity_reads_the_wrists_not_the_elbows():
+    state = seam_state(40)
+    body = state.channels["body"]
+    labels = body.labels
+    fixed = body.values.copy()
+    for i, label in enumerate(labels):
+        if "Forearm" not in label:                                            # only the forearms move: elbows still, wrists moving
+            fixed[:, i] = fixed[0, i]
+    moved = replace(state, channels={**state.channels, "body": replace(body, values=fixed)})
+    assert P.wrist_activity(moved).min() > 0
+    still = replace(state, channels={**state.channels, "body": replace(body, values=np.broadcast_to(body.values[:1], body.values.shape).copy())})
+    assert P.wrist_activity(still).max() == 0
+
+
+def test_the_squeeze_time_scales_each_segment():
+    from signtranslator.generation.compositional import time_scale
+    state = seam_state(100)
+    form, windows = P.squeeze_at(state, [50])
+    assert windows == [(26, 73)] or len(windows) == 1
+    head = time_scale(take_frames(state, np.arange(0, 50)), 26)
+    np.testing.assert_allclose(form.channels["left_hand"].values[:26], head.channels["left_hand"].values, atol=1e-9)
+    np.testing.assert_allclose(form.channels["left_hand"].values[25], state.channels["left_hand"].values[49], atol=1e-9)   # last frame kept
+
+
+# ---- per-stage fits, principal directions, Lloyd, part maps ---------------------------------------------------------------
+
+@pytest.mark.parametrize("fit_name,part", [("k8", "left_hand"), ("k4", "body"), ("fsq10", "body"), ("fsq10", "right_hand"), ("hands_extension", "left_hand")])
+def test_each_fit_stage_lowers_the_error_and_starts_from_the_last_stages_residual(monkeypatch, tmp_path, fit_name, part):
+    fit_harness(monkeypatch, tiny_tokenizer())
+    assert fit(tmp_path) == 0
+    rows = json.loads((tmp_path / "fit" / "fit.json").read_text())["statistics"][fit_name][part]
+    assert len(rows) == (4 if fit_name == "hands_extension" else 8)
+    for a, b in zip(rows, rows[1:]):
+        assert b["mse_before"] == a["mse_after"]                              # the residual, not the latents again
+    assert rows[-1]["mse_after"] < rows[0]["mse_before"]
+    assert all(r["mse_after"] <= r["mse_before"] * 1.0001 for r in rows)
+
+
+def test_fsq_reads_the_top_principal_directions_with_the_most_levels_on_the_largest():
+    g = torch.Generator().manual_seed(0)
+    scales = torch.tensor([1., 8., .1, 4., .2, 2., .3, 1.5])                  # variance order: dims 1, 3, 5, 7
+    x = torch.randn(6000, 8, generator=g) * scales
+    stage = P.fsq_fit(x)
+    assert [int(stage["basis"][:, k].abs().argmax()) for k in range(4)] == [1, 3, 5, 7]
+    assert list(P.FSQ_LEVELS) == [8, 6, 5, 5]
+    out, _ = P.fsq_stage(x, stage)
+    z = (out - stage["mean"]) @ stage["basis"]
+    assert [len({round(v, 3) for v in z[:, k].tolist()}) for k in range(4)] == [8, 6, 5, 5]
+
+
+def test_fsq_error_leaves_the_stage_smaller_than_the_stage_it_came_from():
+    g = torch.Generator().manual_seed(1)
+    x = torch.randn(3000, 4, generator=g)
+    stage = P.fsq_fit(x)
+    assert (x - P.fsq_stage(x, stage)[0]).pow(2).mean() < .1 * x.pow(2).mean()
+
+
+def test_kmeans_runs_every_lloyd_step():
+    g = torch.Generator().manual_seed(0)
+    x = torch.randn(1000, 4, generator=g)
+    generator = torch.Generator().manual_seed(3)
+    start = x[torch.randperm(1000, generator=generator)[:8]].clone()
+    expected = start
+    for _ in range(3):
+        expected = P._lloyd_step(x, expected)
+    found = P.kmeans(x, 8, iterations=3, seed=3)
+    torch.testing.assert_close(found, expected)
+    assert P._nearest(x, found)[1].mean() < P._nearest(x, P.kmeans(x, 8, iterations=1, seed=3))[1].mean()
+
+
+@pytest.mark.parametrize("name,expected", [("q_face2", dict(face=2)), ("q_body1", dict(body=1)), ("q_hands4", dict(left_hand=4, right_hand=4)), ("q_right1", dict(right_hand=1)),
+                                           ("h8b4f2", dict(body=4, face=2)), ("h12b6f4", dict(left_hand=12, right_hand=12, body=6, face=4)), ("hands10", dict(left_hand=10, right_hand=10))])
+def test_every_stage_form_maps_the_parts_it_names(name, expected):
+    tok = tiny_tokenizer()
+    assert P.stage_map(name, tok) == {**{p: 8 for p, _ in tok.parts}, **expected}
+
+
+def test_h12b6f4_decodes_six_body_stages_four_face_stages_and_extended_hands():
+    tok = tiny_tokenizer()
+    state = signer_state(2, frames=20, amplitude=.4)
+    z = encoded(tok, state)
+    seen = decoder_input(tok, "h12b6f4", state, zeros_fit(tok))
+    assert torch.equal(seen["body"], tok.quantize(z, 6)[0]["body"]) and torch.equal(seen["face"], tok.quantize(z, 4)[0]["face"])
+    assert torch.equal(seen["left_hand"], tok.quantize(z)[0]["left_hand"])    # zero extension codes
+
+
+# ---- paired differences and intervals ---------------------------------------------------------------------------------------
+
+def test_every_paired_difference_is_the_form_minus_its_anchor(monkeypatch, tmp_path):
+    refs = harness(monkeypatch, Perfect(tiny_tokenizer(), damage=neutral_columns("left_hand")), n=CLIPS)[1]
+
+    class Short(PartReader):                                                  # a damaged form also says less and loops
+        def read(self, states, texts, candidates, group=2):
+            raw = PartReader.read(self, states, texts, candidates, group)
+            looped = [h if "x" not in h.split() else "x y z x y z x y z" for h in raw["hypotheses"]]
+            return dict(raw, hypotheses=looped)
+    monkeypatch.setattr(L, "make_reader", lambda store, **k: Short(refs))
+    forms = ["real", "blank", "rt_only_left", "round_trip_masked"]
+    assert read(tmp_path, forms) == 0
+    f = merged(tmp_path, forms)["forms"]["rt_only_left"]
+    assert f["paired"]["real"]["bleu"]["difference"] < 0 and f["paired"]["real"]["likelihood_minus_blank"]["difference"] < 0
+    assert f["paired"]["real"]["loop_share"]["difference"] == 1
+    assert f["length_ratio"]["paired"]["real"]["difference"] < 0
+    assert f["paired"]["blank"]["likelihood_minus_blank"]["difference"] > 0
+    assert f["comparators"]["round_trip_masked"]["loop_share"]["difference"] == 0
+    assert f["likelihood_minus_blank"]["ci95"][0] <= f["likelihood_minus_blank"]["mean"] <= f["likelihood_minus_blank"]["ci95"][1]
+    share = f["share_of_gap"]
+    assert share["likelihood_ci95"][0] - 1e-6 <= share["likelihood"] <= share["likelihood_ci95"][1] + 1e-6 and 0 < share["likelihood"] < 1
+    speed = merged(tmp_path, forms)["forms"]["real"]["wrist_speed"]["over_real"]
+    assert speed["difference"] == 0 and speed["ratio"] == 1
+
+
+def test_the_declared_comparators_are_named():
+    assert P.comparators_of("fsq10") == ("k1024", "round_trip")
+    for k in ("k256", "k1024", "k4096"):
+        assert P.comparators_of(k) == ("k512", "round_trip")
+    assert P.comparators_of("k512") == ("round_trip",)
+    assert P.comparators_of("no_quant") == ("round_trip", "identity")
+    assert P.comparators_of("no_quant_masked") == ("round_trip_masked", "identity_masked")
+    assert P.comparators_of("seam_cmin45") == ("seam_crnd45",) and P.comparators_of("seam_cval45") == ("seam_cmin45", "seam_crnd45")
+    assert P.comparators_of("seam_csq196_min") == ("seam_csq196_rnd",) and P.comparators_of("seam_cmax45") == ("seam_crnd45",)
+    assert P.comparators_of("seam_crnd45") == () and P.comparators_of("real") == ()
+
+
+def test_a_comparator_block_is_read_in_a_merge(monkeypatch, tmp_path):
+    harness(monkeypatch, tiny_tokenizer(), n=CLIPS)
+    forms = ["real", "blank", "round_trip", "identity", "no_quant"]
+    assert read(tmp_path, forms) == 0
+    f = merged(tmp_path, forms)["forms"]["no_quant"]["comparators"]
+    assert set(f) == {"round_trip", "identity"} and all(len(v["bleu"]["ci95"]) == 2 for v in f.values())
+
+
+# ---- B6 filter and template, fit draw, declared parameters, stored fit -----------------------------------------------------
+
+def test_word_states_pass_v3ds_filter_template_and_rate(monkeypatch, tmp_path):
+    import train_sign_recognizer
+    import signtranslator.generation.sign_recognizer as sr
+    seen = {}
+    template = object()
+
+    class Spy:
+        def __init__(self, manifest, **kw):
+            seen.update(kw)
+            self.records = manifest["records"]
+
+        def __getitem__(self, i):
+            return 0, f"state{i}"
+    monkeypatch.setattr(sr, "GlossMotionDataset", Spy)
+    monkeypatch.setattr(train_sign_recognizer, "conform_template", lambda store, spec, cache: seen.update(spec=spec) or (template, {}))
+    rows = word_rows("rit", 3)
+    rows[0]["continuous"] = dict(rows[0]["continuous"], seconds=2.)
+    states, _, signs = P.word_states(type("Files", (), dict(get=lambda self, k: b""))(), rows, ["BOOK"], 1, None, longest=True)
+    assert seen["min_hand_fraction"] == .2 and seen["fps"] == 24. and seen["template"] is template and seen["hand_fraction_fallback"] is True
+    assert seen["partition"] == "gate:rit" and seen["spec"] == P.CONFORM_TEMPLATE and signs == ["rit-0"] and P.V3D_MIN_HAND == .2
+
+
+def test_the_fit_draw_is_the_declared_seeded_sample_in_order(monkeypatch):
+    import random
+    manifest = fit_harness(monkeypatch, tiny_tokenizer(), n=50)
+    pool = [r for r in manifest["records"] if r["partition"] == "train" and r["signer_component"] == "c02"]
+    assert [r["sign"] for r in P.fit_records(None, 7)] == [r["sign"] for r in random.Random(P.FIT_SEED).sample(pool, 7)]
+
+
+def test_the_declared_parameters_are_these():
+    assert (P.FIT_CLIPS, P.FIT_STEPS, P.FIT_ITERATIONS, P.EXTENSION_STAGES, P.SQUEEZE) == (4000, 500_000, 15, 4, 1.96)
+    assert P.KMEANS == (256, 512, 1024, 4096) and P.FSQ_LEVELS == (8, 6, 5, 5) and P.SHARES == (15, 30, 45) and P.STAGE_GRID == (1, 2, 4)
+    assert P.D20_ENTRIES == dict(mean=9.09, median=7, empty=6) and P.CANARY == dict(real=4.493, blank=1.68, tolerance=.05) and P.IDENTITY_TOLERANCE == .01
+
+
+def test_the_jobs_declared_calls_take_the_declared_parameters(tmp_path):
+    _, calls = run_job(tmp_path)
+    parsed = [P.build_parser().parse_args(x.split()[1:]) for x in calls.splitlines() if x.startswith("scripts/tok_probes.py ")]
+    fit_calls = [a for a in parsed if a.command == "fit" and not a.smoke_train]
+    assert len(fit_calls) == 1 and (fit_calls[0].fit_clips, fit_calls[0].fit_steps, fit_calls[0].iterations) == (4000, 500_000, 15) and fit_calls[0].device == "cuda"
+    reads = [a for a in parsed if a.command == "read" and not a.smoke_train]
+    assert reads and all(a.candidates == 1 and a.nll_group == 4 and a.device == "cuda" and a.smoke_longest == 0 and a.fit_dir.endswith("d20/fit") for a in reads)
+    smokes = [a for a in parsed if a.command == "read" and a.smoke_train]
+    assert smokes and all(a.smoke_train == 8 and a.smoke_longest == 4 for a in smokes)
+    words = [a for a in parsed if a.command == "words"]
+    assert [a.smoke_train for a in words] == [4, 0] and words[1].forms is None and words[1].limit == 0 and words[1].resume
+    groups = [a for a in parsed if a.command == "groups"]
+    assert all(a.processes == 4 and a.skip == "real,blank" for a in groups)
+    assert any(a.command == "merge" and a.forms is None and a.output_file.endswith("d20/report.json") for a in parsed)
+
+
+def test_a_read_records_the_fit_it_read_and_a_merge_refuses_two(monkeypatch, tmp_path):
+    tok = tiny_tokenizer()
+    fit_harness(monkeypatch, tok)
+    assert fit(tmp_path) == 0
+    sha = json.loads((tmp_path / "fit" / "fit.json").read_text())["codebooks_sha256"]
+    assert sha == hashlib.sha256((tmp_path / "fit" / "codebooks.npz").read_bytes()).hexdigest()
+    harness(monkeypatch, tok, n=4)
+    monkeypatch.setattr(P, "FIT_FORMS", P.FIT_FORMS)
+    assert read(tmp_path, ["real", "blank", "hands12", "hands10"], "--fit-dir", str(tmp_path / "fit")) == 0
+    path = tmp_path / "w" / "form-hands10.json"
+    r = json.loads(path.read_text())
+    assert r["fit"]["codebooks_sha256"] == sha and r["fit"]["components"] == ["c02"]
+    assert merged(tmp_path, ["real", "blank", "hands12", "hands10"])["fit"]["codebooks_sha256"] == sha
+    r["fit"]["codebooks_sha256"] = "0" * 64
+    path.write_text(json.dumps(r))
+    with pytest.raises(SystemExit, match="different fits"):
+        merged(tmp_path, ["real", "blank", "hands12", "hands10"])
+
+
+def test_stored_latents_with_changed_bytes_refuse(monkeypatch, tmp_path):
+    fit_harness(monkeypatch, tiny_tokenizer())
+    assert fit(tmp_path) == 0
+    (tmp_path / "fit" / "fit.json").unlink()
+    (tmp_path / "fit" / "codebooks.npz").unlink()
+    with open(tmp_path / "fit" / "latents.npz", "ab") as f:
+        f.write(b"changed")
+    with pytest.raises(SystemExit, match="SHA-256"):
+        fit(tmp_path)
+
+
+# ---- canary, check, memory, smoke of the longest clips -------------------------------------------------------------------------
+
+def canary_forms(tmp_path, real, blank, declared=True):
+    refs = [f"w{i} a b c d e f" for i in range(40)]
+    out = tmp_path / "f"
+    out.mkdir()
+    for name, match in (("real", real), ("blank", blank)):
+        hyps = [r if i < match else "z" for i, r in enumerate(refs)]
+        (out / f"form-{name}.json").write_text(json.dumps(dict(form=name, declared_read=declared, references=refs, hypotheses=hyps)))
+    return out, refs
+
+
+def test_the_canary_passes_within_tolerance_and_stops_the_job_otherwise(tmp_path, monkeypatch):
+    out, refs = canary_forms(tmp_path, 20, 5)
+    from signtranslator.eval import s0_metrics as M
+    real = M.bleu_ci_fast([r if i < 20 else "z" for i, r in enumerate(refs)], refs)[0]
+    blank = M.bleu_ci_fast([r if i < 5 else "z" for i, r in enumerate(refs)], refs)[0]
+    assert P.main(["canary", "--out-dir", str(out)]) == 3
+    monkeypatch.setattr(P, "CANARY", dict(real=real + .04, blank=blank - .04, tolerance=.05))
+    assert P.main(["canary", "--out-dir", str(out)]) == 0
+    monkeypatch.setattr(P, "CANARY", dict(real=real + .06, blank=blank, tolerance=.05))
+    assert P.main(["canary", "--out-dir", str(out)]) == 3
+    monkeypatch.setattr(P, "CANARY", dict(real=real, blank=blank + .06, tolerance=.05))
+    assert P.main(["canary", "--out-dir", str(out)]) == 3
+    assert P.canary_read(4.495, 1.6802)["reproduced"] is not None
+
+
+def test_a_smoke_has_no_canary_and_says_so(tmp_path, capsys):
+    out, _ = canary_forms(tmp_path, 20, 5, declared=False)
+    assert P.main(["canary", "--out-dir", str(out)]) == 0
+    assert "not applicable" in capsys.readouterr().out
+
+
+def test_the_stored_reads_differ_by_less_than_the_canary_and_the_identity_tolerance_takes_one_in_500(tmp_path):
+    assert P.canary_read(4.495, 1.6802)["reproduced"] and P.canary_read(4.493, 1.68)["reproduced"]
+    assert not P.canary_read(4.40, 1.68)["reproduced"] and not P.canary_read(4.493, 1.8)["reproduced"]
+    path = tmp_path / "r.json"
+    path.write_text(json.dumps(dict(report_only=True, checks=dict(identity_masked_identical_to_real=.998, blank_identical_to_real=.1))))
+    assert P.main(["check", "--report", str(path)]) == 0
+    path.write_text(json.dumps(dict(report_only=True, checks=dict(identity_masked_identical_to_real=.98, blank_identical_to_real=.1))))
+    assert P.main(["check", "--report", str(path)]) == 3
+    path.write_text(json.dumps(dict(report_only=True, checks=dict(identity_masked_identical_to_real=1., blank_identical_to_real=.1,
+                                                                  canary=P.canary_read(4.2, 1.68)))))
+    assert P.main(["check", "--report", str(path)]) == 3
+
+
+def test_every_report_records_peak_memory_on_the_host_and_the_gpu(monkeypatch, tmp_path):
+    harness(monkeypatch, tiny_tokenizer(), n=3)
+    assert read(tmp_path, ["real"]) == 0
+    r = json.loads((tmp_path / "w" / "form-real.json").read_text())
+    assert r["peak_rss_bytes"] > 0 and "gpu_peak_reserved_bytes" in r
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "max_memory_reserved", lambda: 1234)
+    assert P.gpu_peak_reserved_bytes() == 1234
+
+
+def test_a_smoke_also_meets_the_longest_c02_train_clips(monkeypatch, tmp_path):
+    records = [dict(corpus=L.H2S, partition="train", signer_component=c, text="a", sign=f"{c}-{s}", continuous=dict(state_key="k", seconds=s))
+               for c, s in (("c02", 1.), ("c02", 90.), ("c02", 30.), ("c00", 900.), ("c01", 800.))]
+    monkeypatch.setattr(L, "load_manifest_at", lambda store, k, s: dict(records=records))
+    assert [r["sign"] for r in P.longest_train_records(None, 2)] == ["c02-90.0", "c02-30.0"]
+    harness(monkeypatch, tiny_tokenizer(), n=2, declared=False)
+    monkeypatch.setattr(L, "load_manifest_at", lambda store, k, s: dict(records=records))
+    monkeypatch.setattr(L, "load_states", lambda store, recs: [gappy(signer_state(i, frames=20, amplitude=.4)) for i in range(len(recs))])
+    monkeypatch.setattr(L, "make_reader", lambda store, **k: type("R", (), dict(info=PartReader.info, read=lambda self, st, te, ca, group=2: dict(hypotheses=["a"] * len(st), nll=np.ones((len(st), ca.shape[1])))))())
+    assert read(tmp_path, ["real"], "--smoke-train", "2", "--smoke-longest", "2") == 0
+    r = json.loads((tmp_path / "w" / "form-real.json").read_text())
+    assert r["signs"][-2:] == ["c02-90.0", "c02-30.0"] and r["list"]["longest"] == 2
+    with pytest.raises(SystemExit, match="belongs to a smoke"):
+        read(tmp_path, ["blank"], "--smoke-longest", "2")
+
+
+def test_the_low_memory_loader_gives_the_same_instrument(monkeypatch, tmp_path):
+    from tests.test_s0s1_scripts import tiny_translator
+    torch.manual_seed(0)
+    model = tiny_translator().eval()
+    weights = {k: v.clone() for k, v in model.state_dict().items()}
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    torch.save(dict(kind="keypoints_to_text_t5", config=model.config.to_dict(), ema=weights), cache / f"{L.TRANSLATOR_SHA}.pt")
+    monkeypatch.setattr("signtranslator.generation.keypoints_to_text_t5.build", lambda config, pretrained: tiny_translator())
+    monkeypatch.setattr(L, "make_reader", lambda *a, **k: pytest.fail("the cached copy goes through the low-memory path"))
+    args = type("A", (), dict(instrument_cache=str(cache), device="cpu"))()
+    reader = P.load_reader(SpyStore({f"training-runs/{L.TRANSLATOR_RUN}/best.json": json.dumps(dict(checkpoint_key="ck")).encode()}), args)
+    assert reader.kind == "keypoints" and reader.info["sha256"] == L.TRANSLATOR_SHA and reader.info["checkpoint_key"] == "ck"
+    loaded = reader.model.state_dict()
+    assert set(loaded) == set(weights) and all(torch.equal(loaded[k], weights[k]) for k in weights)
+    states = [signer_state(i, frames=16, amplitude=.4) for i in range(2)]
+    from score_back_translation import translate
+    assert translate(reader.model, "keypoints", states) == translate(model, "keypoints", states)
+    torch.save(dict(kind="another", config={}, ema={}), cache / f"{L.TRANSLATOR_SHA}.pt")
+    with pytest.raises(SystemExit, match="kind"):
+        P.load_reader(SpyStore({}), args)
+    (cache / f"{L.TRANSLATOR_SHA}.pt").unlink()
+    monkeypatch.setattr(L, "make_reader", lambda store, **k: k)
+    assert P.load_reader(SpyStore({}), args)["sha256"] == L.TRANSLATOR_SHA      # no copy yet: the original, hash-checked
+
+
+# ---- lost work: exit trap, partial upload, restore --------------------------------------------------------------------------
+
+def test_a_failed_job_uploads_its_work_to_partial_keeps_its_status_and_ends_with_done(tmp_path):
+    result, calls = run_job(tmp_path, fail_when="d20/fit --device")
+    assert result.returncode == 1 and done_line(result) == 1
+    partial = [x for x in calls.splitlines() if " upload --partial " in x]
+    assert partial and all("/partial/" in x for x in partial)
+
+
+def test_a_passing_job_uploads_no_partial_on_exit_and_a_failed_partial_upload_hides_no_status(tmp_path):
+    result, calls = run_job(tmp_path, SMOKE="1")
+    assert result.returncode == 0 and " upload --partial " not in calls.split("SMOKE")[0].splitlines()[-1]
+    other = tmp_path / "second"
+    other.mkdir()
+    result, _ = run_job(other, fail_when="--partial")                          # the job itself passes; a partial sync's failure is only an alert
+    assert result.returncode == 0 and "ALERT partial upload failed" in result.stdout and done_line(result) == 0
+
+
+def test_a_terminated_job_still_uploads_and_says_143(tmp_path):
+    bin_dir, log = fake_bin(tmp_path, None)
+    (bin_dir / "python").write_text(f'#!/bin/bash\necho "$*" >> {log}\ncase "$*" in *d20/fit*) kill -TERM $PPID; sleep 1; exit 0;; esac\ncase "$*" in *" groups "*) printf "a,b\\n";; esac\nexit 0\n')
+    env = dict(PATH=f"{bin_dir}:/usr/bin:/bin", HOME=str(tmp_path), VENV_BIN=str(bin_dir), R2ENV=str(tmp_path / "no-such-env"), ST_REPO=str(tmp_path), WORK=str(tmp_path / "work"))
+    done = subprocess.run(["bash", str(JOB)], env=env, capture_output=True, text=True, timeout=60)
+    assert done.returncode == 143 and done_line(done) == 143 and " upload --partial " in log.read_text()
+
+
+def test_a_retry_with_a_finished_stage_stored_skips_it(tmp_path):
+    forms = tmp_path / "work" / "d20" / "forms"
+    fits = tmp_path / "work" / "d20" / "fit"
+    forms.mkdir(parents=True)
+    fits.mkdir(parents=True)
+    (forms / "form-real.json").write_text("{}")
+    (forms / "form-blank.json").write_text("{}")
+    (fits / "fit.json").write_text("{}")
+    _, calls = run_job(tmp_path)
+    lines = calls.splitlines()
+    restore = next(i for i, x in enumerate(lines) if " restore " in x)
+    after = lines[restore:]
+    assert not any(" fit " in x for x in after) and not any("--forms real,blank" in x for x in after)
+    assert any(" read --forms a,b" in x for x in after) and any("--stored-in" in x and "d20/forms" in x for x in after)
+
+
+def test_groups_leave_out_stored_forms_and_words_resume(tmp_path, monkeypatch, capsys):
+    (tmp_path / "form-no_quant.json").write_text("{}")
+    groups = P.form_groups(3, ("real", "blank"), str(tmp_path))
+    names = [f for g in groups for f in g.split(",")]
+    assert "no_quant" not in names and "identity" in names
+    import validate_sign_recognizer as vsr
+    calls = []
+    rows = word_rows("rit", 2)
+    states = [signer_state(i, frames=16, amplitude=.4) for i in range(2)]
+    monkeypatch.setattr(P, "load_v3d", lambda store, device: (object(), ["BOOK"]))
+    monkeypatch.setattr(P, "word_records", lambda store, labels: rows)
+    monkeypatch.setattr(P, "word_states", lambda store, rs, labels, limit, cache, longest=False: (states, [0, 0], ["rit-0", "rit-1"]))
+    monkeypatch.setattr(L, "load_tokenizer", lambda store: tiny_tokenizer())
+    monkeypatch.setattr(vsr, "logits_of", lambda model, forms, device: calls.append(1) or torch.ones(len(forms), 1))
+    w = tmp_path / "w"
+    assert P.main(["words", "--store", "dir:x", "--out-dir", str(w), "--forms", "real,blank"]) == 0
+    calls.clear()
+    assert P.main(["words", "--store", "dir:x", "--out-dir", str(w), "--forms", "real,blank,no_quant", "--resume"]) == 0
+    assert len(calls) == 1 and (w / "word-no_quant.json").exists()
+
+
+def partial_store(tmp_path, commit, *, declared=True, books=b"books"):
+    from signtranslator.data.text_motion_dataset import DirectoryStore
+    store = DirectoryStore(tmp_path / "s")
+    prefix = "tok/partial/20261101T000000Z/d20"
+    store.put(f"{prefix}/forms/form-real.json", json.dumps(dict(form="real", code_commit=commit, declared_read=declared)).encode())
+    store.put(f"{prefix}/forms/form-blank.json", b'{"half a fi')
+    store.put(f"{prefix}/forms/word-real.json", json.dumps(dict(form="real", code_commit=commit, declared_read=declared)).encode())
+    store.put(f"{prefix}/fit/fit.json", json.dumps(dict(code_commit=commit, declared_fit=declared, codebooks_sha256=hashlib.sha256(b"books").hexdigest())).encode())
+    store.put(f"{prefix}/fit/codebooks.npz", books)
+    store.put("tok/partial/20261101T000000Z/smoke-x/forms/form-identity.json", json.dumps(dict(form="identity", code_commit=commit, declared_read=False)).encode())
+    return store
+
+
+def restore(tmp_path, out="out"):
+    return P.main(["restore", "--store", f"dir:{tmp_path / 's'}", "--prefix", "tok/partial", "--out-dir", str(tmp_path / out), "--final-key", "tok/report.json"])
+
+
+def test_restore_brings_back_same_commit_d20_work_only_and_never_half_a_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(P, "code_commit", lambda: "abc")
+    partial_store(tmp_path, "abc")
+    assert restore(tmp_path) == 0
+    out = tmp_path / "out"
+    assert (out / "forms/form-real.json").exists() and (out / "forms/word-real.json").exists() and (out / "fit/fit.json").exists() and (out / "fit/codebooks.npz").exists()
+    assert not (out / "forms/form-blank.json").exists() and not (out / "forms/form-identity.json").exists()
+
+
+@pytest.mark.parametrize("kw,commit", [(dict(), "other"), (dict(declared=False), "abc"), (dict(), None)])
+def test_restore_skips_other_commits_smokes_and_an_unknown_commit(tmp_path, monkeypatch, kw, commit):
+    monkeypatch.setattr(P, "code_commit", lambda: commit)
+    partial_store(tmp_path, "abc", **kw)
+    assert restore(tmp_path) == 0
+    assert not list((tmp_path / "out").rglob("*.json")) if (tmp_path / "out").exists() else True
+
+
+def test_restore_refuses_a_changed_codebook_and_a_finished_read(tmp_path, monkeypatch):
+    monkeypatch.setattr(P, "code_commit", lambda: "abc")
+    store = partial_store(tmp_path, "abc", books=b"changed")
+    assert restore(tmp_path) == 0
+    assert not (tmp_path / "out/fit/fit.json").exists() and (tmp_path / "out/forms/form-real.json").exists()
+    store.put("tok/report.json", b"{}")
+    with pytest.raises(SystemExit, match="finished"):
+        restore(tmp_path, "again")
+
+
+def test_a_partial_upload_leaves_stored_keys_alone_and_a_merge_refuses_two_commits(tmp_path, monkeypatch):
+    from signtranslator.data.text_motion_dataset import DirectoryStore
+    work = tmp_path / "w"
+    work.mkdir()
+    (work / "a.json").write_text("new")
+    (work / "b.json").write_text("new")
+    store = DirectoryStore(tmp_path / "s")
+    store.put("p/a.json", b"old")
+    args = ["upload", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(work), "--prefix", "p"]
+    with pytest.raises(SystemExit, match="write-once"):
+        P.main(args)
+    assert not store.exists("p/b.json")
+    assert P.main(args + ["--partial"]) == 0
+    assert store.get("p/a.json") == b"old" and store.get("p/b.json") == b"new"
+    other = tmp_path / "empty"
+    other.mkdir()
+    assert P.main(["upload", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(other), "--prefix", "p", "--partial"]) == 0
+    harness(monkeypatch, tiny_tokenizer(), n=3)
+    monkeypatch.setattr(P, "code_commit", lambda: "one")
+    assert read(tmp_path, ["real"]) == 0
+    monkeypatch.setattr(P, "code_commit", lambda: "two")
+    assert read(tmp_path, ["blank"]) == 0
+    with pytest.raises(SystemExit, match="different commits"):
+        merged(tmp_path, ["real", "blank"])
+
+
+def test_a_write_leaves_no_half_file_under_the_reports_name(tmp_path, monkeypatch):
+    path = tmp_path / "x" / "form-real.json"
+    P.write_report_once(path, dict(a=1))
+    assert json.loads(path.read_text()) == dict(a=1) and [p.name for p in path.parent.iterdir()] == ["form-real.json"]
+    with pytest.raises(SystemExit, match="write-once"):
+        P.write_report_once(path, dict(a=2))
+
+
+def test_the_report_discloses_what_a_reader_needs(monkeypatch, tmp_path):
+    harness(monkeypatch, tiny_tokenizer(), n=4)
+    assert read(tmp_path, ["real", "blank"]) == 0
+    d = merged(tmp_path, ["real", "blank"])["disclosures"]
+    assert "20.0" in d["fsq"] and "V3-F" in d["fsq"] and "favours d2" in d["v3d"] and "119" in d["b6"] and "197" in d["b6"] and "rt_only_arms" in d["b2"]
+    assert "99.5th percentile" in P.__doc__ and "0.5-99.5" not in P.__doc__

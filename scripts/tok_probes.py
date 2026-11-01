@@ -37,11 +37,11 @@ plus 2 or 4 post-hoc k-means stages fitted on their residuals. ``h8b4f2``, ``h12
 **B5** (each through the round-trip path, every part, 8 stages). ``k<K>``, K in 256, 1024, 4096: post-hoc residual k-means
 codebooks. ``k512`` is a control that the plan's list leaves out: it is d2's own size, so K's effect can be separated from
 post hoc against learned. ``fsq10``: post-hoc residual FSQ with levels (8, 6, 5, 5), 1,200 codes, 10.23 bits per stage: per
-stage and part, a PCA to 4 dimensions and a uniform grid bounded by the 0.5-99.5% range (the per-stage scale stands in for
-the invertible layer norm of 2508.15860). Its equal-bits comparator is ``k1024`` (10 bits). All these codebooks meet an
+stage and part, a PCA to 4 dimensions and a symmetric uniform grid bounded by the 99.5th percentile of each projection's absolute
+value (the per-stage scale stands in for the invertible layer norm of 2508.15860). Its equal-bits comparator is ``k1024`` (10 bits). All these codebooks meet an
 encoder and a decoder trained for d2's, so they read a lower bound on a retrained quantiser of that kind, and **FSQ more so:**
 d2's latents have 128 dimensions and were never shaped to sit on a 4-dimensional grid, so 8 stages of PCA keep at most 32 of them.
-A k-means book has no such limit. So fsq10 below k1024 does not show that FSQ is worse; fsq10 at least equal to k1024 would be informative.
+A k-means book has no such limit. So fsq10 cannot close V3-F: below k1024 does not show that FSQ is worse.
 
 **B6.** ``words``: v3d's top-1 and top-5 on each decoded form on RIT and ASLLVD words. **The plan says "each surviving form"
 and declares no survival rule**, so by default every decoded form is read and nothing is filtered; a reader can filter later,
@@ -52,23 +52,32 @@ and ``--forms`` narrows the list, which the report records. Seam forms have no w
 gloss and no spans (0 of 24,496, checked 2026-11-01), as the plan says. So this uses section 5's declared fallback, and every
 form report says so: cuts at wrist-activity minima at each sentence's word count.
 
-- ``seam_min<S>``: J = max(1, words − 1) windows centred on the J lowest activity minima (at least T / (2(J + 1)) frames apart;
-  when too few minima exist, midpoints of the largest gaps, counted as ``filled``), holding S% of the clip's frames in all, each
-  replaced by ``compositional.bridge`` from the frame before it to the frame after it. S in 15, 30, 45.
-- ``seam_rnd<S>``: the same window lengths per clip at random positions (section 5's control; seeded per clip and form).
-- ``seam_fix<S>``: the same window lengths at even spacing (the task's "fixed intervals"; section 5 does not name it).
-- ``seam_sq196_min``: segments between the minima squeezed 1.96× with bridges filling the length; ``seam_sq196_rnd``: the
-  same with random cuts.
+**Composition density, the forms to read.** J = (r10's entries for this sentence, ``round15_compose_eval.stage1_selection``) − 1, the
+same junctions per sentence as composition (mean entries 9.09, median 7 on D20). A sentence with one entry has no junction and stays
+real; so do D20's 6 sentences with none (composition renders those blank, so this is milder there), and both are counted.
 
-"Word count" is ``compositional.normalise``'s tokens, stop words included, as section 5 leaves it open. That is more seams than
-composition has (about 9.1 entries per D20 sentence), so at the same share each bridge is shorter than composition's, and this form
-may understate what composition's longer bridges cost. ``junctions_per_clip`` reports the density. Word echo (section 5) is not computed: it needs
+- ``seam_cmin<S>``: J windows centred on the J lowest activity minima (at least T / (2(J + 1)) frames apart; when too few minima exist,
+  midpoints of the largest gaps, counted as ``filled``), S% of the clip's frames in all (S in 30, 45), each replaced by
+  ``compositional.bridge`` from the frame before it to the frame after it. ``seam_crnd<S>``: the same lengths at random positions.
+- ``seam_csq196_min``, ``seam_csq196_rnd``: segments squeezed 1.96× by ``compositional.time_scale`` with bridges filling the length, at
+  the minima or at random cuts.
+- ``seam_cval45``: ``seam_cmin45``'s values under real's validity. ``bridge`` marks a frame valid if either end is, so the other forms
+  also heal tracking, which helps the read; this one cannot. A joint real tracks inside a window whose ends are both untracked keeps
+  its real value, since no bridge exists for it.
+- ``seam_cmax45``: windows on activity maxima, not minima. Minima can sit on holds, where a bridge replaces little; this brackets that.
+
+**Word-count density, sensitivity only.** ``seam_min<S>``, ``seam_rnd<S>``, ``seam_fix<S>`` (S in 15, 30, 45; ``fix`` is even spacing, the
+task's "fixed intervals", which section 5 does not name), ``seam_sq196_min``, ``seam_sq196_rnd``: J = max(1, ``normalise``'s tokens − 1).
+That gives about 18.4 junctions and bridges of 1.2-3.4 frames, against composition's 8.09 and 2.6-7.8, and linear-bridge error grows
+with span squared, so these are about 4× too mild to bound composition.
+
+Every form's report gives its tracked share, so a heal is visible. Word echo (section 5) is not computed: it needs
 r10's selection, and the hypotheses are stored for it.
 
 **Per form** (``merge``): BLEU, likelihood minus blank (teacher-forced reference NLL, ``s0_ceilings.candidate_nll``), loop share
-(the hypothesis has a word 3-gram occurring at least 3 times, overlaps counted, on ``corpus_bleu``'s tokens), length ratio, wrist
-speed, and hand variation and speed (``motion_metrics.compare``'s own rule, per clip, on real's tracked frames), each with a
-bootstrap interval over clips and paired against real and blank, plus the share of real's gap. Blank has no tracked motion, so
+(``eval.loop_share``: a whitespace 3-gram occurring at least 3 times, overlaps counted), length ratio, wrist speed, tracked share,
+and hand variation and speed (``motion_metrics.compare``'s own rule, per clip, on real's tracked frames), each with a
+bootstrap interval over clips and paired against real and blank, the share of real's gap, and the named comparators (``comparators_of``). Blank has no tracked motion, so
 its motion pairs are null, with the reason.
 
     python scripts/tok_probes.py fit --out-dir W/fit --device cuda
@@ -77,7 +86,9 @@ its motion pairs are null, with the reason.
     python scripts/tok_probes.py merge --out-dir W/forms --output-file W/report.json
     python scripts/tok_probes.py check --report W/report.json
 
-Outputs are write-once. The job is ``runpod/fleet/tok_probes.sh``.
+Outputs are write-once and written atomically. ``canary`` compares real and blank with stored D20 before the rest is spent.
+``restore`` brings back a failed job's stored forms and fit from the same commit, so a retry reads only what is missing. The job is
+``runpod/fleet/tok_probes.sh``.
 """
 from __future__ import annotations
 
@@ -90,7 +101,9 @@ import math
 import os
 from pathlib import Path
 import random
+import re
 import resource
+import subprocess
 import sys
 import tempfile
 import time
@@ -104,6 +117,7 @@ sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 
 import s2_lib as L  # noqa: E402
 from signtranslator.eval import s0_metrics as M  # noqa: E402
+from signtranslator.eval.loop_share import loop_flags  # noqa: E402
 
 FPS = L.FPS
 PROBE = "tok-probes"
@@ -131,6 +145,7 @@ CONFORM_TEMPLATE = f"{L.EVAL_MIX}@{L.EVAL_MIX_SHA}:{L.H2S}"  # v3d's run.json: c
 
 HANDS = ("left_hand", "right_hand")
 WRIST_POINTS = (4, 5)                                       # keypoints2d.ARM: LeftWrist, RightWrist
+HAND_ROOT_POINTS = (6, 27)                                  # keypoints2d.POINTS: each hand's wrist point, valid with its whole hand
 SWAP_PARTS = ("body", "left", "right", "fingers", "wrist", "arms")
 STAGE_PARTS = dict(body=("body",), left=("left_hand",), right=("right_hand",), hands=HANDS, face=("face",))
 STAGE_GRID = (1, 2, 4)
@@ -145,7 +160,17 @@ B1_FORMS = ("no_quant", "no_quant_masked")
 B2_FORMS = tuple(f"{way}_{p}" for way in ("rt_only", "real_only") for p in SWAP_PARTS)
 B4_FORMS = tuple(f"q_{p}{q}" for p in STAGE_PARTS for q in STAGE_GRID) + ("hands10", "hands12", "h8b4f2", "h12b6f4")
 B5_FORMS = tuple(f"k{k}" for k in KMEANS) + ("fsq10",)
-SEAM_FORMS = (tuple(f"seam_{r}{s}" for r in ("min", "rnd", "fix") for s in SHARES) + ("seam_sq196_min", "seam_sq196_rnd"))
+SEAM_SPECS = {f"seam_{r}{s}": dict(density="words", position=r, share=s) for r in ("min", "rnd", "fix") for s in SHARES}
+SEAM_SPECS.update(seam_sq196_min=dict(density="words", position="min", squeeze=True), seam_sq196_rnd=dict(density="words", position="rnd", squeeze=True))
+SEAM_WORD_FORMS = tuple(SEAM_SPECS)
+SEAM_COMPOSITION_SPECS = {f"seam_c{r}{s}": dict(density="composition", position=r, share=s) for r in ("min", "rnd") for s in (30, 45)}
+SEAM_COMPOSITION_SPECS.update(seam_csq196_min=dict(density="composition", position="min", squeeze=True),
+                              seam_csq196_rnd=dict(density="composition", position="rnd", squeeze=True),
+                              seam_cval45=dict(density="composition", position="min", share=45, values_only=True),
+                              seam_cmax45=dict(density="composition", position="max", share=45))
+SEAM_COMPOSITION_FORMS = tuple(SEAM_COMPOSITION_SPECS)
+SEAM_SPECS.update(SEAM_COMPOSITION_SPECS)
+SEAM_FORMS = SEAM_WORD_FORMS + SEAM_COMPOSITION_FORMS
 DECODED_FORMS = PATH_FORMS + B1_FORMS + B2_FORMS + B4_FORMS + B5_FORMS
 FORMS = ("real", "blank") + DECODED_FORMS + SEAM_FORMS
 FORM_ID = {name: i for i, name in enumerate(FORMS)}
@@ -153,11 +178,15 @@ FIT_FORMS = ("hands10", "hands12", "h12b6f4") + B5_FORMS    # these read the fit
 SEAM_SEED, FIT_SEED = 20261101, 20261102
 FIT_CLIPS, FIT_STEPS, FIT_ITERATIONS = 4000, 500_000, 15    # 4,000 of c02's 17,945 train clips, mean 6.7 s: about 640k steps
 
+D20_ENTRIES = dict(mean=9.09, median=7, empty=6)            # r10's stage-1 entries on D20 (reports/round20_dev.md)
+IDENTITY_TOLERANCE = .01                                    # identical hypotheses: stored real reads of one list differ in 1 of 500
+CANARY = dict(real=4.493, blank=1.68, tolerance=.05)        # stored D20 reads (phase-a, 4.495 and 4.493; 1.6802); .002 is one hypothesis
 BOUNDARY_FIELDS = ("gloss", "spans", "word_spans", "alignment", "glosses")
 BOUNDARY_RULE = dict(sign_boundaries="How2Sign records carry none (no gloss, no spans; the plan's section 5 says so too)",
                      used="section 5's declared fallback: wrist-activity minima at each sentence's word count",
-                     word_count="compositional.normalise tokens, stop words included (composition has about 9.1 entries per D20 "
-                                "sentence, so these forms have more seams per sentence than composition)")
+                     composition_density="seam_c*: r10's stage-1 entries − 1, composition's junctions. Read these",
+                     word_count="seam_min, rnd, fix, sq196: compositional.normalise tokens, stop words included. Sensitivity only: about "
+                                "18.4 junctions with short bridges, about 4x too mild to bound composition")
 READING = dict(path="identity against real: what the round-trip path itself costs. round_trip against round_trip_masked: the "
                     "validity share of the loss.",
                b1="no_quant near round_trip: the plan reads the decoder as the limit; near identity: the quantiser. Read "
@@ -167,9 +196,20 @@ READING = dict(path="identity against real: what the round-trip path itself cost
                b5="k<K> against k512: K. fsq10 against k1024: the quantiser's form at about equal bits, biased against FSQ (d2's "
                   "128-dimensional latents through a 4-dimensional grid). k512 against round_trip: post hoc against learned.",
                b6="v3d top-5 decoded against real, per corpus; v3d favours d2.",
-               seam="seam_min<S> against real bounds what perfect transitions could buy; against seam_rnd<S>: whether the "
-                    "positions matter. loop share is the plan's 54% question. More, shorter bridges than composition's: see "
-                    "junctions_per_clip.")
+               seam="seam_c* at composition density. Against real: what perfect transitions could buy, within limits. A keep does not "
+                    "clear composition's seams, since the bridge endpoints come from one continuous motion, not stitched words. A fall "
+                    "may overstate, since windows can sit on holds or moves (seam_cmax45 brackets it). seam_cval45 keeps real's validity; "
+                    "the others heal tracking. The word-count forms are sensitivity only.")
+DISCLOSURES = dict(
+    fsq="Post-hoc FSQ is biased against FSQ (the review's simulated residual: 20.0 against 3.7 for the left hand, 59.5 against 7.6 for "
+        "the body; not re-run here), so it cannot close V3-F.",
+    v3d="v3d trained on d2 copies with gains, so it favours d2; these forms have no gains.",
+    b6="B6 has only 119 RIT and 197 ASLLVD clips, which cannot resolve the gate's 0.02.",
+    b2="Parts do not add up: rt_only_arms also moves the hand-local points (a hand's frame hangs from its forearm) and the shoulder "
+       "normalisation (Pelvis and Chest set the shoulders), and hypotheses are not additive in their inputs.",
+    composition_density="Six D20 sentences have no entry and stay real at composition density (composition renders them blank); "
+                        "sentences with one entry have no junction.")
+
 NOT_DECIDED = "report only: the plan's readings are its own; no rule, bar or verdict is computed here"
 
 
@@ -197,6 +237,31 @@ def check_read_list(records, declared: bool) -> None:
 
 def records_with_boundaries(records) -> int:
     return sum(1 for r in records if any(r.get(k) for k in BOUNDARY_FIELDS))
+
+
+def code_commit() -> str | None:
+    """The commit this code runs from: a retry reuses only stored work of the same commit. None outside a checkout."""
+    try:
+        done = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return done.stdout.strip() if done.returncode == 0 and done.stdout.strip() else None
+
+
+def gpu_peak_reserved_bytes() -> int | None:
+    """``torch.cuda.max_memory_reserved`` of this process; None without a GPU."""
+    import torch
+    return int(torch.cuda.max_memory_reserved()) if torch.cuda.is_available() else None
+
+
+def write_report_once(path: Path, report: dict) -> None:
+    """Write-once and atomic: a partial upload or a kill never leaves half a file under this name."""
+    if path.exists():
+        raise SystemExit(f"{path} exists (write-once)")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    temporary.write_bytes(json.dumps(report, indent=1, sort_keys=True, default=float).encode())
+    temporary.replace(path)
 
 
 def peak_rss_bytes() -> int:
@@ -456,9 +521,10 @@ def run_fit(args) -> int:
                   corpora=sorted({r["corpus"] for r in records}), manifest_sha256=L.EVAL_MIX_SHA, tokenizer_sha256=L.TOKENIZER_SHA,
                   steps={p: int(len(z)) for p, z in latents.items()}, iterations=args.iterations, codebooks_sha256=sha,
                   fsq=dict(levels=list(FSQ_LEVELS), codes=int(np.prod(FSQ_LEVELS)), bits=round(math.log2(np.prod(FSQ_LEVELS)), 2)),
-                  statistics=stats, peak_rss_bytes=peak_rss_bytes(), seconds=round(time.time() - started, 1),
+                  statistics=stats, peak_rss_bytes=peak_rss_bytes(), gpu_peak_reserved_bytes=gpu_peak_reserved_bytes(), code_commit=code_commit(),
+                  seconds=round(time.time() - started, 1),
                   note="a post-hoc fit: the encoder and decoder were trained for d2's codebooks")
-    L.write_file_once(out / "fit.json", report)
+    write_report_once(out / "fit.json", report)
     print(json.dumps(dict(fit=str(out / "fit.json"), clips=len(records), steps=report["steps"], seconds=report["seconds"],
                           peak_rss_gb=round(report["peak_rss_bytes"] / 2 ** 30, 2))), flush=True)
     return 0
@@ -678,10 +744,18 @@ def wrist_activity(state) -> np.ndarray | None:
     return np.convolve(pad, np.ones(5) / 5, mode="valid")
 
 
-def seam_count(text: str, frames: int) -> tuple[int, bool]:
-    """(junctions, capped): word count − 1, at least 1, at most what fits (each window a frame, a real frame on every side)."""
+def seam_wanted(spec: dict, text: str, entries: int | None) -> int:
+    """Junctions a form wants: composition's (entries − 1, so 0 for one entry or none), or the word-count sensitivity's."""
     from signtranslator.generation.compositional import normalise
-    wanted = max(1, len(normalise(text)) - 1)
+    if spec["density"] == "composition":
+        if entries is None:
+            raise SystemExit("a composition-density form needs the sentence's entries")
+        return max(0, entries - 1)
+    return max(1, len(normalise(text)) - 1)
+
+
+def seam_count(wanted: int, frames: int) -> tuple[int, bool]:
+    """(junctions, capped): at most what fits (each window a frame, a real frame on every side)."""
     fits = max((frames - 1) // 2, 0)
     return min(wanted, fits), wanted > fits
 
@@ -826,13 +900,28 @@ def seam_rng(clip: int, form: str) -> np.random.Generator:
     return np.random.default_rng([SEAM_SEED, clip, FORM_ID[form]])
 
 
-def seam_form(name: str, state, text: str, clip: int):
-    """(form, info) of one clip. The minima come from the real clip; every control keeps the same window lengths, so a control
+def values_only(real, form):
+    """``form``'s values under ``real``'s validity: no bridge heals tracking. Where the form has no value for a joint real tracks
+    (both ends of its window untracked), real's own value stays."""
+    channels = dict(real.channels)
+    for name, c in real.channels.items():
+        f = form.channels[name]
+        take = c.valid & f.valid
+        channels[name] = replace(c, values=np.where(take[..., None], f.values, c.values).astype(c.values.dtype))
+    return replace(real, channels=channels)
+
+
+def seam_form(name: str, state, text: str, clip: int, entries: int | None = None):
+    """(form, info) of one clip. The cuts come from the real clip; every control keeps the same window lengths, so a control
     never moves with its own form's outcome. Seeds depend on the clip and the form only."""
+    spec = SEAM_SPECS.get(name)
+    if spec is None:
+        raise SystemExit(f"unknown form {name}")
     T = len(state.timestamps)
-    count, capped = seam_count(text, T)
-    info = dict(frames=T, junctions=count, capped=capped, filled=0, untracked=False, windows=0, bridged_frames=0, path_share=None)
-    if count < 1 or T < 5:                                  # nothing fits: the clip stays real, and says so
+    count, capped = seam_count(seam_wanted(spec, text, entries), T)
+    info = dict(frames=T, density=spec["density"], entries=entries, junctions=count, capped=capped, filled=0, untracked=False, windows=0,
+                bridged_frames=0, path_share=None)
+    if count < 1 or T < 5:                                  # no junction, or nothing fits: the clip stays real, and says so
         info.update(skipped=True)
         return state, info
     activity = wrist_activity(state)
@@ -840,25 +929,24 @@ def seam_form(name: str, state, text: str, clip: int):
     if activity is None:
         cuts, filled = even_cuts(count, T), count
     else:
-        cuts, filled = minima_cuts(activity, count)
+        cuts, filled = minima_cuts(-activity if spec["position"] == "max" else activity, count)
     info["filled"] = filled
-    if name.startswith("seam_sq196"):
-        if name.endswith("_rnd"):
+    if spec.get("squeeze"):
+        if spec["position"] == "rnd":
             cuts = sorted(int(c) for c in seam_rng(clip, name).choice(np.arange(1, T), size=len(cuts), replace=False))
         form, windows = squeeze_at(state, cuts)
     else:
-        share = int(name[-2:]) / 100
-        at_minima = windows_at_cuts(cuts, int(round(share * T)), T)
-        lengths = [b - a + 1 for a, b in at_minima]
-        if name.startswith("seam_min"):
-            windows = at_minima
-        elif name.startswith("seam_rnd"):
+        placed = windows_at_cuts(cuts, int(round(spec["share"] / 100 * T)), T)
+        lengths = [b - a + 1 for a, b in placed]
+        if spec["position"] in ("min", "max"):
+            windows = placed
+        elif spec["position"] == "rnd":
             windows = random_windows(lengths, T, seam_rng(clip, name))
-        elif name.startswith("seam_fix"):
-            windows = fixed_windows(lengths, T)
         else:
-            raise SystemExit(f"unknown form {name}")
+            windows = fixed_windows(lengths, T)
         form = apply_windows(state, windows)
+    if spec.get("values_only"):
+        form = values_only(state, form)
     mask = np.zeros(T, bool)
     for a, b in windows:
         mask[a:b + 1] = True
@@ -866,6 +954,25 @@ def seam_form(name: str, state, text: str, clip: int):
     info.update(windows=len(windows), bridged_frames=int(mask.sum()),
                 path_share=round(float(path[mask].sum() / path.sum()), 4) if path.sum() > 0 else None)
     return form, info
+
+
+def composition_entries(store, records, declared: bool) -> list[int]:
+    """Per clip, the r10 entries composition signs: ``round15_compose_eval.stage1_selection`` on the evaluation mix's vocabulary.
+    On D20 they must give the recorded figures, or the vocabulary is not what composition read."""
+    from round15_compose_eval import stage1_selection
+    from signtranslator.generation.compositional import isolated_corpora, training_vocabulary
+    manifest = L.load_manifest_at(store, L.EVAL_MIX, L.EVAL_MIX_SHA)
+    _, words = stage1_selection([r["text"] for r in records], training_vocabulary(manifest, isolated_corpora(manifest)))
+    counts = [len(w) for w in words]
+    if declared:
+        check_d20_entries(counts)
+    return counts
+
+
+def check_d20_entries(counts) -> None:
+    found = dict(mean=round(float(np.mean(counts)), 2), median=float(np.median(counts)), empty=sum(c == 0 for c in counts))
+    if found != {k: float(v) if k == "median" else v for k, v in D20_ENTRIES.items()}:
+        raise SystemExit(f"r10's entries on this list are {found}, not the recorded {D20_ENTRIES}")
 
 
 def build_form(name: str, context: dict) -> tuple[list, list | None]:
@@ -877,7 +984,8 @@ def build_form(name: str, context: dict) -> tuple[list, list | None]:
     if name == "blank":
         return blanked(refs), None
     if name in SEAM_FORMS:
-        pairs = [seam_form(name, s, r["text"], i) for i, (s, r) in enumerate(zip(refs, context["records"]))]
+        entries = context.get("entries") or [None] * len(refs)
+        pairs = [seam_form(name, s, r["text"], i, entries[i]) for i, (s, r) in enumerate(zip(refs, context["records"]))]
         return [p[0] for p in pairs], [p[1] for p in pairs]
     if name not in FORM_ID:
         raise SystemExit(f"unknown form {name}")
@@ -889,12 +997,16 @@ def build_form(name: str, context: dict) -> tuple[list, list | None]:
 
 # ---- per-clip reads --------------------------------------------------------------------------------------------------
 
-def has_loop(hypothesis: str) -> bool:
-    """A word 3-gram occurs at least 3 times (overlaps counted), on ``corpus_bleu``'s tokens."""
-    from signtranslator.generation.motion_to_text import words
-    w = words(hypothesis)
-    counts = Counter(tuple(w[i:i + 3]) for i in range(len(w) - 2))
-    return bool(counts) and max(counts.values()) >= 3
+def tracked_statistics(states) -> dict:
+    """Per clip, the share of frames v1 sees as tracked: wrist points, and hand points (``keypoints2d.from_state``), the form's own
+    validity, unmasked, so a bridge's healing shows."""
+    from signtranslator.data.keypoints2d import from_state
+    wrists, hands = [], []
+    for s in states:
+        _, valid = from_state(s)
+        wrists.append(round(float(valid[:, list(WRIST_POINTS)].mean()), 5))
+        hands.append(round(float(valid[:, list(HAND_ROOT_POINTS)].mean()), 5))
+    return dict(wrists=wrists, hands=hands)
 
 
 def hand_statistics(states, refs) -> dict:
@@ -920,6 +1032,33 @@ def hand_statistics(states, refs) -> dict:
     return out
 
 
+def load_reader(store, args):
+    """Instrument v1. With a cached slim copy, memory-mapped with its weights assigned, so loading does not hold three copies of
+    them (4.02 GB on the Mac; the limit is 4). Otherwise ``s2_lib.make_reader``, which checks the original's hash and writes the slim
+    copy. The file's name is the original's hash, so another instrument's copy is never read in its place."""
+    import torch
+    path = Path(args.instrument_cache) / f"{L.TRANSLATOR_SHA}.pt" if args.instrument_cache else None
+    if path is None or not path.exists():
+        return L.make_reader(store, run=L.TRANSLATOR_RUN, sha256=L.TRANSLATOR_SHA, device=args.device, cache_dir=args.instrument_cache)
+    from signtranslator.generation.keypoints_to_text_t5 import KeypointsToT5Config, build
+    saved = torch.load(path, map_location="cpu", weights_only=False, mmap=True)
+    if saved.get("kind") != "keypoints_to_text_t5":
+        raise SystemExit(f"{path}: not instrument v1's kind of checkpoint")
+    model = build(KeypointsToT5Config.from_dict(saved["config"]), pretrained=False)
+    model.load_state_dict(saved["ema"], assign=True)
+    key = json.loads(store.get(f"training-runs/{L.TRANSLATOR_RUN}/best.json"))["checkpoint_key"]
+    device = torch.device(args.device)
+    return L.Reader(model.to(device).eval(), "keypoints", dict(run=L.TRANSLATOR_RUN, checkpoint_key=key, sha256=L.TRANSLATOR_SHA, kind="keypoints"), device)
+
+
+def longest_train_records(store, k: int) -> list[dict]:
+    """The ``k`` longest How2Sign c02 train clips: a smoke's memory and speed must meet them, not only a typical draw."""
+    pool = L.train_records(L.load_manifest_at(store, L.EVAL_MIX, L.EVAL_MIX_SHA), ("c02",))
+    records = sorted(pool, key=lambda r: (-float(r["continuous"].get("seconds") or 0.), r["sign"]))[:k]
+    L.check_train_records(records, ("c02",))
+    return records
+
+
 def run_read(args) -> int:
     import torch
     from train_text_to_motion import make_store
@@ -929,39 +1068,48 @@ def run_read(args) -> int:
     unknown = [f for f in names if f not in FORM_ID]
     if unknown:
         raise SystemExit(f"unknown forms {unknown}")
+    if args.smoke_longest and not args.smoke_train:
+        raise SystemExit("--smoke-longest belongs to a smoke")
     out_dir = Path(args.out_dir)
     for name in names:
         if (out_dir / f"form-{name}.json").exists():
             raise SystemExit(f"{out_dir / f'form-{name}.json'} exists (write-once)")
     store = make_store(args.store)
     records, declared, described = L.open_read_list(store, args.smoke_train)
+    if args.smoke_longest:
+        have = {r["sign"] for r in records}
+        records = list(records) + [r for r in longest_train_records(store, args.smoke_longest) if r["sign"] not in have]
+        described = dict(described, clips=len(records), longest=args.smoke_longest)
     check_read_list(records, declared)
     texts, signs = [r["text"] for r in records], [r["sign"] for r in records]
     refs = L.load_states(store, records)
     needs_tokenizer = any(n in DECODED_FORMS for n in names)
     tokenizer = L.load_tokenizer(store) if needs_tokenizer else None
     fit = load_fit(args.fit_dir, declared=declared, read_signs=signs) if any(n in FIT_FORMS for n in names) else None
-    reader = L.make_reader(store, run=L.TRANSLATOR_RUN, sha256=L.TRANSLATOR_SHA, device=args.device, cache_dir=args.instrument_cache)
+    entries = composition_entries(store, records, declared) if any(n in SEAM_COMPOSITION_FORMS for n in names) else None
+    reader = load_reader(store, args)
     candidates = M.retrieval_candidates(len(texts), args.candidates, seed=0)
-    context = dict(records=records, refs=refs, tokenizer=tokenizer, fit=fit)
+    context = dict(records=records, refs=refs, tokenizer=tokenizer, fit=fit, entries=entries)
+    commit = code_commit()
     for name in names:
         started = time.time()
         states, info = build_form(name, context)
         built = time.time()
         raw = reader.read(states, texts, candidates, group=args.nll_group)
-        report = dict(kind=f"{PROBE}-form", report_only=True, form=name, declared_read=declared, list=described,
+        report = dict(kind=f"{PROBE}-form", report_only=True, form=name, declared_read=declared, list=described, code_commit=commit,
                       instrument=reader.info, tokenizer=dict(key=L.TOKENIZER, sha256=L.TOKENIZER_SHA, gains=None) if tokenizer else None,
                       fit=fit["report"] if fit and name in FIT_FORMS else None, signs=signs,
                       groups=[r.get("signer_component") for r in records], references=texts,
                       candidates=candidates.tolist() if args.candidates > 1 else None, hypotheses=raw["hypotheses"],
                       nll=np.round(raw["nll"], 5).tolist(), seconds_over_reference=[round(len(s.timestamps) / max(len(r.timestamps), 1), 5)
                                                                                      for s, r in zip(states, refs)],
-                      motion=L.motion_statistics(states, refs), hands=hand_statistics(states, refs),
+                      motion=L.motion_statistics(states, refs), hands=hand_statistics(states, refs), tracked=tracked_statistics(states),
                       seam=info, boundaries=dict(BOUNDARY_RULE, records_with_boundaries=records_with_boundaries(records)) if info else None,
-                      build_seconds=round(built - started, 2), read_seconds=round(time.time() - built, 2), peak_rss_bytes=peak_rss_bytes())
-        L.write_file_once(out_dir / f"form-{name}.json", report)
+                      build_seconds=round(built - started, 2), read_seconds=round(time.time() - built, 2), peak_rss_bytes=peak_rss_bytes(),
+                      gpu_peak_reserved_bytes=gpu_peak_reserved_bytes())
+        write_report_once(out_dir / f"form-{name}.json", report)
         print(json.dumps({name: dict(build_seconds=report["build_seconds"], read_seconds=report["read_seconds"],
-                                     peak_rss_gb=round(report["peak_rss_bytes"] / 2 ** 30, 2))}), flush=True)
+                                     peak_rss_gb=round(report["peak_rss_bytes"] / 2 ** 30, 2), gpu_reserved_bytes=report["gpu_peak_reserved_bytes"])}), flush=True)
         del states, raw
     return 0
 
@@ -1008,8 +1156,9 @@ def load_v3d(store, device: str):
     return model, labels
 
 
-def word_states(store, records, labels, limit: int | None, cache) -> tuple:
-    """(states, label indices, signs) as v3d's gates load them: conformed, 24 fps, at most 8 s, the hand filter."""
+def word_states(store, records, labels, limit: int | None, cache, *, longest: bool = False) -> tuple:
+    """(states, label indices, signs) as v3d's gates load them: conformed, 24 fps, at most 8 s, the hand filter. ``longest`` (a smoke):
+    the longest of them, not the first."""
     from concurrent.futures import ThreadPoolExecutor
     from signtranslator.generation.sign_recognizer import GlossMotionDataset
     from train_sign_recognizer import conform_template
@@ -1019,6 +1168,8 @@ def word_states(store, records, labels, limit: int | None, cache) -> tuple:
     dataset = GlossMotionDataset(dict(records=records), partition=name, labels=index, cache=cache, fetch=store.get,
                                  min_hand_fraction=V3D_MIN_HAND, fps=FPS, template=template, hand_fraction_fallback=True)
     ids = [i for i, r in enumerate(dataset.records) if r["continuous"].get("seconds", 0.) <= V3D_MAX_SECONDS]
+    if longest:
+        ids = sorted(ids, key=lambda i: (-float(dataset.records[i]["continuous"].get("seconds", 0.)), i))
     ids = ids[:limit] if limit else ids
     with ThreadPoolExecutor(4) as pool:
         states = [item[1] for item in pool.map(dataset.__getitem__, ids)]
@@ -1048,6 +1199,8 @@ def run_words(args) -> int:
     if unknown:
         raise SystemExit(f"not word forms: {unknown}")
     out_dir = Path(args.out_dir)
+    if args.resume:                                                     # a retry reads only what is not stored
+        names = tuple(n for n in names if not (out_dir / f"word-{n}.json").exists())
     if args.list:
         labels = json.loads(store.get(f"training-runs/{V3D_RUN}/run.json"))["labels"]
         sets = word_partitions(word_records(store, labels), smoke)
@@ -1062,7 +1215,7 @@ def run_words(args) -> int:
         raise SystemExit("no word records in the read")
     cache = ContentCache(Path(tempfile.gettempdir()) / "sign-translator-cache", 2 * 2 ** 30)
     limit = args.smoke_train or args.limit or None
-    loaded = {c: word_states(store, rs, labels, limit, cache) for c, rs in sets.items()}
+    loaded = {c: word_states(store, rs, labels, limit, cache, longest=smoke) for c, rs in sets.items()}
     tokenizer = L.load_tokenizer(store) if any(n in DECODED_FORMS for n in names) else None
     fit = load_fit(args.fit_dir, declared=not smoke) if any(n in FIT_FORMS for n in names) else None
     rule = "every decoded form: the plan declares no survival rule" if args.forms is None else "the --forms list, chosen by the operator"
@@ -1075,8 +1228,8 @@ def run_words(args) -> int:
         report = dict(kind=f"{PROBE}-word", report_only=True, form=name, declared_read=not smoke, forms_rule=rule,
                       instrument=dict(run=V3D_RUN, best_sha256=V3D_BEST_SHA, checkpoint_sha256=V3D_CHECKPOINT_SHA),
                       partition="train (a smoke)" if smoke else "gate", corpora=ranks, seconds=round(time.time() - started, 2),
-                      peak_rss_bytes=peak_rss_bytes())
-        L.write_file_once(out_dir / f"word-{name}.json", report)
+                      peak_rss_bytes=peak_rss_bytes(), gpu_peak_reserved_bytes=gpu_peak_reserved_bytes(), code_commit=code_commit())
+        write_report_once(out_dir / f"word-{name}.json", report)
         print(json.dumps({f"word-{name}": dict(seconds=report["seconds"], peak_rss_gb=round(report["peak_rss_bytes"] / 2 ** 30, 2))}), flush=True)
     return 0
 
@@ -1135,15 +1288,15 @@ def median_ratio(x, y, idx) -> dict | None:
     return dict(ratio=round(float(np.nanmedian(a) / np.nanmedian(b)), 4), ci95=_quantiles(ratios))
 
 
-def form_panel(reads: dict, name: str, comparator: str | None) -> dict:
+def form_panel(reads: dict, name: str, comparators=()) -> dict:
     r, refs = reads[name], reads[name]["references"]
     n = len(refs)
     idx = np.random.default_rng(0).integers(0, n, (BOOT, n))
-    stats = {k: M.bleu_statistics(reads[k]["hypotheses"], refs) for k in {name, "real", "blank", comparator} - {None}}
+    stats = {k: M.bleu_statistics(reads[k]["hypotheses"], refs) for k in {name, "real", "blank", *comparators}}
     bleu_of = {k: M.bleu_from_statistics(s[idx].sum(1)) for k, s in stats.items()}
     blank_nll = np.asarray(reads["blank"]["nll"])[:, 0]
     dnll = {k: M.delta_nll(blank_nll, np.asarray(reads[k]["nll"])[:, 0]) for k in stats}
-    loops = {k: np.array([has_loop(h) for h in reads[k]["hypotheses"]], np.float64) for k in stats}
+    loops = {k: np.array(loop_flags(reads[k]["hypotheses"]), np.float64) for k in stats}
     bleu, ci = M.bleu_ci_fast(r["hypotheses"], refs)
     point = {k: float(M.bleu_from_statistics(s.sum(0))) for k, s in stats.items()}
     real_dnll = float(dnll["real"].mean())
@@ -1167,16 +1320,16 @@ def form_panel(reads: dict, name: str, comparator: str | None) -> dict:
                         for h in HANDS},
         hand_speed={h: dict(over_real=median_ratio(r["hands"][h]["speed"], reads["real"]["hands"][h]["speed"], idx), over_blank=None)
                     for h in HANDS},
+        tracked_share={k: dict(M.bootstrap_mean(r["tracked"][k]), minus_real=M.paired_mean_difference(r["tracked"][k], reads["real"]["tracked"][k]))
+                       for k in ("wrists", "hands")},
         seconds_over_reference=round(float(np.mean(r["seconds_over_reference"])), 4),
         identical_to_real=round(float(np.mean([a == b for a, b in zip(r["hypotheses"], reads["real"]["hypotheses"])])), 4),
         paired={a: dict(bleu=M.paired_bleu_fast(stats[name], stats[a]),
                         likelihood_minus_blank=M.paired_mean_difference(dnll[name], dnll[a]),
                         loop_share=M.paired_mean_difference(loops[name], loops[a]))
                 for a in ("real", "blank")})
-    if comparator:
-        out["comparator"] = dict(form=comparator, bleu=M.paired_bleu_fast(stats[name], stats[comparator]),
-                                 likelihood_minus_blank=M.paired_mean_difference(dnll[name], dnll[comparator]),
-                                 loop_share=M.paired_mean_difference(loops[name], loops[comparator]))
+    out["comparators"] = {c: dict(bleu=M.paired_bleu_fast(stats[name], stats[c]), likelihood_minus_blank=M.paired_mean_difference(dnll[name], dnll[c]),
+                                  loop_share=M.paired_mean_difference(loops[name], loops[c])) for c in comparators}
     nll = np.asarray(r["nll"])
     if nll.shape[1] > 1:
         ranks = M.mid_ranks(nll - np.asarray(reads["blank"]["nll"]))
@@ -1185,25 +1338,38 @@ def form_panel(reads: dict, name: str, comparator: str | None) -> dict:
         rows = r["seam"]
         frames, bridged = sum(c["frames"] for c in rows), sum(c["bridged_frames"] for c in rows)
         path = [c["path_share"] for c in rows if c.get("path_share") is not None]
+        windows = sum(c["windows"] for c in rows)
         out["seam"] = dict(bridged_frame_share=round(bridged / max(frames, 1), 4), path_share=round(float(np.mean(path)), 4) if path else None,
-                           junctions_per_clip=round(float(np.mean([c["junctions"] for c in rows])), 3),
-                           filled_cuts=sum(c["filled"] for c in rows), capped_clips=sum(bool(c["capped"]) for c in rows),
+                           density=rows[0]["density"], junctions_per_clip=round(float(np.mean([c["junctions"] for c in rows])), 3),
+                           frames_per_bridge=round(bridged / windows, 3) if windows else None,
+                           clips_without_entries=sum(c["entries"] == 0 for c in rows), filled_cuts=sum(c["filled"] for c in rows), capped_clips=sum(bool(c["capped"]) for c in rows),
                            untracked_clips=sum(bool(c["untracked"]) for c in rows), skipped_clips=sum(bool(c.get("skipped")) for c in rows))
     return out
 
 
-def comparator_of(name: str) -> str | None:
-    if name in ("identity", "identity_masked", "real", "blank", "round_trip"):
-        return None
-    if name in ("round_trip_masked", "no_quant") or name in B4_FORMS or name in B5_FORMS:
-        return "round_trip"
-    if name in B2_FORMS or name == "no_quant_masked":
-        return "round_trip_masked"
-    if name.startswith(("seam_min", "seam_fix")):
-        return f"seam_rnd{name[-2:]}"
-    if name == "seam_sq196_min":
-        return "seam_sq196_rnd"
-    return None
+def comparators_of(name: str) -> tuple[str, ...]:
+    """The paired reads beside real and blank; those that a merge did not read are dropped."""
+    if name == "no_quant":
+        return ("round_trip", "identity")
+    if name == "no_quant_masked":
+        return ("round_trip_masked", "identity_masked")
+    if name == "round_trip_masked" or name in B4_FORMS or name == "k512":
+        return ("round_trip",)
+    if name == "fsq10":
+        return ("k1024", "round_trip")
+    if name in B5_FORMS:
+        return ("k512", "round_trip")
+    if name in B2_FORMS:
+        return ("round_trip_masked",)
+    if name in SEAM_SPECS and name not in ("seam_rnd15", "seam_rnd30", "seam_rnd45", "seam_crnd30", "seam_crnd45", "seam_sq196_rnd", "seam_csq196_rnd"):
+        spec = SEAM_SPECS[name]
+        prefix = "seam_c" if spec["density"] == "composition" else "seam_"
+        if spec.get("squeeze"):
+            return (f"{prefix}sq196_rnd",)
+        if name == "seam_cval45":
+            return ("seam_cmin45", "seam_crnd45")
+        return (f"{prefix}rnd{spec['share']}",)
+    return ()
 
 
 def word_panel(words: dict, name: str, corpus: str) -> dict:
@@ -1253,7 +1419,10 @@ def run_merge(args) -> int:
     fits = {json.dumps(r["fit"], sort_keys=True) for r in reads.values() if r.get("fit")}
     if len(fits) > 1:
         raise SystemExit("forms read different fits")
-    panels = {name: form_panel(reads, name, comparator_of(name) if comparator_of(name) in reads else None) for name in names}
+    commits = {r.get("code_commit") for r in reads.values()}
+    if len(commits) > 1:
+        raise SystemExit(f"forms read by different commits: {sorted(str(c) for c in commits)}")
+    panels = {name: form_panel(reads, name, tuple(c for c in comparators_of(name) if c in reads)) for name in names}
     words = load_words(out_dir, first["declared_read"])
     word_block = None
     if words:
@@ -1266,57 +1435,153 @@ def run_merge(args) -> int:
                   instrument=first["instrument"], tokenizer=next((r["tokenizer"] for r in reads.values() if r.get("tokenizer")), None),
                   fit=json.loads(next(iter(fits))) if fits else None, clips=len(first["signs"]),
                   smoke=None if first["declared_read"] else "SMOKE on c02 train clips: these numbers are plumbing, not a read",
-                  reading=READING, boundaries=seam, forms=panels, words=word_block,
+                  reading=READING, disclosures=DISCLOSURES, boundaries=seam, sensitivity_only=[n for n in names if n in SEAM_WORD_FORMS], code_commit=first.get("code_commit"),
+                  forms=panels, words=word_block,
                   hypotheses={name: reads[name]["hypotheses"] for name in names},
                   checks=dict(identity_masked_identical_to_real=panels["identity_masked"]["identical_to_real"] if "identity_masked" in panels else None,
                               blank_identical_to_real=panels["blank"]["identical_to_real"],
-                              rule="a decoder that returns real must read real; blank must not"),
-                  resources={name: dict(peak_rss_bytes=reads[name]["peak_rss_bytes"], build_seconds=reads[name]["build_seconds"],
+                              canary=canary_read(panels["real"]["bleu"]["bleu"], panels["blank"]["bleu"]["bleu"]) if first["declared_read"] else None,
+                              rule=f"a decoder that returns real must read real, within {IDENTITY_TOLERANCE} of its hypotheses; blank must not; "
+                                   "real and blank must reproduce stored D20"),
+                  resources={name: dict(peak_rss_bytes=reads[name]["peak_rss_bytes"], gpu_peak_reserved_bytes=reads[name]["gpu_peak_reserved_bytes"], build_seconds=reads[name]["build_seconds"],
                                         read_seconds=reads[name]["read_seconds"]) for name in names})
     L.write_once(store, args.output_key, args.output_file, report)
     print(json.dumps(dict(merged=args.output_key or args.output_file, report_only=True, forms=len(panels))), flush=True)
     return 0
 
 
+def canary_read(real: float, blank: float) -> dict:
+    """Real and blank against stored D20: another instrument, list or environment moves them before any form is read."""
+    gaps = dict(real=round(abs(real - CANARY["real"]), 4), blank=round(abs(blank - CANARY["blank"]), 4))
+    return dict(real=real, blank=blank, stored=dict(real=CANARY["real"], blank=CANARY["blank"]), tolerance=CANARY["tolerance"], gaps=gaps,
+                reproduced=all(g <= CANARY["tolerance"] for g in gaps.values()))
+
+
+def run_canary(args) -> int:
+    """Exit 3 unless real and blank reproduce stored D20. A smoke has no stored read to meet, and says so."""
+    out = Path(args.out_dir)
+    read = {n: json.loads((out / f"form-{n}.json").read_bytes()) for n in ("real", "blank")}
+    if not read["real"]["declared_read"]:
+        print(json.dumps(dict(canary="not applicable: a smoke reads train clips")), flush=True)
+        return 0
+    bleu = {n: M.bleu_ci_fast(r["hypotheses"], r["references"])[0] for n, r in read.items()}
+    result = canary_read(bleu["real"], bleu["blank"])
+    print(json.dumps(result), flush=True)
+    if not result["reproduced"]:
+        print(f"ALERT real and blank do not reproduce stored D20: {result['gaps']}", flush=True)
+        return 3
+    return 0
+
+
 def run_check(args) -> int:
-    """Exit 3 when the path fails its own planted case on real clips (the job stops on a smoke). It judges plumbing, no form."""
+    """Exit 3 when the path fails its own planted case on real clips, or real and blank miss stored D20 (the job stops on a smoke). It
+    judges plumbing, no form."""
     report = json.loads(Path(args.report).read_text())
     checks = report["checks"]
     problems = []
     if report.get("report_only") is not True:
         problems.append("the report does not say report_only")
     same = checks["identity_masked_identical_to_real"]
-    if same is not None and same < 1:
-        problems.append(f"identity_masked reads real on a share of {same}, not 1")
+    if same is not None and same < 1 - IDENTITY_TOLERANCE:
+        problems.append(f"identity_masked reads real on a share of {same}, below {1 - IDENTITY_TOLERANCE}")
     if checks["blank_identical_to_real"] >= 1:
         problems.append("blank reads exactly as real")
+    if checks.get("canary") and not checks["canary"]["reproduced"]:
+        problems.append(f"real and blank do not reproduce stored D20: {checks['canary']['gaps']}")
     print(json.dumps(dict(checks={k: v for k, v in checks.items() if k != "rule"}, problems=problems)), flush=True)
     for line in problems:
         print(f"ALERT {line}", flush=True)
     return 3 if problems else 0
 
 
+UPLOAD_EXCLUDED = ("latents.npz", "latents.json")          # local, and rebuilt from the clips
+
+
 def run_upload(args) -> int:
-    """Write-once: every file under ``--out-dir``'s listed names to ``--prefix``, refused whole if any key exists."""
+    """Every report and codebook under ``--out-dir`` to ``--prefix``. Default: write-once, refused whole if any key exists. ``--partial``
+    (a failed job's work): keys already stored are left alone, the rest uploaded."""
     from train_text_to_motion import make_store
     store = make_store(args.store)
-    paths = sorted(p for p in Path(args.out_dir).rglob("*") if p.is_file() and p.suffix in (".json", ".npz")
-                   and p.name not in ("latents.npz",) and not p.name.endswith(".tmp.npz"))
+    paths = sorted(p for p in Path(args.out_dir).rglob("*") if p.is_file() and p.suffix in (".json", ".npz") and p.name not in UPLOAD_EXCLUDED
+                   and not p.name.endswith(".tmp.npz"))
     if not paths:
+        if args.partial:
+            print(json.dumps(dict(uploaded=0, prefix=args.prefix)), flush=True)
+            return 0
         raise SystemExit(f"{args.out_dir}: nothing to upload")
     keys = [(p, f"{args.prefix.rstrip('/')}/{p.relative_to(args.out_dir)}") for p in paths]
     taken = [k for _, k in keys if store.exists(k)]
-    if taken:
+    if taken and not args.partial:
         raise SystemExit(f"{taken[0]} exists (write-once); nothing uploaded")
+    done = set(taken)
     for p, k in keys:
-        store.put(k, p.read_bytes())
-    print(json.dumps(dict(uploaded=len(keys), prefix=args.prefix)), flush=True)
+        if k not in done:
+            store.put(k, p.read_bytes())
+    print(json.dumps(dict(uploaded=len(keys) - len(done), kept=len(done), prefix=args.prefix)), flush=True)
     return 0
 
 
-def form_groups(processes: int, skip=()) -> list[str]:
-    """Forms in up to ``processes`` comma lists, deterministic: fit forms spread, so no one process holds every codebook pass."""
-    names = [f for f in FORMS if f not in set(skip)]
+RESTORABLE = re.compile(r"^([^/]+)/d20/(fit/fit\.json|fit/codebooks\.npz|forms/(?:form|word)-[^/]+\.json)$")
+
+
+def _stored_report(raw: bytes, commit: str | None) -> dict | None:
+    """A stored report that this commit may reuse; None for half a file, a smoke or another commit."""
+    try:
+        report = json.loads(raw)
+    except ValueError:
+        return None
+    declared = report.get("declared_read", report.get("declared_fit"))
+    return report if commit is not None and report.get("code_commit") == commit and declared is True else None
+
+
+def run_restore(args) -> int:
+    """A retry's first step: a failed job's stored D20 forms, words and fit, from the same commit only. Refused when the finished read
+    is already stored, so no hours are spent before the final write-once upload would refuse."""
+    from train_text_to_motion import make_store
+    check_pins()
+    store = make_store(args.store)
+    if store.exists(args.final_key):
+        raise SystemExit(f"{args.final_key} exists: this read is finished (write-once)")
+    out, commit = Path(args.out_dir), code_commit()
+    prefix = args.prefix.rstrip("/") + "/"
+    stored: dict = {}
+    for key in store.list(prefix):
+        match = RESTORABLE.match(key[len(prefix):])
+        if match:
+            stored.setdefault(match[1], {})[match[2]] = key
+    restored = skipped = 0
+    for run in sorted(stored):
+        files = stored[run]
+        for rel, key in sorted(files.items()):
+            if rel.startswith("fit/") or (out / rel).exists():
+                continue
+            raw = store.get(key)
+            if _stored_report(raw, commit) is None:
+                skipped += 1
+                continue
+            (out / rel).parent.mkdir(parents=True, exist_ok=True)
+            (out / rel).write_bytes(raw)
+            restored += 1
+        if not (out / "fit/fit.json").exists() and {"fit/fit.json", "fit/codebooks.npz"} <= set(files):
+            raw = store.get(files["fit/fit.json"])
+            report = _stored_report(raw, commit)
+            books = store.get(files["fit/codebooks.npz"])
+            if report is None or hashlib.sha256(books).hexdigest() != report["codebooks_sha256"]:
+                skipped += 2
+                continue
+            (out / "fit").mkdir(parents=True, exist_ok=True)
+            (out / "fit/codebooks.npz").write_bytes(books)
+            (out / "fit/fit.json").write_bytes(raw)
+            restored += 2
+    print(json.dumps(dict(restored=restored, skipped=skipped, commit=commit)), flush=True)
+    return 0
+
+
+def form_groups(processes: int, skip=(), stored_in: str | None = None) -> list[str]:
+    """Forms in up to ``processes`` comma lists, deterministic: fit forms spread, so no one process holds every codebook pass. With
+    ``stored_in``, forms already read there are left out."""
+    done = {p.name[len("form-"):-len(".json")] for p in Path(stored_in).glob("form-*.json")} if stored_in else set()
+    names = [f for f in FORMS if f not in set(skip) and f not in done]
     groups: list[list[str]] = [[] for _ in range(max(1, processes))]
     for i, name in enumerate(names):
         groups[i % len(groups)].append(name)
@@ -1344,6 +1609,7 @@ def build_parser() -> argparse.ArgumentParser:
     read.add_argument("--nll-group", type=int, default=2)
     read.add_argument("--instrument-cache", help="the slim instrument's directory (read the first form alone)")
     read.add_argument("--smoke-train", type=int, default=0, help="read this many c02 train clips, not D20")
+    read.add_argument("--smoke-longest", type=int, default=0, help="a smoke's list also holds this many of c02 train's longest clips")
     read.add_argument("--device", default="cpu")
     read.add_argument("--threads", type=int, default=1)
     words = sub.add_parser("words", help="B6: v3d on decoded RIT and ASLLVD words")
@@ -1354,6 +1620,7 @@ def build_parser() -> argparse.ArgumentParser:
     words.add_argument("--limit", type=int, default=0, help="at most this many clips per corpus")
     words.add_argument("--smoke-train", type=int, default=0, help="this many train words per corpus, no gate clip")
     words.add_argument("--list", action="store_true", help="print each read's clip count from the manifests; loads no clip")
+    words.add_argument("--resume", action="store_true", help="leave out forms already read in --out-dir")
     words.add_argument("--device", default="cpu")
     words.add_argument("--threads", type=int, default=1)
     merge = sub.add_parser("merge", help="the report: report_only, decides nothing")
@@ -1368,18 +1635,28 @@ def build_parser() -> argparse.ArgumentParser:
     upload.add_argument("--store", default="r2")
     upload.add_argument("--out-dir", required=True)
     upload.add_argument("--prefix", required=True)
+    upload.add_argument("--partial", action="store_true", help="a failed job's work: leave stored keys alone, upload the rest")
+    restore = sub.add_parser("restore", help="a failed job's stored D20 work, same commit only")
+    restore.add_argument("--store", default="r2")
+    restore.add_argument("--prefix", required=True)
+    restore.add_argument("--out-dir", required=True)
+    restore.add_argument("--final-key", required=True, help="the finished report's key: refused if it exists")
+    canary = sub.add_parser("canary", help="real and blank against stored D20; exit 3 otherwise")
+    canary.add_argument("--out-dir", required=True)
     groups = sub.add_parser("groups", help="print one comma list of forms per process")
     groups.add_argument("--processes", type=int, required=True)
     groups.add_argument("--skip", default="")
+    groups.add_argument("--stored-in", help="leave out forms already read in this directory")
     return p
 
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "groups":
-        print("\n".join(form_groups(args.processes, [s for s in args.skip.split(",") if s])), flush=True)
+        print("\n".join(form_groups(args.processes, [s for s in args.skip.split(",") if s], args.stored_in)), flush=True)
         return 0
-    return dict(fit=run_fit, read=run_read, words=run_words, merge=run_merge, check=run_check, upload=run_upload)[args.command](args)
+    return dict(fit=run_fit, read=run_read, words=run_words, merge=run_merge, check=run_check, upload=run_upload, restore=run_restore,
+                canary=run_canary)[args.command](args)
 
 
 if __name__ == "__main__":
