@@ -130,7 +130,18 @@ def read(tmp_path, forms, *extra):
     return P.main(["read", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(tmp_path / "w"), "--forms", ",".join(forms), *extra])
 
 
+def plant_canary(forms_dir: Path) -> None:
+    """A passed canary of the code and environment that read these forms, as the job's step would leave it."""
+    reads = sorted(forms_dir.glob("form-*.json"))
+    if not reads or (forms_dir / "canary.json").exists():
+        return
+    r = json.loads(reads[0].read_text())
+    if r["declared_read"]:
+        (forms_dir / "canary.json").write_text(json.dumps(dict(reproduced=True, misses=[], code_digest=r["code_digest"], environment=r["environment"])))
+
+
 def merged(tmp_path, forms):
+    plant_canary(tmp_path / "w")
     out = tmp_path / f"report-{len(list(tmp_path.iterdir()))}.json"
     assert P.main(["merge", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(tmp_path / "w"), "--forms", ",".join(forms), "--output-file", str(out)]) == 0
     return json.loads(out.read_text())
@@ -225,6 +236,7 @@ def test_outputs_are_write_once_and_failures_exit_nonzero(monkeypatch, tmp_path)
     with pytest.raises(SystemExit, match="write-once"):
         read(tmp_path, ["no_quant", "real"])
     out = tmp_path / "r.json"
+    plant_canary(tmp_path / "w")
     assert P.main(["merge", "--store", "dir:x", "--out-dir", str(tmp_path / "w"), "--forms", "real,blank", "--output-file", str(out)]) == 0
     with pytest.raises(SystemExit, match="write-once"):
         P.main(["merge", "--store", "dir:x", "--out-dir", str(tmp_path / "w"), "--forms", "real,blank", "--output-file", str(out)])
@@ -1001,13 +1013,13 @@ def test_words_refuse_mixing_a_smoke_or_other_clips_and_need_anchors(tmp_path):
 JOB = ROOT / "runpod/fleet/tok_probes.sh"
 
 
-def fake_bin(tmp_path, fail_when: str | None):
+def fake_bin(tmp_path, fail_when: str | None, code: int = 7):
     """A fake ``python`` and ``uv``: it logs its arguments, prints form groups when asked, and fails on a matching command."""
     bin_dir = tmp_path / "fake-bin"
     bin_dir.mkdir()
     log = tmp_path / "calls.log"
     pattern = "*" + "*".join(f'"{piece}"' for piece in fail_when.split("*")) + "*" if fail_when else ""
-    match = f'case "$*" in {pattern}) echo "planted failure" >&2; exit 7;; esac' if fail_when else ""
+    match = f'case "$*" in {pattern}) echo "planted failure" >&2; exit {code};; esac' if fail_when else ""
     (bin_dir / "python").write_text(f'#!/bin/bash\necho "$*" >> {log}\n{match}\ncase "$*" in *" groups "*) printf "a,b\\nc,d\\n";; esac\nexit 0\n')
     (bin_dir / "uv").write_text("#!/bin/bash\nexit 0\n")
     for name in ("python", "uv"):
@@ -1015,8 +1027,8 @@ def fake_bin(tmp_path, fail_when: str | None):
     return bin_dir, log
 
 
-def run_job(tmp_path, fail_when=None, **env):
-    bin_dir, log = fake_bin(tmp_path, fail_when)
+def run_job(tmp_path, fail_when=None, code=7, **env):
+    bin_dir, log = fake_bin(tmp_path, fail_when, code)
     environment = dict(PATH=f"{bin_dir}:/usr/bin:/bin", HOME=str(tmp_path), VENV_BIN=str(bin_dir), R2ENV=str(tmp_path / "no-such-env"), ST_REPO=str(tmp_path),
                        WORK=str(tmp_path / "work"), **env)
     done = subprocess.run(["bash", str(JOB)], env=environment, capture_output=True, text=True, timeout=60)
@@ -1063,7 +1075,7 @@ def test_smoke_only_stops_before_any_declared_read(tmp_path):
 
 
 @pytest.mark.parametrize("fail_when,expected", [("--smoke-train 16", 2), ("--smoke-train 8", 2), ("--smoke-train 4", 2), ("merge*smoke-", 2), ("check --report*smoke-", 2),
-                                                ("upload --out-dir*smoke-", 2), ("restore", 1), ("d20/fit --device", 1), ("--forms real,blank*d20", 1), ("canary*d20", 1),
+                                                ("upload --out-dir*smoke-", 2), ("restore", 1), ("d20/fit --device", 1), ("--forms real,blank*d20", 1), ("tok_probes.py canary*d20", 1),
                                                 ("--forms a,b --out-dir*d20", 1), ("words*d20", 1), ("d20/forms --output-file", 1),
                                                 ("check --report*d20/report.json", 1), ("upload --out-dir*d20", 1)])
 def test_any_failure_exits_nonzero_with_its_done_line_and_a_background_read_is_not_lost(tmp_path, fail_when, expected):
@@ -1340,6 +1352,7 @@ def test_the_declared_comparators_are_named():
         assert P.comparators_of(k) == ("k512", "round_trip")
     assert P.comparators_of("k512") == ("round_trip",)
     assert P.comparators_of("no_quant") == ("round_trip", "identity")
+    assert P.comparators_of("identity") == ("round_trip",) and P.comparators_of("identity_masked") == ("round_trip_masked",)
     assert P.comparators_of("no_quant_masked") == ("round_trip_masked", "identity_masked")
     assert P.comparators_of("seam_cmin45") == ("seam_crnd45",) and P.comparators_of("seam_cval45") == ("seam_cmin45", "seam_crnd45")
     assert P.comparators_of("seam_csq196_min") == ("seam_csq196_rnd",) and P.comparators_of("seam_cmax45") == ("seam_crnd45",)
@@ -1388,7 +1401,7 @@ def test_the_fit_draw_is_the_declared_seeded_sample_in_order(monkeypatch):
 def test_the_declared_parameters_are_these():
     assert (P.FIT_CLIPS, P.FIT_STEPS, P.FIT_ITERATIONS, P.EXTENSION_STAGES, P.SQUEEZE) == (4000, 500_000, 15, 4, 1.96)
     assert P.KMEANS == (256, 512, 1024, 4096) and P.FSQ_LEVELS == (8, 6, 5, 5) and P.SHARES == (15, 30, 45) and P.STAGE_GRID == (1, 2, 4)
-    assert P.D20_ENTRIES == dict(mean=9.09, median=7, empty=6) and P.CANARY == dict(real=4.493, blank=1.68, tolerance=.05) and P.IDENTITY_TOLERANCE == .01
+    assert P.D20_ENTRIES == dict(mean=9.09, median=7, empty=6) and P.CANARY == dict(real=4.493, blank=1.68, bleu_tolerance=.05, identical=.98, nll=.001) and P.CANARY_REPORT_SHA.startswith("30ddbe7d") and P.IDENTITY_TOLERANCE == .01
 
 
 def test_the_jobs_declared_calls_take_the_declared_parameters(tmp_path):
@@ -1439,48 +1452,114 @@ def test_stored_latents_with_changed_bytes_refuse(monkeypatch, tmp_path):
 
 # ---- canary, check, memory, smoke of the longest clips -------------------------------------------------------------------------
 
-def canary_forms(tmp_path, real, blank, declared=True):
-    refs = [f"w{i} a b c d e f" for i in range(40)]
+CANARY_REFS = [f"w{i} a b c d e f" for i in range(100)]
+
+
+def canary_setup(monkeypatch, tmp_path, *, declared=True, hyp_change=0, nll_shift=0., order=False):
+    """A pinned stored report and forms that read it back, changed as asked. real and blank's BLEU are pinned to what they read."""
+    from signtranslator.data.text_motion_dataset import DirectoryStore
+    from signtranslator.eval import s0_metrics as M
+    signs = [f"s{i}" for i in range(100)]
+    kept = dict(real=[r if i < 60 else "z" for i, r in enumerate(CANARY_REFS)], blank=[r if i < 30 else "z" for i, r in enumerate(CANARY_REFS)])
+    nll = [1. + i * .01 for i in range(100)]
+    stored = dict(signs=signs, references=CANARY_REFS, forms={n: dict(hypotheses=kept[n], per_clip=dict(nll=nll)) for n in kept})
+    raw = json.dumps(stored).encode()
+    store = DirectoryStore(tmp_path / "s")
+    store.put(P.CANARY_REPORT, raw)
+    monkeypatch.setattr(P, "CANARY_REPORT_SHA", hashlib.sha256(raw).hexdigest())
+    monkeypatch.setattr(P, "CANARY", dict(P.CANARY, real=M.bleu_ci_fast(kept["real"], CANARY_REFS)[0], blank=M.bleu_ci_fast(kept["blank"], CANARY_REFS)[0]))
     out = tmp_path / "f"
     out.mkdir()
-    for name, match in (("real", real), ("blank", blank)):
-        hyps = [r if i < match else "z" for i, r in enumerate(refs)]
-        (out / f"form-{name}.json").write_text(json.dumps(dict(form=name, declared_read=declared, references=refs, hypotheses=hyps)))
-    return out, refs
+    for name in kept:
+        hyps = list(kept[name])
+        for i in range(hyp_change):
+            hyps[50 + i] += " changed"
+        rows = list(reversed(signs)) if order and name == "real" else signs
+        (out / f"form-{name}.json").write_text(json.dumps(dict(form=name, declared_read=declared, signs=rows, references=CANARY_REFS, hypotheses=hyps, code_digest="d", environment=dict(gpu="g"),
+                                                               nll=[[n + nll_shift] for n in nll])))
+    return store, out
 
 
-def test_the_canary_passes_within_tolerance_and_stops_the_job_otherwise(tmp_path, monkeypatch):
-    out, refs = canary_forms(tmp_path, 20, 5)
-    from signtranslator.eval import s0_metrics as M
-    real = M.bleu_ci_fast([r if i < 20 else "z" for i, r in enumerate(refs)], refs)[0]
-    blank = M.bleu_ci_fast([r if i < 5 else "z" for i, r in enumerate(refs)], refs)[0]
-    assert P.main(["canary", "--out-dir", str(out)]) == 3
-    monkeypatch.setattr(P, "CANARY", dict(real=real + .04, blank=blank - .04, tolerance=.05))
-    assert P.main(["canary", "--out-dir", str(out)]) == 0
-    monkeypatch.setattr(P, "CANARY", dict(real=real + .06, blank=blank, tolerance=.05))
-    assert P.main(["canary", "--out-dir", str(out)]) == 3
-    monkeypatch.setattr(P, "CANARY", dict(real=real, blank=blank + .06, tolerance=.05))
-    assert P.main(["canary", "--out-dir", str(out)]) == 3
-    assert P.canary_read(4.495, 1.6802)["reproduced"] is not None
+def canary(tmp_path, out):
+    return P.main(["canary", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(out), "--void-prefix", "tok/void"])
 
 
-def test_a_smoke_has_no_canary_and_says_so(tmp_path, capsys):
-    out, _ = canary_forms(tmp_path, 20, 5, declared=False)
-    assert P.main(["canary", "--out-dir", str(out)]) == 0
-    assert "not applicable" in capsys.readouterr().out
+def test_the_canary_passes_at_its_limits_and_writes_what_it_read(monkeypatch, tmp_path):
+    store, out = canary_setup(monkeypatch, tmp_path, hyp_change=2, nll_shift=.0009)    # 98% identical, under the NLL limit: BLEU is what moved
+    monkeypatch.setitem(P.CANARY, "bleu_tolerance", 5.)
+    assert canary(tmp_path, out) == 0
+    r = json.loads((out / "canary.json").read_text())
+    assert r["reproduced"] and r["misses"] == [] and r["reads"]["real"]["identical"] == .98 and r["code_digest"] == "d" and r["stored_sha256"] == P.CANARY_REPORT_SHA
+    assert not store.list("tok/void")
 
 
-def test_the_stored_reads_differ_by_less_than_the_canary_and_the_identity_tolerance_takes_one_in_500(tmp_path):
-    assert P.canary_read(4.495, 1.6802)["reproduced"] and P.canary_read(4.493, 1.68)["reproduced"]
-    assert not P.canary_read(4.40, 1.68)["reproduced"] and not P.canary_read(4.493, 1.8)["reproduced"]
+@pytest.mark.parametrize("kw,miss", [(dict(hyp_change=3), "hypotheses"), (dict(nll_shift=.0012), "NLL")])
+def test_a_canary_miss_exits_3_voids_the_read_and_a_merge_refuses_it(monkeypatch, tmp_path, kw, miss):
+    store, out = canary_setup(monkeypatch, tmp_path, **kw)
+    monkeypatch.setitem(P.CANARY, "bleu_tolerance", 5.)
+    assert canary(tmp_path, out) == 3
+    r = json.loads((out / "canary.json").read_text())
+    assert not r["reproduced"] and any(miss in m for m in r["misses"])
+    assert json.loads(store.get("tok/void/d.json"))["canary"]["misses"] == r["misses"]
+
+
+def test_a_bleu_miss_alone_fails_the_canary(monkeypatch, tmp_path):
+    _, out = canary_setup(monkeypatch, tmp_path)
+    monkeypatch.setitem(P.CANARY, "real", P.CANARY["real"] + .06)
+    assert canary(tmp_path, out) == 3
+
+
+def test_the_canary_reads_the_blank_too(monkeypatch, tmp_path):
+    _, out = canary_setup(monkeypatch, tmp_path)
+    monkeypatch.setitem(P.CANARY, "blank", P.CANARY["blank"] - .06)
+    assert canary(tmp_path, out) == 3
+
+
+def test_the_canary_refuses_other_clips_and_a_stored_report_that_is_not_the_pinned_one(monkeypatch, tmp_path):
+    _, out = canary_setup(monkeypatch, tmp_path, order=True)
+    with pytest.raises(SystemExit, match="other clips"):
+        canary(tmp_path, out)
+    monkeypatch.setattr(P, "CANARY_REPORT_SHA", "0" * 64)
+    with pytest.raises(SystemExit, match="SHA-256"):
+        canary(tmp_path, out)
+
+
+def test_a_smoke_checks_the_pin_only_and_says_so(monkeypatch, tmp_path, capsys):
+    _, out = canary_setup(monkeypatch, tmp_path, declared=False, hyp_change=50)
+    assert canary(tmp_path, out) == 0 and "not applicable" in capsys.readouterr().out and not (out / "canary.json").exists()
+    monkeypatch.setattr(P, "CANARY_REPORT_SHA", "0" * 64)
+    with pytest.raises(SystemExit, match="SHA-256"):
+        canary(tmp_path, out)
+
+
+def test_the_identity_tolerance_takes_one_in_500_and_check_reads_the_canary(tmp_path):
     path = tmp_path / "r.json"
-    path.write_text(json.dumps(dict(report_only=True, checks=dict(identity_masked_identical_to_real=.998, blank_identical_to_real=.1))))
-    assert P.main(["check", "--report", str(path)]) == 0
-    path.write_text(json.dumps(dict(report_only=True, checks=dict(identity_masked_identical_to_real=.98, blank_identical_to_real=.1))))
-    assert P.main(["check", "--report", str(path)]) == 3
-    path.write_text(json.dumps(dict(report_only=True, checks=dict(identity_masked_identical_to_real=1., blank_identical_to_real=.1,
-                                                                  canary=P.canary_read(4.2, 1.68)))))
-    assert P.main(["check", "--report", str(path)]) == 3
+    def check(**checks):
+        path.write_text(json.dumps(dict(report_only=True, declared_read=True, checks=dict(dict(identity_masked_identical_to_real=1., blank_identical_to_real=.1, canary=dict(reproduced=True, misses=[])), **checks))))
+        return P.main(["check", "--report", str(path)])
+    assert check(identity_masked_identical_to_real=.998) == 0
+    assert check(identity_masked_identical_to_real=.98) == 3
+    assert check(canary=dict(reproduced=False, misses=["real NLL"])) == 3
+    assert check(canary=None) == 3
+
+
+@pytest.mark.parametrize("bad", ["missing", "failed", "other code", "other environment"])
+def test_a_declared_merge_refuses_without_a_passed_canary_of_its_own_read(monkeypatch, tmp_path, bad):
+    harness(monkeypatch, tiny_tokenizer(), n=4)
+    assert read(tmp_path, ["real", "blank"]) == 0
+    w = tmp_path / "w"
+    plant_canary(w)
+    r = json.loads((w / "canary.json").read_text())
+    if bad == "missing":
+        (w / "canary.json").unlink()
+    elif bad == "failed":
+        (w / "canary.json").write_text(json.dumps(dict(r, reproduced=False)))
+    elif bad == "other code":
+        (w / "canary.json").write_text(json.dumps(dict(r, code_digest="z")))
+    else:
+        (w / "canary.json").write_text(json.dumps(dict(r, environment=dict(gpu="z"))))
+    with pytest.raises(SystemExit, match="void"):
+        P.main(["merge", "--store", "dir:x", "--out-dir", str(w), "--forms", "real,blank", "--output-file", str(tmp_path / "x.json")])
 
 
 def test_every_report_records_peak_memory_on_the_host_and_the_gpu(monkeypatch, tmp_path):
@@ -1599,58 +1678,115 @@ def test_groups_leave_out_stored_forms_and_words_resume(tmp_path, monkeypatch, c
     assert len(calls) == 1 and (w / "word-no_quant.json").exists()
 
 
-def partial_store(tmp_path, commit, *, declared=True, books=b"books"):
+PLACE = dict(python="3.12", torch="2", transformers="4.5", tokenizers="0.2", gpu="L40S")
+RUN = "tok/partial/20261101T000000Z"
+
+
+def stored_report(digest="abc", place=PLACE, declared=True, **extra):
+    return json.dumps(dict(code_digest=digest, environment=place, declared_read=declared, **extra)).encode()
+
+
+def partial_store(tmp_path, digest="abc", *, declared=True, books=b"books", canary=True, place=PLACE, run=RUN):
     from signtranslator.data.text_motion_dataset import DirectoryStore
     store = DirectoryStore(tmp_path / "s")
-    prefix = "tok/partial/20261101T000000Z/d20"
-    store.put(f"{prefix}/forms/form-real.json", json.dumps(dict(form="real", code_commit=commit, declared_read=declared)).encode())
-    store.put(f"{prefix}/forms/form-blank.json", b'{"half a fi')
-    store.put(f"{prefix}/forms/word-real.json", json.dumps(dict(form="real", code_commit=commit, declared_read=declared)).encode())
-    store.put(f"{prefix}/fit/fit.json", json.dumps(dict(code_commit=commit, declared_fit=declared, codebooks_sha256=hashlib.sha256(b"books").hexdigest())).encode())
+    prefix = f"{run}/d20"
+    store.put(f"{prefix}/forms/form-real.json", stored_report(digest, place, declared, form="real"))
+    store.put(f"{prefix}/forms/form-blank.json", stored_report(digest, place, declared, form="blank"))
+    store.put(f"{prefix}/forms/form-no_quant.json", stored_report(digest, place, declared, form="no_quant"))
+    store.put(f"{prefix}/forms/form-identity.json", b'{"half a fi')
+    store.put(f"{prefix}/forms/word-real.json", stored_report(digest, place, declared, form="real"))
+    if canary is not None:
+        store.put(f"{prefix}/forms/canary.json", stored_report(digest, place, declared, reproduced=canary))
+    store.put(f"{prefix}/fit/fit.json", json.dumps(dict(code_digest=digest, environment=place, declared_fit=declared, codebooks_sha256=hashlib.sha256(b"books").hexdigest())).encode())
     store.put(f"{prefix}/fit/codebooks.npz", books)
-    store.put("tok/partial/20261101T000000Z/smoke-x/forms/form-identity.json", json.dumps(dict(form="identity", code_commit=commit, declared_read=False)).encode())
+    store.put(f"{run}/smoke-x/forms/form-seam_min15.json", stored_report(digest, place, False, form="seam_min15"))
     return store
 
 
-def restore(tmp_path, out="out"):
-    return P.main(["restore", "--store", f"dir:{tmp_path / 's'}", "--prefix", "tok/partial", "--out-dir", str(tmp_path / out), "--final-key", "tok/report.json"])
+def restore(tmp_path, out="out", *extra):
+    return P.main(["restore", "--store", f"dir:{tmp_path / 's'}", "--prefix", "tok/partial", "--out-dir", str(tmp_path / out), "--final-key", "tok/report.json", "--void-prefix", "tok/void", *extra])
 
 
-def test_restore_brings_back_same_commit_d20_work_only_and_never_half_a_file(tmp_path, monkeypatch):
-    monkeypatch.setattr(P, "code_commit", lambda: "abc")
-    partial_store(tmp_path, "abc")
+@pytest.fixture
+def this_run(monkeypatch):
+    monkeypatch.setattr(P, "code_digest", lambda: "abc")
+    monkeypatch.setattr(P, "environment", lambda: PLACE)
+
+
+def restored(tmp_path, out="out"):
+    return sorted(str(p.relative_to(tmp_path / out)) for p in (tmp_path / out).rglob("*") if p.is_file()) if (tmp_path / out).exists() else []
+
+
+def test_restore_brings_back_one_runs_d20_work_and_never_half_a_file_or_a_smoke(tmp_path, this_run):
+    partial_store(tmp_path)
     assert restore(tmp_path) == 0
-    out = tmp_path / "out"
-    assert (out / "forms/form-real.json").exists() and (out / "forms/word-real.json").exists() and (out / "fit/fit.json").exists() and (out / "fit/codebooks.npz").exists()
-    assert not (out / "forms/form-blank.json").exists() and not (out / "forms/form-identity.json").exists()
+    assert restored(tmp_path) == ["fit/codebooks.npz", "fit/fit.json", "forms/form-blank.json", "forms/form-no_quant.json", "forms/form-real.json", "forms/word-real.json"]
 
 
-@pytest.mark.parametrize("kw,commit", [(dict(), "other"), (dict(declared=False), "abc"), (dict(), None)])
-def test_restore_skips_other_commits_smokes_and_an_unknown_commit(tmp_path, monkeypatch, kw, commit):
-    monkeypatch.setattr(P, "code_commit", lambda: commit)
-    partial_store(tmp_path, "abc", **kw)
+def test_restore_reads_the_latest_run_only(tmp_path, this_run):
+    store = partial_store(tmp_path, run="tok/partial/20261101T000000Z")
+    store.put("tok/partial/20261102T000000Z/d20/forms/form-round_trip.json", stored_report(form="round_trip"))
     assert restore(tmp_path) == 0
-    assert not list((tmp_path / "out").rglob("*.json")) if (tmp_path / "out").exists() else True
+    assert restored(tmp_path) == ["forms/form-round_trip.json"]
 
 
-def test_restore_takes_nothing_when_no_commit_is_known_on_either_side(tmp_path, monkeypatch):
-    monkeypatch.setattr(P, "code_commit", lambda: None)
-    partial_store(tmp_path, None)
+@pytest.mark.parametrize("kw", [dict(digest="other"), dict(declared=False), dict(place=dict(PLACE, transformers="4.6")), dict(place=dict(PLACE, tokenizers="0.3")),
+                                dict(place=dict(PLACE, gpu="A5000")), dict(place=dict(PLACE, torch="3")), dict(place=dict(PLACE, python="3.11")), dict(canary=False)])
+def test_restore_refuses_other_code_another_environment_a_smoke_and_a_failed_canary(tmp_path, this_run, capsys, kw):
+    partial_store(tmp_path, **kw)
     assert restore(tmp_path) == 0
-    assert not (tmp_path / "out" / "forms" / "form-real.json").exists() and not (tmp_path / "out" / "fit" / "fit.json").exists()
+    assert restored(tmp_path) == [] and "ALERT" in capsys.readouterr().out
 
 
-def test_restore_refuses_a_changed_codebook_and_a_finished_read(tmp_path, monkeypatch):
-    monkeypatch.setattr(P, "code_commit", lambda: "abc")
-    store = partial_store(tmp_path, "abc", books=b"changed")
+def test_real_and_blank_are_not_restored_from_a_run_with_no_canary(tmp_path, this_run):
+    partial_store(tmp_path, canary=None)
     assert restore(tmp_path) == 0
-    assert not (tmp_path / "out/fit/fit.json").exists() and (tmp_path / "out/forms/form-real.json").exists()
+    found = restored(tmp_path)
+    assert "forms/form-real.json" not in found and "forms/form-blank.json" not in found and "forms/form-no_quant.json" in found
+
+
+def test_restore_refuses_a_changed_codebook_and_a_finished_read(tmp_path, this_run):
+    store = partial_store(tmp_path, books=b"changed")
+    assert restore(tmp_path) == 0
+    assert "fit/fit.json" not in restored(tmp_path) and "forms/form-real.json" in restored(tmp_path)
     store.put("tok/report.json", b"{}")
     with pytest.raises(SystemExit, match="finished"):
         restore(tmp_path, "again")
 
 
-def test_a_partial_upload_leaves_stored_keys_alone_and_a_merge_refuses_two_commits(tmp_path, monkeypatch):
+def test_restore_stops_on_local_forms_of_other_code_at_once(tmp_path, this_run):
+    partial_store(tmp_path)
+    forms = tmp_path / "out" / "forms"
+    forms.mkdir(parents=True)
+    (forms / "form-real.json").write_bytes(stored_report("other"))
+    with pytest.raises(SystemExit, match="other code"):
+        restore(tmp_path)
+
+
+def test_a_voided_code_never_reads_again_and_new_code_needs_a_recorded_cause(tmp_path, this_run):
+    from signtranslator.data.text_motion_dataset import DirectoryStore
+    store = DirectoryStore(tmp_path / "s")
+    store.put("tok/void/abc.json", b"{}")
+    with pytest.raises(SystemExit, match="void"):
+        restore(tmp_path, "out", "--rerun-cause", "same code")
+    store2 = DirectoryStore(tmp_path / "t")
+    (tmp_path / "s" / "tok" / "void" / "abc.json").unlink()
+    store.put("tok/void/older.json", b"{}")
+    with pytest.raises(SystemExit, match="rerun-cause"):
+        restore(tmp_path)
+    assert restore(tmp_path, "out", "--rerun-cause", "transformers moved; pinned") == 0
+    assert json.loads((tmp_path / "out/forms/rerun.json").read_text()) == dict(cause="transformers moved; pinned", voided=["tok/void/older.json"], code_digest="abc")
+    assert restore(tmp_path, "out", "--rerun-cause", "again") == 0 and not store2.exists("x")
+
+
+def test_the_report_records_a_reruns_cause(monkeypatch, tmp_path):
+    harness(monkeypatch, tiny_tokenizer(), n=4)
+    assert read(tmp_path, ["real", "blank"]) == 0
+    (tmp_path / "w" / "rerun.json").write_text(json.dumps(dict(cause="c")))
+    assert merged(tmp_path, ["real", "blank"])["rerun"] == dict(cause="c")
+
+
+def test_a_partial_upload_leaves_stored_keys_alone_and_a_merge_refuses_two_codes(tmp_path, monkeypatch):
     from signtranslator.data.text_motion_dataset import DirectoryStore
     work = tmp_path / "w"
     work.mkdir()
@@ -1668,11 +1804,11 @@ def test_a_partial_upload_leaves_stored_keys_alone_and_a_merge_refuses_two_commi
     other.mkdir()
     assert P.main(["upload", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(other), "--prefix", "p", "--partial"]) == 0
     harness(monkeypatch, tiny_tokenizer(), n=3)
-    monkeypatch.setattr(P, "code_commit", lambda: "one")
+    monkeypatch.setattr(P, "code_digest", lambda: "one")
     assert read(tmp_path, ["real"]) == 0
-    monkeypatch.setattr(P, "code_commit", lambda: "two")
+    monkeypatch.setattr(P, "code_digest", lambda: "two")
     assert read(tmp_path, ["blank"]) == 0
-    with pytest.raises(SystemExit, match="different commits"):
+    with pytest.raises(SystemExit, match="different code digests"):
         merged(tmp_path, ["real", "blank"])
 
 
@@ -1690,3 +1826,257 @@ def test_the_report_discloses_what_a_reader_needs(monkeypatch, tmp_path):
     d = merged(tmp_path, ["real", "blank"])["disclosures"]
     assert "20.0" in d["fsq"] and "V3-F" in d["fsq"] and "favours d2" in d["v3d"] and "119" in d["b6"] and "197" in d["b6"] and "rt_only_arms" in d["b2"]
     assert "99.5th percentile" in P.__doc__ and "0.5-99.5" not in P.__doc__
+
+
+# ---- review of 366f213: the code digest, the environment, B1's block, the rule apart from the job ---------------------------
+
+def digest_of(root: Path, monkeypatch) -> str:
+    monkeypatch.setattr(P, "ROOT", root)
+    P.code_digest.cache_clear()
+    try:
+        return P.code_digest()
+    finally:
+        P.code_digest.cache_clear()
+
+
+def test_the_code_digest_names_scripts_and_the_package_and_catches_a_dirty_tree_without_git(tmp_path, monkeypatch):
+    root = tmp_path / "code"
+    (root / "scripts").mkdir(parents=True)
+    (root / "signtranslator" / "eval").mkdir(parents=True)
+    (root / "scripts" / "a.py").write_text("1")
+    (root / "signtranslator" / "eval" / "b.py").write_text("2")
+    first = digest_of(root, monkeypatch)
+    assert len(first) == 64 and not (root / ".git").exists() and digest_of(root, monkeypatch) == first
+    (root / "signtranslator" / "eval" / "b.py").write_text("3")
+    second = digest_of(root, monkeypatch)
+    assert second != first
+    (root / "scripts" / "a.py").write_text("4")
+    assert digest_of(root, monkeypatch) != second
+    third = digest_of(root, monkeypatch)
+    (root / "scripts" / "notes.txt").write_text("x")
+    (root / "scripts" / "sub").mkdir()
+    (root / "scripts" / "sub" / "c.py").write_text("x")
+    assert digest_of(root, monkeypatch) == third                                 # scripts/*.py, not deeper, and code only
+    (root / "signtranslator" / "eval" / "b.py").rename(root / "signtranslator" / "eval" / "c.py")
+    assert digest_of(root, monkeypatch) != third                                 # a path is part of the code
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    with pytest.raises(SystemExit, match="void"):
+        digest_of(empty, monkeypatch)
+
+
+def test_every_report_names_its_code_and_environment(monkeypatch, tmp_path):
+    harness(monkeypatch, tiny_tokenizer(), n=4)
+    monkeypatch.setattr(P, "environment", lambda: PLACE)
+    assert read(tmp_path, ["real", "blank"]) == 0
+    r = json.loads((tmp_path / "w/form-real.json").read_text())
+    assert r["code_digest"] == P.code_digest() and r["environment"] == PLACE
+    report = merged(tmp_path, ["real", "blank"])
+    assert report["code_digest"] == P.code_digest() and report["environment"] == PLACE
+
+
+def test_the_environment_names_what_can_move_a_read(monkeypatch):
+    place = P.environment()
+    assert set(place) == {"python", "torch", "transformers", "tokenizers", "gpu"} and place["python"] and place["torch"] == torch.__version__
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "get_device_name", lambda i: "L40S")
+    assert P.environment()["gpu"] == "L40S"
+
+
+def rewrite(path, **change):
+    path.write_text(json.dumps(dict(json.loads(path.read_text()), **change)))
+
+
+@pytest.mark.parametrize("change,message", [(dict(code_digest=None), "void"), (dict(code_digest="z"), "code digests"), (dict(environment=dict(PLACE, transformers="9")), "environments")])
+def test_a_merge_refuses_a_form_of_no_code_other_code_or_another_environment(monkeypatch, tmp_path, change, message):
+    harness(monkeypatch, tiny_tokenizer(), n=4)
+    assert read(tmp_path, ["real", "blank"]) == 0
+    plant_canary(tmp_path / "w")
+    rewrite(tmp_path / "w/form-blank.json", **change)
+    with pytest.raises(SystemExit, match=message):
+        merged(tmp_path, ["real", "blank"])
+
+
+def word_read(tmp_path, monkeypatch, tok):
+    import validate_sign_recognizer as vsr
+    rows = word_rows("rit", 2)
+    states = [signer_state(i, frames=16, amplitude=.4) for i in range(2)]
+    monkeypatch.setattr(P, "load_v3d", lambda store, device: (object(), ["BOOK"]))
+    monkeypatch.setattr(P, "word_records", lambda store, labels: rows)
+    monkeypatch.setattr(P, "word_states", lambda store, rs, labels, limit, cache, longest=False: (states, [0, 0], ["rit-0", "rit-1"]))
+    monkeypatch.setattr(vsr, "logits_of", lambda model, forms, device: torch.ones(len(forms), 1))
+    return P.main(["words", "--store", "dir:x", "--out-dir", str(tmp_path / "w"), "--forms", "real,blank"])
+
+
+@pytest.mark.parametrize("change,message", [(dict(code_digest="z"), "code digests"), (dict(environment=dict(PLACE)), "environments")])
+def test_word_reports_must_be_one_run_with_the_forms(monkeypatch, tmp_path, change, message):
+    tok = tiny_tokenizer()
+    harness(monkeypatch, tok, n=4)
+    assert read(tmp_path, ["real", "blank"]) == 0
+    assert word_read(tmp_path, monkeypatch, tok) == 0
+    assert merged(tmp_path, ["real", "blank"])["words"] is not None
+    rewrite(tmp_path / "w/word-blank.json", **change)
+    with pytest.raises(SystemExit, match=message):
+        merged(tmp_path, ["real", "blank"])
+
+
+def test_word_reports_of_other_code_than_the_forms_refuse(monkeypatch, tmp_path):
+    tok = tiny_tokenizer()
+    harness(monkeypatch, tok, n=4)
+    assert read(tmp_path, ["real", "blank"]) == 0
+    assert word_read(tmp_path, monkeypatch, tok) == 0
+    for name in ("real", "blank"):
+        rewrite(tmp_path / f"w/word-{name}.json", code_digest="z")
+    with pytest.raises(SystemExit, match="other code"):
+        merged(tmp_path, ["real", "blank"])
+
+
+def test_word_reports_must_read_the_forms_fit(tmp_path):
+    good = dict(codebooks_sha256="a")
+    (tmp_path / "word-real.json").write_text(json.dumps(dict(form="real", declared_read=True, corpora={}, fit=dict(codebooks_sha256="other"), code_digest="d", environment={})))
+    (tmp_path / "word-blank.json").write_text(json.dumps(dict(form="blank", declared_read=True, corpora={}, fit=None, code_digest="d", environment={})))
+    with pytest.raises(SystemExit, match="another fit"):
+        P.load_words(tmp_path, True, "d", {}, good)
+    assert set(P.load_words(tmp_path, True, "d", {}, dict(codebooks_sha256="other"))) == {"real", "blank"}
+
+
+@pytest.mark.parametrize("change", [dict(code_digest="z"), dict(environment=PLACE)])
+def test_a_fit_of_other_code_or_another_environment_refuses(monkeypatch, tmp_path, change):
+    fit_harness(monkeypatch, tiny_tokenizer())
+    assert fit(tmp_path) == 0
+    edit_fit(tmp_path / "fit", **change)
+    with pytest.raises(SystemExit, match="other code or in another environment"):
+        P.load_fit(tmp_path / "fit", declared=False)
+
+
+def test_a_failed_canary_stops_the_job_before_any_other_form_with_its_own_status(tmp_path):
+    result, calls = run_job(tmp_path, fail_when="tok_probes.py canary*d20", code=3)
+    assert result.returncode == 3 and done_line(result) == 3 and "do not retry" in result.stdout
+    lines = calls.splitlines()
+    at = next(i for i, x in enumerate(lines) if " canary " in x and "d20" in x)
+    assert all(" upload --partial " in x for x in lines[at + 1:]) and lines[at + 1:]        # only the failed run's work goes up: no form, no words, no merge
+    assert not any("--forms a,b" in x and "d20" in x for x in lines)
+
+
+def test_a_canary_that_could_not_run_is_an_ordinary_failure_and_a_rerun_passes_its_cause(tmp_path):
+    result, _ = run_job(tmp_path, fail_when="tok_probes.py canary*d20")
+    assert result.returncode == 1
+    other = tmp_path / "second"
+    other.mkdir()
+    _, calls = run_job(other, RERUN_CAUSE="pinned transformers")
+    restore_line = next(x for x in calls.splitlines() if " restore " in x)
+    assert "--rerun-cause pinned transformers" in restore_line and "--void-prefix" in restore_line
+
+
+def test_identity_is_paired_with_the_round_trip_in_a_merge(monkeypatch, tmp_path):
+    harness(monkeypatch, tiny_tokenizer(), n=CLIPS)
+    forms = ["real", "blank", "round_trip", "identity", "round_trip_masked", "identity_masked"]
+    assert read(tmp_path, forms) == 0
+    f = merged(tmp_path, forms)["forms"]
+    assert set(f["identity"]["comparators"]) == {"round_trip"} and len(f["identity"]["comparators"]["round_trip"]["bleu"]["ci95"]) == 2
+    assert set(f["identity_masked"]["comparators"]) == {"round_trip_masked"}
+
+
+def b1_reads(no_quant=.5):
+    """Three forms where a known share of clips is right; identity all, round trip none of the planted ones."""
+    n = 100
+    refs = [f"w{i} a b c d e f" for i in range(n)]
+    def form(name, right, nll):
+        return dict(form=name, references=refs, hypotheses=[r if i < right else "z" for i, r in enumerate(refs)], nll=[[nll]] * n)
+    return {"blank": form("blank", 0, 3.), "round_trip": form("round_trip", 20, 2.), "identity": form("identity", 60, 1.), "no_quant": form("no_quant", 20 + int(40 * no_quant), 2. - no_quant)}
+
+
+def test_b1s_block_gives_d_and_p_on_both_metrics_as_facts():
+    from signtranslator.eval import s0_metrics as M
+    reads = b1_reads(.5)
+    block = P.b1_block(reads, "")
+    refs = reads["no_quant"]["references"]
+    bleu = {k: float(M.bleu_from_statistics(M.bleu_statistics(reads[k]["hypotheses"], refs).sum(0))) for k in ("round_trip", "identity", "no_quant")}
+    assert block["bleu"]["d"] == pytest.approx(bleu["identity"] - bleu["round_trip"], abs=1e-3)
+    assert block["bleu"]["p"] == pytest.approx((bleu["no_quant"] - bleu["round_trip"]) / (bleu["identity"] - bleu["round_trip"]), abs=1e-3)
+    assert block["bleu"]["p_ci95"][0] <= block["bleu"]["p"] <= block["bleu"]["p_ci95"][1]
+    assert block["bleu"]["no_quant_minus_round_trip"]["difference"] > 0 and block["bleu"]["identity_minus_no_quant"]["difference"] > 0 and block["bleu"]["identity_minus_round_trip"]["difference"] > 0
+    likelihood = block["likelihood_minus_blank"]
+    assert likelihood["d"] == 1 and likelihood["p"] == .5 and likelihood["no_quant_minus_round_trip"]["difference"] == .5 and likelihood["identity_minus_no_quant"]["difference"] == .5
+    assert P.b1_block({k: v for k, v in reads.items() if k != "identity"}, "") is None
+
+
+def test_a_report_exposes_every_field_the_declaration_reads(monkeypatch, tmp_path):
+    harness(monkeypatch, tiny_tokenizer(), n=CLIPS)
+    forms = ["real", "blank", "round_trip", "identity", "no_quant", "round_trip_masked", "identity_masked", "no_quant_masked", "seam_cval45", "seam_cmax45", "seam_crnd45"]
+    assert read(tmp_path, forms) == 0
+    r = merged(tmp_path, forms)
+    for name in ("seam_cval45", "seam_cmax45", "seam_crnd45"):
+        share = r["forms"][name]["share_of_gap"]
+        assert {"bleu", "bleu_ci95", "likelihood", "likelihood_ci95"} <= set(share)
+    seam = r["forms"]["seam_cval45"]
+    assert {"bridged_frame_share", "frames_per_bridge", "filled_cuts", "path_share", "junctions_per_clip"} <= set(seam["seam"])
+    assert len(seam["paired"]["real"]["loop_share"]["ci95"]) == 2
+    for view in ("unmasked", "masked"):
+        block = r["b1"][view]
+        for metric in ("bleu", "likelihood_minus_blank"):
+            assert {"d", "p", "p_ci95", "no_quant_minus_round_trip", "identity_minus_round_trip", "identity_minus_no_quant"} <= set(block[metric])
+    assert r["b1"]["masked"]["forms"]["no_quant"] == "no_quant_masked"
+
+
+def test_the_probe_script_holds_no_rule_and_the_job_never_calls_one():
+    source = (ROOT / "scripts/tok_probes.py").read_text()
+    for word in ("P_DECODER", "SEAM_KEEP", "fall_shown", "no_fall_shown", "unresolved"):
+        assert word not in source
+    assert not re.search(r"(?<![0-9.])0?\.(85|75|25)(?![0-9])", re.sub(r'"[^"]*"|"""[\s\S]*?"""', "", source))
+    assert "tok_probes_rule" not in JOB.read_text()
+
+
+# ---- the draft rule, apart from the probe: one synthetic report per outcome --------------------------------------------------
+
+import tok_probes_rule as Rule  # noqa: E402
+
+
+def rule_report(*, p=.5, d_low=.1, gain_low=.1, rest_low=.1, share=.9, high=.97, loop_low=-.1, cmax_high=.95):
+    return dict(report_only=True, declared_read=True, code_digest="d", checks=dict(canary=dict(reproduced=True)),
+                b1=dict(unmasked=dict(bleu=dict(p=p, identity_minus_round_trip=dict(ci95=[d_low, 1.]), no_quant_minus_round_trip=dict(ci95=[gain_low, 1.]), identity_minus_no_quant=dict(ci95=[rest_low, 1.])))),
+                forms=dict(seam_cval45=dict(share_of_gap=dict(bleu=share, bleu_ci95=[share - .1, high], likelihood=.5), paired=dict(real=dict(loop_share=dict(difference=.1, ci95=[loop_low, .2]))),
+                                            seam=dict(bridged_frame_share=.45, frames_per_bridge=7., filled_cuts=2)),
+                           seam_cmax45=dict(share_of_gap=dict(bleu=.8, bleu_ci95=[.7, cmax_high]))))
+
+
+@pytest.mark.parametrize("kw,expected", [(dict(d_low=0.), "void"), (dict(d_low=-.1, p=.1), "void"), (dict(p=None), "void"), (dict(p=.25), "decoder"), (dict(p=-.2), "decoder"),
+                                         (dict(p=.75), "quantiser"), (dict(p=1.2), "quantiser"), (dict(p=.5), "unresolved"), (dict(p=.26), "unresolved"), (dict(p=.74), "unresolved"),
+                                         (dict(p=.1, rest_low=0.), "unresolved"), (dict(p=.9, gain_low=0.), "unresolved")])
+def test_each_b1_outcome(kw, expected):
+    assert Rule.read_rule(rule_report(**kw))["b1"]["outcome"] == expected
+
+
+def test_b1_is_void_without_its_forms():
+    report = rule_report()
+    report["b1"]["unmasked"] = None
+    assert Rule.read_rule(report)["b1"]["outcome"] == "void"
+
+
+@pytest.mark.parametrize("kw,expected", [(dict(share=.7, high=.84), "fall_shown"), (dict(share=.84, high=.8499), "fall_shown"), (dict(share=.85, high=.93), "no_fall_shown"), (dict(share=.95, high=.99), "no_fall_shown"),
+                                         (dict(share=.8, high=.9), "unresolved"), (dict(share=.84, high=.85), "unresolved")])
+def test_each_seam_outcome(kw, expected):
+    assert Rule.read_rule(rule_report(**kw))["seam"]["outcome"] == expected
+
+
+def test_a_keep_is_weak_when_the_bracket_falls_and_loops_are_reported_beside_it():
+    keep = Rule.read_rule(rule_report(share=.9, high=.97, cmax_high=.84))["seam"]
+    assert keep["outcome"] == "no_fall_shown" and keep["weak_keep"] is True
+    assert Rule.read_rule(rule_report(share=.9, high=.97, cmax_high=.85))["seam"]["weak_keep"] is False
+    fall = Rule.read_rule(rule_report(share=.7, high=.8, loop_low=.01))["seam"]
+    assert fall["loops_rise"] is True and "weak_keep" not in fall and fall["bridged_frame_share"] == .45 and fall["frames_per_bridge"] == 7. and fall["filled_cuts"] == 2
+    assert Rule.read_rule(rule_report(share=.7, high=.8, loop_low=0.))["seam"]["loops_rise"] is False
+
+
+@pytest.mark.parametrize("change,message", [(dict(report_only=False), "report_only"), (dict(declared_read=False), "smoke"), (dict(checks=dict(canary=dict(reproduced=False))), "void"), (dict(checks=dict(canary=None)), "void")])
+def test_the_rule_refuses_a_report_it_must_not_read(change, message):
+    with pytest.raises(SystemExit, match=message):
+        Rule.read_rule(dict(rule_report(), **change))
+
+
+def test_the_rule_says_it_is_a_draft_and_runs_as_a_script(tmp_path, capsys):
+    path = tmp_path / "r.json"
+    path.write_text(json.dumps(rule_report()))
+    assert Rule.main(["--report", str(path)]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"] == "draft, not declared" and out["code_digest"] == "d"

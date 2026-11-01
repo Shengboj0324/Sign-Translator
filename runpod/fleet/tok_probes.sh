@@ -8,11 +8,13 @@
 #   PROCS=4                                    processes reading forms side by side
 #
 # The smoke stops the job when a decoder that returns real does not read real on real clips (`check`). On D20, real and blank are read
-# first and must reproduce the stored reads (`canary`) before anything else is spent.
+# first and must reproduce the pinned stored report (`canary`): a miss stops the job before any other form and voids the read. No automatic
+# retry: this code never reads again, and a rerun needs new code and RERUN_CAUSE, which the report records.
 # Outputs (write-once): $D/report.json, forms, fit report and codebooks; smokes under $D/smoke/<UTC>/.
-# A failure uploads the work so far to $D/partial/<UTC>/, on exit and after each finished stage. A retry restores the D20 forms and fit
-# stored there from the same commit (`restore`) and reads only what is missing. A kill -9 keeps only the last finished stage.
-# Ends with TOK-PROBES-DONE <status> (0 read done, 1 the read failed, 2 the smoke stopped the job). The exit status is the same.
+# A failure uploads the work so far to $D/partial/<UTC>/, on exit and after each finished stage. A retry restores the latest such run, if it
+# has this code and environment (`restore`), and reads only what is missing. A kill -9 keeps only the last finished stage.
+# Ends with TOK-PROBES-DONE <status> (0 read done, 1 the read failed, 2 the smoke stopped the job, 3 the read is void: do not retry). The exit
+# status is the same.
 # No output passes through a pipe; each background read's status is waited on one by one.
 [ -f "${R2ENV:-/root/r2env.sh}" ] && source "${R2ENV:-/root/r2env.sh}"
 export PATH=${VENV_BIN:-/root/venv/bin}:$PATH
@@ -58,7 +60,10 @@ read_all() {
   if [ ! -f "$dir/forms/form-real.json" ] || [ ! -f "$dir/forms/form-blank.json" ]; then
     python $T read --forms real,blank --out-dir "$dir/forms" --fit-dir "$dir/fit" $COMMON "$@" || return 1
   fi
-  python $T canary --out-dir "$dir/forms" || return 1
+  python $T canary --out-dir "$dir/forms" --void-prefix "$D/void"
+  local canary=$?
+  [ "$canary" != 3 ] || { echo "ALERT the canary failed: the read is void, do not retry"; done_ 3; }
+  [ "$canary" = 0 ] || return 1
   local lists
   lists=$(python $T groups --processes "$PROCS" --skip real,blank --stored-in "$dir/forms") || return 1
   local pids=() n=0 group
@@ -97,7 +102,8 @@ if [ "${SMOKE:-0}" = 1 ]; then
 fi
 
 # ---- the read: fit on c02 train, forms on D20, B6 on the gate halves ----------------------------------------------------
-python $T restore --prefix "$D/partial" --out-dir "$R" --final-key "$D/report.json" || { echo "ALERT restore failed"; done_ 1; }
+python $T restore --prefix "$D/partial" --out-dir "$R" --final-key "$D/report.json" --void-prefix "$D/void" ${RERUN_CAUSE:+--rerun-cause "$RERUN_CAUSE"} \
+  || { echo "ALERT restore refused"; done_ 1; }
 if [ ! -f "$R/fit/fit.json" ]; then
   python $T fit --out-dir "$R/fit" --device "$DEV" --threads "$THREADS" || { echo "ALERT fit failed"; done_ 1; }
   sync_partial

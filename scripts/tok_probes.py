@@ -86,15 +86,27 @@ its motion pairs are null, with the reason.
     python scripts/tok_probes.py merge --out-dir W/forms --output-file W/report.json
     python scripts/tok_probes.py check --report W/report.json
 
-Outputs are write-once and written atomically. ``canary`` compares real and blank with stored D20 before the rest is spent.
-``restore`` brings back a failed job's stored forms and fit from the same commit, so a retry reads only what is missing. The job is
-``runpod/fleet/tok_probes.sh``.
+Outputs are write-once and written atomically. Every report names its code (a SHA-256 over ``scripts/*.py`` and ``signtranslator/**/*.py``,
+which also catches a dirty tree; a pod has no ``.git``) and its environment (python, torch, transformers, tokenizers, GPU), and ``merge`` and
+``restore`` refuse a mix; code that cannot be named voids the read.
+
+**The canary.** Right after real and blank are read, against a SHA-pinned stored D20 report that read them through the same path (B0, ``s0_ceilings``):
+BLEU within 0.05 of the plan's figures, at least 0.98 of hypotheses identical, and a mean absolute per-clip NLL difference of at most 0.001. On c02 train
+clips on the CPU the batch group moves NLL by at most about 1e-6 and the candidate count by less, so 0.001 is not a batch effect; CPU against GPU is unmeasured.
+A miss stops the job before any other form and voids the read: a void record is stored under this code's digest, this code never reads again, and a rerun
+needs new code and a recorded cause (``restore --rerun-cause``).
+
+``restore`` brings back one failed run's D20 forms and fit (the latest run, whole or not at all: same code, same environment), so a retry reads only what is
+missing, and never real or blank from a run whose canary did not pass.
+
+This script holds no decision rule. ``scripts/tok_probes_rule.py`` reads a report and applies a rule, separately. The job is ``runpod/fleet/tok_probes.sh``.
 """
 from __future__ import annotations
 
 import argparse
 from collections import Counter
 from dataclasses import replace
+import functools
 import hashlib
 import json
 import math
@@ -103,7 +115,6 @@ from pathlib import Path
 import random
 import re
 import resource
-import subprocess
 import sys
 import tempfile
 import time
@@ -180,7 +191,10 @@ FIT_CLIPS, FIT_STEPS, FIT_ITERATIONS = 4000, 500_000, 15    # 4,000 of c02's 17,
 
 D20_ENTRIES = dict(mean=9.09, median=7, empty=6)            # r10's stage-1 entries on D20 (reports/round20_dev.md)
 IDENTITY_TOLERANCE = .01                                    # identical hypotheses: stored real reads of one list differ in 1 of 500
-CANARY = dict(real=4.493, blank=1.68, tolerance=.05)        # stored D20 reads (phase-a, 4.495 and 4.493; 1.6802); .002 is one hypothesis
+# stored D20 reads (phase-a: real 4.495 and 4.493, blank 1.6802; .002 is one hypothesis). B0 read real and blank on D20 through this path, at group 4
+CANARY = dict(real=4.493, blank=1.68, bleu_tolerance=.05, identical=.98, nll=.001)
+CANARY_REPORT = f"{L.O}/s2/b0-w14b-d20-v1.json"
+CANARY_REPORT_SHA = "30ddbe7d1a7eb94b5dd40e28ae0aa8228d584efa8ed3d4632206e8d9b4e32665"
 BOUNDARY_FIELDS = ("gloss", "spans", "word_spans", "alignment", "glosses")
 BOUNDARY_RULE = dict(sign_boundaries="How2Sign records carry none (no gloss, no spans; the plan's section 5 says so too)",
                      used="section 5's declared fallback: wrist-activity minima at each sentence's word count",
@@ -239,13 +253,45 @@ def records_with_boundaries(records) -> int:
     return sum(1 for r in records if any(r.get(k) for k in BOUNDARY_FIELDS))
 
 
-def code_commit() -> str | None:
-    """The commit this code runs from: a retry reuses only stored work of the same commit. None outside a checkout."""
-    try:
-        done = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=20)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return done.stdout.strip() if done.returncode == 0 and done.stdout.strip() else None
+@functools.lru_cache(maxsize=1)
+def code_digest() -> str:
+    """SHA-256 over ``scripts/*.py`` and ``signtranslator/**/*.py``: paths and bytes. A pod has no ``.git``, and this also catches a dirty tree. Code
+    that cannot be named voids the read."""
+    files = sorted([*(ROOT / "scripts").glob("*.py"), *(ROOT / "signtranslator").rglob("*.py")])
+    if not files:
+        raise SystemExit(f"no code under {ROOT}: a read that cannot name its code is void")
+    digest = hashlib.sha256()
+    for path in files:
+        digest.update(str(path.relative_to(ROOT)).encode() + b"\0" + path.read_bytes() + b"\0")
+    return digest.hexdigest()
+
+
+def environment() -> dict:
+    """What can move a read without the code changing. ``transformers`` is a range on a pod, so this is what protects a retry."""
+    from importlib import metadata
+    import platform
+    import torch
+
+    def version(name):
+        try:
+            return metadata.version(name)
+        except metadata.PackageNotFoundError:
+            return None
+    return dict(python=platform.python_version(), torch=torch.__version__, transformers=version("transformers"), tokenizers=version("tokenizers"),
+                gpu=torch.cuda.get_device_name(0) if torch.cuda.is_available() else None)
+
+
+def check_same_run(reports: dict, what: str) -> tuple[str, dict]:
+    """(code digest, environment) of reports that must be one run's; anything else refuses, and a report without a digest voids the read."""
+    digests = {r.get("code_digest") for r in reports.values()}
+    if None in digests:
+        raise SystemExit(f"{what}: a report that does not name its code; the read is void")
+    if len(digests) != 1:
+        raise SystemExit(f"{what}: different code digests: {sorted(digests)}")
+    environments = {json.dumps(r.get("environment"), sort_keys=True) for r in reports.values()}
+    if len(environments) != 1:
+        raise SystemExit(f"{what}: different environments: {sorted(environments)}")
+    return digests.pop(), json.loads(environments.pop())
 
 
 def gpu_peak_reserved_bytes() -> int | None:
@@ -521,7 +567,8 @@ def run_fit(args) -> int:
                   corpora=sorted({r["corpus"] for r in records}), manifest_sha256=L.EVAL_MIX_SHA, tokenizer_sha256=L.TOKENIZER_SHA,
                   steps={p: int(len(z)) for p, z in latents.items()}, iterations=args.iterations, codebooks_sha256=sha,
                   fsq=dict(levels=list(FSQ_LEVELS), codes=int(np.prod(FSQ_LEVELS)), bits=round(math.log2(np.prod(FSQ_LEVELS)), 2)),
-                  statistics=stats, peak_rss_bytes=peak_rss_bytes(), gpu_peak_reserved_bytes=gpu_peak_reserved_bytes(), code_commit=code_commit(),
+                  statistics=stats, peak_rss_bytes=peak_rss_bytes(), gpu_peak_reserved_bytes=gpu_peak_reserved_bytes(), code_digest=code_digest(),
+                  environment=environment(),
                   seconds=round(time.time() - started, 1),
                   note="a post-hoc fit: the encoder and decoder were trained for d2's codebooks")
     write_report_once(out / "fit.json", report)
@@ -543,6 +590,8 @@ def load_fit(fit_dir, *, declared: bool, read_signs=()) -> dict:
         raise SystemExit(f"{path}: fitted on another tokenizer")
     if declared and not report["declared_fit"]:
         raise SystemExit(f"{path}: a smoke fit cannot feed a declared read")
+    if report.get("code_digest") != code_digest() or report.get("environment") != environment():
+        raise SystemExit(f"{path}: fitted by other code or in another environment")
     if declared and set(report["signs"]) & set(read_signs):
         raise SystemExit(f"{path}: the fit holds clips of the read list")
     raw = (path / "codebooks.npz").read_bytes()
@@ -1090,13 +1139,13 @@ def run_read(args) -> int:
     reader = load_reader(store, args)
     candidates = M.retrieval_candidates(len(texts), args.candidates, seed=0)
     context = dict(records=records, refs=refs, tokenizer=tokenizer, fit=fit, entries=entries)
-    commit = code_commit()
+    digest, place = code_digest(), environment()
     for name in names:
         started = time.time()
         states, info = build_form(name, context)
         built = time.time()
         raw = reader.read(states, texts, candidates, group=args.nll_group)
-        report = dict(kind=f"{PROBE}-form", report_only=True, form=name, declared_read=declared, list=described, code_commit=commit,
+        report = dict(kind=f"{PROBE}-form", report_only=True, form=name, declared_read=declared, list=described, code_digest=digest, environment=place,
                       instrument=reader.info, tokenizer=dict(key=L.TOKENIZER, sha256=L.TOKENIZER_SHA, gains=None) if tokenizer else None,
                       fit=fit["report"] if fit and name in FIT_FORMS else None, signs=signs,
                       groups=[r.get("signer_component") for r in records], references=texts,
@@ -1228,7 +1277,8 @@ def run_words(args) -> int:
         report = dict(kind=f"{PROBE}-word", report_only=True, form=name, declared_read=not smoke, forms_rule=rule,
                       instrument=dict(run=V3D_RUN, best_sha256=V3D_BEST_SHA, checkpoint_sha256=V3D_CHECKPOINT_SHA),
                       partition="train (a smoke)" if smoke else "gate", corpora=ranks, seconds=round(time.time() - started, 2),
-                      peak_rss_bytes=peak_rss_bytes(), gpu_peak_reserved_bytes=gpu_peak_reserved_bytes(), code_commit=code_commit())
+                      fit=fit["report"] if fit and name in FIT_FORMS else None, peak_rss_bytes=peak_rss_bytes(), gpu_peak_reserved_bytes=gpu_peak_reserved_bytes(),
+                      code_digest=code_digest(), environment=environment())
         write_report_once(out_dir / f"word-{name}.json", report)
         print(json.dumps({f"word-{name}": dict(seconds=report["seconds"], peak_rss_gb=round(report["peak_rss_bytes"] / 2 ** 30, 2))}), flush=True)
     return 0
@@ -1349,6 +1399,10 @@ def form_panel(reads: dict, name: str, comparators=()) -> dict:
 
 def comparators_of(name: str) -> tuple[str, ...]:
     """The paired reads beside real and blank; those that a merge did not read are dropped."""
+    if name == "identity":
+        return ("round_trip",)
+    if name == "identity_masked":
+        return ("round_trip_masked",)
     if name == "no_quant":
         return ("round_trip", "identity")
     if name == "no_quant_masked":
@@ -1385,7 +1439,8 @@ def word_panel(words: dict, name: str, corpus: str) -> dict:
     return out
 
 
-def load_words(out_dir: Path, declared: bool) -> dict:
+def load_words(out_dir: Path, declared: bool, digest: str | None = None, place: dict | None = None, fit_block: dict | None = None) -> dict:
+    """The word reports, after checking they are one read of the forms' code, environment and fit."""
     out = {}
     for path in sorted(out_dir.glob("word-*.json")):
         r = json.loads(path.read_bytes())
@@ -1398,10 +1453,42 @@ def load_words(out_dir: Path, declared: bool) -> dict:
     for name, r in out.items():
         if {c: v["signs"] for c, v in r["corpora"].items()} != {c: v["signs"] for c, v in first["corpora"].items()}:
             raise SystemExit(f"word-{name}: other clips")
+        if r.get("fit") and fit_block is not None and r["fit"] != fit_block:
+            raise SystemExit(f"word-{name}: read another fit than the forms")
     for anchor in ("real", "blank"):
         if anchor not in out:
             raise SystemExit(f"word-{anchor}.json is missing")
+    found = check_same_run(out, "the word reports")
+    if digest is not None and found != (digest, place):
+        raise SystemExit("the word reports were read by other code or in another environment than the forms")
     return out
+
+
+def b1_block(reads: dict, suffix: str) -> dict | None:
+    """B1's differences and position on the path, as facts: D = identity − round_trip (what B1 can move at all), and
+    p = (no_quant − round_trip) / D, 0 at the round trip and 1 at the identity path; on BLEU and on likelihood minus blank, jointly resampled."""
+    names = {k: f"{k}{suffix}" for k in ("no_quant", "identity", "round_trip")}
+    if any(n not in reads for n in names.values()) or "blank" not in reads:
+        return None
+    refs = reads[names["no_quant"]]["references"]
+    idx = np.random.default_rng(0).integers(0, len(refs), (BOOT, len(refs)))
+    stats = {k: M.bleu_statistics(reads[n]["hypotheses"], refs) for k, n in names.items()}
+    blank = np.asarray(reads["blank"]["nll"])[:, 0]
+    dnll = {k: M.delta_nll(blank, np.asarray(reads[n]["nll"])[:, 0]) for k, n in names.items()}
+
+    def position(values, resampled) -> dict:
+        d, gain = values["identity"] - values["round_trip"], values["no_quant"] - values["round_trip"]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            draws = (resampled["no_quant"] - resampled["round_trip"]) / (resampled["identity"] - resampled["round_trip"])
+        return dict(d=round(float(d), 4), p=round(float(gain / d), 4) if d else None, p_ci95=_quantiles(draws))
+    bleu = {k: float(M.bleu_from_statistics(v.sum(0))) for k, v in stats.items()}
+    bleu_draws = {k: M.bleu_from_statistics(v[idx].sum(1)) for k, v in stats.items()}
+    mean = {k: float(v.mean()) for k, v in dnll.items()}
+    mean_draws = {k: v[idx].mean(1) for k, v in dnll.items()}
+    pairs = (("no_quant", "round_trip"), ("identity", "round_trip"), ("identity", "no_quant"))
+    return dict(forms=names,
+                bleu=dict(position(bleu, bleu_draws), **{f"{a}_minus_{b}": M.paired_bleu_fast(stats[a], stats[b]) for a, b in pairs}),
+                likelihood_minus_blank=dict(position(mean, mean_draws), **{f"{a}_minus_{b}": M.paired_mean_difference(dnll[a], dnll[b]) for a, b in pairs}))
 
 
 def run_merge(args) -> int:
@@ -1419,11 +1506,15 @@ def run_merge(args) -> int:
     fits = {json.dumps(r["fit"], sort_keys=True) for r in reads.values() if r.get("fit")}
     if len(fits) > 1:
         raise SystemExit("forms read different fits")
-    commits = {r.get("code_commit") for r in reads.values()}
-    if len(commits) > 1:
-        raise SystemExit(f"forms read by different commits: {sorted(str(c) for c in commits)}")
+    digest, place = check_same_run(reads, "the forms")
+    canary = None
+    if first["declared_read"]:
+        path = out_dir / "canary.json"
+        canary = json.loads(path.read_bytes()) if path.exists() else None
+        if canary is None or canary.get("reproduced") is not True or canary.get("code_digest") != digest or canary.get("environment") != place:
+            raise SystemExit(f"{path}: no passed canary of this code and environment; the read is void")
     panels = {name: form_panel(reads, name, tuple(c for c in comparators_of(name) if c in reads)) for name in names}
-    words = load_words(out_dir, first["declared_read"])
+    words = load_words(out_dir, first["declared_read"], digest, place, json.loads(next(iter(fits))) if fits else None)
     word_block = None
     if words:
         corpora = sorted(next(iter(words.values()))["corpora"])
@@ -1435,14 +1526,15 @@ def run_merge(args) -> int:
                   instrument=first["instrument"], tokenizer=next((r["tokenizer"] for r in reads.values() if r.get("tokenizer")), None),
                   fit=json.loads(next(iter(fits))) if fits else None, clips=len(first["signs"]),
                   smoke=None if first["declared_read"] else "SMOKE on c02 train clips: these numbers are plumbing, not a read",
-                  reading=READING, disclosures=DISCLOSURES, boundaries=seam, sensitivity_only=[n for n in names if n in SEAM_WORD_FORMS], code_commit=first.get("code_commit"),
-                  forms=panels, words=word_block,
+                  reading=READING, disclosures=DISCLOSURES, boundaries=seam, sensitivity_only=[n for n in names if n in SEAM_WORD_FORMS], code_digest=digest, environment=place,
+                  rerun=json.loads((out_dir / "rerun.json").read_bytes()) if (out_dir / "rerun.json").exists() else None,
+                  b1=dict(unmasked=b1_block(reads, ""), masked=b1_block(reads, "_masked")), forms=panels, words=word_block,
                   hypotheses={name: reads[name]["hypotheses"] for name in names},
                   checks=dict(identity_masked_identical_to_real=panels["identity_masked"]["identical_to_real"] if "identity_masked" in panels else None,
                               blank_identical_to_real=panels["blank"]["identical_to_real"],
-                              canary=canary_read(panels["real"]["bleu"]["bleu"], panels["blank"]["bleu"]["bleu"]) if first["declared_read"] else None,
+                              canary=canary,
                               rule=f"a decoder that returns real must read real, within {IDENTITY_TOLERANCE} of its hypotheses; blank must not; "
-                                   "real and blank must reproduce stored D20"),
+                                   "real and blank must reproduce the pinned stored report"),
                   resources={name: dict(peak_rss_bytes=reads[name]["peak_rss_bytes"], gpu_peak_reserved_bytes=reads[name]["gpu_peak_reserved_bytes"], build_seconds=reads[name]["build_seconds"],
                                         read_seconds=reads[name]["read_seconds"]) for name in names})
     L.write_once(store, args.output_key, args.output_file, report)
@@ -1450,32 +1542,58 @@ def run_merge(args) -> int:
     return 0
 
 
-def canary_read(real: float, blank: float) -> dict:
-    """Real and blank against stored D20: another instrument, list or environment moves them before any form is read."""
-    gaps = dict(real=round(abs(real - CANARY["real"]), 4), blank=round(abs(blank - CANARY["blank"]), 4))
-    return dict(real=real, blank=blank, stored=dict(real=CANARY["real"], blank=CANARY["blank"]), tolerance=CANARY["tolerance"], gaps=gaps,
-                reproduced=all(g <= CANARY["tolerance"] for g in gaps.values()))
+def canary_read(reads: dict, stored: dict) -> dict:
+    """Real and blank against the pinned stored report: BLEU, identical hypotheses, per-clip NLL. Clips in another order refuse."""
+    rows, misses = {}, []
+    for name in ("real", "blank"):
+        r, kept = reads[name], stored["forms"][name]
+        if r["signs"] != stored["signs"] or r["references"] != stored["references"]:
+            raise SystemExit("the stored report read other clips or another order")
+        bleu = M.bleu_ci_fast(r["hypotheses"], r["references"])[0]
+        identical = float(np.mean([a == b for a, b in zip(r["hypotheses"], kept["hypotheses"])]))
+        gap = float(np.mean(np.abs(np.asarray(r["nll"])[:, 0] - np.asarray(kept["per_clip"]["nll"]))))
+        rows[name] = dict(bleu=bleu, stored_bleu=CANARY[name], bleu_gap=round(abs(bleu - CANARY[name]), 4), identical=round(identical, 4),
+                          nll_mean_absolute_difference=round(gap, 6))
+        misses += [f"{name} {why}" for why, bad in (("BLEU", rows[name]["bleu_gap"] > CANARY["bleu_tolerance"]), ("hypotheses", identical < CANARY["identical"]),
+                                                    ("NLL", gap > CANARY["nll"])) if bad]
+    return dict(reads=rows, limits=CANARY, stored_report=CANARY_REPORT, stored_sha256=CANARY_REPORT_SHA, misses=misses, reproduced=not misses)
 
 
 def run_canary(args) -> int:
-    """Exit 3 unless real and blank reproduce stored D20. A smoke has no stored read to meet, and says so."""
+    """Exit 3, voiding the read, unless real and blank reproduce the pinned stored report. A smoke reads train clips, so it checks the pin and the stored
+    report's shape only, and says so."""
+    from train_text_to_motion import make_store
+    check_pins()
     out = Path(args.out_dir)
+    store = make_store(args.store)
+    raw = store.get(CANARY_REPORT)
+    check_sha(raw, CANARY_REPORT_SHA, CANARY_REPORT)
+    stored = json.loads(raw)
+    if any(len(stored["forms"][n]["per_clip"]["nll"]) != len(stored["signs"]) for n in ("real", "blank")):
+        raise SystemExit(f"{CANARY_REPORT}: no per-clip NLL for real and blank")
     read = {n: json.loads((out / f"form-{n}.json").read_bytes()) for n in ("real", "blank")}
     if not read["real"]["declared_read"]:
-        print(json.dumps(dict(canary="not applicable: a smoke reads train clips")), flush=True)
+        print(json.dumps(dict(canary="not applicable: a smoke reads train clips; the pin and the stored report's shape are checked")), flush=True)
         return 0
-    bleu = {n: M.bleu_ci_fast(r["hypotheses"], r["references"])[0] for n, r in read.items()}
-    result = canary_read(bleu["real"], bleu["blank"])
+    digest, place = check_same_run(read, "real and blank")
+    result = dict(canary_read(read, stored), code_digest=digest, environment=place)
+    path = out / "canary.json"
+    if not path.exists():
+        write_report_once(path, result)
     print(json.dumps(result), flush=True)
-    if not result["reproduced"]:
-        print(f"ALERT real and blank do not reproduce stored D20: {result['gaps']}", flush=True)
-        return 3
-    return 0
+    if result["reproduced"]:
+        return 0
+    key = f"{args.void_prefix.rstrip('/')}/{digest}.json"
+    if not store.exists(key):
+        store.put(key, json.dumps(dict(kind=f"{PROBE}-void", code_digest=digest, environment=place, canary=result), indent=1, sort_keys=True).encode())
+    print(f"ALERT real and blank do not reproduce the stored report: {result['misses']}. The read is void: no retry; a rerun needs new code and a recorded cause",
+          flush=True)
+    return 3
 
 
 def run_check(args) -> int:
-    """Exit 3 when the path fails its own planted case on real clips, or real and blank miss stored D20 (the job stops on a smoke). It
-    judges plumbing, no form."""
+    """Exit 3 when the path fails its own planted case on real clips, or the canary is missing or failed (the job stops on a smoke). It judges plumbing, no
+    form."""
     report = json.loads(Path(args.report).read_text())
     checks = report["checks"]
     problems = []
@@ -1487,7 +1605,9 @@ def run_check(args) -> int:
     if checks["blank_identical_to_real"] >= 1:
         problems.append("blank reads exactly as real")
     if checks.get("canary") and not checks["canary"]["reproduced"]:
-        problems.append(f"real and blank do not reproduce stored D20: {checks['canary']['gaps']}")
+        problems.append(f"real and blank do not reproduce the stored report: {checks['canary']['misses']}")
+    if report.get("declared_read") and not checks.get("canary"):
+        problems.append("a declared read without its canary")
     print(json.dumps(dict(checks={k: v for k, v in checks.items() if k != "rule"}, problems=problems)), flush=True)
     for line in problems:
         print(f"ALERT {line}", flush=True)
@@ -1521,59 +1641,78 @@ def run_upload(args) -> int:
     return 0
 
 
-RESTORABLE = re.compile(r"^([^/]+)/d20/(fit/fit\.json|fit/codebooks\.npz|forms/(?:form|word)-[^/]+\.json)$")
+RESTORABLE = re.compile(r"^([^/]+)/d20/(fit/fit\.json|fit/codebooks\.npz|forms/canary\.json|forms/(?:form|word)-[^/]+\.json)$")
 
 
-def _stored_report(raw: bytes, commit: str | None) -> dict | None:
-    """A stored report that this commit may reuse; None for half a file, a smoke or another commit."""
+def _json_or_none(raw: bytes) -> dict | None:
     try:
-        report = json.loads(raw)
+        return json.loads(raw)
     except ValueError:
         return None
-    declared = report.get("declared_read", report.get("declared_fit"))
-    return report if commit is not None and report.get("code_commit") == commit and declared is True else None
+
+
+def check_void(store, args, digest: str, out: Path) -> None:
+    """This code's voided read never reads again; after any void, a rerun needs new code and a recorded cause."""
+    prefix = args.void_prefix.rstrip("/") + "/"
+    voided = store.list(prefix)
+    if f"{prefix}{digest}.json" in voided:
+        raise SystemExit(f"{prefix}{digest}.json: this code's read is void; a rerun needs new code and a recorded cause")
+    if voided and not args.rerun_cause:
+        raise SystemExit(f"{len(voided)} voided reads under {prefix}: give --rerun-cause, what was wrong and what the new code changes")
+    if args.rerun_cause and not (out / "forms" / "rerun.json").exists():
+        write_report_once(out / "forms" / "rerun.json", dict(cause=args.rerun_cause, voided=voided, code_digest=digest))
 
 
 def run_restore(args) -> int:
-    """A retry's first step: a failed job's stored D20 forms, words and fit, from the same commit only. Refused when the finished read
-    is already stored, so no hours are spent before the final write-once upload would refuse."""
+    """A retry's first step: one failed run's stored D20 forms, words and fit, the latest run only, whole or not at all. Refused when the finished read is
+    already stored or this code's read was voided, so no hours are spent first. A run of other code or another environment is left alone and the read starts
+    fresh, since nothing mixes then. Local forms that do not match stop here, not hours later at the merge."""
     from train_text_to_motion import make_store
     check_pins()
     store = make_store(args.store)
     if store.exists(args.final_key):
         raise SystemExit(f"{args.final_key} exists: this read is finished (write-once)")
-    out, commit = Path(args.out_dir), code_commit()
+    out, digest, place = Path(args.out_dir), code_digest(), environment()
+    check_void(store, args, digest, out)
+    local = {p.name: json.loads(p.read_bytes()) for p in (out / "forms").glob("[fw]*-*.json")} if (out / "forms").exists() else {}
+    if local and check_same_run(local, "the local forms") != (digest, place):
+        raise SystemExit(f"{out / 'forms'}: local forms of other code or another environment")
     prefix = args.prefix.rstrip("/") + "/"
     stored: dict = {}
     for key in store.list(prefix):
         match = RESTORABLE.match(key[len(prefix):])
         if match:
             stored.setdefault(match[1], {})[match[2]] = key
-    restored = skipped = 0
-    for run in sorted(stored):
-        files = stored[run]
-        for rel, key in sorted(files.items()):
-            if rel.startswith("fit/") or (out / rel).exists():
-                continue
-            raw = store.get(key)
-            if _stored_report(raw, commit) is None:
-                skipped += 1
-                continue
-            (out / rel).parent.mkdir(parents=True, exist_ok=True)
-            (out / rel).write_bytes(raw)
-            restored += 1
-        if not (out / "fit/fit.json").exists() and {"fit/fit.json", "fit/codebooks.npz"} <= set(files):
-            raw = store.get(files["fit/fit.json"])
-            report = _stored_report(raw, commit)
-            books = store.get(files["fit/codebooks.npz"])
-            if report is None or hashlib.sha256(books).hexdigest() != report["codebooks_sha256"]:
-                skipped += 2
-                continue
+    if not stored:
+        print(json.dumps(dict(restored=0, run=None, code_digest=digest)), flush=True)
+        return 0
+    run = max(stored)
+    files = stored[run]
+    payloads = {rel: store.get(key) for rel, key in files.items() if rel != "fit/codebooks.npz"}
+    reports = {rel: r for rel, r in ((rel, _json_or_none(raw)) for rel, raw in payloads.items()) if r is not None}
+    foreign = [rel for rel, r in reports.items() if r.get("code_digest") != digest or r.get("environment") != place
+               or r.get("declared_read", r.get("declared_fit")) is not True]
+    canary = reports.get("forms/canary.json")
+    if foreign or (canary is not None and canary.get("reproduced") is not True):
+        print(json.dumps(dict(restored=0, run=run, refused=foreign[:5] or "its canary failed", code_digest=digest)), flush=True)
+        print(f"ALERT run {run} is not reused: other code, another environment or a failed canary. The read starts fresh", flush=True)
+        return 0
+    restored = 0
+    for rel, r in reports.items():
+        anchor = rel in ("forms/form-real.json", "forms/form-blank.json")
+        if rel.startswith("fit/") or rel == "forms/canary.json" or (out / rel).exists() or (anchor and canary is None):
+            continue
+        write_report_once(out / rel, r)
+        restored += 1
+    fit_report = reports.get("fit/fit.json")
+    if fit_report is not None and "fit/codebooks.npz" in files and not (out / "fit/fit.json").exists():
+        books = store.get(files["fit/codebooks.npz"])
+        if hashlib.sha256(books).hexdigest() == fit_report["codebooks_sha256"]:
             (out / "fit").mkdir(parents=True, exist_ok=True)
             (out / "fit/codebooks.npz").write_bytes(books)
-            (out / "fit/fit.json").write_bytes(raw)
+            write_report_once(out / "fit/fit.json", fit_report)
             restored += 2
-    print(json.dumps(dict(restored=restored, skipped=skipped, commit=commit)), flush=True)
+    print(json.dumps(dict(restored=restored, run=run, code_digest=digest)), flush=True)
     return 0
 
 
@@ -1641,8 +1780,12 @@ def build_parser() -> argparse.ArgumentParser:
     restore.add_argument("--prefix", required=True)
     restore.add_argument("--out-dir", required=True)
     restore.add_argument("--final-key", required=True, help="the finished report's key: refused if it exists")
-    canary = sub.add_parser("canary", help="real and blank against stored D20; exit 3 otherwise")
+    restore.add_argument("--void-prefix", required=True)
+    restore.add_argument("--rerun-cause", help="after a voided read: what was wrong and what the new code changes")
+    canary = sub.add_parser("canary", help="real and blank against the pinned stored report; exit 3, voiding the read, otherwise")
+    canary.add_argument("--store", default="r2")
     canary.add_argument("--out-dir", required=True)
+    canary.add_argument("--void-prefix", required=True)
     groups = sub.add_parser("groups", help="print one comma list of forms per process")
     groups.add_argument("--processes", type=int, required=True)
     groups.add_argument("--skip", default="")
