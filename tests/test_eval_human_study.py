@@ -513,6 +513,16 @@ def test_the_difference_is_paired_by_sentence():
     assert gap["weighted"]["bootstrap95"] == [0., 0.]
 
 
+def test_the_gap_reads_only_sentences_both_systems_have():
+    from signtranslator.eval_framework.human_study import _gap_read
+    # sentence 2 was rated only by the system, and only wrongly: it is not in the gap
+    rows = dict(systems=[0, 1], raters=[0, 1], utterances=3, stratum=np.array([2, 2, 2]),
+                utterance=np.array([0, 0, 1, 1, 2]), system=np.array([0, 1, 0, 1, 1]), rater=np.array([0, 1, 1, 0, 0]),
+                correct=np.array([1., 1., 0., 1., 0.]), said=np.zeros(5))
+    gap = _gap_read(rows, rows["correct"], 1, 0, [0., 0., 1.])
+    assert abs(gap["difference"] - (.5 - 1.)) < 1e-12 and gap["raters"] == 2
+
+
 def says_rates(recall, alarm):
     return lambda item, rater, g: ("yes" if g.random() < (recall if item["truth"]["negated"] == "yes" else alarm)
                                    else "no")
@@ -579,6 +589,16 @@ def test_the_read_is_void_when_the_reference_misses_negation():
     assert r["negation_recall_cluster_lower"] == r["negation_false_alarm_wilson_upper"] == "void"
     assert r["comprehension_wilson_lower"] == "pass"
     assert not read["systems"]["gen_a"]["passes_rater_terms"]
+
+
+def test_the_read_is_void_when_the_reference_passes_wilson_but_not_the_bound():
+    key = bar_key(240, 120)
+    good = {rater_of(g, k) for g in range(3) for k in (0, 1)}
+    says = lambda i, r, g: says_rates((.98 if r in good else .35) if i["system"] == "reference" else .98, .02)(i, r, g)   # noqa: E731
+    read = read_of(key, 3, choice=rate(GOOD), says=says)
+    recall = read["systems"]["reference"]["negation"]["recall"]
+    assert recall["wilson95"][0] >= .7 > recall["lower_4pct"], recall
+    assert read["negation_read_void"] is True and results(read)["negation_recall_wilson_lower"] == "void"
 
 
 def test_no_confirmed_sentence_reads_void():
@@ -723,6 +743,19 @@ def test_dropped_rows_are_reported_and_counted():
     worse = [dict(a, viewable="no") if a is target else a for a in kept]
     read = bar_read(worse, key, reference="reference", roster=roster, problems=problems, boot=0)
     assert results(read)["unviewable_share"] == "fail" and not read["systems"]["gen_a"]["passes_rater_terms"]
+    # dropped rows outside a rater's answered range, or with no rater known, are counted as dropped
+    items = {i["item_id"]: i for i in key["items"]}
+    mine = sorted((i for i in key["items"] if i["group"] == 0), key=lambda i: i["position"])
+    last = mine[-1]
+    trimmed = [a for a in answers if not (a["reviewer_sha256"] == r0 and a["item_id"] == last["item_id"])]
+    tail = bar_read(trimmed, key, reference="reference", roster=roster, boot=0, problems=[
+        dict(row=9, item_id=last["item_id"], issue="naturalness must be 1-5", reviewer_sha256=r0)])
+    assert tail["systems"][last["system"]]["unviewable"]["dropped"] == 1
+    assert tail["systems"][last["system"]]["unviewable"]["blank_inside"] == 0
+    assert tail["systems"][last["system"]]["unviewable"]["share"] == 1 / 240
+    anon = bar_read(answers, key, reference="reference", roster=roster, boot=0, problems=[
+        dict(row=9, item_id=mine[3]["item_id"], issue="offered columns were changed")])
+    assert anon["systems"][items[mine[3]["item_id"]]["system"]]["unviewable"]["dropped"] == 1
     # a sheet-level problem that names no row still blocks the pass
     other = bar_read(answers, key, reference="reference", roster=roster, problems=[dict(row=0, issue="bad columns")], boot=0)
     assert results(other)["no_unattributed_sheet_problems"] == "fail"
@@ -776,8 +809,8 @@ def test_identical_answer_vectors_block_the_pass():
     assert clean["identical_answer_vectors"] == [] and clean["systems"]["gen_a"]["passes_rater_terms"]
 
 
-def guesses(bad, right=.95):
-    return lambda i, r, g: g.random() < (.25 if r == bad else right)
+def guesses(bad, right=.95, low=.25):
+    return lambda i, r, g: g.random() < (low if r == bad else right)
 
 
 def test_a_rater_far_below_the_rest_is_flagged_blind_to_system_and_the_pass_needs_both_reads():
@@ -803,8 +836,9 @@ def test_a_rater_far_below_the_rest_is_flagged_blind_to_system_and_the_pass_need
         hidden |= {(r, x) for x in by_group[g][:2]}
     hidden |= {(rater_of(1, 0), by_group[1][2]), (rater_of(2, 0), by_group[2][2])}
     assert len(hidden) == 18 and len(gen_a) == 120
-    both = read_of(key, 3, choice=guesses(bad), viewable=lambda i, r: (r, i["item_id"]) not in hidden)
-    assert results(both)["unviewable_share"] == "pass"
+    both = read_of(key, 3, choice=guesses(bad, right=.98, low=.7), viewable=lambda i, r: (r, i["item_id"]) not in hidden)
+    assert both["rater_quality"]["flagged"] == [bad[:12]]
+    assert set(results(both).values()) == {"pass"}                   # the read with every rater passes all conditions
     assert both["systems"]["gen_a"]["without_flagged_raters"]["conditions"]["unviewable_share"] == "fail"
     assert not both["systems"]["gen_a"]["passes_rater_terms"]
 
@@ -997,11 +1031,20 @@ def test_stage_rows_are_viewable_answered_rows_and_blanks_stay_blank():
     partial = stage2_text(key, first, edit=lambda r: r.update(choice="" if r["item_id"] == items[2] else "a"))
     answers, _ = read_two_stage([first], [partial], key, receipts)
     assert len(answers) == 10 and items[2] not in {a["item_id"] for a in answers}
-    # a choice for a row the rater called unviewable is refused
-    forged = second.decode().splitlines()
-    forged.append(forged[1].replace(forged[1].split(",")[0], items[1]))
-    answers, problems = read_two_stage([first], ["\n".join(forged).encode() + b"\n"], key, receipts)
-    assert any("no viewable stage 1 answer" in p["issue"] or "offered columns" in p["issue"] for p in problems)
+    # a choice for a row the rater called unviewable, or left blank, is refused
+    from signtranslator.eval_framework.human_study import parse_stage2
+    by_id = {i["item_id"]: i for i in key["items"]}
+    forged = list(csv.DictReader(io.StringIO(second.decode())))
+    for target in items[:2]:
+        forged.append(dict(forged[0], item_id=target, video=f"{target}.mp4", choice="a",
+                           **{f"option_{o}": t for o, t in zip(OPTIONS, by_id[target]["options"])}))
+    buffer = io.StringIO()
+    w = csv.DictWriter(buffer, fieldnames=STAGE2_COLUMNS, lineterminator="\n")
+    w.writeheader(); w.writerows(forged)
+    got, problems = parse_stage2(buffer.getvalue(), key, {r0: dict(
+        sha256=receipts[r0], answers={a["item_id"]: a for a in answers1})})
+    assert [p["item_id"] for p in problems if "no viewable stage 1 answer" in p["issue"]] == items[:2]
+    assert (r0, items[0]) not in got and (r0, items[1]) not in got
     # a second stage 1 from the same key
     answers, problems = read_two_stage([first, first], [second], key, receipts)
     assert any("two stage 1" in p["issue"] for p in problems)

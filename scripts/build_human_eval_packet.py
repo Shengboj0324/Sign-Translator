@@ -299,6 +299,15 @@ def composition_timing(row: dict, label: str) -> str:
     return "reference-length"
 
 
+def packet_timing(compositions: dict) -> tuple[str, str]:
+    """(the timing label, the diagnostic) from the arms' own numbers; arms of different timings are refused."""
+    timing = {k: v["timing"] for k, v in compositions.items()}
+    if len(set(timing.values())) > 1:
+        raise SystemExit(f"the arms have different timings: {timing}")
+    label = next(iter(timing.values()), "reference-length")
+    return label, "cannot clear the release bar: val signers" + (", reference-length timing" if label != "predicted" else "")
+
+
 def load_composition(store, spec: dict, *, signs, list_sha256: str, sentences_sha256: str) -> dict:
     """{sign: its row} of a composed-state index, after pinning it: one arm, the draw's sentence list, D20, one form per
     sentence, and every sentence composed. A sentence with no selected word has no signing: refused, not rendered."""
@@ -450,18 +459,13 @@ def how2sign_packet(argv) -> int:
     key = how2sign_key([draw["rows"][s] for s in sorted(signs)], [s["label"] for s in systems], seed=seed,
                        d20_texts=[r["text"].strip() for r in records], confirmed=confirmed,
                        eligible=draw["counts"]["eligible"])
-    timing = {k: v["timing"] for k, v in compositions.items()}
-    if len(set(timing.values())) > 1:
-        raise SystemExit(f"the arms have different timings: {timing}")
-    timing_label = next(iter(timing.values()), "reference-length")
+    timing_label, diagnostic = packet_timing(compositions)
     key.update(study="how2sign-rater-read", set=args.which, partition="val", manifest_key=draw["mix_key"],
                manifest_sha256=draw["mix_sha256"], sentences=dict(key=draw["sentences_key"],
                                                                   sha256=draw["sentences_sha256"]),
                draw_sha256=args.draw_sha256, negation_sheet_sha256=args.negation_sheet_sha256,
                negation_confirmed=confirmed, negation_checkers=checkers, system_specs=systems, fps=args.fps,
-               timing=timing_label,
-               diagnostic=("cannot clear the release bar: val signers"
-                           + (", reference-length timing" if timing_label != "predicted" else "")),
+               timing=timing_label, diagnostic=diagnostic,
                arms={k: dict(arm=v["arm"], word_cache=v["word_cache"], form=v["form"], timing=v["timing"])
                      for k, v in compositions.items()})
     spec = {s["label"]: s for s in systems}

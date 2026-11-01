@@ -229,6 +229,16 @@ def test_a_composition_index_is_pinned_and_complete(tmp_path):
     assert load_composition(store, empty, signs=["b"], **pins)["rows"]["b"]["empty"] is False
 
 
+def test_the_timing_label_comes_from_the_arms():
+    from build_human_eval_packet import packet_timing
+    label, why = packet_timing(dict(a=dict(timing="predicted"), b=dict(timing="predicted")))
+    assert label == "predicted" and "reference-length" not in why and "val signers" in why
+    label, why = packet_timing(dict(a=dict(timing="reference-length")))
+    assert label == "reference-length" and "reference-length" in why
+    with pytest.raises(SystemExit, match="different timings"):
+        packet_timing(dict(a=dict(timing="predicted"), b=dict(timing="reference-length")))
+
+
 def test_every_clock_is_rebuilt_and_zip_times_are_fixed(tmp_path):
     from dataclasses import dataclass as dc
     import time
@@ -443,6 +453,8 @@ def test_the_how2sign_packet_end_to_end_with_the_real_renderer(tmp_path, stage2_
         main(["how2sign-stage2", "--key", str(key_path), "--roster", str(checker_roster), "--stage1-sheet",
               str(checker_sheet), "--receipts", str(receipts), "--output-dir", str(tmp_path / "stage2")])
     # scored
+    with pytest.raises(SystemExit, match="stage1-receipts"):
+        sh.main(["--key", str(key_path), *firsts, *seconds, "--reference", "real", "--output", str(tmp_path / "x.json")])
     common = ["--key", str(key_path), *firsts, "--reference", "real", "--stage1-receipts", str(receipts)]
     assert sh.main(common + seconds + ["--output", str(tmp_path / "plain.json")]) == 0
     assert "bar" not in json.loads((tmp_path / "plain.json").read_text())
@@ -455,6 +467,13 @@ def test_the_how2sign_packet_end_to_end_with_the_real_renderer(tmp_path, stage2_
     assert report["bar"]["may_release"] is False and report["systems"]["arm-a"]["sentence_type"]["n"] == 0
     assert read["conditions"]["comprehension_wilson_lower"]["result"] == "fail"      # 6 ratings cannot clear 70%
     assert read["comprehension"]["unweighted"]["rate"] == 1 and read["negation"]["recall"]["rate"] == 1
+    # a sheet the scorer could not read reaches the bar read: reported, and it blocks the pass
+    junk = tmp_path / "junk.csv"
+    junk.write_text("not,a,sheet\n1,2,3\n")
+    assert sh.main(common + seconds + bar + ["--sheet", str(junk), "--output", str(tmp_path / "bar2.json")]) == 0
+    second_read = json.loads((tmp_path / "bar2.json").read_text())["bar"]
+    assert second_read["dropped_rows"] and second_read["coverage"]["unattributed_problems"] == 1
+    assert second_read["systems"]["arm-a"]["conditions"]["no_unattributed_sheet_problems"]["result"] == "fail"
     # no read: without stage 2 the CLI says why and exits nonzero
     assert sh.main(common + bar + ["--output", str(tmp_path / "refused.json")]) == 2
     refused = json.loads((tmp_path / "refused.json").read_text())["bar"]
