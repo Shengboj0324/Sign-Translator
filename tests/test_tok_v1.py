@@ -121,6 +121,32 @@ def test_the_flag_is_fit_to_find_decoded_neutral_frames_and_held_out_rates_are_r
     assert set(flag["tercile_edges"]) == {"0", "1"} and flag["tercile_edges"]["0"][0] <= flag["tercile_edges"]["0"][1]
 
 
+def test_the_threshold_weighs_false_alarms_against_catches():
+    # 13 neutral frames at 40 degrees, 2 far off at 60; tracked frames sit about 10 degrees from the neutral pose: catching the far 2 would flag every tracked frame
+    pairs = []
+    for i in range(4):
+        real = gappy(signer_state(i, frames=40, amplitude=.4), 5, 20)
+        J = real.channels["left_hand"].values.shape[1]
+        values = rotated(52., 40, J)
+        values[5:18] = rotated(40., 13, J)
+        values[18:20] = rotated(60., 2, J)
+        pairs.append((real, with_hand(signer_state(i, frames=40, amplitude=.4), "left_hand", values)))
+    r = W.fit_flag(pairs)["parts"]["left_hand"]
+    assert 2 < r["degrees"] < 10 and r["fit"]["false_alarm"] == 0 and r["fit"]["catch"] == pytest.approx(13 / 15, abs=1e-3)
+
+
+def test_the_flag_fit_fits_on_the_first_clips_and_rates_the_held_out_rest(monkeypatch, tmp_path):
+    pool = [dict(corpus=L.H2S, partition="train", signer_component="c02", text="a", sign=f"s{i}", continuous=dict(state_key="k")) for i in range(40)]
+    monkeypatch.setattr(L, "load_manifest_at", lambda s, k, sha: dict(records=pool))
+    monkeypatch.setattr(L, "load_states", lambda s, recs: [gappy(signer_state(i, frames=20, amplitude=.4), 5, 8) for i in range(len(recs))])
+    monkeypatch.setattr(L, "load_tokenizer", lambda s: tiny_tokenizer())
+    sizes = {}
+    monkeypatch.setattr(W, "fit_flag", lambda pairs: sizes.update(fit=len(pairs)) or dict(parts={p: dict(degrees=1.) for p in W.PARTS}, tercile_edges={}))
+    monkeypatch.setattr(W, "holdout_rates", lambda flag, pairs: sizes.update(held=len(pairs)) or {})
+    assert W.main(["flag-fit", "--store", f"dir:{tmp_path / 's'}", "--output-file", str(tmp_path / "f.json"), "--fit-clips", "6", "--hold-clips", "3"]) == 0
+    assert sizes == dict(fit=6, held=3)
+
+
 def test_a_part_with_no_decoded_neutral_frames_refuses_the_fit():
     state = signer_state(0, frames=20, amplitude=.4)
     with pytest.raises(SystemExit, match="no decoded-neutral"):
@@ -204,7 +230,10 @@ def test_tercile_shares_count_flagged_frames_within_a_tercile_on_tracked_frames_
     assert only["low"] == .15 and only["mid"] is None
     masked = W.tercile_shares(state, identity_flag(edges=(1e9, 2e9)), ("left_hand",), tracked_by=gappy(state, 14, 17))
     assert masked["low"] == 0                                                       # flagged frames real did not track do not count
-    assert W.tercile_shares(state, identity_flag(degrees=1e-9, edges=(1e9, 2e9)), ("left_hand",), scale=1e9)["low"] == .15
+    J = state.channels["left_hand"].values.shape[1]
+    near = with_hand(state, "left_hand", np.concatenate((rotated(3., 3, J), state.channels["left_hand"].values[3:])))
+    flag = identity_flag(degrees=1., edges=(1e9, 2e9))
+    assert W.flagged(near, "left_hand", flag)[:3].sum() == 0 and W.flagged(near, "left_hand", flag, 5.)[:3].sum() == 3
 
 
 def test_paired_terciles_and_flat_share():
@@ -298,6 +327,17 @@ def test_alignment_reads_within_a_bin_and_its_null_sits_near_0():
     assert W.word_alignment([]) == dict(entries=0)
 
 
+def test_alignment_reads_both_hands():
+    rows = []
+    for i in range(30):
+        gone = [b for b in range(W.BINS) if (b + i) % 2 == 0]
+        u, g = np.zeros(W.BINS), np.zeros(W.BINS)
+        u[gone] = 1.
+        g[gone] = 1.
+        rows.append(dict(entry=f"w{i}", generated=dict(left_hand=np.zeros(W.BINS), right_hand=g), untracked=dict(left_hand=np.zeros(W.BINS), right_hand=u)))
+    assert W.word_alignment(rows)["within_bin_difference"] > .4
+
+
 def test_alignment_is_not_fooled_by_a_shared_time_course():
     # every word flagged early and untracked early: pooled they agree, within a bin nothing separates them
     rows = [alignment_row(f"w{i}", range(0, 10), range(0, 10)) for i in range(10)]
@@ -348,6 +388,9 @@ def test_a_words_training_clips_are_its_own_never_c00_or_test_and_capped(monkeyp
     out = W.word_training_clips(dict(records=rows), None, None, ["dog", "fish"])
     assert list(out) == ["dog"] and len(out["dog"]) == W.WORD_CLIPS
     assert len(W.word_training_clips(dict(records=rows), None, None, ["dog"], clips=99)["dog"]) == 12      # only its own train clips of its corpora
+    more = rows + [record(f"c{i}", "asllvd-text-v1", text="cat") for i in range(3)]
+    both = W.word_training_clips(dict(records=more), None, None, ["dog", "cat"], clips=2)
+    assert {k: len(v) for k, v in both.items()} == dict(dog=2, cat=2)
 
 
 def test_top_tokens_are_the_committed_lists_first_ranks_and_a_changed_list_refuses(monkeypatch):
@@ -657,7 +700,14 @@ def test_the_motion_measure_runs_on_a_declared_read_and_reads_no_instrument(monk
     monkeypatch.setattr("evaluate_text_to_motion.load_state", lambda store, key, sha: neutral_frames(signer_state(1, frames=20, amplitude=.8), list(range(10))))
     monkeypatch.setattr(W, "word_training_clips", lambda manifest, cache, fetch, states, **k: {e: [gappy(signer_state(2, frames=20, amplitude=.4), 0, 10)] for e in states if e != "cat"})
     monkeypatch.setattr(W, "corpus_neutral", lambda manifest, cache, fetch, **k: dict(one=dict(records=1)))
+    composed_keys = []
+
+    def composed(store, key, signs, arm="a9"):
+        composed_keys.append((key, arm))
+        return [neutral_frames(signer_state(i, frames=20, amplitude=.8), [1, 2, 3]) for i in range(len(signs))]
+    monkeypatch.setattr(W, "load_composed", composed)
     assert W.main(["neutral", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(tmp_path / "w")]) == 0
+    assert composed_keys == [(W.A9_INDEX, "a9"), (W.A3_INDEX, "a3")]
     r = json.loads((tmp_path / "w/neutral.json").read_text())
     assert set(r["populations"]) == {"decoded_real_tracked_frames", "real_tracked_frames", "a9_words", "a3_new_words", "a9_predicted", "a3_top10_predicted"}
     assert (L.TRAIN_MIX, L.TRAIN_MIX_SHA) in seen and ("d2/m", "abc") in seen and r["corpus_neutral"]["d2_manifest"]["key"] == "d2/m" and set(r["corpus_neutral"]["w14b"]) == {"one"}
@@ -671,6 +721,16 @@ def test_the_motion_measure_runs_on_a_declared_read_and_reads_no_instrument(monk
     assert r["code_digest"] == W.code_digest() and r["peak_rss_bytes"] > 0
     with pytest.raises(SystemExit, match="write-once"):
         W.main(["neutral", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(tmp_path / "w")])
+
+
+def test_the_baseline_is_decoded_real_not_real(monkeypatch, tmp_path):
+    from tests.test_tok_probes import neutral_columns
+    harness(monkeypatch, Perfect(tiny_tokenizer(), damage=neutral_columns("left_hand")), n=4, declared=False)
+    monkeypatch.setattr(L, "load_manifest_at", lambda s, k, sha: dict(records=[]))
+    monkeypatch.setattr(W, "corpus_neutral", lambda manifest, cache, fetch, **k: {})
+    assert W.main(["neutral", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(tmp_path / "w"), "--smoke-train", "4"]) == 0
+    pops = json.loads((tmp_path / "w/neutral.json").read_text())["populations"]
+    assert pops["decoded_real_tracked_frames"]["low"]["mean"] >= .49 and pops["real_tracked_frames"]["low"]["mean"] == 0
 
 
 def test_a_smoke_of_the_motion_measure_reads_c02_only_and_no_cache_or_composed_form(monkeypatch, tmp_path):
