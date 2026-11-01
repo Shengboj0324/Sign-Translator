@@ -76,8 +76,15 @@ def read(tmp_path, forms=V.FORMS, *extra):
     return V.main(["read", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(tmp_path / "w"), "--forms", ",".join(forms), *extra])
 
 
+def plant_checks(forms_dir):
+    plant_canary(forms_dir)
+    path = forms_dir / "path_check.json"
+    if (forms_dir / "canary.json").exists() and not path.exists():
+        path.write_text(json.dumps(dict(json.loads((forms_dir / "canary.json").read_text()), reproduced=True)))
+
+
 def merged(tmp_path, forms=V.FORMS):
-    plant_canary(tmp_path / "w")
+    plant_checks(tmp_path / "w")
     out = tmp_path / f"report-{len(list(tmp_path.iterdir()))}.json"
     assert V.main(["merge", "--store", "dir:x", "--out-dir", str(tmp_path / "w"), "--forms", ",".join(forms), "--output-file", str(out)]) == 0
     return json.loads(out.read_text())
@@ -112,7 +119,7 @@ def test_real_values_under_real_marks_are_real_exactly_as_v1_receives_them():
     for name in state.channels:
         np.testing.assert_array_equal(out.channels[name].valid, state.channels[name].valid)
         np.testing.assert_array_equal(out.channels[name].values, state.channels[name].values)
-    assert V.reader_input_differences(state, out) == dict(marks_added=0., marks_removed=0., arm_difference_on_both=0., hand_local_difference_on_both=0., collapsed_hand_changed=0., origin_shift_in_shoulder_widths=0., unit_ratio=1.)
+    assert V.reader_input_differences(state, out) == dict(marks_added=0., marks_removed=0., arm_difference_on_both=0., hand_local_difference_on_both=0., origin_shift_in_shoulder_widths=0., unit_ratio=1.)
 
 
 def test_with_marks_stores_zero_on_untracked_frames_and_refuses_another_length():
@@ -161,10 +168,79 @@ def test_seeds_depend_on_the_clip_and_the_form_only():
     assert a == V.v0_rng(3, "v0_random_marks").integers(2 ** 32) and a != V.v0_rng(4, "v0_random_marks").integers(2 ** 32) and a != V.v0_rng(3, "v0_other_marks").integers(2 ** 32)
 
 
-def test_the_partner_is_the_rule_in_use_and_never_the_clip_itself():
-    from sentence_exposure_diagnostic import derangement
-    assert V.MISMATCH_SEED == 1 and V.partner_of(500) == derangement(500, 1)
-    assert all(i != p for i, p in enumerate(V.partner_of(500)))
+def pair_rows(rows):
+    """(sign, signer, frames) rows into records and lengths."""
+    return [dict(sign=a, signer_component=b, text="x") for a, b, _ in rows], [c for _, _, c in rows]
+
+
+def test_partners_are_adjacent_by_length_within_a_signer():
+    rows = [("a_1-1-rgb_front", "c1", 100), ("b_1-1-rgb_front", "c1", 300), ("c_1-1-rgb_front", "c1", 110), ("d_1-1-rgb_front", "c1", 290),
+            ("e_1-1-rgb_front", "c3", 200), ("f_1-1-rgb_front", "c3", 205)]
+    partner, info = V.pair_partners(*pair_rows(rows))
+    assert partner == [2, 3, 0, 1, 5, 4]
+    assert info["same_video"] == 0 and info["cross_signer"] == 0 and info["cycles"] == 0 and info["video_ids_exposed"] == 6 and info["clips"] == 6
+    assert info["length_ratio"]["outside_25_percent"] == 0 and .9 < info["length_ratio"]["p10"] <= 1 <= info["length_ratio"]["p90"] < 1.12
+
+
+def test_no_pair_comes_from_one_video():
+    rows = [("a_1-1-rgb_front", "c1", 100), ("a_2-1-rgb_front", "c1", 101), ("b_1-1-rgb_front", "c1", 102), ("b_2-1-rgb_front", "c1", 103)]
+    partner, info = V.pair_partners(*pair_rows(rows))
+    assert all(rows[i][0][0] != rows[partner[i]][0][0] for i in range(4)) and sorted(partner) == [0, 1, 2, 3] and info["same_video"] == 0
+
+
+def test_video_ids_with_underscores_and_ids_that_expose_none():
+    assert V.video_of("1p2RAtk_CxY_3-11-rgb_front") == "1p2RAtk_CxY" and V.video_of("s0") is None
+    partner, info = V.pair_partners(*pair_rows([("s0", "c", 1), ("s1", "c", 2)]))
+    assert partner == [1, 0] and info["video_ids_exposed"] == 0
+
+
+def test_an_odd_clip_joins_its_nearest_pair_as_a_cycle_and_never_itself():
+    rows = [("a_1-1-rgb_front", "c1", 100), ("b_1-1-rgb_front", "c1", 110), ("c_1-1-rgb_front", "c1", 500)]
+    partner, info = V.pair_partners(*pair_rows(rows))
+    assert sorted(partner) == [0, 1, 2] and all(i != p for i, p in enumerate(partner)) and info["cycles"] == 1
+    assert V.pair_partners(*pair_rows(rows))[0] == partner
+
+
+def test_a_signer_alone_goes_across_and_is_counted():
+    rows = [("a_1-1-rgb_front", "c1", 100), ("b_1-1-rgb_front", "c1", 110), ("c_1-1-rgb_front", "c2", 105)]
+    partner, info = V.pair_partners(*pair_rows(rows))
+    assert info["cross_signer"] == 1 and partner[2] in (0, 1) and all(i != p for i, p in enumerate(partner))
+    with pytest.raises(ValueError):
+        V.pair_partners(*pair_rows(rows[:1]))
+
+
+def test_a_lone_video_is_counted_when_nothing_else_is_possible():
+    rows = [("a_1-1-rgb_front", "c1", 100), ("a_2-1-rgb_front", "c1", 101), ("b_1-1-rgb_front", "c1", 102)]
+    partner, info = V.pair_partners(*pair_rows(rows))
+    assert all(i != p for i, p in enumerate(partner)) and info["cycles"] == 1 and info["same_video"] >= 1
+
+
+def never_tracked(seed=3, hand="left_hand", frames=20):
+    """A clip with one hand never tracked, as real clips have, carrying no inference method."""
+    state = signer_state(seed, frames=frames, amplitude=.4)
+    c = state.channels[hand]
+    return replace(state, channels={**state.channels, hand: replace(c, valid=np.zeros_like(c.valid), observed=np.zeros_like(c.valid), confidence=np.zeros_like(c.confidence), values=np.zeros_like(c.values), inference_method=None)})
+
+
+def test_a_clip_with_a_never_tracked_hand_builds_in_every_form_as_itself_and_as_a_partner():
+    tok = tiny_tokenizer()
+    bad, ok = never_tracked(), gapped(1)
+    for name in V.FORMS:
+        assert all(len(x.timestamps) == 20 for x in V.build_form(name, [bad, ok], tok, [1, 0]))
+    out = V.filled(bad, neutral=V.neutral_pose(bad, tok)).channels["left_hand"]
+    assert out.valid.all() and out.inference_method == "tok_v0 nearest tracked value"
+    kept = V.filled(ok, neutral=V.neutral_pose(ok, tok)).channels["left_hand"]
+    assert kept.inference_method == ok.channels["left_hand"].inference_method
+
+
+def test_a_smoke_finds_never_tracked_clips_in_c02_train_or_says_it_did_not(monkeypatch):
+    pool = [dict(corpus=L.H2S, partition="train", signer_component=c, text="a", sign=f"{c}-{i}", continuous=dict(state_key="k", seconds=1.)) for i, c in enumerate(["c02"] * 60 + ["c00", "c01"] * 5)]
+    monkeypatch.setattr(L, "load_manifest_at", lambda store, k, s: dict(records=pool))
+    monkeypatch.setattr(L, "load_states", lambda store, recs: [never_tracked() if r["sign"] in ("c02-5", "c02-40") else gapped(1) for r in recs])
+    found = V.never_tracked_records(None, 2)
+    assert sorted(r["sign"] for r in found) == ["c02-40", "c02-5"]
+    with pytest.raises(SystemExit, match="never-tracked"):
+        V.never_tracked_records(None, 3)
 
 
 # ---- the forms ------------------------------------------------------------------------------------------------------------
@@ -239,9 +315,9 @@ def test_every_form_keeps_the_clips_length_and_bad_names_refuse():
     refs = [gapped(i) for i in range(4)]
     tok = tiny_tokenizer()
     for name in V.FORMS:
-        assert all(len(s.timestamps) == 20 for s in V.build_form(name, refs, tok))
+        assert all(len(s.timestamps) == 20 for s in V.build_form(name, refs, tok, [1, 0, 3, 2]))
     with pytest.raises(SystemExit, match="unknown"):
-        V.build_form("v0_x", refs, tok)
+        V.build_form("v0_x", refs, tok, [1, 0, 3, 2])
     with pytest.raises(SystemExit, match="unknown"):
         V.v0_form("v0_x", refs[0], refs[1], 0, tok)
 
@@ -274,17 +350,22 @@ def untracked_wrist_rotation(state, start=6, stop=9):
     return replace(state, channels={**state.channels, "body": replace(body, valid=valid, values=np.where(valid[..., None], body.values, 0.), observed=body.observed & valid, confidence=body.confidence * valid)})
 
 
-def test_a_hand_with_an_untracked_wrist_rotation_folds_onto_the_wrist_in_real_and_not_in_a_filled_form():
-    from signtranslator.data.keypoints2d import from_state
-    state = untracked_wrist_rotation(signer_state(1, frames=20, amplitude=.4))
-    points, valid = from_state(state)
-    a = 6                                                                           # the left hand's wrist point
-    assert valid[6:9, a + 5].all() and np.allclose(points[6:9, a + 5], points[6:9, a], atol=1e-6)     # marked valid, yet folded
-    filled = P.decoded_form("identity", state, tiny_tokenizer(), None)
-    points_f, _ = from_state(filled)
-    assert not np.allclose(points_f[6:9, a + 5], points_f[6:9, a], atol=1e-6)
-    d = V.reader_input_differences(state, filled)
-    assert d["collapsed_hand_changed"] == pytest.approx(3 / 20 / 2) and d["marks_added"] == 0 and d["hand_local_difference_on_both"] > 0
+def test_fold_share_counts_a_forms_own_marked_hands_on_the_wrist():
+    state = signer_state(1, frames=20, amplitude=.4)
+    assert V.fold_share(state) == 0
+    folded = untracked_wrist_rotation(state)                                       # three frames of one hand, of 40 hand-frames
+    assert V.fold_share(folded) == pytest.approx(3 / 40)
+    assert V.fold_share(P.decoded_form("identity", folded, tiny_tokenizer(), None)) == 0
+    hidden = gappy(folded, 6, 9)
+    assert V.fold_share(hidden) == 0                                                # an unmarked hand is not a fold
+    from evaluate_text_to_motion import blanked
+    assert V.fold_share(blanked([state])[0]) == 0
+
+
+def test_marks_as_real_is_about_marks_only():
+    state = gapped(1)
+    assert V.marks_as_real(state, state) and V.marks_as_real(state, V.with_marks(signer_state(4, frames=20, amplitude=.4), state))
+    assert not V.marks_as_real(state, V.with_marks(V.filled(state), gapped(9)))
 
 
 def test_reader_input_is_undefined_only_without_shoulders():
@@ -308,6 +389,8 @@ def test_an_instrument_that_reads_marks_lands_where_the_forms_say(monkeypatch, t
     assert r["v0_blank_real_marks"]["comparators"]["v0_blank_other_marks"]["bleu"]["difference"] > 0
     assert r["v0_blank_real_marks"]["comparators"]["v0_blank_other_marks"]["likelihood_minus_blank"]["difference"] > 0
     assert r["v0_blank_real_marks"]["paired"]["blank"]["likelihood_minus_blank"]["difference"] > 0
+    assert r["v0_other_motion"]["comparators"]["v0_other_motion_other_marks"]["likelihood_minus_blank"]["difference"] > 0
+    assert r["v0_other_motion_other_marks"]["bleu"]["bleu"] < top
 
 
 def test_an_instrument_that_reads_values_lands_where_the_forms_say(monkeypatch, tmp_path):
@@ -320,6 +403,7 @@ def test_an_instrument_that_reads_values_lands_where_the_forms_say(monkeypatch, 
     for name in ("v0_blank_real_marks", "v0_blank_other_marks", "v0_other_motion"):
         assert r[name]["bleu"]["bleu"] < top
     assert r["v0_blank_real_marks"]["comparators"]["v0_blank_other_marks"]["likelihood_minus_blank"]["difference"] == 0
+    assert r["v0_other_motion"]["comparators"]["v0_other_motion_other_marks"]["likelihood_minus_blank"]["difference"] == 0
     assert r["v0_other_marks"]["comparators"]["identity"]["bleu"]["difference"] >= 0
 
 
@@ -334,7 +418,38 @@ def test_every_report_has_its_read_tracked_share_and_reader_input_and_decides_no
     assert f["v0_blank_real_marks"]["tracked_share"]["hands"]["minus_real"]["difference"] == 0 and f["v0_other_motion"]["tracked_share"]["hands"]["minus_real"]["difference"] == 0
     assert f["identity"]["reader_input"]["marks_added"] > 0 and f["real"]["reader_input"]["marks_added"] == 0
     assert set(f["identity"]["comparators"]) == {"real"} and set(f["v0_blank_real_marks"]["comparators"]) == {"v0_blank_other_marks"} and set(f["v0_nearest_fill"]["comparators"]) == {"identity"}
-    assert set(f["v0_other_marks"]["comparators"]) == {"v0_random_marks", "identity"} and set(f["v0_other_motion"]["comparators"]) == {"v0_blank_real_marks"} and r["partner"] == V.partner_of(N)
+    assert set(f["v0_other_marks"]["comparators"]) == {"v0_random_marks", "identity"} and set(f["v0_other_motion"]["comparators"]) == {"v0_other_motion_other_marks", "v0_blank_real_marks"}
+    assert r["pairing"]["clips"] == N and all(i != p for i, p in enumerate(r["partner"])) and f["real"]["clips_with_real_marks"] == 1 and f["identity"]["clips_with_real_marks"] == 0
+    assert f["v0_blank_real_marks"]["clips_with_real_marks"] == 1 and 0 <= f["v0_random_marks"]["clips_with_real_marks"] < 1 and f["real"]["fold_share"]["mean"] == 0
+    assert r["fold_flag"] == dict(limit=.005, real=0., flagged=False, forms_over=[]) and f["real"]["likelihood_ratio_of_means"]["ratio"] == 1
+    for key in ("normalise", "fill", "removing_marks", "folds"):
+        assert key in r["disclosures"]
+
+
+def test_the_fold_flag_says_when_real_folds_over_the_limit(monkeypatch, tmp_path):
+    records, refs, tok = harness(monkeypatch, ValuesReader)
+    refs[:] = [untracked_wrist_rotation(signer_state(i, frames=20, amplitude=.4)) for i in range(N)]
+    assert read(tmp_path, ["real", "blank"]) == 0
+    r = merged(tmp_path, ["real", "blank"])
+    assert r["fold_flag"]["flagged"] is True and r["fold_flag"]["forms_over"] == ["real"] and r["fold_flag"]["real"] == pytest.approx(3 / 40)
+
+
+def test_the_reads_block_gives_a_b_p2_p3_as_the_declaration_reads_them():
+    n = 100
+    refs = [f"w{i} a b c d e f" for i in range(n)]
+
+    def form(name, right, nll):
+        return dict(form=name, references=refs, hypotheses=[r if i < right else "z" for i, r in enumerate(refs)], nll=[[nll]] * n)
+    reads = dict(blank=form("blank", 0, 3.), real=form("real", 80, 1.), identity=form("identity", 20, 2.), v0_blank_real_marks=form("a", 30, 2.8), v0_blank_other_marks=form("b", 20, 2.9),
+                 v0_other_motion=form("c", 25, 2.5), v0_other_motion_other_marks=form("d", 25, 2.7), v0_other_marks=form("e", 50, 1.5), v0_nearest_fill=form("f", 30, 1.75))
+    r = V.declared_reads(reads)
+    assert r["primary"] == "likelihood_minus_blank" and r["bootstrap"] == dict(n=2000, seed=0)
+    k = r["likelihood_minus_blank"]
+    assert k["a"]["point"] == pytest.approx(.1) and k["b"]["point"] == pytest.approx(.2) and k["real_minus_identity"]["point"] == pytest.approx(1.)
+    assert k["p2"]["point"] == pytest.approx(.5) and k["p3"]["point"] == pytest.approx(.25) and k["a"]["ci95"] == [pytest.approx(.1), pytest.approx(.1)]
+    assert r["bleu"]["p2"]["ci95"][0] <= r["bleu"]["p2"]["point"] <= r["bleu"]["p2"]["ci95"][1] and r["bleu"]["a"]["point"] > 0 and r["bleu"]["real_minus_identity"]["point"] > 0
+    del reads["v0_nearest_fill"]
+    assert V.declared_reads(reads) is None
 
 
 def test_a_form_read_alone_equals_it_read_with_others(monkeypatch, tmp_path):
@@ -391,21 +506,23 @@ def test_outputs_are_write_once_and_a_resume_reads_only_what_is_missing(monkeypa
     assert read(tmp_path, ["real", "blank"], "--resume") == 0 and (tmp_path / "w/form-real.json").read_bytes() == stamp and (tmp_path / "w/form-blank.json").exists()
     with pytest.raises(SystemExit, match="unknown forms"):
         read(tmp_path, ["k512"])
-    with pytest.raises(SystemExit, match="belongs to a smoke"):
-        read(tmp_path, ["identity"], "--smoke-longest", "2")
+    for flag in ("--smoke-longest", "--smoke-never-tracked"):
+        with pytest.raises(SystemExit, match="belong to a smoke"):
+            read(tmp_path, ["identity"], flag, "2")
 
 
-@pytest.mark.parametrize("bad", ["missing", "failed", "other code"])
+@pytest.mark.parametrize("bad", ["missing", "failed", "other code", "path missing", "path failed", "path other code"])
 def test_a_declared_merge_refuses_without_a_passed_canary_of_its_own_read(monkeypatch, tmp_path, bad):
     harness(monkeypatch, n=4)
     assert read(tmp_path, ["real", "blank"]) == 0
     w = tmp_path / "w"
-    plant_canary(w)
-    r = json.loads((w / "canary.json").read_text())
-    if bad == "missing":
-        (w / "canary.json").unlink()
+    plant_checks(w)
+    name = "path_check.json" if bad.startswith("path") else "canary.json"
+    r = json.loads((w / name).read_text())
+    if bad.endswith("missing"):
+        (w / name).unlink()
     else:
-        (w / "canary.json").write_text(json.dumps(dict(r, reproduced=False) if bad == "failed" else dict(r, code_digest="z")))
+        (w / name).write_text(json.dumps(dict(r, reproduced=False) if bad.endswith("failed") else dict(r, code_digest="z")))
     with pytest.raises(SystemExit, match="void"):
         V.main(["merge", "--store", "dir:x", "--out-dir", str(w), "--forms", "real,blank", "--output-file", str(tmp_path / "x.json")])
 
@@ -414,7 +531,7 @@ def test_a_declared_merge_refuses_without_a_passed_canary_of_its_own_read(monkey
 def test_a_merge_refuses_a_mix(monkeypatch, tmp_path, change, message):
     harness(monkeypatch, n=4)
     assert read(tmp_path, ["real", "blank"]) == 0
-    plant_canary(tmp_path / "w")
+    plant_checks(tmp_path / "w")
     path = tmp_path / "w/form-blank.json"
     path.write_text(json.dumps(dict(json.loads(path.read_text()), **change)))
     with pytest.raises(SystemExit, match=message):
@@ -452,7 +569,9 @@ def test_preflight_refuses_a_finished_read_and_a_void_and_new_code_needs_a_cause
 @pytest.mark.parametrize("kw,code", [(dict(report_only=True, checks=dict(blank_identical_to_real=.1, canary=None)), 0), (dict(report_only=False, checks=dict(blank_identical_to_real=.1, canary=None)), 3),
                                      (dict(report_only=True, checks=dict(blank_identical_to_real=1., canary=None)), 3), (dict(report_only=True, declared_read=True, checks=dict(blank_identical_to_real=.1, canary=None)), 3),
                                      (dict(report_only=True, declared_read=True, checks=dict(blank_identical_to_real=.1, canary=dict(reproduced=False))), 3),
-                                     (dict(report_only=True, declared_read=True, checks=dict(blank_identical_to_real=.1, canary=dict(reproduced=True))), 0)])
+                                     (dict(report_only=True, declared_read=True, checks=dict(blank_identical_to_real=.1, canary=dict(reproduced=True))), 3),
+                                     (dict(report_only=True, declared_read=True, checks=dict(blank_identical_to_real=.1, canary=dict(reproduced=True), path_check=dict(reproduced=False))), 3),
+                                     (dict(report_only=True, declared_read=True, checks=dict(blank_identical_to_real=.1, canary=dict(reproduced=True), path_check=dict(reproduced=True))), 0)])
 def test_check_judges_plumbing(tmp_path, kw, code):
     path = tmp_path / "r.json"
     path.write_text(json.dumps(kw))
@@ -465,6 +584,56 @@ def test_the_shared_canary_runs_and_voids_under_this_prefix(monkeypatch, tmp_pat
     monkeypatch.setitem(P.CANARY, "bleu_tolerance", 5.)
     assert V.main(["canary", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(out), "--void-prefix", "tok-probes-v0/void"]) == 3
     assert store.exists("tok-probes-v0/void/d.json")
+
+
+def path_setup(monkeypatch, tmp_path, *, declared=True, hyp_change=0, nll=0., order=False):
+    from signtranslator.data.text_motion_dataset import DirectoryStore
+    store = DirectoryStore(tmp_path / "s")
+    refs, signs = [f"w{i} a" for i in range(100)], [f"s{i}" for i in range(100)]
+    stored = dict(signs=signs, references=refs, hypotheses=refs, nll=[[1.]] * 100, environment=dict(gpu="stored"))
+    raw = json.dumps(stored).encode()
+    store.put(V.PROBES_IDENTITY, raw)
+    monkeypatch.setattr(V, "PROBES_IDENTITY_SHA", hashlib.sha256(raw).hexdigest())
+    out = tmp_path / "f"
+    out.mkdir()
+    hyps = [r + " x" if i < hyp_change else r for i, r in enumerate(refs)]
+    (out / "form-identity.json").write_text(json.dumps(dict(form="identity", declared_read=declared, signs=list(reversed(signs)) if order else signs, references=refs, hypotheses=hyps, nll=[[1. + nll]] * 100, code_digest="d", environment=dict(gpu="g"))))
+    return store, out
+
+
+def path_check(tmp_path, out):
+    return V.main(["path-check", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(out), "--void-prefix", "tok-probes-v0/void"])
+
+
+def test_the_path_check_passes_at_its_limits_and_voids_on_a_miss(monkeypatch, tmp_path):
+    store, out = path_setup(monkeypatch, tmp_path, hyp_change=2, nll=.0009)
+    assert path_check(tmp_path, out) == 0
+    r = json.loads((out / "path_check.json").read_text())
+    assert r["reproduced"] and r["identical"] == .98 and r["stored_environment"] == dict(gpu="stored") and not store.list("tok-probes-v0/void")
+
+
+@pytest.mark.parametrize("kw,miss", [(dict(hyp_change=3), "hypotheses"), (dict(nll=.0012), "NLL"), (dict(nll=-.0012), "NLL")])
+def test_a_path_check_miss_exits_3_and_stores_a_void(monkeypatch, tmp_path, kw, miss):
+    store, out = path_setup(monkeypatch, tmp_path, **kw)
+    assert path_check(tmp_path, out) == 3
+    assert json.loads((out / "path_check.json").read_text())["misses"] == [miss] and store.exists("tok-probes-v0/void/d.json")
+
+
+def test_the_path_check_refuses_other_clips_and_a_changed_stored_read_and_a_smoke_checks_the_pin(monkeypatch, tmp_path, capsys):
+    _, out = path_setup(monkeypatch, tmp_path, order=True)
+    with pytest.raises(SystemExit, match="other clips"):
+        path_check(tmp_path, out)
+    other = tmp_path / "second"
+    other.mkdir()
+    _, out = path_setup(monkeypatch, other, declared=False, hyp_change=50)
+    assert path_check(other, out) == 0 and "not applicable" in capsys.readouterr().out and not (out / "path_check.json").exists()
+    monkeypatch.setattr(V, "PROBES_IDENTITY_SHA", "0" * 64)
+    with pytest.raises(SystemExit, match="SHA-256"):
+        path_check(other, out)
+
+
+def test_the_pinned_stored_read_is_the_probes():
+    assert V.PROBES_IDENTITY.endswith("tok-probes/forms/form-identity.json") and V.PROBES_IDENTITY_SHA.startswith("24958feb")
 
 
 # ---- the job ---------------------------------------------------------------------------------------------------------------------------
@@ -498,10 +667,10 @@ def test_the_job_smokes_on_train_first_then_reads_with_its_declared_calls(tmp_pa
     result, calls = run_job(tmp_path)
     assert result.returncode == 0 and done_line(result) == 0
     parsed = [V.build_parser().parse_args(x.split()[1:]) for x in calls.splitlines()]
-    assert [a.command for a in parsed] == ["read", "canary", "merge", "check", "upload", "preflight", "read", "canary", "read", "merge", "upload", "check"]
-    assert parsed[0].smoke_train == 8 and parsed[0].smoke_longest == 4 and parsed[0].forms == ",".join(V.FORMS)
-    assert parsed[6].forms == "real,blank" and parsed[6].smoke_train == 0 and parsed[8].forms == ",".join(V.FORMS) and parsed[8].resume and parsed[8].device == "cuda" and parsed[8].nll_group == 4
-    assert "tok-probes-v0" in parsed[5].final_key and "tok-probes-v0" in parsed[5].void_prefix and parsed[10].prefix.endswith("tok-probes-v0")
+    assert [a.command for a in parsed] == ["read", "canary", "path-check", "merge", "check", "upload", "preflight", "read", "canary", "path-check", "read", "merge", "upload", "check"]
+    assert parsed[0].smoke_train == 8 and parsed[0].smoke_longest == 4 and parsed[0].smoke_never_tracked == 2 and parsed[0].forms == ",".join(V.FORMS)
+    assert parsed[7].forms == "real,blank,identity" and parsed[7].smoke_train == 0 and parsed[10].forms == ",".join(V.FORMS) and parsed[10].resume and parsed[10].device == "cuda" and parsed[10].nll_group == 4
+    assert "tok-probes-v0" in parsed[6].final_key and "tok-probes-v0" in parsed[6].void_prefix and parsed[12].prefix.endswith("tok-probes-v0")
 
 
 def test_smoke_only_stops_before_any_declared_read(tmp_path):
@@ -509,8 +678,8 @@ def test_smoke_only_stops_before_any_declared_read(tmp_path):
     assert result.returncode == 0 and done_line(result) == 0 and "d20" not in calls and "preflight" not in calls
 
 
-@pytest.mark.parametrize("fail_when,expected", [("tok_v0.py read*smoke-", 2), ("tok_v0.py canary*smoke-", 2), ("tok_v0.py merge*smoke-", 2), ("check --report*smoke-", 2), ("upload --out-dir*smoke-", 2), ("preflight", 1), ("--forms real,blank", 1),
-                                                ("tok_v0.py canary*d20", 1), ("read --resume*d20", 1), ("tok_v0.py merge*d20", 1), ("upload --out-dir*d20", 1), ("check --report*d20", 1)])
+@pytest.mark.parametrize("fail_when,expected", [("tok_v0.py read*smoke-", 2), ("tok_v0.py canary*smoke-", 2), ("tok_v0.py merge*smoke-", 2), ("check --report*smoke-", 2), ("upload --out-dir*smoke-", 2), ("tok_v0.py path-check*smoke-", 2), ("preflight", 1), ("--forms real,blank,identity", 1),
+                                                ("tok_v0.py canary*d20", 1), ("tok_v0.py path-check*d20", 1), ("read --resume*d20", 1), ("tok_v0.py merge*d20", 1), ("upload --out-dir*d20", 1), ("check --report*d20", 1)])
 def test_any_failure_exits_nonzero_with_its_done_line_and_uploads_its_work(tmp_path, fail_when, expected):
     result, calls = run_job(tmp_path, fail_when=fail_when)
     assert result.returncode == expected and done_line(result) == expected, result.stdout + result.stderr
@@ -522,6 +691,14 @@ def test_a_failed_canary_stops_before_any_other_form_with_its_own_status(tmp_pat
     assert result.returncode == 3 and done_line(result) == 3 and "do not retry" in result.stdout
     lines = calls.splitlines()
     at = next(i for i, x in enumerate(lines) if "tok_v0.py canary" in x and "d20" in x)
+    assert len(lines[at + 1:]) == 1 and "upload --partial" in lines[at + 1]
+
+
+def test_a_failed_path_check_stops_before_any_other_form_with_the_voids_status(tmp_path):
+    result, calls = run_job(tmp_path, fail_when="tok_v0.py path-check*d20", code=3)
+    assert result.returncode == 3 and done_line(result) == 3 and "do not retry" in result.stdout
+    lines = calls.splitlines()
+    at = next(i for i, x in enumerate(lines) if "tok_v0.py path-check" in x and "d20" in x)
     assert len(lines[at + 1:]) == 1 and "upload --partial" in lines[at + 1]
 
 
@@ -547,5 +724,87 @@ def test_the_job_pipes_nothing_names_no_other_list_pins_transformers_and_is_vali
 
 def test_the_script_holds_no_decision_rule():
     source = (ROOT / "scripts/tok_v0.py").read_text()
-    for word in ("outcome", "marks_carry", "unresolved", "ruled_out"):
+    for word in ("outcome", "marks_carry", "unresolved", "not_detected", "Q1_NATS", ".015", ".75"):
         assert word not in source
+    assert "tok_v0_rule" not in JOB.read_text()
+
+
+# ---- the rule, apart from the probe: one synthetic report per outcome -------------------------------------------------------------
+
+import tok_v0_rule as Rule  # noqa: E402
+
+
+def diff(point=.1, low=.05, high=.2):
+    return dict(point=point, ci95=[low, high])
+
+
+def rule_report(a=None, b=None, gap=None, p2=None, p3=None, **top):
+    reads = dict(a=a or diff(), b=b or diff(), real_minus_identity=gap or diff(1., .5, 1.5), p2=p2 or dict(point=.5, ci95=[.3, .7]), p3=p3 or dict(point=.5, ci95=[.3, .7]))
+    place = dict(gpu="g")
+    out = dict(report_only=True, declared_read=True, code_digest="d", environment=place, reads=dict(primary="likelihood_minus_blank", likelihood_minus_blank=reads, bleu=dict(a=diff(-9., -9., -9.))),
+               checks=dict(blank_identical_to_real=.1, canary=dict(reproduced=True, code_digest="d", environment=place), path_check=dict(reproduced=True, code_digest="d")))
+    out.update(top)
+    return out
+
+
+@pytest.mark.parametrize("a,b,expected", [(diff(.015, .001, .03), diff(0., -.01, .01), "shown"), (diff(0., -.01, .01), diff(.02, .01, .03), "shown"), (diff(.014, .001, .03), diff(0., -.01, .01), "unresolved"), (diff(.02, 0., .03), diff(0., -.01, .01), "unresolved"),
+                                          (diff(0., -.01, .0149), diff(0., -.01, .0149), "not_detected"), (diff(0., -.01, .015), diff(0., -.01, .01), "unresolved"), (diff(0., -.01, .01), diff(0., -.01, .015), "unresolved"), (diff(-.1, -.2, -.05), diff(-.1, -.2, -.05), "not_detected")])
+def test_each_q1_outcome(a, b, expected):
+    assert Rule.read_rule(rule_report(a=a, b=b))["q1"]["outcome"] == expected
+
+
+def p(point, low, high):
+    return dict(point=point, ci95=[low, high])
+
+
+@pytest.mark.parametrize("value,expected", [(p(.75, .5, 1.), "yes"), (p(.9, .6, 1.2), "yes"), (p(.75, .49, 1.), "partial"), (p(.74, .6, 1.), "partial"), (p(.25, 0., .5), "no"), (p(-.1, -.4, .2), "no"), (p(.25, 0., .51), "partial"), (p(.26, 0., .4), "partial"), (dict(point=None, ci95=None), "partial")])
+def test_each_q2_outcome(value, expected):
+    assert Rule.read_rule(rule_report(p2=value))["q2"]["outcome"] == expected
+
+
+@pytest.mark.parametrize("value,expected", [(p(.75, .5, 1.), "fill"), (p(.9, .6, 1.2), "fill"), (p(.75, .49, 1.), "both"), (p(.74, .6, 1.), "both"), (p(.25, 0., .5), "mark"), (p(-.1, -.4, .2), "mark"), (p(.25, 0., .51), "both"), (p(.26, 0., .4), "both"), (dict(point=None, ci95=None), "both")])
+def test_each_q3_outcome(value, expected):
+    assert Rule.read_rule(rule_report(p3=value))["q3"]["outcome"] == expected
+
+
+@pytest.mark.parametrize("gap", [diff(1., 0., 2.), diff(1., -.5, 2.), dict(point=None, ci95=None)])
+def test_q2_and_q3_are_void_when_real_minus_identity_is_not_above_0_and_q1_still_reads(gap):
+    r = Rule.read_rule(rule_report(gap=gap, a=diff(.1, .05, .2)))
+    assert r["q2"]["outcome"] == "void" and r["q3"]["outcome"] == "void" and r["q1"]["outcome"] == "shown" and r["void"] is False
+
+
+@pytest.mark.parametrize("change,reason", [(dict(checks=dict(blank_identical_to_real=.1, canary=dict(reproduced=False, code_digest="d", environment=dict(gpu="g")), path_check=dict(reproduced=True, code_digest="d"))), "canary"),
+                                           (dict(checks=dict(blank_identical_to_real=.1, canary=dict(reproduced=True, code_digest="d", environment=dict(gpu="g")), path_check=dict(reproduced=False, code_digest="d"))), "path check"),
+                                           (dict(report_only=False), "check nonzero"), (dict(checks=dict(blank_identical_to_real=1., canary=dict(reproduced=True, code_digest="d", environment=dict(gpu="g")), path_check=dict(reproduced=True, code_digest="d"))), "check nonzero"),
+                                           (dict(code_digest=None), "no code digest"), (dict(environment=None), "no code digest"), (dict(code_digest="z"), "mixed"), (dict(environment=dict(gpu="z")), "mixed"), (dict(reads=None), "reads")])
+def test_each_void_voids_all(change, reason):
+    r = Rule.read_rule(rule_report(**change))
+    assert r["void"] is True and any(reason in x for x in r["reasons"]) and {r["q1"]["outcome"], r["q2"]["outcome"], r["q3"]["outcome"]} == {"void"}
+
+
+def test_the_rule_reads_likelihood_not_bleu_and_refuses_a_smoke_and_runs_as_a_script(tmp_path, capsys):
+    assert Rule.read_rule(rule_report())["q1"]["outcome"] == "shown"                # the BLEU block in the report says otherwise
+    with pytest.raises(SystemExit, match="smoke"):
+        Rule.read_rule(rule_report(declared_read=False))
+    path = tmp_path / "r.json"
+    path.write_text(json.dumps(rule_report()))
+    assert Rule.main(["--report", str(path)]) == 0
+    assert "the plan's text decides" in json.loads(capsys.readouterr().out)["status"]
+    source = (ROOT / "scripts/tok_v0_rule.py").read_text()
+    for word in ("make_store", "R2Store", "boto"):
+        assert word not in source
+
+
+def test_the_rule_reads_every_field_of_a_report_the_merge_really_writes(monkeypatch, tmp_path):
+    harness(monkeypatch, ValuesReader)
+    assert read(tmp_path) == 0
+    r = merged(tmp_path)
+    r["checks"]["canary"].update(code_digest=r["code_digest"], environment=r["environment"])
+    r["checks"]["path_check"].update(code_digest=r["code_digest"])
+    out = Rule.read_rule(r)
+    assert out["void"] is False and out["q1"]["outcome"] in ("shown", "not_detected", "unresolved")
+    assert out["q2"]["outcome"] in ("yes", "no", "partial", "void") and out["q3"]["outcome"] in ("fill", "mark", "both", "void")
+
+
+def test_the_constants_are_the_ones_given():
+    assert (Rule.Q1_NATS, Rule.HIGH, Rule.LOW, Rule.BOUND) == (.015, .75, .25, .5)

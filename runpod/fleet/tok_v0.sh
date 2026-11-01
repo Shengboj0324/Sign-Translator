@@ -5,8 +5,8 @@
 #   bash runpod/fleet/tok_v0.sh            smoke (c02 train clips with the longest among them), then D20
 #   SMOKE=1 bash runpod/fleet/tok_v0.sh    the smoke only
 #
-# One process. On D20, real and blank are read first and must reproduce the pinned stored report (`canary`): a miss stops the job before any other form and
-# voids the read. No automatic retry: this code never reads again, and a rerun needs new code and RERUN_CAUSE, which the report records.
+# One process. On D20, real, blank and identity are read first: real and blank must reproduce the pinned stored report (`canary`), and identity the probes' stored read (`path-check`). A miss
+# stops the job before any other form and voids the read. No automatic retry: this code never reads again, and a rerun needs new code and RERUN_CAUSE, which the report records.
 # Outputs (write-once) under $D. A failure uploads the work so far to $D/partial/<UTC>/; a retry on another pod starts over, since the read is short.
 # Ends with TOK-V0-DONE <status> (0 read done, 1 the read failed, 2 the smoke stopped the job, 3 the read is void: do not retry). The exit status is the same.
 # No output passes through a pipe.
@@ -42,8 +42,9 @@ mkdir -p "$S/forms" "$R/forms" || done_ 1
 uv pip install -q 'transformers==4.57.6' sentencepiece || { echo "ALERT transformers install failed"; done_ 1; }   # the version of the stored D20 reads
 
 # ---- smoke: train clips only -------------------------------------------------------------------------------------------
-python $T read --out-dir "$S/forms" --smoke-train 8 --smoke-longest 4 $COMMON || { echo "ALERT smoke read failed"; done_ 2; }
+python $T read --out-dir "$S/forms" --smoke-train 8 --smoke-longest 4 --smoke-never-tracked 2 $COMMON || { echo "ALERT smoke read failed"; done_ 2; }
 python $T canary --out-dir "$S/forms" --void-prefix "$D/void" || { echo "ALERT smoke canary failed"; done_ 2; }
+python $T path-check --out-dir "$S/forms" --void-prefix "$D/void" || { echo "ALERT smoke path check failed"; done_ 2; }
 python $T merge --out-dir "$S/forms" --output-file "$S/report.json" || { echo "ALERT smoke merge failed"; done_ 2; }
 python $T check --report "$S/report.json" || { echo "ALERT smoke check failed"; done_ 2; }
 python $T upload --out-dir "$S" --prefix "$D/smoke/$TS" || { echo "ALERT smoke upload failed"; done_ 2; }
@@ -54,11 +55,15 @@ fi
 
 # ---- the read: D20 ------------------------------------------------------------------------------------------------------
 python $T preflight --out-dir "$R" --final-key "$D/report.json" --void-prefix "$D/void" ${RERUN_CAUSE:+--rerun-cause "$RERUN_CAUSE"} || { echo "ALERT preflight refused"; done_ 1; }
-python $T read --forms real,blank --resume --out-dir "$R/forms" $COMMON || { echo "ALERT read of real and blank failed"; done_ 1; }
+python $T read --forms real,blank,identity --resume --out-dir "$R/forms" $COMMON || { echo "ALERT read of real, blank and identity failed"; done_ 1; }
 python $T canary --out-dir "$R/forms" --void-prefix "$D/void"
 canary=$?
 [ "$canary" != 3 ] || { echo "ALERT the canary failed: the read is void, do not retry"; done_ 3; }
 [ "$canary" = 0 ] || { echo "ALERT the canary did not run"; done_ 1; }
+python $T path-check --out-dir "$R/forms" --void-prefix "$D/void"
+path_check=$?
+[ "$path_check" != 3 ] || { echo "ALERT the path check failed: the read is void, do not retry"; done_ 3; }
+[ "$path_check" = 0 ] || { echo "ALERT the path check did not run"; done_ 1; }
 python $T read --resume --out-dir "$R/forms" $COMMON || { echo "ALERT read failed"; done_ 1; }
 python $T merge --out-dir "$R/forms" --output-file "$R/report.json" || { echo "ALERT merge failed"; done_ 1; }
 python $T upload --out-dir "$R" --prefix "$D" || { echo "ALERT upload failed"; done_ 1; }
