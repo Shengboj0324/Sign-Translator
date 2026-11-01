@@ -6030,7 +6030,7 @@ Report only, D20. About 39 GPU-hours and $43, from stored timings. Four pods per
 
 *Known when written:* A3 generated top10's stored read on D20 was known: BLEU +0.343 [-0.018, +0.718], likelihood +0.0128, spotting +0.0149, wrist 1.774x, and that it passed. A4's real-clip draws were known (SD 0.237). No read of any fresh draw existed, and no fresh draw had been generated beyond a two-entry smoke with no reader. Stored likelihood interval [+0.0015, +0.0235] and spotting [+0.0062, +0.0248] were known. The stored margin0 ran on an L40S and top10 on an RTX 6000 Ada, a mix this read refuses. The +0.15 floor and eight draws were set after the stored +0.343 was known.
 
-### S2 closed, not shown (decided 2026-11-01, 07:56 UTC, under the owner's delegation)
+### S2 closed, not shown (decided 2026-11-01, 07:55 UTC, under the owner's delegation)
 
 S2 masked decoding: closed untrained, result "not shown". The P1 gauge failed calibration on planted signals (read 2.0× and negative against known truth), and its ratio bar cannot pass under calibration. A calibration failure counts as "not shown", never as evidence that text-to-motion information is absent or present. No further S2 spending: no planted job, P1, confirmation seed, or P2–P4. Effort moves to composition. S2 may reopen only on a new, separately declared direct read in which a history-free generator beats composition at predicted timing on likelihood and BLEU, paired over several word draws, on instrument v1 and on v2 if accepted. V1's result may justify a nearest-fill prior retrain as its own decision; that is not S2.
 
