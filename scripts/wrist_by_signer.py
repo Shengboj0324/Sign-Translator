@@ -3,6 +3,9 @@
 **Groups** (train partitions; c00 and Ben are refused, not skipped): How2Sign two-view c02 and c04, YouTube train by channel (the corpus has no signer field, so a channel stands in for one and may hold several), ASLLRP train by signer. D20's clips, their metadata
 and motion are the reference only. Every number is the report's own keypoint view at 24 fps, raw and low-passed at 6 and 3 Hz (``composition_v2.lowpass_state``), each ratio against D20 real at the same rate.
 
+**The real-signer span** (``real_signer_span``, the release bar's wrist condition since 2026-11-01): p10 and p90 of per-signer mean wrist speed across signers or channels with at least 30 clips each, all through the monocular path: How2Sign c01-c05 monocular, ASLLRP signers, YouTube channels. Pooled, left and right, raw and 3 Hz. Real clips only; c00 and
+test partitions are never read and no test-split file is opened. A channel is not a signer. top10 and hold-x are read against it, beside the old reading over D20. If top10 sits inside on all six readings, the hold has no wrist purpose (``hold_arms``).
+
 **Lifting check.** How2Sign's front clips also have monocular estimates (``derived/how2sign-video-estimate-v1``, extracted as YouTube's states are), so the same signer on the same clip is read through both paths. Each path's stored clock is reported beside it.
 A clock check: seconds per English token per group, which a wrong frame rate would move, though signers differ too.
 """
@@ -196,6 +199,84 @@ def path_matched(pairs: dict, youtube: dict) -> dict:
     return out
 
 
+SPAN_MIN_CLIPS, SPAN_CHANNELS = 30, 120
+SIDES = dict(pooled="wrist_speed", left="left_speed", right="right_speed")
+SPAN_RATES = ("raw", "3hz")
+
+
+def channels_with_clips(manifest, minimum: int = SPAN_MIN_CLIPS) -> dict:
+    """{channel: its train records} of every YouTube channel with at least ``minimum`` clips with a state, by channel id."""
+    pool = {}
+    for r in manifest["records"]:
+        if r.get("corpus") == YOUTUBE and r.get("partition") == "train" and (r.get("continuous") or {}).get("state_key"):
+            pool.setdefault((r.get("source") or {}).get("channel_id") or "unknown", []).append(r)
+    pool.pop("unknown", None)
+    return {k: sorted(v, key=lambda r: r["sign"]) for k, v in sorted(pool.items()) if len(v) >= minimum}
+
+
+def span_draw(qualifying: dict, channels: int = SPAN_CHANNELS, clips: int = SPAN_MIN_CLIPS) -> dict:
+    """A fixed draw of the qualifying channels, all of them when few, and of ``clips`` clips in each."""
+    names = random.Random(f"{SEED}|span").sample(sorted(qualifying), min(channels, len(qualifying)))
+    return {k: random.Random(f"{SEED}|span|{k}").sample(qualifying[k], clips) for k in sorted(names)}
+
+
+def group_speeds(row: dict) -> dict:
+    """One signer's or channel's mean speeds, from its ``group_row``."""
+    return {rate: {side: row[rate].get(key) for side, key in SIDES.items()} for rate in SPAN_RATES}
+
+
+def span_of(groups: dict) -> dict:
+    """p10 and p90 across the groups, per rate and side."""
+    out = {}
+    for rate in SPAN_RATES:
+        out[rate] = {}
+        for side in SIDES:
+            values = [g[rate][side] for g in groups.values() if g[rate].get(side) is not None]
+            out[rate][side] = [round(float(np.percentile(values, 10)), 5), round(float(np.percentile(values, 90)), 5)]
+    return out
+
+
+def absolute_form(row: dict, reference: dict) -> dict:
+    """A composed form's mean speeds: its ratio to D20 real at that rate times D20 real's mean."""
+    return {rate: {side: round(row[rate][f"{key}_over_d20"] * reference[rate][key], 5) for side, key in SIDES.items()} for rate in SPAN_RATES}
+
+
+def against_span(form: dict, span: dict) -> dict:
+    """Inside the span, per reading: at or between its ends."""
+    return {rate: {side: bool(span[rate][side][0] <= form[rate][side] <= span[rate][side][1]) for side in SIDES} for rate in SPAN_RATES}
+
+
+def inside_all(row: dict) -> bool:
+    return all(v for rate in row.values() for v in rate.values())
+
+
+def real_signer_span(groups: dict, *, composition: dict, on_monocular: dict, reference: dict, channels_qualifying: int, channels_read: int) -> dict:
+    """The span, its groups, and top10 and hold-x against it beside the old reading. ``groups``: {name: dict(corpus, clips, row)}; a group short of the clips is refused."""
+    short = {k: g["clips"] for k, g in groups.items() if g["clips"] < SPAN_MIN_CLIPS}
+    if short:
+        raise SystemExit(f"groups short of {SPAN_MIN_CLIPS} clips: {short}")
+    speeds = {k: group_speeds(g["row"]) for k, g in groups.items()}
+    span = span_of(speeds)
+    forms = {}
+    for name in ("base", "hold_x", "length_tokens", "hold_x_length"):
+        value = absolute_form(composition[name], reference)
+        inside = against_span(value, span)
+        forms[name] = dict(speed=value, inside=inside, inside_all_six=inside_all(inside), old_reading=dict(over_d20_two_view={r: {s: composition[name][r][f"{k}_over_d20"] for s, k in SIDES.items()} for r in SPAN_RATES},
+                                                                                                        over_d20_monocular={r: {s: on_monocular[name][r][k] for s, k in SIDES.items()} for r in SPAN_RATES}))
+    without = {k: v for k, v in speeds.items() if groups[k]["corpus"] != YOUTUBE}
+    by = {}
+    for g in groups.values():
+        by[g["corpus"]] = by.get(g["corpus"], 0) + 1
+    return dict(definition="p10 and p90 of per-signer mean wrist speed, signers or channels with at least 30 clips, all through the monocular path; real clips only; never c00 or a test partition", span=span, groups=speeds, clips={k: g["clips"] for k, g in groups.items()}, groups_per_corpus=by,
+                youtube_channels_qualifying=channels_qualifying, youtube_channels_read=channels_read, few_channels=channels_qualifying < 20, forms=forms, top10_inside_all_six=forms["base"]["inside_all_six"], hold_arms=hold_arms_of(forms["base"]["inside_all_six"]),
+                sensitivity_without_youtube=dict(span=span_of(without), note="reported; decides nothing: YouTube's channels dominate the count"), note="c01, c03 and c05 are D20's clips through the monocular path, the rows read earlier. A channel is not a signer. Set after composition's figures were known, as the plan's section says.")
+
+
+def hold_arms_of(inside_all_six: bool) -> str:
+    """The declared setting: inside on all six readings, the hold has no wrist purpose."""
+    return "off" if inside_all_six else "on"
+
+
 def composition_on_monocular(pairs: dict, composition: dict) -> dict:
     """top10 and hold-x against D20 read through the monocular path, per side and pooled: composition's ratio over D20's monocular ratio, both against D20 two-view at the same rate."""
     d20 = {}
@@ -299,8 +380,38 @@ UNDECIDED = ("Which path is right: no ground truth for arm amplitude exists here
              "moves with signers too. A channel is not a signer. ASLLRP's path was not compared on the same clips. Carry: the word is defined nowhere in the repository, so 1.44x is neither confirmed nor refuted: on hold-x it needs the right wrist at the row's right_needed_for_1_44.")
 
 
+def span_groups(report: dict, channels: dict) -> dict:
+    """The channels read, and How2Sign's monocular rows and ASLLRP's signers as a stored report holds them. c00 stops it."""
+    groups = dict(channels)
+    for c, g in report["monocular_against_two_view"].items():
+        if c == "c00":
+            raise SystemExit("How2Sign signer 9 (c00) is never read")
+        groups[f"how2sign_{c}"] = dict(corpus=H2S, clips=g["clips"], row=g["monocular_only"])
+    for name, row in report["asllrp"]["signers"].items():
+        groups[f"asllrp_{name}"] = dict(corpus="asllrp", clips=row["clips"], row=row)
+    return groups
+
+
+def add_span(report: dict, store, manifest) -> dict:
+    """The span on a stored report: its monocular How2Sign rows and ASLLRP signers as stored, and a new read of YouTube channels with at least 30 clips."""
+    from evaluate_text_to_motion import load_state
+    qualifying = channels_with_clips(manifest)
+    picked = span_draw(qualifying)
+    reference = report["reference"]["row"]
+    channels = {}
+    for j, (k, records) in enumerate(picked.items()):
+        rows = [clip_row(load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"])) for r in records]
+        channels[k] = dict(corpus=YOUTUBE, clips=len(rows), row=group_row(rows, rows))
+        if (j + 1) % 10 == 0:
+            print(f"channels: {j + 1}/{len(picked)}", flush=True)
+    groups = span_groups(report, channels)
+    report["real_signer_span"] = real_signer_span(groups, composition=report["composition"], on_monocular=report["composition_on_monocular"], reference=reference, channels_qualifying=len(qualifying), channels_read=len(picked))
+    return report
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    p.add_argument("--span-on", help="a stored report: add real_signer_span to it, reading only YouTube's qualifying channels")
     p.add_argument("--store", default="r2")
     p.add_argument("--motion-file", default=str(ROOT / "reports/comp_a6_motion.json"))
     p.add_argument("--limit", type=int, help="the first K clips of every group (smoke)")
@@ -308,6 +419,14 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     if Path(args.output_file).exists():
         raise SystemExit(f"{args.output_file} exists: refusing to overwrite")
+    if args.span_on:
+        from s2_lib import load_manifest_at
+        from train_text_to_motion import make_store
+        store = make_store(args.store)
+        out = add_span(json.loads(Path(args.span_on).read_text()), store, load_manifest_at(store, EVAL_MIX, EVAL_MIX_SHA))
+        Path(args.output_file).write_text(json.dumps(out, indent=1, sort_keys=True))
+        print(args.output_file, hashlib.sha256(Path(args.output_file).read_bytes()).hexdigest(), flush=True)
+        return 0
     from comp_a_lib import D20_KEY, D20_SHA, check_d20_payload
     from evaluate_text_to_motion import load_state
     import round15_stage2_fit as fit

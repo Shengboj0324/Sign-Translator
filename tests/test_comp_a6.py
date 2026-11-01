@@ -32,6 +32,13 @@ from tests.test_round20_phase_b import on_stubs, scripts_run
 ROOT = Path(__file__).resolve().parents[1]
 JOB = ROOT / "runpod/fleet/comp_a6.sh"
 CHAIN = ROOT / "runpod/fleet/comp_a6_chain.sh"
+OFF_LINE, ON_LINE = "\nHOLD_ARMS=off\n", "\nHOLD_ARMS=on\n"
+
+
+def job_text(arms="on"):
+    """The job with its declared HOLD_ARMS as a test needs it: the hold paths are tested whatever the committed report says."""
+    text = JOB.read_text().replace(OFF_LINE, ON_LINE)
+    return text if arms == "on" else text.replace(ON_LINE, OFF_LINE)
 JOBS = tuple(a6.JOB_FILE.split(","))
 FORM = a6.FORM
 O = "acquisition/2026-10-17-v1/youtube-asl-v1"
@@ -39,6 +46,7 @@ OUT = f"{O}/round20/comp-a6"
 A5OUT = f"{O}/round20/comp-a5"
 DONE = re.compile(r"^COMP-A6-DONE (0|1) phase=\S+ words=\S+ smoke=(0|1)$", re.M)
 REST = {j: [float(x) for x in to_6d(np.eye(3))] for j in cv2.HOLD_JOINTS}
+COMMITTED_HOLD_ARMS = a6.HOLD_ARMS
 L, S, B = a6.LIKELIHOOD_FLOOR or -.0077, a6.SPOTTING_FLOOR or -.0089, a6.BLEU_FLOOR or -.1509      # the declared floors: a metric with no room still has its checks tested
 
 
@@ -49,6 +57,7 @@ def room_and_code(monkeypatch):
     monkeypatch.setattr(a6, "SPOTTING_FLOOR", S)
     monkeypatch.setattr(a6, "BLEU_FLOOR", B)
     monkeypatch.setattr(a6, "NO_ROOM", {})
+    monkeypatch.setattr(a6, "HOLD_ARMS", "on")
     monkeypatch.setattr(lib, "provenance_row", lambda job=None: dict(PROVENANCE))
 
 
@@ -688,7 +697,7 @@ MATCH = ("Each draw's top10 at today's length must match A5's top10 for that dra
 AGAIN = "Any reader bug, or any code change after the screen or a draw, means re-declaring under a new OUT named in the job, with what was stored disclosed; no key is scoped by digest automatically. "
 FRESH = "D20 chose top10 and A5's draws read its sentences, so D20's sentences are not fresh. "
 FULL = "A6's full runs, the screen among them, run only if A5's summary reads confirmed or direction only."
-RULE_HOLD = ("Primary arm: hold-x at the fitted length, against top10 at the fitted length, paired within each of A5's eight stored word draws, on D20, report only. hold-x keeps the left arm on entries with at least 25% two-handed records, on unannotated entries and on the list's new entries; the 25% cut was set after A1's D20 failure. hold-x at today's length is read beside it and decides nothing. Passed only if all hold: mean paired likelihood minus each form's own-length blank, its 95% lower bound " + a6.bar(a6.FLOORS["likelihood"]) + " on both the two-way bootstrap and the t interval over the eight draws; v2 spotting's 95% lower bound " + a6.bar(a6.FLOORS["spotting"]) + " on both; BLEU over draws, the t interval's lower bound " + a6.bar(a6.FLOORS["bleu"]) + "; mean hands at least 0.9x its comparator's. These are small-loss bars, set as shares of the mean paired gains of " + a6.BARS_AGAINST + ": 44% of BLEU's, 60% of likelihood's and of spotting's. " + ROOM + "A pass means any loss is small, possibly up to those shares, with less motion, and not that the arm reads better. Known before any read, and not evidence: pooled wrist 2.019x to 1.814x, contact unchanged by construction. The form stays far outside the 0.8-1.25x band, so a pass is no progress against the release bar. The gate: the screen on A3's stored words reads hold-x against top10 at today's length, report only, and hold-x and hold-x at the fitted length run on the eight draws only if the screen's point estimates of likelihood and spotting sit above the two floors above. Otherwise the draws run top10 and length only, the length rule still reads, and this rule reads not run, screen failed, which is printed. Known from A1's stored rows before this gate was set: the 34% of clips holding the excluded uses hold 39% of A1's likelihood loss and 40% of its spotting loss, and excluding those uses is estimated to remove 3-15% against the " + a6.needed_text() + " these floors need, so the screen may well stop the hold arms; that estimate is no read of hold-x. " + STEP + MATCH + AGAIN + FRESH + "Anything else is not passed, the failed check is reported, and not passed is not evidence of a loss. " + FULL)
+RULE_HOLD = ("Primary arm: hold-x at the fitted length, against top10 at the fitted length, paired within each of A5's eight stored word draws, on D20, report only. hold-x keeps the left arm on entries with at least 25% two-handed records, on unannotated entries and on the list's new entries; the 25% cut was set after A1's D20 failure. hold-x at today's length is read beside it and decides nothing. Passed only if all hold: mean paired likelihood minus each form's own-length blank, its 95% lower bound " + a6.bar(a6.FLOORS["likelihood"]) + " on both the two-way bootstrap and the t interval over the eight draws; v2 spotting's 95% lower bound " + a6.bar(a6.FLOORS["spotting"]) + " on both; BLEU over draws, the t interval's lower bound " + a6.bar(a6.FLOORS["bleu"]) + "; mean hands at least 0.9x its comparator's. These are small-loss bars, set as shares of the mean paired gains of " + a6.BARS_AGAINST + ": 44% of BLEU's, 60% of likelihood's and of spotting's. " + ROOM + "A pass means any loss is small, possibly up to those shares, with less motion, and not that the arm reads better. Known before any read, and not evidence: pooled wrist 2.019x to 1.814x, contact unchanged by construction. The form stays far outside the 0.8-1.25x band, so a pass is no progress against the release bar. The wrist condition: if top10 sits inside the real-signer span on all six readings (pooled, left and right, raw and 3 Hz; p10 to p90 of per-signer mean wrist speed, signers or channels with at least 30 clips, through the monocular path), the hold has no wrist purpose: A6 declares HOLD_ARMS=off, runs top10 and length only, runs no hold screen, spends nothing on hold, and this rule reads not run, wrist inside the real-signer span. If top10 is outside on any reading, the screen gate works as built. This declaration's setting, from the committed span report: HOLD_ARMS=" + a6.HOLD_ARMS + ". The gate: the screen on A3's stored words reads hold-x against top10 at today's length, report only, and hold-x and hold-x at the fitted length run on the eight draws only if the screen's point estimates of likelihood and spotting sit above the two floors above. Otherwise the draws run top10 and length only, the length rule still reads, and this rule reads not run, screen failed, which is printed. Known from A1's stored rows before this gate was set: the 34% of clips holding the excluded uses hold 39% of A1's likelihood loss and 40% of its spotting loss, and excluding those uses is estimated to remove 3-15% against the " + a6.needed_text() + " these floors need, so the screen may well stop the hold arms; that estimate is no read of hold-x. " + STEP + MATCH + AGAIN + FRESH + "Anything else is not passed, the failed check is reported, and not passed is not evidence of a loss. " + FULL)
 RULE_LENGTH = ("Primary arm: length, the fit signer-balanced on How2Sign train's c02 + c04 (seconds = -0.3577 + 0.3445 x tokens), chosen by a train-only rule after its D20 ratio of about 1.08 was known, and never fitted on D20's lengths. Against top10 at today's length, paired within each of A5's eight stored word draws, on D20, report only. Passed only if all hold: likelihood and spotting as the hold rule; BLEU, the t interval's lower bound " + a6.bar(a6.FLOORS["bleu"]) + " on the lower of raw BLEU and BLEU net of the blank's own change; mean hands at least 0.9x top10's. " + ROOM + "Pooled predicted over true length is reported and decides nothing: known on the report's state frames, 1.071 against today's 1.198, median per clip 1.128 against 1.287. Today's length runs 1.20x true, which lowers wrist by construction; the fitted length removes that, so wrist rises from 1.774x to 2.019x. Wrist is reported, decides nothing, and this rise is neither a loss nor progress. A pass means a nearer length costs little content, not that it adds any. This rule reads whether or not the screen lets the hold arms run. " + STEP + MATCH + AGAIN + FRESH + FULL)
 
 
@@ -778,6 +787,7 @@ def test_a_closed_read_with_no_room_says_no_room_and_prints_why(monkeypatch):
 
 
 def test_a_declaration_needs_the_a5_slot_and_the_power_table(tmp_path, monkeypatch):
+    monkeypatch.setattr(dc6, "check_hold_arms", lambda root, setting=None: None)
     dc6.check_slot(ROOT, a6.A5_SUMMARY_AT_DECLARATION)                             # the repository as it stands: a record with an empty slot fails here
     (tmp_path / "runpod/fleet").mkdir(parents=True)
     dc6.check_slot(tmp_path, None)                                                 # no record, no slot needed
@@ -808,7 +818,7 @@ def test_a_declaration_needs_the_a5_slot_and_the_power_table(tmp_path, monkeypat
 def test_what_was_known_is_stated():
     known = a6.KNOWN_AT_WRITING
     for phrase in ("-0.0276", "-0.0405", "+0.343", "37c8d18", "fbe9b29", "11e310c", "1.376", "90% of stretches", "1.198x", "1.071x", "before the train-only rule was written", "08b9a150", "A5's summary at declaration", "two-view being the right reference", "39% of the likelihood loss", a6.needed_text(),
-                   "The screen's gate on the hold arms was set after the concentration result", "one metadata row (seconds and frames) of How2Sign's test-split extraction report; no state was read; that split holds c00", "0.27%", "8.8%", "27.2%", "Path read (branch path-read)", "Prior review's power figures", "running them before declaration is recommended"):
+                   "The screen's gate on the hold arms was set after the concentration result", "one metadata row (seconds and frames) of How2Sign's test-split extraction report; no state was read; that split holds c00", "0.27%", "8.8%", "27.2%", "Path read (branch path-read)", "Prior review's power figures", "running them before declaration is recommended", "a loosening made after composition's figures were known", "inside on all six, so HOLD_ARMS=off", "the setting reads today's length only"):
         assert phrase in known, phrase
     assert "carry mostly that path" not in known
     assert "chosen on train alone" not in known and "chosen on train alone" not in a6.RULES["length"]
@@ -927,6 +937,105 @@ def test_a_real_screen_summary_sets_the_gate_from_hold_x_against_base():
     for name in a6.SCREEN_ARMS:
         d[a6.SCREEN][name]["clips"] = 5
     assert a6.read(d, s, boot=20, smoke=True)["hold_gate"] is None                         # a smoke sets no gate
+
+
+def test_the_committed_setting_is_the_span_reports_and_the_jobs():
+    dc6.check_hold_arms(ROOT, COMMITTED_HOLD_ARMS)
+    report = json.loads((ROOT / dc6.SPAN_REPORT).read_text())["real_signer_span"]
+    assert report["hold_arms"] == ("off" if report["top10_inside_all_six"] else "on")
+
+
+def test_a_declaration_checks_the_setting(tmp_path, monkeypatch):
+    other = "on" if COMMITTED_HOLD_ARMS == "off" else "off"
+    monkeypatch.setattr(a6, "HOLD_ARMS", other)
+    monkeypatch.setattr(a6, "A5_SUMMARY_AT_DECLARATION", dict(sha256="h"))
+    monkeypatch.setattr(dc6, "check_power", lambda root: None)
+    with pytest.raises(SystemExit, match="the setting is read from the committed report"):
+        dc6.make_record("abc1234")
+    (tmp_path / "runpod/fleet").mkdir(parents=True)
+    (tmp_path / dc6.RECORD).write_text("{}")
+    with pytest.raises(SystemExit, match="the setting is read from the committed report"):
+        dc6.check_slot(tmp_path, dict(sha256="h"))
+
+
+def test_the_setting_must_agree_with_the_report_and_the_job(tmp_path):
+    (tmp_path / "reports").mkdir()
+    (tmp_path / "runpod/fleet").mkdir(parents=True)
+    (tmp_path / dc6.SPAN_REPORT).write_text(json.dumps(dict(real_signer_span=dict(hold_arms="off"))))
+    (tmp_path / dc6.JOB).write_text("x\nHOLD_ARMS=off\ny\n")
+    dc6.check_hold_arms(tmp_path, "off")
+    with pytest.raises(SystemExit, match="the span report's off"):
+        dc6.check_hold_arms(tmp_path, "on")
+    (tmp_path / dc6.JOB).write_text("x\nHOLD_ARMS=on\ny\n")
+    with pytest.raises(SystemExit, match="does not declare HOLD_ARMS=off"):
+        dc6.check_hold_arms(tmp_path, "off")
+    (tmp_path / dc6.SPAN_REPORT).write_text("{}")
+    with pytest.raises(SystemExit, match="the span report's None"):
+        dc6.check_hold_arms(tmp_path, "off")
+
+
+@pytest.fixture
+def hold_off(monkeypatch):
+    monkeypatch.setattr(a6, "HOLD_ARMS", "off")
+
+
+def off_draws():
+    return draws()               # under HOLD_ARMS=off, arms_of gives base and length alone
+
+
+def test_hold_arms_off_runs_base_and_length_with_no_screen(hold_off):
+    d, s = off_draws()
+    out = a6.read(d, s, boot=20, a5_top10=tops(d), declared_commit="abc1234")                 # no screen summary
+    assert out["rule"]["hold"]["outcome"] == "not run, wrist inside the real-signer span" and out["rule"]["hold"]["checks"] is None and out["rule"]["length"]["outcome"] == "passed"
+    assert set(out["arms"]) == {a6.LENGTH} and out["both_on_base"] is None and out["hold_gate"] is None and out["hold_arms"] == "off" and out["reported_only"] == []
+
+
+def test_hold_arms_off_refuses_hold_reports_and_a_screen(hold_off):
+    d, s = draws()
+    d[3][a6.HOLD] = arm(a6.HOLD, 3)
+    with pytest.raises(SystemExit, match="its arms are"):
+        a6.read(d, s, boot=20, a5_top10=tops(d), declared_commit="abc1234")
+    d, s = draws((a6.SCREEN,))
+    with pytest.raises(SystemExit, match="no hold screen runs"):
+        a6.read(d, s, boot=20)
+    for name in a6.GATE_CLOSED_ARMS:
+        d[a6.SCREEN][name]["clips"] = 5
+    out = a6.read(d, s, boot=20, smoke=True)
+    assert out["mode"] == "smoke" and set(out["arms"]) == {a6.LENGTH}
+
+
+def test_hold_arms_off_even_with_a_stored_passing_screen(hold_off):
+    d, s = off_draws()
+    out = a6.read(d, s, boot=20, a5_top10=tops(d), declared_commit="abc1234", screen_summary=screen_summary(), screen_sha256="h")
+    assert out["rule"]["hold"]["outcome"] == "not run, wrist inside the real-signer span"
+
+
+def test_hold_arms_on_keeps_the_screen_gate():
+    assert a6.HOLD_ARMS == "on"
+    d, s = closed_draws()
+    assert read(d, s, screen_summary=screen_summary(-.5, .01))["rule"]["hold"]["outcome"] == "not run, screen failed"
+    d, s = draws()
+    assert read(d, s)["rule"]["hold"]["outcome"] == "passed"
+
+
+def test_the_reader_prints_why_hold_is_off(tmp_path, monkeypatch, capsys, hold_off):
+    import round20_compare
+    from signtranslator.data.text_motion_dataset import DirectoryStore
+    import train_text_to_motion
+    store = DirectoryStore(tmp_path)
+    d, s = off_draws()
+    argv = []
+    for k, arms in d.items():
+        for name, report in arms.items():
+            store.put(f"{k}|{name}", json.dumps(report).encode())
+        argv += ["--draw", f"{k}=" + ",".join(f"{k}|{n}" for n in a6.GATE_CLOSED_ARMS), "--a5-top10", f"{k}={k}|{a6.BASE}"]
+    monkeypatch.setattr(train_text_to_motion, "make_store", lambda name: store)
+    monkeypatch.setattr(round20_compare, "report_shards", lambda st, key, report, _: s[int(key.split("|")[0])][key.split("|")[1]])
+    assert a6.main([*argv, "--declared-commit", "abc1234", "--bootstrap", "20", "--output-key", "out.json"]) == 0
+    assert "hold not run, wrist inside the real-signer span" in capsys.readouterr().out
+    raw = json.dumps(dict(mode="draws")).encode()                                             # with hold off no screen is read for its gate, whatever is given
+    store.put("not-a-screen.json", raw)
+    assert a6.main([*argv, "--declared-commit", "abc1234", "--bootstrap", "20", "--screen-key", "not-a-screen.json", "--screen-sha256", hashlib.sha256(raw).hexdigest(), "--output-key", "out2.json"]) == 0
 
 
 def closed_draws(**kw):
@@ -1183,6 +1292,7 @@ def test_a6_has_its_own_declaration_and_digest(tmp_path, monkeypatch):
     (root / "runpod/fleet").mkdir(parents=True)
     monkeypatch.setattr(a6, "A5_SUMMARY_AT_DECLARATION", dict(sha256="h", outcome="confirmed"))
     monkeypatch.setattr(dc6, "check_power", lambda root: None)
+    monkeypatch.setattr(dc6, "check_hold_arms", lambda root, setting=None: None)
     with pytest.raises(SystemExit, match="nothing shows a declaration"):
         dc6.check("abc1234", root)
     (root / "docs/NEXT_PHASE_PLAN.md").write_text("Plan. " + a6.RULES["hold"] + " " + a6.RULES["length"])
@@ -1433,7 +1543,7 @@ def job(tmp_path, phase, *, words="a3", smoke=False, gpu=True, stored=(), declar
         e["WORDS"] = words
     if declared:
         e["COMP_A_DECLARED"] = declared
-    return on_stubs(tmp_path, text or JOB.read_text(), e, smoke=smoke, gpu=gpu)
+    return on_stubs(tmp_path, text or job_text(), e, smoke=smoke, gpu=gpu)
 
 
 def one_done(out, code):
@@ -1497,7 +1607,7 @@ def hashed_job(by_key):
     """The job with A5's cache lookup reading these hashes, one per key."""
     table = " ".join(f"{k}={v}" for k, v in by_key.items())
     fake = 'fake_sha() { local p; for p in ' + table + '; do [ "${p%%=*}" = "$1" ] && { echo "${p#*=}"; return 0; }; done; echo none; }\n'
-    text = JOB.read_text().replace('[ "$(sha $key)" = "$2" ]', '[ "$(fake_sha $key)" = "$2" ]')
+    text = job_text().replace('[ "$(sha $key)" = "$2" ]', '[ "$(fake_sha $key)" = "$2" ]')
     assert "fake_sha" in text
     return text.replace("set -uo pipefail\n", "set -uo pipefail\n" + fake, 1)
 
@@ -1564,7 +1674,7 @@ def test_threads_are_pinned(tmp_path):
     code, out, _ = job(tmp_path, "base", THREADS="4")
     assert code == 1 and "pinned at 8" in out
     assert re.search(r"^T=(\d+)$", JOB.read_text(), re.M).group(1) == str(a6.PINNED_THREADS)
-    text = JOB.read_text().replace('[ "$Q" -gt 0 ]; then C=$(( Q / P ))', '[ 1 = 1 ]; then C=4')
+    text = job_text().replace('[ "$Q" -gt 0 ]; then C=$(( Q / P ))', '[ 1 = 1 ]; then C=4')
     code, out, _ = job(tmp_path, "base", text=text)
     assert code == 1 and "this pod has 4 CPUs" in out
 
@@ -1589,7 +1699,7 @@ def test_a_draw_needs_the_pinned_screen(tmp_path):
 
 
 def test_the_screens_absence_stops_a_draw(tmp_path):
-    text = JOB.read_text().replace('exists $SCREENKEY ||', 'false ||')
+    text = job_text().replace('exists $SCREENKEY ||', 'false ||')
     code, out, _ = job(tmp_path, "base", words="3", stored=[*caches(), a5_top10(3)], text=text, **DRAW_ENV)
     assert code == 1 and "the screen's summary is not stored" in out
 
@@ -1640,6 +1750,54 @@ def test_the_summary_on_a_closed_gate_needs_base_and_length_alone(tmp_path):
     assert code == 1 and "comp_a6_read.py" not in "\n".join(commands)                         # open: the hold arms are missing
     code, out, _ = job(tmp_path, "summary", words="draws", stored=CLOSED_EVERY, **CLOSED_SHAS, **A5T, **CLOSED)
     assert code == 1 and "give SCREEN_SHA" in out
+
+
+OFF_ENV = {k: v for k, v in DRAW_ENV.items() if k != "SCREEN_SHA"}
+
+
+@pytest.mark.parametrize("phase", [a6.HOLD, a6.BOTH, a6.HOLD_REST])
+def test_hold_arms_off_refuses_every_hold_phase(tmp_path, phase):
+    code, out, commands = job(tmp_path, phase, words="3", text=job_text("off"), **OFF_ENV)
+    assert code == 1 and f"{phase}: not run, wrist inside the real-signer span" in out and "round15_compose_eval.py" not in "\n".join(commands)
+    one_done(out, 1)
+
+
+@pytest.mark.parametrize("phase", ["base", "length", "summary"])
+def test_hold_arms_off_runs_no_screen(tmp_path, phase):
+    code, out, commands = job(tmp_path, phase, text=job_text("off"), BASE_SHA="b")
+    assert code == 1 and "no hold screen runs and nothing is spent on hold" in out and "round15_compose_eval.py" not in "\n".join(commands) and "comp_a6_read.py" not in "\n".join(commands)
+    one_done(out, 1)
+
+
+def test_hold_arms_off_runs_base_and_length_on_a_draw_without_the_screen(tmp_path):
+    stored = [key(3, "base")]
+    code, _, commands = job(tmp_path, "base", words="3", text=job_text("off"), **OFF_ENV)
+    assert code == 0 and "round15_compose_eval.py run" in "\n".join(commands) and "hold-gate" not in "\n".join(commands) and f"pin {SCREEN_KEY}" not in commands
+    code, _, commands = job(tmp_path, a6.LENGTH, words="3", stored=stored, text=job_text("off"), BASE_SHA="b", **OFF_ENV)
+    assert code == 0 and "--duration-balanced" in "\n".join(commands)
+    code, out, _ = job(tmp_path, "gate", words="3", text=job_text("off"), **OFF_ENV)
+    assert code == 0 and "COMP-A6-GATE closed" in out and "COMP-A6-HOLD not run, wrist inside the real-signer span" in out
+    code, _, _ = job(tmp_path, "base", words="3", stored=[key(3, "base"), key(3, "length")], ATTEMPT="2", text=job_text("off"), **OFF_ENV)
+    assert code == 1                                                                          # a draw is final at length
+
+
+def test_hold_arms_off_summary_and_smoke_read_need_two_arms(tmp_path):
+    env = {f"{p}{d}_SHA": "x" for p in ("B", "L") for d in a6.DRAWS}
+    code, out, commands = job(tmp_path, "summary", words="draws", stored=[*CLOSED_EVERY], text=job_text("off"), **env, **A5T)
+    run = next(c for c in commands if "comp_a6_read.py" in c)
+    assert code == 0 and "COMP-A6-HOLD not run, wrist inside the real-signer span" in out and "--screen-key" not in run and "hold-x" not in run
+    code, _, commands = job(tmp_path, "smoke-read", smoke=True, gpu=False, declared="", SMOKE_STAMP="s1", text=job_text("off"))
+    run = next(c for c in commands if "comp_a6_read.py" in c)
+    assert code == 0 and "--draw a3=" + f"{OUT}/smoke/s1/a3-attempt1-base.json,{OUT}/smoke/s1/a3-attempt1-length.json " in run + " "
+
+
+def test_the_arms_phase_says_which(tmp_path):
+    code, out, _ = job(tmp_path, "arms", smoke=True, gpu=False, declared="", SMOKE_STAMP="s1", text=job_text("off"))
+    assert code == 0 and "COMP-A6-ARMS off" in out
+    code, out, _ = job(tmp_path, "arms", smoke=True, gpu=False, declared="", SMOKE_STAMP="s1")
+    assert code == 0 and "COMP-A6-ARMS on" in out
+    code, out, _ = job(tmp_path, "arms")
+    assert code == 1 and "arms: SMOKE=1 and WORDS=a3" in out
 
 
 def test_a_store_error_is_not_absence(tmp_path):
@@ -1848,10 +2006,10 @@ def test_no_hash_is_no_success(tmp_path):
 
 def test_a_failed_install_and_an_unexpected_end_say_done_one(tmp_path):
     base = dict(COMP_PHASE="base", WORDS="a3", COMP_A_DECLARED="abc1234", STUB_EXISTS="", STUB_GATE="1", STUB_FAIL_SHARD="", STUB_HANG="")
-    code, out, commands = on_stubs(tmp_path, JOB.read_text().replace("uv pip install -q", "false uv pip install -q", 1), dict(base), smoke=False, gpu=True)
+    code, out, commands = on_stubs(tmp_path, job_text().replace("uv pip install -q", "false uv pip install -q", 1), dict(base), smoke=False, gpu=True)
     assert code == 1 and "uv pip install failed" in out and not scripts_run(commands)
     one_done(out, 1)
-    code, out, _ = on_stubs(tmp_path, JOB.read_text().replace("case $PHASE in\n  base)\n", "exit 7\ncase $PHASE in\n  base)\n", 1), dict(base), smoke=False, gpu=True)
+    code, out, _ = on_stubs(tmp_path, job_text().replace("case $PHASE in\n  base)\n", "exit 7\ncase $PHASE in\n  base)\n", 1), dict(base), smoke=False, gpu=True)
     assert code == 1 and "stopped unexpectedly, exit 7" in out
     one_done(out, 1)
 
@@ -1865,8 +2023,13 @@ def test_no_per_draw_number_reaches_the_log(tmp_path, phase):
 # ---- the chain, on a fake job -------------------------------------------------------------------------------------------------------------------------
 
 FAKE_JOB = '''#!/bin/bash
-[ "$COMP_PHASE" = gate ] && echo "COMP-A6-GATE ${FAKE_GATE-open}" && [ -n "${FAKE_GATE-open}" ] && echo "$COMP_PHASE words=$WORDS" >> "$FAKE_CALLS" && exit 0
-[ "$COMP_PHASE" = gate ] && exit 0
+[ "$COMP_PHASE" = arms ] && echo "COMP-A6-ARMS ${FAKE_ARMS-on}" && exit 0
+if [ "$COMP_PHASE" = gate ]; then
+  echo "COMP-A6-GATE ${FAKE_GATE-open}"
+  [ "${FAKE_GATE-open}" != closed ] || echo "COMP-A6-HOLD ${FAKE_WHY:-not run, screen failed}"
+  [ -z "${FAKE_GATE-open}" ] || echo "$COMP_PHASE words=$WORDS" >> "$FAKE_CALLS"
+  exit 0
+fi
 echo "$COMP_PHASE words=$WORDS smoke=${SMOKE:-0} attempt=${ATTEMPT:-} base=${BASE_SHA:-} length=${LENGTH_SHA:-} declared=${COMP_A_DECLARED:-}" >> "$FAKE_CALLS"
 [ "${FAKE_FAIL:-}" = "$COMP_PHASE" ] && [ -z "${SMOKE:-}" ] && exit 1
 [ "${FAKE_FAIL_SMOKE:-}" = "$COMP_PHASE" ] && [ -n "${SMOKE:-}" ] && exit 1
@@ -1917,6 +2080,27 @@ def test_a_closed_gate_runs_base_and_length_and_prints_it(tmp_path):
 def test_no_readable_gate_stops_the_chain(tmp_path, gate):
     code, out, _, calls = chain(tmp_path, "3", "abc1234", FAKE_GATE=gate)
     assert code == 1 and "ALERT chain: no hold gate for 3" in out and last_line(out) == "COMP-A6-CHAIN-DONE 1" and not any("smoke=0" in c for c in calls)
+
+
+SMOKES_OFF = [f"{p} words=a3 smoke=1 attempt=1 base= length= declared=" for p in (a6.BASE, a6.LENGTH, "smoke-read")]
+
+
+def test_hold_arms_off_chain_smokes_two_arms_and_prints_why(tmp_path):
+    code, out, _, calls = chain(tmp_path, "3", "abc1234", FAKE_ARMS="off", FAKE_GATE="closed", FAKE_WHY="not run, wrist inside the real-signer span")
+    assert code == 0 and last_line(out) == "COMP-A6-CHAIN-DONE 0" and out.count("COMP-A6-HOLD not run, wrist inside the real-signer span") == 2       # at the gate, and again beside the hashes
+    assert calls == [*SMOKES_OFF, "gate words=3", "base words=3 smoke=0 attempt=1 base= length= declared=abc1234", "length words=3 smoke=0 attempt=1 base=hash-base length= declared=abc1234"]
+    assert "gate=closed" in out and "HX3" not in out
+
+
+def test_hold_arms_off_chain_refuses_the_screen(tmp_path):
+    code, out, _, calls = chain(tmp_path, "a3", "abc1234", FAKE_ARMS="off")
+    assert code == 1 and "HOLD_ARMS=off: no hold screen runs" in out and last_line(out) == "COMP-A6-CHAIN-DONE 1" and calls == []
+
+
+@pytest.mark.parametrize("arms", ["", "maybe"])
+def test_no_readable_setting_stops_the_chain(tmp_path, arms):
+    code, out, _, calls = chain(tmp_path, "3", "abc1234", FAKE_ARMS=arms)
+    assert code == 1 and "no HOLD_ARMS from the job" in out and calls == []
 
 
 def test_the_screens_chain_adds_hold_xr_and_a_later_attempt_keeps_its_number(tmp_path):

@@ -2326,6 +2326,1978 @@
    "youtube_over_d20_monocular": 1.5392
   }
  },
+ "real_signer_span": {
+  "clips": {
+   "UC-7qFeNijjbBpjL2KvMN_QA": 30,
+   "UC-GYvbXRH4CgK2Ocn_4srww": 30,
+   "UC-IaYvWxBm3Q15N4SC3O1Hw": 30,
+   "UC-VQN3FOZICn0MCEEjOGZdA": 30,
+   "UC0PiBNG7h5d1IYLXo7z_BzA": 30,
+   "UC0jdsYSKy1VNhKw79mw0RsA": 30,
+   "UC1mrgxxrCtcAUBFR5Z9Kn6A": 30,
+   "UC1xPhlKUKuJ3JH21N8ipwpQ": 30,
+   "UC2bK5-reqE8zppmJJ9kZdVQ": 30,
+   "UC2nAqidRiPfQa53Yaf9qeCg": 30,
+   "UC3etnnsIxGpH89XgojqE0Ng": 30,
+   "UC3hOdPWDnQBs9NTt3y2fPRg": 30,
+   "UC3p9-cdApmRUOgQ4-M4P01w": 30,
+   "UC4fJ87vQIH9NUQwJNmgUkFw": 30,
+   "UC52H_xHKrwnQRPb25kQtFCQ": 30,
+   "UC5lvdrjVrbYEFjFeoH1aBnQ": 30,
+   "UC5pEK6jJwx_JoZXhEsGPnJQ": 30,
+   "UC6Nt4sw73UuNmxnjVaa7SYw": 30,
+   "UC6ObwNc1wkEbAnEf8Pf0KoQ": 30,
+   "UC6WhyWFSLUzYW8MXAB_1GZg": 30,
+   "UC70SSNojGf-vMAdvjS1wfkg": 30,
+   "UC76bQa0r83RNydA55Uh_ovw": 30,
+   "UC7hDSJ0Y236vU68z6ekcALQ": 30,
+   "UC9Po19_l-kPdhqnJumg5_Nw": 30,
+   "UC9UqfAVkaO8Q3QLbeqNxygQ": 30,
+   "UCAbFXOPq0sx03ev-kO3FE2A": 30,
+   "UCBJOcgmUmIMoS62uvMzGi5A": 30,
+   "UCBYjXB2UgJYu05ljm8UJEvQ": 30,
+   "UCC-n9JB45R7cRvKVpHrHdGg": 30,
+   "UCCOaLeJLHuYax7_k5wbC6cw": 30,
+   "UCDL2Ug9aPMTAK0FDfWopZMw": 30,
+   "UCEHeJSkYnE1CeFM7wBNb53w": 30,
+   "UCET0ZgnCFLi1369c3ZWfSFA": 30,
+   "UCEYXCOUkTeFLj8thLxt6FVQ": 30,
+   "UCEhrSe-kPnpzjolcy0XKvxg": 30,
+   "UCFH2pdY2RtbrjlyomAGLmNw": 30,
+   "UCFHkpbh0wCDFk7fAPbh5Suw": 30,
+   "UCF_6ucHSV6NJj7wzG8x_urA": 30,
+   "UCFaQvZ9qIRFaB0GRDRq9L5A": 30,
+   "UCGK9n7svoIjuaQfRIBJXkqQ": 30,
+   "UCGu8KKKnkOAsIAprOFAvJzg": 30,
+   "UCGzWwSdhNQpPAATLZjs8lWw": 30,
+   "UCHMBXgtO2Ez6Ie4HkbQk2Fg": 30,
+   "UCHQIItw1DnxFCbQh1aFOq7Q": 30,
+   "UCHr2GqhllLpeUkw67ueN1-A": 30,
+   "UCHsXZ9eJ-0qUyg8EXm969tg": 30,
+   "UCHxXEdeyNIfqhj3I1RQVEXw": 30,
+   "UCIYyD-O85i1hNkZ8354aX8g": 30,
+   "UCIgyoRY69c8rPS2YDQ-wAqg": 30,
+   "UCJapA5zmXcnUOcTrErgwiRg": 30,
+   "UCKVIXfajwqppEtWLiucObBQ": 30,
+   "UCKki8PhClHFEiaSdKNXxilQ": 30,
+   "UCLULAdF1-hor45QMG5DsjXQ": 30,
+   "UCLjV1ol_2nnVsk_wLZfjPFw": 30,
+   "UCOKBLQYhD1FHLw0R6NBcTsQ": 30,
+   "UCOjoL0k7p_Q0AcXSrEKTd8w": 30,
+   "UCPV8xZOt__9bqGsbn3yF37A": 30,
+   "UCQRWwJAwzEZ9XqwEu3gvL0g": 30,
+   "UCQbhiOgoavwD8D-W2fVXQTA": 30,
+   "UCQqlp5pbCtnZFG22SvA8rrQ": 30,
+   "UCR7_ied3vPnb7Jwmplsz4ug": 30,
+   "UCRsfWeyiGkFoZ41FbQ0LLZA": 30,
+   "UCRwPaAUrbOL4X7WgxZzIOpw": 30,
+   "UCSUVtj7GTHIzk-gQZBHFbCg": 30,
+   "UCS_sxPSNGTfpkoa5nYEt-1g": 30,
+   "UCSeO_wnj55mSUOZBS1kcOFQ": 30,
+   "UCSwgy2NOSgP1OCue5lh_vrw": 30,
+   "UCT2BeW8WJlzardB1seNqBeA": 30,
+   "UCUsTVCQNktF99lwIMJecMrA": 30,
+   "UCVnYnjKyNuv7eVYQmTe8aIw": 30,
+   "UCVyxYoSW-59ZPCd4krQg3fA": 30,
+   "UCWbnHpCljj8MuTeNnCiNVew": 30,
+   "UCYCp9K52rwatFrl5JOO_2Tw": 30,
+   "UCYWJdRpk2jOOZaqvXGVjkxw": 30,
+   "UCYyRpJBseu43EojDdSUcSyA": 30,
+   "UCZIS4Y3ZMbw8vvXeZ8PqvZw": 30,
+   "UC_KW4XPFXf8Yfo8nHh7HaVA": 30,
+   "UCa9OAVS298maexSNJ0iOPNQ": 30,
+   "UCaGw9z5wD70PmLH_V2keTRQ": 30,
+   "UCaVlD3iSYMf35smXZswfteA": 30,
+   "UCak38d7-WkBjzLMAAPBhfQg": 30,
+   "UCbLIzmvnSXPdpMxWQLebPJQ": 30,
+   "UCbNsfc8NdsaJHp3tuAK1TCg": 30,
+   "UCc-cGBZ7ML4ycJmUs3Lu4tw": 30,
+   "UCdprSs1mVS8SJWaigvXEpNg": 30,
+   "UCe-0AEKsX8VcFejcSGM__Jw": 30,
+   "UCeOdSeu80D-06pkfKchgE1g": 30,
+   "UCfBHVaEl7oWs68skvR07UWA": 30,
+   "UCgZzUM40A60airgl_F0_h9g": 30,
+   "UChaQXI_ya4H1gkJskWLS-7A": 30,
+   "UCjVpsnDflFe9dOWZWlnxUrA": 30,
+   "UCjX0HQzeaHBXVXXS7mPKFlA": 30,
+   "UCjc4_ncACVusJ6tZmtVJQjw": 30,
+   "UCkNc_kIU2HlQxEomt6ZnLVw": 30,
+   "UCkaVvxq4vAwZxRdMQJVBB-A": 30,
+   "UCkyteSyUaOq2mH3RIKgFXcw": 30,
+   "UCl_g7ShFVI8LPipvHXqIP6w": 30,
+   "UCmUWhTXTwCVdJ5UaQKS66WA": 30,
+   "UCmueSoNpdDrumJrF5fyKIKQ": 30,
+   "UCndMNgdSMOjJihK0qwOny1g": 30,
+   "UCny1mBKVXS6w9W3om5IVK3Q": 30,
+   "UCoRNJz8_ebIoFbJr8hctwpQ": 30,
+   "UCoVvI_IEmKaUi921hkQFKVA": 30,
+   "UCor3VcSrTRUPZUsvtDTi0rg": 30,
+   "UCorj4-intk2Q9QVMBrlfQKw": 30,
+   "UCpGpqBu1JBc0X4_mbL0eGMA": 30,
+   "UCpLtzKe6f_CWcISIhdQ2ncA": 30,
+   "UCsEBkTy545q7ZQXmbRu1szg": 30,
+   "UCsQbpi3ku6RJhp16nZWbU2w": 30,
+   "UCsuBAbMlPGJ95w3mwhz-30g": 30,
+   "UCt6UUZX0MF2n-jk7_v27Wwg": 30,
+   "UCtFQbaZu348XcVh1aVt4rhA": 30,
+   "UCtWSKOEuSUkcIjw_l8UjwlQ": 30,
+   "UCuseIvrm7VZrcUJipa5yw9g": 30,
+   "UCuyQHJ4y76-i0w9N33vT-kg": 30,
+   "UCxdcxnZRhsC4Rn7wg6PoSFQ": 30,
+   "UCxdpzJKDPPDr4SqBG03gwoQ": 30,
+   "UCyOiQ0B6GkvjaoUCqJZXUEQ": 30,
+   "UCziQtDCnrKbqqe7_P7hpEAw": 30,
+   "UCzy0xBebzv0zaqhvuLbUWgQ": 30,
+   "asllrp_Cory": 150,
+   "asllrp_RIT-P02": 150,
+   "asllrp_RIT-P03": 108,
+   "asllrp_Rachel": 150,
+   "how2sign_c01": 177,
+   "how2sign_c02": 300,
+   "how2sign_c03": 265,
+   "how2sign_c04": 300,
+   "how2sign_c05": 58
+  },
+  "definition": "p10 and p90 of per-signer mean wrist speed, signers or channels with at least 30 clips, all through the monocular path; real clips only; never c00 or a test partition",
+  "few_channels": false,
+  "forms": {
+   "base": {
+    "inside": {
+     "3hz": {
+      "left": true,
+      "pooled": true,
+      "right": true
+     },
+     "raw": {
+      "left": true,
+      "pooled": true,
+      "right": true
+     }
+    },
+    "inside_all_six": true,
+    "old_reading": {
+     "over_d20_monocular": {
+      "3hz": {
+       "left": 1.7712,
+       "pooled": 1.7544,
+       "right": 1.7338
+      },
+      "raw": {
+       "left": 1.876,
+       "pooled": 1.8834,
+       "right": 1.8978
+      }
+     },
+     "over_d20_two_view": {
+      "3hz": {
+       "left": 2.7644,
+       "pooled": 2.1996,
+       "right": 1.7862
+      },
+      "raw": {
+       "left": 2.2276,
+       "pooled": 1.774,
+       "right": 1.4582
+      }
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.31959,
+      "pooled": 1.25723,
+      "right": 1.19486
+     },
+     "raw": {
+      "left": 1.60603,
+      "pooled": 1.55722,
+      "right": 1.51542
+     }
+    }
+   },
+   "hold_x": {
+    "inside": {
+     "3hz": {
+      "left": true,
+      "pooled": true,
+      "right": true
+     },
+     "raw": {
+      "left": true,
+      "pooled": true,
+      "right": true
+     }
+    },
+    "inside_all_six": true,
+    "old_reading": {
+     "over_d20_monocular": {
+      "3hz": {
+       "left": 1.3962,
+       "pooled": 1.5594,
+       "right": 1.7338
+      },
+      "raw": {
+       "left": 1.5083,
+       "pooled": 1.6938,
+       "right": 1.8978
+      }
+     },
+     "over_d20_two_view": {
+      "3hz": {
+       "left": 2.1791,
+       "pooled": 1.9551,
+       "right": 1.7862
+      },
+      "raw": {
+       "left": 1.791,
+       "pooled": 1.5954,
+       "right": 1.4582
+      }
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.04019,
+      "pooled": 1.11748,
+      "right": 1.19486
+     },
+     "raw": {
+      "left": 1.29126,
+      "pooled": 1.40044,
+      "right": 1.51542
+     }
+    }
+   },
+   "hold_x_length": {
+    "inside": {
+     "3hz": {
+      "left": true,
+      "pooled": true,
+      "right": false
+     },
+     "raw": {
+      "left": true,
+      "pooled": true,
+      "right": false
+     }
+    },
+    "inside_all_six": false,
+    "old_reading": {
+     "over_d20_monocular": {
+      "3hz": {
+       "left": 1.5392,
+       "pooled": 1.7155,
+       "right": 1.9036
+      },
+      "raw": {
+       "left": 1.711,
+       "pooled": 1.9263,
+       "right": 2.1623
+      }
+     },
+     "over_d20_two_view": {
+      "3hz": {
+       "left": 2.4023,
+       "pooled": 2.1508,
+       "right": 1.9611
+      },
+      "raw": {
+       "left": 2.0316,
+       "pooled": 1.8144,
+       "right": 1.6614
+      }
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.14674,
+      "pooled": 1.22933,
+      "right": 1.31186
+     },
+     "raw": {
+      "left": 1.46472,
+      "pooled": 1.59268,
+      "right": 1.72659
+     }
+    }
+   },
+   "length_tokens": {
+    "inside": {
+     "3hz": {
+      "left": true,
+      "pooled": true,
+      "right": false
+     },
+     "raw": {
+      "left": true,
+      "pooled": true,
+      "right": false
+     }
+    },
+    "inside_all_six": false,
+    "old_reading": {
+     "over_d20_monocular": {
+      "3hz": {
+       "left": 1.9623,
+       "pooled": 1.9354,
+       "right": 1.9036
+      },
+      "raw": {
+       "left": 2.1321,
+       "pooled": 2.1436,
+       "right": 2.1623
+      }
+     },
+     "over_d20_two_view": {
+      "3hz": {
+       "left": 3.0626,
+       "pooled": 2.4265,
+       "right": 1.9611
+      },
+      "raw": {
+       "left": 2.5317,
+       "pooled": 2.0191,
+       "right": 1.6614
+      }
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.46193,
+      "pooled": 1.38691,
+      "right": 1.31186
+     },
+     "raw": {
+      "left": 1.82528,
+      "pooled": 1.77237,
+      "right": 1.72659
+     }
+    }
+   }
+  },
+  "groups": {
+   "UC-7qFeNijjbBpjL2KvMN_QA": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UC-GYvbXRH4CgK2Ocn_4srww": {
+    "3hz": {
+     "left": 0.97435,
+     "pooled": 1.06042,
+     "right": 1.14619
+    },
+    "raw": {
+     "left": 1.11951,
+     "pooled": 1.21805,
+     "right": 1.31625
+    }
+   },
+   "UC-IaYvWxBm3Q15N4SC3O1Hw": {
+    "3hz": {
+     "left": 0.98049,
+     "pooled": 0.97837,
+     "right": 0.97534
+    },
+    "raw": {
+     "left": 1.54193,
+     "pooled": 1.47171,
+     "right": 1.37141
+    }
+   },
+   "UC-VQN3FOZICn0MCEEjOGZdA": {
+    "3hz": {
+     "left": 1.28298,
+     "pooled": 1.02356,
+     "right": 0.72907
+    },
+    "raw": {
+     "left": 1.62218,
+     "pooled": 1.31739,
+     "right": 0.93218
+    }
+   },
+   "UC0PiBNG7h5d1IYLXo7z_BzA": {
+    "3hz": {
+     "left": 1.78119,
+     "pooled": 1.65325,
+     "right": 1.53007
+    },
+    "raw": {
+     "left": 2.09763,
+     "pooled": 1.97695,
+     "right": 1.86374
+    }
+   },
+   "UC0jdsYSKy1VNhKw79mw0RsA": {
+    "3hz": {
+     "left": 1.03187,
+     "pooled": 0.95108,
+     "right": 0.86999
+    },
+    "raw": {
+     "left": 1.17639,
+     "pooled": 1.09039,
+     "right": 1.00403
+    }
+   },
+   "UC1mrgxxrCtcAUBFR5Z9Kn6A": {
+    "3hz": {
+     "left": 1.22057,
+     "pooled": 1.03974,
+     "right": 0.77312
+    },
+    "raw": {
+     "left": 1.46103,
+     "pooled": 1.23106,
+     "right": 0.90298
+    }
+   },
+   "UC1xPhlKUKuJ3JH21N8ipwpQ": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UC2bK5-reqE8zppmJJ9kZdVQ": {
+    "3hz": {
+     "left": 2.16318,
+     "pooled": 1.85425,
+     "right": 1.68541
+    },
+    "raw": {
+     "left": 2.45257,
+     "pooled": 2.10076,
+     "right": 1.90531
+    }
+   },
+   "UC2nAqidRiPfQa53Yaf9qeCg": {
+    "3hz": {
+     "left": 1.74171,
+     "pooled": 1.48589,
+     "right": 1.25252
+    },
+    "raw": {
+     "left": 1.92143,
+     "pooled": 1.6646,
+     "right": 1.40958
+    }
+   },
+   "UC3etnnsIxGpH89XgojqE0Ng": {
+    "3hz": {
+     "left": 1.20573,
+     "pooled": 0.97333,
+     "right": 0.83897
+    },
+    "raw": {
+     "left": 1.29415,
+     "pooled": 1.06727,
+     "right": 0.93817
+    }
+   },
+   "UC3hOdPWDnQBs9NTt3y2fPRg": {
+    "3hz": {
+     "left": 1.42866,
+     "pooled": 1.24324,
+     "right": 1.02222
+    },
+    "raw": {
+     "left": 1.62219,
+     "pooled": 1.43016,
+     "right": 1.20353
+    }
+   },
+   "UC3p9-cdApmRUOgQ4-M4P01w": {
+    "3hz": {
+     "left": 1.02113,
+     "pooled": 1.02912,
+     "right": 1.02545
+    },
+    "raw": {
+     "left": 1.20426,
+     "pooled": 1.22523,
+     "right": 1.23763
+    }
+   },
+   "UC4fJ87vQIH9NUQwJNmgUkFw": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UC52H_xHKrwnQRPb25kQtFCQ": {
+    "3hz": {
+     "left": 1.61539,
+     "pooled": 1.41017,
+     "right": 1.24744
+    },
+    "raw": {
+     "left": 1.9614,
+     "pooled": 1.75228,
+     "right": 1.58813
+    }
+   },
+   "UC5lvdrjVrbYEFjFeoH1aBnQ": {
+    "3hz": {
+     "left": 0.91692,
+     "pooled": 0.88268,
+     "right": 0.84769
+    },
+    "raw": {
+     "left": 1.05131,
+     "pooled": 1.00419,
+     "right": 0.95681
+    }
+   },
+   "UC5pEK6jJwx_JoZXhEsGPnJQ": {
+    "3hz": {
+     "left": 1.08497,
+     "pooled": 1.13269,
+     "right": 1.18368
+    },
+    "raw": {
+     "left": 1.25715,
+     "pooled": 1.31278,
+     "right": 1.37214
+    }
+   },
+   "UC6Nt4sw73UuNmxnjVaa7SYw": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UC6ObwNc1wkEbAnEf8Pf0KoQ": {
+    "3hz": {
+     "left": 0.71329,
+     "pooled": 0.59366,
+     "right": 0.46223
+    },
+    "raw": {
+     "left": 0.89039,
+     "pooled": 0.71864,
+     "right": 0.56129
+    }
+   },
+   "UC6WhyWFSLUzYW8MXAB_1GZg": {
+    "3hz": {
+     "left": 1.11126,
+     "pooled": 0.90679,
+     "right": 0.70232
+    },
+    "raw": {
+     "left": 1.41923,
+     "pooled": 1.20042,
+     "right": 0.98161
+    }
+   },
+   "UC70SSNojGf-vMAdvjS1wfkg": {
+    "3hz": {
+     "left": 0.69109,
+     "pooled": 0.70897,
+     "right": 1.05655
+    },
+    "raw": {
+     "left": 1.08906,
+     "pooled": 1.10706,
+     "right": 1.41932
+    }
+   },
+   "UC76bQa0r83RNydA55Uh_ovw": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UC7hDSJ0Y236vU68z6ekcALQ": {
+    "3hz": {
+     "left": 0.28461,
+     "pooled": 0.38489,
+     "right": 0.48518
+    },
+    "raw": {
+     "left": 0.31629,
+     "pooled": 0.47777,
+     "right": 0.63926
+    }
+   },
+   "UC9Po19_l-kPdhqnJumg5_Nw": {
+    "3hz": {
+     "left": 1.31978,
+     "pooled": 1.262,
+     "right": 1.20345
+    },
+    "raw": {
+     "left": 1.44547,
+     "pooled": 1.39027,
+     "right": 1.33405
+    }
+   },
+   "UC9UqfAVkaO8Q3QLbeqNxygQ": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UCAbFXOPq0sx03ev-kO3FE2A": {
+    "3hz": {
+     "left": 1.18089,
+     "pooled": 1.12376,
+     "right": 1.08626
+    },
+    "raw": {
+     "left": 1.35347,
+     "pooled": 1.29565,
+     "right": 1.2587
+    }
+   },
+   "UCBJOcgmUmIMoS62uvMzGi5A": {
+    "3hz": {
+     "left": 0.98244,
+     "pooled": 1.01414,
+     "right": 1.74028
+    },
+    "raw": {
+     "left": 1.13767,
+     "pooled": 1.1868,
+     "right": 1.99507
+    }
+   },
+   "UCBYjXB2UgJYu05ljm8UJEvQ": {
+    "3hz": {
+     "left": 1.04337,
+     "pooled": 1.03778,
+     "right": 1.03218
+    },
+    "raw": {
+     "left": 1.18932,
+     "pooled": 1.20686,
+     "right": 1.22471
+    }
+   },
+   "UCC-n9JB45R7cRvKVpHrHdGg": {
+    "3hz": {
+     "left": 0.94186,
+     "pooled": 0.84548,
+     "right": 0.74229
+    },
+    "raw": {
+     "left": 1.00288,
+     "pooled": 0.91707,
+     "right": 0.82488
+    }
+   },
+   "UCCOaLeJLHuYax7_k5wbC6cw": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UCDL2Ug9aPMTAK0FDfWopZMw": {
+    "3hz": {
+     "left": 1.02603,
+     "pooled": 1.13258,
+     "right": 1.11111
+    },
+    "raw": {
+     "left": 1.22581,
+     "pooled": 1.47258,
+     "right": 1.6726
+    }
+   },
+   "UCEHeJSkYnE1CeFM7wBNb53w": {
+    "3hz": {
+     "left": 1.08755,
+     "pooled": 1.04706,
+     "right": 1.01449
+    },
+    "raw": {
+     "left": 1.24055,
+     "pooled": 1.18417,
+     "right": 1.13442
+    }
+   },
+   "UCET0ZgnCFLi1369c3ZWfSFA": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UCEYXCOUkTeFLj8thLxt6FVQ": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UCEhrSe-kPnpzjolcy0XKvxg": {
+    "3hz": {
+     "left": 1.0359,
+     "pooled": 1.09218,
+     "right": 1.05864
+    },
+    "raw": {
+     "left": 1.20935,
+     "pooled": 1.26319,
+     "right": 1.19122
+    }
+   },
+   "UCFH2pdY2RtbrjlyomAGLmNw": {
+    "3hz": {
+     "left": 0.66108,
+     "pooled": 0.67201,
+     "right": 0.68473
+    },
+    "raw": {
+     "left": 0.92041,
+     "pooled": 0.89667,
+     "right": 0.88269
+    }
+   },
+   "UCFHkpbh0wCDFk7fAPbh5Suw": {
+    "3hz": {
+     "left": 1.00332,
+     "pooled": 0.94081,
+     "right": 0.87765
+    },
+    "raw": {
+     "left": 1.31472,
+     "pooled": 1.25993,
+     "right": 1.06045
+    }
+   },
+   "UCF_6ucHSV6NJj7wzG8x_urA": {
+    "3hz": {
+     "left": 1.14706,
+     "pooled": 1.06615,
+     "right": 0.98348
+    },
+    "raw": {
+     "left": 1.31517,
+     "pooled": 1.22191,
+     "right": 1.12641
+    }
+   },
+   "UCFaQvZ9qIRFaB0GRDRq9L5A": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UCGK9n7svoIjuaQfRIBJXkqQ": {
+    "3hz": {
+     "left": 0.92046,
+     "pooled": 0.93987,
+     "right": 0.96966
+    },
+    "raw": {
+     "left": 1.04355,
+     "pooled": 1.07043,
+     "right": 1.10822
+    }
+   },
+   "UCGu8KKKnkOAsIAprOFAvJzg": {
+    "3hz": {
+     "left": 1.05939,
+     "pooled": 1.06832,
+     "right": 1.07845
+    },
+    "raw": {
+     "left": 1.16239,
+     "pooled": 1.16532,
+     "right": 1.16926
+    }
+   },
+   "UCGzWwSdhNQpPAATLZjs8lWw": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UCHMBXgtO2Ez6Ie4HkbQk2Fg": {
+    "3hz": {
+     "left": 1.26639,
+     "pooled": 1.23692,
+     "right": 1.18622
+    },
+    "raw": {
+     "left": 1.41446,
+     "pooled": 1.43444,
+     "right": 1.43765
+    }
+   },
+   "UCHQIItw1DnxFCbQh1aFOq7Q": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UCHr2GqhllLpeUkw67ueN1-A": {
+    "3hz": {
+     "left": 0.93954,
+     "pooled": 0.86302,
+     "right": 0.81203
+    },
+    "raw": {
+     "left": 1.12501,
+     "pooled": 1.00767,
+     "right": 0.92199
+    }
+   },
+   "UCHsXZ9eJ-0qUyg8EXm969tg": {
+    "3hz": {
+     "left": 1.27041,
+     "pooled": 0.94662,
+     "right": 0.70327
+    },
+    "raw": {
+     "left": 1.35963,
+     "pooled": 1.0343,
+     "right": 0.78359
+    }
+   },
+   "UCHxXEdeyNIfqhj3I1RQVEXw": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UCIYyD-O85i1hNkZ8354aX8g": {
+    "3hz": {
+     "left": 1.04451,
+     "pooled": 0.88759,
+     "right": 0.69768
+    },
+    "raw": {
+     "left": 1.15775,
+     "pooled": 0.98532,
+     "right": 0.77658
+    }
+   },
+   "UCIgyoRY69c8rPS2YDQ-wAqg": {
+    "3hz": {
+     "left": 0.99789,
+     "pooled": 0.95621,
+     "right": 0.9273
+    },
+    "raw": {
+     "left": 1.22355,
+     "pooled": 1.19242,
+     "right": 1.17891
+    }
+   },
+   "UCJapA5zmXcnUOcTrErgwiRg": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UCKVIXfajwqppEtWLiucObBQ": {
+    "3hz": {
+     "left": 0.94636,
+     "pooled": 0.86543,
+     "right": 0.76354
+    },
+    "raw": {
+     "left": 1.08027,
+     "pooled": 1.02258,
+     "right": 0.949
+    }
+   },
+   "UCKki8PhClHFEiaSdKNXxilQ": {
+    "3hz": {
+     "left": 1.13119,
+     "pooled": 1.0746,
+     "right": 1.01801
+    },
+    "raw": {
+     "left": 2.02625,
+     "pooled": 2.3242,
+     "right": 2.62215
+    }
+   },
+   "UCLULAdF1-hor45QMG5DsjXQ": {
+    "3hz": {
+     "left": 0.85519,
+     "pooled": 0.85746,
+     "right": 0.84707
+    },
+    "raw": {
+     "left": 1.00028,
+     "pooled": 0.99282,
+     "right": 0.97947
+    }
+   },
+   "UCLjV1ol_2nnVsk_wLZfjPFw": {
+    "3hz": {
+     "left": 0.85298,
+     "pooled": 0.78149,
+     "right": 0.69999
+    },
+    "raw": {
+     "left": 1.16059,
+     "pooled": 1.08371,
+     "right": 0.98988
+    }
+   },
+   "UCOKBLQYhD1FHLw0R6NBcTsQ": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UCOjoL0k7p_Q0AcXSrEKTd8w": {
+    "3hz": {
+     "left": 1.31256,
+     "pooled": 1.2034,
+     "right": 1.09423
+    },
+    "raw": {
+     "left": 1.76405,
+     "pooled": 1.52987,
+     "right": 1.29569
+    }
+   },
+   "UCPV8xZOt__9bqGsbn3yF37A": {
+    "3hz": {
+     "left": 0.83527,
+     "pooled": 0.86642,
+     "right": 0.90026
+    },
+    "raw": {
+     "left": 0.93573,
+     "pooled": 0.9742,
+     "right": 1.01555
+    }
+   },
+   "UCQRWwJAwzEZ9XqwEu3gvL0g": {
+    "3hz": {
+     "left": 1.11708,
+     "pooled": 1.09146,
+     "right": 1.06118
+    },
+    "raw": {
+     "left": 1.24184,
+     "pooled": 1.21913,
+     "right": 1.19139
+    }
+   },
+   "UCQbhiOgoavwD8D-W2fVXQTA": {
+    "3hz": {
+     "left": 0.94697,
+     "pooled": 0.79736,
+     "right": 0.68179
+    },
+    "raw": {
+     "left": 1.05021,
+     "pooled": 0.90281,
+     "right": 0.79222
+    }
+   },
+   "UCQqlp5pbCtnZFG22SvA8rrQ": {
+    "3hz": {
+     "left": 1.21054,
+     "pooled": 1.06482,
+     "right": 0.87881
+    },
+    "raw": {
+     "left": 1.54026,
+     "pooled": 1.2859,
+     "right": 1.04096
+    }
+   },
+   "UCR7_ied3vPnb7Jwmplsz4ug": {
+    "3hz": {
+     "left": 1.16253,
+     "pooled": 1.01374,
+     "right": 0.86405
+    },
+    "raw": {
+     "left": 1.24723,
+     "pooled": 1.10529,
+     "right": 0.96667
+    }
+   },
+   "UCRsfWeyiGkFoZ41FbQ0LLZA": {
+    "3hz": {
+     "left": 1.19915,
+     "pooled": 1.10873,
+     "right": 1.08453
+    },
+    "raw": {
+     "left": 1.30742,
+     "pooled": 1.2052,
+     "right": 1.17419
+    }
+   },
+   "UCRwPaAUrbOL4X7WgxZzIOpw": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UCSUVtj7GTHIzk-gQZBHFbCg": {
+    "3hz": {
+     "left": 1.55509,
+     "pooled": 1.38661,
+     "right": 1.22653
+    },
+    "raw": {
+     "left": 1.89421,
+     "pooled": 1.67655,
+     "right": 1.49069
+    }
+   },
+   "UCS_sxPSNGTfpkoa5nYEt-1g": {
+    "3hz": {
+     "left": 2.24388,
+     "pooled": 2.12739,
+     "right": 0.78641
+    },
+    "raw": {
+     "left": 2.46442,
+     "pooled": 2.33547,
+     "right": 0.87377
+    }
+   },
+   "UCSeO_wnj55mSUOZBS1kcOFQ": {
+    "3hz": {
+     "left": 1.32419,
+     "pooled": 1.06299,
+     "right": 0.77757
+    },
+    "raw": {
+     "left": 2.66467,
+     "pooled": 1.89567,
+     "right": 1.10957
+    }
+   },
+   "UCSwgy2NOSgP1OCue5lh_vrw": {
+    "3hz": {
+     "left": 1.35895,
+     "pooled": 1.33545,
+     "right": 1.30347
+    },
+    "raw": {
+     "left": 1.4873,
+     "pooled": 1.51246,
+     "right": 1.5277
+    }
+   },
+   "UCT2BeW8WJlzardB1seNqBeA": {
+    "3hz": {
+     "left": 1.34807,
+     "pooled": 1.42215,
+     "right": 1.48965
+    },
+    "raw": {
+     "left": 1.47349,
+     "pooled": 1.59235,
+     "right": 1.70396
+    }
+   },
+   "UCUsTVCQNktF99lwIMJecMrA": {
+    "3hz": {
+     "left": 0.83288,
+     "pooled": 0.73968,
+     "right": 0.60989
+    },
+    "raw": {
+     "left": 1.11739,
+     "pooled": 1.03925,
+     "right": 1.03274
+    }
+   },
+   "UCVnYnjKyNuv7eVYQmTe8aIw": {
+    "3hz": {
+     "left": 0.91117,
+     "pooled": 0.93989,
+     "right": 0.96001
+    },
+    "raw": {
+     "left": 1.11671,
+     "pooled": 1.1431,
+     "right": 1.14425
+    }
+   },
+   "UCVyxYoSW-59ZPCd4krQg3fA": {
+    "3hz": {
+     "left": 1.24092,
+     "pooled": 1.24485,
+     "right": 1.24878
+    },
+    "raw": {
+     "left": 1.43187,
+     "pooled": 1.47616,
+     "right": 1.52046
+    }
+   },
+   "UCWbnHpCljj8MuTeNnCiNVew": {
+    "3hz": {
+     "left": 1.7492,
+     "pooled": 1.47739,
+     "right": 1.20093
+    },
+    "raw": {
+     "left": 3.45429,
+     "pooled": 2.80535,
+     "right": 2.16271
+    }
+   },
+   "UCYCp9K52rwatFrl5JOO_2Tw": {
+    "3hz": {
+     "left": 0.91209,
+     "pooled": 0.88976,
+     "right": 0.73717
+    },
+    "raw": {
+     "left": 1.18163,
+     "pooled": 1.11249,
+     "right": 0.88715
+    }
+   },
+   "UCYWJdRpk2jOOZaqvXGVjkxw": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UCYyRpJBseu43EojDdSUcSyA": {
+    "3hz": {
+     "left": 0.8064,
+     "pooled": 0.85083,
+     "right": 0.8938
+    },
+    "raw": {
+     "left": 0.91062,
+     "pooled": 0.96197,
+     "right": 1.01227
+    }
+   },
+   "UCZIS4Y3ZMbw8vvXeZ8PqvZw": {
+    "3hz": {
+     "left": 0.85499,
+     "pooled": 0.83574,
+     "right": 0.81198
+    },
+    "raw": {
+     "left": 0.9724,
+     "pooled": 0.96278,
+     "right": 0.94561
+    }
+   },
+   "UC_KW4XPFXf8Yfo8nHh7HaVA": {
+    "3hz": {
+     "left": 1.7905,
+     "pooled": 1.8523,
+     "right": 2.16055
+    },
+    "raw": {
+     "left": 2.2602,
+     "pooled": 2.09698,
+     "right": 2.30792
+    }
+   },
+   "UCa9OAVS298maexSNJ0iOPNQ": {
+    "3hz": {
+     "left": 1.19038,
+     "pooled": 1.19625,
+     "right": 1.20608
+    },
+    "raw": {
+     "left": 1.43202,
+     "pooled": 1.41564,
+     "right": 1.4052
+    }
+   },
+   "UCaGw9z5wD70PmLH_V2keTRQ": {
+    "3hz": {
+     "left": 1.15195,
+     "pooled": 1.0605,
+     "right": 0.80312
+    },
+    "raw": {
+     "left": 1.29797,
+     "pooled": 1.22786,
+     "right": 1.01278
+    }
+   },
+   "UCaVlD3iSYMf35smXZswfteA": {
+    "3hz": {
+     "left": 2.77534,
+     "pooled": 1.21737,
+     "right": 0.74043
+    },
+    "raw": {
+     "left": 2.89076,
+     "pooled": 1.36748,
+     "right": 0.88942
+    }
+   },
+   "UCak38d7-WkBjzLMAAPBhfQg": {
+    "3hz": {
+     "left": 1.22748,
+     "pooled": 1.17608,
+     "right": 1.12564
+    },
+    "raw": {
+     "left": 1.36833,
+     "pooled": 1.33808,
+     "right": 1.31006
+    }
+   },
+   "UCbLIzmvnSXPdpMxWQLebPJQ": {
+    "3hz": {
+     "left": 1.20167,
+     "pooled": 1.01495,
+     "right": 0.8034
+    },
+    "raw": {
+     "left": 1.30051,
+     "pooled": 1.12585,
+     "right": 0.92678
+    }
+   },
+   "UCbNsfc8NdsaJHp3tuAK1TCg": {
+    "3hz": {
+     "left": 1.19593,
+     "pooled": 1.20211,
+     "right": 1.22356
+    },
+    "raw": {
+     "left": 1.27118,
+     "pooled": 1.24736,
+     "right": 1.23532
+    }
+   },
+   "UCc-cGBZ7ML4ycJmUs3Lu4tw": {
+    "3hz": {
+     "left": 0.83375,
+     "pooled": 0.81326,
+     "right": 0.76084
+    },
+    "raw": {
+     "left": 1.16706,
+     "pooled": 1.14317,
+     "right": 1.06071
+    }
+   },
+   "UCdprSs1mVS8SJWaigvXEpNg": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UCe-0AEKsX8VcFejcSGM__Jw": {
+    "3hz": {
+     "left": 1.06211,
+     "pooled": 0.96199,
+     "right": 0.86376
+    },
+    "raw": {
+     "left": 1.20539,
+     "pooled": 1.09651,
+     "right": 0.99012
+    }
+   },
+   "UCeOdSeu80D-06pkfKchgE1g": {
+    "3hz": {
+     "left": 2.01044,
+     "pooled": 1.57651,
+     "right": 1.14258
+    },
+    "raw": {
+     "left": 2.29724,
+     "pooled": 1.80878,
+     "right": 1.32031
+    }
+   },
+   "UCfBHVaEl7oWs68skvR07UWA": {
+    "3hz": {
+     "left": 1.79652,
+     "pooled": 1.22964,
+     "right": 0.66275
+    },
+    "raw": {
+     "left": 6.1465,
+     "pooled": 4.07704,
+     "right": 2.00757
+    }
+   },
+   "UCgZzUM40A60airgl_F0_h9g": {
+    "3hz": {
+     "left": 0.75224,
+     "pooled": 0.61519,
+     "right": 0.47814
+    },
+    "raw": {
+     "left": 0.97265,
+     "pooled": 0.88435,
+     "right": 0.79604
+    }
+   },
+   "UChaQXI_ya4H1gkJskWLS-7A": {
+    "3hz": {
+     "left": 0.79998,
+     "pooled": 0.7435,
+     "right": 0.70181
+    },
+    "raw": {
+     "left": 0.94035,
+     "pooled": 0.87536,
+     "right": 0.82714
+    }
+   },
+   "UCjVpsnDflFe9dOWZWlnxUrA": {
+    "3hz": {
+     "left": 1.08481,
+     "pooled": 0.98309,
+     "right": 0.88715
+    },
+    "raw": {
+     "left": 1.18238,
+     "pooled": 1.11227,
+     "right": 1.05537
+    }
+   },
+   "UCjX0HQzeaHBXVXXS7mPKFlA": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UCjc4_ncACVusJ6tZmtVJQjw": {
+    "3hz": {
+     "left": 1.51608,
+     "pooled": 1.34461,
+     "right": 1.19595
+    },
+    "raw": {
+     "left": 1.82909,
+     "pooled": 1.61619,
+     "right": 1.43129
+    }
+   },
+   "UCkNc_kIU2HlQxEomt6ZnLVw": {
+    "3hz": {
+     "left": 0.50023,
+     "pooled": 0.54135,
+     "right": 0.64711
+    },
+    "raw": {
+     "left": 0.62566,
+     "pooled": 0.67424,
+     "right": 0.80972
+    }
+   },
+   "UCkaVvxq4vAwZxRdMQJVBB-A": {
+    "3hz": {
+     "left": 1.5143,
+     "pooled": 1.34899,
+     "right": 1.18186
+    },
+    "raw": {
+     "left": 2.1257,
+     "pooled": 1.86806,
+     "right": 1.59224
+    }
+   },
+   "UCkyteSyUaOq2mH3RIKgFXcw": {
+    "3hz": {
+     "left": 2.18917,
+     "pooled": 1.8127,
+     "right": 1.23918
+    },
+    "raw": {
+     "left": 3.11532,
+     "pooled": 2.69382,
+     "right": 2.02957
+    }
+   },
+   "UCl_g7ShFVI8LPipvHXqIP6w": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UCmUWhTXTwCVdJ5UaQKS66WA": {
+    "3hz": {
+     "left": 1.52822,
+     "pooled": 1.54722,
+     "right": 1.59239
+    },
+    "raw": {
+     "left": 1.7368,
+     "pooled": 1.78432,
+     "right": 1.86728
+    }
+   },
+   "UCmueSoNpdDrumJrF5fyKIKQ": {
+    "3hz": {
+     "left": 0.87914,
+     "pooled": 0.83443,
+     "right": 0.78165
+    },
+    "raw": {
+     "left": 1.02045,
+     "pooled": 0.97963,
+     "right": 0.9323
+    }
+   },
+   "UCndMNgdSMOjJihK0qwOny1g": {
+    "3hz": {
+     "left": 0.93471,
+     "pooled": 0.92438,
+     "right": 0.87575
+    },
+    "raw": {
+     "left": 1.14927,
+     "pooled": 1.152,
+     "right": 1.10145
+    }
+   },
+   "UCny1mBKVXS6w9W3om5IVK3Q": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UCoRNJz8_ebIoFbJr8hctwpQ": {
+    "3hz": {
+     "left": 0.78183,
+     "pooled": 0.76785,
+     "right": 0.73584
+    },
+    "raw": {
+     "left": 0.87682,
+     "pooled": 0.86168,
+     "right": 0.83425
+    }
+   },
+   "UCoVvI_IEmKaUi921hkQFKVA": {
+    "3hz": {
+     "left": 0.76776,
+     "pooled": 0.9584,
+     "right": 1.13986
+    },
+    "raw": {
+     "left": 0.98311,
+     "pooled": 1.23925,
+     "right": 1.51485
+    }
+   },
+   "UCor3VcSrTRUPZUsvtDTi0rg": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UCorj4-intk2Q9QVMBrlfQKw": {
+    "3hz": {
+     "left": 1.07287,
+     "pooled": 1.15937,
+     "right": 1.2562
+    },
+    "raw": {
+     "left": 1.2577,
+     "pooled": 1.33914,
+     "right": 1.43204
+    }
+   },
+   "UCpGpqBu1JBc0X4_mbL0eGMA": {
+    "3hz": {
+     "left": 1.14016,
+     "pooled": 1.20741,
+     "right": 1.27475
+    },
+    "raw": {
+     "left": 1.3306,
+     "pooled": 1.40711,
+     "right": 1.48398
+    }
+   },
+   "UCpLtzKe6f_CWcISIhdQ2ncA": {
+    "3hz": {
+     "left": 0.66471,
+     "pooled": 0.56773,
+     "right": 0.47074
+    },
+    "raw": {
+     "left": 1.44911,
+     "pooled": 1.10072,
+     "right": 0.75234
+    }
+   },
+   "UCsEBkTy545q7ZQXmbRu1szg": {
+    "3hz": {
+     "left": 1.27462,
+     "pooled": 1.24274,
+     "right": 1.21607
+    },
+    "raw": {
+     "left": 1.48199,
+     "pooled": 1.45483,
+     "right": 1.43307
+    }
+   },
+   "UCsQbpi3ku6RJhp16nZWbU2w": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UCsuBAbMlPGJ95w3mwhz-30g": {
+    "3hz": {
+     "left": 1.18319,
+     "pooled": 1.0568,
+     "right": 0.96584
+    },
+    "raw": {
+     "left": 1.50232,
+     "pooled": 1.2587,
+     "right": 1.11313
+    }
+   },
+   "UCt6UUZX0MF2n-jk7_v27Wwg": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UCtFQbaZu348XcVh1aVt4rhA": {
+    "3hz": {
+     "left": 0.00625,
+     "pooled": 0.00566,
+     "right": 0.00507
+    },
+    "raw": {
+     "left": 0.3911,
+     "pooled": 0.36581,
+     "right": 0.34053
+    }
+   },
+   "UCtWSKOEuSUkcIjw_l8UjwlQ": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UCuseIvrm7VZrcUJipa5yw9g": {
+    "3hz": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    },
+    "raw": {
+     "left": null,
+     "pooled": null,
+     "right": null
+    }
+   },
+   "UCuyQHJ4y76-i0w9N33vT-kg": {
+    "3hz": {
+     "left": 1.00552,
+     "pooled": 0.90719,
+     "right": 0.80954
+    },
+    "raw": {
+     "left": 1.13385,
+     "pooled": 1.01984,
+     "right": 0.90667
+    }
+   },
+   "UCxdcxnZRhsC4Rn7wg6PoSFQ": {
+    "3hz": {
+     "left": 0.90376,
+     "pooled": 0.89924,
+     "right": 0.90621
+    },
+    "raw": {
+     "left": 1.07202,
+     "pooled": 1.05476,
+     "right": 1.05323
+    }
+   },
+   "UCxdpzJKDPPDr4SqBG03gwoQ": {
+    "3hz": {
+     "left": 1.02363,
+     "pooled": 0.87442,
+     "right": 0.72217
+    },
+    "raw": {
+     "left": 1.30975,
+     "pooled": 1.10636,
+     "right": 0.90655
+    }
+   },
+   "UCyOiQ0B6GkvjaoUCqJZXUEQ": {
+    "3hz": {
+     "left": 1.25249,
+     "pooled": 1.08247,
+     "right": 0.90928
+    },
+    "raw": {
+     "left": 1.47247,
+     "pooled": 1.29153,
+     "right": 1.10698
+    }
+   },
+   "UCziQtDCnrKbqqe7_P7hpEAw": {
+    "3hz": {
+     "left": 1.9776,
+     "pooled": 1.23937,
+     "right": 0.96419
+    },
+    "raw": {
+     "left": 2.17091,
+     "pooled": 1.41843,
+     "right": 1.10932
+    }
+   },
+   "UCzy0xBebzv0zaqhvuLbUWgQ": {
+    "3hz": {
+     "left": 1.40945,
+     "pooled": 1.53938,
+     "right": 1.73556
+    },
+    "raw": {
+     "left": 1.81311,
+     "pooled": 1.88048,
+     "right": 2.02543
+    }
+   },
+   "asllrp_Cory": {
+    "3hz": {
+     "left": 1.0413,
+     "pooled": 1.01045,
+     "right": 0.9859
+    },
+    "raw": {
+     "left": 1.13373,
+     "pooled": 1.10331,
+     "right": 1.07923
+    }
+   },
+   "asllrp_RIT-P02": {
+    "3hz": {
+     "left": 1.82264,
+     "pooled": 1.55486,
+     "right": 1.28763
+    },
+    "raw": {
+     "left": 2.03748,
+     "pooled": 1.78155,
+     "right": 1.52629
+    }
+   },
+   "asllrp_RIT-P03": {
+    "3hz": {
+     "left": 1.03216,
+     "pooled": 0.98592,
+     "right": 0.94434
+    },
+    "raw": {
+     "left": 1.19208,
+     "pooled": 1.16941,
+     "right": 1.14964
+    }
+   },
+   "asllrp_Rachel": {
+    "3hz": {
+     "left": 1.35181,
+     "pooled": 1.40835,
+     "right": 1.49721
+    },
+    "raw": {
+     "left": 1.49286,
+     "pooled": 1.57076,
+     "right": 1.71074
+    }
+   },
+   "how2sign_c01": {
+    "3hz": {
+     "left": 0.77127,
+     "pooled": 0.71914,
+     "right": 0.66613
+    },
+    "raw": {
+     "left": 0.87109,
+     "pooled": 0.82263,
+     "right": 0.77321
+    }
+   },
+   "how2sign_c02": {
+    "3hz": {
+     "left": 0.82464,
+     "pooled": 0.8304,
+     "right": 0.83585
+    },
+    "raw": {
+     "left": 1.00352,
+     "pooled": 1.02617,
+     "right": 1.04778
+    }
+   },
+   "how2sign_c03": {
+    "3hz": {
+     "left": 0.7849,
+     "pooled": 0.75549,
+     "right": 0.72848
+    },
+    "raw": {
+     "left": 0.90208,
+     "pooled": 0.86973,
+     "right": 0.83995
+    }
+   },
+   "how2sign_c04": {
+    "3hz": {
+     "left": 0.55268,
+     "pooled": 0.60786,
+     "right": 0.6632
+    },
+    "raw": {
+     "left": 0.73135,
+     "pooled": 0.77577,
+     "right": 0.8203
+    }
+   },
+   "how2sign_c05": {
+    "3hz": {
+     "left": 0.48249,
+     "pooled": 0.53114,
+     "right": 0.57964
+    },
+    "raw": {
+     "left": 0.60011,
+     "pooled": 0.6434,
+     "right": 0.68656
+    }
+   }
+  },
+  "groups_per_corpus": {
+   "asllrp": 4,
+   "how2sign-two-view-text-v1": 5,
+   "youtube-asl-v1": 120
+  },
+  "hold_arms": "off",
+  "note": "c01, c03 and c05 are D20's clips through the monocular path, the rows read earlier. A channel is not a signer. Set after composition's figures were known, as the plan's section says.",
+  "sensitivity_without_youtube": {
+   "note": "reported; decides nothing: YouTube's channels dominate the count",
+   "span": {
+    "3hz": {
+     "left": [
+      0.53864,
+      1.44598
+     ],
+     "pooled": [
+      0.59252,
+      1.43765
+     ],
+     "right": [
+      0.64649,
+      1.32955
+     ]
+    },
+    "raw": {
+     "left": [
+      0.7051,
+      1.60178
+     ],
+     "pooled": [
+      0.7493,
+      1.61292
+     ],
+     "right": [
+      0.75588,
+      1.56318
+     ]
+    }
+   }
+  },
+  "span": {
+   "3hz": {
+    "left": [
+     0.76846,
+     1.7477
+    ],
+    "pooled": [
+     0.72325,
+     1.46634
+    ],
+    "right": [
+     0.66926,
+     1.27104
+    ]
+   },
+   "raw": {
+    "left": [
+     0.92347,
+     2.12009
+    ],
+    "pooled": [
+     0.88681,
+     1.8562
+    ],
+    "right": [
+     0.81184,
+     1.70938
+    ]
+   }
+  },
+  "top10_inside_all_six": true,
+  "youtube_channels_qualifying": 355,
+  "youtube_channels_read": 120
+ },
  "reference": {
   "by_signer": {
    "c01": {
