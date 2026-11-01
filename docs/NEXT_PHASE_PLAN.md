@@ -6103,3 +6103,14 @@ D20, instrument v1, report only, `tok-probes-v1/report.json` sha `7d73f6bd…`, 
 `instrument-v2/acceptance-first-gates.json`, step 2,000 as selected, the 1,000. **G1 fails: real 1.871 [1.612, 2.150] against 6.20. G2 fails: gap +0.019 [−0.259, +0.221] against 4.55. G4 fails. G6 fails in all three signer groups.** Round trip 1.783, blank 1.712, static 1.692, mismatched 1.852. At this checkpoint v2 can't tell real signing from blank. The regeneration isn't run, as declared at 08:40. **v2 is not accepted.** v1 stays the only sentence instrument, with its known limits, and "v2 agreeing" has no instrument behind it. Declared claims that need v2 can't be made until a new instrument passes.
 
 Step 2,000 was selected on a noisy gap, so this may understate the design. **Report-only diagnostic, declared now before its read:** the same first gates at step 14,000, the last checkpoint before the resume, whose pooled gap was close to the best and whose real read was highest. It can't change this verdict and can't make v2 accepted. A redesign needs its own declaration.
+
+### Release bar: wrist condition moved to the real-signer span (2026-11-01, 14:39 UTC)
+
+Owner, today: "comparing against real signers is fine", detail delegated. **The wrist condition changes from 0.8–1.25× of How2Sign's D20 signers to: inside the span of real signers, on the same motion-recovery path as the system's word clips.** Definition:
+
+- **Span:** p10 to p90 of per-signer mean wrist speed, across real signers or channels with at least 30 clips each, all read through the monocular path, which is the one almost all single-word training clips use (0.27% two-view by one-word weight; 8.8% of records, 27.2% of word occurrences). How2Sign c01–c05 through monocular, ASLLRP signers, YouTube channels. A channel is not a signer, and is reported as a channel. c00 and test partitions are never read.
+- **Pass:** the system sits inside the span on all of pooled, left and right, at both raw and 3 Hz. All at predicted timing.
+- **Fixed before any new composition read:** the span is computed from real clips only, and the numbers are recorded here before A5's summary and A6's screen.
+- **Reported beside it, always:** the old reading, over D20 real through both paths. It no longer gates.
+
+**Disclosed as a loosening made after seeing numbers.** Composition's 1.77× (two-view) and 1.88× (monocular), and the first real-signer figures (YouTube about 1.5×, ASLLRP about 1.6×, channels 0.92–2.22× on 5 clips each), were known when this was set. Those 5-clip ranges are noisy and aren't the span. The other conditions, instruments, review, serving and licensing are unchanged. Deaf raters' naturalness scores are still the check on whether the motion looks right, and speed inside the span doesn't show that it does. `human_study.NOT_READ_HERE` keeps its old label until A5's summary, so code under A5's digest doesn't move mid-run.

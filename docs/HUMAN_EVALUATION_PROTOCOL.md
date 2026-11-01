@@ -139,7 +139,7 @@ that meaning gets through; it does not allow release. A system may be released o
 - comprehension Wilson 95% lower bound ≥ 70%;
 - comprehension within 10 points of the reference on the same utterances;
 - negation recovered, with its false-alarm rate reported;
-- wrist speed 0.8–1.25× real;
+- wrist speed inside the span of real signers on the same motion-recovery path (changed 2026-11-01 from 0.8–1.25× of D20 real, disclosed as a loosening; `docs/NEXT_PHASE_PLAN.md`, "wrist condition moved");
 - all of it read at predicted timing, on unseen signers.
 
 How these are read (declared 2026-10-31, 22:39 UTC):
