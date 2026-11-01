@@ -6097,3 +6097,9 @@ D20, instrument v1, report only, `tok-probes-v1/report.json` sha `7d73f6bd…`, 
 | a9@predicted, generated | 2.241 | 19.9% against this blank | +0.0578 | 19.8% |
 
 **Reading, not a rule.** d2's measured cap was mostly the neutral fill. Without it the round trip reads 4.124 on D20, where 3.8 is 75.5% of the gap, so the tokenizer isn't what stands between composition and 3.8 on v1. The earlier "3.8 unreachable with d2" is withdrawn as stated; v1's cap on the 1,000 hasn't been re-measured. Generated output doesn't carry neutral frames more than decoded real, so v1 isn't under-reading composition on this account, and composition's roughly 20–33% is a real limit of words, coverage, timing and stitching, on this scorer. Likelihood still loses about 35% of its gap at this cap, and Q1 showed real's marks hold a little content. This is one read on D20.
+
+### Instrument v2: not accepted (read 2026-11-01, recorded 11:21 UTC)
+
+`instrument-v2/acceptance-first-gates.json`, step 2,000 as selected, the 1,000. **G1 fails: real 1.871 [1.612, 2.150] against 6.20. G2 fails: gap +0.019 [−0.259, +0.221] against 4.55. G4 fails. G6 fails in all three signer groups.** Round trip 1.783, blank 1.712, static 1.692, mismatched 1.852. At this checkpoint v2 can't tell real signing from blank. The regeneration isn't run, as declared at 08:40. **v2 is not accepted.** v1 stays the only sentence instrument, with its known limits, and "v2 agreeing" has no instrument behind it. Declared claims that need v2 can't be made until a new instrument passes.
+
+Step 2,000 was selected on a noisy gap, so this may understate the design. **Report-only diagnostic, declared now before its read:** the same first gates at step 14,000, the last checkpoint before the resume, whose pooled gap was close to the best and whose real read was highest. It can't change this verdict and can't make v2 accepted. A redesign needs its own declaration.
