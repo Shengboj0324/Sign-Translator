@@ -147,7 +147,7 @@ def test_the_word_path_answer_is_computed_and_states_what_is_not_measured():
 
 
 def test_the_note_states_both_directions_and_its_limits():
-    for phrase in ("monocular inflation fits the left-arm asymmetry at least as well as two-view shrinkage", "Per side it is not every signer", "1.00-1.05x", "not called jitter", "5 clips each", "0.27%", "8.8%", "27.2%", "That is an inference"):
+    for phrase in ("monocular inflation fits the left-arm asymmetry at least as well as two-view shrinkage", "Per side it is not every signer", "1.00-1.05x", "not called jitter", "5 clips each", "0.27%", "8.8%", "27.2%", "That is an inference", "The plan records the span on main"):
         assert phrase in w.NOTE, phrase
     assert "jitter is filtered" not in w.NOTE
 

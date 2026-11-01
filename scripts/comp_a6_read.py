@@ -58,7 +58,8 @@ A1_LOSS = dict(likelihood=-.0276, spotting=-.0405)
 SHARES = dict(bleu=.44, likelihood=.6, spotting=.6)
 A5_SUMMARY_AT_DECLARATION = None   # the slot: slot_from_summary's dict once A5's summary exists (comp_a6_declared.py slot FILE). A record may not be declared while this is None
 PATH_READ_AT_DECLARATION = None    # the slot: branch path-read's result, in words, if it lands before declaration
-PRIOR_REVIEW_POWER = None          # the slot: the prior review's power figures, in words, as it gave them
+PRIOR_REVIEW_POWER = ("from the review of fbe9b29, BLEU check over 8 draws by non-central t, using the old -0.15 floor. Paired SD 0.10: mean needed above -0.066, P(pass) at zero effect .95. SD 0.15: above -0.025, .68. SD 0.18: above 0.00, .53. SD 0.237 (A4's unpaired SD): above +0.048, .34. "
+                      "P(pass) with the true loss on the floor is .03 in each row. A5's paired SD replaces them at declaration")
 HANDS_SHARE = .9
 TODAY_FIT = (-.083, .3691, 18289)
 A5_GOES_ON = ("confirmed", "direction_only_not_confirmed")

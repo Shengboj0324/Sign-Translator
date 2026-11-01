@@ -742,9 +742,11 @@ def filled_module(slot, **others):
     return space
 
 
-def test_the_path_read_and_the_prior_power_figures_have_slots():
-    known = filled_module(SLOT, PATH_READ_AT_DECLARATION="path read says X", PRIOR_REVIEW_POWER="power says Y")["KNOWN_AT_WRITING"]
-    assert "Path read (branch path-read): path read says X." in known and "Prior review's power figures: power says Y." in known
+def test_the_path_read_has_a_slot_and_the_prior_power_figures_are_stated():
+    known = filled_module(SLOT, PATH_READ_AT_DECLARATION="path read says X")["KNOWN_AT_WRITING"]
+    assert "Path read (branch path-read): path read says X." in known
+    for phrase in ("using the old -0.15 floor", "Paired SD 0.10: mean needed above -0.066, P(pass) at zero effect .95", "SD 0.15: above -0.025, .68", "SD 0.18: above 0.00, .53", "SD 0.237 (A4's unpaired SD): above +0.048, .34", "with the true loss on the floor is .03 in each row", "A5's paired SD replaces them at declaration"):
+        assert phrase in known, phrase
 
 
 def test_a_filled_slot_moves_the_bars_the_shares_the_rule_texts_and_what_was_known():
