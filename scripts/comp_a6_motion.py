@@ -29,6 +29,8 @@ TOKENS_SHA = "c1105410ef8d502cfcf145768329fe1f72886106afdf83cd0474bfdd654cb776"
 EXCLUDE = .25
 TOLERANCE = 1e-6
 FORMS = ("base", "hold_a1", "hold_x", "hold_xr", "length_tokens", "length_words", "hold_x_length", "hold_xr_length")
+LOW_PASSED = ("base", "hold_x", "length_tokens", "hold_x_length")          # also read at these rates, against real at the same rate
+RATES = (6., 3.)
 HOLD_TOTALS = ("stretches", "frames", "minimum_jerk", "constant_speed", "held", "ready_pose", "cap_bound", "rest_ramps", "rest_whole", "rest_too_short", "rest_frames")
 
 
@@ -45,6 +47,11 @@ def two_handed_shares(pools) -> dict:
         if labels:
             out[entry] = sum(not x for x in labels) / len(labels)
     return out
+
+
+def mean_key(rows, key):
+    values = [r[key] for r in rows if r.get(key) is not None]
+    return round(float(np.mean(values)), 5) if values else None
 
 
 def length_row(frames, true_frames) -> dict:
@@ -75,7 +82,7 @@ def main(argv=None) -> int:
     from s2_lib import check_read_records, load_manifest_at
     from train_text_to_motion import make_store
     from signtranslator.generation import compositional_grammar as cg
-    from signtranslator.generation.composition_v2 import fit_duration_model, hold_left_arm, predicted_seconds
+    from signtranslator.generation.composition_v2 import fit_duration_model, hold_left_arm, lowpass_state, predicted_seconds
     from signtranslator.generation.compositional import CORE_RULE, KEPT, isolated_corpora, render, training_vocabulary
     import comp_a6_lengths as lengths
     store = make_store(args.store)
@@ -135,11 +142,19 @@ def main(argv=None) -> int:
     holds, uses = {k: [] for k in FORMS}, {k: dict(uses=0, held=0, held_two_handed_entries=0) for k in ("hold_a1", "hold_x")}
     frames, true_frames, frames_with_words, true_with_words = {k: [] for k in ("old", "tokens", "words")}, [], {k: [] for k in ("old", "tokens", "words")}, []
     real_rows, built, cached, replaced = [], [], {}, {k: [0, 0] for k in FORMS}
+    speeds = {hz: {k: [] for k in ("real", *LOW_PASSED)} for hz in RATES}
     for i, record in enumerate(val):
         ref = at_rate(load_state(store, record["continuous"]["state_key"], record["continuous"]["state_sha256"]), FPS)
         points, valid = keypoints(ref)
         real_rows.append(side_read(points, valid))
         real_row = motion_rows([ref], [ref], FPS)[0]
+
+        def low_row(state, reference):
+            row = motion_rows([state], [reference], FPS)[0]
+            view, ok = keypoints(state)
+            return dict(side_read(view, ok), wrist_speed=row["wrist_speed"], wrist_spread=row["wrist_spread"])
+        for hz in RATES:
+            speeds[hz]["real"].append(low_row(lowpass_state(ref, hz), ref))
         seconds = dict(old=predicted_seconds(old, record["text"]), tokens=predicted_seconds(balanced, record["text"]),
                        words=float(lengths.apply_line([words_model["intercept"], words_model["entry_seconds"], words_model["unsigned_token"]], features[i:i + 1])[0]))
         true_f = int(round(float(record["continuous"]["seconds"]) * FPS))
@@ -172,6 +187,9 @@ def main(argv=None) -> int:
             row = motion_rows([state], [ref], FPS)[0]
             rows[name].append(read_operating(state, plan, flags, info))
             pooled[name].append((row["wrist_speed"], real_row["wrist_speed"], row["wrist_spread"], real_row["wrist_spread"]))
+            if name in LOW_PASSED:
+                for hz in RATES:
+                    speeds[hz][name].append(low_row(lowpass_state(state, hz), ref))
             total = len(state.timestamps)
             replaced[name][0] += (info or {}).get("frames", 0)
             replaced[name][1] += total
@@ -200,13 +218,17 @@ def main(argv=None) -> int:
                forms={})
     for name in FORMS:
         report = operating_report(rows[name], real_rows, pooled[name])
-        report.pop("regions", None)
         report.pop("hold", None)
         report["replaced_share"] = round(replaced[name][0] / replaced[name][1], 4) if replaced[name][1] else None
         if holds[name]:
+            peaks = [x for h in holds[name] for x in h.get("rest_peaks", ())]
+            if peaks:
+                report["rest_stretches_above_real_p90"] = round(float(np.mean(np.array(peaks) > stats["chest_speed"]["left"]["p90"])), 4)
             report["hold"] = {k: int(sum(h.get(k, 0) for h in holds[name])) for k in HOLD_TOTALS}
             report["hold"].update(cap=holds[name][0]["cap"], peak=max(h["peak"] for h in holds[name]))
         out["forms"][name] = report
+    out["low_passed"] = {f"{hz:g}": {k: {m: mean_key(v, m) for m in ("wrist_speed", "wrist_spread", "left_speed", "right_speed", "left_spread", "right_spread")} for k, v in row.items()} for hz, row in speeds.items()}
+    out["low_passed_clips"] = {k: len(v) for k, v in speeds[RATES[0]].items()}
     data = json.dumps(out, indent=1, sort_keys=True).encode()
     with open(args.output_file, "xb") as stream:
         stream.write(data)

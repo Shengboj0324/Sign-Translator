@@ -338,8 +338,8 @@ def hold_left_arm(state, plan: dict, one_handed, *, ready: dict, cap: float, fps
     """(state, info): ``state`` with the left arm held across one-handed stretches (module docstring). ``ready``: {joint: 6D values} of
     How2Sign train's ready pose; ``cap``: the wrist's chest-frame speed in metres per second.
 
-    Post-S2 A6's ``rest`` ({joint: 6D values}, ``comp_a6_rest_pose.py``): the arm goes to that pose instead, by minimum jerk with the shortest ramp under ``cap``, holds it, and comes
-    back. A stretch at a sentence's edge has one ramp, and a sentence with no anchor rests throughout. A stretch too short for its ramps under the cap keeps the plain path."""
+    Post-S2 A6's ``rest`` ({joint: 6D values}, ``comp_a6_rest_pose.py``): the arm goes toward that pose instead and comes back, by minimum jerk with the longest ramps the stretch allows (the shortest under ``cap`` left 90% of stretches above real's p90 speed).
+    A stretch at a sentence's edge has one ramp, and a sentence with no anchor rests throughout. A stretch too short for its ramps, or over the cap on them, keeps the plain path."""
     from .composition_space import to_6d, wrist_of_rotations
     from .motion_metrics import _matrices
     labels = frame_labels(plan)
@@ -349,7 +349,7 @@ def hold_left_arm(state, plan: dict, one_handed, *, ready: dict, cap: float, fps
     index = {j: list(body.labels).index(j) for j in HOLD_JOINTS}
     stretches = hold_stretches(labels, list(one_handed))
     info = dict(stretches=len(stretches), frames=int(sum(b - a + 1 for a, b in stretches)), minimum_jerk=0, constant_speed=0, held=0, ready_pose=0,
-                cap_bound=0, cap=float(cap), peak=0., **(dict(rest_ramps=0, rest_whole=0, rest_too_short=0, rest_frames=0) if rest is not None else {}))
+                cap_bound=0, cap=float(cap), peak=0., **(dict(rest_ramps=0, rest_whole=0, rest_too_short=0, rest_frames=0, rest_peaks=[]) if rest is not None else {}))
     if not stretches:
         return state, info
     values = body.values.copy()
@@ -410,16 +410,16 @@ def hold_left_arm(state, plan: dict, one_handed, *, ready: dict, cap: float, fps
         return out, sides
 
     def through_rest(a, b):
-        """(poses, peak, ramp) of the shortest ramp under the cap, or None: the stretch keeps the plain path."""
+        """(poses, peak, ramp) of the longest ramps the stretch allows, or None: the stretch keeps the plain path."""
         poses, sides = rested(a, b, 0)
         if not sides:
             return poses, peak_of(a, b, poses), 0
-        for ramp in range(REST_MIN_RAMP, (b - a + 1) // sides + 1):
-            poses, _ = rested(a, b, ramp)
-            peak = peak_of(a, b, poses)
-            if peak <= cap:
-                return poses, peak, ramp
-        return None
+        ramp = (b - a + 1) // sides
+        if ramp < REST_MIN_RAMP:
+            return None
+        poses, _ = rested(a, b, ramp)
+        peak = peak_of(a, b, poses)
+        return (poses, peak, ramp) if peak <= cap else None
 
     for a, b in stretches:
         if target is not None:
@@ -428,6 +428,7 @@ def hold_left_arm(state, plan: dict, one_handed, *, ready: dict, cap: float, fps
                 poses, peak, ramp = found
                 info["rest_ramps" if ramp else "rest_whole"] += 1
                 info["rest_frames"] += b - a + 1
+                info["rest_peaks"].append(round(peak, 4))
                 info["peak"] = max(info["peak"], round(peak, 4))
                 for j, k in index.items():
                     ok = body.valid[a:b + 1, k]

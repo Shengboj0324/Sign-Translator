@@ -138,6 +138,94 @@
     "left": 2.2276,
     "right": 1.4582
    },
+   "regions": {
+    "left": {
+     "bridge_one_to_one": {
+      "path_share": 0.0276,
+      "speed": 0.9081,
+      "step_share": 0.0499
+     },
+     "bridge_one_to_two": {
+      "path_share": 0.2081,
+      "speed": 2.5578,
+      "step_share": 0.1336
+     },
+     "bridge_one_to_unannotated": {
+      "path_share": 0.081,
+      "speed": 1.8322,
+      "step_share": 0.0726
+     },
+     "bridge_other": {
+      "path_share": 0.2161,
+      "speed": 1.801,
+      "step_share": 0.197
+     },
+     "core_annotated_one": {
+      "path_share": 0.0981,
+      "speed": 0.8708,
+      "step_share": 0.185
+     },
+     "core_annotated_two": {
+      "path_share": 0.2845,
+      "speed": 1.7596,
+      "step_share": 0.2655
+     },
+     "core_unannotated": {
+      "path_share": 0.0844,
+      "speed": 1.4406,
+      "step_share": 0.0962
+     },
+     "lead_trail": {
+      "path_share": 0.0,
+      "speed": null,
+      "step_share": 0.0
+     },
+     "speed": 1.642
+    },
+    "right": {
+     "bridge_one_to_one": {
+      "path_share": 0.0441,
+      "speed": 1.3584,
+      "step_share": 0.0499
+     },
+     "bridge_one_to_two": {
+      "path_share": 0.1102,
+      "speed": 1.2693,
+      "step_share": 0.1336
+     },
+     "bridge_one_to_unannotated": {
+      "path_share": 0.0914,
+      "speed": 1.9371,
+      "step_share": 0.0726
+     },
+     "bridge_other": {
+      "path_share": 0.1734,
+      "speed": 1.3548,
+      "step_share": 0.197
+     },
+     "core_annotated_one": {
+      "path_share": 0.2022,
+      "speed": 1.6824,
+      "step_share": 0.185
+     },
+     "core_annotated_two": {
+      "path_share": 0.273,
+      "speed": 1.5826,
+      "step_share": 0.2655
+     },
+     "core_unannotated": {
+      "path_share": 0.1058,
+      "speed": 1.6927,
+      "step_share": 0.0962
+     },
+     "lead_trail": {
+      "path_share": 0.0,
+      "speed": null,
+      "step_share": 0.0
+     },
+     "speed": 1.5395
+    }
+   },
    "replaced_share": 0.0,
    "spread_to_real": {
     "left": 2.498,
@@ -294,6 +382,94 @@
    "ratio_to_real": {
     "left": 1.6653,
     "right": 1.4582
+   },
+   "regions": {
+    "left": {
+     "bridge_one_to_one": {
+      "path_share": 0.0196,
+      "speed": 0.4785,
+      "step_share": 0.0499
+     },
+     "bridge_one_to_two": {
+      "path_share": 0.0607,
+      "speed": 0.5538,
+      "step_share": 0.1336
+     },
+     "bridge_one_to_unannotated": {
+      "path_share": 0.0233,
+      "speed": 0.3904,
+      "step_share": 0.0726
+     },
+     "bridge_other": {
+      "path_share": 0.2911,
+      "speed": 1.801,
+      "step_share": 0.197
+     },
+     "core_annotated_one": {
+      "path_share": 0.1082,
+      "speed": 0.7127,
+      "step_share": 0.185
+     },
+     "core_annotated_two": {
+      "path_share": 0.3833,
+      "speed": 1.7596,
+      "step_share": 0.2655
+     },
+     "core_unannotated": {
+      "path_share": 0.1138,
+      "speed": 1.4406,
+      "step_share": 0.0962
+     },
+     "lead_trail": {
+      "path_share": 0.0,
+      "speed": null,
+      "step_share": 0.0
+     },
+     "speed": 1.2188
+    },
+    "right": {
+     "bridge_one_to_one": {
+      "path_share": 0.0441,
+      "speed": 1.3584,
+      "step_share": 0.0499
+     },
+     "bridge_one_to_two": {
+      "path_share": 0.1102,
+      "speed": 1.2693,
+      "step_share": 0.1336
+     },
+     "bridge_one_to_unannotated": {
+      "path_share": 0.0914,
+      "speed": 1.9371,
+      "step_share": 0.0726
+     },
+     "bridge_other": {
+      "path_share": 0.1734,
+      "speed": 1.3548,
+      "step_share": 0.197
+     },
+     "core_annotated_one": {
+      "path_share": 0.2022,
+      "speed": 1.6824,
+      "step_share": 0.185
+     },
+     "core_annotated_two": {
+      "path_share": 0.273,
+      "speed": 1.5826,
+      "step_share": 0.2655
+     },
+     "core_unannotated": {
+      "path_share": 0.1058,
+      "speed": 1.6927,
+      "step_share": 0.0962
+     },
+     "lead_trail": {
+      "path_share": 0.0,
+      "speed": null,
+      "step_share": 0.0
+     },
+     "speed": 1.5395
+    }
    },
    "replaced_share": 0.4266,
    "spread_to_real": {
@@ -452,6 +628,94 @@
     "left": 1.791,
     "right": 1.4582
    },
+   "regions": {
+    "left": {
+     "bridge_one_to_one": {
+      "path_share": 0.0207,
+      "speed": 0.5423,
+      "step_share": 0.0499
+     },
+     "bridge_one_to_two": {
+      "path_share": 0.083,
+      "speed": 0.8112,
+      "step_share": 0.1336
+     },
+     "bridge_one_to_unannotated": {
+      "path_share": 0.032,
+      "speed": 0.5747,
+      "step_share": 0.0726
+     },
+     "bridge_other": {
+      "path_share": 0.2716,
+      "speed": 1.801,
+      "step_share": 0.197
+     },
+     "core_annotated_one": {
+      "path_share": 0.129,
+      "speed": 0.911,
+      "step_share": 0.185
+     },
+     "core_annotated_two": {
+      "path_share": 0.3576,
+      "speed": 1.7596,
+      "step_share": 0.2655
+     },
+     "core_unannotated": {
+      "path_share": 0.1061,
+      "speed": 1.4406,
+      "step_share": 0.0962
+     },
+     "lead_trail": {
+      "path_share": 0.0,
+      "speed": null,
+      "step_share": 0.0
+     },
+     "speed": 1.3065
+    },
+    "right": {
+     "bridge_one_to_one": {
+      "path_share": 0.0441,
+      "speed": 1.3584,
+      "step_share": 0.0499
+     },
+     "bridge_one_to_two": {
+      "path_share": 0.1102,
+      "speed": 1.2693,
+      "step_share": 0.1336
+     },
+     "bridge_one_to_unannotated": {
+      "path_share": 0.0914,
+      "speed": 1.9371,
+      "step_share": 0.0726
+     },
+     "bridge_other": {
+      "path_share": 0.1734,
+      "speed": 1.3548,
+      "step_share": 0.197
+     },
+     "core_annotated_one": {
+      "path_share": 0.2022,
+      "speed": 1.6824,
+      "step_share": 0.185
+     },
+     "core_annotated_two": {
+      "path_share": 0.273,
+      "speed": 1.5826,
+      "step_share": 0.2655
+     },
+     "core_unannotated": {
+      "path_share": 0.1058,
+      "speed": 1.6927,
+      "step_share": 0.0962
+     },
+     "lead_trail": {
+      "path_share": 0.0,
+      "speed": null,
+      "step_share": 0.0
+     },
+     "speed": 1.5395
+    }
+   },
    "replaced_share": 0.3757,
    "spread_to_real": {
     "left": 2.1971,
@@ -609,6 +873,94 @@
     "left": 2.0316,
     "right": 1.6614
    },
+   "regions": {
+    "left": {
+     "bridge_one_to_one": {
+      "path_share": 0.0214,
+      "speed": 0.6058,
+      "step_share": 0.051
+     },
+     "bridge_one_to_two": {
+      "path_share": 0.0844,
+      "speed": 0.8975,
+      "step_share": 0.136
+     },
+     "bridge_one_to_unannotated": {
+      "path_share": 0.0326,
+      "speed": 0.6358,
+      "step_share": 0.0741
+     },
+     "bridge_other": {
+      "path_share": 0.2743,
+      "speed": 1.9752,
+      "step_share": 0.201
+     },
+     "core_annotated_one": {
+      "path_share": 0.1275,
+      "speed": 1.0118,
+      "step_share": 0.1823
+     },
+     "core_annotated_two": {
+      "path_share": 0.3553,
+      "speed": 1.959,
+      "step_share": 0.2625
+     },
+     "core_unannotated": {
+      "path_share": 0.1047,
+      "speed": 1.6285,
+      "step_share": 0.093
+     },
+     "lead_trail": {
+      "path_share": 0.0,
+      "speed": null,
+      "step_share": 0.0
+     },
+     "speed": 1.4473
+    },
+    "right": {
+     "bridge_one_to_one": {
+      "path_share": 0.0444,
+      "speed": 1.4868,
+      "step_share": 0.051
+     },
+     "bridge_one_to_two": {
+      "path_share": 0.111,
+      "speed": 1.3947,
+      "step_share": 0.136
+     },
+     "bridge_one_to_unannotated": {
+      "path_share": 0.0921,
+      "speed": 2.124,
+      "step_share": 0.0741
+     },
+     "bridge_other": {
+      "path_share": 0.1748,
+      "speed": 1.4861,
+      "step_share": 0.201
+     },
+     "core_annotated_one": {
+      "path_share": 0.2012,
+      "speed": 1.8857,
+      "step_share": 0.1823
+     },
+     "core_annotated_two": {
+      "path_share": 0.2712,
+      "speed": 1.766,
+      "step_share": 0.2625
+     },
+     "core_unannotated": {
+      "path_share": 0.1052,
+      "speed": 1.9333,
+      "step_share": 0.093
+     },
+     "lead_trail": {
+      "path_share": 0.0,
+      "speed": null,
+      "step_share": 0.0
+     },
+     "speed": 1.7089
+    }
+   },
    "replaced_share": 0.3765,
    "spread_to_real": {
     "left": 2.195,
@@ -626,7 +978,7 @@
     "frames": 31954,
     "held": 3,
     "minimum_jerk": 126,
-    "peak": 1.3533,
+    "peak": 1.3508,
     "ready_pose": 0,
     "rest_frames": 29441,
     "rest_ramps": 1071,
@@ -644,10 +996,10 @@
      },
      "joins": 562,
      "left_travel": {
-      "mean": 0.1935,
-      "median": 0.1304,
+      "mean": 0.1972,
+      "median": 0.1576,
       "n": 562,
-      "p90": 0.5019
+      "p90": 0.3751
      },
      "right_travel": {
       "mean": 0.416,
@@ -665,10 +1017,10 @@
      },
      "joins": 1386,
      "left_travel": {
-      "mean": 0.524,
-      "median": 0.5208,
+      "mean": 0.4096,
+      "median": 0.3672,
       "n": 1386,
-      "p90": 0.8433
+      "p90": 0.7657
      },
      "right_travel": {
       "mean": 0.4215,
@@ -686,10 +1038,10 @@
      },
      "joins": 945,
      "left_travel": {
-      "mean": 0.2772,
-      "median": 0.2032,
+      "mean": 0.205,
+      "median": 0.1313,
       "n": 945,
-      "p90": 0.6298
+      "p90": 0.4738
      },
      "right_travel": {
       "mean": 0.5158,
@@ -721,22 +1073,22 @@
     }
    },
    "left_height_on_annotated_one": {
-    "mean": -1.1147,
-    "median": -1.1071,
+    "mean": -1.0864,
+    "median": -1.0986,
     "n": 17519,
-    "p90": -1.0096
+    "p90": -0.7873
    },
    "left_path": {
     "bridge_one_to_one": [
-     2654.5860574245453,
+     2758.051440477371,
      4222
     ],
     "bridge_one_to_two": [
-     17903.20447421074,
+     13922.547883868217,
      11298
     ],
     "bridge_one_to_unannotated": [
-     6631.518487095833,
+     4845.848987370729,
      6142
     ],
     "bridge_other": [
@@ -744,7 +1096,7 @@
      16661
     ],
     "core_annotated_one": [
-     12987.754210829735,
+     15696.466394901276,
      15645
     ],
     "core_annotated_two": [
@@ -760,15 +1112,104 @@
      0
     ]
    },
-   "pooled_spread_ratio": 1.8963,
-   "pooled_wrist_ratio": 1.6662,
+   "pooled_spread_ratio": 1.9078,
+   "pooled_wrist_ratio": 1.6475,
    "ratio_to_real": {
-    "left": 1.9641,
+    "left": 1.9184,
     "right": 1.4582
    },
+   "regions": {
+    "left": {
+     "bridge_one_to_one": {
+      "path_share": 0.0233,
+      "speed": 0.6533,
+      "step_share": 0.0499
+     },
+     "bridge_one_to_two": {
+      "path_share": 0.1175,
+      "speed": 1.2323,
+      "step_share": 0.1336
+     },
+     "bridge_one_to_unannotated": {
+      "path_share": 0.0409,
+      "speed": 0.789,
+      "step_share": 0.0726
+     },
+     "bridge_other": {
+      "path_share": 0.2533,
+      "speed": 1.801,
+      "step_share": 0.197
+     },
+     "core_annotated_one": {
+      "path_share": 0.1325,
+      "speed": 1.0033,
+      "step_share": 0.185
+     },
+     "core_annotated_two": {
+      "path_share": 0.3335,
+      "speed": 1.7596,
+      "step_share": 0.2655
+     },
+     "core_unannotated": {
+      "path_share": 0.099,
+      "speed": 1.4406,
+      "step_share": 0.0962
+     },
+     "lead_trail": {
+      "path_share": 0.0,
+      "speed": null,
+      "step_share": 0.0
+     },
+     "speed": 1.4009
+    },
+    "right": {
+     "bridge_one_to_one": {
+      "path_share": 0.0441,
+      "speed": 1.3584,
+      "step_share": 0.0499
+     },
+     "bridge_one_to_two": {
+      "path_share": 0.1102,
+      "speed": 1.2693,
+      "step_share": 0.1336
+     },
+     "bridge_one_to_unannotated": {
+      "path_share": 0.0914,
+      "speed": 1.9371,
+      "step_share": 0.0726
+     },
+     "bridge_other": {
+      "path_share": 0.1734,
+      "speed": 1.3548,
+      "step_share": 0.197
+     },
+     "core_annotated_one": {
+      "path_share": 0.2022,
+      "speed": 1.6824,
+      "step_share": 0.185
+     },
+     "core_annotated_two": {
+      "path_share": 0.273,
+      "speed": 1.5826,
+      "step_share": 0.2655
+     },
+     "core_unannotated": {
+      "path_share": 0.1058,
+      "speed": 1.6927,
+      "step_share": 0.0962
+     },
+     "lead_trail": {
+      "path_share": 0.0,
+      "speed": null,
+      "step_share": 0.0
+     },
+     "speed": 1.5395
+    }
+   },
    "replaced_share": 0.3757,
+   "rest_stretches_above_real_p90": 0.4804,
    "spread_to_real": {
-    "left": 2.1797,
+    "left": 2.204,
     "right": 1.6551
    }
   },
@@ -801,10 +1242,10 @@
      },
      "joins": 562,
      "left_travel": {
-      "mean": 0.1891,
-      "median": 0.1294,
+      "mean": 0.197,
+      "median": 0.1601,
       "n": 562,
-      "p90": 0.4831
+      "p90": 0.3602
      },
      "right_travel": {
       "mean": 0.416,
@@ -822,10 +1263,10 @@
      },
      "joins": 1386,
      "left_travel": {
-      "mean": 0.5013,
-      "median": 0.489,
+      "mean": 0.3981,
+      "median": 0.3443,
       "n": 1386,
-      "p90": 0.818
+      "p90": 0.7485
      },
      "right_travel": {
       "mean": 0.4215,
@@ -843,10 +1284,10 @@
      },
      "joins": 945,
      "left_travel": {
-      "mean": 0.2636,
-      "median": 0.191,
+      "mean": 0.2019,
+      "median": 0.1252,
       "n": 945,
-      "p90": 0.615
+      "p90": 0.4742
      },
      "right_travel": {
       "mean": 0.5158,
@@ -878,22 +1319,22 @@
     }
    },
    "left_height_on_annotated_one": {
-    "mean": -1.1101,
-    "median": -1.1061,
+    "mean": -1.0821,
+    "median": -1.0973,
     "n": 15654,
-    "p90": -0.9902
+    "p90": -0.7673
    },
    "left_path": {
     "bridge_one_to_one": [
-     2597.369610860944,
+     2757.665237903595,
      3857
     ],
     "bridge_one_to_two": [
-     17106.13001036644,
+     13537.045867562294,
      10281
     ],
     "bridge_one_to_unannotated": [
-     6278.166371285915,
+     4766.034229815006,
      5601
     ],
     "bridge_other": [
@@ -901,7 +1342,7 @@
      15189
     ],
     "core_annotated_one": [
-     13129.381709635258,
+     15425.342362463474,
      13780
     ],
     "core_annotated_two": [
@@ -917,15 +1358,104 @@
      0
     ]
    },
-   "pooled_spread_ratio": 1.8968,
-   "pooled_wrist_ratio": 1.8871,
+   "pooled_spread_ratio": 1.9063,
+   "pooled_wrist_ratio": 1.8687,
    "ratio_to_real": {
-    "left": 2.2094,
+    "left": 2.1643,
     "right": 1.6614
    },
+   "regions": {
+    "left": {
+     "bridge_one_to_one": {
+      "path_share": 0.0236,
+      "speed": 0.715,
+      "step_share": 0.051
+     },
+     "bridge_one_to_two": {
+      "path_share": 0.1159,
+      "speed": 1.3167,
+      "step_share": 0.136
+     },
+     "bridge_one_to_unannotated": {
+      "path_share": 0.0408,
+      "speed": 0.8509,
+      "step_share": 0.0741
+     },
+     "bridge_other": {
+      "path_share": 0.2569,
+      "speed": 1.9752,
+      "step_share": 0.201
+     },
+     "core_annotated_one": {
+      "path_share": 0.1321,
+      "speed": 1.1194,
+      "step_share": 0.1823
+     },
+     "core_annotated_two": {
+      "path_share": 0.3327,
+      "speed": 1.959,
+      "step_share": 0.2625
+     },
+     "core_unannotated": {
+      "path_share": 0.098,
+      "speed": 1.6285,
+      "step_share": 0.093
+     },
+     "lead_trail": {
+      "path_share": 0.0,
+      "speed": null,
+      "step_share": 0.0
+     },
+     "speed": 1.5454
+    },
+    "right": {
+     "bridge_one_to_one": {
+      "path_share": 0.0444,
+      "speed": 1.4868,
+      "step_share": 0.051
+     },
+     "bridge_one_to_two": {
+      "path_share": 0.111,
+      "speed": 1.3947,
+      "step_share": 0.136
+     },
+     "bridge_one_to_unannotated": {
+      "path_share": 0.0921,
+      "speed": 2.124,
+      "step_share": 0.0741
+     },
+     "bridge_other": {
+      "path_share": 0.1748,
+      "speed": 1.4861,
+      "step_share": 0.201
+     },
+     "core_annotated_one": {
+      "path_share": 0.2012,
+      "speed": 1.8857,
+      "step_share": 0.1823
+     },
+     "core_annotated_two": {
+      "path_share": 0.2712,
+      "speed": 1.766,
+      "step_share": 0.2625
+     },
+     "core_unannotated": {
+      "path_share": 0.1052,
+      "speed": 1.9333,
+      "step_share": 0.093
+     },
+     "lead_trail": {
+      "path_share": 0.0,
+      "speed": null,
+      "step_share": 0.0
+     },
+     "speed": 1.7089
+    }
+   },
    "replaced_share": 0.3765,
+   "rest_stretches_above_real_p90": 0.535,
    "spread_to_real": {
-    "left": 2.1807,
+    "left": 2.2009,
     "right": 1.6552
    }
   },
@@ -1064,6 +1594,94 @@
    "ratio_to_real": {
     "left": 2.5317,
     "right": 1.6614
+   },
+   "regions": {
+    "left": {
+     "bridge_one_to_one": {
+      "path_share": 0.0278,
+      "speed": 0.9937,
+      "step_share": 0.051
+     },
+     "bridge_one_to_two": {
+      "path_share": 0.2098,
+      "speed": 2.8102,
+      "step_share": 0.136
+     },
+     "bridge_one_to_unannotated": {
+      "path_share": 0.0817,
+      "speed": 2.0087,
+      "step_share": 0.0741
+     },
+     "bridge_other": {
+      "path_share": 0.2179,
+      "speed": 1.9752,
+      "step_share": 0.201
+     },
+     "core_annotated_one": {
+      "path_share": 0.0974,
+      "speed": 0.9731,
+      "step_share": 0.1823
+     },
+     "core_annotated_two": {
+      "path_share": 0.2822,
+      "speed": 1.959,
+      "step_share": 0.2625
+     },
+     "core_unannotated": {
+      "path_share": 0.0831,
+      "speed": 1.6285,
+      "step_share": 0.093
+     },
+     "lead_trail": {
+      "path_share": 0.0,
+      "speed": null,
+      "step_share": 0.0
+     },
+     "speed": 1.822
+    },
+    "right": {
+     "bridge_one_to_one": {
+      "path_share": 0.0444,
+      "speed": 1.4868,
+      "step_share": 0.051
+     },
+     "bridge_one_to_two": {
+      "path_share": 0.111,
+      "speed": 1.3947,
+      "step_share": 0.136
+     },
+     "bridge_one_to_unannotated": {
+      "path_share": 0.0921,
+      "speed": 2.124,
+      "step_share": 0.0741
+     },
+     "bridge_other": {
+      "path_share": 0.1748,
+      "speed": 1.4861,
+      "step_share": 0.201
+     },
+     "core_annotated_one": {
+      "path_share": 0.2012,
+      "speed": 1.8857,
+      "step_share": 0.1823
+     },
+     "core_annotated_two": {
+      "path_share": 0.2712,
+      "speed": 1.766,
+      "step_share": 0.2625
+     },
+     "core_unannotated": {
+      "path_share": 0.1052,
+      "speed": 1.9333,
+      "step_share": 0.093
+     },
+     "lead_trail": {
+      "path_share": 0.0,
+      "speed": null,
+      "step_share": 0.0
+     },
+     "speed": 1.7089
+    }
    },
    "replaced_share": 0.0,
    "spread_to_real": {
@@ -1207,6 +1825,94 @@
     "left": 2.5603,
     "right": 1.6843
    },
+   "regions": {
+    "left": {
+     "bridge_one_to_one": {
+      "path_share": 0.0279,
+      "speed": 0.9944,
+      "step_share": 0.0513
+     },
+     "bridge_one_to_two": {
+      "path_share": 0.2102,
+      "speed": 2.8008,
+      "step_share": 0.1373
+     },
+     "bridge_one_to_unannotated": {
+      "path_share": 0.0818,
+      "speed": 2.0267,
+      "step_share": 0.0738
+     },
+     "bridge_other": {
+      "path_share": 0.2182,
+      "speed": 1.9965,
+      "step_share": 0.2
+     },
+     "core_annotated_one": {
+      "path_share": 0.0973,
+      "speed": 0.9755,
+      "step_share": 0.1825
+     },
+     "core_annotated_two": {
+      "path_share": 0.282,
+      "speed": 1.9627,
+      "step_share": 0.2628
+     },
+     "core_unannotated": {
+      "path_share": 0.0826,
+      "speed": 1.6358,
+      "step_share": 0.0924
+     },
+     "lead_trail": {
+      "path_share": 0.0,
+      "speed": null,
+      "step_share": 0.0
+     },
+     "speed": 1.8292
+    },
+    "right": {
+     "bridge_one_to_one": {
+      "path_share": 0.0445,
+      "speed": 1.4879,
+      "step_share": 0.0513
+     },
+     "bridge_one_to_two": {
+      "path_share": 0.1112,
+      "speed": 1.39,
+      "step_share": 0.1373
+     },
+     "bridge_one_to_unannotated": {
+      "path_share": 0.0923,
+      "speed": 2.1443,
+      "step_share": 0.0738
+     },
+     "bridge_other": {
+      "path_share": 0.175,
+      "speed": 1.5022,
+      "step_share": 0.2
+     },
+     "core_annotated_one": {
+      "path_share": 0.2013,
+      "speed": 1.8933,
+      "step_share": 0.1825
+     },
+     "core_annotated_two": {
+      "path_share": 0.2712,
+      "speed": 1.771,
+      "step_share": 0.2628
+     },
+     "core_unannotated": {
+      "path_share": 0.1047,
+      "speed": 1.9461,
+      "step_share": 0.0924
+     },
+     "lead_trail": {
+      "path_share": 0.0,
+      "speed": null,
+      "step_share": 0.0
+     },
+     "speed": 1.7165
+    }
+   },
    "replaced_share": 0.0,
    "spread_to_real": {
     "left": 2.4948,
@@ -1280,6 +1986,99 @@
     "pooled_ratio": 1.0727
    }
   }
+ },
+ "low_passed": {
+  "3": {
+   "base": {
+    "left_speed": 1.31959,
+    "left_spread": 0.27374,
+    "right_speed": 1.19483,
+    "right_spread": 0.20131,
+    "wrist_speed": 1.25721,
+    "wrist_spread": 0.23752
+   },
+   "hold_x": {
+    "left_speed": 1.04018,
+    "left_spread": 0.24075,
+    "right_speed": 1.19483,
+    "right_spread": 0.20131,
+    "wrist_speed": 1.1175,
+    "wrist_spread": 0.22103
+   },
+   "hold_x_length": {
+    "left_speed": 1.14673,
+    "left_spread": 0.2398,
+    "right_speed": 1.31188,
+    "right_spread": 0.20016,
+    "wrist_speed": 1.22931,
+    "wrist_spread": 0.21998
+   },
+   "length_tokens": {
+    "left_speed": 1.46192,
+    "left_spread": 0.27262,
+    "right_speed": 1.31188,
+    "right_spread": 0.20016,
+    "wrist_speed": 1.3869,
+    "wrist_spread": 0.23639
+   },
+   "real": {
+    "left_speed": 0.47735,
+    "left_spread": 0.10965,
+    "right_speed": 0.66894,
+    "right_spread": 0.12116,
+    "wrist_speed": 0.57157,
+    "wrist_spread": 0.1154
+   }
+  },
+  "6": {
+   "base": {
+    "left_speed": 1.49632,
+    "left_spread": 0.27548,
+    "right_speed": 1.40229,
+    "right_spread": 0.20375,
+    "wrist_speed": 1.4493,
+    "wrist_spread": 0.23961
+   },
+   "hold_x": {
+    "left_speed": 1.19866,
+    "left_spread": 0.24227,
+    "right_speed": 1.40229,
+    "right_spread": 0.20375,
+    "wrist_speed": 1.30047,
+    "wrist_spread": 0.22301
+   },
+   "hold_x_length": {
+    "left_speed": 1.34223,
+    "left_spread": 0.24189,
+    "right_speed": 1.57174,
+    "right_spread": 0.20349,
+    "wrist_speed": 1.45699,
+    "wrist_spread": 0.22269
+   },
+   "length_tokens": {
+    "left_speed": 1.68005,
+    "left_spread": 0.27507,
+    "right_speed": 1.57174,
+    "right_spread": 0.20349,
+    "wrist_speed": 1.6259,
+    "wrist_spread": 0.23928
+   },
+   "real": {
+    "left_speed": 0.58028,
+    "left_spread": 0.11053,
+    "right_speed": 0.83527,
+    "right_spread": 0.12271,
+    "wrist_speed": 0.70575,
+    "wrist_spread": 0.11662
+   }
+  }
+ },
+ "low_passed_clips": {
+  "base": 499,
+  "hold_x": 499,
+  "hold_x_length": 499,
+  "length_tokens": 499,
+  "real": 500
  },
  "note": "no hypothesis was read; motion of stored generated words only",
  "rebuild_check": {

@@ -1,5 +1,5 @@
 """Post-S2 A6's checks at run time. ``env``: this pod's python, torch, transformers and tokenizers are A5's pinned ones. ``same-pod KEY``: a stored base report came from this code and this pod's environment, GPU included, so a draw's arms
-never mix. ``started KEY``: write-once marker that an arm of an attempt began; an arm that began and did not finish is never rerun under that attempt. ``a5-done``: A5's summary is stored, so A6's draws reveal no per-draw number of A5's read."""
+never mix. ``started KEY``: write-once marker that an arm of an attempt began; an arm that began and did not finish is never rerun under that attempt. ``a5-done``: A5's summary is stored and reads confirmed or direction only: A6's draws run on nothing less, and reveal no per-draw number of A5's read before it."""
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 
 import comp_a_lib as lib  # noqa: E402
 from comp_a5_guard import check_environment  # noqa: E402
-from comp_a6_read import JOB_FILE  # noqa: E402
+from comp_a6_read import A5_GOES_ON, JOB_FILE  # noqa: E402
 
 A5_SUMMARY = "acquisition/2026-10-17-v1/youtube-asl-v1/round20/comp-a5/a5-summary.json"
 
@@ -36,8 +36,12 @@ def main(argv=None) -> int:
             raise SystemExit(f"{argv[1]} exists")
         store.put(argv[1], b"started")
     elif argv == ["a5-done"]:
-        if not make_store("r2").exists(A5_SUMMARY):
+        store = make_store("r2")
+        if not store.exists(A5_SUMMARY):
             raise SystemExit(f"{A5_SUMMARY} is not stored: A6's draws wait for A5's summary")
+        outcome = (json.loads(store.get(A5_SUMMARY)).get("rule") or {}).get("outcome")
+        if outcome not in A5_GOES_ON:
+            raise SystemExit(f"A5's summary reads {outcome}: A6's draws run only on {list(A5_GOES_ON)}")
     else:
         raise SystemExit("usage: comp_a6_guard.py env | same-pod KEY | started KEY | a5-done")
     return 0
