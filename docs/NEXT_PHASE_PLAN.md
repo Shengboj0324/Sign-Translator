@@ -6142,3 +6142,13 @@ An independent review of the span read **HOLD**. The arithmetic and units hold; 
 - **Hold:** "no wrist purpose" claimed more than the evidence supports. Whether monocular inflates the left arm is undecided, and on two-view top10's left is 2.23× raw and 2.76× at 3 Hz.
 
 **Decisions.** `HOLD_ARMS` is withdrawn: A6 keeps the $2.45 screen and its gate, rather than a shaky span cancelling a cheap test. The wrist condition's definition stands as the owner's direction, but no claim, gate or decision reads the span until it is rerun with clips counted per rate and side, groups under 30 usable clips refused, named signers shown apart from channels, the old reading beside it, and an independent review. Before any claim, the owner sees that real D20 signers fail it.
+
+### Path read declared: real D20 through the monocular path, report only (2026-11-01, 17:27 UTC)
+
+Branch `path-read` 52fd48d1 (digest 5a48d7da), independent review applied, not merged. Instrument v1, D20's 500 real clips, about $0.65. **Real forms only: no generated form, no composition, no training; it decides nothing.** The script's header holds the reading, committed before any read:
+
+- **Case and ratio rest on the marks-free pair:** `nearest_monocular` against the stored `v0_nearest_fill`, since V0 discredited the marked read and word clips reach v1 all-valid through d2. The marked pair is secondary. BLEU and likelihood each get a case (0.5 BLEU, 0.052 nats); disagreement reads unresolved.
+- **(a)** within 0.5 with a paired lower bound at or above −0.5: not a large cap. **(b)** lower by more: v1 reads this path lower; lost content, marks, length and v1's fit are not separated, and this makes no claim about composition. **(c)** higher: investigate before believing it.
+- **Confound, stated:** v1 was fine-tuned on two-view keypoints.
+- **Plumbing alerts** suppress the case label: per-part validity, keypoint distance with a mirrored control, 475 shared clips at least. `real_two_view` and blank must reproduce the stored read, or the read is void.
+- **`STORED_RT`** isn't SHA-pinned; `stored-check` verifies its figures and prints its hash. Disclosed.
