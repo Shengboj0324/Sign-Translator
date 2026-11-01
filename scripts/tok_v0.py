@@ -18,8 +18,9 @@ this asks whether the marks themselves tell v1 about the sentence. D20 only, ins
 **Partner.** The mismatch rule in use: ``sentence_exposure_diagnostic.derangement(N, seed + 1)`` over the list's positions, seed 0 as ``round15_compose_eval.py``. So never itself.
 
 **Per form,** ``tok_probes.form_panel``: BLEU, likelihood minus blank, loop share, length, wrist, hands, tracked share, share of the gap, paired against real, blank and ``comparators_of``.
-``reader_input`` says what v1 receives against real: marks added and removed, coordinate differences on frames both mark (arm points apart from hand-local ones), and how far the clip's
-shoulder origin and unit moved, since ``keypoints2d.normalise`` takes them from the marked frames.
+``reader_input`` says what v1 receives against real: marks added and removed, coordinate differences on frames both mark (arm points apart from hand-local ones), how far the clip's
+shoulder origin and unit moved, since ``keypoints2d.normalise`` takes them from the marked frames, and ``collapsed_hand_changed``: frames where real marks a hand whose wrist rotation is
+untracked. ``from_state`` does not check that rotation, and an all-zero rotation folds every hand point onto the wrist, so real shows a zero-sized hand there and a filled form does not.
 
     python scripts/tok_v0.py preflight --out-dir W --final-key K --void-prefix V
     python scripts/tok_v0.py read --out-dir W/forms --instrument-cache W/i
@@ -196,6 +197,9 @@ def reader_input_differences(real, form) -> dict:
     both = valid_r & valid_f
     arm = np.zeros(both.shape[1], bool)
     arm[list(range(6)) + list(HAND_WRISTS)] = True
+    labels = list(real.channels["body"].labels)
+    collapsed = [valid_r[:, a] & ~real.channels["body"].valid[:, labels.index(f"{side}Hand")] & form.channels["body"].valid[:, labels.index(f"{side}Hand")]
+                 for side, a in (("Left", HAND_WRISTS[0]), ("Right", HAND_WRISTS[1]))] if "LeftHand" in labels else [np.zeros(len(valid_r), bool)]
     gap = np.abs(p_f - p_r).sum(-1)
     mid_r, width_r = _frame(raw_r, valid_r)
     mid_f, width_f = _frame(raw_f, valid_f)
@@ -205,6 +209,7 @@ def reader_input_differences(real, form) -> dict:
         return round(float(gap[mask].mean()), 6) if mask.any() else None
     return dict(marks_added=round(float((valid_f & ~valid_r).mean()), 5), marks_removed=round(float((valid_r & ~valid_f).mean()), 5),
                 arm_difference_on_both=mean(both & arm), hand_local_difference_on_both=mean(both & ~arm),
+                collapsed_hand_changed=round(float(np.mean(collapsed)), 5),
                 origin_shift_in_shoulder_widths=None if moved is None else round(moved[0], 6), unit_ratio=None if moved is None else round(moved[1], 6))
 
 

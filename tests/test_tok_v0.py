@@ -112,7 +112,7 @@ def test_real_values_under_real_marks_are_real_exactly_as_v1_receives_them():
     for name in state.channels:
         np.testing.assert_array_equal(out.channels[name].valid, state.channels[name].valid)
         np.testing.assert_array_equal(out.channels[name].values, state.channels[name].values)
-    assert V.reader_input_differences(state, out) == dict(marks_added=0., marks_removed=0., arm_difference_on_both=0., hand_local_difference_on_both=0., origin_shift_in_shoulder_widths=0., unit_ratio=1.)
+    assert V.reader_input_differences(state, out) == dict(marks_added=0., marks_removed=0., arm_difference_on_both=0., hand_local_difference_on_both=0., collapsed_hand_changed=0., origin_shift_in_shoulder_widths=0., unit_ratio=1.)
 
 
 def test_with_marks_stores_zero_on_untracked_frames_and_refuses_another_length():
@@ -130,6 +130,8 @@ def test_stretched_marks_keep_the_partners_pattern_at_this_length():
     assert len(out.timestamps) == 20
     assert (~out.channels["left_hand"].valid.all(1)).any()
     assert set(map(tuple, out.channels["left_hand"].valid.tolist())) <= set(map(tuple, partner.channels["left_hand"].valid.tolist()))
+    index = np.rint(np.linspace(0, 39, 20)).astype(int)                            # by nearest frame across the partner's whole length
+    np.testing.assert_array_equal(out.channels["left_hand"].valid, partner.channels["left_hand"].valid[index])
 
 
 def test_shuffled_runs_keep_each_joints_rate_and_run_lengths_and_move_the_pattern():
@@ -142,6 +144,16 @@ def test_shuffled_runs_keep_each_joints_rate_and_run_lengths_and_move_the_patter
     assert np.diff(gaps).max() > 1 and (np.diff(gaps) == 1).sum() >= 5            # runs move whole: no flicker frame by frame
     moved = [not np.array_equal(a, marks_of(V.shuffled_runs(state, np.random.default_rng(s)))) for s in range(8)]
     assert any(moved)
+
+
+def test_runs_are_cut_on_every_read_channel():
+    state = signer_state(5, frames=48, amplitude=.4)
+    c = state.channels["right_hand"]
+    valid = c.valid.copy()
+    valid[20:28] = False                                                           # only the right hand: no other channel changes
+    state = replace(state, channels={**state.channels, "right_hand": replace(c, valid=valid, values=np.where(valid[..., None], c.values, 0.), observed=c.observed & valid, confidence=c.confidence * valid)})
+    a = marks_of(state)
+    assert any(not np.array_equal(a, marks_of(V.shuffled_runs(state, np.random.default_rng(s)))) for s in range(8))
 
 
 def test_seeds_depend_on_the_clip_and_the_form_only():
@@ -254,6 +266,27 @@ def test_reader_input_counts_marks_removed_and_coordinates_apart():
     assert d["hand_local_difference_on_both"] > 0 and d["arm_difference_on_both"] == 0 and d["unit_ratio"] == 1
 
 
+def untracked_wrist_rotation(state, start=6, stop=9):
+    body = state.channels["body"]
+    k = list(body.labels).index("LeftHand")
+    valid = body.valid.copy()
+    valid[start:stop, k] = False
+    return replace(state, channels={**state.channels, "body": replace(body, valid=valid, values=np.where(valid[..., None], body.values, 0.), observed=body.observed & valid, confidence=body.confidence * valid)})
+
+
+def test_a_hand_with_an_untracked_wrist_rotation_folds_onto_the_wrist_in_real_and_not_in_a_filled_form():
+    from signtranslator.data.keypoints2d import from_state
+    state = untracked_wrist_rotation(signer_state(1, frames=20, amplitude=.4))
+    points, valid = from_state(state)
+    a = 6                                                                           # the left hand's wrist point
+    assert valid[6:9, a + 5].all() and np.allclose(points[6:9, a + 5], points[6:9, a], atol=1e-6)     # marked valid, yet folded
+    filled = P.decoded_form("identity", state, tiny_tokenizer(), None)
+    points_f, _ = from_state(filled)
+    assert not np.allclose(points_f[6:9, a + 5], points_f[6:9, a], atol=1e-6)
+    d = V.reader_input_differences(state, filled)
+    assert d["collapsed_hand_changed"] == pytest.approx(3 / 20 / 2) and d["marks_added"] == 0 and d["hand_local_difference_on_both"] > 0
+
+
 def test_reader_input_is_undefined_only_without_shoulders():
     from evaluate_text_to_motion import blanked
     state = signer_state(1, frames=20, amplitude=.4)
@@ -270,7 +303,7 @@ def test_an_instrument_that_reads_marks_lands_where_the_forms_say(monkeypatch, t
     top = r["real"]["bleu"]["bleu"]
     assert top > 0
     assert r["v0_blank_real_marks"]["bleu"]["bleu"] == top and r["v0_other_motion"]["bleu"]["bleu"] == top             # real's marks, whatever the values
-    for name in ("v0_blank_other_marks", "v0_other_marks", "v0_nearest_fill", "identity"):
+    for name in ("v0_blank_other_marks", "v0_other_marks", "v0_random_marks", "v0_nearest_fill", "identity"):
         assert r[name]["bleu"]["bleu"] < top
     assert r["v0_blank_real_marks"]["comparators"]["v0_blank_other_marks"]["bleu"]["difference"] > 0
     assert r["v0_blank_real_marks"]["comparators"]["v0_blank_other_marks"]["likelihood_minus_blank"]["difference"] > 0
