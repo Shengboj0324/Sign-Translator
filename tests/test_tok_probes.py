@@ -1034,6 +1034,14 @@ def test_the_job_smokes_on_train_first_then_reads_and_ends_with_a_parseable_done
     assert not any("--output-key" in x for x in lines)
 
 
+def test_every_call_the_job_makes_parses_with_the_real_parser(tmp_path):
+    _, calls = run_job(tmp_path)
+    lines = [x.split()[1:] for x in calls.splitlines() if x.startswith("scripts/tok_probes.py ")]
+    assert {x[0] for x in lines} == {"fit", "read", "words", "merge", "check", "upload", "groups"}
+    for line in lines:
+        P.build_parser().parse_args(line)
+
+
 def test_smoke_only_stops_before_any_declared_read(tmp_path):
     result, calls = run_job(tmp_path, SMOKE="1")
     assert result.returncode == 0 and done_line(result) == 0 and "SMOKE done" in result.stdout

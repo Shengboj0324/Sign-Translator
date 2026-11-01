@@ -39,7 +39,9 @@ codebooks. ``k512`` is a control that the plan's list leaves out: it is d2's own
 post hoc against learned. ``fsq10``: post-hoc residual FSQ with levels (8, 6, 5, 5), 1,200 codes, 10.23 bits per stage: per
 stage and part, a PCA to 4 dimensions and a uniform grid bounded by the 0.5-99.5% range (the per-stage scale stands in for
 the invertible layer norm of 2508.15860). Its equal-bits comparator is ``k1024`` (10 bits). All these codebooks meet an
-encoder and a decoder trained for d2's, so they read a lower bound on a retrained quantiser of that kind.
+encoder and a decoder trained for d2's, so they read a lower bound on a retrained quantiser of that kind, and **FSQ more so:**
+d2's latents have 128 dimensions and were never shaped to sit on a 4-dimensional grid, so 8 stages of PCA keep at most 32 of them.
+A k-means book has no such limit. So fsq10 below k1024 does not show that FSQ is worse; fsq10 at least equal to k1024 would be informative.
 
 **B6.** ``words``: v3d's top-1 and top-5 on each decoded form on RIT and ASLLVD words. **The plan says "each surviving form"
 and declares no survival rule**, so by default every decoded form is read and nothing is filtered; a reader can filter later,
@@ -58,8 +60,9 @@ form report says so: cuts at wrist-activity minima at each sentence's word count
 - ``seam_sq196_min``: segments between the minima squeezed 1.96× with bridges filling the length; ``seam_sq196_rnd``: the
   same with random cuts.
 
-"Word count" is ``compositional.normalise``'s tokens, stop words included. That is more seams than composition has (about 9.1
-entries per D20 sentence), and it is stated here because section 5 leaves it open. Word echo (section 5) is not computed: it needs
+"Word count" is ``compositional.normalise``'s tokens, stop words included, as section 5 leaves it open. That is more seams than
+composition has (about 9.1 entries per D20 sentence), so at the same share each bridge is shorter than composition's, and this form
+may understate what composition's longer bridges cost. ``junctions_per_clip`` reports the density. Word echo (section 5) is not computed: it needs
 r10's selection, and the hypotheses are stored for it.
 
 **Per form** (``merge``): BLEU, likelihood minus blank (teacher-forced reference NLL, ``s0_ceilings.candidate_nll``), loop share
@@ -161,11 +164,12 @@ READING = dict(path="identity against real: what the round-trip path itself cost
                   "against identity, not only real, since a perfect decoder on this path reads identity.",
                b2="rt_only_<part> below real, and real_only_<part> above round_trip_masked: which part holds the loss.",
                b4="q_<part><Q> against round_trip: spare rate per part. hands10, hands12 against round_trip: extra hand rate.",
-               b5="k<K> against k512: K. fsq10 against k1024: the quantiser's form at about equal bits. k512 against round_trip: "
-                  "post hoc against learned.",
+               b5="k<K> against k512: K. fsq10 against k1024: the quantiser's form at about equal bits, biased against FSQ (d2's "
+                  "128-dimensional latents through a 4-dimensional grid). k512 against round_trip: post hoc against learned.",
                b6="v3d top-5 decoded against real, per corpus; v3d favours d2.",
                seam="seam_min<S> against real bounds what perfect transitions could buy; against seam_rnd<S>: whether the "
-                    "positions matter. loop share is the plan's 54% question.")
+                    "positions matter. loop share is the plan's 54% question. More, shorter bridges than composition's: see "
+                    "junctions_per_clip.")
 NOT_DECIDED = "report only: the plan's readings are its own; no rule, bar or verdict is computed here"
 
 
@@ -1319,7 +1323,7 @@ def form_groups(processes: int, skip=()) -> list[str]:
     return [",".join(g) for g in groups if g]
 
 
-def main(argv=None) -> int:
+def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = p.add_subparsers(dest="command", required=True)
     fit = sub.add_parser("fit", help="post-hoc codebooks from c02 train latents (no network trains)")
@@ -1367,7 +1371,11 @@ def main(argv=None) -> int:
     groups = sub.add_parser("groups", help="print one comma list of forms per process")
     groups.add_argument("--processes", type=int, required=True)
     groups.add_argument("--skip", default="")
-    args = p.parse_args(argv)
+    return p
+
+
+def main(argv=None) -> int:
+    args = build_parser().parse_args(argv)
     if args.command == "groups":
         print("\n".join(form_groups(args.processes, [s for s in args.skip.split(",") if s])), flush=True)
         return 0
