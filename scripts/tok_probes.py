@@ -86,8 +86,8 @@ its motion pairs are null, with the reason.
     python scripts/tok_probes.py merge --out-dir W/forms --output-file W/report.json
     python scripts/tok_probes.py check --report W/report.json
 
-Outputs are write-once and written atomically. Every report names its code (a SHA-256 over ``scripts/*.py`` and ``signtranslator/**/*.py``,
-which also catches a dirty tree; a pod has no ``.git``) and its environment (python, torch, transformers, tokenizers, GPU), and ``merge`` and
+Outputs are write-once and written atomically. Every report names its code (``eval.provenance.code_digest``: ``scripts/*.py``, ``signtranslator/**/*.py`` and
+this job's shell file, which also catches a dirty tree; a pod has no ``.git``) and its environment (python, torch, transformers, tokenizers, GPU), and ``merge`` and
 ``restore`` refuse a mix; code that cannot be named voids the read.
 
 **The canary.** Right after real and blank are read, against a SHA-pinned stored D20 report that read them through the same path (B0, ``s0_ceilings``):
@@ -127,11 +127,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 
 import s2_lib as L  # noqa: E402
-from signtranslator.eval import s0_metrics as M  # noqa: E402
+from signtranslator.eval import provenance, s0_metrics as M  # noqa: E402
 from signtranslator.eval.loop_share import loop_flags  # noqa: E402
+from signtranslator.eval.provenance import environment  # noqa: E402
 
 FPS = L.FPS
 PROBE = "tok-probes"
+JOB_FILE = "runpod/fleet/tok_probes.sh"
 # every pin, stated here too: check_pins refuses a run whose shared constants have moved
 PINS = dict(D20_KEY="acquisition/2026-10-17-v1/youtube-asl-v1/round20/d20.json",
             D20_SHA="d311703b748821822f65f8e65c5e6bd81422d5e16231171f0ab1ea54e185dabe",
@@ -255,30 +257,12 @@ def records_with_boundaries(records) -> int:
 
 @functools.lru_cache(maxsize=1)
 def code_digest() -> str:
-    """SHA-256 over ``scripts/*.py`` and ``signtranslator/**/*.py``: paths and bytes. A pod has no ``.git``, and this also catches a dirty tree. Code
-    that cannot be named voids the read."""
-    files = sorted([*(ROOT / "scripts").glob("*.py"), *(ROOT / "signtranslator").rglob("*.py")])
-    if not files:
-        raise SystemExit(f"no code under {ROOT}: a read that cannot name its code is void")
-    digest = hashlib.sha256()
-    for path in files:
-        digest.update(str(path.relative_to(ROOT)).encode() + b"\0" + path.read_bytes() + b"\0")
-    return digest.hexdigest()
-
-
-def environment() -> dict:
-    """What can move a read without the code changing. ``transformers`` is a range on a pod, so this is what protects a retry."""
-    from importlib import metadata
-    import platform
-    import torch
-
-    def version(name):
-        try:
-            return metadata.version(name)
-        except metadata.PackageNotFoundError:
-            return None
-    return dict(python=platform.python_version(), torch=torch.__version__, transformers=version("transformers"), tokenizers=version("tokenizers"),
-                gpu=torch.cuda.get_device_name(0) if torch.cuda.is_available() else None)
+    """``eval.provenance.code_digest`` with this job's shell file, which holds pins: a pod has no ``.git``, and this also catches a dirty tree. Code that
+    cannot be named voids the read."""
+    try:
+        return provenance.code_digest(extra_files=(JOB_FILE,))
+    except OSError as error:
+        raise SystemExit(f"no code digest ({error}): a read that cannot name its code is void")
 
 
 def check_same_run(reports: dict, what: str) -> tuple[str, dict]:

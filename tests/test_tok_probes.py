@@ -1503,6 +1503,15 @@ def test_a_canary_miss_exits_3_voids_the_read_and_a_merge_refuses_it(monkeypatch
     assert json.loads(store.get("tok/void/d.json"))["canary"]["misses"] == r["misses"]
 
 
+def test_nll_differences_of_either_sign_do_not_cancel(monkeypatch, tmp_path):
+    _, out = canary_setup(monkeypatch, tmp_path)
+    for name in ("real", "blank"):
+        r = json.loads((out / f"form-{name}.json").read_text())
+        r["nll"] = [[row[0] + (.002 if i % 2 else -.002)] for i, row in enumerate(r["nll"])]    # mean difference 0, mean absolute .002
+        (out / f"form-{name}.json").write_text(json.dumps(r))
+    assert canary(tmp_path, out) == 3
+
+
 def test_a_bleu_miss_alone_fails_the_canary(monkeypatch, tmp_path):
     _, out = canary_setup(monkeypatch, tmp_path)
     monkeypatch.setitem(P.CANARY, "real", P.CANARY["real"] + .06)
@@ -1831,7 +1840,8 @@ def test_the_report_discloses_what_a_reader_needs(monkeypatch, tmp_path):
 # ---- review of 366f213: the code digest, the environment, B1's block, the rule apart from the job ---------------------------
 
 def digest_of(root: Path, monkeypatch) -> str:
-    monkeypatch.setattr(P, "ROOT", root)
+    from signtranslator.eval import provenance
+    monkeypatch.setattr(provenance, "ROOT", root)
     P.code_digest.cache_clear()
     try:
         return P.code_digest()
@@ -1839,30 +1849,41 @@ def digest_of(root: Path, monkeypatch) -> str:
         P.code_digest.cache_clear()
 
 
-def test_the_code_digest_names_scripts_and_the_package_and_catches_a_dirty_tree_without_git(tmp_path, monkeypatch):
+def test_the_code_digest_names_scripts_the_package_and_the_job_and_catches_a_dirty_tree_without_git(tmp_path, monkeypatch):
     root = tmp_path / "code"
     (root / "scripts").mkdir(parents=True)
     (root / "signtranslator" / "eval").mkdir(parents=True)
+    (root / "runpod" / "fleet").mkdir(parents=True)
     (root / "scripts" / "a.py").write_text("1")
     (root / "signtranslator" / "eval" / "b.py").write_text("2")
+    (root / P.JOB_FILE).write_text("pins")
     first = digest_of(root, monkeypatch)
     assert len(first) == 64 and not (root / ".git").exists() and digest_of(root, monkeypatch) == first
     (root / "signtranslator" / "eval" / "b.py").write_text("3")
     second = digest_of(root, monkeypatch)
     assert second != first
     (root / "scripts" / "a.py").write_text("4")
-    assert digest_of(root, monkeypatch) != second
     third = digest_of(root, monkeypatch)
+    assert third != second
+    (root / P.JOB_FILE).write_text("other pins")                                 # the job holds pins
+    fourth = digest_of(root, monkeypatch)
+    assert fourth != third
     (root / "scripts" / "notes.txt").write_text("x")
     (root / "scripts" / "sub").mkdir()
     (root / "scripts" / "sub" / "c.py").write_text("x")
-    assert digest_of(root, monkeypatch) == third                                 # scripts/*.py, not deeper, and code only
+    assert digest_of(root, monkeypatch) == fourth                                # scripts/*.py, not deeper, and code only
     (root / "signtranslator" / "eval" / "b.py").rename(root / "signtranslator" / "eval" / "c.py")
-    assert digest_of(root, monkeypatch) != third                                 # a path is part of the code
-    empty = tmp_path / "empty"
-    empty.mkdir()
-    with pytest.raises(SystemExit, match="void"):
-        digest_of(empty, monkeypatch)
+    assert digest_of(root, monkeypatch) != fourth                                # a path is part of the code
+    (root / P.JOB_FILE).unlink()
+    with pytest.raises(SystemExit, match="void"):                                # no job file, no digest: the read is void
+        digest_of(root, monkeypatch)
+
+
+def test_the_probe_uses_the_shared_provenance_module_with_its_job_file():
+    from signtranslator.eval import provenance
+    P.code_digest.cache_clear()
+    assert P.JOB_FILE == "runpod/fleet/tok_probes.sh" and P.code_digest() == provenance.code_digest(extra_files=(P.JOB_FILE,))
+    assert P.code_digest() != provenance.code_digest() and P.environment is provenance.environment
 
 
 def test_every_report_names_its_code_and_environment(monkeypatch, tmp_path):
@@ -1873,6 +1894,24 @@ def test_every_report_names_its_code_and_environment(monkeypatch, tmp_path):
     assert r["code_digest"] == P.code_digest() and r["environment"] == PLACE
     report = merged(tmp_path, ["real", "blank"])
     assert report["code_digest"] == P.code_digest() and report["environment"] == PLACE
+
+
+def test_a_form_that_read_the_fit_records_it_on_its_word_report(monkeypatch, tmp_path):
+    import validate_sign_recognizer as vsr
+    tok = tiny_tokenizer()
+    fit_harness(monkeypatch, tok)
+    assert fit(tmp_path) == 0
+    rows = word_rows("rit", 2)
+    states = [signer_state(i, frames=16, amplitude=.4) for i in range(2)]
+    monkeypatch.setattr(P, "load_v3d", lambda store, device: (object(), ["BOOK"]))
+    monkeypatch.setattr(P, "word_records", lambda store, labels: rows)
+    monkeypatch.setattr(P, "word_states", lambda store, rs, labels, limit, cache, longest=False: (states, [0, 0], ["rit-0", "rit-1"]))
+    monkeypatch.setattr(L, "load_tokenizer", lambda store: tok)
+    monkeypatch.setattr(vsr, "logits_of", lambda model, forms, device: torch.ones(len(forms), 1))
+    assert P.main(["words", "--store", "dir:x", "--out-dir", str(tmp_path / "w"), "--fit-dir", str(tmp_path / "fit"), "--forms", "real,blank,hands12"]) == 0
+    sha = json.loads((tmp_path / "fit" / "fit.json").read_text())["codebooks_sha256"]
+    assert json.loads((tmp_path / "w/word-hands12.json").read_text())["fit"]["codebooks_sha256"] == sha
+    assert json.loads((tmp_path / "w/word-real.json").read_text())["fit"] is None
 
 
 def test_the_environment_names_what_can_move_a_read(monkeypatch):

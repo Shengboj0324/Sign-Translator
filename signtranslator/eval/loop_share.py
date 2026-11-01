@@ -2,8 +2,7 @@
 
 This is the definition behind ``reports/post_s2_plan.md`` section 1 (real 28, blank 23, a1 54, a4 47 on D20). It reads raw
 whitespace tokens, not ``motion_to_text.words``, which splits "you've" into three tokens and reads a1 59.8, a4 52.0, real 33.0,
-blank 30.0 on the same hypotheses. ``scripts/comp_a_lib.py`` on branch comp-a has the same rule as ``is_loop``; keep the two in step
-(the cases in ``tests/test_loop_share.py`` pin it).
+blank 30.0 on the same hypotheses. ``scripts/comp_a_lib.py`` has the same rule as ``is_loop``; ``tests/test_loop_share.py`` holds the two in step.
 """
 from __future__ import annotations
 
