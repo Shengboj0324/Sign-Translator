@@ -6002,3 +6002,22 @@ Report only. The fold claim made during its build is withdrawn: 0 folds in 61,32
 - **Anything else:** anchors stay and the ambiguity is reported.
 
 **No outcome changes** a system score, a claim or a declared bar by itself.
+
+### Tracking-marks control V0: result (read 2026-11-01, recorded 07:10 UTC)
+
+D20, instrument v1, report only, `tok-probes-v0/report.json` sha `2f301943…`, L40S. Canary and identity path check reproduced (every hypothesis identical). Likelihood minus blank decides.
+
+**Declared outcomes. Q1 shown; Q2 partial; Q3 both.**
+- **Q1, marks carry this sentence: shown, by B.** B = `v0_other_motion` − `v0_other_motion_other_marks` +0.0205 [+0.0088, +0.0327], against the 0.015 bar. A = `v0_blank_real_marks` − `v0_blank_other_marks` +0.0004 [−0.0122, +0.0134]. **Q1 takes precedence: real's marked read holds content no generator can emit, real's gap is overstated, no bar uses that read as a target, and v2 reads next.** The size is small: B is 7% of real's 0.292.
+- **Q2: partial.** Another clip's marks recover p2 = 0.580 [0.497, 0.651] of real − identity (0.2006 [0.1706, 0.232]). Shuffled marks read +0.2357, partner marks +0.2078.
+- **Q3: both.** Nearest-valid fill recovers p3 = 0.709 [0.662, 0.755].
+
+| Form, all from real motion | BLEU | Likelihood minus blank |
+|---|---|---|
+| Real | 4.493 | +0.2920 |
+| All valid, neutral fill (`identity`) | 3.889 | +0.0914 |
+| All valid, nearest-valid fill (`v0_nearest_fill`) | 4.621 | +0.2337 |
+| Other clip's marks | 4.248 | +0.2078 |
+| Shuffled marks | 4.112 | +0.2357 |
+
+**Reading, not a rule.** Most of what `identity` lost came from the neutral values put on untracked frames, not from claiming those frames were tracked: all-valid with nearest fill reads above real on BLEU and at 80% of its likelihood gap. So d2's cap as measured (3.364 on the 1,000) mixes the tokenizer with that fill, and hasn't been measured without it. This is one read on D20; state forms can't separate a mark's flag from its effect on normalisation, and removing marks also removes values. The tokenizer stays held. **Next, each declared before its read:** the round trip under nearest fill, which is the true cap; and whether generated hands drift to the neutral pose the training targets use on untracked frames, since `diffusion_targets` fills with neutral. That second question is a hypothesis, unmeasured.
