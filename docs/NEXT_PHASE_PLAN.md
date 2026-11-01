@@ -6114,3 +6114,20 @@ Owner, today: "comparing against real signers is fine", detail delegated. **The 
 - **Reported beside it, always:** the old reading, over D20 real through both paths. It no longer gates.
 
 **Disclosed as a loosening made after seeing numbers.** Composition's 1.77× (two-view) and 1.88× (monocular), and the first real-signer figures (YouTube about 1.5×, ASLLRP about 1.6×, channels 0.92–2.22× on 5 clips each), were known when this was set. Those 5-clip ranges are noisy and aren't the span. The other conditions, instruments, review, serving and licensing are unchanged. Deaf raters' naturalness scores are still the check on whether the motion looks right, and speed inside the span doesn't show that it does. `human_study.NOT_READ_HERE` keeps its old label until A5's summary, so code under A5's digest doesn't move mid-run.
+
+### Real-signer wrist span, measured (recorded 2026-11-01, 15:41 UTC, before A5's summary and any new composition read)
+
+`real_signer_span` in `reports/wrist_by_signer.json` on `comp-a6` f59611c (sha 1e9b3de5). Real clips only, monocular path, 129 groups: 120 YouTube channels (fixed draw of the 355 with at least 30 clips, 30 clips each), 4 ASLLRP signers, 5 How2Sign signers. p10–p90 of group means; ratios to D20 real at the same rate.
+
+| Reading | Span | Span without YouTube | top10 | hold-x |
+|---|---|---|---|---|
+| Raw pooled | 0.887–1.856 | 0.749–1.613 | 1.557 | 1.400 |
+| Raw left | 0.923–2.120 | 0.705–1.602 | 1.606 | 1.291 |
+| Raw right | 0.812–1.709 | 0.756–1.563 | 1.515 | 1.515 |
+| 3 Hz pooled | 0.723–1.466 | 0.593–1.438 | 1.257 | 1.117 |
+| 3 Hz left | 0.768–1.748 | 0.539–1.446 | 1.320 | 1.040 |
+| 3 Hz right | 0.669–1.271 | 0.646–1.330 | 1.195 | 1.195 |
+
+top10's stored words at today's predicted timing sit inside on all six readings. **This is not a wrist pass for any claim:** the condition is read on the system claimed, on unseen signers, with everything else. What it decides now: A6 declares `HOLD_ARMS=off`.
+
+Limits, stated: channels are 120 of 129 groups and a channel isn't a signer; without them top10's raw left reads 1.606 against a 1.602 top, just outside. top10 at the fitted length is outside on the right (1.727 raw against 1.709, 1.312 at 3 Hz against 1.271), so a passed length rule brings the wrist question back. The generator's mix includes YouTube, so sitting inside this span partly reflects where the clips came from. The span was set after composition's figures were known. ASLLRP's path comes from build scripts, not a same-clip comparison. An independent review of this span is running.
