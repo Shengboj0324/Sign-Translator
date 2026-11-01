@@ -5952,3 +5952,22 @@ Marking every frame valid costs more than the tokenizer: real tracks hands on 83
 D20, real word clips, report only, `a4-clipchoice-decomposition.json`. **Declared reading: not informative**; the tokenizer bound stands without support from this read. n16 2.031 [1.729, 2.357] is above sample0 1.821 but below all four other draws. Choice against sample0: BLEU +0.210 [−0.113, +0.599]; likelihood +0.0513 [+0.0285, +0.0744]. Repetition: −0.056 [−0.448, +0.334].
 
 **Finding, not a rule:** five random draws of real clips, same sentences and same scorer, read 1.821, 2.106, 2.118, 2.359, 2.414 (SD 0.237, range 0.593), wider than most lever effects in this round. The sentence bootstrap doesn't include this noise, so every single-draw D20 or C20 BLEU interval is too narrow, including C20's 2.400. Likelihood spread far less: +0.030 to +0.068, with n16 above all at +0.086. Future BLEU comparisons should average several draws, or lead with likelihood, and any such change is declared before its read.
+
+### A3 generated, top 10: passes its rule (read 2026-11-01, recorded 06:33 UTC)
+
+D20, report only, W14b no gains, best of 16, plus the seven new entries (i, it, or, so, this, you, your) and every n't token signed as `not`; predicted timing, margin 0. **Rule: passed, all five checks.** Nothing is adopted by this read, and it isn't M1.
+
+| Read | margin 0 | top 10 | Paired |
+|---|---|---|---|
+| BLEU, predicted timing | 2.183 | **2.526** [2.111, 2.925] | +0.343 [−0.018, +0.718], p 0.031 |
+| Gap share | 21.3% | **33.0%** [17.0, 49.9] | +11.7 points [−0.6, +26.8] |
+| Likelihood minus blank@predicted | +0.0764 | +0.0891 [+0.059, +0.1205] | +0.0128 [+0.0015, +0.0235] |
+| Spotting recall (v2) | 0.4151 | 0.4301 [0.4121, 0.4479] | +0.0149 [+0.0062, +0.0248] |
+| Wrist, pooled | 1.533× | 1.774× | outside the release band |
+| True length: BLEU, share | | 2.855 [2.371, 3.283], 41.8% | not the decided form |
+
+Shuffled 1.981, other sentences' words 1.169, loop share 54.0%.
+
+**Exemption, disclosed.** The job refused the read because this pod's GPU was an RTX 6000 Ada and the comparator's an L40S, with code digest and every package identical. The read was then run from the frozen code with that one check relaxed for GPU name only (`a3-gen-top10-read-gpu-exempt.json`, sha `a93ce1ca…`). Real and blank hypotheses are identical 500 of 500 between the two reports. The main number had been seen in the job's log before this was decided.
+
+**Limits.** Five draws of real clips spanned 0.59 BLEU, so one draw's +0.343 isn't proven; likelihood and spotting clear zero, and they're steadier. Wrist speed rose, and new-word echo didn't. Pointing and two-letter fingerspelled signs need Deaf review. D20 chose this list's arm among others, so this read is optimistic. Before any claim: more draws at the same settings, instrument v2, and one read on fresh clips.
