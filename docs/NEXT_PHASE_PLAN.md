@@ -5944,3 +5944,5 @@ D20, instrument v1, report only, `tok-probes/report.json` sha `2f7b7f85…`, 500
 Marking every frame valid costs more than the tokenizer: real tracks hands on 83.0% and wrists on 85.4% of frames, and generated output claims 100%. Of the likelihood lost by the all-valid round trip, about 80% goes at the marks, 19% in the encoder and decoder, 1% in the quantiser. Codebook size doesn't show: 256, 512, 1,024 and 4,096 codes read 3.588, 3.650, 3.512, 3.691. Truncating body stages does (body 1, 2, 4: 2.219, 2.766, 2.793); hands don't on BLEU (hands 1: 3.439), though they do on likelihood (share −4.5%).
 
 **Caution:** the masked forms carry real's tracking pattern, which a generator can't have and which may leak content, so a masked read isn't an achievable score. This doesn't show the tokenizer is fine; it shows v1 can't separate these on all-valid output. Which of the two it is needs a control (real's marks on blank or other sentences' motion) and instrument v2, trained with validity dropout.
+
+**C0, owner's decision (2026-11-01, 05:49 UTC):** the transition model stays off for now. L1 neither starts nor closes, and C0 gets no more D20 forms.
