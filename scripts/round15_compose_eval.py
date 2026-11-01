@@ -555,6 +555,21 @@ def load_export_list(args, val) -> dict:
     return dict(name=listing["name"], sha256=sha, signs=frozenset(signs))
 
 
+def word_picks(store, args) -> dict:
+    """{entry: the chosen sample} of the word cache and, with ``--word-cache-extra-key``, of its new entries' cache: the
+    same bytes ``load_word_cache`` checked."""
+    import hashlib
+    picks = {}
+    for key, sha in ((args.word_cache_key, args.word_cache_sha256),
+                     (getattr(args, "word_cache_extra_key", None), getattr(args, "word_cache_extra_sha256", None))):
+        if key:
+            payload = store.get(key)
+            if hashlib.sha256(payload).hexdigest() != sha:
+                raise SystemExit(f"{key} does not match its SHA-256")
+            picks.update({r["entry"]: r["chosen"][str(args.word_cache_n)] for r in json.loads(payload)["entries"]})
+    return picks
+
+
 def word_provenance(segments, picks) -> list[dict]:
     """Each word of a composed form: its core cut and where its clip came from. A cached word: the cache's chosen
     sample from ``picks`` (seed, index, stored clip); otherwise the segment's own seed."""
@@ -574,12 +589,7 @@ def export_states(store, args, export, forms, jobs, material, val, plans_out, re
                   generator_mix, word_cache) -> dict:
     """Save each form of the listed clips and write the index (module docstring); returns the index."""
     import hashlib
-    picks = None
-    if word_cache:                                   # the same bytes load_word_cache checked
-        payload = store.get(args.word_cache_key)
-        if hashlib.sha256(payload).hexdigest() != args.word_cache_sha256:
-            raise SystemExit(f"{args.word_cache_key} does not match --word-cache-sha256")
-        picks = {r["entry"]: r["chosen"][str(args.word_cache_n)] for r in json.loads(payload)["entries"]}
+    picks = word_picks(store, args) if word_cache else None
     rows = []
     for name in [f for f in (args.export_forms or args.variants).split(",") if f]:
         variant = name.split("@")[0]

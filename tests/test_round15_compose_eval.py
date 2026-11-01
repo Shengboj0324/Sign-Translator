@@ -321,3 +321,26 @@ def test_a_sentence_with_no_word_is_exported_as_empty(tmp_path, stage2_store, mo
     rows = {r["sign"]: r for r in json.loads((tmp_path / "e.json").read_text())["states"]}
     assert rows[info["listed"][0]]["empty"] is True and rows[info["listed"][0]]["words"] == []
     assert rows[info["listed"][1]]["empty"] is False
+
+
+def test_exported_seeds_cover_the_extra_word_cache(tmp_path):
+    """--word-cache-extra-key serves new entries from a second cache: their seeds are recorded like the others'."""
+    import hashlib
+    from types import SimpleNamespace
+    from signtranslator.data.text_motion_dataset import DirectoryStore
+    store = DirectoryStore(tmp_path)
+
+    def put(key, entry, seed):
+        payload = json.dumps(dict(entries=[dict(entry=entry, chosen={"16": dict(seed=seed, index=2)})])).encode()
+        store.put(key, payload)
+        return hashlib.sha256(payload).hexdigest()
+    main_sha, extra_sha = put("main.json", "cut", 11), put("extra.json", "whisk", 22)
+    args = SimpleNamespace(word_cache_key="main.json", word_cache_sha256=main_sha, word_cache_n=16,
+                           word_cache_extra_key="extra.json", word_cache_extra_sha256=extra_sha)
+    picks = ce.word_picks(store, args)
+    assert picks["cut"]["seed"] == 11 and picks["whisk"]["seed"] == 22
+    assert set(ce.word_picks(store, SimpleNamespace(word_cache_key="main.json", word_cache_sha256=main_sha,
+                                                    word_cache_n=16))) == {"cut"}
+    args.word_cache_extra_sha256 = "0" * 64
+    with pytest.raises(SystemExit, match="does not match"):
+        ce.word_picks(store, args)
