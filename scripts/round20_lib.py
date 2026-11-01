@@ -297,6 +297,13 @@ def entry_seed(entry: str) -> int:
     return CACHE_SEED_BASE + int.from_bytes(hashlib.sha256(f"round20-cache|{entry}".encode()).digest()[:4], "big") % 10 ** 7
 
 
+def draw_seed(entry: str, draw: int) -> int:
+    """An entry's sample-0 seed in fresh word draw ``draw`` (post-S2 A5, draw >= 1): by the entry and the draw, never ``entry_seed``'s."""
+    if draw < 1:
+        raise ValueError("a fresh draw is numbered from 1")
+    return CACHE_SEED_BASE + int.from_bytes(hashlib.sha256(f"comp-a5-draw|{draw}|{entry}".encode()).digest()[:4], "big") % 10 ** 7
+
+
 def entry_label(entry: str, labels) -> str | None:
     """The recogniser label of an entry: the entry upper-cased (``sentence_word_spotting.sentence_labels``'s rule),
     for a multi-word entry its words joined without spaces or with hyphens; None when no form is a label."""

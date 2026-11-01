@@ -189,10 +189,10 @@ def median_seconds(values) -> float:
     return float(statistics.median(values))
 
 
-def provenance_row() -> dict:
-    """The digest of the code that is running (with the job's shell file) and its environment: stored in every report."""
+def provenance_row(job_file: str = JOB_FILE) -> dict:
+    """The digest of the code that is running (with its job's shell file) and its environment: stored in every report."""
     from signtranslator.eval.provenance import code_digest, environment
-    return dict(code_digest=code_digest(extra_files=(JOB_FILE,)), environment=environment())
+    return dict(code_digest=code_digest(extra_files=(job_file,)), environment=environment())
 
 
 def fingerspelled_single_clips(arm: dict) -> list[str]:
