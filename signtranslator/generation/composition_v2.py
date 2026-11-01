@@ -331,9 +331,15 @@ def _anchor_pose(R, valid, start: int, step: int):
     return None
 
 
-def hold_left_arm(state, plan: dict, one_handed, *, ready: dict, cap: float, fps: float = FPS):
+REST_MIN_RAMP = 6                    # frames, a quarter of a second: no round trip to the rest pose is quicker than this
+
+
+def hold_left_arm(state, plan: dict, one_handed, *, ready: dict, cap: float, fps: float = FPS, rest: dict | None = None):
     """(state, info): ``state`` with the left arm held across one-handed stretches (module docstring). ``ready``: {joint: 6D values} of
-    How2Sign train's ready pose; ``cap``: the wrist's chest-frame speed in metres per second."""
+    How2Sign train's ready pose; ``cap``: the wrist's chest-frame speed in metres per second.
+
+    Post-S2 A6's ``rest`` ({joint: 6D values}, ``comp_a6_rest_pose.py``): the arm goes to that pose instead, by minimum jerk with the shortest ramp under ``cap``, holds it, and comes
+    back. A stretch at a sentence's edge has one ramp, and a sentence with no anchor rests throughout. A stretch too short for its ramps under the cap keeps the plain path."""
     from .composition_space import to_6d, wrist_of_rotations
     from .motion_metrics import _matrices
     labels = frame_labels(plan)
@@ -343,7 +349,7 @@ def hold_left_arm(state, plan: dict, one_handed, *, ready: dict, cap: float, fps
     index = {j: list(body.labels).index(j) for j in HOLD_JOINTS}
     stretches = hold_stretches(labels, list(one_handed))
     info = dict(stretches=len(stretches), frames=int(sum(b - a + 1 for a, b in stretches)), minimum_jerk=0, constant_speed=0, held=0, ready_pose=0,
-                cap_bound=0, cap=float(cap), peak=0.)
+                cap_bound=0, cap=float(cap), peak=0., **(dict(rest_ramps=0, rest_whole=0, rest_too_short=0, rest_frames=0) if rest is not None else {}))
     if not stretches:
         return state, info
     values = body.values.copy()
@@ -382,7 +388,52 @@ def hold_left_arm(state, plan: dict, one_handed, *, ready: dict, cap: float, fps
         good = seen[1:] & seen[:-1]
         return float(np.linalg.norm(p[1:] - p[:-1], axis=-1)[good].max() * fps) if good.any() else 0.
 
+    target = None if rest is None else {j: _matrices(np.asarray(rest[j], dtype=np.float64)) for j in index}
+
+    def rested(a, b, ramp):
+        """(the stretch through the rest pose with ``ramp`` frames per ramp, the most ramps any joint has)."""
+        n = b - a + 1
+        out, sides = {}, 0
+        for j, k in index.items():
+            ok = body.valid[:, k] & anchors
+            before = _anchor_pose(rotations[j], ok, a - 1, -1) if a > 0 else None
+            after = _anchor_pose(rotations[j], ok, b + 1, 1) if b < len(labels) - 1 else None
+            ramps = int(before is not None) + int(after is not None)
+            sides = max(sides, ramps)
+            path = np.repeat(target[j][None], n, 0)
+            t = np.arange(1, ramp + 1) / (ramp + 1)
+            if before is not None and ramp:
+                path[:ramp] = _slerp(before, target[j], minimum_jerk(t))
+            if after is not None and ramp:
+                path[n - ramp:] = _slerp(target[j], after, minimum_jerk(t))
+            out[j] = path
+        return out, sides
+
+    def through_rest(a, b):
+        """(poses, peak, ramp) of the shortest ramp under the cap, or None: the stretch keeps the plain path."""
+        poses, sides = rested(a, b, 0)
+        if not sides:
+            return poses, peak_of(a, b, poses), 0
+        for ramp in range(REST_MIN_RAMP, (b - a + 1) // sides + 1):
+            poses, _ = rested(a, b, ramp)
+            peak = peak_of(a, b, poses)
+            if peak <= cap:
+                return poses, peak, ramp
+        return None
+
     for a, b in stretches:
+        if target is not None:
+            found = through_rest(a, b)
+            if found is not None:
+                poses, peak, ramp = found
+                info["rest_ramps" if ramp else "rest_whole"] += 1
+                info["rest_frames"] += b - a + 1
+                info["peak"] = max(info["peak"], round(peak, 4))
+                for j, k in index.items():
+                    ok = body.valid[a:b + 1, k]
+                    values[a:b + 1, k][ok] = to_6d(poses[j])[ok].astype(values.dtype)
+                continue
+            info["rest_too_short"] += 1
         poses, kind = planned(a, b, "minimum_jerk")
         peak = peak_of(a, b, poses)
         if kind == "moved":

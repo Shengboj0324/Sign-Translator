@@ -1,0 +1,297 @@
+{
+ "candidates": {
+  "tokens_all": {
+   "cross_validated": {
+    "choosing_error": 0.3119,
+    "mean_signer_pooled_ratio": 1.1313,
+    "per_signer": {
+     "c02": {
+      "clips": 17945,
+      "mean_ratio": 1.1911,
+      "median_abs_relative_error": 0.2493,
+      "median_abs_seconds": 1.244,
+      "median_ratio": 1.0724,
+      "pooled_ratio": 0.9961
+     },
+     "c04": {
+      "clips": 344,
+      "mean_ratio": 1.4655,
+      "median_abs_relative_error": 0.3745,
+      "median_abs_seconds": 1.574,
+      "median_ratio": 1.3645,
+      "pooled_ratio": 1.2664
+     }
+    }
+   },
+   "leave_one_signer_out": {
+    "c02": {
+     "clips": 17945,
+     "mean_ratio": 0.8715,
+     "median_abs_relative_error": 0.2763,
+     "median_abs_seconds": 1.221,
+     "median_ratio": 0.8,
+     "pooled_ratio": 0.782
+    },
+    "c04": {
+     "clips": 344,
+     "mean_ratio": 1.4726,
+     "median_abs_relative_error": 0.3816,
+     "median_abs_seconds": 1.6,
+     "median_ratio": 1.3722,
+     "pooled_ratio": 1.2713
+    }
+   },
+   "model": {
+    "components": null,
+    "corpus": "how2sign-two-view-text-v1",
+    "floor": 0.5,
+    "intercept": -0.083,
+    "kind": "tokens",
+    "partition": "train",
+    "records": 18289,
+    "signer_balanced": false,
+    "slope": 0.3691
+   }
+  },
+  "tokens_balanced": {
+   "cross_validated": {
+    "choosing_error": 0.2479,
+    "mean_signer_pooled_ratio": 1.0104,
+    "per_signer": {
+     "c02": {
+      "clips": 17945,
+      "mean_ratio": 1.0337,
+      "median_abs_relative_error": 0.2442,
+      "median_abs_seconds": 1.114,
+      "median_ratio": 0.9378,
+      "pooled_ratio": 0.8886
+     },
+     "c04": {
+      "clips": 344,
+      "mean_ratio": 1.2877,
+      "median_abs_relative_error": 0.2515,
+      "median_abs_seconds": 1.088,
+      "median_ratio": 1.1943,
+      "pooled_ratio": 1.1321
+     }
+    }
+   },
+   "leave_one_signer_out": {
+    "c02": {
+     "clips": 17945,
+     "mean_ratio": 0.8715,
+     "median_abs_relative_error": 0.2763,
+     "median_abs_seconds": 1.221,
+     "median_ratio": 0.8,
+     "pooled_ratio": 0.782
+    },
+    "c04": {
+     "clips": 344,
+     "mean_ratio": 1.4726,
+     "median_abs_relative_error": 0.3816,
+     "median_abs_seconds": 1.6,
+     "median_ratio": 1.3722,
+     "pooled_ratio": 1.2713
+    }
+   },
+   "model": {
+    "components": [
+     "c02",
+     "c04"
+    ],
+    "corpus": "how2sign-two-view-text-v1",
+    "floor": 0.5,
+    "intercept": -0.3577,
+    "kind": "tokens",
+    "partition": "train",
+    "records": 18289,
+    "signer_balanced": true,
+    "slope": 0.3445
+   }
+  },
+  "words_balanced": {
+   "cross_validated": {
+    "choosing_error": 0.245,
+    "mean_signer_pooled_ratio": 1.01,
+    "per_signer": {
+     "c02": {
+      "clips": 17945,
+      "mean_ratio": 1.0345,
+      "median_abs_relative_error": 0.2416,
+      "median_abs_seconds": 1.128,
+      "median_ratio": 0.9411,
+      "pooled_ratio": 0.8878
+     },
+     "c04": {
+      "clips": 344,
+      "mean_ratio": 1.2863,
+      "median_abs_relative_error": 0.2484,
+      "median_abs_seconds": 1.204,
+      "median_ratio": 1.2045,
+      "pooled_ratio": 1.1322
+     }
+    }
+   },
+   "leave_one_signer_out": {
+    "c02": {
+     "clips": 17945,
+     "mean_ratio": 0.8832,
+     "median_abs_relative_error": 0.2721,
+     "median_abs_seconds": 1.196,
+     "median_ratio": 0.809,
+     "pooled_ratio": 0.7811
+    },
+    "c04": {
+     "clips": 344,
+     "mean_ratio": 1.47,
+     "median_abs_relative_error": 0.3782,
+     "median_abs_seconds": 1.664,
+     "median_ratio": 1.3589,
+     "pooled_ratio": 1.2742
+    }
+   },
+   "model": {
+    "components": [
+     "c02",
+     "c04"
+    ],
+    "corpus": "how2sign-two-view-text-v1",
+    "entry_seconds": 0.1978,
+    "floor": 0.5,
+    "intercept": -0.303,
+    "kind": "words",
+    "partition": "train",
+    "records": 18289,
+    "signer_balanced": true,
+    "unsigned_token": 0.3954
+   }
+  }
+ },
+ "chosen": "tokens_balanced",
+ "d20": {
+  "candidates": {
+   "tokens_all": {
+    "clips": 500,
+    "mean_ratio": 1.3644,
+    "median_abs_relative_error": 0.3181,
+    "median_abs_seconds": 1.409,
+    "median_ratio": 1.2997,
+    "per_signer": {
+     "c01": {
+      "clips": 177,
+      "mean_ratio": 1.4477,
+      "median_abs_relative_error": 0.3933,
+      "median_abs_seconds": 1.667,
+      "median_ratio": 1.39,
+      "pooled_ratio": 1.295
+     },
+     "c03": {
+      "clips": 265,
+      "mean_ratio": 1.3365,
+      "median_abs_relative_error": 0.2939,
+      "median_abs_seconds": 1.215,
+      "median_ratio": 1.2301,
+      "pooled_ratio": 1.1803
+     },
+     "c05": {
+      "clips": 58,
+      "mean_ratio": 1.2381,
+      "median_abs_relative_error": 0.2674,
+      "median_abs_seconds": 1.363,
+      "median_ratio": 1.2027,
+      "pooled_ratio": 1.0979
+     }
+    },
+    "pooled_ratio": 1.206
+   },
+   "tokens_balanced": {
+    "clips": 500,
+    "mean_ratio": 1.1864,
+    "median_abs_relative_error": 0.2544,
+    "median_abs_seconds": 1.092,
+    "median_ratio": 1.1452,
+    "per_signer": {
+     "c01": {
+      "clips": 177,
+      "mean_ratio": 1.2605,
+      "median_abs_relative_error": 0.2977,
+      "median_abs_seconds": 1.22,
+      "median_ratio": 1.2132,
+      "pooled_ratio": 1.1574
+     },
+     "c03": {
+      "clips": 265,
+      "mean_ratio": 1.1572,
+      "median_abs_relative_error": 0.2348,
+      "median_abs_seconds": 0.951,
+      "median_ratio": 1.0945,
+      "pooled_ratio": 1.0541
+     },
+     "c05": {
+      "clips": 58,
+      "mean_ratio": 1.0936,
+      "median_abs_relative_error": 0.2307,
+      "median_abs_seconds": 1.479,
+      "median_ratio": 1.0621,
+      "pooled_ratio": 0.9877
+     }
+    },
+    "pooled_ratio": 1.0784
+   },
+   "words_balanced": {
+    "clips": 500,
+    "mean_ratio": 1.1806,
+    "median_abs_relative_error": 0.2371,
+    "median_abs_seconds": 1.067,
+    "median_ratio": 1.1392,
+    "per_signer": {
+     "c01": {
+      "clips": 177,
+      "mean_ratio": 1.2654,
+      "median_abs_relative_error": 0.2608,
+      "median_abs_seconds": 1.132,
+      "median_ratio": 1.2211,
+      "pooled_ratio": 1.1577
+     },
+     "c03": {
+      "clips": 265,
+      "mean_ratio": 1.1458,
+      "median_abs_relative_error": 0.2337,
+      "median_abs_seconds": 0.974,
+      "median_ratio": 1.1063,
+      "pooled_ratio": 1.0471
+     },
+     "c05": {
+      "clips": 58,
+      "mean_ratio": 1.0803,
+      "median_abs_relative_error": 0.2266,
+      "median_abs_seconds": 1.434,
+      "median_ratio": 1.0549,
+      "pooled_ratio": 0.9714
+     }
+    },
+    "pooled_ratio": 1.0724
+   }
+  },
+  "clips": 500,
+  "note": "D20's lengths are read here and fit nothing",
+  "signers": {
+   "c01": 177,
+   "c03": 265,
+   "c05": 58
+  }
+ },
+ "folds": 5,
+ "inputs": {
+  "key": "acquisition/2026-10-17-v1/youtube-asl-v1/round10-mixed-v1/manifest.json",
+  "sha256": "ccfd10b8961e95523ac7938c84261c89f22c8ae786af961908fbeba21fa5647a",
+  "tokens_sha256": "c1105410ef8d502cfcf145768329fe1f72886106afdf83cd0474bfdd654cb776"
+ },
+ "kind": "comp-a6-lengths",
+ "report_only": true,
+ "signers": {
+  "c02": 17945,
+  "c04": 344
+ },
+ "tie": 0.005
+}

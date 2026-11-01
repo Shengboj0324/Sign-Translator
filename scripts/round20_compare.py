@@ -58,7 +58,7 @@ def _split(spec: str) -> tuple[str, str]:
 
 PAIRING_SETTINGS = ("core_margin", "timing", "total_fit")
 PAIRING_ROUND20 = ("retime", "tempo", "lowpass_hz", "arm_scale", "hold_left", "word_cache", "word_cache_extra", "vocabulary_extra", "oracle_choice",
-                   "no_decoder_gains", "semlex_core", "vocabulary_mix")
+                   "no_decoder_gains", "semlex_core", "vocabulary_mix", "duration_balanced")
 ANY_DIFFERENCE = "any"                  # stored rounds whose own declared rule names the comparison (Round 20 Phase A and B)
 
 

@@ -1,0 +1,54 @@
+{
+ "inputs": {
+  "gloss_manifest": "acquisition/2026-10-17-v1/derived/asllrp-dai2-v1/gloss-manifest-v1/manifest.json",
+  "sha256": "f8c40aead29ad1cf97c4a3986d326d475f07bf539deec87219ba69cd47e72944",
+  "utterances": "acquisition/2026-10-17-v1/derived/signbank-v1/utterances.json"
+ },
+ "kind": "comp-a6-rest-pose",
+ "partition": "train only; the test partition (Ben) is never read",
+ "pose": {
+  "LeftForearm": [
+   0.411823,
+   -0.395887,
+   0.820777,
+   0.395887,
+   0.88899,
+   0.230153
+  ],
+  "LeftUpperArm": [
+   0.402742,
+   -0.859205,
+   0.315538,
+   0.859205,
+   0.473721,
+   0.193273
+  ]
+ },
+ "seed": "comp-a6-rest-pose",
+ "signers": {
+  "Cory": {
+   "frames": 1889,
+   "left_wrist_height_median": -1.219,
+   "utterances_available": 734,
+   "utterances_read": 60
+  },
+  "RIT-P02": {
+   "frames": 5889,
+   "left_wrist_height_median": -0.6508,
+   "utterances_available": 160,
+   "utterances_read": 59
+  },
+  "RIT-P03": {
+   "frames": 2627,
+   "left_wrist_height_median": -0.3983,
+   "utterances_available": 103,
+   "utterances_read": 52
+  },
+  "Rachel": {
+   "frames": 1704,
+   "left_wrist_height_median": -0.9262,
+   "utterances_available": 605,
+   "utterances_read": 60
+  }
+ }
+}

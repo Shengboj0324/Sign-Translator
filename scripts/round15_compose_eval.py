@@ -280,8 +280,8 @@ ROUND20_DEFAULTS = dict(sentences_key=None, vocabulary_mix_key=None, semlex_core
                         retime="reference", tempo=1., lowpass_hz=None, word_cache_key=None, likelihood=False,
                         predicted_duration=False, semlex_oracle_tracked=False, lowpass_report_hz=None,
                         no_decoder_gains=False, arm_scale=None, vocabulary_extra_file=None, word_cache_extra_key=None,
-                        oracle_choice_key=None, hold_left_file=None, comp_a_read=False)
-COMP_A_OPTIONS = ("comp_a_read", "arm_scale", "hold_left", "vocabulary_extra", "word_cache_extra", "oracle_choice")   # settings.round20 keys, absent when off
+                        oracle_choice_key=None, hold_left_file=None, comp_a_read=False, hold_left_exclude=None, hold_rest_file=None, duration_balanced=False)
+COMP_A_OPTIONS = ("comp_a_read", "arm_scale", "hold_left", "vocabulary_extra", "word_cache_extra", "oracle_choice", "duration_balanced")   # settings.round20 keys, absent when off
 
 
 def round20_on(args) -> bool:
@@ -320,7 +320,10 @@ def comp_a_settings(args) -> dict:
     if args.arm_scale:
         out["arm_scale"] = parse_arm_scale(args.arm_scale)
     if args.hold_left_file:
-        out["hold_left"] = dict(sha256=args.hold_left_sha256)
+        out["hold_left"] = dict(sha256=args.hold_left_sha256, **({"exclude": args.hold_left_exclude} if args.hold_left_exclude else {}),
+                                **({"rest_sha256": args.hold_rest_sha256} if args.hold_rest_file else {}))
+    if args.duration_balanced:
+        out["duration_balanced"] = True
     if args.vocabulary_extra_file:
         out["vocabulary_extra"] = dict(sha256=args.vocabulary_extra_sha256, top=args.vocabulary_extra_top)
     if args.word_cache_extra_key:
@@ -427,7 +430,7 @@ def render_round20(args, material, job, reference_seconds, model, vocab, *, orde
     hold = getattr(args, "hold_config", None)
     if hold:
         words = [job["words"][k] for k in (range(len(job["words"])) if order is None else order)]
-        state, info = cv2.hold_left_arm(state, plan, [hold["annotations"].get(w) for w in words], ready=hold["ready"], cap=hold["cap"])
+        state, info = cv2.hold_left_arm(state, plan, [hold["annotations"].get(w) for w in words], ready=hold["ready"], cap=hold["cap"], **({"rest": hold["rest"]} if hold.get("rest") else {}))
         plan = dict(plan, hold=info)
     return state, plan
 
@@ -912,6 +915,12 @@ def run(args) -> dict:
         annotations = entry_annotations(word_pools(vmanifest, corpora))
         if args.hold_left_file:
             args.hold_config = dict(load_hold_stats(args.hold_left_file, args.hold_left_sha256), annotations=annotations)
+            if args.hold_left_exclude:                # post-S2 A6: entries with enough two-handed records stay anchors
+                from comp_a_lib import hold_flags
+                args.hold_config["annotations"] = hold_flags(word_pools(vmanifest, corpora), two_handed_share=args.hold_left_exclude, new_entries=arm["entries"] if arm else ())
+            if args.hold_rest_file:
+                from comp_a_lib import load_rest_pose
+                args.hold_config["rest"] = load_rest_pose(args.hold_rest_file, args.hold_rest_sha256)
     comp_motion = {i: {} for i in mine}
     if r20:                                          # each word clip's dominant-arm tracked share (reported per variant)
         from round20_lib import right_tracked_share
@@ -962,7 +971,8 @@ def run(args) -> dict:
         if r20 and args.predicted_duration:            # report-only: the sentence's predicted duration, not its clip's
             from signtranslator.generation.composition_v2 import fit_duration_model, predicted_seconds
             if "duration_model" not in r20_info:
-                r20_info["duration_model"] = fit_duration_model(manifest)
+                r20_info["duration_model"] = (fit_duration_model(manifest, components=("c02", "c04"), signer_balanced=True) if getattr(args, "duration_balanced", False)
+                                              else fit_duration_model(manifest))
                 check_duration_model(r20_info["duration_model"], args.expect_duration_model)
             if BLANK_PREDICTED not in forms:           # as compositional_grammar's plans round a total to frames
                 forms[BLANK_PREDICTED] = {i: held(blanks[i], max(1, int(round(
@@ -1286,6 +1296,8 @@ def merge(args, store) -> dict:
         if holds:
             extra["hold_left"] = {k: int(sum(h[k] for h in holds)) for k in ("stretches", "frames", "minimum_jerk", "constant_speed", "held", "ready_pose", "cap_bound")}
             extra["hold_left"].update(cap=holds[0]["cap"], peak=max(h["peak"] for h in holds))
+            if "rest_frames" in holds[0]:
+                extra["hold_left"].update({k: int(sum(h[k] for h in holds)) for k in ("rest_ramps", "rest_whole", "rest_too_short", "rest_frames")})
     if rows[0].get("likelihood"):                      # round 20's selection metric (--likelihood)
         from round20_lib import likelihood_summary
         other_ll = (json.loads(store.get(args.paired_with)).get("likelihood") if args.paired_with else None)
@@ -1358,7 +1370,7 @@ def _write(store, args, payload: dict) -> None:
 
 def comp_a_on(args) -> bool:
     return any(getattr(args, k, None) for k in ("arm_scale", "hold_left_file", "vocabulary_extra_file", "word_cache_extra_key", "oracle_choice_key",
-                                                "comp_a_read"))
+                                                "comp_a_read", "duration_balanced"))
 
 
 def comp_a_errors(p, args, variants) -> None:
@@ -1367,7 +1379,8 @@ def comp_a_errors(p, args, variants) -> None:
     if not comp_a_on(args):
         given = [f for f, v in (("--vocabulary-extra-sha256", args.vocabulary_extra_sha256), ("--vocabulary-extra-top", args.vocabulary_extra_top),
                                 ("--word-cache-extra-sha256", args.word_cache_extra_sha256), ("--oracle-choice-sha256", args.oracle_choice_sha256),
-                                ("--oracle-choice-pick", args.oracle_choice_pick), ("--hold-left-sha256", args.hold_left_sha256)) if v]
+                                ("--oracle-choice-pick", args.oracle_choice_pick), ("--hold-left-sha256", args.hold_left_sha256), ("--hold-left-exclude", args.hold_left_exclude),
+                                ("--hold-rest-file", args.hold_rest_file), ("--hold-rest-sha256", args.hold_rest_sha256)) if v]
         if given:
             p.error(f"{', '.join(given)}: given without the option they qualify")
         return
@@ -1398,6 +1411,16 @@ def comp_a_errors(p, args, variants) -> None:
             p.error("--hold-left-file needs --hold-left-sha256")
         if args.arm_scale or variants != ["core_crossfade"] or args.selection != "stage1" or args.timing != "sign-fitted" or args.retime != "reference":
             p.error("--hold-left-file: core_crossfade alone, stage-1 selection, sign-fitted timing, reference retiming, no arm scale")
+    if (args.hold_left_exclude is not None or args.hold_rest_file or args.hold_rest_sha256) and not args.hold_left_file:
+        p.error("--hold-left-exclude and --hold-rest-file qualify --hold-left-file")
+    if args.hold_left_exclude is not None and not 0 < args.hold_left_exclude <= 1:
+        p.error("--hold-left-exclude: a share of records in (0, 1]")
+    if bool(args.hold_rest_file) != bool(args.hold_rest_sha256):
+        p.error("--hold-rest-file and --hold-rest-sha256 go together")
+    if args.hold_rest_file and args.hold_left_exclude is None:
+        p.error("--hold-rest-file: only on the exclusion arm's anchors (--hold-left-exclude)")
+    if args.duration_balanced and not (args.predicted_duration and args.expect_duration_model):
+        p.error("--duration-balanced qualifies --predicted-duration, with --expect-duration-model pinning the fit")
     if args.oracle_choice_key:
         if not args.oracle_choice_sha256 or not args.oracle_choice_pick:
             p.error("--oracle-choice-key needs --oracle-choice-sha256 and --oracle-choice-pick")
@@ -1598,6 +1621,10 @@ def main(argv=None) -> int:
     q.add_argument("--oracle-choice-pick", help="which pick of that index: 4, 8, 16, sample0, draw1 ...")
     q.add_argument("--hold-left-file", help="the committed statistics (scripts/comp_a_hold_stats.py): the left arm held across one-handed stretches")
     q.add_argument("--hold-left-sha256")
+    q.add_argument("--hold-left-exclude", type=float, help="post-S2 A6: an entry with at least this share of two-handed records stays an anchor; an arm's new entries stay anchors")
+    q.add_argument("--hold-rest-file", help="post-S2 A6: the committed rest pose (scripts/comp_a6_rest_pose.py): the held left arm goes down to it and back")
+    q.add_argument("--hold-rest-sha256")
+    q.add_argument("--duration-balanced", action="store_true", help="post-S2 A6: --predicted-duration's fit signer-balanced on c02 + c04")
     q.add_argument("--comp-a-job-file", default="runpod/fleet/comp_a.sh", help="the job's shell file, part of the code digest in the report")
     q.add_argument("--comp-a-read", action="store_true", help="the margin-0 comparator's read: D20 only, report-only, per-side motion and contact, no other change")
     e = r.add_argument_group("composed-state export (module docstring; off by default: the run and its report "

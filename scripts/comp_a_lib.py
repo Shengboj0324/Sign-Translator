@@ -231,6 +231,31 @@ def entry_annotations(pools) -> dict:
     return out
 
 
+def hold_flags(pools, *, two_handed_share: float, new_entries=()) -> dict:
+    """Post-S2 A6's anchors: {entry: True} only where an entry's annotated records are under ``two_handed_share`` two-handed; every other entry with an annotation is False, so an anchor.
+    An entry with no annotation has no label and stays an anchor too, and so does an arm's new entry, whatever a clip of the same spelling says."""
+    out = {}
+    for entry, records in pools.items():
+        if entry in new_entries:
+            continue
+        labels = [x for x in map(annotated_label, records) if x is not None]
+        if labels:
+            out[entry] = sum(not x for x in labels) / len(labels) < two_handed_share
+    return out
+
+
+def load_rest_pose(path, sha: str) -> dict:
+    """The committed rest pose of A6's left arm: {joint: 6D}, from ASLLRP train frames on annotated one-handed signs (``comp_a6_rest_pose.py``)."""
+    raw = Path(path).read_bytes()
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest != sha:
+        raise SystemExit(f"{path}: SHA-256 {digest}, expected {sha}")
+    payload = json.loads(raw)
+    if payload.get("kind") != "comp-a6-rest-pose":
+        raise SystemExit(f"{path}: not the rest pose")
+    return payload["pose"]
+
+
 def bridge_kind(a, b) -> str:
     """The one set of joins every table uses: both sides annotated one-handed; one-handed against annotated two-handed; one-handed against
     an unannotated word; anything else."""
