@@ -5921,3 +5921,26 @@ D20, report only, `a1-hold-read.json`, against `a1-margin0` at predicted timing.
 | Share of gap | 21.3% | 24.1% [8.3, 39.8] | +2.8 points [−7.7, +15.2] |
 
 The motion checks passed, as they were known to. Two independent reads say the hold costs content, though BLEU doesn't resolve either way: the hold replaces the left arm on 46.6% of frames, and 12.4% of held uses come from entries with at least 25% two-handed records. Wrist speed stays a real unsolved requirement. A narrower hold would be a new arm, declared before its read.
+
+### Tokenizer probes and seam ablation: result (read 2026-11-01, recorded 05:44 UTC)
+
+D20, instrument v1, report only, `tok-probes/report.json` sha `2f7b7f85…`, 500 clips, 63 forms. Canary reproduced: real 4.493 and blank 1.68, every hypothesis identical, NLL difference 2.5e-5. **Declared outcomes: B1 is void; C0 is unresolved, so L1 neither starts nor closes and goes to the owner.**
+
+**B1, void:** identity − round_trip +0.405 [−0.088, +0.907]; its lower bound is below 0 on BLEU and on the masked forms. p = 0.38 [−1.84, +3.41]. No tokenizer training on this evidence.
+
+**C0, unresolved:** `seam_cval45` keeps 76.5% [61.2, 91.2] of real's gap at BLEU 3.833; likelihood share 83.6%; `seam_cmax45` 73.1%, `seam_crnd45` 69.5%; bridged share 0.445 and 7.81 frames per bridge, both inside their void limits. Loop effect not shown in any form: 24.6–28.6% against real's 28.2%.
+
+**Reported, not deciding (no rule rests on this):**
+
+| Form | BLEU | Gap share | Likelihood share |
+|---|---|---|---|
+| Real | 4.493 | 100% | 100% |
+| Real values, all marked valid (`identity`) | 3.889 | 78.5% | 31.3% |
+| No quantiser, all valid (`no_quant`) | 3.638 | 69.6% | 14.9% |
+| Round trip, all valid (`round_trip`) | 3.484 | 64.1% | 13.8% |
+| No quantiser, real's validity (`no_quant_masked`) | 4.404 | 96.8% | 82.2% |
+| Round trip, real's validity (`round_trip_masked`) | 4.290 | 92.8% | 80.9% |
+
+Marking every frame valid costs more than the tokenizer: real tracks hands on 83.0% and wrists on 85.4% of frames, and generated output claims 100%. Of the likelihood lost by the all-valid round trip, about 80% goes at the marks, 19% in the encoder and decoder, 1% in the quantiser. Codebook size doesn't show: 256, 512, 1,024 and 4,096 codes read 3.588, 3.650, 3.512, 3.691. Truncating body stages does (body 1, 2, 4: 2.219, 2.766, 2.793); hands don't on BLEU (hands 1: 3.439), though they do on likelihood (share −4.5%).
+
+**Caution:** the masked forms carry real's tracking pattern, which a generator can't have and which may leak content, so a masked read isn't an achievable score. This doesn't show the tokenizer is fine; it shows v1 can't separate these on all-valid output. Which of the two it is needs a control (real's marks on blank or other sentences' motion) and instrument v2, trained with validity dropout.
