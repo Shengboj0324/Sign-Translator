@@ -200,8 +200,8 @@ Misunderstood items and the notes guide the next round. Free text enters trainin
 ## 9. Still to build or decide
 
 **Build:**
-- State export and avatar rendering of round-15 compositions and their controls (§2c).
-- Isolated-word and How2Sign-sentence packet modes.
+- Avatar rendering of round-15 compositions and their controls (§2c). State export and the How2Sign sentence packet mode are built for the first rater read (§10), on test data only so far.
+- Isolated-word packet mode.
 - Blank and mismatched systems in the packet builder.
 - A `--guide` option, so the packet carries `FOR_REVIEWERS.md` instead of the technical guide.
 - A `rating_sheet.csv` to `sheet.csv` converter, and a scorer for clarity, Q4 and judged translations.
@@ -216,3 +216,49 @@ Misunderstood items and the notes guide the next round. Free text enters trainin
 - Whether to use the sentence add-on.
 - Whether and when final-test (signer 9) material is shown.
 - Which restricted sources (WLASL, Sem-Lex, RIT) may appear as anchors.
+
+## 10. First rater read: notes for the owner (2026-11-01)
+
+This read is diagnostic. It can't clear the release bar, because timing, signers and wrist speed already fail it. Its purpose is to learn what signers actually understand. Details: `reports/rater_package_plan.md`; rules: `docs/HUMAN_EVALUATION_PROTOCOL.md` §6.
+
+**What you need to do:**
+- Recruit 9 Deaf raters plus 2 for the pilot, and one Deaf checker who is not a rater. The checker confirms which real recordings sign a negation, and must not see any generated clip.
+- Set pay. The plan assumes about 67 rater hours, about $2,700 at $40/h. That rate is an assumption. Adding stitched real clips as a fourth system costs about $900 more, and is the one direct test of whether our scorer undervalues stitching.
+- Get ethics or IRB review, and finish `CONSENT_FORM.md`.
+- Arrange ASL instructions or an interpreter.
+- Choose how sheets and videos reach raters. Nothing is built for this. It must hold stage 2 back until stage 1 is returned.
+
+**What changed for raters:**
+- **Two stages.** They watch, then give the translation, negation, grammar and naturalness answers and return that sheet. Only then do they get the four answer options. The options gave negation away: guessing from text alone scored 63.6% on negated sentences. Use `docs/HUMAN_EVALUATION_REVIEWER_GUIDE_TWO_STAGE.md`.
+- **Workload.** 200 sentences each, about 6.7 hours at an assumed 2 minutes per item, or nine 45-minute sessions. Time it in the pilot.
+- `FOR_REVIEWERS.md` and `RATING_SHEET.md` describe the original session format. For this read, the two-stage guide and generated sheets replace the rating sheet.
+
+**How the result is read:**
+- Comprehension must clear 70% on both the Wilson bound and a bound allowing for repeat ratings. "Within 10 points of real signing" uses an upper bound, so a point estimate isn't enough.
+- A system is refused if under 95% of its designed answers came back, per system and per group, and fails if over 5% of its rows are unviewable or lost.
+- A negated sentence needs an English negation and the checker's confirmation. Recovery needs recall at 70% or better, within 10 points of real signing, and a false-alarm upper bound of 20% or less. If real signing misses its own recall bar, the negation read is void, not passed.
+- Each person gets a roster entry. Identical answer sheets block a pass, and low-agreement raters are flagged; a pass must hold with and without them.
+
+**What 9 raters can show (simulated):**
+
+| True state | Chance it passes |
+|---|---|
+| 80% understood | About 82% |
+| 75% understood | About 31% |
+| 70% understood (should fail) | About 4% |
+| Level with real signing | About 99% |
+| 5 points behind real signing | About 58% |
+| 10 points behind real signing (should fail) | At most about 5% |
+
+About 15 raters give 81% at a true 5-point gap, and about 45 give 77% at a true 75%. The declared table in the plan says about 65% for the 5-point gap at nine raters; the build's own run, with its final weights, gives 58%.
+
+**Not ready yet:**
+- Everything has run on test data only. The draw and export have not run on real D20, and the plan's 427 eligible and 80 negated sentences are unconfirmed.
+- The avatar renderer has not been rerun since the timing change. The avatar is still bald and flat, hands can pass through the body, and shake isn't fixed. The pilot decides whether it's good enough.
+- The tooling gets one more independent check before any sheet goes out.
+- Wait for the composition tests (left-arm hold, added words) before rendering, because they may change which version raters should see.
+
+**Open items you deferred or should know about:**
+- **Consent, deferred until the model finishes (your decision, 2026-10-31).** Recogniser v3d, trained on ASL Citizen, chooses the best-of-16 words that raters would see. ASL Citizen's consent covers sign language recognition. An ethics reviewer may ask about this, so have the answer ready.
+- **Pointing signs.** Added words such as you, it, your and this are often pointing in ASL. Ask raters or the checker whether these clips read correctly, and whether a held left hand reads as a sign.
+- **Scorer limit.** Raters may understand more or less than our scorer suggests. That's the point of the read, so report the result whichever way it goes.

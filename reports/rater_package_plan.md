@@ -41,8 +41,10 @@ Measured: 13 s per 147-frame clip at 768 px (docs' 45 s is stale). 600 clips: ab
 How2Sign: CC BY-NC 4.0, research consent; attribute and state changes. English options derive from How2: contracted reviewers only. No ASL Citizen or STEM Wiki clip appears, and the generator mix excludes them. v3d, trained on ASL Citizen, chooses both arms' best-of-16 words. The owner deferred consent until after the model finishes (22:39 UTC); this read keeps best of 16.
 
 ## 6. Owner's actions
+Full notes for the owner: `reviewer_package/OPERATOR_GUIDE.md` §10.
 - Recruit 9 Deaf raters plus pilot.
 - Set and pay rates.
 - Get ethics or IRB review; sign consent.
 - Arrange ASL instructions or an interpreter.
-- Choose delivery.
+- Choose delivery; it must hold stage 2 back until stage 1 is returned.
+- Find one Deaf checker who is not a rater.

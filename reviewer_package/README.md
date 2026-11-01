@@ -14,6 +14,8 @@ the answers. The study design and the scoring code are unchanged: see `docs/HUMA
 | `SOURCES.md` | Owner | Existing repo material this package reuses, with paths |
 | `.gitignore` | Owner | Keeps returned answers, keys, consent forms and recordings out of git |
 
+**First rater read (2026-11-01):** start at `OPERATOR_GUIDE.md` §10. It uses two stages and generated sheets with `docs/HUMAN_EVALUATION_REVIEWER_GUIDE_TWO_STAGE.md`, in place of `RATING_SHEET.md`.
+
 **Constraints:**
 - Research use only, non-commercial.
 - ASL Citizen and YouTube-ASL material is never shown to reviewers.
