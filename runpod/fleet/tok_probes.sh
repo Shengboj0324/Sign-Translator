@@ -51,7 +51,7 @@ trap finish EXIT
 trap 'exit 143' TERM INT HUP
 done_() { exit "$1"; }
 mkdir -p "$S/forms" "$R/forms" || done_ 1
-uv pip install -q 'transformers>=4.40,<5' sentencepiece || { echo "ALERT transformers install failed"; done_ 1; }
+uv pip install -q 'transformers==4.57.6' sentencepiece || { echo "ALERT transformers install failed"; done_ 1; }   # the version of the stored D20 reads
 
 # real and blank alone (the first process writes the slim instrument; a declared read checks them), then the rest side by side,
 # leaving out whatever is already stored

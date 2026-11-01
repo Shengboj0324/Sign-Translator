@@ -1433,17 +1433,18 @@ def test_a_bundle_without_git_needs_the_record_the_text_and_this_code(tmp_path):
 
 
 def test_a_record_binds_the_repositorys_code():
-    """Works at declaration time: while no record exists this checks the builder against the code; once one exists, the record itself, and its commit."""
+    """The builder matches the code now. The stored record binds the code it was declared on, so later merges change the digest on purpose: a pod runs
+    from the declared tree, and a read from any other refuses. Here: the record is whole, and its commit is an ancestor whose plan holds every rule."""
     from signtranslator.eval.provenance import code_digest
     digest = code_digest(extra_files=(lib.JOB_FILE,))
     assert dc.make_record("abc1234")["code_digest"] == digest and set(dc.make_record("abc1234")["rules"]) == set(rd.DRAFT_RULES)
-    path = ROOT / dc.RECORD
-    if path.exists():
-        payload = json.loads(path.read_text())
-        assert payload["code_digest"] == digest
-        if (ROOT / ".git").exists():
-            for test in rd.DRAFT_RULES:
-                assert dc.check(payload["commit"], test) == "git"
+    payload = json.loads((ROOT / dc.RECORD).read_text())
+    assert re.fullmatch(r"[0-9a-f]{64}", payload["code_digest"]) and set(payload["rules"]) == set(rd.DRAFT_RULES)
+    known = subprocess.run(["git", "cat-file", "-e", payload["commit"]], cwd=ROOT, capture_output=True).returncode == 0
+    if known:     # a shallow CI checkout may not have it
+        plan = subprocess.run(["git", "show", f"{payload['commit']}:{dc.PLAN}"], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+        for text in rd.DRAFT_RULES.values():
+            assert dc.holds_rule(plan, text)
 
 
 def test_the_digest_covers_scripts_the_package_and_the_job(tmp_path, monkeypatch):
@@ -1478,11 +1479,10 @@ def test_the_environment_names_what_can_move_a_hypothesis():
     assert row["environment"] == env and len(row["code_digest"]) == 64
 
 
-def test_nothing_is_declared_now():
-    assert not (ROOT / dc.RECORD).exists()
+def test_the_declared_rules_stay_in_the_plan():
     plan = (ROOT / dc.PLAN).read_text()
     for test, text in rd.DRAFT_RULES.items():
-        assert not dc.holds_rule(plan, text), test
+        assert dc.holds_rule(plan, text), test
 
 
 # ---- the real path, on the round-15 synthetic store ----------------------------------------------------------------------------

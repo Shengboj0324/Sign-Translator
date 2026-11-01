@@ -5883,3 +5883,26 @@ Report only, on D20: nothing here adopts a lever, reads C20 or the 562 clips, or
 The full run stopped at step 14,000 of 60,000 with step 2,000 as best, and is not accepted as trained. Its pooled gap on the selection set read 1.513, 1.146, 1.008, 1.057, 1.360, 1.384, 1.467 at steps 2,000 to 14,000. Step 2,000's lead comes from a low blank (0.484, against 0.74–0.91 later), while pooled real rose from 1.997 to 2.303 and selection loss kept falling (How2Sign c04 3.194 to about 3.09). Held-out STEM read 0 until step 10,000.
 
 **Change:** training resumes from step 14,000 with patience 12 (24,000 steps) instead of 6, up to the declared 60,000. **The selection criterion stays pooled gap, step 2,000 stays eligible, and gates G1–G6 are unchanged and unread.** No gate, test set, C20 or val read informed this; only the selection set and training monitors did, so it is disclosed as a post-read change to patience.
+
+### Tokenizer probes and seam ablation declared (2026-11-01, 04:36 UTC, before any D20 form is read)
+
+Report only; nothing trains, and none of this reads C20 or the 562 clips. Reviewed twice. Job `runpod/fleet/tok_probes.sh`, transformers pinned to 4.57.6. `scripts/tok_probes_rule.py` does not decide: this text does.
+
+**Scope.** D20, instrument v1, merged report only. Intervals: 95% percentile bootstrap over clips, as the report computes them. Frozen before any D20 form is read: forms, metrics, thresholds, seeds, code digest. No new form, metric or threshold may decide after that.
+
+**Void, all reads.** Canary not reproduced; `check` nonzero; no code digest; more than one digest or environment; `seam_cval45` `bridged_frame_share` outside [0.40, 0.47] or `frames_per_bridge` outside [7, 9].
+
+**B1.** On corpus BLEU, D = identity − round_trip and p = (no_quant − round_trip) / D. Void if D's lower bound ≤ 0.
+- **Autoencoder limits** (encoder and decoder together, not the quantiser): p ≤ 0.25, identity − no_quant lower bound > 0, and no_quant − round_trip upper bound ≥ 0.
+- **Quantiser limits:** p ≥ 0.75 and no_quant − round_trip lower bound > 0.
+- **Otherwise unresolved**, including no_quant below round_trip with its upper bound < 0 (the decoder was trained on quantised latents).
+- **Agreement:** the same rule runs on likelihood minus blank and on the three `_masked` forms. Landing on the opposite branch makes the outcome unresolved; these reads cannot create a branch.
+- **Action:** autoencoder limits makes V3-D eligible for section 9's 200-clip test, nothing more. Quantiser limits gives no training by itself. Unresolved gives no tokenizer training on B1's evidence.
+
+**C0.** Primary `forms.seam_cval45.share_of_gap.bleu` with `.bleu_ci95`.
+- **Fall shown:** upper bound < 0.85.
+- **Seams ruled out:** lower bound ≥ 0.85, and `seam_cmax45` and `seam_crnd45` BLEU shares at least 0.85 at point, and `seam_cval45`'s likelihood share at least 0.85 at point.
+- **Otherwise unresolved.**
+- **Action:** fall shown replaces the plan's "≥ 15 points" and lets L1 go to its 200-clip test, nothing else. Ruled out means L1 does not start, and may be stated only as "linear bridges between continuous real poses do not limit v1"; it does not clear composition's stitched seams. Unresolved means L1 neither starts nor closes on C0, goes to the owner, and gets no more D20 forms.
+
+**Reported, not deciding.** `seam_cmin45` (cmin − cval is the healing effect), the squeeze forms, `filled_cuts`, word-count forms (sensitivity only). Loop effect shown if `paired.real.loop_share` lower bound > 0 and the form's point ≥ 41.3%, midway between real 28.2 and a1 54.4, by `eval.loop_share`. B2, B4, B5, B6 are report only: parts don't add up, post-hoc FSQ is biased and can't close V3-F, and B6's 119 and 197 clips can't resolve 0.02. A later v2 read is a separate declared read and cannot change a v1 outcome.
