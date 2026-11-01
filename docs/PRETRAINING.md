@@ -206,7 +206,7 @@ loss-vs-linguistic-usefulness dissociation harness.
 
 Pretraining layer: 69 tests, green on two consecutive runs under
 `-W error::UserWarning` at that stage, with 120 test files in the project then.
-These are stage snapshots, not the current verdict; rerun the suite (see the README reproducibility section).
+These are stage snapshots, not the current verdict; rerun the suite (see RESEARCH_CONTRACTS.md's reproducibility section).
 
 ## 11. Findings (post-implementation)
 

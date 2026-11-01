@@ -139,7 +139,7 @@ result = run_governed_planner(
 
 `expected_manifest_sha256`, `model_config` and `trainer_config` must be explicitly
 supplied; the model vocabulary/convention hashes must match the admitted inputs.
-The [README](../README.md) documents the existing typed model/trainer configuration.
+The [research contracts](RESEARCH_CONTRACTS.md) document the existing typed model/trainer configuration.
 The [explicit training CLI](GOVERNED_TRAINING_RUN.md) accepts a complete run
 configuration using this handoff. Native-source conversion adapters, real handoff
 evidence and empirical phase acceptance are still outstanding. Loader success does not update the manual

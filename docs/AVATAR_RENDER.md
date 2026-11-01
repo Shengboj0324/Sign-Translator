@@ -175,7 +175,7 @@ enforced appearance/signing separation.
 | 8i | real-state retarget onto the MakeHuman rig + Blender render (§12) | done (25 tests) |
 
 Rendering layer: 69 tests, green on two consecutive runs at that stage; the
-whole-project total recorded then was 1,176 tests. These are stage snapshots, not the current verdict; rerun the suite (see the README reproducibility section).
+whole-project total recorded then was 1,176 tests. These are stage snapshots, not the current verdict; rerun the suite (see RESEARCH_CONTRACTS.md's reproducibility section).
 
 ## 11. Findings (post-implementation)
 

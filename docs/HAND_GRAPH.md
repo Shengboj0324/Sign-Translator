@@ -218,7 +218,7 @@ baselines for the required comparison, and runs whole-chain cycle stress.
 | 5h | integration + cycle stress + full regression | done (8 tests) |
 
 Hand-graph layer: 77 tests, green on two consecutive runs at that stage; the
-whole-project total recorded then was 982 tests. These are stage snapshots, not the current verdict; rerun the suite (see the README reproducibility section).
+whole-project total recorded then was 982 tests. These are stage snapshots, not the current verdict; rerun the suite (see RESEARCH_CONTRACTS.md's reproducibility section).
 
 ## 12. Findings (post-implementation)
 

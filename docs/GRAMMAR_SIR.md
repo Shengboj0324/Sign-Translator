@@ -244,7 +244,7 @@ graph-aware Transformer, not a pretrained AMR parser.
 | 3h | integration + cycle stress + regression | done (11 tests) |
 
 Grammar layer: 137 tests, green on two consecutive runs at that stage, with the
-whole project green then. These are stage snapshots, not the current verdict; rerun the suite (see the README reproducibility section).
+whole project green then. These are stage snapshots, not the current verdict; rerun the suite (see RESEARCH_CONTRACTS.md's reproducibility section).
 
 ## 11. Findings (post-implementation)
 

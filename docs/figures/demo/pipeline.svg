@@ -1,0 +1,25 @@
+<svg viewBox="0 0 1040 400" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica, Arial, sans-serif" role="img" aria-label="Pipeline from English text through word selection, word generation, timing and joining, to the motion state, the avatar and evaluation">
+  <defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#52514e"/></marker></defs>
+  <rect width="1040" height="400" fill="#fcfcfb"/>
+  <g font-size="13" fill="#0b0b0b" text-anchor="middle">
+    <g fill="#eaf2fc" stroke="#2a78d6" stroke-width="1.5">
+      <rect x="20" y="40" width="150" height="86" rx="8"/><rect x="195" y="40" width="150" height="86" rx="8"/><rect x="370" y="40" width="150" height="86" rx="8"/><rect x="545" y="40" width="150" height="86" rx="8"/><rect x="720" y="40" width="150" height="86" rx="8"/>
+    </g>
+    <rect x="890" y="40" width="130" height="86" rx="8" fill="#f1f0ec" stroke="#8a8983" stroke-width="1.5"/>
+    <g font-weight="bold"><text x="95" y="68">English text</text><text x="270" y="68">Word selection</text><text x="445" y="68">Word generation</text><text x="620" y="68">Timing, joining</text><text x="795" y="68">Motion state</text><text x="955" y="68">Avatar</text></g>
+    <g fill="#52514e" font-size="11.5"><text x="95" y="90">a sentence</text><text x="270" y="90">longest match to known</text><text x="270" y="106">words, in English order</text><text x="445" y="90">prior + tokenizer d2,</text><text x="445" y="106">best of 16 by recogniser</text><text x="620" y="90">predicted length,</text><text x="620" y="106">crossfaded cores</text><text x="795" y="90">11 channels, 24 fps,</text><text x="795" y="106">per-element validity</text><text x="955" y="90">MakeHuman rig,</text><text x="955" y="106">Blender (preview)</text></g>
+  </g>
+  <g stroke="#52514e" stroke-width="1.5" fill="none" marker-end="url(#a)"><path d="M170 83 H193"/><path d="M345 83 H368"/><path d="M520 83 H543"/><path d="M695 83 H718"/><path d="M870 83 H888"/></g>
+  <path d="M795 126 V190" stroke="#52514e" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+  <g font-size="13" text-anchor="middle">
+    <rect x="520" y="192" width="500" height="186" rx="8" fill="#f1f0ec" stroke="#8a8983" stroke-width="1.5"/>
+    <text x="770" y="218" font-weight="bold" fill="#0b0b0b">Evaluation (no losses, reranking or sample choice)</text>
+    <g fill="#0b0b0b" font-size="12.5"><text x="770" y="246">Back-translator v1: motion to English, BLEU and likelihood against blank</text><text x="770" y="270">Controls on sentence reads: blank, shuffled, other words, length</text><text x="770" y="294">Recogniser: word spotting in the sentence</text><text x="770" y="318">Motion: wrist speed against real signers</text><text x="770" y="342">Deaf raters: comprehension (designed, not yet run)</text></g>
+  </g>
+  <g font-size="13" text-anchor="middle">
+    <rect x="20" y="192" width="475" height="186" rx="8" fill="#fff" stroke="#8a8983" stroke-width="1.5"/>
+    <text x="257" y="218" font-weight="bold" fill="#0b0b0b">Offline: how the models were built</text>
+    <g fill="#0b0b0b" font-size="12.5"><text x="257" y="246">Video to state: two-camera (How2Sign) or single-camera (the rest)</text><text x="257" y="270">Tokenizer d2: 4 parts × 8 residual stages, 768 codes per second</text><text x="257" y="294">Prior W14b: temporal + depth transformers, text cross-attention</text><text x="257" y="318">Recogniser v3d: picks the best of 16 generated samples per word</text><text x="257" y="342">About 158,000 training records, about 203 hours</text></g>
+  </g>
+  <path d="M445 192 V128" stroke="#52514e" stroke-width="1.5" stroke-dasharray="4 3" fill="none" marker-end="url(#a)"/>
+</svg>

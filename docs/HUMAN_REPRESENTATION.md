@@ -251,7 +251,7 @@ regressions.
 | 4h | integration + cycle stress + full regression | done (7 tests) |
 
 Pose layer: 83 tests, green on two consecutive runs at that stage; the
-whole-project total recorded then was 901 tests. These are stage snapshots, not the current verdict; rerun the suite (see the README reproducibility section).
+whole-project total recorded then was 901 tests. These are stage snapshots, not the current verdict; rerun the suite (see RESEARCH_CONTRACTS.md's reproducibility section).
 
 ## 10. Findings (post-implementation)
 
