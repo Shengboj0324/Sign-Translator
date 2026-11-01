@@ -5,7 +5,7 @@ first, from stored caches and metadata (``reports/comp_a6_motion.json``, ``repor
 (both). The hold rule reads ``hold-x-length`` against ``length``, with ``hold-x`` against ``base`` beside it deciding nothing; the length rule reads ``length`` against ``base``.
 
 **Word draws.** The rules read all eight of A5's stored draws, paired within each, with a t interval over draws and a two-way bootstrap; fewer is ``incomplete``, never a smaller test. A read on A3's stored words (``SCREEN``) adds ``hold-xr`` (exclusion plus a
-rest pose, longest ramps), report only, and has no rule: one draw of words has no draw variance, so it can change no threshold or primary. ``HOLD_ARMS``, read from the committed span report at declaration: "off" when top10 sits inside the real-signer span on all six readings, so the hold has no wrist purpose: base and length alone, no screen, and the hold rule reads ``HOLD_OFF``. With "on", the screen gates the hold arms (``hold_gate``): hold-x and hold-x-length run on the draws only if the screen's point estimates of hold-x minus
+rest pose, longest ramps), report only, and has no rule: one draw of words has no draw variance, so it can change no threshold or primary. It does gate the hold arms (``hold_gate``): hold-x and hold-x-length run on the draws only if the screen's point estimates of hold-x minus
 base sit above the hold floors on likelihood and spotting. Otherwise the draws run base and length, the length rule still reads, and the hold rule reads ``HOLD_NOT_RUN``.
 
 **Order of the metrics:** likelihood minus its own-length blank, then v2 spotting, then BLEU over draws. A shorter form reads BLEU on the lower of raw and net of its blank's own change. Each draw's ``base`` is compared with A5's top10 hypotheses, and the screen's with A3's stored top10: on the
@@ -43,8 +43,6 @@ ARMS = (BASE, HOLD, LENGTH, BOTH)
 SCREEN_ARMS = (*ARMS, HOLD_REST)
 GATE_CLOSED_ARMS = (BASE, LENGTH)
 HOLD_NOT_RUN = "not run, screen failed"
-HOLD_OFF = "not run, wrist inside the real-signer span"
-HOLD_ARMS = "off"                  # declared, from reports/wrist_by_signer.json's real_signer_span; comp_a6_declared.py checks them against each other and the job's own line
 COMPARATOR = {HOLD: BASE, LENGTH: BASE, BOTH: LENGTH, HOLD_REST: BASE}
 EXCLUDE = .25
 HOLD_SHA = "1b7c24a81aa75c58c523096595b40df537fcd4a49094b88b1eb19686c17440d7"
@@ -125,8 +123,6 @@ ROOM_RULE = ("For each metric, if A5's mean gain is at or below 0, or its lower 
              "the hold gate closes; the arms still report. ")
 INSTRUMENT = ("Each draw's top10 at today's length must match A5's top10 for that draw, and the screen's A3's stored top10: on the same GPU type and pinned thread count at least 98% of its hypotheses, for the form, for real and for blank@predicted. Below that, the draw stops and later "
               "attempts of that draw are refused until it is declared. The draws need at least one same-GPU draw, else the read is incomplete; the count and rate of every draw are printed. ")
-WRIST_PURPOSE = ("The wrist condition: if top10 sits inside the real-signer span on all six readings (pooled, left and right, raw and 3 Hz; p10 to p90 of per-signer mean wrist speed, signers or channels with at least 30 clips, through the monocular path), the hold has no wrist purpose: A6 declares HOLD_ARMS=off, runs "
-                 "top10 and length only, runs no hold screen, spends nothing on hold, and this rule reads not run, wrist inside the real-signer span. If top10 is outside on any reading, the screen gate works as built. This declaration's setting, from the committed span report: HOLD_ARMS=" + HOLD_ARMS + ". ")
 REDECLARE = "Any reader bug, or any code change after the screen or a draw, means re-declaring under a new OUT named in the job, with what was stored disclosed; no key is scoped by digest automatically. "
 HOLD_GATE = ("The gate: the screen on A3's stored words reads hold-x against top10 at today's length, report only, and hold-x and hold-x at the fitted length run on the eight draws only if the screen's point estimates of likelihood and spotting sit above the two floors above. Otherwise "
              "the draws run top10 and length only, the length rule still reads, and this rule reads not run, screen failed, which is printed. Known from A1's stored rows before this gate was set: the 34% of clips holding the excluded uses hold 39% of A1's likelihood loss and 40% of its spotting "
@@ -136,7 +132,7 @@ RULES = dict(
           "entries; the 25% cut was set after A1's D20 failure. hold-x at today's length is read beside it and decides nothing. Passed only if all hold: mean paired likelihood minus each form's own-length blank, its 95% lower bound " + bar(LIKELIHOOD_FLOOR) + " on both the two-way "
           "bootstrap and the t interval over the eight draws; v2 spotting's 95% lower bound " + bar(SPOTTING_FLOOR) + " on both; BLEU over draws, the t interval's lower bound " + bar(BLEU_FLOOR) + "; mean hands at least 0.9x its comparator's. These are small-loss bars, "
           "set as shares of the mean paired gains of " + BARS_AGAINST + ": 44% of BLEU's, 60% of likelihood's and of spotting's. " + ROOM_RULE + "A pass means any loss is small, possibly up to those shares, with less motion, and not that the arm reads better. Known before any read, and not evidence: "
-          "pooled wrist 2.019x to 1.814x, contact unchanged by construction. The form stays far outside the 0.8-1.25x band, so a pass is no progress against the release bar. " + WRIST_PURPOSE + HOLD_GATE + SINGLE_STEP + INSTRUMENT + REDECLARE + NOT_FRESH + "Anything else is not passed, the failed check is reported, and not passed is not "
+          "pooled wrist 2.019x to 1.814x of D20 real through two-view, contact unchanged by construction. A pass says nothing about the release bar's wrist condition, which no rule here reads. " + HOLD_GATE + SINGLE_STEP + INSTRUMENT + REDECLARE + NOT_FRESH + "Anything else is not passed, the failed check is reported, and not passed is not "
           "evidence of a loss. " + GATE),
     length=("Primary arm: length, the fit signer-balanced on How2Sign train's c02 + c04 (seconds = -0.3577 + 0.3445 x tokens), chosen by a train-only rule after its D20 ratio of about 1.08 was known, and never fitted on D20's lengths. Against top10 at today's length, paired within each "
             "of A5's eight stored word draws, on D20, report only. Passed only if all hold: likelihood and spotting as the hold rule; BLEU, the t interval's lower bound " + bar(BLEU_FLOOR) + " on the lower of raw BLEU and BLEU net of the blank's own change; mean hands at least 0.9x "
@@ -165,9 +161,8 @@ KNOWN_AT_WRITING = ("A1's hold had failed its rule on D20: likelihood -0.0276, s
                     "design, before the train-only rule was written, so that rule was not blind to it. By that rule the choice went to the line, on its tie to fewer parameters: train error 0.2479 against the word model's 0.2450, within the 0.005 tie. D20 then read, on state frames, pooled 1.071x, median per "
                     "clip 1.128, median per-clip error 0.245 for the line, and 1.065x, 1.123, 0.230 for the word model, which reads slightly better on both sets and was not chosen. The first train read split folds by clip instead of video. That was fixed after D20's ratios had been read; the fits and the "
                     "choice did not change, only the cross-validated errors. S0 had shown a faster form gains BLEU without content. The screen's gate on the hold arms was set after the concentration result above, with both it and A1's failure known, on point estimates of one word draw on D20's own "
-                    "sentences; it was accepted that the screen waits for A5's summary. The owner then moved the wrist condition to the real-signer span (plan, 2026-11-01, 14:39 UTC), a loosening made after composition's figures were known. The span (reports/wrist_by_signer.json, 355 YouTube channels qualifying, 120 read, "
-                    "4 ASLLRP signers, 5 How2Sign signers, whose c01, c03 and c05 rows are D20's clips): raw pooled 0.887-1.856, left 0.923-2.120, right 0.812-1.709; 3 Hz pooled 0.723-1.466, left 0.768-1.748, right 0.669-1.271. top10 reads raw 1.557, 1.606, 1.515 and 3 Hz 1.257, 1.320, 1.195: inside on all six, so HOLD_ARMS=off. Without YouTube's channels, which are 120 of 129 groups, "
-                    "raw left's top end is 1.602 and top10 sits just above it. top10 at the fitted length is outside on the right, raw 1.727 and 3 Hz 1.312, so the setting reads today's length only, and a passed length rule would bring the wrist question back. Five-clip smokes of these arms had not been run when this was written; running them before declaration is recommended.")
+                    "sentences; it was accepted that the screen waits for A5's summary. The owner then moved the wrist condition to a real-signer span (plan, 2026-11-01, 14:39 UTC), and an independent review of the first span read held it (plan, 15:50 UTC): 26 of its 120 YouTube channels had no wrist number, so a setting that would have cancelled the hold arms was "
+                    "withdrawn before any declaration, and no rule here reads the span. Five-clip smokes of these arms had not been run when this was written; running them before declaration is recommended.")
 
 
 def settings_of(report: dict) -> dict:
@@ -194,8 +189,6 @@ def check_arm_name(name: str, report: dict) -> None:
 
 
 def arms_of(k, gate_open: bool = True) -> tuple:
-    if HOLD_ARMS == "off":
-        return GATE_CLOSED_ARMS
     return SCREEN_ARMS if k == SCREEN else ARMS if gate_open else GATE_CLOSED_ARMS
 
 
@@ -409,18 +402,15 @@ def hold_gate(screen: dict, declared_commit: str | None, *, job_file: str = JOB_
 
 def read(draws: dict, shards: dict, *, boot: int = 1000, declared_commit: str | None = None, job_file: str = JOB_FILE, attempts: dict | None = None, a5_top10: dict | None = None, smoke: bool = False, screen_summary: dict | None = None, screen_sha256: str | None = None) -> dict:
     screen = SCREEN in draws
-    off = HOLD_ARMS == "off"
-    if off and screen and not smoke:
-        raise SystemExit("HOLD_ARMS=off: no hold screen runs")
-    if not screen and not off and (screen_summary is None or not screen_sha256):
+    if not screen and (screen_summary is None or not screen_sha256):
         raise SystemExit("the draws need the screen's summary and its hash: it gates the hold arms")
-    gate = None if screen or off else hold_gate(screen_summary, declared_commit, job_file=job_file)
-    gate_open = not off and (screen or gate["passed"])
+    gate = None if screen else hold_gate(screen_summary, declared_commit, job_file=job_file)
+    gate_open = screen or gate["passed"]
     check_set(draws, smoke=smoke, gate_open=gate_open)
     check_digest(draws, declared_commit, job_file)
     if not screen and set(a5_top10 or ()) != set(DRAWS):
         raise SystemExit(f"the draws need all eight of A5's top10 reports: {sorted(a5_top10 or ())}")
-    arms = {name: arm_summary(draws, shards, name, boot=boot) for name in arms_of(SCREEN if screen else DRAWS[0], gate_open) if name != BASE}
+    arms = {name: arm_summary(draws, shards, name, boot=boot) for name in (SCREEN_ARMS if screen else ARMS if gate_open else GATE_CLOSED_ARMS) if name != BASE}
     both_on_base = arm_summary(draws, shards, BOTH, boot=boot, other=BASE) if gate_open else None
     if screen and not smoke:
         gate = gate_of(arms[HOLD]["likelihood_minus_blank"]["mean"], arms[HOLD]["spotting"]["mean"])
@@ -428,10 +418,10 @@ def read(draws: dict, shards: dict, *, boot: int = 1000, declared_commit: str | 
     if screen:
         rule = dict(hold=dict(arm=BOTH, comparator=LENGTH, outcome="smoke_decides_nothing" if smoke else "screen_decides_nothing", checks=None, text=RULES["hold"]), length=dict(arm=LENGTH, comparator=BASE, outcome="smoke_decides_nothing" if smoke else "screen_decides_nothing", checks=None, text=RULES["length"]))
     else:
-        hold_rule = decide_hold(arms[BOTH]) if gate_open else dict(checks=None, outcome=HOLD_OFF) if off else dict(checks=None, outcome="no_room", no_room=dict(NO_ROOM)) if NO_ROOM else dict(checks=None, outcome=HOLD_NOT_RUN)
+        hold_rule = decide_hold(arms[BOTH]) if gate_open else dict(checks=None, outcome="no_room", no_room=dict(NO_ROOM)) if NO_ROOM else dict(checks=None, outcome=HOLD_NOT_RUN)
         rule = dict(hold=dict(arm=BOTH, comparator=LENGTH, text=RULES["hold"], **hold_rule), length=dict(arm=LENGTH, comparator=BASE, text=RULES["length"], **decide_length(arms[LENGTH])))
     return dict(kind="comp-a6-read", report_only=True, mode="smoke" if smoke else "screen" if screen else "draws", declared=bool(declared_commit), declared_commit=declared_commit, draws=sorted(draws, key=str), set=dict(key=lib.D20_KEY, sha256=lib.D20_SHA),
-                arms=arms, hold_gate=gate, both_on_base=both_on_base, difference_in_differences=interaction(arms[BOTH], arms[HOLD]) if gate_open else None, report_only_rows="both_on_base and difference_in_differences decide nothing", floors=dict(FLOORS, against=BARS_AGAINST), screen_sha256=screen_sha256, rule=rule, known_when_written=KNOWN_AT_WRITING, note=note, hold_arms=HOLD_ARMS, reported_only=[HOLD, HOLD_REST] if screen and not off else [HOLD] if gate_open else [], attempts=attempts or {}, a5_instrument_check=a5_instrument_check(draws, a5_top10 or {}), provenance=lib.provenance_row(job_file))
+                arms=arms, hold_gate=gate, both_on_base=both_on_base, difference_in_differences=interaction(arms[BOTH], arms[HOLD]) if gate_open else None, report_only_rows="both_on_base and difference_in_differences decide nothing", floors=dict(FLOORS, against=BARS_AGAINST), screen_sha256=screen_sha256, rule=rule, known_when_written=KNOWN_AT_WRITING, note=note, reported_only=[HOLD, HOLD_REST] if screen else [HOLD] if gate_open else [], attempts=attempts or {}, a5_instrument_check=a5_instrument_check(draws, a5_top10 or {}), provenance=lib.provenance_row(job_file))
 
 
 def main(argv=None) -> int:
@@ -458,7 +448,7 @@ def main(argv=None) -> int:
         if hashlib.sha256(raw_screen).hexdigest() != args.screen_sha256:
             raise SystemExit(f"{args.screen_key} does not match --screen-sha256")
         screen_summary = json.loads(raw_screen)
-    gate_open = HOLD_ARMS != "off" and (hold_gate(screen_summary, args.declared_commit)["passed"] if screen_summary else True)
+    gate_open = hold_gate(screen_summary, args.declared_commit)["passed"] if screen_summary else True
     draws, shards = {}, {}
     for spec in args.draw:
         k, _, keys = spec.partition("=")

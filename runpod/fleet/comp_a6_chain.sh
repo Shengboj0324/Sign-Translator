@@ -13,11 +13,7 @@ W=${1:?a3 or a draw, 1 to 8}; DECLARED=${2:?the plan commit}; ATTEMPT=${3:-1}; L
 run() { env "$@" bash runpod/fleet/comp_a6.sh 2>&1 | tee -a "$LOG"; [ "${PIPESTATUS[0]}" = 0 ] || stop "$*"; }
 hash_of() { local h; h=$(grep -E "^COMP-A6 $1 " "$LOG" | tail -n 1 | awk '{print $4}'); if [ -z "$h" ]; then echo "ALERT chain: no hash for $1" >&2; return 1; fi; echo "$h"; }
 STAMP=$W-attempt$ATTEMPT-$(date -u +%Y%m%dT%H%M%SZ)
-run COMP_PHASE=arms WORDS=a3 SMOKE=1 SMOKE_STAMP="$STAMP" ATTEMPT=1
-ARMS=$(grep -E '^COMP-A6-ARMS ' "$LOG" | tail -n 1 | awk '{print $2}')
-case $ARMS in on) SMOKES="base hold-x length hold-x-length hold-xr smoke-read" ;; off) SMOKES="base length smoke-read" ;; *) stop "no HOLD_ARMS from the job" ;; esac
-[ "$ARMS" = on ] || [ "$W" != a3 ] || stop "HOLD_ARMS=off: no hold screen runs and nothing is spent on hold"
-for P in $SMOKES; do run COMP_PHASE=$P WORDS=a3 SMOKE=1 SMOKE_STAMP="$STAMP" ATTEMPT=1; done
+for P in base hold-x length hold-x-length hold-xr smoke-read; do run COMP_PHASE=$P WORDS=a3 SMOKE=1 SMOKE_STAMP="$STAMP" ATTEMPT=1; done
 : > "$LOG"
 one() { run COMP_PHASE=$1 WORDS=$W ATTEMPT="$ATTEMPT" COMP_A_DECLARED="$DECLARED" "${@:2}"; }
 GATE=open
@@ -47,7 +43,7 @@ if [ "$GATE" = open ]; then
   HXL=$(hash_of "$W-attempt$ATTEMPT-hold-x-length") || stop "no hash for hold-x-length of $W attempt $ATTEMPT"
   HOLDS="$HOLDS HXL${W}_SHA=$HXL"
 else
-  grep -E '^COMP-A6-HOLD ' "$LOG" | tail -n 1
+  echo "COMP-A6-HOLD not run, screen failed"
 fi
 echo "COMP-A6-HASHES words=$W attempt=$ATTEMPT B${W}_SHA=$B L${W}_SHA=$L$HOLDS$EXTRA gate=$GATE"
 ENDED=1

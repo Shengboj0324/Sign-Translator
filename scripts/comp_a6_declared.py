@@ -17,20 +17,6 @@ RECORD = "runpod/fleet/comp_a6_declared.json"
 
 
 POWER_REPORT = "reports/comp_a6_hold_concentration.json"
-SPAN_REPORT = "reports/wrist_by_signer.json"
-JOB = "runpod/fleet/comp_a6.sh"
-
-
-def check_hold_arms(root: Path, setting: str | None = None) -> None:
-    """The declared HOLD_ARMS is the committed span report's, and the job's own line says the same."""
-    from comp_a6_read import HOLD_ARMS
-    setting = setting or HOLD_ARMS
-    path = root / SPAN_REPORT
-    span = (json.loads(path.read_text()).get("real_signer_span") or {}) if path.exists() else {}
-    if span.get("hold_arms") != setting:
-        raise SystemExit(f"HOLD_ARMS is {setting}, the span report's {span.get('hold_arms')}: the setting is read from the committed report")
-    if f"\nHOLD_ARMS={setting}\n" not in (root / JOB).read_text():
-        raise SystemExit(f"{JOB} does not declare HOLD_ARMS={setting}")
 
 
 def check_power(root: Path) -> None:
@@ -48,7 +34,6 @@ def check_slot(root: Path, slot) -> None:
     if not slot:
         raise SystemExit(f"{RECORD} exists while A5_SUMMARY_AT_DECLARATION is empty: the bars were not set against A5's summary")
     check_power(root)
-    check_hold_arms(root)
 
 
 def check(commit: str, root: Path = ROOT) -> str:
@@ -63,7 +48,6 @@ def make_record(commit: str) -> dict:
     if not A5_SUMMARY_AT_DECLARATION:
         raise SystemExit("A5_SUMMARY_AT_DECLARATION is empty: the bars restate against A5's summary at declaration")
     check_power(ROOT)
-    check_hold_arms(ROOT)
     return dc.make_record(commit, job=JOB_FILE, rules=RULES)
 
 

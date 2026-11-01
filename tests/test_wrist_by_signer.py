@@ -159,103 +159,152 @@ def channel_rows():
     return dict(records=rows)
 
 
-def test_a_channel_qualifies_at_thirty_train_clips_and_is_drawn_at_thirty():
+def test_a_channel_qualifies_by_train_clips_and_is_ordered_by_a_fixed_shuffle():
     qualifying = w.channels_with_clips(channel_rows())
     assert set(qualifying) == {"big", "exact"} and len(qualifying["big"]) == 40
     drawn = w.span_draw(qualifying)
-    assert set(drawn) == {"big", "exact"} and all(len(v) == 30 for v in drawn.values()) and drawn == w.span_draw(qualifying)
+    assert set(drawn) == {"big", "exact"} and len(drawn["big"]) == 40 and drawn == w.span_draw(qualifying) and drawn["big"] != qualifying["big"]
     assert len(w.span_draw(qualifying, channels=1)) == 1
+
+
+NULL = dict(wrist_speed=None, wrist_spread=None, left_speed=None, right_speed=None, left_spread=None, right_spread=None)
+
+
+def null_row():
+    return dict(native_fps=24., frames=1, seconds=1., raw=dict(NULL), **{"6hz": dict(NULL), "3hz": dict(NULL)})
+
+
+def test_a_group_of_nulls_cannot_count_toward_the_thirty():
+    rows = [null_row() for _ in range(30)]
+    row = w.group_row(rows, rows)
+    assert row["clips"] == 30 and row["raw"]["numbered"]["wrist_speed"] == 0 and w.counted(row) is False and w.enough(rows) is False
+
+
+def test_one_side_short_is_not_enough():
+    rows = [row(1.) for _ in range(30)]
+    assert w.enough(rows) is True and w.counted(w.group_row(rows, rows)) is True
+    rows[0]["raw"]["left_speed"] = None
+    assert w.enough(rows) is False and w.counted(w.group_row(rows, rows)) is False
+    rows = [row(1.) for _ in range(30)]
+    rows[0]["3hz"]["right_speed"] = None
+    assert w.enough(rows) is False and w.counted(w.group_row(rows, rows)) is False
+
+
+def test_reading_goes_on_until_thirty_numbered_or_the_records_run_out():
+    rows, seen = w.read_numbered([null_row() for _ in range(5)] + [row(1.) for _ in range(40)], lambda r: r)
+    assert seen == 35 and len(rows) == 30                                        # nulls add nothing, and reading stops at thirty
+    rows, seen = w.read_numbered([null_row() for _ in range(10)] + [row(1.) for _ in range(5)], lambda r: r)
+    assert seen == 15 and len(rows) == 5
+    rows, seen = w.read_numbered([null_row() for _ in range(7)], lambda r: r)
+    assert seen == 7 and rows == []
+
+
+def test_going_on_looks_at_validity_never_at_speed():
+    slow = w.read_numbered([row(.001) for _ in range(40)], lambda r: r)[1]
+    fast = w.read_numbered([row(99.) for _ in range(40)], lambda r: r)[1]
+    assert slow == fast == 30
 
 
 def speed_row(left, right, pooled=None):
     rate = dict(wrist_speed=(left + right) / 2 if pooled is None else pooled, left_speed=left, right_speed=right)
-    return dict(raw=dict(rate), **{"3hz": {k: v / 2 for k, v in rate.items()}})
+    return dict(raw=dict(rate, numbered={k: 30 for k in rate}), **{"3hz": dict({k: v / 2 for k, v in rate.items()}, numbered={k: 30 for k in rate})})
 
 
 def composed(value):
     return {r: {f"{k}_over_d20": value for k in w.SIDES.values()} for r in w.SPAN_RATES}
 
 
-def span_input(value=1., top_value=None, n=20):
-    groups = {f"g{k}": dict(corpus=w.YOUTUBE if k > 2 else "asllrp", clips=30, row=speed_row(.5 + k * .1, .5 + k * .1)) for k in range(n)}
+def span_input(value=1., n=20):
+    groups = {f"g{k}": dict(corpus=w.YOUTUBE if k > 2 else "asllrp", named=k <= 2, clips_read=30, row=speed_row(.5 + k * .1, .5 + k * .1)) for k in range(n)}
     forms = {name: composed(value) for name in ("base", "hold_x", "length_tokens", "hold_x_length")}
     reference = {r: dict(wrist_speed=1., left_speed=1., right_speed=1.) for r in w.SPAN_RATES}
-    return groups, dict(composition=forms, on_monocular={k: {r: dict(wrist_speed=.9, left_speed=.9, right_speed=.9) for r in w.SPAN_RATES} for k in forms}, reference=reference, channels_qualifying=n, channels_read=n)
+    return groups, dict(composition=forms, on_monocular={k: {r: dict(wrist_speed=.9, left_speed=.9, right_speed=.9) for r in w.SPAN_RATES} for k in forms}, reference=reference, d20=dict(c01=speed_row(1., 1.), c05=speed_row(9., 9.)), length_ratio=1.2, channels_qualifying=n, channels_read=n)
 
 
-def test_the_span_is_p10_to_p90_across_groups_per_rate_and_side():
+def test_the_span_is_p10_to_p90_across_counted_groups_per_rate_and_side():
     groups, kw = span_input()
     out = w.real_signer_span(groups, **kw)
     values = [.5 + k * .1 for k in range(20)]
     assert out["span"]["raw"]["left"] == [round(float(np.percentile(values, 10)), 5), round(float(np.percentile(values, 90)), 5)]
     assert out["span"]["3hz"]["right"] == [round(float(np.percentile(values, 10)) / 2, 5), round(float(np.percentile(values, 90)) / 2, 5)]
-    assert out["clips"]["g0"] == 30 and out["groups_per_corpus"] == {"asllrp": 3, w.YOUTUBE: 17} and "sensitivity_without_youtube" in out
-    assert out["sensitivity_without_youtube"]["span"]["raw"]["left"][1] < out["span"]["raw"]["left"][1]
+    assert out["units"] == "shoulder widths per second" and out["groups_counted"] == 20 and out["named_counted"] == 3 and out["channels_counted"] == 17 and out["refused"] == {} and out["channels"]["g5"]["clips_read"] == 30
 
 
-def test_a_group_short_of_thirty_clips_is_refused():
+def test_a_group_under_thirty_numbered_is_refused_named_and_in_no_percentile():
     groups, kw = span_input()
-    groups["g1"]["clips"] = 29
-    with pytest.raises(SystemExit, match="short of 30"):
-        w.real_signer_span(groups, **kw)
+    groups["g19"]["row"]["raw"]["numbered"]["left_speed"] = 29
+    groups["g19"]["clips_read"] = 400
+    out = w.real_signer_span(groups, **kw)
+    assert set(out["refused"]) == {"g19"} and out["refused"]["g19"]["clips_read"] == 400 and out["refused"]["g19"]["numbered"]["raw"]["left"] == 29 and "g19" not in out["channels"] and out["groups_counted"] == 19
+    values = [.5 + k * .1 for k in range(19)]
+    assert out["span"]["raw"]["left"][1] == round(float(np.percentile(values, 90)), 5)
 
 
-def test_inside_on_all_six_sets_hold_arms_off():
+def test_named_signers_stand_apart_with_their_passes_and_d20_is_placed():
+    groups, kw = span_input()
+    out = w.real_signer_span(groups, **kw)
+    assert set(out["named_signers"]) == {"g0", "g1", "g2"} and "g0" not in out["channels"] and out["named_signers"]["g1"]["numbered"]["raw"]["left"] == 30
+    low = out["span"]["raw"]["left"][0]
+    assert out["named_signers"]["g0"]["speed"]["raw"]["left"] < low and out["named_signers"]["g0"]["passes_of_six"] < 6
+    assert out["d20_position"]["c01"]["passes_of_six"] == w.passes_of(w.against_span(w.group_speeds(speed_row(1., 1.)), out["span"])) and out["d20_position"]["c05"]["passes_of_six"] == 0
+    assert out["sensitivity"]["named_signers_only"]["raw"]["left"][1] < out["span"]["raw"]["left"][1]
+
+
+def test_top10_is_placed_among_the_groups_and_scaled_roughly():
     groups, kw = span_input(value=1.)
     out = w.real_signer_span(groups, **kw)
-    # 3 Hz rows here run at half speed, so 1.0 is inside raw and near the top at 3 Hz
-    assert out["forms"]["base"]["speed"]["raw"]["left"] == 1. and out["forms"]["base"]["old_reading"]["over_d20_monocular"]["raw"]["left"] == .9 and out["forms"]["base"]["old_reading"]["over_d20_two_view"]["3hz"]["right"] == 1.
-    assert out["top10_inside_all_six"] is True and out["hold_arms"] == "off" and out["few_channels"] is False
+    base = out["forms"]["base"]
+    assert base["speed"]["raw"]["left"] == 1. and base["percentile_among_groups"]["raw"]["left"] == .25 and base["faster_than_named_signers"]["raw"]["left"] == 3 and base["old_reading"]["over_d20_monocular"]["raw"]["left"] == .9 and base["old_reading"]["over_d20_two_view"]["3hz"]["right"] == 1.
+    rough = out["true_length_rough"]
+    assert rough["speed"]["raw"]["pooled"] == 1.2 and "rough" in rough["note"] and rough["length_ratio"] == 1.2 and rough["inside"]["raw"]["pooled"] is True
 
 
-@pytest.mark.parametrize("rate,side", [(r, s) for r in w.SPAN_RATES for s in w.SIDES])
-def test_outside_on_any_one_reading_sets_hold_arms_on(rate, side):
-    groups, kw = span_input(value=1.)
-    kw["composition"]["base"][rate][f"{w.SIDES[side]}_over_d20"] = 9.
-    out = w.real_signer_span(groups, **kw)
-    assert out["forms"]["base"]["inside"][rate][side] is False and out["top10_inside_all_six"] is False and out["hold_arms"] == "on"
-    assert out["forms"]["hold_x"]["inside_all_six"] is True
-
-
-def test_the_setting_reads_top10_and_the_ends_count_as_inside():
-    groups, kw = span_input(value=1.)
-    kw["composition"]["hold_x"]["raw"]["left_speed_over_d20"] = 9.
-    assert w.real_signer_span(groups, **kw)["hold_arms"] == "off"                 # hold-x outside: top10 alone sets it
+def test_inside_is_at_or_between_the_ends_and_passes_are_counted():
     span = dict(raw=dict(pooled=[1., 2.], left=[1., 2.], right=[1., 2.]), **{"3hz": dict(pooled=[1., 2.], left=[1., 2.], right=[1., 2.])})
     form = {r: dict(pooled=1., left=2., right=1.5) for r in w.SPAN_RATES}
-    assert w.inside_all(w.against_span(form, span)) is True
-    assert w.hold_arms_of(True) == "off" and w.hold_arms_of(False) == "on"
-
-
-def test_few_channels_are_said():
-    groups, kw = span_input()
-    kw["channels_qualifying"] = 19
-    assert w.real_signer_span(groups, **kw)["few_channels"] is True
-    kw["channels_qualifying"] = 20
-    assert w.real_signer_span(groups, **kw)["few_channels"] is False
-
-
-def test_the_committed_span_reads_no_test_partition():
-    import pathlib
-    report = json.loads((pathlib.Path(w.__file__).parents[1] / "reports/wrist_by_signer.json").read_text())
-    span = report["real_signer_span"]
-    assert "how2sign_c00" not in span["groups"] and "asllrp_Ben" not in span["groups"] and "asllrp_Jonathan" not in span["groups"]
-    assert all(v >= 30 for v in span["clips"].values()) and span["youtube_channels_qualifying"] >= 20 and span["hold_arms"] in ("on", "off")
-    assert '"/test_" in key' in pathlib.Path(w.__file__).read_text()
+    assert w.passes_of(w.against_span(form, span)) == 6
+    form["raw"]["left"] = 2.01
+    form["3hz"]["pooled"] = .99
+    assert w.passes_of(w.against_span(form, span)) == 4
 
 
 def test_each_side_reads_its_own_number_and_a_form_is_made_absolute_by_the_reference():
-    row = speed_row(2., 4., pooled=3.5)
-    assert w.group_speeds(row) == dict(raw=dict(pooled=3.5, left=2., right=4.), **{"3hz": dict(pooled=1.75, left=1., right=2.)})
+    row_ = speed_row(2., 4., pooled=3.5)
+    assert w.group_speeds(row_) == dict(raw=dict(pooled=3.5, left=2., right=4.), **{"3hz": dict(pooled=1.75, left=1., right=2.)})
     form = {r: dict(wrist_speed_over_d20=2., left_speed_over_d20=3., right_speed_over_d20=4.) for r in w.SPAN_RATES}
     reference = {r: dict(wrist_speed=.5, left_speed=.25, right_speed=.1) for r in w.SPAN_RATES}
     assert w.absolute_form(form, reference)["raw"] == dict(pooled=1., left=.75, right=.4)
 
 
-def test_the_groups_are_the_channels_how2signs_monocular_rows_and_asllrps_signers_and_never_c00():
-    report = dict(monocular_against_two_view=dict(c01=dict(clips=40, monocular_only="m1")), asllrp=dict(signers=dict(Cory=dict(clips=30))))
-    out = w.span_groups(report, dict(ch=dict(corpus=w.YOUTUBE, clips=30, row="c")))
-    assert out["how2sign_c01"] == dict(corpus=w.H2S, clips=40, row="m1") and out["asllrp_Cory"]["corpus"] == "asllrp" and out["ch"]["clips"] == 30
-    report["monocular_against_two_view"]["c00"] = dict(clips=9, monocular_only="x")
-    with pytest.raises(SystemExit, match="never read"):
-        w.span_groups(report, {})
+def test_few_channels_are_said_on_counted_channels():
+    groups, kw = span_input(n=22)
+    assert w.real_signer_span(groups, **kw)["few_channels"] is True                # 19 channels counted, whatever qualified by clips
+    groups, kw = span_input(n=23)
+    assert w.real_signer_span(groups, **kw)["few_channels"] is False
+
+
+def test_the_corpus_row_refuses_empty_groups_and_names_them():
+    good = [row(2.) for _ in range(5)]
+    out = w.equal_weight(dict(a=good, empty=[null_row() for _ in range(5)]), [row(1.)], minimum=5)
+    assert out["groups"] == 1 and out["groups_read"] == 2 and out["refused"] == ["empty"] and out["raw"]["wrist_speed_over_d20"] == 2. and out["clips"] == 5
+    assert w.equal_weight(dict(a=good[:4]), [row(1.)], minimum=5)["refused"] == ["a"]
+    assert w.equal_weight(dict(a=good), [row(1.)])["groups"] == 1
+
+
+def test_the_earlier_read_says_how_many_channels_had_no_number():
+    out = w.hole_in_earlier_read(dict(a=[row(2.)], b=[row(4.)], empty=[null_row(), null_row()]), dict(raw=dict(wrist_speed=1.)))
+    assert out["channels"] == 3 and out["channels_with_no_number"] == 1 and out["names"] == ["empty"] and out["range_on_the_rest_raw_pooled"][1] <= 4.
+
+
+def test_the_committed_span_counts_its_clips_and_reads_no_test_partition():
+    """This fails on the first span read, whose groups held no counts and 26 of whose channels held no number."""
+    import pathlib
+    report = json.loads((pathlib.Path(w.__file__).parents[1] / "reports/wrist_by_signer.json").read_text())
+    span = report["real_signer_span"]
+    for name, row_ in {**span["named_signers"], **span["channels"]}.items():
+        assert all(v >= 30 for rate in row_["numbered"].values() for v in rate.values()), name
+        assert all(v is not None for rate in row_["speed"].values() for v in rate.values()), name
+    names = set(span["named_signers"]) | set(span["channels"]) | set(span["refused"])
+    assert "how2sign_c00" not in names and "asllrp_Ben" not in names and "asllrp_Jonathan" not in names and span["channels_counted"] >= 20
+    assert "hold_arms" not in span and "top10_inside_all_six" not in span and "groups" not in span and report["youtube"]["hole_check"]["channels"] == 60
+    assert '"/test_" in key' in pathlib.Path(w.__file__).read_text()

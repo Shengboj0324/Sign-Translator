@@ -2311,7 +2311,7 @@
    }
   }
  },
- "note": "Real signing's wrist differs by signer and by corpus far more than the review's first numbers show one by one. Same clips through both paths: pooled, the monocular path reads 18-39% more wrist motion at 3 Hz and 23-37% more spread than two-view on every How2Sign signer, while its raw speed is 0.83-1.11x. Per side it is not every signer: at 3 Hz the left is 1.36-1.65x and the right 0.94-1.23x (c03's right is below 1), and raw the right is 0.73-0.98x. Either direction fits: two-view could shrink the motion, or the monocular path could inflate it, and monocular inflation fits the left-arm asymmetry at least as well as two-view shrinkage. Median clip seconds differ 1.00-1.05x between the paths, so frames are not exactly paired. Content above 3 Hz is not called jitter here: nothing shows how much of it is tracker noise. Both How2Sign paths store 24 fps. With the path matched, YouTube still reads about 1.5x D20 raw and at 3 Hz. The word clips' training is mostly monocular (word_clip_path: 0.27% of one-word weight, 8.8% of sampling and 27.2% of sentence-token weight are two-view), so composition against D20 through the same path may be the like-for-like comparison (composition_on_monocular): top10 1.88x raw and 1.75x at 3 Hz, against 1.77x and 2.20x on two-view. That is an inference: the decoder's share is not measured and no generated clip's amplitude was tested. YouTube's channel ranges rest on 5 clips each. The plan records the span on main (docs/NEXT_PHASE_PLAN.md, section Release bar: wrist condition moved to the real-signer span).",
+ "note": "Real signing's wrist differs by signer and by corpus far more than the review's first numbers show one by one. Same clips through both paths: pooled, the monocular path reads 18-39% more wrist motion at 3 Hz and 23-37% more spread than two-view on every How2Sign signer, while its raw speed is 0.83-1.11x. Per side it is not every signer: at 3 Hz the left is 1.36-1.65x and the right 0.94-1.23x (c03's right is below 1), and raw the right is 0.73-0.98x. Either direction fits: two-view could shrink the motion, or the monocular path could inflate it, and monocular inflation fits the left-arm asymmetry at least as well as two-view shrinkage. Median clip seconds differ 1.00-1.05x between the paths, so frames are not exactly paired. Content above 3 Hz is not called jitter here: nothing shows how much of it is tracker noise. Both How2Sign paths store 24 fps. With the path matched, YouTube still reads about 1.5x D20 raw and at 3 Hz. The word clips' training is mostly monocular (word_clip_path: 0.27% of one-word weight, 8.8% of sampling and 27.2% of sentence-token weight are two-view), so composition against D20 through the same path may be the like-for-like comparison (composition_on_monocular): top10 1.88x raw and 1.75x at 3 Hz, against 1.77x and 2.20x on two-view. That is an inference: the decoder's share is not measured and no generated clip's amplitude was tested. YouTube's channel ranges rest on 5 clips each. YouTube's corpus row and that range also dropped channels with no number at all (youtube.hole_check). The plan records the span on main; no claim, gate or rule reads it until an independent review of this rerun.",
  "path_matched": {
   "3hz": {
    "d20_monocular_over_d20_two_view": 1.2538,
@@ -2327,141 +2327,1869 @@
   }
  },
  "real_signer_span": {
-  "clips": {
-   "UC-7qFeNijjbBpjL2KvMN_QA": 30,
-   "UC-GYvbXRH4CgK2Ocn_4srww": 30,
-   "UC-IaYvWxBm3Q15N4SC3O1Hw": 30,
-   "UC-VQN3FOZICn0MCEEjOGZdA": 30,
-   "UC0PiBNG7h5d1IYLXo7z_BzA": 30,
-   "UC0jdsYSKy1VNhKw79mw0RsA": 30,
-   "UC1mrgxxrCtcAUBFR5Z9Kn6A": 30,
-   "UC1xPhlKUKuJ3JH21N8ipwpQ": 30,
-   "UC2bK5-reqE8zppmJJ9kZdVQ": 30,
-   "UC2nAqidRiPfQa53Yaf9qeCg": 30,
-   "UC3etnnsIxGpH89XgojqE0Ng": 30,
-   "UC3hOdPWDnQBs9NTt3y2fPRg": 30,
-   "UC3p9-cdApmRUOgQ4-M4P01w": 30,
-   "UC4fJ87vQIH9NUQwJNmgUkFw": 30,
-   "UC52H_xHKrwnQRPb25kQtFCQ": 30,
-   "UC5lvdrjVrbYEFjFeoH1aBnQ": 30,
-   "UC5pEK6jJwx_JoZXhEsGPnJQ": 30,
-   "UC6Nt4sw73UuNmxnjVaa7SYw": 30,
-   "UC6ObwNc1wkEbAnEf8Pf0KoQ": 30,
-   "UC6WhyWFSLUzYW8MXAB_1GZg": 30,
-   "UC70SSNojGf-vMAdvjS1wfkg": 30,
-   "UC76bQa0r83RNydA55Uh_ovw": 30,
-   "UC7hDSJ0Y236vU68z6ekcALQ": 30,
-   "UC9Po19_l-kPdhqnJumg5_Nw": 30,
-   "UC9UqfAVkaO8Q3QLbeqNxygQ": 30,
-   "UCAbFXOPq0sx03ev-kO3FE2A": 30,
-   "UCBJOcgmUmIMoS62uvMzGi5A": 30,
-   "UCBYjXB2UgJYu05ljm8UJEvQ": 30,
-   "UCC-n9JB45R7cRvKVpHrHdGg": 30,
-   "UCCOaLeJLHuYax7_k5wbC6cw": 30,
-   "UCDL2Ug9aPMTAK0FDfWopZMw": 30,
-   "UCEHeJSkYnE1CeFM7wBNb53w": 30,
-   "UCET0ZgnCFLi1369c3ZWfSFA": 30,
-   "UCEYXCOUkTeFLj8thLxt6FVQ": 30,
-   "UCEhrSe-kPnpzjolcy0XKvxg": 30,
-   "UCFH2pdY2RtbrjlyomAGLmNw": 30,
-   "UCFHkpbh0wCDFk7fAPbh5Suw": 30,
-   "UCF_6ucHSV6NJj7wzG8x_urA": 30,
-   "UCFaQvZ9qIRFaB0GRDRq9L5A": 30,
-   "UCGK9n7svoIjuaQfRIBJXkqQ": 30,
-   "UCGu8KKKnkOAsIAprOFAvJzg": 30,
-   "UCGzWwSdhNQpPAATLZjs8lWw": 30,
-   "UCHMBXgtO2Ez6Ie4HkbQk2Fg": 30,
-   "UCHQIItw1DnxFCbQh1aFOq7Q": 30,
-   "UCHr2GqhllLpeUkw67ueN1-A": 30,
-   "UCHsXZ9eJ-0qUyg8EXm969tg": 30,
-   "UCHxXEdeyNIfqhj3I1RQVEXw": 30,
-   "UCIYyD-O85i1hNkZ8354aX8g": 30,
-   "UCIgyoRY69c8rPS2YDQ-wAqg": 30,
-   "UCJapA5zmXcnUOcTrErgwiRg": 30,
-   "UCKVIXfajwqppEtWLiucObBQ": 30,
-   "UCKki8PhClHFEiaSdKNXxilQ": 30,
-   "UCLULAdF1-hor45QMG5DsjXQ": 30,
-   "UCLjV1ol_2nnVsk_wLZfjPFw": 30,
-   "UCOKBLQYhD1FHLw0R6NBcTsQ": 30,
-   "UCOjoL0k7p_Q0AcXSrEKTd8w": 30,
-   "UCPV8xZOt__9bqGsbn3yF37A": 30,
-   "UCQRWwJAwzEZ9XqwEu3gvL0g": 30,
-   "UCQbhiOgoavwD8D-W2fVXQTA": 30,
-   "UCQqlp5pbCtnZFG22SvA8rrQ": 30,
-   "UCR7_ied3vPnb7Jwmplsz4ug": 30,
-   "UCRsfWeyiGkFoZ41FbQ0LLZA": 30,
-   "UCRwPaAUrbOL4X7WgxZzIOpw": 30,
-   "UCSUVtj7GTHIzk-gQZBHFbCg": 30,
-   "UCS_sxPSNGTfpkoa5nYEt-1g": 30,
-   "UCSeO_wnj55mSUOZBS1kcOFQ": 30,
-   "UCSwgy2NOSgP1OCue5lh_vrw": 30,
-   "UCT2BeW8WJlzardB1seNqBeA": 30,
-   "UCUsTVCQNktF99lwIMJecMrA": 30,
-   "UCVnYnjKyNuv7eVYQmTe8aIw": 30,
-   "UCVyxYoSW-59ZPCd4krQg3fA": 30,
-   "UCWbnHpCljj8MuTeNnCiNVew": 30,
-   "UCYCp9K52rwatFrl5JOO_2Tw": 30,
-   "UCYWJdRpk2jOOZaqvXGVjkxw": 30,
-   "UCYyRpJBseu43EojDdSUcSyA": 30,
-   "UCZIS4Y3ZMbw8vvXeZ8PqvZw": 30,
-   "UC_KW4XPFXf8Yfo8nHh7HaVA": 30,
-   "UCa9OAVS298maexSNJ0iOPNQ": 30,
-   "UCaGw9z5wD70PmLH_V2keTRQ": 30,
-   "UCaVlD3iSYMf35smXZswfteA": 30,
-   "UCak38d7-WkBjzLMAAPBhfQg": 30,
-   "UCbLIzmvnSXPdpMxWQLebPJQ": 30,
-   "UCbNsfc8NdsaJHp3tuAK1TCg": 30,
-   "UCc-cGBZ7ML4ycJmUs3Lu4tw": 30,
-   "UCdprSs1mVS8SJWaigvXEpNg": 30,
-   "UCe-0AEKsX8VcFejcSGM__Jw": 30,
-   "UCeOdSeu80D-06pkfKchgE1g": 30,
-   "UCfBHVaEl7oWs68skvR07UWA": 30,
-   "UCgZzUM40A60airgl_F0_h9g": 30,
-   "UChaQXI_ya4H1gkJskWLS-7A": 30,
-   "UCjVpsnDflFe9dOWZWlnxUrA": 30,
-   "UCjX0HQzeaHBXVXXS7mPKFlA": 30,
-   "UCjc4_ncACVusJ6tZmtVJQjw": 30,
-   "UCkNc_kIU2HlQxEomt6ZnLVw": 30,
-   "UCkaVvxq4vAwZxRdMQJVBB-A": 30,
-   "UCkyteSyUaOq2mH3RIKgFXcw": 30,
-   "UCl_g7ShFVI8LPipvHXqIP6w": 30,
-   "UCmUWhTXTwCVdJ5UaQKS66WA": 30,
-   "UCmueSoNpdDrumJrF5fyKIKQ": 30,
-   "UCndMNgdSMOjJihK0qwOny1g": 30,
-   "UCny1mBKVXS6w9W3om5IVK3Q": 30,
-   "UCoRNJz8_ebIoFbJr8hctwpQ": 30,
-   "UCoVvI_IEmKaUi921hkQFKVA": 30,
-   "UCor3VcSrTRUPZUsvtDTi0rg": 30,
-   "UCorj4-intk2Q9QVMBrlfQKw": 30,
-   "UCpGpqBu1JBc0X4_mbL0eGMA": 30,
-   "UCpLtzKe6f_CWcISIhdQ2ncA": 30,
-   "UCsEBkTy545q7ZQXmbRu1szg": 30,
-   "UCsQbpi3ku6RJhp16nZWbU2w": 30,
-   "UCsuBAbMlPGJ95w3mwhz-30g": 30,
-   "UCt6UUZX0MF2n-jk7_v27Wwg": 30,
-   "UCtFQbaZu348XcVh1aVt4rhA": 30,
-   "UCtWSKOEuSUkcIjw_l8UjwlQ": 30,
-   "UCuseIvrm7VZrcUJipa5yw9g": 30,
-   "UCuyQHJ4y76-i0w9N33vT-kg": 30,
-   "UCxdcxnZRhsC4Rn7wg6PoSFQ": 30,
-   "UCxdpzJKDPPDr4SqBG03gwoQ": 30,
-   "UCyOiQ0B6GkvjaoUCqJZXUEQ": 30,
-   "UCziQtDCnrKbqqe7_P7hpEAw": 30,
-   "UCzy0xBebzv0zaqhvuLbUWgQ": 30,
-   "asllrp_Cory": 150,
-   "asllrp_RIT-P02": 150,
-   "asllrp_RIT-P03": 108,
-   "asllrp_Rachel": 150,
-   "how2sign_c01": 177,
-   "how2sign_c02": 300,
-   "how2sign_c03": 265,
-   "how2sign_c04": 300,
-   "how2sign_c05": 58
+  "channels": {
+   "UC-GYvbXRH4CgK2Ocn_4srww": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.96638,
+      "pooled": 1.06431,
+      "right": 1.18137
+     },
+     "raw": {
+      "left": 1.11545,
+      "pooled": 1.22439,
+      "right": 1.35333
+     }
+    }
+   },
+   "UC-VQN3FOZICn0MCEEjOGZdA": {
+    "clips_read": 32,
+    "numbered": {
+     "3hz": {
+      "left": 31,
+      "pooled": 32,
+      "right": 30
+     },
+     "raw": {
+      "left": 31,
+      "pooled": 32,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.28551,
+      "pooled": 0.94767,
+      "right": 0.66056
+     },
+     "raw": {
+      "left": 1.60914,
+      "pooled": 1.22739,
+      "right": 0.8662
+     }
+    }
+   },
+   "UC0PiBNG7h5d1IYLXo7z_BzA": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.99408,
+      "pooled": 1.73709,
+      "right": 1.49696
+     },
+     "raw": {
+      "left": 2.36316,
+      "pooled": 2.066,
+      "right": 1.7788
+     }
+    }
+   },
+   "UC0jdsYSKy1VNhKw79mw0RsA": {
+    "clips_read": 35,
+    "numbered": {
+     "3hz": {
+      "left": 31,
+      "pooled": 31,
+      "right": 30
+     },
+     "raw": {
+      "left": 31,
+      "pooled": 31,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.0894,
+      "pooled": 1.03185,
+      "right": 0.99067
+     },
+     "raw": {
+      "left": 1.28225,
+      "pooled": 1.21054,
+      "right": 1.14355
+     }
+    }
+   },
+   "UC1mrgxxrCtcAUBFR5Z9Kn6A": {
+    "clips_read": 57,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.8186,
+      "pooled": 0.83773,
+      "right": 0.90835
+     },
+     "raw": {
+      "left": 1.02038,
+      "pooled": 1.03044,
+      "right": 1.06276
+     }
+    }
+   },
+   "UC2bK5-reqE8zppmJJ9kZdVQ": {
+    "clips_read": 33,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 32,
+      "right": 32
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 32,
+      "right": 32
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 2.14969,
+      "pooled": 1.82971,
+      "right": 1.63537
+     },
+     "raw": {
+      "left": 2.42902,
+      "pooled": 2.06896,
+      "right": 1.84852
+     }
+    }
+   },
+   "UC3etnnsIxGpH89XgojqE0Ng": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.20756,
+      "pooled": 0.93959,
+      "right": 0.75191
+     },
+     "raw": {
+      "left": 1.3172,
+      "pooled": 1.04351,
+      "right": 0.84997
+     }
+    }
+   },
+   "UC3hOdPWDnQBs9NTt3y2fPRg": {
+    "clips_read": 88,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.29244,
+      "pooled": 1.15844,
+      "right": 1.03635
+     },
+     "raw": {
+      "left": 1.53939,
+      "pooled": 1.38079,
+      "right": 1.23274
+     }
+    }
+   },
+   "UC3p9-cdApmRUOgQ4-M4P01w": {
+    "clips_read": 70,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.0645,
+      "pooled": 1.07807,
+      "right": 1.09637
+     },
+     "raw": {
+      "left": 1.34651,
+      "pooled": 1.36888,
+      "right": 1.40009
+     }
+    }
+   },
+   "UC52H_xHKrwnQRPb25kQtFCQ": {
+    "clips_read": 80,
+    "numbered": {
+     "3hz": {
+      "left": 31,
+      "pooled": 31,
+      "right": 30
+     },
+     "raw": {
+      "left": 31,
+      "pooled": 31,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.5098,
+      "pooled": 1.41925,
+      "right": 1.40522
+     },
+     "raw": {
+      "left": 1.87764,
+      "pooled": 1.76519,
+      "right": 1.70741
+     }
+    }
+   },
+   "UC5lvdrjVrbYEFjFeoH1aBnQ": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.95534,
+      "pooled": 0.97075,
+      "right": 0.98727
+     },
+     "raw": {
+      "left": 1.09865,
+      "pooled": 1.10133,
+      "right": 1.10514
+     }
+    }
+   },
+   "UC5pEK6jJwx_JoZXhEsGPnJQ": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.0983,
+      "pooled": 1.08656,
+      "right": 1.1083
+     },
+     "raw": {
+      "left": 1.29295,
+      "pooled": 1.27382,
+      "right": 1.28656
+     }
+    }
+   },
+   "UC6ObwNc1wkEbAnEf8Pf0KoQ": {
+    "clips_read": 39,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 31,
+      "right": 31
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 31,
+      "right": 31
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.87376,
+      "pooled": 0.61191,
+      "right": 0.43977
+     },
+     "raw": {
+      "left": 1.05919,
+      "pooled": 0.75501,
+      "right": 0.54787
+     }
+    }
+   },
+   "UC6WhyWFSLUzYW8MXAB_1GZg": {
+    "clips_read": 64,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.05583,
+      "pooled": 0.90535,
+      "right": 0.75487
+     },
+     "raw": {
+      "left": 1.34834,
+      "pooled": 1.17172,
+      "right": 0.9951
+     }
+    }
+   },
+   "UC70SSNojGf-vMAdvjS1wfkg": {
+    "clips_read": 303,
+    "numbered": {
+     "3hz": {
+      "left": 48,
+      "pooled": 49,
+      "right": 30
+     },
+     "raw": {
+      "left": 48,
+      "pooled": 49,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.91029,
+      "pooled": 0.89661,
+      "right": 0.72327
+     },
+     "raw": {
+      "left": 1.19175,
+      "pooled": 1.15451,
+      "right": 0.92836
+     }
+    }
+   },
+   "UC9Po19_l-kPdhqnJumg5_Nw": {
+    "clips_read": 31,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.2069,
+      "pooled": 1.13515,
+      "right": 1.08293
+     },
+     "raw": {
+      "left": 1.33312,
+      "pooled": 1.24981,
+      "right": 1.18883
+     }
+    }
+   },
+   "UCAbFXOPq0sx03ev-kO3FE2A": {
+    "clips_read": 32,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.34017,
+      "pooled": 1.19909,
+      "right": 1.11805
+     },
+     "raw": {
+      "left": 1.50033,
+      "pooled": 1.35328,
+      "right": 1.26614
+     }
+    }
+   },
+   "UCBYjXB2UgJYu05ljm8UJEvQ": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.09907,
+      "pooled": 1.05512,
+      "right": 1.02013
+     },
+     "raw": {
+      "left": 1.22459,
+      "pooled": 1.19409,
+      "right": 1.17267
+     }
+    }
+   },
+   "UCC-n9JB45R7cRvKVpHrHdGg": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.00401,
+      "pooled": 0.8695,
+      "right": 0.71664
+     },
+     "raw": {
+      "left": 1.05482,
+      "pooled": 0.92982,
+      "right": 0.78755
+     }
+    }
+   },
+   "UCEHeJSkYnE1CeFM7wBNb53w": {
+    "clips_read": 31,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.11797,
+      "pooled": 1.08239,
+      "right": 1.05614
+     },
+     "raw": {
+      "left": 1.27108,
+      "pooled": 1.22161,
+      "right": 1.18031
+     }
+    }
+   },
+   "UCFH2pdY2RtbrjlyomAGLmNw": {
+    "clips_read": 33,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.74924,
+      "pooled": 0.70859,
+      "right": 0.66755
+     },
+     "raw": {
+      "left": 0.93798,
+      "pooled": 0.84898,
+      "right": 0.75941
+     }
+    }
+   },
+   "UCFHkpbh0wCDFk7fAPbh5Suw": {
+    "clips_read": 75,
+    "numbered": {
+     "3hz": {
+      "left": 33,
+      "pooled": 33,
+      "right": 30
+     },
+     "raw": {
+      "left": 33,
+      "pooled": 33,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.0189,
+      "pooled": 0.84454,
+      "right": 0.67608
+     },
+     "raw": {
+      "left": 1.24088,
+      "pooled": 1.08582,
+      "right": 1.08246
+     }
+    }
+   },
+   "UCF_6ucHSV6NJj7wzG8x_urA": {
+    "clips_read": 37,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.15358,
+      "pooled": 1.04953,
+      "right": 0.96747
+     },
+     "raw": {
+      "left": 1.31526,
+      "pooled": 1.21752,
+      "right": 1.14155
+     }
+    }
+   },
+   "UCGK9n7svoIjuaQfRIBJXkqQ": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.84516,
+      "pooled": 0.88273,
+      "right": 0.92577
+     },
+     "raw": {
+      "left": 0.99507,
+      "pooled": 1.03335,
+      "right": 1.07922
+     }
+    }
+   },
+   "UCGu8KKKnkOAsIAprOFAvJzg": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.12188,
+      "pooled": 1.14616,
+      "right": 1.16932
+     },
+     "raw": {
+      "left": 1.223,
+      "pooled": 1.24731,
+      "right": 1.27032
+     }
+    }
+   },
+   "UCHsXZ9eJ-0qUyg8EXm969tg": {
+    "clips_read": 31,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 31,
+      "right": 31
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 31,
+      "right": 31
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.30969,
+      "pooled": 0.9702,
+      "right": 0.71349
+     },
+     "raw": {
+      "left": 1.3972,
+      "pooled": 1.05399,
+      "right": 0.79056
+     }
+    }
+   },
+   "UCIYyD-O85i1hNkZ8354aX8g": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.12002,
+      "pooled": 0.94788,
+      "right": 0.76339
+     },
+     "raw": {
+      "left": 1.21581,
+      "pooled": 1.04266,
+      "right": 0.8583
+     }
+    }
+   },
+   "UCIgyoRY69c8rPS2YDQ-wAqg": {
+    "clips_read": 37,
+    "numbered": {
+     "3hz": {
+      "left": 31,
+      "pooled": 31,
+      "right": 30
+     },
+     "raw": {
+      "left": 31,
+      "pooled": 31,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.87043,
+      "pooled": 0.88635,
+      "right": 0.90158
+     },
+     "raw": {
+      "left": 1.158,
+      "pooled": 1.19718,
+      "right": 1.16335
+     }
+    }
+   },
+   "UCKVIXfajwqppEtWLiucObBQ": {
+    "clips_read": 36,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.99728,
+      "pooled": 0.97409,
+      "right": 0.97251
+     },
+     "raw": {
+      "left": 1.19483,
+      "pooled": 1.1849,
+      "right": 1.20137
+     }
+    }
+   },
+   "UCLULAdF1-hor45QMG5DsjXQ": {
+    "clips_read": 32,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 32,
+      "right": 32
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 32,
+      "right": 32
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.91147,
+      "pooled": 0.86604,
+      "right": 0.87362
+     },
+     "raw": {
+      "left": 1.05614,
+      "pooled": 1.01867,
+      "right": 1.03491
+     }
+    }
+   },
+   "UCPV8xZOt__9bqGsbn3yF37A": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.97059,
+      "pooled": 0.98552,
+      "right": 1.00082
+     },
+     "raw": {
+      "left": 1.06854,
+      "pooled": 1.09868,
+      "right": 1.13075
+     }
+    }
+   },
+   "UCQRWwJAwzEZ9XqwEu3gvL0g": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.14792,
+      "pooled": 1.14296,
+      "right": 1.13445
+     },
+     "raw": {
+      "left": 1.28695,
+      "pooled": 1.2791,
+      "right": 1.26772
+     }
+    }
+   },
+   "UCQbhiOgoavwD8D-W2fVXQTA": {
+    "clips_read": 59,
+    "numbered": {
+     "3hz": {
+      "left": 32,
+      "pooled": 32,
+      "right": 30
+     },
+     "raw": {
+      "left": 32,
+      "pooled": 32,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.76549,
+      "pooled": 0.68847,
+      "right": 0.63137
+     },
+     "raw": {
+      "left": 0.9215,
+      "pooled": 0.82609,
+      "right": 0.75235
+     }
+    }
+   },
+   "UCRsfWeyiGkFoZ41FbQ0LLZA": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.19456,
+      "pooled": 1.11401,
+      "right": 1.09326
+     },
+     "raw": {
+      "left": 1.30054,
+      "pooled": 1.20886,
+      "right": 1.19202
+     }
+    }
+   },
+   "UCSUVtj7GTHIzk-gQZBHFbCg": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.42998,
+      "pooled": 1.29454,
+      "right": 1.15848
+     },
+     "raw": {
+      "left": 1.612,
+      "pooled": 1.46608,
+      "right": 1.31955
+     }
+    }
+   },
+   "UCSwgy2NOSgP1OCue5lh_vrw": {
+    "clips_read": 575,
+    "numbered": {
+     "3hz": {
+      "left": 41,
+      "pooled": 42,
+      "right": 30
+     },
+     "raw": {
+      "left": 41,
+      "pooled": 42,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.27654,
+      "pooled": 1.16651,
+      "right": 1.13054
+     },
+     "raw": {
+      "left": 1.46727,
+      "pooled": 1.36914,
+      "right": 1.37346
+     }
+    }
+   },
+   "UCT2BeW8WJlzardB1seNqBeA": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.2738,
+      "pooled": 1.32384,
+      "right": 1.37407
+     },
+     "raw": {
+      "left": 1.43073,
+      "pooled": 1.50805,
+      "right": 1.58633
+     }
+    }
+   },
+   "UCUsTVCQNktF99lwIMJecMrA": {
+    "clips_read": 45,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.92086,
+      "pooled": 0.87675,
+      "right": 0.82616
+     },
+     "raw": {
+      "left": 1.16066,
+      "pooled": 1.10921,
+      "right": 1.06965
+     }
+    }
+   },
+   "UCVnYnjKyNuv7eVYQmTe8aIw": {
+    "clips_read": 32,
+    "numbered": {
+     "3hz": {
+      "left": 32,
+      "pooled": 32,
+      "right": 30
+     },
+     "raw": {
+      "left": 32,
+      "pooled": 32,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.11426,
+      "pooled": 1.09468,
+      "right": 1.0808
+     },
+     "raw": {
+      "left": 1.27358,
+      "pooled": 1.26202,
+      "right": 1.27019
+     }
+    }
+   },
+   "UCVyxYoSW-59ZPCd4krQg3fA": {
+    "clips_read": 31,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.24064,
+      "pooled": 1.21594,
+      "right": 1.19144
+     },
+     "raw": {
+      "left": 1.51565,
+      "pooled": 1.50731,
+      "right": 1.49904
+     }
+    }
+   },
+   "UCYCp9K52rwatFrl5JOO_2Tw": {
+    "clips_read": 37,
+    "numbered": {
+     "3hz": {
+      "left": 32,
+      "pooled": 34,
+      "right": 30
+     },
+     "raw": {
+      "left": 32,
+      "pooled": 34,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.13847,
+      "pooled": 1.01876,
+      "right": 0.76862
+     },
+     "raw": {
+      "left": 1.53872,
+      "pooled": 1.3526,
+      "right": 0.97638
+     }
+    }
+   },
+   "UCYyRpJBseu43EojDdSUcSyA": {
+    "clips_read": 32,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.77203,
+      "pooled": 0.8221,
+      "right": 0.87324
+     },
+     "raw": {
+      "left": 0.89803,
+      "pooled": 0.94478,
+      "right": 0.99716
+     }
+    }
+   },
+   "UCZIS4Y3ZMbw8vvXeZ8PqvZw": {
+    "clips_read": 33,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.88655,
+      "pooled": 0.87663,
+      "right": 0.8502
+     },
+     "raw": {
+      "left": 1.00316,
+      "pooled": 0.98877,
+      "right": 0.95844
+     }
+    }
+   },
+   "UCa9OAVS298maexSNJ0iOPNQ": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.10386,
+      "pooled": 1.12026,
+      "right": 1.14485
+     },
+     "raw": {
+      "left": 1.35228,
+      "pooled": 1.33898,
+      "right": 1.34005
+     }
+    }
+   },
+   "UCak38d7-WkBjzLMAAPBhfQg": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.23582,
+      "pooled": 1.17947,
+      "right": 1.12579
+     },
+     "raw": {
+      "left": 1.38605,
+      "pooled": 1.34726,
+      "right": 1.31263
+     }
+    }
+   },
+   "UCbLIzmvnSXPdpMxWQLebPJQ": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.15349,
+      "pooled": 0.99517,
+      "right": 0.82074
+     },
+     "raw": {
+      "left": 1.25398,
+      "pooled": 1.10518,
+      "right": 0.93958
+     }
+    }
+   },
+   "UCe-0AEKsX8VcFejcSGM__Jw": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.1474,
+      "pooled": 1.02203,
+      "right": 0.9169
+     },
+     "raw": {
+      "left": 1.28159,
+      "pooled": 1.14653,
+      "right": 1.03172
+     }
+    }
+   },
+   "UCgZzUM40A60airgl_F0_h9g": {
+    "clips_read": 63,
+    "numbered": {
+     "3hz": {
+      "left": 31,
+      "pooled": 31,
+      "right": 30
+     },
+     "raw": {
+      "left": 31,
+      "pooled": 31,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.9172,
+      "pooled": 0.89241,
+      "right": 0.87593
+     },
+     "raw": {
+      "left": 1.23895,
+      "pooled": 1.17501,
+      "right": 1.12268
+     }
+    }
+   },
+   "UChaQXI_ya4H1gkJskWLS-7A": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.7497,
+      "pooled": 0.72016,
+      "right": 0.69095
+     },
+     "raw": {
+      "left": 0.90158,
+      "pooled": 0.85239,
+      "right": 0.80325
+     }
+    }
+   },
+   "UCjVpsnDflFe9dOWZWlnxUrA": {
+    "clips_read": 141,
+    "numbered": {
+     "3hz": {
+      "left": 40,
+      "pooled": 42,
+      "right": 30
+     },
+     "raw": {
+      "left": 40,
+      "pooled": 42,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.07107,
+      "pooled": 1.15036,
+      "right": 1.24502
+     },
+     "raw": {
+      "left": 1.23847,
+      "pooled": 1.48343,
+      "right": 1.63733
+     }
+    }
+   },
+   "UCjc4_ncACVusJ6tZmtVJQjw": {
+    "clips_read": 65,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.34542,
+      "pooled": 1.21526,
+      "right": 1.07838
+     },
+     "raw": {
+      "left": 1.59615,
+      "pooled": 1.47347,
+      "right": 1.34218
+     }
+    }
+   },
+   "UCkNc_kIU2HlQxEomt6ZnLVw": {
+    "clips_read": 53,
+    "numbered": {
+     "3hz": {
+      "left": 40,
+      "pooled": 40,
+      "right": 30
+     },
+     "raw": {
+      "left": 40,
+      "pooled": 40,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.44878,
+      "pooled": 0.46889,
+      "right": 0.61444
+     },
+     "raw": {
+      "left": 0.57839,
+      "pooled": 0.6072,
+      "right": 0.76852
+     }
+    }
+   },
+   "UCkaVvxq4vAwZxRdMQJVBB-A": {
+    "clips_read": 38,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.83232,
+      "pooled": 1.56229,
+      "right": 1.28936
+     },
+     "raw": {
+      "left": 2.22128,
+      "pooled": 1.92179,
+      "right": 1.62281
+     }
+    }
+   },
+   "UCmUWhTXTwCVdJ5UaQKS66WA": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.47145,
+      "pooled": 1.50917,
+      "right": 1.55616
+     },
+     "raw": {
+      "left": 1.65775,
+      "pooled": 1.75441,
+      "right": 1.87632
+     }
+    }
+   },
+   "UCmueSoNpdDrumJrF5fyKIKQ": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.75832,
+      "pooled": 0.74031,
+      "right": 0.71802
+     },
+     "raw": {
+      "left": 0.8858,
+      "pooled": 0.88007,
+      "right": 0.87954
+     }
+    }
+   },
+   "UCoRNJz8_ebIoFbJr8hctwpQ": {
+    "clips_read": 171,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.88932,
+      "pooled": 0.8789,
+      "right": 0.86931
+     },
+     "raw": {
+      "left": 1.03393,
+      "pooled": 1.05362,
+      "right": 1.11005
+     }
+    }
+   },
+   "UCoVvI_IEmKaUi921hkQFKVA": {
+    "clips_read": 44,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.93808,
+      "pooled": 0.9899,
+      "right": 1.04655
+     },
+     "raw": {
+      "left": 1.12269,
+      "pooled": 1.19439,
+      "right": 1.27202
+     }
+    }
+   },
+   "UCorj4-intk2Q9QVMBrlfQKw": {
+    "clips_read": 66,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.49677,
+      "pooled": 1.39013,
+      "right": 1.28957
+     },
+     "raw": {
+      "left": 1.87999,
+      "pooled": 1.78837,
+      "right": 1.70494
+     }
+    }
+   },
+   "UCpGpqBu1JBc0X4_mbL0eGMA": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.13958,
+      "pooled": 1.19908,
+      "right": 1.25945
+     },
+     "raw": {
+      "left": 1.32791,
+      "pooled": 1.39866,
+      "right": 1.47059
+     }
+    }
+   },
+   "UCsEBkTy545q7ZQXmbRu1szg": {
+    "clips_read": 47,
+    "numbered": {
+     "3hz": {
+      "left": 31,
+      "pooled": 31,
+      "right": 30
+     },
+     "raw": {
+      "left": 31,
+      "pooled": 31,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.11596,
+      "pooled": 1.10106,
+      "right": 1.12158
+     },
+     "raw": {
+      "left": 1.31863,
+      "pooled": 1.32408,
+      "right": 1.34757
+     }
+    }
+   },
+   "UCsuBAbMlPGJ95w3mwhz-30g": {
+    "clips_read": 42,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.05835,
+      "pooled": 1.0372,
+      "right": 1.01578
+     },
+     "raw": {
+      "left": 1.23622,
+      "pooled": 1.20352,
+      "right": 1.16975
+     }
+    }
+   },
+   "UCuyQHJ4y76-i0w9N33vT-kg": {
+    "clips_read": 40,
+    "numbered": {
+     "3hz": {
+      "left": 31,
+      "pooled": 31,
+      "right": 30
+     },
+     "raw": {
+      "left": 31,
+      "pooled": 31,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.9281,
+      "pooled": 0.88599,
+      "right": 0.86377
+     },
+     "raw": {
+      "left": 1.07263,
+      "pooled": 1.02044,
+      "right": 0.98162
+     }
+    }
+   },
+   "UCxdcxnZRhsC4Rn7wg6PoSFQ": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.92576,
+      "pooled": 0.96471,
+      "right": 1.00808
+     },
+     "raw": {
+      "left": 1.06677,
+      "pooled": 1.11874,
+      "right": 1.17723
+     }
+    }
+   },
+   "UCxdpzJKDPPDr4SqBG03gwoQ": {
+    "clips_read": 32,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 0.96208,
+      "pooled": 0.80624,
+      "right": 0.674
+     },
+     "raw": {
+      "left": 1.1901,
+      "pooled": 0.98537,
+      "right": 0.80459
+     }
+    }
+   },
+   "UCyOiQ0B6GkvjaoUCqJZXUEQ": {
+    "clips_read": 30,
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.13176,
+      "pooled": 1.00035,
+      "right": 0.8625
+     },
+     "raw": {
+      "left": 1.33975,
+      "pooled": 1.20008,
+      "right": 1.05386
+     }
+    }
+   },
+   "UCzy0xBebzv0zaqhvuLbUWgQ": {
+    "clips_read": 86,
+    "numbered": {
+     "3hz": {
+      "left": 31,
+      "pooled": 31,
+      "right": 30
+     },
+     "raw": {
+      "left": 31,
+      "pooled": 31,
+      "right": 30
+     }
+    },
+    "speed": {
+     "3hz": {
+      "left": 1.27683,
+      "pooled": 1.09302,
+      "right": 0.86868
+     },
+     "raw": {
+      "left": 1.6171,
+      "pooled": 1.41907,
+      "right": 1.23421
+     }
+    }
+   }
   },
-  "definition": "p10 and p90 of per-signer mean wrist speed, signers or channels with at least 30 clips, all through the monocular path; real clips only; never c00 or a test partition",
+  "channels_counted": 66,
+  "d20_position": {
+   "c01": {
+    "passes_of_six": 0,
+    "speed": {
+     "3hz": {
+      "left": 0.77127,
+      "pooled": 0.71914,
+      "right": 0.66613
+     },
+     "raw": {
+      "left": 0.87109,
+      "pooled": 0.82263,
+      "right": 0.77321
+     }
+    }
+   },
+   "c03": {
+    "passes_of_six": 5,
+    "speed": {
+     "3hz": {
+      "left": 0.7849,
+      "pooled": 0.75549,
+      "right": 0.72848
+     },
+     "raw": {
+      "left": 0.90208,
+      "pooled": 0.86973,
+      "right": 0.83995
+     }
+    }
+   },
+   "c05": {
+    "passes_of_six": 0,
+    "speed": {
+     "3hz": {
+      "left": 0.48249,
+      "pooled": 0.53114,
+      "right": 0.57964
+     },
+     "raw": {
+      "left": 0.60011,
+      "pooled": 0.6434,
+      "right": 0.68656
+     }
+    }
+   },
+   "d20_pooled": {
+    "passes_of_six": 2,
+    "speed": {
+     "3hz": {
+      "left": 0.74499,
+      "pooled": 0.7166,
+      "right": 0.68914
+     },
+     "raw": {
+      "left": 0.85608,
+      "pooled": 0.8268,
+      "right": 0.79853
+     }
+    }
+   }
+  },
+  "definition": "p10 and p90 of per-signer mean wrist speed, signers or channels with at least 30 clips holding a number on every rate and side, all through the monocular path; real clips only; never c00 or a test partition",
   "few_channels": false,
   "forms": {
    "base": {
+    "faster_than_named_signers": {
+     "3hz": {
+      "left": 7,
+      "pooled": 7,
+      "right": 7
+     },
+     "raw": {
+      "left": 8,
+      "pooled": 7,
+      "right": 7
+     }
+    },
     "inside": {
      "3hz": {
       "left": true,
@@ -2470,11 +4198,10 @@
      },
      "raw": {
       "left": true,
-      "pooled": true,
+      "pooled": false,
       "right": true
      }
     },
-    "inside_all_six": true,
     "old_reading": {
      "over_d20_monocular": {
       "3hz": {
@@ -2501,6 +4228,19 @@
       }
      }
     },
+    "passes_of_six": 5,
+    "percentile_among_groups": {
+     "3hz": {
+      "left": 0.853,
+      "pooled": 0.867,
+      "right": 0.853
+     },
+     "raw": {
+      "left": 0.867,
+      "pooled": 0.893,
+      "right": 0.867
+     }
+    },
     "speed": {
      "3hz": {
       "left": 1.31959,
@@ -2515,6 +4255,18 @@
     }
    },
    "hold_x": {
+    "faster_than_named_signers": {
+     "3hz": {
+      "left": 6,
+      "pooled": 7,
+      "right": 7
+     },
+     "raw": {
+      "left": 7,
+      "pooled": 7,
+      "right": 7
+     }
+    },
     "inside": {
      "3hz": {
       "left": true,
@@ -2527,7 +4279,6 @@
       "right": true
      }
     },
-    "inside_all_six": true,
     "old_reading": {
      "over_d20_monocular": {
       "3hz": {
@@ -2554,6 +4305,19 @@
       }
      }
     },
+    "passes_of_six": 6,
+    "percentile_among_groups": {
+     "3hz": {
+      "left": 0.427,
+      "pooled": 0.707,
+      "right": 0.853
+     },
+     "raw": {
+      "left": 0.587,
+      "pooled": 0.813,
+      "right": 0.867
+     }
+    },
     "speed": {
      "3hz": {
       "left": 1.04019,
@@ -2568,6 +4332,18 @@
     }
    },
    "hold_x_length": {
+    "faster_than_named_signers": {
+     "3hz": {
+      "left": 7,
+      "pooled": 7,
+      "right": 8
+     },
+     "raw": {
+      "left": 7,
+      "pooled": 8,
+      "right": 9
+     }
+    },
     "inside": {
      "3hz": {
       "left": true,
@@ -2576,11 +4352,10 @@
      },
      "raw": {
       "left": true,
-      "pooled": true,
+      "pooled": false,
       "right": false
      }
     },
-    "inside_all_six": false,
     "old_reading": {
      "over_d20_monocular": {
       "3hz": {
@@ -2607,6 +4382,19 @@
       }
      }
     },
+    "passes_of_six": 3,
+    "percentile_among_groups": {
+     "3hz": {
+      "left": 0.653,
+      "pooled": 0.867,
+      "right": 0.92
+     },
+     "raw": {
+      "left": 0.773,
+      "pooled": 0.907,
+      "right": 0.96
+     }
+    },
     "speed": {
      "3hz": {
       "left": 1.14674,
@@ -2621,19 +4409,30 @@
     }
    },
    "length_tokens": {
+    "faster_than_named_signers": {
+     "3hz": {
+      "left": 8,
+      "pooled": 7,
+      "right": 8
+     },
+     "raw": {
+      "left": 8,
+      "pooled": 8,
+      "right": 9
+     }
+    },
     "inside": {
      "3hz": {
-      "left": true,
-      "pooled": true,
+      "left": false,
+      "pooled": false,
       "right": false
      },
      "raw": {
-      "left": true,
-      "pooled": true,
+      "left": false,
+      "pooled": false,
       "right": false
      }
     },
-    "inside_all_six": false,
     "old_reading": {
      "over_d20_monocular": {
       "3hz": {
@@ -2660,6 +4459,19 @@
       }
      }
     },
+    "passes_of_six": 0,
+    "percentile_among_groups": {
+     "3hz": {
+      "left": 0.907,
+      "pooled": 0.893,
+      "right": 0.92
+     },
+     "raw": {
+      "left": 0.92,
+      "pooled": 0.933,
+      "right": 0.96
+     }
+    },
     "speed": {
      "3hz": {
       "left": 1.46193,
@@ -2674,1566 +4486,1153 @@
     }
    }
   },
-  "groups": {
-   "UC-7qFeNijjbBpjL2KvMN_QA": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UC-GYvbXRH4CgK2Ocn_4srww": {
-    "3hz": {
-     "left": 0.97435,
-     "pooled": 1.06042,
-     "right": 1.14619
-    },
-    "raw": {
-     "left": 1.11951,
-     "pooled": 1.21805,
-     "right": 1.31625
-    }
-   },
-   "UC-IaYvWxBm3Q15N4SC3O1Hw": {
-    "3hz": {
-     "left": 0.98049,
-     "pooled": 0.97837,
-     "right": 0.97534
-    },
-    "raw": {
-     "left": 1.54193,
-     "pooled": 1.47171,
-     "right": 1.37141
-    }
-   },
-   "UC-VQN3FOZICn0MCEEjOGZdA": {
-    "3hz": {
-     "left": 1.28298,
-     "pooled": 1.02356,
-     "right": 0.72907
-    },
-    "raw": {
-     "left": 1.62218,
-     "pooled": 1.31739,
-     "right": 0.93218
-    }
-   },
-   "UC0PiBNG7h5d1IYLXo7z_BzA": {
-    "3hz": {
-     "left": 1.78119,
-     "pooled": 1.65325,
-     "right": 1.53007
-    },
-    "raw": {
-     "left": 2.09763,
-     "pooled": 1.97695,
-     "right": 1.86374
-    }
-   },
-   "UC0jdsYSKy1VNhKw79mw0RsA": {
-    "3hz": {
-     "left": 1.03187,
-     "pooled": 0.95108,
-     "right": 0.86999
-    },
-    "raw": {
-     "left": 1.17639,
-     "pooled": 1.09039,
-     "right": 1.00403
-    }
-   },
-   "UC1mrgxxrCtcAUBFR5Z9Kn6A": {
-    "3hz": {
-     "left": 1.22057,
-     "pooled": 1.03974,
-     "right": 0.77312
-    },
-    "raw": {
-     "left": 1.46103,
-     "pooled": 1.23106,
-     "right": 0.90298
-    }
-   },
-   "UC1xPhlKUKuJ3JH21N8ipwpQ": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UC2bK5-reqE8zppmJJ9kZdVQ": {
-    "3hz": {
-     "left": 2.16318,
-     "pooled": 1.85425,
-     "right": 1.68541
-    },
-    "raw": {
-     "left": 2.45257,
-     "pooled": 2.10076,
-     "right": 1.90531
-    }
-   },
-   "UC2nAqidRiPfQa53Yaf9qeCg": {
-    "3hz": {
-     "left": 1.74171,
-     "pooled": 1.48589,
-     "right": 1.25252
-    },
-    "raw": {
-     "left": 1.92143,
-     "pooled": 1.6646,
-     "right": 1.40958
-    }
-   },
-   "UC3etnnsIxGpH89XgojqE0Ng": {
-    "3hz": {
-     "left": 1.20573,
-     "pooled": 0.97333,
-     "right": 0.83897
-    },
-    "raw": {
-     "left": 1.29415,
-     "pooled": 1.06727,
-     "right": 0.93817
-    }
-   },
-   "UC3hOdPWDnQBs9NTt3y2fPRg": {
-    "3hz": {
-     "left": 1.42866,
-     "pooled": 1.24324,
-     "right": 1.02222
-    },
-    "raw": {
-     "left": 1.62219,
-     "pooled": 1.43016,
-     "right": 1.20353
-    }
-   },
-   "UC3p9-cdApmRUOgQ4-M4P01w": {
-    "3hz": {
-     "left": 1.02113,
-     "pooled": 1.02912,
-     "right": 1.02545
-    },
-    "raw": {
-     "left": 1.20426,
-     "pooled": 1.22523,
-     "right": 1.23763
-    }
-   },
-   "UC4fJ87vQIH9NUQwJNmgUkFw": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UC52H_xHKrwnQRPb25kQtFCQ": {
-    "3hz": {
-     "left": 1.61539,
-     "pooled": 1.41017,
-     "right": 1.24744
-    },
-    "raw": {
-     "left": 1.9614,
-     "pooled": 1.75228,
-     "right": 1.58813
-    }
-   },
-   "UC5lvdrjVrbYEFjFeoH1aBnQ": {
-    "3hz": {
-     "left": 0.91692,
-     "pooled": 0.88268,
-     "right": 0.84769
-    },
-    "raw": {
-     "left": 1.05131,
-     "pooled": 1.00419,
-     "right": 0.95681
-    }
-   },
-   "UC5pEK6jJwx_JoZXhEsGPnJQ": {
-    "3hz": {
-     "left": 1.08497,
-     "pooled": 1.13269,
-     "right": 1.18368
-    },
-    "raw": {
-     "left": 1.25715,
-     "pooled": 1.31278,
-     "right": 1.37214
-    }
-   },
-   "UC6Nt4sw73UuNmxnjVaa7SYw": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UC6ObwNc1wkEbAnEf8Pf0KoQ": {
-    "3hz": {
-     "left": 0.71329,
-     "pooled": 0.59366,
-     "right": 0.46223
-    },
-    "raw": {
-     "left": 0.89039,
-     "pooled": 0.71864,
-     "right": 0.56129
-    }
-   },
-   "UC6WhyWFSLUzYW8MXAB_1GZg": {
-    "3hz": {
-     "left": 1.11126,
-     "pooled": 0.90679,
-     "right": 0.70232
-    },
-    "raw": {
-     "left": 1.41923,
-     "pooled": 1.20042,
-     "right": 0.98161
-    }
-   },
-   "UC70SSNojGf-vMAdvjS1wfkg": {
-    "3hz": {
-     "left": 0.69109,
-     "pooled": 0.70897,
-     "right": 1.05655
-    },
-    "raw": {
-     "left": 1.08906,
-     "pooled": 1.10706,
-     "right": 1.41932
-    }
-   },
-   "UC76bQa0r83RNydA55Uh_ovw": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UC7hDSJ0Y236vU68z6ekcALQ": {
-    "3hz": {
-     "left": 0.28461,
-     "pooled": 0.38489,
-     "right": 0.48518
-    },
-    "raw": {
-     "left": 0.31629,
-     "pooled": 0.47777,
-     "right": 0.63926
-    }
-   },
-   "UC9Po19_l-kPdhqnJumg5_Nw": {
-    "3hz": {
-     "left": 1.31978,
-     "pooled": 1.262,
-     "right": 1.20345
-    },
-    "raw": {
-     "left": 1.44547,
-     "pooled": 1.39027,
-     "right": 1.33405
-    }
-   },
-   "UC9UqfAVkaO8Q3QLbeqNxygQ": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UCAbFXOPq0sx03ev-kO3FE2A": {
-    "3hz": {
-     "left": 1.18089,
-     "pooled": 1.12376,
-     "right": 1.08626
-    },
-    "raw": {
-     "left": 1.35347,
-     "pooled": 1.29565,
-     "right": 1.2587
-    }
-   },
-   "UCBJOcgmUmIMoS62uvMzGi5A": {
-    "3hz": {
-     "left": 0.98244,
-     "pooled": 1.01414,
-     "right": 1.74028
-    },
-    "raw": {
-     "left": 1.13767,
-     "pooled": 1.1868,
-     "right": 1.99507
-    }
-   },
-   "UCBYjXB2UgJYu05ljm8UJEvQ": {
-    "3hz": {
-     "left": 1.04337,
-     "pooled": 1.03778,
-     "right": 1.03218
-    },
-    "raw": {
-     "left": 1.18932,
-     "pooled": 1.20686,
-     "right": 1.22471
-    }
-   },
-   "UCC-n9JB45R7cRvKVpHrHdGg": {
-    "3hz": {
-     "left": 0.94186,
-     "pooled": 0.84548,
-     "right": 0.74229
-    },
-    "raw": {
-     "left": 1.00288,
-     "pooled": 0.91707,
-     "right": 0.82488
-    }
-   },
-   "UCCOaLeJLHuYax7_k5wbC6cw": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UCDL2Ug9aPMTAK0FDfWopZMw": {
-    "3hz": {
-     "left": 1.02603,
-     "pooled": 1.13258,
-     "right": 1.11111
-    },
-    "raw": {
-     "left": 1.22581,
-     "pooled": 1.47258,
-     "right": 1.6726
-    }
-   },
-   "UCEHeJSkYnE1CeFM7wBNb53w": {
-    "3hz": {
-     "left": 1.08755,
-     "pooled": 1.04706,
-     "right": 1.01449
-    },
-    "raw": {
-     "left": 1.24055,
-     "pooled": 1.18417,
-     "right": 1.13442
-    }
-   },
-   "UCET0ZgnCFLi1369c3ZWfSFA": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UCEYXCOUkTeFLj8thLxt6FVQ": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UCEhrSe-kPnpzjolcy0XKvxg": {
-    "3hz": {
-     "left": 1.0359,
-     "pooled": 1.09218,
-     "right": 1.05864
-    },
-    "raw": {
-     "left": 1.20935,
-     "pooled": 1.26319,
-     "right": 1.19122
-    }
-   },
-   "UCFH2pdY2RtbrjlyomAGLmNw": {
-    "3hz": {
-     "left": 0.66108,
-     "pooled": 0.67201,
-     "right": 0.68473
-    },
-    "raw": {
-     "left": 0.92041,
-     "pooled": 0.89667,
-     "right": 0.88269
-    }
-   },
-   "UCFHkpbh0wCDFk7fAPbh5Suw": {
-    "3hz": {
-     "left": 1.00332,
-     "pooled": 0.94081,
-     "right": 0.87765
-    },
-    "raw": {
-     "left": 1.31472,
-     "pooled": 1.25993,
-     "right": 1.06045
-    }
-   },
-   "UCF_6ucHSV6NJj7wzG8x_urA": {
-    "3hz": {
-     "left": 1.14706,
-     "pooled": 1.06615,
-     "right": 0.98348
-    },
-    "raw": {
-     "left": 1.31517,
-     "pooled": 1.22191,
-     "right": 1.12641
-    }
-   },
-   "UCFaQvZ9qIRFaB0GRDRq9L5A": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UCGK9n7svoIjuaQfRIBJXkqQ": {
-    "3hz": {
-     "left": 0.92046,
-     "pooled": 0.93987,
-     "right": 0.96966
-    },
-    "raw": {
-     "left": 1.04355,
-     "pooled": 1.07043,
-     "right": 1.10822
-    }
-   },
-   "UCGu8KKKnkOAsIAprOFAvJzg": {
-    "3hz": {
-     "left": 1.05939,
-     "pooled": 1.06832,
-     "right": 1.07845
-    },
-    "raw": {
-     "left": 1.16239,
-     "pooled": 1.16532,
-     "right": 1.16926
-    }
-   },
-   "UCGzWwSdhNQpPAATLZjs8lWw": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UCHMBXgtO2Ez6Ie4HkbQk2Fg": {
-    "3hz": {
-     "left": 1.26639,
-     "pooled": 1.23692,
-     "right": 1.18622
-    },
-    "raw": {
-     "left": 1.41446,
-     "pooled": 1.43444,
-     "right": 1.43765
-    }
-   },
-   "UCHQIItw1DnxFCbQh1aFOq7Q": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UCHr2GqhllLpeUkw67ueN1-A": {
-    "3hz": {
-     "left": 0.93954,
-     "pooled": 0.86302,
-     "right": 0.81203
-    },
-    "raw": {
-     "left": 1.12501,
-     "pooled": 1.00767,
-     "right": 0.92199
-    }
-   },
-   "UCHsXZ9eJ-0qUyg8EXm969tg": {
-    "3hz": {
-     "left": 1.27041,
-     "pooled": 0.94662,
-     "right": 0.70327
-    },
-    "raw": {
-     "left": 1.35963,
-     "pooled": 1.0343,
-     "right": 0.78359
-    }
-   },
-   "UCHxXEdeyNIfqhj3I1RQVEXw": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UCIYyD-O85i1hNkZ8354aX8g": {
-    "3hz": {
-     "left": 1.04451,
-     "pooled": 0.88759,
-     "right": 0.69768
-    },
-    "raw": {
-     "left": 1.15775,
-     "pooled": 0.98532,
-     "right": 0.77658
-    }
-   },
-   "UCIgyoRY69c8rPS2YDQ-wAqg": {
-    "3hz": {
-     "left": 0.99789,
-     "pooled": 0.95621,
-     "right": 0.9273
-    },
-    "raw": {
-     "left": 1.22355,
-     "pooled": 1.19242,
-     "right": 1.17891
-    }
-   },
-   "UCJapA5zmXcnUOcTrErgwiRg": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UCKVIXfajwqppEtWLiucObBQ": {
-    "3hz": {
-     "left": 0.94636,
-     "pooled": 0.86543,
-     "right": 0.76354
-    },
-    "raw": {
-     "left": 1.08027,
-     "pooled": 1.02258,
-     "right": 0.949
-    }
-   },
-   "UCKki8PhClHFEiaSdKNXxilQ": {
-    "3hz": {
-     "left": 1.13119,
-     "pooled": 1.0746,
-     "right": 1.01801
-    },
-    "raw": {
-     "left": 2.02625,
-     "pooled": 2.3242,
-     "right": 2.62215
-    }
-   },
-   "UCLULAdF1-hor45QMG5DsjXQ": {
-    "3hz": {
-     "left": 0.85519,
-     "pooled": 0.85746,
-     "right": 0.84707
-    },
-    "raw": {
-     "left": 1.00028,
-     "pooled": 0.99282,
-     "right": 0.97947
-    }
-   },
-   "UCLjV1ol_2nnVsk_wLZfjPFw": {
-    "3hz": {
-     "left": 0.85298,
-     "pooled": 0.78149,
-     "right": 0.69999
-    },
-    "raw": {
-     "left": 1.16059,
-     "pooled": 1.08371,
-     "right": 0.98988
-    }
-   },
-   "UCOKBLQYhD1FHLw0R6NBcTsQ": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UCOjoL0k7p_Q0AcXSrEKTd8w": {
-    "3hz": {
-     "left": 1.31256,
-     "pooled": 1.2034,
-     "right": 1.09423
-    },
-    "raw": {
-     "left": 1.76405,
-     "pooled": 1.52987,
-     "right": 1.29569
-    }
-   },
-   "UCPV8xZOt__9bqGsbn3yF37A": {
-    "3hz": {
-     "left": 0.83527,
-     "pooled": 0.86642,
-     "right": 0.90026
-    },
-    "raw": {
-     "left": 0.93573,
-     "pooled": 0.9742,
-     "right": 1.01555
-    }
-   },
-   "UCQRWwJAwzEZ9XqwEu3gvL0g": {
-    "3hz": {
-     "left": 1.11708,
-     "pooled": 1.09146,
-     "right": 1.06118
-    },
-    "raw": {
-     "left": 1.24184,
-     "pooled": 1.21913,
-     "right": 1.19139
-    }
-   },
-   "UCQbhiOgoavwD8D-W2fVXQTA": {
-    "3hz": {
-     "left": 0.94697,
-     "pooled": 0.79736,
-     "right": 0.68179
-    },
-    "raw": {
-     "left": 1.05021,
-     "pooled": 0.90281,
-     "right": 0.79222
-    }
-   },
-   "UCQqlp5pbCtnZFG22SvA8rrQ": {
-    "3hz": {
-     "left": 1.21054,
-     "pooled": 1.06482,
-     "right": 0.87881
-    },
-    "raw": {
-     "left": 1.54026,
-     "pooled": 1.2859,
-     "right": 1.04096
-    }
-   },
-   "UCR7_ied3vPnb7Jwmplsz4ug": {
-    "3hz": {
-     "left": 1.16253,
-     "pooled": 1.01374,
-     "right": 0.86405
-    },
-    "raw": {
-     "left": 1.24723,
-     "pooled": 1.10529,
-     "right": 0.96667
-    }
-   },
-   "UCRsfWeyiGkFoZ41FbQ0LLZA": {
-    "3hz": {
-     "left": 1.19915,
-     "pooled": 1.10873,
-     "right": 1.08453
-    },
-    "raw": {
-     "left": 1.30742,
-     "pooled": 1.2052,
-     "right": 1.17419
-    }
-   },
-   "UCRwPaAUrbOL4X7WgxZzIOpw": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UCSUVtj7GTHIzk-gQZBHFbCg": {
-    "3hz": {
-     "left": 1.55509,
-     "pooled": 1.38661,
-     "right": 1.22653
-    },
-    "raw": {
-     "left": 1.89421,
-     "pooled": 1.67655,
-     "right": 1.49069
-    }
-   },
-   "UCS_sxPSNGTfpkoa5nYEt-1g": {
-    "3hz": {
-     "left": 2.24388,
-     "pooled": 2.12739,
-     "right": 0.78641
-    },
-    "raw": {
-     "left": 2.46442,
-     "pooled": 2.33547,
-     "right": 0.87377
-    }
-   },
-   "UCSeO_wnj55mSUOZBS1kcOFQ": {
-    "3hz": {
-     "left": 1.32419,
-     "pooled": 1.06299,
-     "right": 0.77757
-    },
-    "raw": {
-     "left": 2.66467,
-     "pooled": 1.89567,
-     "right": 1.10957
-    }
-   },
-   "UCSwgy2NOSgP1OCue5lh_vrw": {
-    "3hz": {
-     "left": 1.35895,
-     "pooled": 1.33545,
-     "right": 1.30347
-    },
-    "raw": {
-     "left": 1.4873,
-     "pooled": 1.51246,
-     "right": 1.5277
-    }
-   },
-   "UCT2BeW8WJlzardB1seNqBeA": {
-    "3hz": {
-     "left": 1.34807,
-     "pooled": 1.42215,
-     "right": 1.48965
-    },
-    "raw": {
-     "left": 1.47349,
-     "pooled": 1.59235,
-     "right": 1.70396
-    }
-   },
-   "UCUsTVCQNktF99lwIMJecMrA": {
-    "3hz": {
-     "left": 0.83288,
-     "pooled": 0.73968,
-     "right": 0.60989
-    },
-    "raw": {
-     "left": 1.11739,
-     "pooled": 1.03925,
-     "right": 1.03274
-    }
-   },
-   "UCVnYnjKyNuv7eVYQmTe8aIw": {
-    "3hz": {
-     "left": 0.91117,
-     "pooled": 0.93989,
-     "right": 0.96001
-    },
-    "raw": {
-     "left": 1.11671,
-     "pooled": 1.1431,
-     "right": 1.14425
-    }
-   },
-   "UCVyxYoSW-59ZPCd4krQg3fA": {
-    "3hz": {
-     "left": 1.24092,
-     "pooled": 1.24485,
-     "right": 1.24878
-    },
-    "raw": {
-     "left": 1.43187,
-     "pooled": 1.47616,
-     "right": 1.52046
-    }
-   },
-   "UCWbnHpCljj8MuTeNnCiNVew": {
-    "3hz": {
-     "left": 1.7492,
-     "pooled": 1.47739,
-     "right": 1.20093
-    },
-    "raw": {
-     "left": 3.45429,
-     "pooled": 2.80535,
-     "right": 2.16271
-    }
-   },
-   "UCYCp9K52rwatFrl5JOO_2Tw": {
-    "3hz": {
-     "left": 0.91209,
-     "pooled": 0.88976,
-     "right": 0.73717
-    },
-    "raw": {
-     "left": 1.18163,
-     "pooled": 1.11249,
-     "right": 0.88715
-    }
-   },
-   "UCYWJdRpk2jOOZaqvXGVjkxw": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UCYyRpJBseu43EojDdSUcSyA": {
-    "3hz": {
-     "left": 0.8064,
-     "pooled": 0.85083,
-     "right": 0.8938
-    },
-    "raw": {
-     "left": 0.91062,
-     "pooled": 0.96197,
-     "right": 1.01227
-    }
-   },
-   "UCZIS4Y3ZMbw8vvXeZ8PqvZw": {
-    "3hz": {
-     "left": 0.85499,
-     "pooled": 0.83574,
-     "right": 0.81198
-    },
-    "raw": {
-     "left": 0.9724,
-     "pooled": 0.96278,
-     "right": 0.94561
-    }
-   },
-   "UC_KW4XPFXf8Yfo8nHh7HaVA": {
-    "3hz": {
-     "left": 1.7905,
-     "pooled": 1.8523,
-     "right": 2.16055
-    },
-    "raw": {
-     "left": 2.2602,
-     "pooled": 2.09698,
-     "right": 2.30792
-    }
-   },
-   "UCa9OAVS298maexSNJ0iOPNQ": {
-    "3hz": {
-     "left": 1.19038,
-     "pooled": 1.19625,
-     "right": 1.20608
-    },
-    "raw": {
-     "left": 1.43202,
-     "pooled": 1.41564,
-     "right": 1.4052
-    }
-   },
-   "UCaGw9z5wD70PmLH_V2keTRQ": {
-    "3hz": {
-     "left": 1.15195,
-     "pooled": 1.0605,
-     "right": 0.80312
-    },
-    "raw": {
-     "left": 1.29797,
-     "pooled": 1.22786,
-     "right": 1.01278
-    }
-   },
-   "UCaVlD3iSYMf35smXZswfteA": {
-    "3hz": {
-     "left": 2.77534,
-     "pooled": 1.21737,
-     "right": 0.74043
-    },
-    "raw": {
-     "left": 2.89076,
-     "pooled": 1.36748,
-     "right": 0.88942
-    }
-   },
-   "UCak38d7-WkBjzLMAAPBhfQg": {
-    "3hz": {
-     "left": 1.22748,
-     "pooled": 1.17608,
-     "right": 1.12564
-    },
-    "raw": {
-     "left": 1.36833,
-     "pooled": 1.33808,
-     "right": 1.31006
-    }
-   },
-   "UCbLIzmvnSXPdpMxWQLebPJQ": {
-    "3hz": {
-     "left": 1.20167,
-     "pooled": 1.01495,
-     "right": 0.8034
-    },
-    "raw": {
-     "left": 1.30051,
-     "pooled": 1.12585,
-     "right": 0.92678
-    }
-   },
-   "UCbNsfc8NdsaJHp3tuAK1TCg": {
-    "3hz": {
-     "left": 1.19593,
-     "pooled": 1.20211,
-     "right": 1.22356
-    },
-    "raw": {
-     "left": 1.27118,
-     "pooled": 1.24736,
-     "right": 1.23532
-    }
-   },
-   "UCc-cGBZ7ML4ycJmUs3Lu4tw": {
-    "3hz": {
-     "left": 0.83375,
-     "pooled": 0.81326,
-     "right": 0.76084
-    },
-    "raw": {
-     "left": 1.16706,
-     "pooled": 1.14317,
-     "right": 1.06071
-    }
-   },
-   "UCdprSs1mVS8SJWaigvXEpNg": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UCe-0AEKsX8VcFejcSGM__Jw": {
-    "3hz": {
-     "left": 1.06211,
-     "pooled": 0.96199,
-     "right": 0.86376
-    },
-    "raw": {
-     "left": 1.20539,
-     "pooled": 1.09651,
-     "right": 0.99012
-    }
-   },
-   "UCeOdSeu80D-06pkfKchgE1g": {
-    "3hz": {
-     "left": 2.01044,
-     "pooled": 1.57651,
-     "right": 1.14258
-    },
-    "raw": {
-     "left": 2.29724,
-     "pooled": 1.80878,
-     "right": 1.32031
-    }
-   },
-   "UCfBHVaEl7oWs68skvR07UWA": {
-    "3hz": {
-     "left": 1.79652,
-     "pooled": 1.22964,
-     "right": 0.66275
-    },
-    "raw": {
-     "left": 6.1465,
-     "pooled": 4.07704,
-     "right": 2.00757
-    }
-   },
-   "UCgZzUM40A60airgl_F0_h9g": {
-    "3hz": {
-     "left": 0.75224,
-     "pooled": 0.61519,
-     "right": 0.47814
-    },
-    "raw": {
-     "left": 0.97265,
-     "pooled": 0.88435,
-     "right": 0.79604
-    }
-   },
-   "UChaQXI_ya4H1gkJskWLS-7A": {
-    "3hz": {
-     "left": 0.79998,
-     "pooled": 0.7435,
-     "right": 0.70181
-    },
-    "raw": {
-     "left": 0.94035,
-     "pooled": 0.87536,
-     "right": 0.82714
-    }
-   },
-   "UCjVpsnDflFe9dOWZWlnxUrA": {
-    "3hz": {
-     "left": 1.08481,
-     "pooled": 0.98309,
-     "right": 0.88715
-    },
-    "raw": {
-     "left": 1.18238,
-     "pooled": 1.11227,
-     "right": 1.05537
-    }
-   },
-   "UCjX0HQzeaHBXVXXS7mPKFlA": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UCjc4_ncACVusJ6tZmtVJQjw": {
-    "3hz": {
-     "left": 1.51608,
-     "pooled": 1.34461,
-     "right": 1.19595
-    },
-    "raw": {
-     "left": 1.82909,
-     "pooled": 1.61619,
-     "right": 1.43129
-    }
-   },
-   "UCkNc_kIU2HlQxEomt6ZnLVw": {
-    "3hz": {
-     "left": 0.50023,
-     "pooled": 0.54135,
-     "right": 0.64711
-    },
-    "raw": {
-     "left": 0.62566,
-     "pooled": 0.67424,
-     "right": 0.80972
-    }
-   },
-   "UCkaVvxq4vAwZxRdMQJVBB-A": {
-    "3hz": {
-     "left": 1.5143,
-     "pooled": 1.34899,
-     "right": 1.18186
-    },
-    "raw": {
-     "left": 2.1257,
-     "pooled": 1.86806,
-     "right": 1.59224
-    }
-   },
-   "UCkyteSyUaOq2mH3RIKgFXcw": {
-    "3hz": {
-     "left": 2.18917,
-     "pooled": 1.8127,
-     "right": 1.23918
-    },
-    "raw": {
-     "left": 3.11532,
-     "pooled": 2.69382,
-     "right": 2.02957
-    }
-   },
-   "UCl_g7ShFVI8LPipvHXqIP6w": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UCmUWhTXTwCVdJ5UaQKS66WA": {
-    "3hz": {
-     "left": 1.52822,
-     "pooled": 1.54722,
-     "right": 1.59239
-    },
-    "raw": {
-     "left": 1.7368,
-     "pooled": 1.78432,
-     "right": 1.86728
-    }
-   },
-   "UCmueSoNpdDrumJrF5fyKIKQ": {
-    "3hz": {
-     "left": 0.87914,
-     "pooled": 0.83443,
-     "right": 0.78165
-    },
-    "raw": {
-     "left": 1.02045,
-     "pooled": 0.97963,
-     "right": 0.9323
-    }
-   },
-   "UCndMNgdSMOjJihK0qwOny1g": {
-    "3hz": {
-     "left": 0.93471,
-     "pooled": 0.92438,
-     "right": 0.87575
-    },
-    "raw": {
-     "left": 1.14927,
-     "pooled": 1.152,
-     "right": 1.10145
-    }
-   },
-   "UCny1mBKVXS6w9W3om5IVK3Q": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UCoRNJz8_ebIoFbJr8hctwpQ": {
-    "3hz": {
-     "left": 0.78183,
-     "pooled": 0.76785,
-     "right": 0.73584
-    },
-    "raw": {
-     "left": 0.87682,
-     "pooled": 0.86168,
-     "right": 0.83425
-    }
-   },
-   "UCoVvI_IEmKaUi921hkQFKVA": {
-    "3hz": {
-     "left": 0.76776,
-     "pooled": 0.9584,
-     "right": 1.13986
-    },
-    "raw": {
-     "left": 0.98311,
-     "pooled": 1.23925,
-     "right": 1.51485
-    }
-   },
-   "UCor3VcSrTRUPZUsvtDTi0rg": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UCorj4-intk2Q9QVMBrlfQKw": {
-    "3hz": {
-     "left": 1.07287,
-     "pooled": 1.15937,
-     "right": 1.2562
-    },
-    "raw": {
-     "left": 1.2577,
-     "pooled": 1.33914,
-     "right": 1.43204
-    }
-   },
-   "UCpGpqBu1JBc0X4_mbL0eGMA": {
-    "3hz": {
-     "left": 1.14016,
-     "pooled": 1.20741,
-     "right": 1.27475
-    },
-    "raw": {
-     "left": 1.3306,
-     "pooled": 1.40711,
-     "right": 1.48398
-    }
-   },
-   "UCpLtzKe6f_CWcISIhdQ2ncA": {
-    "3hz": {
-     "left": 0.66471,
-     "pooled": 0.56773,
-     "right": 0.47074
-    },
-    "raw": {
-     "left": 1.44911,
-     "pooled": 1.10072,
-     "right": 0.75234
-    }
-   },
-   "UCsEBkTy545q7ZQXmbRu1szg": {
-    "3hz": {
-     "left": 1.27462,
-     "pooled": 1.24274,
-     "right": 1.21607
-    },
-    "raw": {
-     "left": 1.48199,
-     "pooled": 1.45483,
-     "right": 1.43307
-    }
-   },
-   "UCsQbpi3ku6RJhp16nZWbU2w": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UCsuBAbMlPGJ95w3mwhz-30g": {
-    "3hz": {
-     "left": 1.18319,
-     "pooled": 1.0568,
-     "right": 0.96584
-    },
-    "raw": {
-     "left": 1.50232,
-     "pooled": 1.2587,
-     "right": 1.11313
-    }
-   },
-   "UCt6UUZX0MF2n-jk7_v27Wwg": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UCtFQbaZu348XcVh1aVt4rhA": {
-    "3hz": {
-     "left": 0.00625,
-     "pooled": 0.00566,
-     "right": 0.00507
-    },
-    "raw": {
-     "left": 0.3911,
-     "pooled": 0.36581,
-     "right": 0.34053
-    }
-   },
-   "UCtWSKOEuSUkcIjw_l8UjwlQ": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UCuseIvrm7VZrcUJipa5yw9g": {
-    "3hz": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    },
-    "raw": {
-     "left": null,
-     "pooled": null,
-     "right": null
-    }
-   },
-   "UCuyQHJ4y76-i0w9N33vT-kg": {
-    "3hz": {
-     "left": 1.00552,
-     "pooled": 0.90719,
-     "right": 0.80954
-    },
-    "raw": {
-     "left": 1.13385,
-     "pooled": 1.01984,
-     "right": 0.90667
-    }
-   },
-   "UCxdcxnZRhsC4Rn7wg6PoSFQ": {
-    "3hz": {
-     "left": 0.90376,
-     "pooled": 0.89924,
-     "right": 0.90621
-    },
-    "raw": {
-     "left": 1.07202,
-     "pooled": 1.05476,
-     "right": 1.05323
-    }
-   },
-   "UCxdpzJKDPPDr4SqBG03gwoQ": {
-    "3hz": {
-     "left": 1.02363,
-     "pooled": 0.87442,
-     "right": 0.72217
-    },
-    "raw": {
-     "left": 1.30975,
-     "pooled": 1.10636,
-     "right": 0.90655
-    }
-   },
-   "UCyOiQ0B6GkvjaoUCqJZXUEQ": {
-    "3hz": {
-     "left": 1.25249,
-     "pooled": 1.08247,
-     "right": 0.90928
-    },
-    "raw": {
-     "left": 1.47247,
-     "pooled": 1.29153,
-     "right": 1.10698
-    }
-   },
-   "UCziQtDCnrKbqqe7_P7hpEAw": {
-    "3hz": {
-     "left": 1.9776,
-     "pooled": 1.23937,
-     "right": 0.96419
-    },
-    "raw": {
-     "left": 2.17091,
-     "pooled": 1.41843,
-     "right": 1.10932
-    }
-   },
-   "UCzy0xBebzv0zaqhvuLbUWgQ": {
-    "3hz": {
-     "left": 1.40945,
-     "pooled": 1.53938,
-     "right": 1.73556
-    },
-    "raw": {
-     "left": 1.81311,
-     "pooled": 1.88048,
-     "right": 2.02543
-    }
-   },
+  "groups_counted": 75,
+  "named_counted": 9,
+  "named_signers": {
    "asllrp_Cory": {
-    "3hz": {
-     "left": 1.0413,
-     "pooled": 1.01045,
-     "right": 0.9859
+    "numbered": {
+     "3hz": {
+      "left": 150,
+      "pooled": 150,
+      "right": 150
+     },
+     "raw": {
+      "left": 150,
+      "pooled": 150,
+      "right": 150
+     }
     },
-    "raw": {
-     "left": 1.13373,
-     "pooled": 1.10331,
-     "right": 1.07923
+    "passes_of_six": 6,
+    "speed": {
+     "3hz": {
+      "left": 1.0413,
+      "pooled": 1.01045,
+      "right": 0.9859
+     },
+     "raw": {
+      "left": 1.13373,
+      "pooled": 1.10331,
+      "right": 1.07923
+     }
     }
    },
    "asllrp_RIT-P02": {
-    "3hz": {
-     "left": 1.82264,
-     "pooled": 1.55486,
-     "right": 1.28763
+    "numbered": {
+     "3hz": {
+      "left": 150,
+      "pooled": 150,
+      "right": 150
+     },
+     "raw": {
+      "left": 150,
+      "pooled": 150,
+      "right": 150
+     }
     },
-    "raw": {
-     "left": 2.03748,
-     "pooled": 1.78155,
-     "right": 1.52629
+    "passes_of_six": 2,
+    "speed": {
+     "3hz": {
+      "left": 1.82264,
+      "pooled": 1.55486,
+      "right": 1.28763
+     },
+     "raw": {
+      "left": 2.03748,
+      "pooled": 1.78155,
+      "right": 1.52629
+     }
     }
    },
    "asllrp_RIT-P03": {
-    "3hz": {
-     "left": 1.03216,
-     "pooled": 0.98592,
-     "right": 0.94434
+    "numbered": {
+     "3hz": {
+      "left": 108,
+      "pooled": 108,
+      "right": 108
+     },
+     "raw": {
+      "left": 108,
+      "pooled": 108,
+      "right": 108
+     }
     },
-    "raw": {
-     "left": 1.19208,
-     "pooled": 1.16941,
-     "right": 1.14964
+    "passes_of_six": 6,
+    "speed": {
+     "3hz": {
+      "left": 1.03216,
+      "pooled": 0.98592,
+      "right": 0.94434
+     },
+     "raw": {
+      "left": 1.19208,
+      "pooled": 1.16941,
+      "right": 1.14964
+     }
     }
    },
    "asllrp_Rachel": {
-    "3hz": {
-     "left": 1.35181,
-     "pooled": 1.40835,
-     "right": 1.49721
+    "numbered": {
+     "3hz": {
+      "left": 150,
+      "pooled": 150,
+      "right": 149
+     },
+     "raw": {
+      "left": 150,
+      "pooled": 150,
+      "right": 149
+     }
     },
-    "raw": {
-     "left": 1.49286,
-     "pooled": 1.57076,
-     "right": 1.71074
+    "passes_of_six": 2,
+    "speed": {
+     "3hz": {
+      "left": 1.35181,
+      "pooled": 1.40835,
+      "right": 1.49721
+     },
+     "raw": {
+      "left": 1.49286,
+      "pooled": 1.57076,
+      "right": 1.71074
+     }
     }
    },
    "how2sign_c01": {
-    "3hz": {
-     "left": 0.77127,
-     "pooled": 0.71914,
-     "right": 0.66613
+    "numbered": {
+     "3hz": {
+      "left": 177,
+      "pooled": 177,
+      "right": 177
+     },
+     "raw": {
+      "left": 177,
+      "pooled": 177,
+      "right": 177
+     }
     },
-    "raw": {
-     "left": 0.87109,
-     "pooled": 0.82263,
-     "right": 0.77321
+    "passes_of_six": 0,
+    "speed": {
+     "3hz": {
+      "left": 0.77127,
+      "pooled": 0.71914,
+      "right": 0.66613
+     },
+     "raw": {
+      "left": 0.87109,
+      "pooled": 0.82263,
+      "right": 0.77321
+     }
     }
    },
    "how2sign_c02": {
-    "3hz": {
-     "left": 0.82464,
-     "pooled": 0.8304,
-     "right": 0.83585
+    "numbered": {
+     "3hz": {
+      "left": 300,
+      "pooled": 300,
+      "right": 300
+     },
+     "raw": {
+      "left": 300,
+      "pooled": 300,
+      "right": 300
+     }
     },
-    "raw": {
-     "left": 1.00352,
-     "pooled": 1.02617,
-     "right": 1.04778
+    "passes_of_six": 6,
+    "speed": {
+     "3hz": {
+      "left": 0.82464,
+      "pooled": 0.8304,
+      "right": 0.83585
+     },
+     "raw": {
+      "left": 1.00352,
+      "pooled": 1.02617,
+      "right": 1.04778
+     }
     }
    },
    "how2sign_c03": {
-    "3hz": {
-     "left": 0.7849,
-     "pooled": 0.75549,
-     "right": 0.72848
+    "numbered": {
+     "3hz": {
+      "left": 265,
+      "pooled": 265,
+      "right": 265
+     },
+     "raw": {
+      "left": 265,
+      "pooled": 265,
+      "right": 265
+     }
     },
-    "raw": {
-     "left": 0.90208,
-     "pooled": 0.86973,
-     "right": 0.83995
+    "passes_of_six": 5,
+    "speed": {
+     "3hz": {
+      "left": 0.7849,
+      "pooled": 0.75549,
+      "right": 0.72848
+     },
+     "raw": {
+      "left": 0.90208,
+      "pooled": 0.86973,
+      "right": 0.83995
+     }
     }
    },
    "how2sign_c04": {
-    "3hz": {
-     "left": 0.55268,
-     "pooled": 0.60786,
-     "right": 0.6632
+    "numbered": {
+     "3hz": {
+      "left": 300,
+      "pooled": 300,
+      "right": 300
+     },
+     "raw": {
+      "left": 300,
+      "pooled": 300,
+      "right": 300
+     }
     },
-    "raw": {
-     "left": 0.73135,
-     "pooled": 0.77577,
-     "right": 0.8203
+    "passes_of_six": 1,
+    "speed": {
+     "3hz": {
+      "left": 0.55268,
+      "pooled": 0.60786,
+      "right": 0.6632
+     },
+     "raw": {
+      "left": 0.73135,
+      "pooled": 0.77577,
+      "right": 0.8203
+     }
     }
    },
    "how2sign_c05": {
-    "3hz": {
-     "left": 0.48249,
-     "pooled": 0.53114,
-     "right": 0.57964
+    "numbered": {
+     "3hz": {
+      "left": 58,
+      "pooled": 58,
+      "right": 58
+     },
+     "raw": {
+      "left": 58,
+      "pooled": 58,
+      "right": 58
+     }
     },
-    "raw": {
-     "left": 0.60011,
-     "pooled": 0.6434,
-     "right": 0.68656
+    "passes_of_six": 0,
+    "speed": {
+     "3hz": {
+      "left": 0.48249,
+      "pooled": 0.53114,
+      "right": 0.57964
+     },
+     "raw": {
+      "left": 0.60011,
+      "pooled": 0.6434,
+      "right": 0.68656
+     }
     }
    }
   },
-  "groups_per_corpus": {
-   "asllrp": 4,
-   "how2sign-two-view-text-v1": 5,
-   "youtube-asl-v1": 120
+  "note": "c01, c03 and c05 are D20's clips through the monocular path. A channel is not a signer. A channel's clips are those of its videos with a tracked body, so a channel's number leaves out its untracked clips (reports/youtube_wrist_validity.json). Set after composition's figures were known, as the plan's section says.",
+  "reads_it": "no claim, gate or rule, until an independent review of this rerun",
+  "refused": {
+   "UC-7qFeNijjbBpjL2KvMN_QA": {
+    "clips_read": 135,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 1,
+      "pooled": 1,
+      "right": 0
+     },
+     "raw": {
+      "left": 1,
+      "pooled": 1,
+      "right": 0
+     }
+    }
+   },
+   "UC-IaYvWxBm3Q15N4SC3O1Hw": {
+    "clips_read": 465,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 11,
+      "pooled": 11,
+      "right": 10
+     },
+     "raw": {
+      "left": 11,
+      "pooled": 11,
+      "right": 10
+     }
+    }
+   },
+   "UC1xPhlKUKuJ3JH21N8ipwpQ": {
+    "clips_read": 116,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     },
+     "raw": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     }
+    }
+   },
+   "UC2nAqidRiPfQa53Yaf9qeCg": {
+    "clips_read": 50,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 19,
+      "pooled": 19,
+      "right": 16
+     },
+     "raw": {
+      "left": 19,
+      "pooled": 19,
+      "right": 16
+     }
+    }
+   },
+   "UC4fJ87vQIH9NUQwJNmgUkFw": {
+    "clips_read": 262,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 2,
+      "pooled": 2,
+      "right": 2
+     },
+     "raw": {
+      "left": 2,
+      "pooled": 2,
+      "right": 2
+     }
+    }
+   },
+   "UC6Nt4sw73UuNmxnjVaa7SYw": {
+    "clips_read": 88,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     },
+     "raw": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     }
+    }
+   },
+   "UC76bQa0r83RNydA55Uh_ovw": {
+    "clips_read": 132,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     },
+     "raw": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     }
+    }
+   },
+   "UC7hDSJ0Y236vU68z6ekcALQ": {
+    "clips_read": 129,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 3,
+      "pooled": 3,
+      "right": 3
+     },
+     "raw": {
+      "left": 3,
+      "pooled": 3,
+      "right": 3
+     }
+    }
+   },
+   "UC9UqfAVkaO8Q3QLbeqNxygQ": {
+    "clips_read": 59,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     },
+     "raw": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     }
+    }
+   },
+   "UCBJOcgmUmIMoS62uvMzGi5A": {
+    "clips_read": 49,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 7,
+      "pooled": 7,
+      "right": 4
+     },
+     "raw": {
+      "left": 7,
+      "pooled": 7,
+      "right": 4
+     }
+    }
+   },
+   "UCCOaLeJLHuYax7_k5wbC6cw": {
+    "clips_read": 31,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     },
+     "raw": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     }
+    }
+   },
+   "UCDL2Ug9aPMTAK0FDfWopZMw": {
+    "clips_read": 69,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 19,
+      "pooled": 19,
+      "right": 17
+     },
+     "raw": {
+      "left": 19,
+      "pooled": 19,
+      "right": 17
+     }
+    }
+   },
+   "UCET0ZgnCFLi1369c3ZWfSFA": {
+    "clips_read": 209,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     },
+     "raw": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     }
+    }
+   },
+   "UCEYXCOUkTeFLj8thLxt6FVQ": {
+    "clips_read": 88,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     },
+     "raw": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     }
+    }
+   },
+   "UCEhrSe-kPnpzjolcy0XKvxg": {
+    "clips_read": 46,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 14,
+      "pooled": 14,
+      "right": 13
+     },
+     "raw": {
+      "left": 14,
+      "pooled": 14,
+      "right": 13
+     }
+    }
+   },
+   "UCFaQvZ9qIRFaB0GRDRq9L5A": {
+    "clips_read": 71,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     },
+     "raw": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     }
+    }
+   },
+   "UCGzWwSdhNQpPAATLZjs8lWw": {
+    "clips_read": 53,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     },
+     "raw": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     }
+    }
+   },
+   "UCHMBXgtO2Ez6Ie4HkbQk2Fg": {
+    "clips_read": 41,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 16,
+      "pooled": 16,
+      "right": 16
+     },
+     "raw": {
+      "left": 16,
+      "pooled": 16,
+      "right": 16
+     }
+    }
+   },
+   "UCHQIItw1DnxFCbQh1aFOq7Q": {
+    "clips_read": 420,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     },
+     "raw": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     }
+    }
+   },
+   "UCHr2GqhllLpeUkw67ueN1-A": {
+    "clips_read": 136,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 30,
+      "pooled": 30,
+      "right": 29
+     },
+     "raw": {
+      "left": 30,
+      "pooled": 30,
+      "right": 29
+     }
+    }
+   },
+   "UCHxXEdeyNIfqhj3I1RQVEXw": {
+    "clips_read": 92,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     },
+     "raw": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     }
+    }
+   },
+   "UCJapA5zmXcnUOcTrErgwiRg": {
+    "clips_read": 846,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 13,
+      "pooled": 13,
+      "right": 6
+     },
+     "raw": {
+      "left": 13,
+      "pooled": 13,
+      "right": 6
+     }
+    }
+   },
+   "UCKki8PhClHFEiaSdKNXxilQ": {
+    "clips_read": 134,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 5,
+      "pooled": 5,
+      "right": 5
+     },
+     "raw": {
+      "left": 5,
+      "pooled": 5,
+      "right": 5
+     }
+    }
+   },
+   "UCLjV1ol_2nnVsk_wLZfjPFw": {
+    "clips_read": 89,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 8,
+      "pooled": 8,
+      "right": 8
+     },
+     "raw": {
+      "left": 8,
+      "pooled": 8,
+      "right": 8
+     }
+    }
+   },
+   "UCOKBLQYhD1FHLw0R6NBcTsQ": {
+    "clips_read": 63,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     },
+     "raw": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     }
+    }
+   },
+   "UCOjoL0k7p_Q0AcXSrEKTd8w": {
+    "clips_read": 105,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 4,
+      "pooled": 5,
+      "right": 5
+     },
+     "raw": {
+      "left": 4,
+      "pooled": 5,
+      "right": 5
+     }
+    }
+   },
+   "UCQqlp5pbCtnZFG22SvA8rrQ": {
+    "clips_read": 403,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 32,
+      "pooled": 32,
+      "right": 25
+     },
+     "raw": {
+      "left": 32,
+      "pooled": 32,
+      "right": 25
+     }
+    }
+   },
+   "UCR7_ied3vPnb7Jwmplsz4ug": {
+    "clips_read": 44,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 31,
+      "pooled": 31,
+      "right": 24
+     },
+     "raw": {
+      "left": 31,
+      "pooled": 31,
+      "right": 24
+     }
+    }
+   },
+   "UCRwPaAUrbOL4X7WgxZzIOpw": {
+    "clips_read": 164,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     },
+     "raw": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     }
+    }
+   },
+   "UCS_sxPSNGTfpkoa5nYEt-1g": {
+    "clips_read": 136,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 28,
+      "pooled": 28,
+      "right": 25
+     },
+     "raw": {
+      "left": 28,
+      "pooled": 28,
+      "right": 25
+     }
+    }
+   },
+   "UCSeO_wnj55mSUOZBS1kcOFQ": {
+    "clips_read": 50,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 12,
+      "pooled": 12,
+      "right": 12
+     },
+     "raw": {
+      "left": 12,
+      "pooled": 12,
+      "right": 12
+     }
+    }
+   },
+   "UCWbnHpCljj8MuTeNnCiNVew": {
+    "clips_read": 59,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 6,
+      "pooled": 6,
+      "right": 6
+     },
+     "raw": {
+      "left": 6,
+      "pooled": 6,
+      "right": 6
+     }
+    }
+   },
+   "UCYWJdRpk2jOOZaqvXGVjkxw": {
+    "clips_read": 481,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 4,
+      "pooled": 4,
+      "right": 4
+     },
+     "raw": {
+      "left": 4,
+      "pooled": 4,
+      "right": 4
+     }
+    }
+   },
+   "UC_KW4XPFXf8Yfo8nHh7HaVA": {
+    "clips_read": 47,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 4,
+      "pooled": 4,
+      "right": 3
+     },
+     "raw": {
+      "left": 4,
+      "pooled": 4,
+      "right": 3
+     }
+    }
+   },
+   "UCaGw9z5wD70PmLH_V2keTRQ": {
+    "clips_read": 39,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 17,
+      "pooled": 17,
+      "right": 17
+     },
+     "raw": {
+      "left": 17,
+      "pooled": 17,
+      "right": 17
+     }
+    }
+   },
+   "UCaVlD3iSYMf35smXZswfteA": {
+    "clips_read": 53,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 20,
+      "pooled": 20,
+      "right": 20
+     },
+     "raw": {
+      "left": 20,
+      "pooled": 20,
+      "right": 20
+     }
+    }
+   },
+   "UCbNsfc8NdsaJHp3tuAK1TCg": {
+    "clips_read": 79,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 20,
+      "pooled": 20,
+      "right": 18
+     },
+     "raw": {
+      "left": 20,
+      "pooled": 20,
+      "right": 18
+     }
+    }
+   },
+   "UCc-cGBZ7ML4ycJmUs3Lu4tw": {
+    "clips_read": 45,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 18,
+      "pooled": 18,
+      "right": 17
+     },
+     "raw": {
+      "left": 18,
+      "pooled": 18,
+      "right": 17
+     }
+    }
+   },
+   "UCdprSs1mVS8SJWaigvXEpNg": {
+    "clips_read": 146,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     },
+     "raw": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     }
+    }
+   },
+   "UCeOdSeu80D-06pkfKchgE1g": {
+    "clips_read": 131,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 11,
+      "pooled": 12,
+      "right": 12
+     },
+     "raw": {
+      "left": 11,
+      "pooled": 12,
+      "right": 12
+     }
+    }
+   },
+   "UCfBHVaEl7oWs68skvR07UWA": {
+    "clips_read": 41,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 5,
+      "pooled": 5,
+      "right": 4
+     },
+     "raw": {
+      "left": 5,
+      "pooled": 5,
+      "right": 4
+     }
+    }
+   },
+   "UCjX0HQzeaHBXVXXS7mPKFlA": {
+    "clips_read": 74,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 2,
+      "pooled": 2,
+      "right": 2
+     },
+     "raw": {
+      "left": 2,
+      "pooled": 2,
+      "right": 2
+     }
+    }
+   },
+   "UCkyteSyUaOq2mH3RIKgFXcw": {
+    "clips_read": 43,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 8,
+      "pooled": 8,
+      "right": 8
+     },
+     "raw": {
+      "left": 8,
+      "pooled": 8,
+      "right": 8
+     }
+    }
+   },
+   "UCl_g7ShFVI8LPipvHXqIP6w": {
+    "clips_read": 94,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     },
+     "raw": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     }
+    }
+   },
+   "UCndMNgdSMOjJihK0qwOny1g": {
+    "clips_read": 67,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 12,
+      "pooled": 12,
+      "right": 9
+     },
+     "raw": {
+      "left": 12,
+      "pooled": 12,
+      "right": 9
+     }
+    }
+   },
+   "UCny1mBKVXS6w9W3om5IVK3Q": {
+    "clips_read": 98,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     },
+     "raw": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     }
+    }
+   },
+   "UCor3VcSrTRUPZUsvtDTi0rg": {
+    "clips_read": 49,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     },
+     "raw": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     }
+    }
+   },
+   "UCpLtzKe6f_CWcISIhdQ2ncA": {
+    "clips_read": 80,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 1,
+      "pooled": 1,
+      "right": 1
+     },
+     "raw": {
+      "left": 1,
+      "pooled": 1,
+      "right": 1
+     }
+    }
+   },
+   "UCsQbpi3ku6RJhp16nZWbU2w": {
+    "clips_read": 42,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     },
+     "raw": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     }
+    }
+   },
+   "UCt6UUZX0MF2n-jk7_v27Wwg": {
+    "clips_read": 101,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     },
+     "raw": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     }
+    }
+   },
+   "UCtFQbaZu348XcVh1aVt4rhA": {
+    "clips_read": 109,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 7,
+      "pooled": 7,
+      "right": 7
+     },
+     "raw": {
+      "left": 7,
+      "pooled": 7,
+      "right": 7
+     }
+    }
+   },
+   "UCtWSKOEuSUkcIjw_l8UjwlQ": {
+    "clips_read": 62,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     },
+     "raw": {
+      "left": 0,
+      "pooled": 0,
+      "right": 0
+     }
+    }
+   },
+   "UCuseIvrm7VZrcUJipa5yw9g": {
+    "clips_read": 2955,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 29,
+      "pooled": 29,
+      "right": 27
+     },
+     "raw": {
+      "left": 29,
+      "pooled": 29,
+      "right": 27
+     }
+    }
+   },
+   "UCziQtDCnrKbqqe7_P7hpEAw": {
+    "clips_read": 180,
+    "corpus": "youtube-asl-v1",
+    "numbered": {
+     "3hz": {
+      "left": 9,
+      "pooled": 10,
+      "right": 10
+     },
+     "raw": {
+      "left": 9,
+      "pooled": 10,
+      "right": 10
+     }
+    }
+   }
   },
-  "hold_arms": "off",
-  "note": "c01, c03 and c05 are D20's clips through the monocular path, the rows read earlier. A channel is not a signer. Set after composition's figures were known, as the plan's section says.",
-  "sensitivity_without_youtube": {
-   "note": "reported; decides nothing: YouTube's channels dominate the count",
-   "span": {
+  "sensitivity": {
+   "channels_only": {
+    "3hz": {
+     "left": [
+      0.83188,
+      1.3877
+     ],
+     "pooled": [
+      0.81417,
+      1.30919
+     ],
+     "right": [
+      0.68351,
+      1.27441
+     ]
+    },
+    "raw": {
+     "left": [
+      0.99911,
+      1.61455
+     ],
+     "pooled": [
+      0.9373,
+      1.50768
+     ],
+     "right": [
+      0.80392,
+      1.60457
+     ]
+    }
+   },
+   "named_signers_only": {
     "3hz": {
      "left": [
       0.53864,
@@ -4262,40 +5661,69 @@
       1.56318
      ]
     }
-   }
+   },
+   "note": "reported; decides nothing"
   },
   "span": {
    "3hz": {
     "left": [
-     0.76846,
-     1.7477
+     0.77157,
+     1.39871
     ],
     "pooled": [
-     0.72325,
-     1.46634
+     0.72822,
+     1.36361
     ],
     "right": [
-     0.66926,
-     1.27104
+     0.67013,
+     1.28867
     ]
    },
    "raw": {
     "left": [
-     0.92347,
-     2.12009
+     0.90985,
+     1.61506
     ],
     "pooled": [
-     0.88681,
-     1.8562
+     0.85933,
+     1.54568
     ],
     "right": [
-     0.81184,
-     1.70938
+     0.79564,
+     1.60822
     ]
    }
   },
-  "top10_inside_all_six": true,
-  "youtube_channels_qualifying": 355,
+  "true_length_rough": {
+   "inside": {
+    "3hz": {
+     "left": false,
+     "pooled": false,
+     "right": false
+    },
+    "raw": {
+     "left": false,
+     "pooled": false,
+     "right": false
+    }
+   },
+   "length_ratio": 1.1977,
+   "note": "rough, and probably low: top10's speed times its predicted over true length; not a render at true length",
+   "speed": {
+    "3hz": {
+     "left": 1.58047,
+     "pooled": 1.50578,
+     "right": 1.43108
+    },
+    "raw": {
+     "left": 1.92354,
+     "pooled": 1.86508,
+     "right": 1.81502
+    }
+   }
+  },
+  "units": "shoulder widths per second",
+  "youtube_channels_qualifying_by_clips": 355,
   "youtube_channels_read": 120
  },
  "reference": {
@@ -4776,6 +6204,40 @@
   },
   "clips": 300,
   "groups": 60,
+  "hole_check": {
+   "channels": 60,
+   "channels_with_no_number": 23,
+   "names": [
+    "UC-7qFeNijjbBpjL2KvMN_QA",
+    "UC-IaYvWxBm3Q15N4SC3O1Hw",
+    "UC2PR8qRUoSfHTpSW80CRajQ",
+    "UC4fJ87vQIH9NUQwJNmgUkFw",
+    "UC5S1zNP21fnH_xVERzTWuNg",
+    "UC88JBSJXqFvqwtC0Iz3Z5wA",
+    "UCL4ZEsnRRng4iKT4va2JN2g",
+    "UCNNd2exV4cab-3j5-gwKs1g",
+    "UCNT7E4J86ZUhRhX_6y5lMtw",
+    "UCQbhiOgoavwD8D-W2fVXQTA",
+    "UCSeO_wnj55mSUOZBS1kcOFQ",
+    "UCWbnHpCljj8MuTeNnCiNVew",
+    "UCXlHkhyF8-7-NYRSLy2QjlA",
+    "UCYshY8Yf21rtt-eSrAyjlUg",
+    "UC_Uqw8Lny2aCrFhk5eSWaIg",
+    "UCc3G_HcCr_p2u2PfyJwm9FA",
+    "UCdTytgz2Mvb6odTHH9iNv8Q",
+    "UCfEalJW91FE9BDH9xUVDvvg",
+    "UCny1mBKVXS6w9W3om5IVK3Q",
+    "UCr4nnE8DOniN0VJDChRKQjQ",
+    "UCs1S_ZbrCZw2xAJhK7ciBqQ",
+    "UCu1V-LaUH8l2H2XnRqUApsA",
+    "UCufxp6ZwK8zEstJ4BISgG4A"
+   ],
+   "note": "the earlier row said groups: 60; its range rested on the rest",
+   "range_on_the_rest_raw_pooled": [
+    0.916,
+    2.221
+   ]
+  },
   "note": "no signer field: one row per channel, equal weight; a channel may hold several signers",
   "pooled": {
    "3hz": {

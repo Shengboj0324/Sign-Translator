@@ -1,0 +1,122 @@
+{
+ "cause": "stored states: the body channel, chest included, is invalid and zero on these frames, before any reader; hands and face stay valid. Earlier evidence (plan, step A) ties it to framing: hips and often elbows out of frame, per video",
+ "earlier_read": {
+  "arm_at_zero": 0.4355,
+  "arm_under_half": 0.546,
+  "clips": 2000,
+  "key": "acquisition/2026-10-17-v1/youtube-asl-v1/arm-recovery/step-a-2026-10-28/state-validity-2000-seed7.json"
+ },
+ "generator": {
+  "corpus_weight": [
+   "asllvd-text-v1=3",
+   "rit-text-r6=3",
+   "wlasl-text-r6=3",
+   "asllvd-text-v1=3",
+   "semlex-text-v2=2"
+  ],
+  "mix": "acquisition/2026-10-17-v1/youtube-asl-v1/round14b-mixed-v1/manifest.json",
+  "mix_sha256": "710a3941dce4abf099a336705203a719f441c8cac5847b0e59ed7679d515eb7d",
+  "part_valid_loss": true,
+  "run": "training-runs/tokens-rvq-d0b-prior-r14b-w14b/run.json",
+  "run_sha256": "c0e0fa46a68bac75f610cd9910b3fe72eb69881d56cf7298d34d6c5df2537607",
+  "youtube_share_of_sampling": 0.481
+ },
+ "kind": "youtube-wrist-validity",
+ "not_measured": "what the generator learns from these clips: part_code_weights zeroes the body codes where under half the body part's columns are valid, and valid body columns on these clips are 0.03%, so by code they teach no neutral body directly. Their neutral-valued body codes are still history for the hand codes, in about a fifth of the generator's samples. The tokenizer's channel reconstruction loss is masked by validity (rvq_loss, channel_loss_per_example), but its encoder and quantizer still see the neutral fill. Neither effect has been measured.",
+ "plan_decision": "the plan (2026-10-27, round 13) dropped arm-untracked YouTube clips from generator training; round14b-mixed-v1 extends round10-mixed-v1 and holds all of them",
+ "report_only": true,
+ "round13_youtube_train_records": 46400,
+ "sample": {
+  "bimodal": {
+   "at_least_90_both": 0.268,
+   "at_zero": 0.42
+  },
+  "body_columns_valid_on_clips_with_no_wrist": 0.0003,
+  "channels": 389,
+  "chest_never": {
+   "ci95_by_video": [
+    0.3745,
+    0.454
+   ],
+   "of_seconds": 0.4108,
+   "share": 0.4143
+  },
+  "clips": 3000,
+  "hands_on_clips_with_no_wrist": 0.886,
+  "no_either_side": {
+   "ci95_by_video": [
+    0.4054,
+    0.4841
+   ],
+   "of_seconds": 0.4356,
+   "share": 0.4443
+  },
+  "no_left": {
+   "ci95_by_video": [
+    0.385,
+    0.4657
+   ],
+   "of_seconds": 0.4214,
+   "share": 0.4257
+  },
+  "no_right": {
+   "ci95_by_video": [
+    0.4027,
+    0.4816
+   ],
+   "of_seconds": 0.4334,
+   "share": 0.4417
+  },
+  "no_side_at_all": {
+   "ci95_by_video": [
+    0.3826,
+    0.4632
+   ],
+   "of_seconds": 0.4192,
+   "share": 0.423
+  },
+  "under_half_frames_on_either_side": {
+   "ci95_by_video": [
+    0.5438,
+    0.6228
+   ],
+   "of_seconds": 0.5768,
+   "share": 0.5837
+  },
+  "videos": 911
+ },
+ "share_of_sampled_weight": {
+  "no_either_side": {
+   "generator": 0.2137,
+   "tokenizer": 0.3098
+  },
+  "no_left": {
+   "generator": 0.2048,
+   "tokenizer": 0.2968
+  },
+  "no_right": {
+   "generator": 0.2124,
+   "tokenizer": 0.308
+  },
+  "no_side_at_all": {
+   "generator": 0.2035,
+   "tokenizer": 0.2949
+  },
+  "under_half_frames_on_either_side": {
+   "generator": 0.2807,
+   "tokenizer": 0.407
+  }
+ },
+ "tokenizer": {
+  "corpus_weight": [
+   "how2sign-two-view-text-v1=2"
+  ],
+  "mix": "acquisition/2026-10-17-v1/youtube-asl-v1/round3c-mixed-v1/manifest.json",
+  "mix_sha256": "004bf6596a2330ee5f840bfeef0d233174f63d0602f72465b6c28a21078d00fd",
+  "run": "training-runs/tokens-rvq-d0b-r3d-d2/run.json",
+  "run_sha256": "6bceb2c2e07fdd1e66fed343ac4339f2d87d6a220f714cf200079e17a9e843bb",
+  "youtube_share_of_sampling": 0.6972
+ },
+ "youtube_records": 99918,
+ "youtube_records_also_in_tokenizer_mix": 99918
+}
