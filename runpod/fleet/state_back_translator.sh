@@ -32,8 +32,8 @@ F12=training-runs/tokens-rvq-d0b-prior-r12-f12/checkpoints/step-00060000.pt
 STEM=$A/asl-stem-wiki/asl-stem-wiki-v1/manifest.json; FLORES=$A/2m-flores-asl/2m-flores-asl-v1/manifest.json
 RECON=$OUT/recon-d2-v1
 # ---- pins: fill from the manifests and index phases' output, commit, then run the later phases ----
-STEM_SHA=PIN-after-manifests
-FLORES_SHA=PIN-after-manifests
+STEM_SHA=f2571d8dd65985042f80dc57a938f9e1e206812eca03d6cce66324a022d78dc1
+FLORES_SHA=cd78068d37b2c3c321c5383ea4decbf015ba03ab1046df938c5f0fbc270bb6f9
 RECON_INDEX_SHA=PIN-after-index
 RECON_SHARDS=4
 MONITOR_CLIPS=536                      # amendment 1: every youtube-asl-v1 monitor clip
