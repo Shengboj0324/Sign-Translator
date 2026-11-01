@@ -5906,3 +5906,18 @@ Report only; nothing trains, and none of this reads C20 or the 562 clips. Review
 - **Action:** fall shown replaces the plan's "≥ 15 points" and lets L1 go to its 200-clip test, nothing else. Ruled out means L1 does not start, and may be stated only as "linear bridges between continuous real poses do not limit v1"; it does not clear composition's stitched seams. Unresolved means L1 neither starts nor closes on C0, goes to the owner, and gets no more D20 forms.
 
 **Reported, not deciding.** `seam_cmin45` (cmin − cval is the healing effect), the squeeze forms, `filled_cuts`, word-count forms (sensitivity only). Loop effect shown if `paired.real.loop_share` lower bound > 0 and the form's point ≥ 41.3%, midway between real 28.2 and a1 54.4, by `eval.loop_share`. B2, B4, B5, B6 are report only: parts don't add up, post-hoc FSQ is biased and can't close V3-F, and B6's 119 and 197 clips can't resolve 0.02. A later v2 read is a separate declared read and cannot change a v1 outcome.
+
+### A1 result: the left-arm hold fails its rule (read 2026-11-01, recorded 05:23 UTC)
+
+D20, report only, `a1-hold-read.json`, against `a1-margin0` at predicted timing. **Rule: failed**, on likelihood and spotting. Not adopted.
+
+| Read | margin 0 | hold | Paired |
+|---|---|---|---|
+| BLEU | 2.183 | 2.265 [1.896, 2.621] | +0.082 [−0.217, +0.423] |
+| Likelihood minus blank@predicted | +0.0764 | +0.0487 [+0.0197, +0.0774] | −0.0276 [−0.0407, −0.0157] |
+| Spotting recall (v2) | 0.4151 | 0.3746 [0.357, 0.393] | −0.0405 [−0.051, −0.0297]; floor −0.02 |
+| Wrist, pooled | 1.533× | 1.292× | above the 1.25× release bar |
+| Wrist, left and right | 1.954×, 1.242× | 1.367×, 1.242× | |
+| Share of gap | 21.3% | 24.1% [8.3, 39.8] | +2.8 points [−7.7, +15.2] |
+
+The motion checks passed, as they were known to. Two independent reads say the hold costs content, though BLEU doesn't resolve either way: the hold replaces the left arm on 46.6% of frames, and 12.4% of held uses come from entries with at least 25% two-handed records. Wrist speed stays a real unsolved requirement. A narrower hold would be a new arm, declared before its read.
