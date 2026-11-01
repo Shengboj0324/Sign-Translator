@@ -1,0 +1,81 @@
+#!/bin/bash
+# tok_probes.sh — GPU evaluation pod: tokenizer probes B1, B2, B4, B5, B6 and the seam ablation (reports/post_s2_plan.md,
+# sections 4 and 5; scripts/tok_probes.py). Report only: nothing trains, nothing is declared, the report decides nothing.
+# Prepared, not run: it waits for an independent review.
+#
+#   bash runpod/fleet/tok_probes.sh            smoke (c02 train sentences, train words, a smoke fit) first, then the D20 read
+#   SMOKE=1 bash runpod/fleet/tok_probes.sh    the smoke only
+#   PROCS=4                                    processes reading forms side by side
+#
+# The smoke stops the job when a decoder that returns real does not read real on real clips (`check`).
+# Outputs (write-once): $D/report.json, forms, fit report and codebooks; smokes under $D/smoke/<UTC>/.
+# Ends with TOK-PROBES-DONE <status> (0 read done, 1 the read failed, 2 the smoke stopped the job). The exit status is the same.
+# No output passes through a pipe; each background read's status is waited on one by one.
+[ -f "${R2ENV:-/root/r2env.sh}" ] && source "${R2ENV:-/root/r2env.sh}"
+export PATH=${VENV_BIN:-/root/venv/bin}:$PATH
+THREADS=${THREADS:-2}
+export OMP_NUM_THREADS=$THREADS MKL_NUM_THREADS=$THREADS
+cd "${ST_REPO:-/root/work/Sign-Translator}" || { echo "TOK-PROBES-DONE 1"; exit 1; }
+set -uo pipefail
+done_() { echo "TOK-PROBES-DONE $1"; exit "$1"; }
+O=acquisition/2026-10-17-v1/youtube-asl-v1
+D=$O/tok-probes
+TS=$(date -u +%Y%m%dT%H%M%SZ)
+W=${WORK:-/root/tok-probes}
+DEV=${DEVICE:-cuda}
+PROCS=${PROCS:-4}
+T=scripts/tok_probes.py
+COMMON="--device $DEV --threads $THREADS --instrument-cache $W/instrument --nll-group 4"
+mkdir -p "$W/smoke/forms" "$W/d20/forms" || done_ 1
+uv pip install -q 'transformers>=4.40,<5' sentencepiece || { echo "ALERT transformers install failed"; done_ 1; }
+
+# real and blank alone (the first process writes the slim instrument), then the other forms side by side
+read_all() {
+  local dir=$1; shift
+  python $T read --forms real,blank --out-dir "$dir/forms" --fit-dir "$dir/fit" $COMMON "$@" || return 1
+  local lists
+  lists=$(python $T groups --processes "$PROCS" --skip real,blank) || return 1
+  local pids=() n=0 group
+  while IFS= read -r group; do
+    [ -n "$group" ] || continue
+    python $T read --forms "$group" --out-dir "$dir/forms" --fit-dir "$dir/fit" $COMMON "$@" > "$dir/read-$n.log" 2>&1 &
+    pids+=("$!")
+    n=$((n + 1))
+  done <<< "$lists"
+  [ "$n" -gt 0 ] || { echo "ALERT no form groups"; return 1; }
+  local rc=0 pid k=0
+  for pid in "${pids[@]}"; do
+    if ! wait "$pid"; then
+      echo "ALERT read-$k failed"
+      tail -n 20 "$dir/read-$k.log"
+      rc=1
+    fi
+    k=$((k + 1))
+  done
+  return $rc
+}
+
+# ---- smoke: train clips only ---------------------------------------------------------------------------------------
+S=$W/smoke
+python $T fit --out-dir "$S/fit" --smoke-train 16 --iterations 2 --device "$DEV" --threads "$THREADS" \
+  || { echo "ALERT smoke fit failed"; done_ 2; }
+read_all "$S" --smoke-train 8 || { echo "ALERT smoke read failed"; done_ 2; }
+python $T words --out-dir "$S/forms" --fit-dir "$S/fit" --smoke-train 4 --device "$DEV" --threads "$THREADS" \
+  || { echo "ALERT smoke words failed"; done_ 2; }
+python $T merge --out-dir "$S/forms" --output-file "$S/report.json" || { echo "ALERT smoke merge failed"; done_ 2; }
+python $T check --report "$S/report.json" || { echo "ALERT smoke check failed"; done_ 2; }
+python $T upload --out-dir "$S" --prefix "$D/smoke/$TS" || { echo "ALERT smoke upload failed"; done_ 2; }
+if [ "${SMOKE:-0}" = 1 ]; then
+  echo "SMOKE done"
+  done_ 0
+fi
+
+# ---- the read: fit on c02 train, forms on D20, B6 on the gate halves ----------------------------------------------------
+R=$W/d20
+python $T fit --out-dir "$R/fit" --device "$DEV" --threads "$THREADS" || { echo "ALERT fit failed"; done_ 1; }
+read_all "$R" || { echo "ALERT read failed"; done_ 1; }
+python $T words --out-dir "$R/forms" --fit-dir "$R/fit" --device "$DEV" --threads "$THREADS" || { echo "ALERT words failed"; done_ 1; }
+python $T merge --out-dir "$R/forms" --output-file "$R/report.json" || { echo "ALERT merge failed"; done_ 1; }
+python $T upload --out-dir "$R" --prefix "$D" || { echo "ALERT upload failed"; done_ 1; }
+python $T check --report "$R/report.json" || { echo "ALERT check failed: the report is stored, read it as broken"; done_ 1; }
+done_ 0
