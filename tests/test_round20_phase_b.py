@@ -85,7 +85,7 @@ def on_stubs(tmp_path, text, env, *, smoke, gpu):
         'if [ -n "${STUB_PRINT:-}" ]; then case "$*" in *" merge "*) echo "$STUB_PRINT" ;; esac; fi\n'
         'case "$*" in *"round20_phase_b_verdict.py verdict "*) exit ${STUB_VERDICT:-0} ;; esac\n'
         'case "$*" in *" stack-check "*) exit ${STUB_STACK:-0} ;; *" one-arm "*) exit ${STUB_ONE_ARM:-0} ;; esac\n'
-        'if [ -n "$STUB_FAIL_SHARD" ]; then case "$*" in *"--shard $STUB_FAIL_SHARD "*) exit 1 ;; esac; fi\n'
+        'if [ -n "$STUB_FAIL_SHARD" ]; then case "$*" in *"--shard $STUB_FAIL_SHARD "*) sleep 0.3; exit 1 ;; esac; fi\n'
         'if [ -n "$STUB_HANG" ]; then case "$*" in *round20_word_cache*" run "*) exec /bin/sleep 30 ;; esac; fi\n'
         'exit 0\n')
     (stubs / "uv").write_text("#!/bin/bash\nexit 0\n")
