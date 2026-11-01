@@ -10,14 +10,14 @@
 # Every report is --report-only and write-once under $OUT; each read adds loop share, word echo and gap share (scripts/comp_a_read.py).
 # SMOKE=1 reads at most 5 real D20 clips under $OUT/smoke/<UTC stamp>/, with no comparator. Nothing decides on a smoke.
 # One primary arm per phase is pre-registered (comp_a_read.PRIMARY); only it has a rule. A comparator this job wrote itself is pinned by the hash its
-# own COMP-A line printed: MARGIN0_SHA, BASE_SHA, SAMPLE0_SHA.
+# own COMP-A line printed: MARGIN0_SHA, BASE_SHA, SAMPLE0_SHA, TOP10_READ_SHA. Those must also be this code and environment (comp_a_read.check_provenance).
 # Phases (GPU for a full run; a smoke runs anywhere):
 #   a1         ARM=margin0 (comparator) | hold (PRIMARY) | left0.5, both0.7 (report-only sensitivities, each with its real control). a9's stored
 #              words (no gains, best of 16), margin 0, at predicted timing. Read first against a1-margin0, second against a10's a9@predicted.
 #   a3-oracle  ARM=base (comparator) | top10 (PRIMARY) | top30 (sensitivity). Real words at predicted timing, margin 0: r10, or r10 plus the first ranks
 #              of reports/comp_a3_tokens.json. Comparators: the base at the same timing, then a1.
 #   a3-cache   The new entries of the top 30 only, no gains, 16 samples, chosen by v3d (PMI where a word has no label). Stops unless the top-10 oracle's
-#              read passes its gate: the real-word oracle comes first.
+#              read, pinned by TOP10_READ_SHA, passes its gate: the real-word oracle comes first.
 #   a3-gen     ARM=top10 (PRIMARY) | top30 (sensitivity). a9's stored words plus that cache, margin 0, predicted timing. Comparator: a1's margin0.
 #   a4-index   The clip-choice index: 16 candidates per D20 r10 entry, v3d's choice, sample0 and four fixed draws (scripts/comp_a_clip_choice.py).
 #   a4         ARM=sample0 (comparator) | n16 (PRIMARY) | draw1 ... draw4 (sensitivities). Real-word oracle at a1's options. Not a ceiling: a non-rise is
@@ -112,6 +112,7 @@ arm() {
   if [ $SMOKING = 0 ]; then for x in $comparators; do c="$c --comparator $x"; done; fi
   python scripts/comp_a_read.py read --test $test --arm-name $arm_name --arm $merged $c $READEXTRA $READSMOKE $DECL --output-key $read || die "read $name"
   said COMP-A $name $merged
+  said COMP-A-READ $name $read
 }
 stored_reads() {        # the stored comparators' bytes, before a full read relies on them
   [ $SMOKING = 1 ] && return 0
@@ -148,6 +149,7 @@ case $PHASE in
     esac ;;
   a3-oracle)
     stored_reads
+    READEXTRA="--a9-sides-file $A2FILE --a9-sides-sha256 $A2SHA"
     BASEREPORT=$OUT/a3-oracle-base.json
     case $ARM in
       base)  arm a3-oracle-base a3-oracle base "$A1P:core_margin" $ORACLE $PREDICT --comp-a-read ;;
@@ -161,6 +163,7 @@ case $PHASE in
     if exists $PREFIX/index.json; then echo "stored: $PREFIX/index.json"
     else
       if [ $SMOKING = 0 ]; then
+        own_comparator $OUT/a3-oracle-top10-read.json "${TOP10_READ_SHA:-}"
         python scripts/comp_a_read.py gate --read $OUT/a3-oracle-top10-read.json || die "a3-cache: the top-10 oracle did not pass its gate; no generation"
       fi
       pin $W14B $W14BSHA
@@ -180,6 +183,7 @@ case $PHASE in
       IDX=$OUT/cache-a3-top30-nogains/index.json
       exists $IDX || die "a3-gen: the new entries' cache $IDX is not stored"
     fi
+    READEXTRA="--a9-sides-file $A2FILE --a9-sides-sha256 $A2SHA"
     M0=$OUT/a1-margin0.json
     own_comparator $M0 "${MARGIN0_SHA:-}"
     IDXSHA=$(sha $IDX); [ -n "$IDXSHA" ] || die "a3-gen: no hash of $IDX"
@@ -222,7 +226,7 @@ case $PHASE in
       own_comparator $S0 "${SAMPLE0_SHA:-}"
       DRAWS=""; for k in 1 2 3 4; do exists $OUT/a4-clipchoice-draw$k.json || die "a4-summary: draw$k is not stored"; DRAWS="$DRAWS --draw $OUT/a4-clipchoice-draw$k.json"; done
       exists $OUT/a4-clipchoice-n16.json || die "a4-summary: n16 is not stored"
-      python scripts/comp_a_read.py decompose --chosen $OUT/a4-clipchoice-n16.json --sample0 $S0 $DRAWS --a1 $A1R.json --output-key $KEY || die "a4-summary"
+      python scripts/comp_a_read.py decompose --chosen $OUT/a4-clipchoice-n16.json --sample0 $S0 $DRAWS --a1 $A1R.json $DECL --output-key $KEY || die "a4-summary"
       said COMP-A a4-clipchoice-decomposition $KEY
     fi ;;
 esac

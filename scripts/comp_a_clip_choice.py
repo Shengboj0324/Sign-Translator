@@ -39,7 +39,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 
-from comp_a_lib import check_d20_payload, check_source_record, require_d20  # noqa: E402
+from comp_a_lib import check_d20_payload, check_source_record, provenance_row, require_d20  # noqa: E402
 
 FPS = 24.
 EVAL_MIX = "acquisition/2026-10-17-v1/youtube-asl-v1/round10-mixed-v1/manifest.json"
@@ -147,7 +147,7 @@ def run(args) -> dict:
     settings = dict(mix_key=args.mix_key, mix_sha256=args.mix_sha256, corpora=list(corpora),
                     sentences=dict(key=args.sentences_key, sha256=args.sentences_sha256, count=len(val)), samples=args.samples,
                     choose=ns, picks=[str(n) for n in ns] + ["sample0"] + [f"draw{k}" for k in range(1, DRAWS + 1)],
-                    recognizer_run=args.recognizer_run, labels=len(labels), semlex_tracked=tracked,
+                    recognizer_run=args.recognizer_run, labels=len(labels), semlex_tracked=tracked, provenance=provenance_row(),
                     recognizer_checkpoint=best.get("checkpoint_key") if isinstance(best, dict) else None)
     return dict(kind="comp-a4-clip-choice", report_only=True, settings=settings, entries=rows, summary=summarise(rows, ns),
                 seconds=round(time.time() - start, 1), circularity=f"chosen by {args.recognizer_run}: its spotting of them is circular; "

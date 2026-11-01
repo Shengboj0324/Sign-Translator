@@ -552,6 +552,39 @@ def test_the_speed_cap_flattens_the_profile_then_counts_what_the_plan_cannot_giv
     assert info["cap_bound"] == 1 and info["constant_speed"] == 1 and len(tight.timestamps) == 30
 
 
+def swinging_state(frames, moved):
+    from signtranslator.generation.composition_space import axis_angle, to_6d
+    from dataclasses import replace
+    state = signer_state(frames=frames, amplitude=0.)
+    body = body_of(state)
+    values = body.values.astype(float)
+    k = left_indices(state)[0]
+    values[:, k] = to_6d(axis_angle(np.array([0., 0., 1.]), np.array([0.] * moved + [1.2] * (frames - moved))))
+    return replace(state, channels=dict(state.channels, body=replace(body, values=values.astype(body.values.dtype))))
+
+
+def test_the_cap_includes_the_steps_into_and_out_of_a_stretch():
+    """A stretch of one frame has no step inside it: all its motion is on its way in and out."""
+    state = swinging_state(11, 6)
+    out, info = cv2.hold_left_arm(state, plan_of([5, 1, 5], [0, 0]), [False, True, False], ready=READY, cap=.01)
+    assert info["stretches"] == 1 and info["peak"] > 0 and info["cap_bound"] == 1 and len(out.timestamps) == 11
+
+
+def test_a_stretch_where_one_joint_moves_is_capped_as_a_moving_one():
+    """The forearm has no anchor pose either side, so it takes the ready pose; the upper arm still moves, and the cap still applies."""
+    from dataclasses import replace
+    state = swinging_state(30, 20)
+    body = body_of(state)
+    fore = left_indices(state)[1]
+    valid = body.valid.copy()
+    valid[:10, fore] = False
+    valid[20:, fore] = False
+    masked = replace(state, channels=dict(state.channels, body=replace(body, values=np.where(valid[..., None], body.values, 0.), valid=valid, observed=body.observed & valid,
+                                                                       confidence=valid.astype(float))))
+    _, info = cv2.hold_left_arm(masked, plan_of([10, 8, 10], [1, 1]), [False, True, False], ready=READY, cap=1e-6)
+    assert info["held"] == 0 and info["ready_pose"] == 0 and info["constant_speed"] == 1 and info["cap_bound"] == 1
+
+
 def test_wrist_of_rotations_is_wrist_from_shoulder():
     from signtranslator.generation.composition_space import wrist_from_shoulder, wrist_of_rotations
     state = signer_state(frames=6, amplitude=.3)
@@ -640,6 +673,7 @@ def test_a_new_entrys_echo_counts_stop_words_too():
 
 
 REFS = [f"reference number {k} has some long words in it today" for k in range(12)]
+PROVENANCE = dict(code_digest="d" * 64, environment=dict(python="3", torch="2", transformers="4", tokenizers="0", gpu="L40S"))
 SIDES_OK = dict(left_speed_over_real=1.5, right_speed_over_real=1.1, left_spread_over_real=1.6, right_spread_over_real=1.6, contact_share=.3, contact_frames=9, clips=12)
 
 
@@ -655,7 +689,7 @@ def arm_report(*, clips=12, smoke=False, report_only=True, set_sha=None, key=Non
     hyps.update(extra or {})
     forms = {n: dict(bleu=round(corpus_bleu(h, refs)["bleu"], 3), ci95=[0., 9.], hypotheses=list(h)) for n, h in hyps.items()}
     ll = {n: [-3. + i * .01 - (.5 if n.startswith("blank") else 0.) for i in range(clips)] for n in hyps}
-    round20 = dict(sentences=dict(key=key or lib.D20_KEY, sha256=set_sha or lib.D20_SHA), core_margin_note=None)
+    round20 = dict(sentences=dict(key=key or lib.D20_KEY, sha256=set_sha or lib.D20_SHA), comp_a_read=True, provenance=dict(PROVENANCE))
     if control:
         round20["arm_scale"] = dict(left=.5, right=1.)
     round20.update(settings or {})
@@ -876,20 +910,19 @@ def test_a_missing_number_fails_a_check():
 
 
 def test_the_other_tests_draft_rules():
-    gen = rule(test="a3-gen", arm=motion_report(wrist_speed=1.5, hands_tracked=.9), first=motion_report(wrist_speed=1.4, hands_tracked=1.))
-    assert gen["all_true"] is True and "wrist_pooled_at_least_0.8" not in gen["checks"]
-    assert rule(test="a3-gen", arm=motion_report(wrist_speed=1.55), first=motion_report(wrist_speed=1.4))["checks"]["wrist_at_most_1.10_of_comparator"] is False
+    gen = rule(test="a3-gen", arm=motion_report(wrist_speed=1.5, hands_tracked=.9), first=motion_report(hands_tracked=1.))
+    assert gen["all_true"] is True and "wrist_pooled_at_least_0.8" not in gen["checks"] and "wrist_no_further_than_a9" in gen["checks"]
+    assert rule(test="a3-gen", arm=motion_report(wrist_speed=1.56))["checks"]["wrist_no_further_than_a9"] is False
     assert rule(test="a3-gen", arm=motion_report(hands_tracked=.89))["checks"]["hands_at_least_0.9_of_comparator"] is False
-    oracle = rule(test="a3-oracle", gap_share=.25, a1_share=.19)
-    assert oracle["all_true"] is True and set(oracle["checks"]) == {"paired_bleu_above_0", "paired_likelihood_above_0", "wrist_at_most_1.10_of_comparator",
-                                                                    "hands_at_least_0.9_of_comparator", "gap_share_above_a1"}
-    assert rule(test="a3-oracle", gap_share=.19, a1_share=.19)["checks"]["gap_share_above_a1"] is False
+    oracle = rule(test="a3-oracle", gap_share=.25, a1_share=.19, new_echo=.3, base_echo=.2)
+    assert oracle["all_true"] is True and set(oracle["checks"]) == {"paired_bleu_above_0", "paired_likelihood_above_0", "wrist_no_further_than_a9",
+                                                                    "hands_at_least_0.9_of_comparator", "new_entries_echo_above_the_base", "gap_share_above_a1"}
+    assert rule(test="a3-oracle", gap_share=.19, a1_share=.19, new_echo=.3, base_echo=.2)["checks"]["gap_share_above_a1"] is False
     assert rule(test="a3-oracle", gap_share=None, a1_share=.19)["checks"]["gap_share_above_a1"] is False
-    assert rule(test="a3-oracle", arm=motion_report(wrist_speed=1.33), first=motion_report(wrist_speed=1.2), gap_share=.3, a1_share=.1)["checks"]["wrist_at_most_1.10_of_comparator"] is False
-    assert "judgement" in rd.DRAFT_RULES["a3-oracle"] and "0.2 s" in rd.DRAFT_RULES["a3-oracle"]
-    four = rule(test="a4", row=dict(row_for_rule(), clustered_bleu=dict(ci95=[-.1, .2])))
-    assert four["checks"]["clustered_bleu_lower_bound_above_0"] is False
-    assert rule(test="a4", row=dict(row_for_rule(), clustered_bleu=dict(ci95=[.1, .2])))["checks"]["clustered_bleu_lower_bound_above_0"] is True
+    assert rule(test="a3-oracle", gap_share=.3, a1_share=.1, new_echo=.2, base_echo=.2)["checks"]["new_entries_echo_above_the_base"] is False
+    assert rule(test="a3-oracle", gap_share=.3, a1_share=.1, new_echo=None, base_echo=None)["checks"]["new_entries_echo_above_the_base"] is False
+    assert rule(test="a3-oracle", gap_share=.3, a1_share=.1, new_echo=.3, base_echo=None)["checks"]["new_entries_echo_above_the_base"] is False
+    assert "0.2 s" in rd.DRAFT_RULES["a3-oracle"]
     assert "not informative" in rd.DRAFT_RULES["a4"] and "no ceiling" in rd.DRAFT_RULES["a4"]
 
 
@@ -898,11 +931,11 @@ def test_the_declared_commit_is_only_a_label():
     assert out["declared"] is True and out["declared_commit"] == "abc123" and "adopted" not in json.dumps(out)
 
 
+SIDES = dict(forms={rd.A9_FORM: dict(pooled_wrist_ratio=1.55, pooled_spread_ratio=2.04, ratio_to_real=dict(left=2.4, right=1.5))})
+
+
 def test_only_the_primary_arm_has_a_rule_and_it_reads_its_first_comparator():
     margin0 = arm_report(settings=None)
-    a9 = arm_report()
-    a9["motion_ratio_to_real"][PREDICTED].update(wrist_speed=1.55, wrist_spread=2.04)
-    sides = dict(forms={rd.A9_FORM: dict(pooled_wrist_ratio=1.55, ratio_to_real=dict(left=2.4, right=1.5))})
     held = arm_report(settings=dict(hold_left=dict(sha256="x")), extra={PREDICTED: REFS})
     worse = arm_report(extra={PREDICTED: ["words"] * 12})
     better = arm_report(extra={PREDICTED: REFS})
@@ -911,15 +944,117 @@ def test_only_the_primary_arm_has_a_rule_and_it_reads_its_first_comparator():
         second = arm_report(extra={PREDICTED: (better if first is worse else worse)["forms"][PREDICTED]["hypotheses"]})
         second["motion_ratio_to_real"][PREDICTED].update(wrist_speed=1.55, wrist_spread=2.04)
         comparators = [("margin0", first, PREDICTED, None, ("hold_left",)), ("a9_predicted", second, PREDICTED, None, ("hold_left",))]
-        out = rd.read_report("a1", held, arm_name="hold", boot=20, comparators=comparators, a9_sides=sides)
+        out = rd.read_report("a1", held, arm_name="hold", boot=20, comparators=comparators, a9_sides=SIDES)
         assert out["draft_rule"]["comparator"] == "margin0" and out["draft_rule"]["checks"]["paired_bleu_above_0"] is expected
-    assert out["role"] == "primary"
-    side = rd.read_report("a1", held, arm_name="left0.5", boot=20, comparators=[("margin0", margin0, PREDICTED, None, ("hold_left",))])
+    assert out["role"] == "primary" and out["provenance"] == PROVENANCE
+    side = rd.read_report("a1", arm_report(control=True), arm_name="left0.5", boot=20, comparators=[("margin0", margin0, PREDICTED, None, ("arm_scale",))])
     assert side["role"] == "sensitivity" and "draft_rule" not in side
     with pytest.raises(SystemExit, match="a9_predicted comparator"):
-        rd.read_report("a1", held, arm_name="hold", boot=20, comparators=[("margin0", margin0, PREDICTED, None, ("hold_left",))], a9_sides=sides)
+        rd.read_report("a1", held, arm_name="hold", boot=20, comparators=[("margin0", margin0, PREDICTED, None, ("hold_left",))], a9_sides=SIDES)
+    with pytest.raises(SystemExit, match="A2 file"):
+        rd.read_report("a1", held, arm_name="hold", boot=20, comparators=[("margin0", margin0, PREDICTED, None, ("hold_left",))])
     with pytest.raises(SystemExit, match="has no comparator"):
         rd.read_report("a1", held, arm_name="hold", boot=20)
+
+
+@pytest.mark.parametrize("test,name,settings,fits", [
+    ("a1", "margin0", dict(), True), ("a1", "margin0", dict(hold_left=dict(sha256="x")), False), ("a1", "hold", dict(hold_left=dict(sha256="x")), True),
+    ("a1", "hold", dict(), False), ("a1", "left0.5", dict(arm_scale=dict(left=.5, right=1.)), True), ("a1", "left0.5", dict(arm_scale=dict(left=.7, right=.7)), False),
+    ("a1", "both0.7", dict(arm_scale=dict(left=.7, right=.7)), True), ("a1", "top10", dict(), False),
+    ("a3-oracle", "base", dict(), True), ("a3-oracle", "base", dict(vocabulary_extra=dict(top=10)), False), ("a3-oracle", "top10", dict(vocabulary_extra=dict(top=10)), True),
+    ("a3-oracle", "top10", dict(vocabulary_extra=dict(top=30)), False), ("a3-oracle", "top30", dict(vocabulary_extra=dict(top=30)), True),
+    ("a3-oracle", "top10", dict(vocabulary_extra=dict(top=10), word_cache_extra=dict(key="k")), False),
+    ("a3-gen", "top10", dict(vocabulary_extra=dict(top=10), word_cache_extra=dict(key="k")), True), ("a3-gen", "top10", dict(vocabulary_extra=dict(top=10)), False),
+    ("a4", "n16", dict(oracle_choice=dict(pick="16")), True), ("a4", "n16", dict(oracle_choice=dict(pick="sample0")), False), ("a4", "sample0", dict(oracle_choice=dict(pick="sample0")), True),
+    ("a4", "draw2", dict(oracle_choice=dict(pick="draw2")), True), ("a4", "draw2", dict(oracle_choice=dict(pick="draw3")), False), ("a4", "n8", dict(oracle_choice=dict(pick="8")), False),
+])
+def test_an_arm_name_must_be_what_its_settings_say(test, name, settings, fits):
+    round20 = dict(comp_a_read=True, **settings) if name in ("margin0", "base") and not settings else dict(settings)
+    if fits:
+        rd.check_arm_name(test, name, dict(round20=round20))
+    else:
+        with pytest.raises(SystemExit, match="is not what this report"):
+            rd.check_arm_name(test, name, dict(round20=round20))
+
+
+def test_a_job_written_comparator_must_be_this_code_and_environment():
+    arm = arm_report(settings=dict(hold_left=dict(sha256="x")))
+    for field, value in (("code_digest", "e" * 64), ("environment", dict(PROVENANCE["environment"], gpu="other")), ("environment", dict(PROVENANCE["environment"], transformers="5"))):
+        other = arm_report(settings=dict(provenance=dict(PROVENANCE, **{field: value})))
+        for label in ("margin0", "base", "sample0"):
+            with pytest.raises(SystemExit, match="other code or another environment"):
+                rd.check_provenance(arm, other, label)
+        rd.check_provenance(arm, other, "a1")                 # stored a10 and a1 stay exempt, under instrument_check
+        rd.check_provenance(arm, other, "a9_predicted")
+    for bare in (arm_report(settings=dict(provenance=None)),):
+        with pytest.raises(SystemExit, match="other code"):
+            rd.check_provenance(arm, bare, "margin0")
+    rd.check_provenance(arm, arm_report(), "margin0")
+    other = arm_report(settings=dict(provenance=dict(PROVENANCE, code_digest="e" * 64)), extra={PREDICTED: REFS})
+    comparators = [("margin0", other, PREDICTED, None, ("hold_left",))]
+    with pytest.raises(SystemExit, match="other code"):
+        rd.read_report("a1", arm, arm_name="hold", boot=20, comparators=comparators, a9_sides=SIDES)
+
+
+def test_the_read_states_the_release_band_apart_from_the_rule():
+    report = arm_report()
+    report["motion_ratio_to_real"][PREDICTED]["wrist_speed"] = 1.29
+    out = rd.read_report("a1", report, arm_name="margin0", boot=20)
+    assert out["release_band"] == dict(pooled_wrist=1.29, within_0_8_to_1_25=False)
+    assert rd.release_band(dict(motion_ratio_to_real={PREDICTED: dict(wrist_speed=1.25)}), PREDICTED)["within_0_8_to_1_25"] is True
+    assert rd.release_band(dict(motion_ratio_to_real={PREDICTED: dict(wrist_speed=.79)}), PREDICTED)["within_0_8_to_1_25"] is False
+    assert not any("0_8_to_1_25" in k or "1.25" in k for k in rule()["checks"])
+
+
+def test_the_rule_text_is_the_reviewers():
+    a1 = "wrist per side and pooled no further from 1.0x real than a9@predicted's and at least 0.8x real; spread no further from 1.0x real than a9@predicted's; two-handed contact at least 0.9x margin0's. These motion checks are a no-regression floor and not the release bar. The read states separately whether pooled wrist lies within 0.8-1.25x; hold's does not."
+    known = "Known from stored motion before any read: hold's left 1.37x, right 1.24x, pooled 1.29x, spread 1.71x, left height -0.74, contact unchanged by construction. The motion checks therefore pass and are not evidence; the 1.25x bar was replaced knowing 1.29x. A pass means hold reads no worse than margin0 with less motion. It meets no release bar."
+    oracle = "wrist no further from 1.0x real than a9@predicted's (known before any read, first 300 clips: base 1.32x, top10 1.54x, top30 1.64x); hands at least 0.9x the base's; the new entries' echo above the base's echo of the same entries on the same sentences; gap share against blank@predicted above a1's own, which favours predicted arms by about 3 points (a9@predicted 23.2 against 19.9). BLEU can rise with speed alone, so the echo check is what credits coverage. A failure does not close coverage: every new top-10 word comes from ASLLRP continuous segments, a route that read lower as a whole (a2 1.879 against a1 2.219), and source and coverage are not separated here. Fingerspelled single-clip tokens stay out of any primary arm or claim."
+    gen = "wrist no further from 1.0x real than a9@predicted's; hands at least 0.9x that arm's."
+    four = "Primary arm: n16. Read in the decomposition: n16's entry-and-sentence bootstrap lower bound against sample0 above 0, paired likelihood above 0, and n16's BLEU above each of sample0 and draw1 to draw4. Repetition is the mean of those five draws minus a1."
+    assert a1 in rd.DRAFT_RULES["a1"] and known in rd.KNOWN_AT_WRITING["a1"] and oracle in rd.DRAFT_RULES["a3-oracle"] and gen in rd.DRAFT_RULES["a3-gen"]
+    assert rd.DRAFT_RULES["a4"].startswith(four)
+    assert not any("1.10x" in text for text in rd.DRAFT_RULES.values())
+
+
+def oracle_arm(words=("reference", "number"), new=("reference",), name_settings=None, **kw):
+    report = arm_report(form="oracle_stage2", words=list(words), settings=name_settings or dict(vocabulary_extra=dict(top=10)), **kw)
+    report["round20"] = dict(vocabulary_extra=dict(new_entries=list(new), fingerspelled_single_clips=[]))
+    report["motion_ratio_to_real"]["oracle_stage2@predicted"].update(wrist_speed=1.5, hands_tracked=1.)
+    return report
+
+
+def read_oracle(arm, base, a1=None):
+    a1 = a1 or arm_report(form="oracle_stage2", settings=dict(comp_a_read=None), extra={"oracle_stage2": ["some long"] * 12})
+    return rd.read_report("a3-oracle", arm, arm_name="top10", boot=20, a9_sides=SIDES, comparators=[
+        ("base", base, "oracle_stage2@predicted", None, ("vocabulary_extra",)), ("a1", a1, "oracle_stage2", None, ("vocabulary_extra",))])
+
+
+def test_the_new_entries_echo_is_read_on_the_same_entries_and_sentences():
+    predicted = "oracle_stage2@predicted"
+    signed = oracle_arm(extra={predicted: REFS})
+    # the base never signed the entry: its word list has no such entry, but its echo is still read for the arm's entries on the arm's sentences
+    silent = arm_report(form="oracle_stage2", words=["zebra"], extra={predicted: ["some long words in it today"] * 12})
+    out = read_oracle(signed, silent)
+    assert out["draft_rule"]["checks"]["new_entries_echo_above_the_base"] is True
+    # the base already says the word: the coverage earned nothing
+    echoing = arm_report(form="oracle_stage2", words=["zebra"], extra={predicted: REFS})
+    assert read_oracle(signed, echoing)["draft_rule"]["checks"]["new_entries_echo_above_the_base"] is False
+    # the arm's wrist is held to a9's, not to the base's
+    assert out["draft_rule"]["checks"]["wrist_no_further_than_a9"] is True
+    fast = oracle_arm(extra={predicted: REFS})
+    fast["motion_ratio_to_real"][predicted]["wrist_speed"] = 1.6
+    assert read_oracle(fast, silent)["draft_rule"]["checks"]["wrist_no_further_than_a9"] is False
+
+
+def test_a_primary_arm_refuses_a_fingerspelled_single_clip_token():
+    arm = oracle_arm()
+    arm["round20"]["vocabulary_extra"]["fingerspelled_single_clips"] = ["as"]
+    with pytest.raises(SystemExit, match="stay out of a primary arm"):
+        read_oracle(arm, arm_report(form="oracle_stage2"))
+    payload = committed()
+    assert lib.fingerspelled_single_clips(lib.arm_of(payload, 10)) == []
+    assert lib.fingerspelled_single_clips(lib.arm_of(payload, 30)) == ["as", "at", "way"]
 
 
 def test_a9_per_side_must_be_the_reports_own():
@@ -927,6 +1062,7 @@ def test_a9_per_side_must_be_the_reports_own():
     a9["motion_ratio_to_real"][PREDICTED].update(wrist_speed=1.55, wrist_spread=2.04)
     sides = dict(forms={rd.A9_FORM: dict(pooled_wrist_ratio=1.555, ratio_to_real=dict(left=2.4, right=1.5))})
     assert rd.a9_reference(sides, a9, PREDICTED) == dict(wrist=1.55, spread=2.04, left=2.4, right=1.5)
+    assert rd.a9_reference(dict(forms={rd.A9_FORM: dict(sides["forms"][rd.A9_FORM], pooled_spread_ratio=2.)})) == dict(wrist=1.555, spread=2., left=2.4, right=1.5)
     sides["forms"][rd.A9_FORM]["pooled_wrist_ratio"] = 1.6
     with pytest.raises(SystemExit, match="not its report's"):
         rd.a9_reference(sides, a9, PREDICTED)
@@ -982,21 +1118,44 @@ def test_the_decomposition_separates_choice_from_repetition_and_a_non_rise_is_no
     chosen = oracle_report(REFS, "16")
     sample0 = oracle_report(["reference number"] * 12, "sample0")
     a1 = oracle_report(["words"] * 12, a1=True)
-    draws = [oracle_report(["reference number"] * 12, f"draw{k}") for k in range(1, 5)]
-    out = rd.decompose(chosen, sample0, draws, a1, boot=40)
-    assert out["choice_chosen_minus_sample0"]["clustered_bleu"]["difference"] > 0
-    bleu = lambda hyps: corpus_bleu(hyps, REFS)["bleu"]                           # noqa: E731
-    assert out["repetition_sample0_minus_a1"]["clustered_bleu"]["difference"] == pytest.approx(bleu(["reference number"] * 12) - bleu(["words"] * 12), abs=1e-3)
-    assert len(out["draw_bleu"]) == 5 and out["draw_bleu_sd"] == pytest.approx(0.) and out["report_only"] is True
-    flat = rd.decompose(oracle_report(["reference number"] * 12, "16"), sample0, draws, a1, boot=40)
-    assert flat["reading"].startswith("not informative") and "no room" in flat["reading"]
+    draws = [oracle_report(["reference number 1 has some"] * 12, f"draw{k}") for k in range(1, 5)]
     up, lower = copy.deepcopy(chosen), copy.deepcopy(chosen)                # BLEU up with likelihood up is a rise; BLEU up with likelihood down is not
     up["likelihood"]["per_form"]["oracle_stage2"] = [x + 1. for x in up["likelihood"]["per_form"]["oracle_stage2"]]
     lower["likelihood"]["per_form"]["oracle_stage2"] = [x - 1. for x in lower["likelihood"]["per_form"]["oracle_stage2"]]
-    assert rd.decompose(up, sample0, draws, a1, boot=40)["reading"].startswith("choice rises")
+    out = rd.decompose(up, sample0, draws, a1, boot=40)
+    bleu = lambda hyps: corpus_bleu(hyps, REFS)["bleu"]                           # noqa: E731
+    assert out["reading"].startswith("choice rises") and out["draft_rule"]["all_true"] is True and out["draft_rule"]["declared"] is False
+    assert out["choice_chosen_minus_sample0"]["clustered_bleu"]["difference"] > 0
+    five = [["reference number"] * 12] + [["reference number 1 has some"] * 12] * 4
+    assert out["repetition_mean_of_five_draws_minus_a1"]["clustered_bleu"]["difference"] == pytest.approx(sum(bleu(h) for h in five) / 5 - bleu(["words"] * 12), abs=1e-3)
+    assert len(out["draw_bleu"]) == 5 and out["report_only"] is True and out["provenance"]["code_digest"]
     assert rd.decompose(lower, sample0, draws, a1, boot=40)["reading"].startswith("not informative")
+    flat = rd.decompose(oracle_report(["reference number"] * 12, "16"), sample0, draws, a1, boot=40)
+    assert flat["reading"].startswith("not informative") and "no room" in flat["reading"]
+    assert rd.decompose(up, sample0, draws, a1, boot=40, declared_commit="abc1234")["draft_rule"]["declared_commit"] == "abc1234"
+    # above sample0 but not above one draw: not a rise, however good the choice looks
+    best_draw = list(draws)
+    best_draw[2] = oracle_report(REFS, "draw3")
+    checks = rd.decompose(up, sample0, best_draw, a1, boot=40)
+    assert checks["draft_rule"]["checks"]["n16_above_draw3"] is False and checks["reading"].startswith("not informative")
     with pytest.raises(SystemExit, match="not paired"):
         rd.decompose(chosen, sample0, draws, oracle_report(["words"] * 12, "16", a1=True) | dict(references=list(reversed(REFS))), boot=20)
+    with pytest.raises(SystemExit, match="draw1 to draw4"):
+        rd.decompose(chosen, sample0, draws[:3], a1, boot=20)
+    with pytest.raises(SystemExit, match="is not what this report"):
+        rd.decompose(chosen, sample0, [draws[1], draws[0], *draws[2:]], a1, boot=20)
+    bent = oracle_report(["reference number"] * 12, "sample0")
+    bent["settings"]["round20"]["provenance"] = dict(PROVENANCE, code_digest="e" * 64)
+    with pytest.raises(SystemExit, match="other code"):
+        rd.decompose(chosen, bent, draws, a1, boot=20)
+
+
+def test_the_entry_bootstrap_takes_a_mean_of_forms():
+    from signtranslator.eval.s0_metrics import bleu_statistics
+    refs = [f"alpha beta gamma delta epsilon {k}" for k in range(10)]
+    x, y, z = (bleu_statistics(h, refs) for h in (refs, ["alpha beta gamma delta"] * 10, ["alpha"] * 10))
+    out = rd.clustered_difference([x, y], z, [["a"]] * 10, boot=20)
+    assert out["difference"] == pytest.approx((corpus_bleu(refs, refs)["bleu"] + corpus_bleu(["alpha beta gamma delta"] * 10, refs)["bleu"]) / 2 - corpus_bleu(["alpha"] * 10, refs)["bleu"], abs=1e-3)
 
 
 # ---- A2's arithmetic --------------------------------------------------------------------------------------------------------
@@ -1203,7 +1362,12 @@ def git_repo(tmp_path, *contents):
     return repo, commits, run
 
 
-def test_declared_needs_an_ancestor_commit_holding_the_rule(tmp_path):
+def put_record(root, commit, **changes):
+    (root / "runpod/fleet").mkdir(parents=True, exist_ok=True)
+    (root / dc.RECORD).write_text(json.dumps(dict(dc.make_record(commit), **changes)))
+
+
+def test_declared_needs_an_ancestor_commit_holding_the_rule_and_this_code(tmp_path):
     rule = rd.DRAFT_RULES["a1"]
     words, lines, line = rule.split(), [], ""                                # the plan wraps at spaces
     for w in words:
@@ -1214,40 +1378,104 @@ def test_declared_needs_an_ancestor_commit_holding_the_rule(tmp_path):
             line = f"{line} {w}".strip()
     lines.append(line)
     repo, (first, second), run = git_repo(tmp_path, "no rule here", "Plan.\n\n" + "\n".join(lines))
+    with pytest.raises(SystemExit, match="nothing shows a declaration"):
+        dc.check(second, "a1", repo)                                         # git is not enough: the record binds the code
+    put_record(repo, second)
     assert dc.check(second, "a1", repo) == "git"
+    with pytest.raises(SystemExit, match="names .*not"):
+        dc.check(first, "a1", repo)
+    put_record(repo, first)
     with pytest.raises(SystemExit, match="does not hold the rule of a1"):
         dc.check(first, "a1", repo)
+    put_record(repo, second)
     with pytest.raises(SystemExit, match="does not hold the rule of a3-oracle"):
         dc.check(second, "a3-oracle", repo)
+    put_record(repo, "deadbeef")
     with pytest.raises(SystemExit, match="not a commit of this repository"):
         dc.check("deadbeef", "a1", repo)
     with pytest.raises(SystemExit, match="is not a commit"):
         dc.check("HEAD", "a1", repo)
     with pytest.raises(SystemExit, match="is not a commit"):
         dc.check("", "a1", repo)
+    put_record(repo, second)
     run("checkout", "-q", first)                                            # the declaring commit is not an ancestor of this code
     with pytest.raises(SystemExit, match="not an ancestor"):
         dc.check(second, "a1", repo)
+    put_record(repo, second, code_digest="0" * 64)
+    with pytest.raises(SystemExit, match="declared for code"):
+        dc.check(second, "a1", repo)                                         # with git too
     assert dc.holds_rule("x\n" + "\n".join(lines) + "\ny", rule) and not dc.holds_rule(rule[:-2], rule)
 
 
-def test_a_bundle_without_git_needs_the_record_and_the_text(tmp_path):
+def test_a_bundle_without_git_needs_the_record_the_text_and_this_code(tmp_path):
     root = tmp_path / "bundle"
     (root / "docs").mkdir(parents=True)
-    (root / "runpod/fleet").mkdir(parents=True)
-    with pytest.raises(SystemExit, match="cannot show a declaration"):
+    with pytest.raises(SystemExit, match="nothing shows a declaration"):
         dc.check("abc1234", "a1", root)
     rule = rd.DRAFT_RULES["a1"]
     (root / dc.PLAN).write_text("Plan. " + rule)
-    (root / dc.RECORD).write_text(json.dumps(dict(commit="abc1234", rules=dict(a1=dc.rule_hash(rule)))))
+    put_record(root, "abc1234")
     assert dc.check("abc1234", "a1", root) == "record"
     with pytest.raises(SystemExit, match="names abc1234"):
         dc.check("abc1235", "a1", root)
-    with pytest.raises(SystemExit, match="does not hold this rule of a3-gen"):
+    with pytest.raises(SystemExit, match="bundle's plan does not hold the rule of a3-gen"):
         dc.check("abc1234", "a3-gen", root)
+    put_record(root, "abc1234", rules=dict(a1="0"))
+    with pytest.raises(SystemExit, match="does not hold this rule of a1"):
+        dc.check("abc1234", "a1", root)
+    put_record(root, "abc1234", code_digest="0" * 64)
+    with pytest.raises(SystemExit, match="declared for code"):
+        dc.check("abc1234", "a1", root)
+    put_record(root, "abc1234")
     (root / dc.PLAN).write_text("Plan.")
     with pytest.raises(SystemExit, match="plan does not hold"):
         dc.check("abc1234", "a1", root)
+
+
+def test_a_record_binds_the_repositorys_code():
+    """Works at declaration time: while no record exists this checks the builder against the code; once one exists, the record itself, and its commit."""
+    from signtranslator.eval.provenance import code_digest
+    digest = code_digest(extra_files=(lib.JOB_FILE,))
+    assert dc.make_record("abc1234")["code_digest"] == digest and set(dc.make_record("abc1234")["rules"]) == set(rd.DRAFT_RULES)
+    path = ROOT / dc.RECORD
+    if path.exists():
+        payload = json.loads(path.read_text())
+        assert payload["code_digest"] == digest
+        if (ROOT / ".git").exists():
+            for test in rd.DRAFT_RULES:
+                assert dc.check(payload["commit"], test) == "git"
+
+
+def test_the_digest_covers_scripts_the_package_and_the_job(tmp_path, monkeypatch):
+    from signtranslator.eval import provenance
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "signtranslator/eval").mkdir(parents=True)
+    (tmp_path / "scripts/a.py").write_text("1")
+    (tmp_path / "scripts/note.md").write_text("1")
+    (tmp_path / "signtranslator/eval/b.py").write_text("2")
+    (tmp_path / "job.sh").write_text("3")
+    monkeypatch.setattr(provenance, "ROOT", tmp_path)
+    base = provenance.code_digest(extra_files=("job.sh",))
+    assert base == provenance.code_digest(extra_files=("job.sh",)) and base != provenance.code_digest()
+    (tmp_path / "scripts/note.md").write_text("changed")
+    assert provenance.code_digest(extra_files=("job.sh",)) == base          # only the code
+    for path in ("scripts/a.py", "signtranslator/eval/b.py", "job.sh"):
+        before = (tmp_path / path).read_text()
+        (tmp_path / path).write_text(before + "x")
+        assert provenance.code_digest(extra_files=("job.sh",)) != base, path
+        (tmp_path / path).write_text(before)
+    (tmp_path / "scripts/c.py").write_text("")
+    assert provenance.code_digest(extra_files=("job.sh",)) != base          # a new file counts
+    with pytest.raises(FileNotFoundError):
+        provenance.code_digest(extra_files=("gone.sh",))
+
+
+def test_the_environment_names_what_can_move_a_hypothesis():
+    from signtranslator.eval import provenance
+    env = provenance.environment()
+    assert set(env) == {"python", "torch", "transformers", "tokenizers", "gpu"} and env["python"] and env["torch"]
+    row = lib.provenance_row()
+    assert row["environment"] == env and len(row["code_digest"]) == 64
 
 
 def test_nothing_is_declared_now():
@@ -1289,6 +1517,9 @@ def test_scaled_forms_keep_their_plans_change_their_motion_and_read_the_control(
     assert ce.main([*plain, "--arm-scale", "left=0.5,right=1", "--output-key", "e/left-shard0.json"]) == 0
     a, b = part(c, "e/plain-shard0.json"), part(c, "e/left-shard0.json")
     assert b["settings"]["round20"]["arm_scale"] == dict(left=.5, right=1.) and "arm_scale" not in a["settings"]["round20"]
+    from signtranslator.eval.provenance import code_digest
+    assert a["settings"]["round20"]["provenance"] == b["settings"]["round20"]["provenance"]
+    assert b["settings"]["round20"]["provenance"]["code_digest"] == code_digest(extra_files=(lib.JOB_FILE,)) and "torch" in b["settings"]["round20"]["provenance"]["environment"]
     moved = 0
     for x, y in zip(a["clips"], b["clips"]):
         assert x["plans"] == y["plans"]                                # the same words and frames
@@ -1625,6 +1856,7 @@ def test_only_the_lists_new_entries_are_generated_and_the_composition_joins_both
     main_rows, extra_rows = part(c, "cache/main/index.json"), part(c, "cache/extra/index.json")
     assert sorted(r["entry"] for r in extra_rows["entries"]) == ["half", "it", "you"]
     assert extra_rows["settings"]["vocabulary_extra"] == dict(sha256=sha, top=30) and "vocabulary_extra" not in main_rows["settings"]
+    assert extra_rows["settings"]["provenance"]["code_digest"] and "provenance" not in main_rows["settings"]
     assert not {r["entry"] for r in main_rows["entries"]} & {"half", "it", "you"}
     assert next(r for r in extra_rows["entries"] if r["entry"] == "you")["seconds"] == .9
     words = ("--word-cache-key", "cache/main/index.json", "--word-cache-sha256", main_sha, "--word-cache-n", "4", "--core-margin", "0",
@@ -1727,7 +1959,7 @@ def test_clips_are_chosen_by_the_recogniser_and_every_pick_serves_the_oracle(d20
     monkeypatch.setattr(round15_oracle, "word_pools", two_clips)
     assert a4.main([*choice_args(c), "--output-key", "c/choice.json"]) == 0
     index = part(c, "c/choice.json")
-    assert index["kind"] == "comp-a4-clip-choice" and index["report_only"] is True
+    assert index["kind"] == "comp-a4-clip-choice" and index["report_only"] is True and index["settings"]["provenance"]["code_digest"]
     assert index["settings"]["sentences"]["sha256"] == c["ssha"] and index["settings"]["picks"] == ["1", "4", "sample0", "draw1", "draw2", "draw3", "draw4"]
     rows = {r["entry"]: r for r in index["entries"]}
     assert rows["cut"]["label"] == "CUT" and rows["cut"]["scorer"] == "recogniser"
@@ -1799,7 +2031,10 @@ def test_the_reader_runs_on_a_merged_arm_and_stays_a_read(d20):
     with pytest.raises(SystemExit, match="refusing to overwrite"):
         rd.main(["read", "--test", "a1", "--arm-name", "both0.7", "--arm", "e/arm.json", "--smoke", *root, "--output-key", "e/arm-read.json"])
     assert rd.main(["gate", "--read", "e/arm-read.json", *root]) == 1
-    assert rd.main(["read", "--test", "a3-oracle", "--arm-name", "top10", "--arm", "e/arm.json", "--smoke", "--bootstrap", "20", *root, "--output-key", "e/o.json"]) == 0
+    stretched = part(c, "e/arm.json")
+    stretched["settings"]["round20"]["vocabulary_extra"] = dict(top=10)
+    c["store"].put("e/top.json", json.dumps(stretched).encode())
+    assert rd.main(["read", "--test", "a3-oracle", "--arm-name", "top10", "--arm", "e/top.json", "--smoke", "--bootstrap", "20", *root, "--output-key", "e/o.json"]) == 0
     assert rd.main(["gate", "--read", "e/o.json", *root]) == 1            # a smoke never opens the gate
 
 
@@ -1807,7 +2042,7 @@ def test_the_default_run_carries_no_post_s2_trace(d20):
     c = d20
     assert ce.main([*oracle_args(c), "--output-key", "e/d-shard0.json"]) == 0
     text = c["store"].get("e/d-shard0.json").decode()
-    for needle in ("arm_scale", "armscale", "vocabulary_extra", "word_cache_extra", "oracle_choice", "hold_left", "comp_a_motion", "comp_a_read"):
+    for needle in ("arm_scale", "armscale", "vocabulary_extra", "word_cache_extra", "oracle_choice", "hold_left", "comp_a_motion", "comp_a_read", "provenance"):
         assert needle not in text
     merge(c["tmp"], "e/d-shard0.json", "e/d.json")                         # no --report-only needed: the old path
     assert "verdicts" in part(c, "e/d.json")
@@ -1825,7 +2060,8 @@ BASE = f"{OUT}/a3-oracle-base.json"
 S0 = f"{OUT}/a4-clipchoice-sample0.json"
 INDEX = f"{OUT}/a4-clip-choice.json"
 CACHE3 = f"{OUT}/cache-a3-top30-nogains/index.json"
-OWN = dict(MARGIN0_SHA="m0sha", BASE_SHA="basesha", SAMPLE0_SHA="s0sha")
+OWN = dict(MARGIN0_SHA="m0sha", BASE_SHA="basesha", SAMPLE0_SHA="s0sha", TOP10_READ_SHA="readsha")
+READ10 = f"{OUT}/a3-oracle-top10-read.json"
 
 
 def job(tmp_path, phase, *, arm=None, smoke=False, gpu=True, stored=(), declared="abc1234", own=True, **env):
@@ -1963,7 +2199,7 @@ def test_nothing_full_runs_undeclared(tmp_path):
 
 
 @pytest.mark.parametrize("phase,arm,test,stored", [("a1", "margin0", "a1", []), ("a3-oracle", "base", "a3-oracle", []), ("a3-gen", "top10", "a3-gen", [CACHE3, M0]),
-                                                   ("a3-cache", None, "a3-gen", []), ("a4-index", None, "a4", []), ("a4", "sample0", "a4", [INDEX])])
+                                                   ("a3-cache", None, "a3-gen", [READ10]), ("a4-index", None, "a4", []), ("a4", "sample0", "a4", [INDEX])])
 def test_each_phase_checks_its_own_rule_is_declared(tmp_path, phase, arm, test, stored):
     _, _, commands = job(tmp_path, phase, arm=arm, stored=stored)
     assert f"scripts/comp_a_declared.py abc1234 {test}" == scripts_run(commands)[0]
@@ -2025,7 +2261,7 @@ def test_a_failed_step_stops_with_done_one(tmp_path, match, message):
     assert "COMP-A a1-margin0" not in out
 
 
-@pytest.mark.parametrize("phase,arm,stored,line", [("a1", "margin0", [], "COMP-A a1-margin0"), ("a3-cache", None, [], "COMP-A cache-a3"), ("a4-index", None, [], "COMP-A a4-clip-choice"),
+@pytest.mark.parametrize("phase,arm,stored,line", [("a1", "margin0", [], "COMP-A a1-margin0"), ("a3-cache", None, [READ10], "COMP-A cache-a3"), ("a4-index", None, [], "COMP-A a4-clip-choice"),
                                                    ("a4", "sample0", [INDEX], "COMP-A a4-clipchoice"), ("a3-gen", "top10", [CACHE3, M0], "COMP-A a3-gen")])
 def test_no_hash_is_no_success(tmp_path, phase, arm, stored, line):
     code, out, _ = job(tmp_path, phase, arm=arm, stored=stored, STUB_SHA_EMPTY="1")
@@ -2033,6 +2269,8 @@ def test_no_hash_is_no_success(tmp_path, phase, arm, stored, line):
     one_done(out, 1)
     code, out, _ = job(tmp_path, phase, arm=arm, stored=stored)
     assert code == 0 and line in out and "stubsha" in out
+    if phase in ("a1", "a4", "a3-gen"):
+        assert "COMP-A-READ " in out                                       # the gate's read has a hash to pin
 
 
 def test_an_unexpected_end_still_says_done_one(tmp_path):
@@ -2066,16 +2304,22 @@ def test_the_oracle_arms_keep_their_order_and_their_comparators(tmp_path, monkey
     assert seen["vocabulary_extra_file"] == "reports/comp_a3_tokens.json" and seen["vocabulary_extra_top"] == 30
     assert seen["vocabulary_extra_sha256"] == hashlib.sha256(TOKENS.read_bytes()).hexdigest()
     read = read_line(commands)
+    assert "--a9-sides-file reports/comp_a2_left_arm.json" in read
     assert read.index(f"--comparator base={BASE}:oracle_stage2@predicted:vocabulary_extra") < read.index(f"--comparator a1={A}/a1-oracle-r10.json:oracle_stage2:core_margin+vocabulary_extra")
 
 
 def test_generation_waits_for_the_primary_oracle_and_generates_only_the_new_entries(tmp_path):
-    code, out, commands = job(tmp_path, "a3-cache", STUB_FAIL_MATCH="comp_a_read.py gate")
+    code, out, commands = job(tmp_path, "a3-cache", stored=[READ10], STUB_FAIL_MATCH="comp_a_read.py gate")
     assert code == 1 and "did not pass its gate; no generation" in out
     assert not any("round20_word_cache.py" in c for c in commands)
     one_done(out, 1)
-    code, out, commands = job(tmp_path, "a3-cache")
-    assert code == 0
+    code, out, commands = job(tmp_path, "a3-cache", stored=[READ10])
+    assert code == 0 and f"pin {READ10}" in commands
+    code2, out2, commands2 = job(tmp_path, "a3-cache", stored=[READ10], STUB_PIN_FAIL=READ10)
+    assert code2 == 1 and "differs from its pin" in out2 and not any("round20_word_cache.py" in c for c in commands2)
+    code3, out3, _ = job(tmp_path, "a3-cache", stored=[READ10], own=False)
+    assert code3 == 1 and "give the hash of its comparator" in out3
+    code, out, commands = job(tmp_path, "a3-cache", stored=[READ10])
     done = [c for c in scripts_run(commands) if "comp_a_declared" not in c]
     assert f"gate --read {OUT}/a3-oracle-top10-read.json" in done[0]
     run = next(c for c in done if "round20_word_cache.py run" in c)
@@ -2091,6 +2335,7 @@ def test_the_generated_arm_joins_both_caches_and_reads_against_margin_zero(tmp_p
     assert seen["word_cache_extra_key"] == CACHE3 and seen["vocabulary_extra_top"] == 10 and seen["word_cache_n"] == 16
     assert seen["core_margin"] == 0. and seen["predicted_duration"] and seen["checkpoint_key"] is None
     assert f"--comparator margin0={M0}:core_crossfade@predicted:vocabulary_extra+word_cache_extra" in read_line(commands)
+    assert "--a9-sides-file reports/comp_a2_left_arm.json" in read_line(commands)
 
 
 def test_the_clip_choice_arms_are_a1s_list_with_their_pick(tmp_path, monkeypatch):
@@ -2119,7 +2364,7 @@ def test_the_decomposition_phase_needs_every_arm(tmp_path):
     code, out, commands = job(tmp_path, "a4-summary", stored=every)
     assert code == 0
     run = next(c for c in scripts_run(commands) if "comp_a_read.py decompose" in c)
-    assert f"--chosen {OUT}/a4-clipchoice-n16.json" in run and f"--sample0 {S0}" in run and run.count("--draw ") == 4 and f"--a1 {A}/a1-oracle-r10.json" in run
+    assert "--declared-commit abc1234" in run and f"--chosen {OUT}/a4-clipchoice-n16.json" in run and f"--sample0 {S0}" in run and run.count("--draw ") == 4 and f"--a1 {A}/a1-oracle-r10.json" in run
     code, out, _ = job(tmp_path, "a4-summary", stored=every[:-1])
     assert code == 1 and "n16 is not stored" in out
     code, out, _ = job(tmp_path, "a4-summary", stored=every[:2] + every[3:])
@@ -2181,3 +2426,14 @@ def test_masked_frames_cannot_move_the_scales_mean():
     R = _matrices(signer_state(frames=10, amplitude=.3).channels["body"].values[:, 3].astype(float))
     np.testing.assert_allclose(chordal_mean(R), chordal_mean(np.concatenate([R, np.zeros((5, 3, 3))])))
     assert (_matrices(np.zeros((1, 6))) == 0).all()
+
+
+def test_the_docstrings_drop_the_asymmetry_as_evidence():
+    for path in ("scripts/comp_a_hold_stats.py", "scripts/comp_a2_left_arm.py"):
+        doc = (ROOT / path).read_text().split('"""')[1]
+        assert "asymmetry" not in doc and "-1.46" in doc and "-1.08" in doc and "0.306" in doc and "not match" in doc, path
+
+
+def test_a_read_refuses_a_name_its_settings_do_not_bear():
+    with pytest.raises(SystemExit, match="is not what this report"):
+        rd.read_report("a1", arm_report(), arm_name="hold", boot=20, comparators=[("margin0", arm_report(), PREDICTED, None, ())], a9_sides=SIDES)

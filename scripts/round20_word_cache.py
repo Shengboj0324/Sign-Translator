@@ -209,7 +209,7 @@ def run(args) -> dict:
                     recognizer_checkpoint=best.get("checkpoint_key") if isinstance(best, dict) else None,
                     shards=args.shards, labels=len(labels),
                     **({"no_decoder_gains": True} if args.no_decoder_gains else {}),  # absent: the gains are on
-                    **({"vocabulary_extra": dict(sha256=args.vocabulary_extra_sha256, top=args.vocabulary_extra_top)}
+                    **({"vocabulary_extra": dict(sha256=args.vocabulary_extra_sha256, top=args.vocabulary_extra_top), "provenance": __import__("comp_a_lib").provenance_row()}
                        if getattr(args, "vocabulary_extra_file", None) else {}))
     return dict(kind="round20-word-cache-shard", shard=args.shard, settings=settings, entries=rows,
                 seconds=round(time.time() - start, 1))

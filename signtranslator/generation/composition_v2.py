@@ -351,7 +351,7 @@ def hold_left_arm(state, plan: dict, one_handed, *, ready: dict, cap: float, fps
     anchors = np.array([k >= 0 and one_handed[k] is not True for k in labels], dtype=bool)
 
     def planned(a, b, profile):
-        out = {}
+        out, kinds = {}, set()
         n = b - a + 1
         for j, k in index.items():
             ok = body.valid[:, k] & anchors
@@ -359,14 +359,18 @@ def hold_left_arm(state, plan: dict, one_handed, *, ready: dict, cap: float, fps
             after = _anchor_pose(rotations[j], ok, b + 1, 1) if b < len(labels) - 1 else None
             if before is None and after is None:
                 pose = _matrices(np.asarray(ready[j], dtype=np.float64))
-                out[j], kind = np.repeat(pose[None], n, 0), "ready_pose"
+                out[j] = np.repeat(pose[None], n, 0)
+                kinds.add("ready_pose")
             elif before is None or after is None:
                 pose = before if after is None else after
-                out[j], kind = np.repeat(pose[None], n, 0), "held"
+                out[j] = np.repeat(pose[None], n, 0)
+                kinds.add("held")
             else:
                 t = np.arange(1, n + 1) / (n + 1)
-                out[j], kind = _slerp(before, after, minimum_jerk(t) if profile == "minimum_jerk" else t), "moved"
-        return out, kind
+                out[j] = _slerp(before, after, minimum_jerk(t) if profile == "minimum_jerk" else t)
+                kinds.add("moved")
+        # a stretch where one joint moves is a moving stretch, whatever the other does: the cap applies to it
+        return out, "moved" if "moved" in kinds else "held" if "held" in kinds else "ready_pose"
 
     def peak_of(a, b, poses):
         """The wrist's peak chest-frame speed over the stretch, its entry step and its exit step included."""

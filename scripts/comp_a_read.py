@@ -41,27 +41,38 @@ COMPARATOR_ARMS = {"a1": ("margin0",), "a3-oracle": ("base",), "a3-gen": (), "a4
 A9_FORM = "a9_predicted_margin01"          # the A2 file's table of a10's a9@predicted, per side
 DRAFT_RULES = dict(
     a1=("Primary arm: hold. The scaled arms are report-only sensitivities and margin0 is the comparator. Against a1-margin0 on D20 at predicted "
-        "timing: paired BLEU and paired likelihood minus blank@predicted both above 0; v2 spotting's paired lower bound above -0.02; wrist per "
-        "side and pooled no further from 1.0x real than a9@predicted's and at least 0.8x real; spread no further from 1.0x real than "
-        "a9@predicted's; two-handed contact (both wrists within 0.5 shoulder widths on annotated two-handed words) at least 0.9x margin0's. "
-        "a9@predicted is the second comparator, read beside it. A scaled arm with no real control stops its read."),
-    **{"a3-oracle": ("Primary arm: top10; top30 is report-only. Against the r10 oracle at the same predicted timing and margin 0: paired BLEU and "
-                     "paired likelihood minus blank@predicted both above 0; wrist at most 1.10x the base's and hands at least 0.9x the base's (both "
-                     "bars are judgement, not derived); gap share above a1's own. Part of the arm: ASLLRP segment pieces widened to at least the "
-                     "list's 0.2 s, every n't token signed as not, and the pooled annotated fraction as the new entries' core rule."),
+        "timing: paired BLEU and paired likelihood minus blank@predicted both above 0; v2 spotting's paired lower bound above -0.02; "
+        "wrist per side and pooled no further from 1.0x real than a9@predicted's and at least 0.8x real; spread no further from 1.0x real than "
+        "a9@predicted's; two-handed contact at least 0.9x margin0's. These motion checks are a no-regression floor and not the release bar. The read "
+        "states separately whether pooled wrist lies within 0.8-1.25x; hold's does not. a9@predicted is the second comparator, read beside it. A scaled "
+        "arm with no real control stops its read."),
+    **{"a3-oracle": ("Primary arm: top10; top30 is report-only. Against the r10 oracle at the same predicted timing and margin 0: paired BLEU and paired "
+                     "likelihood minus blank@predicted both above 0; wrist no further from 1.0x real than a9@predicted's (known before any read, first 300 "
+                     "clips: base 1.32x, top10 1.54x, top30 1.64x); hands at least 0.9x the base's; the new entries' echo above the base's echo of the same "
+                     "entries on the same sentences; gap share against blank@predicted above a1's own, which favours predicted arms by about 3 points "
+                     "(a9@predicted 23.2 against 19.9). BLEU can rise with speed alone, so the echo check is what credits coverage. A failure does not close "
+                     "coverage: every new top-10 word comes from ASLLRP continuous segments, a route that read lower as a whole (a2 1.879 against a1 2.219), "
+                     "and source and coverage are not separated here. Fingerspelled single-clip tokens stay out of any primary arm or claim. Part of the arm: "
+                     "ASLLRP segment pieces widened to at least the list's 0.2 s, every n't token signed as not, and the pooled annotated fraction as the "
+                     "new entries' core rule."),
        "a3-gen": ("Primary arm: top10; top30 is report-only. Against the margin-0 a9 arm at predicted timing: paired BLEU and paired likelihood minus "
-                  "blank@predicted both above 0; v2 spotting's paired lower bound above -0.02; wrist at most 1.10x that arm's and hands at least 0.9x "
-                  "that arm's (both judgement). New entries generated at the same 0.2 s floor as the oracle's pieces."),
-       "a4": ("Primary arm: n16, read against sample0 for the choice alone. Paired BLEU's entry-and-sentence bootstrap lower bound above 0 and paired "
-              "likelihood above 0 reopen section 1's tokenizer bound, which is then re-stated. Any other result is not informative, and the bound "
-              "stands without support from this read. This is no ceiling, and nothing is adopted.")})
+                  "blank@predicted both above 0; v2 spotting's paired lower bound above -0.02; wrist no further from 1.0x real than a9@predicted's; hands at "
+                  "least 0.9x that arm's. New entries generated at the same 0.2 s floor as the oracle's pieces."),
+       "a4": ("Primary arm: n16. Read in the decomposition: n16's entry-and-sentence bootstrap lower bound against sample0 above 0, paired likelihood above "
+              "0, and n16's BLEU above each of sample0 and draw1 to draw4. Repetition is the mean of those five draws minus a1. All of these reopen section "
+              "1's tokenizer bound, which is then re-stated. Any other result is not informative, and the bound stands without support from this read. This "
+              "is no ceiling, and nothing is adopted.")})
 KNOWN_AT_WRITING = dict(
     a1=("a10 had been read by the review: a9@predicted's spread 2.04x real. The review's motion arithmetic was known: composition over scaled real about "
         "1.46-1.55x, the hold's optimistic bound of left path -39% and pooled wrist 1.55x to 1.23x. A2 and the local hold rebuild (motion only) were known. "
-        "Five-clip smokes of margin0 and left0.5 had been run. No D20 read of hold existed."),
-    **{"a3-oracle": ("a1's D20 read and its 19% share were known. Text coverage on D20 was known (reports/comp_a3_tokens.json). No read of any A3 arm existed."),
+        "Five-clip smokes of margin0 and left0.5 had been run. No D20 read of hold existed. Known from stored motion before any read: hold's left 1.37x, right "
+        "1.24x, pooled 1.29x, spread 1.71x, left height -0.74, contact unchanged by construction. The motion checks therefore pass and are not evidence; the "
+        "1.25x bar was replaced knowing 1.29x. A pass means hold reads no worse than margin0 with less motion. It meets no release bar."),
+    **{"a3-oracle": ("a1's D20 read and its 19% share were known. Text coverage on D20 was known (reports/comp_a3_tokens.json), and the wrist figures the rule states. "
+                     "A five-clip smoke of top10 had been run. No full read of any A3 arm existed."),
        "a3-gen": ("As a3-oracle, and a9's and a10's reads were known. No read of any A3 arm existed."),
-       "a4": ("a1's and a4's D20 reads were known, and a five-entry-set v3d word read on 50 entries. No D20 read of any clip-choice arm existed.")})
+       "a4": ("a1's and a4's D20 reads were known, and a v3d word read on 50 entries. No D20 read of any clip-choice arm existed.")})
+JOB_WRITTEN = ("margin0", "base", "sample0")   # a comparator from this same job: its code and environment must be the arm's
 
 
 def blank_of(form: str, forms) -> str:
@@ -72,6 +83,39 @@ def role_of(test: str, arm_name: str) -> str:
     if PRIMARY[test] == arm_name:
         return "primary"
     return "comparator" if arm_name in COMPARATOR_ARMS[test] else "sensitivity"
+
+
+def check_arm_name(test: str, name: str, settings: dict) -> None:
+    """The arm's name must be what its settings say it is: a name selects the rule."""
+    r20 = settings.get("round20") or {}
+    if test == "a1":
+        scales = {"left0.5": dict(left=.5, right=1.), "both0.7": dict(left=.7, right=.7)}
+        ok = (name == "margin0" and bool(r20.get("comp_a_read")) and not r20.get("arm_scale") and not r20.get("hold_left")) or \
+             (name == "hold" and bool(r20.get("hold_left")) and not r20.get("arm_scale")) or (name in scales and r20.get("arm_scale") == scales[name])
+    elif test in ("a3-oracle", "a3-gen"):
+        top = (r20.get("vocabulary_extra") or {}).get("top")
+        ok = (test == "a3-oracle" and name == "base" and bool(r20.get("comp_a_read")) and top is None) or \
+             (name in ("top10", "top30") and top == int(name[3:]) and bool(r20.get("word_cache_extra")) == (test == "a3-gen"))
+    else:
+        pick = (r20.get("oracle_choice") or {}).get("pick")
+        ok = pick == ("16" if name == "n16" else name) and (name in ("n16", "sample0") or name.startswith("draw"))
+    if not ok:
+        raise SystemExit(f"--arm-name {name} is not what this report's settings say for {test}")
+
+
+def check_provenance(arm: dict, other: dict, label: str) -> None:
+    """A comparator this job wrote must be the same code and environment as the arm. Stored a10 and a1 stay exempt, under ``instrument_check``."""
+    if label not in JOB_WRITTEN:
+        return
+    a, b = (((r.get("settings") or {}).get("round20") or {}).get("provenance") for r in (arm, other))
+    if not a or not b or a != b:
+        raise SystemExit(f"comparator {label} came from other code or another environment: {b} against {a}")
+
+
+def release_band(report: dict, form: str) -> dict:
+    """Stated apart from any rule: the release bar's pooled wrist band."""
+    wrist = ((report.get("motion_ratio_to_real") or {}).get(form) or {}).get("wrist_speed")
+    return dict(pooled_wrist=wrist, within_0_8_to_1_25=wrist is not None and .8 <= wrist <= 1.25)
 
 
 def check_arm(report: dict, *, smoke: bool) -> None:
@@ -169,7 +213,9 @@ def instrument_check(a: dict, b: dict) -> dict:
 
 def clustered_difference(stats_a, stats_b, entries, *, boot: int, seed: int = 0) -> dict:
     """a - b's corpus BLEU with a bootstrap over sentences and entries together: each sentence's weight is its own Poisson(1) draw times the mean
-    of its entries' (Owen's pigeonhole bootstrap), so sentences sharing a clip move together. ``entries``: per sentence, the entries it signs."""
+    of its entries' (Owen's pigeonhole bootstrap), so sentences sharing a clip move together. ``entries``: per sentence, the entries it signs.
+    ``stats_a`` a list: the mean of those forms' BLEU, on the same weights."""
+    many = stats_a if isinstance(stats_a, list) else [stats_a]
     from signtranslator.eval.s0_metrics import bleu_from_statistics
     names = sorted({e for row in entries for e in row})
     where = {e: k for k, e in enumerate(names)}
@@ -181,8 +227,8 @@ def clustered_difference(stats_a, stats_b, entries, *, boot: int, seed: int = 0)
         w = rng.poisson(1., n).astype(float)
         v = rng.poisson(1., len(names)).astype(float)
         weight = w * np.array([v[i].mean() if len(i) else 1. for i in index])
-        diffs[b] = bleu_from_statistics((weight[:, None] * stats_a).sum(0)) - bleu_from_statistics((weight[:, None] * stats_b).sum(0))
-    point = float(bleu_from_statistics(stats_a.sum(0)) - bleu_from_statistics(stats_b.sum(0)))
+        diffs[b] = np.mean([bleu_from_statistics((weight[:, None] * s).sum(0)) for s in many]) - bleu_from_statistics((weight[:, None] * stats_b).sum(0))
+    point = float(np.mean([bleu_from_statistics(s.sum(0)) for s in many]) - bleu_from_statistics(stats_b.sum(0)))
     return dict(difference=round(point, 4), ci95=[round(float(np.percentile(diffs, 2.5)), 4), round(float(np.percentile(diffs, 97.5)), 4)],
                 entries=len(names), bootstrap="sentences and entries")
 
@@ -266,26 +312,24 @@ def no_further(value, reference) -> bool:
     return value is not None and reference is not None and abs(value - 1.) <= abs(reference - 1.)
 
 
-def a9_reference(a9_sides: dict | None, other: dict | None, other_form: str | None) -> dict:
-    """a9@predicted's figures: pooled from its report, per side from the A2 file, which must agree with the report's pooled wrist."""
+def a9_reference(a9_sides: dict | None, other: dict | None = None, other_form: str | None = None) -> dict:
+    """a9@predicted's figures: per side from the A2 file, pooled from a10's report where the read has it, else from the A2 file, which must agree with the
+    report."""
     motion = ((other or {}).get("motion_ratio_to_real") or {}).get(other_form) or {}
     table = (a9_sides or {}).get("forms", {}).get(A9_FORM) or {}
     pooled = table.get("pooled_wrist_ratio")
     if pooled is not None and motion.get("wrist_speed") is not None and abs(pooled - motion["wrist_speed"]) > .01:
         raise SystemExit(f"the A2 file's a9@predicted wrist {pooled} is not its report's {motion['wrist_speed']}")
-    return dict(wrist=motion.get("wrist_speed"), spread=motion.get("wrist_spread"), left=(table.get("ratio_to_real") or {}).get("left"),
-                right=(table.get("ratio_to_real") or {}).get("right"))
+    return dict(wrist=motion.get("wrist_speed", pooled), spread=motion.get("wrist_spread", table.get("pooled_spread_ratio")),
+                left=(table.get("ratio_to_real") or {}).get("left"), right=(table.get("ratio_to_real") or {}).get("right"))
 
 
-def draft_rule(test: str, *, row, arm=None, form=None, first=None, first_form=None, a9=None, gap_share=None, a1_share=None, declared_commit=None) -> dict:
+def draft_rule(test: str, *, row, arm=None, form=None, first=None, first_form=None, a9=None, gap_share=None, a1_share=None, declared_commit=None,
+               new_echo=None, base_echo=None) -> dict:
     """The draft text's checks on the first comparison ``row``. ``declared`` says whether a plan commit declared it; nothing here adopts."""
     bleu, ll = _points(row)
     motion = lambda r, f: (r.get("motion_ratio_to_real") or {}).get(f) or {}           # noqa: E731
-    if test == "a4":
-        clustered = row.get("clustered_bleu") or {}
-        checks = dict(clustered_bleu_lower_bound_above_0=_above((clustered.get("ci95") or [None])[0], 0.), paired_likelihood_above_0=_above(ll, 0.))
-    else:
-        checks = dict(paired_bleu_above_0=_above(bleu, 0.), paired_likelihood_above_0=_above(ll, 0.))
+    checks = dict(paired_bleu_above_0=_above(bleu, 0.), paired_likelihood_above_0=_above(ll, 0.))
     mine, theirs = motion(arm or {}, form), motion(first or {}, first_form)
     if test in ("a1", "a3-gen"):
         checks["spotting_lower_bound_above_minus_0.02"] = _above(_spot_lower(row), -.02)
@@ -302,10 +346,11 @@ def draft_rule(test: str, *, row, arm=None, form=None, first=None, first_form=No
         a, b = side.get("contact_share"), base.get("contact_share")
         checks["contact_at_least_0.9_of_margin0"] = a is not None and b is not None and a >= .9 * b
     if test in ("a3-oracle", "a3-gen"):
-        wrist, hands = mine.get("wrist_speed"), mine.get("hands_tracked")
-        checks["wrist_at_most_1.10_of_comparator"] = wrist is not None and theirs.get("wrist_speed") is not None and wrist <= 1.1 * theirs["wrist_speed"]
+        hands = mine.get("hands_tracked")
+        checks["wrist_no_further_than_a9"] = no_further(mine.get("wrist_speed"), (a9 or {}).get("wrist"))
         checks["hands_at_least_0.9_of_comparator"] = hands is not None and theirs.get("hands_tracked") is not None and hands >= .9 * theirs["hands_tracked"]
     if test == "a3-oracle":
+        checks["new_entries_echo_above_the_base"] = _above(new_echo, base_echo) if base_echo is not None else False
         checks["gap_share_above_a1"] = gap_share is not None and a1_share is not None and gap_share > a1_share
     return dict(declared=bool(declared_commit), declared_commit=declared_commit, text=DRAFT_RULES[test], known_when_written=KNOWN_AT_WRITING[test],
                 checks=checks, all_true=all(checks.values()),
@@ -331,12 +376,17 @@ def read_report(test: str, arm: dict, *, arm_name: str, comparators=(), boot: in
     if test not in TESTS:
         raise SystemExit(f"--test: one of {TESTS}")
     check_arm(arm, smoke=smoke)
+    check_arm_name(test, arm_name, arm.get("settings") or {})
     main = main_form_of(arm)
     role = role_of(test, arm_name)
     if role == "primary" and not comparators and not smoke:
         raise SystemExit("the primary arm has no comparator: nothing can be read against its rule")
+    extra_info = (arm.get("round20") or {}).get("vocabulary_extra") or {}
+    if role == "primary" and extra_info.get("fingerspelled_single_clips"):
+        raise SystemExit(f"fingerspelled single-clip tokens stay out of a primary arm: {extra_info['fingerspelled_single_clips']}")
     out = dict(kind="comp-a-read", report_only=True, declared=bool(declared_commit), declared_commit=declared_commit, test=test, arm_name=arm_name, role=role,
                main_form=main, smoke=smoke, clips=arm["clips"], set=dict(key=lib.D20_KEY, sha256=lib.D20_SHA),
+               provenance=((arm.get("settings") or {}).get("round20") or {}).get("provenance"), release_band=release_band(arm, main),
                reads={f: form_read(arm, f, boot=boot) for f in arm["forms"]}, hold_left=arm.get("hold_left"), round20=dict(
                    vocabulary_extra=(arm.get("round20") or {}).get("vocabulary_extra"),
                    oracle_choice=(arm.get("round20") or {}).get("oracle_choice"),
@@ -350,28 +400,36 @@ def read_report(test: str, arm: dict, *, arm_name: str, comparators=(), boot: in
     from signtranslator.eval.s0_metrics import bleu_statistics
     words = [p["stage1_words"] for p in arm["per_clip"]]
     for label, other, other_form, other_shards, declared in comparators:
+        check_provenance(arm, other, label)
         row = comparison(arm, main, other, other_form, boot=boot, shards_a=shards, shards_b=other_shards, declared=declared)
         if test == "a4":
             refs = arm["references"]
             row["clustered_bleu"] = clustered_difference(bleu_statistics(arm["forms"][main]["hypotheses"], refs),
                                                          bleu_statistics(other["forms"][other_form]["hypotheses"], refs), words, boot=boot)
         out["comparisons"][label] = row
-    if role == "primary" and comparators:
+    if role == "primary" and comparators and test != "a4":             # A4's rule is read in the decomposition, with its draws
         label, first, first_form, _, _ = comparators[0]
         a9 = None
+        if a9_sides is None:
+            raise SystemExit(f"{test}'s rule needs the A2 file's a9@predicted table")
         if test == "a1":
             second = next((c for c in comparators if c[0] == "a9_predicted"), None)
-            if second is None or a9_sides is None:
-                raise SystemExit("A1's rule needs its a9_predicted comparator and the A2 file's per-side table")
+            if second is None:
+                raise SystemExit("A1's rule needs its a9_predicted comparator")
             a9 = a9_reference(a9_sides, second[1], second[2])
+        else:
+            a9 = a9_reference(a9_sides)
         a1 = next((c for c in comparators if c[0] == "a1"), None)
-        share, a1_share = None, None
+        share, a1_share, new_echo, base_echo = None, None, None, None
         if test == "a3-oracle":
             if a1 is None:
                 raise SystemExit("the A3 oracle's rule needs its a1 comparator")
             share, a1_share = out["reads"][main]["gap_share"]["share"], a1_share_of(a1[1], a1[2], boot=boot)
+            entries = extra_info.get("new_entries") or ()
+            new_echo = lib.new_entry_echo(arm["forms"][main]["hypotheses"], words, arm["references"], entries)
+            base_echo = lib.new_entry_echo(first["forms"][first_form]["hypotheses"], words, arm["references"], entries)   # the same entries on the same sentences
         out["draft_rule"] = draft_rule(test, row=out["comparisons"][label], arm=arm, form=main, first=first, first_form=first_form, a9=a9, gap_share=share,
-                                       a1_share=a1_share, declared_commit=declared_commit)
+                                       a1_share=a1_share, declared_commit=declared_commit, new_echo=new_echo, base_echo=base_echo)
         out["draft_rule"]["comparator"] = label
     return out
 
@@ -383,7 +441,7 @@ def oracle_gate(read: dict) -> bool:
     return bool(read["draft_rule"]["all_true"])
 
 
-def decompose(chosen: dict, sample0: dict, draws: list, a1: dict, *, boot: int = 1000) -> dict:
+def decompose(chosen: dict, sample0: dict, draws: list, a1: dict, *, boot: int = 1000, declared_commit: str | None = None) -> dict:
     """The clip-choice read's decomposition (module docstring). Every report's main form is oracle_stage2."""
     from round20_compare import check_pairable
     from round20_lib import paired_mean
@@ -393,17 +451,29 @@ def decompose(chosen: dict, sample0: dict, draws: list, a1: dict, *, boot: int =
         check_arm(r, smoke=False)
     for r in (sample0, *draws):
         check_pairable(chosen, r, ("oracle_choice",))
+        check_provenance(chosen, r, "sample0")
     check_pairable(sample0, a1, ("oracle_choice",))
+    if len(draws) != 4:
+        raise SystemExit("the decomposition needs sample0 and draw1 to draw4")
+    for name, r in zip(("n16", "sample0", "draw1", "draw2", "draw3", "draw4"), (chosen, sample0, *draws)):
+        check_arm_name("a4", name, r.get("settings") or {})
     refs = chosen["references"]
     words = [p["stage1_words"] for p in chosen["per_clip"]]
     stat = lambda r: bleu_statistics(r["forms"][form]["hypotheses"], refs)            # noqa: E731
     ll = lambda r: r["likelihood"]["per_form"][form]                                  # noqa: E731
     choice = dict(clustered_bleu=clustered_difference(stat(chosen), stat(sample0), words, boot=boot), likelihood=paired_mean(ll(chosen), ll(sample0), boot=boot))
-    repetition = dict(clustered_bleu=clustered_difference(stat(sample0), stat(a1), words, boot=boot), likelihood=paired_mean(ll(sample0), ll(a1), boot=boot))
-    bleus = [float(bleu_from_statistics(stat(r).sum(0))) for r in (sample0, *draws)]
-    rises = choice["clustered_bleu"]["ci95"][0] > 0 and (choice["likelihood"] or {}).get("difference", 0.) > 0
-    return dict(kind="comp-a4-decomposition", report_only=True, choice_chosen_minus_sample0=choice, repetition_sample0_minus_a1=repetition,
-                draw_bleu=[round(x, 4) for x in bleus], draw_bleu_sd=round(float(np.std(bleus, ddof=1)), 4) if len(bleus) > 1 else None,
+    five = [sample0, *draws]
+    repetition = dict(clustered_bleu=clustered_difference([stat(r) for r in five], stat(a1), words, boot=boot))
+    bleus = [float(bleu_from_statistics(stat(r).sum(0))) for r in five]
+    chosen_bleu = float(bleu_from_statistics(stat(chosen).sum(0)))
+    checks = dict(clustered_bleu_lower_bound_above_0=choice["clustered_bleu"]["ci95"][0] > 0, paired_likelihood_above_0=_above((choice["likelihood"] or {}).get("difference"), 0.),
+                  **{f"n16_above_{name}": chosen_bleu > x for name, x in zip(("sample0", "draw1", "draw2", "draw3", "draw4"), bleus)})
+    rises = all(checks.values())
+    rule = dict(declared=bool(declared_commit), declared_commit=declared_commit, text=DRAFT_RULES["a4"], known_when_written=KNOWN_AT_WRITING["a4"], checks=checks, all_true=rises,
+                note="evaluated for reading only; this field adopts nothing" if declared_commit else "DRAFT, NOT DECLARED: adopts nothing")
+    return dict(kind="comp-a4-decomposition", report_only=True, choice_chosen_minus_sample0=choice, repetition_mean_of_five_draws_minus_a1=repetition,
+                draw_bleu=[round(x, 4) for x in bleus], draw_bleu_sd=round(float(np.std(bleus, ddof=1)), 4), draft_rule=rule,
+                provenance=lib.provenance_row(),
                 reading="choice rises: section 1's tokenizer bound is to be re-stated" if rises else
                 "not informative: this does not show that word source has no room")
 
@@ -445,6 +515,7 @@ def main(argv=None) -> int:
     d.add_argument("--sample0", required=True)
     d.add_argument("--draw", action="append", default=[])
     d.add_argument("--a1", required=True)
+    d.add_argument("--declared-commit")
     d.add_argument("--bootstrap", type=int, default=1000)
     d.add_argument("--output-key", required=True)
     for q in (r, g, d):
@@ -460,7 +531,7 @@ def main(argv=None) -> int:
         if store.exists(args.output_key):
             raise SystemExit(f"{args.output_key} exists: refusing to overwrite")
         out = decompose(json.loads(store.get(args.chosen)), json.loads(store.get(args.sample0)), [json.loads(store.get(k)) for k in args.draw],
-                        json.loads(store.get(args.a1)), boot=args.bootstrap)
+                        json.loads(store.get(args.a1)), boot=args.bootstrap, declared_commit=args.declared_commit)
         store.put(args.output_key, json.dumps(out, indent=1, default=float).encode())
         print(out["reading"], flush=True)
         return 0
@@ -480,6 +551,7 @@ def main(argv=None) -> int:
     out = read_report(args.test, arm, arm_name=args.arm_name, comparators=_comparators(store, args.comparator, p), boot=args.bootstrap, smoke=args.smoke,
                       shards=report_shards(store, args.arm, arm, None), declared_commit=args.declared_commit, a9_sides=a9_sides)
     out["arm"] = dict(key=args.arm, sha256=hashlib.sha256(store.get(args.arm)).hexdigest())
+    out["read_provenance"] = lib.provenance_row()
     data = json.dumps(out, indent=1, default=float).encode()
     if args.output_file:
         with open(args.output_file, "xb") as stream:

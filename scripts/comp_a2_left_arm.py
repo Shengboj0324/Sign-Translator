@@ -25,8 +25,9 @@ same joins. ``one_to_two`` is an annotated one-handed word against an annotated 
 
 **Operating points.** ``a9_predicted_margin01`` is a10's a9@predicted, ``a9_predicted_margin0`` is A1's margin0 arm, and ``hold`` is that arm with the
 left arm really held (``composition_v2.hold_left_arm``): real rotations, real spread, per side, contact, and how the speed cap fell. Motion only: no
-reader runs. The right wrist is no reference for the left, because real signing has the same asymmetry: read rest depth (``left_height``), frames and
-How2Sign train's own distribution (``reports/comp_a_hold_stats.json``).
+reader runs. The evidence is measure by measure, like for like: on one-handed words the left wrist sits at -1.46 against ASLLRP's -1.08, and joins
+travel 0.733-0.856 against 0.306 (the review's ASLLRP read). The hold's -0.74 lies above ASLLRP's -1.08; it does not match it. The other wrist is no
+reference. How2Sign train's own distribution is in ``reports/comp_a_hold_stats.json``.
 """
 from __future__ import annotations
 

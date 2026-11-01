@@ -42,6 +42,7 @@ ALLOWED_CORPORA = ("asllvd-text-v1", "rit-text-r6", "wlasl-text-r6", "semlex-tex
 FORBIDDEN_SOURCE = ("citizen", "stem")           # never a vocabulary source (task of 2026-11-01)
 TOPS = (10, 30)                                  # the arms' list lengths
 REAL_SCALED = "real@armscale"                    # the control: the real clip with the arm's own scales
+JOB_FILE = "runpod/fleet/comp_a.sh"              # part of the code's digest: its pins and comparator order live there
 # the stop list of the plan's echo read (scratch analysis behind reports/post_s2_plan.md, section 1.2)
 ECHO_STOP = frozenset("the a an to of is are was were be been have has had do does did and or but if so that this it its in on "
                       "at for with as by from i you we they he she them us my your our their me not no just can will would"
@@ -186,6 +187,17 @@ def extra_pools(arm: dict, manifest_records, gloss_records) -> tuple[dict, dict]
 
 def median_seconds(values) -> float:
     return float(statistics.median(values))
+
+
+def provenance_row() -> dict:
+    """The digest of the code that is running (with the job's shell file) and its environment: stored in every report."""
+    from signtranslator.eval.provenance import code_digest, environment
+    return dict(code_digest=code_digest(extra_files=(JOB_FILE,)), environment=environment())
+
+
+def fingerspelled_single_clips(arm: dict) -> list[str]:
+    """An arm's new entries that rest on one fingerspelled clip: they stay out of any primary arm or claim."""
+    return sorted(e for e, r in arm["entries"].items() if (r.get("flags") or {}).get("fingerspelled_source") and (r.get("flags") or {}).get("single_clip"))
 
 
 # ---- annotation and motion, per side ------------------------------------------------------------------------------------
@@ -348,6 +360,6 @@ def echo_share(rows) -> float | None:
 
 
 __all__ = ["annotated_label", "annotated_two_handed", "entry_annotations", "bridge_kind", "keypoint_view", "side_read", "contact_counts", "motion_row",
-           "motion_report", "load_hold_stats", "segment_widening", "D20_KEY", "D20_SHA", "ALLOWED_CORPORA", "FORBIDDEN_SOURCE", "TOPS", "REAL_SCALED", "require_d20", "check_d20_payload",
+           "motion_report", "load_hold_stats", "segment_widening", "provenance_row", "fingerspelled_single_clips", "JOB_FILE", "D20_KEY", "D20_SHA", "ALLOWED_CORPORA", "FORBIDDEN_SOURCE", "TOPS", "REAL_SCALED", "require_d20", "check_d20_payload",
            "check_source_record", "parse_arm_scale", "load_token_list", "arm_of", "apply_token_map", "extra_vocabulary",
            "extra_pools", "median_seconds", "is_loop", "loop_flags", "echo_rows", "new_entry_echo", "echo_share"]

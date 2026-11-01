@@ -6,8 +6,10 @@ A fixed draw of How2Sign train clips (never val, so not D20, C20 or the 1,000; c
   hold's left arm.
 - ``ready_pose``: the chordal mean of the left upper arm and forearm rotations (6D columns), for a sentence with no two-handed word.
 - Per side, in the report's own keypoint view (shoulder units): speed, spread, height, and travel over ``WINDOW`` frames, the length of a
-  bridge at A1's operating point. These are the reference the hold is read against. The right wrist is not one: real signing has the same
-  left/right asymmetry.
+  bridge at A1's operating point. These are the reference the hold is read against, measure by measure: left wrist height on one-handed words
+  (composition -1.46, ASLLRP -1.08 by the review's like-for-like read; the hold's -0.74 lies above ASLLRP's, it does not match it) and left-wrist
+  travel across a join (composition 0.733-0.856, ASLLRP 0.306, same read). The other wrist is no reference for this one. ``right_over_left_clip_speed``
+  stays in the committed file only because that file is pinned; nothing reads it as evidence.
 """
 from __future__ import annotations
 

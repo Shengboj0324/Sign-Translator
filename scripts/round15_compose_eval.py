@@ -303,6 +303,9 @@ def comp_a_settings(args) -> dict:
     """The post-S2 options that are on, and only those, so a run without them has exactly the settings it had."""
     from comp_a_lib import parse_arm_scale
     out = {}
+    if comp_a_on(args):
+        from comp_a_lib import provenance_row
+        out["provenance"] = provenance_row()
     if args.comp_a_read:
         out["comp_a_read"] = True
     if args.arm_scale:
@@ -680,7 +683,9 @@ def run(args) -> dict:
             fractions = dict(fractions, entries={k: v for k, v in fractions["entries"].items() if k not in arm["entries"]},
                              min_seconds={e: widening for e in arm["entries"]} if widening else {})
             selected = collections.Counter(r["tokens"][0] for rows in details for r in rows if r.get("extra"))
+            from comp_a_lib import fingerspelled_single_clips
             r20_info["vocabulary_extra"] = dict(top=arm["top"], tokens=dict(selected), new_entries=sorted(arm["entries"]), min_segment_seconds=widening,
+                                                fingerspelled_single_clips=fingerspelled_single_clips(arm),
                                                 unsigned_ranks=arm["dropped"], source_kinds={
                                                     e: r["source_kind"] for e, r in arm["entries"].items()})
     mode = dict(timing=args.timing, fractions=fractions, margin=margin, tighten=args.tighten_cores)
