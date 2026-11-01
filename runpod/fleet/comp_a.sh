@@ -37,7 +37,7 @@ else Q=$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us 2>/dev/null || echo -1) P=$(cat
 if [ "$Q" -gt 0 ]; then C=$(( Q / P )); else C=$(/root/venv/bin/python -c "import os; print(len(os.sched_getaffinity(0)))"); fi
 T=${THREADS:-$C}
 export PATH=/root/venv/bin:$PATH OMP_NUM_THREADS=$T MKL_NUM_THREADS=$T OPENBLAS_NUM_THREADS=$T
-uv pip install -q 'transformers>=4.40,<5' sentencepiece || die "uv pip install failed"
+uv pip install -q 'transformers==4.57.6' sentencepiece || die "uv pip install failed"     # the version the stored a10 reads used
 sha() { python -c "import os,sys,hashlib; from signtranslator.data.text_motion_dataset import R2Store; print(hashlib.sha256(R2Store(os.environ).get(sys.argv[1])).hexdigest())" "$1"; }
 exists() { python -c "import os,sys; from signtranslator.data.text_motion_dataset import R2Store; sys.exit(0 if R2Store(os.environ).exists(sys.argv[1]) else 1)" "$1"; }
 pin() { [ "$(sha "$1")" = "$2" ] || die "$1 differs from its pin"; }
