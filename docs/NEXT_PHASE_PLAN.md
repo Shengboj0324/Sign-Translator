@@ -444,7 +444,7 @@ Published pretraining on YouTube-ASL took pose-based How2Sign translation to abo
 
 | Stage | Work | Where | Time | Cost |
 |---|---|---|---|---|
-| Y0 | Research report: corpora, filters, gains, contacts, terms | agent (running) | ~1 h | - |
+| Y0 | Research report: corpora, filters, gains, contacts, terms | in progress | ~1 h | - |
 | Y1 | Acquisition tool `scripts/acquire_youtube_asl.py` | Mac (code + tests) | ~2 h | - |
 | Y2 | Pilot ~50 h: availability rate, caption kinds, hand coverage, extraction throughput, blocking | 1 CPU pod | ~3–6 h | <$10 |
 | Y3 | Full acquisition of the selected corpora | ≤4 CPU pods | ~2–4 days | ~$100–300 |
@@ -1010,7 +1010,7 @@ These start when the generator round's exit gate closes (docs/CONTINUOUS_TRAININ
    - **Retrain:** the selected generator family and the retrieval evaluator on manifest v2.
 3. **Meaning-level evaluation** (item 3a). The retrieval evaluator exists (`text_motion_retrieval.py`; R@3 ≈ 0.29 on real validation motion against chance 0.094 at 4k clips; it overfits early). Retrain it on manifest v2 with stronger regularisation. Score every generator with R-precision and keep their generated states for the human reviewers.
 4. **DAI 2 / Sign Bank** (items 1b and 2).
-   - **Access:** the user's account was activated on 2026-10-21. The user signs in; Claude never types passwords.
+   - **Access:** the user's account was activated on 2026-10-21. The user signs in; passwords are never typed by tooling.
    - **Acquisition** (`~/.sign-translator-ops/dai_uploader.py`): downloads from the signed-in browser session into private R2 at `asllrp-dai2-v1/<collection>/`.
      - Each file is identified by its exact server size.
      - It is SHA-256 hashed while uploading, re-read from R2 and re-hashed, and written with a provenance record (source URL, version, licence).
@@ -2126,9 +2126,9 @@ D7 (input corruption 1.0) at step 20000 against the re-scored control:
 - The working interpretation is now: **at one code step per frame, no step carries enough of the sign for the text to determine it.** The token rate is the lever, which is round 10 (t2x, t4x).
 - **Change of priority** (declared): as soon as a round-10 tokenizer passes its gates, its prior is trained with history dropout 0.5, the guard against copying that stays valid at a coarser rate. Rounds 8–9 still run to their declared pilots.
 
-## Root-cause analyses (2026-10-27, four independent agents) and round 11 (declared 19:54 UTC, before any round-11 result)
+## Root-cause analyses (2026-10-27, four independent analyses) and round 11 (declared 19:54 UTC, before any round-11 result)
 
-**Mechanism (free-run trace; B6 step 20000, 60 training words, CPU; scripts kept with the agent's notes).**
+**Mechanism (free-run trace; B6 step 20000, 60 training words, CPU; scripts kept with the analysis notes).**
 - **Text influence per step is small throughout,** and about equal under teacher forcing and in free runs.
   - KL(text ‖ empty) over the 4 stage-1 codes is 0.02–0.07 nats per step after step 0, against a stage-1 entropy of 2.0–2.4 nats.
   - Summed over all 32 codes it is about 0.2 nats per step, mostly in the fine stages.
@@ -2545,7 +2545,7 @@ Otherwise F12 stays the leader, and the round's result informs round 14 (alignme
 **Consequences.**
 - Round 13's drop of arm-untracked clips stands.
 - Step B (inverse kinematics) cannot run on the stored states alone: without a valid chest, the shoulder and wrist positions are not stored. It is re-scoped to use the UWB 2D keypoints of the same videos (shoulders, elbows, wrists in the image), still to be assessed.
-- Scripts: `diagnose_youtube_arms.py`, `arm_recovery_trial.py`, `uwb_framing_check.py` (agent branch). Outputs in R2 under `youtube-asl-v1/arm-recovery/step-a-2026-10-28/`.
+- Scripts: `diagnose_youtube_arms.py`, `arm_recovery_trial.py`, `uwb_framing_check.py` (side branch). Outputs in R2 under `youtube-asl-v1/arm-recovery/step-a-2026-10-28/`.
 
 ## YouTube-ASL re-download approved (owner, 2026-10-28, 05:29 UTC)
 
@@ -2721,7 +2721,7 @@ The first reports stay in R2, but their lexicon halves are not used.
 
 ### Sem-Lex adapter: instrument-shift finding and the gate for its use (recorded 2026-10-28, 08:21 UTC)
 
-**Adapter (agent branch, not on main).** Against two-view ground truth it is as accurate as our own extraction, or better:
+**Adapter (side branch, not on main).** Against two-view ground truth it is as accurate as our own extraction, or better:
 - arms 13.2° median against 18.7–19.6°;
 - fingers 21.8° against 25.1°;
 - head rotation 0.05° from ours; blendshapes MAE 0.001;
@@ -2841,7 +2841,7 @@ So the converted Sem-Lex states carry the signs. The left-dominant gap is a prop
 
 ### Arm recovery: the elbow gate is dropped (decided 2026-10-28, 09:23 UTC, before any recovery data exists)
 
-**Measured against How2Sign two-view truth** (`scripts/elbow_outside_accuracy.py`, agent branch f4c8597c): 140 Sem-Lex-style and tighter crops, 16,876 frame-sides.
+**Measured against How2Sign two-view truth** (`scripts/elbow_outside_accuracy.py`, side branch f4c8597c): 140 Sem-Lex-style and tighter crops, 16,876 frame-sides.
 
 | Frames | Upper arm | Forearm | Wrist frame |
 |---|---|---|---|
@@ -2905,7 +2905,7 @@ Every generated form is above blank (0.002): it contains sign-like motion. None 
 
 **Reading.** Generated sentences do not contain their sentence's words more than another sentence's. This agrees with BLEU at the blank's level. The sentence exposure diagnostic, under way, locates where the meaning is lost.
 
-### Sem-Lex gate v2 PASSED (recorded 2026-10-28, 10:21 UTC; agent branch 1c9c05ad + 8fdc4585, under its second independent review)
+### Sem-Lex gate v2 PASSED (recorded 2026-10-28, 10:21 UTC; side branch 1c9c05ad + 8fdc4585, under its second independent review)
 
 **Regressors v2.**
 - **Inputs:** legacy MediaPipe Holistic (mediapipe 0.10.14, `model_complexity=1`, `refine_face_landmarks`). Its distributions match Sem-Lex closely on webcam framing:

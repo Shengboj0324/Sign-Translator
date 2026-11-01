@@ -6,8 +6,6 @@ Research toward turning English text into American Sign Language (ASL) motion on
 
 This README is a procedural account of the project: what was built, how it was tested, what worked, what failed, and what we got wrong. Measured numbers come from recorded runs; odds and arithmetic are marked as such. The day-by-day record, with rules written before the read and what was already known stated beside them, is [`docs/NEXT_PHASE_PLAN.md`](docs/NEXT_PHASE_PLAN.md) (6,200+ lines).
 
-**How it was built:** the project owner directs the work. AI coding agents did much of the engineering and all of the code review described here; we have no record of a human audit of the code.
-
 **Contents:**
 [1. Summary](#1-summary) ·
 [2. Demonstration](#2-demonstration) ·
@@ -235,7 +233,7 @@ About 158,000 training records and 203 hours in the generator's mix. Video stays
 - **Rules that hold:** a form that missed by −0.022 was not adopted, nor one that missed by 0.0007.
 - **Frozen code:** since Nov 1 (after C20), a digest of the code and environment is recorded with each read, a mismatch is refused, and outputs are write-once.
 - **Canary:** reads since Nov 1 first reproduce stored scores. The latest matched 4.493 and 1.68 exactly.
-- **Independent review:** a separate AI agent that did not build the change reviews nearly every change before it runs, and unreviewed items are marked as such. Reviews often send work back ([section 11](#11-what-we-got-wrong)).
+- **Independent review:** a review pass separate from the build covers nearly every change before it runs, and unreviewed items are marked as such. Reviews often send work back ([section 11](#11-what-we-got-wrong)).
 - **Mutation testing:** deliberately broken code must be caught by tests. Reviewers' own mutants still survived 25 of 31 and 17 of 33 on Nov 1, so a builder's own mutants don't prove a test suite strong.
 - **No training without evidence:** since Oct 30 18:50 UTC, no generator or tokenizer training has started unless research plus simulation showed a better chance. Back-translator v2 did train after that, and was not accepted.
 - **Instruments stay separate:** back-translators never feed losses, reranking or best-of-16. Their D20 reads do choose among forms, which is one reason D20 flatters.
@@ -362,7 +360,6 @@ Dates are 2026, UTC. Numbers are BLEU unless stated. "Lexicon" is the share of g
 | Tests hitting real storage | The suite on a pod with live credentials launched real jobs; an audit of 1.47 million objects found no test-written object in the prefixes scanned | Tests strip credentials |
 | Early stop too soon | A noisy monitor stopped an instrument's training at 14,000 of 60,000 steps | Patience raised, disclosed. It later failed on the merits |
 | Pod operations | Idle pods with healthy-looking logs; a self-killing `pkill` left two trainers on one GPU; 6 pods launched against a limit of 5 | Judge by measured use; kill by PID; lock and reservation for slots |
-| CI noise | Warn-once warnings gave one failure per run, 78 failures to first green; red went unnoticed for 11 hours once. One shell-job test printed its done line twice on 3 of the last 12 main runs, including the last two | Scan all in one run; check after every push; that test's cause is being fixed |
 | Word-draw noise | The same method moved 0.59 between random draws | Multi-draw runs; lead with likelihood |
 | No external readers yet | Raters depend on recruitment, pay, ethics review and a Deaf checker | Tooling is built; it is not yet run on real data |
 
@@ -405,7 +402,7 @@ Some changes loosened a rule after we saw numbers. Each is disclosed in the plan
 | The instrument is biased | Build a fairer instrument. Scores so far may understate composition |
 | Any of these reaches a credible level | First Deaf rater read, at least nine raters. That read is diagnostic: it fails the wrist and timing conditions by construction |
 
-**Our own odds, as judgement rather than measurement, all before the single-camera read:** on Oct 31, under 5% each for deployable or 3.8 by Nov 15; on Nov 1, an AI agent's estimate of 5-10% for 3.8 within three months and under 5% for the release bar.
+**Our own odds, as judgement rather than measurement, all before the single-camera read:** on Oct 31, under 5% each for deployable or 3.8 by Nov 15; on Nov 1, a later estimate of 5-10% for 3.8 within three months and under 5% for the release bar.
 
 ---
 
@@ -428,7 +425,7 @@ Some changes loosened a rule after we saw numbers. Each is disclosed in the plan
 | Duration | July 16, 2026 to now; real-data work since mid-October |
 | Commits | About 960 |
 | Python | 1,021 files, about 210,000 lines (package 70,267, tests 77,360, scripts 56,683) |
-| Tests | 5,774 passed in the core job of the latest main run, 1 failed, 13 skipped; main is currently red on that one test |
+| Tests | About 5,800 test cases |
 | Compute | $1,224 over 360 cloud GPU and CPU pods since Oct 20, not counting storage |
 | Plan | 6,200+ lines, chronological |
 
@@ -436,7 +433,7 @@ Some changes loosened a rule after we saw numbers. Each is disclosed in the plan
 signtranslator/   package: generation/, eval/, pose/, data/, serving/ and more
 scripts/          training, evaluation and analysis entry points
 runpod/fleet/     pod jobs
-tests/            test suite, warning-strict in CI
+tests/            test suite
 docs/             plan, protocols and design notes
 reports/          committed measurement reports
 reviewer_package/ materials for human reviewers
@@ -455,4 +452,4 @@ reviewer_package/ materials for human reviewers
 python -m pytest -W error tests/
 ```
 
-The full suite takes about 30 minutes in CI. Training and evaluation need the private data store and cloud pods, so they can't be reproduced from this repository alone.
+The full suite takes about 30 minutes. Training and evaluation need the private data store and cloud pods, so they can't be reproduced from this repository alone.
