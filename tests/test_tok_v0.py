@@ -391,6 +391,7 @@ def test_an_instrument_that_reads_marks_lands_where_the_forms_say(monkeypatch, t
     assert r["v0_blank_real_marks"]["paired"]["blank"]["likelihood_minus_blank"]["difference"] > 0
     assert r["v0_other_motion"]["comparators"]["v0_other_motion_other_marks"]["likelihood_minus_blank"]["difference"] > 0
     assert r["v0_other_motion_other_marks"]["bleu"]["bleu"] < top
+    assert r["v0_other_marks"]["likelihood_ratio_of_means"]["ratio"] == 0 and r["v0_blank_real_marks"]["likelihood_ratio_of_means"]["ratio"] == 1   # a form over real
 
 
 def test_an_instrument_that_reads_values_lands_where_the_forms_say(monkeypatch, tmp_path):
@@ -447,6 +448,7 @@ def test_the_reads_block_gives_a_b_p2_p3_as_the_declaration_reads_them():
     k = r["likelihood_minus_blank"]
     assert k["a"]["point"] == pytest.approx(.1) and k["b"]["point"] == pytest.approx(.2) and k["real_minus_identity"]["point"] == pytest.approx(1.)
     assert k["p2"]["point"] == pytest.approx(.5) and k["p3"]["point"] == pytest.approx(.25) and k["a"]["ci95"] == [pytest.approx(.1), pytest.approx(.1)]
+    assert k["p2"]["ci95"] == [pytest.approx(.5), pytest.approx(.5)] and k["p3"]["ci95"] == [pytest.approx(.25), pytest.approx(.25)]      # constant per clip: no spread
     assert r["bleu"]["p2"]["ci95"][0] <= r["bleu"]["p2"]["point"] <= r["bleu"]["p2"]["ci95"][1] and r["bleu"]["a"]["point"] > 0 and r["bleu"]["real_minus_identity"]["point"] > 0
     del reads["v0_nearest_fill"]
     assert V.declared_reads(reads) is None
@@ -571,7 +573,9 @@ def test_preflight_refuses_a_finished_read_and_a_void_and_new_code_needs_a_cause
                                      (dict(report_only=True, declared_read=True, checks=dict(blank_identical_to_real=.1, canary=dict(reproduced=False))), 3),
                                      (dict(report_only=True, declared_read=True, checks=dict(blank_identical_to_real=.1, canary=dict(reproduced=True))), 3),
                                      (dict(report_only=True, declared_read=True, checks=dict(blank_identical_to_real=.1, canary=dict(reproduced=True), path_check=dict(reproduced=False))), 3),
-                                     (dict(report_only=True, declared_read=True, checks=dict(blank_identical_to_real=.1, canary=dict(reproduced=True), path_check=dict(reproduced=True))), 0)])
+                                     (dict(report_only=True, declared_read=True, checks=dict(blank_identical_to_real=.1, canary=dict(reproduced=True), path_check=dict(reproduced=True))), 0),
+                                     (dict(report_only=True, declared_read=True, checks=dict(blank_identical_to_real=.1, canary=None, path_check=dict(reproduced=True))), 3),
+                                     (dict(report_only=True, declared_read=True, checks=dict(blank_identical_to_real=.1, canary=dict(reproduced=False), path_check=dict(reproduced=True))), 3)])
 def test_check_judges_plumbing(tmp_path, kw, code):
     path = tmp_path / "r.json"
     path.write_text(json.dumps(kw))
@@ -617,6 +621,14 @@ def test_a_path_check_miss_exits_3_and_stores_a_void(monkeypatch, tmp_path, kw, 
     store, out = path_setup(monkeypatch, tmp_path, **kw)
     assert path_check(tmp_path, out) == 3
     assert json.loads((out / "path_check.json").read_text())["misses"] == [miss] and store.exists("tok-probes-v0/void/d.json")
+
+
+def test_path_check_nll_differences_of_either_sign_do_not_cancel(monkeypatch, tmp_path):
+    _, out = path_setup(monkeypatch, tmp_path)
+    r = json.loads((out / "form-identity.json").read_text())
+    r["nll"] = [[1. + (.002 if i % 2 else -.002)] for i in range(100)]
+    (out / "form-identity.json").write_text(json.dumps(r))
+    assert path_check(tmp_path, out) == 3
 
 
 def test_the_path_check_refuses_other_clips_and_a_changed_stored_read_and_a_smoke_checks_the_pin(monkeypatch, tmp_path, capsys):
