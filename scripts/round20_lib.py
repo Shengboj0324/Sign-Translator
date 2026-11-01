@@ -241,6 +241,8 @@ def segment_clip(segment, utterance, native, *, margin: float = .1, context: flo
         return None
     at = lambda k: min(len(native) - 1, int(round(k * scale)))         # noqa: E731
     ta, tb = float(native[at(segment["start"])]), float(native[at(segment["end"])])
+    if segment.get("min_seconds"):        # post-S2 A3: a point annotated on one frame still shows its movement
+        margin = max(margin, (float(segment["min_seconds"]) - (tb - ta)) / 2)
     t = np.asarray(utterance.timestamps, dtype=float) - float(utterance.timestamps[0])
     keep = np.flatnonzero((t >= ta - margin - context - 1e-9) & (t <= tb + margin + context + 1e-9))
     if not len(keep):

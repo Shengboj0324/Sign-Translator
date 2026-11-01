@@ -363,6 +363,14 @@ def sign_core(word, state, *, fractions, margin, tighten: bool = False):
         w = core_window(state, dict(CORE_RULE, margin=float(fractions.get("activity_margin") or 0.)))
         return dict(w, reason="activity" if w["reason"] == "core" else f"activity_{w['reason']}")
     window = fraction_window(state, frac or fractions["all"], margin, reason="entry" if frac else "all")
+    floor = (fractions.get("min_seconds") or {}).get(word)
+    if floor:                               # post-S2 A3: a generated pronoun's piece, widened as its real clip's is
+        need, top = int(round(float(floor) * FPS)), len(state.timestamps) - 1
+        while window["hi"] - window["lo"] + 1 < need and (window["lo"] > 0 or window["hi"] < top):
+            if window["lo"] > 0:
+                window = dict(window, lo=window["lo"] - 1)
+            if window["hi"] - window["lo"] + 1 < need and window["hi"] < top:
+                window = dict(window, hi=window["hi"] + 1)
     if tighten:
         from signtranslator.generation.composition_space import tighten_window
         window = tighten_window(state, window, dict(CORE_RULE, margin=margin))

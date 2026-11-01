@@ -112,6 +112,12 @@ def wrist_from_shoulder(state, side: str) -> tuple[np.ndarray, np.ndarray]:
     return p, body.valid[:, up] & body.valid[:, fore]
 
 
+def wrist_of_rotations(upper: np.ndarray, fore: np.ndarray, side: str) -> np.ndarray:
+    """``wrist_from_shoulder``'s position from given (T, 3, 3) upper-arm and forearm rotations."""
+    return (upper @ (_LENGTH["UpperArm"] * _rest(f"{side}UpperArm")) +
+            upper @ fore @ (_LENGTH["Forearm"] * _rest(f"{side}Forearm")))
+
+
 def torso(state) -> tuple[np.ndarray, np.ndarray]:
     """((T, 3, 3) Pelvis x Chest, (T,) valid)."""
     body, index = _body(state)
