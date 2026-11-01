@@ -4,11 +4,11 @@
 #   bash runpod/fleet/path_read.sh            the 5-clip smoke (c02 train clips; D20's lookup from index objects), then D20, on this pod
 #   SMOKE=1 bash runpod/fleet/path_read.sh    the smoke only
 #
-# One process at a time. On D20, real_two_view and blank are read first and must reproduce the pinned stored report (`control`). A miss stops the job before any monocular form and voids the read. No automatic retry: this code never
-# reads again, and a rerun needs new code and RERUN_CAUSE, which the report records.
-# Outputs (write-once) under $D. A failure uploads the work so far to $D/partial/<UTC>/; a retry on another pod starts over.
+# One process at a time. The first step checks both stored forms against the plan's figures and prints their hashes. On D20, real_two_view, blank and rt_nearest_two_view are read first and must reproduce their stored reads (`control`). A miss stops
+# the job before any monocular form and voids the read, and `read` itself refuses a monocular form without a passed control. No automatic retry: this code never reads again, and a rerun needs new code and RERUN_CAUSE, which the report records.
+# Outputs (write-once) under $D, the log under $D/logs/. A failure uploads the work so far to $D/partial/<UTC>/; rerunning on the same pod resumes what stands in $WORK.
 # Ends with PATH-READ-DONE <status> (0 read done, 1 the read failed, 2 the smoke stopped the job, 3 the read is void: do not retry). The exit status is the same.
-# Every step's output passes through tee to $LOG, and `step` returns the failing side's status from PIPESTATUS, so no pipe hides a failure.
+# Every step's output and every ALERT passes through tee to $LOG, and `step` returns the failing side's status from PIPESTATUS, so no pipe hides a failure.
 [ -f "${R2ENV:-/root/r2env.sh}" ] && source "${R2ENV:-/root/r2env.sh}"
 export PATH=${VENV_BIN:-/root/venv/bin}:$PATH
 THREADS=${THREADS:-8}
@@ -26,19 +26,6 @@ R=$W/d20
 LOG=$W/path_read.log
 COMMON="--device $DEV --threads $THREADS --instrument-cache $W/instrument --nll-group 4"
 
-finish() {
-  local status=$?
-  trap - EXIT
-  if [ "$status" != 0 ]; then
-    python $T upload --partial --out-dir "$W" --prefix "$D/partial/$TS" || echo "ALERT partial upload failed"
-  fi
-  echo "PATH-READ-DONE $status"
-  exit "$status"
-}
-trap finish EXIT
-trap 'exit 143' TERM INT HUP
-done_() { exit "$1"; }
-
 # a command's output to the log and the console; its status, or the log's failure, comes back
 step() {
   "$@" 2>&1 | tee -a "$LOG"
@@ -47,33 +34,50 @@ step() {
   [ "${codes[1]}" = 0 ] || { echo "ALERT the log could not be written (tee ${codes[1]})"; return 1; }
   return 0
 }
+alert() { step echo "ALERT $*" || true; }
+
+finish() {
+  local status=$?
+  trap - EXIT
+  if [ "$status" != 0 ]; then
+    python $T upload --partial --out-dir "$W" --prefix "$D/partial/$TS" || alert "partial upload failed"
+  fi
+  python $T upload-log --file "$LOG" --key "$D/logs/$TS.log" || echo "ALERT log upload failed"
+  echo "PATH-READ-DONE $status"
+  exit "$status"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT HUP
+done_() { exit "$1"; }
 
 mkdir -p "$S/forms" "$S/d20" "$R/forms" || done_ 1
-uv pip install -q 'transformers==4.57.6' sentencepiece || { echo "ALERT transformers install failed"; done_ 1; }   # the version of the stored D20 reads
+uv pip install -q 'transformers==4.57.6' sentencepiece || { alert "transformers install failed"; done_ 1; }   # the version of the stored D20 reads
 
-# ---- smoke: 5 c02 train clips through every form; D20 only as a lookup in index objects, no D20 state, no instrument on D20 ----------
-step python $T lookups --out-dir "$S/d20" || { echo "ALERT smoke D20 lookup failed"; done_ 2; }
-step python $T lookups --out-dir "$S/forms" --smoke-train 5 || { echo "ALERT smoke lookup failed"; done_ 2; }
-step python $T read --out-dir "$S/forms" --smoke-train 5 $COMMON || { echo "ALERT smoke read failed"; done_ 2; }
-step python $T control --out-dir "$S/forms" --void-prefix "$D/void" || { echo "ALERT smoke control failed"; done_ 2; }
-step python $T merge --out-dir "$S/forms" --output-file "$S/report.json" || { echo "ALERT smoke merge failed"; done_ 2; }
-step python $T check --report "$S/report.json" || { echo "ALERT smoke check failed"; done_ 2; }
-step python $T upload --out-dir "$S" --prefix "$D/smoke/$TS" || { echo "ALERT smoke upload failed"; done_ 2; }
+step python $T stored-check || { alert "the stored forms are not the plan's"; done_ 1; }
+
+# ---- smoke: c02 train clips through every form, as tok_v1's; D20 only as a lookup in index objects, no D20 state, no instrument on D20 ---
+step python $T lookups --out-dir "$S/d20" || { alert "smoke D20 lookup failed"; done_ 2; }
+step python $T lookups --out-dir "$S/forms" --smoke-train 5 || { alert "smoke lookup failed"; done_ 2; }
+step python $T read --out-dir "$S/forms" --smoke-train 5 --smoke-longest 4 --smoke-never-tracked 2 $COMMON || { alert "smoke read failed"; done_ 2; }
+step python $T control --out-dir "$S/forms" --void-prefix "$D/void" || { alert "smoke control failed"; done_ 2; }
+step python $T merge --out-dir "$S/forms" --output-file "$S/report.json" || { alert "smoke merge failed"; done_ 2; }
+step python $T upload --out-dir "$S" --prefix "$D/smoke/$TS" || { alert "smoke upload failed"; done_ 2; }
+step python $T check --report "$S/report.json" || { alert "smoke check failed: its report is stored"; done_ 2; }
 if [ "${SMOKE:-0}" = 1 ]; then
-  echo "SMOKE done"
+  step echo "SMOKE done"
   done_ 0
 fi
 
 # ---- the read: D20 ------------------------------------------------------------------------------------------------------------------
-step python $T preflight --out-dir "$R" --final-key "$D/report.json" --void-prefix "$D/void" ${RERUN_CAUSE:+--rerun-cause "$RERUN_CAUSE"} || { echo "ALERT preflight refused"; done_ 1; }
-step python $T lookups --out-dir "$R/forms" || { echo "ALERT lookup failed"; done_ 1; }
-step python $T read --forms real_two_view,blank --resume --out-dir "$R/forms" $COMMON || { echo "ALERT read of the control failed"; done_ 1; }
+step python $T preflight --out-dir "$R" --final-key "$D/report.json" --void-prefix "$D/void" ${RERUN_CAUSE:+--rerun-cause "$RERUN_CAUSE"} || { alert "preflight refused"; done_ 1; }
+step python $T lookups --out-dir "$R/forms" || { alert "lookup failed"; done_ 1; }
+step python $T read --forms real_two_view,blank,rt_nearest_two_view --resume --out-dir "$R/forms" $COMMON || { alert "read of the control failed"; done_ 1; }
 step python $T control --out-dir "$R/forms" --void-prefix "$D/void"
 control=$?
-[ "$control" != 3 ] || { echo "ALERT the control failed: the read is void, do not retry"; done_ 3; }
-[ "$control" = 0 ] || { echo "ALERT the control did not run"; done_ 1; }
-step python $T read --forms real_monocular,real_monocular_unconformed,round_trip_monocular --resume --out-dir "$R/forms" $COMMON || { echo "ALERT read of the monocular forms failed"; done_ 1; }
-step python $T merge --out-dir "$R/forms" --output-file "$R/report.json" || { echo "ALERT merge failed"; done_ 1; }
-step python $T upload --out-dir "$R" --prefix "$D" || { echo "ALERT upload failed"; done_ 1; }
-step python $T check --report "$R/report.json" || { echo "ALERT check failed: the report is stored, read it as broken"; done_ 1; }
+[ "$control" != 3 ] || { alert "the control failed: the read is void, do not retry"; done_ 3; }
+[ "$control" = 0 ] || { alert "the control did not run"; done_ 1; }
+step python $T read --forms real_monocular,real_monocular_unconformed,nearest_monocular,round_trip_monocular,real_monocular_trimmed,monocular_values_two_view_marks,two_view_values_monocular_marks --resume --out-dir "$R/forms" $COMMON || { alert "read of the monocular forms failed"; done_ 1; }
+step python $T merge --out-dir "$R/forms" --output-file "$R/report.json" || { alert "merge failed"; done_ 1; }
+step python $T upload --out-dir "$R" --prefix "$D" || { alert "upload failed"; done_ 1; }
+step python $T check --report "$R/report.json" || { alert "check failed: the report is stored, read it as broken"; done_ 1; }
 done_ 0
