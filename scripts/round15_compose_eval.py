@@ -314,7 +314,7 @@ def comp_a_settings(args) -> dict:
     out = {}
     if comp_a_on(args):
         from comp_a_lib import provenance_row
-        out["provenance"] = provenance_row()
+        out["provenance"] = provenance_row(args.comp_a_job_file)
     if args.comp_a_read:
         out["comp_a_read"] = True
     if args.arm_scale:
@@ -356,7 +356,7 @@ def load_word_cache(store, args, vocab, corpora, words) -> tuple[dict, dict]:
             raise SystemExit(f"{args.word_cache_extra_key} does not match --word-cache-extra-sha256")
         extra = json.loads(raw)
         e = extra["settings"]
-        wrong = [k for k in ("checkpoint_key", "recognizer_run", "vocabulary_mix", "guidance", "part_temperature") if e.get(k) != s.get(k)]
+        wrong = [k for k in ("checkpoint_key", "recognizer_run", "vocabulary_mix", "guidance", "part_temperature", "draw") if e.get(k) != s.get(k)]
         if bool(e.get("no_decoder_gains")) != bool(s.get("no_decoder_gains")):
             wrong.append("no_decoder_gains")
         if (e.get("vocabulary_extra") or {}).get("sha256") != args.vocabulary_extra_sha256:
@@ -378,7 +378,7 @@ def load_word_cache(store, args, vocab, corpora, words) -> tuple[dict, dict]:
         states[w] = load_state(store, pick["state_key"], pick["state_sha256"])
     info = dict(key=args.word_cache_key, sha256=args.word_cache_sha256, n=int(n), checkpoint_key=s["checkpoint_key"],
                 scorer=s["recognizer_run"], samples=s["samples"],
-                **({"no_decoder_gains": True} if s.get("no_decoder_gains") else {}))
+                **({"no_decoder_gains": True} if s.get("no_decoder_gains") else {}), **({"draw": s["draw"]} if s.get("draw") else {}))
     return info, states
 
 
@@ -1596,6 +1596,7 @@ def main(argv=None) -> int:
     q.add_argument("--oracle-choice-pick", help="which pick of that index: 4, 8, 16, sample0, draw1 ...")
     q.add_argument("--hold-left-file", help="the committed statistics (scripts/comp_a_hold_stats.py): the left arm held across one-handed stretches")
     q.add_argument("--hold-left-sha256")
+    q.add_argument("--comp-a-job-file", default="runpod/fleet/comp_a.sh", help="the job's shell file, part of the code digest in the report")
     q.add_argument("--comp-a-read", action="store_true", help="the margin-0 comparator's read: D20 only, report-only, per-side motion and contact, no other change")
     e = r.add_argument_group("composed-state export (module docstring; off by default: the run and its report "
                              "unchanged)")

@@ -17,6 +17,9 @@ is the entry's own).
 ``--vocabulary-extra-file/-sha256/-top`` (post-S2 A3; D20 only): only the list's new entries the sentences select are generated,
 each at its listed typical seconds, under this prefix; the composition takes them with ``--word-cache-extra-key``.
 
+``--draw K`` (post-S2 A5; D20 only; K >= 1): a fresh word draw of the same recipe. Sample k's seed is ``rerank.rerank_seeds(round20_lib.draw_seed(e, K), N)[k]``, so no
+sample repeats the stored cache's or another draw's; the settings say which draw.
+
 ``--no-decoder-gains`` (A7): the samples decode without the tokenizer's accepted gains (same seeds and codes; head
 smoothing stays), recorded in the settings and the index. Give it its own ``--prefix``.
 
@@ -139,7 +142,7 @@ def run(args) -> dict:
     from signtranslator.pose.resample import resample_motion
     from evaluate_text_to_motion import at_rate, load_generator
     from exposure_diagnostic import make_post
-    from round20_lib import entry_label, entry_seed
+    from round20_lib import draw_seed, entry_label, entry_seed
     from train_text_to_motion import make_store
     import validate_sign_recognizer as vsr
     store = make_store(args.store)
@@ -163,7 +166,7 @@ def run(args) -> dict:
         if getattr(args, "vocabulary_extra_file", None) and len(e) == 1:   # the label "I" is the letter's, not the pronoun's
             label = None
         seconds = float(vocab[e])
-        seeds = rerank_seeds(entry_seed(e), args.samples)
+        seeds = rerank_seeds(draw_seed(e, args.draw) if args.draw else entry_seed(e), args.samples)
         states, probs, logps, ranks, pmis = [], [], [], [], []
         for s in seeds:
             raw, codes = generate_rvq_motion(sample.prior, sample.tokenizer, [e], fps=FPS, durations=[seconds],
@@ -209,8 +212,11 @@ def run(args) -> dict:
                     recognizer_checkpoint=best.get("checkpoint_key") if isinstance(best, dict) else None,
                     shards=args.shards, labels=len(labels),
                     **({"no_decoder_gains": True} if args.no_decoder_gains else {}),  # absent: the gains are on
-                    **({"vocabulary_extra": dict(sha256=args.vocabulary_extra_sha256, top=args.vocabulary_extra_top), "provenance": __import__("comp_a_lib").provenance_row()}
-                       if getattr(args, "vocabulary_extra_file", None) else {}))
+                    **({"vocabulary_extra": dict(sha256=args.vocabulary_extra_sha256, top=args.vocabulary_extra_top)}
+                       if getattr(args, "vocabulary_extra_file", None) else {}),
+                    **({"draw": args.draw} if args.draw else {}),
+                    **({"provenance": __import__("comp_a_lib").provenance_row(args.comp_a_job_file)}
+                       if args.draw or getattr(args, "vocabulary_extra_file", None) else {}))
     return dict(kind="round20-word-cache-shard", shard=args.shard, settings=settings, entries=rows,
                 seconds=round(time.time() - start, 1))
 
@@ -262,6 +268,8 @@ def main(argv=None) -> int:
     r.add_argument("--vocabulary-extra-file", help="post-S2 A3: the committed token list; only its new entries are generated")
     r.add_argument("--vocabulary-extra-sha256")
     r.add_argument("--vocabulary-extra-top", type=int)
+    r.add_argument("--draw", type=int, help="post-S2 A5: a fresh word draw, numbered from 1; its seeds are no other run's")
+    r.add_argument("--comp-a-job-file", default="runpod/fleet/comp_a.sh", help="the job's shell file, part of the code digest in the settings")
     m = sub.add_parser("merge")
     m.add_argument("--shards", type=int, default=1)
     for q in (r, m):
@@ -282,6 +290,14 @@ def main(argv=None) -> int:
             p.error("--vocabulary-mix-key and --vocabulary-mix-sha256 go together")
         if not 0 <= args.shard < args.shards:
             p.error("--shard must be in 0..--shards-1")
+        if args.draw is not None:
+            from comp_a_lib import require_d20
+            if args.draw < 1:
+                p.error("--draw: numbered from 1")
+            try:
+                require_d20(args.sentences_key, args.sentences_sha256)
+            except SystemExit as stop:
+                p.error(str(stop))
         if args.vocabulary_extra_file or args.vocabulary_extra_sha256 or args.vocabulary_extra_top:
             from comp_a_lib import TOPS, require_d20
             if not (args.vocabulary_extra_file and args.vocabulary_extra_sha256) or args.vocabulary_extra_top not in TOPS:
