@@ -95,6 +95,8 @@ def summarise(rows, ns) -> dict:
                                                    r["ranks"][r["chosen"][str(n)]["index"]]))
     return out
 
+SMOKE_COVER_CLIPS = 5
+
 
 def select_entries(args, store):
     """(entries in order, vocabulary, vocabulary mix, corpora, sentence info) as the composition selects them."""
@@ -132,6 +134,15 @@ def select_entries(args, store):
         vocab = dict(vocab, **extra_vocabulary(arm))
         return sorted({w for ws in words for w in ws} & set(arm["entries"])), vocab, vmix, corpora, sentences
     entries = sorted({w for ws in words for w in ws})
+    if getattr(args, "smoke_cover_file", None):           # post-S2 A5's smoke: on few sentences, r10 entries reached only through the arm's map (n't to not)
+        from comp_a_lib import apply_token_map, arm_of, check_d20_payload, load_token_list
+        check_d20_payload(json.loads(payload))
+        arm = arm_of(load_token_list(args.smoke_cover_file, args.smoke_cover_sha256), args.smoke_cover_top)
+        _, mapped = apply_token_map(details, arm["token_map"])
+        covered = {w for ws in mapped for w in ws} - set(arm["entries"])
+        if covered - set(vocab):
+            raise SystemExit(f"--smoke-cover-file maps to entries outside r10's vocabulary: {sorted(covered - set(vocab))}")
+        entries = sorted(set(entries) | covered)
     return entries, vocab, vmix, corpora, sentences
 
 
@@ -215,6 +226,7 @@ def run(args) -> dict:
                     **({"vocabulary_extra": dict(sha256=args.vocabulary_extra_sha256, top=args.vocabulary_extra_top)}
                        if getattr(args, "vocabulary_extra_file", None) else {}),
                     **({"draw": args.draw} if args.draw else {}),
+                    **({"smoke_cover": dict(sha256=args.smoke_cover_sha256, top=args.smoke_cover_top)} if getattr(args, "smoke_cover_file", None) else {}),
                     **({"provenance": __import__("comp_a_lib").provenance_row(args.comp_a_job_file)}
                        if args.draw or getattr(args, "vocabulary_extra_file", None) else {}))
     return dict(kind="round20-word-cache-shard", shard=args.shard, settings=settings, entries=rows,
@@ -268,6 +280,9 @@ def main(argv=None) -> int:
     r.add_argument("--vocabulary-extra-file", help="post-S2 A3: the committed token list; only its new entries are generated")
     r.add_argument("--vocabulary-extra-sha256")
     r.add_argument("--vocabulary-extra-top", type=int)
+    r.add_argument("--smoke-cover-file", help=f"post-S2 A5's smoke, at most {SMOKE_COVER_CLIPS} clips: also the r10 entries this token list's map reaches on them")
+    r.add_argument("--smoke-cover-sha256")
+    r.add_argument("--smoke-cover-top", type=int)
     r.add_argument("--draw", type=int, help="post-S2 A5: a fresh word draw, numbered from 1; its seeds are no other run's")
     r.add_argument("--comp-a-job-file", default="runpod/fleet/comp_a.sh", help="the job's shell file, part of the code digest in the settings")
     m = sub.add_parser("merge")
@@ -304,6 +319,18 @@ def main(argv=None) -> int:
                 p.error(f"--vocabulary-extra-file, --vocabulary-extra-sha256 and --vocabulary-extra-top in {TOPS} go together")
             if args.vocabulary_mix_key:
                 p.error("--vocabulary-extra-file adds to r10's vocabulary")
+            try:
+                require_d20(args.sentences_key, args.sentences_sha256)
+            except SystemExit as stop:
+                p.error(str(stop))
+        if args.smoke_cover_file or args.smoke_cover_sha256 or args.smoke_cover_top:
+            from comp_a_lib import TOPS, require_d20
+            if not (args.smoke_cover_file and args.smoke_cover_sha256) or args.smoke_cover_top not in TOPS:
+                p.error(f"--smoke-cover-file, --smoke-cover-sha256 and --smoke-cover-top in {TOPS} go together")
+            if args.clips > SMOKE_COVER_CLIPS:
+                p.error(f"--smoke-cover-file is a smoke's: at most {SMOKE_COVER_CLIPS} clips; a full cache holds every entry on its own")
+            if args.vocabulary_extra_file or args.vocabulary_mix_key:
+                p.error("--smoke-cover-file adds r10 entries to a main cache on r10's vocabulary")
             try:
                 require_d20(args.sentences_key, args.sentences_sha256)
             except SystemExit as stop:

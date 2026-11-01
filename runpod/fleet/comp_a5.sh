@@ -68,10 +68,12 @@ for p in "$R10 $R10SHA" "$R14B $R14BSHA" "$D20 $D20SHA" "$BT/best.json $BTSHA" "
   set -- $p; pin "$1" "$2"
 done
 DEV=cpu; command -v nvidia-smi >/dev/null && nvidia-smi -L >/dev/null 2>&1 && DEV=cuda
-CLIPS=500; SAMPLES=16; CHOOSE=16; N=16
+CLIPS=500; SAMPLES=16; CHOOSE=16; N=16; COVER=""
 if [ $SMOKING = 1 ]; then
   [ "$PHASE" != summary ] || die "summary reads all of D20: no smoke"
   OUT=$OUT/smoke/${SMOKE_STAMP:-$(date -u +%Y%m%dT%H%M%SZ)}; CLIPS=5; SAMPLES=4; CHOOSE=4; N=4
+  # a smoke's few sentences may reach an r10 entry only through top10's map (n't to not). A full cache needs no cover: D20's 500 sentences select not without the map.
+  COVER="--smoke-cover-file $TOKENS --smoke-cover-sha256 $TOKENSSHA --smoke-cover-top 10"
 else
   [ "$DEV" = cuda ] || die "a full run needs a GPU (DEV=$DEV)"
 fi
@@ -116,7 +118,7 @@ case $PHASE in
       P=${CACHE_PROCS:-4}; pids=()
       for s in $(seq 0 $(( P - 1 ))); do
         exists $PREFIX/shard-$s-of-$P.json && continue
-        OMP_NUM_THREADS=$(( T / P > 0 ? T / P : 1 )) python scripts/round20_word_cache.py run --prefix $PREFIX $CACHEARGS --shards $P --shard $s --draw $K > /root/r20-a5-cache-$K-$A-$s.log 2>&1 & pids+=($!)
+        OMP_NUM_THREADS=$(( T / P > 0 ? T / P : 1 )) python scripts/round20_word_cache.py run --prefix $PREFIX $CACHEARGS $COVER --shards $P --shard $s --draw $K > /root/r20-a5-cache-$K-$A-$s.log 2>&1 & pids+=($!)
       done
       failed=0; ended=" "
       while :; do
