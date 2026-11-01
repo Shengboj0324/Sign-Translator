@@ -5946,3 +5946,9 @@ Marking every frame valid costs more than the tokenizer: real tracks hands on 83
 **Caution:** the masked forms carry real's tracking pattern, which a generator can't have and which may leak content, so a masked read isn't an achievable score. This doesn't show the tokenizer is fine; it shows v1 can't separate these on all-valid output. Which of the two it is needs a control (real's marks on blank or other sentences' motion) and instrument v2, trained with validity dropout.
 
 **C0, owner's decision (2026-11-01, 05:49 UTC):** the transition model stays off for now. L1 neither starts nor closes, and C0 gets no more D20 forms.
+
+### A4 result: not informative, and it measures word-draw noise (read 2026-11-01, recorded 06:16 UTC)
+
+D20, real word clips, report only, `a4-clipchoice-decomposition.json`. **Declared reading: not informative**; the tokenizer bound stands without support from this read. n16 2.031 [1.729, 2.357] is above sample0 1.821 but below all four other draws. Choice against sample0: BLEU +0.210 [−0.113, +0.599]; likelihood +0.0513 [+0.0285, +0.0744]. Repetition: −0.056 [−0.448, +0.334].
+
+**Finding, not a rule:** five random draws of real clips, same sentences and same scorer, read 1.821, 2.106, 2.118, 2.359, 2.414 (SD 0.237, range 0.593), wider than most lever effects in this round. The sentence bootstrap doesn't include this noise, so every single-draw D20 or C20 BLEU interval is too narrow, including C20's 2.400. Likelihood spread far less: +0.030 to +0.068, with n16 above all at +0.086. Future BLEU comparisons should average several draws, or lead with likelihood, and any such change is declared before its read.
