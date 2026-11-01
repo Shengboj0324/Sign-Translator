@@ -163,6 +163,7 @@ class Harness:
             if i not in missing:
                 rows.append(dict(sample_id=r["sign"], state_key=None if i in no_state else R.state_key_of(r["sign"]), state_sha256=digest, status="converted"))
         plant_shard(monkeypatch, self.store, rows)
+        self.plant_two_view()
         truth = {r["text"]: (ref, state) for r, ref, state in zip(self.records, self.refs, self.mono)}
         self.reader = reader or ContentReader(truth, levels)
         monkeypatch.setattr(L, "open_read_list", lambda store, smoke: (self.records, declared and not smoke, dict(list="t", sha256=L.D20_SHA, clips=n)))
@@ -171,6 +172,15 @@ class Harness:
         monkeypatch.setattr(L, "make_reader", lambda store, **k: self.reader)
         monkeypatch.setattr(R, "load_template", lambda store: template_state())
         self.plant_stored()
+
+    def plant_two_view(self):
+        """Each two-view clip as stored: its clock is read back from here."""
+        for k, (r, ref) in enumerate(zip(self.records, self.refs)):
+            path = self.tmp_path / f"two-view-{k}-{len(list(self.tmp_path.glob('two-view-*')))}.npz"
+            digest = ref.save(path)
+            key = f"two-view/{r['sign']}.npz"
+            self.store.put(key, path.read_bytes())
+            r["continuous"] = dict(seconds=2., state_key=key, state_sha256=digest)
 
     def main(self, *argv):
         return R.main([argv[0], "--store", f"dir:{self.tmp_path / 's'}", *argv[1:]])
@@ -205,6 +215,7 @@ class Harness:
         bleu, ci = M.bleu_ci_fast(rt_form["hypotheses"], rt_form["references"])
         self.monkeypatch.setattr(R, "STORED_RT_BLEU", bleu)
         self.monkeypatch.setattr(R, "STORED_RT_CI", ci)
+        self.monkeypatch.setattr(R, "STORED_RT_SHA256", hashlib.sha256(json.dumps(rt_form).encode()).hexdigest())
         self.monkeypatch.setattr(R, "STORED_NEAREST_SHA256", hashlib.sha256(raw).hexdigest())
         self.monkeypatch.setattr(R, "STORED_NEAREST_BLEU", M.bleu_ci_fast(nearest_form["hypotheses"], nearest_form["references"])[0])
         self.monkeypatch.setattr(L, "D20_CLIPS", self.n)
@@ -366,7 +377,7 @@ def test_a_row_naming_any_other_object_never_reaches_the_store(key):
         R.match_monocular(d20_records(1), dict(s0=dict(state_key=key, state_sha256="a" * 64)), True)
     store = SpyStore({key: b"never"})
     with pytest.raises(SystemExit, match="refused"):
-        R.load_clip(store, dict(index=0, sign="s0", state_key=key, state_sha256="a" * 64), template_state(), two_view_state(0, "a" * 64))
+        R.load_clip(store, dict(index=0, sign="s0", state_key=key, state_sha256="a" * 64), template_state(), two_view_state(0, "a" * 64), np.arange(20) / 24.)
     assert store.read == []
 
 
@@ -500,7 +511,7 @@ def test_the_real_equivalence_conforms_a_clip_to_the_two_view_layout_with_its_va
     item = item_of(store, tmp_path, raw)
     assert ((TWO_VIEW), {MONOCULAR}) == next(iter(layout_adapter.EQUIVALENT.items()))
     ref = two_view_state(0, item["state_sha256"])
-    clip, why = R.load_clip(store, item, template_state(), ref)
+    clip, why = R.load_clip(store, item, template_state(), ref, ref.timestamps)
     assert why is None and clip.index == 0 and clip.sign == "s0"
     assert R.layout_of(clip.conformed) == R.layout_of(ref) and R.layout_of(clip.raw) != R.layout_of(ref) and set(R.layout_of(clip.raw)) == {"body", "left_hand", "right_hand"}
     for name in ("body", "left_hand", "right_hand"):
@@ -514,27 +525,113 @@ def test_a_clip_is_cut_to_its_two_view_frames_by_timestamp(tmp_path):
     raw = monocular_state(0)
     item = item_of(store, tmp_path, raw)
     ref = two_view_state(0, item["state_sha256"])
-    clip, _ = R.load_clip(store, item, template_state(), ref)
+    clip, _ = R.load_clip(store, item, template_state(), ref, ref.timestamps)
     assert len(clip.trimmed.timestamps) == 20 and clip.trimmed.timestamps[0] == pytest.approx(ref.timestamps[0]) and clip.trimmed.timestamps[-1] == pytest.approx(ref.timestamps[-1])
     np.testing.assert_array_equal(clip.trimmed.channels["body"].values, raw.channels["body"].values[2:22])
     np.testing.assert_array_equal(clip.trimmed.channels["left_hand"].valid, raw.channels["left_hand"].valid[2:22])
-    assert clip.slice_of == dict(start_frame=2, frames_two_view=20, frames_monocular=24, max_offset_seconds=0., source_hash_matches=True)
+    assert clip.slice_of == dict(start_frame=2, frames_two_view=20, frames_monocular=24, stored_fps=24., max_offset_seconds=0., source_hash_matches=True)
 
 
 def test_the_two_view_clips_source_hash_proves_the_pairing_on_the_stored_files(tmp_path):
     store = DirectoryStore(tmp_path / "s")
     item = item_of(store, tmp_path, monocular_state(0))
-    clip, _ = R.load_clip(store, item, template_state(), two_view_state(0, "b" * 64))
+    ref = two_view_state(0, "b" * 64)
+    clip, _ = R.load_clip(store, item, template_state(), ref, ref.timestamps)
     assert clip.slice_of["source_hash_matches"] is False
 
 
-@pytest.mark.parametrize("times,message", [(np.arange(20) / 24. + 100., "not a slice"), (np.arange(20) / 12., "not a slice")])
-def test_a_two_view_clip_that_is_no_slice_of_its_monocular_clip_stops_the_job(tmp_path, times, message):
+@pytest.mark.parametrize("times", [np.arange(20) / 24. + 100., np.arange(20) / 12.])
+def test_a_two_view_clip_that_is_no_slice_of_its_monocular_clip_stops_the_job(tmp_path, times):
     store = DirectoryStore(tmp_path / "s")
     item = item_of(store, tmp_path, monocular_state(0))
     ref = replace(two_view_state(0, item["state_sha256"]), timestamps=times)
-    with pytest.raises(SystemExit, match=message):
-        R.load_clip(store, item, template_state(), ref)
+    with pytest.raises(SystemExit, match="not a slice"):
+        R.load_clip(store, item, template_state(), ref, times)
+
+
+def stopped_clip_clocks():
+    """The clip that stopped the first run, as stored: 30 fps, the monocular clock from 0.03301, two-view from its second frame."""
+    monocular = .03301 + np.arange(167) / 30.
+    return monocular, monocular[1:]
+
+
+def thirty_fps_pair(tmp_path, monocular, two_view):
+    """The two states at those clocks, conformed and resampled the way a read takes them."""
+    from evaluate_text_to_motion import at_rate
+    store = DirectoryStore(tmp_path / "s")
+    mono = replace(monocular_state(0, frames=len(monocular)), timestamps=monocular)
+    item = item_of(store, tmp_path, mono)
+    start = int(np.argmin(np.abs(monocular - two_view[0])))
+    base = R.cut_frames(signer_state(100, frames=len(monocular), amplitude=.4), np.arange(start, start + len(two_view)))
+    stored = laid_out(replace(base, timestamps=two_view, channels={n: replace(c, source_sha256=item["state_sha256"]) if c.valid.any() else c for n, c in base.channels.items()}), TWO_VIEW)
+    return store, item, at_rate(stored, R.FPS)
+
+
+def test_the_clip_that_stopped_the_first_run_passes_on_its_stored_clocks_and_trims_onto_two_views_grid(tmp_path):
+    from evaluate_text_to_motion import at_rate
+    monocular, two_view = stopped_clip_clocks()
+    store, item, ref = thirty_fps_pair(tmp_path, monocular, two_view)
+    full_grid = at_rate(replace(monocular_state(0, frames=len(monocular)), timestamps=monocular), R.FPS).timestamps
+    assert R.trim_index(full_grid, ref.timestamps)[1] > .03          # what stopped it: the two grids differ in phase after resampling
+    clip, why = R.load_clip(store, item, template_state(), ref, two_view)
+    assert why is None and clip.slice_of["max_offset_seconds"] == 0. and clip.slice_of["start_frame"] == 1 and clip.slice_of["stored_fps"] == 30. and clip.slice_of["source_hash_matches"] is True
+    np.testing.assert_array_equal(clip.trimmed.timestamps, ref.timestamps)
+    assert R.layout_of(clip.trimmed) == R.layout_of(ref) and R.layout_of(clip.raw) != R.layout_of(ref)
+    assert len(clip.trimmed.timestamps) == 133 and R.key_distance(clip.trimmed, ref)["left_wrist"] is not None
+    assert clip.slice_of["frames_monocular"] == len(full_grid)
+
+
+def test_an_offset_just_inside_a_quarter_of_a_stored_frame_passes_and_is_reported_and_just_above_it_stops(tmp_path):
+    monocular, two_view = stopped_clip_clocks()
+    quarter = 1 / 120.
+    inside = two_view[:40] + quarter - 1e-4
+    store, item, ref = thirty_fps_pair(tmp_path, monocular, inside)
+    clip, why = R.load_clip(store, item, template_state(), ref, inside)
+    assert why is None and clip.slice_of["max_offset_seconds"] == pytest.approx(quarter - 1e-4, abs=1e-6) and clip.slice_of["start_frame"] == 1
+    np.testing.assert_array_equal(clip.trimmed.timestamps, ref.timestamps)
+    with pytest.raises(SystemExit, match="not a slice of its monocular clip on the stored clocks: largest offset 0.0084"):
+        R.load_clip(store, item, template_state(), ref, two_view[:40] + quarter + 1e-4)
+
+
+@pytest.mark.parametrize("frames", [.26, .4, .5, .6, .74])
+def test_a_clock_off_the_frame_grid_stops_though_its_nearest_frame_is_within_half_a_frame(frames):
+    times = np.arange(60) / 30.
+    index, offset = R.trim_index(times, times[5:15] + frames / 30.)
+    assert index is None and offset == pytest.approx(min(frames, 1 - frames) / 30.)
+
+
+def test_the_tolerance_is_this_clips_own_frame_not_24_fps():
+    assert R.SLICE_TOLERANCE == .25
+    fast, slow = np.arange(60) / 60., np.arange(60) / 24.
+    assert R.trim_index(fast, fast[5:15] + .004)[0] is not None and R.trim_index(fast, fast[5:15] + .0043)[0] is None
+    assert R.trim_index(slow, slow[5:15] + .0103)[0] is not None and R.trim_index(slow, slow[5:15] + .0105)[0] is None
+
+
+def test_a_clock_one_stored_frame_past_the_end_stops(tmp_path):
+    monocular, two_view = stopped_clip_clocks()
+    index, offset = R.trim_index(monocular, np.r_[two_view, two_view[-1] + 1 / 30.])
+    assert index is None and offset == pytest.approx(1 / 30.)
+
+
+def test_a_cut_that_does_not_land_on_its_two_view_clips_length_stops(tmp_path):
+    store = DirectoryStore(tmp_path / "s")
+    item = item_of(store, tmp_path, monocular_state(0))
+    ref = two_view_state(0, item["state_sha256"])
+    with pytest.raises(SystemExit, match="holds 19 frames, its two-view clip 20"):
+        R.load_clip(store, item, template_state(), ref, ref.timestamps[:19])
+
+
+def test_the_stored_clock_is_read_from_the_clips_own_two_view_state(monkeypatch, tmp_path):
+    h = Harness(monkeypatch, tmp_path, n=3)
+    seen = []
+    original = R.load_clip
+    monkeypatch.setattr(R, "load_clip", lambda store, item, template, ref, times: seen.append((item["sign"], np.asarray(times).copy())) or original(store, item, template, ref, times))
+    R.open_monocular(h.store, h.records, h.refs, True)
+    for sign, times in seen:
+        np.testing.assert_array_equal(times, h.refs[int(sign[1:])].timestamps)
+    h.store.put(h.records[1]["continuous"]["state_key"], b"changed")
+    with pytest.raises(Exception, match="(?i)sha"):
+        R.open_monocular(h.store, h.records, h.refs, True)
 
 
 def test_trim_index_finds_the_frames_and_their_offset_and_refuses_what_is_not_contained():
@@ -542,14 +639,11 @@ def test_trim_index_finds_the_frames_and_their_offset_and_refuses_what_is_not_co
     index, offset = R.trim_index(times, times[2:22])
     np.testing.assert_array_equal(index, np.arange(2, 22))
     assert offset == 0.
-    index, offset = R.trim_index(times, times[2:22] + .01)
-    np.testing.assert_array_equal(index, np.arange(2, 22))
-    assert offset == pytest.approx(.01)
-    near, offset = R.trim_index(times, times[2:22] + .02)
+    near, offset = R.trim_index(times, times[2:22] + .01)
     np.testing.assert_array_equal(near, np.arange(2, 22))
-    assert offset == pytest.approx(.02)
+    assert offset == pytest.approx(.01)
     assert R.trim_index(times, np.array([-1 / 24, 0., 1 / 24]))[0] is None and R.trim_index(times, np.array([22 / 24, 23 / 24, 24 / 24]))[0] is None
-    assert R.trim_index(times, np.array([0., 2 / 24]))[0] is None and R.TIME_TOLERANCE == 1 / 48
+    assert R.trim_index(times, np.array([0., 2 / 24]))[0] is None
     index, offset = R.trim_index(times, np.array([100.]))
     assert index is None and offset == pytest.approx(100. - 23 / 24)
     near, _ = R.trim_index(times, np.array([0., 1 / 24]))
@@ -557,18 +651,15 @@ def test_trim_index_finds_the_frames_and_their_offset_and_refuses_what_is_not_co
 
 
 def test_a_clip_at_another_rate_comes_to_24_fps_conformed_and_raw(tmp_path):
-    store = DirectoryStore(tmp_path / "s")
-    raw = replace(monocular_state(0, frames=30), timestamps=np.arange(30) / 30.)
-    item = item_of(store, tmp_path, raw)
-    ref = R.cut_frames(two_view_state(0, item["state_sha256"]), np.arange(5))
-    ref = replace(ref, timestamps=np.arange(5) / 24.)
-    clip, why = R.load_clip(store, item, template_state(), ref)
-    assert why is None and len(clip.conformed.timestamps) == len(clip.raw.timestamps) == 24 and abs(np.median(np.diff(clip.conformed.timestamps)) - 1 / 24) < 1e-6
+    monocular, two_view = stopped_clip_clocks()
+    store, item, ref = thirty_fps_pair(tmp_path, monocular, two_view)
+    clip, _ = R.load_clip(store, item, template_state(), ref, two_view)
+    assert len(clip.conformed.timestamps) == len(clip.raw.timestamps) and abs(np.median(np.diff(clip.conformed.timestamps)) - 1 / 24) < 1e-6 and abs(np.median(np.diff(clip.raw.timestamps)) - 1 / 24) < 1e-6
 
 
 def test_a_missing_object_alone_loses_a_clip(tmp_path):
     item = dict(index=0, sign="s0", state_key=R.state_key_of("s0"), state_sha256="0" * 64)
-    clip, why = R.load_clip(DirectoryStore(tmp_path / "empty"), item, template_state(), two_view_state(0, "0" * 64))
+    clip, why = R.load_clip(DirectoryStore(tmp_path / "empty"), item, template_state(), two_view_state(0, "0" * 64), np.arange(20) / 24.)
     assert clip is None and why == dict(sign="s0", reason="state_missing", detail=R.state_key_of("s0"))
 
 
@@ -576,7 +667,7 @@ def test_a_hash_mismatch_stops_the_job_and_loses_nothing(tmp_path):
     store = DirectoryStore(tmp_path / "s")
     item = dict(item_of(store, tmp_path, monocular_state(0)), state_sha256="0" * 64)
     with pytest.raises(SystemExit, match="does not load"):
-        R.load_clip(store, item, template_state(), two_view_state(0, "0" * 64))
+        R.load_clip(store, item, template_state(), two_view_state(0, "0" * 64), np.arange(20) / 24.)
 
 
 @pytest.mark.parametrize("error", [MemoryError("planted"), ConnectionError("planted"), OSError("planted")])
@@ -598,14 +689,14 @@ def test_an_exists_that_fails_is_not_a_missing_object(tmp_path):
             raise ConnectionError("planted")
     item = dict(index=0, sign="s0", state_key=R.state_key_of("s0"), state_sha256="0" * 64)
     with pytest.raises(ConnectionError):
-        R.load_clip(Broken(tmp_path / "s"), item, template_state(), two_view_state(0, "0" * 64))
+        R.load_clip(Broken(tmp_path / "s"), item, template_state(), two_view_state(0, "0" * 64), np.arange(20) / 24.)
 
 
 def test_an_undeclared_layout_stops_the_job(tmp_path):
     store = DirectoryStore(tmp_path / "s")
     item = item_of(store, tmp_path, monocular_state(0, layout=("undeclared", "undeclared")))
     with pytest.raises(SystemExit, match="conform refused it: ValueError"):
-        R.load_clip(store, item, template_state(), two_view_state(0, item["state_sha256"]))
+        R.load_clip(store, item, template_state(), two_view_state(0, item["state_sha256"]), np.arange(2, 22) / 24.)
 
 
 def test_a_conform_missing_a_channel_stops_the_job(monkeypatch, tmp_path):
@@ -616,17 +707,17 @@ def test_a_conform_missing_a_channel_stops_the_job(monkeypatch, tmp_path):
         raise KeyError("left_hand")
     monkeypatch.setattr(layout_adapter, "conform", missing)
     with pytest.raises(SystemExit, match="conform refused it: KeyError"):
-        R.load_clip(store, item, template_state(), two_view_state(0, item["state_sha256"]))
+        R.load_clip(store, item, template_state(), two_view_state(0, item["state_sha256"]), np.arange(2, 22) / 24.)
 
 
 def test_a_clip_with_one_frame_stops_the_job_and_two_do_not(tmp_path):
     store = DirectoryStore(tmp_path / "s")
     item = item_of(store, tmp_path, monocular_state(0, frames=1))
     with pytest.raises(SystemExit, match="1 frames"):
-        R.load_clip(store, item, template_state(), two_view_state(0, item["state_sha256"]))
+        R.load_clip(store, item, template_state(), two_view_state(0, item["state_sha256"]), np.arange(2, 22) / 24.)
     item = item_of(store, tmp_path, monocular_state(0, frames=2))
     ref = replace(R.cut_frames(two_view_state(0, item["state_sha256"]), np.arange(2)), timestamps=np.arange(2) / 24.)
-    assert R.load_clip(store, item, template_state(), ref)[0] is not None
+    assert R.load_clip(store, item, template_state(), ref, ref.timestamps)[0] is not None
 
 
 def test_a_conformed_clip_whose_read_channels_are_not_the_two_view_clips_stops_the_job(tmp_path):
@@ -635,7 +726,7 @@ def test_a_conformed_clip_whose_read_channels_are_not_the_two_view_clips_stops_t
     ref = two_view_state(0, item["state_sha256"])
     other = replace(ref, channels={**ref.channels, "body": replace(ref.channels["body"], convention="other")})
     with pytest.raises(SystemExit, match="layout"):
-        R.load_clip(store, item, template_state(), other)
+        R.load_clip(store, item, template_state(), other, other.timestamps)
 
 
 def test_an_unavailable_channel_named_differently_in_the_two_view_clip_loses_nothing(tmp_path):
@@ -645,7 +736,7 @@ def test_an_unavailable_channel_named_differently_in_the_two_view_clip_loses_not
     ref = two_view_state(0, item["state_sha256"])
     name = next(n for n, c in ref.channels.items() if not c.valid.any())
     other = replace(ref, channels={**ref.channels, name: replace(ref.channels[name], labels=("placeholder",), coordinate_frame="not-estimated")})
-    clip, why = R.load_clip(store, item, template_state(), other)
+    clip, why = R.load_clip(store, item, template_state(), other, other.timestamps)
     assert why is None and clip is not None
 
 
@@ -870,7 +961,7 @@ def test_the_other_alerts_are_those_fixed_in_the_header():
     assert R.plumbing_alerts(ok, ok, block, 475, True) == [] and R.plumbing_alerts(ok, ok, block, 3, False) == []       # shoulders are not in the mirrored check; a smoke has no floor
     assert any("474 shared clips, under 475" in a for a in R.plumbing_alerts(ok, ok, block, 474, True))
     assert any("1 of 4 two-view clips do not name" in a for a in R.plumbing_alerts(ok, ok, dict(block, source_hash_matches=3), 500, True))
-    assert any("timestamps differ" in a for a in R.plumbing_alerts(ok, ok, dict(block, max_offset_seconds=.0011), 500, True))
+    assert any("stored clocks differ" in a for a in R.plumbing_alerts(ok, ok, dict(block, max_offset_seconds=.0011), 500, True))
     for group in R.MIRRORED_GROUPS:
         assert any(f"{group}: a mirrored" in a for a in R.plumbing_alerts(ok, ok, dict(block, group_mirrored=dict(block["group_mirrored"], **{group: .1})), 500, True))
         assert R.plumbing_alerts(ok, ok, dict(block, group_mirrored=dict(block["group_mirrored"], **{group: None})), 500, True) == []
@@ -1219,7 +1310,7 @@ def test_stored_check_prints_both_hashes_and_figures(monkeypatch, tmp_path, caps
     assert h.main("stored-check") == 0
     rows = json.loads(capsys.readouterr().out.strip().splitlines()[-1])["stored_check"]
     assert [r["form"] for r in rows] == ["rt_nearest", "v0_nearest_fill"] and rows[0]["sha256"] == hashlib.sha256(h.store.get(R.STORED_RT)).hexdigest() and rows[1]["sha256"] == hashlib.sha256(h.store.get(R.STORED_NEAREST)).hexdigest()
-    assert rows[0]["pinned"] is False and rows[1]["pinned"] is True and rows[0]["likelihood_minus_blank"] == .25 and rows[1]["likelihood_minus_blank"] == 1.5 and rows[0]["clips"] == 3 and rows[0]["bleu"] == R.STORED_RT_BLEU and rows[0]["ci95"] == R.STORED_RT_CI
+    assert rows[0]["likelihood_minus_blank"] == .25 and rows[1]["likelihood_minus_blank"] == 1.5 and rows[0]["clips"] == 3 and rows[0]["bleu"] == R.STORED_RT_BLEU and rows[0]["ci95"] == R.STORED_RT_CI
 
 
 @pytest.mark.parametrize("rt,nearest,name", [(.25 + .0011, 1.5, "rt_nearest"), (.25, 1.5 + .0011, "v0_nearest_fill")])
@@ -1240,11 +1331,10 @@ def test_stored_check_holds_the_blank_report_to_its_pin(monkeypatch, tmp_path):
         h.main("stored-check")
 
 
-def test_the_stored_rt_nearest_is_held_to_its_hash_once_pinned(monkeypatch, tmp_path):
+def test_the_stored_rt_nearest_is_held_to_its_pinned_hash(monkeypatch, tmp_path):
+    assert R.STORED_RT_SHA256 == "4577be5a56205038e97c6ff2b091015e9cf3a072f5f1ae40a7708c26819d2817"
     h = Harness(monkeypatch, tmp_path, n=3)
-    assert R.STORED_RT_SHA256 is None
     good = hashlib.sha256(h.store.get(R.STORED_RT)).hexdigest()
-    monkeypatch.setattr(R, "STORED_RT_SHA256", good)
     assert R.load_stored_rt_nearest(h.store)[1] == good
     monkeypatch.setattr(R, "STORED_RT_SHA256", "0" * 64)
     with pytest.raises(SystemExit, match="SHA-256"):
@@ -1646,7 +1736,7 @@ def test_the_report_names_its_list_code_environment_and_reading(monkeypatch, tmp
     assert report["reading"]["prestated"] == R.PRESTATED and set(report["resources"]) == set(R.FORMS) - {R.UNCONFORMED} and report["resources"]["blank"]["read_seconds"] >= 0
     printed = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert printed["shared"] == N - 1 and printed["of"] == N and printed["lost"] == dict(no_monocular_row=1) and printed["forms"]["real_monocular"]["gap_share"] == report["forms"]["real_monocular"]["share_of_gap"]["bleu"] and printed["forms"]["real_monocular"]["valid_frame_share"] == report["forms"]["real_monocular"]["valid_frame_share"]["mean"]
-    assert printed["pairing"]["source_hash_matches"] == N - 1 and printed["round_trip_beside_bar"]["bar"] == 3.8 and printed["validity"]["real_monocular"]["left_hand"] == pytest.approx(np.mean([R.part_validity(s)["left_hand"] for i, s in enumerate(h.mono) if i != 1])) and printed["stored"]["v0_nearest_fill"]["clips"] == N and printed["case"] == report["reading"]["case"] and printed["withheld"] == report["reading"]["withheld"]
+    assert printed["pairing"]["offsets"] == report["pairing"]["offsets"] and printed["pairing"]["source_hash_matches"] == N - 1 and printed["round_trip_beside_bar"]["bar"] == 3.8 and printed["validity"]["real_monocular"]["left_hand"] == pytest.approx(np.mean([R.part_validity(s)["left_hand"] for i, s in enumerate(h.mono) if i != 1])) and printed["stored"]["v0_nearest_fill"]["clips"] == N and printed["case"] == report["reading"]["case"] and printed["withheld"] == report["reading"]["withheld"]
 
 
 def test_the_pairing_block_and_its_regressions_rest_on_the_shared_clips(monkeypatch, tmp_path):
@@ -1654,9 +1744,15 @@ def test_the_pairing_block_and_its_regressions_rest_on_the_shared_clips(monkeypa
     block = h.pipeline()["pairing"]
     plan = json.loads((h.forms / "monocular.json").read_text())["pairing"]
     assert block["clips"] == N - 1 == len(plan) and block["source_hash_matches"] == N - 1 and block["max_offset_seconds"] == 0. and block["frames_ratio_median"] == 1.2
+    assert block["offsets"] == dict(clips=N - 1, nonzero=0, median=0., p90=0., p99=0., max=0., stored_fps={"24.0": N - 1})
     assert block["distance"]["left_wrist"]["mean"] == pytest.approx(np.mean([r["distance"]["left_wrist"] for r in plan]), abs=1e-4) and block["mirrored"]["left_wrist"]["mean"] > block["distance"]["left_wrist"]["mean"]
     assert block["group_distance"]["wrists"] == round(float(np.mean([R.group_distance(r["distance"], "wrists") for r in plan])), 5) and block["group_mirrored"]["hands"] > block["group_distance"]["hands"]
     assert set(block["regression"]) == {"marked", "trimmed", "marks_free"} and set(block["regression"]["marks_free"]) == set(R.GROUPS)
+
+
+def test_the_offset_distribution_summarises_every_clip():
+    rows = [dict(max_offset_seconds=v, stored_fps=f) for v, f in ((0., 24.), (0., 24.), (0., 30.), (.01, 60.), (.02, 24.))]
+    assert R.offset_distribution(rows) == dict(clips=5, nonzero=2, median=0., p90=round(float(np.percentile([0, 0, 0, .01, .02], 90)), 6), p99=round(float(np.percentile([0, 0, 0, .01, .02], 99)), 6), max=.02, stored_fps={"24.0": 3, "30.0": 1, "60.0": 1})
 
 
 def test_the_regressions_take_each_pairs_own_difference_and_sign(monkeypatch, tmp_path):
@@ -1686,9 +1782,10 @@ def test_the_pairing_rests_on_the_shared_clips_alone(monkeypatch, tmp_path):
 def test_a_timestamp_offset_reaches_the_pairing_and_the_alert(monkeypatch, tmp_path):
     h = Harness(monkeypatch, tmp_path, n=3)
     h.refs[1] = replace(h.refs[1], timestamps=h.refs[1].timestamps + .01)
+    h.plant_two_view()
     report = h.pipeline()
     plan = json.loads((h.forms / "monocular.json").read_text())["pairing"]
-    assert plan[1]["max_offset_seconds"] == .01 and plan[0]["max_offset_seconds"] == 0. and report["pairing"]["max_offset_seconds"] == .01 and any("timestamps differ by up to 0.0100" in a for a in report["alerts"])
+    assert plan[1]["max_offset_seconds"] == .01 and plan[0]["max_offset_seconds"] == 0. and report["pairing"]["max_offset_seconds"] == .01 and any("stored clocks differ by up to 0.0100" in a for a in report["alerts"])
 
 
 def test_an_emptied_monocular_hand_alerts_on_the_monocular_side_alone(monkeypatch, tmp_path):
@@ -2082,6 +2179,7 @@ def test_a_digest_that_cannot_be_named_voids(monkeypatch):
 def test_the_constants_are_the_declared_ones():
     assert R.PREFIX == "acquisition/2026-10-17-v1/youtube-asl-v1/round20/path-read" and R.BOOT == 2000 and R.ANCHORS == ("real_two_view", "blank", "rt_nearest_two_view")
     assert R.MONOCULAR_FORMS == ("real_monocular", "real_monocular_unconformed", "nearest_monocular", "round_trip_monocular", "real_monocular_trimmed", "monocular_values_two_view_marks", "two_view_values_monocular_marks") and R.FORMS == R.ANCHORS + R.MONOCULAR_FORMS
+    assert "a quarter of that clip's own stored frame interval" in R.__doc__ and "46 D20 clips including all 18 report rows" in R.__doc__ and "0.0333 s" in R.__doc__ and "at_rate" in R.__doc__ and "A shift of whole frames shows on no clock" in R.__doc__
     assert R.TEMPLATE_SIGN == "--7E2sU6zP4_10-5-rgb_front" and R.MONOCULAR == "acquisition/2026-10-17-v1/derived/how2sign-video-estimate-v1" and R.state_key_of("x") == f"{R.MONOCULAR}/states/x.npz" and R.FPS == 24.
 
 

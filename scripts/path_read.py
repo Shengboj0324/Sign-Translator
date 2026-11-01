@@ -19,7 +19,7 @@ Otherwise unresolved, and unresolved when BLEU and likelihood fall in different 
 - Validity, mean per-clip share of frames, either path: shoulders, each elbow and each wrist at least 0.5; each hand at least 0.3. Monocular over two-view at least 0.5 per part. (D20's report rows find a pose on every frame and the hands on 0.96 and 0.94 of frames, so these catch a broken path, not ordinary tracking. They do not see the chest: see below.)
 - Keypoint distance, monocular against two-view on shared timestamps, v1's normalised view, pooled over clips: shoulders at most 0.5 and elbows and wrists at most 1.0 shoulder widths; hands at most 3.0 palm widths.
 - The negative control: a mirrored monocular clip (``pose.mirror.mirror_state``) must sit farther from two-view than the clip itself, on elbows, wrists and hands.
-- Pairing: every two-view clip's ``source_sha256`` is its monocular row's hash, and the largest timestamp offset is at most 0.001 s.
+- Pairing: every two-view clip's ``source_sha256`` is its monocular row's hash, and the largest offset on the stored clocks is at most 0.001 s.
 
 **Forms** (D20, instrument v1, the selection and scoring of ``tok_v1`` and ``tok_v0``; no option names another list or instrument):
 
@@ -28,7 +28,9 @@ Otherwise unresolved, and unresolved when BLEU and likelihood fall in different 
 - ``real_monocular_unconformed``: conforming only renames the frame and convention of valid channels and empties channels with no valid frame; v1 reads body and hand rotations and their marks (``keypoints2d.from_state``). So each clip's v1 input is compared before any read. If it is byte-identical on every clip, a read can only repeat ``real_monocular``: the form is skipped, the comparison stands as what conforming costs (nothing), and ``monocular.json`` says why. If any clip differs, the form is read.
 - ``nearest_monocular``: ``tok_v1.cap_form("v0_nearest_fill", ...)`` on the conformed clip, every frame valid, no encoder or decoder: the marks-free read, paired with the stored two-view form (``tok_v1.STORED_FORMS``).
 - ``round_trip_monocular``: V1's ``rt_nearest`` on the conformed clip, since word clips pass through the tokenizer, beside this run's and the stored two-view read (4.124 on all 500), and beside 3.8.
-- ``real_monocular_trimmed``: cut by timestamp to the frames of its two-view clip, which is a slice of the monocular clip (``two_view_states.triangulated_state``), so length is taken out. A two-view frame with no monocular frame within half a frame stops the job.
+- ``real_monocular_trimmed``: cut to the frames of its two-view clip, so length is taken out, then resampled on two-view's own timestamps.
+
+**Clocks.** A two-view clip's stored timestamps are a slice of its monocular clip's (``two_view_states.triangulated_state``: ``times = monocular.timestamps[frames]``), so the two are compared on the stored clocks, each clip's two-view timestamps read from its own stored state, before any resampling. After resampling they cannot be: ``at_rate`` builds its 24 fps grid from each clip's own first frame, so a 30 or 60 fps clip's two grids differ in phase by up to a frame (a first run stopped on one at 0.0333 s while its stored clocks agreed exactly). The cut takes each two-view timestamp's nearest stored monocular frame. The job stops when any offset exceeds a quarter of that clip's own stored frame interval (10.4 ms at 24 fps, 8.3 ms at 30, 4.2 ms at 60), or the frames found are not consecutive. A nearest-frame offset cannot pass half a frame inside a clip, so half would only ever catch a clip's ends: a quarter stops a clock off the frame grid, and a clip reaching past its monocular clip's ends. Timestamps are copied, not derived, so none is expected: measured before this threshold was fixed, on the stored clocks of 46 D20 clips including all 18 report rows at a rate other than 24, the largest offset is 0.0 s and every source hash is equal. Above 0.001 s an offset raises an ALERT even inside the tolerance, and every clip's offset goes in the report with its distribution. A shift of whole frames shows on no clock: it rests on the source hash, the start frame reported, and keypoint distance.
 - Report only, the 2x2 of values and marks on those frames, beside ``real_two_view`` and ``real_monocular_trimmed``: ``monocular_values_two_view_marks`` (``V.with_marks(V.filled(monocular), two_view)``) and ``two_view_values_monocular_marks``. A joint its own path never tracked holds d2's neutral (``V.neutral_pose``), not zeros.
 
 **Clips.** Monocular states are found by exact D20 record: the record's ``sign`` as a dictionary key among the rows of the 8 report shards pinned below, each by key and hash; the state key must then be exactly ``<prefix>/states/<sign>.npz``. Nothing is listed and no substring is matched. All 500 of D20 sit in those shards (checked 2026-11-01 from index objects; 0 in the official-val report), so the official val and test reports are never opened.
@@ -38,7 +40,7 @@ Only a missing object loses a clip: no row, no state in its row, or no object at
 **Per form** (``merge``): BLEU with ``bleu_ci_fast``'s interval, likelihood minus blank, share of the real-minus-blank gap, valid-frame share and per-part validity (shoulders, each elbow, wrist and hand), paired differences against ``real_two_view``, per-signer rows, clips lost with reasons. ``same_path``: each difference and share under one joint bootstrap (n 2,000, seed 0): the marks-free gap, its ratio to the two-view gap, the round trip's share of it, and the same for the marked pair.
 A stored figure S against two-view reads S / ratio against monocular, within the same blank; that division is left to the reader, since no generated report is opened here. ``pairing``: the distances and the mirrored control per part, and, report only, the per-clip likelihood difference regressed on keypoint distance.
 
-**Stored reads.** The job's first step (``stored-check``) reads both stored forms and checks them against the plan's figures: ``v0_nearest_fill`` by its pinned hash, BLEU 4.621, likelihood +0.2337; ``rt_nearest`` BLEU 4.124 [3.485, 4.764], likelihood +0.1883, and by ``STORED_RT_SHA256`` once that is pinned (it prints the hash).
+**Stored reads.** The job's first step (``stored-check``) reads both stored forms and checks them against the plan's figures: each by its pinned hash: ``v0_nearest_fill`` BLEU 4.621, likelihood +0.2337; ``rt_nearest`` BLEU 4.124 [3.485, 4.764], likelihood +0.1883.
 
 **Smoke** (``--smoke-train 5 --smoke-longest 4 --smoke-never-tracked 2``): c02 train clips, as ``tok_v1``'s, through every form, and D20's lookup from index objects alone. No D20 state is read and no instrument sees D20 in the smoke.
 
@@ -101,7 +103,7 @@ MONOCULAR_REPORTS = {f"{REPORTS}train_rgb_front_clips-shard-{i:03d}-of-008.json"
     "a675fd716b2bc1fb3b398e25863c5851afaa25eca1f73025e256d4f3ee7cf407", "26361e9311dfce0ec5c6d2197c3f0c3e02a04e43da34c6f7e97d8a5fe8036804"))}
 TEMPLATE_SIGN = "--7E2sU6zP4_10-5-rgb_front"            # r10's first How2Sign train record (c02): train_motion_tokens.layout_template's choice
 STORED_RT = f"{L.O}/tok-probes-v1/forms/form-rt_nearest.json"
-STORED_RT_SHA256 = None                                 # unknown here: that object is no index object, so it was not read from the Mac. stored-check prints it on the pod; pin it then
+STORED_RT_SHA256 = "4577be5a56205038e97c6ff2b091015e9cf3a072f5f1ae40a7708c26819d2817"     # printed by stored-check on the first run
 STORED_RT_BLEU, STORED_RT_CI, STORED_RT_LIKELIHOOD = 4.124, [3.485, 4.764], .1883     # docs/NEXT_PHASE_PLAN.md, V1 result
 STORED_RT_DIGEST = "abcb46bd"                           # V1's code digest, the ledger's prefix
 STORED_NEAREST, STORED_NEAREST_SHA256 = T.STORED_FORMS["v0_nearest_fill"]
@@ -109,7 +111,7 @@ STORED_NEAREST_BLEU, STORED_NEAREST_LIKELIHOOD = 4.621, .2337
 THRESHOLD = dict(bleu=.5, likelihood=.052)
 BAR = 3.8
 SHARED_FLOOR = 475
-TIME_TOLERANCE = 1 / 48                                 # half a frame: containment; the offset itself is held to OFFSET_CEILING
+SLICE_TOLERANCE = .25                                   # of a clip's own stored frame interval: stops above it; the offset itself is held to OFFSET_CEILING
 OFFSET_CEILING = .001
 PARTS = dict(shoulders=(0, 1), left_elbow=(2,), right_elbow=(3,), left_wrist=(4,), right_wrist=(5,), left_hand=tuple(range(6, 27)), right_hand=tuple(range(27, 48)))      # keypoints2d.POINTS
 DISTANCE_POINTS = dict(PARTS, left_hand=tuple(range(7, 27)), right_hand=tuple(range(28, 48)))      # a hand's 20 local points: its wrist point is placed by the arm
@@ -128,7 +130,7 @@ NOT_DECIDED = "report only: the header's reading is stated before the read; no r
 DISCLOSURES = dict(
     instrument="v1 was pretrained on UWB YouTube-ASL MediaPipe 2D keypoints, then fine-tuned on How2Sign FK keypoints built from the two-view manifest (full-v1) and selected on How2Sign val BLEU, the pool D20 comes from. A lower monocular read can be v1's fit to two-view input as well as lost content; this read cannot separate them.",
     extraction="How2Sign's monocular states come from extract_video_states.py without upright_chest (docs/RUNPOD.md), so the chest is hip-gated; YouTube and Sem-Lex used the upright chest. part_validity shows what that leaves v1 here.",
-    frames="A two-view clip is a slice of the same front clip's frames (triangulate_how2sign_sessions), so monocular clips run about 1.00-1.05x longer with extra frames at the ends. real_monocular_trimmed takes that out; seconds_over_reference gives the ratio per form.",
+    frames="A two-view clip is a slice of the same front clip's frames (triangulate_how2sign_sessions), so monocular clips run about 1.00-1.05x longer with extra frames at the ends. real_monocular_trimmed takes that out; seconds_over_reference gives the ratio per form. A clip stored at another rate resamples from its own first frame, so an untrimmed real_monocular sits on another phase of the 24 fps grid than its two-view clip; the trimmed form does not.",
     blank="Blank is V1's: the two-view clips' durations. Its length is therefore not exactly the monocular clip's, and no separate monocular-length blank is read.",
     marks="Validity differs by path, and v1 reads per-point marks, so part_validity belongs beside each read. nearest_monocular and round_trip_monocular are all-valid by construction, like their stored two-view forms.",
     two_by_two="monocular_values_two_view_marks and two_view_values_monocular_marks are report only. Marks also move the shoulder origin and unit, which normalise takes from the marked frames, and removing a mark hides that frame's values.",
@@ -269,12 +271,13 @@ def key_distance(a, b) -> dict:
 
 
 def trim_index(times, two_view_times) -> tuple[np.ndarray | None, float | None]:
-    """(the frames of ``times`` at ``two_view_times``, the largest offset): None when a two-view frame has no frame within half a frame, or the frames found are not consecutive."""
+    """(the frames of the stored clock ``times`` nearest each stored two-view timestamp, the largest offset): None when an offset exceeds a quarter of this clip's own frame interval, or the frames found are not consecutive."""
     times, wanted = np.asarray(times, np.float64), np.asarray(two_view_times, np.float64)
+    tolerance = SLICE_TOLERANCE * float(np.median(np.diff(times)))
     near = np.clip(np.searchsorted(times, wanted), 1, len(times) - 1)
     near = np.where(np.abs(times[near - 1] - wanted) <= np.abs(times[near] - wanted), near - 1, near)
     offset = float(np.abs(times[near] - wanted).max())
-    if offset > TIME_TOLERANCE or (np.diff(near) != 1).any():
+    if offset > tolerance or (np.diff(near) != 1).any():
         return None, offset
     return near, offset
 
@@ -285,8 +288,8 @@ def cut_frames(state, index):
     return replace(state, timestamps=state.timestamps[index], channels=channels)
 
 
-def load_clip(store, item: dict, template, ref) -> tuple[Clip | None, dict | None]:
-    """(the clip, None), or (None, why) for a missing object alone: anything else wrong with a clip stops the job. Conformed as ``round20_lib.utterance_clip`` conforms a word's material: to the template, then to 24 fps."""
+def load_clip(store, item: dict, template, ref, two_view_times) -> tuple[Clip | None, dict | None]:
+    """(the clip, None), or (None, why) for a missing object alone: anything else wrong with a clip stops the job. Conformed as ``round20_lib.utterance_clip`` conforms a word's material: to the template, then to 24 fps. ``two_view_times``: the two-view clip's stored clock, which the cut is taken on."""
     from evaluate_text_to_motion import at_rate, load_state
     from signtranslator.data.layout_adapter import conform
     sign = item["sign"]
@@ -301,24 +304,33 @@ def load_clip(store, item: dict, template, ref) -> tuple[Clip | None, dict | Non
     if len(raw.timestamps) < 2:
         raise SystemExit(f"{sign}: {len(raw.timestamps)} frames in its monocular state")
     try:
-        conformed = at_rate(conform(raw, template), FPS)
+        done = conform(raw, template)
     except (ValueError, KeyError) as error:
         raise SystemExit(f"{sign}: conform refused it: {type(error).__name__}: {error}") from error
+    conformed = at_rate(done, FPS)
     if layout_of(conformed) != layout_of(ref):
         raise SystemExit(f"{sign}: conformed, v1's channels are not in its two-view clip's layout")
-    index, offset = trim_index(conformed.timestamps, ref.timestamps)
+    index, offset = trim_index(raw.timestamps, two_view_times)
     if index is None:
-        raise SystemExit(f"{sign}: its two-view clip is not a slice of its monocular clip: largest offset {offset:.4f} s")
-    slice_of = dict(start_frame=int(index[0]), frames_two_view=len(ref.timestamps), frames_monocular=len(conformed.timestamps), max_offset_seconds=round(offset, 6), source_hash_matches=ref.channels["body"].source_sha256 == item["state_sha256"])
-    return Clip(item["index"], sign, at_rate(raw, FPS), conformed, cut_frames(conformed, index), slice_of), None
+        raise SystemExit(f"{sign}: its two-view clip is not a slice of its monocular clip on the stored clocks: largest offset {offset:.4f} s")
+    trimmed = at_rate(replace(cut_frames(done, index), timestamps=np.asarray(two_view_times, np.float64)), FPS)      # on two-view's clock, so at_rate lands on two-view's own grid
+    if len(trimmed.timestamps) != len(ref.timestamps):
+        raise SystemExit(f"{sign}: cut and resampled it holds {len(trimmed.timestamps)} frames, its two-view clip {len(ref.timestamps)}")
+    slice_of = dict(start_frame=int(index[0]), frames_two_view=len(ref.timestamps), frames_monocular=len(conformed.timestamps), stored_fps=round(1 / float(np.median(np.diff(raw.timestamps))), 2), max_offset_seconds=round(offset, 6), source_hash_matches=ref.channels["body"].source_sha256 == item["state_sha256"])
+    return Clip(item["index"], sign, at_rate(raw, FPS), conformed, trimmed, slice_of), None
 
 
 def open_monocular(store, records, refs, declared: bool) -> tuple[list[Clip], list[dict], object]:
-    """Every record's monocular clip, the missing ones with their reasons, and the template."""
+    """Every record's monocular clip, the missing ones with their reasons, and the template. Each two-view clip's stored clock is read again from its own stored state: ``refs`` are at 24 fps."""
+    from evaluate_text_to_motion import load_state
     found, lost = match_monocular(records, monocular_rows(store, [r["sign"] for r in records]), declared)
     template = load_template(store)
+
+    def one(item):
+        record = records[item["index"]]["continuous"]
+        return load_clip(store, item, template, refs[item["index"]], load_state(store, record["state_key"], record["state_sha256"]).timestamps)
     with ThreadPoolExecutor(4) as pool:
-        loaded = list(pool.map(lambda item: load_clip(store, item, template, refs[item["index"]]), found))
+        loaded = list(pool.map(one, found))
     clips = [c for c, _ in loaded if c is not None]
     lost += [why for _, why in loaded if why is not None]
     if not clips:
@@ -420,12 +432,12 @@ def run_stored_check(args) -> int:
     rt, rt_sha = load_stored_rt_nearest(store)
     nearest, nearest_sha = load_stored_nearest(store)
     rows = []
-    for name, form, sha, pinned, want in (("rt_nearest", rt, rt_sha, STORED_RT_SHA256 is not None, STORED_RT_LIKELIHOOD), ("v0_nearest_fill", nearest, nearest_sha, True, STORED_NEAREST_LIKELIHOOD)):
+    for name, form, sha, want in (("rt_nearest", rt, rt_sha, STORED_RT_LIKELIHOOD), ("v0_nearest_fill", nearest, nearest_sha, STORED_NEAREST_LIKELIHOOD)):
         likelihood = float(M.delta_nll(blank, np.asarray(form["nll"])[:, 0]).mean())
         if abs(likelihood - want) > P.CANARY["nll"]:
             raise SystemExit(f"{name}: likelihood minus the pinned blank is {likelihood:.4f}, not the plan's {want}")
         bleu, ci = M.bleu_ci_fast(form["hypotheses"], form["references"])
-        rows.append(dict(form=name, sha256=sha, pinned=pinned, bleu=bleu, ci95=ci, likelihood_minus_blank=round(likelihood, 4), clips=len(form["signs"])))
+        rows.append(dict(form=name, sha256=sha, bleu=bleu, ci95=ci, likelihood_minus_blank=round(likelihood, 4), clips=len(form["signs"])))
     print(json.dumps(dict(stored_check=rows)), flush=True)
     return 0
 
@@ -701,10 +713,9 @@ def check_stored_shape(form: dict, kind: str, name: str, key: str) -> None:
 
 
 def load_stored_rt_nearest(store) -> tuple[dict, str]:
-    """(V1's stored rt_nearest form on all of D20, the file's hash). Pinned by ``STORED_RT_SHA256`` once that is known; always identified by what it holds: V1's kind, form, code, list, instrument and tokenizer, and its BLEU and interval recomputed to the plan's figures."""
+    """(V1's stored rt_nearest form on all of D20, its pinned hash), with V1's kind, form, code, list, instrument and tokenizer, and its BLEU and interval recomputed to the plan's figures."""
     raw = store.get(STORED_RT)
-    if STORED_RT_SHA256 is not None:
-        P.check_sha(raw, STORED_RT_SHA256, STORED_RT)
+    P.check_sha(raw, STORED_RT_SHA256, STORED_RT)
     form = json.loads(raw)
     check_stored_shape(form, "tok-v1-form", "rt_nearest", STORED_RT)
     if not str(form.get("code_digest")).startswith(STORED_RT_DIGEST):
@@ -712,7 +723,7 @@ def load_stored_rt_nearest(store) -> tuple[dict, str]:
     bleu, ci = M.bleu_ci_fast(form["hypotheses"], form["references"])
     if bleu != STORED_RT_BLEU or ci != STORED_RT_CI:
         raise SystemExit(f"{STORED_RT}: reads {bleu} {ci}, not the plan's {STORED_RT_BLEU} {STORED_RT_CI}")
-    return form, hashlib.sha256(raw).hexdigest()
+    return form, STORED_RT_SHA256
 
 
 def load_stored_nearest(store) -> tuple[dict, str]:
@@ -814,6 +825,13 @@ def regression(x, y) -> dict | None:
     return dict(report_only=True, clips=len(a), slope=round(float(slope), 5), slope_ci95=P._quantiles(draws), intercept=round(float(intercept), 5), r=round(float(np.corrcoef(a, b)[0, 1]), 4) if b.std() else None)
 
 
+def offset_distribution(rows: list[dict]) -> dict:
+    """Every clip's largest offset on the stored clocks, summarised; the per-clip rows stay in ``monocular.json``. Rates as stored, counted."""
+    values = np.array([r["max_offset_seconds"] for r in rows], np.float64)
+    return dict(clips=len(values), nonzero=int((values > 0).sum()), median=round(float(np.median(values)), 6), p90=round(float(np.percentile(values, 90)), 6), p99=round(float(np.percentile(values, 99)), 6), max=round(float(values.max()), 6),
+                stored_fps={str(k): v for k, v in sorted(Counter(r["stored_fps"] for r in rows).items())})
+
+
 def pairing_block(rows: list[dict], reads: dict, stored: dict) -> dict:
     """Pairing on the shared clips: the hash, the offset, the distances and mirrored control per part and group, and, report only, per-clip likelihood differences on distance."""
     base = np.asarray(reads["blank"]["nll"])[:, 0]
@@ -826,7 +844,7 @@ def pairing_block(rows: list[dict], reads: dict, stored: dict) -> dict:
     y = dict(marked=dnll(reads["real_monocular"]) - dnll(reads["real_two_view"]), trimmed=dnll(reads["real_monocular_trimmed"]) - dnll(reads["real_two_view"]))
     if "stored_v0_nearest_fill" in stored:
         y["marks_free"] = dnll(reads["nearest_monocular"]) - dnll(stored["stored_v0_nearest_fill"])
-    return dict(clips=len(rows), source_hash_matches=sum(r["source_hash_matches"] for r in rows), max_offset_seconds=max(r["max_offset_seconds"] for r in rows), frames_ratio_median=round(float(np.median([r["frames_monocular"] / r["frames_two_view"] for r in rows])), 4),
+    return dict(clips=len(rows), source_hash_matches=sum(r["source_hash_matches"] for r in rows), max_offset_seconds=max(r["max_offset_seconds"] for r in rows), offsets=offset_distribution(rows), frames_ratio_median=round(float(np.median([r["frames_monocular"] / r["frames_two_view"] for r in rows])), 4),
                 distance=distances, mirrored=mirrored, group_distance={g: mean_or_none(v) for g, v in x.items()}, group_mirrored={g: mean_or_none([group_distance(r["mirrored"], g) for r in rows]) for g in GROUPS},
                 regression={name: {group: regression(x[group], values.tolist()) for group in GROUPS} for name, values in y.items()})
 
@@ -855,7 +873,7 @@ def plumbing_alerts(two_view: dict, monocular: dict, pairing: dict, shared: int,
     if pairing["source_hash_matches"] != pairing["clips"]:
         alerts.append(f"{pairing['clips'] - pairing['source_hash_matches']} of {pairing['clips']} two-view clips do not name their monocular row's hash")
     if pairing["max_offset_seconds"] > OFFSET_CEILING:
-        alerts.append(f"timestamps differ by up to {pairing['max_offset_seconds']:.4f} s, over {OFFSET_CEILING}")
+        alerts.append(f"stored clocks differ by up to {pairing['max_offset_seconds']:.4f} s, over {OFFSET_CEILING}")
     if declared and shared < SHARED_FLOOR:
         alerts.append(f"{shared} shared clips, under {SHARED_FLOOR}")
     return alerts
@@ -926,7 +944,7 @@ def run_merge(args) -> int:
     summary = {n: dict(bleu=p["bleu"]["bleu"], ci95=p["bleu"]["ci95"], gap_share=p["share_of_gap"]["bleu"], likelihood_minus_blank=p["likelihood_minus_blank"]["mean"], valid_frame_share=p["valid_frame_share"]["mean"]) for n, p in panels.items()}
     reading = report["reading"]
     print(json.dumps(dict(merged=args.output_key or args.output_file, report_only=True, declared_read=declared, shared=len(shared), of=len(first["signs"]), lost=report["clips"]["outside_shared"]["by_reason"], forms=summary, validity={n: {part: float(np.mean(v)) for part, v in reads[n]["part_validity"].items()} for n in ("real_two_view", "real_monocular")},
-                          pairing={k: pairing[k] for k in ("clips", "source_hash_matches", "max_offset_seconds", "frames_ratio_median", "group_distance", "group_mirrored")}, round_trip_beside_bar=report["round_trip_beside_bar"], marked_case=reading["marked_secondary"]["case"], case=reading["case"], withheld=reading["withheld"], alerts=alerts,
+                          pairing={k: pairing[k] for k in ("clips", "source_hash_matches", "max_offset_seconds", "offsets", "frames_ratio_median", "group_distance", "group_mirrored")}, round_trip_beside_bar=report["round_trip_beside_bar"], marked_case=reading["marked_secondary"]["case"], case=reading["case"], withheld=reading["withheld"], alerts=alerts,
                           stored=dict(rt_nearest=rt_row["all_500"], v0_nearest_fill=nearest_row["all_500"]))), flush=True)
     return 0
 
