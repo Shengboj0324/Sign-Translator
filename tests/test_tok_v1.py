@@ -698,6 +698,25 @@ def test_an_export_with_other_settings_refuses(arm, change):
         W.load_composed(Files(dict(i=raw)), "i", ["a"], arm)
 
 
+def test_check_export_refuses_other_settings(tmp_path):
+    from signtranslator.data.text_motion_dataset import DirectoryStore
+    store = DirectoryStore(tmp_path / "s")
+    store.put("good", json.dumps(export_index("a3")).encode())
+    store.put("bad", json.dumps(export_index("a3", core_margin=.1)).encode())
+    assert W.main(["check-export", "--store", f"dir:{tmp_path / 's'}", "--key", "good", "--arm", "a3"]) == 0
+    with pytest.raises(SystemExit, match="differ from the pins"):
+        W.main(["check-export", "--store", f"dir:{tmp_path / 's'}", "--key", "bad", "--arm", "a3"])
+    with pytest.raises(SystemExit, match="differ from the pins"):
+        W.main(["check-export", "--store", f"dir:{tmp_path / 's'}", "--key", "good", "--arm", "a9"])
+
+
+def test_the_pins_name_settings_the_composition_really_takes():
+    source = (ROOT / "scripts/round15_compose_eval.py").read_text()
+    for arm in W.EXPORT_PINS.values():
+        for key in arm:
+            assert f'"--{key.replace("_", "-")}"' in source, key
+
+
 def test_the_digest_names_this_job():
     from signtranslator.eval import provenance
     W.code_digest.cache_clear()
@@ -867,7 +886,8 @@ def test_the_job_smokes_on_train_first_then_reads_the_anchors_first(tmp_path):
     assert result.returncode == 0 and done_line(result) == 0
     own = [x for x in calls.splitlines() if x.startswith("scripts/tok_v1.py ")]
     parsed = [W.build_parser().parse_args(x.split()[1:]) for x in own]
-    order = [a.command for a in parsed if a.command not in ("stored", "export-list")]
+    order = [a.command for a in parsed if a.command not in ("stored", "export-list", "check-export")]
+    assert [a.arm for a in parsed if a.command == "check-export"] == ["a9", "a3", "a9", "a3"]
     assert order == ["read", "neutral", "canary", "path-check", "composed-check", "merge", "check", "upload", "preflight", "read", "canary", "path-check", "read", "neutral", "read", "composed-check", "merge", "upload", "check"]
     reads = [a for a in parsed if a.command == "read"]
     assert reads[0].smoke_train == 8 and reads[0].smoke_longest == 4 and reads[0].smoke_never_tracked == 2 and reads[0].forms == ",".join(W.FORMS)
@@ -892,8 +912,8 @@ def test_smoke_only_stops_before_any_declared_read(tmp_path):
 
 
 @pytest.mark.parametrize("fail_when,expected", [("tok_v1.py read*smoke-", 2), ("tok_v1.py neutral*smoke-", 2), ("tok_v1.py canary*smoke-", 2), ("tok_v1.py path-check*smoke-", 2), ("tok_v1.py composed-check*smoke-", 2), ("tok_v1.py merge*smoke-", 2),
-                                                ("check --report*smoke-", 2), ("round15_compose_eval.py*smoke/", 2), ("upload --out-dir*smoke-", 2), ("preflight", 1), ("--forms real,blank", 1), ("tok_v1.py canary*d20", 1), ("tok_v1.py path-check*d20", 1),
-                                                ("--forms rt_nearest", 1), ("tok-probes-v1/composed/a9 --export", 1), ("tok-probes-v1/composed/a3-top10 --export", 1), ("tok_v1.py neutral --out-dir*d20", 1), ("--forms a9p", 1), ("tok_v1.py composed-check*d20", 1), ("tok_v1.py merge*d20", 1),
+                                                ("check --report*smoke-", 2), ("round15_compose_eval.py*smoke/", 2), ("check-export*smoke/*composed/a9", 2), ("check-export*smoke/*composed/a3", 2), ("upload --out-dir*smoke-", 2), ("preflight", 1), ("--forms real,blank", 1), ("tok_v1.py canary*d20", 1), ("tok_v1.py path-check*d20", 1),
+                                                ("--forms rt_nearest", 1), ("tok-probes-v1/composed/a9 --export", 1), ("tok-probes-v1/composed/a3-top10 --export", 1), ("check-export*tok-probes-v1/composed/a9", 1), ("check-export*tok-probes-v1/composed/a3-top10", 1), ("tok_v1.py neutral --out-dir*d20", 1), ("--forms a9p", 1), ("tok_v1.py composed-check*d20", 1), ("tok_v1.py merge*d20", 1),
                                                 ("upload --out-dir*d20", 1), ("check --report*d20", 1)])
 def test_any_failure_exits_nonzero_with_its_done_line_and_uploads_its_work(tmp_path, fail_when, expected):
     result, calls = run_job(tmp_path, fail_when=fail_when)

@@ -865,6 +865,16 @@ def run_export_list(args) -> int:
     return 0
 
 
+def run_check_export(args) -> int:
+    """A composed export's stored settings against the pins, before anything hangs on them. Refuses a mismatch."""
+    from train_text_to_motion import make_store
+    differs = export_differences(json.loads(make_store(args.store).get(args.key)), args.arm)
+    if differs:
+        raise SystemExit(f"{args.key}: its settings differ from the pins: {differs}")
+    print(json.dumps(dict(export=args.key, arm=args.arm, settings="as pinned")), flush=True)
+    return 0
+
+
 def run_stored(args) -> int:
     from train_text_to_motion import make_store
     return 0 if make_store(args.store).exists(args.key) else 1
@@ -928,6 +938,10 @@ def build_parser() -> argparse.ArgumentParser:
     fit.add_argument("--output-file", required=True)
     fit.add_argument("--fit-clips", type=int, default=FLAG_FIT_CLIPS)
     fit.add_argument("--hold-clips", type=int, default=FLAG_HOLD_CLIPS)
+    export_check = sub.add_parser("check-export", help="a composed export's settings against the pins")
+    export_check.add_argument("--store", default="r2")
+    export_check.add_argument("--key", required=True)
+    export_check.add_argument("--arm", required=True, choices=("a9", "a3"))
     stored = sub.add_parser("stored")
     stored.add_argument("--store", default="r2")
     stored.add_argument("--key", required=True)
@@ -937,7 +951,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     return dict(preflight=run_preflight, read=run_read, neutral=run_neutral, canary=P.run_canary, merge=run_merge, check=run_check, upload=P.run_upload, stored=run_stored,
-                **{"path-check": run_path_check, "composed-check": run_composed_check, "export-list": run_export_list, "flag-fit": run_flag_fit})[args.command](args)
+                **{"path-check": run_path_check, "composed-check": run_composed_check, "export-list": run_export_list, "flag-fit": run_flag_fit, "check-export": run_check_export})[args.command](args)
 
 
 if __name__ == "__main__":

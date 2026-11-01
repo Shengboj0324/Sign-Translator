@@ -73,6 +73,8 @@ python $T merge --out-dir "$S/forms" --output-file "$S/report.json" || { echo "A
 python $T check --report "$S/report.json" || { echo "ALERT smoke check failed"; done_ 2; }
 export_arm "$D/smoke/$TS/composed/a9" a9-smoke 5 $A9ARGS || { echo "ALERT smoke export a9 failed"; done_ 2; }
 export_arm "$D/smoke/$TS/composed/a3" a3-smoke 5 $A3ARGS || { echo "ALERT smoke export a3 failed"; done_ 2; }
+python $T check-export --key "$D/smoke/$TS/composed/a9/index.json" --arm a9 || { echo "ALERT smoke export a9 settings differ"; done_ 2; }
+python $T check-export --key "$D/smoke/$TS/composed/a3/index.json" --arm a3 || { echo "ALERT smoke export a3 settings differ"; done_ 2; }
 python $T upload --out-dir "$S" --prefix "$D/smoke/$TS" || { echo "ALERT smoke upload failed"; done_ 2; }
 if [ "${SMOKE:-0}" = 1 ]; then
   echo "SMOKE done"
@@ -93,6 +95,8 @@ path_check=$?
 python $T read --forms rt_nearest,no_quant_nearest,rt_post_fill --resume --out-dir "$R/forms" $COMMON || { echo "ALERT read of the cap failed"; done_ 1; }
 export_arm "$D/composed/a9" a9 500 $A9ARGS || { echo "ALERT export a9 failed"; done_ 1; }
 export_arm "$D/composed/a3-top10" a3-top10 500 $A3ARGS || { echo "ALERT export a3 failed"; done_ 1; }
+python $T check-export --key "$D/composed/a9/index.json" --arm a9 || { echo "ALERT export a9 settings differ"; done_ 1; }
+python $T check-export --key "$D/composed/a3-top10/index.json" --arm a3 || { echo "ALERT export a3 settings differ"; done_ 1; }
 python $T neutral --out-dir "$R/forms" || { echo "ALERT neutral failed"; done_ 1; }
 python $T read --forms a9p,a9p_replaced,a9p_control --resume --out-dir "$R/forms" $COMMON || { echo "ALERT read of the sensitivity failed"; done_ 1; }
 python $T composed-check --out-dir "$R/forms" || { echo "ALERT composed check failed"; done_ 1; }
