@@ -5971,3 +5971,34 @@ Shuffled 1.981, other sentences' words 1.169, loop share 54.0%.
 **Exemption, disclosed.** The job refused the read because this pod's GPU was an RTX 6000 Ada and the comparator's an L40S, with code digest and every package identical. The read was then run from the frozen code with that one check relaxed for GPU name only (`a3-gen-top10-read-gpu-exempt.json`, sha `a93ce1ca…`). Real and blank hypotheses are identical 500 of 500 between the two reports. The main number had been seen in the job's log before this was decided.
 
 **Limits.** Five draws of real clips spanned 0.59 BLEU, so one draw's +0.343 isn't proven; likelihood and spotting clear zero, and they're steadier. Wrist speed rose, and new-word echo didn't. Pointing and two-letter fingerspelled signs need Deaf review. D20 chose this list's arm among others, so this read is optimistic. Before any claim: more draws at the same settings, instrument v2, and one read on fresh clips.
+
+### Tracking-marks control V0 declared (2026-11-01, 06:45 UTC, before any V0 form is read)
+
+Report only. The fold claim made during its build is withdrawn: 0 folds in 61,324 marked hand-frames on 252 c02 train clips.
+
+**Scope.** D20, instrument v1, this code digest, likelihood minus blank, 95% bootstrap over clips. BLEU, loop share and length are reported and decide nothing. Void if the canary fails, the identity path check fails, `check` fails, or more than one digest or environment appears. Partners are adjacent by length within signer, never from one video.
+
+**Q1, do marks carry this sentence?** A = `v0_blank_real_marks` − `v0_blank_other_marks`; B = `v0_other_motion` − `v0_other_motion_other_marks`.
+- **Shown:** either has lower bound > 0 and point ≥ 0.015 nats (5% of real's gap).
+- **Not detected:** both upper bounds < 0.015.
+- **Otherwise unresolved.**
+
+**Q2, is marking every frame the cost, whatever the pattern?** p2 = (`v0_other_marks` − identity) / (real − identity).
+- **Yes:** p2 ≥ 0.75 and lower bound ≥ 0.5.
+- **No:** p2 ≤ 0.25 and upper bound ≤ 0.5.
+- **Otherwise partial.**
+- `v0_random_marks` is reported the same way. It can raise "realistic patterns" to "any pattern", never lower it. Removing marks also removes values, and this is disclosed.
+
+**Q3, fill or mark?** p3 = (`v0_nearest_fill` − identity) / (real − identity).
+- **Fill:** p3 ≥ 0.75 and lower bound ≥ 0.5.
+- **Mark:** p3 ≤ 0.25 and upper bound ≤ 0.5.
+- **Otherwise both.**
+- Void Q2 and Q3 if real − identity's lower bound ≤ 0.
+
+**What follows.**
+- **Q1 shown (takes precedence):** real's read holds content no generator can emit. Real's marked read stops being the target, real's gap is overstated, no bar uses it, and v2 reads next.
+- **Q3 fill:** neutral frames are a real-clip path artefact generators never emit. Composition is not under-read on this account, v1 readings stand, the all-valid real anchor becomes `v0_nearest_fill`, and d2's cap must be re-measured under that fill before tokenizer training is reconsidered.
+- **Q3 mark and Q2 yes, Q1 not detected:** v1 penalises all-valid input. 3.36 is not a tokenizer cap, composition may be under-read, the tokenizer stays held, and a read of composition under partner marks, with real's change under the same marks, runs with v2. Own marks are never used, and a marked score never enters M1, a claim or selection.
+- **Anything else:** anchors stay and the ambiguity is reported.
+
+**No outcome changes** a system score, a claim or a declared bar by itself.
