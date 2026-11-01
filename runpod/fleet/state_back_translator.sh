@@ -34,7 +34,7 @@ RECON=$OUT/recon-d2-v1
 # ---- pins: fill from the manifests and index phases' output, commit, then run the later phases ----
 STEM_SHA=f2571d8dd65985042f80dc57a938f9e1e206812eca03d6cce66324a022d78dc1
 FLORES_SHA=cd78068d37b2c3c321c5383ea4decbf015ba03ab1046df938c5f0fbc270bb6f9
-RECON_INDEX_SHA=PIN-after-index
+RECON_INDEX_SHA=e0a364ed9e62e45fb23fd921fde8dc031d47a1343eed68f8f3457e304eeff270
 RECON_SHARDS=4
 MONITOR_CLIPS=536                      # amendment 1: every youtube-asl-v1 monitor clip
 RUN=back-translator-state-t5-v1; SMOKE=back-translator-state-t5-smoke-v1
