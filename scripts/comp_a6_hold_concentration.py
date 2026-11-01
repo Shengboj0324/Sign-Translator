@@ -1,9 +1,10 @@
 """Post-S2 A6, before anything is declared: does A1's likelihood and spotting loss sit in the sentences holding the uses hold-x excludes? Read from A1's stored per-clip rows on D20 (forms already read), on CPU, report only; no new form is read and nothing is rendered.
 
 hold-x keeps the left arm on entries with at least 25% two-handed records. If A1's loss came from erasing those entries' left arm, it should concentrate in the sentences that hold them. Three estimates of what excluding them removes, largest first: the whole loss of those sentences (a ceiling); that loss scaled by the
-sentence's share of held uses that are excluded; and a regression of each clip's loss on its excluded and other held uses. None of them is a read of hold-x: A1's stretches differ in frames, and the share of frames hold-x stops replacing is reported beside them.
+sentence's share of held uses that are excluded; and regressions of each clip's loss on its excluded and other held uses, with an intercept and through the origin (no held use, no loss). None of them is a read of hold-x: A1's stretches differ in frames. The share of frames hold-x stops replacing, 11.9% on top10's
+words (reports/comp_a6_motion.json), is reported beside them. The ceiling is not a strict bound: a sentence's loss can have other causes, and excluding a word can change its neighbours. These are a9's words, not top10's.
 
-``power``: at declaration, the chance of passing each bound on eight draws for a range of true losses, from A5's paired SD (noncentral t). The table's slot in the report stays empty until then.
+``power``: at declaration, the chance of passing each bound on eight draws for a range of true changes, a table per rule from A5's paired SD (noncentral t), and the shares of A1's loss the declared floors need. The table's slot in the report stays empty until then, and a declaration requires it.
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 
+from comp_a6_read import A1_LOSS, floors, needed_share, slot_from_summary  # noqa: E402
 from comp_a_lib import annotated_label, entry_annotations, hold_flags  # noqa: E402
 
 O = "acquisition/2026-10-17-v1/youtube-asl-v1"
@@ -59,7 +61,8 @@ def concentration(delta, counts, *, boot: int = BOOT, seed: int = 0) -> dict:
         total = dd.sum()
         slope = np.linalg.lstsq(np.column_stack([np.ones(len(dd)), cc]), dd, rcond=None)[0]
         share = lambda x: x / total if total else np.nan     # noqa: E731   (a resample with no change at all)
-        return dict(mean=dd.mean(), mean_with=dd[hh].mean() if hh.any() else np.nan, mean_without=dd[~hh].mean() if (~hh).any() else np.nan, ceiling=share(dd[hh].sum()), scaled=share((dd * ss).sum()),
+        origin = np.linalg.lstsq(cc, dd, rcond=None)[0]
+        return dict(regression_through_origin=share(origin[0] * cc[:, 0].sum()), slope_excluded_through_origin=origin[0], slope_other_through_origin=origin[1], mean=dd.mean(), mean_with=dd[hh].mean() if hh.any() else np.nan, mean_without=dd[~hh].mean() if (~hh).any() else np.nan, ceiling=share(dd[hh].sum()), scaled=share((dd * ss).sum()),
                     regression=share(slope[1] * cc[:, 0].sum()), slope_excluded=slope[1], slope_other=slope[2])
     point = estimates(d, c, has, scaled)
     rng = np.random.default_rng(seed)
@@ -74,16 +77,34 @@ def concentration(delta, counts, *, boot: int = BOOT, seed: int = 0) -> dict:
                 **{k: round(float(v), 4) for k, v in point.items()}, ci95=ci)
 
 
-def needed_share(loss: float, floor: float) -> float:
-    """The share of a loss to remove for its point estimate to reach ``floor``."""
-    return round(float((abs(loss) - abs(floor)) / abs(loss)), 4) if loss < 0 and abs(loss) > abs(floor) else 0.
-
-
 def power_table(sd: float, floor: float, losses, n: int = 8) -> list[dict]:
     """P(the t interval's 95% lower bound over ``n`` draws is above ``floor``), for true mean changes ``losses``, at paired SD ``sd`` (noncentral t)."""
     from scipy import stats
     crit = stats.t.ppf(.975, n - 1)
     return [dict(true_change=float(x), passes=round(float(stats.nct.sf(crit, n - 1, (x - floor) / (sd / np.sqrt(n)))), 3)) for x in losses]
+
+
+def frames_share(path=ROOT / "reports/comp_a6_motion.json") -> float:
+    """The share of A1's replaced frames hold-x stops replacing, on top10's words at today's length."""
+    forms = json.loads(Path(path).read_text())["forms"]
+    a, b = forms["hold_a1"]["hold"]["frames"], forms["hold_x"]["hold"]["frames"]
+    return round((a - b) / a, 4)
+
+
+def restate(report: dict, slot: dict) -> dict:
+    """At declaration: the shares the declared floors need, and the power table per rule. A metric with no room has no share and no row."""
+    bars = floors(slot)
+    for name, row in report["metrics"].items():
+        need = needed_share(row["mean"], bars[name])
+        row["needed_share_at_current_floor"] = need
+        for reach, value in (("ceiling_reaches_needed", row["ceiling"]), ("regression_reaches_needed", row["regression"]), ("regression_through_origin_reaches_needed", row["regression_through_origin"])):
+            row[reach] = None if need is None else bool(value >= need)
+    def table(metric, changes):
+        return None if bars[metric] is None else dict(sd=slot["paired_sd"][metric], floor=bars[metric], rows=power_table(slot["paired_sd"][metric], bars[metric], changes))
+    hold = {m: table(m, [A1_LOSS[m] * (1 - s) for s in (0., .25, .5, .75, 1.)]) for m in A1_LOSS}
+    grid = lambda m: [] if bars[m] is None else [2 * bars[m], bars[m], .5 * bars[m], 0., -.5 * bars[m]]        # noqa: E731
+    report["power_table_at_declaration"] = dict(hold=hold, length={m: table(m, grid(m)) for m in ("likelihood", "spotting", "bleu")}, a5_summary_sha256=slot["sha256"])
+    return report
 
 
 def read(store, *, words_key: str = "stage1_words") -> dict:
@@ -110,15 +131,16 @@ def read(store, *, words_key: str = "stage1_words") -> dict:
     ll = lambda r: number(r["likelihood"]["per_form"][FORM]) - number(r["likelihood"]["per_form"][BLANK])    # noqa: E731
     spot = number(shard_recalls(hold, shards_h, FORM)) - number(shard_recalls(margin0, shards_m, FORM))
     rows = dict(likelihood=concentration(ll(hold) - ll(margin0), counts), spotting=concentration(spot, counts))
-    floors = dict(likelihood=-.0077, spotting=-.0089)
+    now = floors()
     earlier = dict(likelihood=-.01, spotting=-.02)
     for name, row in rows.items():
-        row["needed_share_at_current_floor"] = needed_share(row["mean"], floors[name])
+        row["needed_share_at_current_floor"] = needed_share(row["mean"], now[name])
         row["needed_share_at_earlier_floor"] = needed_share(row["mean"], earlier[name])
         row["needed_share_quoted_by_review"] = QUOTED_NEEDED[name]
         row["ceiling_reaches_needed"] = bool(row["ceiling"] >= row["needed_share_at_current_floor"])
         row["regression_reaches_needed"] = bool(row["regression"] >= row["needed_share_at_current_floor"])
-    return dict(kind="comp-a6-hold-concentration", report_only=True, note="A1's stored forms only, already read; A1's words (a9's list), not top10's; none of these is a read of hold-x",
+        row["regression_through_origin_reaches_needed"] = bool(row["regression_through_origin"] >= row["needed_share_at_current_floor"])
+    return dict(kind="comp-a6-hold-concentration", report_only=True, note="A1's stored forms only, already read; A1's words (a9's list), not top10's; none of these is a read of hold-x; the ceiling is not a strict bound", frames_no_longer_replaced_on_top10_words=frames_share(),
                 inputs=dict(margin0=dict(key=MARGIN0, sha256=hashlib.sha256(raw_m).hexdigest()), hold=dict(key=HOLD, sha256=hashlib.sha256(raw_h).hexdigest())), exclude=EXCLUDE,
                 excluded_entries=len(excluded), excluded_uses=int(counts[:, 0].sum()), other_held_uses=int(counts[:, 1].sum()), excluded_with_two_handed_records=sum(1 for e in excluded if two.get(e)),
                 metrics=rows, power_table_at_declaration=None, power_note="slot: filled at declaration from A5's paired SD (comp_a6_hold_concentration.py power)")
@@ -144,12 +166,8 @@ def main(argv=None) -> int:
             stream.write(data)
         print(args.output_file, hashlib.sha256(data).hexdigest(), flush=True)
         return 0
-    from comp_a6_read import floors, slot_from_summary         # only here: this module has no other tie to the reader
     raw = Path(args.a5_summary_file).read_bytes()
-    slot = slot_from_summary(json.loads(raw), hashlib.sha256(raw).hexdigest())
-    bars = floors(slot)
-    report = json.loads(Path(args.report_file).read_text())
-    report["power_table_at_declaration"] = {m: dict(sd=slot["paired_sd"][m], floor=bars[m], rows=power_table(slot["paired_sd"][m], bars[m], [report["metrics"][m]["mean"] * (1 - s) for s in (0., .25, .5, .75, 1.)])) for m in ("likelihood", "spotting")}
+    report = restate(json.loads(Path(args.report_file).read_text()), slot_from_summary(json.loads(raw), hashlib.sha256(raw).hexdigest()))
     Path(args.report_file).write_text(json.dumps(report, indent=1, sort_keys=True))
     print(json.dumps(report["power_table_at_declaration"]), flush=True)
     return 0

@@ -3,6 +3,7 @@
  "excluded_entries": 34,
  "excluded_uses": 226,
  "excluded_with_two_handed_records": 34,
+ "frames_no_longer_replaced_on_top10_words": 0.1194,
  "inputs": {
   "hold": {
    "key": "acquisition/2026-10-17-v1/youtube-asl-v1/round20/comp-a/a1-hold.json",
@@ -39,6 +40,10 @@
      -0.2332,
      0.41
     ],
+    "regression_through_origin": [
+     -0.1101,
+     0.4974
+    ],
     "scaled": [
      -0.0055,
      0.2298
@@ -47,9 +52,17 @@
      -0.0211,
      0.0141
     ],
+    "slope_excluded_through_origin": [
+     -0.027,
+     0.0063
+    ],
     "slope_other": [
      -0.0022,
      0.0052
+    ],
+    "slope_other_through_origin": [
+     -0.0063,
+     0.0003
     ]
    },
    "clips": 500,
@@ -62,11 +75,15 @@
    "needed_share_quoted_by_review": 0.71,
    "regression": 0.0489,
    "regression_reaches_needed": false,
+   "regression_through_origin": 0.1535,
+   "regression_through_origin_reaches_needed": false,
    "scaled": 0.1129,
    "share_of_clips_with_excluded": 0.34,
    "share_of_held_uses_excluded": 0.1237,
    "slope_excluded": -0.003,
-   "slope_other": 0.0015
+   "slope_excluded_through_origin": -0.0094,
+   "slope_other": 0.0015,
+   "slope_other_through_origin": -0.003
   },
   "spotting": {
    "ceiling": 0.3977,
@@ -92,6 +109,10 @@
      -0.0931,
      0.1938
     ],
+    "regression_through_origin": [
+     -0.0411,
+     0.2364
+    ],
     "scaled": [
      0.0753,
      0.1596
@@ -100,9 +121,17 @@
      -0.0156,
      0.0086
     ],
+    "slope_excluded_through_origin": [
+     -0.02,
+     0.0037
+    ],
     "slope_other": [
      -0.0077,
      -0.0026
+    ],
+    "slope_other_through_origin": [
+     -0.0107,
+     -0.006
     ]
    },
    "clips": 493,
@@ -115,14 +144,18 @@
    "needed_share_quoted_by_review": 0.54,
    "regression": 0.0336,
    "regression_reaches_needed": false,
+   "regression_through_origin": 0.0873,
+   "regression_through_origin_reaches_needed": false,
    "scaled": 0.1138,
    "share_of_clips_with_excluded": 0.3448,
    "share_of_held_uses_excluded": 0.1238,
    "slope_excluded": -0.003,
-   "slope_other": -0.005
+   "slope_excluded_through_origin": -0.0077,
+   "slope_other": -0.005,
+   "slope_other_through_origin": -0.0083
   }
  },
- "note": "A1's stored forms only, already read; A1's words (a9's list), not top10's; none of these is a read of hold-x",
+ "note": "A1's stored forms only, already read; A1's words (a9's list), not top10's; none of these is a read of hold-x; the ceiling is not a strict bound",
  "other_held_uses": 1601,
  "power_note": "slot: filled at declaration from A5's paired SD (comp_a6_hold_concentration.py power)",
  "power_table_at_declaration": null,

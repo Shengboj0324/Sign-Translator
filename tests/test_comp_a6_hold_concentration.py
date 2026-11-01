@@ -45,6 +45,45 @@ def test_the_regression_attributes_the_excluded_uses():
     assert out["regression"] == pytest.approx(.02 * counts[:, 0].sum() / -delta.sum(), abs=1e-3)
 
 
+def test_the_regression_through_the_origin_has_no_intercept():
+    counts = np.array([[1., 0.], [0., 1.], [2., 1.], [1., 2.], [3., 0.], [0., 3.]])
+    delta = -.03 * counts[:, 0] - .01 * counts[:, 1]
+    out = c.concentration(delta - .5, counts, boot=20)
+    assert out["slope_excluded"] == pytest.approx(-.03, abs=1e-6) and out["slope_excluded_through_origin"] != pytest.approx(-.03, abs=1e-3)      # the intercept moved to the slopes
+    out = c.concentration(delta, counts, boot=20)
+    assert out["slope_excluded_through_origin"] == pytest.approx(-.03, abs=1e-6) and out["slope_other_through_origin"] == pytest.approx(-.01, abs=1e-6)
+    assert out["regression_through_origin"] == pytest.approx(.03 * counts[:, 0].sum() / -delta.sum(), abs=1e-3)
+
+
+def test_the_frames_hold_x_stops_replacing(tmp_path):
+    path = tmp_path / "m.json"
+    path.write_text('{"forms": {"hold_a1": {"hold": {"frames": 100}}, "hold_x": {"hold": {"frames": 88}}}}')
+    assert c.frames_share(path) == .12
+
+
+SLOT = dict(sha256="h", bleu=.2, likelihood=.01, spotting=.02, t_lower=dict(bleu=.01, likelihood=.002, spotting=.003), paired_sd=dict(bleu=.1, likelihood=.004, spotting=.005))
+REPORT = dict(metrics=dict(likelihood=dict(mean=-.0276, ceiling=.39, regression=.05, regression_through_origin=.1), spotting=dict(mean=-.0405, ceiling=.9, regression=.03, regression_through_origin=.1)))
+
+
+def test_the_declaration_restates_the_shares_and_fills_the_power_table_per_rule():
+    import copy
+    out = c.restate(copy.deepcopy(REPORT), SLOT)
+    assert out["metrics"]["likelihood"]["needed_share_at_current_floor"] == pytest.approx((.0276 - .006) / .0276, abs=1e-3) and out["metrics"]["spotting"]["needed_share_at_current_floor"] == pytest.approx((.0405 - .012) / .0405, abs=1e-3)
+    assert out["metrics"]["likelihood"]["ceiling_reaches_needed"] is False and out["metrics"]["spotting"]["ceiling_reaches_needed"] is True
+    table = out["power_table_at_declaration"]
+    assert set(table) == {"hold", "length", "a5_summary_sha256"} and set(table["hold"]) == {"likelihood", "spotting"} and set(table["length"]) == {"likelihood", "spotting", "bleu"}
+    assert table["hold"]["likelihood"]["floor"] == -.006 and table["hold"]["likelihood"]["sd"] == .004 and table["hold"]["likelihood"]["rows"][0]["true_change"] == -.0276 and len(table["length"]["bleu"]["rows"]) == 5
+    passes = [r["passes"] for r in table["hold"]["likelihood"]["rows"]]
+    assert passes == sorted(passes)
+
+
+def test_no_room_has_no_share_and_no_row():
+    import copy
+    out = c.restate(copy.deepcopy(REPORT), dict(SLOT, spotting=0.))
+    assert out["metrics"]["spotting"]["needed_share_at_current_floor"] is None and out["metrics"]["spotting"]["ceiling_reaches_needed"] is None
+    assert out["power_table_at_declaration"]["hold"]["spotting"] is None and out["power_table_at_declaration"]["length"]["spotting"] is None
+
+
 def test_the_share_a_floor_needs():
     assert c.needed_share(-.0276, -.0077) == pytest.approx(.7210, abs=1e-3) and c.needed_share(-.0405, -.0089) == pytest.approx(.7802, abs=1e-3)
     assert c.needed_share(-.005, -.0077) == 0. and c.needed_share(.01, -.0077) == 0.

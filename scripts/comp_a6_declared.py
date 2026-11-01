@@ -16,10 +16,24 @@ from comp_a6_read import JOB_FILE, RULES  # noqa: E402
 RECORD = "runpod/fleet/comp_a6_declared.json"
 
 
+POWER_REPORT = "reports/comp_a6_hold_concentration.json"
+
+
+def check_power(root: Path) -> None:
+    """A declaration publishes the power table, with a row for each rule."""
+    path = root / POWER_REPORT
+    table = json.loads(path.read_text()).get("power_table_at_declaration") if path.exists() else None
+    if not table or set(table) != {"hold", "length"}:
+        raise SystemExit(f"{POWER_REPORT}'s power_table_at_declaration is empty: fill it from A5's paired SD (comp_a6_hold_concentration.py power), a row for each rule")
+
+
 def check_slot(root: Path, slot) -> None:
-    """A record may not exist while the A5 slot is empty: the bars restate against A5's summary at declaration."""
-    if (root / RECORD).exists() and not slot:
+    """A record may not exist while the A5 slot or the power table is empty: the bars restate against A5's summary at declaration."""
+    if not (root / RECORD).exists():
+        return
+    if not slot:
         raise SystemExit(f"{RECORD} exists while A5_SUMMARY_AT_DECLARATION is empty: the bars were not set against A5's summary")
+    check_power(root)
 
 
 def check(commit: str, root: Path = ROOT) -> str:
@@ -33,6 +47,7 @@ def make_record(commit: str) -> dict:
     from comp_a6_read import A5_SUMMARY_AT_DECLARATION
     if not A5_SUMMARY_AT_DECLARATION:
         raise SystemExit("A5_SUMMARY_AT_DECLARATION is empty: the bars restate against A5's summary at declaration")
+    check_power(ROOT)
     return dc.make_record(commit, job=JOB_FILE, rules=RULES)
 
 

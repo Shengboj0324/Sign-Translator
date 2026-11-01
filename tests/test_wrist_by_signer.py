@@ -137,7 +137,16 @@ def test_per_side_rows_are_monocular_over_two_view():
     assert set(out) == {"c01"} and out["c01"]["3hz"]["left_speed"] == 1.2 and out["c01"]["raw"]["right_speed"] == 1.2 and out["c01"]["6hz"]["left_spread"] == 1.2 and out["c01"]["3hz"]["right_spread"] == 1.2
 
 
+def test_the_word_path_answer_is_computed_and_states_what_is_not_measured():
+    row = dict(one_word_weight_two_view_share=.0027, sampling_two_view_share=.088, sentence_token_weight_two_view_share=.2721, one_word_weight_by_corpus={w.H2S: 78., "rit-text-r6": 28766.}, tokenizer=dict(corpus_weight=[f"{w.H2S}=2"]))
+    text = w.path_answer(row)
+    for phrase in ("0.27%", "8.8%", "27.2%", "How2Sign's weight 78 of 28844", "decoder's share is not measured", "weights How2Sign x2", "No generated clip's amplitude was tested", "is an inference"):
+        assert phrase in text, phrase
+    assert "every corpus" not in text and "0.50%" in w.path_answer(dict(row, one_word_weight_two_view_share=.005))
+    assert w.with_answer(row)["answer"] == text
+
+
 def test_the_note_states_both_directions_and_its_limits():
-    for phrase in ("monocular inflation fits the left-arm asymmetry at least as well as two-view shrinkage", "Per side it is not every signer", "1.00-1.05x", "not called jitter", "5 clips each"):
+    for phrase in ("monocular inflation fits the left-arm asymmetry at least as well as two-view shrinkage", "Per side it is not every signer", "1.00-1.05x", "not called jitter", "5 clips each", "0.27%", "8.8%", "27.2%", "That is an inference"):
         assert phrase in w.NOTE, phrase
     assert "jitter is filtered" not in w.NOTE

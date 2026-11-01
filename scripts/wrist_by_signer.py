@@ -270,19 +270,31 @@ def word_clip_path(store, vocabulary_manifest) -> dict:
     raw_tok = store.get(tok_key)
     tok = json.loads(raw_tok)
     tok_args = tok["args"] if isinstance(tok["args"], dict) else ast.literal_eval(tok["args"])
-    return dict(answer="monocular, overwhelmingly: every corpus that teaches a word alone is monocular; How2Sign two-view enters as sentences, and its layout is the conform target",
-                caches=cache_settings, generator=dict(checkpoint_key=checkpoint, run_key=run_key, run_sha256=hashlib.sha256(raw).hexdigest(), manifest_key=run["manifest_key"], manifest_sha256=run["manifest_sha256"], corpus_weight=args["corpus_weight"], conform_to_corpus=args["conform_to_corpus"]),
+    row = dict(caches=cache_settings, generator=dict(checkpoint_key=checkpoint, run_key=run_key, run_sha256=hashlib.sha256(raw).hexdigest(), manifest_key=run["manifest_key"], manifest_sha256=run["manifest_sha256"], corpus_weight=args["corpus_weight"], conform_to_corpus=args["conform_to_corpus"]),
                 tokenizer=dict(key=args["tokenizer_key"], sha256=args["tokenizer_sha256"], run_key=tok_key, run_sha256=hashlib.sha256(raw_tok).hexdigest(), manifest_key=tok["manifest_key"], manifest_sha256=tok["manifest_sha256"], corpus_weight=tok_args["corpus_weight"], conform_to_corpus=tok_args["conform_to_corpus"], init_key=tok_args.get("init_key")),
                 training_corpora=corpora, entries=len(entries), one_word_weight_two_view_share=share(one_word, two_view), one_word_weight_by_corpus={k: round(v, 1) for k, v in sorted(one_word.items())}, sentence_token_weight_two_view_share=share(sentence, two_view),
                 sampling_two_view_share=corpora.get(H2S, {}).get("sampling_share"), real_word_pools_by_corpus=dict(sorted({c: sum(1 for v in pools.values() for r in v if r.get("corpus") == c) for c in {r.get("corpus") for v in pools.values() for r in v}}.items())),
                 new_entries_source_kinds={e: r["source_kind"] for e, r in arm["entries"].items()},
                 note="New entries' sources are ASLLRP segments or isolated clips of the same mix, both monocular. A corpus's path is read from its state prefix and the script that built it; no state was re-extracted to confirm it.")
+    return with_answer(row)
+
+
+def with_answer(row: dict) -> dict:
+    return dict(row, answer=path_answer(row))
+
+
+def path_answer(row: dict) -> str:
+    """The answer, computed from the row: how much of the word clips' training is two-view, and what is not known."""
+    one, sampling, sentence = row["one_word_weight_two_view_share"], row["sampling_two_view_share"], row["sentence_token_weight_two_view_share"]
+    h2s = row["one_word_weight_by_corpus"].get(H2S, 0.)
+    return (f"mostly monocular in training: two-view is {one:.2%} of the weight teaching a cached word alone (How2Sign's weight {h2s:g} of {sum(row['one_word_weight_by_corpus'].values()):g}), {sampling:.1%} of sampling and {sentence:.1%} of the sentence-token weight. "
+            f"The decoder's share is not measured: the tokenizer weights How2Sign x{row['tokenizer']['corpus_weight'][0].split('=')[1]} and its layout is the conform target. No generated clip's amplitude was tested, so reading composition against D20 through the monocular path as like-for-like is an inference.")
 
 
 NOTE = ("Real signing's wrist differs by signer and by corpus far more than the review's first numbers show one by one. Same clips through both paths: pooled, the monocular path reads 18-39% more wrist motion at 3 Hz and 23-37% more spread than two-view on every How2Sign signer, while its raw speed is 0.83-1.11x. Per side it is not every signer: "
         "at 3 Hz the left is 1.36-1.65x and the right 0.94-1.23x (c03's right is below 1), and raw the right is 0.73-0.98x. Either direction fits: two-view could shrink the motion, or the monocular path could inflate it, and monocular inflation fits the left-arm asymmetry at least as well as two-view shrinkage. Median clip seconds differ 1.00-1.05x between the "
-        "paths, so frames are not exactly paired. Content above 3 Hz is not called jitter here: nothing shows how much of it is tracker noise. Both How2Sign paths store 24 fps. With the path matched, YouTube still reads about 1.5x D20 raw and at 3 Hz. The word clips carry the monocular path (word_clip_path), so composition's ratio against D20 through the same "
-        "path is the like-for-like one (composition_on_monocular): top10 1.88x raw and 1.75x at 3 Hz, against 1.77x and 2.20x on two-view. YouTube's channel ranges rest on 5 clips each.")
+        "paths, so frames are not exactly paired. Content above 3 Hz is not called jitter here: nothing shows how much of it is tracker noise. Both How2Sign paths store 24 fps. With the path matched, YouTube still reads about 1.5x D20 raw and at 3 Hz. The word clips' training is mostly monocular (word_clip_path: 0.27% of one-word weight, 8.8% of sampling and 27.2% of sentence-token weight are two-view), so composition against D20 through the same path may be the like-for-like "
+        "comparison (composition_on_monocular): top10 1.88x raw and 1.75x at 3 Hz, against 1.77x and 2.20x on two-view. That is an inference: the decoder's share is not measured and no generated clip's amplitude was tested. YouTube's channel ranges rest on 5 clips each.")
 UNDECIDED = ("Which path is right: no ground truth for arm amplitude exists here, so this cannot say whether two-view shrinks motion or monocular inflates it, and hold-x's motivation depends on that. Whether YouTube's remainder is signers, clip cutting (0.57 s per token, against D20's 0.30) or framing. Whether a stored 24 fps is the sources' true rate: the clock check "
              "moves with signers too. A channel is not a signer. ASLLRP's path was not compared on the same clips. Carry: the word is defined nowhere in the repository, so 1.44x is neither confirmed nor refuted: on hold-x it needs the right wrist at the row's right_needed_for_1_44.")
 

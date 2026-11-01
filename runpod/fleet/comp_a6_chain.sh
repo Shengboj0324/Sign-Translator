@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# comp_a6_chain.sh WORDS COMP_A_DECLARED [ATTEMPT]: one word draw of A6 in order on one pod, its smoke first (runpod/fleet/comp_a6.sh), so a draw's arms share code, packages and GPU. WORDS is a3 or A5's draw 1 to 8; a draw takes CACHE_SHA and
-# EXTRA_SHA, A5T_SHA for A5's top10 of that draw, and SCREEN_SHA for the screen's summary, from the environment. If the screen closes the hold gate, the draw runs base and length alone and says so. The smoke always reads WORDS=a3, never A5's draws. A comparator's hash comes from its own COMP-A6 line, printed for stored arms too. Any failure stops the chain. Whatever ends it, it prints ALERT for a failure and one
+# comp_a6_chain.sh WORDS COMP_A_DECLARED [ATTEMPT]: one word draw of A6 in order on one pod, its smoke first (runpod/fleet/comp_a6.sh), so a draw's arms share code, packages and GPU. WORDS is a3 or A5's draw 1 to 8; a draw takes A5T_SHA for A5's top10
+# of that draw, whose settings name its word caches, and SCREEN_SHA for the screen's summary, from the environment. If the screen closes the hold gate, the draw runs base and length alone and says so. The smoke always reads WORDS=a3, never A5's draws. A comparator's hash comes from its own COMP-A6 line, printed for stored arms too. Any failure stops the chain. Whatever ends it, it prints ALERT for a failure and one
 # COMP-A6-CHAIN-DONE <0|1> last. After a failure, rerun this with the next ATTEMPT: every arm runs again on the same words. Evaluation only. PREPARED, NOT LAUNCHED: the launch waits for A5's summary and for this code's own declaration.
 set -uo pipefail
 ENDED=""

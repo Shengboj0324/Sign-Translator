@@ -39,6 +39,17 @@ OUT = f"{O}/round20/comp-a6"
 A5OUT = f"{O}/round20/comp-a5"
 DONE = re.compile(r"^COMP-A6-DONE (0|1) phase=\S+ words=\S+ smoke=(0|1)$", re.M)
 REST = {j: [float(x) for x in to_6d(np.eye(3))] for j in cv2.HOLD_JOINTS}
+L, S, B = a6.LIKELIHOOD_FLOOR or -.0077, a6.SPOTTING_FLOOR or -.0089, a6.BLEU_FLOOR or -.1509      # the declared floors: a metric with no room still has its checks tested
+
+
+@pytest.fixture(autouse=True)
+def room_and_code(monkeypatch):
+    """Every metric has room, whatever the slot holds, and the reader's code is the synthetic reports': filling the slot changes no test but the ones about it."""
+    monkeypatch.setattr(a6, "LIKELIHOOD_FLOOR", L)
+    monkeypatch.setattr(a6, "SPOTTING_FLOOR", S)
+    monkeypatch.setattr(a6, "BLEU_FLOOR", B)
+    monkeypatch.setattr(a6, "NO_ROOM", {})
+    monkeypatch.setattr(lib, "provenance_row", lambda job=None: dict(PROVENANCE))
 
 
 # ---- the hold with a rest pose ---------------------------------------------------------------------------------------------------------------
@@ -471,7 +482,7 @@ def tops(d):
 def screen_summary(likelihood=.01, spotting=.01, **kw):
     """A stored screen's summary, as far as the gate reads it."""
     row = {a6.HOLD: dict(likelihood_minus_blank=dict(mean=likelihood), spotting=dict(mean=spotting))}
-    return dict(dict(mode="screen", arms=row, floors=dict(a6.FLOORS, against=a6.BARS_AGAINST), provenance=lib.provenance_row(a6.JOB_FILE)), **kw)
+    return dict(dict(mode="screen", declared=True, declared_commit="abc1234", arms=row, floors=dict(a6.FLOORS, against=a6.BARS_AGAINST), provenance=lib.provenance_row(a6.JOB_FILE)), **kw)
 
 
 def read(d=None, s=None, boot=60, **kw):
@@ -480,12 +491,14 @@ def read(d=None, s=None, boot=60, **kw):
     kw.setdefault("a5_top10", tops(d))
     if a6.SCREEN not in d:
         kw.setdefault("screen_summary", screen_summary())
+        kw.setdefault("screen_sha256", "h")
+        kw.setdefault("declared_commit", "abc1234")
     return a6.read(d, s, boot=boot, **kw)
 
 
 def test_the_read_reports_every_arm_over_the_draws():
     out = read()
-    assert out["report_only"] is True and out["mode"] == "draws" and out["declared"] is False and out["draws"] == list(range(1, 9)) and "adopted" not in json.dumps(out)
+    assert out["report_only"] is True and out["mode"] == "draws" and out["declared"] is True and out["draws"] == list(range(1, 9)) and "adopted" not in json.dumps(out)
     assert set(out["arms"]) == {a6.HOLD, a6.LENGTH, a6.BOTH} and out["reported_only"] == [a6.HOLD]
     for row in out["arms"].values():
         for metric in ("bleu", "likelihood_minus_blank", "spotting"):
@@ -573,19 +586,39 @@ def test_a_screen_reads_a3s_stored_words_only():
         read(d, s)
 
 
-def test_the_free_instrument_check_compares_base_with_a5s_top10():
+def test_the_instrument_check_reports_every_draw_and_stops_below_the_rate():
     d, s = draws()
     a5s = tops(d)
-    assert read(d, s, a5_top10=a5s)["a5_instrument_check"]["draws"][1]["form_identical"] == 12
-    a5s[2]["forms"][FORM]["hypotheses"][0] = "another hypothesis"
-    a5s[3]["settings"]["round20"]["provenance"] = dict(PROVENANCE, environment=dict(PROVENANCE["environment"], gpu="other"))
     out = read(d, s, a5_top10=a5s)["a5_instrument_check"]
-    assert out["note"] == "reported; decides nothing" and out["draws"][1]["form_identical"] == 12 and out["draws"][2]["form_identical"] == 11 and out["draws"][1]["real_identical"] == out["draws"][1]["blank_identical"] == 12
-    assert out["draws"][1]["same_gpu"] is True and out["draws"][3]["same_gpu"] is False and out["draws"][1]["clips"] == 12
-    assert read(d, s, a5_top10=a5s)["rule"]["hold"]["outcome"] == read(d, s)["rule"]["hold"]["outcome"]          # it decides nothing
-    a5s[4]["references"] = list(reversed(a5s[4]["references"]))
+    assert out["draws"][1] == dict(form_identical=12, real_identical=12, blank_identical=12, clips=12, same_gpu=True, rate=1.)
+    assert read(d, s, a5_top10=a5s)["rule"]["hold"]["outcome"] == "passed"
+    for form in (FORM, "real", a6.BLANK):
+        bent = tops(d)
+        bent[2]["forms"][form]["hypotheses"][0] = "another hypothesis"
+        with pytest.raises(SystemExit, match="below 0.98: the draw stops"):
+            read(d, s, a5_top10=bent)
+    bent = tops(d)
+    bent[3]["settings"]["round20"]["provenance"] = dict(PROVENANCE, environment=dict(PROVENANCE["environment"], gpu="other"))
+    bent[3]["forms"][FORM]["hypotheses"][0] = "another hypothesis"
+    out = read(d, s, a5_top10=bent)["a5_instrument_check"]                          # another GPU may differ, and says so
+    assert out["draws"][3]["same_gpu"] is False and out["draws"][3]["rate"] == .9167 and out["draws"][1]["same_gpu"] is True
+    bent = tops(d)
+    bent[4]["references"] = list(reversed(bent[4]["references"]))
     with pytest.raises(SystemExit, match="other sentences"):
-        read(d, s, a5_top10=a5s)
+        read(d, s, a5_top10=bent)
+
+
+def test_the_draws_need_at_least_one_same_gpu_draw():
+    d, s = draws()
+    bent = tops(d)
+    for k in a6.DRAWS:
+        bent[k]["settings"]["round20"]["provenance"] = dict(PROVENANCE, environment=dict(PROVENANCE["environment"], gpu="other"))
+    with pytest.raises(SystemExit, match="incomplete: no draw ran on A5's GPU"):
+        read(d, s, a5_top10=bent)
+    d, s = draws((a6.SCREEN,))
+    top = copy.deepcopy(d[a6.SCREEN][a6.BASE])
+    top["settings"]["round20"]["provenance"] = dict(PROVENANCE, environment=dict(PROVENANCE["environment"], gpu="other"))
+    assert a6.read(d, s, boot=20, a5_top10={a6.SCREEN: top})["a5_instrument_check"]["draws"][a6.SCREEN]["same_gpu"] is False     # A3's stored top10 ran on two GPUs: the screen reports it
 
 
 @pytest.mark.parametrize("cache", ["word_cache", "word_cache_extra"])
@@ -606,26 +639,29 @@ def test_the_draws_need_all_eight_of_a5s_top10(drop):
     else:
         del a5s[drop]
     with pytest.raises(SystemExit, match="all eight of A5's top10"):
-        a6.read(d, s, boot=20, a5_top10=a5s, screen_summary=screen_summary())
+        a6.read(d, s, boot=20, a5_top10=a5s, screen_summary=screen_summary(), screen_sha256="h", declared_commit="abc1234")
     d, s = draws((a6.SCREEN,))
     assert a6.read(d, s, boot=20)["a5_instrument_check"] is None                    # a screen has none to compare
 
 
-def test_a_declared_read_refuses_another_digest_unless_amended(monkeypatch):
+def test_a_declared_read_refuses_another_digest_and_says_to_redeclare(monkeypatch):
     d, s = draws()
-    with pytest.raises(SystemExit, match="--reader-amendment"):
-        read(d, s, declared_commit="abc1234")
-    assert read(d, s)["declared"] is False                                         # an undeclared read has no such check
-    out = read(d, s, declared_commit="abc1234", amendment="the reader's bug X")
-    assert out["amendment"] == "the reader's bug X" and out["declared"] is True
-    monkeypatch.setattr(lib, "provenance_row", lambda job: dict(PROVENANCE))
-    out = read(d, s, declared_commit="abc1234")
-    assert out["amendment"] is None and out["declared"] is True
-    d[2][a6.HOLD]["settings"]["round20"]["provenance"] = dict(PROVENANCE, code_digest="e" * 64)
-    for name in a6.ARMS:                                                           # every arm moved together: still not the reader's
-        d[2][name]["settings"]["round20"]["provenance"] = dict(PROVENANCE, code_digest="e" * 64)
-    with pytest.raises(SystemExit, match="other code or packages|--reader-amendment"):
-        read(d, s, declared_commit="abc1234")
+    monkeypatch.setattr(lib, "provenance_row", lambda job=None: dict(PROVENANCE, code_digest="e" * 64))
+    with pytest.raises(SystemExit, match="the screen's summary came from other code: re-declare under a new OUT"):
+        read(d, s, screen_summary=dict(screen_summary(), provenance=dict(PROVENANCE)))
+    with pytest.raises(SystemExit, match="re-declare under a new OUT named in the job, with what was stored disclosed"):
+        read(d, s, screen_summary=dict(screen_summary()))
+    d, s = draws((a6.SCREEN,))
+    with pytest.raises(SystemExit, match="re-declare under a new OUT"):
+        a6.read(d, s, boot=20, declared_commit="abc1234")
+    assert "amendment" not in a6.read(d, s, boot=20)
+    assert "--reader-amendment" not in Path(a6.__file__).read_text()
+
+
+def test_a_stored_screen_from_older_code_stops_the_draws(monkeypatch):
+    older = screen_summary(provenance=dict(PROVENANCE, code_digest="0" * 64))
+    with pytest.raises(SystemExit, match="other code: re-declare under a new OUT named in the job"):
+        a6.hold_gate(older, "abc1234")
 
 
 # ---- the rules -----------------------------------------------------------------------------------------------------------------------------------
@@ -635,71 +671,146 @@ def metric(mean=.05, two=.01, t=.01, positive=8):
 
 
 def hold_row(**kw):
-    out = dict(bleu=metric(t=-.1), likelihood_minus_blank=metric(), spotting=metric(), motion=dict(arm_hands=1., comparator_hands=1.))
+    out = dict(bleu=metric(t=B / 2), likelihood_minus_blank=metric(), spotting=metric(), motion=dict(arm_hands=1., comparator_hands=1.))
     out.update(kw)
     return out
 
 
 def length_row(**kw):
-    out = dict(hold_row(), bleu_net_of_blank=dict(t_ci95=[-.1, 9.], mean=0., per_draw=[]), length_over_true=[dict(pooled=1.078)] * 8)
+    out = dict(hold_row(), bleu_net_of_blank=dict(t_ci95=[B / 2, 9.], mean=0., per_draw=[]), length_over_true=[dict(pooled=1.078)] * 8)
     out.update(kw)
     return out
 
 
-RULE_HOLD = ("Primary arm: hold-x at the fitted length, against top10 at the fitted length, paired within each of A5's eight stored word draws, on D20, report only. hold-x keeps the left arm on entries with at least 25% two-handed records, on unannotated entries and on the list's new entries; the 25% cut was set after A1's D20 failure. hold-x at today's length is read beside it and decides nothing. Passed only if all hold: mean paired likelihood minus each form's own-length blank, its 95% lower bound above -0.0077 on both the two-way bootstrap and the t interval over the eight draws; v2 spotting's 95% lower bound above -0.0089 on both; BLEU over draws, the t interval's lower bound above -0.1509; mean hands at least 0.9x its comparator's. These are small-loss bars, set as shares of the mean paired gains of A3's stored read, until A5's summary fills the slot at declaration: 44% of BLEU's, 60% of likelihood's and of spotting's. A pass means any loss is small, possibly up to those shares, with less motion, and not that the arm reads better. Known before any read, and not evidence: pooled wrist 2.019x to 1.814x, contact unchanged by construction. The form stays far outside the 0.8-1.25x band, so a pass is no progress against the release bar. The gate: the screen on A3's stored words reads hold-x against top10 at today's length, report only, and hold-x and hold-x at the fitted length run on the eight draws only if the screen's point estimates of likelihood and spotting sit above the two floors above. Otherwise the draws run top10 and length only, the length rule still reads, and this rule reads not run, screen failed, which is printed. Known from A1's stored rows before this gate was set: the 34% of clips holding the excluded uses hold 39% of A1's likelihood loss and 40% of its spotting loss, and excluding those uses is estimated to remove 3-11% against the 72% and 78% these floors need, so the screen may well stop the hold arms; that estimate is no read of hold-x. Each pass is a single step: the hold rule reads hold-x at the fitted length and the length rule reads the fitted length against today's, so passing both does not show that the two together lose little; both together against top10 at today's length and the difference in differences are reported and decide nothing. D20 chose top10 and A5's draws read its sentences, so D20's sentences are not fresh. Anything else is not passed, the failed check is reported, and not passed is not evidence of a loss. A6's draws run only if A5's summary reads confirmed or direction only.")
-RULE_LENGTH = ("Primary arm: length, the fit signer-balanced on How2Sign train's c02 + c04 (seconds = -0.3577 + 0.3445 x tokens), chosen by a train-only rule after its D20 ratio of about 1.08 was known, and never fitted on D20's lengths. Against top10 at today's length, paired within each of A5's eight stored word draws, on D20, report only. Passed only if all hold: likelihood and spotting as the hold rule; BLEU, the t interval's lower bound above -0.1509 on the lower of raw BLEU and BLEU net of the blank's own change; mean hands at least 0.9x top10's. Pooled predicted over true length is reported and decides nothing: known on the report's state frames, 1.071 against today's 1.198, median per clip 1.128 against 1.287. Today's length runs 1.20x true, which lowers wrist by construction; the fitted length removes that, so wrist rises from 1.774x to 2.019x. Wrist is reported, decides nothing, and this rise is neither a loss nor progress. A pass means a nearer length costs little content, not that it adds any. This rule reads whether or not the screen lets the hold arms run. Each pass is a single step: the hold rule reads hold-x at the fitted length and the length rule reads the fitted length against today's, so passing both does not show that the two together lose little; both together against top10 at today's length and the difference in differences are reported and decide nothing. D20 chose top10 and A5's draws read its sentences, so D20's sentences are not fresh. A6's draws run only if A5's summary reads confirmed or direction only.")
+ROOM = ("For each metric, if A5's mean gain is at or below 0, or its lower 95% t bound over the eight draws is at or below 0, that metric's outcome is no_room: no gain was established to protect. A rule with any no_room metric does not pass and prints no_room with the reason; the hold gate closes; the arms still report. ")
+STEP = ("Each pass is a single step: the hold rule reads hold-x at the fitted length and the length rule reads the fitted length against today's, so passing both does not show that the two together lose little; both together against top10 at today's length and the difference in differences are reported and decide nothing. ")
+MATCH = ("Each draw's top10 at today's length must match A5's top10 for that draw, and the screen's A3's stored top10: on the same GPU type and pinned thread count at least 98% of its hypotheses, for the form, for real and for blank@predicted. Below that, the draw stops and later attempts of that draw are refused until it is declared. The draws need at least one same-GPU draw, else the read is incomplete; the count and rate of every draw are printed. ")
+AGAIN = "Any reader bug, or any code change after the screen or a draw, means re-declaring under a new OUT named in the job, with what was stored disclosed; no key is scoped by digest automatically. "
+FRESH = "D20 chose top10 and A5's draws read its sentences, so D20's sentences are not fresh. "
+FULL = "A6's full runs, the screen among them, run only if A5's summary reads confirmed or direction only."
+RULE_HOLD = ("Primary arm: hold-x at the fitted length, against top10 at the fitted length, paired within each of A5's eight stored word draws, on D20, report only. hold-x keeps the left arm on entries with at least 25% two-handed records, on unannotated entries and on the list's new entries; the 25% cut was set after A1's D20 failure. hold-x at today's length is read beside it and decides nothing. Passed only if all hold: mean paired likelihood minus each form's own-length blank, its 95% lower bound " + a6.bar(a6.FLOORS["likelihood"]) + " on both the two-way bootstrap and the t interval over the eight draws; v2 spotting's 95% lower bound " + a6.bar(a6.FLOORS["spotting"]) + " on both; BLEU over draws, the t interval's lower bound " + a6.bar(a6.FLOORS["bleu"]) + "; mean hands at least 0.9x its comparator's. These are small-loss bars, set as shares of the mean paired gains of " + a6.BARS_AGAINST + ": 44% of BLEU's, 60% of likelihood's and of spotting's. " + ROOM + "A pass means any loss is small, possibly up to those shares, with less motion, and not that the arm reads better. Known before any read, and not evidence: pooled wrist 2.019x to 1.814x, contact unchanged by construction. The form stays far outside the 0.8-1.25x band, so a pass is no progress against the release bar. The gate: the screen on A3's stored words reads hold-x against top10 at today's length, report only, and hold-x and hold-x at the fitted length run on the eight draws only if the screen's point estimates of likelihood and spotting sit above the two floors above. Otherwise the draws run top10 and length only, the length rule still reads, and this rule reads not run, screen failed, which is printed. Known from A1's stored rows before this gate was set: the 34% of clips holding the excluded uses hold 39% of A1's likelihood loss and 40% of its spotting loss, and excluding those uses is estimated to remove 3-15% against the " + a6.needed_text() + " these floors need, so the screen may well stop the hold arms; that estimate is no read of hold-x. " + STEP + MATCH + AGAIN + FRESH + "Anything else is not passed, the failed check is reported, and not passed is not evidence of a loss. " + FULL)
+RULE_LENGTH = ("Primary arm: length, the fit signer-balanced on How2Sign train's c02 + c04 (seconds = -0.3577 + 0.3445 x tokens), chosen by a train-only rule after its D20 ratio of about 1.08 was known, and never fitted on D20's lengths. Against top10 at today's length, paired within each of A5's eight stored word draws, on D20, report only. Passed only if all hold: likelihood and spotting as the hold rule; BLEU, the t interval's lower bound " + a6.bar(a6.FLOORS["bleu"]) + " on the lower of raw BLEU and BLEU net of the blank's own change; mean hands at least 0.9x top10's. " + ROOM + "Pooled predicted over true length is reported and decides nothing: known on the report's state frames, 1.071 against today's 1.198, median per clip 1.128 against 1.287. Today's length runs 1.20x true, which lowers wrist by construction; the fitted length removes that, so wrist rises from 1.774x to 2.019x. Wrist is reported, decides nothing, and this rise is neither a loss nor progress. A pass means a nearer length costs little content, not that it adds any. This rule reads whether or not the screen lets the hold arms run. " + STEP + MATCH + AGAIN + FRESH + FULL)
 
 
 def test_the_rules_are_the_texts_as_given():
     assert a6.RULES == dict(hold=RULE_HOLD, length=RULE_LENGTH)
-    assert a6.A5_SUMMARY_AT_DECLARATION is None                                    # the text above holds until the slot is filled
+
+
+SLOT = dict(sha256="abc", outcome="direction_only_not_confirmed", bleu=.2, likelihood=.01, spotting=.02, t_lower=dict(bleu=.01, likelihood=.002, spotting=.003), paired_sd=dict(bleu=.1, likelihood=.004, spotting=.005))
 
 
 def test_the_bars_are_the_stated_shares_of_the_gains():
     assert a6.floors() == dict(bleu=-.1509, likelihood=-.0077, spotting=-.0089)    # of A3's stored read: 44%, 60%, 60%
-    assert abs(a6.LIKELIHOOD_FLOOR) <= .6 * .0128 + 5e-5 and abs(a6.SPOTTING_FLOOR) <= .6 * .0149 + 5e-5 and abs(a6.BLEU_FLOOR) <= .44 * .343 + 5e-5
-    slot = dict(bleu=.2, likelihood=.01, spotting=.02)
-    assert a6.floors(slot) == dict(bleu=-.088, likelihood=-.006, spotting=-.012)   # restated against A5's mean
-    assert a6.floors(dict(bleu=.2, likelihood=-.01, spotting=0.))["likelihood"] == 0. and a6.floors(dict(bleu=.2, likelihood=-.01, spotting=0.))["spotting"] == 0.   # no gain, no room
+    assert a6.floors(SLOT) == dict(bleu=-.088, likelihood=-.006, spotting=-.012)   # restated against A5's mean
 
 
-def test_a_filled_slot_moves_the_bars_the_rule_texts_and_what_was_known():
-    """The module as a declaration leaves it: its source with the slot filled."""
-    source = (ROOT / "scripts/comp_a6_read.py").read_text()
-    line = "A5_SUMMARY_AT_DECLARATION = None"
-    assert source.count(line) == 1
-    filled = "A5_SUMMARY_AT_DECLARATION = " + repr(dict(sha256="abc", outcome="direction_only_not_confirmed", bleu=.2, likelihood=.01, spotting=.02, paired_sd=dict(bleu=.1, likelihood=.004, spotting=.005)))
-    space = dict(__name__="filled", __file__=str(ROOT / "scripts/comp_a6_read.py"))
-    exec(compile(source.replace(line, filled), "filled", "exec"), space)
-    assert space["FLOORS"] == dict(bleu=-.088, likelihood=-.006, spotting=-.012) and (space["BLEU_FLOOR"], space["LIKELIHOOD_FLOOR"], space["SPOTTING_FLOOR"]) == (-.088, -.006, -.012)
-    for phrase in ("above -0.0060 on both", "above -0.0120 on both", "above -0.0880", "the mean paired gains of A5's summary:"):
-        assert phrase in space["RULES"]["hold"], phrase
-    assert "above -0.0880" in space["RULES"]["length"] and "sha256 abc, reading direction_only_not_confirmed" in space["KNOWN_AT_WRITING"] and "A3's stored read, until" not in space["RULES"]["hold"]
-    assert space["RULES"] != a6.RULES
+@pytest.mark.parametrize("change,metric,why", [(dict(likelihood=0.), "likelihood", "mean gain"), (dict(spotting=-.01), "spotting", "mean gain"), (dict(bleu=-.1), "bleu", "mean gain"),
+                                               (dict(t_lower=dict(SLOT["t_lower"], likelihood=0.)), "likelihood", "lower 95% t bound"), (dict(t_lower=dict(SLOT["t_lower"], spotting=-.001)), "spotting", "lower 95% t bound"), (dict(t_lower=dict(SLOT["t_lower"], bleu=-.2)), "bleu", "lower 95% t bound")])
+def test_no_gain_established_is_no_room(change, metric, why):
+    slot = dict(SLOT, **change)
+    room = a6.no_room(slot)
+    assert set(room) == {metric} and why in room[metric] and "no gain was established to protect" in room[metric]
+    assert a6.floors(slot)[metric] is None and all(v is not None for k, v in a6.floors(slot).items() if k != metric)
+    assert a6.no_room(None) == {} and a6.no_room(SLOT) == {}
+    assert a6.needed_share(-.0276, None) is None and a6.bar(None) == "above no bar (no_room)"
 
 
 def test_the_slot_is_read_from_a5s_summary():
-    row = lambda mean, sd: dict(mean=mean, between_draw_sd=sd)       # noqa: E731
-    summary = dict(rule=dict(outcome="confirmed"), forms=dict(predicted=dict(bleu=row(.3, .1), likelihood_minus_blank=row(.012, .004), spotting=row(.014, .005))))
-    assert a6.slot_from_summary(summary, "h") == dict(sha256="h", outcome="confirmed", bleu=.3, likelihood=.012, spotting=.014, paired_sd=dict(bleu=.1, likelihood=.004, spotting=.005))
+    row = lambda mean, sd, t: dict(mean=mean, between_draw_sd=sd, t_ci95=[t, 9.])       # noqa: E731
+    summary = dict(rule=dict(outcome="confirmed"), forms=dict(predicted=dict(bleu=row(.3, .1, .05), likelihood_minus_blank=row(.012, .004, .002), spotting=row(.014, .005, .003))))
+    assert a6.slot_from_summary(summary, "h") == dict(sha256="h", outcome="confirmed", bleu=.3, likelihood=.012, spotting=.014, t_lower=dict(bleu=.05, likelihood=.002, spotting=.003), paired_sd=dict(bleu=.1, likelihood=.004, spotting=.005))
 
 
-def test_a_declaration_needs_the_a5_slot(tmp_path):
+def filled_module(slot, **others):
+    """The module as a declaration leaves it: its source with the slots filled."""
+    source = (ROOT / "scripts/comp_a6_read.py").read_text()
+    for name, value in dict(others, A5_SUMMARY_AT_DECLARATION=slot).items():
+        line = f"{name} = None"
+        assert source.count(line) == 1
+        source = source.replace(line, f"{name} = " + repr(value))
+    space = dict(__name__="filled", __file__=str(ROOT / "scripts/comp_a6_read.py"))
+    exec(compile(source, "filled", "exec"), space)
+    return space
+
+
+def test_the_path_read_and_the_prior_power_figures_have_slots():
+    known = filled_module(SLOT, PATH_READ_AT_DECLARATION="path read says X", PRIOR_REVIEW_POWER="power says Y")["KNOWN_AT_WRITING"]
+    assert "Path read (branch path-read): path read says X." in known and "Prior review's power figures: power says Y." in known
+
+
+def test_a_filled_slot_moves_the_bars_the_shares_the_rule_texts_and_what_was_known():
+    space = filled_module(SLOT)
+    assert space["FLOORS"] == dict(bleu=-.088, likelihood=-.006, spotting=-.012) and (space["BLEU_FLOOR"], space["LIKELIHOOD_FLOOR"], space["SPOTTING_FLOOR"]) == (-.088, -.006, -.012) and space["NO_ROOM"] == {}
+    needed = [round((.0276 - .006) / .0276, 4), round((.0405 - .012) / .0405, 4)]
+    assert list(space["NEEDED"].values()) == needed and space["needed_text"]() == f"{needed[0]:.0%} and {needed[1]:.0%}"
+    for phrase in ("above -0.0060 on both", "above -0.0120 on both", "above -0.0880", "the mean paired gains of A5's summary:", f"against the {needed[0]:.0%} and {needed[1]:.0%} these floors need"):
+        assert phrase in space["RULES"]["hold"], phrase
+    assert "above -0.0880" in space["RULES"]["length"] and "A3's stored read, until" not in space["RULES"]["hold"] and "72% and 78%" not in space["RULES"]["hold"]
+    known = space["KNOWN_AT_WRITING"]
+    for phrase in ("sha256 abc, reading direction_only_not_confirmed", "mean gains BLEU 0.2, likelihood 0.01, spotting 0.02", "paired SDs", "the power table is in", f"{needed[0]:.0%} and {needed[1]:.0%} the floors need"):
+        assert phrase in known, phrase
+    assert space["RULES"] != a6.RULES
+    row = dict(hold_row(), bleu=metric(t=-.05), likelihood_minus_blank=metric(two=-.005, t=-.005), spotting=metric(two=-.011, t=-.011))
+    assert space["decide_hold"](row)["outcome"] == "passed" and space["gate_of"](-.005, -.011)["passed"] is True and space["gate_of"](-.007, 0.)["passed"] is False
+
+
+def test_a_slot_with_no_room_stops_the_rules_and_the_gate_and_prints_no_zero_bar():
+    space = filled_module(dict(SLOT, spotting=0., t_lower=dict(SLOT["t_lower"], spotting=-.001)))
+    assert "spotting" in space["NO_ROOM"] and space["FLOORS"]["spotting"] is None
+    for text in space["RULES"].values():
+        assert "-0.0000" not in text
+    assert "lower bound above no bar (no_room) on both" in space["RULES"]["hold"]
+    good = dict(hold_row(), bleu=metric(t=.1), likelihood_minus_blank=metric(two=.1, t=.1), spotting=metric(two=.1, t=.1))
+    out = space["decide_hold"](good)
+    assert out["outcome"] == "no_room" and "no gain was established to protect" in out["no_room"]["spotting"] and out["checks"]["spotting_t_lower_bound_above_floor"] is False
+    assert space["decide_length"](dict(good, bleu_net_of_blank=dict(t_ci95=[.1, 9.])))["outcome"] == "no_room"
+    gate = space["gate_of"](.1, .1)
+    assert gate["passed"] is False and gate["no_room"] and gate["hold_arms"] == "not run, screen failed"
+    known = space["KNOWN_AT_WRITING"]
+    assert "no_room" in known and "no gain was established" in known
+
+
+def test_a_closed_read_with_no_room_says_no_room_and_prints_why(monkeypatch):
+    monkeypatch.setattr(a6, "NO_ROOM", dict(spotting="A5's mean gain is 0.0: no gain was established to protect"))
+    d, s = closed_draws()
+    out = read(d, s)
+    assert out["rule"]["hold"]["outcome"] == "no_room" and out["rule"]["hold"]["no_room"]["spotting"] and out["rule"]["length"]["outcome"] == "no_room" and set(out["arms"]) == {a6.LENGTH}
+
+
+def test_a_declaration_needs_the_a5_slot_and_the_power_table(tmp_path, monkeypatch):
     dc6.check_slot(ROOT, a6.A5_SUMMARY_AT_DECLARATION)                             # the repository as it stands: a record with an empty slot fails here
     (tmp_path / "runpod/fleet").mkdir(parents=True)
     dc6.check_slot(tmp_path, None)                                                 # no record, no slot needed
     (tmp_path / dc6.RECORD).write_text("{}")
     with pytest.raises(SystemExit, match="while A5_SUMMARY_AT_DECLARATION is empty"):
         dc6.check_slot(tmp_path, None)
+    with pytest.raises(SystemExit, match="power_table_at_declaration is empty"):
+        dc6.check_slot(tmp_path, dict(sha256="h"))                                 # the slot alone is not enough
+    (tmp_path / "reports").mkdir()
+    report = tmp_path / dc6.POWER_REPORT
+    report.write_text(json.dumps(dict(power_table_at_declaration=None)))
+    with pytest.raises(SystemExit, match="is empty"):
+        dc6.check_slot(tmp_path, dict(sha256="h"))
+    report.write_text(json.dumps(dict(power_table_at_declaration=dict(hold={}))))
+    with pytest.raises(SystemExit, match="a row for each rule"):
+        dc6.check_slot(tmp_path, dict(sha256="h"))
+    report.write_text(json.dumps(dict(power_table_at_declaration=dict(hold={"likelihood": {}}, length={"likelihood": {}}))))
     dc6.check_slot(tmp_path, dict(sha256="h"))
+    monkeypatch.setattr(a6, "A5_SUMMARY_AT_DECLARATION", None)
     with pytest.raises(SystemExit, match="is empty"):
         dc6.make_record("abc1234")
+    monkeypatch.setattr(a6, "A5_SUMMARY_AT_DECLARATION", dict(sha256="h"))
+    if not json.loads((ROOT / dc6.POWER_REPORT).read_text()).get("power_table_at_declaration"):
+        with pytest.raises(SystemExit, match="power_table_at_declaration is empty"):
+            dc6.make_record("abc1234")
 
 
 def test_what_was_known_is_stated():
     known = a6.KNOWN_AT_WRITING
-    for phrase in ("-0.0276", "-0.0405", "+0.343", "37c8d18", "fbe9b29", "1.376", "90% of stretches", "1.198x", "1.071x", "before the train-only rule was written", "08b9a150", "not stored when this was written", "A5's summary at declaration", "two-view being the right reference", "39% of the likelihood loss", "72% and 78%", "The screen's gate on the hold arms was set after the concentration result"):
+    for phrase in ("-0.0276", "-0.0405", "+0.343", "37c8d18", "fbe9b29", "11e310c", "1.376", "90% of stretches", "1.198x", "1.071x", "before the train-only rule was written", "08b9a150", "A5's summary at declaration", "two-view being the right reference", "39% of the likelihood loss", a6.needed_text(),
+                   "The screen's gate on the hold arms was set after the concentration result", "one metadata row (seconds and frames) of How2Sign's test-split extraction report; no state was read; that split holds c00", "0.27%", "8.8%", "27.2%", "Path read (branch path-read)", "Prior review's power figures", "running them before declaration is recommended"):
         assert phrase in known, phrase
+    assert "carry mostly that path" not in known
     assert "chosen on train alone" not in known and "chosen on train alone" not in a6.RULES["length"]
 
 
@@ -708,36 +819,36 @@ def test_every_check_passes_each_rule():
 
 
 CONTENT = [
-    (dict(likelihood_minus_blank=metric(two=-.0077)), "likelihood_two_way_lower_bound_above_floor"),
-    (dict(likelihood_minus_blank=metric(t=-.0077)), "likelihood_t_lower_bound_above_floor"),
-    (dict(spotting=metric(two=-.0089)), "spotting_two_way_lower_bound_above_floor"),
-    (dict(spotting=metric(t=-.0089)), "spotting_t_lower_bound_above_floor"),
+    (dict(likelihood_minus_blank=metric(two=L)), "likelihood_two_way_lower_bound_above_floor"),
+    (dict(likelihood_minus_blank=metric(t=L)), "likelihood_t_lower_bound_above_floor"),
+    (dict(spotting=metric(two=S)), "spotting_two_way_lower_bound_above_floor"),
+    (dict(spotting=metric(t=S)), "spotting_t_lower_bound_above_floor"),
     (dict(motion=dict(arm_hands=.89, comparator_hands=1.)), "hands_at_least_0_9_of_comparator"),
 ]
 
 
-@pytest.mark.parametrize("kw,check", [*CONTENT, (dict(bleu=metric(t=-.1509)), "bleu_t_lower_bound_above_floor")])
+@pytest.mark.parametrize("kw,check", [*CONTENT, (dict(bleu=metric(t=B)), "bleu_t_lower_bound_above_floor")])
 def test_each_hold_check_can_fail_alone(kw, check):
     out = a6.decide_hold(hold_row(**kw))
     assert [k for k, v in out["checks"].items() if not v] == [check] and out["outcome"] == "not_passed"
 
 
-@pytest.mark.parametrize("kw,check", [*CONTENT, (dict(bleu_net_of_blank=dict(t_ci95=[-.1509, 9.], mean=0., per_draw=[])), "bleu_lower_of_raw_and_net_t_lower_bound_above_floor"),
-                                      (dict(bleu=metric(t=-.1509)), "bleu_lower_of_raw_and_net_t_lower_bound_above_floor")])
+@pytest.mark.parametrize("kw,check", [*CONTENT, (dict(bleu_net_of_blank=dict(t_ci95=[B, 9.], mean=0., per_draw=[])), "bleu_lower_of_raw_and_net_t_lower_bound_above_floor"),
+                                      (dict(bleu=metric(t=B)), "bleu_lower_of_raw_and_net_t_lower_bound_above_floor")])
 def test_each_length_check_can_fail_alone(kw, check):
     out = a6.decide_length(length_row(**kw))
     assert [k for k, v in out["checks"].items() if not v] == [check] and out["outcome"] == "not_passed"
 
 
 def test_the_bounds_are_where_the_rules_put_them():
-    near = dict(likelihood_minus_blank=metric(two=-.0076, t=-.0076), spotting=metric(two=-.0088, t=-.0088), bleu=metric(t=-.1508))
+    near = dict(likelihood_minus_blank=metric(two=L + 1e-4, t=L + 1e-4), spotting=metric(two=S + 1e-4, t=S + 1e-4), bleu=metric(t=B + 1e-4))
     assert a6.decide_hold(hold_row(**near))["outcome"] == "passed"
-    assert a6.decide_length(length_row(**near, bleu_net_of_blank=dict(t_ci95=[-.1508, 9.], mean=0., per_draw=[])))["outcome"] == "passed"
+    assert a6.decide_length(length_row(**near, bleu_net_of_blank=dict(t_ci95=[B + 1e-4, 9.], mean=0., per_draw=[])))["outcome"] == "passed"
     assert a6.decide_hold(hold_row(motion=dict(arm_hands=.9, comparator_hands=1.)))["outcome"] == "passed"
 
 
 def test_the_two_way_likelihood_bound_is_no_looser_than_the_t_bound():
-    out = a6.decide_hold(hold_row(likelihood_minus_blank=metric(two=-.0078, t=.01)))
+    out = a6.decide_hold(hold_row(likelihood_minus_blank=metric(two=L - 1e-4, t=.01)))
     assert out["checks"]["likelihood_two_way_lower_bound_above_floor"] is False and out["outcome"] == "not_passed"
 
 
@@ -778,26 +889,38 @@ def test_each_rule_reads_its_own_arm_and_hold_x_decides_nothing(name, key):
 # ---- the screen gates the hold arms -----------------------------------------------------------------------------------------------------------------
 
 @pytest.mark.parametrize("likelihood,spotting,passed", [
-    (.01, .01, True), (0., 0., True), (-.0076, -.0088, True), (-.0077, .01, False), (.01, -.0089, False), (-.0276, -.0405, False), (None, .01, False), (.01, None, False),
+    (.01, .01, True), (0., 0., True), (L + 1e-4, S + 1e-4, True), (L, .01, False), (.01, S, False), (-.0276, -.0405, False), (None, .01, False), (.01, None, False),
 ])
 def test_the_gate_is_both_point_estimates_above_the_hold_floors(likelihood, spotting, passed):
-    out = a6.hold_gate(screen_summary(likelihood, spotting))
-    assert out["passed"] is passed and out["hold_arms"] == ("run on the draws" if passed else "not run, screen failed") and out["likelihood_floor"] == a6.LIKELIHOOD_FLOOR and out["spotting_floor"] == a6.SPOTTING_FLOOR
+    out = a6.hold_gate(screen_summary(likelihood, spotting), "abc1234")
+    assert out["passed"] is passed and out["hold_arms"] == ("run on the draws" if passed else "not run, screen failed") and out["likelihood_floor"] == L and out["spotting_floor"] == S
 
 
-def test_the_gate_reads_a_screen_on_this_code_and_these_floors():
-    for bad, message in ((dict(mode="draws"), "reads a screen's summary"), (dict(mode="smoke"), "reads a screen's summary"), (dict(provenance=dict(code_digest="e" * 64)), "other code"), (dict(floors=dict(bleu=-1., likelihood=-1., spotting=-1.)), "are not this code's")):
-        with pytest.raises(SystemExit, match=message):
-            a6.hold_gate(screen_summary(**bad))
+@pytest.mark.parametrize("bad,message", [(dict(mode="draws"), "reads a screen's summary"), (dict(mode="smoke"), "reads a screen's summary"), (dict(provenance=dict(code_digest="e" * 64)), "other code"), (dict(floors=dict(bleu=-1., likelihood=-1., spotting=-1.)), "are not this code's"),
+                                         (dict(declared=False), "needs a declared screen"), (dict(declared_commit="other"), "needs a declared screen")])
+def test_the_gate_reads_a_declared_screen_of_this_declaration_on_this_code_and_floors(bad, message):
+    with pytest.raises(SystemExit, match=message):
+        a6.hold_gate(screen_summary(**bad), "abc1234")
+
+
+def test_the_gate_needs_a_declared_read():
+    with pytest.raises(SystemExit, match="needs a declared screen"):
+        a6.hold_gate(screen_summary(), None)
+    d, s = draws()
+    with pytest.raises(SystemExit, match="needs a declared screen"):
+        read(d, s, declared_commit=None)
+    with pytest.raises(SystemExit, match="its hash"):
+        read(d, s, screen_sha256=None)
+    assert read(d, s, screen_sha256="abc")["screen_sha256"] == "abc"
 
 
 def test_a_real_screen_summary_sets_the_gate_from_hold_x_against_base():
     d, s = draws((a6.SCREEN,))
-    out = a6.read(d, s, boot=20)
-    assert out["hold_gate"]["passed"] is True and out["hold_gate"]["likelihood"] == pytest.approx(.01, abs=1e-6) and a6.hold_gate(out)["passed"] is True
+    out = a6.read(d, s, boot=20, declared_commit="abc1234")
+    assert out["hold_gate"]["passed"] is True and out["hold_gate"]["likelihood"] == pytest.approx(.01, abs=1e-6) and a6.hold_gate(out, "abc1234")["passed"] is True
     d, s = draws((a6.SCREEN,), by_arm={a6.HOLD: dict(ll=-.5)})
-    out = a6.read(d, s, boot=20)
-    assert out["hold_gate"]["passed"] is False and a6.hold_gate(out)["hold_arms"] == "not run, screen failed" and out["rule"]["hold"]["outcome"] == "screen_decides_nothing"
+    out = a6.read(d, s, boot=20, declared_commit="abc1234")
+    assert out["hold_gate"]["passed"] is False and a6.hold_gate(out, "abc1234")["hold_arms"] == "not run, screen failed" and out["rule"]["hold"]["outcome"] == "screen_decides_nothing"
     d, s = draws((a6.SCREEN,), by_arm={a6.BOTH: dict(ll=-.5), a6.LENGTH: dict(ll=-.5)})     # only hold-x against base gates
     assert a6.read(d, s, boot=20)["hold_gate"]["passed"] is True
     d, s = draws((a6.SCREEN,))
@@ -830,7 +953,7 @@ def test_a_closed_gate_refuses_hold_arms_and_an_open_gate_needs_them():
         read(d, s)                                                                          # the screen let them run
     d, s = draws()
     with pytest.raises(SystemExit, match="need the screen's summary"):
-        a6.read(d, s, boot=20, a5_top10=tops(d))
+        a6.read(d, s, boot=20, a5_top10=tops(d), declared_commit="abc1234")
     assert read(d, s)["rule"]["hold"]["outcome"] == "passed" and read(d, s)["hold_gate"]["passed"] is True
 
 
@@ -845,12 +968,18 @@ def test_the_reader_prints_not_run_and_parses_the_closed_arms(tmp_path, monkeypa
         for name, report in arms.items():
             store.put(f"{k}|{name}", json.dumps(report).encode())
         argv += ["--draw", f"{k}=" + ",".join(f"{k}|{n}" for n in a6.GATE_CLOSED_ARMS), "--a5-top10", f"{k}={k}|{a6.BASE}"]
-    store.put("screen.json", json.dumps(screen_summary(.01, -.5)).encode())
+    raw = json.dumps(screen_summary(.01, -.5)).encode()
+    store.put("screen.json", raw)
     monkeypatch.setattr(train_text_to_motion, "make_store", lambda name: store)
     monkeypatch.setattr(round20_compare, "report_shards", lambda st, key, report, _: s[int(key.split("|")[0])][key.split("|")[1]])
-    assert a6.main([*argv, "--screen-key", "screen.json", "--bootstrap", "20", "--output-key", "out.json"]) == 0
-    assert "hold not run, screen failed" in capsys.readouterr().out
-    assert json.loads(store.get("out.json"))["rule"]["hold"]["outcome"] == "not run, screen failed"
+    args = [*argv, "--screen-key", "screen.json", "--declared-commit", "abc1234", "--bootstrap", "20"]
+    with pytest.raises(SystemExit, match="does not match --screen-sha256"):
+        a6.main([*args, "--screen-sha256", "0" * 64, "--output-key", "bad.json"])
+    assert a6.main([*args, "--screen-sha256", hashlib.sha256(raw).hexdigest(), "--output-key", "out.json"]) == 0
+    printed = capsys.readouterr().out
+    assert "hold not run, screen failed" in printed and "COMP-A6-MATCH draw=1 identical=12/12 rate=1.0 same_gpu=True" in printed and "COMP-A6-MATCH draw=8 " in printed
+    out = json.loads(store.get("out.json"))
+    assert out["rule"]["hold"]["outcome"] == "not run, screen failed" and out["screen_sha256"] == hashlib.sha256(raw).hexdigest()
 
 
 def test_the_guards_gate_exit_codes(tmp_path, monkeypatch, capsys):
@@ -860,11 +989,13 @@ def test_the_guards_gate_exit_codes(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(train_text_to_motion, "make_store", lambda name: store)
     store.put("open.json", json.dumps(screen_summary()).encode())
     store.put("closed.json", json.dumps(screen_summary(-.5, .01)).encode())
-    assert guard.main(["hold-gate", "open.json"]) == 0 and "COMP-A6-HOLD-GATE open" in capsys.readouterr().out
-    assert guard.main(["hold-gate", "closed.json"]) == 3 and "not run, screen failed" in capsys.readouterr().out
+    assert guard.main(["hold-gate", "open.json", "abc1234"]) == 0 and "COMP-A6-HOLD-GATE open" in capsys.readouterr().out
+    assert guard.main(["hold-gate", "closed.json", "abc1234"]) == 3 and "not run, screen failed" in capsys.readouterr().out
     store.put("bad.json", json.dumps(dict(mode="draws")).encode())
     with pytest.raises(SystemExit, match="reads a screen's summary"):
-        guard.main(["hold-gate", "bad.json"])
+        guard.main(["hold-gate", "bad.json", "abc1234"])
+    with pytest.raises(SystemExit, match="needs a declared screen"):
+        guard.main(["hold-gate", "open.json", "other"])
 
 
 # ---- what counts ------------------------------------------------------------------------------------------------------------------------------------
@@ -1030,7 +1161,9 @@ def test_the_read_keeps_the_attempts_and_refuses_to_overwrite(tmp_path, monkeypa
     store.put("screen.json", json.dumps(screen_summary()).encode())
     argv += ["--screen-key", "screen.json"]
     monkeypatch.setattr(round20_compare, "report_shards", lambda st, key, report, _: s[int(key.split("|")[0])][key.split("|")[1]])
-    args = [*argv, "--attempts", "3=1:base+;2:base+hold-x+length+hold-x-length+;", "--bootstrap", "30", "--output-key", "out.json"]
+    raw = json.dumps(screen_summary()).encode()
+    store.put("screen.json", raw)
+    args = [*[x for x in argv if x not in ("--screen-key", "screen.json")], "--screen-key", "screen.json", "--screen-sha256", hashlib.sha256(raw).hexdigest(), "--declared-commit", "abc1234", "--attempts", "3=1:base+;2:base+hold-x+length+hold-x-length+;", "--bootstrap", "30", "--output-key", "out.json"]
     assert a6.main(args) == 0
     out = json.loads(store.get("out.json"))
     assert out["attempts"] == {"3": "1:base+;2:base+hold-x+length+hold-x-length+;"} and out["rule"]["hold"]["outcome"] in ("passed", "not_passed") and out["a5_instrument_check"]["draws"]["1"]["form_identical"] == 12
@@ -1049,6 +1182,7 @@ def test_a6_has_its_own_declaration_and_digest(tmp_path, monkeypatch):
     (root / "docs").mkdir(parents=True)
     (root / "runpod/fleet").mkdir(parents=True)
     monkeypatch.setattr(a6, "A5_SUMMARY_AT_DECLARATION", dict(sha256="h", outcome="confirmed"))
+    monkeypatch.setattr(dc6, "check_power", lambda root: None)
     with pytest.raises(SystemExit, match="nothing shows a declaration"):
         dc6.check("abc1234", root)
     (root / "docs/NEXT_PHASE_PLAN.md").write_text("Plan. " + a6.RULES["hold"] + " " + a6.RULES["length"])
@@ -1124,14 +1258,15 @@ def test_the_guards_commands(tmp_path, monkeypatch):
 
 
 def a5_summary(outcome):
-    return json.dumps(dict(rule=dict(outcome=outcome))).encode()
+    row = lambda mean: dict(mean=mean, between_draw_sd=.1, t_ci95=[mean / 2, 9.])       # noqa: E731
+    return json.dumps(dict(rule=dict(outcome=outcome), forms=dict(predicted=dict(bleu=row(.3), likelihood_minus_blank=row(.012), spotting=row(.014))))).encode()
 
 
-def slot_of(raw, outcome):
-    return dict(sha256=hashlib.sha256(raw).hexdigest(), outcome=outcome)
+def slot_of(raw):
+    return a6.slot_from_summary(json.loads(raw), hashlib.sha256(raw).hexdigest())
 
 
-def test_a6s_draws_run_only_if_a5_reads_confirmed_or_direction_only(tmp_path, monkeypatch):
+def test_a6s_full_runs_need_a5_confirmed_or_direction_only_and_the_slot_exactly(tmp_path, monkeypatch):
     from signtranslator.data.text_motion_dataset import DirectoryStore
     import train_text_to_motion
     store = DirectoryStore(tmp_path)
@@ -1140,20 +1275,21 @@ def test_a6s_draws_run_only_if_a5_reads_confirmed_or_direction_only(tmp_path, mo
         guard.main(["a5-done"])
     for outcome in ("confirmed", "direction_only_not_confirmed"):
         raw = a5_summary(outcome)
-        guard.check_a5_summary(raw, slot_of(raw, outcome))
+        guard.check_a5_summary(raw, slot_of(raw))
     for outcome in ("not_confirmed", None):
         raw = a5_summary(outcome)
         with pytest.raises(SystemExit, match="A6's draws run only on"):
-            guard.check_a5_summary(raw, slot_of(raw, outcome))
+            guard.check_a5_summary(raw, slot_of(raw))
     raw = a5_summary("confirmed")
     store.put(guard.A5_SUMMARY, raw)
-    with pytest.raises(SystemExit, match="the bars were not set against it"):                 # an empty slot: no draw runs
+    with pytest.raises(SystemExit, match="the bars were not set against it"):                 # an empty slot: nothing runs
         guard.main(["a5-done"])
-    monkeypatch.setattr(guard, "A5_SUMMARY_AT_DECLARATION", slot_of(raw, "confirmed"))
+    monkeypatch.setattr(guard, "A5_SUMMARY_AT_DECLARATION", slot_of(raw))
     assert guard.main(["a5-done"]) == 0
-    monkeypatch.setattr(guard, "A5_SUMMARY_AT_DECLARATION", dict(slot_of(raw, "confirmed"), sha256="other"))
-    with pytest.raises(SystemExit, match="the bars were not set against it"):                 # another summary than the slot's
-        guard.main(["a5-done"])
+    for change in (dict(sha256="other"), dict(bleu=.31), dict(paired_sd=dict(bleu=.2, likelihood=.1, spotting=.1)), dict(t_lower=dict(bleu=0., likelihood=.006, spotting=.007))):
+        monkeypatch.setattr(guard, "A5_SUMMARY_AT_DECLARATION", dict(slot_of(raw), **change))
+        with pytest.raises(SystemExit, match="the bars were not set against it"):             # any field the summary does not hold
+            guard.main(["a5-done"])
     decided = a5.decide(dict(bleu=dict(t_ci95=[.1], mean=.3, positive_draws=8), likelihood_minus_blank=dict(two_way_ci95=[.1], t_ci95=[.1], mean=.1, positive_draws=8), spotting=dict(two_way_ci95=[.1]), motion=dict(top10_wrist=1.5, top10_hands=1., margin0_hands=1.)), 1.84)
     assert decided["outcome"] in a6.A5_GOES_ON                                     # the names A5's own rule writes
 
@@ -1167,16 +1303,17 @@ def matched(gpu_a="L40S", gpu_b="L40S", change=None):
     return guard.match_counts(a, b)
 
 
-def test_base_must_match_a5s_top10_on_the_same_gpu():
-    guard.check_match(matched())
-    for form in (FORM, "real", "blank"):
-        with pytest.raises(SystemExit, match="on the same GPU"):
-            guard.check_match(matched(change=form))
-        guard.check_match(matched(gpu_b="RTX", change=form))                                  # another GPU may differ, and the counts say so
-    assert matched(change=FORM)["form"] == 11 and matched(gpu_b="RTX")["same_gpu"] is False
+def test_base_must_match_its_top10_at_98_percent_on_the_same_gpu():
+    assert not guard.match_stops(matched()) and matched()["rate"] == 1. and matched()["threads"] == a6.PINNED_THREADS
+    for form, name in ((FORM, "form"), ("real", "real"), (a6.BLANK, "blank_predicted")):
+        counts = matched(change=form)
+        assert guard.match_stops(counts) and counts[name] == 11 and counts["rate"] == .9167
+        assert not guard.match_stops(matched(gpu_b="RTX", change=form))                       # another GPU may differ, and the counts say so
+    assert not guard.match_stops(dict(same_gpu=True, rate=.98)) and guard.match_stops(dict(same_gpu=True, rate=.9799))
+    assert matched(gpu_b="RTX")["same_gpu"] is False
 
 
-def test_the_match_command_prints_counts_and_stops(tmp_path, monkeypatch, capsys):
+def test_the_match_command_returns_4_on_a_stop_and_crashes_as_a_crash(tmp_path, monkeypatch, capsys):
     from signtranslator.data.text_motion_dataset import DirectoryStore
     import train_text_to_motion
     store = DirectoryStore(tmp_path)
@@ -1188,8 +1325,20 @@ def test_the_match_command_prints_counts_and_stops(tmp_path, monkeypatch, capsys
     assert "COMP-A6-MATCH" in capsys.readouterr().out
     b["forms"][FORM]["hypotheses"][1] = "another"
     store.put("c.json", json.dumps(b).encode())
-    with pytest.raises(SystemExit, match="on the same GPU"):
-        guard.main(["a5-match", "a.json", "c.json"])
+    assert guard.main(["a5-match", "a.json", "c.json"]) == 4
+    store.put("d.json", json.dumps(dict(forms={})).encode())
+    with pytest.raises(KeyError):                                                             # uncaught: exit 1, which the job calls a crash
+        guard.main(["a5-match", "a.json", "d.json"])
+
+
+def test_a_top10_names_its_word_caches(tmp_path, monkeypatch, capsys):
+    from signtranslator.data.text_motion_dataset import DirectoryStore
+    import train_text_to_motion
+    store = DirectoryStore(tmp_path)
+    monkeypatch.setattr(train_text_to_motion, "make_store", lambda name: store)
+    store.put("t.json", json.dumps(arm(a6.BASE, 3)).encode())
+    assert guard.main(["a5-caches", "t.json"]) == 0
+    assert capsys.readouterr().out.split() == ["k", "cache3", "x", "extra3"]
 
 
 # ---- a smoke through the reader's whole path ------------------------------------------------------------------------------------------------------
@@ -1239,7 +1388,7 @@ def test_five_smoke_reports_run_merge_and_read_and_print_no_numbers(d20, monkeyp
 def test_a_smoke_read_refuses_draws_and_more_than_five_clips():
     d, s = draws()
     with pytest.raises(SystemExit, match="A3's words alone"):
-        a6.read(d, s, boot=20, smoke=True, a5_top10=tops(d), screen_summary=screen_summary())
+        a6.read(d, s, boot=20, smoke=True, a5_top10=tops(d), screen_summary=screen_summary(), screen_sha256="h", declared_commit="abc1234")
     d, s = draws((a6.SCREEN,))
     for name in a6.SCREEN_ARMS:
         d[a6.SCREEN][name]["clips"] = 6
@@ -1251,6 +1400,7 @@ def test_a_smoke_read_refuses_draws_and_more_than_five_clips():
 
 A3C = f"{O}/round20/phase-a/cache-w14b-nogains-r10/index.json"
 A3X = f"{O}/round20/comp-a/cache-a3-top30-nogains/index.json"
+A3TOP = f"{O}/round20/comp-a/a3-gen-top10.json"
 SHAS = {f"{p}{d}_SHA": f"{p.lower()}{d}" for p in ("B", "HX", "L", "HXL") for d in a6.DRAWS}
 A5T = {f"A5T{d}_SHA": "stubsha" for d in a6.DRAWS}
 SCREEN_SHAS = {f"{p}a3_SHA": f"{p.lower()}a3" for p in ("B", "HX", "L", "HXL", "HXR")}
@@ -1269,14 +1419,15 @@ def a5_top10(k, attempt=1):
     return f"{A5OUT}/draw{k}-attempt{attempt}-top10.json"
 
 
-DRAW_ENV = dict(CACHE_SHA="stubsha", EXTRA_SHA="stubsha", A5T_SHA="stubsha", SCREEN_SHA="s")
+CACHE_LINE = "ck csha xk xsha"
+DRAW_ENV = dict(A5T_SHA="stubsha", SCREEN_SHA="s", STUB_PRINT=CACHE_LINE, STUB_PRINT_MATCH="comp_a6_guard.py a5-caches")
 SCREEN_KEY = f"{OUT}/a6-summary-a3.json"
 CLOSED = dict(STUB_EXIT_MATCH="comp_a6_guard.py hold-gate", STUB_EXIT_CODE="3")
 
 
-def job(tmp_path, phase, *, words="a3", smoke=False, gpu=True, stored=(), declared="abc1234", text=None, **env):
+def job(tmp_path, phase, *, words="a3", smoke=False, gpu=True, stored=(), declared="abc1234", text=None, top=True, **env):
     numeric = words not in (None, "a3", "draws", "0", "9")
-    e = dict(COMP_PHASE=phase, STUB_EXISTS=" ".join([*stored, *([SCREEN_KEY] if numeric or words == "draws" else [])]), STUB_GATE="1", STUB_FAIL_SHARD="", STUB_HANG="")
+    e = dict(COMP_PHASE=phase, STUB_EXISTS=" ".join([*stored, *([SCREEN_KEY] if numeric or words == "draws" else []), *([a5_top10(words)] if numeric and top else [])]), STUB_GATE="1", STUB_FAIL_SHARD="", STUB_HANG="")
     e.update(env)
     if words:
         e["WORDS"] = words
@@ -1351,19 +1502,76 @@ def hashed_job(by_key):
     return text.replace("set -uo pipefail\n", "set -uo pipefail\n" + fake, 1)
 
 
-def test_a_draw_finds_a5s_caches_by_hash_not_by_lowest_attempt(tmp_path, monkeypatch):
-    stored = [*caches(), *caches(attempt=2), a5_top10(3)]
-    by = {caches()[0]: "old", caches()[1]: "oldx", caches(attempt=2)[0]: "new", caches(attempt=2)[1]: "newx", a5_top10(3): "top"}
-    code, _, commands = job(tmp_path, "base", words="3", stored=stored, text=hashed_job(by), CACHE_SHA="new", EXTRA_SHA="newx", A5T_SHA="top", SCREEN_SHA="s")
-    assert code == 0
+def test_a_draws_words_come_from_its_top10_found_by_hash(tmp_path, monkeypatch):
+    stored = [a5_top10(3, 1), a5_top10(3, 2)]
+    by = {a5_top10(3, 1): "old", a5_top10(3, 2): "new"}
+    code, _, commands = job(tmp_path, "base", words="3", stored=stored, text=hashed_job(by), top=False, **dict(DRAW_ENV, A5T_SHA="new"))
+    assert code == 0 and f"scripts/comp_a6_guard.py a5-caches {a5_top10(3, 2)}" in commands
     seen = parsed(tmp_path, monkeypatch, run_line(commands), "d3")
-    assert seen["word_cache_key"] == caches(attempt=2)[0] and seen["word_cache_sha256"] == "new" and seen["word_cache_extra_key"] == caches(attempt=2)[1] and seen["word_cache_extra_sha256"] == "newx"
-    code, _, commands = job(tmp_path, "base", words="3", stored=stored, text=hashed_job(by), CACHE_SHA="old", EXTRA_SHA="newx", A5T_SHA="top", SCREEN_SHA="s")
-    assert code == 0 and f"--word-cache-key {caches()[0]} " in run_line(commands)
-    code, out, commands = job(tmp_path, "base", words="3", stored=stored, text=hashed_job(by), CACHE_SHA="other", EXTRA_SHA="newx", A5T_SHA="top", SCREEN_SHA="s")
-    assert code == 1 and "no stored cache of A5's has those hashes" in out and "round15_compose_eval.py" not in "\n".join(commands)
-    code, _, commands = job(tmp_path, "base", words="3", stored=[*caches(), a5_top10(3)], **DRAW_ENV)
-    assert code == 0 and f"pin {caches()[0]}" in commands and f"pin {caches()[1]}" in commands
+    assert (seen["word_cache_key"], seen["word_cache_sha256"], seen["word_cache_extra_key"], seen["word_cache_extra_sha256"]) == tuple(CACHE_LINE.split())
+    assert "pin ck" in commands and "pin xk" in commands
+    code, _, commands = job(tmp_path, "base", words="3", stored=stored, text=hashed_job(by), top=False, **dict(DRAW_ENV, A5T_SHA="old"))
+    assert code == 0 and f"scripts/comp_a6_guard.py a5-caches {a5_top10(3, 1)}" in commands
+    code, out, commands = job(tmp_path, "base", words="3", stored=stored, text=hashed_job(by), top=False, **dict(DRAW_ENV, A5T_SHA="other"))
+    assert code == 1 and "no stored top10 of A5's has A5T_SHA" in out and "round15_compose_eval.py" not in "\n".join(commands)
+
+
+@pytest.mark.parametrize("env,message", [(dict(DRAW_ENV, STUB_FAIL_MATCH="comp_a6_guard.py a5-caches"), "cannot read the word caches"), (dict(DRAW_ENV, STUB_PRINT="only three words"), "names no word caches"), ({k: v for k, v in DRAW_ENV.items() if k != "A5T_SHA"}, "give A5T_SHA")])
+def test_a_draw_without_its_words_named_stops(tmp_path, env, message):
+    code, out, commands = job(tmp_path, "base", words="3", **env)
+    assert code == 1 and message in out and "round15_compose_eval.py" not in "\n".join(commands)
+    one_done(out, 1)
+
+
+def test_a_draw_needs_its_caches_pinned_and_a5s_summary(tmp_path):
+    code, out, _ = job(tmp_path, "base", words="3", STUB_PIN_FAIL="ck", **DRAW_ENV)
+    assert code == 1 and "differs from its pin" in out
+
+
+@pytest.mark.parametrize("words,phase", [("a3", "base"), ("3", "base"), ("a3", "summary"), ("draws", "summary"), ("3", "gate")])
+def test_every_full_phase_waits_for_a5(tmp_path, words, phase):
+    code, out, commands = job(tmp_path, phase, words=words, STUB_FAIL_MATCH="comp_a6_guard.py a5-done", **DRAW_ENV)
+    assert code == 1 and "A6's full runs wait for A5's summary" in out and "round15_compose_eval.py" not in "\n".join(commands) and "comp_a6_read.py" not in "\n".join(commands)
+    one_done(out, 1)
+
+
+def test_the_screens_base_is_matched_with_a3s_stored_top10(tmp_path):
+    code, _, commands = job(tmp_path, "base")
+    line = f"scripts/comp_a6_guard.py a5-match {key('a3', 'base')} {A3TOP}"
+    assert code == 0 and line in commands and f"pin {A3TOP}" in commands and commands.index(run_line(commands)) < commands.index(line)
+    code, _, commands = job(tmp_path, "base", smoke=True, gpu=False, declared="", SMOKE_STAMP="s1")
+    assert code == 0 and "a5-match" not in "\n".join(commands)                                # a smoke's five clips are not A3's report
+    assert re.search(r"A3TOPSHA=(\S+)", JOB.read_text()).group(1) == "cc47eeb474db85573d92197e65d03165e1c41e94d5f67cce1de2638a4f67ec12"
+
+
+def test_a_stop_on_the_match_marks_the_draw_and_refuses_later_attempts(tmp_path):
+    code, out, commands = job(tmp_path, "base", words="3", STUB_EXIT_MATCH="comp_a6_guard.py a5-match", STUB_EXIT_CODE="4", **DRAW_ENV)
+    assert code == 1 and "below 98%: this draw stops until it is declared under a new OUT" in out and f"scripts/comp_a6_guard.py started {OUT}/3-match-stopped" in commands
+    one_done(out, 1)
+    code, out, commands = job(tmp_path, "base", words="3", stored=[f"{OUT}/3-match-stopped"], ATTEMPT="2", **DRAW_ENV)
+    assert code == 1 and "stopped on the match with its top10: refused until it is declared" in out and "round15_compose_eval.py" not in "\n".join(commands)
+    code, _, _ = job(tmp_path, "base", words="4", stored=[f"{OUT}/3-match-stopped"], **DRAW_ENV)
+    assert code == 0                                                                           # another draw goes on
+
+
+def test_a_crash_of_the_match_guard_says_crash_and_marks_nothing(tmp_path):
+    code, out, commands = job(tmp_path, "base", words="3", STUB_EXIT_MATCH="comp_a6_guard.py a5-match", STUB_EXIT_CODE="1", **DRAW_ENV)
+    assert code == 1 and "the match guard crashed, exit 1: this says nothing about the match" in out and "differs" not in out and "match-stopped" not in "\n".join(commands)
+    one_done(out, 1)
+
+
+def test_threads_are_pinned(tmp_path):
+    code, out, _ = job(tmp_path, "base", THREADS="4")
+    assert code == 1 and "pinned at 8" in out
+    assert re.search(r"^T=(\d+)$", JOB.read_text(), re.M).group(1) == str(a6.PINNED_THREADS)
+    text = JOB.read_text().replace('[ "$Q" -gt 0 ]; then C=$(( Q / P ))', '[ 1 = 1 ]; then C=4')
+    code, out, _ = job(tmp_path, "base", text=text)
+    assert code == 1 and "this pod has 4 CPUs" in out
+
+
+def test_the_jobs_comments_say_what_it_does():
+    text = JOB.read_text()
+    assert "a screen that decides nothing" not in text and "free instrument" not in text and "reader-amendment" not in text and "CACHE_SHA" not in text and "re-declaring under a new OUT named here" in text
 
 
 def test_a_draw_needs_the_pinned_screen(tmp_path):
@@ -1403,8 +1611,8 @@ def test_a_closed_gate_still_runs_base_and_length(tmp_path, phase):
 
 
 def test_the_gate_phase_says_which(tmp_path):
-    code, out, _ = job(tmp_path, "gate", words="3", **DRAW_ENV)
-    assert code == 0 and "COMP-A6-GATE open" in out and "not run" not in out
+    code, out, commands = job(tmp_path, "gate", words="3", **DRAW_ENV)
+    assert code == 0 and "COMP-A6-GATE open" in out and "not run" not in out and f"scripts/comp_a6_guard.py hold-gate {SCREEN_KEY} abc1234" in commands
     code, out, _ = job(tmp_path, "gate", words="3", **DRAW_ENV, **CLOSED)
     assert code == 0 and "COMP-A6-GATE closed" in out and "COMP-A6-HOLD not run, screen failed" in out
     code, out, _ = job(tmp_path, "gate")
@@ -1427,27 +1635,11 @@ def test_the_summary_on_a_closed_gate_needs_base_and_length_alone(tmp_path):
     code, out, commands = job(tmp_path, "summary", words="draws", stored=CLOSED_EVERY, SCREEN_SHA="s", **CLOSED_SHAS, **A5T, **CLOSED)
     assert code == 0 and "COMP-A6-HOLD not run, screen failed" in out
     run = next(c for c in commands if "comp_a6_read.py" in c)
-    assert f"--screen-key {SCREEN_KEY}" in run and "--draw 3=" + ",".join(key(3, n) for n in a6.GATE_CLOSED_ARMS) + " " in run and "hold-x" not in run
+    assert f"--screen-key {SCREEN_KEY} --screen-sha256 s" in run and "--draw 3=" + ",".join(key(3, n) for n in a6.GATE_CLOSED_ARMS) + " " in run and "hold-x" not in run
     code, _, commands = job(tmp_path, "summary", words="draws", stored=CLOSED_EVERY, SCREEN_SHA="s", **CLOSED_SHAS, **A5T)
     assert code == 1 and "comp_a6_read.py" not in "\n".join(commands)                         # open: the hold arms are missing
     code, out, _ = job(tmp_path, "summary", words="draws", stored=CLOSED_EVERY, **CLOSED_SHAS, **A5T, **CLOSED)
     assert code == 1 and "give SCREEN_SHA" in out
-
-
-def test_a_draws_base_is_matched_with_a5s_top10(tmp_path):
-    stored = [*caches(), a5_top10(3)]
-    code, _, commands = job(tmp_path, "base", words="3", stored=stored, **DRAW_ENV)
-    line = f"scripts/comp_a6_guard.py a5-match {key(3, 'base')} {a5_top10(3)}"
-    assert code == 0 and line in commands and commands.index(run_line(commands)) < commands.index(line)
-    code, out, _ = job(tmp_path, "base", words="3", stored=stored, STUB_FAIL_MATCH="comp_a6_guard.py a5-match", **DRAW_ENV)
-    assert code == 1 and "base differs from A5's top10 on the same GPU" in out
-    one_done(out, 1)
-    code, out, commands = job(tmp_path, "base", words="3", stored=caches(), **DRAW_ENV)
-    assert code == 1 and "no stored top10 of A5's has A5T_SHA" in out and "round15_compose_eval.py" not in "\n".join(commands)
-    code, out, commands = job(tmp_path, "base", words="3", stored=stored, CACHE_SHA="stubsha", EXTRA_SHA="stubsha", SCREEN_SHA="s")
-    assert code == 1 and "give A5T_SHA" in out and "round15_compose_eval.py" not in "\n".join(commands)
-    code, _, commands = job(tmp_path, "base")
-    assert code == 0 and "a5-match" not in "\n".join(commands)                      # the screen has none
 
 
 def test_a_store_error_is_not_absence(tmp_path):
@@ -1479,20 +1671,6 @@ def test_the_smoke_read_runs_the_five_reports_and_prints_no_number(tmp_path):
     code, out, _ = job(tmp_path, "smoke-read", smoke=True, gpu=False, declared="", SMOKE_STAMP="s1", STUB_FAIL_MATCH="comp_a6_read.py")
     assert code == 1 and "ALERT smoke-read" in out
     one_done(out, 1)
-
-
-def test_a_draw_refuses_without_caches_pins_or_a5s_summary(tmp_path):
-    code, out, _ = job(tmp_path, "base", words="3", **DRAW_ENV)
-    assert code == 1 and "no stored cache of A5's has those hashes" in out
-    code, out, _ = job(tmp_path, "base", words="3", stored=caches(), SCREEN_SHA="s")
-    assert code == 1 and "give CACHE_SHA and EXTRA_SHA" in out
-    code, out, _ = job(tmp_path, "base", words="3", stored=caches(), STUB_PIN_FAIL=caches()[0], **DRAW_ENV)
-    assert code == 1 and "differs from its pin" in out
-    code, out, commands = job(tmp_path, "base", words="3", stored=caches(), STUB_FAIL_MATCH="comp_a6_guard.py a5-done", **DRAW_ENV)
-    assert code == 1 and "A6's draws wait for A5's summary" in out and "round15_compose_eval.py" not in "\n".join(commands)
-    one_done(out, 1)
-    code, _, commands = job(tmp_path, "base", words="a3", STUB_FAIL_MATCH="comp_a6_guard.py a5-done")
-    assert code == 0 and "scripts/comp_a6_guard.py a5-done" not in commands       # A3's words need no A5 read
 
 
 def test_a_smoke_reads_a3s_words_only(tmp_path):
@@ -1609,7 +1787,7 @@ def test_the_instrument_check_finds_a5s_top10_by_hash(tmp_path):
 def test_the_summary_of_the_screen_reads_a3_alone_with_hold_xr(tmp_path):
     code, _, commands = job(tmp_path, "summary", stored=full("a3"), **SCREEN_SHAS)
     run = next(c for c in commands if "comp_a6_read.py" in c)
-    assert code == 0 and "--draw a3=" + ",".join(full("a3")) in run and f"--output-key {OUT}/a6-summary-a3.json" in run and "--a5-top10" not in run
+    assert code == 0 and "--draw a3=" + ",".join(full("a3")) in run and f"--output-key {OUT}/a6-summary-a3.json" in run and f"--a5-top10 a3={A3TOP}" in run and "--screen-key" not in run
     code, out, _ = job(tmp_path, "summary", stored=[k for k in full("a3") if "hold-xr" not in k], **SCREEN_SHAS)
     assert code == 1 and "incomplete: a3" in out
 
