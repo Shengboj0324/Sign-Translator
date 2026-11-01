@@ -22,12 +22,14 @@ This is a research project. It is not for sale and makes no money.
    - Did it look natural?
    - Were the hands, the movement and the face right?
    - Anything else you want to tell us.
+   In some studies you answer in two steps. First you say what you saw. Later you choose from four sentences.
 4. Some videos may be very good, some may be bad, and some may show almost nothing. **That is on purpose.**
    Please say honestly what you see. There are no wrong answers.
 
 ## How long does it take?
 
 - About **30 to 45 minutes** for one session.
+- There may be several sessions: [number of sessions]. You can choose when to do them.
 - You get a break about every 15 minutes, and you can ask for a break at any time.
 - You can do it **on paper**, or tell your answers in ASL to [owner's name], who writes them down.
 
