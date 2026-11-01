@@ -6117,7 +6117,7 @@ Owner, today: "comparing against real signers is fine", detail delegated. **The 
 
 ### Real-signer wrist span, measured (recorded 2026-11-01, 15:41 UTC, before A5's summary and any new composition read)
 
-`real_signer_span` in `reports/wrist_by_signer.json` on `comp-a6` f59611c (sha 1e9b3de5). Real clips only, monocular path, 129 groups: 120 YouTube channels (fixed draw of the 355 with at least 30 clips, 30 clips each), 4 ASLLRP signers, 5 How2Sign signers. p10–p90 of group means; ratios to D20 real at the same rate.
+`real_signer_span` in `reports/wrist_by_signer.json` on `comp-a6` f59611c (sha 1e9b3de5). Real clips only, monocular path, 129 groups: 120 YouTube channels (fixed draw of the 355 with at least 30 clips, 30 clips each), 4 ASLLRP signers, 5 How2Sign signers. p10–p90 of group means. **These are absolute wrist speeds, not ratios to D20 real** (for scale, D20 real through two-view reads 0.878 raw and 0.572 at 3 Hz; top10's 1.557 is its 1.774× times 0.878).
 
 | Reading | Span | Span without YouTube | top10 | hold-x |
 |---|---|---|---|---|
