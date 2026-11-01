@@ -1,0 +1,2492 @@
+{
+ "d20_coverage_text_only": {
+  "r10": {
+   "token_share": {
+    "exact": 0.4249,
+    "fallback": 0.049,
+    "stop": 0.1794,
+    "unmatched": 0.3468
+   },
+   "words": 4545,
+   "words_per_sentence": 9.09
+  },
+  "top10": {
+   "new_entries": [
+    "i",
+    "it",
+    "this",
+    "you",
+    "your"
+   ],
+   "token_share": {
+    "exact": 0.5177,
+    "fallback": 0.049,
+    "stop": 0.1794,
+    "unmatched": 0.2539
+   },
+   "unsigned_ranks": [
+    "just",
+    "or",
+    "so"
+   ],
+   "words": 5448,
+   "words_per_sentence": 10.896
+  },
+  "top30": {
+   "new_entries": [
+    "different",
+    "i",
+    "it",
+    "need",
+    "our",
+    "their",
+    "them",
+    "they",
+    "this",
+    "you",
+    "your"
+   ],
+   "token_share": {
+    "exact": 0.5427,
+    "fallback": 0.049,
+    "stop": 0.1794,
+    "unmatched": 0.2289
+   },
+   "unsigned_ranks": [
+    "actually",
+    "as",
+    "at",
+    "don't",
+    "got",
+    "into",
+    "just",
+    "or",
+    "so",
+    "sure",
+    "way",
+    "will",
+    "would"
+   ],
+   "words": 5691,
+   "words_per_sentence": 11.382
+  }
+ },
+ "inputs": {
+  "rank_mix": {
+   "key": "acquisition/2026-10-17-v1/youtube-asl-v1/round10-mixed-v1/manifest.json",
+   "sha256": "ccfd10b8961e95523ac7938c84261c89f22c8ae786af961908fbeba21fa5647a"
+  },
+  "source_mix": {
+   "key": "acquisition/2026-10-17-v1/youtube-asl-v1/round14b-mixed-v1/manifest.json",
+   "sha256": "710a3941dce4abf099a336705203a719f441c8cac5847b0e59ed7679d515eb7d"
+  }
+ },
+ "kind": "comp-a3-tokens",
+ "min_arm": 0.8,
+ "min_hand": 0.5,
+ "rule": "ranks: How2Sign train texts, unmatched under r10 by the composition's selection, ties alphabetical. Well tracked: dominant arm >= 0.8 and dominant hand >= 0.5 of the piece's frames; a segment's piece widened to at least 0.2 s. A rank without a source stays unsigned; nothing slides up. Vocabulary is train only; ASL Citizen, STEM Wiki, c00, test and held-out are refused.",
+ "tokens": [
+  {
+   "candidates": {
+    "isolated": 11,
+    "segments": 147
+   },
+   "checked": 11,
+   "entry": "you",
+   "flags": {
+    "no_well_tracked_source": false,
+    "pointing": true,
+    "prior_train_records": 11,
+    "shared_gloss": [],
+    "single_clip": true,
+    "single_letter": false
+   },
+   "rank": 1,
+   "source_kind": "isolated",
+   "sources": [
+    {
+     "corpus": "semlex-text-v2",
+     "partition": "train",
+     "sign": "semlex-WEkrHYeVJNAEgYFmUeRS",
+     "signer_component": null,
+     "tracked": {
+      "arm": 0.8333,
+      "hand": 0.5833
+     }
+    }
+   ],
+   "status": "clips",
+   "token": "you",
+   "train_count": 9949,
+   "typical_seconds": 1.0097
+  },
+  {
+   "candidates": {
+    "isolated": 1,
+    "segments": 592
+   },
+   "checked": 41,
+   "entry": "it",
+   "flags": {
+    "no_well_tracked_source": false,
+    "pointing": true,
+    "prior_train_records": 1,
+    "shared_gloss": [
+     "this"
+    ],
+    "single_clip": false,
+    "single_letter": false
+   },
+   "rank": 2,
+   "source_kind": "segment",
+   "sources": [
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 111,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:172124",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:172124#3",
+     "start": 111,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.6
+     },
+     "utterance_frames": 185
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 10,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:23883519",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:23883519#0",
+     "start": 10,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.8
+     },
+     "utterance_frames": 91
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 10,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:26827616",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:26827616#0",
+     "start": 10,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.8
+     },
+     "utterance_frames": 113
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 14,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:26827715",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:26827715#0",
+     "start": 14,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.6
+     },
+     "utterance_frames": 132
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 11,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:2682829",
+     "seconds": 0.1667,
+     "sign": "asllrp-continuous:2682829#0",
+     "start": 10,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 93
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 22,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:3377871",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:3377871#1",
+     "start": 22,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.8
+     },
+     "utterance_frames": 141
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 52,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:3378166",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:3378166#1",
+     "start": 52,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 132
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 105,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:j",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:3379250",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:3379250#6",
+     "start": 103,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 120
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 7,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:40351306",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:40351306#0",
+     "start": 5,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 77
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 136,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:5597711",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:5597711#9",
+     "start": 136,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 232
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 33,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:6189618",
+     "seconds": 0.1667,
+     "sign": "asllrp-continuous:6189618#2",
+     "start": 33,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 236
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 35,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:6612",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:6612#1",
+     "start": 34,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 231
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 102,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:6713",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:6713#5",
+     "start": 102,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 249
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 68,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:70286827",
+     "seconds": 0.1667,
+     "sign": "asllrp-continuous:70286827#8",
+     "start": 68,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.5
+     },
+     "utterance_frames": 91
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 5,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:75784316",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:75784316#0",
+     "start": 5,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.8
+     },
+     "utterance_frames": 85
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 23,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:7983855",
+     "seconds": 0.1667,
+     "sign": "asllrp-continuous:7983855#1",
+     "start": 23,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 99
+    }
+   ],
+   "status": "clips",
+   "token": "it",
+   "train_count": 5679,
+   "typical_seconds": 0.6119
+  },
+  {
+   "candidates": {
+    "isolated": 11,
+    "segments": 22
+   },
+   "checked": 33,
+   "entry": "your",
+   "flags": {
+    "no_well_tracked_source": false,
+    "pointing": true,
+    "prior_train_records": 11,
+    "shared_gloss": [],
+    "single_clip": false,
+    "single_letter": false
+   },
+   "rank": 3,
+   "source_kind": "segment",
+   "sources": [
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 28,
+     "gloss": "POSS",
+     "min_seconds": 0.2,
+     "occurrence": "POSS-2p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:1539230",
+     "seconds": 0.1667,
+     "sign": "asllrp-continuous:1539230#0",
+     "start": 28,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 203
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 15,
+     "gloss": "POSS",
+     "min_seconds": 0.2,
+     "occurrence": "POSS-2p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:1539625",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:1539625#0",
+     "start": 15,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.8
+     },
+     "utterance_frames": 191
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 22,
+     "gloss": "POSS",
+     "min_seconds": 0.2,
+     "occurrence": "POSS-2p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:154117",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:154117#0",
+     "start": 20,
+     "tracked": {
+      "arm": 0.8,
+      "hand": 0.8
+     },
+     "utterance_frames": 177
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 17,
+     "gloss": "POSS",
+     "min_seconds": 0.2,
+     "occurrence": "POSS-2p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:171618",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:171618#0",
+     "start": 17,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 131
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 8,
+     "gloss": "POSS",
+     "min_seconds": 0.2,
+     "occurrence": "POSS-2p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:23883223",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:23883223#0",
+     "start": 7,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 87
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 12,
+     "gloss": "POSS",
+     "min_seconds": 0.2,
+     "occurrence": "POSS-2p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:36293793",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:36293793#0",
+     "start": 10,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 97
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 56,
+     "gloss": "POSS",
+     "min_seconds": 0.2,
+     "occurrence": "POSS-2p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:61834110",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:61834110#3",
+     "start": 52,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 115
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 13,
+     "gloss": "POSS",
+     "min_seconds": 0.2,
+     "occurrence": "POSS-2p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:6184888",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:6184888#0",
+     "start": 10,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 137
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 28,
+     "gloss": "POSS",
+     "min_seconds": 0.2,
+     "occurrence": "POSS-2p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:6188336",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:6188336#1",
+     "start": 25,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 127
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 13,
+     "gloss": "POSS",
+     "min_seconds": 0.2,
+     "occurrence": "POSS-2p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:632347",
+     "seconds": 0.1667,
+     "sign": "asllrp-continuous:632347#0",
+     "start": 13,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 134
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 14,
+     "gloss": "POSS",
+     "min_seconds": 0.2,
+     "occurrence": "POSS-2p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:632742",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:632742#0",
+     "start": 14,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 113
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 22,
+     "gloss": "POSS",
+     "min_seconds": 0.2,
+     "occurrence": "POSS-2p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:7028838",
+     "seconds": 0.1667,
+     "sign": "asllrp-continuous:7028838#0",
+     "start": 19,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 107
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 13,
+     "gloss": "POSS",
+     "min_seconds": 0.2,
+     "occurrence": "POSS-2p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:7981786",
+     "seconds": 0.1667,
+     "sign": "asllrp-continuous:7981786#0",
+     "start": 13,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 89
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 16,
+     "gloss": "POSS",
+     "min_seconds": 0.2,
+     "occurrence": "POSS-2p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:7982279",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:7982279#0",
+     "start": 16,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 115
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 16,
+     "gloss": "POSS",
+     "min_seconds": 0.2,
+     "occurrence": "POSS-2p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:7983166",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:7983166#0",
+     "start": 16,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 131
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 9,
+     "gloss": "POSS",
+     "min_seconds": 0.2,
+     "occurrence": "POSS-2p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:7984052",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:7984052#0",
+     "start": 9,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 99
+    }
+   ],
+   "status": "clips",
+   "token": "your",
+   "train_count": 4304,
+   "typical_seconds": 0.6119
+  },
+  {
+   "candidates": {
+    "isolated": 0,
+    "segments": 592
+   },
+   "checked": 40,
+   "entry": "this",
+   "flags": {
+    "no_well_tracked_source": false,
+    "pointing": true,
+    "prior_train_records": 0,
+    "shared_gloss": [
+     "it"
+    ],
+    "single_clip": false,
+    "single_letter": false
+   },
+   "rank": 4,
+   "source_kind": "segment",
+   "sources": [
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 10,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:1540021",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:1540021#0",
+     "start": 7,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.8
+     },
+     "utterance_frames": 220
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 80,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:173441",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:173441#3",
+     "start": 80,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 161
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 6,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:255033",
+     "seconds": 0.1667,
+     "sign": "asllrp-continuous:255033#0",
+     "start": 5,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 95
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 125,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:2590",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:2590#6",
+     "start": 125,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 143
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 26,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:33734520",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:33734520#1",
+     "start": 26,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 103
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 52,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:3378166",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:3378166#1",
+     "start": 52,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 132
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 146,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:j",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:3378856",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:3378856#10",
+     "start": 146,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 158
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 90,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:3379841",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:3379841#4",
+     "start": 90,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 158
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 122,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:j",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:629194",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:629194#7",
+     "start": 122,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.8
+     },
+     "utterance_frames": 214
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 22,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:7220",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:7220#1",
+     "start": 22,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 160
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 94,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:7220",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:7220#7",
+     "start": 94,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 160
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 12,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:7569466",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:7569466#0",
+     "start": 12,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 97
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 99,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:79805103",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:79805103#5",
+     "start": 99,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 171
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 148,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:7980997",
+     "seconds": 0.1667,
+     "sign": "asllrp-continuous:7980997#7",
+     "start": 148,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 229
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 70,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:7985038",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:7985038#3",
+     "start": 70,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 82
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 59,
+     "gloss": "IX",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p:i",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:83939958",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:83939958#4",
+     "start": 55,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 75
+    }
+   ],
+   "status": "clips",
+   "token": "this",
+   "train_count": 3642,
+   "typical_seconds": 0.6119
+  },
+  {
+   "candidates": {
+    "isolated": 0,
+    "segments": 0
+   },
+   "checked": 0,
+   "entry": null,
+   "flags": {
+    "no_well_tracked_source": true,
+    "pointing": false,
+    "prior_train_records": 0,
+    "shared_gloss": [],
+    "single_clip": false,
+    "single_letter": false
+   },
+   "rank": 5,
+   "source_kind": null,
+   "sources": [],
+   "status": "no_source",
+   "token": "so",
+   "train_count": 3439,
+   "typical_seconds": null
+  },
+  {
+   "candidates": {
+    "isolated": 1,
+    "segments": 655
+   },
+   "checked": 40,
+   "entry": "i",
+   "flags": {
+    "no_well_tracked_source": false,
+    "pointing": true,
+    "prior_train_records": 1,
+    "shared_gloss": [],
+    "single_clip": false,
+    "single_letter": true
+   },
+   "rank": 6,
+   "source_kind": "segment",
+   "sources": [
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 34,
+     "gloss": "IX-1p",
+     "min_seconds": 0.2,
+     "occurrence": "IX-1p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:172631",
+     "seconds": 0.1667,
+     "sign": "asllrp-continuous:172631#1",
+     "start": 32,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 107
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 4,
+     "gloss": "IX-1p",
+     "min_seconds": 0.2,
+     "occurrence": "IX-1p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:17583211",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:17583211#0",
+     "start": 4,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.6
+     },
+     "utterance_frames": 100
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 7,
+     "gloss": "IX-1p",
+     "min_seconds": 0.2,
+     "occurrence": "IX-1p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:33732942",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:33732942#0",
+     "start": 7,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.8
+     },
+     "utterance_frames": 94
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 46,
+     "gloss": "IX-1p",
+     "min_seconds": 0.2,
+     "occurrence": "IX-1p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:33734519",
+     "seconds": 0.1667,
+     "sign": "asllrp-continuous:33734519#4",
+     "start": 45,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 90
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 4,
+     "gloss": "IX-1p",
+     "min_seconds": 0.2,
+     "occurrence": "IX-1p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:3378560",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:3378560#0",
+     "start": 4,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 136
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 71,
+     "gloss": "IX-1p",
+     "min_seconds": 0.2,
+     "occurrence": "IX-1p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:5873537",
+     "seconds": 0.1667,
+     "sign": "asllrp-continuous:5873537#3",
+     "start": 70,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.75
+     },
+     "utterance_frames": 133
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 91,
+     "gloss": "IX-1p",
+     "min_seconds": 0.2,
+     "occurrence": "IX-1p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:6188238",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:6188238#6",
+     "start": 91,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 143
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 6,
+     "gloss": "IX-1p",
+     "min_seconds": 0.2,
+     "occurrence": "IX-1p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:70286827",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:70286827#0",
+     "start": 6,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 91
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 9,
+     "gloss": "IX-1p",
+     "min_seconds": 0.2,
+     "occurrence": "IX-1p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:70286926",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:70286926#0",
+     "start": 9,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.6
+     },
+     "utterance_frames": 69
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 23,
+     "gloss": "IX-1p",
+     "min_seconds": 0.2,
+     "occurrence": "IX-1p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:75784612",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:75784612#1",
+     "start": 22,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.8
+     },
+     "utterance_frames": 83
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 8,
+     "gloss": "IX-1p",
+     "min_seconds": 0.2,
+     "occurrence": "IX-1p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:7982081",
+     "seconds": 0.1667,
+     "sign": "asllrp-continuous:7982081#0",
+     "start": 8,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 94
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 45,
+     "gloss": "IX-1p",
+     "min_seconds": 0.2,
+     "occurrence": "IX-1p+",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:83444920",
+     "seconds": 0.375,
+     "sign": "asllrp-continuous:83444920#3",
+     "start": 34,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 180
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 103,
+     "gloss": "IX-1p",
+     "min_seconds": 0.2,
+     "occurrence": "IX-1p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:83444920",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:83444920#6",
+     "start": 101,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 180
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 113,
+     "gloss": "IX-1p",
+     "min_seconds": 0.2,
+     "occurrence": "IX-1p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:83594638",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:83594638#4",
+     "start": 110,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 414
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 20,
+     "gloss": "IX-1p",
+     "min_seconds": 0.2,
+     "occurrence": "IX-1p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:8397739",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:8397739#1",
+     "start": 20,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 166
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 34,
+     "gloss": "IX-1p",
+     "min_seconds": 0.2,
+     "occurrence": "IX-1p",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:8398035",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:8398035#0",
+     "start": 33,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 124
+    }
+   ],
+   "status": "clips",
+   "token": "i",
+   "train_count": 2783,
+   "typical_seconds": 0.6119
+  },
+  {
+   "candidates": {
+    "isolated": 0,
+    "segments": 0
+   },
+   "checked": 0,
+   "entry": null,
+   "flags": {
+    "no_well_tracked_source": true,
+    "pointing": false,
+    "prior_train_records": 0,
+    "shared_gloss": [],
+    "single_clip": false,
+    "single_letter": false
+   },
+   "rank": 7,
+   "source_kind": null,
+   "sources": [],
+   "status": "no_source",
+   "token": "just",
+   "train_count": 2161,
+   "typical_seconds": null
+  },
+  {
+   "candidates": {
+    "isolated": 1,
+    "segments": 0
+   },
+   "checked": 1,
+   "entry": null,
+   "flags": {
+    "no_well_tracked_source": true,
+    "pointing": false,
+    "prior_train_records": 1,
+    "shared_gloss": [],
+    "single_clip": false,
+    "single_letter": false
+   },
+   "rank": 8,
+   "source_kind": null,
+   "sources": [],
+   "status": "no_source",
+   "token": "or",
+   "train_count": 1822,
+   "typical_seconds": null
+  },
+  {
+   "candidates": {
+    "isolated": 0,
+    "segments": 0
+   },
+   "checked": 0,
+   "entry": "it",
+   "flags": {
+    "contraction": true,
+    "negation": false,
+    "pointing": true
+   },
+   "rank": 9,
+   "source_kind": null,
+   "sources": [],
+   "status": "alias_list",
+   "token": "it's",
+   "train_count": 1733,
+   "typical_seconds": null
+  },
+  {
+   "candidates": {
+    "isolated": 0,
+    "segments": 0
+   },
+   "checked": 0,
+   "entry": "you",
+   "flags": {
+    "contraction": true,
+    "negation": false,
+    "pointing": true
+   },
+   "rank": 10,
+   "source_kind": null,
+   "sources": [],
+   "status": "alias_list",
+   "token": "you're",
+   "train_count": 1614,
+   "typical_seconds": null
+  },
+  {
+   "candidates": {
+    "isolated": 0,
+    "segments": 0
+   },
+   "checked": 0,
+   "entry": null,
+   "flags": {
+    "no_well_tracked_source": true,
+    "pointing": false,
+    "prior_train_records": 0,
+    "shared_gloss": [],
+    "single_clip": false,
+    "single_letter": false
+   },
+   "rank": 11,
+   "source_kind": null,
+   "sources": [],
+   "status": "no_source",
+   "token": "as",
+   "train_count": 1596,
+   "typical_seconds": null
+  },
+  {
+   "candidates": {
+    "isolated": 0,
+    "segments": 0
+   },
+   "checked": 0,
+   "entry": "i",
+   "flags": {
+    "contraction": true,
+    "negation": false,
+    "pointing": true
+   },
+   "rank": 12,
+   "source_kind": null,
+   "sources": [],
+   "status": "alias_list",
+   "token": "i'm",
+   "train_count": 1322,
+   "typical_seconds": null
+  },
+  {
+   "candidates": {
+    "isolated": 6,
+    "segments": 54
+   },
+   "checked": 46,
+   "entry": "they",
+   "flags": {
+    "no_well_tracked_source": false,
+    "pointing": true,
+    "prior_train_records": 6,
+    "shared_gloss": [
+     "them"
+    ],
+    "single_clip": false,
+    "single_letter": false
+   },
+   "rank": 13,
+   "source_kind": "segment",
+   "sources": [
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 42,
+     "gloss": "IX-pl-2",
+     "min_seconds": 0.2,
+     "occurrence": "IX-pl-2:i/j",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:11945527",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:11945527#4",
+     "start": 40,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 88
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 44,
+     "gloss": "IX-pl",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-arc",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:1676",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:1676#1",
+     "start": 38,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.6
+     },
+     "utterance_frames": 156
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 77,
+     "gloss": "IX-pl",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-arc",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:3381813",
+     "seconds": 0.25,
+     "sign": "asllrp-continuous:3381813#6",
+     "start": 69,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.6667
+     },
+     "utterance_frames": 146
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 124,
+     "gloss": "IX-pl",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-arc",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:3381912",
+     "seconds": 0.4583,
+     "sign": "asllrp-continuous:3381912#5",
+     "start": 111,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 253
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 182,
+     "gloss": "IX-pl",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-arc",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:3381912",
+     "seconds": 0.4167,
+     "sign": "asllrp-continuous:3381912#8",
+     "start": 169,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 253
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 145,
+     "gloss": "IX-pl-2",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-2:i/j",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:58733427",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:58733427#8",
+     "start": 142,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.6
+     },
+     "utterance_frames": 187
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 76,
+     "gloss": "IX-pl-2",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-2:i/j",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:61833112",
+     "seconds": 0.3333,
+     "sign": "asllrp-continuous:61833112#4",
+     "start": 65,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 115
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 34,
+     "gloss": "IX-pl-2",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-2:i/j",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:6186168",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:6186168#3",
+     "start": 30,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 105
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 84,
+     "gloss": "IX-pl-2",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-2:i/j",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:6188534",
+     "seconds": 0.3333,
+     "sign": "asllrp-continuous:6188534#5",
+     "start": 74,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 190
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 31,
+     "gloss": "IX-pl",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-arc",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:6189717",
+     "seconds": 0.2917,
+     "sign": "asllrp-continuous:6189717#0",
+     "start": 22,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.7143
+     },
+     "utterance_frames": 197
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 35,
+     "gloss": "IX-pl",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-arc",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:634423",
+     "seconds": 0.2917,
+     "sign": "asllrp-continuous:634423#1",
+     "start": 27,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.7143
+     },
+     "utterance_frames": 112
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 29,
+     "gloss": "IX-pl",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-arc",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:634720",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:634720#1",
+     "start": 25,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 124
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 36,
+     "gloss": "IX-pl",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-arc",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:635016",
+     "seconds": 0.4167,
+     "sign": "asllrp-continuous:635016#1",
+     "start": 23,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.5
+     },
+     "utterance_frames": 101
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 33,
+     "gloss": "IX-pl-2",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-2:i/j",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:635115",
+     "seconds": 0.25,
+     "sign": "asllrp-continuous:635115#1",
+     "start": 25,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 95
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 127,
+     "gloss": "IX-pl",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-arc",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:6511",
+     "seconds": 0.375,
+     "sign": "asllrp-continuous:6511#7",
+     "start": 115,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.5556
+     },
+     "utterance_frames": 200
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 11,
+     "gloss": "IX-pl-2",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-2:i/j",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:756528",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:756528#0",
+     "start": 6,
+     "tracked": {
+      "arm": 0.8,
+      "hand": 0.8
+     },
+     "utterance_frames": 79
+    }
+   ],
+   "status": "clips",
+   "token": "they",
+   "train_count": 1172,
+   "typical_seconds": 0.7956
+  },
+  {
+   "candidates": {
+    "isolated": 0,
+    "segments": 0
+   },
+   "checked": 0,
+   "entry": "we",
+   "flags": {
+    "contraction": true,
+    "negation": false,
+    "pointing": true
+   },
+   "rank": 14,
+   "source_kind": null,
+   "sources": [],
+   "status": "alias_r10",
+   "token": "we're",
+   "train_count": 1121,
+   "typical_seconds": null
+  },
+  {
+   "candidates": {
+    "isolated": 1,
+    "segments": 0
+   },
+   "checked": 1,
+   "entry": null,
+   "flags": {
+    "no_well_tracked_source": true,
+    "pointing": false,
+    "prior_train_records": 1,
+    "shared_gloss": [],
+    "single_clip": false,
+    "single_letter": false
+   },
+   "rank": 15,
+   "source_kind": null,
+   "sources": [],
+   "status": "no_source",
+   "token": "at",
+   "train_count": 1031,
+   "typical_seconds": null
+  },
+  {
+   "candidates": {
+    "isolated": 7,
+    "segments": 0
+   },
+   "checked": 7,
+   "entry": null,
+   "flags": {
+    "no_well_tracked_source": true,
+    "pointing": false,
+    "prior_train_records": 7,
+    "shared_gloss": [],
+    "single_clip": false,
+    "single_letter": false
+   },
+   "rank": 16,
+   "source_kind": null,
+   "sources": [],
+   "status": "no_source",
+   "token": "will",
+   "train_count": 994,
+   "typical_seconds": null
+  },
+  {
+   "candidates": {
+    "isolated": 0,
+    "segments": 0
+   },
+   "checked": 0,
+   "entry": "that",
+   "flags": {
+    "contraction": true,
+    "negation": false,
+    "pointing": false
+   },
+   "rank": 17,
+   "source_kind": null,
+   "sources": [],
+   "status": "alias_r10",
+   "token": "that's",
+   "train_count": 908,
+   "typical_seconds": null
+  },
+  {
+   "candidates": {
+    "isolated": 0,
+    "segments": 0
+   },
+   "checked": 0,
+   "entry": null,
+   "flags": {
+    "contraction": true,
+    "negation": true,
+    "pointing": false
+   },
+   "rank": 18,
+   "source_kind": null,
+   "sources": [],
+   "status": "no_source",
+   "token": "don't",
+   "train_count": 885,
+   "typical_seconds": null
+  },
+  {
+   "candidates": {
+    "isolated": 10,
+    "segments": 4
+   },
+   "checked": 14,
+   "entry": "our",
+   "flags": {
+    "no_well_tracked_source": false,
+    "pointing": true,
+    "prior_train_records": 10,
+    "shared_gloss": [],
+    "single_clip": false,
+    "single_letter": false
+   },
+   "rank": 19,
+   "source_kind": "segment",
+   "sources": [
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 21,
+     "gloss": "POSS-1p-pl",
+     "min_seconds": 0.2,
+     "occurrence": "POSS-1p-pl",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:173340",
+     "seconds": 0.2917,
+     "sign": "asllrp-continuous:173340#0",
+     "start": 12,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.5714
+     },
+     "utterance_frames": 135
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 50,
+     "gloss": "POSS",
+     "min_seconds": 0.2,
+     "occurrence": "POSS-1p-pl-arc",
+     "partition": "train",
+     "record_sign": "rit-sentences:72631800",
+     "seconds": 0.2083,
+     "sign": "rit-sentences:72631800#1",
+     "start": 45,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 114
+    }
+   ],
+   "status": "clips",
+   "token": "our",
+   "train_count": 839,
+   "typical_seconds": 0.7344
+  },
+  {
+   "candidates": {
+    "isolated": 2,
+    "segments": 0
+   },
+   "checked": 2,
+   "entry": null,
+   "flags": {
+    "no_well_tracked_source": true,
+    "pointing": false,
+    "prior_train_records": 2,
+    "shared_gloss": [],
+    "single_clip": false,
+    "single_letter": false
+   },
+   "rank": 20,
+   "source_kind": null,
+   "sources": [],
+   "status": "no_source",
+   "token": "way",
+   "train_count": 823,
+   "typical_seconds": null
+  },
+  {
+   "candidates": {
+    "isolated": 2,
+    "segments": 54
+   },
+   "checked": 42,
+   "entry": "them",
+   "flags": {
+    "no_well_tracked_source": false,
+    "pointing": true,
+    "prior_train_records": 2,
+    "shared_gloss": [
+     "they"
+    ],
+    "single_clip": false,
+    "single_letter": false
+   },
+   "rank": 21,
+   "source_kind": "segment",
+   "sources": [
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 42,
+     "gloss": "IX-pl-2",
+     "min_seconds": 0.2,
+     "occurrence": "IX-pl-2:i/j",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:11945527",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:11945527#4",
+     "start": 40,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 88
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 44,
+     "gloss": "IX-pl",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-arc",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:1676",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:1676#1",
+     "start": 38,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.6
+     },
+     "utterance_frames": 156
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 96,
+     "gloss": "IX-pl",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-arc",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:3381320",
+     "seconds": 0.3333,
+     "sign": "asllrp-continuous:3381320#7",
+     "start": 85,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.5
+     },
+     "utterance_frames": 144
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 77,
+     "gloss": "IX-pl",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-arc",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:3381813",
+     "seconds": 0.25,
+     "sign": "asllrp-continuous:3381813#6",
+     "start": 69,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.6667
+     },
+     "utterance_frames": 146
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 124,
+     "gloss": "IX-pl",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-arc",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:3381912",
+     "seconds": 0.4583,
+     "sign": "asllrp-continuous:3381912#5",
+     "start": 111,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 253
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 182,
+     "gloss": "IX-pl",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-arc",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:3381912",
+     "seconds": 0.4167,
+     "sign": "asllrp-continuous:3381912#8",
+     "start": 169,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 253
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 145,
+     "gloss": "IX-pl-2",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-2:i/j",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:58733427",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:58733427#8",
+     "start": 142,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.6
+     },
+     "utterance_frames": 187
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 76,
+     "gloss": "IX-pl-2",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-2:i/j",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:61833112",
+     "seconds": 0.3333,
+     "sign": "asllrp-continuous:61833112#4",
+     "start": 65,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 115
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 84,
+     "gloss": "IX-pl-2",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-2:i/j",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:6188534",
+     "seconds": 0.3333,
+     "sign": "asllrp-continuous:6188534#5",
+     "start": 74,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 190
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 31,
+     "gloss": "IX-pl",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-arc",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:6189717",
+     "seconds": 0.2917,
+     "sign": "asllrp-continuous:6189717#0",
+     "start": 22,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.7143
+     },
+     "utterance_frames": 197
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 29,
+     "gloss": "IX-pl",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-arc",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:634720",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:634720#1",
+     "start": 25,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 124
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 36,
+     "gloss": "IX-pl",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-arc",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:635016",
+     "seconds": 0.4167,
+     "sign": "asllrp-continuous:635016#1",
+     "start": 23,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 0.5
+     },
+     "utterance_frames": 101
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 33,
+     "gloss": "IX-pl-2",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-2:i/j",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:635115",
+     "seconds": 0.25,
+     "sign": "asllrp-continuous:635115#1",
+     "start": 25,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 95
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 11,
+     "gloss": "IX-pl-2",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-2:i/j",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:756528",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:756528#0",
+     "start": 6,
+     "tracked": {
+      "arm": 0.8,
+      "hand": 0.8
+     },
+     "utterance_frames": 79
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 78,
+     "gloss": "IX-pl-2",
+     "min_seconds": 0.2,
+     "occurrence": "IX-3p-pl-2:i/j",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:7569872",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:7569872#6",
+     "start": 72,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 87
+    },
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 66,
+     "gloss": "IX-pl-2",
+     "min_seconds": 0.2,
+     "occurrence": "IX-pl-2:i/j",
+     "partition": "train",
+     "record_sign": "asllrp-continuous:79795118",
+     "seconds": 0.2083,
+     "sign": "asllrp-continuous:79795118#4",
+     "start": 61,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 143
+    }
+   ],
+   "status": "clips",
+   "token": "them",
+   "train_count": 791,
+   "typical_seconds": 0.7344
+  },
+  {
+   "candidates": {
+    "isolated": 0,
+    "segments": 0
+   },
+   "checked": 0,
+   "entry": null,
+   "flags": {
+    "no_well_tracked_source": true,
+    "pointing": false,
+    "prior_train_records": 0,
+    "shared_gloss": [],
+    "single_clip": false,
+    "single_letter": false
+   },
+   "rank": 22,
+   "source_kind": null,
+   "sources": [],
+   "status": "no_source",
+   "token": "into",
+   "train_count": 718,
+   "typical_seconds": null
+  },
+  {
+   "candidates": {
+    "isolated": 5,
+    "segments": 0
+   },
+   "checked": 5,
+   "entry": null,
+   "flags": {
+    "no_well_tracked_source": true,
+    "pointing": false,
+    "prior_train_records": 5,
+    "shared_gloss": [],
+    "single_clip": false,
+    "single_letter": false
+   },
+   "rank": 23,
+   "source_kind": null,
+   "sources": [],
+   "status": "no_source",
+   "token": "sure",
+   "train_count": 702,
+   "typical_seconds": null
+  },
+  {
+   "candidates": {
+    "isolated": 41,
+    "segments": 0
+   },
+   "checked": 40,
+   "entry": "need",
+   "flags": {
+    "no_well_tracked_source": false,
+    "pointing": false,
+    "prior_train_records": 41,
+    "shared_gloss": [],
+    "single_clip": true,
+    "single_letter": false
+   },
+   "rank": 24,
+   "source_kind": "isolated",
+   "sources": [
+    {
+     "corpus": "semlex-text-v2",
+     "partition": "train",
+     "sign": "semlex-3EFh4dUszDLAu5VKw7f5",
+     "signer_component": null,
+     "tracked": {
+      "arm": 0.8,
+      "hand": 0.7778
+     }
+    }
+   ],
+   "status": "clips",
+   "token": "need",
+   "train_count": 650,
+   "typical_seconds": 0.9437
+  },
+  {
+   "candidates": {
+    "isolated": 0,
+    "segments": 0
+   },
+   "checked": 0,
+   "entry": null,
+   "flags": {
+    "no_well_tracked_source": true,
+    "pointing": false,
+    "prior_train_records": 0,
+    "shared_gloss": [],
+    "single_clip": false,
+    "single_letter": false
+   },
+   "rank": 25,
+   "source_kind": null,
+   "sources": [],
+   "status": "no_source",
+   "token": "would",
+   "train_count": 584,
+   "typical_seconds": null
+  },
+  {
+   "candidates": {
+    "isolated": 0,
+    "segments": 0
+   },
+   "checked": 0,
+   "entry": null,
+   "flags": {
+    "no_well_tracked_source": true,
+    "pointing": false,
+    "prior_train_records": 0,
+    "shared_gloss": [],
+    "single_clip": false,
+    "single_letter": false
+   },
+   "rank": 26,
+   "source_kind": null,
+   "sources": [],
+   "status": "no_source",
+   "token": "actually",
+   "train_count": 527,
+   "typical_seconds": null
+  },
+  {
+   "candidates": {
+    "isolated": 55,
+    "segments": 37
+   },
+   "checked": 40,
+   "entry": "different",
+   "flags": {
+    "no_well_tracked_source": false,
+    "pointing": false,
+    "prior_train_records": 55,
+    "shared_gloss": [],
+    "single_clip": true,
+    "single_letter": false
+   },
+   "rank": 27,
+   "source_kind": "isolated",
+   "sources": [
+    {
+     "corpus": "semlex-text-v2",
+     "partition": "train",
+     "sign": "semlex-KTvoqs4tsw46NzJpoZB4",
+     "signer_component": null,
+     "tracked": {
+      "arm": 0.8163,
+      "hand": 0.7347
+     }
+    }
+   ],
+   "status": "clips",
+   "token": "different",
+   "train_count": 490,
+   "typical_seconds": 1.0817
+  },
+  {
+   "candidates": {
+    "isolated": 1,
+    "segments": 0
+   },
+   "checked": 1,
+   "entry": null,
+   "flags": {
+    "no_well_tracked_source": true,
+    "pointing": false,
+    "prior_train_records": 1,
+    "shared_gloss": [],
+    "single_clip": false,
+    "single_letter": false
+   },
+   "rank": 28,
+   "source_kind": null,
+   "sources": [],
+   "status": "no_source",
+   "token": "got",
+   "train_count": 487,
+   "typical_seconds": null
+  },
+  {
+   "candidates": {
+    "isolated": 0,
+    "segments": 0
+   },
+   "checked": 0,
+   "entry": "there",
+   "flags": {
+    "contraction": true,
+    "negation": false,
+    "pointing": true
+   },
+   "rank": 29,
+   "source_kind": null,
+   "sources": [],
+   "status": "alias_r10",
+   "token": "there's",
+   "train_count": 417,
+   "typical_seconds": null
+  },
+  {
+   "candidates": {
+    "isolated": 5,
+    "segments": 2
+   },
+   "checked": 7,
+   "entry": "their",
+   "flags": {
+    "no_well_tracked_source": false,
+    "pointing": true,
+    "prior_train_records": 5,
+    "shared_gloss": [],
+    "single_clip": true,
+    "single_letter": false
+   },
+   "rank": 30,
+   "source_kind": "segment",
+   "sources": [
+    {
+     "corpus": "asllrp-continuous-segment",
+     "end": 426,
+     "gloss": "POSS-pl",
+     "min_seconds": 0.2,
+     "occurrence": "POSS-3p-pl-arc",
+     "partition": "train",
+     "record_sign": "rit-sentences:81429462",
+     "seconds": 0.2083,
+     "sign": "rit-sentences:81429462#17",
+     "start": 421,
+     "tracked": {
+      "arm": 1.0,
+      "hand": 1.0
+     },
+     "utterance_frames": 635
+    }
+   ],
+   "status": "clips",
+   "token": "their",
+   "train_count": 411,
+   "typical_seconds": 0.6119
+  }
+ ],
+ "trimmed_over_annotated": 2.9375
+}

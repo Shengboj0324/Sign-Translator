@@ -77,7 +77,7 @@ SOURCE_NOTE = ("meaningful only between forms of the same word source: real word
 GENERATION_SETTINGS = ("checkpoint_key", "generator_mix", "mix_key", "mix_sha256", "corpora", "selection", "timing",
                        "core_margin", "rerank", "total_fit", "guidance", "part_temperature", "model_sha256")
 GENERATION_ROUND20 = ("vocabulary_mix", "semlex_core", "activity_margin", "retime", "tempo", "lowpass_hz", "word_cache",
-                      "no_decoder_gains")
+                      "no_decoder_gains", "arm_scale", "vocabulary_extra", "word_cache_extra", "oracle_choice")
 
 
 def word_source(report: dict, form: str) -> list[str]:

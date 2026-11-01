@@ -14,6 +14,9 @@ temperatures as the composition's, resampled to 24 fps, the generator's post-pro
 ``rerank.rerank_seeds(round20_lib.entry_seed(e), N)[k]`` (fixed per entry, independent of any sentence; sample 0's seed
 is the entry's own).
 
+``--vocabulary-extra-file/-sha256/-top`` (post-S2 A3; D20 only): only the list's new entries the sentences select are generated,
+each at its listed typical seconds, under this prefix; the composition takes them with ``--word-cache-extra-key``.
+
 ``--no-decoder-gains`` (A7): the samples decode without the tokenizer's accepted gains (same seeds and codes; head
 smoothing stays), recorded in the settings and the index. Give it its own ``--prefix``.
 
@@ -117,7 +120,14 @@ def select_entries(args, store):
     else:
         val = validation_sentences(manifest, args.clips)
         sentences = dict(validation_sentences=args.clips, count=len(val))
-    _, words = stage1_selection([r["text"] for r in val], vocab)
+    details, words = stage1_selection([r["text"] for r in val], vocab)
+    if getattr(args, "vocabulary_extra_file", None):      # post-S2 A3: the list's new entries, and nothing else
+        from comp_a_lib import apply_token_map, arm_of, check_d20_payload, extra_vocabulary, load_token_list
+        check_d20_payload(json.loads(payload))
+        arm = arm_of(load_token_list(args.vocabulary_extra_file, args.vocabulary_extra_sha256), args.vocabulary_extra_top)
+        _, words = apply_token_map(details, arm["token_map"])
+        vocab = dict(vocab, **extra_vocabulary(arm))
+        return sorted({w for ws in words for w in ws} & set(arm["entries"])), vocab, vmix, corpora, sentences
     entries = sorted({w for ws in words for w in ws})
     return entries, vocab, vmix, corpora, sentences
 
@@ -150,6 +160,8 @@ def run(args) -> dict:
     rows = []
     for j, e in enumerate(mine):
         label = entry_label(e, labels)
+        if getattr(args, "vocabulary_extra_file", None) and len(e) == 1:   # the label "I" is the letter's, not the pronoun's
+            label = None
         seconds = float(vocab[e])
         seeds = rerank_seeds(entry_seed(e), args.samples)
         states, probs, logps, ranks, pmis = [], [], [], [], []
@@ -196,7 +208,9 @@ def run(args) -> dict:
                     part_temperature=temperature, recognizer_run=args.recognizer_run,
                     recognizer_checkpoint=best.get("checkpoint_key") if isinstance(best, dict) else None,
                     shards=args.shards, labels=len(labels),
-                    **({"no_decoder_gains": True} if args.no_decoder_gains else {}))  # absent: the gains are on
+                    **({"no_decoder_gains": True} if args.no_decoder_gains else {}),  # absent: the gains are on
+                    **({"vocabulary_extra": dict(sha256=args.vocabulary_extra_sha256, top=args.vocabulary_extra_top)}
+                       if getattr(args, "vocabulary_extra_file", None) else {}))
     return dict(kind="round20-word-cache-shard", shard=args.shard, settings=settings, entries=rows,
                 seconds=round(time.time() - start, 1))
 
@@ -245,6 +259,9 @@ def main(argv=None) -> int:
     r.add_argument("--limit", type=int, help="the first K entries only (smoke)")
     r.add_argument("--no-decoder-gains", action="store_true", help="A7: decode without the tokenizer's accepted gains; "
                    "refused when it has none")
+    r.add_argument("--vocabulary-extra-file", help="post-S2 A3: the committed token list; only its new entries are generated")
+    r.add_argument("--vocabulary-extra-sha256")
+    r.add_argument("--vocabulary-extra-top", type=int)
     m = sub.add_parser("merge")
     m.add_argument("--shards", type=int, default=1)
     for q in (r, m):
@@ -265,6 +282,16 @@ def main(argv=None) -> int:
             p.error("--vocabulary-mix-key and --vocabulary-mix-sha256 go together")
         if not 0 <= args.shard < args.shards:
             p.error("--shard must be in 0..--shards-1")
+        if args.vocabulary_extra_file or args.vocabulary_extra_sha256 or args.vocabulary_extra_top:
+            from comp_a_lib import TOPS, require_d20
+            if not (args.vocabulary_extra_file and args.vocabulary_extra_sha256) or args.vocabulary_extra_top not in TOPS:
+                p.error(f"--vocabulary-extra-file, --vocabulary-extra-sha256 and --vocabulary-extra-top in {TOPS} go together")
+            if args.vocabulary_mix_key:
+                p.error("--vocabulary-extra-file adds to r10's vocabulary")
+            try:
+                require_d20(args.sentences_key, args.sentences_sha256)
+            except SystemExit as stop:
+                p.error(str(stop))
         key = f"{args.prefix}/shard-{args.shard}-of-{args.shards}.json"
         if store.exists(key) or store.exists(f"{args.prefix}/index.json"):
             raise SystemExit(f"{key} (or the merged index) exists: refusing to overwrite")

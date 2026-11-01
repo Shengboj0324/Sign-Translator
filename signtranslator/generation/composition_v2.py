@@ -41,6 +41,12 @@ replace it by this text-only prediction, under either plan: the same words, with
 ``--timing`` plan and with ``--retime continuous`` the continuous plan, filling round(predicted x 24) frames. Only the
 sentence's total changes; the main form and its controls keep the reference's duration. A sentence with no selected word
 is the blank at the predicted length in that form, and ``blank@predicted`` is its comparator, so the form is text-only.
+
+**Arm scale** (``arm_scale_state``, post-S2 plan A1; off unless asked for): each listed side's upper arm and forearm rotations
+are pulled toward their mean over the state's valid frames by the rotation power R -> M (M^T R)^f, f the scale. Timing, hands,
+torso, face and validity are untouched; f = 1 leaves the side exactly as it is. This is the amplitude change of the motion
+diagnosis (ledger 2026-10-31 22:58). It shrinks motion: it can pass a speed band by moving less, so it is read only beside real
+clips scaled the same way.
 """
 from __future__ import annotations
 
@@ -222,6 +228,44 @@ def lowpass_state(state, hz: float, *, fps: float = FPS, order: int = 4):
     return replace(state, channels=channels)
 
 
+# ---- arm scale ------------------------------------------------------------------------------------------------------
+
+def _rotation_power(R: np.ndarray, f: float) -> np.ndarray:
+    """R^f of (..., 3, 3) rotations, by the axis-angle form."""
+    from scipy.spatial.transform import Rotation
+    shape = R.shape
+    vectors = Rotation.from_matrix(R.reshape(-1, 3, 3)).as_rotvec()
+    return Rotation.from_rotvec(vectors * f).as_matrix().reshape(shape)
+
+
+def arm_scale_state(state, *, left: float = 1., right: float = 1.):
+    """``state`` with each side's arm rotations scaled about their mean over its valid frames (module docstring)."""
+    from .composition_space import chordal_mean, to_6d
+    from .motion_metrics import _matrices
+    if left <= 0 or right <= 0:
+        raise ValueError("an arm scale must be positive")
+    body = state.channels["body"]
+    labels = list(body.labels)
+    values = None
+    for side, f in (("Left", float(left)), ("Right", float(right))):
+        if f == 1.:
+            continue
+        for joint in (f"{side}UpperArm", f"{side}Forearm"):
+            k = labels.index(joint)
+            ok = body.valid[:, k]
+            if ok.sum() < 2:
+                continue
+            if values is None:
+                values = body.values.astype(np.float64)
+            R = _matrices(values[:, k])[ok]
+            mean = chordal_mean(R)
+            relative = np.einsum("ba,tbc->tac", mean, R)
+            values[ok, k] = to_6d(np.einsum("ab,tbc->tac", mean, _rotation_power(relative, f)))
+    if values is None:
+        return state
+    return replace(state, channels=dict(state.channels, body=replace(body, values=values.astype(body.values.dtype))))
+
+
 # ---- predicted sentence duration (report-only) -----------------------------------------------------------------------
 
 def fit_duration_model(manifest, corpus: str = H2S, partition: str = "train", *, components=None,
@@ -267,5 +311,5 @@ def predicted_seconds(model: dict, text: str, floor: float = .5) -> float:
 
 
 __all__ = ["FPS", "CONTINUOUS_RATIO", "SIDES", "MIN_SPEED", "MAX_GAP_SECONDS", "TOTAL_FITS", "continuous_seconds",
-           "boundary_speed", "bridge_frames", "continuous_plan", "lowpass_values", "lowpass_state",
+           "boundary_speed", "bridge_frames", "continuous_plan", "lowpass_values", "lowpass_state", "arm_scale_state",
            "fit_duration_model", "predicted_seconds"]
