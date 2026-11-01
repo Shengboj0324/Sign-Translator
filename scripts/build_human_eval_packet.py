@@ -36,18 +36,26 @@ defined"), two subcommands, D20 only:
    and the ``--pilot`` sentences at random. Writes ``draw.json`` (its ``name`` and ``signs`` are the sentence list of
    ``round15_compose_eval.py --export-sentences-file``) and ``negation_check.csv``, the Deaf checker's sheet.
 2. ``how2sign-packet``: one ``--set`` (``main`` or ``pilot``) signed by every ``--system``: ``LABEL=reference`` (the
-   recording) or ``LABEL=composition:INDEX_KEY@SHA`` (a ``round15_compose_eval.py --export-prefix`` index). The filled
-   negation sheet fixes the truth first: only confirmed sentences count as negated. Distractors come from D20's other
-   sentences and nothing else (``d20_distractor_pool`` refuses more; the whole-partition pool would read C20 and fresh
-   text), and the key is checked for it. The sentence type and topic have no truth here and are not scored.
-   Every system is drawn by the same renderer, as above. Neither subcommand reads the generators.
+   recording) or ``LABEL=composition:INDEX_KEY@SHA`` (a ``round15_compose_eval.py --export-prefix`` index, checked for its
+   frames and form; the key's timing label comes from them). The filled negation sheet fixes the truth first: only
+   confirmed sentences count as negated, and the checker cannot be a rater. Distractors come from D20's other sentences
+   and nothing else (``d20_distractor_pool`` refuses more; the whole-partition pool would read C20 and fresh text), and
+   the key is checked for it. The sentence type and topic have no truth here and are not scored. Every system is drawn
+   by the same renderer on a rebuilt clock (t0 + n/fps); item ids come from a secret source; zip times are fixed; the
+   summary gives MP4 bytes per frame by system. The packet holds stage 1 only: no options.
+3. ``how2sign-stage2``: when a rater returns stage 1, hash it, record the receipt and write that rater's stage 2 sheet
+   (the options and the forced choice). Stage 1 is final once released.
+
+Neither subcommand reads the generators.
 """
 from __future__ import annotations
 
 import argparse
 import collections
+import csv
 from dataclasses import replace
 import hashlib
+import io
 import json
 from pathlib import Path
 import random
@@ -64,12 +72,16 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from signtranslator.data_engineering.corpus_manifest import load_manifest  # noqa: E402
 from signtranslator.eval_framework.human_study import (design_study, draw_study_sentences, key_sha256,  # noqa: E402
-                                                       negation_truth, negation_words, parse_negation_sheet,
-                                                       write_negation_sheet, write_sheet)
+                                                       negation_stratum, negation_truth, negation_words,
+                                                       parse_negation_sheet, parse_roster, parse_stage1, strata_shares,
+                                                       write_negation_sheet, write_sheet, write_stage1_sheet,
+                                                       write_stage2_sheet)
 
 GUIDE = ROOT / "docs" / "HUMAN_EVALUATION_REVIEWER_GUIDE.md"   # what reviewers read (the protocol stays with the team)
+TWO_STAGE_GUIDE = ROOT / "docs" / "HUMAN_EVALUATION_REVIEWER_GUIDE_TWO_STAGE.md"
 EVAL_MIX = "acquisition/2026-10-17-v1/youtube-asl-v1/round10-mixed-v1/manifest.json"   # the mix D20 was drawn from
 EVAL_MIX_SHA = "ccfd10b8961e95523ac7938c84261c89f22c8ae786af961908fbeba21fa5647a"
+D20_SHA256 = "d311703b748821822f65f8e65c5e6bd81422d5e16231171f0ab1ea54e185dabe"   # the stored set (s2_lib.D20_SHA)
 
 
 def parse_system(spec: str) -> dict:
@@ -160,21 +172,33 @@ def choose_utterances(records, partition: str, count: int | None, min_seconds: f
     return sorted(pool[:count], key=lambda r: r["sign"])
 
 
-def write_group_files(key: dict, out: Path, store, output_prefix: str | None) -> None:
-    """Each group's sheet, guide and zip, the hashed private key, and the copy to the store."""
+def write_zip(path: Path, folder: str, files) -> None:
+    """A stored zip with fixed times and modes: when a clip was rendered is not in the packet."""
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as z:
+        for f in sorted(files):
+            info = zipfile.ZipInfo(f"{folder}/{f.name}", date_time=(1980, 1, 1, 0, 0, 0))
+            info.external_attr = 0o644 << 16
+            with f.open("rb") as source, z.open(info, "w", force_zip64=True) as target:
+                shutil.copyfileobj(source, target)
+
+
+def write_group_files(key: dict, out: Path, store, output_prefix: str | None, *, sheet=write_sheet, guide=GUIDE) -> None:
+    """Each group's sheet, guide and zip, the hashed private key, and the copy to the store, write-once."""
     for g in range(key["groups"]):
         group_dir = out / "packet" / f"group-{g}"
-        (group_dir / "sheet.csv").write_text(write_sheet(key, g))
-        shutil.copy(GUIDE, group_dir / GUIDE.name)
-        with zipfile.ZipFile(out / "packet" / f"group-{g}.zip", "w", zipfile.ZIP_STORED) as z:
-            for f in sorted(group_dir.iterdir()):
-                z.write(f, f"group-{g}/{f.name}")
+        (group_dir / "sheet.csv").write_text(sheet(key, g))
+        shutil.copy(guide, group_dir / guide.name)
+        write_zip(out / "packet" / f"group-{g}.zip", f"group-{g}", list(group_dir.iterdir()))
     key["key_sha256"] = key_sha256(key)
     (out / "key" / "key.json").write_text(json.dumps(key, indent=1, sort_keys=True) + "\n")
     if output_prefix:
         prefix = output_prefix.rstrip("/")
-        for f in sorted(p for p in out.rglob("*") if p.is_file()):
-            store.put(f"{prefix}/{f.relative_to(out).as_posix()}", f.read_bytes())
+        files = {f"{prefix}/{f.relative_to(out).as_posix()}": f for f in sorted(p for p in out.rglob("*") if p.is_file())}
+        taken = [k for k in files if store.exists(k)]
+        if taken:
+            raise SystemExit(f"{len(taken)} keys exist under {prefix}: written once, first {taken[0]}")
+        for k, f in files.items():
+            store.put(k, f.read_bytes())
 
 
 # ---- How2Sign mode (module docstring) --------------------------------------------------------------------------------
@@ -185,6 +209,8 @@ def load_d20(store, mix_key: str, mix_sha256: str, sentences_key: str, sentences
     payload = store.get(sentences_key)
     if hashlib.sha256(payload).hexdigest() != sentences_sha256:
         raise SystemExit(f"{sentences_key} does not match --sentences-sha256")
+    if sentences_sha256 != D20_SHA256:
+        raise SystemExit(f"the rater read draws from D20 only: {sentences_sha256} is not D20's {D20_SHA256}")
     stored = json.loads(payload)
     if stored.get("set") != "D20":
         raise SystemExit(f"the rater read draws from D20 only, not {stored.get('set')!r}")
@@ -237,18 +263,40 @@ def check_key_within_d20(key: dict, d20_texts) -> None:
         raise SystemExit(f"{len(beyond)} offered sentences are not in D20: {beyond[:3]}")
 
 
-def how2sign_key(chosen: list[dict], systems: list[str], *, seed: int, d20_texts, confirmed: dict, share: dict,
+def how2sign_key(chosen: list[dict], systems: list[str], *, seed: int, d20_texts, confirmed: dict, eligible: int,
                  pool=None) -> dict:
-    """The study key of the chosen rows (``sign``, ``english``): negation truth fixed from the checker's answers, the
-    sentence type and topic without truth, distractors within D20."""
+    """The study key of the chosen rows (``sign``, ``english``): negation truth and stratum fixed from the checker's
+    answers, comprehension's weights from D20's eligible sentences, the sentence type and topic without truth,
+    distractors within D20, item ids from a secret source independent of the design seed (128 bits), two stages."""
     from round20_lib import text_key
     utterances = [dict(sign=r["sign"], english=r["english"],
-                       truth=dict(negated=negation_truth(r["sign"], confirmed))) for r in chosen]
+                       truth=dict(negated=negation_truth(r["sign"], confirmed),
+                                  stratum=negation_stratum(r["sign"], confirmed))) for r in chosen]
     key = design_study(utterances, systems, seed=seed, distractor_pool=d20_distractor_pool(d20_texts, pool),
-                       text_key=text_key)
+                       text_key=text_key, new_item_id=lambda: secrets.token_hex(16))
     check_key_within_d20(key, d20_texts)
-    key["bar"] = share
+    key["stages"] = 2
+    key["bar"] = dict(strata=strata_shares(confirmed, eligible), eligible=eligible,
+                      confirmed=sum(v == "yes" for v in confirmed.values()),
+                      rejected=sum(v == "no" for v in confirmed.values()),
+                      population="D20's eligible sentences (every candidate among them was checked)")
     return key
+
+
+def uniform_clock(state, fps: float):
+    """The state on a clock rebuilt as t0 + n/fps: the recorded clock's jitter would mark the recording."""
+    t = state.timestamps
+    return replace(state, timestamps=float(t[0]) + np.arange(len(t), dtype=t.dtype) / fps)
+
+
+def composition_timing(row: dict, label: str) -> str:
+    """The timing a composed state's own numbers show; a main form that does not fill its reference is refused."""
+    if row["form"].endswith("@predicted"):
+        return "predicted"
+    if row["frames"] != row["reference_frames"]:
+        raise SystemExit(f"{label}: {row['sign']} has {row['frames']} frames in form {row['form']}, its reference "
+                         f"{row['reference_frames']}: duration would be a cue")
+    return "reference-length"
 
 
 def load_composition(store, spec: dict, *, signs, list_sha256: str, sentences_sha256: str) -> dict:
@@ -274,8 +322,31 @@ def load_composition(store, spec: dict, *, signs, list_sha256: str, sentences_sh
     empty = sorted(s for s in signs if rows[s][0]["empty"])
     if empty:
         raise SystemExit(f"{spec['label']}: {len(empty)} sentences have no selected word, so no signing to show: "
-                         f"{empty[:5]}. The declared terms do not say how to count them: decide before building")
-    return dict(arm=index["arm"], word_cache=index.get("word_cache"), rows={s: rows[s][0] for s in signs})
+                         f"{empty}. The declared terms do not say how to count them: decide before building")
+    chosen = {s: rows[s][0] for s in signs}
+    if any(chosen[s].get(f) is None for s in signs for f in ("frames", "reference_frames", "form")):
+        raise SystemExit(f"{spec['key']}: a row has no frames, reference_frames or form")
+    forms = {r["form"] for r in chosen.values()}
+    if len(forms) != 1:
+        raise SystemExit(f"{spec['label']}: several forms in one arm: {sorted(forms)}")
+    timings = {composition_timing(r, spec["label"]) for r in chosen.values()}
+    return dict(arm=index["arm"], word_cache=index.get("word_cache"), rows=chosen, form=next(iter(forms)),
+                timing=next(iter(timings)))
+
+
+def bytes_per_frame(items) -> dict:
+    """Mean and range of MP4 bytes per frame by system: a size that differs by system could give it away."""
+    by_system = collections.defaultdict(list)
+    for i in items:
+        by_system[i["system"]].append(i["video_bytes"] / max(i["frames"], 1))
+    return {s: dict(clips=len(v), mean=round(float(np.mean(v)), 1), low=round(float(min(v)), 1),
+                    high=round(float(max(v)), 1)) for s, v in sorted(by_system.items())}
+
+
+def negation_checkers(text: str) -> list[str]:
+    """The checkers' keys on a filled negation sheet (stored in the key: a checker cannot be a rater)."""
+    rows = csv.DictReader(io.StringIO(text.lstrip("\ufeff")))
+    return sorted({(r["checker_sha256"] or "").strip() for r in rows} - {""})
 
 
 def how2sign_draw(argv) -> int:
@@ -361,9 +432,12 @@ def how2sign_packet(argv) -> int:
     confirmed, problems = parse_negation_sheet(sheet.decode("utf-8-sig"), draw["candidates"])
     if problems:
         raise SystemExit(f"the negation truth is not fixed: {len(problems)} problems, first {problems[:3]}")
+    checkers = negation_checkers(sheet.decode("utf-8-sig"))
     from train_text_to_motion import make_store
     from evaluate_text_to_motion import at_rate, load_state
     store = make_store(args.store)
+    if args.output_prefix and store.exists(f"{args.output_prefix.rstrip('/')}/key/key.json"):
+        raise SystemExit(f"{args.output_prefix} already holds a key: written once")
     records, _ = load_d20(store, draw["mix_key"], draw["mix_sha256"], draw["sentences_key"], draw["sentences_sha256"])
     d20 = {r["sign"]: r for r in records}
     signs = draw[args.which]
@@ -372,32 +446,40 @@ def how2sign_packet(argv) -> int:
     compositions = {s["label"]: load_composition(store, s, signs=signs, list_sha256=args.draw_sha256,
                                                  sentences_sha256=draw["sentences_sha256"])
                     for s in systems if s["kind"] == "composition"}
-    eligible = draw["counts"]["eligible"]
-    yes = sum(v == "yes" for v in confirmed.values())
-    share = dict(negated_share=yes / eligible, confirmed=yes, rejected=len(confirmed) - yes, eligible=eligible,
-                 population="D20's eligible sentences (every candidate among them was checked)")
     seed = args.seed if args.seed is not None else secrets.randbits(31)
     key = how2sign_key([draw["rows"][s] for s in sorted(signs)], [s["label"] for s in systems], seed=seed,
-                       d20_texts=[r["text"].strip() for r in records], confirmed=confirmed, share=share)
+                       d20_texts=[r["text"].strip() for r in records], confirmed=confirmed,
+                       eligible=draw["counts"]["eligible"])
+    timing = {k: v["timing"] for k, v in compositions.items()}
+    if len(set(timing.values())) > 1:
+        raise SystemExit(f"the arms have different timings: {timing}")
+    timing_label = next(iter(timing.values()), "reference-length")
     key.update(study="how2sign-rater-read", set=args.which, partition="val", manifest_key=draw["mix_key"],
                manifest_sha256=draw["mix_sha256"], sentences=dict(key=draw["sentences_key"],
                                                                   sha256=draw["sentences_sha256"]),
                draw_sha256=args.draw_sha256, negation_sheet_sha256=args.negation_sheet_sha256,
-               negation_confirmed=confirmed, system_specs=systems, fps=args.fps, timing="reference-length",
-               diagnostic="cannot clear the release bar: reference-length timing, val signers",
-               arms={k: dict(arm=v["arm"], word_cache=v["word_cache"]) for k, v in compositions.items()})
+               negation_confirmed=confirmed, negation_checkers=checkers, system_specs=systems, fps=args.fps,
+               timing=timing_label,
+               diagnostic=("cannot clear the release bar: val signers"
+                           + (", reference-length timing" if timing_label != "predicted" else "")),
+               arms={k: dict(arm=v["arm"], word_cache=v["word_cache"], form=v["form"], timing=v["timing"])
+                     for k, v in compositions.items()})
     spec = {s["label"]: s for s in systems}
     (out / "key").mkdir(parents=True, exist_ok=True)
     for n, item in enumerate(key["items"]):
         record, system = d20[item["sign"]], spec[item["system"]]
-        reference = at_rate(load_state(store, record["continuous"]["state_key"], record["continuous"]["state_sha256"]),
-                            args.fps)
+        reference = uniform_clock(at_rate(load_state(store, record["continuous"]["state_key"],
+                                                     record["continuous"]["state_sha256"]), args.fps), args.fps)
         if system["kind"] == "reference":
             state = reference
             item["state"] = dict(key=record["continuous"]["state_key"], sha256=record["continuous"]["state_sha256"])
         else:
             row = compositions[system["label"]]["rows"][item["sign"]]
-            state = at_rate(load_state(store, row["state_key"], row["state_sha256"]), args.fps)
+            state = uniform_clock(at_rate(load_state(store, row["state_key"], row["state_sha256"]), args.fps), args.fps)
+            if len(state.timestamps) != row["frames"] or len(reference.timestamps) != row["reference_frames"]:
+                raise SystemExit(f"{item['sign']}: the index says {row['frames']} frames against "
+                                 f"{row['reference_frames']}; the states have {len(state.timestamps)} and "
+                                 f"{len(reference.timestamps)}")
             item["state"] = dict(key=row["state_key"], sha256=row["state_sha256"], form=row["form"], words=row["words"],
                                  overlong=row["overlong"])
         group_dir = out / "packet" / f"group-{item['group']}"
@@ -408,19 +490,65 @@ def how2sign_packet(argv) -> int:
         item["renderer"] = args.renderer
         item["seconds"] = round(len(state.timestamps) / args.fps, 3)
         item["reference_seconds"] = round(len(reference.timestamps) / args.fps, 3)
+        item["video_bytes"] = video.stat().st_size
         print(json.dumps(dict(n=n + 1, of=len(key["items"]), group=item["group"])), flush=True)
-    write_group_files(key, out, store, args.output_prefix)
+    key["video_bytes_per_frame"] = bytes_per_frame(key["items"])
+    write_group_files(key, out, store, args.output_prefix, sheet=write_stage1_sheet, guide=TWO_STAGE_GUIDE)
     length_cue = sum(abs(i["seconds"] - i["reference_seconds"]) > 1.5 / args.fps for i in key["items"])
     print(json.dumps(dict(utterances=key["utterances"], systems=key["systems"], groups=key["groups"],
-                          items=len(key["items"]), negated_share=share["negated_share"], confirmed=share["confirmed"],
+                          items=len(key["items"]), strata=key["bar"]["strata"], confirmed=key["bar"]["confirmed"],
+                          timing=key["timing"], video_bytes_per_frame=key["video_bytes_per_frame"],
                           items_longer_or_shorter_than_their_reference=length_cue, key=str(out / "key" / "key.json"))))
+    return 0
+
+
+def how2sign_stage2(argv) -> int:
+    parser = argparse.ArgumentParser(prog="how2sign-stage2", description="release one rater's stage 2 sheet")
+    parser.add_argument("--key", type=Path, required=True, help="key/key.json")
+    parser.add_argument("--roster", type=Path, required=True, help="private JSON: {reviewer key: group}")
+    parser.add_argument("--stage1-sheet", type=Path, required=True, help="the rater's returned stage 1 sheet")
+    parser.add_argument("--receipts", type=Path, required=True, help="private JSON: {reviewer key: stage 1 hash}; updated")
+    parser.add_argument("--output-dir", type=Path, required=True)
+    args = parser.parse_args(argv)
+    key = json.loads(args.key.read_text())
+    recorded = key.pop("key_sha256", None)
+    if recorded != key_sha256(key):
+        raise SystemExit("the key does not match its recorded hash")
+    if key.get("stages") != 2:
+        raise SystemExit("this key is not a two-stage study")
+    roster = parse_roster(args.roster.read_text())
+    payload = args.stage1_sheet.read_bytes()
+    answers, problems = parse_stage1(payload.decode("utf-8-sig"), key)
+    if problems or not answers:
+        raise SystemExit(f"stage 1 is not ready: {len(answers)} answers, problems {problems[:3]}")
+    reviewer = answers[0]["reviewer_sha256"]
+    if reviewer in set(key.get("negation_checkers") or ()):
+        raise SystemExit("the Deaf negation checker cannot be a rater")
+    groups = {i["item_id"]: i["group"] for i in key["items"]}
+    if reviewer not in roster or any(groups[a["item_id"]] != roster[reviewer] for a in answers):
+        raise SystemExit("this key is not on the roster for this group")
+    sha = hashlib.sha256(payload).hexdigest()
+    receipts = json.loads(args.receipts.read_text()) if args.receipts.exists() else {}
+    if receipts.get(reviewer, sha) != sha:
+        raise SystemExit("stage 2 was already released on another stage 1: stage 1 is final")
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    path = args.output_dir / f"stage2-{reviewer[:12]}.csv"
+    text = write_stage2_sheet(key, answers, sha)
+    if not path.exists():
+        path.write_text(text)
+    elif path.read_text() != text:
+        raise SystemExit(f"{path} exists with other content")
+    receipts[reviewer] = sha
+    args.receipts.write_text(json.dumps(receipts, indent=1, sort_keys=True) + "\n")
+    print(json.dumps(dict(stage1_sha256=sha, rows=sum(a["viewable"] == "yes" for a in answers), sheet=str(path))))
     return 0
 
 
 def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else list(argv)
-    if argv and argv[0] in ("how2sign-draw", "how2sign-packet"):
-        return (how2sign_draw if argv[0] == "how2sign-draw" else how2sign_packet)(argv[1:])
+    commands = {"how2sign-draw": how2sign_draw, "how2sign-packet": how2sign_packet, "how2sign-stage2": how2sign_stage2}
+    if argv and argv[0] in commands:
+        return commands[argv[0]](argv[1:])
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--store", default="r2")
     parser.add_argument("--manifest-key", required=True, help="plan manifest")

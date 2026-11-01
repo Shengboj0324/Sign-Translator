@@ -100,7 +100,6 @@ def test_eligible_sentences_are_long_enough_tracked_and_distinct():
 
 D20_TEXTS = [f"development sentence number {k}" for k in range(12)]
 CHOSEN = [dict(sign=f"s{k}", english=D20_TEXTS[k]) for k in range(6)]
-SHARE = dict(negated_share=.1)
 
 
 def test_distractors_come_only_from_d20():
@@ -111,14 +110,18 @@ def test_distractors_come_only_from_d20():
     with pytest.raises(SystemExit, match="not in D20"):
         d20_distractor_pool(D20_TEXTS, beyond)
     with pytest.raises(SystemExit, match="not in D20"):
-        how2sign_key(CHOSEN, ["ref", "gen"], seed=1, d20_texts=D20_TEXTS, confirmed={}, share=SHARE, pool=beyond)
-    key = how2sign_key(CHOSEN, ["ref", "gen"], seed=1, d20_texts=D20_TEXTS, confirmed={}, share=SHARE)
+        how2sign_key(CHOSEN, ["ref", "gen"], seed=1, d20_texts=D20_TEXTS, confirmed={}, eligible=12, pool=beyond)
+    key = how2sign_key(CHOSEN, ["ref", "gen"], seed=1, d20_texts=D20_TEXTS, confirmed={}, eligible=12)
     assert {t for i in key["items"] for t in i["options"]} <= set(D20_TEXTS)
-    assert key["bar"] == SHARE
+    assert key["bar"]["strata"] == dict(confirmed=0., rejected=0., non_candidate=1.) and key["stages"] == 2
+    assert all(len(i["item_id"]) == 32 for i in key["items"])         # 128 bits, not from the design's seed
+    again = how2sign_key(CHOSEN, ["ref", "gen"], seed=1, d20_texts=D20_TEXTS, confirmed={}, eligible=12)
+    assert {i["item_id"] for i in key["items"]}.isdisjoint(i["item_id"] for i in again["items"])
+    assert [i["options"] for i in key["items"]] == [i["options"] for i in again["items"]]
     # a study sentence outside D20 enters design_study's pool by itself: the check on the key catches it
     with pytest.raises(SystemExit, match="not in D20"):
         how2sign_key([dict(sign="x", english="fresh text")] + CHOSEN, ["ref", "gen"], seed=1, d20_texts=D20_TEXTS,
-                     confirmed={}, share=SHARE)
+                     confirmed={}, eligible=12)
     tampered = dict(items=[dict(options=["fresh text"])])
     with pytest.raises(SystemExit, match="not in D20"):
         check_key_within_d20(tampered, D20_TEXTS)
@@ -127,23 +130,27 @@ def test_distractors_come_only_from_d20():
 def test_the_key_counts_only_confirmed_sentences_as_negated():
     from build_human_eval_packet import how2sign_key
     key = how2sign_key(CHOSEN, ["ref", "gen"], seed=1, d20_texts=D20_TEXTS, confirmed=dict(s0="yes", s1="no"),
-                       share=SHARE)
+                       eligible=12)
     truth = {i["sign"]: i["truth"] for i in key["items"]}
     assert truth["s0"]["negated"] == "yes" and truth["s1"]["negated"] == "no" and truth["s2"]["negated"] == "no"
     assert truth["s0"]["sentence_type"] is None and truth["s0"]["topic"] is None
+    assert (truth["s0"]["stratum"], truth["s1"]["stratum"], truth["s2"]["stratum"]) == ("confirmed", "rejected", "non_candidate")
+    assert key["bar"]["strata"] == dict(confirmed=1 / 12, rejected=1 / 12, non_candidate=10 / 12)
+    assert key["bar"]["confirmed"] == 1 and key["bar"]["rejected"] == 1
 
 
 def test_near_identical_sentences_are_not_offered_together():
     from build_human_eval_packet import how2sign_key
     texts = ["Cut it now.", "cut it, now", "CUT IT NOW!"] + D20_TEXTS[:6]
     key = how2sign_key([dict(sign=f"s{k}", english=texts[k]) for k in (0, 3, 4, 5)], ["ref", "gen"], seed=2,
-                       d20_texts=texts, confirmed={}, share=SHARE)
+                       d20_texts=texts, confirmed={}, eligible=12)
     for i in key["items"]:
         if i["english"] == "Cut it now.":
             assert not {"cut it, now", "CUT IT NOW!"} & set(i["options"])
 
 
-def test_the_draw_refuses_any_set_but_d20(tmp_path):
+def test_the_draw_refuses_any_set_but_d20(tmp_path, monkeypatch):
+    import build_human_eval_packet as bh
     from build_human_eval_packet import how2sign_draw
     from signtranslator.data.text_motion_dataset import DirectoryStore
     import hashlib
@@ -158,6 +165,17 @@ def test_the_draw_refuses_any_set_but_d20(tmp_path):
     with pytest.raises(SystemExit, match="does not match"):
         how2sign_draw(["--store", f"dir:{tmp_path / 'store'}", "--sentences-key", "sets/c20.json", "--sentences-sha256",
                        "0" * 64, "--output-dir", str(tmp_path / "out")])
+    # labelled D20 with another hash: refused by the pin; the right hash with a C20 label: refused by the label
+    other = json.dumps(dict(kind="round20-sentence-set", set="D20", records=[])).encode()
+    store.put("sets/other.json", other)
+    with pytest.raises(SystemExit, match="is not D20's"):
+        how2sign_draw(["--store", f"dir:{tmp_path / 'store'}", "--sentences-key", "sets/other.json", "--sentences-sha256",
+                       hashlib.sha256(other).hexdigest(), "--output-dir", str(tmp_path / "out")])
+    assert bh.D20_SHA256 == "d311703b748821822f65f8e65c5e6bd81422d5e16231171f0ab1ea54e185dabe"
+    monkeypatch.setattr(bh, "D20_SHA256", hashlib.sha256(payload).hexdigest())
+    with pytest.raises(SystemExit, match="D20 only, not 'C20'"):
+        how2sign_draw(["--store", f"dir:{tmp_path / 'store'}", "--sentences-key", "sets/c20.json", "--sentences-sha256",
+                       hashlib.sha256(payload).hexdigest(), "--output-dir", str(tmp_path / "out")])
 
 
 def composition_index(store, key, *, list_sha="a" * 64, set_sha="d" * 64, rows=()):
@@ -173,7 +191,8 @@ def test_a_composition_index_is_pinned_and_complete(tmp_path):
     from build_human_eval_packet import load_composition
     from signtranslator.data.text_motion_dataset import DirectoryStore
     store = DirectoryStore(tmp_path)
-    row = lambda sign, empty=False, form="core_crossfade": dict(sign=sign, empty=empty, form=form)   # noqa: E731
+    row = lambda sign, empty=False, form="core_crossfade", frames=48, reference_frames=48: dict(   # noqa: E731
+        sign=sign, empty=empty, form=form, frames=frames, reference_frames=reference_frames)
     pins = dict(list_sha256="a" * 64, sentences_sha256="d" * 64)
     good = composition_index(store, "good.json", rows=[row("a"), row("b"), row("c")])
     assert set(load_composition(store, good, signs=["a", "b"], **pins)["rows"]) == {"a", "b"}
@@ -185,13 +204,73 @@ def test_a_composition_index_is_pinned_and_complete(tmp_path):
         load_composition(store, good, signs=["a"], list_sha256="a" * 64, sentences_sha256="e" * 64)
     with pytest.raises(SystemExit, match="lacks 1"):
         load_composition(store, good, signs=["a", "z"], **pins)
+    assert load_composition(store, good, signs=["a"], **pins)["timing"] == "reference-length"
+    # a main form that does not fill its reference would make duration a cue
+    long = composition_index(store, "long.json", rows=[row("a", frames=60)])
+    with pytest.raises(SystemExit, match="duration would be a cue"):
+        load_composition(store, long, signs=["a"], **pins)
+    # the label comes from the data: a predicted form may differ from its reference
+    predicted = composition_index(store, "p.json", rows=[row("a", frames=60, form="core_crossfade@predicted")])
+    assert load_composition(store, predicted, signs=["a"], **pins)["timing"] == "predicted"
+    mixed = composition_index(store, "m.json", rows=[row("a"), row("b", form="core_crossfade@lowpass")])
+    with pytest.raises(SystemExit, match="several forms"):
+        load_composition(store, mixed, signs=["a", "b"], **pins)
+    bare = composition_index(store, "b.json", rows=[dict(sign="a", empty=False, form="core_crossfade")])
+    with pytest.raises(SystemExit, match="no frames"):
+        load_composition(store, bare, signs=["a"], **pins)
     two = composition_index(store, "two.json", rows=[row("a"), row("a", form="core_crossfade@lowpass")])
     with pytest.raises(SystemExit, match="several forms"):
         load_composition(store, two, signs=["a"], **pins)
     empty = composition_index(store, "empty.json", rows=[row("a", empty=True), row("b")])
     with pytest.raises(SystemExit, match="no selected word"):
         load_composition(store, empty, signs=["a", "b"], **pins)
+    with pytest.raises(SystemExit, match=r"\['a'\]"):                 # the sentences are listed
+        load_composition(store, empty, signs=["a", "b"], **pins)
     assert load_composition(store, empty, signs=["b"], **pins)["rows"]["b"]["empty"] is False
+
+
+def test_every_clock_is_rebuilt_and_zip_times_are_fixed(tmp_path):
+    from dataclasses import dataclass as dc
+    import time
+    import zipfile
+    from build_human_eval_packet import bytes_per_frame, uniform_clock, write_group_files, write_zip
+
+    @dc(frozen=True)
+    class Clocked:
+        timestamps: np.ndarray
+    jitter = np.array([5., 5.0401, 5.0845, 5.1249])
+    got = uniform_clock(Clocked(jitter), 24.).timestamps
+    np.testing.assert_allclose(got, 5. + np.arange(4) / 24.)
+    a, b = tmp_path / "b.txt", tmp_path / "a.txt"
+    a.write_text("x"); b.write_text("y")
+    os_time = time.time() - 12345
+    import os
+    os.utime(a, (os_time, os_time))
+    write_zip(tmp_path / "z.zip", "group-0", [a, b])
+    first = (tmp_path / "z.zip").read_bytes()
+    os.utime(a, (os_time + 999, os_time + 999))
+    write_zip(tmp_path / "z2.zip", "group-0", [a, b])
+    assert first == (tmp_path / "z2.zip").read_bytes()
+    with zipfile.ZipFile(tmp_path / "z.zip") as z:
+        assert [i.date_time for i in z.infolist()] == [(1980, 1, 1, 0, 0, 0)] * 2
+        assert z.namelist() == ["group-0/a.txt", "group-0/b.txt"] and z.read("group-0/b.txt") == b"x"
+    rows = [dict(system="r", video_bytes=1000, frames=10), dict(system="r", video_bytes=3000, frames=10),
+            dict(system="g", video_bytes=500, frames=10)]
+    assert bytes_per_frame(rows) == dict(g=dict(clips=1, mean=50., low=50., high=50.),
+                                         r=dict(clips=2, mean=200., low=100., high=300.))
+    # --output-prefix is write-once: nothing is copied over an existing key
+    from signtranslator.data.text_motion_dataset import DirectoryStore
+    store = DirectoryStore(tmp_path / "store")
+    key = dict(groups=1, items=[])
+    out = tmp_path / "out"
+    (out / "packet" / "group-0").mkdir(parents=True)
+    (out / "key").mkdir()
+    write_group_files(dict(key), out, store, "p/x")
+    assert store.exists("p/x/key/key.json") and store.exists("p/x/packet/group-0.zip")
+    store.put("p/y/packet/group-0/sheet.csv", b"old")
+    with pytest.raises(SystemExit, match="written once"):
+        write_group_files(dict(key), out, store, "p/y")
+    assert store.get("p/y/packet/group-0/sheet.csv") == b"old" and not store.exists("p/y/key/key.json")
 
 
 def test_the_how2sign_packet_end_to_end_with_the_real_renderer(tmp_path, stage2_store, monkeypatch):  # noqa: F811
@@ -206,12 +285,14 @@ def test_the_how2sign_packet_end_to_end_with_the_real_renderer(tmp_path, stage2_
     import scripts.round15_compose_eval as ce
     import score_human_eval as sh
     from evaluate_text_to_motion import load_state
-    from signtranslator.eval_framework.human_study import SHEET_COLUMNS, parse_sheet, write_sheet
+    from signtranslator.eval_framework.human_study import STAGE1_COLUMNS, STAGE2_COLUMNS, write_stage1_sheet
     from tests.test_round15_compose_eval import run_args
     from tests.test_round20_eval import put_set
     store, sha, s1, oracle, argv = stage2_store
     root = f"dir:{tmp_path / 'store'}"
     set_sha, _ = put_set(store, sha, order=(0, 1, 2, 3, 4))
+    monkeypatch.setattr(bh, "D20_SHA256", set_sha)
+    TWO_STAGE = bh.TWO_STAGE_GUIDE
     # the fixture's sentences hold no negation word: a stand-in rule makes one candidate (the rule has its own tests)
     monkeypatch.setattr(bh, "negation_words", lambda t: ["off"] if "off" in t else [])
     draw_dir = tmp_path / "draw"
@@ -272,54 +353,126 @@ def test_the_how2sign_packet_end_to_end_with_the_real_renderer(tmp_path, stage2_
     assert main(packet + ["--negation-sheet-sha256", checked, "--output-dir", str(out)]) == 0
     key = json.loads((out / "key" / "key.json").read_text())
     assert key.pop("key_sha256") and key["systems"] == ["real", "arm-a", "arm-b"] and key["groups"] == 3
-    assert key["bar"]["negated_share"] == .2 and key["bar"]["confirmed"] == 1 and key["bar"]["eligible"] == 5
+    assert key["stages"] == 2 and key["negation_checkers"] == ["c" * 64]
+    assert key["bar"]["strata"] == dict(confirmed=.2, rejected=0., non_candidate=.8)
+    assert key["bar"]["confirmed"] == 1 and key["bar"]["eligible"] == 5
     assert key["draw_sha256"] == draw_sha and key["negation_sheet_sha256"] == checked
     assert key["arms"]["arm-a"]["arm"] == "arm-a" and key["timing"] == "reference-length"
+    assert key["arms"]["arm-a"]["form"] == "core_crossfade" and "reference-length" in key["diagnostic"]
+    assert set(key["video_bytes_per_frame"]) == {"real", "arm-a", "arm-b"}
     stored = json.loads(store.get("sets/d20.json"))
     d20_texts = {r["text"].strip() for r in stored["records"]}
     assert {t for i in key["items"] for t in i["options"]} <= d20_texts
     for i in key["items"]:
         assert i["truth"]["negated"] == ("yes" if i["sign"] == candidate else "no")
+        assert i["truth"]["stratum"] == ("confirmed" if i["sign"] == candidate else "non_candidate")
         assert (out / "packet" / f"group-{i['group']}" / f"{i['item_id']}.mp4").stat().st_size > 0 and i["frames"] > 0
-        assert i["renderer"] == "skeleton" and i["seconds"] == i["reference_seconds"]
+        assert i["renderer"] == "skeleton" and i["seconds"] == i["reference_seconds"] and len(i["item_id"]) == 32
         if i["system"] == "real":
             assert i["state"]["sha256"] in {r["state_sha256"] for r in stored["records"]}
         else:
             load_state(store, i["state"]["key"], i["state"]["sha256"])
             assert i["state"]["form"] == "core_crossfade" and i["state"]["words"]
+    options = {t for i in key["items"] for t in i["options"]}
     for g in range(3):
         sheet = (out / "packet" / f"group-{g}" / "sheet.csv").read_text()
-        for word in ("arm-a", "arm-b", "real", "correct", "core_crossfade"):
-            assert word not in sheet
-        assert sheet == write_sheet(key, g)
+        for word in ("arm-a", "arm-b", "real", "correct", "core_crossfade", "option", "choice", *options):
+            assert word not in sheet                                   # stage 1: no options anywhere
+        assert sheet == write_stage1_sheet(key, g)
+        assert (out / "packet" / f"group-{g}" / TWO_STAGE.name).exists()
         with zipfile.ZipFile(out / "packet" / f"group-{g}.zip") as z:
             names = z.namelist()
+            assert {i.date_time for i in z.infolist()} == {(1980, 1, 1, 0, 0, 0)}
+            for name in names:
+                if name.endswith((".csv", ".md")):
+                    text = z.read(name).decode()
+                    assert not any(t in text for t in options)
         assert f"group-{g}/sheet.csv" in names and sum(n.endswith(".mp4") for n in names) == 3
         assert not any("key" in n for n in names)
-    # returned sheets, scored
+    # stage 1 comes back, stage 2 goes out
     items = {i["item_id"]: i for i in key["items"]}
-    paths = []
-    for g in range(3):
-        for k in range(2):
-            filled = list(csv.DictReader(io.StringIO(write_sheet(key, g))))
-            for r in filled:
-                item = items[r["item_id"]]
-                r.update(viewable="yes", translation="x", choice=item["correct"], sentence_type="statement",
-                         negated=item["truth"]["negated"], topic="no", naturalness="3",
-                         reviewer_sha256=f"{g}{k}".ljust(64, "a"))
-            buffer = io.StringIO()
-            w = csv.DictWriter(buffer, fieldnames=SHEET_COLUMNS, lineterminator="\n")
-            w.writeheader(); w.writerows(filled)
-            path = tmp_path / f"sheet-{g}-{k}.csv"
-            path.write_text(buffer.getvalue())
-            assert parse_sheet(buffer.getvalue(), key)[1] == []
-            paths += ["--sheet", str(path)]
-    common = ["--key", str(out / "key" / "key.json"), *paths, "--reference", "real"]
-    assert sh.main(common + ["--output", str(tmp_path / "plain.json")]) == 0
+    roster = {f"{g}{k}".ljust(64, "a"): g for g in range(3) for k in range(2)}
+    roster_path = tmp_path / "roster.json"
+    roster_path.write_text(json.dumps(roster))
+    receipts = tmp_path / "receipts.json"
+    key_path = out / "key" / "key.json"
+    firsts, seconds = [], []
+    for reviewer, g in roster.items():
+        filled = list(csv.DictReader(io.StringIO(write_stage1_sheet(key, g))))
+        for r in filled:
+            item = items[r["item_id"]]
+            r.update(viewable="yes", translation=f"{reviewer[:2]} {item['position']}", sentence_type="statement",
+                     negated=item["truth"]["negated"], topic="no", naturalness="3", reviewer_sha256=reviewer)
+        buffer = io.StringIO()
+        w = csv.DictWriter(buffer, fieldnames=STAGE1_COLUMNS, lineterminator="\n")
+        w.writeheader(); w.writerows(filled)
+        path = tmp_path / f"stage1-{reviewer[:2]}.csv"
+        path.write_text(buffer.getvalue())
+        release = ["how2sign-stage2", "--key", str(key_path), "--roster", str(roster_path), "--stage1-sheet", str(path),
+                   "--receipts", str(receipts), "--output-dir", str(tmp_path / "stage2")]
+        assert main(release) == 0
+        firsts += ["--sheet", str(path)]
+        sent = tmp_path / "stage2" / f"stage2-{reviewer[:12]}.csv"
+        back = list(csv.DictReader(io.StringIO(sent.read_text())))
+        assert back[0]["stage1_sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
+        assert back[0]["reviewer_sha256"] == reviewer and set(items[back[0]["item_id"]]["options"]) <= set(back[0].values())
+        for r in back:
+            r["choice"] = items[r["item_id"]]["correct"]
+        returned = tmp_path / f"stage2-back-{reviewer[:2]}.csv"
+        buffer = io.StringIO()
+        w = csv.DictWriter(buffer, fieldnames=STAGE2_COLUMNS, lineterminator="\n")
+        w.writeheader(); w.writerows(back)
+        returned.write_text(buffer.getvalue())
+        seconds += ["--stage2-sheet", str(returned)]
+    assert json.loads(receipts.read_text())[next(iter(roster))]
+    # stage 1 is final once released; the checker and strangers are refused
+    last = path.read_text()
+    path.write_text(last.replace(",3,", ",4,", 1))
+    with pytest.raises(SystemExit, match="stage 1 is final"):
+        main(release)
+    path.write_text(last)
+    stranger = tmp_path / "stranger.json"
+    stranger.write_text(json.dumps({"f" * 64: 0}))
+    with pytest.raises(SystemExit, match="not on the roster"):
+        main([*release[:3], "--roster", str(stranger), *release[5:]])
+    checker_roster = tmp_path / "checker.json"
+    checker_roster.write_text(json.dumps({"c" * 64: 0}))
+    checker_sheet = tmp_path / "checker-stage1.csv"
+    checker_sheet.write_text(last.replace(next(iter(reversed(list(roster)))), "c" * 64))
+    with pytest.raises(SystemExit, match="checker"):
+        main(["how2sign-stage2", "--key", str(key_path), "--roster", str(checker_roster), "--stage1-sheet",
+              str(checker_sheet), "--receipts", str(receipts), "--output-dir", str(tmp_path / "stage2")])
+    # scored
+    common = ["--key", str(key_path), *firsts, "--reference", "real", "--stage1-receipts", str(receipts)]
+    assert sh.main(common + seconds + ["--output", str(tmp_path / "plain.json")]) == 0
     assert "bar" not in json.loads((tmp_path / "plain.json").read_text())
-    assert sh.main(common + ["--bar", "--bootstrap", "50", "--output", str(tmp_path / "bar.json")]) == 0
+    with pytest.raises(SystemExit, match="roster"):
+        sh.main(common + seconds + ["--bar", "--output", str(tmp_path / "x.json")])
+    bar = ["--bar", "--roster", str(roster_path), "--bootstrap", "50"]
+    assert sh.main(common + seconds + bar + ["--output", str(tmp_path / "bar.json")]) == 0
     report = json.loads((tmp_path / "bar.json").read_text())
     read = report["bar"]["systems"]["arm-a"]
     assert report["bar"]["may_release"] is False and report["systems"]["arm-a"]["sentence_type"]["n"] == 0
     assert read["conditions"]["comprehension_wilson_lower"]["result"] == "fail"      # 6 ratings cannot clear 70%
     assert read["comprehension"]["unweighted"]["rate"] == 1 and read["negation"]["recall"]["rate"] == 1
+    # no read: without stage 2 the CLI says why and exits nonzero
+    assert sh.main(common + bar + ["--output", str(tmp_path / "refused.json")]) == 2
+    refused = json.loads((tmp_path / "refused.json").read_text())["bar"]
+    assert "coverage" in refused["refused"] and refused["short"]
+    # write-once on the store
+    (tmp_path / "again").mkdir()
+    prefix = ["--output-prefix", "published/x"]
+    assert main(packet + ["--negation-sheet-sha256", checked, "--output-dir", str(tmp_path / "again" / "a"), *prefix]) == 0
+    with pytest.raises(SystemExit, match="written once"):
+        main(packet + ["--negation-sheet-sha256", checked, "--output-dir", str(tmp_path / "again" / "b"), *prefix])
+    # the states are checked against their index when loaded
+    index_key = systems[1].split(":")[1].split("@")[0]
+    index = json.loads(store.get(index_key))
+    for row in index["states"]:
+        row["frames"] += 1
+        row["reference_frames"] += 1
+    store.put("x/lying/index.json", json.dumps(index).encode())
+    lying = f"arm-a=composition:x/lying/index.json@{hashlib.sha256(store.get('x/lying/index.json')).hexdigest()}"
+    shifted = [lying if a == systems[1] else a for a in packet]
+    with pytest.raises(SystemExit, match="the index says"):
+        main(shifted + ["--negation-sheet-sha256", checked, "--output-dir", str(tmp_path / "again" / "c")])

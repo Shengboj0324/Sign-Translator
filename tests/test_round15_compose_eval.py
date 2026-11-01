@@ -289,6 +289,19 @@ def test_the_export_is_refused_when_it_cannot_be_trusted(tmp_path, stage2_store,
     other[other.index(info["list_sha"])] = hashlib.sha256(outside.read_bytes()).hexdigest()
     with pytest.raises(SystemExit, match="not in this run's set"):
         ce.main(args + ["--export-prefix", "x/a", *other] + out)
+    with pytest.raises(SystemExit):                                        # a refiner would save unrefined states
+        ce.main(args + ["--export-prefix", "x/a", *export, "--refiner-checkpoint-key", "r.pt"] + out)
+    with pytest.raises(SystemExit):
+        ce.main(args + ["--export-prefix", "x/a", *export, "--export-only", "--refiner-checkpoint-key", "r.pt"] + out)
+    # a set labelled C20 is refused, whatever its hash
+    stored = json.loads(store.get("sets/d20.json"))
+    payload = json.dumps(dict(stored, set="C20")).encode()
+    store.put("sets/c20.json", payload)
+    moved = list(args)
+    moved[moved.index("sets/d20.json")] = "sets/c20.json"
+    moved[moved.index(info["set_sha"])] = hashlib.sha256(payload).hexdigest()
+    with pytest.raises(SystemExit, match="refuses C20"):
+        ce.main(moved + ["--export-prefix", "x/a", *export] + out)
     assert not store.exists("x/a/index.json")
 
 

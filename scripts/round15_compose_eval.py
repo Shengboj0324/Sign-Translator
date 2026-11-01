@@ -640,8 +640,10 @@ def export_errors(p, args, variants, store) -> None:
         p.error("--export-prefix exports from a stored sentence set: give --sentences-key")
     if args.shards != 1:
         p.error("--export-prefix writes one index: one shard")
-    if args.export_only and (args.refiner_checkpoint_key or args.likelihood or args.also_translator_run):
-        p.error("--export-only reads nothing: not with a refiner, --likelihood or --also-translator-run")
+    if args.refiner_checkpoint_key:
+        p.error("--export-prefix saves the composed states before any refinement: not with a refiner")
+    if args.export_only and (args.likelihood or args.also_translator_run):
+        p.error("--export-only reads nothing: not with --likelihood or --also-translator-run")
     for name in [f for f in args.export_forms.split(",") if f] if args.export_forms else variants:
         variant, _, mark = name.partition("@")
         known = variant in variants and (not mark or (mark == PREDICTED[1:] and args.predicted_duration)
@@ -739,6 +741,8 @@ def run(args) -> dict:
         if comp_a_on(args):
             from comp_a_lib import check_d20_payload
             check_d20_payload(stored_set)
+        if getattr(args, "export_prefix", None) and stored_set.get("set") == "C20":
+            raise SystemExit("--export-prefix refuses C20: it stays untouched by the rater read")
         val = load_sentence_set(stored_set, manifest, args.mix_key, args.mix_sha256)[:args.clips]
         sentence_set = dict(key=args.sentences_key, sha256=args.sentences_sha256, set=stored_set.get("set"),
                             stored=len(stored_set["records"]), used=len(val))

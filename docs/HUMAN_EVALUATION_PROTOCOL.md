@@ -1,7 +1,7 @@
 # Human evaluation protocol: English -> ASL output judged by Deaf ASL users (plan item 3b)
 
-This is the study team's protocol. Reviewers receive only `HUMAN_EVALUATION_REVIEWER_GUIDE.md`, their sheet and their
-videos. Code:
+This is the study team's protocol. Reviewers receive only `HUMAN_EVALUATION_REVIEWER_GUIDE.md` (the first How2Sign read:
+`HUMAN_EVALUATION_REVIEWER_GUIDE_TWO_STAGE.md`), their sheet and their videos. Code:
 - `signtranslator/eval_framework/human_study.py`: design, sheets, validation and scores;
 - `scripts/build_human_eval_packet.py`: builds the packets;
 - `scripts/score_human_eval.py`: scores the returned sheets.
@@ -29,6 +29,7 @@ Every utterance is signed by every system (`--system`):
 | `plan` | Plan-conditioned generator on the gold ASLLRP plan | Plan -> motion on its own |
 | `translate` | Gloss planner -> plan -> the same generator | The full English -> ASL chain |
 | `english` | Generator conditioned on English directly | The pre-plan baseline |
+| `composition` | A composed state exported by `round15_compose_eval.py --export-prefix` (first How2Sign read) | The composition arm, with its cache and seeds recorded |
 
 All systems sign on the recorded utterance's clock, so duration is no cue. Every video is drawn identically:
 - four skeleton panels (front, side, each hand) and a schematic face panel (`generation/face_preview.py`: head turn,
@@ -56,6 +57,18 @@ these renders. They do not describe an avatar (item 5), and the study is re-run 
 - **Options:** four English sentences per utterance. The distractors are other sentences of the same partition with
   the closest word count, drawn from the whole partition so elimination does not help. Every system of an utterance
   shows the same options.
+  - **First How2Sign read:** distractors come only from D20's other sentences, not the whole partition: the
+    whole-partition pool would read C20 and fresh text. The builder refuses any wider pool.
+- **Two-stage sheet (first How2Sign read; declared 2026-11-01, 03:28 UTC):** the correct option holds a negation word
+  31.5% of the time against 16.5% for distractors, and a guess from text alone scores 63.6% on negated rows, so the
+  options would give negation away.
+  - Stage 1: watch, then give the free translation, negation, sentence type, topic and naturalness, with no options
+    shown. It is returned and hashed; the team records the hash when it releases stage 2 (`how2sign-stage2`). Stage 1 is
+    then final.
+  - Stage 2: the forced choice, on a sheet carrying the rater's key and the stage 1 hash. The scorer refuses a stage 2
+    answer without a matching stage 1 hash.
+  - The sentence type and topic have no truth on How2Sign (no ASLLRP markers): asked, reported, not scored. Negation
+    truth is the Deaf checker's (section 6).
 - **Blinding:**
   - Item ids and video names are random, and the presentation order is shuffled per group.
   - System labels, correct options and markers exist only in `key/key.json`, which is hashed and never sent.
@@ -96,6 +109,15 @@ example NIC/RID certification or ASL teaching credentials).
    python scripts/score_human_eval.py --key key/key.json --sheet <returned>.csv … --output report.json
    ```
 
+**First How2Sign read:**
+
+1. `build_human_eval_packet.py how2sign-draw` on D20 gives `draw.json` and the Deaf checker's `negation_check.csv`. The
+   checker sees real recordings only and cannot be a rater.
+2. `round15_compose_eval.py … --export-prefix … --export-only`, once per arm, on the draw's sentence list.
+3. `build_human_eval_packet.py how2sign-packet` builds stage 1 only. A sentence with no selected word is refused and listed.
+4. As each stage 1 returns, `how2sign-stage2` hashes it, records the receipt and writes that rater's stage 2.
+5. `score_human_eval.py --key … --sheet <stage 1> … --stage2-sheet <stage 2> … --stage1-receipts … --roster … --bar`.
+
 ## 6. Analysis (fixed before any sheet returns)
 
 | Endpoint | Statistic | Reading |
@@ -127,6 +149,28 @@ How these are read (declared 2026-10-31, 22:39 UTC):
 - A sentence is negated only if its English has a negation and a Deaf checker, not shown any generated clip, confirms the real recording signs it.
 - "Negation recovered" means recall Wilson lower bound ≥ 70%, upper 95% bound of reference minus system recall ≤ 10 points, and false-alarm Wilson upper bound ≤ 20%. If the reference's recall lower bound is below 70%, the read is void.
 - A system with over 5% of rows marked `viewable = no` does not pass.
+
+The interval method changed on 2026-11-01, 03:28 UTC, before any sheet exists and from simulation only
+(`docs/NEXT_PHASE_PLAN.md`, "interval method and sheet order changed"). This loosens the two lines on intervals above;
+the plan discloses that. The bar's values are unchanged. As implemented (`human_study.bar_read`):
+- **Variance:** V = Σ_u(Σψ)²·U/(U−1) + max(Σ_r(Σψ)²·R/(R−1) − Σψ², 0), the two-way cluster variance of the ratings' influence
+  values, by sentence u and rater r. The bootstrap is reported beside it and gates nothing.
+- **Comprehension:** Wilson lower bound ≥ 70% and a one-sided 4% logit bound with t(R−1) ≥ 70%. Read at D20's eligible
+  shares of three strata: confirmed, rejected candidates, non-candidates. The unweighted value sits beside it. Wilson on a
+  weighted rate uses Kish's effective sample size.
+- **Within 10 points:** one-sided 5% upper bound of reference minus system with t(R−1) ≤ 10 points, on the sentences both
+  have.
+- **Negation:** recall by Wilson and by the same bound, both ≥ 70%; the same upper bound on the recall gap ≤ 10 points;
+  false-alarm Wilson upper bound ≤ 20%, over every sentence not confirmed. Void if the reference misses either recall
+  bound.
+- **Coverage:** a read needs designed-row coverage ≥ 95% per system and per group, over the private roster of keys and
+  groups; otherwise it is refused and the scorer exits nonzero. Blanks inside a rater's answered range and dropped rows
+  count with `viewable = no` against the 5% rule; the reference has the same gate on itself.
+- **Raters:** nobody off the roster counts, the Deaf checker cannot be a rater, and identical answer vectors block a pass.
+  Raters far below the rest in agreement with the others, computed blind to system, are flagged; every condition must
+  hold with and without them.
+- **A generator that beats the reference** is flagged, as section 2 requires independent replication; the flag alone does
+  not fail it.
 
 The instrument, realism, serving and licensing requirements still apply (`docs/NEXT_PHASE_PLAN.md`).
 

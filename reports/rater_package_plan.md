@@ -1,6 +1,6 @@
 # First Deaf-rater read: package plan
 
-2026-10-31, 22:34 UTC. Diagnostic: cannot clear the release bar.
+2026-10-31, 22:34 UTC; power and status updated 2026-11-01. Diagnostic: cannot clear the release bar.
 
 ## 1. Sentences
 Draw 200 plus 20 pilot from D20's 427 eligible (distinct, ≥1.5 s, hand tracked ≥70%). Distractors: D20's other sentences only (tested); the builder's whole-partition pool would read C20 and fresh text.
@@ -12,19 +12,23 @@ Bar conditions failed: reference-length timing (`@predicted` waits for the next 
 ## 2. Systems and power
 First arm, no-gains stack, reference through the same avatar. Three groups; each rater sees 200 sentences (~67 per system). At an assumed 2 min per item: 6.7 h, nine 45-minute sessions.
 
-| Raters | Ratings per system | Wilson ± at 75% | Power, true 75% | Detect 10 points |
-|---|---|---|---|---|
-| 3 | 200 | 6.0 | 35% | 66–70% |
-| 6 | 400 | 4.2 | 62% | 93% |
-| **9** | 600 | 3.5 | 76% | 98% |
+Power by the method declared 2026-11-01, 03:28 UTC (Wilson plus method D; 200 sentences, three groups, sentence SD 1.0, rater SD 0.5; simulation only):
 
-Nine raters, about 67 hours; the bound needs 73.8% observed. With assumed clustering, power is 65–67% at true 75%, ≥98% at 80%, and Wilson falsely passes a true 70% 8–14% of the time, so add a clustered bound. Three raters cannot give kappa. $500 per system implies $25/h; $40/h gives about $2,700.
+| Raters | Ratings per system | True 80% | True 75% | True gap 0 | True gap 5 |
+|---|---|---|---|---|---|
+| **9** | 600 | about 85% | about 33% | about 100% | about 65% |
+
+About 15 raters give 80% power with a true 5-point gap, and about 45 give 80% at a true 75%. False pass for six raters or more: .036–.045 at a true 70%, .024–.055 at a true 10-point gap. This replaces the earlier table, whose power was Wilson's alone.
+
+The build's own run, with the three-strata weights and 1,500 simulated studies (375 at 30 or more raters): nine raters 82% at true 80%, 31% at true 75%, 99% at gap 0, 58% at gap 5; 15 raters 81% at gap 5; 45 raters 77% at true 75%.
+
+Nine raters, about 67 hours. Three raters cannot give kappa. $500 per system implies $25/h; $40/h gives about $2,700.
 
 ## 3. Missing
-- **Composed states** (`round15_compose_eval.py`): D20 caches exist, no export. 1 day.
-- **How2Sign packet** (`build_human_eval_packet.py`): no composition kind; `design_study` raises KeyError without markers. 1 day.
-- **Negation truth:** English rule plus signer check, as declared in the plan (22:39 UTC). 26 of 80 negated sentences have no negation word cached. 0.5 day.
-- **Bar scorer** (`score_study`): no paired interval or clustered bound. 0.5 day.
+- **Composed states** (`round15_compose_eval.py --export-prefix`): built, synthetic only; not run on D20.
+- **How2Sign packet** (`build_human_eval_packet.py`, `how2sign-draw`, `how2sign-packet`, `how2sign-stage2`): built, two-stage, synthetic only.
+- **Negation truth:** English rule and checker's sheet built; the Deaf checker is needed. 26 of 80 negated sentences have no negation word cached.
+- **Bar scorer** (`score_human_eval.py --bar`): built, on synthetic sheets.
 - **Design, sheets** (`human_study.py`): passed, synthetic IDs.
 - **Avatar** (`render_avatar.py`): works. Bald, flat, hands through body, shake unfixed; v2 unstarted. Pilot decides.
 - **Hosting, blinding:** nothing built; MP4 tags clean; speed may reveal the reference. 2 days.
