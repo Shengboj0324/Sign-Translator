@@ -114,8 +114,11 @@ def open_zip(store) -> zipfile.ZipFile:
         have = path.stat().st_size
         stream = path.open("rb")
     if have != ZIP_SIZE:
+        stream.close()
         raise SystemExit(f"{ZIP_KEY}: {have} bytes, its index says {ZIP_SIZE}")
-    return zipfile.ZipFile(stream)
+    archive = zipfile.ZipFile(stream)
+    archive._filePassed = 0  # closing the archive closes the stream it was given
+    return archive
 
 
 def read_member(archive, sign: str) -> bytes | None:
