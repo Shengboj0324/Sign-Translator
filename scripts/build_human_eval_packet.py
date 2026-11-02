@@ -212,7 +212,7 @@ def load_mix(store, mix_key: str, mix_sha256: str) -> dict:
         return load_manifest(path, expected_sha256=mix_sha256)
 
 
-def load_d20(store, mix_key: str, mix_sha256: str, sentences_key: str, sentences_sha256: str, *, manifest=None) -> tuple[list, dict]:
+def load_d20(store, mix_key: str, mix_sha256: str, sentences_key: str, sentences_sha256: str) -> tuple[list, dict]:
     """(D20's manifest records in the set's order, the stored set), after pinning the set and refusing any other set."""
     from round20_lib import load_sentence_set
     payload = store.get(sentences_key)
@@ -223,8 +223,7 @@ def load_d20(store, mix_key: str, mix_sha256: str, sentences_key: str, sentences
     stored = json.loads(payload)
     if stored.get("set") != "D20":
         raise SystemExit(f"the rater read draws from D20 only, not {stored.get('set')!r}")
-    manifest = load_mix(store, mix_key, mix_sha256) if manifest is None else manifest
-    return load_sentence_set(stored, manifest, mix_key, mix_sha256), stored
+    return load_sentence_set(stored, load_mix(store, mix_key, mix_sha256), mix_key, mix_sha256), stored
 
 
 def selected_words(manifest, records) -> dict:
@@ -448,10 +447,8 @@ def how2sign_draw(argv) -> int:
     from train_text_to_motion import make_store
     from evaluate_text_to_motion import load_state
     store = make_store(args.store)
-    manifest = load_mix(store, args.mix_key, args.mix_sha256)
-    records, stored = load_d20(store, args.mix_key, args.mix_sha256, args.sentences_key, args.sentences_sha256, manifest=manifest)
-    words_of = selected_words(manifest, records)
-    del manifest
+    records, stored = load_d20(store, args.mix_key, args.mix_sha256, args.sentences_key, args.sentences_sha256)      # the set's pin comes first
+    words_of = selected_words(load_mix(store, args.mix_key, args.mix_sha256), records)
     rows, counts = eligible_sentences(
         records, lambda r: load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]),
         min_seconds=args.min_seconds, min_hand_coverage=args.min_hand_coverage, words_of=words_of)
