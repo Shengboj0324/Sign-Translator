@@ -6236,3 +6236,19 @@ Branch `path-read` deb48920 (digest e47cb971), two review rounds applied, not me
 | Arms only, hands held | 3.504 | 51% [32, 71] | +0.225 | 34% [29, 40] |
 
 Shares sum well above 100%: losses overlap, since either part alone costs most of the total (channels overlap +0.389 [+0.291, +0.494] on likelihood). So no single part restores the reading, and on likelihood arms cost least. The label names where v1's reading falls, not which channel lost content, and v1 was fine-tuned on two-view. Question 2 is still running.
+
+**Parts read, Question 2 (read 2026-11-02, recorded 01:11 UTC).** `round20/path-read-parts/report.json` sha 86ad80c2, 500 of 500, no alert, both controls exact (v1 4.493 and 1.68; the parent's monitor sample 6.0888 against 6.0888). **Label: gap_not_reproduced.**
+
+| Instrument | Two-view | Monocular | Monocular's share of the gap |
+|---|---|---|---|
+| Parent `kp2d-uwb-v2`, margin over a still pose (likelihood) | +0.2372 [+0.2101, +0.2653] | +0.2368 | **99.8% [92.6, 107.6]**; drop −0.0004 [−0.0179, +0.0173] |
+| v1, fine-tuned on two-view (likelihood over blank) | +0.2337 | +0.0410 | **17.6% [5.2, 28.2]** |
+| Parent, BLEU over its blank, unlabelled | 2.207 | 1.949 | 77.6% [40.1, 124.5]; drop −0.258 [−0.735, +0.202] |
+
+Blank 1.058 and still 0.895 on the parent's BLEU; real two-view through it 2.130.
+
+**Reading, as declared.** v1's parent reads the two paths equally on clip-specific likelihood, while fine-tuned v1 keeps only 18% of the monocular gap. That points at v1's fine-tune on two-view keypoints as a large part of the drop. **It doesn't separate that from everything else:** the parent trained on MediaPipe image landmarks, the source of the monocular path's hands, so it could read that path generously, and BLEU leaves part of a gap unresolved. Neither path is its training input; on feature marginals, both sit at a similar distance from it. Question 1's parts name where v1's reading falls, and this result weakens the case that they name lost content. **Hand-data work is not justified by these reads alone; shares against v1's real-minus-blank may understate composition.**
+
+**Next, both report only, both to be declared before any read:**
+1. **Read composition through the parent:** the eight A5 draws' added-words form against real, still and mismatched margins. How much of real's clip-specific margin does generated motion carry on an instrument not fitted to two-view?
+2. **The symmetric test:** fine-tune the parent on How2Sign's monocular states with v1's recipe and read both paths on D20. If it prefers monocular as v1 prefers two-view, fit is shown directly. If it still prefers two-view, content loss gains support.
