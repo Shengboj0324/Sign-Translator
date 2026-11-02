@@ -6569,3 +6569,7 @@ Under 6 raters the rule reads nothing, as method D's false-pass rates were simul
 
 The first signer pilot is 60 sentences and 8 raters, 2 per group, across all four groups, with the arms `composition`, `composition_shuffled`, `oracle` and `reference`. Pilot raters don't join the main read. The arms are report only and never count toward the release bar, which is unchanged. Sentences with no selected word leave the draw. Composition is W14b, best of 16, at predicted timing. Power from the committed script (`reports/rater_pilot_power.json`): half-width about ±11 points; the declared rule detects a true 20-point drop 79% of the time and a 10-point drop 20%, or 55% and 12% if the drop is read on the logit scale. Assumed hours and cost at $40/h: pilot about 20 h, $800; main read about 75 h, $3,000. Merged code has had one independent review with its fixes applied; those fixes have not been re-reviewed, and an independent re-check comes before any real draw.
 
+### ASLLVD train clips cleared for raters by the owner (2026-11-02, 20:30 UTC)
+
+Owner, 2026-11-02 20:30 UTC, asked whether ASLLVD train clips may be shown to raters under the DAI terms, answered: Yes. This covers ASLLVD train clips only, shown to consenting reviewers, research use only and non-commercial, under the DAI terms. RIT and WLASL aren't covered. The export's `--word-format-licence-note` carries this sentence into each index.
+
