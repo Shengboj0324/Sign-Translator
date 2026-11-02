@@ -3,17 +3,21 @@
 **Why.** The parent reads both paths equally on its clip-specific margin (99.8% [92.6, 107.6]) while the paths sit 0.587 palm widths apart on the hands (mirror control 1.286). That share means something about hands only if the parent's margin moves when hands move.
 
 **How this will be read (stated before any read; the commit holding this text precedes the job).**
-- **If the parent's margin holds with fingers frozen, its 99.8% says nothing about hands.** Holds: ``fingers_frozen``'s share of ``nearest_two_view``'s margin has a lower bound at least 0.75.
-- Falls: that share's upper bound is at most 0.75, and the paired drop's lower bound is above zero: the parent reads fingers, and its 99.8% does bear on them.
-- Otherwise, or if the instrument's own margin has a lower bound at or under zero, unresolved. The same rule labels v1's likelihood over blank and the mono-tuned instrument's margin.
-- **The size of finger change its interval can detect:** the mean 95% half-width of the three noise levels' paired drops, over the slope of the drop on distance (through the origin, the levels' measured distances), in palm widths. At or under 0.587 the instrument could see a change the size of the path's; above it, it could not, and its equal reading of the paths is no evidence on fingers. No slope above zero reads "not detectable in this range".
+- **If the parent's margin holds with hands still, its 99.8% says nothing about hands.** Holds: ``hands_still``'s share of ``nearest_two_view``'s margin has a lower bound at least 0.75. Only that rung may say it: ``fingers_frozen`` freezes finger articulation alone, and hand-local points keep moving with wrist and forearm rotation.
+- Falls: that share's upper bound is at most 0.75, and the paired drop's lower bound is above zero: the parent reads the hands, and its 99.8% does bear on them.
+- Otherwise, or if the instrument's own margin has a lower bound at or under zero, unresolved.
+- **Finger articulation, on the margin.** ``fingers_frozen`` holds the clip's own middle frame, which leaves one real handshape in the input; ``fingers_neutral`` holds a constant neutral hand. If the own pose falls, the instrument reads finger motion. If the own pose holds and neutral falls, it reads a static handshape, not motion. If both hold, it reads no finger content. Otherwise unresolved. The still baseline keeps the clip's handshape, so a neutral share is biased low: use it to confirm a hold, or read its raw paired drop against ``fingers_frozen`` (``neutral_against_frozen``).
+- **v1's case is computed on the margin over its still too.** Its likelihood over blank inherits a presence offset, so that label cannot carry the bold sentence, and up to about 0.18 of a share may be offset.
+- **The size of finger change its interval can detect:** the mean 95% half-width of the three noise levels' paired drops, over the slope of the drop on distance (through the origin, the levels' measured distances), in palm widths. ``sees_path_distance`` true, at or under 0.587, is necessary, not sufficient: the 0.587 includes hand orientation, and finger noise has none. "Reads fingers" also needs the noise rungs to agree: drops that rise with distance, the largest with a lower bound above zero. Above 0.587 it could not see a change the size of the path's, and its equal reading of the paths is no evidence on fingers. No slope above zero reads "not detectable in this range".
 The ladder is a reading, not a rule: no step branches on it, it starts no training and no decision, and it makes no claim about composition.
 
 **What it cannot show.** Noise is not the path's difference, whose structure is the tracker's; the 0.587 also holds hand orientation, which ``finger_noise_*`` leaves alone (``wrist_turned`` covers that). An instrument can read a damage poorly and still read another. Sensitivity on real signing says nothing about generated motion.
 
 **Forms.** Every damaged form starts from ``nearest_two_view``: real two-view D20, nearest-filled with V0's fill, all points marked, so marks do not vary between rungs (``hand_dropout_marked`` alone changes them). Lengths never change. Noise is fixed by clip, not by rung: the same pattern scaled.
 - ``real_two_view``, ``blank``, ``nearest_two_view``, ``still_two_view``: the parts job's, read again here (``still_two_view``: the nearest fill with its middle frame held, flags on).
-- ``fingers_frozen``: both hands channels hold their middle frame; the body channel, so arms and each wrist's rotation, moves.
+- ``fingers_frozen``: finger articulation frozen: both hands channels hold the clip's own middle frame, one real handshape; the body channel, so arms and each wrist's rotation, moves, and hand-local points with it.
+- ``fingers_neutral``: both hands channels hold a constant neutral pose (``tok_v0.neutral_pose``), the body channel moving.
+- ``hands_still``: fingers and each hand's world orientation held at the middle frame, arms moving: hand-local points stand in v1's view.
 - ``finger_noise_015``, ``_030``, ``_060``: a smooth rotation noise on every finger joint (per joint and axis, unit-variance Gaussian through a 7-frame box, about 0.3 s), scaled per clip so the mean distance in v1's view of both hands' 40 local points is 0.15, 0.30 or 0.60 palm widths (``path_read.key_distance``, the unit of 0.587).
 - ``hand_dropout_marked``: each hand, independently, unmarked on about 25% of frames, MediaPipe's published per-hand rate as the research report gives it (not checked against the source here); a two-state chain with mean run 6 frames (0.25 s), since tracking loss comes in runs: the run length is this read's assumption. ``hand_dropout_filled``: the same frames nearest-filled and marked, how word clips reach an instrument.
 - ``wrist_turned``: the same noise on both wrist rotations, fingers kept, scaled to 0.587 palm widths. Wrist positions do not move. ``wrist_moved``: the noise on both forearms with each hand's world orientation held (``path_parts.arms_with_hand_pose``), scaled to the path's 0.231 shoulder widths at the wrists. Hand-local points do not move.
@@ -21,8 +25,8 @@ The ladder is a reading, not a rule: no step branches on it, it starts no traini
 
 **Each instrument** (one process; the form's name says which, no option can) reads a clip's reference and 4 others, the parts job's draw. **Margin:** mean NLL of the mismatched minus own, per clip, over ``still_two_view``'s. **Likelihood:** own NLL over that instrument's blank. Both are given for every instrument under one joint bootstrap (n 2,000, seed 0), with BLEU. The rungs' shares, paired drops, measured distances and the same rows split by whether v1 trained on the clip (``parent_lib``: 234 of D20 are in its training), report only.
 
-**Controls.** v1's ``real_two_view`` and ``blank`` against the pinned stored report (``tok_probes.canary_read``), and in ``--set base`` the parent's four anchors and v1's ``nearest_two_view`` against the parts job's stored forms, pinned by hash (at least 0.98 of hypotheses identical, BLEU within 0.05, mean per-clip NLL within 0.001). A miss voids the read, writes a void record and stops it; ``read`` refuses every other form without a passed control of this code and environment. The parent's monitor control is not repeated: reproducing the parts job's forms carries it.
-**Alerts** (the label is withheld on any, and in a smoke): a noise rung's mean distance over 5% off target, a rung moving a part it must hold (over 0.001 in v1's view), dropout's realised rate outside 0.2-0.3 on D20, an instrument's hash not its pin, or fewer than 500 clips on D20.
+**Controls.** Before the smoke, ``stored-check`` fetches and hashes every stored form and asserts 500 signs, and 5 NLL columns on the parent's, printing each form's environment beside this pod's: a pin failure stops the job with status 1, not a void. v1's ``real_two_view`` and ``blank`` against the pinned stored report (``tok_probes.canary_read``), and in ``--set base`` the parent's four anchors and v1's ``nearest_two_view`` against the parts job's stored forms (at least 0.98 of hypotheses identical, BLEU within 0.05, mean per-clip NLL within 0.001). A miss voids the read, writes a void record and stops it; ``read`` refuses every other form without a passed control of this code and environment. The parent's monitor control is not repeated: reproducing the parts job's forms carries it.
+**Alerts** (the label is withheld on any, and in a smoke): any clip or a rung's mean over 5% off its target distance, a rung moving a part it must hold (over 0.001 in v1's view), ``hands_still``'s hand-local points moving (over 0.001), dropout's realised rate outside 0.2-0.3 on D20, an instrument's hash not its pin, fewer than 500 clips on D20, D20's count in v1's training list not 234, or the parent's margins off by over 0.005 from the parts read: 0.2372 on ``nearest_two_view`` over its still, 0.0610 raw on ``still_two_view``.
 
 **Clips and rules.** D20 by ``s2_lib.load_read_list``, which refuses C20 and any other list unread; c00 and other partitions are refused. Monocular states are never opened. ``--smoke-train 5 --smoke-longest 2 --smoke-never-tracked 1``: c02 train clips through every rung; no D20 state in a smoke.
 
@@ -70,28 +74,38 @@ BASE = "nearest_two_view"
 STILL = "still_two_view"
 ANCHORS = ("real_two_view", "blank", BASE, STILL)
 NOISE = dict(finger_noise_015=.15, finger_noise_030=.30, finger_noise_060=.60)
-RUNGS = ("fingers_frozen", *NOISE, "hand_dropout_marked", "hand_dropout_filled", "wrist_turned", "wrist_moved", "arms_frozen")
+RUNGS = ("fingers_frozen", "fingers_neutral", "hands_still", *NOISE, "hand_dropout_marked", "hand_dropout_filled", "wrist_turned", "wrist_moved", "arms_frozen")
 FORMS = ANCHORS + RUNGS
 PATH_HANDS, MIRROR_HANDS, PATH_WRISTS = .587, 1.286, .231
 TARGETS = dict(NOISE, wrist_turned=PATH_HANDS, wrist_moved=PATH_WRISTS)
 TARGET_GROUP = dict(dict.fromkeys(NOISE, "hands"), wrist_turned="hands", wrist_moved="wrists")
-HOLDS = dict(fingers_frozen=("shoulders", "elbows", "wrists"), finger_noise_015=("shoulders", "elbows", "wrists"), finger_noise_030=("shoulders", "elbows", "wrists"), finger_noise_060=("shoulders", "elbows", "wrists"), wrist_turned=("shoulders", "elbows", "wrists"), wrist_moved=("hands",), arms_frozen=("hands",))
+HOLDS = dict(fingers_frozen=("shoulders", "elbows", "wrists"), fingers_neutral=("shoulders", "elbows", "wrists"), hands_still=("shoulders", "elbows", "wrists"), finger_noise_015=("shoulders", "elbows", "wrists"), finger_noise_030=("shoulders", "elbows", "wrists"), finger_noise_060=("shoulders", "elbows", "wrists"), wrist_turned=("shoulders", "elbows", "wrists"), wrist_moved=("hands",), arms_frozen=("hands",))
 BOX, HOLD_TOLERANCE, TARGET_TOLERANCE = 7, 1e-3, .05
 DROP_RATE, DROP_RUN, DROP_FLOOR, DROP_CEILING = .25, 6., .2, .3
 SEED = 20261105
 STREAM = dict(fingers=0, wrist_turned=1, wrist_moved=2, dropout=3)
 KEPT = .75
+CASE_RUNGS = ("fingers_frozen", "fingers_neutral", "hands_still")
+V1_TRAINING_IN_D20 = 234
+PARENT_FIGURES = dict(nearest_over_still=.2372, still_raw=.0610)
+FIGURE_TOLERANCE = .005
 FIT_STEPS, FIT_TOLERANCE, MAX_SCALE = 8, .01, np.pi
 BOOT = Q.BOOT
 PRESTATED = dict(
-    holds="**If the parent's margin holds with fingers frozen, its 99.8% says nothing about hands.** Holds: ``fingers_frozen``'s share of ``nearest_two_view``'s margin has a lower bound at least 0.75.",
-    falls="Falls: that share's upper bound is at most 0.75, and the paired drop's lower bound is above zero: the parent reads fingers, and its 99.8% does bear on them.",
+    holds="**If the parent's margin holds with hands still, its 99.8% says nothing about hands.** Holds: ``hands_still``'s share of ``nearest_two_view``'s margin has a lower bound at least 0.75.",
+    falls="Falls: that share's upper bound is at most 0.75, and the paired drop's lower bound is above zero: the parent reads the hands, and its 99.8% does bear on them.",
     otherwise="Otherwise, or if the instrument's own margin has a lower bound at or under zero, unresolved.",
-    detect="At or under 0.587 the instrument could see a change the size of the path's; above it, it could not, and its equal reading of the paths is no evidence on fingers.")
+    fingers="If the own pose falls, the instrument reads finger motion. If the own pose holds and neutral falls, it reads a static handshape, not motion. If both hold, it reads no finger content.",
+    neutral="The still baseline keeps the clip's handshape, so a neutral share is biased low: use it to confirm a hold, or read its raw paired drop against ``fingers_frozen`` (``neutral_against_frozen``).",
+    v1="Its likelihood over blank inherits a presence offset, so that label cannot carry the bold sentence, and up to about 0.18 of a share may be offset.",
+    detect="``sees_path_distance`` true, at or under 0.587, is necessary, not sufficient: the 0.587 includes hand orientation, and finger noise has none.")
 NOT_DECIDED = "report only: the header's readings are stated before the read; no rule, bar or verdict here gates anything"
 DISCLOSURES = dict(
     training="v1 trained on 234 of D20's clips and was selected on a pool holding 265 more, through two-view. by_v1_training splits every row; the parent never trained on How2Sign.",
-    noise="Noise is not the path's difference, whose structure is the tracker's. 0.587 also holds hand orientation, which finger noise leaves alone.",
+    noise="Noise is not the path's difference, whose structure is the tracker's. 0.587 also holds hand orientation, which finger noise leaves alone, so sees_path_distance true is necessary, not sufficient.",
+    frozen="fingers_frozen holds the clip's own middle frame, which leaves one real handshape in the input, and hand-local points keep moving with wrist and forearm rotation: it freezes finger articulation, not the hand. Only hands_still may say nothing about hands.",
+    neutral="The still baseline keeps the clip's handshape, so fingers_neutral's share is biased low: it can confirm a hold, or read neutral_against_frozen, its raw paired drop against fingers_frozen.",
+    presence="v1's likelihood over blank inherits a presence offset: up to about 0.18 of a share may be offset, so the margin reading is what can carry the bold sentence.",
     dropout="The 25% per-hand rate is MediaPipe's published figure as the research report gives it, not checked against the source here; the 6-frame mean run is this read's assumption. The distance row of a marked dropout covers only the frames both mark.",
     candidates="Every instrument reads 5 candidates here, so v1 has a margin too. Its first column is its one-candidate read's own NLL.")
 
@@ -188,6 +202,32 @@ def held_fingers(base):
     return replace(base, channels=channels)
 
 
+def neutral_fingers(base, tokenizer):
+    """Both hands channels at a constant neutral pose; the body channel moves."""
+    neutral = V.neutral_pose(base, tokenizer)
+    channels = dict(base.channels)
+    for name in T.HANDS:
+        c, values = base.channels[name], neutral.channels[name].values
+        if values.shape != c.values.shape:
+            raise SystemExit(f"{name}: the neutral pose is {values.shape}, the clip {c.values.shape}")
+        channels[name] = replace(c, values=np.repeat(values[[0]], len(base.timestamps), 0).astype(c.values.dtype))
+    return replace(base, channels=channels)
+
+
+def hands_still_state(base):
+    """Fingers and each hand's world orientation at the middle frame, arms moving: hand-local points stand in v1's view."""
+    held = held_fingers(base)
+    return replace(held, channels={**held.channels, "body": PP.arms_with_hand_pose(base, PP.held_still(base))})
+
+
+def local_motion(state) -> float:
+    """The largest move of any hand-local point from its first frame, in v1's view."""
+    from signtranslator.data.keypoints2d import from_state, normalise
+    points, valid = from_state(state)
+    view = normalise(points, valid, y_down=False)[:, list(PP.HAND_LOCAL_POINTS)]
+    return float(np.abs(view - view[[0]]).max())
+
+
 def finger_noised(base, noise: dict, scale: float):
     channels = dict(base.channels)
     for name in T.HANDS:
@@ -265,10 +305,15 @@ def fit_scale(build, base, group: str, target: float) -> tuple:
     return best
 
 
-def rung(name: str, base, clip: int) -> tuple:
+def rung(name: str, base, clip: int, tokenizer=None) -> tuple:
     """(the damaged state, what was done to this clip)."""
     if name == "fingers_frozen":
         state, extra = held_fingers(base), {}
+    elif name == "fingers_neutral":
+        state, extra = neutral_fingers(base, tokenizer), {}
+    elif name == "hands_still":
+        state = hands_still_state(base)
+        extra = dict(local_motion=round(local_motion(state), 6))
     elif name in NOISE:
         noise = finger_noise_of(base, clip)
         state, scale, _ = fit_scale(lambda s: finger_noised(base, noise, s), base, "hands", NOISE[name])
@@ -305,7 +350,7 @@ def build_states(form: str, refs, tokenizer) -> tuple:
         return bases, list(refs), None
     if form == STILL:
         return [PP.held_still(b) for b in bases], list(refs), None
-    rows = [rung(form, b, i) for i, b in enumerate(bases)]
+    rows = [rung(form, b, i, tokenizer) for i, b in enumerate(bases)]
     return [r[0] for r in rows], list(bases), [r[1] for r in rows]
 
 
@@ -330,6 +375,26 @@ def run_instruments(args) -> int:
             raise SystemExit(f"{Q.TRAINED_RECORD}: no trained record; the mono-tuned instrument is not ready")
         block = json.loads(store.get(Q.TRAINED_RECORD))
     print(json.dumps(dict(instruments=block)), flush=True)
+    return 0
+
+
+def run_stored_check(args) -> int:
+    """Before the smoke: every stored form fetched and hashed, 500 signs, 5 NLL columns on the parent's, each form's environment beside this pod's. A pin failure stops with status 1: it is no void, nothing was read."""
+    from train_text_to_motion import make_store
+    P.check_pins()
+    store = make_store(args.store)
+    P.check_sha(store.get(P.CANARY_REPORT), P.CANARY_REPORT_SHA, P.CANARY_REPORT)
+    rows = {}
+    for instrument, table, columns in (("parent", Q.STORED_PARENT, Q.CANDIDATES), ("v1", Q.STORED_V1, None)):
+        for name in table:
+            form = Q.stored_form(store, table, name)
+            if len(form.get("signs") or ()) != L.D20_CLIPS:
+                raise SystemExit(f"{instrument} {name}: {len(form.get('signs') or ())} signs, not {L.D20_CLIPS}")
+            shape = np.asarray(form["nll"]).shape
+            if columns is not None and shape[1:] != (columns,):
+                raise SystemExit(f"{instrument} {name}: NLL of shape {shape}, not {columns} columns")
+            rows[f"{instrument}.{name}"] = dict(sha256=table[name][1], signs=len(form["signs"]), nll_columns=shape[1], environment=form.get("environment"))
+    print(json.dumps(dict(stored_check=rows, environment_here=P.environment())), flush=True)
     return 0
 
 
@@ -418,8 +483,9 @@ def run_control(args) -> int:
     if args.set == "base":
         pairs = [(form_name("v1", BASE), Q.STORED_V1, BASE)] + [(form_name("parent", f), Q.STORED_PARENT, f) for f in ANCHORS]
         for name, table, stored_name in pairs:
+            stored = Q.stored_form(store, table, stored_name)      # a pin failure stops here with status 1: nothing is voided
             try:
-                rows[name] = Q.same_read(read[name], Q.stored_form(store, table, stored_name))
+                rows[name] = Q.same_read(read[name], stored)
             except SystemExit as error:
                 rows[name] = dict(misses=[str(error)])
             misses += [f"{name} {m}" for m in rows[name]["misses"]]
@@ -468,6 +534,17 @@ def frozen_case(own: dict, share: dict | None, drop: dict) -> str:
     return "falls" if share["ci95"][1] <= KEPT and drop["ci95"][0] > 0 else "unresolved"
 
 
+def finger_reading(own: str, neutral: str) -> str:
+    """The header's rule on finger articulation: the cases of the own-pose and the neutral rungs."""
+    if own == "falls":
+        return "reads_finger_motion"
+    if own == "holds" and neutral == "falls":
+        return "static_handshape_not_motion"
+    if own == "holds" and neutral == "holds":
+        return "no_finger_content"
+    return "unresolved"
+
+
 def detectable(values: dict, idx: np.ndarray, distances: dict) -> dict:
     """The size of finger change the interval can detect (header), in palm widths: mean half-width of the noise rungs' paired drops, over the slope of the drop on measured distance through the origin."""
     forms = list(NOISE)
@@ -479,7 +556,9 @@ def detectable(values: dict, idx: np.ndarray, distances: dict) -> dict:
     slopes = d @ draws / (d @ d)
     seen = [f for f in forms if np.percentile((values[BASE] - values[f])[idx].mean(1), 2.5) > 0]
     size = round(float(width / slope), 4) if slope > 0 else None
-    return dict(levels={f: round(float(x), 4) for f, x in zip(forms, d)}, drops={f: round(float(x), 5) for f, x in zip(forms, drops)}, half_width=round(float(width), 5), slope=round(slope, 5), slope_ci95=P._quantiles(slopes), detectable_palm_widths=size, first_rung_detected=seen[0] if seen else None, sees_path_distance=None if size is None else bool(size <= PATH_HANDS), path_distance=PATH_HANDS, mirror_control=MIRROR_HANDS, note=None if size is not None else "not detectable in this range")
+    sees = None if size is None else bool(size <= PATH_HANDS)
+    agree = bool((np.diff(drops) >= 0).all() and np.percentile(draws[-1], 2.5) > 0)
+    return dict(noise_rungs_agree=agree, reads_fingers=bool(sees and agree), levels={f: round(float(x), 4) for f, x in zip(forms, d)}, drops={f: round(float(x), 5) for f, x in zip(forms, drops)}, half_width=round(float(width), 5), slope=round(slope, 5), slope_ci95=P._quantiles(slopes), detectable_palm_widths=size, first_rung_detected=seen[0] if seen else None, sees_path_distance=sees, sees_path_distance_note="necessary, not sufficient: the 0.587 includes hand orientation, and finger noise has none; reads_fingers also needs the noise rungs to agree", path_distance=PATH_HANDS, mirror_control=MIRROR_HANDS, note=None if size is not None else "not detectable in this range")
 
 
 def instrument_rows(reads: dict, keep: np.ndarray | None = None) -> dict:
@@ -519,6 +598,14 @@ def plumbing_alerts(reads: dict, distances: dict, rates: dict, instrument: str, 
         here = distances[form][TARGET_GROUP[form]]
         if here is None or abs(here - target) > TARGET_TOLERANCE * target:
             alerts.append(f"{instrument} {form}: mean {TARGET_GROUP[form]} distance {here}, target {target}")
+    for form, target in TARGETS.items():
+        rows = reads[form]["rows"]
+        bad = [s for s, r in zip(reads[form]["signs"], rows) if r["distance"][TARGET_GROUP[form]] is None or abs(r["distance"][TARGET_GROUP[form]] - target) > TARGET_TOLERANCE * target]
+        if bad:
+            alerts.append(f"{instrument} {form}: {len(bad)} clips miss the target {target} by over {TARGET_TOLERANCE:.0%}, for example {bad[0]}")
+    moved = [s for s, r in zip(reads["hands_still"]["signs"], reads["hands_still"]["rows"]) if r["local_motion"] > HOLD_TOLERANCE]
+    if moved:
+        alerts.append(f"{instrument} hands_still: hand-local points move on {len(moved)} clips, for example {moved[0]}")
     for form, groups in HOLDS.items():
         for group in groups:
             here = distances[form][group]
@@ -533,6 +620,15 @@ def plumbing_alerts(reads: dict, distances: dict, rates: dict, instrument: str, 
     if declared and len(reads["blank"]["signs"]) != L.D20_CLIPS:
         alerts.append(f"{instrument}: {len(reads['blank']['signs'])} clips, not D20's {L.D20_CLIPS}")
     return alerts
+
+
+def parent_figures(reads: dict) -> dict:
+    """The parent's margins the parts read recorded: logged, and compared on D20."""
+    return dict(nearest_over_still=round(float(per_clip(reads)[0][BASE].mean()), 5), still_raw=round(float(Q.margins(reads[STILL]).mean()), 5))
+
+
+def figure_alerts(figures: dict) -> list[str]:
+    return [f"the parent's {name} margin is {figures[name]}, over {FIGURE_TOLERANCE} from the parts read's {want}" for name, want in PARENT_FIGURES.items() if abs(figures[name] - want) > FIGURE_TOLERANCE]
 
 
 def expected_sha_of(instrument: str, store) -> str:
@@ -583,19 +679,25 @@ def run_merge(args) -> int:
         margin, likelihood, _ = per_clip(reads)
         n = len(first["signs"])
         idx = np.random.default_rng(0).integers(0, n, (BOOT, n))
-        metric = "likelihood" if instrument == "v1" else "margin"
-        share_key, drop_key, own_key = (("likelihood_share", "likelihood_drop", "likelihood_minus_blank") if metric == "likelihood" else ("margin_share", "margin_drop", "margin_over_still"))
-        case = frozen_case(rows[BASE][own_key], rows["fingers_frozen"][share_key], rows["fingers_frozen"][drop_key])
+        cases = {metric: {name: frozen_case(rows[BASE][own], rows[name][share], rows[name][drop]) for name in CASE_RUNGS} for metric, (share, drop, own) in (("margin", ("margin_share", "margin_drop", "margin_over_still")), ("likelihood", ("likelihood_share", "likelihood_drop", "likelihood_minus_blank")))}
+        reading = dict(hands_still=cases["margin"]["hands_still"], says_nothing_about_hands=cases["margin"]["hands_still"] == "holds", finger_articulation=finger_reading(cases["margin"]["fingers_frozen"], cases["margin"]["fingers_neutral"]))
+        neutral_against_frozen = dict(margin=mean_row(margin["fingers_frozen"] - margin["fingers_neutral"], idx), likelihood=mean_row(likelihood["fingers_frozen"] - likelihood["fingers_neutral"], idx))
         hand_distance = {f: distances[f]["hands"] for f in NOISE}
-        blocks[instrument] = dict(metric_of_the_case=metric, forms=rows, distances=distances, dropout_rates=rates, detectable=dict(margin=detectable(margin, idx, hand_distance), likelihood=detectable(likelihood, idx, hand_distance)), fingers_frozen_case=case, by_v1_training={name: dict(clips=int(mask.sum()), forms=instrument_rows(reads, mask)) if mask.sum() >= 2 else None for name, mask in masks.items()})
+        blocks[instrument] = dict(cases=cases, reading_on_margin=reading, neutral_against_frozen=neutral_against_frozen, forms=rows, distances=distances, dropout_rates=rates, detectable=dict(margin=detectable(margin, idx, hand_distance), likelihood=detectable(likelihood, idx, hand_distance)), by_v1_training={name: dict(clips=int(mask.sum()), forms=instrument_rows(reads, mask)) if mask.sum() >= 2 else None for name, mask in masks.items()})
+    figures = parent_figures(by_instrument["parent"]) if "parent" in by_instrument else None
+    if declared:
+        if figures is not None:
+            alerts += figure_alerts(figures)
+        if int(masks["in_v1_training"].sum()) != V1_TRAINING_IN_D20:
+            alerts.append(f"{int(masks['in_v1_training'].sum())} of D20 are in v1's training list, not the disclosed {V1_TRAINING_IN_D20}")
     held = ([] if declared else ["a smoke carries no reading"]) + alerts
     for block in blocks.values():
-        block["label"] = None if held else block["fingers_frozen_case"]
-    report = dict(kind=f"{PROBE}-report", report_only=True, note=NOT_DECIDED, set=args.set, declared_read=declared, smoke=None if declared else "SMOKE on c02 train clips: these numbers are plumbing, not a read", list=first["list"], code_digest=digest, environment=place, prestated=PRESTATED, disclosures=DISCLOSURES, alerts=alerts, withheld=held, instruments={i: r["blank"]["instrument"] for i, r in by_instrument.items()}, ladder=blocks,
+        block["label"] = None if held else block["reading_on_margin"]
+    report = dict(kind=f"{PROBE}-report", report_only=True, note=NOT_DECIDED, set=args.set, declared_read=declared, smoke=None if declared else "SMOKE on c02 train clips: these numbers are plumbing, not a read", list=first["list"], code_digest=digest, environment=place, prestated=PRESTATED, disclosures=DISCLOSURES, alerts=alerts, withheld=held, instruments={i: r["blank"]["instrument"] for i, r in by_instrument.items()}, ladder=blocks, parent_figures=figures,
                   clips=dict(list=len(first["signs"]), in_v1_training=int(masks["in_v1_training"].sum()), outside_v1_training=int(masks["outside_v1_training"].sum())), checks=dict(control=control, blank_identical_to_base={i: round(float(np.mean([a == b for a, b in zip(r["blank"]["hypotheses"], r[BASE]["hypotheses"])])), 4) for i, r in by_instrument.items()}),
                   rerun=json.loads((out_dir / "rerun.json").read_bytes()) if (out_dir / "rerun.json").exists() else None, resources={n: {k: r[k] for k in ("peak_rss_bytes", "gpu_peak_reserved_bytes", "build_seconds", "read_seconds")} for n, r in everything.items()})
     L.write_once(store, args.output_key, args.output_file, report)
-    print(json.dumps(dict(merged=args.output_key or args.output_file, report_only=True, declared_read=declared, withheld=held, labels={i: b["label"] for i, b in blocks.items()}, cases={i: b["fingers_frozen_case"] for i, b in blocks.items()}, detectable={i: {m: b["detectable"][m]["detectable_palm_widths"] for m in ("margin", "likelihood")} for i, b in blocks.items()}, ladder={i: {f: {k: b["forms"][f][k] for k in ("bleu", "likelihood_minus_blank", "margin_over_still", "margin_share", "likelihood_share")} for f in FORMS} for i, b in blocks.items()}, distances={i: b["distances"] for i, b in blocks.items()}, alerts=alerts)), flush=True)
+    print(json.dumps(dict(merged=args.output_key or args.output_file, report_only=True, declared_read=declared, withheld=held, labels={i: b["label"] for i, b in blocks.items()}, parent_figures=figures, readings={i: b["reading_on_margin"] for i, b in blocks.items()}, cases={i: b["cases"] for i, b in blocks.items()}, neutral_against_frozen={i: b["neutral_against_frozen"] for i, b in blocks.items()}, detectable={i: {m: b["detectable"][m]["detectable_palm_widths"] for m in ("margin", "likelihood")} for i, b in blocks.items()}, ladder={i: {f: {k: b["forms"][f][k] for k in ("bleu", "likelihood_minus_blank", "margin_over_still", "margin_share", "likelihood_share")} for f in FORMS} for i, b in blocks.items()}, distances={i: b["distances"] for i, b in blocks.items()}, alerts=alerts)), flush=True)
     return 0
 
 
@@ -625,6 +727,8 @@ def build_parser() -> argparse.ArgumentParser:
         q.add_argument("--store", default="r2")
         q.add_argument("--set", default="base", choices=tuple(SETS))
     with_set(sub.add_parser("instruments", help="the job's first step: what each instrument trained on, from its record; no checkpoint is fetched"))
+    stored = sub.add_parser("stored-check", help="before the smoke: every stored form by its hash; a pin failure exits 1")
+    stored.add_argument("--store", default="r2")
     pre = sub.add_parser("preflight", help="the read is not finished or void")
     pre.add_argument("--store", default="r2")
     pre.add_argument("--out-dir", required=True)
@@ -668,7 +772,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
-    return dict(instruments=run_instruments, preflight=run_preflight, read=run_read, control=run_control, merge=run_merge, check=run_check, upload=PP.run_upload, **{"upload-log": R.run_upload_log})[args.command](args)
+    return dict(instruments=run_instruments, preflight=run_preflight, read=run_read, control=run_control, merge=run_merge, check=run_check, upload=PP.run_upload, **{"upload-log": R.run_upload_log, "stored-check": run_stored_check})[args.command](args)
 
 
 if __name__ == "__main__":

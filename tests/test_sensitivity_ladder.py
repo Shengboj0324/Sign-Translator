@@ -29,7 +29,7 @@ from tests.test_tok_probes import SpyStore  # noqa: E402
 
 JOB = ROOT / "runpod/fleet/sensitivity_ladder.sh"
 # per form: (words said, own NLL, margin over the mismatched): the base reads high, each rung lower
-LEVELS = dict(real_two_view=(14, 1.1, 1.), blank=(0, 3., 0.), nearest_two_view=(15, 1., 1.), still_two_view=(1, 2.9, .1), fingers_frozen=(10, 1.5, .5), finger_noise_015=(13, 1.2, .9), finger_noise_030=(11, 1.4, .7), finger_noise_060=(8, 1.8, .4), hand_dropout_marked=(9, 1.7, .6), hand_dropout_filled=(10, 1.6, .7), wrist_turned=(9, 1.7, .55), wrist_moved=(12, 1.3, .8), arms_frozen=(11, 1.4, .75))
+LEVELS = dict(real_two_view=(14, 1.1, 1.), blank=(0, 3., 0.), nearest_two_view=(15, 1., 1.), still_two_view=(1, 2.9, .1), fingers_frozen=(10, 1.5, .5), fingers_neutral=(9, 1.7, .3), hands_still=(9, 1.6, .4), finger_noise_015=(13, 1.2, .9), finger_noise_030=(11, 1.4, .7), finger_noise_060=(8, 1.8, .4), hand_dropout_marked=(9, 1.7, .6), hand_dropout_filled=(10, 1.6, .7), wrist_turned=(9, 1.7, .55), wrist_moved=(12, 1.3, .8), arms_frozen=(11, 1.4, .75))
 
 
 class LevelReader:
@@ -72,6 +72,8 @@ class Ladder(Harness):
         monkeypatch.setattr(P, "environment", lambda: dict(gpu="test"))
         monkeypatch.setattr(S, "DROP_FLOOR", 0.)      # nine short clips do not average to the long-run rate
         monkeypatch.setattr(S, "DROP_CEILING", 1.)
+        monkeypatch.setattr(S, "V1_TRAINING_IN_D20", 4)
+        monkeypatch.setattr(S, "PARENT_FIGURES", dict(nearest_over_still=.9, still_raw=.1))
 
     def plant_training(self, signs):
         meta = json.dumps([dict(clip_id=s, partition="train", text="t", video_id="v", frames=1) for s in signs]).encode()
@@ -107,6 +109,22 @@ class Ladder(Harness):
         self.monkeypatch.setattr(Q, "STORED_V1", v1)
         self.monkeypatch.setattr(Q, "STORED_PARENT", parent)
         self.plant_canary(read)
+
+    def plant_stored_check(self, change=None):
+        """Every stored form at its pin, each with the shape the check asks for; ``change``: {"parent.blank": {field: value}}."""
+        records = self.records
+        for instrument, names, columns in (("parent", S.ANCHORS, 5), ("v1", tuple(Q.STORED_V1), 1)):
+            table = {}
+            for name in names:
+                form = dict(signs=[r["sign"] for r in records], nll=[[1.] * columns] * self.n, environment=dict(gpu="stored-gpu"))
+                form.update((change or {}).get(f"{instrument}.{name}", {}))
+                raw = json.dumps(form).encode()
+                self.store.put(f"{Q.PARTS_FORMS}/check-{instrument}.{name}.json", raw)
+                table[name] = (f"check-{instrument}.{name}.json", hashlib.sha256(raw).hexdigest())
+            self.monkeypatch.setattr(Q, "STORED_PARENT" if instrument == "parent" else "STORED_V1", table)
+        raw = b"{}"
+        self.store.put(P.CANARY_REPORT, raw)
+        self.monkeypatch.setattr(P, "CANARY_REPORT_SHA", hashlib.sha256(raw).hexdigest())
 
     def plant_canary(self, read):
         real, blank = read[S.form_name("v1", "real_two_view")], read[S.form_name("v1", "blank")]
@@ -163,6 +181,7 @@ def test_smooth_noise_is_unit_variance_correlated_over_its_box_and_shaped():
 
 def test_frozen_fingers_stand_still_and_nothing_else_changes(base_state):
     state, row = S.rung("fingers_frozen", base_state, 0)
+    assert "local_motion" not in row
     for hand in T.HANDS:
         values = state.channels[hand].values
         assert np.array_equal(values, np.repeat(base_state.channels[hand].values[[len(values) // 2]], len(values), 0))
@@ -225,6 +244,34 @@ def test_frozen_arms_stand_still_and_hold_every_hand_local_point(base_state):
     arms = list(range(6))
     assert np.abs(a[:, arms] - a[[0]][:, arms]).max() < 1e-5 and np.abs(b[:, arms] - b[[0]][:, arms]).max() > .01
     assert row["distance"]["hands"] < 1e-3 and np.abs(a[:, PP.HAND_LOCAL_POINTS] - b[:, PP.HAND_LOCAL_POINTS]).max() < 1e-3
+
+
+def test_frozen_fingers_leave_hand_local_points_moving_and_hands_still_holds_them(base_state):
+    assert S.local_motion(S.held_fingers(base_state)) > .01
+    state, row = S.rung("hands_still", base_state, 0)
+    assert S.local_motion(state) < 1e-3 and row["local_motion"] < 1e-3 and row["distance"]["wrists"] < 1e-5 and row["distance"]["elbows"] == 0. and row["distance"]["hands"] > .01
+    middle = len(base_state.timestamps) // 2
+    for hand in T.HANDS:
+        assert np.array_equal(state.channels[hand].values, np.repeat(base_state.channels[hand].values[[middle]], len(base_state.timestamps), 0))
+    (a, _), (b, _) = view(state), view(base_state)
+    assert np.abs(a[:, list(range(6))] - b[:, list(range(6))]).max() < 1e-5
+
+
+def test_neutral_fingers_hold_one_constant_neutral_hand_and_the_arms_move(base_state):
+    tokenizer = tiny_tokenizer()
+    state, row = S.rung("fingers_neutral", base_state, 0, tokenizer)
+    neutral = V.neutral_pose(base_state, tokenizer)
+    for hand in T.HANDS:
+        values = state.channels[hand].values
+        assert np.array_equal(values[0], values[-1]) and np.allclose(values[0], neutral.channels[hand].values[0]) and values.dtype == base_state.channels[hand].values.dtype
+    assert np.array_equal(state.channels["body"].values, base_state.channels["body"].values) and row["distance"]["wrists"] == 0.
+
+
+def test_a_neutral_hand_of_another_shape_refuses(base_state, monkeypatch):
+    other = replace(base_state, channels={**base_state.channels, "left_hand": replace(base_state.channels["left_hand"], values=base_state.channels["left_hand"].values[:, :3], valid=base_state.channels["left_hand"].valid[:, :3], observed=base_state.channels["left_hand"].observed[:, :3], confidence=base_state.channels["left_hand"].confidence[:, :3], labels=base_state.channels["left_hand"].labels[:3])})
+    monkeypatch.setattr(V, "neutral_pose", lambda state, tokenizer: other)
+    with pytest.raises(SystemExit, match="the neutral pose"):
+        S.neutral_fingers(base_state, None)
 
 
 def test_dropout_runs_at_its_rate_and_mean_run_independently_per_hand():
@@ -595,11 +642,31 @@ def test_the_detectable_size_is_the_half_width_over_the_slope():
 def test_a_steep_instrument_sees_the_path_and_a_flat_one_does_not():
     idx = np.random.default_rng(0).integers(0, 200, (Q.BOOT, 200))
     steep = S.detectable(linear_values(2., noise=.05), idx, dict(S.NOISE))
+    assert steep["noise_rungs_agree"] is True and steep["reads_fingers"] is True and "necessary, not sufficient" in steep["sees_path_distance_note"]
     assert steep["sees_path_distance"] is True and steep["first_rung_detected"] == "finger_noise_015" and steep["note"] is None
     flat = S.detectable(linear_values(0., noise=.5) | {f: linear_values(0., noise=.5)[S.BASE] + .2 for f in S.NOISE}, idx, dict(S.NOISE))
     assert flat["detectable_palm_widths"] is None and flat["sees_path_distance"] is None and flat["note"] == "not detectable in this range" and flat["first_rung_detected"] is None
     shallow = S.detectable(linear_values(.05, noise=.5), idx, dict(S.NOISE))
     assert shallow["sees_path_distance"] is False
+
+
+def test_seeing_the_path_distance_is_not_reading_fingers_unless_the_rungs_agree():
+    idx = np.random.default_rng(0).integers(0, 200, (Q.BOOT, 200))
+    values = linear_values(2., noise=.05)
+    values["finger_noise_030"], values["finger_noise_060"] = values["finger_noise_060"], values["finger_noise_030"]       # drops out of order
+    out = S.detectable(values, idx, dict(S.NOISE))
+    assert out["sees_path_distance"] is True and out["noise_rungs_agree"] is False and out["reads_fingers"] is False
+    base = np.random.default_rng(1).normal(1., 1., 200)
+    weak = {S.BASE: base, "finger_noise_015": base - .0001, "finger_noise_030": base - .0002, "finger_noise_060": base + np.random.default_rng(2).normal(-.0003, .5, 200) * 0 - .0003}
+    flat = S.detectable(weak, idx, dict(S.NOISE))
+    assert flat["noise_rungs_agree"] is True and flat["reads_fingers"] is flat["sees_path_distance"]
+    noisy = {S.BASE: base, **{f: base - .0005 * i + np.random.default_rng(i).normal(0, .5, 200) for i, f in enumerate(S.NOISE)}}
+    assert S.detectable(noisy, idx, dict(S.NOISE))["reads_fingers"] is False
+
+
+@pytest.mark.parametrize("own,neutral,reading", [("falls", "falls", "reads_finger_motion"), ("falls", "holds", "reads_finger_motion"), ("falls", "unresolved", "reads_finger_motion"), ("holds", "falls", "static_handshape_not_motion"), ("holds", "holds", "no_finger_content"), ("holds", "unresolved", "unresolved"), ("unresolved", "falls", "unresolved"), ("unresolved", "holds", "unresolved")])
+def test_the_finger_reading_is_the_headers(own, neutral, reading):
+    assert S.finger_reading(own, neutral) == reading
 
 
 def test_paired_share_reads_the_ratio_of_means_and_none_without_a_denominator():
@@ -609,7 +676,7 @@ def test_paired_share_reads_the_ratio_of_means_and_none_without_a_denominator():
 
 
 def test_the_ladder_has_its_planted_values_on_each_instruments_own_measures(monkeypatch, tmp_path):
-    h = Ladder(monkeypatch, tmp_path, parent=dict(fingers_frozen=(14, 1.05, .95)))
+    h = Ladder(monkeypatch, tmp_path, parent=dict(fingers_frozen=(14, 1.05, .95), fingers_neutral=(14, 1.05, .95), hands_still=(14, 1.05, .95)))
     report = h.pipeline()
     assert report["kind"] == "sensitivity-ladder-report" and report["report_only"] is True and report["alerts"] == [] and report["withheld"] == []
     parent, v1 = report["ladder"]["parent"], report["ladder"]["v1"]
@@ -617,8 +684,12 @@ def test_the_ladder_has_its_planted_values_on_each_instruments_own_measures(monk
     assert abs(parent["forms"][S.BASE]["margin_over_still"]["point"] - .9) < 1e-6 and abs(v1["forms"][S.BASE]["likelihood_minus_blank"]["point"] - 2.) < 1e-6
     assert abs(parent["forms"]["fingers_frozen"]["margin_share"]["point"] - .85 / .9) < 1e-3 and abs(v1["forms"]["fingers_frozen"]["likelihood_share"]["point"] - 1.5 / 2.) < 1e-3
     assert abs(v1["forms"]["fingers_frozen"]["margin_drop"]["point"] - .5) < 1e-6 and abs(v1["forms"]["fingers_frozen"]["likelihood_drop"]["point"] - .5) < 1e-6
-    assert parent["metric_of_the_case"] == "margin" and v1["metric_of_the_case"] == "likelihood"
-    assert parent["fingers_frozen_case"] == "holds" and parent["label"] == "holds"
+    assert parent["cases"]["margin"]["hands_still"] == "holds" and parent["reading_on_margin"] == dict(hands_still="holds", says_nothing_about_hands=True, finger_articulation="no_finger_content") and parent["label"] == parent["reading_on_margin"]
+    # v1: its case on the margin beside its case on likelihood; only the margin can carry the bold sentence
+    assert v1["cases"]["margin"]["hands_still"] == "falls" and v1["cases"]["likelihood"]["hands_still"] == "falls" and v1["reading_on_margin"]["says_nothing_about_hands"] is False and v1["reading_on_margin"]["finger_articulation"] == "reads_finger_motion"
+    # the neutral rung's raw paired drop against the own pose, each measure
+    assert abs(v1["neutral_against_frozen"]["margin"]["point"] - .2) < 1e-6 and abs(v1["neutral_against_frozen"]["likelihood"]["point"] - .2) < 1e-6
+    assert report["parent_figures"]["nearest_over_still"] == pytest.approx(.9 * 1, abs=1e-5) and report["parent_figures"]["still_raw"] == pytest.approx(.1, abs=1e-5)
     assert report["clips"] == dict(list=N, in_v1_training=4, outside_v1_training=N - 4)
     assert parent["by_v1_training"]["in_v1_training"]["clips"] == 4 and parent["by_v1_training"]["outside_v1_training"]["clips"] == N - 4
     assert abs(parent["by_v1_training"]["in_v1_training"]["forms"][S.BASE]["margin_over_still"]["point"] - .9) < 1e-6
@@ -652,8 +723,103 @@ def test_an_alert_withholds_every_label_and_check_exits_3(monkeypatch, tmp_path,
     for k, v in patch.items():
         monkeypatch.setattr(S, k, v)
     report = h.merge()
-    assert any(word in a for a in report["alerts"]) and report["ladder"]["parent"]["label"] is None and report["ladder"]["v1"]["label"] is None and report["ladder"]["parent"]["fingers_frozen_case"] != ""
+    assert any(word in a for a in report["alerts"]) and report["ladder"]["parent"]["label"] is None and report["ladder"]["v1"]["label"] is None and report["ladder"]["parent"]["reading_on_margin"]["hands_still"] != ""
     assert S.main(["check", "--report", str(tmp_path / "report.json")]) == 3 and "ALERT" in capsys.readouterr().out
+
+
+def test_a_single_clip_off_its_target_raises_an_alert_though_the_mean_holds(monkeypatch, tmp_path):
+    h = Ladder(monkeypatch, tmp_path)
+    h.to_control()
+    assert h.read_forms("rest", resume=True) == 0
+    path = h.forms / "form-parent__finger_noise_060.json"
+    form = json.loads(path.read_text())
+    rows = form["rows"]
+    rows[0]["distance"]["hands"] *= 1.2
+    rows[1]["distance"]["hands"] *= .8
+    path.write_text(json.dumps(form))
+    report = h.merge()
+    assert report["ladder"]["parent"]["label"] is None and any("2 clips miss the target 0.6" in a and "s0" in a for a in report["alerts"]) and not any("mean hands" in a for a in report["alerts"])
+
+
+def test_hands_still_with_moving_points_raises_an_alert(monkeypatch, tmp_path):
+    h = Ladder(monkeypatch, tmp_path)
+    h.to_control()
+    assert h.read_forms("rest", resume=True) == 0
+    path = h.forms / "form-v1__hands_still.json"
+    form = json.loads(path.read_text())
+    form["rows"][3]["local_motion"] = .5
+    path.write_text(json.dumps(form))
+    assert any("hands_still: hand-local points move on 1 clips, for example s3" in a for a in h.merge()["alerts"])
+
+
+def test_the_count_in_v1s_training_is_checked_against_the_disclosed_number(monkeypatch, tmp_path):
+    h = Ladder(monkeypatch, tmp_path)
+    assert S.V1_TRAINING_IN_D20 == 4        # the harness plants its own; the real pin is checked below
+    h.to_control()
+    assert h.read_forms("rest", resume=True) == 0
+    monkeypatch.setattr(S, "V1_TRAINING_IN_D20", 234)
+    assert any("4 of D20 are in v1's training list, not the disclosed 234" in a for a in h.merge()["alerts"])
+
+
+def test_the_parent_figures_are_logged_and_each_is_held_within_its_tolerance(monkeypatch, tmp_path, capsys):
+    h = Ladder(monkeypatch, tmp_path)
+    h.to_control()
+    assert h.read_forms("rest", resume=True) == 0
+    monkeypatch.setattr(S, "PARENT_FIGURES", dict(nearest_over_still=.9 + S.FIGURE_TOLERANCE * 2, still_raw=1.))
+    report = h.merge()
+    assert report["parent_figures"]["still_raw"] == pytest.approx(.1, abs=1e-5)
+    assert any("nearest_over_still margin" in a for a in report["alerts"]) and any("still_raw margin" in a for a in report["alerts"]) and "parent_figures" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("off,alerted", [(.0049, False), (.0051, True)])
+def test_a_figure_is_held_to_its_tolerance_either_side(monkeypatch, off, alerted):
+    monkeypatch.setattr(S, "PARENT_FIGURES", dict(still_raw=.06))
+    assert bool(S.figure_alerts(dict(still_raw=.06 + off))) is alerted and bool(S.figure_alerts(dict(still_raw=.06 - off))) is alerted
+
+
+def test_the_real_figures_and_count_are_pinned_as_recorded():
+    assert S.PARENT_FIGURES == dict(nearest_over_still=.2372, still_raw=.0610) and S.FIGURE_TOLERANCE == .005 and S.V1_TRAINING_IN_D20 == 234
+
+
+def test_the_stored_check_hashes_every_form_and_prints_each_environment(monkeypatch, tmp_path, capsys):
+    h = Ladder(monkeypatch, tmp_path)
+    h.plant_stored_check()
+    assert h.main("stored-check") == 0
+    out = capsys.readouterr().out
+    assert '"environment_here": {"gpu": "test"}' in out and '"parent.still_two_view"' in out and '"v1.nearest_monocular"' in out and "stored-gpu" in out
+
+
+@pytest.mark.parametrize("form,field,value,word", [("parent.blank", "nll", [[1.]] * N, "columns"), ("parent.real_two_view", "signs", ["a"], "signs"), ("v1.blank", "signs", [], "signs")])
+def test_the_stored_check_refuses_a_form_of_the_wrong_shape(monkeypatch, tmp_path, form, field, value, word):
+    h = Ladder(monkeypatch, tmp_path)
+    h.plant_stored_check({form: {field: value}})
+    with pytest.raises(SystemExit, match=word):
+        h.main("stored-check")
+
+
+def test_a_pin_failure_exits_1_and_voids_nothing(monkeypatch, tmp_path):
+    h = Ladder(monkeypatch, tmp_path)
+    h.plant_stored_check()
+    h.store.put(f"{Q.PARTS_FORMS}/check-parent.blank.json", b"{}")
+    with pytest.raises(SystemExit) as stopped:
+        h.main("stored-check")
+    assert "SHA-256" in str(stopped.value.code)
+    h2 = Ladder(monkeypatch, tmp_path / "b") if (tmp_path / "b").mkdir() is None else None
+    assert h2.read_forms("control") == 0
+    h2.plant_stored_reads()
+    key, _ = Q.STORED_PARENT["blank"]
+    h2.store.put(f"{Q.PARTS_FORMS}/{key}", b"{}")
+    with pytest.raises(SystemExit, match="SHA-256"):
+        h2.control()
+    assert not h2.store.exists("lad/void/" + "c" * 64 + ".json")
+
+
+def test_a_canary_pin_failure_stops_the_stored_check(monkeypatch, tmp_path):
+    h = Ladder(monkeypatch, tmp_path)
+    h.plant_stored_check()
+    monkeypatch.setattr(P, "CANARY_REPORT_SHA", "0" * 64)
+    with pytest.raises(SystemExit, match="SHA-256"):
+        h.main("stored-check")
 
 
 def test_another_instruments_hash_raises_an_alert(monkeypatch, tmp_path):
@@ -754,7 +920,7 @@ def test_the_mono_set_merges_on_its_own_with_its_pin(monkeypatch, tmp_path):
     h.plant_canary(read)
     assert h.control("mono") == 0 and h.read_forms("rest", which="mono") == 0
     report = h.merge(which="mono")
-    assert list(report["ladder"]) == ["mono"] and report["alerts"] == [] and report["ladder"]["mono"]["metric_of_the_case"] == "margin"
+    assert list(report["ladder"]) == ["mono"] and report["alerts"] == [] and set(report["ladder"]["mono"]["cases"]) == {"margin", "likelihood"}
 
 
 def test_the_header_holds_the_reading_before_any_read():
@@ -762,6 +928,10 @@ def test_the_header_holds_the_reading_before_any_read():
     for text in S.PRESTATED.values():
         assert text in head
     assert "0.587" in head and "1.286" in head and "0.231" in head and "234 of D20" in head
+    for text in ("finger articulation", "one real handshape", "Only that rung may say it", "biased low", "presence offset", "about 0.18", "necessary, not sufficient"):
+        assert text in head, text
+    for text in ("one real handshape", "biased low", "presence offset", "necessary, not sufficient"):
+        assert any(text in v for v in S.DISCLOSURES.values()), text
     assert "not checked against the source" in head and S.KEPT == .75 and S.PATH_HANDS == .587 and S.MIRROR_HANDS == 1.286 and S.PATH_WRISTS == .231
     assert S.NOISE == dict(finger_noise_015=.15, finger_noise_030=.30, finger_noise_060=.60) and S.DROP_RATE == .25 and S.DROP_RUN == 6. and S.BOX == 7
 
@@ -812,10 +982,10 @@ def commands(calls: str) -> list[str]:
 def test_the_job_smokes_then_reads_the_control_first(tmp_path):
     result, calls = run_job(tmp_path)
     assert result.returncode == 0 and done_line(result) == 0
-    assert commands(calls) == ["instruments", "read", "control", "read", "merge", "upload", "check", "preflight", "read", "control", "read", "merge", "upload", "check", "upload-log"]
+    assert commands(calls) == ["instruments", "stored-check", "read", "control", "read", "merge", "upload", "check", "preflight", "read", "control", "read", "merge", "upload", "check", "upload-log"]
     lines = calls.splitlines()
-    assert "--forms control" in lines[8] and "--forms rest" in lines[10] and "--resume" in lines[10] and "--smoke-train 5" in lines[1] and "--smoke-train" not in lines[8]
-    assert "round20/sensitivity-ladder/report.json" in lines[7] and "--set base" in lines[8] and "--nll-group 4" in lines[8]
+    assert "--forms control" in lines[9] and "--forms rest" in lines[11] and "--resume" in lines[11] and "--smoke-train 5" in lines[2] and "--smoke-train" not in lines[9]
+    assert "round20/sensitivity-ladder/report.json" in lines[8] and "--set base" in lines[9] and "--nll-group 4" in lines[9]
 
 
 def test_the_smoke_only_mode_stops_before_d20(tmp_path):
@@ -833,7 +1003,7 @@ def test_another_set_refuses_before_anything_runs(tmp_path):
     assert result.returncode == 1 and done_line(result) == 1 and calls == "" and "SET must be" in result.stdout
 
 
-@pytest.mark.parametrize("fail,status,word", [("instruments", 1, "instruments are not"), ("--forms rest*--smoke-train", 2, "smoke read failed"), ("--forms control*--resume", 1, "read of the control"), ("preflight", 1, "preflight refused"), ("--forms rest*--resume", 1, "read of the rungs"), ("upload --out-dir", 2, "smoke upload failed")])
+@pytest.mark.parametrize("fail,status,word", [("instruments", 1, "instruments are not"), ("stored-check", 1, "this is no void"), ("--forms rest*--smoke-train", 2, "smoke read failed"), ("--forms control*--resume", 1, "read of the control"), ("preflight", 1, "preflight refused"), ("--forms rest*--resume", 1, "read of the rungs"), ("upload --out-dir", 2, "smoke upload failed")])
 def test_a_failing_step_stops_the_job_with_its_status(tmp_path, fail, status, word):
     result, calls = run_job(tmp_path, fail_when=fail)
     assert result.returncode == status and done_line(result) == status and word in result.stdout and "upload --partial" in calls
@@ -872,3 +1042,28 @@ def test_the_job_passes_every_step_through_pipestatus_and_names_no_other_list():
     for word in ("c20", "C20", "round15_compose_eval", "composed", "--export", "create-pod", "runpodctl"):
         assert word not in "\n".join(code), word
     assert "L40S" in text
+
+
+def test_the_boundaries_of_seeing_the_path_and_of_agreeing(monkeypatch):
+    idx = np.random.default_rng(0).integers(0, 200, (Q.BOOT, 200))
+    values = linear_values(2., noise=.05)
+    size = S.detectable(values, idx, dict(S.NOISE))["detectable_palm_widths"]
+    monkeypatch.setattr(S, "PATH_HANDS", size)
+    assert S.detectable(values, idx, dict(S.NOISE))["sees_path_distance"] is True
+    equal = dict(values, finger_noise_030=values["finger_noise_015"])
+    assert S.detectable(equal, idx, dict(S.NOISE))["noise_rungs_agree"] is True
+
+
+def test_exactly_at_a_tolerance_raises_no_alert(monkeypatch, tmp_path):
+    h = Ladder(monkeypatch, tmp_path)
+    h.to_control()
+    assert h.read_forms("rest", resume=True) == 0
+    reads = S.load_reads(h.forms, "parent")
+    reads["hands_still"]["rows"][0]["local_motion"] = S.HOLD_TOLERANCE
+    for form, target in S.TARGETS.items():
+        reads[form]["rows"][0]["distance"][S.TARGET_GROUP[form]] = target * (1 + S.TARGET_TOLERANCE / 2)
+    monkeypatch.setattr(S, "TARGET_TOLERANCE", S.TARGET_TOLERANCE)
+    alerts = S.plumbing_alerts(reads, S.distance_means(reads), S.dropout_rates(reads), "parent", PP.UNFITTED_SHA, True)
+    assert alerts == []
+    reads["hands_still"]["rows"][0]["local_motion"] = S.HOLD_TOLERANCE * 1.01
+    assert len(S.plumbing_alerts(reads, S.distance_means(reads), S.dropout_rates(reads), "parent", PP.UNFITTED_SHA, True)) == 1

@@ -5,7 +5,7 @@
 #   SMOKE=1 bash runpod/fleet/sensitivity_ladder.sh       the smoke only
 #   SET=mono bash runpod/fleet/sensitivity_ladder.sh      later, once training-runs/back-translator-kp2d-uwb-ft-mono-v1/trained.json stands: the same rungs through the mono-tuned instrument, under round20/sensitivity-ladder-mono/
 #
-# One process. The first step reads the instruments' records; no checkpoint is fetched for that. On D20 the control's forms are read first and must reproduce their stored reads (`control`). A miss stops the job before any rung and voids the read, and `read` itself refuses another form without a passed control. No automatic retry: this code never reads again, and a rerun needs new code and RERUN_CAUSE, which the report records.
+# One process. The first step reads the instruments' records; no checkpoint is fetched for that. The second fetches and hashes every stored form and prints each one's environment beside this pod's. On D20 the control's forms are read first and must reproduce their stored reads (`control`). A miss stops the job before any rung and voids the read, and `read` itself refuses another form without a passed control. No automatic retry: this code never reads again, and a rerun needs new code and RERUN_CAUSE, which the report records.
 # Outputs (write-once) under $D, the log under $D/logs/. A failure uploads the work so far to $D/partial/<UTC>/; rerunning on the same pod resumes what stands in $WORK. Use the L40S: the control compares hypotheses, and a miss voids the read.
 # Ends with SENSITIVITY-LADDER-DONE <status> (0 read done, 1 the read failed, 2 the smoke stopped the job, 3 the read is void: do not retry). The exit status is the same.
 # Every step's output and every ALERT passes through tee to $LOG, and `step` returns the failing side's status from PIPESTATUS, so no pipe hides a failure.
@@ -56,6 +56,7 @@ mkdir -p "$S/forms" "$R/forms" || done_ 1
 uv pip install -q 'transformers==4.57.6' sentencepiece || { alert "transformers install failed"; done_ 1; }   # the version of the stored D20 reads
 
 step python $T instruments --set "$SET" || { alert "the instruments are not as the header states"; done_ 1; }
+step python $T stored-check || { alert "a stored form is not as pinned: nothing was read, this is no void"; done_ 1; }
 
 # ---- smoke: c02 train clips through every rung; no D20 state ----------------------------------------------------------------------------
 step python $T read --forms control --out-dir "$S/forms" --smoke-train 5 --smoke-longest 2 --smoke-never-tracked 1 $COMMON || { alert "smoke read of the control failed"; done_ 2; }
