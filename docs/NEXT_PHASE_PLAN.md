@@ -6283,3 +6283,21 @@ Branch `parent-reads` 42a36db, reviewed with fixes applied, not merged. Report o
 **`parent_comp` (digest dc3d89b0, about $1.70).** A5's eight draws of added-words composition through v1's parent. Each form's margin is over its own still pose at its own length; shares are read on matched metrics, likelihood against likelihood and BLEU against BLEU, per draw, over eight, and per signer. Gap share near v1's: the parent reads composition about as v1 does. Well above: v1's fit to two-view may be costing composition part of its reading, though not that the motion carries that content for anyone. Well below: composition's reading on v1 didn't come from what the parent reads. No label, no bar.
 
 **`symmetric_ft` (digest de05576e, about $3.90).** v1's parent fine-tuned with v1's recipe on How2Sign's monocular states, refusing C20 clips (19,182 of 19,637 train clips; selection 345 of 512), then read on D20 on both paths. Marks-free: **fit_shown** if s_two is under 0.5 and monocular minus two-view has a lower bound above zero; **content_gains_support** if that difference has an upper bound under zero; otherwise unresolved, including when metrics disagree. Own-path peak against v1's: **peak_near**, **peak_below**, or unresolved, at 0.5 BLEU and 0.052 nats. It trains an instrument only, justified by the parts read's result under the evidence rule. Both instruments share v1's parent, trained on the landmark source of monocular hands, which may favour fit_shown and peak_near. On D20, training status and signer are confounded, so per-signer rows are reported. (b) and peak_below are also what a harder fit would give.
+
+### Sensitivity ladder result: both instruments read finger motion (read 2026-11-02, recorded 03:31 UTC)
+
+`round20/sensitivity-ladder/report.json` sha ff0dca59, real two-view D20, 500 clips, no alert, controls exact. **Both instruments fall when fingers are damaged: `reads_finger_motion`, and `says_nothing_about_hands` is false for both.** Margin over a still pose:
+
+| Damage | Parent | v1 |
+|---|---|---|
+| None, nearest fill | 0.237 | 0.526 |
+| Finger noise, low / mid / high | 0.213 / 0.155 / 0.071 | 0.431 / 0.223 / 0.042 |
+| Fingers frozen | 0.045 | 0.110 |
+| Neutral fingers | 0.029 | 0.054 |
+| Whole hand held still | 0.010 | 0.017 |
+| Arms frozen, hands kept | 0.138 | 0.317 |
+| Wrist position moved | 0.230 | 0.412 |
+| Wrist turned | 0.219 | 0.405 |
+| Hand dropout, filled / marked | 0.221 / 0.212 | 0.501 / 0.441 |
+
+**Reading.** The parent isn't blind to fingers, so its 99.8% on the monocular path carries weight: it can see damage of that size in general, and the monocular path's differences don't cost it what it reads. Random noise and a systematic path difference aren't the same thing, though: its high-noise level is close to the path's hand distance (0.587) yet keeps only 30% of the margin, so whatever separates the paths isn't like noise to it. It also trained on the landmark source of monocular hands, so it may be well placed to read exactly those fingers. **Finger motion carries most of each instrument's clip-specific reading, and arm freezing costs about 42-43%.** So any hand work should go to generated finger motion, and the case for re-extracting real data is no stronger than it was. Static handshape beyond motion looks small (neutral against frozen, margin: parent 0.016 [0.002, 0.032], v1 0.056 [0.029, 0.082]), with neutral biased low as declared.
