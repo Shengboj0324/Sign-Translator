@@ -333,11 +333,11 @@ def tokens_of(text: str) -> int:
     return len(normalise(text))
 
 
-def read_one(name: str, states, masks, rows, *, reader, texts, signs, groups, candidates, refs, args, declared, described, digest, place, out_dir, started) -> None:
+def read_one(name: str, states, masks, rows, *, reader, texts, signs, groups, candidates, refs, args, declared, described, digest, place, out_dir, started, probe: str = PROBE) -> None:
     built = time.time()
     raw = reader.read(states, texts, candidates, group=args.nll_group)
     validity = [R.part_validity(s) for s in states]
-    report = dict(kind=f"{PROBE}-form", report_only=True, form=name, declared_read=declared, list=described, code_digest=digest, environment=place, instrument=reader.info, signs=signs, groups=groups, references=texts, hypotheses=raw["hypotheses"], nll=np.round(raw["nll"], 5).tolist(),
+    report = dict(kind=f"{probe}-form", report_only=True, form=name, declared_read=declared, list=described, code_digest=digest, environment=place, instrument=reader.info, signs=signs, groups=groups, references=texts, hypotheses=raw["hypotheses"], nll=np.round(raw["nll"], 5).tolist(),
                   empty=[bool(r["empty"]) for r in rows] if rows else None, word_counts=[len(r["words"]) for r in rows] if rows else None, sentence_tokens=[tokens_of(x) for x in texts], frames=[len(s.timestamps) for s in states], reference_frames=[len(r.timestamps) for r in refs], motion=L.motion_statistics(states, masks), hands=P.hand_statistics(states, masks), tracked=P.tracked_statistics(states), seconds_over_reference=[round(len(s.timestamps) / max(len(r.timestamps), 1), 5) for s, r in zip(states, refs)], valid_frame_share=[R.valid_frame_share(s) for s in states], part_validity={part: [v[part] for v in validity] for part in R.PARTS},
                   build_seconds=round(built - started, 2), read_seconds=round(time.time() - built, 2), peak_rss_bytes=P.peak_rss_bytes(), gpu_peak_reserved_bytes=P.gpu_peak_reserved_bytes())
     P.write_report_once(out_dir / f"form-{name}.json", report)
