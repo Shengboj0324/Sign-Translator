@@ -6489,3 +6489,42 @@ Composition's standing depends heavily on the reader, from about half of real si
 
 **Controls before any spend on draws:** canary (real 4.493, blank 1.680), six of seven anchors against v1's stored forms by full hash (`still_monocular` has no stored read and isn't checked), and draw 1's stored composition. A miss voids into `void-v1`. L40S only.
 
+### Word-format forms through v1: nearly half of this arm's lead over blank is word order (read 2026-11-02, recorded 18:03 UTC)
+
+`round20/parent-controls/report-v1.json` sha ad6f6779, digest 9eab6e04, all 8 draws, no alert, controls exact: canary, six stored anchors, draw 1's composition, every draw's stored BLEU, blank and gap share. Copy: `reports/parent_controls_v1_report.json`. **This is A5's top10 on D20, not C20's official 2.400: it doesn't decompose M1.** Declared cell: **format alone doesn't lift real clips, and generated clips read higher.**
+
+| On v1, D20, mean of 8 draws, t interval | BLEU | Margin over still | Share of real's margin |
+|---|---|---|---|
+| Real, two-view | 4.493 | 0.560 | |
+| Real, monocular | 2.849 | 0.395 | |
+| Blank (reference lengths / composition's) | 1.680 / 1.559 | -0.073 | |
+| Still of the real clip | 2.218 | 0 | |
+| **Composition** | **2.402 [2.244, 2.561]** | **0.396 [0.370, 0.423]** | 71% [66, 76] |
+| Generated, the oracle's words | 2.447 [2.304, 2.590] | 0.387 [0.371, 0.403] | 69% |
+| Real word clips (`oracle`) | 2.163 [1.968, 2.358] | 0.300 [0.283, 0.317] | 54% |
+| **Composition, shuffled** | **2.006 [1.869, 2.143]** | **0.215 [0.206, 0.224]** | 38% |
+| Generated, shuffled | 2.034 [1.962, 2.106] | 0.216 [0.207, 0.224] | 38% |
+| Real word clips, shuffled | 1.893 [1.785, 2.000] | 0.183 [0.171, 0.195] | 33% |
+
+| Declared contrast, t interval | BLEU | Margin | By the rule |
+|---|---|---|---|
+| **Composition shuffled, moved clips: does a drop exist?** | -0.399 [-0.573, -0.225] | -0.187 [-0.209, -0.164] | **below: a drop exists** |
+| Generated shuffled, moved clips | -0.424 [-0.595, -0.253] | -0.184 [-0.198, -0.169] | below |
+| Oracle shuffled, moved clips | -0.278 [-0.424, -0.132] | -0.125 [-0.134, -0.116] | below |
+| Oracle minus real two-view | -2.330 [-2.525, -2.136] | -0.260 [-0.277, -0.244] | **below** |
+| Oracle minus covered | -0.284 [-0.563, -0.005] | -0.087 [-0.115, -0.059] | **below: generated reads higher** |
+| Covered minus composition | +0.045 [-0.125, 0.214] | -0.010 [-0.023, 0.004] | unresolved |
+
+**Share of composition's gap over blank removed by shuffling: 46.2%, t [30.1, 62.2]** (ratio of means 47.0%), with the parent's 51% and the mirror's 40% beside it: **around them, so word order holds about as much of this reading as of theirs.** By clips: the clean 178 outside v1's training and selection 59.8% [38.1, 81.5], BLEU -0.571 [-0.813, -0.329]; in v1's training 26.6% [1.4, 51.7]. **So the drop isn't memory: it's larger on clean clips.** Content-word overlap falls too: -0.0124 [-0.0183, -0.0065] (composition 14.8%, real 15.0%), which points to more than n-gram order, though the fall is small. Hypotheses: loop share 55.8% against real 28.2%, 28.0 words against 23.5.
+
+**Reading.** On this arm, on these clips, roughly half of what v1 credits to composition over a blank comes from English word order, and on clips v1 never saw, about 60%. Even so, shuffled composition keeps 38% of real signing's clip-specific margin, so the words themselves do carry a signal this reader finds. Word order is rewarded on all three instruments, so this isn't a quirk of one.
+
+**A number worth stating plainly:** a still pose of a real clip reads 2.22 on v1, higher than shuffled composition (2.01) and close to composition (2.40). So BLEU on v1 near this level is a weak signal on its own, and margin is the cleaner read.
+
+**Beside the rule:** generated clips read higher than real word clips on v1, by the rule, as they trended on the others. Generated clips are best of 16 by a recogniser and real clips are chance picks, and the cut was fitted on ASLLVD, so this doesn't show generated words are better than real ones. It does say word generation isn't what's visibly holding composition back on any of the three readers.
+
+**Consequences.**
+1. **M1 is unchanged and not re-read.** Nothing here carries over to C20. But it makes the question fair to ask of the official arm, and it weakens BLEU ≥ 2.55 as evidence of signing: a form could pass it partly on English order. Reports of composition now give the shuffled read beside it.
+2. **The three instruments have answered what instruments can.** Composition reads about as well as its words allow in English order, and no instrument measures comprehension. Further reader comparisons are unlikely to change a decision.
+3. **The next real evidence is people.** Word-for-word English order isn't ASL grammar, and only fluent signers can say how much that matters.
+
