@@ -38,7 +38,7 @@ Reviewers never receive this guide, `key/`, any CSV or any script.
 
 - Python: `~/.venvs/sign-translator/bin/python`, run from the repo root. R2 reads need the `R2_*` environment variables.
 - Blender 5.2 at `/Applications/Blender.app` (the `render_avatar.py` default; `--blender` to override). An avatar render
-  takes about 13 s for a 147-frame clip at 768 px on the Mac, measured.
+  takes about 26 s for a 104-frame clip at 768 px on the Mac, measured.
 - Mac outage rule: 1 BLAS thread (`OMP_NUM_THREADS=1`), at most 6 processes, run under `nice`.
 - Project rule: every avatar render is also kept in full in the private R2 `renders/` prefix with `INDEX.json`.
   Reviewer answers never go there.
@@ -260,7 +260,7 @@ About 15 raters give 81% at a true 5-point gap, and about 45 give 77% at a true 
 
 **Not ready yet:**
 - Everything has run on test data, apart from one dry run of the export on six real D20 sentences that wrote nothing. The draw and the packet have not run on real D20, and the plan's 427 eligible and 80 negated sentences are unconfirmed.
-- The avatar renderer has not been rerun since the timing change. The avatar is still bald and flat, hands can pass through the body, and shake isn't fixed. The pilot decides whether it's good enough.
+- The avatar has been reworked on 36 D20 sentences, branch `avatar-fixes` (`docs/AVATAR_RENDER.md` section 13): head shake is down about 7×, hands no longer enter the torso or head, one camera frame for every clip, hair, face and lights, and every clip gets the same render. It has not been seen by a Deaf signer. Generated hands still shake more than real, elbows sometimes swing out, and on c01 a real clip's arms can be mostly interpolated. The pilot decides whether it's good enough.
 - The tooling gets one more independent check before any sheet goes out.
 - Sentences with no selected word are now left out of the draw and listed in `draw.json`. D20 has six. Had they stayed, a pilot of 60 would have held one about two times in three.
 
@@ -268,7 +268,7 @@ About 15 raters give 81% at a true 5-point gap, and about 45 give 77% at a true 
 - **What and why.** All three automatic instruments reward English word order, and they can't say whether a person would follow it. So the pilot adds `composition_shuffled` (the same clips in a seeded random order) and `oracle` (real word clips stitched the same way). Report only: they never count towards the release bar, the bar read refuses a key that holds them, and the builder refuses them in the main set.
 - **Composition arm.** The official one: W14b, best of 16, gains on, at predicted timing. A dry run on six real D20 sentences built both new arms from it, reading R2 and writing nothing: 80 s, 3.7 GB at peak, so watch the Mac's 4 GB limit on the full run.
 - **Rater load.** 60 sentences each. Stage 1 is 2 hours at an assumed 2 minutes per item, about three 45-minute sessions; stage 2 about 30 minutes at an assumed 30 s per row, which nothing has measured. 2.5 hours per rater, 20 rater hours.
-- **Rendering.** 240 clips, about an hour on the Mac at the measured 13 s per 147-frame clip (predicted clips run longer, 170 frames on average). The rater plan's 65 GB for 600 clips implies about 26 GB of full render files, so upload and delete per clip.
+- **Rendering.** 240 clips, about 3 hours on the Mac at the measured 26 s per 104-frame clip (predicted clips run longer, 170 frames on average). A full render, frames and bundle, is about 1 MB per frame, so 240 clips are about 40 GB; upload and delete per clip.
 - **What you learn.** With every group filled, every two arms are paired on all 60 sentences, and kappa is back. Under the declared rule, if English order truly costs 20 points of accuracy (60% against 40% over all sentences and raters) the read finds it 79% of the time, and a true 10 points 20%. If 60% and 40% is the median sentence with the median rater, which reads as about 16 points, 55% and 12%. So **a pilot that finds no drop has not shown order doesn't matter**. Forced choice can be right on words alone in any order, so read the free translations and naturalness too.
 - **Timing.** Half of what each rater sees is scrambled or stitched real signs, which may be quicker to give up on or slower to puzzle over. The pilot's total times test the session plan. They don't predict the main read's time per item, or fatigue over its much longer run. Sheets hold no time per row: if you want time per arm, note it yourself.
 - **Pilot raters don't join the main read.** They've seen the scrambled forms. Pass the pilot's roster as `--excluded-raters-roster` for the main set, and the tools refuse them.

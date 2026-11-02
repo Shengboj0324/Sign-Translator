@@ -1,0 +1,117 @@
+{
+ "retrieved_at": "2026-11-02",
+ "source": {
+  "url": "https://files.makehumancommunity.org/asset_packs/makehuman_system_assets/makehuman_system_assets_cc0.zip",
+  "sha256": "b542127a8e25547c7c29c19f2d1d2adb9a664c80396ecd694095dbc8028a0107",
+  "size": 280737770,
+  "pack_page": "https://static.makehumancommunity.org/assets/assetpacks/makehuman_system_assets.html"
+ },
+ "licence": "CC0 1.0: each asset file states it was explicitly released as CC0 in September 2020, and the pack page lists these assets as CC0, author makehuman_system. LICENSE.ASSETS.md is the CC0 text from the pinned MakeHuman commit.",
+ "files": [
+  {
+   "path": "clothes/male_casualsuit02/male_casualsuit02.mhclo",
+   "sha256": "f9e6821704a1508a02d5e416b2360785b705cfe5a130c359021a4b4570dcc43a",
+   "size": 145975
+  },
+  {
+   "path": "clothes/male_casualsuit02/male_casualsuit02.mhmat",
+   "sha256": "20ab695fd8f6986e243427e03f8f9ec5a1c394ce8736eb6359f135a129ffb36a",
+   "size": 1396
+  },
+  {
+   "path": "clothes/male_casualsuit02/male_casualsuit02.obj",
+   "sha256": "e07cbd1a43d21bd700e6598f01f74341a9dd66eac4e035c8be8de2650eac380f",
+   "size": 170324
+  },
+  {
+   "path": "eyebrows/eyebrow002/eyebrow002.mhclo",
+   "sha256": "550781113f5c3971e7e200450d7d94e2290d43e9449a42667d2bf972c1eb0593",
+   "size": 9132
+  },
+  {
+   "path": "eyebrows/eyebrow002/eyebrow002.mhmat",
+   "sha256": "57fc4d1f089be90b2ab4774bdc7c077b5a519f33a293e57ee74762c7714a3b34",
+   "size": 1098
+  },
+  {
+   "path": "eyebrows/eyebrow002/eyebrow002.obj",
+   "sha256": "7fe4e036311c41802bd6889acb02d1b06184a0dd759ac72e1d9fba1037243667",
+   "size": 8227
+  },
+  {
+   "path": "eyebrows/eyebrow002/eyebrow002.png",
+   "sha256": "1de4e4cb69b3f4324390219ffbeb17a0b2555104d3211d1ac667655b69b64038",
+   "size": 96277
+  },
+  {
+   "path": "eyelashes/eyelashes01/eyelashes01.mhclo",
+   "sha256": "5a86b29c15649273d723084954b7fa7bf199112571d4f58539b46734d397ee6b",
+   "size": 2265
+  },
+  {
+   "path": "eyelashes/eyelashes01/eyelashes01.mhmat",
+   "sha256": "8029c99d94f3d87a1e81825fad6b90eec773ae6955a5b2592222ef237377e190",
+   "size": 1074
+  },
+  {
+   "path": "eyelashes/eyelashes01/eyelashes01.obj",
+   "sha256": "f78f5b93fea1946fcae103d32c4f082dd9612a1ec2e7e2f90b03ebe59b0baf20",
+   "size": 18832
+  },
+  {
+   "path": "eyelashes/eyelashes01/eyelashes01.png",
+   "sha256": "4b69c0fff2648874460e9caf80c31413c444218a5c50afebc425aeaa65484a35",
+   "size": 91600
+  },
+  {
+   "path": "hair/short01/short01.mhclo",
+   "sha256": "ae1ffaa98da5753b803b3a173bede4895d2215e6bb94763f3765a71f0e984f35",
+   "size": 201588
+  },
+  {
+   "path": "hair/short01/short01.mhmat",
+   "sha256": "01e2e12ce3f3d3c859225456660acadcdd27d4f4b4d888bcbd6f11998cadd975",
+   "size": 1314
+  },
+  {
+   "path": "hair/short01/short01.obj",
+   "sha256": "d998d8416f9b5d5591f1d756f4d292288d000a6951bc0f4d2e8e72727bbc44fa",
+   "size": 194450
+  },
+  {
+   "path": "hair/short01/short01_diffuse.png",
+   "sha256": "f34a0957184e3d1e911ed59245f874f8d4843f61ee44ff49f43edb4be0196949",
+   "size": 2354146
+  },
+  {
+   "path": "skins/young_caucasian_male/young_caucasian_male.mhmat",
+   "sha256": "6eda60b07ff2afbde078a2535ef3913593d84e9de92b2eb76c30f396a181fe2e",
+   "size": 1462
+  },
+  {
+   "path": "skins/young_caucasian_male/young_lightskinned_male_diffuse.png",
+   "sha256": "862a26e335e958b70534cb5f0d7c47ef30ab148a56c42b3e9da969cf76f12963",
+   "size": 3693828
+  }
+ ],
+ "cc0_statement_in_each_text_asset": {
+  "clothes/male_casualsuit02/male_casualsuit02.mhclo": "This asset was explicitly released as CC0 in september 2020. The license text for CC0 can be found in the root of this repository. The copyright holders at the point of the release to CC0 were:",
+  "clothes/male_casualsuit02/male_casualsuit02.mhmat": "This asset was explicitly released as CC0 in september 2020. The license text for CC0 can be found in the root of this repository. The copyright holders at the point of the release to CC0 were:",
+  "eyebrows/eyebrow002/eyebrow002.mhclo": "This asset was explicitly released as CC0 in september 2020. The license text for CC0 can be found in the root of this repository. The copyright holders at the point of the release to CC0 were:",
+  "eyebrows/eyebrow002/eyebrow002.mhmat": "This asset was explicitly released as CC0 in september 2020. The license text for CC0 can be found in the root of this repository. The copyright holders at the point of the release to CC0 were:",
+  "eyelashes/eyelashes01/eyelashes01.mhclo": "This asset was explicitly released as CC0 in september 2020. The license text for CC0 can be found in the root of this repository. The copyright holders at the point of the release to CC0 were:",
+  "eyelashes/eyelashes01/eyelashes01.mhmat": "This asset was explicitly released as CC0 in september 2020. The license text for CC0 can be found in the root of this repository. The copyright holders at the point of the release to CC0 were:",
+  "hair/short01/short01.mhclo": "This asset was explicitly released as CC0 in september 2020. The license text for CC0 can be found in the root of this repository. The copyright holders at the point of the release to CC0 were:",
+  "hair/short01/short01.mhmat": "This asset was explicitly released as CC0 in september 2020. The license text for CC0 can be found in the root of this repository. The copyright holders at the point of the release to CC0 were:",
+  "skins/young_caucasian_male/young_caucasian_male.mhmat": "This asset was explicitly released as CC0 in september 2020. The license text for CC0 can be found in the root of this repository. The copyright holders at the point of the release to CC0 were:"
+ },
+ "not_used_from_these_assets": [
+  "the top's diffuse, normal and AO images (it has a printed logo; the top is drawn in one plain colour)",
+  "hair normal map"
+ ],
+ "excluded": [
+  "SMPL-X",
+  "MANO",
+  "any non-CC0 asset"
+ ]
+}

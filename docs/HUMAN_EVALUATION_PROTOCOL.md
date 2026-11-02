@@ -39,8 +39,10 @@ All systems sign on the recorded utterance's clock, so duration is no cue. Every
 - any channel's tracking dropouts are held from the nearest valid frame, for display only, so flicker does not
   reveal the recording.
 
-`--renderer avatar` draws every system on the MakeHuman avatar instead (`scripts/render_avatar.py`; Blender Workbench,
-front camera, about 13 s for a 147-frame clip at 768 px on the Mac, measured), the preferred renderer for the study.
+`--renderer avatar` draws every system on the MakeHuman avatar instead (`scripts/render_avatar.py`; Blender EEVEE, one fixed
+front camera, one filter and collision correction for every system, about 26 s for a 104-frame clip at 768 px on the Mac, measured;
+`docs/AVATAR_RENDER.md` section 13), the preferred renderer for the study. There, tracking gaps are interpolated rather than held,
+so a recording shows no frozen arm followed by a step. A long gap still shows less motion than the signer made.
 
 **Known limit:** the skeleton and the schematic face show the grammar channels, but not appearance. Results describe
 these renders. They do not describe an avatar (item 5), and the study is re-run when the avatar exists.
