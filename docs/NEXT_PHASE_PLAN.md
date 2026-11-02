@@ -6258,3 +6258,20 @@ Blank 1.058 and still 0.895 on the parent's BLEU; real two-view through it 2.130
 Found while building the follow-ups, from index objects with no state or score read: **v1's fine-tuning lists hold 234 of D20's 500 clips in training and 265 more in its selection pool, and 455 of C20's clips in training and 167 of its 512 selection clips.** These lists come from `full-v1`. I found no earlier statement of this in this plan. D20's and C20's "fresh" meant fresh to the generator's decisions, and not to v1.
 
 **Report only, before looking:** split the stored per-clip reads of D20's real, monocular and blank forms and A5's forms, and C20's first arm with its real and blank, by whether v1 trained on the clip. No new instrument read. If real two-view reads much higher on clips v1 trained on, its 4.49 is partly memory, and every share against it is understated. If generated forms also read higher there, the composition's scores are inflated too, because v1 may recall a sentence it trained on. C20's verdict, M1 not met, can't be raised by this: the split can only qualify it. The 2.400 stays as read.
+
+**Split result (recorded 02:35 UTC), from stored reads, nothing new read.** v1's training list holds How2Sign c01 and c05, its selection pool c03, so training status and signer are fully confounded on D20.
+
+| Stored read | Clips v1 trained on | Other clips |
+|---|---|---|
+| D20 real two-view | 3.487 [2.58, 4.37], n 234 | 5.552 [4.47, 6.63], n 266 |
+| D20 real monocular | 2.533 [1.91, 3.20] | 3.138 [2.41, 3.85] |
+| D20 blank | 1.546 | 1.755 |
+| D20 top10, mean of 8 draws | 2.188 | 2.596 |
+| D20 margin0, mean of 8 draws | 2.134 | 2.458 |
+| C20 real | 3.941 [3.31, 4.56], n 455 | 4.115 [3.50, 4.78], n 545 |
+| C20 blank | 2.09 | 2.02 |
+| **C20 first arm** | **2.463 [2.01, 2.92]** | **2.348 [1.90, 2.86]** |
+
+**Reading.** Real signing does **not** read higher on clips v1 trained on, so there's no sign of simple clip memory, and C20's arm is about the same on both sides with overlapping intervals. M1's verdict stands. But "unseen signers" never held for v1, and D20's high real score is largely c03 (5.56, against c01 3.74 and c05 2.77), which is also the hardest hit by monocular (3.14, c01 3.02, c05 0.90). The parent's margin is also highest on c03 (0.465; c01 0.169; c05 −0.070), so c03's clips look easier for reasons beyond v1's training. Any report on these sets now splits by signer.
+
+**Sensitivity ladder declared (02:35 UTC).** Branch `parent-reads` 67dae0c, digest 3f2b6b2e, reviewed, report only, real forms, about $0.80. The header holds the reading. Finger rungs say "finger articulation" only; only `hands_still` holding may say the instrument is blind to hands; own pose against `fingers_neutral` separates motion from static handshape; v1's likelihood label inherits a presence offset and can't carry that sentence; "sees path distance" is necessary, not sufficient. Controls: v1 4.493 and 1.68; parent margin .2372 and still .0610.

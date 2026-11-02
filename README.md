@@ -213,6 +213,8 @@ About 158,000 training records and 203 hours in the generator's mix. Video stays
 | Reserve | At most 562 | One final fresh claim | Unread |
 | How2Sign test signer | | Final check | See [section 11](#11-what-we-got-wrong) |
 
+**A limit on these sets:** they're fresh to the generator's decisions, but not to instrument v1, whose fine-tuning lists include 234 of D20's clips and 455 of C20's. Real signing doesn't read higher on those clips, on either set, so we see no sign of simple clip memory, and C20's result is about the same on both sides (2.46 and 2.35). Signer differences are large, though: D20's real score runs from 2.77 to 5.56 by signer.
+
 ---
 
 ## 6. How we measure
