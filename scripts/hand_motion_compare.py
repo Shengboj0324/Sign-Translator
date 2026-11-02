@@ -628,7 +628,7 @@ def _append(path: Path, row: dict) -> None:
 
 
 def _seen(path: Path) -> set:
-    return {json.loads(line)["id"] for line in path.open()} if path.exists() else set()
+    return {json.loads(line)["id"] for line in path.read_text().splitlines()} if path.exists() else set()
 
 
 def collect_generated(store, work: Path) -> None:
@@ -810,7 +810,7 @@ def hand_of(row: dict, which: str) -> dict | None:
 
 def _load(work: Path, name: str) -> list:
     path = work / f"{name}.jsonl"
-    return [json.loads(line) for line in path.open()] if path.exists() else []
+    return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
 
 def metric_means(rows: list, which: str) -> dict:
@@ -1175,7 +1175,7 @@ def analyse(work: Path) -> dict:
     wm["to_real_centroids"] = to_real_centroids(pooled_f, real)
     entries = sorted({r["entry"] for r in draws[1]})
     capture_all = {r["entry"] for r in capture_rows}
-    return dict(kind="hand-motion-compare", report_only=True, decides_nothing=True, limits=LIMITS, mean_clip_seconds={k: _round(np.mean([r["seconds"] for r in v if r.get("seconds") is not None]), 2) for k, v in dict(generated=pooled, capture=capture_rows, real_words=real, sentences_two_view=two, sentences_monocular=mono).items() if v}, sources=dict(generated_rows=len(pooled), phase_a_rows=len(phase), capture_rows=len(capture_rows), real_word_rows=len(real), sentence_rows=len(sentences), fresh_rows=len(fresh), round_trip_rows=len(trip)),
+    return dict(kind="hand-motion-compare", report_only=True, decides_nothing=True, limits=LIMITS, mean_clip_seconds={k: _round(np.mean([r["seconds"] for r in v if r.get("seconds") is not None]), 2) for k, v in dict(generated=pooled, capture=capture_rows, real_words=real, sentences_two_view=two, sentences_monocular=mono).items() if any(r.get("seconds") is not None for r in v)}, sources=dict(generated_rows=len(pooled), phase_a_rows=len(phase), capture_rows=len(capture_rows), real_word_rows=len(real), sentence_rows=len(sentences), fresh_rows=len(fresh), round_trip_rows=len(trip)),
                 observed_rule=check_observed(dict(capture=capture_rows, real_words=real, sentences_two_view=two, sentences_monocular=mono)), validity=validity_report(dict(generated=pooled, phase_a=phase, capture=capture_rows, real_words=real, sentences_two_view=two, sentences_monocular=mono, fresh=fresh)), generated_validity_note="generated output marks every frame and joint valid, none observed, confidence 0: it never says a hand is absent, and both hands always have a row, while real hands often have no detection",
                 extended_words=extended_report(work, capture_rows, pooled, real),
                 added_after_first_numbers=added_report(work, dict(generated_three_draws=pooled, capture=capture_rows, real_words=real, sentences_two_view=two, sentences_monocular=mono, fresh_unselected=fresh, decoded_clips=[])),
