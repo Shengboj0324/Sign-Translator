@@ -9,4 +9,10 @@ key.json
 *_filled.csv
 *-filled.csv
 reviewer_codes*
+draw.json
+negation_check*.csv
+checker_clips*.csv
+report.json
+roster*.json
+receipts*.json
 passphrases*

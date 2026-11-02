@@ -7,10 +7,10 @@ Draw 200 plus 60 pilot from D20's eligible (427 before leaving out the six with 
 
 D20, not the 1,000, because protocol §7 feeds misunderstood sentences into tuning. D20 only chose global levers by instrument, so human optimism should be small; disclose it.
 
-Bar conditions failed: reference-length timing (`@predicted` waits for the next read); val signers untrained (plan text) but used for selection; wrist speed 2.60× and 2.39×.
+Bar conditions failed: val signers untrained (plan text) but used for selection; wrist speed 2.60× and 2.39×. This read is at predicted timing (`core_crossfade@predicted`, command in `docs/NEXT_PHASE_PLAN.md`), not reference length.
 
 ## 2. Systems and power
-First arm, no-gains stack, reference through the same avatar. Three groups; each rater sees 200 sentences (~67 per system). At an assumed 2 min per item, stage 1: 6.7 h, nine 45-minute sessions; stage 2 at an assumed 30 s per row adds 1.7 h.
+First arm: W14b, gains on, best of 16, the arm amendment 6 kept (not the no-gains stack), at predicted timing; reference through the same avatar. Three groups; each rater sees 200 sentences (~67 per system). At an assumed 2 min per item, stage 1: 6.7 h, nine 45-minute sessions; stage 2 at an assumed 30 s per row adds 1.7 h.
 
 Power by the method declared 2026-11-01, 03:28 UTC (Wilson plus method D; 200 sentences, three groups, sentence SD 1.0, rater SD 0.5; simulation only):
 
@@ -31,14 +31,14 @@ Nine raters, about 60 hours of stage 1, about 75 with stage 2. Three raters cann
 - **Bar scorer** (`score_human_eval.py --bar`): built, on synthetic sheets.
 - **Design, sheets** (`human_study.py`): passed, synthetic IDs.
 - **Avatar** (`render_avatar.py`): works. Bald, flat, hands through body, shake unfixed; v2 unstarted. Pilot decides.
-- **Hosting, blinding:** nothing built; MP4 tags clean; speed may reveal the reference. 2 days.
+- **Hosting, blinding:** no hosting: the owner plays the videos or delivers them, and enters the answers (owner's flow, 2026-11-02); MP4 tags clean; speed may reveal the reference.
 - **Consent, payment** (`reviewer_package/`): drafts; pay blank. 0.5 day.
 
 ## 4. Render cost
 Measured: 13 s per 147-frame clip at 768 px (docs' 45 s is stale). 600 clips: about 2.2 h, one Mac process. Pod untested. Use the Mac. R2, all files: about 65 GB, ~$1/month. The Mac has 39 GB free: upload and delete per clip.
 
 ## 5. Licensing (not legal advice)
-How2Sign: CC BY-NC 4.0, research consent; attribute and state changes. English options derive from How2: contracted reviewers only. No ASL Citizen or STEM Wiki clip appears, and the generator mix excludes them. v3d, trained on ASL Citizen, chooses both arms' best-of-16 words. The owner deferred consent until after the model finishes (22:39 UTC); this read keeps best of 16.
+How2Sign: CC BY-NC 4.0, research consent; attribute and state changes (done on `reviewer_package/FOR_REVIEWERS.md`). English options derive from How2: contracted reviewers only. No ASL Citizen or STEM Wiki clip appears, and the generator mix excludes them. v3d, trained on ASL Citizen, chooses both arms' best-of-16 words. The owner deferred consent until after the model finishes (22:39 UTC); this read keeps best of 16.
 
 ## 6. Owner's actions
 Full notes for the owner: `reviewer_package/OPERATOR_GUIDE.md` §10.
@@ -46,5 +46,5 @@ Full notes for the owner: `reviewer_package/OPERATOR_GUIDE.md` §10.
 - Set and pay rates.
 - Get ethics or IRB review; sign consent.
 - Arrange ASL instructions or an interpreter.
-- Choose delivery; it must hold stage 2 back until stage 1 is returned.
+- Choose delivery; it must hold stage 2 back until stage 1 is returned. Raters never use a terminal or compute a hash: they answer on a form or in ASL, and the owner enters the answers.
 - Find one Deaf checker who is not a rater.

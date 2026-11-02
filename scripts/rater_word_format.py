@@ -16,16 +16,18 @@ controls, so both forms come from the very clips, cuts and options of that compo
   (``core_stretch``, per sentence: its core frames here over its core frames in the composition), and oracle against composition
   mixes real clips with fewer, slower words: ``same_words`` marks the sentences where it does not.
 
-**Licence.** reviewer_package/OPERATOR_GUIDE.md section 0 lists ASLLVD under the DAI terms for val records, and the oracle needs
-train records (val covers about 31% of composition's words). That point is the owner's, so this code does not decide it: every
-corpus needs the owner's recorded note (``--word-format-licence-note``), kept in the index. ASLLVD is the default corpus; RIT and WLASL
-may be named. Everything else, ASL Citizen, ASL STEM Wiki, YouTube-ASL and Sem-Lex among them, is refused. No record of How2Sign signer
-c00 or of a test partition is ever fetched here, and only D20's pilot sentences are composed (D20's hash is pinned).
+**Licence.** The oracle needs train records (val covers about 31% of composition's words). That point is the owner's, so this code
+does not decide it: every corpus must be named in the owner's recorded note (``--word-format-licence-note``), which the index keeps, and a
+sentence of the note that names a corpus and negates, "RIT and WLASL aren't covered", does not cover it. The owner confirmed ASLLVD train
+clips on 2026-11-02 (docs/NEXT_PHASE_PLAN.md); RIT and WLASL are not covered. Everything else, ASL Citizen, ASL STEM Wiki, YouTube-ASL and
+Sem-Lex among them, is refused. No record of How2Sign signer c00 or of a test partition is ever fetched here, and only D20's pilot
+sentences are composed (D20's hash is pinned).
 
 **Nothing is written until both arms are built:** ``prepare`` loads the generator and checks the template before any export,
 and ``build`` runs from the unwritten composition rows, so a failure does not use up the prefix.
 
-These forms are report only and pilot only: they are not bar forms, and no instrument reads them here.
+These forms are report only and pilot only: they are not bar forms, and no instrument reads them here. They come only from the official
+arm's predicted form, ``core_crossfade@predicted``.
 """
 from __future__ import annotations
 
@@ -33,6 +35,7 @@ import collections
 import hashlib
 import json
 from pathlib import Path
+import re
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -43,6 +46,8 @@ sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 SHUFFLED, ORACLE = "composition_shuffled", "oracle"
 ORACLE_DEFAULT = ("asllvd-text-v1",)
 ORACLE_PERMITTED = ORACLE_DEFAULT + ("rit-text-r6", "wlasl-text-r6")      # each only with the owner's recorded note (module docstring)
+ORACLE_NAMES = {"asllvd-text-v1": "ASLLVD", "rit-text-r6": "RIT", "wlasl-text-r6": "WLASL"}     # as the owner's note names them
+PREDICTED_FORM = "core_crossfade@predicted"          # the official arm's timing: the arms control this form and no other
 SHUFFLE_VARIANT = 1000                               # shuffle_order's variant index: apart from /shuffled's 0, and parent_controls's 100 x draw + seed
 
 
@@ -50,8 +55,22 @@ def parse_corpora(text: str) -> tuple:
     return tuple(c for c in (text or "").split(",") if c)
 
 
+def note_names(note: str, corpus: str) -> bool:
+    """Whether a sentence of the owner's note names this corpus and does not negate: "RIT and WLASL aren't covered" names neither."""
+    from signtranslator.eval_framework.human_study import negation_words
+    name = re.compile(rf"\b{re.escape(ORACLE_NAMES[corpus])}\b", re.IGNORECASE)
+    return any(name.search(sentence) and not negation_words(sentence) for sentence in re.split(r"(?<=[.;!?])\s+", note or ""))
+
+
+def check_predicted_form(form: str) -> None:
+    if form != PREDICTED_FORM:
+        raise SystemExit(f"the word-format arms control the official arm's {PREDICTED_FORM} alone, not {form}: pass "
+                         f"--predicted-duration and --export-forms {PREDICTED_FORM}")
+
+
 def check_oracle_corpora(corpora, note) -> None:
-    """Refuse a corpus outside ASLLVD, RIT and WLASL, and any corpus at all without the owner's recorded note."""
+    """Refuse a corpus outside ASLLVD, RIT and WLASL, any corpus at all without the owner's recorded note, and a corpus the note does not
+    name as covered."""
     if not corpora:
         raise SystemExit("the oracle needs a corpus of real clips")
     refused = [c for c in corpora if c not in ORACLE_PERMITTED]
@@ -59,6 +78,10 @@ def check_oracle_corpora(corpora, note) -> None:
         raise SystemExit(f"the oracle may not show {refused}: raters see ASLLVD, RIT or WLASL, and only once the owner has confirmed their terms")
     if not (note or "").strip():
         raise SystemExit(f"{list(corpora)} need the owner's recorded confirmation of their terms, ASLLVD train clips included: --word-format-licence-note")
+    unnamed = [c for c in corpora if not note_names(note, c)]
+    if unnamed:
+        raise SystemExit(f"{unnamed}: --word-format-licence-note does not name them as covered. The owner's note covers a corpus only where a "
+                         "sentence of it names that corpus and does not negate")
 
 
 def check_oracle_record(record: dict, corpora) -> dict:
@@ -201,6 +224,7 @@ def build(args, exported: dict, ready: SimpleNamespace, *, export, val, jobs, ma
     if len(forms) != 1:
         raise SystemExit(f"--export-word-format moves one form, not {sorted(forms)}")
     form = next(iter(forms))
+    check_predicted_form(form)
     predicted = form.endswith("@predicted")
     if predicted and duration_model is None:
         raise SystemExit("no fitted duration model for the predicted form")

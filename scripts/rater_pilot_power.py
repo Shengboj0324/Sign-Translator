@@ -13,7 +13,9 @@ simulations' (plan, 2026-11-01, 03:28 UTC).
 - ``logit``: a median sentence with a median rater is at 60% and 40%. Sentence and rater spread pull both rates towards 50%, so the accuracy
   difference the study reads is smaller, about 16 points. Same for 10 points.
 
-    python scripts/rater_pilot_power.py --sims 2000 --seed 20261102 --output reports/rater_pilot_power.json
+    python scripts/rater_pilot_power.py --sims 4000 --seed 20261102 --output reports/rater_pilot_power.json
+
+That command wrote the stored report, 4,000 studies at every row; the plan and the protocol quote it.
 """
 from __future__ import annotations
 
@@ -106,7 +108,7 @@ def simulate(U: int, R: int, drop: float, reading: str, *, sims: int, seed: int)
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--sims", type=int, default=2000)
+    parser.add_argument("--sims", type=int, default=4000)
     parser.add_argument("--seed", type=int, default=20261102)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--configs", default=",".join(f"{u}x{r}" for u, r in CONFIGS), help="SENTENCESxRATERS, comma-separated")

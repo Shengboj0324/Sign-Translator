@@ -7,6 +7,7 @@
 > anyone signs it.
 > **Tell the board about the pilot's design:** some pilot clips are scrambled on purpose, or stitched from real signs, and raters are not told this
 > or that word order is being tested until after all sheets return. The default is a debrief (`DEBRIEF.md`), and the board decides. Add here whatever it requires.
+> **Also for the board:** the questions listed in `OPERATOR_GUIDE.md` §10, "Questions for the review board". The Deaf checker has a separate draft, `CHECKER_CONSENT_FORM.md`: this form doesn't describe that job.
 
 **Project:** Sign Translator, a research project that turns English into ASL signing shown by a computer-made figure.
 **Researcher:** [owner's full name]  **Contact:** [email] / [text or video phone]
