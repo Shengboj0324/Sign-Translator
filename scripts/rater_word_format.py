@@ -4,17 +4,26 @@ controls, so both forms come from the very clips, cuts and options of that compo
 
 - ``composition_shuffled``: the composition's own clips in a seeded random order, every word kept. Each word keeps its
   planned core frames and the gap lengths keep their places, so the frame count and every core are the composition's; only
-  the joins are bridged anew (``round15_stage2.render_form``'s ``keep_frames``, as ``parent_controls.moved_plan``).
+  the joins are bridged anew (``round15_stage2.render_form``'s ``keep_frames``, as ``parent_controls.moved_plan``). **The limit:**
+  a gap keeps the length planned for its original neighbours, so a moved join covers a different distance in the same frames.
+  Under ``--retime continuous`` that can break the velocity bound the gap was sized to, and under sign-fitted timing, the official
+  arm's, no bound was ever applied. Each row logs how far each of its joins goes past that bound (``joins``), beside the
+  composition's own (``composition_joins``), so a scrambled clip's jumps can be told from its order.
 - ``oracle``: the composition's word list, each word a real clip chosen by chance (``parent_controls.pick_index``, no
   instrument), through the same tokenizer round trip as the generated clips (the word cache's prior's own tokenizer, the same
   gains setting: ``build_recon_states.decode_state``), then the same cut and stitching, at the same frame count. A word with
-  no permitted real clip is dropped and the rest share the frames, so oracle against composition mixes real clips with
-  fewer words: ``same_words`` marks the sentences where it does not.
+  no permitted real clip is dropped and the rest share the frames, so under sign-fitted timing each kept word is stretched
+  (``core_stretch``, per sentence: its core frames here over its core frames in the composition), and oracle against composition
+  mixes real clips with fewer, slower words: ``same_words`` marks the sentences where it does not.
 
-**Licence.** The oracle takes train records of ``asllvd-text-v1`` only, under the DAI terms (reviewer_package/OPERATOR_GUIDE.md
-section 0). RIT and WLASL need the owner's recorded confirmation (``--word-format-licence-note``). Everything else, ASL Citizen,
-ASL STEM Wiki, YouTube-ASL and Sem-Lex among them, is refused. No record of How2Sign signer c00 or of a test partition is ever
-fetched here, and only D20's pilot sentences are composed.
+**Licence.** reviewer_package/OPERATOR_GUIDE.md section 0 lists ASLLVD under the DAI terms for val records, and the oracle needs
+train records (val covers about 31% of composition's words). That point is the owner's, so this code does not decide it: every
+corpus needs the owner's recorded note (``--word-format-licence-note``), kept in the index. ASLLVD is the default corpus; RIT and WLASL
+may be named. Everything else, ASL Citizen, ASL STEM Wiki, YouTube-ASL and Sem-Lex among them, is refused. No record of How2Sign signer
+c00 or of a test partition is ever fetched here, and only D20's pilot sentences are composed (D20's hash is pinned).
+
+**Nothing is written until both arms are built:** ``prepare`` loads the generator and checks the template before any export,
+and ``build`` runs from the unwritten composition rows, so a failure does not use up the prefix.
 
 These forms are report only and pilot only: they are not bar forms, and no instrument reads them here.
 """
@@ -26,13 +35,14 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 
 SHUFFLED, ORACLE = "composition_shuffled", "oracle"
 ORACLE_DEFAULT = ("asllvd-text-v1",)
-NEEDS_NOTE = ("rit-text-r6", "wlasl-text-r6")        # OPERATOR_GUIDE section 0: "Not unless you confirm its terms allow it"
+ORACLE_PERMITTED = ORACLE_DEFAULT + ("rit-text-r6", "wlasl-text-r6")      # each only with the owner's recorded note (module docstring)
 SHUFFLE_VARIANT = 1000                               # shuffle_order's variant index: apart from /shuffled's 0, and parent_controls's 100 x draw + seed
 
 
@@ -41,15 +51,14 @@ def parse_corpora(text: str) -> tuple:
 
 
 def check_oracle_corpora(corpora, note) -> None:
-    """Refuse a corpus the operator guide does not allow: only ASLLVD by default, RIT and WLASL with the owner's note."""
+    """Refuse a corpus outside ASLLVD, RIT and WLASL, and any corpus at all without the owner's recorded note."""
     if not corpora:
         raise SystemExit("the oracle needs a corpus of real clips")
-    refused = [c for c in corpora if c not in ORACLE_DEFAULT + NEEDS_NOTE]
+    refused = [c for c in corpora if c not in ORACLE_PERMITTED]
     if refused:
-        raise SystemExit(f"the oracle may not show {refused}: raters see ASLLVD, or RIT and WLASL once the owner confirms their terms")
-    restricted = [c for c in corpora if c in NEEDS_NOTE]
-    if restricted and not (note or "").strip():
-        raise SystemExit(f"{restricted} need the owner's confirmation of their terms: --word-format-licence-note")
+        raise SystemExit(f"the oracle may not show {refused}: raters see ASLLVD, RIT or WLASL, and only once the owner has confirmed their terms")
+    if not (note or "").strip():
+        raise SystemExit(f"{list(corpora)} need the owner's recorded confirmation of their terms, ASLLVD train clips included: --word-format-licence-note")
 
 
 def check_oracle_record(record: dict, corpora) -> dict:
@@ -109,59 +118,85 @@ def oracle_job(words, plan_model, vocab) -> dict:
                 weights=list(plan["weights"]), seeds=[None] * len(words), block="matched")
 
 
-def _put_state(store, key: str, state) -> str:
+def state_payload(state) -> tuple[bytes, str]:
     with tempfile.TemporaryDirectory() as t:
         path = Path(t) / "s.npz"
         sha = state.save(path)
-        data = path.read_bytes()
-    if store.exists(key):
-        raise SystemExit(f"{key} exists: written once")
-    store.put(key, data)
-    return sha
+        return path.read_bytes(), sha
 
 
-def _index(store, args, exported: dict, role: str, rows: list, form: str, composition: dict, **extra) -> tuple[str, str]:
-    index = dict(kind="round15-composed-states", arm=f"{args.export_arm}/{role}", prefix=f"{args.export_prefix}/word-format/{role}",
-                 sentences=exported["sentences"], sentence_set=exported["sentence_set"], word_cache=exported["word_cache"],
-                 generator_mix=exported["generator_mix"], model_sha256=exported["model_sha256"], corpora=exported["corpora"],
-                 settings=exported["settings"], indexing=exported["indexing"], states=rows,
-                 word_format=dict(role=role, report_only=True, pilot_only=True, form=form, composition=composition, **extra))
-    key = f"{index['prefix']}/index.json"
-    if store.exists(key):
-        raise SystemExit(f"{key} exists: written once")
-    data = json.dumps(index, indent=1, default=float).encode()
-    store.put(key, data)
-    print(f"{key} {hashlib.sha256(data).hexdigest()}", flush=True)
-    return key, hashlib.sha256(data).hexdigest()
+def join_excess(parts: dict, plan: dict, *, min_speed: float) -> list[dict]:
+    """Each join of a plan against the continuous route's velocity bound (``composition_v2.bridge_frames``): the frames the gap has,
+    the frames the bound would need, and the wrist speed the gap implies over the bound, the larger of the two sides. 1 is at the
+    bound; above 1 is past it. A side untracked at the join is not read."""
+    from signtranslator.generation.composition_v2 import bridge_frames
+    from signtranslator.generation.compositional import time_scale
+    cores = [time_scale(c, f) if f else None for c, f in zip(parts["cores"], plan["cores"])]
+    out = []
+    for k, gap in enumerate(plan["gaps"]):
+        if cores[k] is None or cores[k + 1] is None:
+            continue
+        _, info = bridge_frames(cores[k], cores[k + 1], 0, min_speed=min_speed)
+        ratios = [side["distance"] * 24. / (gap + 1) / side["bound"] for side in info["sides"].values()]
+        out.append(dict(join=k, gap_frames=int(gap), bound_needs_frames=info["needed"], over_bound=round(max(ratios), 3) if ratios else None))
+    return out
+
+
+def _worst(rows) -> float | None:
+    values = [j["over_bound"] for j in rows if j["over_bound"] is not None]
+    return max(values) if values else None
 
 
 def check_export_inputs(export: dict, val, sentence_set) -> None:
-    """Pilot sentences named, D20 alone, and each of them How2Sign val of the validation signers: never test, held-out or c00."""
+    """Pilot sentences named, D20 alone by its hash, and each of them How2Sign val of the validation signers: never test, held-out or c00."""
+    import build_human_eval_packet as packet
     from s2_lib import check_read_records
     if not export["pilot"]:
         raise SystemExit("--export-word-format: the list names no pilot sentences; these arms are pilot only")
-    if (sentence_set or {}).get("set") != "D20":
-        raise SystemExit("--export-word-format reads D20 only")
+    if (sentence_set or {}).get("set") != "D20" or sentence_set.get("sha256") != packet.D20_SHA256:
+        raise SystemExit(f"--export-word-format reads D20 only: {(sentence_set or {}).get('sha256')} is not D20's {packet.D20_SHA256}")
     pilot = set(export["pilot"])
     check_read_records([r for r in val if r["sign"] in pilot])
 
 
-def export_word_format(store, args, exported: dict, *, export, val, jobs, material, plan_model, vocab, model, manifest, pool_manifest,
-                       fractions, margin, rule, added, seconds, duration_model, word_cache, render) -> dict:
-    """Both arms' states and indexes for the list's pilot sentences. ``render(material, job, seconds, order, keep_frames,
-    sample_id)``: the composition's own renderer, every option of the run applied. Returns {role: (index key, hash)}."""
-    from build_recon_states import decode_state
+def round_trip(store, word_cache: dict, generator_mix_sha256: str, device: str) -> tuple:
+    """(tokenizer, post) of the cached clips' own decoding: the prior's tokenizer, and its gains unless the cache was made without."""
     from evaluate_text_to_motion import load_generator
     from exposure_diagnostic import make_post
+    _, _, sample = load_generator(store, word_cache["checkpoint_key"], generator_mix_sha256, device, decoder_gains=not word_cache.get("no_decoder_gains"))
+    return sample.tokenizer, make_post(sample.decoder_gains)
+
+
+def prepare(store, args, *, export, val, sentence_set, word_cache, manifest, pool_manifest, added) -> SimpleNamespace:
+    """Everything that can fail before a state is composed or written: inputs, licence note, generator, template, pools."""
+    from build_recon_states import decode_state
     from parent_controls import RealClips
     from round15_oracle import TEMPLATE_CORPUS, word_clip
     from signtranslator.data_engineering.corpus_manifest import ContentCache
-    from signtranslator.generation.composition_v2 import predicted_seconds
     from train_motion_tokens import layout_template
-    import round15_stage2 as r2
     corpora = parse_corpora(args.word_format_corpora)
     check_oracle_corpora(corpora, args.word_format_licence_note)
-    check_export_inputs(export, val, exported.get("sentence_set"))
+    check_export_inputs(export, val, sentence_set)
+    settings = json.loads(store.get(args.word_cache_key))["settings"]
+    tokenizer, post = round_trip(store, word_cache, settings.get("generator_mix_sha256") or args.mix_sha256, args.device)
+    cache = ContentCache(Path(args.cache_dir) / "word-format", 2_000_000_000)
+    check_template_record(manifest)
+    template = layout_template(manifest, TEMPLATE_CORPUS, cache, store.get)
+
+    def load(record: dict, entry: str):
+        check_oracle_record(record, corpora)
+        return decode_state(word_clip(record, cache=cache, fetch=store.get, template=template), tokenizer, tokenizer.config.motion, post, text=entry, device=args.device)
+    pools = oracle_pools(pool_manifest, corpora, added)
+    return SimpleNamespace(corpora=corpora, pools=pools, real=RealClips(pools, args.word_format_seed, load), added=added)
+
+
+def build(args, exported: dict, ready: SimpleNamespace, *, export, val, jobs, material, plan_model, vocab, fractions, margin, rule, seconds, duration_model, word_cache, render) -> dict:
+    """Both arms' rows and unwritten states, from the composition's unwritten rows; a guard that fails here leaves the prefix unused.
+    ``render(material, job, seconds, order, keep_frames, sample_id)``: the composition's own renderer, every option of the run
+    applied. Returns {states: [(key, data)], indexes: {role: (rows, extra)}, form}."""
+    from signtranslator.generation.composition_v2 import predicted_seconds
+    from signtranslator.generation.compositional import parts_from_pieces
+    import round15_stage2 as r2
     forms = {r["form"] for r in exported["states"]}
     if len(forms) != 1:
         raise SystemExit(f"--export-word-format moves one form, not {sorted(forms)}")
@@ -171,22 +206,12 @@ def export_word_format(store, args, exported: dict, *, export, val, jobs, materi
         raise SystemExit("no fitted duration model for the predicted form")
     position = {r["sign"]: i for i, r in enumerate(val)}
     composed = {r["sign"]: r for r in exported["states"]}
-    settings = json.loads(store.get(args.word_cache_key))["settings"]
-    _, _, sample = load_generator(store, word_cache["checkpoint_key"], settings.get("generator_mix_sha256") or args.mix_sha256, args.device,
-                                  decoder_gains=not word_cache.get("no_decoder_gains"))
-    tokenizer, post = sample.tokenizer, make_post(sample.decoder_gains)
-    cache = ContentCache(Path(args.cache_dir) / "word-format", 2_000_000_000)
-    check_template_record(manifest)
-    template = layout_template(manifest, TEMPLATE_CORPUS, cache, store.get)
-
-    def load(record: dict, entry: str):
-        check_oracle_record(record, corpora)
-        return decode_state(word_clip(record, cache=cache, fetch=store.get, template=template), tokenizer, tokenizer.config.motion, post, text=entry, device=args.device)
-    pools = oracle_pools(pool_manifest, corpora, added)
-    real = RealClips(pools, args.word_format_seed, load)
-    shuffled_rows, oracle_rows = [], []
+    min_speed = getattr(args, "bridge_min_speed", .3)
+    real, pools, added = ready.real, ready.pools, ready.added
+    shuffled_rows, oracle_rows, states = [], [], []
     counts = collections.Counter()
     dropped_reasons, by_corpus = collections.Counter(), collections.Counter()
+    stretches, moved_worst, composition_worst = [], [], []
     prefix = f"{args.export_prefix}/word-format"
     for sign in sorted(export["pilot"], key=position.get):
         i, row = position[sign], composed[sign]
@@ -206,11 +231,19 @@ def export_word_format(store, args, exported: dict, *, export, val, jobs, materi
         several = len(entries) > 1           # a one-word sentence has no other order: it is the composition again, and not moved
         state, plan = render(source, job, secs, order if several else None, several, f"round15-eval-core_crossfade/shuffled:{i}")
         if len(state.timestamps) != row["frames"]:
-            raise SystemExit(f"clip {i}: shuffled has {len(state.timestamps)} frames, the composition {row['frames']}")
+            raise SystemExit(f"clip {i}: shuffled has {len(state.timestamps)} frames, the composition {row['frames']}: duration would be a cue")
+        joins = join_excess(parts_from_pieces(source["pieces"], order), plan, min_speed=min_speed)
+        planned = {k: plan["cores"][at] for at, k in enumerate(order)}     # each word's core frames in the composition
+        back = dict(plan, cores=[planned[k] for k in range(len(entries))])
+        own_joins = join_excess(source["parts"], back, min_speed=min_speed)
+        moved_worst.append(_worst(joins))
+        composition_worst.append(_worst(own_joins))
         key = f"{prefix}/{SHUFFLED}/states/{tag}.npz"
-        shuffled_rows.append(dict(base, form=form_name(form, SHUFFLED), empty=False, state_key=key, state_sha256=_put_state(store, key, state),
-                                  sample_id=state.sample_id, fit=plan.get("fit"), overlong=plan.get("overlong"), order=order, moved=moved(entries, order),
-                                  words=[row["words"][k] for k in order]))
+        data, sha = state_payload(state)
+        states.append((key, data))
+        shuffled_rows.append(dict(base, form=form_name(form, SHUFFLED), empty=False, state_key=key, state_sha256=sha, sample_id=state.sample_id,
+                                  fit=plan.get("fit"), overlong=plan.get("overlong"), order=order, moved=moved(entries, order),
+                                  words=[row["words"][k] for k in order], joins=joins, composition_joins=own_joins))
         picked = [real.of(e) for e in entries]
         kept = [p for p, x in enumerate(picked) if x is not None]
         dropped = [dict(word=entries[p], reason="added_entry" if entries[p] in added else "not_served" if pools.get(entries[p]) else "no_permitted_clip")
@@ -222,7 +255,7 @@ def export_word_format(store, args, exported: dict, *, export, val, jobs, materi
         record = dict(base, form=form_name(form, ORACLE), dropped=dropped, same_words=not dropped)
         if not kept:
             counts["empty"] += 1
-            oracle_rows.append(dict(record, empty=True, state_key=None, state_sha256=None, words=[], fit=None, overlong=None))
+            oracle_rows.append(dict(record, empty=True, state_key=None, state_sha256=None, words=[], fit=None, overlong=None, core_stretch=None))
             continue
         kept_job = oracle_job([entries[p] for p in kept], plan_model, vocab)
         made = r2.oracle_material(kept_job, i, None, loaded={picked[p][0]["sign"]: picked[p][1] for p in kept}, load=None, rule=rule, timing=args.timing,
@@ -230,16 +263,45 @@ def export_word_format(store, args, exported: dict, *, export, val, jobs, materi
         state, plan = render(made, kept_job, secs, None, False, f"round15-eval-core_crossfade/oracle:{i}")
         if len(state.timestamps) != row["frames"]:
             raise SystemExit(f"clip {i}: the oracle has {len(state.timestamps)} frames, the composition {row['frames']}: duration would be a cue")
+        stretch = round(sum(plan["cores"]) / max(sum(planned[p] for p in kept), 1), 3)
+        stretches.append(stretch)
         key = f"{prefix}/{ORACLE}/states/{tag}.npz"
         words = [{k: s.get(k) for k in ("word", "sign", "corpus", "lo", "hi", "reason")} for s in made["segments"]]
         by_corpus.update(w["corpus"] for w in words)
-        oracle_rows.append(dict(record, empty=False, state_key=key, state_sha256=_put_state(store, key, state), sample_id=state.sample_id,
-                                fit=plan.get("fit"), overlong=plan.get("overlong"), words=words))
+        data, sha = state_payload(state)
+        states.append((key, data))
+        oracle_rows.append(dict(record, empty=False, state_key=key, state_sha256=sha, sample_id=state.sample_id, fit=plan.get("fit"),
+                                overlong=plan.get("overlong"), words=words, core_stretch=stretch))
+    read = lambda values: [v for v in values if v is not None]    # noqa: E731
+    return dict(states=states, form=form, indexes={
+        SHUFFLED: (shuffled_rows, dict(seed=args.word_format_seed, shuffle_variant=SHUFFLE_VARIANT, sentences_moved=counts["moved"],
+                                       joins_over_bound=dict(moved_worst_mean=round(sum(read(moved_worst)) / max(len(read(moved_worst)), 1), 3), composition_worst_mean=round(sum(read(composition_worst)) / max(len(read(composition_worst)), 1), 3),
+                                                             bound="the continuous route's: 1 is at it; sign-fitted timing applies none"))),
+        ORACLE: (oracle_rows, dict(seed=args.word_format_seed, oracle_corpora=list(ready.corpora), licence_note=args.word_format_licence_note, pick="chance, by a hash of seed and entry: no instrument",
+                                   round_trip=dict(checkpoint_key=word_cache["checkpoint_key"], decoder_gains=not word_cache.get("no_decoder_gains")),
+                                   coverage=dict(sentences=len(oracle_rows), words_selected=counts["words_selected"], words_kept=counts["words_kept"], same_words=counts["same_words"], empty=counts["empty"], dropped=dict(sorted(dropped_reasons.items())), corpora=dict(sorted(by_corpus.items())), entries_not_served=real.entries_not_served(), picks_not_served=real.failed, core_stretch_mean=round(sum(stretches) / max(len(stretches), 1), 3), core_stretch_max=max(stretches, default=None))))})
+
+
+def write(store, args, exported: dict, built: dict) -> dict:
+    """The built states and both indexes, write-once, after the composition's. Returns {role: (index key, hash)}."""
+    for key, data in built["states"]:
+        if store.exists(key):
+            raise SystemExit(f"{key} exists: written once")
+        store.put(key, data)
     index_key = f"{args.export_prefix}/index.json"
-    composition = dict(key=index_key, sha256=hashlib.sha256(store.get(index_key)).hexdigest(), arm=exported["arm"], form=form)
+    composition = dict(key=index_key, sha256=hashlib.sha256(store.get(index_key)).hexdigest(), arm=exported["arm"], form=built["form"])
     out = {}
-    out[SHUFFLED] = _index(store, args, exported, SHUFFLED, shuffled_rows, form, composition, seed=args.word_format_seed, shuffle_variant=SHUFFLE_VARIANT, sentences_moved=counts["moved"])
-    out[ORACLE] = _index(store, args, exported, ORACLE, oracle_rows, form, composition, seed=args.word_format_seed, oracle_corpora=list(corpora), licence_note=args.word_format_licence_note, pick="chance, by a hash of seed and entry: no instrument",
-                         round_trip=dict(checkpoint_key=word_cache["checkpoint_key"], decoder_gains=not word_cache.get("no_decoder_gains")),
-                         coverage=dict(sentences=len(oracle_rows), words_selected=counts["words_selected"], words_kept=counts["words_kept"], same_words=counts["same_words"], empty=counts["empty"], dropped=dict(sorted(dropped_reasons.items())), corpora=dict(sorted(by_corpus.items())), entries_not_served=real.entries_not_served(), picks_not_served=real.failed))
+    for role, (rows, extra) in built["indexes"].items():
+        index = dict(kind="round15-composed-states", arm=f"{args.export_arm}/{role}", prefix=f"{args.export_prefix}/word-format/{role}",
+                     sentences=exported["sentences"], sentence_set=exported["sentence_set"], word_cache=exported["word_cache"],
+                     generator_mix=exported["generator_mix"], model_sha256=exported["model_sha256"], corpora=exported["corpora"],
+                     settings=exported["settings"], indexing=exported["indexing"], states=rows,
+                     word_format=dict(role=role, report_only=True, pilot_only=True, form=built["form"], composition=composition, **extra))
+        key = f"{index['prefix']}/index.json"
+        if store.exists(key):
+            raise SystemExit(f"{key} exists: written once")
+        data = json.dumps(index, indent=1, default=float).encode()
+        store.put(key, data)
+        print(f"{key} {hashlib.sha256(data).hexdigest()}", flush=True)
+        out[role] = (key, hashlib.sha256(data).hexdigest())
     return out

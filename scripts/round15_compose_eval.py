@@ -421,7 +421,8 @@ def render_round20(args, material, job, reference_seconds, model, vocab, *, orde
                                    lead_share=model["timing"]["lead_share"], velocity=not args.no_bridge_velocity,
                                    min_speed=args.bridge_min_speed, max_gap_seconds=args.bridge_max_seconds)
         plan["sources"] = [src for _, src in secs]
-        if keep_frames:
+        if keep_frames:      # the limit: each gap stays sized to the velocity bound of its original neighbours, so a moved join can
+            # exceed that bound; rater_word_format.join_excess logs by how much, per clip
             plan = dict(plan, cores=[plan["cores"][k] for k in idx], sources=[plan["sources"][k] for k in idx])
         state = render(parts, plan, sample_id=sample_id, bridge_mode=args.bridge)
     else:
@@ -600,11 +601,12 @@ def word_provenance(segments, picks) -> list[dict]:
 
 
 def export_states(store, args, export, forms, jobs, material, val, plans_out, refs, *, model, corpora, sentence_set,
-                  generator_mix, word_cache) -> dict:
-    """Save each form of the listed clips and write the index (module docstring); returns the index."""
+                  generator_mix, word_cache, before_write=None) -> dict:
+    """Save each form of the listed clips and write the index (module docstring); returns the index. ``before_write(index)``: run on
+    the finished rows before anything is written, so its failure leaves the prefix unused."""
     import hashlib
     picks = word_picks(store, args) if word_cache else None
-    rows = []
+    rows, pending = [], []
     for name in [f for f in (args.export_forms or args.variants).split(",") if f]:
         variant = name.split("@")[0]
         tag = name.replace("@", "-").replace("/", "-")
@@ -622,7 +624,7 @@ def export_states(store, args, export, forms, jobs, material, val, plans_out, re
                 if hashlib.sha256(store.get(key)).hexdigest() != sha:
                     raise SystemExit(f"{key} exists with other content: written once")
             else:
-                store.put(key, data)
+                pending.append((key, data))
             plan = plans_out[i].get(variant) or {}
             if name.endswith(PREDICTED):
                 plan = plan.get("predicted") or {}
@@ -644,6 +646,10 @@ def export_states(store, args, export, forms, jobs, material, val, plans_out, re
     key = f"{args.export_prefix}/index.json"
     if store.exists(key):
         raise SystemExit(f"{key} appeared during the run: refusing to overwrite")
+    if before_write:
+        before_write(index)
+    for state_key, payload in pending:
+        store.put(state_key, payload)
     store.put(key, data)
     print(f"{key} {hashlib.sha256(data).hexdigest()}", flush=True)
     return index
@@ -803,9 +809,7 @@ def run(args) -> dict:
     orders = [shuffle_order(len(pl["entries"]), i, 0) for i, pl in enumerate(plans)]
     mine = shard_clips(n, args.shard, args.shards, args.block)
     export = load_export_list(args, val) if getattr(args, "export_prefix", None) else None
-    if getattr(args, "export_word_format", False):
-        from rater_word_format import check_export_inputs
-        check_export_inputs(export, val, sentence_set)         # before anything is composed or written
+    ready = None
     export_only = bool(export) and args.export_only
     if export_only:                                  # only the listed clips' forms; positions stay the whole set's
         mine = [i for i in mine if val[i]["sign"] in export["signs"]]
@@ -931,6 +935,10 @@ def run(args) -> dict:
                 if j is not None and k[0] == "oracle_stage2" and k[1] != "/shuffled":
                     material[k] = r2.oracle_material(j, k[2], pools, loaded=loaded, load=load, rule=rule, **mode,
                                                      **({"records": [choice["records"][w] for w in j["words"]]} if choice else {}))
+    if getattr(args, "export_word_format", False):       # generator, template and licence checks come before any state is composed
+        from rater_word_format import prepare
+        ready = prepare(store, args, export=export, val=val, sentence_set=sentence_set, word_cache=word_cache, manifest=manifest,
+                        pool_manifest=vmanifest, added=frozenset(arm["entries"]) if arm else frozenset())
     clock["compose"] = time.time()
     comp_on = comp_a_on(args)
     annotations = {}
@@ -1022,18 +1030,20 @@ def run(args) -> dict:
             if REAL_SCALED in forms:
                 comp_motion[i][REAL_SCALED] = motion_row(forms[REAL_SCALED][i])
     if export:
+        built = {}
+
+        def build_word_format(index):                  # in memory: a failed guard writes nothing, the composition included
+            from rater_word_format import build
+            built.update(build(args, index, ready, export=export, val=val, jobs=jobs, material=material, plan_model=plan_model, vocab=vocab,
+                               fractions=fractions, margin=margin, rule=rule, seconds=seconds, duration_model=r20_info.get("duration_model"),
+                               word_cache=word_cache, render=lambda source, job, secs, order, keep, sample_id: render_round20(
+                                   args, source, job, secs, model, vocab, order=order, sample_id=sample_id, space=space, keep_frames=keep)))
         exported = export_states(store, args, export, forms, jobs, material, val, plans_out, refs, model=model,
                                  corpora=corpora, sentence_set=sentence_set, generator_mix=generator_mix,
-                                 word_cache=word_cache)
-        if getattr(args, "export_word_format", False):
-            from rater_word_format import export_word_format
-            export_word_format(store, args, exported, export=export, val=val, jobs=jobs, material=material, plan_model=plan_model,
-                               vocab=vocab, model=model, manifest=manifest, pool_manifest=vmanifest, fractions=fractions,
-                               margin=margin, rule=rule, added=frozenset(arm["entries"]) if arm else frozenset(),
-                               seconds=seconds, duration_model=r20_info.get("duration_model"), word_cache=word_cache,
-                               render=lambda source, job, secs, order, keep, sample_id: render_round20(
-                                   args, source, job, secs, model, vocab, order=order, sample_id=sample_id, space=space,
-                                   keep_frames=keep))
+                                 word_cache=word_cache, before_write=build_word_format if ready else None)
+        if ready:
+            from rater_word_format import write
+            write(store, args, exported, built)
         if export_only:
             return exported
     refiner_info = None
@@ -1649,10 +1659,10 @@ def main(argv=None) -> int:
     e.add_argument("--export-word-format", action="store_true", help="also the rater pilot's report-only arms, on the "
                    "list's pilot sentences: composition_shuffled and oracle (module docstring)")
     e.add_argument("--word-format-seed", type=int, default=0, help="the shuffled order's and the real-clip pick's seed")
-    e.add_argument("--word-format-corpora", default="asllvd-text-v1", help="the oracle's real clips, train only; any but "
-                   "ASLLVD needs --word-format-licence-note (reviewer_package/OPERATOR_GUIDE.md section 0)")
-    e.add_argument("--word-format-licence-note", help="the owner's recorded confirmation that these corpora's terms allow "
-                   "showing them to raters; kept in the index")
+    e.add_argument("--word-format-corpora", default="asllvd-text-v1", help="the oracle's real clips, train only: ASLLVD, RIT or WLASL, "
+                   "all under --word-format-licence-note (reviewer_package/OPERATOR_GUIDE.md section 0)")
+    e.add_argument("--word-format-licence-note", help="required: the owner's recorded confirmation that these corpora's train clips may "
+                   "be shown to raters; kept in the index")
     m = sub.add_parser("merge", help="combine the shards and score")
     m.add_argument("--shard-keys", default="")
     m.add_argument("--shard-files")

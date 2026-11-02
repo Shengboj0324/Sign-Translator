@@ -10,11 +10,12 @@ the answers. The study design and the scoring code are unchanged: see `docs/HUMA
 | `RATING_SHEET.md` | Reviewers (print one page per video) | Five questions: what was signed, clarity 1-5, naturalness 1-5, hand shape / movement / face, comments |
 | `CONSENT_FORM.md` | Reviewers and owner | Plain-language consent, with optional separate consents (filming, quotes, training use, recontact). Check it with an ethics advisor before use. |
 | `rating_sheet.csv` | Owner | Blank entry template, one row per rating page |
+| `DEBRIEF.md` | Reviewers, only after all sheets return; the review board first | What the pilot withheld and why. Draft. Never in a packet. |
 | `OPERATOR_GUIDE.md` | Owner | Producing clips, study design, sessions, data entry, storage, scoring, accessibility checklist, what is not built yet |
 | `SOURCES.md` | Owner | Existing repo material this package reuses, with paths |
 | `.gitignore` | Owner | Keeps returned answers, keys, consent forms and recordings out of git |
 
-**First rater read (2026-11-01):** start at `OPERATOR_GUIDE.md` §10. It uses two stages and generated sheets with `docs/HUMAN_EVALUATION_REVIEWER_GUIDE_TWO_STAGE.md`, in place of `RATING_SHEET.md`. Its pilot has two extra report-only arms, described in §10; nothing a rater reads may mention them or word order.
+**First rater read (2026-11-01):** start at `OPERATOR_GUIDE.md` §10. It uses two stages and generated sheets with `docs/HUMAN_EVALUATION_REVIEWER_GUIDE_TWO_STAGE.md`, in place of `RATING_SHEET.md`. Its pilot is 60 sentences and 8 raters, with two extra report-only arms, described in §10; nothing a rater reads while rating may mention them or word order. The review board sees all of it.
 
 **Constraints:**
 - Research use only, non-commercial.

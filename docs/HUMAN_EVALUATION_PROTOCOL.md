@@ -48,7 +48,7 @@ these renders. They do not describe an avatar (item 5), and the study is re-run 
 ## 3. Design
 
 - **Utterances:** distinct English sentences from the plan manifest.
-  - Pilot: the `val` partition, about 20 utterances.
+  - Pilot: the `val` partition, about 20 utterances (the first How2Sign read's: 60, below).
   - Study: `val`, 60 or more.
   - Final study: `test`, once. It needs `--final-study`, and the result is reported whatever it is.
 - **Latin square:** with S systems there are S reviewer groups. Group g sees utterance u from system (u + g) mod S.
@@ -71,26 +71,31 @@ these renders. They do not describe an avatar (item 5), and the study is re-run 
     answer without a matching stage 1 hash.
   - The sentence type and topic have no truth on How2Sign (no ASLLRP markers): asked, reported, not scored. Negation
     truth is the Deaf checker's (section 6).
-- **Word-format arms (first How2Sign read's pilot only; report only; declared 2026-11-02, 18:22 UTC, in `docs/NEXT_PHASE_PLAN.md`):**
+- **Word-format arms (first How2Sign read's pilot only; report only; declared 2026-11-02, 18:22 UTC, amended 2026-11-02, 19:45 UTC, in `docs/NEXT_PHASE_PLAN.md`):**
   - **They count towards nothing.** The bar read refuses a key that holds them, and the builder refuses them in the main set.
-  - **They fit the Latin square as it stands.** The pilot is four systems and four groups: `composition`, `composition_shuffled`,
-    `oracle`, `reference`. A rater still sees each sentence once and 20 sentences in all: adding a system changes which
-    video a rater sees of each sentence, not how many.
-  - **Two raters go in opposite groups, g and g + 2,** not one group. Give `composition_shuffled` two places from `composition`
-    in `--system`, which the builder enforces. Each rater then sees each sentence once, each arm on 5 sentences, and shuffled
-    against composition is paired on 10 sentences, 5 each way round, so a rater's leniency cancels; the reference against the
-    oracle likewise. Adjacent groups would give each arm of a pair to one rater. One group would give no pair at all.
-    **The cost:** no sentence has two ratings of one video, so the pilot gives no Fleiss' kappa.
-  - **What two raters can show:** that the sheets, the guide and the timing work; whether raters can answer at all; floors and
-    ceilings; unprompted notes on word order. **What they cannot show:** the size of any contrast, or its absence. Simulated
-    (logit model of section 6's simulations, 20-point true drop from 60%): plus or minus 39 points, and detected 2% of the time.
-    Oracle against composition is not paired at all with two raters, and reads within each rater, across different sentences.
-    Reading the question properly needs about 60 sentences and 8 raters, 2 per group: plus or minus 11 points, 86% at a true
-    20-point drop, 29% at a 10-point one, about 16 rater hours.
+  - **The pilot: 60 sentences, 8 raters, 2 per group, all four groups** (owner, 2026-11-02). Four systems: `composition`,
+    `composition_shuffled`, `oracle`, `reference`. **The composition arm is the official one: W14b, best of 16, gains on, at predicted
+    timing** (`cache-w14b-r10`, `core_crossfade@predicted`). A dry run on six real D20 sentences (reads only, no write, no render) built both arms from it.
+  - **They fit the Latin square as it stands.** A rater sees each sentence once and 60 in all, 15 per system. Every pair of arms is paired
+    on all 60 sentences, each arm with 2 ratings, and raters of one group rate the same videos, so Fleiss' kappa is available. 240 clips to render.
+  - **Load, at the stated assumptions:** stage 1, 60 × 2 minutes = 2 hours per rater. The 2 minutes covers stage 1 only; stage 2 at an assumed 30 s per
+    row adds 30 minutes. So 2.5 hours per rater and **20 rater hours; 16 if 2 minutes turns out to cover both.** Consent, instructions, practice clips and breaks are on top.
+  - **What 8 raters can show,** simulated by the committed `scripts/rater_pilot_power.py` (4,000 studies, seed fixed) under the declared rule of section 6. "A true 20-point drop" means
+    composition understood 60% and shuffled 40% over all sentences and raters: the rule reads it 79% of the time, and a true 10-point drop 20%. If it means
+    60% and 40% for a median sentence and rater (about 16 points in the accuracy read), 55% and 12%. Half-width about ±11 points. The sign-flip test alone says 90% and 33%, and it ignores raters.
+  - **What the pilot's timing can and can't predict.** Half the clips a rater sees are scrambled or stitched from real signs, so the pilot's minutes don't transfer to a main read
+    with other arms: raters may give up on them sooner or puzzle over them longer. The sheet records no time per row, so a session's total is all it gives. It can bound the session plan and show whether 45-minute sessions hold. It can't give a per-arm
+    time, unless the operator logs one, or fatigue over the main read's longer run, and the pilot holds no negation candidate.
   - **Forced choice alone cannot settle word order:** a rater who catches two content words can pick the right sentence in any
     order. The stage 1 free translation and naturalness are where it can show.
-  - **Oracle against composition mixes real clips with fewer words,** since a word with no permitted real clip is dropped. It is
-    also read on the sentences where the oracle kept every word (`same_words`).
+  - **Oracle against composition mixes real clips with fewer words,** since a word with no permitted real clip is dropped and the rest share the frames under sign-fitted timing, each kept
+    word stretched (`core_stretch`, per sentence; 1.03 to 1.53 on the six dry-run sentences). The clean row is `same_words`. **Reference against oracle is not the format alone:** it also holds the
+    tokenizer round trip, chance picks, a different signer at every word, the cut and the dropped words.
+  - **A moved join keeps the gap planned for other neighbours,** so it covers a different distance in the same frames. Under sign-fitted timing no velocity bound applies to any join, composition's included;
+    each row logs how far its joins go past the continuous route's bound, beside the composition's.
+  - **Predicted timing and the reference:** the reference plays at its recorded length and the other arms at the predicted one (69 frames against 36, 87 against 30 on two dry-run sentences), so speed may mark it. Each rater sees a sentence once, so no direct comparison of lengths is possible.
+  - **Pilot raters do not rate the main read:** they have seen scrambled forms. The main key's `excluded_raters` (`how2sign-packet --excluded-raters-roster`) holds them, checked as the negation checkers are, at stage 2 and at the bar read.
+- **Sentences with no selected word** (decided 2026-11-02): the draw leaves them out, under the official arm's selection, and `draw.json` lists them (`excluded_no_selected_word`). D20 has six. Comprehension's weights read the eligible sentences that remain, and this is disclosed beside any result.
 - **Blinding:**
   - Item ids and video names are random, and the presentation order is shuffled per group.
   - System labels, correct options and markers exist only in `key/key.json`, which is hashed and never sent.
@@ -107,6 +112,8 @@ example NIC/RID certification or ASL teaching credentials).
   `GLOSS_REVIEW_PROTOCOL.md` §5).
 - ASLLRP material is research-only: packets go only to contracted reviewers, under the DAI terms, and are not
   redistributed.
+- **The pilot's word-format arms are a partial disclosure:** raters are told the purpose in general, and that some videos may be bad on purpose, but not that some clips are deliberately out of order, or
+  that word order is being tested. The review board is told all of it, and it decides. The default is a debrief after all sheets return: `reviewer_package/DEBRIEF.md`, a separate document given to every pilot rater, with the right to withdraw their answers. Nothing about this is hidden from the board.
 
 ## 5. Running it
 
@@ -123,8 +130,8 @@ example NIC/RID certification or ASL teaching credentials).
    - `--system english=english:<v2b checkpoint>@<its manifest SHA>`
    - `--count 60 --output-dir <dir> --output-prefix <private R2 prefix>`
 2. Send each group its `group-<g>.zip`, which holds the sheet, the videos and the reviewer guide. Keep `key/` private.
-3. Run a pilot (two reviewers, one group) first. Fix anything unclear in the guide, then run the full study with
-   fresh items.
+3. Run a pilot (two reviewers, one group; the first How2Sign read's is larger, below) first. Fix anything unclear in the guide, then
+   run the full study with fresh items.
 4. Score the returned sheets:
 
    ```
@@ -140,14 +147,14 @@ example NIC/RID certification or ASL teaching credentials).
 4. As each stage 1 returns, `how2sign-stage2` hashes it, records the receipt and writes that rater's stage 2.
 5. `score_human_eval.py --key … --sheet <stage 1> … --stage2-sheet <stage 2> … --stage1-receipts … --roster … --bar`.
 
-**Its pilot, with the word-format arms** (nothing here has run on real data; the draw and the checker's sheet come first):
+**Its pilot, with the word-format arms** (not yet run for real; the draw and the checker's sheet come first):
 
-1. Add `--export-word-format --word-format-seed 0` to the arm's `round15_compose_eval.py … --export-only` command. It takes one form,
-   and writes `<prefix>/word-format/composition_shuffled/index.json` and `<prefix>/word-format/oracle/index.json` for the draw's pilot
-   sentences alone. Real clips are ASLLVD train records; RIT and WLASL need `--word-format-corpora` and `--word-format-licence-note`.
-2. `build_human_eval_packet.py how2sign-packet --set pilot`, with `--system` in this order: `composition_shuffled`, `oracle`, `composition`,
-   `reference`, each new arm as `LABEL=composition:<its index>@<its hash>`. A sentence the oracle has no word for leaves the pilot, listed in the key.
-3. Roster two raters in groups 0 and 2. Stage 2 and scoring as above, **without `--bar`**: the scorer adds `report["word_format"]`, and `--bar` is refused.
+1. `how2sign-draw` (`--pilot 60` is the default). Add to the official arm's `round15_compose_eval.py … --export-only --export-forms core_crossfade@predicted` command:
+   `--export-word-format --word-format-seed 0 --word-format-licence-note "<the owner's recorded confirmation>"`. It writes `<prefix>/word-format/composition_shuffled/index.json` and
+   `<prefix>/word-format/oracle/index.json` for the pilot sentences alone. Real clips are ASLLVD train records; RIT and WLASL by `--word-format-corpora`, under the same note.
+2. `build_human_eval_packet.py how2sign-packet --set pilot`, with four `--system`s, each new arm as `LABEL=composition:<its index>@<its hash>`. A sentence the oracle has no word for leaves the pilot, listed in the key.
+3. Roster 8 raters, 2 per group. Stage 2 and scoring as above, **without `--bar`**: the scorer adds `report["word_format"]`, and `--bar` is refused.
+4. For the main set, pass the pilot's roster as `--excluded-raters-roster`. After all sheets return, give each pilot rater `reviewer_package/DEBRIEF.md`, as the review board decides.
 
 ## 6. Analysis (fixed before any sheet returns)
 
@@ -160,7 +167,7 @@ example NIC/RID certification or ASL teaching credentials).
 | Naturalness | Mean, bootstrap 95% interval | Ordinal; the means are descriptive |
 | Agreement | Fleiss' kappa (choice, sentence type, naturalness) | Below 0.4 the question or the guide is unclear; fix it before the full study |
 | Free translation | Indicative BLEU vs the English | The team scores propositions by hand (EVALUATION_FRAMEWORK §6) |
-| Word-format contrasts (pilot, report only) | Per sentence paired difference, sign-flip permutation p, bootstrap interval: shuffled minus composition, also on the sentences whose word sequence moved; oracle minus composition, also where the oracle kept every word; reference minus oracle; reference minus composition. On choice, naturalness, the translation's content words (order-free; a blank translation is 0) and sentence BLEU. On choice also method D with t(R−1), rater balance, and each rater's difference across their own sentences | Above or below only if method D's two-sided interval excludes zero and p is under .05 in the same direction, with a rater seeing both arms; otherwise unresolved, never "small". (composition − shuffled) / (composition − chance) on moved sentences stands beside the instruments' 39–51%, no cut; neither a large nor a small share is the better outcome. Never a bar condition |
+| Word-format contrasts (pilot, report only) | Per sentence paired difference, sign-flip permutation p, bootstrap interval over sentences alone (`ci95_sentences_only`, which ignores raters and decides nothing): shuffled minus composition, also on the sentences whose word sequence moved; oracle minus composition, also where the oracle kept every word; reference minus oracle; reference minus composition. On choice, naturalness, the translation's content words (order-free; a blank translation is 0) and sentence BLEU. On choice also method D with t(R−1) (no interval on zero variance) and rater balance. A pair with no shared sentence gets a within-rater row, which decides nothing | Above or below only with at least 6 raters, if method D's two-sided interval excludes zero and p is under .05 in the same direction, with a rater seeing both arms; otherwise unresolved, never "small". (composition − shuffled) / (composition − chance) on moved sentences stands beside the instruments' 39–51%, and is printed only with a defined interval; it reads against them only by method D's interval, with at least 8 raters and composition under 95%. Neither a large nor a small share is the better outcome. Never a bar condition |
 
 - Every endpoint is reported per system.
 - Rows a reviewer marks `viewable = no` are counted and excluded.

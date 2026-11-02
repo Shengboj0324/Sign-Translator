@@ -28,8 +28,8 @@ Reviewers never receive this guide, `key/`, any CSV or any script.
   | RIT | Not unless you confirm its terms allow it |
 
   The round-15 oracle draws real words from ASLLVD, RIT, WLASL and Sem-Lex (`compositional.ROUND15_CORPORA`).
-  Filter anchors by each record's `corpus` before rendering. The pilot's `oracle` arm (§10) does this itself: ASLLVD unless you
-  give `--word-format-licence-note`, for RIT and WLASL only.
+  Filter anchors by each record's `corpus` before rendering. The pilot's `oracle` arm (§10) does this itself, and needs your recorded
+  note, `--word-format-licence-note`, for any corpus, ASLLVD train clips included.
 - **Avatar only.** Every condition, including the real-signer anchors, is shown through the same avatar renderer.
   Original source video would reveal which clips are real. Optionally, show one original How2Sign val video as an
   unscored warm-up.
@@ -109,7 +109,7 @@ composed states, `--export-word-format` adds the pilot's two report-only arms, a
     | Sentences (14) | 8 | 4 | 1 | 1 |
 
   - Explain the consent form beforehand, or in its own first 10 minutes.
-- **Pilot first.** 2 reviewers, one short session. Fix every unclear question, then run the main study on fresh items.
+- **Pilot first.** 2 reviewers, one short session (the first rater read's: 8 reviewers and 60 sentences, §10). Fix every unclear question, then run the main study on fresh items.
 - **Optional sentence add-on.** Only for 2a, whose scorer needs it. After Q1 is written, show a large-print card with
   the four sentences (`option_a`..`option_d` of that row), and record the letter. Ask in ASL:
   - statement or question (yes/no, wh, rhetorical)?
@@ -220,24 +220,23 @@ Misunderstood items and the notes guide the next round. Free text enters trainin
 - Whether to use the sentence add-on.
 - Whether and when final-test (signer 9) material is shown.
 - Which restricted sources (WLASL, Sem-Lex, RIT) may appear as anchors.
-- Which composition arm, and which timing, raters see (§10).
-- What to do with a drawn sentence that has no selected word: the packet builder refuses it, and D20 has six (§10).
-- The pilot's size, before `how2sign-draw` runs (§10).
+- Whether ASLLVD train clips may be shown under the DAI terms (§10).
 
 ## 10. First rater read: notes for the owner (2026-11-01)
 
 This read is diagnostic. It can't clear the release bar, because timing, signers and wrist speed already fail it. Its purpose is to learn what signers actually understand. Details: `reports/rater_package_plan.md`; rules: `docs/HUMAN_EVALUATION_PROTOCOL.md` §6.
 
 **What you need to do:**
-- Recruit 9 Deaf raters plus 2 for the pilot, and one Deaf checker who is not a rater. The checker confirms which real recordings sign a negation, and must not see any generated clip.
-- Set pay. Nine raters at 6.7 hours are about 60 rater hours, about $2,400 at $40/h. That rate is an assumption. Adding stitched real clips as a fourth system to the main read costs about $800 more (three more raters), and is the one direct test of whether our scorer undervalues stitching. The pilot's `oracle` arm is a much smaller look at the same thing.
-- Get ethics or IRB review, and finish `CONSENT_FORM.md`.
+- Recruit 9 Deaf raters for the main read, 8 more for the pilot (they can't join the main read), and one Deaf checker who is not a rater. That is 18 people. The checker confirms which real recordings sign a negation, and must not see any generated clip. The builder won't make any packet, pilot included, until the checker's sheet is complete.
+- Set pay. At $40/h, which is an assumption, the pilot is 20 rater hours, about $800, and the main read 75 rater hours, about $3,000, so about $3,800 together. If the 2 minutes per item already covers stage 2, these are 16 hours ($640) and 60 hours ($2,400). Adding stitched real clips as a fourth system to the main read costs about $1,000 more (three more raters), and is the one direct test of whether our scorer undervalues stitching; the pilot's `oracle` arm is a much smaller look at the same thing. Consent, instructions, practice clips, breaks, the checker and any interpreter are on top.
+- Take everything to the review board and get its decision: ethics or IRB review, `CONSENT_FORM.md`, and the pilot's partial disclosure. **Raters aren't told some clips are deliberately out of order: the board must be told, and it decides.** The default is a debrief after all sheets return, `DEBRIEF.md`, already drafted; fill in its blanks.
+- Record a decision on ASLLVD train clips (below). Without your note, the export refuses to run.
 - Arrange ASL instructions or an interpreter.
 - Choose how sheets and videos reach raters. Nothing is built for this. It must hold stage 2 back until stage 1 is returned.
 
 **What changed for raters:**
 - **Two stages.** They watch, then give the translation, negation, grammar and naturalness answers and return that sheet. Only then do they get the four answer options. The options gave negation away: guessing from text alone scored 63.6% on negated sentences. Use `docs/HUMAN_EVALUATION_REVIEWER_GUIDE_TWO_STAGE.md`.
-- **Workload.** 200 sentences each, about 6.7 hours at an assumed 2 minutes per item, or nine 45-minute sessions. Time it in the pilot.
+- **Workload, main read.** 200 sentences each: stage 1 about 6.7 hours at an assumed 2 minutes per item, or nine 45-minute sessions, then stage 2 about 1.7 hours at an assumed 30 s per row. About 8.3 hours per rater. Time it in the pilot, with the limits below.
 - `FOR_REVIEWERS.md` and `RATING_SHEET.md` describe the original session format. For this read, the two-stage guide and generated sheets replace the rating sheet.
 
 **How the result is read:**
@@ -260,21 +259,22 @@ This read is diagnostic. It can't clear the release bar, because timing, signers
 About 15 raters give 81% at a true 5-point gap, and about 45 give 77% at a true 75%. The declared table in the plan says about 65% for the 5-point gap at nine raters; the build's own run, with its final weights, gives 58%.
 
 **Not ready yet:**
-- Everything has run on test data only. The draw and export have not run on real D20, and the plan's 427 eligible and 80 negated sentences are unconfirmed.
+- Everything has run on test data, apart from one dry run of the export on six real D20 sentences that wrote nothing. The draw and the packet have not run on real D20, and the plan's 427 eligible and 80 negated sentences are unconfirmed.
 - The avatar renderer has not been rerun since the timing change. The avatar is still bald and flat, hands can pass through the body, and shake isn't fixed. The pilot decides whether it's good enough.
 - The tooling gets one more independent check before any sheet goes out.
-- Which version raters see is still open. The composition tests have read (left-arm hold failed its rule, added words not confirmed over eight draws); nobody has chosen the arm or the timing since. Choose before rendering.
-- The packet builder refuses a drawn sentence with no selected word, and says the terms do not settle it. D20 has six. If all six are eligible, the draw of 220 of 427 almost certainly holds one, and a pilot of 20 about one time in four. Decide how to count them before `how2sign-draw`.
+- Sentences with no selected word are now left out of the draw and listed in `draw.json`. D20 has six. Had they stayed, a pilot of 60 would have held one about two times in three.
 
-**The pilot's two extra arms (declared 2026-11-02, 18:22 UTC):**
+**The pilot (declared 2026-11-02, 18:22 UTC, amended 2026-11-02, 19:45 UTC): 60 sentences, 8 raters, 2 per group, all four groups, your decision.**
 - **What and why.** All three automatic instruments reward English word order, and they can't say whether a person would follow it. So the pilot adds `composition_shuffled` (the same clips in a seeded random order) and `oracle` (real word clips stitched the same way). Report only: they never count towards the release bar, the bar read refuses a key that holds them, and the builder refuses them in the main set.
-- **Rater load.** Unchanged: 20 sentences each, about 40 minutes of stage 1 at an assumed 2 minutes per item, then stage 2 once stage 1 is back. Time it. Only half the clips each rater sees are composition or real signing: the rest are scrambled or stitched real words. `FOR_REVIEWERS.md` already says some videos may be bad on purpose; add nothing about order.
-- **Put the two pilot raters in groups 0 and 2,** with `--system` in the order shuffled, oracle, composition, reference. Don't use one group: it gives no pairs at all. The pilot therefore has no kappa.
-- **What two raters can tell you:** whether the sheets, guide and timing work, whether anyone can answer at all, and what they say unprompted. **What they can't:** whether order matters, or how much. The interval on the shuffled contrast is about plus or minus 39 points. If you want the answer, 60 sentences and 8 raters (2 per group, about 16 rater hours, about $640 at $40/h) detect a true 20-point drop 86% of the time and a 10-point one 29%, simulated. That needs `how2sign-draw --pilot 60` before the draw is made, and it can't be added afterwards. Keep it out of the main read: four groups or more would thin the bar's ratings per system from 600 towards 360 at nine raters.
-- **Pilot raters don't join the main read.** They've seen the scrambled forms.
-- **The pilot's real clips** are ASLLVD train records, under the DAI terms. §0's table says "ASLLVD val"; val covers only about 31% of composition's words, against about 90% for train, so please confirm train clips are fine under the DAI terms before rendering. With ASLLVD alone, about 45% of sentences keep every word when composition uses no added words (about 10% with the top-10 added words). RIT and WLASL would raise this only with your recorded confirmation of their terms.
-- **Tell the ethics reviewer** that raters aren't told some clips are deliberately out of order, and ask whether to debrief them after all sheets are back. Protocol §4 says raters are told the purpose; this is a partial disclosure.
-- **The pilot needs the Deaf checker first:** the builder won't make any packet until the checker's negation sheet is complete, even though the pilot holds no negation candidate.
+- **Composition arm.** The official one: W14b, best of 16, gains on, at predicted timing. A dry run on six real D20 sentences built both new arms from it, reading R2 and writing nothing: 80 s, 3.7 GB at peak, so watch the Mac's 4 GB limit on the full run.
+- **Rater load.** 60 sentences each. Stage 1 is 2 hours at an assumed 2 minutes per item, about three 45-minute sessions; stage 2 about 30 minutes at an assumed 30 s per row, which nothing has measured. 2.5 hours per rater, 20 rater hours.
+- **Rendering.** 240 clips, about an hour on the Mac at the measured 13 s per 147-frame clip (predicted clips run longer, 170 frames on average). The rater plan's 65 GB for 600 clips implies about 26 GB of full render files, so upload and delete per clip.
+- **What you learn.** With every group filled, every two arms are paired on all 60 sentences, and kappa is back. Under the declared rule, if English order truly costs 20 points of accuracy (60% against 40% over all sentences and raters) the read finds it 79% of the time, and a true 10 points 20%. If 60% and 40% is the median sentence with the median rater, which reads as about 16 points, 55% and 12%. So **a pilot that finds no drop has not shown order doesn't matter**. Forced choice can be right on words alone in any order, so read the free translations and naturalness too.
+- **Timing.** Half of what each rater sees is scrambled or stitched real signs, which may be quicker to give up on or slower to puzzle over. The pilot's total times test the session plan. They don't predict the main read's time per item, or fatigue over its much longer run. Sheets hold no time per row: if you want time per arm, note it yourself.
+- **Pilot raters don't join the main read.** They've seen the scrambled forms. Pass the pilot's roster as `--excluded-raters-roster` for the main set, and the tools refuse them.
+- **ASLLVD train clips: your decision, not settled here.** §0's table says "ASLLVD val". Val covers only about 31% of composition's words, against about 90% for train, so the oracle uses train. Please decide whether train clips may be shown under the DAI terms, and record it. The export refuses to run without your note, for any corpus. With ASLLVD alone, about 45% of sentences keep every word (a stored composition without added words; 1 of 6 in the dry run). RIT and WLASL can be named under the same note.
+- **Ethics.** Protocol §4 says raters are told the purpose; this is a partial disclosure. The scrambled clips must not be hidden from the review board. The default is the debrief in `DEBRIEF.md`, given after all sheets return. The board may change it, and what it requires goes in.
+- **Reference and timing.** The reference plays at its recorded length and the other arms at the predicted one, which can be more than twice as long on short sentences, so speed may mark it.
 
 **Open items you deferred or should know about:**
 - **Consent, deferred until the model finishes (your decision, 2026-10-31).** Recogniser v3d, trained on ASL Citizen, chooses the best-of-16 words that raters would see. ASL Citizen's consent covers sign language recognition. An ethics reviewer may ask about this, so have the answer ready.

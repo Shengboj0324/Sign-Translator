@@ -30,8 +30,9 @@ The ``test`` partition is the final study's and requires ``--final-study``; pilo
 **How2Sign mode** (first Deaf-rater read; ``reports/rater_package_plan.md``, docs/NEXT_PHASE_PLAN.md "Rater read terms
 defined"), two subcommands, D20 only:
 
-1. ``how2sign-draw``: the eligible D20 sentences (at least ``--min-seconds``, the better hand tracked on at least
-   ``--min-hand-coverage`` of the recording, then distinct by ``round20_lib.text_key``), the English negation candidates
+1. ``how2sign-draw``: the eligible D20 sentences (a selected word under the official arm's selection, at least ``--min-seconds``,
+   the better hand tracked on at least ``--min-hand-coverage`` of the recording, then distinct by ``round20_lib.text_key``; the
+   sentences with no selected word are left out and listed), the English negation candidates
    (``human_study.negation_words``), and the draw: every eligible candidate among the ``--main`` sentences, the rest
    and the ``--pilot`` sentences at random. Writes ``draw.json`` (its ``name`` and ``signs`` are the sentence list of
    ``round15_compose_eval.py --export-sentences-file``) and ``negation_check.csv``, the Deaf checker's sheet.
@@ -205,7 +206,13 @@ def write_group_files(key: dict, out: Path, store, output_prefix: str | None, *,
 
 # ---- How2Sign mode (module docstring) --------------------------------------------------------------------------------
 
-def load_d20(store, mix_key: str, mix_sha256: str, sentences_key: str, sentences_sha256: str) -> tuple[list, dict]:
+def load_mix(store, mix_key: str, mix_sha256: str) -> dict:
+    with tempfile.TemporaryDirectory() as t:
+        path = Path(t) / "m.json"; path.write_bytes(store.get(mix_key) + b"\n")
+        return load_manifest(path, expected_sha256=mix_sha256)
+
+
+def load_d20(store, mix_key: str, mix_sha256: str, sentences_key: str, sentences_sha256: str, *, manifest=None) -> tuple[list, dict]:
     """(D20's manifest records in the set's order, the stored set), after pinning the set and refusing any other set."""
     from round20_lib import load_sentence_set
     payload = store.get(sentences_key)
@@ -216,19 +223,30 @@ def load_d20(store, mix_key: str, mix_sha256: str, sentences_key: str, sentences
     stored = json.loads(payload)
     if stored.get("set") != "D20":
         raise SystemExit(f"the rater read draws from D20 only, not {stored.get('set')!r}")
-    with tempfile.TemporaryDirectory() as t:
-        path = Path(t) / "m.json"; path.write_bytes(store.get(mix_key) + b"\n")
-        manifest = load_manifest(path, expected_sha256=mix_sha256)
+    manifest = load_mix(store, mix_key, mix_sha256) if manifest is None else manifest
     return load_sentence_set(stored, manifest, mix_key, mix_sha256), stored
 
 
-def eligible_sentences(records, state_of, *, min_seconds: float, min_hand_coverage: float) -> tuple[list[dict], dict]:
-    """(eligible rows in the records' order, counts): at least ``min_seconds``, hands tracked, then distinct texts (the
-    first eligible record of a text stays). ``state_of(record)`` is called only for records long enough."""
+def selected_words(manifest, records) -> dict:
+    """{sign: its selected words} under the official arm's selection: stage 1's, on the evaluation mix's vocabulary, from the English
+    alone. A sentence with none has no signing in any composed form. No generator or state is read."""
+    from round15_compose_eval import stage1_selection
+    from signtranslator.generation.compositional import isolated_corpora, training_vocabulary
+    vocab = training_vocabulary(manifest, isolated_corpora(manifest))
+    _, words = stage1_selection([r["text"] for r in records], vocab)
+    return {r["sign"]: w for r, w in zip(records, words)}
+
+
+def eligible_sentences(records, state_of, *, min_seconds: float, min_hand_coverage: float, words_of=None) -> tuple[list[dict], dict]:
+    """(eligible rows in the records' order, counts): a selected word (``words_of``: {sign: words}), at least ``min_seconds``, hands
+    tracked, then distinct texts (the first eligible record of a text stays). ``state_of(record)`` is called only for records long
+    enough."""
     from round20_lib import text_key
     rows, seen = [], set()
-    counts = dict(sentences=len(records), too_short=0, hands_lost=0, repeated_text=0)
+    counts = dict(sentences=len(records), too_short=0, hands_lost=0, repeated_text=0, **({"no_selected_word": 0} if words_of is not None else {}))
     for r in records:
+        if words_of is not None and not words_of[r["sign"]]:
+            counts["no_selected_word"] += 1; continue
         if (r.get("continuous") or {}).get("seconds", 0) < min_seconds:
             counts["too_short"] += 1; continue
         coverage = hand_coverage(state_of(r))
@@ -352,9 +370,10 @@ def check_word_format(systems: list[dict], compositions: dict, *, which: str, si
     """The pilot's word-format arms, checked before anything is rendered; None when the packet has none. Pilot only; one
     plain composition, one shuffled and one oracle of that same composition, and the reference; every sentence at the
     composition's frame count; the shuffled form holding exactly the composition's words, the oracle a part of them, from a
-    permitted corpus. A sentence the oracle has no word for leaves the pilot, listed in the key, before the design is drawn."""
+    corpus with the owner's recorded note. A sentence the oracle has no word for leaves the pilot, listed in the key, before
+    the design is drawn."""
     from collections import Counter
-    from rater_word_format import check_oracle_corpora, ORACLE, SHUFFLED
+    from rater_word_format import check_oracle_corpora, ORACLE, ORACLE_DEFAULT, SHUFFLED
     arms = {label: c for label, c in compositions.items() if c.get("word_format")}
     if not arms:
         return None
@@ -373,7 +392,7 @@ def check_word_format(systems: list[dict], compositions: dict, *, which: str, si
         raise SystemExit(str(error))
     note = arms[by_role[ORACLE]]["word_format"].get("licence_note")
     corpora = sorted({w["corpus"] for r in arms[by_role[ORACLE]]["rows"].values() for w in r["words"]})
-    check_oracle_corpora(corpora or ["asllvd-text-v1"], note)
+    check_oracle_corpora(corpora or ORACLE_DEFAULT, note)
     for label, arm in arms.items():
         if arm["word_format"]["composition"]["arm"] != base["arm"] or arm["word_format"]["form"] != base["form"]:
             raise SystemExit(f"{label} controls another composition than {plain[0]}")
@@ -417,7 +436,7 @@ def how2sign_draw(argv) -> int:
     parser.add_argument("--sentences-key", required=True, help="D20's stored set")
     parser.add_argument("--sentences-sha256", required=True)
     parser.add_argument("--main", type=int, default=200)
-    parser.add_argument("--pilot", type=int, default=20)
+    parser.add_argument("--pilot", type=int, default=60, help="the pilot's sentences: 60, with 8 raters (protocol section 3)")
     parser.add_argument("--min-seconds", type=float, default=1.5)
     parser.add_argument("--min-hand-coverage", type=float, default=.7)
     parser.add_argument("--seed", type=int, help="drawn at random and kept in draw.json if omitted")
@@ -429,10 +448,13 @@ def how2sign_draw(argv) -> int:
     from train_text_to_motion import make_store
     from evaluate_text_to_motion import load_state
     store = make_store(args.store)
-    records, stored = load_d20(store, args.mix_key, args.mix_sha256, args.sentences_key, args.sentences_sha256)
+    manifest = load_mix(store, args.mix_key, args.mix_sha256)
+    records, stored = load_d20(store, args.mix_key, args.mix_sha256, args.sentences_key, args.sentences_sha256, manifest=manifest)
+    words_of = selected_words(manifest, records)
+    del manifest
     rows, counts = eligible_sentences(
         records, lambda r: load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]),
-        min_seconds=args.min_seconds, min_hand_coverage=args.min_hand_coverage)
+        min_seconds=args.min_seconds, min_hand_coverage=args.min_hand_coverage, words_of=words_of)
     seed = args.seed if args.seed is not None else secrets.randbits(31)
     try:
         draw = draw_study_sentences(rows, seed=seed, main=args.main, pilot=args.pilot)
@@ -444,7 +466,8 @@ def how2sign_draw(argv) -> int:
     out = dict(kind="human-eval-how2sign-draw", name=args.name, seed=seed, mix_key=args.mix_key,
                mix_sha256=args.mix_sha256, sentences_key=args.sentences_key, sentences_sha256=args.sentences_sha256,
                rule=dict(min_seconds=args.min_seconds, min_hand_coverage=args.min_hand_coverage, main=args.main,
-                         pilot=args.pilot, distinct="round20_lib.text_key"),
+                         pilot=args.pilot, distinct="round20_lib.text_key", selected_word="stage 1 selection on the mix's vocabulary"),
+               excluded_no_selected_word=[r["sign"] for r in records if not words_of[r["sign"]]],
                counts=counts, signs=draw["main"] + draw["pilot"], main=draw["main"], pilot=draw["pilot"],
                rows={s: by_sign[s] for s in draw["main"] + draw["pilot"]}, candidates=candidates)
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -472,6 +495,8 @@ def how2sign_packet(argv) -> int:
     parser.add_argument("--avatar-resolution", type=int, default=768)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--output-prefix", help="store prefix (private) to copy the packet and key to")
+    parser.add_argument("--excluded-raters-roster", type=Path, help="private JSON {reviewer key: group}: raters who cannot rate this "
+                        "read, the pilot's roster for the main set; kept in the key and checked as the negation checker is")
     args = parser.parse_args(argv)
     systems = [parse_system(s) for s in args.system]
     if len({s["label"] for s in systems}) != len(systems):
@@ -519,6 +544,7 @@ def how2sign_packet(argv) -> int:
                                                                   sha256=draw["sentences_sha256"]),
                draw_sha256=args.draw_sha256, negation_sheet_sha256=args.negation_sheet_sha256,
                negation_confirmed=confirmed, negation_checkers=checkers, system_specs=systems, fps=args.fps,
+               excluded_raters=sorted(parse_roster(args.excluded_raters_roster.read_text())) if args.excluded_raters_roster else [],
                timing=timing_label, diagnostic=diagnostic,
                arms={k: dict(arm=v["arm"], word_cache=v["word_cache"], form=v["form"], timing=v["timing"])
                      for k, v in compositions.items()})
@@ -587,6 +613,8 @@ def how2sign_stage2(argv) -> int:
     reviewer = answers[0]["reviewer_sha256"]
     if reviewer in set(key.get("negation_checkers") or ()):
         raise SystemExit("the Deaf negation checker cannot be a rater")
+    if reviewer in set(key.get("excluded_raters") or ()):
+        raise SystemExit("this key is on the study's excluded list: the pilot's raters do not rate the main read")
     groups = {i["item_id"]: i["group"] for i in key["items"]}
     if reviewer not in roster or any(groups[a["item_id"]] != roster[reviewer] for a in answers):
         raise SystemExit("this key is not on the roster for this group")
