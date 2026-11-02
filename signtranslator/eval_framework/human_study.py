@@ -35,6 +35,10 @@ type and topic have no truth, ``None``, and are left out of their scores). ``dra
 and ``negation_truth`` implement the sentence draw and the negation truth; ``bar_read`` reads the declared release-bar
 terms. Such a study uses the two-stage sheet: everything but the forced choice is answered and returned before the options
 are shown (``write_stage1_sheet``, ``write_stage2_sheet``, ``read_two_stage``), because the options hint at negation.
+
+**Word-format arms (the first How2Sign read's pilot only, report only).** ``composition_shuffled`` and ``oracle`` join the
+Latin square as ordinary systems; a key that holds them names them in ``report_only_systems``, and ``bar_read`` refuses it, so
+they can never count towards the release bar. ``word_format_read`` gives their paired contrasts.
 """
 from __future__ import annotations
 
@@ -349,7 +353,7 @@ def negation_words(english: str) -> list[str]:
     return list(dict.fromkeys(re.sub("[’`´]", "'", m.lower()) for m in _NEGATION.findall(english)))
 
 
-def draw_study_sentences(eligible: Sequence[Mapping], *, seed: int, main: int = 200, pilot: int = 20) -> dict:
+def draw_study_sentences(eligible: Sequence[Mapping], *, seed: int, main: int = 200, pilot: int = 60) -> dict:
     """``dict(main=[sign], pilot=[sign])`` from ``eligible`` (rows with ``sign`` and ``negation_words``, in a fixed
     order): every negation candidate is kept among ``main`` and the rest of ``main``, then ``pilot``, are a random
     sample of the other sentences, so the pilot holds no candidate. Both lists keep ``eligible``'s order."""
@@ -639,6 +643,8 @@ def _bar_check_people(answers: Sequence[Mapping], key: Mapping, roster: Mapping[
     checkers = set(key.get("negation_checkers") or ())
     if checkers & (set(roster) | raters):
         raise BarRefused("the Deaf negation checker cannot be a rater")
+    if set(key.get("excluded_raters") or ()) & (set(roster) | raters):
+        raise BarRefused("a rater on the key's excluded list cannot rate this read: the pilot's raters have seen scrambled forms")
     unknown = sorted(r[:12] for r in raters - set(roster))
     if unknown:
         raise BarRefused(f"{len(unknown)} sheets carry keys that are not on the roster", keys=unknown)
@@ -1060,6 +1066,8 @@ def bar_read(answers: Sequence[Mapping], key: Mapping, *, reference: str, roster
     read here: this scorer never says a system may be released. The bootstrap is reported beside method D."""
     if reference not in key["systems"]:
         raise ValueError(f"{reference} is not a system of this study")
+    if key.get("report_only_systems"):
+        raise BarRefused(f"{sorted(key['report_only_systems'])} are report-only pilot arms: this study is not a bar read")
     bar = key.get("bar") or {}
     shares = [(bar.get("strata") or {}).get(k) for k in STRATA]
     if any(v is None or not 0 <= v <= 1 for v in shares) or abs(sum(shares) - 1) > 1e-9:
@@ -1121,6 +1129,242 @@ def bar_read(answers: Sequence[Mapping], key: Mapping, *, reference: str, roster
                 may_release_reason="this scorer does not read wrist speed, timing or unseen signers")
 
 
+# ---- word-format arms: the pilot's report-only contrasts (docs/HUMAN_EVALUATION_PROTOCOL.md sections 3 and 6) -----------
+
+WORD_FORMAT_ROLES = ("composition", "composition_shuffled", "oracle", "reference")
+# (composition minus shuffled) over (composition minus blank), BLEU, each instrument's own: docs/NEXT_PHASE_PLAN.md,
+# "Word-format forms through v1". v1's is 46.2% t [30.1, 62.2]; the parent's and the mirror's stood at 50-51% and 39-40%.
+INSTRUMENT_SHUFFLE_SHARES = dict(v1=.462, parent=.51, mirror=.40)
+INSTRUMENT_SHUFFLE_RANGE = (.39, .51)
+RULE_MIN_RATERS = 6              # method D's false-pass rates were simulated from six raters up (plan, 2026-11-01, 03:28 UTC)
+SHARE_MIN_RATERS = 8             # the pilot's design; fewer leave the share's interval unread
+CEILING = .95                    # at or above this, forced choice has no room left to show a drop
+_CONTRASTS = (("shuffled_minus_composition", "composition_shuffled", "composition",
+               "English word order, with the rebuilt joins, which are not separated from it"),
+              ("oracle_minus_composition", "oracle", "composition",
+               "real clips against generated ones, with fewer words each stretched further unless read on same_words, and "
+               "chance picks against best of 16"),
+              ("reference_minus_oracle", "reference", "oracle",
+               "not the word-by-word format alone: also the tokenizer round trip, chance picks, a different signer at every "
+               "word, the cut fitted on ASLLVD and the words the oracle lacks"),
+              ("reference_minus_composition", "reference", "composition", "the whole distance from real signing"))
+WORD_FORMAT_READING = (
+    "Report only: nothing here gates, none of it counts towards the release bar, and no target moves. Forced choice can be "
+    "right on words alone, whatever their order, so a small drop in choice does not say order does not matter; the free "
+    "translation, written before the options are shown, and naturalness are where order can show. A contrast is above or "
+    f"below only with at least {RULE_MIN_RATERS} raters, if method D's interval excludes zero and the permutation p is under .05 "
+    "in the same direction, with a rater seeing both arms; otherwise it is unresolved, which never means small. ci95_sentences_only "
+    "resamples sentences and ignores raters, and decides nothing. Oracle minus composition mixes real clips with the words "
+    "the oracle lacks unless read on same_words, and reference minus oracle is not the format alone. Share of the lead over chance "
+    f"has chance where the instruments have blank, and accuracy where they have BLEU: it is set beside theirs, and read against them "
+    f"only by method D's interval, with at least {SHARE_MIN_RATERS} raters and composition under the ceiling of {CEILING:.0%}. Neither "
+    "a large nor a small share is the better outcome. within_rater appears only for a pair with no shared sentence and decides "
+    "nothing. A row whose raters do not each see both arms is confounded with the rater.")
+
+
+def word_format_pairing(systems: Sequence[str], roles: Mapping[str, str], *, raters_per_group: int = 2) -> dict:
+    """What the pilot's raters compare: four systems, four groups, every group filled, so every pair of arms is paired on every
+    sentence, each arm of a sentence with ``raters_per_group`` ratings, and raters of one group rate the same videos (kappa)."""
+    if sorted(roles) != sorted(WORD_FORMAT_ROLES) or sorted(roles.values()) != sorted(systems) or len(systems) != 4:
+        raise ValueError(f"the word-format pilot is exactly the four systems {', '.join(WORD_FORMAT_ROLES)}")
+    return dict(groups=4, raters_per_group=raters_per_group, raters=4 * raters_per_group, clips_per_sentence=4,
+                paired_by_sentence=[[systems[a], systems[b]] for a in range(4) for b in range(a + 1, 4)])
+
+
+def _content_share(translation: str, english: str) -> float:
+    """The share of the English's content words found in the translation, order-free; a blank translation is 0."""
+    from signtranslator.generation.compositional import STOP_WORDS, normalise
+    wanted = {t for t in normalise(english) if t not in STOP_WORDS}
+    return len(wanted & set(normalise(translation or ""))) / len(wanted) if wanted else 0.
+
+
+def _sentence_bleu(translation: str, english: str) -> float:
+    from signtranslator.eval_framework.text_metrics import corpus_bleu
+    return float(corpus_bleu([translation], [english])[0]) if translation.strip() else 0.
+
+
+_WORD_FORMAT_METRICS = dict(comprehension_choice=lambda i, a: float(a["choice"] == i["correct"]),
+                            naturalness=lambda i, a: float(a["naturalness"]),
+                            translation_content_words=lambda i, a: _content_share(a["translation"], i["english"]),
+                            translation_bleu_indicative=lambda i, a: _sentence_bleu(a["translation"], i["english"]))
+
+
+def _paired_row(mine: Mapping[int, float], other: Mapping[int, float], keep, *, seed: int) -> dict:
+    """Per-sentence mean difference over the sentences both arms have: sign-flip permutation p and a bootstrap interval over
+    sentences alone, which ignores raters and decides nothing."""
+    from signtranslator.eval_framework.statistics import bootstrap_ci, paired_permutation_pvalue
+    common = sorted(u for u in set(mine) & set(other) if keep is None or u in keep)
+    if len(common) < 2:
+        return dict(utterances=len(common), mean_difference=None, p_value=None, ci95_sentences_only=None)
+    a, b = [mine[u] for u in common], [other[u] for u in common]
+    lo, hi = bootstrap_ci([x - y for x, y in zip(a, b)], seed=seed)
+    return dict(utterances=len(common), mean_difference=round((sum(a) - sum(b)) / len(common), 4),
+                p_value=round(paired_permutation_pvalue(a, b, seed=seed), 4), ci95_sentences_only=[round(lo, 4), round(hi, 4)])
+
+
+def _cluster_row(rows: Mapping, first: int, second: int) -> dict:
+    """First minus second on choice, on the sentences both have, by method D with a two-sided 95% t(R - 1) interval. No interval
+    without at least two raters or on a variance of zero: a zero there says the ratings have no spread, not that they are sure."""
+    import numpy as np
+    from scipy.stats import t
+    flat = dict(rows, stratum=np.zeros(rows["utterances"], int))
+    gap = _gap_read(flat, flat["correct"], second, first, [1., 0., 0.])
+    difference = _finite(gap["difference"])
+    if difference is None or gap["raters"] < 2 or not math.isfinite(gap["variance"]) or gap["variance"] <= 0:
+        return dict(difference=difference, raters=gap["raters"], cluster95=None)
+    half = float(t.ppf(.975, gap["raters"] - 1)) * math.sqrt(gap["variance"])
+    return dict(difference=round(difference, 4), raters=gap["raters"], cluster95=[round(difference - half, 4), round(difference + half, 4)])
+
+
+def _by_the_rule(row: Mapping) -> str:
+    """``above`` or ``below`` only with at least ``RULE_MIN_RATERS`` raters, if method D's interval excludes zero, the permutation
+    p is under .05, in the same direction, and raters saw both arms; otherwise ``unresolved``, which never means small."""
+    paired, cluster = row["comprehension_choice"], row["comprehension_choice_method_d"]
+    if (row["rater_balance"]["confounded_with_rater"] or paired["p_value"] is None or paired["p_value"] >= .05
+            or not cluster or cluster["cluster95"] is None or cluster["raters"] < RULE_MIN_RATERS):
+        return "unresolved"
+    low, high = cluster["cluster95"]
+    if low > 0 and paired["mean_difference"] > 0:
+        return "above"
+    return "below" if high < 0 and paired["mean_difference"] < 0 else "unresolved"
+
+
+def _rater_balance(viewable, items: Mapping, first: str, second: str, keep) -> dict:
+    """Over the sentences both arms have: each rater's ratings of each arm, and whether no rater saw both, when the
+    difference between the arms cannot be told from the difference between the raters."""
+    utterances = collections.defaultdict(set)
+    for a in viewable:
+        utterances[items[a["item_id"]]["system"]].add(items[a["item_id"]]["utterance"])
+    common = (utterances[first] & utterances[second]) if keep is None else (utterances[first] & utterances[second] & keep)
+    seen = collections.defaultdict(lambda: [0, 0])
+    for a in viewable:
+        item = items[a["item_id"]]
+        if item["utterance"] in common and item["system"] in (first, second):
+            seen[a["reviewer_sha256"][:12]][0 if item["system"] == first else 1] += 1
+    return dict(ratings=dict(sorted((r, list(v)) for r, v in seen.items())),
+                confounded_with_rater=len(seen) >= 2 and not any(x and y for x, y in seen.values()))
+
+
+def _within_rater(viewable, items: Mapping, first: str, second: str) -> dict:
+    """First minus second on choice, inside each rater, across different sentences: only for a pair with no shared sentence
+    (rows missing or raters lost). Descriptive: no interval, and it decides nothing."""
+    per = collections.defaultdict(lambda: collections.defaultdict(list))
+    for a in viewable:
+        item = items[a["item_id"]]
+        per[a["reviewer_sha256"][:12]][item["system"]].append(float(a["choice"] == item["correct"]))
+    differences = {r: round(sum(v[first]) / len(v[first]) - sum(v[second]) / len(v[second]), 4)
+                   for r, v in sorted(per.items()) if v[first] and v[second]}
+    return dict(per_rater=differences, mean=round(sum(differences.values()) / len(differences), 4) if differences else None,
+                note="different sentences on each side; descriptive, decides nothing")
+
+
+def _share_removed(viewable, items: Mapping, composition: str, shuffled: str, keep, *, boot: int, seed: int) -> dict:
+    """(composition minus shuffled) over (composition minus chance), on the moved sentences both arms have, with the instruments'
+    shares beside it. No share while composition has no lead over chance or the interval over sentences is undefined. Read against
+    the instruments only by method D's interval (delta method, two-way by sentence and rater, t(R - 1)), with at least
+    ``SHARE_MIN_RATERS`` raters and composition under ``CEILING``; the interval over sentences ignores raters and never reads."""
+    import numpy as np
+    from scipy.stats import t
+    rows = {composition: [], shuffled: []}
+    for a in viewable:
+        item = items[a["item_id"]]
+        if item["system"] in rows and item["utterance"] in keep:
+            rows[item["system"]].append((item["utterance"], a["reviewer_sha256"], float(a["choice"] == item["correct"])))
+    common = {u for u, _, _ in rows[composition]} & {u for u, _, _ in rows[shuffled]}
+    out = dict(utterances=len(common), raters=0, share=None, ci95_sentences_only=None, cluster95=None, against_instruments="not read",
+               chance=.25, instruments_blank_and_bleu=INSTRUMENT_SHUFFLE_SHARES, instruments_range=list(INSTRUMENT_SHUFFLE_RANGE))
+    if len(common) < 2:
+        return out
+    c_rows = [r for r in rows[composition] if r[0] in common]
+    s_rows = [r for r in rows[shuffled] if r[0] in common]
+    c_x, s_x = np.array([r[2] for r in c_rows]), np.array([r[2] for r in s_rows])
+    c, s, lead = float(c_x.mean()), float(s_x.mean()), float(c_x.mean()) - .25
+    raters = sorted({r[1] for r in c_rows + s_rows})
+    out["raters"] = len(raters)
+    if lead <= 0:
+        return out
+    means = {name: {} for name in rows}
+    for name, picked in ((composition, c_rows), (shuffled, s_rows)):
+        for u in common:
+            means[name][u] = float(np.mean([r[2] for r in picked if r[0] == u]))
+    order = sorted(common)
+    a, b = np.array([means[composition][u] for u in order]), np.array([means[shuffled][u] for u in order])
+    idx = np.random.default_rng(seed).integers(0, len(order), (boot, len(order)))
+    leads = a[idx].mean(1) - .25
+    with np.errstate(divide="ignore", invalid="ignore"):
+        shares = np.where(leads > 0, (a[idx].mean(1) - b[idx].mean(1)) / leads, np.nan)
+    interval = _interval(shares)
+    if interval is None:
+        return out
+    share = (c - s) / lead
+    out["share"] = round(share, 4)
+    out["ci95_sentences_only"] = [round(interval[0], 4), round(interval[1], 4)]
+    psi = np.concatenate([(s - .25) / lead ** 2 * (c_x - c) / len(c_x), -(s_x - s) / len(s_x) / lead])
+    utterance = np.array([r[0] for r in c_rows + s_rows])
+    rater = np.array([raters.index(r[1]) for r in c_rows + s_rows])
+    variance = twoway_variance(psi, utterance, rater) if len(raters) > 1 else float("nan")
+    if not math.isfinite(variance) or variance <= 0:
+        return out
+    half = float(t.ppf(.975, len(raters) - 1)) * math.sqrt(variance)
+    out["cluster95"] = [round(share - half, 4), round(share + half, 4)]
+    if len(raters) < SHARE_MIN_RATERS or max(c, s) >= CEILING:
+        return out
+    low, high = INSTRUMENT_SHUFFLE_RANGE
+    out["against_instruments"] = ("below" if share + half < low else "above" if share - half > high
+                                  else "around, or too wide to tell")
+    return out
+
+
+def word_format_read(answers: Sequence[Mapping], key: Mapping, *, seed: int = 0, boot: int = 2000) -> dict:
+    """The paired contrasts of the pilot's arms (protocol section 6; report only, never a bar condition). Per contrast and
+    metric, per-sentence differences as ``score_study`` pairs them; on choice also method D, the rater balance and the rule.
+    Shuffled is also read on the sentences whose word sequence moved, oracle on the sentences where it kept every word."""
+    roles = key["word_format"]["roles"]
+    items = {i["item_id"]: i for i in key["items"]}
+    viewable = [a for a in answers if a["viewable"] == "yes"]
+    per_sentence = {metric: collections.defaultdict(lambda: collections.defaultdict(list)) for metric in _WORD_FORMAT_METRICS}
+    for a in viewable:
+        item = items[a["item_id"]]
+        for metric, value in _WORD_FORMAT_METRICS.items():
+            per_sentence[metric][item["system"]][item["utterance"]].append(value(item, a))
+    means = {metric: {s: {u: sum(v) / len(v) for u, v in by.items()} for s, by in table.items()}
+             for metric, table in per_sentence.items()}
+    subsets = dict(moved={i["utterance"] for i in key["items"] if i["system"] == roles["composition_shuffled"]
+                          and i["state"].get("moved")},
+                   same_words={i["utterance"] for i in key["items"] if i["system"] == roles["oracle"]
+                               and i["state"].get("same_words")})
+    systems = list(key["systems"])
+    contrasts = {}
+    for name, first, second, reads in _CONTRASTS:
+        x, y = roles[first], roles[second]
+        over = dict(all=None, **({"moved": subsets["moved"]} if first == "composition_shuffled" else {}),
+                    **({"same_words": subsets["same_words"]} if first == "oracle" else {}))
+        block = dict(arms=[x, y], reads=reads)
+        for subset, keep in over.items():
+            row = {metric: _paired_row(means[metric].get(x, {}), means[metric].get(y, {}), keep, seed=seed)
+                   for metric in _WORD_FORMAT_METRICS}
+            row["rater_balance"] = _rater_balance(viewable, items, x, y, keep)
+            kept = [a for a in viewable if keep is None or items[a["item_id"]]["utterance"] in keep]
+            row["comprehension_choice_method_d"] = (_cluster_row(_bar_rows(kept, key), systems.index(x), systems.index(y))
+                                                    if kept else None)
+            row["comprehension_choice_by_the_rule"] = _by_the_rule(row)
+            block[subset] = row
+        if not block["all"]["comprehension_choice"]["utterances"]:
+            block["within_rater"] = _within_rater(viewable, items, x, y)
+        contrasts[name] = block
+    arms = {}
+    for role in WORD_FORMAT_ROLES:
+        hits = [float(a["choice"] == items[a["item_id"]]["correct"]) for a in viewable
+                if items[a["item_id"]]["system"] == roles[role]]
+        arms[role] = dict(label=roles[role], **_proportion(hits))
+    return dict(report_only=True, counts_towards_release_bar=False, reading=WORD_FORMAT_READING, arms=arms,
+                raters=len({a["reviewer_sha256"] for a in viewable}), ratings=len(viewable),
+                sentences_moved=len(subsets["moved"]), sentences_same_words=len(subsets["same_words"]),
+                dropped_no_real_clip=key["word_format"].get("dropped_no_real_clip", []), contrasts=contrasts,
+                share_of_lead_over_chance_removed_by_shuffling=_share_removed(
+                    viewable, items, roles["composition"], roles["composition_shuffled"], subsets["moved"], boot=boot, seed=seed))
+
+
 def key_sha256(key: Mapping) -> str:
     import json
     return hashlib.sha256(json.dumps(key, sort_keys=True).encode()).hexdigest()
@@ -1131,4 +1375,5 @@ __all__ = ["OPTIONS", "SENTENCE_TYPES", "SHEET_COLUMNS", "grammatical_truth", "l
            "NEGATION_COLUMNS", "negation_words", "draw_study_sentences", "write_negation_sheet",
            "parse_negation_sheet", "negation_truth", "negation_stratum", "strata_shares", "STAGE1_COLUMNS",
            "STAGE2_COLUMNS", "write_stage1_sheet", "parse_stage1", "write_stage2_sheet", "parse_stage2",
-           "read_two_stage", "parse_roster", "BAR", "STRATA", "BarRefused", "twoway_variance", "lower_bound", "upper_bound", "bar_read"]
+           "read_two_stage", "parse_roster", "BAR", "STRATA", "BarRefused", "twoway_variance", "lower_bound", "upper_bound", "bar_read",
+           "WORD_FORMAT_ROLES", "INSTRUMENT_SHUFFLE_SHARES", "word_format_pairing", "word_format_read"]

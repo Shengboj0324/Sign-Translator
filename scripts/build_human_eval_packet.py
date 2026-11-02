@@ -30,8 +30,9 @@ The ``test`` partition is the final study's and requires ``--final-study``; pilo
 **How2Sign mode** (first Deaf-rater read; ``reports/rater_package_plan.md``, docs/NEXT_PHASE_PLAN.md "Rater read terms
 defined"), two subcommands, D20 only:
 
-1. ``how2sign-draw``: the eligible D20 sentences (at least ``--min-seconds``, the better hand tracked on at least
-   ``--min-hand-coverage`` of the recording, then distinct by ``round20_lib.text_key``), the English negation candidates
+1. ``how2sign-draw``: the eligible D20 sentences (a selected word under the official arm's selection, at least ``--min-seconds``,
+   the better hand tracked on at least ``--min-hand-coverage`` of the recording, then distinct by ``round20_lib.text_key``; the
+   sentences with no selected word are left out and listed), the English negation candidates
    (``human_study.negation_words``), and the draw: every eligible candidate among the ``--main`` sentences, the rest
    and the ``--pilot`` sentences at random. Writes ``draw.json`` (its ``name`` and ``signs`` are the sentence list of
    ``round15_compose_eval.py --export-sentences-file``) and ``negation_check.csv``, the Deaf checker's sheet.
@@ -42,7 +43,9 @@ defined"), two subcommands, D20 only:
    and nothing else (``d20_distractor_pool`` refuses more; the whole-partition pool would read C20 and fresh text), and
    the key is checked for it. The sentence type and topic have no truth here and are not scored. Every system is drawn
    by the same renderer on a rebuilt clock (t0 + n/fps); item ids come from a secret source; zip times are fixed; the
-   summary gives MP4 bytes per frame by system. The packet holds stage 1 only: no options.
+   summary gives MP4 bytes per frame by system. The packet holds stage 1 only: no options. An index written by
+   ``round15_compose_eval.py --export-word-format`` is a word-format arm (``check_word_format``): pilot only, report only, and
+   the key says so.
 3. ``how2sign-stage2``: when a rater returns stage 1, hash it, record the receipt and write that rater's stage 2 sheet
    (the options and the forced choice). Stage 1 is final once released.
 
@@ -74,8 +77,8 @@ from signtranslator.data_engineering.corpus_manifest import load_manifest  # noq
 from signtranslator.eval_framework.human_study import (design_study, draw_study_sentences, key_sha256,  # noqa: E402
                                                        negation_stratum, negation_truth, negation_words,
                                                        parse_negation_sheet, parse_roster, parse_stage1, strata_shares,
-                                                       write_negation_sheet, write_sheet, write_stage1_sheet,
-                                                       write_stage2_sheet)
+                                                       word_format_pairing, write_negation_sheet, write_sheet,
+                                                       write_stage1_sheet, write_stage2_sheet)
 
 GUIDE = ROOT / "docs" / "HUMAN_EVALUATION_REVIEWER_GUIDE.md"   # what reviewers read (the protocol stays with the team)
 TWO_STAGE_GUIDE = ROOT / "docs" / "HUMAN_EVALUATION_REVIEWER_GUIDE_TWO_STAGE.md"
@@ -203,6 +206,12 @@ def write_group_files(key: dict, out: Path, store, output_prefix: str | None, *,
 
 # ---- How2Sign mode (module docstring) --------------------------------------------------------------------------------
 
+def load_mix(store, mix_key: str, mix_sha256: str) -> dict:
+    with tempfile.TemporaryDirectory() as t:
+        path = Path(t) / "m.json"; path.write_bytes(store.get(mix_key) + b"\n")
+        return load_manifest(path, expected_sha256=mix_sha256)
+
+
 def load_d20(store, mix_key: str, mix_sha256: str, sentences_key: str, sentences_sha256: str) -> tuple[list, dict]:
     """(D20's manifest records in the set's order, the stored set), after pinning the set and refusing any other set."""
     from round20_lib import load_sentence_set
@@ -214,19 +223,29 @@ def load_d20(store, mix_key: str, mix_sha256: str, sentences_key: str, sentences
     stored = json.loads(payload)
     if stored.get("set") != "D20":
         raise SystemExit(f"the rater read draws from D20 only, not {stored.get('set')!r}")
-    with tempfile.TemporaryDirectory() as t:
-        path = Path(t) / "m.json"; path.write_bytes(store.get(mix_key) + b"\n")
-        manifest = load_manifest(path, expected_sha256=mix_sha256)
-    return load_sentence_set(stored, manifest, mix_key, mix_sha256), stored
+    return load_sentence_set(stored, load_mix(store, mix_key, mix_sha256), mix_key, mix_sha256), stored
 
 
-def eligible_sentences(records, state_of, *, min_seconds: float, min_hand_coverage: float) -> tuple[list[dict], dict]:
-    """(eligible rows in the records' order, counts): at least ``min_seconds``, hands tracked, then distinct texts (the
-    first eligible record of a text stays). ``state_of(record)`` is called only for records long enough."""
+def selected_words(manifest, records) -> dict:
+    """{sign: its selected words} under the official arm's selection: stage 1's, on the evaluation mix's vocabulary, from the English
+    alone. A sentence with none has no signing in any composed form. No generator or state is read."""
+    from round15_compose_eval import stage1_selection
+    from signtranslator.generation.compositional import isolated_corpora, training_vocabulary
+    vocab = training_vocabulary(manifest, isolated_corpora(manifest))
+    _, words = stage1_selection([r["text"] for r in records], vocab)
+    return {r["sign"]: w for r, w in zip(records, words)}
+
+
+def eligible_sentences(records, state_of, *, min_seconds: float, min_hand_coverage: float, words_of=None) -> tuple[list[dict], dict]:
+    """(eligible rows in the records' order, counts): a selected word (``words_of``: {sign: words}), at least ``min_seconds``, hands
+    tracked, then distinct texts (the first eligible record of a text stays). ``state_of(record)`` is called only for records long
+    enough."""
     from round20_lib import text_key
     rows, seen = [], set()
-    counts = dict(sentences=len(records), too_short=0, hands_lost=0, repeated_text=0)
+    counts = dict(sentences=len(records), too_short=0, hands_lost=0, repeated_text=0, **({"no_selected_word": 0} if words_of is not None else {}))
     for r in records:
+        if words_of is not None and not words_of[r["sign"]]:
+            counts["no_selected_word"] += 1; continue
         if (r.get("continuous") or {}).get("seconds", 0) < min_seconds:
             counts["too_short"] += 1; continue
         coverage = hand_coverage(state_of(r))
@@ -326,10 +345,13 @@ def load_composition(store, spec: dict, *, signs, list_sha256: str, sentences_sh
     if any(len(v) > 1 for v in rows.values()):
         raise SystemExit(f"{spec['key']} holds several forms of a sentence: export one form per arm")
     missing = sorted(s for s in signs if s not in rows)
+    word_format = index.get("word_format")
+    if missing and word_format:
+        raise SystemExit(f"{spec['label']} is a word-format arm, report-only and pilot only: it holds the draw's pilot sentences alone")
     if missing:
         raise SystemExit(f"{spec['key']} lacks {len(missing)} sentences: {missing[:3]}")
     empty = sorted(s for s in signs if rows[s][0]["empty"])
-    if empty:
+    if empty and (word_format or {}).get("role") != "oracle":      # the oracle's: check_word_format drops them from the pilot
         raise SystemExit(f"{spec['label']}: {len(empty)} sentences have no selected word, so no signing to show: "
                          f"{empty}. The declared terms do not say how to count them: decide before building")
     chosen = {s: rows[s][0] for s in signs}
@@ -340,7 +362,54 @@ def load_composition(store, spec: dict, *, signs, list_sha256: str, sentences_sh
         raise SystemExit(f"{spec['label']}: several forms in one arm: {sorted(forms)}")
     timings = {composition_timing(r, spec["label"]) for r in chosen.values()}
     return dict(arm=index["arm"], word_cache=index.get("word_cache"), rows=chosen, form=next(iter(forms)),
-                timing=next(iter(timings)))
+                timing=next(iter(timings)), word_format=word_format)
+
+
+def check_word_format(systems: list[dict], compositions: dict, *, which: str, signs: list[str]) -> dict | None:
+    """The pilot's word-format arms, checked before anything is rendered; None when the packet has none. Pilot only; one
+    plain composition, one shuffled and one oracle of that same composition, and the reference; every sentence at the
+    composition's frame count; the shuffled form holding exactly the composition's words, the oracle a part of them, from a
+    corpus with the owner's recorded note. A sentence the oracle has no word for leaves the pilot, listed in the key, before
+    the design is drawn."""
+    from collections import Counter
+    from rater_word_format import check_oracle_corpora, ORACLE, ORACLE_DEFAULT, SHUFFLED
+    arms = {label: c for label, c in compositions.items() if c.get("word_format")}
+    if not arms:
+        return None
+    if which != "pilot":
+        raise SystemExit("the word-format arms are report-only and pilot only: not in the main set")
+    by_role = {c["word_format"]["role"]: label for label, c in arms.items()}
+    plain = [label for label in compositions if label not in arms]
+    if len(arms) != 2 or set(by_role) != {SHUFFLED, ORACLE} or len(plain) != 1:
+        raise SystemExit("the word-format pilot is one composition, its composition_shuffled and its oracle, and the reference")
+    base = compositions[plain[0]]
+    reference = next(s["label"] for s in systems if s["kind"] == "reference")
+    roles = dict(composition=plain[0], composition_shuffled=by_role[SHUFFLED], oracle=by_role[ORACLE], reference=reference)
+    try:
+        pairing = word_format_pairing([s["label"] for s in systems], roles)
+    except ValueError as error:
+        raise SystemExit(str(error))
+    note = arms[by_role[ORACLE]]["word_format"].get("licence_note")
+    corpora = sorted({w["corpus"] for r in arms[by_role[ORACLE]]["rows"].values() for w in r["words"]})
+    check_oracle_corpora(corpora or ORACLE_DEFAULT, note)
+    for label, arm in arms.items():
+        if arm["word_format"]["composition"]["arm"] != base["arm"] or arm["word_format"]["form"] != base["form"]:
+            raise SystemExit(f"{label} controls another composition than {plain[0]}")
+    for sign in signs:
+        row = base["rows"][sign]
+        for label, arm in arms.items():
+            mine = arm["rows"][sign]
+            if mine["frames"] != row["frames"] or mine["composition_state_sha256"] != row["state_sha256"]:
+                raise SystemExit(f"{label}: {sign} is not at its composition's frames, or from another composition")
+        shuffled = Counter(w["word"] for w in arms[by_role[SHUFFLED]]["rows"][sign]["words"])
+        if shuffled != Counter(w["word"] for w in row["words"]):
+            raise SystemExit(f"{by_role[SHUFFLED]}: {sign} does not hold exactly the composition's words")
+        if Counter(w["word"] for w in arms[by_role[ORACLE]]["rows"][sign]["words"]) - shuffled:
+            raise SystemExit(f"{by_role[ORACLE]}: {sign} holds a word the composition does not")
+    dropped = sorted(s for s in signs if arms[by_role[ORACLE]]["rows"][s]["empty"])
+    return dict(roles=roles, report_only=True, pilot_only=True, pairing=pairing, dropped_no_real_clip=dropped,
+                signs=[s for s in signs if s not in dropped], oracle_corpora=corpora, licence_note=note,
+                seed=arms[by_role[SHUFFLED]]["word_format"].get("seed"))
 
 
 def bytes_per_frame(items) -> dict:
@@ -366,7 +435,7 @@ def how2sign_draw(argv) -> int:
     parser.add_argument("--sentences-key", required=True, help="D20's stored set")
     parser.add_argument("--sentences-sha256", required=True)
     parser.add_argument("--main", type=int, default=200)
-    parser.add_argument("--pilot", type=int, default=20)
+    parser.add_argument("--pilot", type=int, default=60, help="the pilot's sentences: 60, with 8 raters (protocol section 3)")
     parser.add_argument("--min-seconds", type=float, default=1.5)
     parser.add_argument("--min-hand-coverage", type=float, default=.7)
     parser.add_argument("--seed", type=int, help="drawn at random and kept in draw.json if omitted")
@@ -378,10 +447,11 @@ def how2sign_draw(argv) -> int:
     from train_text_to_motion import make_store
     from evaluate_text_to_motion import load_state
     store = make_store(args.store)
-    records, stored = load_d20(store, args.mix_key, args.mix_sha256, args.sentences_key, args.sentences_sha256)
+    records, stored = load_d20(store, args.mix_key, args.mix_sha256, args.sentences_key, args.sentences_sha256)      # the set's pin comes first
+    words_of = selected_words(load_mix(store, args.mix_key, args.mix_sha256), records)
     rows, counts = eligible_sentences(
         records, lambda r: load_state(store, r["continuous"]["state_key"], r["continuous"]["state_sha256"]),
-        min_seconds=args.min_seconds, min_hand_coverage=args.min_hand_coverage)
+        min_seconds=args.min_seconds, min_hand_coverage=args.min_hand_coverage, words_of=words_of)
     seed = args.seed if args.seed is not None else secrets.randbits(31)
     try:
         draw = draw_study_sentences(rows, seed=seed, main=args.main, pilot=args.pilot)
@@ -393,7 +463,8 @@ def how2sign_draw(argv) -> int:
     out = dict(kind="human-eval-how2sign-draw", name=args.name, seed=seed, mix_key=args.mix_key,
                mix_sha256=args.mix_sha256, sentences_key=args.sentences_key, sentences_sha256=args.sentences_sha256,
                rule=dict(min_seconds=args.min_seconds, min_hand_coverage=args.min_hand_coverage, main=args.main,
-                         pilot=args.pilot, distinct="round20_lib.text_key"),
+                         pilot=args.pilot, distinct="round20_lib.text_key", selected_word="stage 1 selection on the mix's vocabulary"),
+               excluded_no_selected_word=[r["sign"] for r in records if not words_of[r["sign"]]],
                counts=counts, signs=draw["main"] + draw["pilot"], main=draw["main"], pilot=draw["pilot"],
                rows={s: by_sign[s] for s in draw["main"] + draw["pilot"]}, candidates=candidates)
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -421,6 +492,8 @@ def how2sign_packet(argv) -> int:
     parser.add_argument("--avatar-resolution", type=int, default=768)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--output-prefix", help="store prefix (private) to copy the packet and key to")
+    parser.add_argument("--excluded-raters-roster", type=Path, help="private JSON {reviewer key: group}: raters who cannot rate this "
+                        "read, the pilot's roster for the main set; kept in the key and checked as the negation checker is")
     args = parser.parse_args(argv)
     systems = [parse_system(s) for s in args.system]
     if len({s["label"] for s in systems}) != len(systems):
@@ -455,6 +528,9 @@ def how2sign_packet(argv) -> int:
     compositions = {s["label"]: load_composition(store, s, signs=signs, list_sha256=args.draw_sha256,
                                                  sentences_sha256=draw["sentences_sha256"])
                     for s in systems if s["kind"] == "composition"}
+    word_format = check_word_format(systems, compositions, which=args.which, signs=signs)
+    if word_format:
+        signs = word_format.pop("signs")
     seed = args.seed if args.seed is not None else secrets.randbits(31)
     key = how2sign_key([draw["rows"][s] for s in sorted(signs)], [s["label"] for s in systems], seed=seed,
                        d20_texts=[r["text"].strip() for r in records], confirmed=confirmed,
@@ -465,9 +541,13 @@ def how2sign_packet(argv) -> int:
                                                                   sha256=draw["sentences_sha256"]),
                draw_sha256=args.draw_sha256, negation_sheet_sha256=args.negation_sheet_sha256,
                negation_confirmed=confirmed, negation_checkers=checkers, system_specs=systems, fps=args.fps,
+               excluded_raters=sorted(parse_roster(args.excluded_raters_roster.read_text())) if args.excluded_raters_roster else [],
                timing=timing_label, diagnostic=diagnostic,
                arms={k: dict(arm=v["arm"], word_cache=v["word_cache"], form=v["form"], timing=v["timing"])
                      for k, v in compositions.items()})
+    if word_format:
+        key.update(word_format=word_format, report_only_systems=[word_format["roles"]["composition_shuffled"],
+                                                                 word_format["roles"]["oracle"]])
     spec = {s["label"]: s for s in systems}
     (out / "key").mkdir(parents=True, exist_ok=True)
     for n, item in enumerate(key["items"]):
@@ -485,7 +565,8 @@ def how2sign_packet(argv) -> int:
                                  f"{row['reference_frames']}; the states have {len(state.timestamps)} and "
                                  f"{len(reference.timestamps)}")
             item["state"] = dict(key=row["state_key"], sha256=row["state_sha256"], form=row["form"], words=row["words"],
-                                 overlong=row["overlong"])
+                                 overlong=row["overlong"],
+                                 **{k: row[k] for k in ("order", "moved", "dropped", "same_words") if k in row})
         group_dir = out / "packet" / f"group-{item['group']}"
         group_dir.mkdir(parents=True, exist_ok=True)
         video = group_dir / f"{item['item_id']}.mp4"
@@ -502,6 +583,7 @@ def how2sign_packet(argv) -> int:
     print(json.dumps(dict(utterances=key["utterances"], systems=key["systems"], groups=key["groups"],
                           items=len(key["items"]), strata=key["bar"]["strata"], confirmed=key["bar"]["confirmed"],
                           timing=key["timing"], video_bytes_per_frame=key["video_bytes_per_frame"],
+                          **({"word_format": key["word_format"]} if word_format else {}),
                           items_longer_or_shorter_than_their_reference=length_cue, key=str(out / "key" / "key.json"))))
     return 0
 
@@ -528,6 +610,8 @@ def how2sign_stage2(argv) -> int:
     reviewer = answers[0]["reviewer_sha256"]
     if reviewer in set(key.get("negation_checkers") or ()):
         raise SystemExit("the Deaf negation checker cannot be a rater")
+    if reviewer in set(key.get("excluded_raters") or ()):
+        raise SystemExit("this key is on the study's excluded list: the pilot's raters do not rate the main read")
     groups = {i["item_id"]: i["group"] for i in key["items"]}
     if reviewer not in roster or any(groups[a["item_id"]] != roster[reviewer] for a in answers):
         raise SystemExit("this key is not on the roster for this group")

@@ -10,6 +10,9 @@ A two-stage key (How2Sign read): ``--sheet`` takes the stage 1 sheets and ``--st
 ``--stage1-receipts`` from ``build_human_eval_packet.py how2sign-stage2``; a stage 2 answer without a matching stage 1 hash
 is refused.
 
+A key holding the rater pilot's word-format arms adds ``report["word_format"]`` (``human_study.word_format_read``): paired
+contrasts of composition, composition_shuffled, oracle and the reference, report only. ``--bar`` refuses such a key.
+
 ``--bar`` adds the release-bar read (``report["bar"]``, ``human_study.bar_read``): the declared terms only
 (docs/HUMAN_EVALUATION_PROTOCOL.md section 6, docs/NEXT_PHASE_PLAN.md "Rater read terms defined" and "interval method and
 sheet order changed"), a pass or fail per condition and per system, given the private ``--roster``. When the read cannot
@@ -26,7 +29,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from signtranslator.eval_framework.human_study import (BarRefused, bar_read, key_sha256, merge_answers,  # noqa: E402
-                                                       parse_roster, parse_sheet, read_two_stage, score_study)
+                                                       parse_roster, parse_sheet, read_two_stage, score_study,
+                                                       word_format_read)
 
 
 def main(argv=None) -> int:
@@ -68,6 +72,8 @@ def main(argv=None) -> int:
     report = score_study(answers, key, reference=args.reference if args.reference in key["systems"] else None)
     report.update(problems=problems + merge_problems, sheets=len(args.sheet), key_sha256=recorded,
                   partition=key.get("partition"), manifest_sha256=key.get("manifest_sha256"))
+    if key.get("word_format"):
+        report.update(report_only_systems=key["report_only_systems"], word_format=word_format_read(answers, key))
     refused = None
     if args.bar:
         try:

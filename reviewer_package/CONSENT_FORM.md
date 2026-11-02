@@ -5,6 +5,8 @@
 > Ask them whether formal approval is needed and whether anything must be added. Keep a signed copy for
 > yourself and give the reviewer a copy. Explain the form in ASL, in person or through an interpreter, before
 > anyone signs it.
+> **Tell the board about the pilot's design:** some pilot clips are scrambled on purpose, or stitched from real signs, and raters are not told this
+> or that word order is being tested until after all sheets return. The default is a debrief (`DEBRIEF.md`), and the board decides. Add here whatever it requires.
 
 **Project:** Sign Translator, a research project that turns English into ASL signing shown by a computer-made figure.
 **Researcher:** [owner's full name]  **Contact:** [email] / [text or video phone]
