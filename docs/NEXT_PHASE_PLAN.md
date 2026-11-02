@@ -6380,3 +6380,21 @@ Still pose BLEU on the mirror is 2.33, blank 1.16. Static handshape beyond motio
 
 **Reading.** The mirror's preference for single-camera isn't because it ignores fingers. All three instruments fall in nearly the same pattern: freezing fingers keeps 19-23% of the margin, freezing arms 58-61%. Its high-noise rung, at about the path's hand distance (0.587), keeps 11%, yet it reads monocular at 4.78, so whatever separates the paths doesn't act like random noise on it, as on the parent. Sharing a parent means three instruments aren't three independent witnesses; agreement doesn't establish what people use. No target moves. Finger motion carries most of each instrument's clip-specific reading, so generated finger motion stays the place for any hand work, subject to the estimator-wobble finding and with no new training until evidence supports it.
 
+### Word-format controls declared before any read (2026-11-02, 09:48 UTC)
+
+`scripts/parent_controls.py`, code commit a6d21a3, digest 0936c98a; two independent reviews with their fixes applied; 262 new tests and 247 related pass under warnings as errors. Report only: nothing trains, no label gates anything, no target moves, and none of it shows human comprehension. The script's header holds the full reading and was committed before any read.
+
+**Forms, on D20's 500 clips, same predicted lengths and stitching as composition.** Through the parent (8 draws) and the mirror (3 draws, disclosed: fewer, so wider): `oracle` (each word a real clip from the train records of ASLLVD, RIT and WLASL, chance pick, through d2's round trip); `covered` (generated clips of exactly the oracle's words, same plan); `shuffled`, `covered_shuffled`, `oracle_shuffled` (2 seeds, order by draw, seed and clip; seeds aren't replicates); composition through the mirror, with stills, blank and real anchors.
+
+**The rule.** A contrast is above or below only if its paired t interval over draws excludes zero on BOTH margin over still and BLEU, in the same direction. An interval holding zero, or metrics disagreeing, is **unresolved**, never "at". The clip interval is reported and decides nothing.
+
+**Generated against real clips: `oracle` minus `covered`.** Format: `oracle` against real signing (on the mirror, `nearest_monocular`, with `real_monocular` beside it).
+- Oracle above real, and not below covered: the format reads high, and generated clips add nothing beyond what real clips get in it.
+- Oracle above real, below covered: the format reads high AND generated clips read higher still; neither explains the 3.30 alone.
+- Oracle not above real, and not below covered: composition's lead sits in the words the oracle lacks and the frames they free.
+- Oracle not above real, below covered: the format alone doesn't lift real clips, and generated clips read higher than real ones in it.
+
+**Limits, declared now.** A high or low oracle can't separate format from source, since real word clips are MediaPipe monocular too. A low oracle has other live explanations: fewer words with stretched cores, best-of-16 selection against chance picks, d2 decoding, a different signer per word, cuts fitted on ASLLVD applied to WLASL and RIT. A large shuffle drop means the reader uses word order, or reacts to rebuilt joins or another still; a small one says little about people. Generated motion reading high on the mirror is flagged on the same terms as on the parent: same lineage, and How2Sign monocular trained it.
+
+**Controls and stops.** A cross-GPU reproduction check (the stored composition was read on an RTX 6000 Ada; this runs on an L40S) comes before any compose. A miss voids that read: no retry of the same code. Estimated about 4 h, $3.40 (range $2.80-$4.50), not measured.
+
