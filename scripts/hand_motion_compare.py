@@ -1159,6 +1159,7 @@ def analyse(work: Path) -> dict:
     capture_all = {r["entry"] for r in capture_rows}
     return dict(kind="hand-motion-compare", report_only=True, decides_nothing=True, sources=dict(generated_rows=len(pooled), phase_a_rows=len(phase), capture_rows=len(capture_rows), real_word_rows=len(real), sentence_rows=len(sentences), fresh_rows=len(fresh), round_trip_rows=len(trip)),
                 observed_rule=check_observed(dict(capture=capture_rows, real_words=real, sentences_two_view=two, sentences_monocular=mono)), validity=validity_report(dict(generated=pooled, phase_a=phase, capture=capture_rows, real_words=real, sentences_two_view=two, sentences_monocular=mono, fresh=fresh)), generated_validity_note="generated output marks every frame and joint valid, none observed, confidence 0: it never says a hand is absent, and both hands always have a row, while real hands often have no detection",
+                added_after_first_numbers=added_report(work, dict(generated_three_draws=pooled, capture=capture_rows, real_words=real, sentences_two_view=two, sentences_monocular=mono, fresh_unselected=fresh, decoded_clips=[])),
                 motion=motion, ratios=ratios, per_joint_dominant=joint_table(pooled, real, capture_rows), variety=variety, word_match_exclusions=exclusions(entries, capture_all, f_cap), word_match=wm, best_of_16=best_of_16(phase, fresh, pooled), round_trip=round_trip_report(trip, f_cap, pooled) if trip else dict(ran=False))
 
 
@@ -1172,9 +1173,193 @@ def boot_ratio_independent(a: dict, b: dict) -> dict:
     return dict(ratio=_round(ratio, 4), ci95=[_round(ratio * np.exp(-h), 4), _round(ratio * np.exp(h), 4)], far="below" if ratio * np.exp(h) < FAR else "above" if ratio * np.exp(-h) > 1 / FAR else None, note="unpaired: different words and clips")
 
 
+# ---- added after the first numbers were seen ----------------------------------------------------------------------
+
+ADDED = ("Not stated before computing: added after the first numbers showed video paths' fingers about ten times faster than capture's, with a range only 1.4 times larger. Report only. "
+         "Traversals: travel over range, per clip. Floor: the quietest tenth of each clip's frames. Coupling: how far the fingers' PIP bend rates move together. Cross-path: the same clips through two estimators, whose velocity correlation "
+         "bounds the share of velocity power the two paths share. It is an upper bound on signal, because errors from the same video are shared, and mistiming lowers it.")
+
+
+def _bend_rate(R: np.ndarray, capture: bool) -> np.ndarray:
+    return np.diff(bends(R, capture), axis=0) * FPS
+
+
+def _steps_of(mask: np.ndarray) -> np.ndarray:
+    whole = mask.all(axis=1)
+    return whole[:-1] & whole[1:]
+
+
+def coupling(rates: np.ndarray) -> float | None:
+    """The mean correlation of bend rate between the four fingers' PIP joints, on (S, 15) steps. Independent noise reads near 0; fingers moving together read high."""
+    x = rates[:, [4, 7, 10, 13]]
+    if len(x) < MIN_FRAMES or np.any(x.std(0) < 1e-9):
+        return None
+    c = np.corrcoef(x.T)
+    return float(c[np.triu_indices(4, 1)].mean())
+
+
+def added_hand_row(values: np.ndarray, mask: np.ndarray, capture: bool) -> dict | None:
+    if mask.all(axis=1).sum() < MIN_FRAMES:
+        return None
+    ok = _steps_of(mask)
+    if ok.sum() < MIN_FRAMES:
+        return None
+    out = {}
+    for name, hz in (("6hz", 6.), ("3hz", 3.)):
+        R = matrices(lowpassed(values, mask, hz), mask)
+        speed = np.linalg.norm(log_steps(R), axis=-1)[ok].mean(axis=1) * FPS
+        out[f"floor_{name}"] = _round(np.percentile(speed, 10))
+        out[f"median_{name}"] = _round(np.median(speed))
+        out[f"coupling_{name}"] = _round(coupling(_bend_rate(R, capture)[ok]))
+    return out
+
+
+def added_row(state) -> dict:
+    from evaluate_text_to_motion import at_rate
+    s = at_rate(state, FPS)
+    return {side: added_hand_row(*hand_channel(s, side, USE_OBSERVED_REAL), is_capture(s, side)) for side in ("Right", "Left")}
+
+
+def best_lag_correlation(a: np.ndarray, b: np.ndarray, mask: np.ndarray, *, lags: int = 12) -> tuple[float | None, int | None]:
+    """The largest correlation of (T, J) series a and b over shifts of b within ``lags`` frames, on steps valid in both. ``mask`` (T,) on a's clock is applied by the caller through NaN."""
+    best, where = None, None
+    for lag in range(-lags, lags + 1):
+        x = a[max(0, -lag):len(a) - max(0, lag)]
+        y = b[max(0, lag):len(b) - max(0, -lag)]
+        n = min(len(x), len(y))
+        if n < MIN_FRAMES:
+            continue
+        x, y = x[:n], y[:n]
+        ok = np.isfinite(x).all(axis=1) & np.isfinite(y).all(axis=1)
+        if ok.sum() < MIN_FRAMES:
+            continue
+        u, v = x[ok] - x[ok].mean(0), y[ok] - y[ok].mean(0)
+        bottom = np.sqrt((u ** 2).sum() * (v ** 2).sum())
+        if bottom <= 1e-12:
+            continue
+        r = float((u * v).sum() / bottom)
+        if best is None or r > best:
+            best, where = r, lag
+    return best, where
+
+
+def _rates_with_gaps(state, side: str, hz: float) -> np.ndarray | None:
+    """(S, 15) bend rate with NaN on steps not whole-hand valid."""
+    values, mask = hand_channel(state, side, USE_OBSERVED_REAL)
+    if mask.all(axis=1).sum() < MIN_FRAMES:
+        return None
+    R = matrices(lowpassed(values, mask, hz), mask)
+    rates = _bend_rate(R, is_capture(state, side))
+    rates[~_steps_of(mask)] = np.nan
+    return rates
+
+
+def cross_path_row(two, mono) -> dict:
+    """Velocity correlation of the two paths on one clip, every side pairing at 6 and 3 Hz, at the best shift within half a second."""
+    from evaluate_text_to_motion import at_rate
+    a, b = at_rate(two, FPS), at_rate(mono, FPS)
+    out = {}
+    for hz, name in ((6., "6hz"), (3., "3hz")):
+        for p in ("Right", "Left"):
+            for q in ("Right", "Left"):
+                x, y = _rates_with_gaps(a, p, hz), _rates_with_gaps(b, q, hz)
+                if x is None or y is None:
+                    out[f"two_{p}_mono_{q}_{name}"] = None
+                    continue
+                r, lag = best_lag_correlation(x, y, None)
+                out[f"two_{p}_mono_{q}_{name}"] = dict(r=_round(r, 4), lag=lag)
+    return out
+
+
+def collect_added(store, work: Path) -> None:
+    """Added rows on draw 1, capture, real words and sentences, and the cross-path read with a null of mismatched clips."""
+    from signtranslator.data_engineering.corpus_manifest import ContentCache, load_sample, usable_channels
+    out, path = work / "added.jsonl", work / "cross_path.jsonl"
+    seen = _seen(out)
+    for row in index_rows(json.loads(store.get(DRAW_INDEX.format(k=1)))):
+        if f"draw1|{row['entry']}" not in seen:
+            _append(out, dict(id=f"draw1|{row['entry']}", source="generated", entry=row["entry"], **added_row(_state(store, row["state_key"], row["state_sha256"]))))
+    print("added: generated", flush=True)
+    cache = ContentCache(work / "cache-capture", 1_500_000_000)
+    for r in json.loads(store.get(CAPTURE_MANIFEST))["records"]:
+        if usable_channels(r, "skeleton") and f"capture|{r['sign']}" not in seen:
+            _append(out, dict(id=f"capture|{r['sign']}", source="capture", entry=r["sign"], **added_row(load_sample(r, "skeleton", cache=cache, fetch=store.get))))
+    print("added: capture", flush=True)
+    pools, chosen = _train_only(store)
+    cache = ContentCache(work / "cache-real", 1_500_000_000)
+    entries = sorted({row["entry"] for row in index_rows(json.loads(store.get(DRAW_INDEX.format(k=1))))})
+    for e in entries:
+        for r in pick_clips(pools.get(e, []), e):
+            if f"real|{r['sign']}" in seen:
+                continue
+            refuse(r)
+            try:
+                row = added_row(load_sample(r, "continuous", cache=cache, fetch=store.get))
+            except (ValueError, RuntimeError):
+                row = dict(Right=None, Left=None)
+            _append(out, dict(id=f"real|{r['sign']}", source="real_words", entry=e, **row))
+    print("added: real words", flush=True)
+    index = _monocular_index(store, {r["sign"] for r in chosen})
+    cache = ContentCache(work / "cache-sent", 1_500_000_000)
+    pairs = []
+    done = _seen(path)
+    for r in chosen:
+        refuse(r)
+        two = load_sample(r, "continuous", cache=cache, fetch=store.get)
+        if f"two|{r['sign']}" not in seen:
+            _append(out, dict(id=f"two|{r['sign']}", source="sentences_two_view", entry=r["sign"], **added_row(two)))
+        if r["sign"] not in index:
+            continue
+        mono = _state(store, *index[r["sign"]])
+        if f"mono|{r['sign']}" not in seen:
+            _append(out, dict(id=f"mono|{r['sign']}", source="sentences_monocular", entry=r["sign"], **added_row(mono)))
+        pairs.append((r["sign"], two, mono))
+    for k, (sign, two, mono) in enumerate(pairs):
+        if f"same|{sign}" not in done:
+            _append(path, dict(id=f"same|{sign}", kind="same_clip", **cross_path_row(two, mono)))
+        if f"null|{sign}" not in done:
+            _append(path, dict(id=f"null|{sign}", kind="other_clip", **cross_path_row(two, pairs[(k + 1) % len(pairs)][2])))
+    print("added: cross path", flush=True)
+
+
+def traversals(rows: list, which: str) -> dict:
+    """Word mean of bend travel over range: how many times a clip's joints cross their own range. Rate times frames over 24, over range."""
+    def get(r):
+        h = hand_of(r, which)
+        if not h or not h.get("range_mean") or h.get("bend_6hz") is None:
+            return None
+        return h["bend_6hz"] * h["frames"] / FPS / h["range_mean"]
+    return boot_mean(list(word_means(rows, get).values()))
+
+
+def added_report(work: Path, sources: dict) -> dict:
+    added = _load(work, "added")
+    out = dict(note=ADDED, traversals_dominant={k: traversals(v, "dominant") for k, v in sources.items() if v})
+    keys = ("floor_6hz", "floor_3hz", "median_6hz", "median_3hz", "coupling_6hz", "coupling_3hz")
+    table = {}
+    for name in sorted({r["source"] for r in added}):
+        rows = [r for r in added if r["source"] == name]
+        table[name] = {}
+        for side in ("Right", "Left"):
+            table[name][side] = {k: boot_mean(list(word_means(rows, lambda r, k=k, side=side: (r.get(side) or {}).get(k)).values())) for k in keys}
+    out["floor_and_coupling"] = table
+    cross = _load(work, "cross_path")
+    if cross:
+        names = sorted(k for k in cross[0] if k.startswith("two_"))
+        rows = {}
+        for kind in ("same_clip", "other_clip"):
+            rows[kind] = {n: dict(boot_mean([(r.get(n) or {}).get("r") for r in cross if r["kind"] == kind]), median_abs_lag=_round(np.median([abs(r[n]["lag"]) for r in cross if r["kind"] == kind and r.get(n) and r[n].get("lag") is not None]), 1) if any(r.get(n) and r[n].get("lag") is not None for r in cross if r["kind"] == kind) else None) for n in names}
+        out["cross_path_velocity_correlation"] = rows
+        two, mono = [r for r in sources.get("sentences_two_view", [])], [r for r in sources.get("sentences_monocular", [])]
+        by = {r["entry"]: r for r in mono}
+        pairs = [(r["dominant"], by[r["entry"]]["dominant"]) for r in two if r["entry"] in by and r.get("dominant") and by[r["entry"]].get("dominant")]
+        out["dominant_agreement_same_clips"] = dict(clips=len(pairs), same_side=_round(np.mean([a == b for a, b in pairs]), 3) if pairs else None, two_view_right=_round(np.mean([a == "Right" for a, _ in pairs]), 3) if pairs else None, monocular_right=_round(np.mean([b == "Right" for _, b in pairs]), 3) if pairs else None)
+    return out
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument("command", choices=("generated", "capture", "real_words", "sentences", "fresh", "round_trip", "analyse"))
+    p.add_argument("command", choices=("generated", "capture", "real_words", "sentences", "fresh", "round_trip", "added", "analyse"))
     p.add_argument("--work", required=True, help="the local folder for row files and downloads")
     p.add_argument("--out", default=str(ROOT / "reports/hand_motion_compare.json"))
     args = p.parse_args(argv)
@@ -1190,7 +1375,7 @@ def main(argv=None) -> int:
     from signtranslator.data.text_motion_dataset import R2Store
     import os
     store = R2Store(os.environ)
-    fn = dict(generated=collect_generated, capture=collect_capture, real_words=collect_real_words, sentences=collect_sentences, fresh=collect_fresh, round_trip=collect_round_trip)[args.command]
+    fn = dict(generated=collect_generated, capture=collect_capture, real_words=collect_real_words, sentences=collect_sentences, fresh=collect_fresh, round_trip=collect_round_trip, added=collect_added)[args.command]
     fn(store, work)
     return 0
 

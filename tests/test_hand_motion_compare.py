@@ -424,6 +424,51 @@ def test_round_trip_reads_a_tokenizer_that_freezes_fingers():
     assert row["Right"]["error_degrees"] > 5
 
 
+# ---- added after the first numbers ---------------------------------------------------------------------------------
+
+def test_coupling_tells_fingers_moving_together_from_independent_noise():
+    together = hm.added_hand_row(curling(120).astype(float), np.ones((120, 15), bool), False)
+    rng = np.random.default_rng(0)
+    alone = hm.added_hand_row(rot_x(.3 * np.cumsum(rng.standard_normal((120, 15)), axis=0) * .1), np.ones((120, 15), bool), False)
+    assert together["coupling_6hz"] > .95
+    assert abs(alone["coupling_6hz"]) < .4
+
+
+def test_a_quiet_hand_shows_a_floor_near_zero_and_a_noisy_one_does_not():
+    rng = np.random.default_rng(1)
+    move = np.zeros((96, 15))
+    move[40:56] = np.linspace(0, 1., 16)[:, None]
+    move[56:] = 1.
+    quiet = hm.added_hand_row(rot_x(move), np.ones((96, 15), bool), False)
+    noisy = hm.added_hand_row(rot_x(move + .08 * rng.standard_normal((96, 15))), np.ones((96, 15), bool), False)
+    assert quiet["floor_6hz"] < .01
+    assert noisy["floor_6hz"] > 10 * max(quiet["floor_6hz"], .01)
+
+
+def test_cross_path_finds_the_shared_signal_at_its_shift_and_a_null_for_unrelated_clips():
+    rng = np.random.default_rng(2)
+    signal = np.cumsum(rng.standard_normal((200, 15)), axis=0) * .02
+    a = rot_x(signal + .002 * rng.standard_normal((200, 15)))
+    b = rot_x(np.roll(signal, 3, axis=0) + .002 * rng.standard_normal((200, 15)))
+    other = rot_x(np.cumsum(rng.standard_normal((200, 15)), axis=0) * .02)
+    same = hm.cross_path_row(build(a), build(b))["two_Right_mono_Right_6hz"]
+    null = hm.cross_path_row(build(a), build(other))["two_Right_mono_Right_6hz"]
+    assert same["r"] > .8 and abs(same["lag"]) == 3
+    assert null["r"] < .4
+
+
+def test_cross_path_skips_a_hand_with_no_valid_frames():
+    row = hm.cross_path_row(build(curling(), left_valid=np.zeros((48, 15), bool)), build(curling()))
+    assert row["two_Left_mono_Right_6hz"] is None
+    assert row["two_Right_mono_Right_6hz"]["r"] > .9
+
+
+def test_traversals_count_crossings_of_the_range():
+    row = dict(entry="a", dominant="Right", hands=dict(Right=dict(bend_6hz=2., frames=48, range_mean=.5)))
+    assert hm.traversals([row], "dominant")["mean"] == 8.
+    assert hm.traversals([dict(entry="a", dominant=None, hands=dict())], "dominant")["n"] == 0
+
+
 # ---- the whole read on synthetic rows --------------------------------------------------------------------------------
 
 def _row(entry, source, core, speed, **k):
