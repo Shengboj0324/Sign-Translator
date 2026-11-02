@@ -6252,3 +6252,9 @@ Blank 1.058 and still 0.895 on the parent's BLEU; real two-view through it 2.130
 **Next, both report only, both to be declared before any read:**
 1. **Read composition through the parent:** the eight A5 draws' added-words form against real, still and mismatched margins. How much of real's clip-specific margin does generated motion carry on an instrument not fitted to two-view?
 2. **The symmetric test:** fine-tune the parent on How2Sign's monocular states with v1's recipe and read both paths on D20. If it prefers monocular as v1 prefers two-view, fit is shown directly. If it still prefers two-view, content loss gains support.
+
+### v1 trained on part of its own evaluation sets: stored reads to be split (declared 2026-11-02, 02:33 UTC)
+
+Found while building the follow-ups, from index objects with no state or score read: **v1's fine-tuning lists hold 234 of D20's 500 clips in training and 265 more in its selection pool, and 455 of C20's clips in training and 167 of its 512 selection clips.** These lists come from `full-v1`. I found no earlier statement of this in this plan. D20's and C20's "fresh" meant fresh to the generator's decisions, and not to v1.
+
+**Report only, before looking:** split the stored per-clip reads of D20's real, monocular and blank forms and A5's forms, and C20's first arm with its real and blank, by whether v1 trained on the clip. No new instrument read. If real two-view reads much higher on clips v1 trained on, its 4.49 is partly memory, and every share against it is understated. If generated forms also read higher there, the composition's scores are inflated too, because v1 may recall a sentence it trained on. C20's verdict, M1 not met, can't be raised by this: the split can only qualify it. The 2.400 stays as read.
