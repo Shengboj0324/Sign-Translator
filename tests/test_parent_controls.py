@@ -286,10 +286,11 @@ class Controls(Comp):
 
 def test_the_header_states_the_reading_before_any_read():
     head = PC.__doc__
-    for text in ("Generated against real clips is ``oracle`` minus ``covered``", "It is never oracle against composition", "The format is ``oracle`` against real signing", "the middle case", "the format reads high AND generated clips read higher still", "real word clips are MediaPipe monocular too", "selection: each generated clip was a recogniser's best of 16", "d2 decoding", "a different signer at every word", "applied to WLASL and RIT", "A large drop", "A small drop", "Seeds are not independent replicates", "A two-word clip cannot vary", "None of this shows human comprehension", "No label and no bar", "no target moves", "a chance pick, not best of 16", "An uncovered word is dropped", "estimated, not measured", "14,400 s", "The mirror is report only and never moves M1. Generated motion reading high on it is flagged on the same terms as on the parent,", "How2Sign monocular trained it", "A parent void or a parent check alert stops the job before the mirror reads", "the composed state as it stands, the very bytes the parent read", "its like on the mirror is ``nearest_monocular``", "the mirror reads three draws (1, 2, 3), not eight", "**Resuming.**", "runs/<code digest>/", "the NVIDIA L40S", "So the mirror's third draw can be left out", "shared helpers"):
+    for text in ("paired t interval over draws (``t_ci95``), on two metrics: margin over still, and BLEU", "excludes zero on BOTH metrics in the same direction", "is **unresolved**", "The clip bootstrap interval is reported beside and decides nothing", "Three mirror draws make unresolved likely there", "Generated against real clips is ``oracle`` minus ``covered``", "It is never oracle against composition", "The format is ``oracle`` against real signing", "On the mirror the like is ``nearest_monocular``", "with ``real_monocular`` beside it", "the middle case", "the format reads high AND generated clips read higher still", "the words the oracle lacks and the frames they free", "Sem-Lex-only words and words not served", "real word clips are MediaPipe monocular too", "selection: each generated clip was a recogniser's best of 16", "d2 decoding", "a different signer at every word", "applied to WLASL and RIT", "fewer words: the oracle lacks seven frequent ones, and each core is stretched", "A large drop", "the rebuilt joins or the different still", "A small drop", "order-invariant signals", "near-zero margin has nothing to lose", "Seeds are not independent replicates", "A two-word clip cannot vary", "None of this shows human comprehension", "No label and no bar", "no target moves", "a chance pick, not best of 16", "An uncovered word is dropped", "estimated, not measured", "14,400 s", "The mirror is report only and never moves M1. Generated motion reading high on it is flagged on the same terms as on the parent,", "How2Sign monocular trained it", "A parent void or a parent check alert stops the job before the mirror reads", "the composed state as it stands, the very bytes the parent read", "its like on the mirror is ``nearest_monocular``", "the mirror reads three draws (1, 2, 3), not eight", "**Resuming.**", "**On a new pod,**", "runs/<code digest>/", "may not be blank", "the NVIDIA L40S", "So the mirror's third draw can be left out", "must be a prefix of ``DRAWS``", "shared helpers", "Every step runs under a stated limit"):
         assert text in head, text
+    assert "at or above" not in head and "at or below" not in head
     assert "separate two causes" not in head and "These forms separate" not in head
-    assert PC.READING.startswith("Generated against real clips is oracle minus covered") and "None of it shows human comprehension" in PC.READING and "never moves M1" in PC.READING
+    assert PC.READING.startswith("A contrast is above or below only if its paired t interval") and "at or above" not in PC.READING and "None of it shows human comprehension" in PC.READING and "never moves M1" in PC.READING
 
 
 def test_c20_cannot_be_named_and_no_other_instrument_or_selection_is_here():
@@ -456,15 +457,33 @@ def test_an_empty_window_is_counted_and_gives_way():
     assert record["sign"] == "b" and real.failed == (1 if PC.pick_index(1, "word", 2) == 0 else 0)
 
 
-def test_too_many_picks_not_served_alerts_and_stops_with_no_index(monkeypatch, tmp_path, capsys):
+def test_too_many_entries_not_served_alerts_and_stops_with_no_index(monkeypatch, tmp_path, capsys):
     h = Controls(monkeypatch, tmp_path)
     monkeypatch.setattr(PC, "MAX_NOT_SERVED", .02)
-    # the planted word "fails" is two failed picks over five entries
-    with pytest.raises(SystemExit, match="picks not served"):
+    # the planted word "fails" is one entry of five with a pool, and two failed attempts: the entry counts
+    with pytest.raises(SystemExit, match="1 of 5 entries with a pool not served"):
         h.compose()
-    assert "ALERT draw 1: 2 picks not served" in capsys.readouterr().out and not h.store.exists(PC.index_key("pc/composed", 1))
-    monkeypatch.setattr(PC, "MAX_NOT_SERVED", .5)
+    assert "ALERT draw 1: 1 of 5 entries" in capsys.readouterr().out and not h.store.exists(PC.index_key("pc/composed", 1))
+
+
+def test_the_limit_counts_entries_finally_not_served_and_not_failed_attempts(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path)
+    monkeypatch.setattr(PC, "MAX_NOT_SERVED", .3)      # one entry of five is under it, two attempts of five would be over
     assert h.compose() == 0
+    cover = h.index()["coverage"]
+    assert cover["picks_not_served"] == 2 and cover["entries_not_served"] == 1 and cover["entries_with_a_pool"] == 5
+    real = PC.RealClips(dict(a=[real_record("fails-a")], b=[real_record("gamma-a")]), 1, real_state)
+    assert real.of("a") is None and real.of("b") and real.of("sem") is None
+    assert (real.entries_with_a_pool(), real.entries_not_served()) == (2, 1), "an entry with no pool is neither"
+
+
+def test_a_smoke_reports_entries_not_served_and_goes_on(monkeypatch, tmp_path, capsys):
+    h = Controls(monkeypatch, tmp_path, compose_draws=())
+    h.plant_stored_export(1, sentences=(("fails", "gamma"), *SENTENCES[1:]))
+    monkeypatch.setattr(PC, "MAX_NOT_SERVED", .02)
+    assert h.compose(1, clips=2) == 0
+    out = capsys.readouterr().out
+    assert "not served" in out and "reported, since a smoke's few entries" in out and "ALERT" not in out and h.store.exists(PC.index_key("pc/composed", 1))
 
 
 def test_a_poisoned_pool_is_refused_before_it_is_served():
@@ -868,6 +887,16 @@ def test_a_composition_not_reproduced_voids_the_read(monkeypatch, tmp_path, caps
         h.main("preflight", "--out-dir", str(tmp_path / "w2"), "--final-key", "pc/report.json", "--void-prefix", "pc/void")
 
 
+def test_the_composition_check_reads_the_stored_export_before_anything_is_composed(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path, compose_draws=(1,))
+    h.plant_stored_forms(1)
+    h.to_control()
+    assert not h.store.exists(PC.index_key("pc/composed", 1))
+    assert h.main("read", "--forms", "comp-check", "--draws", "1", "--out-dir", str(h.forms)) == 0
+    assert h.main("comp-check", "--draw", "1", "--out-dir", str(h.forms), "--void-prefix", "pc/void") == 0
+    assert not h.store.exists(PC.index_key("pc/composed", 1)) and json.loads((h.forms / "comp-check.json").read_text())["reproduced"] is True
+
+
 def test_a_stored_form_on_other_bytes_exits_1_with_no_void(monkeypatch, tmp_path):
     h = Controls(monkeypatch, tmp_path)
     assert h.compose() == 0
@@ -1015,7 +1044,8 @@ def test_the_report_has_its_planted_values(monkeypatch, tmp_path):
     assert group["seeds"] == [0, 1] and abs(group["margin"]["mean"] - (.555 - STILL_MARGIN) * FILLED / N) < 1e-4 and group["margin"]["draws"] == 2
     assert abs(report["groups"]["oracle_shuffled"]["margin"]["mean"] - (.255 - STILL_MARGIN) * ORACLE_FILLED / N) < 1e-4
     assert abs(report["groups"]["covered_shuffled"]["margin"]["mean"] - (.43 - STILL_MARGIN) * ORACLE_FILLED / N) < 1e-4
-    assert report["stage"] == dict(planned_draws=[1, 2], draws=[1, 2], stop_reason="not_recorded", elapsed_seconds=None) and report["own_path_anchors"] == dict(real="real_two_view", nearest="nearest_two_view", still="still_two_view", blank="blank") and report["parent_on_mirror_draws"] is None
+    assert abs(report["groups"]["covered_shuffled"]["share_of_nearest"]["mean"] - (.43 - STILL_MARGIN) * ORACLE_FILLED / N / .5) < 1e-3 and report["groups"]["shuffled"]["share_of_nearest"]["draws"] == 2
+    assert report["stage"] == dict(planned_draws=[1, 2], draws=[1, 2], stop_reason="not_recorded", elapsed_seconds=None, budget_seconds=None) and report["rerun_cause"] is None and report["own_path_anchors"] == dict(real="real_two_view", nearest="nearest_two_view", still="still_two_view", blank="blank") and report["parent_on_mirror_draws"] is None
     assert report["forms"]["oracle"]["share_of_two_view_real"]["mean"] == pytest.approx(report["forms"]["oracle"]["share_of_real"]["mean"], abs=1e-3)
     assert report["forms"]["oracle"]["still_raw"]["mean"] > 0 and report["oracle_coverage"]["1"]["ci95"]["share_kept"][0] <= .8 <= report["oracle_coverage"]["1"]["ci95"]["share_kept"][1]
     assert report["oracle_coverage"]["1"]["words_kept"] == 16 and report["identity"]["1"]["byte_identical"] == FILLED and report["stored"]["digest"] == "b" * 64 and report["cost_estimate"]["measured"] is False
@@ -1058,6 +1088,76 @@ def test_the_moved_rows_take_only_clips_whose_word_sequence_changed(monkeypatch,
     assert not mask[ONLY_ADDED] and not mask[EMPTY] and not mask[4] and not mask[5] and mask[0]
     assert PC.moved_mask([dict(words=[dict(word="a"), dict(word="a")], order=[1, 0]), dict(words=[dict(word="b"), dict(word="a")], order=[1, 0]), dict(words=[dict(word="a")], order=[0])]).tolist() == [False, True, False]
     assert moved["covered_shuffled_minus_covered"]["moved_clips_per_form"] == pytest.approx(np.mean([PC.moved_mask(h.index(k)["rows"][f"covered_shuffled_s{s}"]).sum() for k in (1, 2) for s in PC.SEEDS]), abs=.1)
+
+
+def row_of(margin, bleu):
+    return dict(margin=dict(t_ci95=margin), bleu=dict(t_ci95=bleu))
+
+
+@pytest.mark.parametrize("margin,bleu,want", [([.1, .2], [.1, .2], "above"), ([-.2, -.1], [-.2, -.1], "below"), ([-.1, .2], [.1, .2], "unresolved"), ([.1, .2], [-.1, .2], "unresolved"), ([.1, .2], [-.2, -.1], "unresolved"), ([0., .2], [.1, .2], "unresolved"), ([-.2, 0.], [-.2, -.1], "unresolved"), (None, [.1, .2], "unresolved"), ([.1, .2], None, "unresolved"), ([float("nan"), .2], [.1, .2], "unresolved")])
+def test_a_contrast_is_decided_on_both_t_intervals(margin, bleu, want):
+    assert PC.contrast(row_of(margin, bleu)) == want
+
+
+def test_the_clip_interval_decides_nothing():
+    row = dict(margin=dict(t_ci95=[-.1, .2], clips_ci95=[.1, .2]), bleu=dict(t_ci95=[-.1, .2], clips_ci95=[.1, .2]))
+    assert PC.contrast(row) == "unresolved"
+    assert PC.contrast(dict(margin=dict(t_ci95=[.1, .2], clips_ci95=[-1., 1.]), bleu=dict(t_ci95=[.1, .2], clips_ci95=[-1., 1.]))) == "above"
+
+
+@pytest.mark.parametrize("fmt,gen,cell", [("above", "above", "real clips read higher"), ("above", "below", "the middle case"), ("below", "above", "the words the oracle lacks and the frames they free"), ("below", "below", "generated clips read higher"), ("above", "unresolved", "unresolved"), ("unresolved", "below", "unresolved"), ("unresolved", "unresolved", "unresolved")])
+def test_every_outcome_is_a_cell_or_unresolved(fmt, gen, cell):
+    bounds = dict(above=[.1, .2], below=[-.2, -.1], unresolved=[-.1, .1])
+    make = lambda x: row_of(bounds[x], bounds[x])      # noqa: E731
+    paired = dict(form_minus_real=dict(oracle=make(fmt)), form_minus_nearest=dict(oracle=make("unresolved")), oracle_minus_covered=make(gen), covered_minus_composition=make("below"), moved=dict(shuffled_minus_composition=dict(moved_clips_per_form=0.)))
+    out = PC.reading_contrasts(paired, "parent")
+    assert cell in out["cell"] and out["format"] == fmt and out["generated_against_real_clips"] == gen and out["format_like"] == "real_two_view" and out["gates_nothing"] is True and out["shuffle_on_moved_clips"] == dict(shuffled_minus_composition="unresolved")
+    assert out["unresolved"] == [n for n, v in (("format", fmt), ("generated_against_real_clips", gen)) if v == "unresolved"]
+    swapped = dict(paired, form_minus_real=dict(oracle=make("unresolved")), form_minus_nearest=dict(oracle=make(fmt)))
+    mirror = PC.reading_contrasts(swapped, "mirror")
+    assert mirror["format"] == fmt and mirror["format_like"] == "nearest_monocular" and mirror["format_beside"] == dict(like="real_monocular", contrast="unresolved")
+
+
+def test_the_report_states_its_contrasts_by_the_rule(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path)
+    report = h.report()
+    # planted: each form's levels are the same on both draws, so every t interval sits at the difference
+    reading = report["reading_contrasts"]
+    assert reading["format"] == "below" and reading["generated_against_real_clips"] == "below" and "generated clips read higher" in reading["cell"] and reading["unresolved"] == []
+
+
+def test_one_draw_leaves_every_contrast_unresolved(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path, compose_draws=(1,))
+    reading = h.report((1,))["reading_contrasts"]
+    assert reading["format"] == reading["generated_against_real_clips"] == reading["cell"] == "unresolved" and set(reading["unresolved"]) == {"format", "generated_against_real_clips"}
+
+
+def test_each_form_against_nearest_is_on_the_instruments_own_path(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path)
+    report = h.report()
+    rows = report["paired"]["form_minus_nearest"]
+    assert set(rows) == {"composition", "oracle", "covered", "shuffled", "oracle_shuffled", "covered_shuffled"} and set(rows["oracle"]) == {"margin", "bleu"}
+    oracle = (MARGIN["oracle"] - STILL_MARGIN) * ORACLE_FILLED / N
+    assert rows["oracle"]["margin"]["mean"] == pytest.approx(oracle - (.6 - .1), abs=1e-4)
+    assert rows["oracle"]["bleu"]["per_draw"][0] == pytest.approx(report["forms"]["oracle"]["bleu"]["per_draw"][0] - report["anchors"]["nearest_two_view"]["bleu"], abs=1e-2)
+    mirror = h.mirror_report()
+    assert mirror["paired"]["form_minus_nearest"]["oracle"]["margin"]["mean"] == pytest.approx(oracle - (.75 - .15), abs=1e-4)
+    assert mirror["paired"]["form_minus_nearest"]["oracle"]["bleu"]["per_draw"][0] == pytest.approx(mirror["forms"]["oracle"]["bleu"]["per_draw"][0] - mirror["anchors"]["nearest_monocular"]["bleu"], abs=1e-2)
+    assert mirror["reading_contrasts"]["format_like"] == "nearest_monocular" and mirror["reading_contrasts"]["format_beside"]["like"] == "real_monocular"
+
+
+def test_the_moved_rows_bootstrap_reads_the_mask_on_both_metrics():
+    """Mine and its partner differ only on clips that did not move: every moved row, and every resample of it, is exactly zero."""
+    stats = np.stack([M_row(i % 3) for i in range(8)])
+    moved = np.array([True, True, True, True, False, False, False, False])
+    same = dict(margin=np.array([.1, .2, .3, .4, .5, .6, .7, .8]), stats=stats)
+    other_stats = stats.copy()
+    other_stats[~moved] = M_row(4)
+    other = dict(margin=np.where(moved, same["margin"], 9.), stats=other_stats)
+    idx = np.random.default_rng(0).integers(0, 8, (200, 8))
+    rows = PC.moved_rows([{1: same}, {1: same}], [{1: moved}, {1: moved}], [{1: other}], idx)
+    assert rows["moved_clips_per_form"] == 4. and rows["margin"]["per_draw"] == [0.] and rows["bleu"]["per_draw"] == [0.]
+    assert rows["margin"]["clips_ci95"] == [0., 0.] and rows["bleu"]["clips_ci95"] == [0., 0.]
 
 
 def test_each_form_against_real_is_on_the_instruments_own_path(monkeypatch, tmp_path):
@@ -1122,12 +1222,49 @@ def test_the_stage_is_recorded_in_the_report(monkeypatch, tmp_path):
     assert h.upload() == 0
     out = tmp_path / "staged.json"
     assert h.main("merge", "--draws", "1", "--composed", "pc/composed", "--prefix", "pc/forms", "--output-file", str(out), "--planned-draws", "1,2,3", "--stop-reason", "clock_rule", "--elapsed-seconds", "123") == 0
-    assert json.loads(out.read_text())["stage"] == dict(planned_draws=[1, 2, 3], draws=[1], stop_reason="clock_rule", elapsed_seconds=123)
+    assert json.loads(out.read_text())["stage"] == dict(planned_draws=[1, 2, 3], draws=[1], stop_reason="clock_rule", elapsed_seconds=123, budget_seconds=None)
+
+
+def test_a_rerun_cause_is_copied_into_the_report_and_a_blank_one_refuses(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path, compose_draws=(1,))
+    h.to_read((1,))
+    assert h.upload() == 0
+    out = tmp_path / "cause.json"
+    assert h.main("merge", "--draws", "1", "--composed", "pc/composed", "--prefix", "pc/forms", "--output-file", str(out), "--rerun-cause", "what was wrong", "--budget-seconds", "99") == 0
+    report = json.loads(out.read_text())
+    assert report["rerun_cause"] == "what was wrong" and report["stage"]["budget_seconds"] == 99
+    for blank in ("", "   "):
+        with pytest.raises(SystemExit, match="blank"):
+            h.main("merge", "--draws", "1", "--composed", "pc/composed", "--prefix", "pc/forms", "--output-file", str(tmp_path / "x.json"), "--rerun-cause", blank)
+        with pytest.raises(SystemExit, match="blank"):
+            h.main("preflight", "--out-dir", str(tmp_path / "r"), "--final-key", "pc/none.json", "--void-prefix", "pc/void", "--rerun-cause", blank)
+
+
+def test_a_finished_stage_is_restored_on_a_new_pod_only_if_of_this_code_environment_and_plan(monkeypatch, tmp_path, capsys):
+    h = Controls(monkeypatch, tmp_path, compose_draws=())
+    def plant(**change):
+        report = dict(dict(kind="parent-controls-report", code_digest="c" * 64, environment=dict(gpu="test"), stage=dict(planned_draws=[1, 2], draws=[1, 2], stop_reason="clock_rule", elapsed_seconds=500, budget_seconds=900)), **change)
+        h.store.put("pc/r.json", json.dumps(report).encode())
+        return json.dumps(report).encode()
+    new = tmp_path / "new-pod"
+    state = lambda **k: h.main("stage-state", "--key", "pc/r.json", "--file", str(new / "r.json"), "--record", str(new / "stage.txt"), "--planned-draws", k.get("planned", "1,2"))      # noqa: E731
+    raw = plant()
+    capsys.readouterr()
+    assert state() == 0 and '"state": "restored"' in capsys.readouterr().out
+    assert (new / "r.json").read_bytes() == raw and (new / "stage.txt").read_text() == "1,2 clock_rule 500 900\n"
+    assert state() == 0 and '"state": "done"' in capsys.readouterr().out
+    for change, word, planned in ((dict(code_digest="d" * 64), "code", "1,2"), (dict(environment=dict(gpu="other")), "environment", "1,2"), (dict(kind="other"), "kind", "1,2"), ({}, "planned draws", "1,2,3")):
+        (new / "r.json").unlink(missing_ok=True)
+        (new / "stage.txt").unlink(missing_ok=True)
+        plant(**change)
+        with pytest.raises(SystemExit, match=word):
+            state(planned=planned)
+        assert not (new / "r.json").exists()
 
 
 def test_a_paired_difference_of_a_form_with_itself_is_zero():
     idx = np.random.default_rng(0).integers(0, 4, (50, 4))
-    arrays = {1: dict(margin=np.array([.1, .2, .3, .4]), still_raw=np.array([.1, .1, .2, .2]), real=np.array([1., 1., 1., 1.]), stats=np.stack([M_row(i) for i in range(4)]), blank_stats=np.stack([M_row(0)] * 4), real_stats=np.stack([M_row(3)] * 4), likelihood_top=np.ones(4), likelihood_bottom=np.ones(4), coverage=np.array([.1, .3, .6, .7]), non_empty=np.ones(4, bool))}
+    arrays = {1: dict(margin=np.array([.1, .2, .3, .4]), still_raw=np.array([.1, .1, .2, .2]), real=np.array([1., 1., 1., 1.]), nearest=np.array([1., 1., 1., 1.]), stats=np.stack([M_row(i) for i in range(4)]), blank_stats=np.stack([M_row(0)] * 4), real_stats=np.stack([M_row(3)] * 4), likelihood_top=np.ones(4), likelihood_bottom=np.ones(4), coverage=np.array([.1, .3, .6, .7]), non_empty=np.ones(4, bool))}
     row = PC.paired_rows([arrays], [arrays], idx, arrays)
     assert row["margin"]["per_draw"] == [0.] and row["bleu"]["per_draw"] == [0.] and row["margin"]["clips_ci95"] == [0., 0.]
     assert row["by_composition_coverage"]["0.5-inf"]["clips_per_draw"] == 2. and row["by_composition_coverage"]["0.5-inf"]["margin"] == 0.
@@ -1284,9 +1421,6 @@ def test_a_stage_is_done_only_when_its_key_holds_its_local_bytes(monkeypatch, tm
     path.write_bytes(b"[]")
     with pytest.raises(SystemExit, match="finished elsewhere"):
         state()
-    path.unlink()
-    with pytest.raises(SystemExit, match="finished elsewhere"):
-        state()
 
 
 def test_a_rerun_of_new_code_writes_under_its_digest_while_the_void_stands(monkeypatch, tmp_path, capsys):
@@ -1353,6 +1487,24 @@ def test_the_inputs_step_checks_every_pin_and_prints_no_score(monkeypatch, tmp_p
     out = capsys.readouterr().out
     assert file.exists() and "bleu" not in out and "hypotheses" not in out and "margin" not in out
     assert checked == ["prior/w14b.pt"]
+    # the mirror's stored forms must be D20's clips, in its order, and the stored compositions valid on every point
+    h.plant_mirror_stored(dict(blank=dict(signs=[f"z{i}" for i in range(N)])))
+    with pytest.raises(SystemExit, match="holds other clips than D20"):
+        h.main("inputs", "--model-file", str(file))
+    h.plant_mirror_stored(dict(still_monocular=dict(references=["other"] * N)))
+    with pytest.raises(SystemExit, match="holds other clips than D20"):
+        h.main("inputs", "--model-file", str(file))
+    h.plant_mirror_stored()
+    keep, raw = PC.STORED[4]["comp"], h.store.get(PC.stored_form_key(4, "comp"))
+    gap = json.dumps(dict(json.loads(raw), valid_frame_share=[.5] * N)).encode()
+    h.store.put(PC.stored_form_key(4, "comp"), gap)
+    PC.STORED[4]["comp"] = hashlib.sha256(gap).hexdigest()
+    capsys.readouterr()
+    with pytest.raises(SystemExit, match="not valid on every point"):
+        h.main("inputs", "--model-file", str(file))
+    assert "ALERT" in capsys.readouterr().out
+    h.store.put(PC.stored_form_key(4, "comp"), raw)
+    PC.STORED[4]["comp"] = keep
     with pytest.raises(SystemExit, match="not NVIDIA L40S"):
         h.main("inputs", "--model-file", str(file), "--expect-gpu", "NVIDIA_L40S")
     monkeypatch.setattr(P, "environment", lambda: dict(gpu="NVIDIA L40S"))
@@ -1452,7 +1604,7 @@ def test_composition_forms_keep_their_own_kind():
 
 # ---- the job -------------------------------------------------------------------------------------------------------------------------------
 
-def run_job(tmp_path, fail_when=None, code=7, stage_zero=None, slow=False, **env):
+def run_job(tmp_path, fail_when=None, code=7, stage_zero=None, slow=False, hold=None, tee_fails=False, **env):
     bin_dir = tmp_path / "fake-bin"
     bin_dir.mkdir(exist_ok=True)
     log = tmp_path / "calls.log"
@@ -1461,12 +1613,18 @@ def run_job(tmp_path, fail_when=None, code=7, stage_zero=None, slow=False, **env
     match = f'case "$*" in {pattern}) echo "planted failure" >&2; exit {code};; esac' if fail_when else ""
     zero = f'case "$*" in *"{stage_zero}"*) exit 0;; esac' if stage_zero else ""
     sleep = f'case "$*" in *"read --draws"*"--resume"*) echo $$ >> {tmp_path / "pids"}; exec sleep 60;; esac' if slow else ""
+    if hold:
+        sleep = f'case "$*" in *"{hold}"*"--resume"*) /bin/sleep 2;; esac'
     (bin_dir / "python").write_text(f'#!/bin/bash\necho "$*" >> {log}\n{match}\n{sleep}\ncase "$2" in digest) echo abc123def; exit 0;; stage-state) {zero}\n exit 5;; esac\necho "ran $1 $2"\nexit 0\n')
     (bin_dir / "uv").write_text("#!/bin/bash\nexit 0\n")
     (bin_dir / "timeout").write_text(f'#!/bin/bash\necho "timeout $*" >> {tmp_path / "timeouts.log"}\nshift 3\nexec "$@"\n')
-    for name in ("python", "uv", "timeout"):
+    names = ["python", "uv", "timeout"]
+    if tee_fails:
+        (bin_dir / "tee").write_text("#!/bin/bash\ncat > /dev/null\nexit 1\n")
+        names.append("tee")
+    for name in names:
         (bin_dir / name).chmod((bin_dir / name).stat().st_mode | stat.S_IEXEC)
-    environment = dict(PATH=f"{bin_dir}:/usr/bin:/bin", HOME=str(tmp_path), VENV_BIN=str(bin_dir), R2ENV=str(tmp_path / "none"), ST_REPO=str(tmp_path), WORK=str(tmp_path / "work"), **env)
+    environment = dict(dict(READ_POLL="0.05"), PATH=f"{bin_dir}:/usr/bin:/bin", HOME=str(tmp_path), VENV_BIN=str(bin_dir), R2ENV=str(tmp_path / "none"), ST_REPO=str(tmp_path), WORK=str(tmp_path / "work"), **env)
     if slow:
         return subprocess.Popen(["bash", str(JOB)], env=environment, stdout=subprocess.PIPE, text=True), log
     done = subprocess.run(["bash", str(JOB)], env=environment, capture_output=True, text=True, timeout=60)
@@ -1494,7 +1652,8 @@ def test_the_job_smokes_composes_controls_then_reads_the_parent_then_the_mirror(
     result, calls = run_job(tmp_path)
     assert result.returncode == 0 and done_line(result) == 0
     got = commands(calls)
-    assert got[:21] == ["digest", "inputs", "compose", *SMOKE_STEPS, *SMOKE_STEPS, "stage-state", "stage-state", "preflight", "preflight"]
+    assert got[:25] == ["digest", "inputs", "compose", *SMOKE_STEPS, *SMOKE_STEPS, "stage-state", "stage-state", "preflight", "preflight", "read", "control", "read", "comp-check"]
+    assert got[25] == "compose", "the parent's controls come before the compose is paid for"
     assert got.count("compose") == 9 and got.count("comp-check") == 1 and got[-5:] == ["upload", "merge", "put-report", "check", "upload-log"]
     lines = calls.splitlines()
     assert all(line.startswith("scripts/parent_controls.py ") for line in lines)
@@ -1502,14 +1661,17 @@ def test_the_job_smokes_composes_controls_then_reads_the_parent_then_the_mirror(
     assert draws_read(calls, "parent") == list(PC.DRAWS) and draws_read(calls, "mirror") == [1, 2, 3]
     merges = [x for x in lines if x.split()[1] == "merge"]
     assert "--draws 1,2,3,4,5,6,7,8 --instrument parent --planned-draws 1,2,3,4,5,6,7,8 --stop-reason all_planned" in merges[-2] and "--draws 1,2,3 --instrument mirror --planned-draws 1,2,3 --stop-reason all_planned" in merges[-1] and "--prefix acquisition/2026-10-17-v1/youtube-asl-v1/round20/parent-controls/forms-mirror" in merges[-1] and "--parent-forms acquisition/2026-10-17-v1/youtube-asl-v1/round20/parent-controls/forms " in merges[-1]
-    assert "--parent-forms" not in merges[-2]
+    assert "--parent-forms" not in merges[-2] and "--budget-seconds 10800" in merges[-2] and "--budget-seconds 14400" in merges[-1]
     puts = [x for x in lines if x.split()[1] == "put-report"]
     assert "round20/parent-controls/report.json" in puts[-2] and "round20/parent-controls/report-mirror.json" in puts[-1]
     first_mirror = next(i for i, x in enumerate(lines) if "--instrument mirror" in x and "work/d20" in x)
     last_parent = max(i for i, x in enumerate(lines) if "--instrument parent" in x and "work/d20" in x)
     assert last_parent < first_mirror and next(i for i, x in enumerate(lines) if x.split()[1] == "comp-check") < next(i for i, x in enumerate(lines) if "--instrument parent" in x and "--resume" in x and "--draws" in x)
     timeouts = (tmp_path / "timeouts.log").read_text()
-    assert timeouts.count("-k 60 5400 python scripts/parent_controls.py compose") == 9 and timeouts.count("-k 60 3600 python scripts/parent_controls.py read --draws") == 11
+    assert timeouts.count("-k 60 5400 python scripts/parent_controls.py compose") == 9
+    assert timeouts.count("-k 60 3600 python scripts/parent_controls.py read --forms control") == 4 and timeouts.count("-k 60 3600 python scripts/parent_controls.py read --forms comp-check") == 1 and timeouts.count("-k 60 3600 python scripts/parent_controls.py read --draws") == 13
+    assert timeouts.count("-k 60 3600 python scripts/parent_controls.py merge") == 4 and "-k 60 1800 uv pip install" in timeouts
+    assert timeouts.count("python scripts/parent_controls.py") == len(lines), "every python step of the job runs under a limit"
 
 
 def test_the_smoke_only_mode_stops_before_d20(tmp_path):
@@ -1524,9 +1686,15 @@ def test_fewer_draws_named_are_merged_as_named(tmp_path):
     assert "--draws 2,4,6,8 " in merges[-2] and "--draws 2,4 " in merges[-1] and sum(x.split()[1] == "compose" for x in calls.splitlines()) == 5
 
 
-def test_mirror_draws_outside_the_draws_stop_the_job_before_anything_runs(tmp_path):
-    result, calls = run_job(tmp_path, DRAWS="1 2 3 4", MIRROR_DRAWS="1 5")
-    assert result.returncode == 1 and "MIRROR_DRAWS holds draw 5" in result.stdout and [x.split()[1] for x in calls.splitlines()] == ["upload", "upload-log"] and "--partial" in calls
+@pytest.mark.parametrize("mirror", ["1 5", "2 3", "2", "1 3", "1 2 3 4 5"])
+def test_mirror_draws_not_a_prefix_of_the_draws_stop_the_job_before_anything_runs(tmp_path, mirror):
+    result, calls = run_job(tmp_path, DRAWS="1 2 3 4", MIRROR_DRAWS=mirror)
+    assert result.returncode == 1 and "is not a prefix of DRAWS" in result.stdout and [x.split()[1] for x in calls.splitlines()] == ["upload", "upload-log"]
+
+
+def test_a_mirror_prefix_passes(tmp_path):
+    result, calls = run_job(tmp_path, DRAWS="3 1 2", MIRROR_DRAWS="3 1")
+    assert result.returncode == 0 and draws_read(calls, "mirror") == [1, 3]
 
 
 @pytest.mark.parametrize("procs", ["1", "2"])
@@ -1535,12 +1703,58 @@ def test_the_clock_rule_counts_draws_started_for_each_instrument_and_the_mirrors
     assert result.returncode == 0 and "the clock rule starts no more parent draws" in result.stdout and "the clock rule starts no more mirror draws" in result.stdout
     assert draws_read(calls, "parent") == [1, 2, 3, 4] and draws_read(calls, "mirror") == [1, 2]
     merges = [x for x in calls.splitlines() if x.split()[1] == "merge"]
-    assert "--draws 1,2,3,4 --instrument parent --planned-draws 1,2,3,4,5,6,7,8 --stop-reason clock_rule --elapsed-seconds" in merges[-2] and "--draws 1,2 --instrument mirror --planned-draws 1,2,3 --stop-reason clock_rule" in merges[-1]
+    assert "--draws 1,2,3,4 --instrument parent --planned-draws 1,2,3,4,5,6,7,8 --stop-reason clock_rule --elapsed-seconds" in merges[-2] and "--budget-seconds -1" in merges[-2] and "--draws 1,2 --instrument mirror --planned-draws 1,2,3 --stop-reason clock_rule" in merges[-1]
 
 
 def test_the_mirror_reads_only_draws_the_parent_read(tmp_path):
-    result, calls = run_job(tmp_path, PARENT_BUDGET_SECONDS="-1", MIRROR_DRAWS="3 7 8")
-    assert result.returncode == 0 and draws_read(calls, "parent") == [1, 2, 3, 4] and draws_read(calls, "mirror") == [3]
+    result, calls = run_job(tmp_path, PARENT_BUDGET_SECONDS="-1", MIRROR_DRAWS="1 2 3 4 5 6")
+    assert result.returncode == 0 and draws_read(calls, "parent") == [1, 2, 3, 4] and draws_read(calls, "mirror") == [1, 2, 3, 4]
+
+
+def test_the_clock_and_elapsed_seconds_are_cumulative_across_a_resume(tmp_path):
+    (tmp_path / "work/d20").mkdir(parents=True)
+    (tmp_path / "work/d20/elapsed.txt").write_text("20000\n")
+    result, calls = run_job(tmp_path)
+    assert result.returncode == 0 and draws_read(calls, "parent") == [1, 2, 3, 4] and draws_read(calls, "mirror") == [1, 2]
+    merge = next(x for x in calls.splitlines() if x.split()[1] == "merge" and "work/d20" in x)
+    assert int(merge.split("--elapsed-seconds ")[1].split()[0]) >= 20000 and int((tmp_path / "work/d20/elapsed.txt").read_text()) >= 20000
+
+
+def test_a_stage_record_carries_its_budget_to_a_resumed_merge(tmp_path):
+    result, first = run_job(tmp_path, fail_when="put-report*d20/report.json", PARENT_BUDGET_SECONDS="9000")
+    assert result.returncode == 1 and (tmp_path / "work/d20/stage-parent.txt").read_text().split()[-1] == "9000"
+    result, second = run_job(tmp_path, PARENT_BUDGET_SECONDS="1")
+    merge = next(x for x in second.splitlines() if x.split()[1] == "merge" and "--instrument parent" in x and "work/d20" in x)
+    assert "--budget-seconds 9000" in merge
+
+
+def test_a_changed_plan_refuses_on_resume(tmp_path):
+    result, _ = run_job(tmp_path, fail_when="--draws 2 --instrument parent*--resume")
+    assert result.returncode == 1
+    for env in (dict(DRAWS="1 2 3 4 5 6"), dict(MIRROR_DRAWS="1 2")):
+        result, calls = run_job(tmp_path, **env)
+        assert result.returncode == 1 and "changed since this run began" in result.stdout and "inputs" not in calls
+    result, calls = run_job(tmp_path)
+    assert result.returncode == 0
+
+
+@pytest.mark.parametrize("cause", ["", "   "])
+def test_a_blank_rerun_cause_refuses(tmp_path, cause):
+    result, calls = run_job(tmp_path, RERUN_CAUSE=cause)
+    assert result.returncode == 1 and "RERUN_CAUSE is blank" in result.stdout and "inputs" not in calls
+
+
+@pytest.mark.parametrize("fail,word,later", [("control --instrument parent --out-dir*work/d20/forms", "the control did not run", "comp-check"), ("comp-check --draw 1 --out-dir*work/d20/forms", "the composition check did not run", "--draw 2 --work"), ("control --instrument mirror --out-dir*work/d20/mirror/forms", "the mirror's control did not run", "--instrument mirror --composed")])
+def test_a_control_that_exits_1_does_not_fall_through(tmp_path, fail, word, later):
+    result, calls = run_job(tmp_path, fail_when=fail, code=1)
+    assert result.returncode == 1 and done_line(result) == 1 and word in result.stdout
+    assert not [x for x in calls.splitlines() if later in x and "work/d20" in x + "work/d20" and "smoke" not in x and "--clips 5" not in x and x.split()[1] != "control" and x.split()[1] != "upload"]
+
+
+def test_a_tee_failure_stops_the_step(tmp_path):
+    result, calls = run_job(tmp_path, tee_fails=True)
+    assert result.returncode == 1 and "ALERT the log could not be written (tee 1)" in result.stdout
+    assert "compose" not in calls and [x.split()[1] for x in calls.splitlines()] == ["digest", "inputs", "upload", "upload-log"]
 
 
 @pytest.mark.parametrize("fail,status,word", [("inputs", 1, "pins do not hold"), ("--clips 5", 2, "smoke compose failed"), ("preflight", 1, "preflight refused"), ("--draw 3 --work", 1, "a compose failed"), ("--forms control --instrument parent --resume", 1, "read of the anchors"), ("--forms comp-check*--resume", 1, "read of the stored composition"), ("--draws 5 --instrument parent*--resume", 1, "read of parent draw 5"), ("put-report*d20/report.json", 1, "final report"), ("--forms control --instrument mirror --resume", 1, "mirror's anchors"), ("--draws 2 --instrument mirror*--resume", 1, "read of mirror draw 2"), ("put-report*d20/report-mirror.json", 1, "mirror's final report")])
@@ -1558,11 +1772,18 @@ def test_the_last_read_to_finish_failing_fails_the_job(tmp_path, procs, fail, wo
     assert not [x for x in calls.splitlines() if x.split()[1] == "merge" and f"--instrument {instrument}" in x and "work/d20" in x]
 
 
-def test_no_new_draw_starts_after_a_read_fails(tmp_path):
-    result, calls = run_job(tmp_path, fail_when="--draws 2 --instrument parent*--resume", READ_PROCS="1")
-    assert result.returncode == 1 and draws_read(calls, "parent") == [1, 2] and not draws_read(calls, "mirror")
-    result, calls = run_job(tmp_path, fail_when="--draws 2 --instrument parent*--resume", READ_PROCS="2")
-    assert result.returncode == 1 and draws_read(calls, "parent")[-1] <= 4 and not draws_read(calls, "mirror")
+def test_no_new_draw_starts_after_a_read_fails_whichever_fails_first(tmp_path):
+    # the first read is still running when the second fails: no third starts
+    result, calls = run_job(tmp_path, fail_when="--draws 2 --instrument parent*--resume", hold="--draws 1 --instrument parent", READ_PROCS="2")
+    assert result.returncode == 1 and "read of parent draw 2 failed" in result.stdout and draws_read(calls, "parent") == [1, 2] and not draws_read(calls, "mirror")
+    tmp = tmp_path / "one"
+    tmp.mkdir()
+    result, calls = run_job(tmp, fail_when="--draws 2 --instrument parent*--resume", READ_PROCS="1")
+    assert result.returncode == 1 and draws_read(calls, "parent") == [1, 2]
+    tmp = tmp_path / "first"
+    tmp.mkdir()
+    result, calls = run_job(tmp, fail_when="--draws 1 --instrument mirror*--resume", hold="--draws 2 --instrument mirror", READ_PROCS="2")
+    assert result.returncode == 1 and "read of mirror draw 1 failed" in result.stdout and draws_read(calls, "mirror") == [1, 2]
 
 
 @pytest.mark.parametrize("fail,word,mirror", [("control --instrument parent --out-dir*work/d20/forms", "the control failed", False), ("comp-check --draw 1 --out-dir*work/d20/forms", "not reproduced", False), ("control --instrument mirror --out-dir*work/d20/mirror/forms", "the mirror's control failed", True)])
@@ -1628,6 +1849,7 @@ def test_a_rerun_cause_moves_its_work_and_outputs_under_the_digest_and_keeps_the
     assert [x for x in lines if x.split()[1] == "preflight" and f"--final-key acquisition/2026-10-17-v1/youtube-asl-v1/{base}/runs/abc123def/report.json --void-prefix acquisition/2026-10-17-v1/youtube-asl-v1/{base}/void --rerun-cause the-cause" in x]
     assert [x for x in lines if x.split()[1] == "preflight" and f"{base}/runs/abc123def/report-mirror.json --void-prefix acquisition/2026-10-17-v1/youtube-asl-v1/{base}/void-mirror --rerun-cause the-cause" in x]
     assert all(f"{base}/runs/abc123def/" in x for x in lines if x.split()[1] in ("merge", "put-report", "compose")) and "work/runs/abc123def/d20/forms" in calls
+    assert all("--rerun-cause the-cause" in x for x in lines if x.split()[1] == "merge" and "smoke" not in x)
     assert (tmp_path / "work/runs/abc123def/d20/stage-parent.txt").exists()
     assert f"--key acquisition/2026-10-17-v1/youtube-asl-v1/{base}/logs/" in lines[-1]
     _, plain = run_job(tmp_path / "plain") if (tmp_path / "plain").mkdir() is None else (None, None)
@@ -1685,7 +1907,7 @@ def test_the_job_passes_every_step_through_pipestatus_and_names_no_other_list():
     text = JOB.read_text()
     assert subprocess.run(["bash", "-n", str(JOB)]).returncode == 0
     code = [line.split(" #")[0] for line in text.splitlines() if not line.startswith("#")]
-    assert [line for line in code if re.search(r"(?<!\|)\|(?!\|)", line) and not line.startswith("case")] == ['  "$@" 2>&1 | tee -a "$LOG"'] and "${PIPESTATUS[@]}" in text and "set -uo pipefail" in text and "transformers==4.57.6" in text
+    assert [line for line in code if re.search(r"(?<!\|)\|(?!\|)", line) and not line.strip().startswith("case")] == ['  "$@" 2>&1 | tee -a "$LOG"'] and "${PIPESTATUS[@]}" in text and "set -uo pipefail" in text and "transformers==4.57.6" in text
     for word in ("c20", "C20", "create-pod", "runpodctl", "--likelihood", "r2env.sh)"):
         assert word not in "\n".join(code), word
     assert "NVIDIA L40S" in text and "BUDGET_SECONDS" in text and "PARENT_BUDGET_SECONDS" in text and "MIRROR_DRAWS" in text and "it never moves M1" in text
@@ -1726,7 +1948,7 @@ def test_the_mirrors_anchors_are_both_paths_and_their_stills_with_its_own_reader
     assert json.loads((h.forms_mirror / "form-real_two_view.json").read_text())["frames"] == [len(r.timestamps) for r in h.refs]
 
 
-def test_a_lost_monocular_clip_refuses_before_any_anchor_is_read(monkeypatch, tmp_path):
+def test_a_lost_monocular_clip_refuses_a_full_read_before_any_anchor(monkeypatch, tmp_path):
     h = Controls(monkeypatch, tmp_path, compose_draws=())
     monkeypatch.setattr(R, "open_monocular", lambda store, records, refs, declared: (h.clips[1:], [dict(sign="s0", reason="state_missing")], None))
     with pytest.raises(SystemExit, match="no monocular state"):
@@ -1735,6 +1957,35 @@ def test_a_lost_monocular_clip_refuses_before_any_anchor_is_read(monkeypatch, tm
     monkeypatch.setattr(R, "open_monocular", lambda store, records, refs, declared: (list(reversed(h.clips)), [], None))
     with pytest.raises(SystemExit, match="out of order"):
         h.mirror_anchors()
+    monkeypatch.setattr(R, "open_monocular", lambda store, records, refs, declared: (h.clips[:-1], [], None))
+    with pytest.raises(SystemExit, match="no monocular state"):
+        h.mirror_anchors()
+
+
+def test_a_smoke_tolerates_a_lost_monocular_clip_through_the_mirrors_merge(monkeypatch, tmp_path, capsys):
+    h = smoke(monkeypatch, tmp_path)
+    monkeypatch.setattr(R, "open_monocular", lambda store, records, refs, declared: ([c for c in h.clips[:len(records)] if c.index != 1], [dict(sign=records[1]["sign"], reason="state_missing")], None))
+    assert h.compose(1, clips=5) == 0
+    assert h.main("read", "--forms", "control", "--out-dir", str(h.forms), "--smoke-train", "5") == 0
+    assert h.main("read", "--draws", "1", "--composed", "pc/composed", "--out-dir", str(h.forms), "--smoke-train", "5") == 0
+    assert h.upload() == 0
+    assert h.mirror("read", "--forms", "control", "--out-dir", str(h.forms_mirror), "--smoke-train", "5") == 0
+    assert '"smoke_lost": 1' in capsys.readouterr().out
+    assert h.mirror("read", "--draws", "1", "--composed", "pc/composed", "--out-dir", str(h.forms_mirror), "--smoke-train", "5") == 0
+    form = json.loads((h.forms_mirror / "form-d1_oracle.json").read_text())
+    assert form["signs"] == ["train-0", "train-2", "train-3", "train-4"] and len(form["hypotheses"]) == 4
+    assert h.main("upload", "--out-dir", str(h.forms_mirror), "--prefix", "pc/forms-mirror") == 0
+    out = tmp_path / "smoke-lost.json"
+    assert h.mirror("merge", "--draws", "1", "--composed", "pc/composed", "--prefix", "pc/forms-mirror", "--parent-forms", "pc/forms", "--output-file", str(out)) == 0
+    report = json.loads(out.read_text())
+    assert report["declared_read"] is False and report["parent_on_mirror_draws"] is None and report["composition"]["margin"]["draws"] == 1
+
+
+def test_a_smoke_with_under_two_monocular_clips_refuses(monkeypatch, tmp_path):
+    h = smoke(monkeypatch, tmp_path)
+    monkeypatch.setattr(R, "open_monocular", lambda store, records, refs, declared: (h.clips[:1], [dict(sign="x", reason="state_missing")], None))
+    with pytest.raises(SystemExit, match="two clips"):
+        h.mirror("read", "--forms", "control", "--out-dir", str(h.forms_mirror), "--smoke-train", "5")
 
 
 def test_the_mirror_reads_the_very_input_the_parent_reads(monkeypatch, tmp_path):

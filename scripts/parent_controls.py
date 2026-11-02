@@ -1,27 +1,32 @@
 """Parent controls: why does composition read above real signing on v1's parent, and what does the mirror make of the same forms? Report only: nothing trains, and this code gates and selects nothing. Composition of generated word clips (A5's eight word draws, top10 added words) read BLEU 3.30 against real's 2.13, margin over still 0.452 against 0.237, on ``back-translator-kp2d-uwb-v2`` step 76,000, sha ``f1ff9446...`` (``scripts/parent_comp.py``, ``round20/parent-comp/report.json``, sha ``a41781a8...``). That is flagged as not credible until explained. These forms are controls on it: real clips in the same format, the same clips in another order. They narrow the explanations, and they do not by themselves tell generator, format and source apart, for the reasons stated below.
 
-**How this will be read (stated before any read; the commit holding this text precedes the job).** No label and no bar: this job sets none, no label gates anything and no target moves. Every comparison is paired, on the same draws and clips, on one instrument at a time (parent minus mirror alone crosses them, beside the reading and not part of it), and a comparison whose interval holds zero is called unresolved. No number is set for "above" or "large".
+**How this will be read (stated before any read; the commit holding this text precedes the job).** No label and no bar: this job sets none, no label gates anything and no target moves.
 
-**Two questions, and the rows that answer them.**
+**The rule for every contrast, on one instrument at a time.** A contrast is decided on its **paired t interval over draws (``t_ci95``), on two metrics: margin over still, and BLEU.** It is **above** or **below** only if the t interval excludes zero on BOTH metrics in the same direction. An interval holding zero, or metrics that disagree, is **unresolved**. The clip bootstrap interval is reported beside and decides nothing. **Three mirror draws make unresolved likely there.** Parent minus mirror crosses instruments, stands beside the reading and is not part of it. The report states each contrast and the cell (``reading_contrasts``); a cell gates nothing.
+
+**Two contrasts, and the rows that answer them.**
 - **Generated against real clips is ``oracle`` minus ``covered``:** the same words under the same plan. It is never oracle against composition, which also differs in words.
-- **The format is ``oracle`` against real signing** (``paired.form_minus_real``: real two-view on the parent, real monocular on the mirror): real word clips, stitched word by word, against real sentences.
+- **The format is ``oracle`` against real signing** (``paired.form_minus_real``): real word clips, stitched word by word, against real sentences. On the parent that is real two-view. **On the mirror the like is ``nearest_monocular``** (``paired.form_minus_nearest``), since composed motion has no marks, **with ``real_monocular`` beside it.**
 
-**The four cells.**
-- **Oracle above real, and at or above covered:** the format reads high, and generated clips add nothing beyond what real clips get in it.
-- **Oracle above real, but below covered, the middle case:** the format reads high AND generated clips read higher still. Both hold, and neither explains the 3.30 alone.
-- **Oracle at or below real, and at or above covered:** real clips in this format do not pass real signing, and generated clips do not pass real clips. Covered is then at or below real too, so composition's lead would sit in its added words: read ``covered_minus_composition``.
-- **Oracle at or below real, and below covered:** the format alone does not lift real clips, and generated clips read higher than real ones in it.
+**The four cells, and unresolved.**
+- **Oracle above the format's like, and above covered:** the format reads high, and real clips read higher in it than generated ones.
+- **Oracle above the format's like, but below covered, the middle case:** the format reads high AND generated clips read higher still. Both hold, and neither explains the 3.30 alone.
+- **Oracle below the format's like, and above covered:** real clips in this format do not reach real signing, and generated clips fall below them. Composition's lead would then sit in **the words the oracle lacks and the frames they free:** read ``covered_minus_composition``.
+- **Oracle below the format's like, and below covered:** the format alone does not lift real clips, and generated clips read higher than real ones in it.
+- **Either contrast unresolved: the outcome is unresolved,** and the report says which. No outcome sits between these.
+**The words the oracle lacks and the frames they free** are the seven frequent added entries, Sem-Lex-only words and words not served, with R reshared among those left. So covered differs from composition in words and in pace at once.
 
 **What an oracle read cannot do.** Neither a low nor a high oracle separates format from source by itself, since **real word clips are MediaPipe monocular too:** the landmark source of the parent's training data and of the generator's. A high oracle may be the format or that shared source. **Every explanation for a low oracle stays live,** and these rows do not choose among them:
 - selection: each generated clip was a recogniser's best of 16, and each real clip is a chance pick;
 - d2 decoding: a generated clip is codes the prior learned to emit, and a real clip is encoded and decoded, which smooths it;
 - a different signer at every word, where the generator has no signer of its own;
 - the cut: the sign's position is fitted on ASLLVD's annotations and applied to WLASL and RIT clips, where it can miss the sign;
+- fewer words: the oracle lacks seven frequent ones, and each core is stretched to fill R;
 - a shared source that favours generated clips over the real clips it came from.
 
-**What a shuffle drop means.** Each shuffle against its unshuffled partner, on clips whose word sequence actually moved (``paired.moved``): ``shuffled`` against composition, ``covered_shuffled`` against ``covered``, ``oracle_shuffled`` against ``oracle``.
-- **A large drop:** the reader uses word order, so English order is part of what it reads. That does not make the order signing, or something a person would follow.
-- **A small drop:** the reader is not using word order, and is reading which words are there. That says nothing about whether order matters to people.
+**What a shuffle drop means.** Each shuffle against its unshuffled partner, on clips whose word sequence actually moved (``paired.moved``): ``shuffled`` against composition, ``covered_shuffled`` against ``covered``, ``oracle_shuffled`` against ``oracle``. No number is set for large or small.
+- **A large drop:** the reader may use word order, so English order may be part of what it reads. It may also come from the rebuilt joins or the different still, which these rows do not fully separate. It does not make the order signing, or something a person would follow.
+- **A small drop:** the reader may not be using word order. But BLEU can see order-invariant signals, such as length, which the token count fixes, and pose; and a form with near-zero margin has nothing to lose. It says nothing about whether order matters to people.
 **Seeds are not independent replicates:** a draw's seeds share its clips, words and plan, so the draws carry the variance and seeds are averaged within a draw. **A two-word clip cannot vary:** it has one other order, the same under every seed. The order depends on draw, seed and clip, so it varies across draws (``word_order``). A shuffled still is another frame, so ``still_raw`` and the margin over the unshuffled form's still stand beside the margin (``paired.still_effect``).
 
 **None of this shows human comprehension,** and none of it is a claim about M1 or release.
@@ -50,26 +55,28 @@
 **"Same frames" in a shuffle:** each word keeps its planned core frames, and the gap lengths keep their places (``moved_plan``). Every word's rendered core is frame for frame the unshuffled form's, and the total is R. The joins are bridged anew, since their neighbours changed. ``render_form``'s own ``order`` would re-allocate frames by weight, so it is not used for this.
 
 **Fidelity, before any instrument.** Every draw's composition is rebuilt from its stored word clips and windows by this code's plan. Each non-empty clip must hash to the stored ``core_crossfade@predicted`` state of the pinned export, or, since another pod's CPU can round a float differently, hold the same clock and marks with every value within 1e-5 (both counted), or the draw stops with status 1. So the shuffles start from what was read. No read happens without that index.
-**Controls.** The four anchors against the parts job's stored forms, pinned by hash (``parent_comp.run_control``); and the first draw's composition read again against its pinned stored form (at least 0.98 of hypotheses identical, BLEU within 0.05, NLL within 0.001). A miss voids the read: status 3, no retry. On the parent, composition's comp, still and blank are then the pinned forms of ``round20/parent-comp`` (digest ``dc3d89b0``), not read again, which also pairs these forms with the very forms of the 3.30.
+**Controls, before the compose is paid for.** The four anchors against the parts job's stored forms, pinned by hash (``parent_comp.run_control``); and the first draw's stored composition read again against its pinned stored form (at least 0.98 of hypotheses identical, BLEU within 0.05, NLL within 0.001). A miss voids the read: status 3, no retry. On the parent, composition's comp, still and blank are then the pinned forms of ``round20/parent-comp`` (digest ``dc3d89b0``), not read again, which also pairs these forms with the very forms of the 3.30.
 
-**Resuming.** Rerunning the job on the same pod resumes it. A stage whose final key holds the bytes of its local report is skipped, and its check runs again, so a parent check alert stops the job again and reads nothing; forms that stand are not read again; ``merge`` and ``put-report`` accept identical bytes and refuse others; the smoke is not repeated for the same code; a stage's draws and stop reason stand from the first time its reads finished, while the clock restarts. **A rerun after a void** needs new code and ``RERUN_CAUSE``: its work and outputs then go under ``runs/<code digest>/``, which is what lets new code write at all, and the voids it must answer stay in the common prefix.
+**Resuming.** Rerunning the job resumes it. A stage whose final key holds the bytes of its local report is skipped, and its check runs again, so a parent check alert stops the job again and reads nothing; forms that stand are not read again; ``merge`` and ``put-report`` accept identical bytes and refuse others; the smoke is not repeated for the same code; a stage's draws, stop reason, seconds and budget stand from the first time its reads finished; elapsed seconds and the clock are cumulative across a resume; a changed ``DRAWS`` or ``MIRROR_DRAWS`` refuses.
+**On a new pod,** a finished stage's report is restored from its final key, if it is of this code, this environment and these planned draws (``stage-state``). What the old pod held locally and had not uploaded is lost: an unfinished stage reads its forms again, up to about $1.20 for the parent and $0.60 for the mirror, unless a failure had uploaded them, and those partial forms are not restored.
+**A rerun after a void** needs new code and ``RERUN_CAUSE``, which may not be blank and is copied into the report: its work and outputs go under ``runs/<code digest>/``, which is what lets new code write at all, and the voids it must answer stay in the common prefix.
 
 **Margin** is ``parent_comp``'s: mean NLL of 4 mismatched references minus NLL of its own (``retrieval_candidates``, seed 0), over the form's own still (its nearest-filled middle frame held at its own length, on its own clock). Each form, each seed. **A clip with no word is its blank and counts, with margin exactly zero.** Blank for gap shares: the draw's blank at the composition's length; every form here is that long, which ``check_still_lengths`` and ``same_lengths`` enforce.
 
-**Reported per form, over the draws** (t interval on the draws alone, bootstrap over clips n 2,000 seed 0, draws fixed; seeds averaged within a draw for the shuffle groups, each seed also alone; intervals on coverage and on bands, over the clips in them): BLEU; margin over its own still; share of real's margin and of nearest's; BLEU and likelihood gap shares; by word coverage bands (under .25, .25-.5, over .5) by its own coverage and by composition's; per signer, report only; loop share (``eval.loop_share``); content-word overlap with the reference (share of the reference's words outside ``compositional.STOP_WORDS`` found in the hypothesis, the clip's mean; a stated definition, **not the same as the plan's sampled 16.3% and 11.1%, whose definition was not recorded**, so read it only among this report's rows). **Paired differences** with the same draws and clips: every form against composition, each form against real, oracle against covered, and each shuffle against its partner, on all clips and on moved clips.
-**Oracle coverage:** words kept and dropped, by reason; clips fully covered, clips left empty; corpus of the picks, with the oracle's rows by each clip's main corpus; picks that could not be served. A pick not served is only a window holding no frames: anything else, an out-of-memory or a hash failure, stops the draw, and more than 2% of a draw's entries not served raises an ALERT and stops it.
+**Reported per form, over the draws** (t interval on the draws alone, bootstrap over clips n 2,000 seed 0, draws fixed; seeds averaged within a draw for the shuffle groups, each seed also alone; intervals on coverage and on bands, over the clips in them): BLEU; margin over its own still; share of real's margin and of nearest's; BLEU and likelihood gap shares; by word coverage bands (under .25, .25-.5, over .5) by its own coverage and by composition's; per signer, report only; loop share (``eval.loop_share``); content-word overlap with the reference (share of the reference's words outside ``compositional.STOP_WORDS`` found in the hypothesis, the clip's mean; a stated definition, **not the same as the plan's sampled 16.3% and 11.1%, whose definition was not recorded**, so read it only among this report's rows). **Paired differences** with the same draws and clips: every form against composition, each form against real and against nearest, oracle against covered, and each shuffle against its partner, on all clips and on moved clips.
+**Oracle coverage:** words kept and dropped, by reason; clips fully covered, clips left empty; corpus of the picks, with the oracle's rows by each clip's main corpus; picks that could not be served. A pick gives way only on a window holding no frames: anything else, an out-of-memory or a hash failure, stops the draw. More than 2% of a draw's entries with a pool finally not served raises an ALERT and stops it; in a smoke it is reported and the smoke goes on.
 
-**Disclosures.** The generator trained on these real clips, so they are not independent of it. Real clips are MediaPipe monocular estimates of isolated signers, as generated clips' training data is, so an oracle reading high does not separate source from format as cleanly as a two-view clip would. A different signer at every word. d2's round trip smooths real motion (it keeps about 0.84 of finger speed: ``hand_motion_compare``). A real clip's untracked frames go in as the dataset serves them, with no fill, as the prior's training codes were made. **Which d2:** ``inputs`` opens the cache's prior and holds its stored tokenizer to this d2's weights and key, so generated and real clips share one decoder. **What is parsed:** shared helpers (``load_manifest``, ``fit_model``, ``open_read_list``) parse the whole mix, and ``v1_training_signs`` holds some ids of the sentence set no job here names at merge, as earlier reads did: nothing of either reaches an output.
+**Disclosures.** The generator trained on these real clips, so they are not independent of it. Real clips are MediaPipe monocular estimates of isolated signers, as generated clips' training data is, so an oracle reading high does not separate source from format as cleanly as a two-view clip would. A different signer at every word. d2's round trip smooths real motion (it keeps about 0.84 of finger speed: ``hand_motion_compare``). A real clip's untracked frames go in as the dataset serves them, with no fill, as the prior's training codes were made. **Before any spend,** ``inputs`` opens the cache's prior and holds its stored tokenizer to this d2's weights and key, so generated and real clips share one decoder; compares the mirror's stored forms' clips with D20; and runs the validity check on the stored compositions. **What is parsed:** shared helpers (``load_manifest``, ``fit_model``, ``open_read_list``) parse the whole mix, and ``v1_training_signs`` holds some ids of the sentence set no job here names at merge, as earlier reads did: nothing of either reaches an output.
 
 **Cost, estimated, not measured.** A form costs about 60 s (read 34 s, build about 26 s: ``resources`` of the stored parent report, on an RTX 6000 Ada; the L40S is assumed alike), and each read command about 1.5 min to start. Parent, 8 draws x 16 forms: 140 min. Mirror, 3 draws x 19 forms, 7 anchors, the monocular clips: 74 min. Reads run ``READ_PROCS`` at a time, 2 by default: the stored peak of 19.8 GB reserved allows two on 48 GB, and 1.7 times the speed is a guess, so 214 min becomes about 126. Compose about 21 min per draw, 4 at a time: about 50 min. Pins, the decoder check, model fit and both smokes 35 min; two anchor sets' checks 8 min; merges 20 min. **About 4 h and about $3.40** at the $0.85/h implied by parent-comp's $1.70 for about 2 h, range about $2.80 to $4.50: the compose time, the parallel speed and the L40S's rate are the guesses. Without parallel reads, about 5.5 h and $4.70.
-**So the mirror reads three draws (1, 2, 3), not eight.** Two draws would leave its t interval almost empty; each further draw costs about $0.20. The parent keeps all eight, which passes the brief's "about $3". ``DRAWS="1 2 3 4 5 6"`` with the mirror's three is about $3.
-**The clock rule, fixed here and blind to every score:** once an instrument has started its minimum of draws (parent four, mirror two), the job starts no further draw of it if the time since the job began, plus the wall time since its reads began divided by the draws finished, would pass its limit (parent ``PARENT_BUDGET_SECONDS`` 10,800 s; mirror ``BUDGET_SECONDS`` 14,400 s, 4 h, about $3.40). So the mirror's third draw can be left out. Each draw's forms are read whole. A report's ``stage`` gives its planned draws, the draws read, the stop reason and the elapsed seconds. The measured cost must be reported beside this.
+**So the mirror reads three draws (1, 2, 3), not eight.** Two draws would leave its t interval almost empty; each further draw costs about $0.20. Those three draws are few for a t interval, as the reading says. The parent keeps all eight, which passes the brief's "about $3". ``DRAWS="1 2 3 4 5 6"`` with the mirror's three is about $3.
+**The clock rule, fixed here and blind to every score:** once an instrument has started its minimum of draws (parent four, mirror two), the job starts no further draw of it if the time since the job began, plus the wall time since its reads began divided by the draws finished, would pass its limit (parent ``PARENT_BUDGET_SECONDS`` 10,800 s; mirror ``BUDGET_SECONDS`` 14,400 s, 4 h, about $3.40). So the mirror's third draw can be left out. ``MIRROR_DRAWS`` must be a prefix of ``DRAWS``. Each draw's forms are read whole. A report's ``stage`` gives its planned draws, the draws read, the stop reason, the elapsed seconds and the budget. Every step runs under a stated limit: ``READ_TIMEOUT`` 3,600 s for an anchor set or a draw's forms, ``COMPOSE_TIMEOUT`` 5,400 s, ``MERGE_TIMEOUT`` 3,600 s for a merge or the pins, ``STEP_TIMEOUT`` 1,800 s for the rest. The measured cost must be reported beside this.
 
 **Refused.** A record outside the three corpora or outside ``train``, and c00 in any case, stops before it is fetched (``check_word_record``). D20 only (``s2_lib``; C20 cannot be named). No v1 read, and no instrument but the two pinned: neither is ever used here for a loss, a rerank or a best-of-N, and no instrument sees a real clip before the pick. A stored form or export on other bytes stops. A smoke (``--smoke-train 5``): 5 D20 sentences composed, read against c02 train references, so the parent sees no D20 text or clip: numbers are plumbing.
 
     python scripts/parent_controls.py inputs --model-file W/model.json --expect-gpu NVIDIA_L40S
     python scripts/parent_controls.py digest
-    python scripts/parent_controls.py stage-state --key K --file W/report.json
+    python scripts/parent_controls.py stage-state --key K --file W/report.json --record W/stage.txt --planned-draws 1,2
     python scripts/parent_controls.py compose --draw K --model-file W/model.json --prefix P --work W --device cuda
     python scripts/parent_controls.py preflight --out-dir W --final-key K --void-prefix V
     python scripts/parent_controls.py read --forms control --instrument I --out-dir W/forms --instrument-cache W/i
@@ -78,7 +85,7 @@
     python scripts/parent_controls.py comp-check --draw K --out-dir W/forms --void-prefix V
     python scripts/parent_controls.py read --draws 1,2 --instrument I --composed P --resume --out-dir W/forms --instrument-cache W/i
     python scripts/parent_controls.py upload --out-dir W/forms --prefix D/forms
-    python scripts/parent_controls.py merge --draws 1,2 --instrument I --composed P --prefix D/forms --output-file W/report.json --parent-forms D/forms --planned-draws 1,2 --stop-reason all_planned --elapsed-seconds 100
+    python scripts/parent_controls.py merge --draws 1,2 --instrument I --composed P --prefix D/forms --output-file W/report.json --parent-forms D/forms --planned-draws 1,2 --stop-reason all_planned --elapsed-seconds 100 --budget-seconds 10800
     python scripts/parent_controls.py check --report W/report.json
 
 The job is ``runpod/fleet/parent_controls.sh``.
@@ -161,20 +168,24 @@ COST_ESTIMATE = dict(measured=False, hours=4., dollars=3.4, range_dollars=[2.8, 
 DISCLOSURES = dict(
     pick="The real clip is a chance pick, one per entry in a draw, by a hash of draw and entry: no instrument chose it. Each generated clip was its recogniser's best of 16.",
     independence="The generator trained on these real clips, and they share a monocular MediaPipe path with its training data and with the parent's: an oracle reading high does not separate source from format as a two-view clip would.",
-    added_words="The seven added entries have no real clip in the three corpora here, and a clip of the same spelling from elsewhere is never taken, so the oracle drops them. Oracle against composition therefore mixes real clips with fewer words: oracle against covered is the same words.",
+    words_lacked="The oracle lacks the seven added entries, which have no real clip in the three corpora and no clip of the same spelling taken from elsewhere, Sem-Lex-only words and words not served, and R is reshared among those left. Oracle against composition therefore mixes real clips with the words the oracle lacks and the frames they free: oracle against covered is the same words.",
     cut="An ASLLVD real clip with its own annotated sign is cut there; every other clip, generated clips included, takes its entry's median position. Plan and stitching are the same.",
     shuffle="Each word keeps its planned core frames and the gap lengths keep their places, so every word's rendered core is frame for frame the unshuffled form's. The joins are bridged anew.",
     round_trip="d2's round trip smooths real motion; a real clip's untracked frames go in as the dataset serves them, with no fill.",
     content_overlap="Content-word overlap here is the share of the reference's words outside the stop list found in the hypothesis, per clip. It is not the plan's sampled figures, whose definition was not recorded: read it only among this report's rows.",
     mirror="The mirror is report only and never moves M1. It shares the parent's lineage, and How2Sign monocular trained it, so generated motion reading high on it is flagged on the same terms as on the parent. Its training holds 234 of D20's clips, on signers c01 and c05, and c03 selected it.",
     mirror_form="The mirror reads the composed state as it stands, the bytes the parent read: not conformed, since names cannot reach its input; no marks, so its like is nearest_monocular; at the predicted length, shorter than the monocular clips it trained on.",
-    oracle_limits="Neither a low nor a high oracle separates format from source by itself: real word clips are MediaPipe monocular too. Live for a low oracle: selection by best of 16, d2 decoding, a different signer per word, a cut fitted on ASLLVD and applied to WLASL and RIT, a source favouring generated clips.",
+    oracle_limits="Neither a low nor a high oracle separates format from source by itself: real word clips are MediaPipe monocular too. Live for a low oracle: selection by best of 16, d2 decoding, a different signer per word, a cut fitted on ASLLVD and applied to WLASL and RIT, fewer words with each core stretched, a source favouring generated clips.",
+    rule="A contrast is above or below only if its paired t interval over draws excludes zero on both margin over still and BLEU in the same direction; otherwise it is unresolved. The clip bootstrap interval decides nothing. Three mirror draws make unresolved likely there.",
+    shuffle_drop="A large drop may also come from the rebuilt joins or the different still, which these rows do not fully separate. On a small drop, BLEU can see order-invariant signals such as length and pose, and a form with near-zero margin has nothing to lose.",
     seeds="Seeds are not independent replicates: a draw's seeds share its clips, words and plan. A two-word clip has one other order, the same under every seed. Moved rows take only clips whose word sequence changed.",
     parsing="Shared helpers parse the whole mix, and v1_training_signs holds ids of the sentence set no job here names at merge, as earlier reads did. Nothing of either reaches an output.",
     gpu="The mirror's stored forms state an NVIDIA L40S, and the job refuses another type. The parent's stored composition states an RTX 6000 Ada, and comp-check tests whether the L40S reproduces it.",
     stops="A parent void or check alert stops the job before the mirror reads.",
     humans="None of this shows human comprehension, and none of it is a claim about M1 or release.")
-READING = ("Generated against real clips is oracle minus covered, never oracle against composition. The format is oracle against real. Oracle above real and at or above covered: the format reads high, and generated clips add nothing. Oracle above real but below covered: the format reads high AND generated clips read higher. Oracle at or below real and at or above covered: composition's lead would sit in its added words. Oracle at or below real and below covered: the format alone does not lift real clips, and generated clips read higher. Neither a low nor a high oracle separates format from source by itself, since real word clips are MediaPipe monocular too. A large shuffle drop on moved clips: the reader uses word order. A small one: it is reading which words are there. The mirror is report only and never moves M1; generated motion reading high on it is flagged on the same terms as on the parent, since it shares the parent's lineage and How2Sign monocular trained it. No label is computed and nothing is gated. None of it shows human comprehension.")
+READING = ("A contrast is above or below only if its paired t interval over draws excludes zero on both margin over still and BLEU in the same direction; otherwise it is unresolved. Generated against real clips is oracle minus covered, never oracle against composition. The format is oracle against real, and on the mirror against nearest_monocular with real_monocular beside it. Oracle above the like and above covered: the format reads high, and real clips read higher than generated ones. Oracle above the like but below covered: the format reads high AND generated clips read higher. Oracle below the like and above covered: composition's lead would sit in the words the oracle lacks and the frames they free. Oracle below the like and below covered: the format alone does not lift real clips, and generated clips read higher. Either contrast unresolved: unresolved. Neither a low nor a high oracle separates format from source by itself, since real word clips are MediaPipe monocular too. The mirror is report only and never moves M1; generated motion reading high on it is flagged on the same terms as on the parent, since it shares the parent's lineage and How2Sign monocular trained it. No label gates anything. None of it shows human comprehension.")
+CELLS = {("above", "above"): "format reads high, and real clips read higher than generated ones", ("above", "below"): "the middle case: format reads high AND generated clips read higher", ("below", "above"): "real clips do not reach real signing and generated clips fall below them: composition's lead would sit in the words the oracle lacks and the frames they free", ("below", "below"): "format alone does not lift real clips, and generated clips read higher"}
+
 
 
 @functools.lru_cache(maxsize=1)
@@ -222,12 +233,19 @@ def anchor_report(forms: dict, instrument: str, idx: np.ndarray) -> dict:
     return dict(two_view, real_monocular=own["real_two_view"], nearest_monocular=own["nearest_two_view"], still_monocular=own["still_two_view"])
 
 
-def monocular_clips(store, records, refs, declared: bool) -> list:
-    """Every record's monocular clip, in list order: the mirror's anchors read the same clips as every other form, so a clip lost refuses."""
+def monocular_clips(store, records, refs, declared: bool) -> tuple[list, list, list]:
+    """(clips, records, references), one for one in list order. On D20 every record has its clip, since the mirror's anchors read the same clips as every other form, and a clip lost refuses. A smoke reads the clips it has, as the mirror's own smoke did."""
     clips, lost, _ = R.open_monocular(store, records, refs, declared)
-    if lost or [c.index for c in clips] != list(range(len(records))):
-        raise SystemExit(f"{len(lost)} clips have no monocular state, or the clips are out of order: the mirror's anchors would read other clips")
-    return clips
+    kept = [c.index for c in clips]
+    if kept != sorted(kept) or len(set(kept)) != len(kept):
+        raise SystemExit("the monocular clips are out of order: the mirror's anchors would read other clips")
+    if declared and (lost or kept != list(range(len(records)))):
+        raise SystemExit(f"{len(lost)} clips have no monocular state: the mirror's anchors would read other clips")
+    if not declared and len(kept) < 2:
+        raise SystemExit(f"a smoke needs two clips with a monocular state, not {len(kept)}")
+    if lost:
+        print(json.dumps(dict(smoke_lost=len(lost), reasons=sorted({x.get("reason") for x in lost}))), flush=True)
+    return clips, [records[i] for i in kept], [refs[i] for i in kept]
 
 
 def load_mirror_form(store, name: str) -> dict:
@@ -362,6 +380,13 @@ class RealClips:
 
     def __init__(self, pools: dict, draw: int, load) -> None:
         self.pools, self.draw, self.load, self.memo, self.failed = pools, draw, load, {}, 0
+
+    def entries_with_a_pool(self) -> int:
+        return sum(1 for entry in self.memo if self.pools.get(entry))
+
+    def entries_not_served(self) -> int:
+        """Entries with a pool left with no clip: the entries, not the failed attempts."""
+        return sum(1 for entry, got in self.memo.items() if got is None and self.pools.get(entry))
 
     def of(self, entry: str):
         """(record, state), or None: no real clip, so composition's fallback, dropped."""
@@ -533,7 +558,7 @@ def same_composition(state, row: dict, store) -> tuple[bool, bool]:
     return False, all(np.array_equal(c.valid, stored.channels[name].valid) and np.abs(np.asarray(c.values, np.float64) - np.asarray(stored.channels[name].values, np.float64)).max(initial=0.) <= IDENTITY_TOLERANCE for name, c in state.channels.items())
 
 
-def coverage_of(rows: list[dict], failed: int) -> dict:
+def coverage_of(rows: list[dict], failed: int, with_pool: int = 0, not_served: int = 0) -> dict:
     """Oracle coverage over the clips' composed words."""
     words = [(len(r["composition_words"]), len(r["words"])) for r in rows]
     selected, kept = sum(a for a, _ in words), sum(b for _, b in words)
@@ -549,7 +574,7 @@ def coverage_of(rows: list[dict], failed: int) -> dict:
         pairs = np.asarray(filled, np.float64)
         idx = np.random.default_rng(0).integers(0, len(pairs), (C.BOOT, len(pairs)))
         interval = dict(share_kept=P._quantiles(pairs[idx, 1].sum(1) / pairs[idx, 0].sum(1)), mean_clip_share=P._quantiles((pairs[idx, 1] / pairs[idx, 0]).mean(1)))
-    return dict(ci95=interval, words_selected=selected, words_kept=kept, share_kept=round(kept / selected, 4) if selected else None, dropped=dict(sorted(reasons.items())), corpora=dict(sorted(corpora.items())), clips=len(rows), clips_with_words=len(filled), clips_fully_covered=sum(a == b for a, b in filled), clips_left_empty=sum(b == 0 for _, b in filled), mean_clip_share=round(float(np.mean([b / a for a, b in filled])), 4) if filled else None, picks_not_served=failed)
+    return dict(ci95=interval, words_selected=selected, words_kept=kept, share_kept=round(kept / selected, 4) if selected else None, dropped=dict(sorted(reasons.items())), corpora=dict(sorted(corpora.items())), clips=len(rows), clips_with_words=len(filled), clips_fully_covered=sum(a == b for a, b in filled), clips_left_empty=sum(b == 0 for _, b in filled), mean_clip_share=round(float(np.mean([b / a for a, b in filled])), 4) if filled else None, picks_not_served=failed, entries_with_a_pool=with_pool, entries_not_served=not_served)
 
 
 def order_stats(rows: dict) -> dict:
@@ -661,10 +686,14 @@ def run_compose(args) -> int:
                 print(f"draw {args.draw}: {n + 1}/{len(rows)} clips, {time.time() - started:.0f} s", flush=True)
     for done in pending:
         done.result()
-    if real.failed > MAX_NOT_SERVED * max(len(real.memo), 1):
-        print(f"ALERT draw {args.draw}: {real.failed} picks not served over {len(real.memo)} entries, above {MAX_NOT_SERVED:.0%}: no index is written", flush=True)
-        raise SystemExit(f"draw {args.draw}: {real.failed} picks not served over {len(real.memo)} entries")
-    index = dict(kind=f"{PROBE}-composed", report_only=True, draw=args.draw, clips=args.clips, seeds=list(SEEDS), code_digest=code_digest(), environment=P.environment(), pick=PICK_SEED, stored_export=dict(key=C.export_index_key(STORED_COMPOSED, args.draw), sha256=STORED[args.draw]["index"]), identity=dict(non_empty=close, byte_identical=identical, within_tolerance=close, clips=len(rows)), coverage=coverage_of(table["oracle"], real.failed), orders=order_stats(table), seconds=round(time.time() - started, 1), rows=table)
+    with_pool, not_served = real.entries_with_a_pool(), real.entries_not_served()
+    if not_served > MAX_NOT_SERVED * max(with_pool, 1):
+        line = f"draw {args.draw}: {not_served} of {with_pool} entries with a pool not served, above {MAX_NOT_SERVED:.0%}"
+        if args.clips == L.D20_CLIPS:
+            print(f"ALERT {line}: no index is written", flush=True)
+            raise SystemExit(line)
+        print(f"{line}: reported, since a smoke's few entries say little", flush=True)
+    index = dict(kind=f"{PROBE}-composed", report_only=True, draw=args.draw, clips=args.clips, seeds=list(SEEDS), code_digest=code_digest(), environment=P.environment(), pick=PICK_SEED, stored_export=dict(key=C.export_index_key(STORED_COMPOSED, args.draw), sha256=STORED[args.draw]["index"]), identity=dict(non_empty=close, byte_identical=identical, within_tolerance=close, clips=len(rows)), coverage=coverage_of(table["oracle"], real.failed, with_pool, not_served), orders=order_stats(table), seconds=round(time.time() - started, 1), rows=table)
     store.put(key, json.dumps(index, indent=1, default=float).encode())
     print(json.dumps(dict(composed=key, stored=False, seconds=index["seconds"], identity=index["identity"])), flush=True)
     return 0
@@ -689,10 +718,10 @@ def load_composed(store, prefix: str, k: int, records, declared: bool) -> dict:
     if not store.exists(key):
         raise SystemExit(f"{key}: draw {k} is not composed")
     index = json.loads(store.get(key))
-    check_index(index, k, len(records) if not declared else L.D20_CLIPS)
+    check_index(index, k, L.D20_CLIPS if declared else index.get("clips"))
     out = {}
     for kind, rows in index["rows"].items():
-        if len(rows) != len(records):
+        if len(rows) != len(records) and (declared or len(rows) < len(records)):
             raise SystemExit(f"draw {k} {kind}: {len(rows)} clips, not {len(records)}")
         if declared:
             by_sign = {r["sign"]: r for r in rows}
@@ -704,7 +733,7 @@ def load_composed(store, prefix: str, k: int, records, declared: bool) -> dict:
                     raise SystemExit(f"{record['sign']}: draw {k}'s row is another clip's")
             out[kind] = [by_sign[r["sign"]] for r in records]
         else:
-            out[kind] = sorted(rows, key=lambda r: r["clip"])
+            out[kind] = sorted(rows, key=lambda r: r["clip"])[:len(records)]      # a smoke that lost a monocular clip reads the first it can
     return out
 
 
@@ -720,7 +749,7 @@ def forms_of_draw(k: int, declared: bool, instrument: str = "parent") -> list[st
 
 
 def run_read(args) -> int:
-    """``--forms control``: the instrument's anchors. ``--forms comp-check --draws K``: the parent's stored composition of draw K, read again. ``--draws``: each draw's forms and their stills, and comp, still and blank where they have no stored forms: the mirror's, and a smoke's."""
+    """``--forms control``: the instrument's anchors. ``--forms comp-check --draws K``: the parent's stored composition of draw K, read again from its stored export, before anything is composed. ``--draws``: each draw's forms and their stills, and comp, still and blank where they have no stored forms: the mirror's, and a smoke's."""
     import torch
     from train_text_to_motion import make_store
     P.check_pins()
@@ -760,14 +789,16 @@ def run_read(args) -> int:
         R.passed_control(out_dir, digest, place)
     if not args.forms and has_stored_composition(declared, args.instrument):
         passed_comp_check(out_dir, digest, place)
-    texts, signs, groups = [r["text"] for r in records], [r["sign"] for r in records], [r["signer_component"] for r in records]
     refs = L.load_states(store, records)
+    anchors = [n for n in wanted if n in anchors_of(args.instrument)]
+    clips = []
+    if args.instrument == "mirror" and (anchors or not declared):      # a smoke's every read holds the same clips
+        clips, records, refs = monocular_clips(store, records, refs, declared)
+    texts, signs, groups = [r["text"] for r in records], [r["sign"] for r in records], [r["signer_component"] for r in records]
     tokenizer = L.load_tokenizer(store)
     candidates = M.retrieval_candidates(len(texts), C.CANDIDATES, seed=0)
     reader = load_instrument(args.instrument, store, args)
     shared = dict(reader=reader, texts=texts, signs=signs, groups=groups, candidates=candidates, refs=refs, args=args, declared=declared, described=described, digest=digest, place=place, out_dir=out_dir, probe=PROBE)
-    anchors = [n for n in wanted if n in anchors_of(args.instrument)]
-    clips = monocular_clips(store, records, refs, declared) if args.instrument == "mirror" and anchors else []
     for name in anchors:
         started = time.time()
         if args.instrument == "parent":
@@ -775,11 +806,17 @@ def run_read(args) -> int:
         else:
             _, states, masks = SYM.build_form(name, refs, clips, tokenizer)
             C.read_one(name, states, masks, None, started=started, **shared)
+    if args.forms == "comp-check":
+        name = wanted[0]
+        rows = load_stored_export(store, draws[0], records, len(records))
+        started = time.time()
+        C.read_one(name, read_states(store, rows, refs), list(refs), rows, started=started, **shared)
+        return 0
     for k in draws:
         composed = load_composed(store, args.composed, k, records, declared)
         here = [n for n in wanted if n.startswith(f"d{k}_")]
         for kind in ("comp", *KINDS):
-            names = [n for n in here if n in (f"d{k}_{kind}", f"d{k}_{kind}_still", *((f"d{k}_still", f"d{k}_blank", f"d{k}_comp_reread") if kind == "comp" else ()))]
+            names = [n for n in here if n in (f"d{k}_{kind}", f"d{k}_{kind}_still", *((f"d{k}_still", f"d{k}_blank") if kind == "comp" else ()))]
             if not names:
                 continue
             started = time.time()
@@ -845,9 +882,15 @@ def run_comp_check(args) -> int:
     return 3
 
 
+def check_cause(cause: str | None) -> None:
+    if cause is not None and not cause.strip():
+        raise SystemExit("--rerun-cause is blank: a rerun records what was wrong and what the new code changes")
+
+
 def run_preflight(args) -> int:
     from train_text_to_motion import make_store
     P.check_pins()
+    check_cause(args.rerun_cause)
     store = make_store(args.store)
     if store.exists(args.final_key):
         raise SystemExit(f"{args.final_key} exists: this read is finished (write-once)")
@@ -864,15 +907,26 @@ def run_inputs(args) -> int:
     check_gpu(args.expect_gpu)
     store = make_store(args.store)
     P.check_sha(store.get(STORED_REPORT), STORED_REPORT_SHA, STORED_REPORT)
+    alerts = []
     for k in DRAWS:
         P.check_sha(store.get(C.export_index_key(STORED_COMPOSED, k)), STORED[k]["index"], C.export_index_key(STORED_COMPOSED, k))
         for kind in ("comp", "still", "blank"):
-            load_stored_form(store, k, kind)
+            read = load_stored_form(store, k, kind)
+            if kind == "comp":
+                alerts += validity_alerts("the stored composition", {k: read})
+    if alerts:
+        print(f"ALERT {alerts}", flush=True)
+        raise SystemExit("a stored composition is not valid on every point: the header's reason for reading it as it stands fails")
     for name in C.ANCHORS:
         Q.stored_form(store, Q.STORED_PARENT, name)
     load_mirror_report(store)
+    records, declared, _ = L.open_read_list(store, 0)
+    P.check_read_list(records, declared)
+    signs, texts = [r["sign"] for r in records], [r["text"] for r in records]
     for name in MIRROR_ANCHORS:
-        load_mirror_form(store, name)
+        stored = load_mirror_form(store, name)
+        if stored["signs"] != signs or stored["references"] != texts:
+            raise SystemExit(f"the mirror's stored {name} holds other clips than D20, or another order")
     keys = {(json.loads(store.get(C.export_index_key(STORED_COMPOSED, k))).get("word_cache") or {}).get("checkpoint_key") for k in DRAWS}
     if len(keys) != 1 or None in keys:
         raise SystemExit(f"the stored exports name priors {sorted(str(k) for k in keys)}, not one")
@@ -957,6 +1011,7 @@ def _bleu(stats) -> np.ndarray:
 
 METRICS = dict(margin=(lambda x: float(x["margin"].mean()), lambda x, idx: x["margin"][idx].mean(1)),
                share_of_real=(lambda x: float(x["margin"].mean() / x["real"].mean()) if x["real"].mean() else float("nan"), lambda x, idx: C.ratio_draws(x["margin"][idx].mean(1), x["real"][idx].mean(1))),
+               share_of_nearest=(lambda x: float(x["margin"].mean() / x["nearest"].mean()) if x["nearest"].mean() else float("nan"), lambda x, idx: C.ratio_draws(x["margin"][idx].mean(1), x["nearest"][idx].mean(1))),
                bleu=(lambda x: float(_bleu(x["stats"].sum(0))), lambda x, idx: _bleu(x["stats"][idx].sum(1))),
                bleu_gap_share=(lambda x: _gap_point(x), lambda x, idx: C.ratio_draws(_bleu(x["stats"][idx].sum(1)) - _bleu(x["blank_stats"][idx].sum(1)), _bleu(x["real_stats"][idx].sum(1)) - _bleu(x["blank_stats"][idx].sum(1)))),
                likelihood_gap_share=(lambda x: float(x["likelihood_top"].mean() / x["likelihood_bottom"].mean()) if x["likelihood_bottom"].mean() else float("nan"), lambda x, idx: C.ratio_draws(x["likelihood_top"][idx].mean(1), x["likelihood_bottom"][idx].mean(1))),
@@ -993,6 +1048,29 @@ def paired_rows(mine: list[dict], other: list[dict], idx: np.ndarray, bands: dic
 def as_real(arrays: dict) -> dict:
     """The arrays of real signing on this instrument's own path, so a form minus real is the same arithmetic."""
     return {k: dict(x, margin=x["real"], stats=x["real_stats"]) for k, x in arrays.items()}
+
+
+def as_nearest(arrays: dict, stats) -> dict:
+    """The arrays of nearest on this instrument's own path, as ``as_real``."""
+    return {k: dict(x, margin=x["nearest"], stats=stats) for k, x in arrays.items()}
+
+
+def contrast(row: dict) -> str:
+    """The declared rule: above or below only if the t interval over draws excludes zero on both margin and BLEU in the same direction; anything else is unresolved. The clip interval is not read."""
+    found = set()
+    for metric in ("margin", "bleu"):
+        interval = row[metric].get("t_ci95") if isinstance(row.get(metric), dict) else None
+        if not interval or not all(np.isfinite(x) for x in interval):
+            return "unresolved"
+        found.add("above" if interval[0] > 0 else "below" if interval[1] < 0 else "unresolved")
+    return found.pop() if len(found) == 1 else "unresolved"
+
+
+def reading_contrasts(paired: dict, instrument: str) -> dict:
+    """Each declared contrast by the rule, and the cell. It describes the rows above and gates nothing."""
+    like = paired["form_minus_real"]["oracle"] if instrument == "parent" else paired["form_minus_nearest"]["oracle"]
+    format_, generated = contrast(like), contrast(paired["oracle_minus_covered"])
+    return dict(rule="above or below only if the t interval over draws excludes zero on both margin and BLEU in the same direction; the clip interval decides nothing", gates_nothing=True, format_like="real_two_view" if instrument == "parent" else "nearest_monocular", format=format_, format_beside=None if instrument == "parent" else dict(like="real_monocular", contrast=contrast(paired["form_minus_real"]["oracle"])), generated_against_real_clips=generated, cell=CELLS.get((format_, generated), "unresolved"), unresolved=[name for name, value in (("format", format_), ("generated_against_real_clips", generated)) if value == "unresolved"], words_lacked=contrast(paired["covered_minus_composition"]), shuffle_on_moved_clips={name: contrast(row) if "margin" in row else "unresolved" for name, row in paired["moved"].items()})
 
 
 def moved_mask(rows: list[dict]) -> np.ndarray:
@@ -1131,7 +1209,7 @@ def corpus_rows(oracle: dict, covered: dict, composed: dict) -> dict:
         for row in sorted(composed[k]["rows"]["oracle"], key=lambda r: r["clip"]):
             count = Counter(w["corpus"] for w in row["words"])
             names.append(min(count, key=lambda c: (-count[c], c)) if count else None)
-        labels[k] = np.array(names, object)
+        labels[k] = np.array(names[:len(oracle[k]["margin"])], object)
     out = {}
     for corpus in sorted({x for v in labels.values() for x in v if x is not None}):
         masks = {k: labels[k] == corpus for k in labels}
@@ -1185,16 +1263,29 @@ EXIT_NOT_THERE = 5
 
 
 def run_stage_state(args) -> int:
-    """Exit 0 when a stage's final key holds the bytes of its local report: the stage is done. 5 when the key is absent: run it. Anything else refuses: the key belongs to another run."""
+    """Exit 0 when a stage's final key holds the bytes of its local report: the stage is done. On a new pod, with no local report, the report is restored from the key if it is of this code, this environment and these planned draws, with the stage's record, so the stage stands. 5 when the key is absent: run it. Anything else refuses: the key belongs to another run."""
     from train_text_to_motion import make_store
     store = make_store(args.store)
     if not store.exists(args.key):
         print(json.dumps(dict(stage=args.key, state="to run")), flush=True)
         return EXIT_NOT_THERE
-    local = Path(args.file)
-    if not local.exists() or local.read_bytes() != store.get(args.key):
-        raise SystemExit(f"{args.key} exists and {args.file} does not hold its bytes: this read is finished elsewhere (write-once)")
-    print(json.dumps(dict(stage=args.key, state="done")), flush=True)
+    local, raw = Path(args.file), store.get(args.key)
+    if local.exists():
+        if local.read_bytes() != raw:
+            raise SystemExit(f"{args.key} exists and {args.file} does not hold its bytes: this read is finished elsewhere (write-once)")
+        print(json.dumps(dict(stage=args.key, state="done")), flush=True)
+        return 0
+    report = json.loads(raw)
+    stage = report.get("stage") or {}
+    planned = [int(x) for x in args.planned_draws.split(",") if x] if args.planned_draws else None
+    differs = [what for what, ok in (("kind", report.get("kind") == f"{PROBE}-report"), ("code", report.get("code_digest") == code_digest()), ("environment", report.get("environment") == P.environment()), ("planned draws", planned is not None and stage.get("planned_draws") == planned)) if not ok]
+    if differs:
+        raise SystemExit(f"{args.key} exists and is not restorable here: it differs in {differs}. Other code needs RERUN_CAUSE, which writes under runs/<code digest>/")
+    local.parent.mkdir(parents=True, exist_ok=True)
+    local.write_bytes(raw)
+    if args.record and not Path(args.record).exists():
+        Path(args.record).write_text(f"{','.join(str(k) for k in stage['draws'])} {stage['stop_reason']} {stage['elapsed_seconds']} {stage['budget_seconds']}\n")
+    print(json.dumps(dict(stage=args.key, state="restored", draws=stage.get("draws"))), flush=True)
     return 0
 
 
@@ -1259,7 +1350,7 @@ def open_read(store, prefix: str, instrument: str, draws: list[int], composed_pr
     anchors = own_path(forms, instrument)
     composed = {k: json.loads(store.get(index_key(composed_prefix, k))) for k in draws}
     for k, index in composed.items():
-        check_index(index, k, L.D20_CLIPS if declared else n)
+        check_index(index, k, L.D20_CLIPS if declared else index.get("clips"))
     comp_arrays, comp_rows, comp_views = view_arrays({k: (base[k]["comp"], base[k]["still"]) for k in draws}, base, anchors, idx, "the composition")
     built = {}
     for kind in KINDS:
@@ -1287,6 +1378,8 @@ def paired_block(read: SimpleNamespace, composed_rows: dict) -> dict:
         if partner != "composition":
             out[f"{name}_minus_{partner}"] = paired_rows(members_of(read, name), members_of(read, partner), idx, comp)
     out["form_minus_real"] = {name: paired_rows(members_of(read, name), [as_real(comp)], idx, metrics=("margin", "bleu")) for name in ("composition", *names)}
+    nearest = M.bleu_statistics(read.anchors["nearest_two_view"]["hypotheses"], read.anchors["nearest_two_view"]["references"])
+    out["form_minus_nearest"] = {name: paired_rows(members_of(read, name), [as_nearest(comp, nearest)], idx, metrics=("margin", "bleu")) for name in ("composition", *names)}
     out["moved"], out["still_effect"] = {}, {}
     for name, partner in PARTNERS.items():
         masks = [{k: composed_rows[k][kind] for k in composed_rows} for kind in GROUPS[name]]
@@ -1301,6 +1394,8 @@ def parent_on_mirror_draws(store, args, read: SimpleNamespace, draws: list[int])
         return None
     parent = open_read(store, args.parent_forms, "parent", draws, args.composed, want_declared=read.declared)
     if parent.first["signs"] != read.first["signs"]:
+        if not read.declared:      # a smoke's mirror lost a monocular clip the parent read
+            return None
         raise SystemExit("the parent's forms read other clips than the mirror's")
     out = {}
     for name in ("composition", "oracle", "covered", *GROUPS):
@@ -1313,6 +1408,7 @@ def run_merge(args) -> int:
     from train_text_to_motion import make_store
     P.check_pins()
     check_instrument(args.instrument)
+    check_cause(args.rerun_cause)
     store = make_store(args.store)
     draws = [int(x) for x in args.draws.split(",") if x]
     if not draws:
@@ -1325,7 +1421,7 @@ def run_merge(args) -> int:
         composition = form_block("composition", comp_arrays, read.comp_rows, read.comp_views, anchors, first, {k: read.base[k]["comp"] for k in draws}, idx, comp_arrays, masks, read.two_view_real)
         blocks["oracle"]["by_pick_corpus"] = corpus_rows(read.built["oracle"].arrays, read.built["covered"].arrays, composed)
         groups = {name: dict(seeds=list(SEEDS), **group_rows(members_of(read, name), idx), by_own_coverage=coverage_rows(members_of(read, name)), by_composition_coverage=coverage_rows(members_of(read, name), comp_arrays), hypotheses=hypothesis_row({k: [forms[f"d{k}_{m}"] for m in members] for k in draws}, idx)) for name, members in GROUPS.items()}
-        moved = {k: {kind: moved_mask(sorted(composed[k]["rows"][kind], key=lambda r: r["clip"])) for kind in KINDS if "shuffled" in kind} for k in draws}
+        moved = {k: {kind: moved_mask(sorted(composed[k]["rows"][kind], key=lambda r: r["clip"])[:len(first["signs"])]) for kind in KINDS if "shuffled" in kind} for k in draws}
         paired = paired_block(read, moved)
         beside = None if args.instrument == "parent" else parent_on_mirror_draws(store, args, read, draws)
     real_hypotheses = hypothesis_row({0: [anchors["real_two_view"]]}, idx)      # the instrument's own path
@@ -1336,8 +1432,8 @@ def run_merge(args) -> int:
     for kind in KINDS:
         alerts += validity_alerts(kind, read.built[kind].reads)
     path_names = dict(real="real_two_view", nearest="nearest_two_view", still="still_two_view", blank="blank") if args.instrument == "parent" else dict(real="real_monocular", nearest="nearest_monocular", still="still_monocular", blank="blank")
-    stage = dict(planned_draws=[int(x) for x in args.planned_draws.split(",") if x] if args.planned_draws else draws, draws=draws, stop_reason=args.stop_reason, elapsed_seconds=args.elapsed_seconds)
-    report = dict(kind=f"{PROBE}-report", report_only=True, note=C.NOT_DECIDED, reading=READING, declared_read=declared, smoke=None if declared else "SMOKE: composed D20 sentences against c02 train references; these numbers are plumbing, not a read", list=first["list"], code_digest=code_digest(), environment=read.place, instrument=first["instrument"], instrument_name=args.instrument, own_path_anchors=path_names, length_over_monocular=length_over_monocular, draws=draws, draws_note=None if tuple(draws) == DRAWS else f"fewer than eight: {draws}", stage=stage, seeds=list(SEEDS), disclosures=DISCLOSURES, cost_estimate=COST_ESTIMATE, alerts=alerts, stored=dict(report_sha256=STORED_REPORT_SHA, digest=STORED_DIGEST) if read.stored_composition else None,
+    stage = dict(planned_draws=[int(x) for x in args.planned_draws.split(",") if x] if args.planned_draws else draws, draws=draws, stop_reason=args.stop_reason, elapsed_seconds=args.elapsed_seconds, budget_seconds=args.budget_seconds)
+    report = dict(kind=f"{PROBE}-report", report_only=True, note=C.NOT_DECIDED, reading=READING, reading_contrasts=reading_contrasts(paired, args.instrument), rerun_cause=args.rerun_cause, declared_read=declared, smoke=None if declared else "SMOKE: composed D20 sentences against c02 train references; these numbers are plumbing, not a read", list=first["list"], code_digest=code_digest(), environment=read.place, instrument=first["instrument"], instrument_name=args.instrument, own_path_anchors=path_names, length_over_monocular=length_over_monocular, draws=draws, draws_note=None if tuple(draws) == DRAWS else f"fewer than eight: {draws}", stage=stage, seeds=list(SEEDS), disclosures=DISCLOSURES, cost_estimate=COST_ESTIMATE, alerts=alerts, stored=dict(report_sha256=STORED_REPORT_SHA, digest=STORED_DIGEST) if read.stored_composition else None,
                   anchors=anchor_report(forms, args.instrument, idx), real_hypotheses=real_hypotheses, composition=composition, forms=blocks, groups=groups, paired=paired, parent_on_mirror_draws=beside, oracle_coverage=coverage, orders={str(k): composed[k]["orders"] for k in draws}, identity={str(k): composed[k]["identity"] for k in draws},
                   checks=dict(controls=dict(anchors=read.control, **(dict(comp_check=read.comp_check) if read.stored_composition else {})), blank_identical_to_real=round(float(np.mean([a == b for a, b in zip(anchors["blank"]["hypotheses"], anchors["real_two_view"]["hypotheses"])])), 4)),
                   resources=dict(forms={k: {x: r[x] for x in ("peak_rss_bytes", "gpu_peak_reserved_bytes", "build_seconds", "read_seconds")} for k, r in forms.items()}, compose_seconds={str(k): composed[k]["seconds"] for k in draws}))
@@ -1363,6 +1459,8 @@ def build_parser() -> argparse.ArgumentParser:
     state.add_argument("--store", default="r2")
     state.add_argument("--key", required=True)
     state.add_argument("--file", required=True)
+    state.add_argument("--record", help="the stage's record, written when its report is restored")
+    state.add_argument("--planned-draws", help="what this run plans, comma list; a restored report must hold the same")
     compose = sub.add_parser("compose", help="one draw's forms; no instrument is loaded")
     compose.add_argument("--store", default="r2")
     compose.add_argument("--draw", type=int, required=True)
@@ -1412,6 +1510,8 @@ def build_parser() -> argparse.ArgumentParser:
     merge.add_argument("--planned-draws", help="what the job planned, comma list; default --draws")
     merge.add_argument("--stop-reason", default="not_recorded")
     merge.add_argument("--elapsed-seconds", type=int)
+    merge.add_argument("--budget-seconds", type=int)
+    merge.add_argument("--rerun-cause")
     check = sub.add_parser("check")
     check.add_argument("--report", required=True)
     upload = sub.add_parser("upload")
