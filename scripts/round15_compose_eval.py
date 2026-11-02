@@ -102,6 +102,11 @@ as ``<prefix>/states/<sign hash>-<form>.npz``, and ``<prefix>/index.json`` recor
 The report is unchanged by the option. ``--export-only`` stops after the export: only the listed clips' forms are composed
 and nothing is read by an instrument; the states are the full run's, bit for bit. A sentence with no selected word has
 no signing (it is its blank clip in every read): its row says ``empty``, and the packet builder refuses it.
+
+**--export-word-format** (the rater pilot's report-only arms, ``scripts/rater_word_format.py``; off by default, needs
+``--export-only``, a word cache and one exported form): the same run also writes, for the list's ``pilot`` sentences alone,
+``<prefix>/word-format/composition_shuffled/index.json`` and ``<prefix>/word-format/oracle/index.json``, each a
+composed-state index of one form that ``how2sign-packet`` takes as a ``composition:`` system.
 """
 from __future__ import annotations
 
@@ -399,26 +404,30 @@ def load_segment_pools(store, args, vmanifest, vocab) -> tuple[dict, dict]:
     return asllrp_segments(utterances, gloss, vocab, signbank, codes, semlex)
 
 
-def render_round20(args, material, job, reference_seconds, model, vocab, *, order, sample_id, space):
+def render_round20(args, material, job, reference_seconds, model, vocab, *, order, sample_id, space, keep_frames=False):
     """(state, plan) of one composition with the round-20 options: ``--retime continuous`` (the continuous-pace plan
-    with velocity-bounded bridges and ``--tempo``) or the round-15 rendering, then ``--lowpass-hz``."""
+    with velocity-bounded bridges and ``--tempo``) or the round-15 rendering, then ``--lowpass-hz``. ``keep_frames``: as
+    ``round15_stage2.render_form``, the frames planned in sentence order and each word keeping its own."""
     import round15_stage2 as r2
     from signtranslator.generation import composition_v2 as cv2
     if args.retime == "continuous":
         from signtranslator.generation.compositional import parts_from_pieces, render
         idx = list(range(len(job["words"]))) if order is None else list(order)
         parts = material["parts"] if order is None else parts_from_pieces(material["pieces"], idx)
-        secs = [cv2.continuous_seconds(job["words"][k], model["timing"], vocab, args.continuous_ratio) for k in idx]
-        plan = cv2.continuous_plan(parts["cores"], [s for s, _ in secs], reference_seconds,
-                                   gap_seconds=model["timing"]["gap"], tempo=args.tempo, total_fit="pad",
+        planned = list(range(len(job["words"]))) if keep_frames else idx
+        secs = [cv2.continuous_seconds(job["words"][k], model["timing"], vocab, args.continuous_ratio) for k in planned]
+        plan = cv2.continuous_plan((material["parts"] if keep_frames else parts)["cores"], [s for s, _ in secs],
+                                   reference_seconds, gap_seconds=model["timing"]["gap"], tempo=args.tempo, total_fit="pad",
                                    lead_share=model["timing"]["lead_share"], velocity=not args.no_bridge_velocity,
                                    min_speed=args.bridge_min_speed, max_gap_seconds=args.bridge_max_seconds)
         plan["sources"] = [src for _, src in secs]
+        if keep_frames:
+            plan = dict(plan, cores=[plan["cores"][k] for k in idx], sources=[plan["sources"][k] for k in idx])
         state = render(parts, plan, sample_id=sample_id, bridge_mode=args.bridge)
     else:
         state, plan = r2.render_form(material, job, reference_seconds, model, timing=args.timing,
                                      total_fit=args.total_fit, order=order, sample_id=sample_id, space=space,
-                                     bridge=args.bridge)
+                                     bridge=args.bridge, keep_frames=keep_frames)
     if args.lowpass_hz:
         state = cv2.lowpass_state(state, args.lowpass_hz)
     if getattr(args, "arm_scale", None):
@@ -554,7 +563,10 @@ def load_export_list(args, val) -> dict:
     outside = sorted(s for s in signs if s not in known)
     if outside:
         raise SystemExit(f"{len(outside)} listed sentences are not in this run's set: {outside[:5]}")
-    return dict(name=listing["name"], sha256=sha, signs=frozenset(signs))
+    pilot = list(listing.get("pilot") or ())
+    if any(s not in signs for s in pilot):
+        raise SystemExit("the export list's pilot sentences are not among its sentences")
+    return dict(name=listing["name"], sha256=sha, signs=frozenset(signs), pilot=pilot)
 
 
 def word_picks(store, args) -> dict:
@@ -622,7 +634,8 @@ def export_states(store, args, export, forms, jobs, material, val, plans_out, re
                              words=([] if job is None
                                     else word_provenance(material[(variant, "", i)]["segments"], picks))))
     settings = {k: v for k, v in sorted(vars(args).items())
-                if k not in ("output_key", "output_file", "cache_dir", "store", "command", "export_prefix", "export_arm")}
+                if k not in ("output_key", "output_file", "cache_dir", "store", "command", "export_prefix", "export_arm",
+                             "export_word_format", "word_format_seed", "word_format_corpora", "word_format_licence_note")}
     index = dict(kind="round15-composed-states", arm=args.export_arm, prefix=args.export_prefix,
                  sentences=dict(name=export["name"], sha256=export["sha256"], listed=len(export["signs"])),
                  sentence_set=sentence_set, word_cache=word_cache, generator_mix=generator_mix,
@@ -641,7 +654,8 @@ def export_errors(p, args, variants, store) -> None:
     given = [flag for flag, on in (("--export-arm", args.export_arm),
                                    ("--export-sentences-file", args.export_sentences_file),
                                    ("--export-sentences-sha256", args.export_sentences_sha256),
-                                   ("--export-forms", args.export_forms), ("--export-only", args.export_only)) if on]
+                                   ("--export-forms", args.export_forms), ("--export-only", args.export_only),
+                                   ("--export-word-format", args.export_word_format)) if on]
     if not args.export_prefix:
         if given:
             p.error(f"{', '.join(given)}: given without --export-prefix")
@@ -662,6 +676,16 @@ def export_errors(p, args, variants, store) -> None:
                                          or (mark == LOWPASS[1:] and args.lowpass_report_hz))
         if not known:
             p.error(f"--export-forms: {name} is not a form of this run")
+    if args.export_word_format:
+        from rater_word_format import check_oracle_corpora, parse_corpora
+        names = [f for f in args.export_forms.split(",") if f] if args.export_forms else list(variants)
+        if not args.export_only or not args.word_cache_key:
+            p.error("--export-word-format needs --export-only and a --word-cache-key: it moves or replaces cached words")
+        if len(names) != 1 or names[0] not in ("core_crossfade", f"core_crossfade{PREDICTED}"):
+            p.error("--export-word-format exports one form: core_crossfade or core_crossfade@predicted")
+        if args.timing == "stage1":
+            p.error("--export-word-format needs the asllrp or sign-fitted timing")
+        check_oracle_corpora(parse_corpora(args.word_format_corpora), args.word_format_licence_note)
     if store.exists(f"{args.export_prefix}/index.json"):
         raise SystemExit(f"{args.export_prefix}/index.json exists: refusing to overwrite")
 
@@ -779,6 +803,9 @@ def run(args) -> dict:
     orders = [shuffle_order(len(pl["entries"]), i, 0) for i, pl in enumerate(plans)]
     mine = shard_clips(n, args.shard, args.shards, args.block)
     export = load_export_list(args, val) if getattr(args, "export_prefix", None) else None
+    if getattr(args, "export_word_format", False):
+        from rater_word_format import check_export_inputs
+        check_export_inputs(export, val, sentence_set)         # before anything is composed or written
     export_only = bool(export) and args.export_only
     if export_only:                                  # only the listed clips' forms; positions stay the whole set's
         mine = [i for i in mine if val[i]["sign"] in export["signs"]]
@@ -998,6 +1025,15 @@ def run(args) -> dict:
         exported = export_states(store, args, export, forms, jobs, material, val, plans_out, refs, model=model,
                                  corpora=corpora, sentence_set=sentence_set, generator_mix=generator_mix,
                                  word_cache=word_cache)
+        if getattr(args, "export_word_format", False):
+            from rater_word_format import export_word_format
+            export_word_format(store, args, exported, export=export, val=val, jobs=jobs, material=material, plan_model=plan_model,
+                               vocab=vocab, model=model, manifest=manifest, pool_manifest=vmanifest, fractions=fractions,
+                               margin=margin, rule=rule, added=frozenset(arm["entries"]) if arm else frozenset(),
+                               seconds=seconds, duration_model=r20_info.get("duration_model"), word_cache=word_cache,
+                               render=lambda source, job, secs, order, keep, sample_id: render_round20(
+                                   args, source, job, secs, model, vocab, order=order, sample_id=sample_id, space=space,
+                                   keep_frames=keep))
         if export_only:
             return exported
     refiner_info = None
@@ -1610,6 +1646,13 @@ def main(argv=None) -> int:
                    "<variant>@predicted and <variant>@lowpass with their options)")
     e.add_argument("--export-only", action="store_true", help="stop after the export: only the listed clips' forms, "
                    "no instrument read; --output-file/--output-key receive the index")
+    e.add_argument("--export-word-format", action="store_true", help="also the rater pilot's report-only arms, on the "
+                   "list's pilot sentences: composition_shuffled and oracle (module docstring)")
+    e.add_argument("--word-format-seed", type=int, default=0, help="the shuffled order's and the real-clip pick's seed")
+    e.add_argument("--word-format-corpora", default="asllvd-text-v1", help="the oracle's real clips, train only; any but "
+                   "ASLLVD needs --word-format-licence-note (reviewer_package/OPERATOR_GUIDE.md section 0)")
+    e.add_argument("--word-format-licence-note", help="the owner's recorded confirmation that these corpora's terms allow "
+                   "showing them to raters; kept in the index")
     m = sub.add_parser("merge", help="combine the shards and score")
     m.add_argument("--shard-keys", default="")
     m.add_argument("--shard-files")

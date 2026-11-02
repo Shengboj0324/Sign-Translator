@@ -21,13 +21,15 @@ Reviewers never receive this guide, `key/`, any CSV or any script.
   | How2Sign val (signers 3, 1/2 and 11), CC BY-NC 4.0 | Yes |
   | ASLLRP / DAI 2 / ASLLVD val | Yes, under the DAI terms |
   | ASL Citizen | **No.** Its consent covers recognition only. |
+  | ASL STEM Wiki | **No.** |
   | YouTube-ASL | **No.** It is not redistributable. |
   | WLASL (C-UDA, "computational use") | Not unless you confirm its terms allow it |
   | Sem-Lex | Not unless you confirm its terms allow it |
   | RIT | Not unless you confirm its terms allow it |
 
   The round-15 oracle draws real words from ASLLVD, RIT, WLASL and Sem-Lex (`compositional.ROUND15_CORPORA`).
-  Filter anchors by each record's `corpus` before rendering.
+  Filter anchors by each record's `corpus` before rendering. The pilot's `oracle` arm (§10) does this itself: ASLLVD unless you
+  give `--word-format-licence-note`, for RIT and WLASL only.
 - **Avatar only.** Every condition, including the real-signer anchors, is shown through the same avatar renderer.
   Original source video would reveal which clips are real. Optionally, show one original How2Sign val video as an
   unscored warm-up.
@@ -36,7 +38,7 @@ Reviewers never receive this guide, `key/`, any CSV or any script.
 
 - Python: `~/.venvs/sign-translator/bin/python`, run from the repo root. R2 reads need the `R2_*` environment variables.
 - Blender 5.2 at `/Applications/Blender.app` (the `render_avatar.py` default; `--blender` to override). An avatar render
-  takes about 45 s per clip on the Mac.
+  takes about 13 s for a 147-frame clip at 768 px on the Mac, measured.
 - Mac outage rule: 1 BLAS thread (`OMP_NUM_THREADS=1`), at most 6 processes, run under `nice`.
 - Project rule: every avatar render is also kept in full in the private R2 `renders/` prefix with `INDEX.json`.
   Reviewer answers never go there.
@@ -74,13 +76,13 @@ the same utterances, hides the system labels and writes the private key:
 Use this for an anchor clip of a How2Sign or ASLLRP val record: the manifest record's `continuous.state_key` and
 `state_sha256`. The output is `avatar.mp4` plus `verification.json`.
 
-**2c. NOT BUILT: the clips the current milestone needs.**
-- Round-15 compositions (core_crossfade, the refiner) and their `/rest_only` and `/mismatched_words` controls.
-  `round15_compose_eval.py` and `round15_stage2.render_form` build these states only in memory and never save or
-  render them. A state exporter is needed (`--save-states-dir`, or a `compose:` system kind in the packet builder).
+**2c. How2Sign sentences and compositions (built, on test data only so far).** `round15_compose_eval.py --export-prefix` saves
+composed states, `--export-word-format` adds the pilot's two report-only arms, and `build_human_eval_packet.py` has `how2sign-draw`,
+`how2sign-packet` and `how2sign-stage2` (§10, protocol §5).
+
+**NOT BUILT:**
+- The `/rest_only` and `/mismatched_words` controls, and the refiner's forms, as packet systems. The export takes main forms.
 - Isolated-word items. The packet builder designs sentence items only.
-- How2Sign sentence items. The builder needs an ASLLRP plan manifest (plan plus markers), and How2Sign val has no
-  plans, so it needs a mode without grammatical truth.
 - Blank (rest pose for the clip's duration) and mismatched systems in the packet builder.
 
 ## 3. Study design
@@ -200,7 +202,9 @@ Misunderstood items and the notes guide the next round. Free text enters trainin
 ## 9. Still to build or decide
 
 **Build:**
-- Avatar rendering of round-15 compositions and their controls (§2c). State export and the How2Sign sentence packet mode are built for the first rater read (§10), on test data only so far.
+- Avatar rendering of round-15 controls (§2c). State export, the How2Sign sentence packet mode and the pilot's word-format arms are built for the first rater read (§10), on test data only so far.
+- How the sheets reach raters and how stage 2 is held back (§10). Nothing exists for it, and the two-stage guide assumes a rater edits a CSV and computes a SHA-256.
+- A per-sentence comparison of the human scores with the instruments (protocol §7). The scorer does not do it.
 - Isolated-word packet mode.
 - Blank and mismatched systems in the packet builder.
 - A `--guide` option, so the packet carries `FOR_REVIEWERS.md` instead of the technical guide.
@@ -216,6 +220,9 @@ Misunderstood items and the notes guide the next round. Free text enters trainin
 - Whether to use the sentence add-on.
 - Whether and when final-test (signer 9) material is shown.
 - Which restricted sources (WLASL, Sem-Lex, RIT) may appear as anchors.
+- Which composition arm, and which timing, raters see (§10).
+- What to do with a drawn sentence that has no selected word: the packet builder refuses it, and D20 has six (§10).
+- The pilot's size, before `how2sign-draw` runs (§10).
 
 ## 10. First rater read: notes for the owner (2026-11-01)
 
@@ -223,7 +230,7 @@ This read is diagnostic. It can't clear the release bar, because timing, signers
 
 **What you need to do:**
 - Recruit 9 Deaf raters plus 2 for the pilot, and one Deaf checker who is not a rater. The checker confirms which real recordings sign a negation, and must not see any generated clip.
-- Set pay. The plan assumes about 67 rater hours, about $2,700 at $40/h. That rate is an assumption. Adding stitched real clips as a fourth system costs about $900 more, and is the one direct test of whether our scorer undervalues stitching.
+- Set pay. Nine raters at 6.7 hours are about 60 rater hours, about $2,400 at $40/h. That rate is an assumption. Adding stitched real clips as a fourth system to the main read costs about $800 more (three more raters), and is the one direct test of whether our scorer undervalues stitching. The pilot's `oracle` arm is a much smaller look at the same thing.
 - Get ethics or IRB review, and finish `CONSENT_FORM.md`.
 - Arrange ASL instructions or an interpreter.
 - Choose how sheets and videos reach raters. Nothing is built for this. It must hold stage 2 back until stage 1 is returned.
@@ -256,7 +263,18 @@ About 15 raters give 81% at a true 5-point gap, and about 45 give 77% at a true 
 - Everything has run on test data only. The draw and export have not run on real D20, and the plan's 427 eligible and 80 negated sentences are unconfirmed.
 - The avatar renderer has not been rerun since the timing change. The avatar is still bald and flat, hands can pass through the body, and shake isn't fixed. The pilot decides whether it's good enough.
 - The tooling gets one more independent check before any sheet goes out.
-- Wait for the composition tests (left-arm hold, added words) before rendering, because they may change which version raters should see.
+- Which version raters see is still open. The composition tests have read (left-arm hold failed its rule, added words not confirmed over eight draws); nobody has chosen the arm or the timing since. Choose before rendering.
+- The packet builder refuses a drawn sentence with no selected word, and says the terms do not settle it. D20 has six. If all six are eligible, the draw of 220 of 427 almost certainly holds one, and a pilot of 20 about one time in four. Decide how to count them before `how2sign-draw`.
+
+**The pilot's two extra arms (declared 2026-11-02, 18:22 UTC):**
+- **What and why.** All three automatic instruments reward English word order, and they can't say whether a person would follow it. So the pilot adds `composition_shuffled` (the same clips in a seeded random order) and `oracle` (real word clips stitched the same way). Report only: they never count towards the release bar, the bar read refuses a key that holds them, and the builder refuses them in the main set.
+- **Rater load.** Unchanged: 20 sentences each, about 40 minutes of stage 1 at an assumed 2 minutes per item, then stage 2 once stage 1 is back. Time it. Only half the clips each rater sees are composition or real signing: the rest are scrambled or stitched real words. `FOR_REVIEWERS.md` already says some videos may be bad on purpose; add nothing about order.
+- **Put the two pilot raters in groups 0 and 2,** with `--system` in the order shuffled, oracle, composition, reference. Don't use one group: it gives no pairs at all. The pilot therefore has no kappa.
+- **What two raters can tell you:** whether the sheets, guide and timing work, whether anyone can answer at all, and what they say unprompted. **What they can't:** whether order matters, or how much. The interval on the shuffled contrast is about plus or minus 39 points. If you want the answer, 60 sentences and 8 raters (2 per group, about 16 rater hours, about $640 at $40/h) detect a true 20-point drop 86% of the time and a 10-point one 29%, simulated. That needs `how2sign-draw --pilot 60` before the draw is made, and it can't be added afterwards. Keep it out of the main read: four groups or more would thin the bar's ratings per system from 600 towards 360 at nine raters.
+- **Pilot raters don't join the main read.** They've seen the scrambled forms.
+- **The pilot's real clips** are ASLLVD train records, under the DAI terms. §0's table says "ASLLVD val"; val covers only about 31% of composition's words, against about 90% for train, so please confirm train clips are fine under the DAI terms before rendering. With ASLLVD alone, about 45% of sentences keep every word when composition uses no added words (about 10% with the top-10 added words). RIT and WLASL would raise this only with your recorded confirmation of their terms.
+- **Tell the ethics reviewer** that raters aren't told some clips are deliberately out of order, and ask whether to debrief them after all sheets are back. Protocol §4 says raters are told the purpose; this is a partial disclosure.
+- **The pilot needs the Deaf checker first:** the builder won't make any packet until the checker's negation sheet is complete, even though the pilot holds no negation candidate.
 
 **Open items you deferred or should know about:**
 - **Consent, deferred until the model finishes (your decision, 2026-10-31).** Recogniser v3d, trained on ASL Citizen, chooses the best-of-16 words that raters would see. ASL Citizen's consent covers sign language recognition. An ethics reviewer may ask about this, so have the answer ready.

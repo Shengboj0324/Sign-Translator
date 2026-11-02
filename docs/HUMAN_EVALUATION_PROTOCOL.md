@@ -30,6 +30,8 @@ Every utterance is signed by every system (`--system`):
 | `translate` | Gloss planner -> plan -> the same generator | The full English -> ASL chain |
 | `english` | Generator conditioned on English directly | The pre-plan baseline |
 | `composition` | A composed state exported by `round15_compose_eval.py --export-prefix` (first How2Sign read) | The composition arm, with its cache and seeds recorded |
+| `composition_shuffled` | The same composition's clips in a seeded random order, every word kept, at its frame count (`--export-word-format`). First How2Sign read's pilot only, report only | Does English word order help a Deaf rater follow it, and by as much as it helps the instruments? |
+| `oracle` | The same word list as real word clips, by chance pick, stitched the same way through the same tokenizer round trip, at its frame count (`--export-word-format`). Pilot only, report only | What generated clips cost a person, against what the word-by-word format costs |
 
 All systems sign on the recorded utterance's clock, so duration is no cue. Every video is drawn identically:
 - four skeleton panels (front, side, each hand) and a schematic face panel (`generation/face_preview.py`: head turn,
@@ -38,7 +40,7 @@ All systems sign on the recorded utterance's clock, so duration is no cue. Every
   reveal the recording.
 
 `--renderer avatar` draws every system on the MakeHuman avatar instead (`scripts/render_avatar.py`; Blender Workbench,
-front camera, ~45 s per clip on the Mac), the preferred renderer for the study.
+front camera, about 13 s for a 147-frame clip at 768 px on the Mac, measured), the preferred renderer for the study.
 
 **Known limit:** the skeleton and the schematic face show the grammar channels, but not appearance. Results describe
 these renders. They do not describe an avatar (item 5), and the study is re-run when the avatar exists.
@@ -69,6 +71,26 @@ these renders. They do not describe an avatar (item 5), and the study is re-run 
     answer without a matching stage 1 hash.
   - The sentence type and topic have no truth on How2Sign (no ASLLRP markers): asked, reported, not scored. Negation
     truth is the Deaf checker's (section 6).
+- **Word-format arms (first How2Sign read's pilot only; report only; declared 2026-11-02, 18:22 UTC, in `docs/NEXT_PHASE_PLAN.md`):**
+  - **They count towards nothing.** The bar read refuses a key that holds them, and the builder refuses them in the main set.
+  - **They fit the Latin square as it stands.** The pilot is four systems and four groups: `composition`, `composition_shuffled`,
+    `oracle`, `reference`. A rater still sees each sentence once and 20 sentences in all: adding a system changes which
+    video a rater sees of each sentence, not how many.
+  - **Two raters go in opposite groups, g and g + 2,** not one group. Give `composition_shuffled` two places from `composition`
+    in `--system`, which the builder enforces. Each rater then sees each sentence once, each arm on 5 sentences, and shuffled
+    against composition is paired on 10 sentences, 5 each way round, so a rater's leniency cancels; the reference against the
+    oracle likewise. Adjacent groups would give each arm of a pair to one rater. One group would give no pair at all.
+    **The cost:** no sentence has two ratings of one video, so the pilot gives no Fleiss' kappa.
+  - **What two raters can show:** that the sheets, the guide and the timing work; whether raters can answer at all; floors and
+    ceilings; unprompted notes on word order. **What they cannot show:** the size of any contrast, or its absence. Simulated
+    (logit model of section 6's simulations, 20-point true drop from 60%): plus or minus 39 points, and detected 2% of the time.
+    Oracle against composition is not paired at all with two raters, and reads within each rater, across different sentences.
+    Reading the question properly needs about 60 sentences and 8 raters, 2 per group: plus or minus 11 points, 86% at a true
+    20-point drop, 29% at a 10-point one, about 16 rater hours.
+  - **Forced choice alone cannot settle word order:** a rater who catches two content words can pick the right sentence in any
+    order. The stage 1 free translation and naturalness are where it can show.
+  - **Oracle against composition mixes real clips with fewer words,** since a word with no permitted real clip is dropped. It is
+    also read on the sentences where the oracle kept every word (`same_words`).
 - **Blinding:**
   - Item ids and video names are random, and the presentation order is shuffled per group.
   - System labels, correct options and markers exist only in `key/key.json`, which is hashed and never sent.
@@ -118,6 +140,15 @@ example NIC/RID certification or ASL teaching credentials).
 4. As each stage 1 returns, `how2sign-stage2` hashes it, records the receipt and writes that rater's stage 2.
 5. `score_human_eval.py --key … --sheet <stage 1> … --stage2-sheet <stage 2> … --stage1-receipts … --roster … --bar`.
 
+**Its pilot, with the word-format arms** (nothing here has run on real data; the draw and the checker's sheet come first):
+
+1. Add `--export-word-format --word-format-seed 0` to the arm's `round15_compose_eval.py … --export-only` command. It takes one form,
+   and writes `<prefix>/word-format/composition_shuffled/index.json` and `<prefix>/word-format/oracle/index.json` for the draw's pilot
+   sentences alone. Real clips are ASLLVD train records; RIT and WLASL need `--word-format-corpora` and `--word-format-licence-note`.
+2. `build_human_eval_packet.py how2sign-packet --set pilot`, with `--system` in this order: `composition_shuffled`, `oracle`, `composition`,
+   `reference`, each new arm as `LABEL=composition:<its index>@<its hash>`. A sentence the oracle has no word for leaves the pilot, listed in the key.
+3. Roster two raters in groups 0 and 2. Stage 2 and scoring as above, **without `--bar`**: the scorer adds `report["word_format"]`, and `--bar` is refused.
+
 ## 6. Analysis (fixed before any sheet returns)
 
 | Endpoint | Statistic | Reading |
@@ -129,6 +160,7 @@ example NIC/RID certification or ASL teaching credentials).
 | Naturalness | Mean, bootstrap 95% interval | Ordinal; the means are descriptive |
 | Agreement | Fleiss' kappa (choice, sentence type, naturalness) | Below 0.4 the question or the guide is unclear; fix it before the full study |
 | Free translation | Indicative BLEU vs the English | The team scores propositions by hand (EVALUATION_FRAMEWORK §6) |
+| Word-format contrasts (pilot, report only) | Per sentence paired difference, sign-flip permutation p, bootstrap interval: shuffled minus composition, also on the sentences whose word sequence moved; oracle minus composition, also where the oracle kept every word; reference minus oracle; reference minus composition. On choice, naturalness, the translation's content words (order-free; a blank translation is 0) and sentence BLEU. On choice also method D with t(R−1), rater balance, and each rater's difference across their own sentences | Above or below only if method D's two-sided interval excludes zero and p is under .05 in the same direction, with a rater seeing both arms; otherwise unresolved, never "small". (composition − shuffled) / (composition − chance) on moved sentences stands beside the instruments' 39–51%, no cut; neither a large nor a small share is the better outcome. Never a bar condition |
 
 - Every endpoint is reported per system.
 - Rows a reviewer marks `viewable = no` are counted and excluded.

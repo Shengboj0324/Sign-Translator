@@ -24,7 +24,7 @@ guide. It does not replace the study protocol or its code, which stay where they
 | `Sign Translator Stage Documentation/evidence/avatar-retarget-2026-10-22/` | Verification records of the first avatar renders |
 | `scripts/render_text_to_motion_samples.py` | Side-by-side skeleton previews of real and generated motion. An inspection aid, not for reviewers |
 | `signtranslator/generation/skeleton_preview.py`, `generation/face_preview.py` | Skeleton renderer with a face panel (the packet's default renderer) |
-| `scripts/round15_stage2.py` (`render_form`), `scripts/round15_compose_eval.py` | Round-15 compositions (core_crossfade, oracle) and their controls (`/mismatched_words`, `/shuffled`, `/rest_only`). The states are built in memory only and are never saved or rendered to video. |
+| `scripts/round15_stage2.py` (`render_form`), `scripts/round15_compose_eval.py`, `scripts/rater_word_format.py` | Round-15 compositions (core_crossfade, oracle) and their controls (`/mismatched_words`, `/shuffled`, `/rest_only`). `--export-prefix` saves main forms, and `--export-word-format` the pilot's shuffled and real-clip arms; the other controls stay in memory only. |
 | `tests/test_render_avatar.py`, `tests/test_avatar_retarget.py` | Tests for the renderer |
 
 ## Earlier review packet (gloss review)

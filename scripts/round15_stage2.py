@@ -206,12 +206,18 @@ def plan_jobs(variants, plans, content_perm, orders, *, seconds=None, vocab=None
 
 
 def render_form(material, job, reference_seconds, model, *, timing: str, total_fit: str = "pad", order=None,
-                gap_seconds=None, sample_id: str = "round15-stage2", space=None, bridge: str = "linear"):
+                gap_seconds=None, sample_id: str = "round15-stage2", space=None, bridge: str = "linear",
+                keep_frames: bool = False):
     """(state, plan) of one composition from its material under a timing mode (module docstring). ``order``
     reorders a pieces-based composition's matched words (/shuffled); a chained shuffled form is its own job.
     ``space`` (``{"stats", "target"}``): the word clips are put in one signing space first
     (``composition_space.space_normalise``; pieces-based compositions only; its info joins the plan as ``space``);
-    ``bridge``: ``linear`` or ``minimum-jerk`` (``compositional.render``). Both are off by default."""
+    ``bridge``: ``linear`` or ``minimum-jerk`` (``compositional.render``). Both are off by default.
+    ``keep_frames`` (the rater pilot's shuffled form; off by default): the frames are planned in sentence order, then
+    each word keeps its planned core frames and the gap lengths keep their places, so the total is the unshuffled
+    form's and every word's core is resampled to the same frames. Without it ``order`` re-allocates frames by weight."""
+    if keep_frames and (order is None or timing == "stage1"):
+        raise ValueError("keep_frames moves a planned order: it needs an order and the asllrp or sign-fitted timing")
     if space is not None or bridge != "linear":
         if timing == "stage1":
             raise ValueError("space normalisation and minimum-jerk bridges apply to the asllrp and sign-fitted timings")
@@ -228,10 +234,13 @@ def render_form(material, job, reference_seconds, model, *, timing: str, total_f
             parts = parts_from_pieces(pieces)
         else:
             parts = material["parts"] if order is None else parts_from_pieces(material["pieces"], idx)
+        planned = range(len(job["words"])) if keep_frames else idx
         if timing == "sign-fitted":
-            plan = cg.fitted_plan([job["weights"][k] for k in idx], cg.gap_ratio(model["timing"]), reference_seconds)
+            plan = cg.fitted_plan([job["weights"][k] for k in planned], cg.gap_ratio(model["timing"]), reference_seconds)
         else:
-            plan = frame_plan([job["targets"][k] for k in idx], reference_seconds, model, total_fit, gap_seconds)
+            plan = frame_plan([job["targets"][k] for k in planned], reference_seconds, model, total_fit, gap_seconds)
+        if keep_frames:
+            plan = dict(plan, cores=[plan["cores"][k] for k in idx])
         state = render(parts, plan, sample_id=sample_id, bridge_mode=bridge)
         return state, dict(plan, **({"space": info} if info else {}), bridge=bridge)
     from signtranslator.generation import compositional_grammar as cg
@@ -250,10 +259,13 @@ def render_form(material, job, reference_seconds, model, *, timing: str, total_f
         return state, dict(fit="stage1", frames=len(state.timestamps), overlong=False, truncated_signs=0,
                            durations=[round(job["durations"][k], 4) for k in idx], cores=frames, gaps=[])
     parts = material["parts"] if order is None else parts_from_pieces(material["pieces"], idx)
+    planned = range(len(job["words"])) if keep_frames else idx
     if timing == "sign-fitted":
-        plan = cg.fitted_plan([job["weights"][k] for k in idx], cg.gap_ratio(model["timing"]), reference_seconds)
+        plan = cg.fitted_plan([job["weights"][k] for k in planned], cg.gap_ratio(model["timing"]), reference_seconds)
     else:
-        plan = frame_plan([job["targets"][k] for k in idx], reference_seconds, model, total_fit, gap_seconds)
+        plan = frame_plan([job["targets"][k] for k in planned], reference_seconds, model, total_fit, gap_seconds)
+    if keep_frames:
+        plan = dict(plan, cores=[plan["cores"][k] for k in idx])
     return render(parts, plan, sample_id=sample_id), plan
 
 

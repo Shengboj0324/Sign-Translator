@@ -42,7 +42,9 @@ defined"), two subcommands, D20 only:
    and nothing else (``d20_distractor_pool`` refuses more; the whole-partition pool would read C20 and fresh text), and
    the key is checked for it. The sentence type and topic have no truth here and are not scored. Every system is drawn
    by the same renderer on a rebuilt clock (t0 + n/fps); item ids come from a secret source; zip times are fixed; the
-   summary gives MP4 bytes per frame by system. The packet holds stage 1 only: no options.
+   summary gives MP4 bytes per frame by system. The packet holds stage 1 only: no options. An index written by
+   ``round15_compose_eval.py --export-word-format`` is a word-format arm (``check_word_format``): pilot only, report only, and
+   the key says so.
 3. ``how2sign-stage2``: when a rater returns stage 1, hash it, record the receipt and write that rater's stage 2 sheet
    (the options and the forced choice). Stage 1 is final once released.
 
@@ -74,8 +76,8 @@ from signtranslator.data_engineering.corpus_manifest import load_manifest  # noq
 from signtranslator.eval_framework.human_study import (design_study, draw_study_sentences, key_sha256,  # noqa: E402
                                                        negation_stratum, negation_truth, negation_words,
                                                        parse_negation_sheet, parse_roster, parse_stage1, strata_shares,
-                                                       write_negation_sheet, write_sheet, write_stage1_sheet,
-                                                       write_stage2_sheet)
+                                                       word_format_pairing, write_negation_sheet, write_sheet,
+                                                       write_stage1_sheet, write_stage2_sheet)
 
 GUIDE = ROOT / "docs" / "HUMAN_EVALUATION_REVIEWER_GUIDE.md"   # what reviewers read (the protocol stays with the team)
 TWO_STAGE_GUIDE = ROOT / "docs" / "HUMAN_EVALUATION_REVIEWER_GUIDE_TWO_STAGE.md"
@@ -326,10 +328,13 @@ def load_composition(store, spec: dict, *, signs, list_sha256: str, sentences_sh
     if any(len(v) > 1 for v in rows.values()):
         raise SystemExit(f"{spec['key']} holds several forms of a sentence: export one form per arm")
     missing = sorted(s for s in signs if s not in rows)
+    word_format = index.get("word_format")
+    if missing and word_format:
+        raise SystemExit(f"{spec['label']} is a word-format arm, report-only and pilot only: it holds the draw's pilot sentences alone")
     if missing:
         raise SystemExit(f"{spec['key']} lacks {len(missing)} sentences: {missing[:3]}")
     empty = sorted(s for s in signs if rows[s][0]["empty"])
-    if empty:
+    if empty and (word_format or {}).get("role") != "oracle":      # the oracle's: check_word_format drops them from the pilot
         raise SystemExit(f"{spec['label']}: {len(empty)} sentences have no selected word, so no signing to show: "
                          f"{empty}. The declared terms do not say how to count them: decide before building")
     chosen = {s: rows[s][0] for s in signs}
@@ -340,7 +345,53 @@ def load_composition(store, spec: dict, *, signs, list_sha256: str, sentences_sh
         raise SystemExit(f"{spec['label']}: several forms in one arm: {sorted(forms)}")
     timings = {composition_timing(r, spec["label"]) for r in chosen.values()}
     return dict(arm=index["arm"], word_cache=index.get("word_cache"), rows=chosen, form=next(iter(forms)),
-                timing=next(iter(timings)))
+                timing=next(iter(timings)), word_format=word_format)
+
+
+def check_word_format(systems: list[dict], compositions: dict, *, which: str, signs: list[str]) -> dict | None:
+    """The pilot's word-format arms, checked before anything is rendered; None when the packet has none. Pilot only; one
+    plain composition, one shuffled and one oracle of that same composition, and the reference; every sentence at the
+    composition's frame count; the shuffled form holding exactly the composition's words, the oracle a part of them, from a
+    permitted corpus. A sentence the oracle has no word for leaves the pilot, listed in the key, before the design is drawn."""
+    from collections import Counter
+    from rater_word_format import check_oracle_corpora, ORACLE, SHUFFLED
+    arms = {label: c for label, c in compositions.items() if c.get("word_format")}
+    if not arms:
+        return None
+    if which != "pilot":
+        raise SystemExit("the word-format arms are report-only and pilot only: not in the main set")
+    by_role = {c["word_format"]["role"]: label for label, c in arms.items()}
+    plain = [label for label in compositions if label not in arms]
+    if len(arms) != 2 or set(by_role) != {SHUFFLED, ORACLE} or len(plain) != 1:
+        raise SystemExit("the word-format pilot is one composition, its composition_shuffled and its oracle, and the reference")
+    base = compositions[plain[0]]
+    reference = next(s["label"] for s in systems if s["kind"] == "reference")
+    roles = dict(composition=plain[0], composition_shuffled=by_role[SHUFFLED], oracle=by_role[ORACLE], reference=reference)
+    try:
+        pairing = word_format_pairing([s["label"] for s in systems], roles)
+    except ValueError as error:
+        raise SystemExit(str(error))
+    note = arms[by_role[ORACLE]]["word_format"].get("licence_note")
+    corpora = sorted({w["corpus"] for r in arms[by_role[ORACLE]]["rows"].values() for w in r["words"]})
+    check_oracle_corpora(corpora or ["asllvd-text-v1"], note)
+    for label, arm in arms.items():
+        if arm["word_format"]["composition"]["arm"] != base["arm"] or arm["word_format"]["form"] != base["form"]:
+            raise SystemExit(f"{label} controls another composition than {plain[0]}")
+    for sign in signs:
+        row = base["rows"][sign]
+        for label, arm in arms.items():
+            mine = arm["rows"][sign]
+            if mine["frames"] != row["frames"] or mine["composition_state_sha256"] != row["state_sha256"]:
+                raise SystemExit(f"{label}: {sign} is not at its composition's frames, or from another composition")
+        shuffled = Counter(w["word"] for w in arms[by_role[SHUFFLED]]["rows"][sign]["words"])
+        if shuffled != Counter(w["word"] for w in row["words"]):
+            raise SystemExit(f"{by_role[SHUFFLED]}: {sign} does not hold exactly the composition's words")
+        if Counter(w["word"] for w in arms[by_role[ORACLE]]["rows"][sign]["words"]) - shuffled:
+            raise SystemExit(f"{by_role[ORACLE]}: {sign} holds a word the composition does not")
+    dropped = sorted(s for s in signs if arms[by_role[ORACLE]]["rows"][s]["empty"])
+    return dict(roles=roles, report_only=True, pilot_only=True, pairing=pairing, dropped_no_real_clip=dropped,
+                signs=[s for s in signs if s not in dropped], oracle_corpora=corpora, licence_note=note,
+                seed=arms[by_role[SHUFFLED]]["word_format"].get("seed"))
 
 
 def bytes_per_frame(items) -> dict:
@@ -455,6 +506,9 @@ def how2sign_packet(argv) -> int:
     compositions = {s["label"]: load_composition(store, s, signs=signs, list_sha256=args.draw_sha256,
                                                  sentences_sha256=draw["sentences_sha256"])
                     for s in systems if s["kind"] == "composition"}
+    word_format = check_word_format(systems, compositions, which=args.which, signs=signs)
+    if word_format:
+        signs = word_format.pop("signs")
     seed = args.seed if args.seed is not None else secrets.randbits(31)
     key = how2sign_key([draw["rows"][s] for s in sorted(signs)], [s["label"] for s in systems], seed=seed,
                        d20_texts=[r["text"].strip() for r in records], confirmed=confirmed,
@@ -468,6 +522,9 @@ def how2sign_packet(argv) -> int:
                timing=timing_label, diagnostic=diagnostic,
                arms={k: dict(arm=v["arm"], word_cache=v["word_cache"], form=v["form"], timing=v["timing"])
                      for k, v in compositions.items()})
+    if word_format:
+        key.update(word_format=word_format, report_only_systems=[word_format["roles"]["composition_shuffled"],
+                                                                 word_format["roles"]["oracle"]])
     spec = {s["label"]: s for s in systems}
     (out / "key").mkdir(parents=True, exist_ok=True)
     for n, item in enumerate(key["items"]):
@@ -485,7 +542,8 @@ def how2sign_packet(argv) -> int:
                                  f"{row['reference_frames']}; the states have {len(state.timestamps)} and "
                                  f"{len(reference.timestamps)}")
             item["state"] = dict(key=row["state_key"], sha256=row["state_sha256"], form=row["form"], words=row["words"],
-                                 overlong=row["overlong"])
+                                 overlong=row["overlong"],
+                                 **{k: row[k] for k in ("order", "moved", "dropped", "same_words") if k in row})
         group_dir = out / "packet" / f"group-{item['group']}"
         group_dir.mkdir(parents=True, exist_ok=True)
         video = group_dir / f"{item['item_id']}.mp4"
@@ -502,6 +560,7 @@ def how2sign_packet(argv) -> int:
     print(json.dumps(dict(utterances=key["utterances"], systems=key["systems"], groups=key["groups"],
                           items=len(key["items"]), strata=key["bar"]["strata"], confirmed=key["bar"]["confirmed"],
                           timing=key["timing"], video_bytes_per_frame=key["video_bytes_per_frame"],
+                          **({"word_format": key["word_format"]} if word_format else {}),
                           items_longer_or_shorter_than_their_reference=length_cue, key=str(out / "key" / "key.json"))))
     return 0
 

@@ -6528,3 +6528,33 @@ Composition's standing depends heavily on the reader, from about half of real si
 2. **The three instruments have answered what instruments can.** Composition reads about as well as its words allow in English order, and no instrument measures comprehension. Further reader comparisons are unlikely to change a decision.
 3. **The next real evidence is people.** Word-for-word English order isn't ASL grammar, and only fluent signers can say how much that matters.
 
+### Rater pilot: word-format arms declared before any clip is rendered or any sheet exists (2026-11-02, 18:22 UTC)
+
+Design only: nothing rendered, sent or launched, no rater contacted. On test data only so far. **Report only: these arms are not part of the release bar or of any rule in it, the bar read refuses a key holding them, and the builder refuses them in the main set. The bar is unchanged.** Code: `scripts/rater_word_format.py`, `human_study.word_format_read`, `build_human_eval_packet.check_word_format`.
+
+**Why.** Shuffling the same clips removes 39–51% of composition's lead over blank on all three instruments, and no instrument can say whether a person would follow it. Word-for-word English order isn't ASL grammar. Only Deaf signers can say how much that matters.
+
+**Arms, the first How2Sign read's pilot only.** `composition_shuffled`: the composition's own clips in a seeded random order (`shuffle_order(n, clip, 1000 + seed)`), every word kept, each word keeping its planned core frames and the gaps their places, so the same frame count and the same cores, with joins bridged anew. `oracle`: the same word list as real clips by chance pick, one per entry, no instrument, through the prior's own tokenizer and the same gains setting, then the same cut and stitching at the same frame count. Both come from the same run as the composition, with its options.
+
+**Do they fit: yes, with the fewest changes.** The Latin square takes them as ordinary systems: four systems, four groups, 20 sentences, 5 per system per rater. No rater sees a sentence twice, and rater load doesn't change, because a rater's work is the sentences, not the systems. Clips to render go from 40 to 80 for one arm and the reference, about 17 minutes on the Mac at the measured 13 s. No change to the design code, sheets or two-stage flow.
+
+**One change of placement.** The protocol's pilot was two raters in one group. That gives a kappa and no pair at all. Two raters in groups g and g + 2 give shuffled against composition on 10 sentences, 5 each way round, so a rater's leniency cancels; and the reference against the oracle the same way. Any other two groups give each arm of a pair to one rater, so the contrast is the rater; the scorer flags that (`confounded_with_rater`). The cost is no kappa from the pilot. Oracle against composition isn't paired with two raters and reads within raters across different sentences.
+
+**What 2 raters can and can't show.** Can: sheets, guide, timing, viewability, floors and ceilings, unprompted notes. Can't: the size or absence of any contrast. Simulated on the release-bar logit model (sentence SD 1, rater SD 0.5), composition minus shuffled, from a true 60%, sign-flip p under .05:
+
+| Sentences | Raters | Paired sentences | 95% half-width | True 20-point drop | True 10-point drop | Zero drop: false alarm |
+|---|---|---|---|---|---|---|
+| 20 | 2, opposite groups | 10 | ±39 | 2% | 1% | 1% |
+| 20 | 4 | 20 | ±26 | 12% | 2% | 2% |
+| 20 | 8 | 20 | ±19 | 27% | 7% | 2% |
+| 60 | 8 | 60 | ±11 | 86% | 29% | 4% |
+| 60 | 16 | 60 | ±8 | 100% | 54% | 3% |
+| 200 | 8 | 200 | ±6 | 100% | 80% | 5% |
+
+**Why not the main read.** Five systems take the bar's nine raters from 600 to 360 ratings per system and need at least ten raters for two per group. A separate read of 60 sentences and 8 raters, about 16 rater hours, would answer it; that's the owner's call, and the pilot's size must be fixed before `how2sign-draw` runs.
+
+**Clip list.** The pilot's sentences are `draw.json`'s `pilot` list: 20 of D20's eligible sentences, no negation candidate, drawn at random. D20 only (hash pinned, C20 refused by name, and the pilot's records checked as How2Sign val of c01, c03, c05). Real clips: train records of `asllvd-text-v1` only, under the DAI terms; RIT and WLASL with the owner's recorded confirmation; everything else refused, ASL Citizen and ASL STEM Wiki among them. c00 and any test partition are refused before a fetch. The whole mix's manifest is parsed for metadata, as every run does; its motion is not read. Read from the stored A5 draw 1 list and the mix on 2026-11-02: ASLLVD train covers 89.8% of composition's words without added words, 220 of 494 sentences fully, 3 left empty; with the top-10 added words 72.9%, 51 of 499 fully, 8 empty. ASLLVD val would cover 30.9%. **Composition's clips were still chosen as best of 16 by v3d, as the owner decided on 2026-10-31; the oracle's by chance, which favours generated clips.**
+
+**The reading, fixed now, no bar.** On `comprehension_choice`: a contrast is above or below only if method D's two-sided t(R−1) interval excludes zero and the permutation p is under .05 in the same direction, with a rater seeing both arms; otherwise unresolved, and unresolved is never "small". Word order is read on `shuffled_minus_composition.moved`. **Size:** (composition − shuffled) / (composition − chance), beside the instruments' 39–51%, no cut, and neither large nor small is the better outcome; its scale isn't theirs (chance for blank, accuracy for BLEU). Generated clips against real: `oracle_minus_composition`, and only `same_words` isn't mixed with fewer words. Format: `reference_minus_oracle`.
+
+**Limits, stated now.** Forced choice can be right on words alone, in any order, so a small drop there doesn't clear English order: the stage 1 translation and naturalness are where it can show, and the translation's content-word share is order-free where its BLEU isn't. Raters see scrambled clips among the others, so their scale may shift. Joins differ in a shuffle. A one-word sentence can't move. A different signer at every word in the oracle; its cut is fitted on ASLLVD; d2 smooths real motion. None of it moves M1, 3.8 or the bar.
