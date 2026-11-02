@@ -860,11 +860,11 @@ def joint_table(a: list, b: list, c: list) -> dict:
     return out
 
 
-def features_by_word(rows: list, *, key: str = "core") -> dict:
-    """{word: [dominant-hand feature vectors]}."""
+def features_by_word(rows: list, *, key: str = "core", which: str = "dominant") -> dict:
+    """{word: [feature vectors of one hand]}."""
     out = {}
     for r in rows:
-        h = hand_of(r, "dominant")
+        h = hand_of(r, which)
         if h and h.get(key) and all(v is not None for v in h[key]):
             out.setdefault(r["entry"], []).append(np.array(h[key], dtype=float))
     return out
@@ -1091,6 +1091,14 @@ def exclusions(entries: list, capture_all: dict, capture_ok: dict) -> dict:
     return dict(entries=len(entries), multi_word_cannot_match=len(multi), digits_or_apostrophes_cannot_match=len(other), single_word=len(single), not_in_converted_3d_lex=len(absent), in_3d_lex_without_an_admitted_hand_row=len(no_hand), matched=len(single) - len(absent) - len(no_hand), examples_multi_word=multi[:5], examples_other=other[:5], examples_no_admitted_hand=no_hand[:5])
 
 
+LIMITS = ["No state on any path holds an observed frame, so real sources are read on valid; a valid frame is an estimate, and gap-filled or poorly tracked frames cannot be told from good ones.",
+          "Capture has one take per sign from two performers, untrimmed, and its solver or gloves may smooth or hold fingers; its low speed is not proved right. Thumbs were never glove-validated.",
+          "Dominant by arm travel is path-dependent: on the same How2Sign clips two-view and monocular name the same hand on about a fifth of clips, so right and left tables and the right-to-right match sit beside it.",
+          "Stored losers are winners of smaller subsets; the other samples of 16 do not exist in R2. Fresh samples came from a CPU, so they are other bits of the same recipe.",
+          "Real word clips trained the generator, and the English label does not fix the sign, so a miss may be a homograph.",
+          "Handshape is read at the core as medians; no read here tests within-word timing or trajectory shape, or anything at sentence level beyond speed."]
+
+
 def check_observed(groups: dict) -> dict:
     """Which sources hold any observed frame. A source read on ``valid`` that holds one stops the report: its unobserved valid frames would be inferred values read as real."""
     out = {}
@@ -1137,6 +1145,7 @@ def analyse(work: Path) -> dict:
     f_draw = {k: features_by_word(draws[k]) for k in DRAWS}
     f_real, f_cap = features_by_word(real), features_by_word(capture_rows)
     variety = variety_report(f_draw, f_real, f_cap, draws=DRAWS)
+    variety["right_hand_only"] = variety_report({k: features_by_word(draws[k], which="Right") for k in DRAWS}, features_by_word(real, which="Right"), features_by_word(capture_rows, which="Right"), draws=DRAWS)
     pooled_f = {}
     for k in DRAWS:
         for w, v in f_draw[k].items():
@@ -1149,6 +1158,15 @@ def analyse(work: Path) -> dict:
         for w, v in features_by_word(draws[k], key="core_30").items():
             f30["generated_three_draws"].setdefault(w, []).extend(v)
     wm["sensitivity_capture_right_hand_only"] = word_match_report(dict((k, sources[k]) for k in ("generated_three_draws", "real_words")), right_hand_targets(capture_rows), centroid_form=False)
+    pooled_right = {}
+    for k in DRAWS:
+        for w, v in features_by_word(draws[k], which="Right").items():
+            pooled_right.setdefault(w, []).extend(v)
+    f_real_right, f_cap_right = features_by_word(real, which="Right"), features_by_word(capture_rows, which="Right")
+    wm["sensitivity_right_hand_to_right_hand"] = word_match_report(dict(generated_three_draws=pooled_right, real_words=f_real_right), f_cap_right, centroid_form=False)
+    wm["sensitivity_right_hand_to_right_hand"]["uninformative_rule"] = informative(wm["sensitivity_right_hand_to_right_hand"]["real_words"]["common_words"]["z_scored"])
+    common_right = sorted(set(pooled_right) & set(f_real_right) & set(f_cap_right))
+    wm["sensitivity_right_hand_to_right_hand"]["generated_share_of_real_lift"] = top5_share(pooled_right, f_real_right, f_cap_right, common_right) if common_right else None
     wm["sensitivity_core_30"] = word_match_report(f30, features_by_word(capture_rows, key="core_30"), centroid_form=False)
     common = sorted(set(pooled_f) & set(f_real) & set(f_cap))
     rule = informative(wm["real_words"]["common_words"]["z_scored"])
@@ -1157,7 +1175,7 @@ def analyse(work: Path) -> dict:
     wm["to_real_centroids"] = to_real_centroids(pooled_f, real)
     entries = sorted({r["entry"] for r in draws[1]})
     capture_all = {r["entry"] for r in capture_rows}
-    return dict(kind="hand-motion-compare", report_only=True, decides_nothing=True, sources=dict(generated_rows=len(pooled), phase_a_rows=len(phase), capture_rows=len(capture_rows), real_word_rows=len(real), sentence_rows=len(sentences), fresh_rows=len(fresh), round_trip_rows=len(trip)),
+    return dict(kind="hand-motion-compare", report_only=True, decides_nothing=True, limits=LIMITS, mean_clip_seconds={k: _round(np.mean([r["seconds"] for r in v if r.get("seconds") is not None]), 2) for k, v in dict(generated=pooled, capture=capture_rows, real_words=real, sentences_two_view=two, sentences_monocular=mono).items() if v}, sources=dict(generated_rows=len(pooled), phase_a_rows=len(phase), capture_rows=len(capture_rows), real_word_rows=len(real), sentence_rows=len(sentences), fresh_rows=len(fresh), round_trip_rows=len(trip)),
                 observed_rule=check_observed(dict(capture=capture_rows, real_words=real, sentences_two_view=two, sentences_monocular=mono)), validity=validity_report(dict(generated=pooled, phase_a=phase, capture=capture_rows, real_words=real, sentences_two_view=two, sentences_monocular=mono, fresh=fresh)), generated_validity_note="generated output marks every frame and joint valid, none observed, confidence 0: it never says a hand is absent, and both hands always have a row, while real hands often have no detection",
                 extended_words=extended_report(work, capture_rows, pooled, real),
                 added_after_first_numbers=added_report(work, dict(generated_three_draws=pooled, capture=capture_rows, real_words=real, sentences_two_view=two, sentences_monocular=mono, fresh_unselected=fresh, decoded_clips=[])),
@@ -1409,6 +1427,9 @@ def extended_report(work: Path, capture_rows: list, pooled: list, real: list) ->
         return out
     wm = word_match_report(dict(generated=f, real_words=r), capture, centroid_form=False)
     out["word_match"] = wm
+    fr, rr, cr = features_by_word(fresh, which="Right"), features_by_word(more, which="Right"), features_by_word(capture_rows, which="Right")
+    if set(fr) & set(rr) & set(cr):
+        out["right_hand_to_right_hand"] = word_match_report(dict(generated=fr, real_words=rr), cr, centroid_form=False)
     out["uninformative_rule"] = informative(wm["real_words"]["common_words"]["z_scored"])
     out["generated_share_of_real_lift"] = top5_share(f, r, capture, words)
     all_g, all_r = {}, {}
