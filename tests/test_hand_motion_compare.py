@@ -429,7 +429,7 @@ def test_round_trip_reads_a_tokenizer_that_freezes_fingers():
 def _row(entry, source, core, speed, **k):
     hand = {m: speed for m in hm.METRICS}
     hand.update(frames=48, core=list(map(float, core)), core_30=list(map(float, core)), speed_per_joint_6hz=[speed] * 15, range_per_joint=[speed] * 15)
-    validity = dict(valid=1., observed=1., confidence=1.)
+    validity = dict(valid=1., observed=0., confidence=1.)
     return dict(id=f"{source}|{entry}|{k.get('index', 0)}", entry=entry, source=source, hands=dict(Right=hand, Left=None), dominant="Right", validity=dict(Right=validity, Left=validity), **k)
 
 
