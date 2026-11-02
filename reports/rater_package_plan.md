@@ -30,7 +30,7 @@ Nine raters, about 60 hours of stage 1, about 75 with stage 2. Three raters cann
 - **Negation truth:** English rule and checker's sheet built; the Deaf checker is needed. 26 of 80 negated sentences have no negation word cached.
 - **Bar scorer** (`score_human_eval.py --bar`): built, on synthetic sheets.
 - **Design, sheets** (`human_study.py`): passed, synthetic IDs.
-- **Avatar** (`render_avatar.py`): reworked, `docs/AVATAR_RENDER.md` section 13: filter, hands kept out of the body, one frame for every clip, hair and a plain top. Not yet seen by a Deaf signer. Pilot decides.
+- **Avatar** (`render_avatar.py`): reworked, `docs/AVATAR_RENDER.md` section 13: filter, hands clear of the drawn body (forearms may stay inside), one frame for every clip, hair and a plain top. Not yet seen by a Deaf signer. Pilot decides.
 - **Hosting, blinding:** no hosting: the owner plays the videos or delivers them, and enters the answers (owner's flow, 2026-11-02); MP4 tags clean; speed may reveal the reference.
 - **Consent, payment** (`reviewer_package/`): drafts; pay blank. 0.5 day.
 

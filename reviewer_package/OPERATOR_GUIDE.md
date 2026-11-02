@@ -39,7 +39,7 @@ Reviewers never receive this guide, `key/`, any CSV or any script. They never us
 
 - Python: `~/.venvs/sign-translator/bin/python`, run from the repo root. R2 reads need the `R2_*` environment variables.
 - Blender 5.2 at `/Applications/Blender.app` (the `render_avatar.py` default; `--blender` to override). An avatar render
-  takes about 26 s for a 104-frame clip at 768 px on the Mac, measured.
+  takes about 26 s for a 104-frame clip at 768 px on the Mac before its upload, measured.
 - Mac outage rule: 1 BLAS thread (`OMP_NUM_THREADS=1`), at most 6 processes, run under `nice`.
 - Project rule: every avatar render is also kept in full in the private R2 `renders/` prefix with `INDEX.json`.
   Reviewer answers never go there.
@@ -157,13 +157,15 @@ Enter one row per rating page. Use a copy of the template, kept in private stora
 |---|---|
 | `viewable` | `no` if the box was ticked, else `yes`. If `no`, leave the rest of the row empty. |
 | `translation` | Q1, verbatim, English or gloss |
-| `sentence_type` | Q2: `statement`, `yes_no_question`, `wh_question` or `rhetorical_question` |
+| `sentence_type` | Q2, as circled: `Statement`, `Yes/no question`, `Wh-question` or `Rhetorical question`. Any case works, and so do `yes_no_question`, `wh_question` and `rhetorical_question` |
 | `negated`, `topic` | Q3, Q4: `yes` or `no` |
 | `naturalness` | Q5, 1-5 |
 | `notes` | Q6 |
 | `reviewer_sha256` | The key you made for this reviewer, on every row |
 
 Then run `how2sign-stage2` (§10), print that rater's stage 2 pages from the sheet it writes, and enter each circled letter in `choice`, leaving every other column as it is. Excel's CSV is fine: the tools read UTF-8 and Excel's Windows encoding. A comma in an answer needs the cell quoted, which Excel does for you.
+
+**Stage 1 is final once stage 2 is released.** `how2sign-stage2` keeps a copy of that sheet in `released-stage1/`, beside the receipts. Opening and re-saving your sheet later is safe if no answer changes: it still counts, and the report lists it. **If any answer changes, all of that rater's rows are refused**, so score the kept copy instead. Enter each stage 2 answer once: an item answered on two stage 2 sheets counts from neither.
 
 **NOT BUILT:** a converter from `rating_sheet.csv` to `sheet.csv`, and a scorer for clarity, Q4 and the judged
 translations.
@@ -248,7 +250,7 @@ This read is diagnostic. It can't clear the release bar, because signers and wri
 - Take everything to the review board and get its decision: ethics or IRB review, `CONSENT_FORM.md`, `CHECKER_CONSENT_FORM.md`, the pilot's partial disclosure, and the questions listed below. **Raters aren't told some clips are deliberately out of order: the board must be told, and it decides.** The default is a debrief after all sheets return, `DEBRIEF.md`, already drafted; fill in its blanks.
 - ASLLVD train clips: confirmed by you, 2026-11-02 20:30 UTC. Pass that record as the export's note. RIT and WLASL aren't covered: each would need your own note naming it, and the export refuses a corpus the note doesn't name.
 - Arrange ASL instructions or an interpreter.
-- Choose how videos reach raters. Your flow: you play them, or deliver the videos alone, and raters answer on a printed form or in ASL. You hold stage 2 back until stage 1 is in.
+- Choose how videos reach raters. Your flow: you play them, or deliver the videos alone, and raters answer on a printed form or in ASL. You hold stage 2 back until stage 1 is in. Generated clips encode larger than real ones, so the packet pads every video to the same size (8 MiB; a very long clip goes to 16), and sending the files doesn't show which is which by size. Length still differs, as the protocol records.
 
 **Questions for the review board.** Nothing here is drafted as legal text; each is for the board, and for you to raise:
 - **"Computer-made signing."** `CONSENT_FORM.md` says raters watch "computer-made signing", yet the `reference` and `oracle` clips are real signers' motion shown on the figure. Is that accurate enough?
@@ -307,13 +309,13 @@ $PY scripts/score_human_eval.py --key <key.json> --sheet <stage 1> ... --stage2-
 
 - **The roster** is JSON, `{"<key>": <group>}`, with at least 2 raters in every group. A key written twice is refused.
 - **A stage 1 sheet with rows unanswered** is refused and left untouched. Enter the rest, or pass `--partial` if the rater stopped: the work is kept either way. A rater who never reaches stage 2 still counts for the stage 1 contrasts (`report["stage1"]`, and naturalness and translation in `report["word_format"]`).
-- **A build under `--renderer avatar`** keeps each render's `acceptance` on its item, sums it by arm (`avatar_acceptance`, also in the report), keeps every `verification.json` under `key/avatar-verification/`, and stops on a mirror failure. Read the summary before any rater sees a clip: a low pass rate isn't refused, only reported.
+- **A build under `--renderer avatar`** keeps each render's `acceptance` on its item, sums it by arm (`avatar_acceptance`, also in the report), keeps every `verification.json` under `key/avatar-verification/`, and stops on a mirror failure. Acceptance reads the arm as raters see it, after the hand correction; the errors before it, and what the correction did to the arm in the image, sit beside it in each `verification.json`. Read the summary before any rater sees a clip: a low pass rate isn't refused, only reported. Each item also holds the render's settings hash and code commit, and a packet with mixed values stops before its key is written. Every render, frames and bundle, goes to R2 under `renders/rater-packets/<draw>-<set>/<item_id>/` with `INDEX.json`, as it's made.
 
 **Not ready yet:**
 - Everything has run on test data, apart from one dry run of the export on six real D20 sentences that wrote nothing. The packet has not run on real D20, and the plan's 427 eligible and 80 negated sentences are unconfirmed until the real draw's counts are read.
 - A draw made before this tool has the old sheet column, `no_generated_clip_seen`, and no list of recordings. `how2sign-checker-sheet` writes both from that draw, without drawing again.
-- **The avatar as it stands** (`docs/AVATAR_RENDER.md` section 13; measured on 36 D20 sentences, branch `avatar-fixes`). A plain figure with short dark hair, moving eyebrows and eyelids, and a mouth with no separate lips, in a plain dark top, at 768 px in one camera frame for every clip. Every clip gets the same render. Head shake is down about 7× on real clips and 6× on generated. Hands no longer enter the torso or head; forearms still do in under 1% of frames.
-- **What's still weak.** No Deaf signer has seen it, so nothing here says it reads as signing. Generated hands still shake about twice as much as real, and generated motion is visibly fast; the bar's predicted timing rules out slowing it. Fingers don't rest between handshapes. Elbows sometimes swing out where a forearm was moved clear of the body. On c01, a real clip's arms can be mostly interpolated: the arm chain is invalid on a median 37% of frames, over half in 60 of 177 clips, which weakens the reference there. Teeth look grey and lined when the mouth opens. The pilot decides whether it's good enough.
+- **The avatar as it stands** (`docs/AVATAR_RENDER.md` section 13; measured on 36 D20 sentences). A plain figure with short dark hair, moving eyebrows and eyelids, and a mouth with no separate lips, in a plain dark top, at 768 px in one camera frame for every clip. Every clip gets the same render. Head shake is down about 7× on real clips and 6× on generated. Hands no longer sit inside or behind the drawn body, top included: they were covered in part on 42% of real frames and 22% of generated ones. A hand moves only in depth, so where it is drawn doesn't change.
+- **What's still weak.** No Deaf signer has seen it, so nothing here says it reads as signing. Forearms stay inside the torso in 43% of real frames and 78% of generated ones: a dark sleeve in a dark top, left on purpose, because clearing them swung the elbow across the picture. Elbows still shift over 10 px in 6% of real frames and 9% of generated. Generated hands still shake about twice as much as real, and generated motion is visibly fast; the bar's predicted timing rules out slowing it. A generated hand hanging below the hip is cut off by the frame in about 1 frame in 6. Fingers don't rest between handshapes. On c01, a real clip's arms can be mostly interpolated: the arm chain is invalid on a median 37% of frames, over half in 60 of 177 clips, which weakens the reference there; the scorer reports the reference with and without those clips. Teeth look grey and lined when the mouth opens. The pilot decides whether it's good enough.
 - The tooling gets one more independent check before any sheet goes out.
 - Sentences with no selected word are now left out of the draw and listed in `draw.json`, the key and the report. D20 has six. Had they stayed, a pilot of 60 would have held one about two times in three.
 
@@ -321,7 +323,7 @@ $PY scripts/score_human_eval.py --key <key.json> --sheet <stage 1> ... --stage2-
 - **What and why.** All three automatic instruments reward English word order, and they can't say whether a person would follow it. So the pilot adds `composition_shuffled` (the same clips in a seeded random order) and `oracle` (real word clips stitched the same way). Report only: they never count towards the release bar, the bar read refuses a key that holds them, and the builder refuses them in the main set.
 - **Composition arm.** The official one: W14b, best of 16, gains on, at predicted timing, `--core-margin 0.1`. The export refuses word-format arms on any other form. A dry run on six real D20 sentences built both new arms from it, reading R2 and writing nothing: 80 s, 3.7 GB at peak, so watch the Mac's 4 GB limit on the full run.
 - **Rater load.** 60 sentences each. Stage 1 is 2 hours at an assumed 2 minutes per item, about three 45-minute sessions; stage 2 about 30 minutes at an assumed 30 s per row, which nothing has measured. 2.5 hours per rater, 20 rater hours.
-- **Rendering.** 240 clips, about 3 hours on the Mac at the measured 26 s per 104-frame clip (predicted clips run longer, 170 frames on average). A full render, frames and bundle, is about 1 MB per frame, so 240 clips are about 40 GB; upload and delete per clip.
+- **Rendering.** 240 clips, about 3 hours on the Mac at the measured 26 s per 104-frame clip (predicted clips run longer, 170 frames on average). A full render, frames and bundle, is about 1 MB per frame, so 240 clips are about 40 GB. The packet uploads each one to R2 with `INDEX.json` and deletes it locally as it goes; delivered videos are padded to 8 MiB each, about 2 GB. Allow extra time for the upload.
 - **What you learn.** With every group filled, every two arms are paired on all 60 sentences, and kappa is back. Under the declared rule, if English order truly costs 20 points of accuracy (60% against 40% over all sentences and raters) the read finds it 79% of the time, and a true 10 points 20%. If 60% and 40% is the median sentence with the median rater, which reads as about 16 points, 55% and 12%. So **a pilot that finds no drop has not shown order doesn't matter**. Forced choice can be right on words alone in any order, so read the free translations and naturalness too.
 - **Timing.** Half of what each rater sees is scrambled or stitched real signs, which may be quicker to give up on or slower to puzzle over. The pilot's total times test the session plan. They don't predict the main read's time per item, or fatigue over its much longer run. Sheets hold no time per row: if you want time per arm, note it yourself.
 - **Options.** No pilot option holds a negation word, since no pilot sentence does: otherwise an option with one could be crossed out, 29.9% rather than 25% by elimination alone.

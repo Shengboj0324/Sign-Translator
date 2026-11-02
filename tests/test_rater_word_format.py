@@ -1098,7 +1098,7 @@ def test_the_whole_pilot_through_the_packet_two_stages_and_the_scorer(tmp_path, 
         path.write_text(buffer.getvalue())
         assert bh.main(["how2sign-stage2", "--key", str(key_path), "--roster", str(roster_path), "--stage1-sheet", str(path), "--receipts", str(receipts), "--output-dir", str(tmp_path / "stage2")]) == 0
         firsts += ["--sheet", str(path)]
-        back = list(csv.DictReader(io.StringIO((tmp_path / "stage2" / f"stage2-{reviewer[:12]}.csv").read_text())))
+        back = list(csv.DictReader(io.StringIO((tmp_path / "stage2" / f"stage2-{reviewer[:12]}.csv").read_text(encoding="utf-8-sig"))))
         for r in back:
             item = items[r["item_id"]]
             r["choice"] = item["correct"] if item["system"] != "mixed" else next(o for o in "abcd" if o != item["correct"])

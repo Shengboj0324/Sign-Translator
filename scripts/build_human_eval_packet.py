@@ -82,7 +82,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from signtranslator.data_engineering.corpus_manifest import load_manifest  # noqa: E402
-from signtranslator.eval_framework.human_study import (SheetError, check_roster, decode_sheet, design_study,  # noqa: E402
+from signtranslator.eval_framework.human_study import (SheetError, check_roster, decode_sheet, design_study, stage1_answers_sha256,  # noqa: E402
                                                        draw_study_sentences, key_sha256, load_roster, negation_read_first, negation_stratum,
                                                        negation_truth, negation_words, parse_negation_sheet, parse_stage1,
                                                        strata_shares, word_format_pairing, write_negation_sheet, write_sheet,
@@ -135,13 +135,35 @@ def held_for_display(state):
     return replace(state, channels=channels)
 
 
-def render_avatar_video(state, path: Path, *, resolution: int = 768, verification: Path | None = None) -> dict:
-    """The MakeHuman avatar render (``render_avatar.py``) of ``state`` to ``path``, one argument list for every system: ``dict(frames,
-    acceptance)``, the render's own record kept at ``verification`` if named. A render that fails its mirror check would show a mirrored
-    signer, so it stops here; a direction error is kept and summarised (``avatar_acceptance``), not refused.
+UNIFORM_VIDEO_BYTES = 8 << 20
+ARM_JOINTS = ("LeftUpperArm", "LeftForearm", "RightUpperArm", "RightForearm")
 
-    The renderer fills gaps and filters by itself, so nothing is held first: a held value and then a step would mark the recording. Only
-    the video and, under the private key, its record leave the temporary directory. A render whose settings hash is not the one for this
+
+def pad_video(path: Path) -> int:
+    """Pad an MP4 with a top-level ``free`` box to the next multiple of 8 MiB, so a file's size says nothing about how much moved. Players skip the box; frames, timing and
+    stream are untouched. Returns the size as delivered."""
+    size = path.stat().st_size
+    target = (size + 8 + UNIFORM_VIDEO_BYTES - 1) // UNIFORM_VIDEO_BYTES * UNIFORM_VIDEO_BYTES
+    with path.open("ab") as stream:
+        stream.write((target - size).to_bytes(4, "big") + b"free" + bytes(target - size - 8))
+    return target
+
+
+def arm_invalid_share(state) -> float:
+    """The share of a state's frames with any arm joint not valid as stored: there the avatar's arm is interpolated, not the signer's."""
+    body = state.channels["body"]
+    joints = [body.labels.index(j) for j in ARM_JOINTS if j in body.labels]
+    return float(1. - body.valid[:, joints].all(axis=1).mean()) if joints else 1.
+
+
+def render_avatar_video(state, path: Path, *, resolution: int = 768, verification: Path | None = None, archive=None) -> dict:
+    """The MakeHuman avatar render (``render_avatar.py``) of ``state`` to ``path``, one argument list for every system: ``dict(frames,
+    acceptance, settings, commit)``, the render's own record kept at ``verification`` if named. A render that fails its mirror check would show a
+    mirrored signer, so it stops here; a direction error is kept and summarised (``avatar_acceptance``), not refused.
+
+    The renderer fills gaps and filters by itself, so nothing is held first: a held value and then a step would mark the recording. Only the
+    padded video and, under the private key, its record leave here for the packet. ``archive``, (store, prefix, fields): the whole render, frames and bundle,
+    goes to the store with ``INDEX.json`` before the temporary directory is deleted. A render whose settings hash is not the one for this
     resolution is refused.
     """
     import render_avatar
@@ -158,11 +180,30 @@ def render_avatar_video(state, path: Path, *, resolution: int = 768, verificatio
             raise RuntimeError("the avatar render used other settings")
         if not record["acceptance"]["mirror"]:
             raise SystemExit(f"{path.name}: the render failed its mirror check, so the signer would be shown mirrored: nothing is built on it")
+        encoded_bytes = (out / "avatar.mp4").stat().st_size
+        stored = render_avatar.archive_render(archive[0], archive[1], out, archive[2]) if archive else None
         shutil.copy(out / "avatar.mp4", path)
+        pad_video(path)
         if verification is not None:
             verification.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(out / "verification.json", verification)
-    return dict(frames=len(state.timestamps), acceptance=record["acceptance"])
+    return dict(frames=len(state.timestamps), acceptance=record["acceptance"], settings=record["render_settings_sha256"], code=record["code"],
+                encoded_bytes=encoded_bytes, archive=stored)
+
+
+def keep_render_identity(item: dict, rendered: dict) -> None:
+    """What identifies a render on its item in the key, which is written once."""
+    item.update(frames=rendered["frames"], acceptance=rendered["acceptance"], render_settings_sha256=rendered["settings"], code_commit=rendered["code"]["commit"],
+                code_dirty=rendered["code"]["dirty"], encoded_bytes=rendered["encoded_bytes"], render_archive=rendered["archive"])
+
+
+def refuse_mixed_renders(items) -> dict:
+    """One packet, one render: every item's settings hash and code commit must agree, or the packet stops before its key is written."""
+    rendered = [i for i in items if "render_settings_sha256" in i]
+    settings, commits = {i["render_settings_sha256"] for i in rendered}, {(i["code_commit"], i["code_dirty"]) for i in rendered}
+    if len(settings) > 1 or len(commits) > 1:
+        raise SystemExit(f"this packet mixes renders: {len(settings)} settings hashes and {len(commits)} code commits. Nothing is written")
+    return dict(settings_sha256=next(iter(settings)), code_commit=next(iter(commits))[0], code_dirty=next(iter(commits))[1]) if rendered else {}
 
 
 def avatar_acceptance(items) -> dict:
@@ -728,10 +769,12 @@ def how2sign_packet(argv) -> int:
                                                                  word_format["roles"]["oracle"]])
     spec = {s["label"]: s for s in systems}
     (out / "key").mkdir(parents=True, exist_ok=True)
+    archive_prefix = f"renders/rater-packets/{draw['name']}-{args.which}"
     for n, item in enumerate(key["items"]):
         record, system = d20[item["sign"]], spec[item["system"]]
         reference = uniform_clock(at_rate(load_state(store, record["continuous"]["state_key"],
                                                      record["continuous"]["state_sha256"]), args.fps), args.fps)
+        item["reference_arm_invalid_share"] = arm_invalid_share(reference)      # read by the scorer, report only: never the draw, never the bar
         if system["kind"] == "reference":
             state = reference
             item["state"] = dict(key=record["continuous"]["state_key"], sha256=record["continuous"]["state_sha256"])
@@ -750,17 +793,20 @@ def how2sign_packet(argv) -> int:
         video = group_dir / f"{item['item_id']}.mp4"
         if args.renderer == "avatar":
             rendered = render_avatar_video(state, video, resolution=args.avatar_resolution,
-                                           verification=out / "key" / "avatar-verification" / f"{item['item_id']}.json")
-            item.update(frames=rendered["frames"], acceptance=rendered["acceptance"])
+                                           verification=out / "key" / "avatar-verification" / f"{item['item_id']}.json",
+                                           archive=(store, f"{archive_prefix}/{item['item_id']}", dict(item_id=item["item_id"], state=item["state"])))
+            keep_render_identity(item, rendered)
         else:
             item["frames"] = render(state, video, panel=args.panel)
         item["renderer"] = args.renderer
         item["seconds"] = round(len(state.timestamps) / args.fps, 3)
         item["reference_seconds"] = round(len(reference.timestamps) / args.fps, 3)
-        item["video_bytes"] = video.stat().st_size
+        item["video_bytes"] = item.get("encoded_bytes", video.stat().st_size)     # before padding: what the encoder made of the motion
+        item["delivered_bytes"] = video.stat().st_size
         print(json.dumps(dict(n=n + 1, of=len(key["items"]), group=item["group"])), flush=True)
     key["video_bytes_per_frame"] = bytes_per_frame(key["items"])
     key["avatar_acceptance"] = avatar_acceptance(key["items"])
+    key["render"] = refuse_mixed_renders(key["items"])
     write_group_files(key, out, store, args.output_prefix, sheet=write_stage1_sheet, guide=TWO_STAGE_GUIDE)
     if args.which == "pilot" and not store.exists(pilot_marker):
         store.put(pilot_marker, json.dumps(dict(key_sha256=key["key_sha256"], output_prefix=args.output_prefix)).encode())
@@ -779,7 +825,7 @@ def how2sign_stage2(argv) -> int:
     parser.add_argument("--key", type=Path, required=True, help="key/key.json")
     parser.add_argument("--roster", type=Path, required=True, help="private JSON: {reviewer key: group}")
     parser.add_argument("--stage1-sheet", type=Path, required=True, help="the rater's returned stage 1 sheet")
-    parser.add_argument("--receipts", type=Path, required=True, help="private JSON: {reviewer key: stage 1 hash}; updated")
+    parser.add_argument("--receipts", type=Path, required=True, help="private JSON: {reviewer key: stage 1 hash}; updated. A copy of each released stage 1 sits in released-stage1/ beside it")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--partial", action="store_true", help="the rater stopped early: release stage 2 on the rows answered")
     args = parser.parse_args(argv)
@@ -814,16 +860,27 @@ def how2sign_stage2(argv) -> int:
                          "--partial: the answered rows then go to stage 2 and stage 1 is final")
     sha = hashlib.sha256(payload).hexdigest()
     receipts = json.loads(args.receipts.read_text()) if args.receipts.exists() else {}
+    released = receipts.setdefault("answers_sha256", {})
+    same_answers = stage1_answers_sha256(answers)
+    kept_dir = args.receipts.parent / "released-stage1"
     if receipts.get(reviewer, sha) != sha:
-        raise SystemExit("stage 2 was already released on another stage 1: stage 1 is final")
+        if released.get(reviewer) != same_answers:
+            raise SystemExit(f"stage 2 was already released on another stage 1: stage 1 is final. The released sheet is kept in {kept_dir}")
+        sha = receipts[reviewer]                         # re-saved with the same answers: the released sheet's hash stands
+    else:                                                # a copy of what was released, so a later re-save can't lose the rater's rows
+        kept_dir.mkdir(parents=True, exist_ok=True)
+        copy = kept_dir / f"{reviewer[:16]}-{sha[:12]}.csv"
+        if not copy.exists():
+            copy.write_bytes(payload)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     path = args.output_dir / f"stage2-{reviewer[:12]}.csv"
     text = write_stage2_sheet(key, answers, sha)
     if not path.exists():
-        path.write_text(text)
-    elif path.read_text() != text:
+        path.write_bytes(b"\xef\xbb\xbf" + text.encode())    # the mark tells Excel it's UTF-8, for an offered sentence's non-ASCII letters
+    elif path.read_bytes().decode("utf-8-sig") != text:
         raise SystemExit(f"{path} exists with other content")
     receipts[reviewer] = sha
+    released[reviewer] = same_answers
     args.receipts.write_text(json.dumps(receipts, indent=1, sort_keys=True) + "\n")
     print(json.dumps(dict(stage1_sha256=sha, rows=sum(a["viewable"] == "yes" for a in answers), unanswered=len(unanswered), sheet=str(path))))
     return 0
@@ -931,14 +988,16 @@ def main(argv=None) -> int:
         group_dir.mkdir(parents=True, exist_ok=True)
         video = group_dir / f"{item['item_id']}.mp4"
         if args.renderer == "avatar":
-            rendered = render_avatar_video(state, video, verification=out / "key" / "avatar-verification" / f"{item['item_id']}.json")
-            item.update(frames=rendered["frames"], acceptance=rendered["acceptance"])
+            rendered = render_avatar_video(state, video, verification=out / "key" / "avatar-verification" / f"{item['item_id']}.json",
+                                           archive=(store, f"renders/human-eval-packets/{args.manifest_sha256[:16]}/{item['item_id']}", dict(item_id=item["item_id"])))
+            keep_render_identity(item, rendered)
         else:
             item["frames"] = render(state, video, panel=args.panel)
         item["renderer"] = args.renderer
         item["seconds"] = round(seconds, 3)
         print(json.dumps(dict(n=n + 1, of=len(key["items"]), group=item["group"])), flush=True)
     key["avatar_acceptance"] = avatar_acceptance(key["items"])
+    key["render"] = refuse_mixed_renders(key["items"])
     write_group_files(key, out, store, args.output_prefix)
     print(json.dumps(dict(utterances=len(chosen), systems=[s["label"] for s in systems], groups=key["groups"],
                           items=len(key["items"]), key=str(out / "key" / "key.json"))))

@@ -10,8 +10,9 @@ import pytest
 import torch
 from scipy.spatial.transform import Rotation
 
-from signtranslator.avatar_render.collision import (BodyField, _body_triangles, _part_of_bones, _signed_distance, _skin, apply_correction,
-                                                    build_field, penetration)
+from signtranslator.avatar_render import collision
+from signtranslator.avatar_render.collision import (CORRECTION_V2, CorrectionSettings, _body_triangles, _part_of_bones, _read_front, _signed_distance, _skin,
+                                                    apply_correction, arm_image_changes, build_field, correct, front_maps, hidden_from_front, penetration)
 from signtranslator.avatar_render.makehuman import load_makehuman_rig
 from signtranslator.avatar_render.makehuman_wardrobe import load_wardrobe
 from signtranslator.avatar_render.motion_filter import (FILTER_V1, FilterSettings, OneEuro, SavitzkyGolay, _from_6d, _to_6d, fill_gaps,
@@ -261,12 +262,13 @@ def test_correction_takes_the_hand_out_along_depth_and_keeps_image_place_and_han
     globals_ = forward_kinematics(rig, local)
     before = penetration(rig, field, local)
     assert before["hand.torso"]["frames_over_10mm"] > .5                 # the test pose does put the hand inside
+    assert hidden_from_front(rig, field, local)["frames_any_vertex"] > .5
     motion = retarget_state(rig, binding, noisy_state(rig, frames=48), allow_inferred=True)
     from dataclasses import replace
     pose = replace(motion, local_rotations=local, target_globals=globals_[:, :, :3, :3])
     fixed, record = apply_correction(rig, field, pose)
     after = forward_kinematics(rig, fixed.local_rotations)
-    assert record["after"]["hand.torso"]["frames_over_0mm"] == 0.
+    assert record["after"]["hand.torso"]["frames_over_0mm"] == 0. and record["hidden_after"]["frames_any_vertex"] == 0.
     assert np.abs(after[:, wrist, :2, 3] - globals_[:, wrist, :2, 3]).max() < 1e-6      # same place in the front view
     assert after[:, wrist, 2, 3].min() > globals_[:, wrist, 2, 3].min()                 # moved toward the camera
     assert geodesic_degrees(after[:, wrist, :3, :3], globals_[:, wrist, :3, :3]).max() < 1e-5
@@ -276,6 +278,91 @@ def test_correction_takes_the_hand_out_along_depth_and_keeps_image_place_and_han
         p, c = rig.bone_names.index(parent), rig.bone_names.index(child)
         assert np.allclose(np.linalg.norm(after[:, c, :3, 3] - after[:, p, :3, 3], axis=-1),
                            np.linalg.norm(globals_[:, c, :3, 3] - globals_[:, p, :3, 3], axis=-1), atol=1e-9)
+
+
+def behind_the_back_pose(rig, field):
+    """Locals with the left hand behind the torso and not inside it, found by a fixed search; the first pose that fits."""
+    rest = rig.rest_globals.numpy()[:, :3, :3]
+    upper, fore = rig.bone_names.index("upperarm01.L"), rig.bone_names.index("lowerarm01.L")
+    for down, back, across in ((-40., 40., -60.), (-50., 45., -70.), (-40., 60., -90.), (-55., 30., -100.), (-30., 70., -90.)):
+        local = np.tile(np.eye(3), (24, len(rig.bone_names), 1, 1)).copy()
+        local[:, upper] = rest[upper].T @ Rotation.from_euler("zx", [down, back], degrees=True).as_matrix() @ rest[upper]
+        local[:, fore] = rest[fore].T @ Rotation.from_euler("y", across, degrees=True).as_matrix() @ rest[fore]
+        inside = penetration(rig, field, local)["hand.torso"]["frames_over_0mm"]
+        seen = hidden_from_front(rig, field, local)
+        if inside == 0. and seen["frames_half_of_a_hand"] == 1.:
+            return local
+    raise AssertionError("no test pose has the hand behind the body")
+
+
+def retarget_shell(rig, binding, local):
+    from dataclasses import replace
+    motion = retarget_state(rig, binding, noisy_state(rig, frames=len(local)), allow_inferred=True)
+    return replace(motion, local_rotations=local, target_globals=forward_kinematics(rig, local)[:, :, :3, :3])
+
+
+def test_a_hand_behind_the_body_is_brought_out_and_counted(rig, binding, field):
+    local = behind_the_back_pose(rig, field)
+    fixed, record = apply_correction(rig, field, retarget_shell(rig, binding, local))
+    assert record["hidden_before"]["frames_half_of_a_hand"] == 1. and record["hidden_after"]["frames_any_vertex"] == 0.
+    wrist = rig.bone_names.index("wrist.L")
+    before, after = forward_kinematics(rig, local), forward_kinematics(rig, fixed.local_rotations)
+    assert np.abs(before[:, wrist, :2, 3] - after[:, wrist, :2, 3]).max() < 1e-6 and after[0, wrist, 2, 3] > before[0, wrist, 2, 3] + .5
+
+
+def test_a_hand_just_inside_the_back_and_one_just_behind_it_end_together(rig, binding, field):
+    """Before, one point past the back's surface jumped through the torso and the next stayed hidden, so a hand could vanish between frames."""
+    wrist = rig.bone_names.index("wrist.L")
+    local = behind_the_back_pose(rig, field)
+    fixed, _ = apply_correction(rig, field, retarget_shell(rig, binding, local))
+    shallow = local.copy()
+    upper = rig.bone_names.index("upperarm01.L")
+    shallow[:, upper] = shallow[:, upper] @ Rotation.from_euler("x", -6, degrees=True).as_matrix()      # the same hand a little deeper, into the back
+    fixed_shallow, _ = apply_correction(rig, field, retarget_shell(rig, binding, shallow))
+    a = forward_kinematics(rig, fixed.local_rotations)[0, wrist, :3, 3]
+    b = forward_kinematics(rig, fixed_shallow.local_rotations)[0, wrist, :3, 3]
+    assert hidden_from_front(rig, field, fixed_shallow.local_rotations)["frames_any_vertex"] == 0.
+    assert abs(a[2] - b[2]) < 1.5                                                                         # within 15 cm in depth: both just in front of the chest
+
+
+def test_correction_does_not_move_an_arm_for_a_forearm_inside_while_the_hand_is_clear(rig, binding, field):
+    rest = rig.rest_globals.numpy()[:, :3, :3]
+    upper, fore = rig.bone_names.index("upperarm01.L"), rig.bone_names.index("lowerarm01.L")
+    for down, across in ((-50., -40.), (-60., -30.), (-55., -50.), (-65., -45.), (-70., -35.)):
+        local = np.tile(np.eye(3), (12, len(rig.bone_names), 1, 1)).copy()
+        local[:, upper] = rest[upper].T @ Rotation.from_euler("z", down, degrees=True).as_matrix() @ rest[upper]
+        local[:, fore] = rest[fore].T @ Rotation.from_euler("y", across, degrees=True).as_matrix() @ rest[fore]
+        seen = penetration(rig, field, local)
+        if seen["forearm.torso"]["frames_over_0mm"] == 1. and hidden_from_front(rig, field, local)["frames_any_vertex"] == 0.:
+            break
+    else:
+        pytest.skip("no fixed pose has only the forearm inside")
+    fixed, record = apply_correction(rig, field, retarget_shell(rig, binding, local))
+    assert np.array_equal(fixed.local_rotations, local) and record["moved"]["L"]["frames_depth_moved"] == 0
+
+
+def test_shipped_correction_is_pinned_and_keeps_the_arm_in_the_image(rig, binding, field):
+    assert CORRECTION_V2 == CorrectionSettings(forearm_drives_wrist=False, swivel_cap_deg=0., elbow_nearest_in_image=True)
+    assert collision.CLEARANCE == .03                                     # 3 mm past the drawn surface
+    local, wrist = chest_pose(rig)
+    fixed, record = apply_correction(rig, field, retarget_shell(rig, binding, local))
+    assert record["moved"]["L"]["swivel_deg_max"] == 0.
+    changes = arm_image_changes(rig, forward_kinematics(rig, local), forward_kinematics(rig, fixed.local_rotations), 768 / 9.)["L"]
+    old, _, _ = correct(rig, field, local, forward_kinematics(rig, local)[:, :, :3, :3], CorrectionSettings(True, 70., False))
+    worse = arm_image_changes(rig, forward_kinematics(rig, local), forward_kinematics(rig, old), 768 / 9.)["L"]
+    assert changes["elbow_image_shift_px"]["max"] < worse["elbow_image_shift_px"]["max"]
+    assert changes["forearm_image_length_ratio"]["minimum"] > worse["forearm_image_length_ratio"]["minimum"]
+
+
+def test_the_hand_ends_just_in_front_of_the_body_not_far_from_it(rig, binding, field):
+    """A clearance of 5 cm would float a contact sign in front of the chest."""
+    local, _ = chest_pose(rig)
+    fixed, _ = apply_correction(rig, field, retarget_shell(rig, binding, local))
+    globals_ = forward_kinematics(rig, fixed.local_rotations)
+    maps = front_maps(rig, field, forward_kinematics(rig, local))
+    hand = _skin(field, "hand", "L", globals_, np.linalg.inv(rig.rest_globals.numpy()))
+    gap = np.array([(hand[t][:, 2] - _read_front(maps, t, hand[t]))[np.isfinite(_read_front(maps, t, hand[t]))].min() for t in range(len(hand))])
+    assert (gap > 0.).all() and np.median(gap) < .2                      # under 2 cm of map cell and smoothing
 
 
 def test_correction_leaves_a_clear_pose_exactly_alone(rig, binding, field):
@@ -387,7 +474,7 @@ def test_packet_builder_passes_one_argument_list_for_every_system(monkeypatch, t
         out = Path(argv[argv.index("--out-dir") + 1])
         out.mkdir()
         (out / "avatar.mp4").write_bytes(b"x")
-        (out / "verification.json").write_text(json.dumps(dict(render_settings_sha256=render_avatar.settings_sha256(768), acceptance=dict(mirror=True))))
+        (out / "verification.json").write_text(json.dumps(dict(render_settings_sha256=render_avatar.settings_sha256(768), acceptance=dict(mirror=True), code=dict(commit="c", dirty=False))))
         return 0
 
     monkeypatch.setattr(render_avatar, "main", fake_main)
@@ -407,7 +494,7 @@ def test_packet_builder_refuses_a_render_with_other_settings(monkeypatch, tmp_pa
         out = Path(argv[argv.index("--out-dir") + 1])
         out.mkdir()
         (out / "avatar.mp4").write_bytes(b"x")
-        (out / "verification.json").write_text(json.dumps(dict(render_settings_sha256="0" * 64, acceptance=dict(mirror=True))))
+        (out / "verification.json").write_text(json.dumps(dict(render_settings_sha256="0" * 64, acceptance=dict(mirror=True), code=dict(commit="c", dirty=False))))
         return 0
 
     monkeypatch.setattr(render_avatar, "main", other_settings)
@@ -424,7 +511,225 @@ def test_packet_builder_calls_the_avatar_with_the_packets_one_resolution():
     for call in calls:
         assert all(isinstance(a, ast.Name) for a in call.args)      # state and path: no label, no system
         names = [keyword.arg for keyword in call.keywords]
-        assert set(names) <= {"resolution", "verification"} and "verification" in names       # the verification path holds the item id, private, under key/
+        assert set(names) <= {"resolution", "verification", "archive"} and "verification" in names and "archive" in names     # both keyed by the item id, private
+
+
+def test_the_hash_moves_with_everything_that_shapes_a_video(monkeypatch):
+    import render_avatar
+    from signtranslator.avatar_render import motion_filter
+    base = render_avatar.settings_sha256(768)
+
+    def moved(target, name, value):
+        with monkeypatch.context() as patch:
+            patch.setattr(target, name, value)
+            return render_avatar.settings_sha256(768) != base
+
+    assert moved(render_avatar, "RENDER_SETTINGS", dict(render_avatar.RENDER_SETTINGS, samples=8))
+    assert moved(motion_filter, "FILTER_V1", FilterSettings())
+    assert moved(collision, "CLEARANCE", .5)
+    assert moved(collision, "CORRECTION_V2", CorrectionSettings(True, 70., False))
+    assert moved(render_avatar, "ENCODER", dict(render_avatar.ENCODER, crf=30))
+    assert moved(render_avatar, "blender_version", lambda blender=None: "Blender 9")
+    for name in ("signtranslator/avatar_render/motion_filter.py", "signtranslator/avatar_render/collision.py", "scripts/render_avatar.py", "signtranslator/generation/stream_render.py"):
+        assert name in render_avatar.RENDER_SOURCES
+    assert moved(render_avatar, "_file_hashes", dict(render_avatar._file_hashes, **{str(ROOT / "signtranslator/avatar_render/collision.py"): "other"}))
+    assert any(k.startswith("makehuman-system-assets/") and k.endswith("intake.json") for k in render_avatar.source_hashes())
+
+
+def test_a_packet_of_mixed_renders_is_refused():
+    import build_human_eval_packet as packet
+    one = dict(render_settings_sha256="a", code_commit="c", code_dirty=False)
+    assert packet.refuse_mixed_renders([one, dict(one)]) == dict(settings_sha256="a", code_commit="c", code_dirty=False)
+    assert packet.refuse_mixed_renders([dict(system="x")]) == {}
+    for other in (dict(one, render_settings_sha256="b"), dict(one, code_commit="d"), dict(one, code_dirty=True)):
+        with pytest.raises(SystemExit, match="mixes renders"):
+            packet.refuse_mixed_renders([one, other])
+
+
+def bundle_of(tmp_path, monkeypatch, state, name):
+    """render_avatar.main with Blender stubbed: the bundle is exactly what Blender would draw."""
+    import render_avatar
+    from PIL import Image
+
+    def fake_blender(blender, bundle, frames_dir, resolution, log, *, first_only=False):
+        Path(frames_dir).mkdir()
+        count = 1 if first_only else np.load(bundle)["body.vertices"].shape[0]
+        for i in range(count):
+            Image.new("RGB", (resolution, resolution)).save(Path(frames_dir) / f"frame-{i:06d}.png")
+    monkeypatch.setattr(render_avatar, "run_blender", fake_blender)
+    path = tmp_path / f"{name}.npz"
+    state.save(path)
+    out = tmp_path / name
+    assert render_avatar.main(["--state", str(path), "--out-dir", str(out), "--allow-inferred", "--resolution", "32"]) == 0
+    return np.load(out / "bundle.npz"), json.loads((out / "verification.json").read_text())
+
+
+def noisy_hand_on_chest(rig, frames=48, seed=5):
+    """A state through the project's own adapter: the left arm folded so its hand lands in the chest, with noise on the chest as estimated states carry."""
+    from dataclasses import replace
+    from signtranslator.data_engineering.video_landmarks import L_ELBOW, L_SHOULDER, L_WRIST
+    from signtranslator.avatar_render.retarget import rest_landmarks
+    world, visible, hands = rest_landmarks(rig)
+    world = world.copy()
+    shoulder, elbow = world[0, L_SHOULDER], world[0, L_ELBOW]
+    hand_points, found = hands["Left"]
+    points = np.vstack((world[0, [L_ELBOW, L_WRIST]], hand_points[0]))
+    down = Rotation.from_euler("z", -25, degrees=True).as_matrix()
+    points = (points - shoulder) @ down.T + shoulder
+    new_elbow = points[0]
+    across = Rotation.from_euler("y", -90, degrees=True).as_matrix()
+    points[1:] = (points[1:] - new_elbow) @ across.T + new_elbow
+    world[0, L_ELBOW], world[0, L_WRIST] = points[0], points[1]
+    hands = dict(hands, Left=(points[2:][None], found))
+    tile = lambda a: np.repeat(a, frames, axis=0)                                                  # noqa: E731
+    state = state_from_points(np.arange(frames) / FPS, tile(world), tile(visible), {k: (tile(p), np.repeat(f, frames)) for k, (p, f) in hands.items()}, sample_id="on-chest")
+    body = state.channels["body"]
+    values = body.values.astype(np.float64).copy()
+    k = body.labels.index("Chest")
+    wiggle = Rotation.from_rotvec(np.random.default_rng(seed).normal(0., np.radians(1.5), (frames, 3))).as_matrix()
+    values[:, k] = _to_6d(_from_6d(values[:, k]) @ wiggle)
+    return replace(state, channels=dict(state.channels, body=replace(body, values=values.astype(body.values.dtype))))
+
+
+@pytest.fixture
+def render_parts(rig, binding):
+    from signtranslator.avatar_render.makehuman_face import load_makehuman_face_units
+    from signtranslator.avatar_render.makehuman_wardrobe import load_wardrobe
+    wardrobe = load_wardrobe(INTAKE / "makehuman-system-assets", rig)
+    return load_makehuman_face_units(INTAKE / "makehuman-face", rig), wardrobe, build_field(rig, drawn=wardrobe.attachments)
+
+
+def skinned(rig, local):
+    out = []
+    for t in range(len(local)):
+        out.append(rig.pose(torch.from_numpy(np.ascontiguousarray(local[t]))).vertices.numpy())
+    return np.stack(out)
+
+
+def test_the_bundle_holds_the_filtered_and_corrected_motion(tmp_path, monkeypatch, rig, binding, render_parts):
+    state = noisy_hand_on_chest(rig)
+    bundle, record = bundle_of(tmp_path, monkeypatch, state, "drawn")
+    face_units, wardrobe, field = render_parts
+    options = dict(allow_inferred=True, face_units=face_units)
+    raw = retarget_state(rig, binding, fill_gaps(state)[0], **options)
+    filtered = retarget_state(rig, binding, filter_state(fill_gaps(state)[0], FILTER_V1), **options)
+    final, _ = apply_correction(rig, field, filtered)
+    drawn = bundle["body.vertices"]
+    assert np.abs(drawn - skinned(rig, final.local_rotations)).max() < 1e-3                      # exactly this pipeline
+    assert np.abs(drawn - skinned(rig, filtered.local_rotations)).max() > .1                     # the correction moved something
+    head = rig.weights.numpy().argmax(1) == rig.bone_names.index("head")
+    jitter = lambda v: position_jitter_mm(v[:, head].mean(1), FPS)                               # noqa: E731
+    assert jitter(drawn) < .5 * jitter(skinned(rig, raw.local_rotations))                        # and the filter ran
+    assert record["collision"]["hidden_before"]["frames_any_vertex"] > 0. and record["collision"]["hidden_after"]["frames_any_vertex"] == 0.
+
+
+def test_acceptance_reads_the_pose_as_drawn(tmp_path, monkeypatch, rig):
+    _, record = bundle_of(tmp_path, monkeypatch, noisy_hand_on_chest(rig), "accept")
+    assert record["direction_errors"]["groups"]["forearm"]["max_deg"] > record["direction_errors_before_correction"]["groups"]["forearm"]["max_deg"] + 1.
+    assert record["acceptance"]["groups"]["forearm"]["median_deg"] == record["direction_errors"]["groups"]["forearm"]["median_deg"]
+    assert "L" in record["arm_in_image_after_correction"] and record["code"]["commit"]
+
+
+def test_the_observed_flag_changes_nothing_that_is_drawn(tmp_path, monkeypatch, rig):
+    from dataclasses import replace
+    state = noisy_hand_on_chest(rig, frames=24)
+    flipped = replace(state, channels={name: replace(c, observed=c.valid.copy()) for name, c in state.channels.items()})
+    a, _ = bundle_of(tmp_path, monkeypatch, state, "inferred")
+    b, _ = bundle_of(tmp_path, monkeypatch, flipped, "observed")
+    assert np.array_equal(a["body.vertices"], b["body.vertices"]) and np.array_equal(a["top.vertices"], b["top.vertices"])
+    for name in ("signtranslator/avatar_render/motion_filter.py", "signtranslator/avatar_render/collision.py"):
+        for node in ast.walk(ast.parse((ROOT / name).read_text())):
+            assert not (isinstance(node, ast.Attribute) and node.attr == "observed"), name
+    for node in ast.walk(ast.parse(_source("render_avatar.py"))):                     # the windowing of a state copies the flag; no branch reads it
+        if isinstance(node, (ast.If, ast.IfExp, ast.While)):
+            assert not any(isinstance(part, ast.Attribute) and part.attr == "observed" for part in ast.walk(node.test))
+
+
+def test_the_camera_is_orthographic():
+    tree = ast.parse(_source("render_avatar.py"))
+    kinds = [node.value.value for node in ast.walk(tree) if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Attribute)
+             and node.targets[0].attr == "type" and isinstance(node.value, ast.Constant)]
+    assert kinds == ["ORTHO"]
+
+
+def test_the_packet_hands_the_renderer_its_gaps(tmp_path, monkeypatch, rig):
+    from dataclasses import replace
+    from signtranslator.pose.multichannel import MultichannelMotion
+    import build_human_eval_packet as packet
+    import render_avatar
+    state = noisy_state(rig, frames=24)
+    body = state.channels["body"]
+    k = body.labels.index("LeftForearm")
+    valid = body.valid.copy()
+    valid[6:12, k] = False
+    values = body.values.copy()
+    values[~valid] = 0.
+    state = replace(state, channels=dict(state.channels, body=replace(body, values=values, valid=valid, confidence=np.where(valid, body.confidence, 0.).astype(body.confidence.dtype))))
+    seen = {}
+
+    def capture(argv):
+        saved = Path(argv[argv.index("--state") + 1])
+        loaded = MultichannelMotion.load(saved, expected_sha256=hashlib.sha256(saved.read_bytes()).hexdigest())
+        seen["gaps"] = int((~loaded.channels["body"].valid[:, k]).sum())
+        out = Path(argv[argv.index("--out-dir") + 1])
+        out.mkdir()
+        (out / "avatar.mp4").write_bytes(b"x")
+        (out / "verification.json").write_text(json.dumps(dict(render_settings_sha256=render_avatar.settings_sha256(768), acceptance=dict(mirror=True), code=dict(commit="c", dirty=False))))
+        return 0
+    monkeypatch.setattr(render_avatar, "main", capture)
+    packet.render_avatar_video(state, tmp_path / "v.mp4")
+    assert seen["gaps"] == 6
+
+
+def test_a_padded_video_decodes_to_the_same_frames_and_every_file_has_one_size(tmp_path):
+    import av
+    import build_human_eval_packet as packet
+    from signtranslator.generation.stream_render import encode_timestamped_video, verify_timestamped_video
+    rng = np.random.default_rng(0)
+    clock = np.arange(12) / FPS
+    decoded = {}
+    for name, amount in (("still", 2), ("busy", 200)):
+        frames = [np.full((32, 32, 3), 100, np.uint8) + rng.integers(0, amount, (32, 32, 3), dtype=np.uint8) for _ in clock]
+        path = tmp_path / f"{name}.mp4"
+        encode_timestamped_video(frames, clock, path, quality="review")
+        before = path.read_bytes()
+        with av.open(str(path)) as container:
+            decoded[name] = [f.to_ndarray(format="rgb24") for f in container.decode(video=0)]
+        assert packet.pad_video(path) == packet.UNIFORM_VIDEO_BYTES == path.stat().st_size
+        assert path.read_bytes().startswith(before)
+        verify_timestamped_video(path, clock)
+        with av.open(str(path)) as container:
+            again = [f.to_ndarray(format="rgb24") for f in container.decode(video=0)]
+        assert all(np.array_equal(a, b) for a, b in zip(decoded[name], again)) and len(again) == 12
+    assert (tmp_path / "still.mp4").stat().st_size == (tmp_path / "busy.mp4").stat().st_size
+
+
+def test_every_render_goes_to_the_store_with_its_index(tmp_path):
+    import render_avatar
+    from signtranslator.data.text_motion_dataset import DirectoryStore
+    folder = tmp_path / "render"
+    (folder / "frames").mkdir(parents=True)
+    (folder / "avatar.mp4").write_bytes(b"video")
+    (folder / "frames" / "frame-000000.png").write_bytes(b"png")
+    store = DirectoryStore(tmp_path / "store")
+    made = render_avatar.archive_render(store, "renders/x/item", folder, dict(item_id="item"))
+    index = json.loads(store.get("renders/x/item/INDEX.json"))
+    assert made["files"] == 2 and index["item_id"] == "item" and index["files"]["avatar.mp4"]["sha256"] == hashlib.sha256(b"video").hexdigest()
+    assert store.get("renders/x/item/frames/frame-000000.png") == b"png"
+
+
+def test_arm_invalid_share_reads_any_arm_joint(rig):
+    from dataclasses import replace
+    import build_human_eval_packet as packet
+    state = noisy_state(rig, frames=20)
+    assert packet.arm_invalid_share(state) == 0.
+    body = state.channels["body"]
+    valid = body.valid.copy()
+    valid[:5, body.labels.index("RightUpperArm")] = False
+    values = body.values.copy()
+    values[~valid] = 0.
+    thinned = replace(body, values=values, valid=valid, confidence=np.where(valid, body.confidence, 0.).astype(body.confidence.dtype))
+    assert packet.arm_invalid_share(replace(state, channels=dict(state.channels, body=thinned))) == .25
 
 
 def test_avatar_fixes_refuses_clips_outside_d20():

@@ -46,6 +46,7 @@ import collections
 import csv
 import hashlib
 import io
+import json
 import math
 import random
 import re
@@ -67,6 +68,15 @@ _SHA = re.compile(r"[0-9a-f]{64}")
 
 class SheetError(ValueError):
     """A returned sheet cannot be read at all; the message says why, in plain words."""
+
+
+_SENTENCE_TYPE_FORMS = {"statement": "statement", "yes no question": "yes_no_question", "yes no": "yes_no_question", "wh question": "wh_question",
+                        "wh": "wh_question", "rhetorical question": "rhetorical_question", "rhetorical": "rhetorical_question"}
+
+
+def sentence_type_of(value: str) -> str:
+    """The canonical sentence type of a cell, in any case and as printed on the page (``Yes/no question``, ``Wh-question``); the cell itself if unknown."""
+    return _SENTENCE_TYPE_FORMS.get(re.sub(r"[\s_\-/]+", " ", value.strip().lower()).strip(), value)
 
 
 def decode_sheet(payload: bytes) -> str:
@@ -250,7 +260,7 @@ def parse_sheet(text: str, key: Mapping) -> tuple[list[dict], list[dict]]:
         if viewable == "yes":
             if row["choice"].lower() not in OPTIONS:
                 issues.append("choice must be a, b, c or d")
-            if row["sentence_type"] not in SENTENCE_TYPES:
+            if sentence_type_of(row["sentence_type"]) not in SENTENCE_TYPES:
                 issues.append(f"sentence_type must be one of {', '.join(SENTENCE_TYPES)}")
             for c in ("negated", "topic"):
                 if row[c].lower() not in YES_NO:
@@ -261,7 +271,7 @@ def parse_sheet(text: str, key: Mapping) -> tuple[list[dict], list[dict]]:
             problems.extend(dict(row=n, item_id=item["item_id"], issue=i) for i in issues); continue
         answers.append(dict(item_id=item["item_id"], reviewer_sha256=row["reviewer_sha256"], viewable=viewable,
                             translation=row["translation"], choice=row["choice"].lower(),
-                            sentence_type=row["sentence_type"], negated=row["negated"].lower(),
+                            sentence_type=sentence_type_of(row["sentence_type"]), negated=row["negated"].lower(),
                             topic=row["topic"].lower(),
                             naturalness=int(row["naturalness"]) if viewable == "yes" else None, notes=row["notes"]))
     reviewers = {a["reviewer_sha256"] for a in answers}
@@ -553,7 +563,7 @@ def parse_stage1(text: str, key: Mapping) -> tuple[list[dict], list[dict]]:
         if reviewer is None or not _SHA.fullmatch(reviewer):
             issues.append("reviewer_sha256 must be a 64-hex SHA-256 key, never a name")
         if viewable == "yes":
-            if row["sentence_type"] not in SENTENCE_TYPES:
+            if sentence_type_of(row["sentence_type"]) not in SENTENCE_TYPES:
                 issues.append(f"sentence_type must be one of {', '.join(SENTENCE_TYPES)}")
             for c in ("negated", "topic"):
                 if row[c].lower() not in YES_NO:
@@ -564,7 +574,7 @@ def parse_stage1(text: str, key: Mapping) -> tuple[list[dict], list[dict]]:
             problems.extend(dict(row=n, item_id=item["item_id"], issue=i, reviewer_sha256=reviewer) for i in issues)
             continue
         answers.append(dict(item_id=item["item_id"], reviewer_sha256=reviewer, viewable=viewable,
-                            translation=row["translation"], choice="", sentence_type=row["sentence_type"],
+                            translation=row["translation"], choice="", sentence_type=sentence_type_of(row["sentence_type"]),
                             negated=row["negated"].lower(), topic=row["topic"].lower(),
                             naturalness=int(row["naturalness"]) if viewable == "yes" else None, notes=row["notes"]))
     return answers, problems
@@ -634,6 +644,12 @@ def parse_stage2(text: str, key: Mapping, stage1: Mapping[str, Mapping]) -> tupl
     return choices, problems
 
 
+def stage1_answers_sha256(answers: Sequence[Mapping]) -> str:
+    """The hash of a stage 1 sheet's answers as read, not its bytes: a sheet re-saved with the same answers has the same one."""
+    rows = sorted(answers, key=lambda a: a["item_id"])
+    return hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+
+
 def read_stages(stage1_sheets: Sequence[bytes], stage2_sheets: Sequence[bytes], key: Mapping,
                 receipts: Mapping[str, str]) -> dict:
     """``dict(answers, stage1, problems)`` of the returned sheets. ``receipts``: {reviewer: the stage 1 hash the team recorded when it
@@ -645,6 +661,8 @@ def read_stages(stage1_sheets: Sequence[bytes], stage2_sheets: Sequence[bytes], 
     receipt was never released, so no option was seen: it is kept here and cannot be joined. A stage 1 that does not match its
     receipt is refused from both."""
     joined, kept, problems = {}, {}, []
+    resaved = []
+    released_answers = receipts.get("answers_sha256") or {}
     for sheet in stage1_sheets:
         try:
             answers, issues = parse_stage1(decode_sheet(sheet), key)
@@ -660,15 +678,19 @@ def read_stages(stage1_sheets: Sequence[bytes], stage2_sheets: Sequence[bytes], 
             problems.append(dict(row=0, reviewer_sha256=reviewer, issue="two stage 1 sheets from one reviewer key"))
             continue
         if reviewer in receipts and receipts[reviewer] != sha:
-            problems.append(dict(row=0, reviewer_sha256=reviewer, issue="stage 1 sheet does not match the recorded receipt"))
-            continue
+            if released_answers.get(reviewer) != stage1_answers_sha256(answers):
+                problems.append(dict(row=0, reviewer_sha256=reviewer, issue="stage 1 sheet's answers do not match the recorded receipt: score the copy "
+                                                                            "how2sign-stage2 kept in released-stage1/ beside the receipts"))
+                continue
+            sha = receipts[reviewer]                                        # re-saved, same answers: stage 2 carries the released sheet's hash
+            resaved.append(reviewer)
         kept[reviewer] = {a["item_id"]: a for a in answers}
         if reviewer not in receipts:
             problems.append(dict(row=0, reviewer_sha256=reviewer, issue="no receipt recorded for this stage 1: stage 2 was never "
                                                                         "released, so it is read for its stage 1 answers alone"))
             continue
         joined[reviewer] = dict(sha256=sha, answers=kept[reviewer])
-    choices = {}
+    choices, repeated = {}, set()
     for sheet in stage2_sheets:
         try:
             got, issues = parse_stage2(decode_sheet(sheet), key, joined)
@@ -676,10 +698,13 @@ def read_stages(stage1_sheets: Sequence[bytes], stage2_sheets: Sequence[bytes], 
             problems.append(dict(row=0, issue=str(error)))
             continue
         problems += issues
-        twice = set(got) & set(choices)
-        problems += [dict(row=0, reviewer_sha256=r, item_id=i, issue="answered the item twice in stage 2; excluded")
+        twice = set(got) & (set(choices) | repeated)
+        problems += [dict(row=0, reviewer_sha256=r, item_id=i, issue="answered the item twice in stage 2; neither answer counts")
                      for r, i in sorted(twice)]
-        choices.update({k: v for k, v in got.items() if k not in twice})
+        repeated |= twice
+        for pair in twice:
+            choices.pop(pair, None)
+        choices.update({k: v for k, v in got.items() if k not in repeated})
     out, stage1 = [], []
     for reviewer, answers in kept.items():
         for item_id, a in answers.items():
@@ -694,7 +719,7 @@ def read_stages(stage1_sheets: Sequence[bytes], stage2_sheets: Sequence[bytes], 
             else:
                 problems.append(dict(row=0, reviewer_sha256=reviewer, item_id=item_id, no_stage2_choice=True,
                                      issue="viewable in stage 1, with no stage 2 choice"))
-    return dict(answers=out, stage1=stage1, problems=problems)
+    return dict(answers=out, stage1=stage1, problems=problems, resaved_stage1=sorted(resaved))
 
 
 def read_two_stage(stage1_sheets: Sequence[bytes], stage2_sheets: Sequence[bytes], key: Mapping,
@@ -1548,6 +1573,38 @@ def word_format_read(answers: Sequence[Mapping], key: Mapping, *, seed: int = 0,
                 dropped_no_real_clip=key["word_format"].get("dropped_no_real_clip", []), contrasts=contrasts,
                 share_of_lead_over_chance_removed_by_shuffling=_share_removed(
                     viewable, items, roles["composition"], roles["composition_shuffled"], subsets["moved"], boot=boot, seed=seed))
+
+
+ARM_VALIDITY_CUTS = (.5, .2)
+
+
+def reference_by_arm_validity(answers: Sequence[Mapping], key: Mapping, *, reference: str) -> dict | None:
+    """Report only, declared before any sheet returned (protocol section 6): forced-choice accuracy per system with all sentences, and
+    without those whose recording has the arm chain invalid on over 50% and over 20% of frames, where the reference is weak because its
+    arms are interpolated. Decides nothing, and the bar read doesn't read it. ``None`` for a key without the shares."""
+    items = {i["item_id"]: i for i in key["items"]}
+    if not items or any("reference_arm_invalid_share" not in i for i in items.values()):
+        return None
+    out = dict(report_only=True, reference=reference, cuts={})
+    for label, cut in (("all", None), *((f"at_most_{int(c * 100)}pct_invalid", c) for c in ARM_VALIDITY_CUTS)):
+        kept = {u for u, share in ((i["utterance"], i["reference_arm_invalid_share"]) for i in items.values()) if cut is None or share <= cut}
+        by_system = collections.defaultdict(lambda: collections.defaultdict(list))
+        for a in answers:
+            item = items[a["item_id"]]
+            if a["viewable"] == "yes" and item["utterance"] in kept:
+                by_system[item["system"]][item["utterance"]].append(float(a["choice"] == item["correct"]))
+        row = dict(sentences=len(kept), systems={})
+        for system in key["systems"]:
+            hits = [h for values in by_system[system].values() for h in values]
+            mine = {u: sum(v) / len(v) for u, v in by_system[system].items()}
+            other = {u: sum(v) / len(v) for u, v in by_system[reference].items()}
+            shared = sorted(set(mine) & set(other))
+            row["systems"][system] = dict(ratings=len(hits), accuracy=sum(hits) / len(hits) if hits else None,
+                                          wilson=list(wilson(int(sum(hits)), len(hits))) if hits else None,
+                                          reference_minus_system=(sum(other[u] - mine[u] for u in shared) / len(shared)) if shared and system != reference else None,
+                                          paired_sentences=len(shared))
+        out["cuts"][label] = row
+    return out
 
 
 def key_sha256(key: Mapping) -> str:

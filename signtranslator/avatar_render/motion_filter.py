@@ -77,7 +77,7 @@ class FilterSettings:
         return hashlib.sha256(json.dumps(self.describe(), sort_keys=True).encode()).hexdigest()
 
 
-_LIGHT = SavitzkyGolay(5, 2)        # -3 dB at 5.7 Hz, gain 0.97 at 3 Hz, 0.91 at 4 Hz, 0.2 at 8 Hz and above
+_LIGHT = SavitzkyGolay(5, 2)        # -3 dB at 5.7 Hz; gain 0.97 at 3 Hz, 0.91 at 4 Hz, 0.66 at 6 Hz, 0.23 at 8 Hz, 0.19 at 10 Hz, 0.37 at 12 Hz (a window's sidelobe)
 _TORSO = SavitzkyGolay(9, 2)        # -3 dB at 2.9 Hz; How2Sign's torso is jitter-dominated (velocity share at 6 Hz and up: 0.68)
 
 #: Chosen by measurement (docs/AVATAR_RENDER.md section 13). The only table the renderer uses; no argument changes it.
