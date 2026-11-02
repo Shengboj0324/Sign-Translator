@@ -568,6 +568,18 @@ def test_the_length_rows_read_each_form_over_its_own_still(monkeypatch, tmp_path
     over = np.array([((.1 + .03 * k - .1) * (N - 1) + (.02 - .1)) / N for k in C.DRAWS])
     assert abs(length["over_reference_still"]["mean"] - over.mean()) < 1e-4 and abs(length["own_still_minus_reference_still"]["mean"] - (means_pred - over).mean()) < 1e-4
     assert length["per_clip_margin_on_log_length_ratio"]["clips"] == N
+    for row in (length["true_minus_predicted"], length["own_still_minus_reference_still"]):
+        assert row["clips_ci95"][0] <= row["mean"] <= row["clips_ci95"][1]
+    assert length["bleu_true_minus_predicted"]["clips_ci95"][0] <= length["bleu_true_minus_predicted"]["mean"] <= length["bleu_true_minus_predicted"]["clips_ci95"][1]
+
+
+def test_the_length_ratio_is_the_compositions_frames_over_the_references(monkeypatch, tmp_path):
+    h = Comp(monkeypatch, tmp_path)
+    h.pipeline()
+    forms = json.loads((h.forms / "form-d1_comp.json").read_text())
+    idx = np.zeros((2, N), int)
+    built = C.draw_rows(1, {f"d1_{k}": json.loads((h.forms / f"form-d1_{k}.json").read_text()) for k in C.KINDS}, {a: json.loads((h.forms / f"form-{a}.json").read_text()) for a in C.ANCHORS}, idx)
+    assert np.allclose(built["log_ratio"], np.log(np.asarray(forms["frames"], float) / np.asarray(forms["reference_frames"], float)))
 
 
 def test_v1s_stored_share_stands_beside_it_and_on_clips_outside_its_training(monkeypatch, tmp_path):

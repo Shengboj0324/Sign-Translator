@@ -100,23 +100,24 @@ def margins(read: dict) -> np.ndarray:
     return PP.margins(read)
 
 
-def load_mono(store, args):
-    """The mono-tuned instrument, its checkpoint named by its run's record and held to the hash there; the record must agree with its best.json. Before training there is none, and this refuses."""
+def load_mono(store, args, prefix: str = MONO_PREFIX):
+    """The mono-tuned instrument, its checkpoint named by its run's record and held to the hash there; the record must agree with its best.json. Before training there is none, and this refuses. ``prefix``: a smoke's run."""
     from score_back_translation import load_translator
     import torch
-    if not store.exists(TRAINED_RECORD):
-        raise SystemExit(f"{TRAINED_RECORD}: no trained record; the mono-tuned instrument is not ready")
-    record = json.loads(store.get(TRAINED_RECORD))
-    best = json.loads(store.get(f"{MONO_PREFIX}/best.json"))
-    if record.get("checkpoint_key") != best.get("checkpoint_key") or not str(record["checkpoint_key"]).startswith(f"{MONO_PREFIX}/checkpoints/"):
-        raise SystemExit(f"{TRAINED_RECORD} names {record.get('checkpoint_key')}, its best.json {best.get('checkpoint_key')}")
+    record_key = f"{prefix}/trained.json"
+    if not store.exists(record_key):
+        raise SystemExit(f"{record_key}: no trained record; the mono-tuned instrument is not ready")
+    record = json.loads(store.get(record_key))
+    best = json.loads(store.get(f"{prefix}/best.json"))
+    if record.get("checkpoint_key") != best.get("checkpoint_key") or not str(record["checkpoint_key"]).startswith(f"{prefix}/checkpoints/"):
+        raise SystemExit(f"{record_key} names {record.get('checkpoint_key')}, its best.json {best.get('checkpoint_key')}")
     payload, digest = L.instrument_payload(store, record["checkpoint_key"], record["sha256"], getattr(args, "instrument_cache", None))
     model, kind = load_translator(L._OneFile(payload), record["checkpoint_key"], L.TRANSLATOR_MANIFEST_SHA)
     del payload
     if kind != "keypoints":
         raise SystemExit(f"{record['checkpoint_key']}: not a 2D keypoint reader but {kind!r}")
     device = torch.device(args.device)
-    return L.Reader(model.to(device).eval(), kind, dict(run=MONO_RUN, checkpoint_key=record["checkpoint_key"], sha256=digest, kind=kind), device)
+    return L.Reader(model.to(device).eval(), kind, dict(run=prefix.removeprefix("training-runs/"), checkpoint_key=record["checkpoint_key"], sha256=digest, kind=kind), device)
 
 
 def digest_of(payload: bytes) -> str:
