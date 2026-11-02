@@ -6428,3 +6428,46 @@ Shuffled stills match their partners' (raw difference at most 0.001), so the dro
 
 **Beside the rule, not a claim:** real word clips and generated clips read about the same through this reader. BLEU can't separate them, and on margin generated clips are ahead by 0.031. Generated clips were chosen as best of 16 and real clips by chance, and all pass through d2, so this isn't "as good as real signers", and BLEU is unresolved; but it gives no sign that word-level generation is what holds composition back, on this instrument. v1 reads the format very differently: on D20 its real-word oracle was 2.219 against real 4.49, with an older shuffle at 1.890 (a drop of 0.33, other draws and a different shuffle, so not like for like). **v1's official 2.40 stands, and M1 stays not met.** An open question is how much of v1's own 2.40 is word order; v1's stored shuffles suggest less, not none. Nothing here moves a target. The mirror's half is due next.
 
+### Word-format controls, mirror: composition 3.98, real signing 4.78, flagged, and word order matters here too (read 2026-11-02, recorded 13:06 UTC)
+
+`round20/parent-controls/report-mirror.json` sha 1bd813c3, digest 0936c98a, 3 draws as planned, no alert, all seven stored anchors reproduced exactly, parent read and mirror read together cost about $3.40 (3 h 4 min on the pod). Copy: `reports/parent_controls_mirror_report.json`. Declared cell: **`unresolved`** (generated against real clips). **Format: below real. All three shuffle contrasts: below.** Three draws make the t intervals wide, as declared.
+
+| On the mirror, D20, mean of 3 draws, t interval | BLEU | Margin over still | Share of nearest's margin |
+|---|---|---|---|
+| Real, monocular, marks-free (`nearest`) / with marks | 4.783 / 4.715 | 0.648 / 0.663 | |
+| Real, two-view | 3.596 | 0.337 | |
+| Still / blank | 2.259 / 1.159 | 0 / -0.088 | |
+| **Composition** (draws 4.15, 4.27, 3.52) | **3.978 [2.979, 4.977]** | **0.579 [0.527, 0.631]** | **90% [82, 98]** |
+| Generated, the oracle's words | 3.986 [3.008, 4.965] | 0.553 [0.514, 0.591] | 85% [79, 91] |
+| Real word clips (`oracle`) | 3.604 [3.382, 3.826] | 0.458 [0.435, 0.481] | 71% [67, 74] |
+| Composition, shuffled | 2.835 [2.006, 3.664] | 0.299 [0.272, 0.326] | 46% |
+| Generated, shuffled | 3.031 [2.367, 3.695] | 0.303 [0.286, 0.320] | 47% |
+| Real word clips, shuffled | 2.755 [2.392, 3.118] | 0.271 [0.239, 0.304] | 42% |
+
+| Paired contrast, t interval | BLEU | Margin | By the rule |
+|---|---|---|---|
+| Oracle minus nearest monocular | -1.179 [-1.401, -0.957] | -0.190 [-0.212, -0.167] | **below** |
+| Oracle minus real monocular | -1.111 [-1.333, -0.889] | -0.205 [-0.228, -0.183] | below |
+| Oracle minus covered | -0.382 [-1.302, 0.537] | -0.095 [-0.110, -0.079] | **unresolved** |
+| Covered minus composition | +0.008 [-0.428, 0.444] | -0.027 [-0.046, -0.007] | unresolved |
+| Composition minus nearest monocular | -0.805 [-1.804, 0.195] | -0.068 [-0.120, -0.016] | unresolved (beside the cells) |
+| Composition shuffled, moved clips | -1.156 [-1.461, -0.851] | -0.289 [-0.347, -0.232] | **below** |
+| Generated shuffled, moved clips | -0.982 [-1.300, -0.664] | -0.269 [-0.319, -0.218] | **below** |
+| Oracle shuffled, moved clips | -0.870 [-1.458, -0.281] | -0.201 [-0.248, -0.153] | **below** |
+
+Composition's gap shares: BLEU 79.8% [52.4, 107.2], likelihood 71.5% [59.6, 83.3]. The same three draws on the parent: BLEU 3.382, margin 0.470. Clean 178 clips outside training and selection: real monocular 5.00, nearest 4.78, composition 4.15, generated 4.07, oracle 3.43. By main corpus, oracle 4.03 ASLLVD, 2.98 RIT, 2.17 WLASL; the real-clip cut was fitted on ASLLVD, so this may be the cut. Over-50% word coverage: composition 4.31, margin 0.702, share of real 106%. Length: composition runs at 0.81 of the monocular clip's length (monocular over composition 1.23). Hypotheses: content-word overlap composition 19.9%, real monocular 15.3%; loop share 33.4% against 21.6%; 25.4 words against 22.4 (reference 19.4).
+
+**Reading.** **This isn't 3.8, and it isn't a new score.** 3.8 was set on v1, and the official composition score stays 2.40. 3.98 is on a report-only instrument with these flags, stated before the read: it shares the parent's lineage, the monocular path it trained on is the path the generator's word clips come through, and it trained on 234 of D20's clips. A still pose alone reads 2.26 on it.
+
+Here composition doesn't beat real signing, unlike on the parent: below on margin and unresolved on BLEU. So the sanity check the parent failed, this one passes. Still, shuffling takes away about 1.1 BLEU and half the margin. That's the same reward for English word order that the parent showed. Real ASL isn't in English order, so some of composition's reading on the mirror, as on the parent, may not be signing at all. Generated clips again read at least as well as real word clips, with the same caveats (best of 16 against a chance pick; the cut may not suit RIT and WLASL).
+
+**The three instruments together, D20:**
+
+| | Composition | Real word clips | Real signing, each one's own path |
+|---|---|---|---|
+| v1, official | 2.40 | 2.22 (older form) | 4.49 |
+| Parent | 3.30 | 3.32 | 2.13 |
+| Mirror | 3.98 | 3.60 | 4.78 |
+
+Composition's standing depends heavily on the reader, from about half of real signing to above it. **No instrument here measures comprehension, and none of this moves M1 or 3.8.** The next report-only read: the same oracle, covered and shuffled forms through v1, to learn how much of the official 2.40 is word order, which is the number that matters most for reading M1.
+
