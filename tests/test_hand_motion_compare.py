@@ -123,6 +123,14 @@ def test_a_joint_never_valid_leaves_no_handshape_so_no_row():
     assert row["hands"]["Right"] is None      # no frame holds all 15 joints: no handshape, so no row
 
 
+def test_a_source_read_on_valid_stops_if_it_holds_an_observed_frame():
+    none = dict(entry="a", validity=dict(Right=dict(valid=1., observed=0., confidence=1.), Left=None))
+    assert hm.check_observed(dict(x=[none]))["x"]["read_on"] == "valid"
+    some = dict(entry="a", validity=dict(Right=dict(valid=1., observed=.5, confidence=1.), Left=None))
+    with pytest.raises(SystemExit):
+        hm.check_observed(dict(x=[none, some]))
+
+
 # ---- speed, jitter ---------------------------------------------------------------------------------------------------
 
 def test_speed_is_in_radians_per_second():

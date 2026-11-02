@@ -68,6 +68,9 @@ MIN_FRAMES = 12
 CLIPS_PER_ENTRY, SENTENCE_CLIPS, ROUND_TRIP_CLIPS, FRESH_ENTRIES, FRESH_SAMPLES = 6, 150, 300, 150, 4
 K_CLUSTERS, SHUFFLES, BOOT = 32, 200, 2000
 ACTIVE = (.5, 1.)
+# The stated fallback, used: no state on any path holds an observed frame. `video_landmarks` and `two_view_states` write observed=False by construction ("values are fitted, not observed"), and valid frames carry confidence 1,
+# so "observed-valid" cannot be read and every real source is read on `valid`, marked in the report. `check_observed` stops the report if a row shows an observed frame after all.
+USE_OBSERVED_REAL = False
 FAR = .7
 O = "acquisition/2026-10-17-v1/youtube-asl-v1"
 A = "acquisition/2026-10-17-v1"
@@ -669,7 +672,7 @@ def collect_real_words(store, work: Path) -> None:
             continue
         refuse(r)
         try:
-            row = clip_row(load_sample(r, "continuous", cache=cache, fetch=store.get), True)
+            row = clip_row(load_sample(r, "continuous", cache=cache, fetch=store.get), USE_OBSERVED_REAL)
         except (ValueError, RuntimeError) as bad:            # a state whose window holds nothing: counted, not hidden
             row = dict(hands=dict(Right=None, Left=None), dominant=None, failed=type(bad).__name__)
         _append(out, dict(id=f"real|{r['sign']}", source="real_words", entry=e, corpus=r["corpus"], performer=r.get("performer_sha256", "")[:8], **row))
@@ -687,9 +690,9 @@ def collect_sentences(store, work: Path) -> None:
     for r in chosen:
         refuse(r)
         if f"two|{r['sign']}" not in seen:
-            _append(out, dict(id=f"two|{r['sign']}", source="sentences_two_view", entry=r["sign"], clip=hashlib.sha256(r["sign"].encode()).hexdigest()[:10], **clip_row(load_sample(r, "continuous", cache=cache, fetch=store.get), True)))
+            _append(out, dict(id=f"two|{r['sign']}", source="sentences_two_view", entry=r["sign"], clip=hashlib.sha256(r["sign"].encode()).hexdigest()[:10], **clip_row(load_sample(r, "continuous", cache=cache, fetch=store.get), USE_OBSERVED_REAL)))
         if r["sign"] in index and f"mono|{r['sign']}" not in seen:
-            _append(out, dict(id=f"mono|{r['sign']}", source="sentences_monocular", entry=r["sign"], clip=hashlib.sha256(r["sign"].encode()).hexdigest()[:10], **clip_row(_state(store, *index[r["sign"]]), True)))
+            _append(out, dict(id=f"mono|{r['sign']}", source="sentences_monocular", entry=r["sign"], clip=hashlib.sha256(r["sign"].encode()).hexdigest()[:10], **clip_row(_state(store, *index[r["sign"]]), USE_OBSERVED_REAL)))
     print(f"sentences: {len(chosen)} drawn, {len(index)} with a monocular state", flush=True)
 
 
@@ -736,7 +739,7 @@ def round_trip_pair(state, decoded) -> dict:
     """Original and decoded on the original's observed-valid frames only; hands the decoded copy marks everywhere valid are masked as the original's."""
     out = {}
     for side in ("Right", "Left"):
-        values, mask = hand_channel(state, side, True)
+        values, mask = hand_channel(state, side, USE_OBSERVED_REAL)
         if mask.all(axis=1).sum() < MIN_FRAMES:
             out[side] = None
             continue
@@ -788,7 +791,7 @@ def collect_round_trip(store, work: Path, *, clips: int = ROUND_TRIP_CLIPS, seco
             state = at_rate(conform(load_sample(r, "continuous", cache=cache, fetch=store.get), template), FPS)
             decoded = decode_state(state, tokenizer, tokenizer.config.motion, post, text=e)
             row = round_trip_pair(state, decoded)
-            row["dominant"] = dominant_of({k: (v or {}).get("original") for k, v in row.items()}, {k: arm_travel(state, k, True) for k in ("Right", "Left")})
+            row["dominant"] = dominant_of({k: (v or {}).get("original") for k, v in row.items()}, {k: arm_travel(state, k, USE_OBSERVED_REAL) for k in ("Right", "Left")})
         except (ValueError, RuntimeError) as bad:
             row, _ = dict(Right=None, Left=None, failed=type(bad).__name__), None
         _append(out, dict(id=f"rt|{r['sign']}", source="round_trip", entry=e, corpus=r["corpus"], **row))
@@ -1088,6 +1091,27 @@ def exclusions(entries: list, capture_all: dict, capture_ok: dict) -> dict:
     return dict(entries=len(entries), multi_word_cannot_match=len(multi), digits_or_apostrophes_cannot_match=len(other), single_word=len(single), not_in_converted_3d_lex=len(absent), in_3d_lex_without_an_admitted_hand_row=len(no_hand), matched=len(single) - len(absent) - len(no_hand), examples_multi_word=multi[:5], examples_other=other[:5], examples_no_admitted_hand=no_hand[:5])
 
 
+def check_observed(groups: dict) -> dict:
+    """Which sources hold any observed frame. A source read on ``valid`` that holds one stops the report: its unobserved valid frames would be inferred values read as real."""
+    out = {}
+    for name, rows in groups.items():
+        seen = sum(1 for r in rows for v in (r.get("validity") or {}).values() if v and v.get("observed"))
+        out[name] = dict(read_on="valid" if not USE_OBSERVED_REAL else "valid and observed", rows_holding_an_observed_frame=seen)
+        if seen and not USE_OBSERVED_REAL:
+            raise SystemExit(f"{name}: {seen} rows hold observed frames, and this read took valid as observed")
+    return out
+
+
+def right_hand_targets(rows: list) -> dict:
+    """Capture entries by their right hand alone: a sensitivity to the arm rule, since 3D-LEX's dominance is not recorded."""
+    out = {}
+    for r in rows:
+        h = hand_of(r, "Right")
+        if h and h.get("core") and all(v is not None for v in h["core"]):
+            out[r["entry"]] = [np.array(h["core"], dtype=float)]
+    return out
+
+
 def analyse(work: Path) -> dict:
     gen = _load(work, "generated")
     draws = {k: [r for r in gen if r["source"] == f"draw{k}"] for k in DRAWS}
@@ -1124,6 +1148,7 @@ def analyse(work: Path) -> dict:
     for k in DRAWS:
         for w, v in features_by_word(draws[k], key="core_30").items():
             f30["generated_three_draws"].setdefault(w, []).extend(v)
+    wm["sensitivity_capture_right_hand_only"] = word_match_report(dict((k, sources[k]) for k in ("generated_three_draws", "real_words")), right_hand_targets(capture_rows), centroid_form=False)
     wm["sensitivity_core_30"] = word_match_report(f30, features_by_word(capture_rows, key="core_30"), centroid_form=False)
     common = sorted(set(pooled_f) & set(f_real) & set(f_cap))
     rule = informative(wm["real_words"]["common_words"]["z_scored"])
@@ -1133,7 +1158,7 @@ def analyse(work: Path) -> dict:
     entries = sorted({r["entry"] for r in draws[1]})
     capture_all = {r["entry"] for r in capture_rows}
     return dict(kind="hand-motion-compare", report_only=True, decides_nothing=True, sources=dict(generated_rows=len(pooled), phase_a_rows=len(phase), capture_rows=len(capture_rows), real_word_rows=len(real), sentence_rows=len(sentences), fresh_rows=len(fresh), round_trip_rows=len(trip)),
-                validity=validity_report(dict(generated=pooled, phase_a=phase, capture=capture_rows, real_words=real, sentences_two_view=two, sentences_monocular=mono, fresh=fresh)), generated_validity_note="generated output marks every frame and joint valid, none observed, confidence 0: it never says a hand is absent, and both hands always have a row, while real hands often have no detection",
+                observed_rule=check_observed(dict(capture=capture_rows, real_words=real, sentences_two_view=two, sentences_monocular=mono)), validity=validity_report(dict(generated=pooled, phase_a=phase, capture=capture_rows, real_words=real, sentences_two_view=two, sentences_monocular=mono, fresh=fresh)), generated_validity_note="generated output marks every frame and joint valid, none observed, confidence 0: it never says a hand is absent, and both hands always have a row, while real hands often have no detection",
                 motion=motion, ratios=ratios, per_joint_dominant=joint_table(pooled, real, capture_rows), variety=variety, word_match_exclusions=exclusions(entries, capture_all, f_cap), word_match=wm, best_of_16=best_of_16(phase, fresh, pooled), round_trip=round_trip_report(trip, f_cap, pooled) if trip else dict(ran=False))
 
 
