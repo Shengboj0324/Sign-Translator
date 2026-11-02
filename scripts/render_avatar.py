@@ -54,7 +54,8 @@ RENDER_SETTINGS = dict(
     fill=dict(energy=1000., location=(9., -16., 6.), size=12., colour=(.92, .96, 1.)),
     rim=dict(energy=1100., location=(3., 10., 16.), size=8., colour=(1., 1., 1.)),
     skin=dict(roughness=.6, specular=.2), cloth=dict(roughness=.95, specular=.05, subdivision=1),
-    hair=dict(roughness=.7, specular=.2, alpha_threshold=.5), brows=dict(roughness=.8, specular=.1, alpha_threshold=.35),
+    hair=dict(roughness=.7, specular=.2, alpha_threshold=.5),
+    brows=dict(roughness=.8, specular=.1, alpha_threshold=.35, colour=(.07, .045, .03)),   # a mid brown: the texture's near-black read as a stern line
     lashes=dict(roughness=.8, specular=.1, alpha_threshold=.5), eye=dict(roughness=.3, specular=.25),
 )
 DEFAULT_OPTIONS = dict(face_baseline="clip_median", hinge_twist=True, drive_legs=False, lossless=False)
@@ -119,7 +120,10 @@ def render_inside_blender(bundle: Path, out_dir: Path, resolution: int, first_on
         image = nodes.new("ShaderNodeTexImage")
         image.image = bpy.data.images.load(path)
         image.interpolation = "Cubic"
-        links.new(image.outputs["Color"], shader.inputs["Base Color"])
+        if "colour" in values:                         # the texture's alpha gives the shape, and this one colour replaces its near-black
+            shader.inputs["Base Color"].default_value = (*values["colour"], 1.)
+        else:
+            links.new(image.outputs["Color"], shader.inputs["Base Color"])
         shader.inputs["Roughness"].default_value = values["roughness"]
         shader.inputs["Specular IOR Level"].default_value = values["specular"]
         if threshold is not None:                      # a hard cut, so no frame's noise decides a strand
