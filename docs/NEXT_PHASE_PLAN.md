@@ -6473,3 +6473,19 @@ Composition's standing depends heavily on the reader, from about half of real si
 
 **Correction (14:09 UTC, from the review of that read):** the v1 row is A5's top10 on D20, mean 2.402. It only looks like the official C20 2.400, which is arm W14b with gains, best of 16, against real 4.033, on other clips. I wrote "official" for both. So that read won't decompose M1, and nothing from D20 carries over to C20. M1 stands as declared.
 
+### Word-format forms through v1, declared before any read (2026-11-02, 14:42 UTC)
+
+`scripts/parent_controls.py` with `INSTRUMENTS=v1`, code commit 2e8791c, digest 9eab6e04; reviewed, go with fixes, all applied; 328 new and 247 related tests pass under warnings as errors. Report only, and v1 is read only: never a loss, a rerank or a best-of-N. All eight draws, no clock rule. Outputs `round20/parent-controls/forms-v1/` and `report-v1.json`. Estimated 2.6 h, $2.90, not measured.
+
+**What it reads:** A5's top10 on D20, mean 2.402. That's a different arm and clips from C20's official 2.400 (W14b with gains, best of 16, real 4.033). **It doesn't decompose M1, and nothing here carries over to C20.** It suggests whether the question is worth asking of the official arm.
+
+**The rule, unchanged:** above or below only if the t interval over draws excludes zero on both margin over still and BLEU, in the same direction; otherwise unresolved; the clip interval decides nothing.
+
+- **Whether a drop exists:** `paired.moved.shuffled_minus_composition`, by that rule. Unresolved isn't "small": it means this read can't say.
+- **How large:** `v1_gap.share_of_composition_gap_removed_by_shuffling`, with the parent's 50% and the mirror's 39% beside it, and no cut. Interval around them: word order holds about as much here. Below them: less, and still some. Above: more. Neither is the better outcome.
+- **Words against order:** `paired.content_word_overlap`. Overlap falling too points to more than n-gram order; overlap holding is what n-gram order alone would give.
+- **Memory:** v1 trained on 234 of these clips and selected on 265 more. `v1_gap.by_clip_subset` gives in-training, outside, and the clean 178. A drop that continues on clean clips isn't memory.
+- **Limits:** rebuilt joins and a different still aren't fully separated. A read of English order isn't evidence that a person follows it. No target moves, and none of it shows human comprehension.
+
+**Controls before any spend on draws:** canary (real 4.493, blank 1.680), six of seven anchors against v1's stored forms by full hash (`still_monocular` has no stored read and isn't checked), and draw 1's stored composition. A miss voids into `void-v1`. L40S only.
+
