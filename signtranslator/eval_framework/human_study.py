@@ -65,6 +65,52 @@ _ANSWER_COLUMNS = ("viewable", "translation", "choice", "sentence_type", "negate
 _SHA = re.compile(r"[0-9a-f]{64}")
 
 
+class SheetError(ValueError):
+    """A returned sheet cannot be read at all; the message says why, in plain words."""
+
+
+def decode_sheet(payload: bytes) -> str:
+    """The text of a returned sheet: UTF-8, with or without Excel's mark, UTF-16 with its mark, or Excel's Windows encoding
+    (cp1252). Item ids, hashes and answers from a fixed list are plain ASCII in all of them, so a wrong guess can only touch free
+    text and offered sentences, and a changed offered sentence is reported as one. Hashes are always of the file's own bytes."""
+    if payload[:2] == b"PK":
+        raise SheetError("this is an Excel workbook (.xlsx), not a CSV: save it as CSV, then run this again")
+    try:
+        if payload[:2] in (b"\xff\xfe", b"\xfe\xff"):
+            text = payload.decode("utf-16")
+        else:
+            try:
+                text = payload.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                text = payload.decode("cp1252")
+    except UnicodeDecodeError as error:
+        raise SheetError(f"this file's encoding cannot be read (byte {error.start}): save it as CSV UTF-8, then run this again") from None
+    if "\0" in text:
+        raise SheetError("this file holds NUL bytes, so it is not a plain CSV: save it as CSV UTF-8, then run this again")
+    return text
+
+
+def _read_rows(text: str, columns: Sequence[str]) -> tuple[list[tuple[int, dict]], list[dict]]:
+    """([(file line, row)], problems) of a returned sheet, every cell stripped. A row with more cells than the sheet has columns is
+    a problem (a comma in an answer without quotes, usually), and a row of empty cells, which Excel can add, is no row."""
+    try:
+        reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")))
+        if tuple(reader.fieldnames or ()) != tuple(columns):
+            return [], [dict(row=0, issue=f"columns must be exactly {', '.join(columns)}")]
+        rows, problems = [], []
+        for raw in reader:
+            extra = raw.pop(None, None)
+            row = {k: (v or "").strip() for k, v in raw.items()}
+            if extra:
+                problems.append(dict(row=reader.line_num, **({"item_id": row["item_id"]} if row.get("item_id") else {}),
+                                     issue="this row has more cells than the sheet has columns: a comma in an answer needs quotes"))
+            elif any(row.values()):
+                rows.append((reader.line_num, row))
+    except csv.Error as error:
+        return [], [dict(row=0, issue=f"this is not a readable CSV: {error}")]
+    return rows, problems
+
+
 def grammatical_truth(markers: Sequence[Sequence[int]]) -> dict:
     """Sentence type, negation and topic of one plan, from its per-sign marker vectors."""
     present = {MARKERS[k] for row in markers for k, v in enumerate(row) if v}
@@ -181,14 +227,11 @@ def parse_sheet(text: str, key: Mapping) -> tuple[list[dict], list[dict]]:
     ``choice`` or ``viewable`` cell is filled, and an answered row must be complete and in range. One reviewer per
     sheet."""
     items = {i["item_id"]: i for i in key["items"]}
-    reader = csv.DictReader(io.StringIO(text.lstrip("﻿")))
-    if tuple(reader.fieldnames or ()) != SHEET_COLUMNS:
-        return [], [dict(row=0, issue=f"columns must be exactly {', '.join(SHEET_COLUMNS)}")]
-    answers, problems = [], []
-    rows = [{k: (v or "").strip() for k, v in row.items()} for row in reader]
-    carried = {row["reviewer_sha256"] for row in rows if row["reviewer_sha256"]}
+    rows, problems = _read_rows(text, SHEET_COLUMNS)
+    answers = []
+    carried = {row["reviewer_sha256"] for _, row in rows if row["reviewer_sha256"]}
     sheet_key = next(iter(carried)) if len(carried) == 1 else None
-    for n, row in enumerate(rows, start=2):
+    for n, row in rows:
         item = items.get(row["item_id"])
         if item is None:
             problems.append(dict(row=n, issue="unknown item_id")); continue
@@ -338,8 +381,9 @@ def score_study(answers: Sequence[Mapping], key: Mapping, *, reference: str | No
 
 # ---- sentence draw and negation truth (plan, "Rater read terms defined") --------------------------------------------
 
-NEGATION_COLUMNS = ("sign", "english", "negation_words", "no_generated_clip_seen", "confirmed", "checker_sha256",
-                    "notes")
+NEGATION_COLUMNS = ("sign", "english", "negation_words", "only_real_recordings_seen", "watched_before_reading", "confirmed",
+                    "checker_sha256", "notes")
+_OLD_NEGATION_COLUMN = "no_generated_clip_seen"       # a sheet from before the rename: rewrite it, keeping the draw
 # The English rule only makes candidates, so it leans towards recall: the Deaf checker decides. Semi-negatives (hardly,
 # barely, rarely, seldom, few) and negative affixes (unhappy) are not candidates.
 _NEGATION = re.compile(r"\b(?:\w*n['’`´]t|not|no|noone|nope|nah|never|none|nobody|nothing|nowhere|neither|nor|cannot|"
@@ -373,27 +417,31 @@ def draw_study_sentences(eligible: Sequence[Mapping], *, seed: int, main: int = 
 
 
 def write_negation_sheet(candidates: Sequence[Mapping]) -> str:
-    """The Deaf checker's sheet: one row per negation candidate (``sign`` names the real recording), answer cells empty.
-    The checker is shown the real recording only, never a generated clip."""
+    """The Deaf checker's sheet: one row per negation candidate (``sign`` names the real recording), answer cells empty. The
+    owner fills it in the session (``reviewer_package/CHECKER_GUIDE.md``). The checker is shown real recordings only, never a
+    generated clip, and watches each one before reading its English and flagged words."""
     out = io.StringIO()
     writer = csv.DictWriter(out, fieldnames=NEGATION_COLUMNS, lineterminator="\n")
     writer.writeheader()
     for c in candidates:
         writer.writerow(dict(sign=c["sign"], english=c["english"], negation_words=" ".join(c["negation_words"]),
-                             no_generated_clip_seen="", confirmed="", checker_sha256="", notes=""))
+                             only_real_recordings_seen="", watched_before_reading="", confirmed="", checker_sha256="", notes=""))
     return out.getvalue()
 
 
 def parse_negation_sheet(text: str, candidates: Sequence[Mapping]) -> tuple[dict, list[dict]]:
     """({sign: yes/no}, problems) of the returned sheet. Every candidate must be answered once, the offered columns
-    unchanged, ``confirmed`` yes or no, ``no_generated_clip_seen`` yes and the checker a hashed key, never a name."""
+    unchanged, ``confirmed`` yes or no, ``only_real_recordings_seen`` yes, ``watched_before_reading`` yes or no (a no is kept and
+    disclosed: ``negation_read_first``), and the checker a key, never a name."""
     want = {c["sign"]: c for c in candidates}
-    reader = csv.DictReader(io.StringIO(text.lstrip("﻿")))
-    if tuple(reader.fieldnames or ()) != NEGATION_COLUMNS:
-        return {}, [dict(row=0, issue=f"columns must be exactly {', '.join(NEGATION_COLUMNS)}")]
-    truth, problems = {}, []
-    for n, row in enumerate(reader, start=2):
-        row = {k: (v or "").strip() for k, v in row.items()}
+    if _OLD_NEGATION_COLUMN in text.lstrip("\ufeff").partition("\n")[0]:
+        return {}, [dict(row=0, issue=f"this sheet has the old column {_OLD_NEGATION_COLUMN}: write the new one from the same draw "
+                                      "with build_human_eval_packet.py how2sign-checker-sheet")]
+    rows, problems = _read_rows(text, NEGATION_COLUMNS)
+    if problems and problems[0]["row"] == 0:
+        return {}, problems
+    truth = {}
+    for n, row in rows:
         c = want.get(row["sign"])
         if c is None:
             problems.append(dict(row=n, issue="not a negation candidate: its English has no negation")); continue
@@ -404,16 +452,23 @@ def parse_negation_sheet(text: str, candidates: Sequence[Mapping]) -> tuple[dict
             issues.append("offered columns were changed")
         if row["confirmed"].lower() not in YES_NO:
             issues.append("confirmed must be yes or no")
-        if row["no_generated_clip_seen"].lower() != "yes":
-            issues.append("the checker must not have been shown a generated clip")
+        if row["only_real_recordings_seen"].lower() != "yes":
+            issues.append("only_real_recordings_seen must be yes: a checker who has seen any computer-made clip cannot check")
+        if row["watched_before_reading"].lower() not in YES_NO:
+            issues.append("watched_before_reading must be yes or no: did the checker watch before reading the English? A no is kept and disclosed")
         if not _SHA.fullmatch(row["checker_sha256"]):
-            issues.append("checker_sha256 must be a 64-hex SHA-256 key, never a name")
+            issues.append("checker_sha256 must be the 64-hex key the owner made, never a name")
         if issues:
             problems.extend(dict(row=n, sign=row["sign"], issue=i) for i in issues); continue
         truth[row["sign"]] = row["confirmed"].lower()
     missing = sorted(set(want) - set(truth) - {p.get("sign") for p in problems})
     problems.extend(dict(row=0, sign=s, issue="candidate not answered") for s in missing)
     return truth, problems
+
+
+def negation_read_first(text: str) -> list[str]:
+    """The sentences on a filled sheet where the checker read the English before watching: kept, and disclosed beside any result."""
+    return sorted(row["sign"] for _, row in _read_rows(text, NEGATION_COLUMNS)[0] if row["watched_before_reading"].lower() == "no")
 
 
 def negation_truth(sign: str, confirmed: Mapping[str, str]) -> str:
@@ -466,20 +521,27 @@ def _sheet_key(rows: Sequence[Mapping]) -> tuple[str | None, list[dict]]:
 
 def parse_stage1(text: str, key: Mapping) -> tuple[list[dict], list[dict]]:
     """(answers, problems) of a returned stage 1 sheet. A row is answered when any answer cell is filled; ``viewable=no``
-    needs no key on a sheet whose key is otherwise known. A problem row is dropped and carries the sheet's key and item."""
+    needs no key on a sheet whose key is otherwise known. A problem row is dropped and carries the sheet's key and item, and an
+    ``item_id`` on two rows is a problem on both."""
     items = {i["item_id"]: i for i in key["items"]}
-    reader = csv.DictReader(io.StringIO(text.lstrip("﻿")))
-    if tuple(reader.fieldnames or ()) != STAGE1_COLUMNS:
-        return [], [dict(row=0, issue=f"columns must be exactly {', '.join(STAGE1_COLUMNS)}")]
-    rows = [{k: (v or "").strip() for k, v in row.items()} for row in reader]
-    reviewer, problems = _sheet_key(rows)
-    if problems:
+    rows, problems = _read_rows(text, STAGE1_COLUMNS)
+    if problems and problems[0]["row"] == 0:
         return [], problems
+    reviewer, issues = _sheet_key([row for _, row in rows])
+    if issues:
+        return [], issues
+    for p in problems:
+        p.update(reviewer_sha256=reviewer)
+    repeated = collections.Counter(row["item_id"] for _, row in rows)
     answers = []
-    for n, row in enumerate(rows, start=2):
+    for n, row in rows:
         item = items.get(row["item_id"])
         if item is None:
             problems.append(dict(row=n, issue="unknown item_id")); continue
+        if repeated[row["item_id"]] > 1:
+            problems.append(dict(row=n, item_id=row["item_id"], issue="this item_id is repeated on the sheet: neither row counts",
+                                 reviewer_sha256=reviewer))
+            continue
         if not any(row[c] for c in _STAGE1_ANSWERS):
             continue                                                # unanswered
         viewable = row["viewable"].lower() or "yes"
@@ -530,22 +592,29 @@ def write_stage2_sheet(key: Mapping, answers: Sequence[Mapping], stage1_sha256: 
 def parse_stage2(text: str, key: Mapping, stage1: Mapping[str, Mapping]) -> tuple[dict, list[dict]]:
     """({(reviewer, item): choice}, problems) of a returned stage 2 sheet. ``stage1``: {reviewer: {"sha256": the returned
     stage 1 sheet's hash, "answers": {item: its answer}}}. An answer without a matching stage 1 hash is refused, as
-    is one for an item the rater did not view in stage 1. The rater's key must be the stage 1 key."""
+    is one for an item the rater did not view in stage 1. The rater's key must be the stage 1 key, and an ``item_id`` on two rows
+    is a problem on both."""
     items = {i["item_id"]: i for i in key["items"]}
-    reader = csv.DictReader(io.StringIO(text.lstrip("﻿")))
-    if tuple(reader.fieldnames or ()) != STAGE2_COLUMNS:
-        return {}, [dict(row=0, issue=f"columns must be exactly {', '.join(STAGE2_COLUMNS)}")]
-    rows = [{k: (v or "").strip() for k, v in row.items()} for row in reader]
-    reviewer, problems = _sheet_key(rows)
-    if problems:
+    rows, problems = _read_rows(text, STAGE2_COLUMNS)
+    if problems and problems[0]["row"] == 0:
         return {}, problems
+    reviewer, issues = _sheet_key([row for _, row in rows])
+    if issues:
+        return {}, issues
     if reviewer not in stage1:
         return {}, [dict(row=0, issue="stage 2 from a reviewer key with no stage 1 sheet")]
+    for p in problems:
+        p.update(reviewer_sha256=reviewer)
+    repeated = collections.Counter(row["item_id"] for _, row in rows)
     choices = {}
-    for n, row in enumerate(rows, start=2):
+    for n, row in rows:
         item = items.get(row["item_id"])
         if item is None:
             problems.append(dict(row=n, issue="unknown item_id")); continue
+        if repeated[row["item_id"]] > 1:
+            problems.append(dict(row=n, item_id=row["item_id"], issue="this item_id is repeated on the sheet: neither row counts",
+                                 reviewer_sha256=reviewer))
+            continue
         if not row["choice"]:
             continue                                                # unanswered
         issues = []
@@ -565,42 +634,133 @@ def parse_stage2(text: str, key: Mapping, stage1: Mapping[str, Mapping]) -> tupl
     return choices, problems
 
 
-def read_two_stage(stage1_sheets: Sequence[bytes], stage2_sheets: Sequence[bytes], key: Mapping,
-                   receipts: Mapping[str, str]) -> tuple[list[dict], list[dict]]:
-    """(answers, problems) of the returned sheets. ``receipts``: {reviewer: the stage 1 hash the team recorded when it
-    released stage 2}, so a stage 1 edited after the options were seen is refused even if its stage 2 hash was edited
-    too. A viewable row without a stage 2 choice is not an answer: it counts as blank."""
-    stage1, problems = {}, []
+def read_stages(stage1_sheets: Sequence[bytes], stage2_sheets: Sequence[bytes], key: Mapping,
+                receipts: Mapping[str, str]) -> dict:
+    """``dict(answers, stage1, problems)`` of the returned sheets. ``receipts``: {reviewer: the stage 1 hash the team recorded when it
+    released stage 2}, so a stage 1 edited after the options were seen is refused even if its stage 2 hash was edited too.
+
+    ``answers``: the rows a choice can be read on: a viewable row without a stage 2 choice is not an answer, counts as blank, and
+    each one is listed as a problem marked ``no_stage2_choice`` (which ``bar_read`` sets aside: blanks are already its coverage's).
+    ``stage1``: every stage 1 row kept, with its choice where there is one, so stage 2 lost is not stage 1 lost. A stage 1 with no
+    receipt was never released, so no option was seen: it is kept here and cannot be joined. A stage 1 that does not match its
+    receipt is refused from both."""
+    joined, kept, problems = {}, {}, []
     for sheet in stage1_sheets:
-        answers, issues = parse_stage1(sheet.decode("utf-8-sig"), key)
+        try:
+            answers, issues = parse_stage1(decode_sheet(sheet), key)
+        except SheetError as error:
+            problems.append(dict(row=0, issue=str(error)))
+            continue
         problems += issues
         if not answers:
             continue
         reviewer = answers[0]["reviewer_sha256"]
         sha = hashlib.sha256(sheet).hexdigest()
-        if reviewer in stage1:
+        if reviewer in kept:
             problems.append(dict(row=0, reviewer_sha256=reviewer, issue="two stage 1 sheets from one reviewer key"))
             continue
-        if receipts.get(reviewer) != sha:
+        if reviewer in receipts and receipts[reviewer] != sha:
             problems.append(dict(row=0, reviewer_sha256=reviewer, issue="stage 1 sheet does not match the recorded receipt"))
             continue
-        stage1[reviewer] = dict(sha256=sha, answers={a["item_id"]: a for a in answers})
+        kept[reviewer] = {a["item_id"]: a for a in answers}
+        if reviewer not in receipts:
+            problems.append(dict(row=0, reviewer_sha256=reviewer, issue="no receipt recorded for this stage 1: stage 2 was never "
+                                                                        "released, so it is read for its stage 1 answers alone"))
+            continue
+        joined[reviewer] = dict(sha256=sha, answers=kept[reviewer])
     choices = {}
     for sheet in stage2_sheets:
-        got, issues = parse_stage2(sheet.decode("utf-8-sig"), key, stage1)
+        try:
+            got, issues = parse_stage2(decode_sheet(sheet), key, joined)
+        except SheetError as error:
+            problems.append(dict(row=0, issue=str(error)))
+            continue
         problems += issues
         twice = set(got) & set(choices)
         problems += [dict(row=0, reviewer_sha256=r, item_id=i, issue="answered the item twice in stage 2; excluded")
                      for r, i in sorted(twice)]
         choices.update({k: v for k, v in got.items() if k not in twice})
-    out = []
-    for reviewer, sheet in stage1.items():
-        for item_id, a in sheet["answers"].items():
+    out, stage1 = [], []
+    for reviewer, answers in kept.items():
+        for item_id, a in answers.items():
+            choice = choices.get((reviewer, item_id))
+            stage1.append(dict(a, choice=choice) if choice else a)
+            if reviewer not in joined:
+                continue
             if a["viewable"] != "yes":
                 out.append(a)
-            elif (reviewer, item_id) in choices:
-                out.append(dict(a, choice=choices[(reviewer, item_id)]))
-    return out, problems
+            elif choice:
+                out.append(dict(a, choice=choice))
+            else:
+                problems.append(dict(row=0, reviewer_sha256=reviewer, item_id=item_id, no_stage2_choice=True,
+                                     issue="viewable in stage 1, with no stage 2 choice"))
+    return dict(answers=out, stage1=stage1, problems=problems)
+
+
+def read_two_stage(stage1_sheets: Sequence[bytes], stage2_sheets: Sequence[bytes], key: Mapping,
+                   receipts: Mapping[str, str]) -> tuple[list[dict], list[dict]]:
+    """(answers, problems) of ``read_stages``."""
+    read = read_stages(stage1_sheets, stage2_sheets, key, receipts)
+    return read["answers"], read["problems"]
+
+
+def stage1_summary(stage1: Sequence[Mapping], key: Mapping) -> dict:
+    """What came back in stage 1, per system, whether or not stage 2 followed: rows, unviewable rows, naturalness and translations.
+    ``answers``, the rest of the report, holds only the rows with a choice."""
+    items = {i["item_id"]: i for i in key["items"]}
+    out = {}
+    for system in key["systems"]:
+        rows = [a for a in stage1 if items[a["item_id"]]["system"] == system]
+        seen = [a for a in rows if a["viewable"] == "yes"]
+        natural = [a["naturalness"] for a in seen]
+        out[system] = dict(rows=len(rows), not_viewable=len(rows) - len(seen), without_a_choice=sum(not a["choice"] for a in seen),
+                           translations=sum(bool(a["translation"]) for a in seen),
+                           naturalness_mean=round(sum(natural) / len(natural), 3) if natural else None)
+    return dict(raters=len({a["reviewer_sha256"] for a in stage1}), rows=len(stage1), systems=out)
+
+
+# ---- the private roster and designed-row coverage, for every read of a two-stage key --------------------------------------------
+
+MIN_RATERS_PER_GROUP = 2         # protocol section 3: at least two per group, so that each group has an agreement to read
+
+
+def check_roster(roster: Mapping[str, int], key: Mapping) -> list[str]:
+    """What is wrong with a roster for this study, in plain words: a group the study does not have, or under two raters in a group."""
+    issues = [f"the roster names group {g}, which this study does not have"
+              for g in sorted(set(roster.values())) if g not in range(key["groups"])]
+    per_group = collections.Counter(roster.values())
+    issues += [f"group {g} has {per_group[g]} raters on the roster: every group needs at least {MIN_RATERS_PER_GROUP}"
+               for g in range(key["groups"]) if per_group[g] < MIN_RATERS_PER_GROUP]
+    return issues
+
+
+def study_coverage(answers: Sequence[Mapping], key: Mapping, roster: Mapping[str, int], problems: Sequence[Mapping] = ()) -> dict:
+    """Designed rows against the rows returned, per system and per group, by the bar read's own count (``_bar_coverage``), and which of
+    them fall under its 95% line (``short``). For every read of a two-stage key; it decides nothing about the bar, which applies its
+    own gate."""
+    coverage = _bar_coverage(answers, key, roster, [p for p in problems if not p.get("no_stage2_choice")])
+    short = ({f"system {s}": v["share"] for s, v in coverage["systems"].items() if v["share"] < BAR["coverage"]}
+             | {f"group {g}": v["share"] for g, v in coverage["groups"].items() if v["share"] < BAR["coverage"]})
+    return dict(coverage, short=dict(sorted(short.items())), threshold=BAR["coverage"])
+
+
+def people_problems(answers: Sequence[Mapping], key: Mapping, roster: Mapping[str, int]) -> tuple[list[dict], list[dict]]:
+    """(the rows that count, problems) outside the bar read, which refuses all of these: a key off the roster, a sheet of another group
+    than the roster's, the Deaf checker and anyone on the key's excluded list do not count."""
+    items = {i["item_id"]: i for i in key["items"]}
+    checkers, excluded = set(key.get("negation_checkers") or ()), set(key.get("excluded_raters") or ())
+    kept, why = [], {}
+    for a in answers:
+        reviewer = a["reviewer_sha256"]
+        issue = ("the Deaf negation checker cannot be a rater" if reviewer in checkers else
+                 "on the key's excluded list: the pilot's raters do not rate this read" if reviewer in excluded else
+                 "this key is not on the roster" if reviewer not in roster else
+                 "answered another group's sheet than the roster's" if items[a["item_id"]]["group"] != roster[reviewer] else None)
+        if issue:
+            why.setdefault(reviewer, issue)
+        else:
+            kept.append(a)
+    return kept, [dict(row=0, reviewer_sha256=r, issue=f"{i}; this rater's rows are not counted") for r, i in sorted(why.items())]
 
 
 # ---- the release-bar terms (docs/HUMAN_EVALUATION_PROTOCOL.md section 6; interval method declared 2026-11-01, 03:28 UTC) -
@@ -623,12 +783,32 @@ class BarRefused(ValueError):
 
 
 def parse_roster(text: str) -> dict[str, int]:
-    """The private roster, JSON {reviewer key: group}: who the raters are, without names."""
+    """The private roster, JSON {reviewer key: group}: who the raters are, without names. A key written twice is refused: JSON keeps
+    the last one silently, and a rater would then sit in a group nobody chose."""
     import json
-    roster = json.loads(text)
+
+    def no_repeats(pairs):
+        names = [k for k, _ in pairs]
+        repeated = sorted({k for k in names if names.count(k) > 1})
+        if repeated:
+            raise ValueError(f"the roster repeats {len(repeated)} keys: {[k[:12] for k in repeated]}")
+        return dict(pairs)
+    try:
+        roster = json.loads(text, object_pairs_hook=no_repeats)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"the roster is not valid JSON: {error}") from None
     if not isinstance(roster, dict) or any(not _SHA.fullmatch(str(k)) or type(v) is not int for k, v in roster.items()):
         raise ValueError("the roster must map 64-hex reviewer keys to group numbers")
     return roster
+
+
+def load_roster(path) -> dict[str, int]:
+    """``parse_roster`` of a file, for the command line: a bad roster stops the run with a plain message."""
+    from pathlib import Path
+    try:
+        return parse_roster(Path(path).read_text())
+    except (OSError, ValueError) as error:
+        raise SystemExit(f"{path}: {error}")
 
 
 def _bar_check_people(answers: Sequence[Mapping], key: Mapping, roster: Mapping[str, int]) -> None:
@@ -1064,6 +1244,7 @@ def bar_read(answers: Sequence[Mapping], key: Mapping, *, reference: str, roster
     count against the 5% rule; the reference has its own gate. Raters who agree far less than the rest are flagged,
     blind to system, and every condition must hold with and without them. Wrist speed, timing and unseen signers are not
     read here: this scorer never says a system may be released. The bootstrap is reported beside method D."""
+    problems = [p for p in problems if not p.get("no_stage2_choice")]     # listed for the owner; the coverage below has these blanks
     if reference not in key["systems"]:
         raise ValueError(f"{reference} is not a system of this study")
     if key.get("report_only_systems"):
@@ -1315,17 +1496,20 @@ def _share_removed(viewable, items: Mapping, composition: str, shuffled: str, ke
     return out
 
 
-def word_format_read(answers: Sequence[Mapping], key: Mapping, *, seed: int = 0, boot: int = 2000) -> dict:
+def word_format_read(answers: Sequence[Mapping], key: Mapping, *, seed: int = 0, boot: int = 2000, stage1: Sequence[Mapping] | None = None) -> dict:
     """The paired contrasts of the pilot's arms (protocol section 6; report only, never a bar condition). Per contrast and
     metric, per-sentence differences as ``score_study`` pairs them; on choice also method D, the rater balance and the rule.
-    Shuffled is also read on the sentences whose word sequence moved, oracle on the sentences where it kept every word."""
+    Shuffled is also read on the sentences whose word sequence moved, oracle on the sentences where it kept every word.
+    ``stage1`` (``read_stages``): the rows naturalness and the translation are read on, so a rater whose stage 2 is missing still
+    counts for those; choice reads ``answers`` alone."""
     roles = key["word_format"]["roles"]
     items = {i["item_id"]: i for i in key["items"]}
     viewable = [a for a in answers if a["viewable"] == "yes"]
+    first_stage = viewable if stage1 is None else [a for a in stage1 if a["viewable"] == "yes"]
     per_sentence = {metric: collections.defaultdict(lambda: collections.defaultdict(list)) for metric in _WORD_FORMAT_METRICS}
-    for a in viewable:
-        item = items[a["item_id"]]
-        for metric, value in _WORD_FORMAT_METRICS.items():
+    for metric, value in _WORD_FORMAT_METRICS.items():
+        for a in viewable if metric == "comprehension_choice" else first_stage:
+            item = items[a["item_id"]]
             per_sentence[metric][item["system"]][item["utterance"]].append(value(item, a))
     means = {metric: {s: {u: sum(v) / len(v) for u, v in by.items()} for s, by in table.items()}
              for metric, table in per_sentence.items()}
@@ -1359,6 +1543,7 @@ def word_format_read(answers: Sequence[Mapping], key: Mapping, *, seed: int = 0,
         arms[role] = dict(label=roles[role], **_proportion(hits))
     return dict(report_only=True, counts_towards_release_bar=False, reading=WORD_FORMAT_READING, arms=arms,
                 raters=len({a["reviewer_sha256"] for a in viewable}), ratings=len(viewable),
+                stage1_raters=len({a["reviewer_sha256"] for a in first_stage}), stage1_ratings=len(first_stage),
                 sentences_moved=len(subsets["moved"]), sentences_same_words=len(subsets["same_words"]),
                 dropped_no_real_clip=key["word_format"].get("dropped_no_real_clip", []), contrasts=contrasts,
                 share_of_lead_over_chance_removed_by_shuffling=_share_removed(
@@ -1373,7 +1558,8 @@ def key_sha256(key: Mapping) -> str:
 __all__ = ["OPTIONS", "SENTENCE_TYPES", "SHEET_COLUMNS", "grammatical_truth", "latin_square", "distractors",
            "design_study", "write_sheet", "parse_sheet", "merge_answers", "wilson", "score_study", "key_sha256",
            "NEGATION_COLUMNS", "negation_words", "draw_study_sentences", "write_negation_sheet",
-           "parse_negation_sheet", "negation_truth", "negation_stratum", "strata_shares", "STAGE1_COLUMNS",
+           "parse_negation_sheet", "negation_read_first", "negation_truth", "negation_stratum", "strata_shares", "STAGE1_COLUMNS",
            "STAGE2_COLUMNS", "write_stage1_sheet", "parse_stage1", "write_stage2_sheet", "parse_stage2",
-           "read_two_stage", "parse_roster", "BAR", "STRATA", "BarRefused", "twoway_variance", "lower_bound", "upper_bound", "bar_read",
+           "read_two_stage", "read_stages", "stage1_summary", "check_roster", "study_coverage", "people_problems", "parse_roster",
+           "load_roster", "SheetError", "decode_sheet", "BAR", "STRATA", "BarRefused", "twoway_variance", "lower_bound", "upper_bound", "bar_read",
            "WORD_FORMAT_ROLES", "INSTRUMENT_SHUFFLE_SHARES", "word_format_pairing", "word_format_read"]

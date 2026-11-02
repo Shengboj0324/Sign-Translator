@@ -1,7 +1,8 @@
 # Human evaluation protocol: English -> ASL output judged by Deaf ASL users (plan item 3b)
 
 This is the study team's protocol. Reviewers receive only `HUMAN_EVALUATION_REVIEWER_GUIDE.md` (the first How2Sign read:
-`HUMAN_EVALUATION_REVIEWER_GUIDE_TWO_STAGE.md`), their sheet and their videos. Code:
+`HUMAN_EVALUATION_REVIEWER_GUIDE_TWO_STAGE.md`), a printed form and their videos. They answer on the form or in ASL; they never
+use a terminal, compute a hash or edit a sheet. The owner generates every key, enters the answers and does every technical step. Code:
 - `signtranslator/eval_framework/human_study.py`: design, sheets, validation and scores;
 - `scripts/build_human_eval_packet.py`: builds the packets;
 - `scripts/score_human_eval.py`: scores the returned sheets.
@@ -33,7 +34,7 @@ Every utterance is signed by every system (`--system`):
 | `composition_shuffled` | The same composition's clips in a seeded random order, every word kept, at its frame count (`--export-word-format`). First How2Sign read's pilot only, report only | Does English word order help a Deaf rater follow it, and by as much as it helps the instruments? |
 | `oracle` | The same word list as real word clips, by chance pick, stitched the same way through the same tokenizer round trip, at its frame count (`--export-word-format`). Pilot only, report only | What generated clips cost a person, against what the word-by-word format costs |
 
-All systems sign on the recorded utterance's clock, so duration is no cue. Every video is drawn identically:
+In the ASLLRP study all systems sign on the recorded utterance's clock, so duration is no cue. **In the first How2Sign read they do not:** the composed arms play at the predicted length and the reference at its recorded length, so speed may mark the reference (section 3). Every video is drawn identically:
 - four skeleton panels (front, side, each hand) and a schematic face panel (`generation/face_preview.py`: head turn,
   brows, eyelids, gaze, mouth);
 - any channel's tracking dropouts are held from the nearest valid frame, for display only, so flicker does not
@@ -61,14 +62,18 @@ these renders. They do not describe an avatar (item 5), and the study is re-run 
   shows the same options.
   - **First How2Sign read:** distractors come only from D20's other sentences, not the whole partition: the
     whole-partition pool would read C20 and fresh text. The builder refuses any wider pool.
+  - **Its pilot:** no option holds a negation word. The pilot holds no negation candidate, so an option with one could be crossed
+    out from its text: 29.9% rather than 25% by elimination alone. The builder takes distractors from the sentences without one, and the
+    key says so (`distractors`). The main set keeps the whole D20 pool, since it holds negated sentences and stage 2 follows stage 1.
 - **Two-stage sheet (first How2Sign read; declared 2026-11-01, 03:28 UTC):** the correct option holds a negation word
   31.5% of the time against 16.5% for distractors, and a guess from text alone scores 63.6% on negated rows, so the
   options would give negation away.
-  - Stage 1: watch, then give the free translation, negation, sentence type, topic and naturalness, with no options
-    shown. It is returned and hashed; the team records the hash when it releases stage 2 (`how2sign-stage2`). Stage 1 is
-    then final.
-  - Stage 2: the forced choice, on a sheet carrying the rater's key and the stage 1 hash. The scorer refuses a stage 2
-    answer without a matching stage 1 hash.
+  - Stage 1: watch, then give the free translation (English or gloss), negation, sentence type, topic and naturalness, with no
+    options shown, on a form or in ASL. The owner enters it into the sheet and hashes it, and records the hash when releasing stage 2
+    (`how2sign-stage2`). Stage 1 is then final. A sheet with rows unanswered needs `--partial`, so a rater who stopped is released on purpose.
+  - Stage 2: the forced choice. The sheet the owner enters it into carries the rater's key and the stage 1 hash. The scorer refuses a
+    stage 2 answer without a matching stage 1 hash.
+  - A repeated `item_id` is a problem on every row that carries it, in both stages, and `how2sign-stage2` then refuses the sheet.
   - The sentence type and topic have no truth on How2Sign (no ASLLRP markers): asked, reported, not scored. Negation
     truth is the Deaf checker's (section 6).
 - **Word-format arms (first How2Sign read's pilot only; report only; declared 2026-11-02, 18:22 UTC, amended 2026-11-02, 19:45 UTC, in `docs/NEXT_PHASE_PLAN.md`):**
@@ -95,7 +100,7 @@ these renders. They do not describe an avatar (item 5), and the study is re-run 
     each row logs how far its joins go past the continuous route's bound, beside the composition's.
   - **Predicted timing and the reference:** the reference plays at its recorded length and the other arms at the predicted one (69 frames against 36, 87 against 30 on two dry-run sentences), so speed may mark it. Each rater sees a sentence once, so no direct comparison of lengths is possible.
   - **Pilot raters do not rate the main read:** they have seen scrambled forms. The main key's `excluded_raters` (`how2sign-packet --excluded-raters-roster`) holds them, checked as the negation checkers are, at stage 2 and at the bar read.
-- **Sentences with no selected word** (decided 2026-11-02): the draw leaves them out, under the official arm's selection, and `draw.json` lists them (`excluded_no_selected_word`). D20 has six. Comprehension's weights read the eligible sentences that remain, and this is disclosed beside any result.
+- **Sentences with no selected word** (decided 2026-11-02): the draw leaves them out, under the official arm's selection, and `draw.json`, the key and the scorer's report list them (`excluded_no_selected_word`). D20 has six. Comprehension's weights read the eligible sentences that remain, and this is disclosed beside any result.
 - **Blinding:**
   - Item ids and video names are random, and the presentation order is shuffled per group.
   - System labels, correct options and markers exist only in `key/key.json`, which is hashed and never sent.
@@ -108,11 +113,10 @@ example NIC/RID certification or ASL teaching credentials).
 - Record each reviewer's qualification privately; it does not go in the sheet.
 - Reviewers are told the purpose and how their answers are used, and that they may stop at any time.
 - They are paid for all work, including the pilot.
-- They identify themselves on the sheet by a SHA-256 key of a private passphrase, never by name (as in
-  `GLOSS_REVIEW_PROTOCOL.md` §5).
+- On the sheet each is a 64-hex key, never a name. The owner generates it and enters it; the reviewer sees only a short code.
 - ASLLRP material is research-only: packets go only to contracted reviewers, under the DAI terms, and are not
   redistributed.
-- **The pilot's word-format arms are a partial disclosure:** raters are told the purpose in general, and that some videos may be bad on purpose, but not that some clips are deliberately out of order, or
+- **The pilot's word-format arms are a partial disclosure:** raters are told the purpose in general, and that some videos may be hard or poor, some of that on purpose (`reviewer_package/FOR_REVIEWERS.md`), but not that some clips are deliberately out of order, or
   that word order is being tested. The review board is told all of it, and it decides. The default is a debrief after all sheets return: `reviewer_package/DEBRIEF.md`, a separate document given to every pilot rater, with the right to withdraw their answers. Nothing about this is hidden from the board.
 
 ## 5. Running it
@@ -129,7 +133,7 @@ example NIC/RID certification or ASL teaching credentials).
    - `--system translate=translate:<same>@<same> --planner-run gloss-planner-asllrp-v2`
    - `--system english=english:<v2b checkpoint>@<its manifest SHA>`
    - `--count 60 --output-dir <dir> --output-prefix <private R2 prefix>`
-2. Send each group its `group-<g>.zip`, which holds the sheet, the videos and the reviewer guide. Keep `key/` private.
+2. The owner plays each group's videos, or delivers the videos alone, with the reviewer guide and printed forms. The `group-<g>.zip` holds the sheet, the videos and the guide, and it stays with the owner, who enters the answers into `sheet.csv`. Keep `key/` private.
 3. Run a pilot (two reviewers, one group; the first How2Sign read's is larger, below) first. Fix anything unclear in the guide, then
    run the full study with fresh items.
 4. Score the returned sheets:
@@ -140,21 +144,22 @@ example NIC/RID certification or ASL teaching credentials).
 
 **First How2Sign read:**
 
-1. `build_human_eval_packet.py how2sign-draw` on D20 gives `draw.json` and the Deaf checker's `negation_check.csv`. The
-   checker sees real recordings only and cannot be a rater.
+1. `build_human_eval_packet.py how2sign-draw --seed <declared> --name <name>` on D20 gives `draw.json`, the Deaf checker's `negation_check.csv` and the owner's
+   private `checker_clips.csv`, with the seed printed, the code commit recorded and a write-once copy in the store under the name. In a session the owner leads
+   (`reviewer_package/CHECKER_GUIDE.md`), the checker sees real recordings only, watches each before reading its English and flagged words, and cannot be a rater. A row where that order slipped is kept and disclosed (`negation_read_first`).
 2. `round15_compose_eval.py … --export-prefix … --export-only`, once per arm, on the draw's sentence list.
-3. `build_human_eval_packet.py how2sign-packet` builds stage 1 only. A sentence with no selected word is refused and listed.
-4. As each stage 1 returns, `how2sign-stage2` hashes it, records the receipt and writes that rater's stage 2.
-5. `score_human_eval.py --key … --sheet <stage 1> … --stage2-sheet <stage 2> … --stage1-receipts … --roster … --bar`.
+3. `build_human_eval_packet.py how2sign-packet --renderer avatar` builds stage 1 only. A sentence with no selected word is refused and listed. Each item keeps the render's `acceptance`, the key sums it by arm, `key/avatar-verification/` keeps each record, and a mirror failure stops the build.
+4. As each stage 1 returns, `how2sign-stage2` hashes it, records the receipt and writes that rater's stage 2. The roster needs at least 2 raters in every group, and a key written twice is refused.
+5. `score_human_eval.py --key … --sheet <stage 1> … --stage2-sheet <stage 2> … --stage1-receipts … --roster … --bar`. `--roster` is required on every read of a two-stage key, a pilot's too: `report["coverage"]` always appears, each viewable row with no choice is listed as a problem, and under 95% the run exits nonzero unless `--allow-low-coverage`, which doesn't touch `--bar`'s own gate. Stage 1 answers still count for stage 1 contrasts when that rater's stage 2 is missing.
 
 **Its pilot, with the word-format arms** (not yet run for real; the draw and the checker's sheet come first):
 
-1. `how2sign-draw` (`--pilot 60` is the default). Add to the official arm's `round15_compose_eval.py … --export-only --export-forms core_crossfade@predicted` command:
-   `--export-word-format --word-format-seed 0 --word-format-licence-note "<the owner's recorded confirmation>"`. It writes `<prefix>/word-format/composition_shuffled/index.json` and
-   `<prefix>/word-format/oracle/index.json` for the pilot sentences alone. Real clips are ASLLVD train records; RIT and WLASL by `--word-format-corpora`, under the same note.
-2. `build_human_eval_packet.py how2sign-packet --set pilot`, with four `--system`s, each new arm as `LABEL=composition:<its index>@<its hash>`. A sentence the oracle has no word for leaves the pilot, listed in the key.
-3. Roster 8 raters, 2 per group. Stage 2 and scoring as above, **without `--bar`**: the scorer adds `report["word_format"]`, and `--bar` is refused.
-4. For the main set, pass the pilot's roster as `--excluded-raters-roster`. After all sheets return, give each pilot rater `reviewer_package/DEBRIEF.md`, as the review board decides.
+1. `how2sign-draw` (`--pilot 60` is the default). The exact export command is in `docs/NEXT_PHASE_PLAN.md`, "Rater read 1: tool fixes and the official arm's export": the official arm's `round15_compose_eval.py … --export-only --export-forms core_crossfade@predicted --core-margin 0.1`, with
+   `--export-word-format --word-format-seed 0 --word-format-licence-note "<the owner's recorded confirmation>"`. The arms refuse any other form than `@predicted`, and any corpus the note doesn't name as covered. It writes `<prefix>/word-format/composition_shuffled/index.json` and
+   `<prefix>/word-format/oracle/index.json` for the pilot sentences alone. Real clips are ASLLVD train records, confirmed by the owner. RIT and WLASL are not covered: each would need `--word-format-corpora` and a note that names it.
+2. `build_human_eval_packet.py how2sign-packet --set pilot --renderer avatar`, with four `--system`s, each new arm as `LABEL=composition:<its index>@<its hash>`. A sentence the oracle has no word for leaves the pilot, listed in the key.
+3. Roster 8 raters, 2 per group. Stage 2 and scoring as above, **without `--bar`** but with `--roster`: the scorer adds `report["word_format"]`, and `--bar` is refused.
+4. For the main set, pass the pilot's roster as `--excluded-raters-roster`: once this draw's pilot packet exists, the builder refuses a main packet without it, and before that it warns. After all sheets return, give each pilot rater `reviewer_package/DEBRIEF.md`, as the review board decides.
 
 ## 6. Analysis (fixed before any sheet returns)
 

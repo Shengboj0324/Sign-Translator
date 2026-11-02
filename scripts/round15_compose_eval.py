@@ -104,7 +104,7 @@ and nothing is read by an instrument; the states are the full run's, bit for bit
 no signing (it is its blank clip in every read): its row says ``empty``, and the packet builder refuses it.
 
 **--export-word-format** (the rater pilot's report-only arms, ``scripts/rater_word_format.py``; off by default, needs
-``--export-only``, a word cache and one exported form): the same run also writes, for the list's ``pilot`` sentences alone,
+``--export-only``, a word cache and the one exported form ``core_crossfade@predicted``): the same run also writes, for the list's ``pilot`` sentences alone,
 ``<prefix>/word-format/composition_shuffled/index.json`` and ``<prefix>/word-format/oracle/index.json``, each a
 composed-state index of one form that ``how2sign-packet`` takes as a ``composition:`` system.
 """
@@ -683,12 +683,12 @@ def export_errors(p, args, variants, store) -> None:
         if not known:
             p.error(f"--export-forms: {name} is not a form of this run")
     if args.export_word_format:
-        from rater_word_format import check_oracle_corpora, parse_corpora
+        from rater_word_format import check_oracle_corpora, parse_corpora, PREDICTED_FORM
         names = [f for f in args.export_forms.split(",") if f] if args.export_forms else list(variants)
         if not args.export_only or not args.word_cache_key:
             p.error("--export-word-format needs --export-only and a --word-cache-key: it moves or replaces cached words")
-        if len(names) != 1 or names[0] not in ("core_crossfade", f"core_crossfade{PREDICTED}"):
-            p.error("--export-word-format exports one form: core_crossfade or core_crossfade@predicted")
+        if names != [PREDICTED_FORM]:
+            p.error(f"--export-word-format exports the official arm's one form, at predicted timing: --export-forms {PREDICTED_FORM}")
         if args.timing == "stage1":
             p.error("--export-word-format needs the asllrp or sign-fitted timing")
         check_oracle_corpora(parse_corpora(args.word_format_corpora), args.word_format_licence_note)
