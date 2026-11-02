@@ -6322,7 +6322,7 @@ Branch `parent-reads` 42a36db, reviewed with fixes applied, not merged. Report o
 
 On v1, the same forms: BLEU gap share mean 28.7%, t [23.3, 34.1] (21.4% outside v1's training lists); likelihood per draw 10.8% to 40.8%, mean 24.8%. Parent minus v1: BLEU share +2.00, likelihood +2.49. Per signer, composition margin is level (c01 0.483, c03 0.436, c05 0.432), while real's implied margin isn't (about 0.151, 0.334, 0.058), so shares run 319%, 131%, 750%; c05's BLEU gap share is negative, -156%. Per-signer rows are noisy and report only.
 
-Added after seeing the numbers, by word coverage of the sentence: under 25%, margin 0.078, share 0.50; 25-50%, 0.228, share 0.98; over 50%, 0.565, share 2.31. Hypotheses, sampled: both mostly invented English; content-word overlap with the reference 16.3% against real's 11.1%; loop share 19.6% against 13.2%; 17.1 words against 14.4 (reference 19.4).
+Added after seeing the numbers, by word coverage of the sentence: under 25%, margin 0.078, share 0.50; 25-50%, 0.228, share 0.98; over 50%, 0.565, share 2.31. Hypotheses, sampled: both mostly invented English; content-word overlap with the reference 13.5% against real's 7.4% (corrected 2026-11-02: first written 16.3% and 11.1% from my own sample; these are the controls report's measure over all draws); loop share 18.9% against 13.2%; 16.7 words against 14.4 (reference 19.4).
 
 **Reading, as declared:** well above v1's share, so v1's fit to two-view may be costing composition part of its reading, **but that doesn't mean the motion carries that content for anyone.** **Beyond the declared reading: a generator reading above real signing is flagged, and section 2 of the human protocol requires independent replication; we make no claim from it.** Untested candidates: generated clips and the parent's training data share a landmark source (YouTube-ASL, MediaPipe); a word-by-word sequence in English order may suit a caption-trained reader better than real ASL; How2Sign's real signing is hard for this instrument, and much harder for some signers. Because of them **the parent isn't a fair ruler for generated motion**, and its 99.8% on the monocular path, which measures real signing only, is unaffected but stays one instrument's view. No target moves: M1 remains not met on v1, 3.8 is unchanged, nothing here shows anyone would understand it. The next cheap check is reads, not training: real word clips stitched in the same format, and the same generated words shuffled, through the parent. Those separate the generator from the format.
 
@@ -6397,4 +6397,34 @@ Still pose BLEU on the mirror is 2.33, blank 1.16. Static handshape beyond motio
 **Limits, declared now.** A high or low oracle can't separate format from source, since real word clips are MediaPipe monocular too. A low oracle has other live explanations: fewer words with stretched cores, best-of-16 selection against chance picks, d2 decoding, a different signer per word, cuts fitted on ASLLVD applied to WLASL and RIT. A large shuffle drop means the reader uses word order, or reacts to rebuilt joins or another still; a small one says little about people. Generated motion reading high on the mirror is flagged on the same terms as on the parent: same lineage, and How2Sign monocular trained it.
 
 **Controls and stops.** A cross-GPU reproduction check (the stored composition was read on an RTX 6000 Ada; this runs on an L40S) comes before any compose. A miss voids that read: no retry of the same code. Estimated about 4 h, $3.40 (range $2.80-$4.50), not measured.
+
+### Word-format controls, parent: real word clips read just as high, and shuffling removes the lead (read 2026-11-02, recorded 12:14 UTC)
+
+`round20/parent-controls/report.json` sha 2ef95af4, digest 0936c98a, 8 draws as planned, no alert, all controls reproduced exactly on the L40S, fidelity 499 of 499 per draw. Copy: `reports/parent_controls_report.json`. Declared cell: **`unresolved`**, because generated against real clips is unresolved. **Format: above real. All three shuffle contrasts: below.**
+
+| On the parent, D20, mean of 8 draws, t interval | BLEU | Margin over still | Share of real's margin |
+|---|---|---|---|
+| Real signing, two-view | 2.130 | 0.237 | |
+| Composition | 3.302 [3.138, 3.466] | 0.452 [0.437, 0.468] | 191% |
+| Generated, the oracle's words (`covered`) | 3.236 [3.116, 3.357] | 0.420 [0.411, 0.429] | 177% |
+| **Real word clips (`oracle`)** | **3.324 [2.966, 3.683]** | **0.389 [0.371, 0.406]** | **164%** |
+| Composition, shuffled | 2.252 [2.031, 2.472] | 0.249 [0.242, 0.255] | 105% |
+| Generated, shuffled | 2.314 [2.156, 2.472] | 0.236 [0.233, 0.240] | 100% |
+| Real word clips, shuffled | 2.173 [2.047, 2.298] | 0.225 [0.216, 0.233] | 95% |
+
+| Paired contrast, t interval | BLEU | Margin | By the rule |
+|---|---|---|---|
+| Oracle minus real signing | +1.194 [0.836, 1.553] | +0.152 [0.134, 0.169] | **above** |
+| Oracle minus covered | +0.088 [-0.308, 0.484] | -0.031 [-0.051, -0.011] | **unresolved**: metrics disagree |
+| Covered minus composition | -0.066 [-0.198, 0.067] | -0.032 [-0.042, -0.023] | unresolved |
+| Composition shuffled, moved clips | -1.058 [-1.186, -0.929] | -0.210 [-0.223, -0.196] | **below** |
+| Generated shuffled, moved clips | -0.938 [-1.142, -0.734] | -0.197 [-0.207, -0.187] | **below** |
+| Oracle shuffled, moved clips | -1.163 [-1.489, -0.837] | -0.176 [-0.188, -0.164] | **below** |
+| Oracle shuffled minus real signing (not a declared cell) | +0.043 [-0.083, 0.168] | -0.013 [-0.021, -0.004] | |
+
+Shuffled stills match their partners' (raw difference at most 0.001), so the drop isn't the still; the joins are rebuilt, so they aren't separated from it. Coverage: the oracle kept 81.2% of selected words (1,063 of 5,655 dropped, all added entries), 109 clips fully covered, 5 empty, no pick unserved. By clip's main corpus: ASLLVD oracle 3.65, RIT 2.71, WLASL 2.80; covered 3.29, 3.03, 3.08. Clips outside v1's training and selection (178): real 2.66, composition 3.36, covered 3.21, oracle 3.51. Hypotheses: content-word overlap with the reference, composition 13.5%, oracle 13.2%, composition shuffled 11.5%, real signing 7.4%.
+
+**Reading.** **The 3.30 isn't generator skill.** Real word clips stitched the same way read 3.32 too, above real signing, by the declared rule. And the whole lead over real signing goes when the same clips are shuffled: shuffled forms sit within about 0.2 BLEU and 0.03 margin of real signing. This reader rewards word clips in English order, which real ASL isn't, unless rebuilt joins explain part of it. So this instrument can't grade a signed-English word sequence fairly against real signing, as a caption-trained model would be expected not to; that's the reason to discount, not to celebrate, composition's score on it. A read of English order isn't evidence that a person follows it, or that it's signing.
+
+**Beside the rule, not a claim:** real word clips and generated clips read about the same through this reader. BLEU can't separate them, and on margin generated clips are ahead by 0.031. Generated clips were chosen as best of 16 and real clips by chance, and all pass through d2, so this isn't "as good as real signers", and BLEU is unresolved; but it gives no sign that word-level generation is what holds composition back, on this instrument. v1 reads the format very differently: on D20 its real-word oracle was 2.219 against real 4.49, with an older shuffle at 1.890 (a drop of 0.33, other draws and a different shuffle, so not like for like). **v1's official 2.40 stands, and M1 stays not met.** An open question is how much of v1's own 2.40 is word order; v1's stored shuffles suggest less, not none. Nothing here moves a target. The mirror's half is due next.
 
