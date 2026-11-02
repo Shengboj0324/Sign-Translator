@@ -6357,3 +6357,26 @@ By training status and signer (report only; here training status and signer are 
 
 **Consequences.** M1 stays not met on v1, and neither bar moves. Re-extracting real hands for v1's sake has less support than before. Not yet known: what generated composition reads on this instrument, and whether it reads fingers. Both are report-only next reads: the ladder (`SET=mono`) and composition with the word-format controls.
 
+### Sensitivity ladder on the mirror: it reads finger motion as the other two do (read 2026-11-02, recorded 06:55 UTC)
+
+`round20/sensitivity-ladder-mono/report.json` sha fa3ad403, digest 4951c44a, report only, no alert, canary reproduced exactly (v1's real 4.493, blank 1.680). Declared label: `reads_finger_motion`, `hands_still` falls, `says_nothing_about_hands` false. Input is two-view D20 damaged by known amounts, the same forms as the first ladder, so the mirror reads off its training path here. Margin over a still pose, with the share of each instrument's own undamaged margin:
+
+| Damage | Parent | v1 | Mirror | Mirror's BLEU |
+|---|---|---|---|---|
+| None, nearest fill | 0.237 | 0.526 | 0.377 | 3.70 |
+| Finger noise, low | 0.213 (90%) | 0.431 (82%) | 0.317 (84%) | 3.17 |
+| Finger noise, mid | 0.155 (65%) | 0.223 (42%) | 0.194 (51%) | 2.53 |
+| Finger noise, high | 0.071 (30%) | 0.042 (8%) | 0.042 (11%) | 1.16 |
+| Fingers frozen | 0.045 (19%) | 0.110 (21%) | 0.086 (23%) | 2.07 |
+| Neutral fingers | 0.029 (12%) | 0.054 (10%) | 0.029 (8%) | 1.96 |
+| Whole hand held still | 0.010 (4%) | 0.017 (3%) | 0.012 (3%) | 2.27 |
+| Arms frozen, hands kept | 0.138 (58%) | 0.317 (60%) | 0.229 (61%) | 2.37 |
+| Wrist position moved | 0.230 (97%) | 0.412 (78%) | 0.329 (87%) | 2.50 |
+| Wrist turned | 0.219 (92%) | 0.405 (77%) | 0.302 (80%) | 2.86 |
+| Hand dropout, filled | 0.221 (93%) | 0.501 (95%) | 0.355 (94%) | 3.31 |
+| Hand dropout, marked | 0.212 (89%) | 0.441 (84%) | 0.321 (85%) | 3.19 |
+
+Still pose BLEU on the mirror is 2.33, blank 1.16. Static handshape beyond motion, neutral against frozen, margin: 0.057 [0.035, 0.080], likelihood 0.070 [0.049, 0.092].
+
+**Reading.** The mirror's preference for single-camera isn't because it ignores fingers. All three instruments fall in nearly the same pattern: freezing fingers keeps 19-23% of the margin, freezing arms 58-61%. Its high-noise rung, at about the path's hand distance (0.587), keeps 11%, yet it reads monocular at 4.78, so whatever separates the paths doesn't act like random noise on it, as on the parent. Sharing a parent means three instruments aren't three independent witnesses; agreement doesn't establish what people use. No target moves. Finger motion carries most of each instrument's clip-specific reading, so generated finger motion stays the place for any hand work, subject to the estimator-wobble finding and with no new training until evidence supports it.
+
