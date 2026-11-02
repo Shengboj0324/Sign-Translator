@@ -29,7 +29,7 @@ from signtranslator.generation import compositional_grammar as cg  # noqa: E402
 from signtranslator.generation.composition_v2 import predicted_seconds  # noqa: E402
 from signtranslator.generation.compositional import parts_from_pieces  # noqa: E402
 from tests.test_generation_signing_space import signer_state  # noqa: E402
-from tests.test_parent_comp import ANCHOR_LEVELS, Comp, PARENT_INFO, settings_of  # noqa: E402
+from tests.test_parent_comp import ANCHOR_LEVELS, Comp, PARENT_INFO, settings_of, top10_report  # noqa: E402
 from tests.test_path_read import MONOCULAR, N, TWO_VIEW, laid_out, tiny_tokenizer  # noqa: E402
 
 JOB = ROOT / "runpod/fleet/parent_controls.sh"
@@ -43,6 +43,7 @@ FRACTIONS = dict(entries=dict(alpha=(.2, .8)), all=(.1, .9), min_seconds={})
 VOCAB = dict(alpha=.9, beta=1.1, gamma=.8, delta=1.3, you=.6, sem=1., fails=1.)
 MONO_LEVELS = dict(real_monocular=(13, 1.2, .8), nearest_monocular=(12, 1.3, .75), still_monocular=(1, 2.9, .15))      # not two-view's still: an anchor taken from the wrong path shows
 MIRROR_INFO = dict(PC.INSTRUMENTS["mirror"], kind="keypoints")
+V1_INFO = dict(PC.INSTRUMENTS["v1"], kind="keypoints")
 
 
 def level_of(name):
@@ -110,6 +111,9 @@ class Controls(Comp):
         self.reader_parent = Reader()
         self.reader_mirror = Reader(MIRROR_INFO)
         self.forms_mirror = tmp_path / "wm"
+        self.reader_v1 = Reader(V1_INFO)
+        self.forms_v1 = tmp_path / "wv1"
+        monkeypatch.setattr(P, "load_reader", lambda store, args: self.reader_v1)
         monkeypatch.setattr(Q, "load_mono", lambda store, args: self.reader_mirror)
         current = C.read_one
 
@@ -268,6 +272,80 @@ class Controls(Comp):
         assert self.mirror("merge", "--draws", ",".join(str(k) for k in draws), "--composed", "pc/composed", "--prefix", "pc/forms-mirror", "--output-file", str(out), *beside) == 0
         return json.loads(out.read_text())
 
+    def v1(self, *argv):
+        return self.main(argv[0], "--instrument", "v1", *argv[1:])
+
+    def pin_composed(self, draws):
+        """What v1 reads: this run's composed indexes, by their hashes, as the first read's."""
+        self.monkeypatch.setattr(PC, "COMPOSED_DIGEST", "c" * 64)
+        self.monkeypatch.setattr(PC, "COMPOSED_INDEX", {k: hashlib.sha256(self.store.get(PC.index_key("pc/composed", k))).hexdigest() for k in draws})
+        self.monkeypatch.setattr(PC, "DRAWS", tuple(draws))
+        self.monkeypatch.setattr(PC, "PREFIX", "pc")
+
+    def plant_a5(self, draws, words=None, **change):
+        """Each draw's stored A5 report and the summary, as the planted reader would read their compositions."""
+        records = self.records
+        bleus = list(PC.V1_A5_BLEU)
+        inputs = dict(C.DRAW_INPUTS)
+        for k in draws:
+            said = [("z y x w" if i == EMPTY else " ".join(r["text"].split()[:(words or 9 + k)])) for i, r in enumerate(records)]
+            report = dict(dict(top10_report(k, n=self.n), signs=[r["sign"] for r in records], references=[r["text"] for r in records]), **change)
+            report["forms"][C.PREDICTED] = dict(hypotheses=said)
+            report["likelihood"] = dict(per_form={C.PREDICTED: [-3. if i == EMPTY else -2. for i in range(self.n)]})
+            raw = json.dumps(report).encode()
+            self.store.put(C.top10_key(k), raw)
+            inputs[k] = dict(inputs[k], top10=hashlib.sha256(raw).hexdigest())
+            bleus[k - 1] = C.M.bleu_ci_fast(said, report["references"])[0]
+        self.monkeypatch.setattr(C, "DRAW_INPUTS", inputs)
+        self.monkeypatch.setattr(PC, "V1_A5_BLEU", tuple(bleus))
+        summary = json.dumps(dict(forms=dict(predicted=dict(top10_bleu=bleus)))).encode()
+        self.store.put(C.A5_SUMMARY, summary)
+        self.monkeypatch.setattr(C, "A5_SUMMARY_SHA", hashlib.sha256(summary).hexdigest())
+
+    def v1_anchors(self):
+        return self.v1("read", "--forms", "control", "--out-dir", str(self.forms_v1))
+
+    def v1_control(self):
+        return self.v1("control", "--out-dir", str(self.forms_v1), "--void-prefix", "pc/void-v1")
+
+    def plant_v1_stored(self, change=None, canary=None):
+        """The pinned canary report and the parts job's forms, as this reader read them."""
+        read = {n: json.loads((self.forms_v1 / f"form-{n}.json").read_text()) for n in PC.MIRROR_ANCHORS}
+        table = {}
+        for name in PC.V1_STORED_ANCHORS:
+            raw = json.dumps(dict(read[name], **(change or {}).get(name, {}))).encode()
+            self.store.put(f"{Q.PARTS_FORMS}/s-{name}.json", raw)
+            table[name] = (f"s-{name}.json", hashlib.sha256(raw).hexdigest())
+        self.monkeypatch.setattr(Q, "STORED_V1", table)
+        forms = {new: dict(dict(hypotheses=read[old]["hypotheses"], per_clip=dict(nll=[x[0] for x in read[old]["nll"]])), **(canary or {}).get(new, {})) for new, old in (("real", "real_two_view"), ("blank", "blank"))}
+        raw = json.dumps(dict(signs=read["real_two_view"]["signs"], references=read["real_two_view"]["references"], forms=forms)).encode()
+        self.store.put(P.CANARY_REPORT, raw)
+        self.monkeypatch.setattr(P, "CANARY_REPORT_SHA", hashlib.sha256(raw).hexdigest())
+        self.monkeypatch.setattr(P, "CANARY", dict(P.CANARY, real=C.M.bleu_ci_fast(read["real_two_view"]["hypotheses"], read["real_two_view"]["references"])[0], blank=C.M.bleu_ci_fast(read["blank"]["hypotheses"], read["blank"]["references"])[0]))
+
+    def v1_comp_check(self, k=1):
+        assert self.v1("read", "--forms", "comp-check", "--draws", str(k), "--out-dir", str(self.forms_v1)) == 0
+        return self.v1("comp-check", "--draw", str(k), "--out-dir", str(self.forms_v1), "--void-prefix", "pc/void-v1")
+
+    def v1_read(self, draws=(1, 2)):
+        for k in draws:
+            if not self.store.exists(PC.index_key("pc/composed", k)):
+                assert self.compose(k) == 0
+        self.pin_composed(draws)
+        self.plant_a5(draws)
+        assert self.v1_anchors() == 0
+        self.plant_v1_stored()
+        assert self.v1_control() == 0
+        assert self.v1_comp_check(draws[0]) == 0
+        assert self.v1("read", "--draws", ",".join(str(k) for k in draws), "--composed", "pc/composed", "--out-dir", str(self.forms_v1)) == 0
+        assert self.main("upload", "--out-dir", str(self.forms_v1), "--prefix", "pc/forms-v1") == 0
+
+    def v1_report(self, draws=(1, 2), name="report-v1.json"):
+        self.v1_read(draws)
+        out = self.tmp_path / name
+        assert self.v1("merge", "--draws", ",".join(str(k) for k in draws), "--composed", "pc/composed", "--prefix", "pc/forms-v1", "--output-file", str(out)) == 0
+        return json.loads(out.read_text())
+
     def upload(self):
         return self.main("upload", "--out-dir", str(self.forms), "--prefix", "pc/forms")
 
@@ -298,8 +376,9 @@ def test_c20_cannot_be_named_and_no_other_instrument_or_selection_is_here():
         flags = {o for a in command._actions for o in a.option_strings}
         assert not flags & {"--sentences-key", "--list", "--translator-run", "--checkpoint", "--tokenizer", "--word-cache-key"}
     code = re.sub(r"[0-9a-f]{64}", "", (ROOT / "scripts/parent_controls.py").read_text().split('"""', 2)[2]).lower()
-    for word in ("c20", "test_rgb_front", "load_reader", "rerank", "citizen", "stem", "backward", "load_recogn"):
-        assert not re.search(rf"\b{word}", code), word
+    assert code.count("p.load_reader(") == 1 and "p.load_reader(store, args)" in code, "v1 is loaded in one place, to read"
+    for word in ("c20", "test_rgb_front", "rerank=", "rerank(", "citizen", "stem", "backward", "load_recogn"):
+        assert not re.search(rf"\b{re.escape(word)}", code), word
 
 
 def test_the_pins_are_the_stored_reads():
@@ -1918,8 +1997,8 @@ def test_the_job_passes_every_step_through_pipestatus_and_names_no_other_list():
 def test_an_instrument_outside_the_two_refuses(monkeypatch, tmp_path):
     h = Controls(monkeypatch, tmp_path, compose_draws=())
     for command in (("read", "--forms", "control", "--out-dir", str(h.forms)), ("control", "--out-dir", str(h.forms), "--void-prefix", "v"), ("merge", "--composed", "c", "--prefix", "p", "--output-file", str(tmp_path / "x"))):
-        with pytest.raises(SystemExit, match="--instrument v1"):
-            h.main(command[0], "--instrument", "v1", *command[1:])
+        with pytest.raises(SystemExit, match="--instrument v9"):
+            h.main(command[0], "--instrument", "v9", *command[1:])
     with pytest.raises(SystemExit, match="one of"):
         PC.check_instrument("back-translator-kp2d-uwb-ft-v1")
 
@@ -2029,7 +2108,7 @@ def test_a_mirror_read_needs_its_own_control_and_no_composition_check(monkeypatc
     assert h.compose() == 0
     with pytest.raises(SystemExit, match="no passed control"):
         h.read_mirror("1")
-    with pytest.raises(SystemExit, match="the parent's"):
+    with pytest.raises(SystemExit, match="the mirror has none"):
         h.mirror("read", "--forms", "comp-check", "--draws", "1", "--composed", "pc/composed", "--out-dir", str(h.forms_mirror))
     # the parent's passed control does not open the mirror's read
     h.to_control()
@@ -2217,3 +2296,363 @@ def test_a_smoke_reads_through_the_mirror_and_compares_nothing(monkeypatch, tmp_
     assert h.mirror("merge", "--draws", "1", "--composed", "pc/composed", "--prefix", "pc/forms-mirror", "--output-file", str(out)) == 0
     report = json.loads(out.read_text())
     assert report["declared_read"] is False and "SMOKE" in report["smoke"] and report["instrument_name"] == "mirror"
+
+
+# ---- v1, read only ------------------------------------------------------------------------------------------------------------------------------
+
+def test_v1s_pins_and_declared_reading():
+    head = PC.__doc__
+    for text in ("how much of the official 2.40 is word order", "**Reads only: it is never used here for a loss, a rerank or a best-of-N,**", "real two-view (4.493) and nearest two-view (4.621), with real monocular beside them", "near the parent's and the mirror's, about 1 BLEU,** means much of the official 2.40 is word order", "**A small drop** means it mostly is not", "Neither is the better outcome", "``official_gap``", "**v1 trained on 234 of D20's clips and selected on 265 more,** so ``by_clip_subset`` rows matter", "No target moves", "None of it shows human comprehension", "they are not this recipe's margin", "no new compose", "NVIDIA L40S", "About 2.6 h and about $2.90", "All eight draws"):
+        assert text in head, text
+    pin = PC.INSTRUMENTS["v1"]
+    assert pin["run"] == L.TRANSLATOR_RUN and pin["sha256"] == L.TRANSLATOR_SHA and pin["sha256"].startswith("2e3ded3f") and pin["checkpoint_key"].endswith("back-translator-kp2d-uwb-ft-v1/checkpoints/step-00009000.pt")
+    assert PC.V1_A5_BLEU == (2.406, 2.469, 2.22, 2.449, 2.08, 2.35, 2.556, 2.687) and PC.COMPOSED_DIGEST.startswith("0936c98a") and set(PC.COMPOSED_INDEX) == set(PC.DRAWS) and len(set(PC.COMPOSED_INDEX.values())) == 8 and PC.COMPOSED_INDEX[1].startswith("02726a3d") and all(re.fullmatch(r"[0-9a-f]{64}", h) for h in PC.COMPOSED_INDEX.values())
+    assert "never for a loss, a rerank or a best-of-N" in PC.READING_V1 and "about 1 BLEU" in PC.READING_V1 and "never for a loss, a rerank or a best-of-N" in PC.DISCLOSURES["v1"] and PC.V1_COST_ESTIMATE["measured"] is False
+
+
+@pytest.mark.parametrize("change", [dict(sha256="0" * 64), dict(checkpoint_key=f"training-runs/{L.TRANSLATOR_RUN}/checkpoints/step-00015000.pt")])
+def test_a_v1_of_another_checkpoint_refuses(monkeypatch, tmp_path, change):
+    h = Controls(monkeypatch, tmp_path, compose_draws=())
+    assert PC.load_instrument("v1", h.store, None) is h.reader_v1
+    h.reader_v1.info = dict(V1_INFO, **change)
+    with pytest.raises(SystemExit, match="not the pinned"):
+        PC.load_instrument("v1", h.store, None)
+
+
+def test_v1s_anchors_pass_and_its_reads_are_v1s_alone(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path, compose_draws=())
+    assert h.v1_anchors() == 0
+    assert [c[0] for c in h.reader_v1.calls] == list(PC.MIRROR_ANCHORS) and not h.reader_parent.calls and not h.reader_mirror.calls
+    h.plant_v1_stored()
+    assert h.v1_control() == 0
+    record = json.loads((h.forms_v1 / "control.json").read_text())
+    assert record["reproduced"] is True and set(record["stored"]) == set(PC.V1_STORED_ANCHORS) and record["canary"]["reproduced"] is True
+
+
+@pytest.mark.parametrize("canary,word", [(dict(real=dict(hypotheses=["other"] * N)), "canary real hypotheses"), (dict(blank=dict(per_clip=dict(nll=[9.] * N))), "canary blank NLL")])
+def test_a_canary_miss_voids_v1s_read(monkeypatch, tmp_path, capsys, canary, word):
+    h = Controls(monkeypatch, tmp_path, compose_draws=(1,))
+    assert h.compose() == 0
+    h.pin_composed((1,))
+    assert h.v1_anchors() == 0
+    h.plant_v1_stored(canary=canary)
+    assert h.v1_control() == 3
+    out = capsys.readouterr().out
+    assert word in out and "v1's read is void" in out and "RERUN_CAUSE" in out and h.store.exists("pc/void-v1/" + "c" * 64 + ".json")
+    with pytest.raises(SystemExit, match="no passed control"):
+        h.v1("read", "--draws", "1", "--composed", "pc/composed", "--out-dir", str(h.forms_v1))
+    with pytest.raises(SystemExit, match="this code's read is void"):
+        h.main("preflight", "--out-dir", str(tmp_path / "w2"), "--final-key", "pc/report-v1.json", "--void-prefix", "pc/void-v1")
+
+
+@pytest.mark.parametrize("name", ["real_two_view", "blank", "nearest_two_view", "nearest_monocular"])
+def test_an_anchor_off_the_parts_forms_voids_v1s_read(monkeypatch, tmp_path, capsys, name):
+    h = Controls(monkeypatch, tmp_path, compose_draws=())
+    assert h.v1_anchors() == 0
+    h.plant_v1_stored({name: dict(hypotheses=["other"] * N)})
+    assert h.v1_control() == 3
+    assert f"{name} hypotheses" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("what", ["canary", "parts"])
+def test_a_v1_pin_on_other_bytes_exits_1_with_no_void(monkeypatch, tmp_path, what):
+    h = Controls(monkeypatch, tmp_path, compose_draws=())
+    assert h.v1_anchors() == 0
+    h.plant_v1_stored()
+    if what == "canary":
+        h.store.put(P.CANARY_REPORT, b"{}")
+    else:
+        h.store.put(f"{Q.PARTS_FORMS}/s-blank.json", b"{}")
+    with pytest.raises(SystemExit, match="SHA-256"):
+        h.v1_control()
+    assert not h.store.exists("pc/void-v1/" + "c" * 64 + ".json") and not (h.forms_v1 / "control.json").exists()
+
+
+def test_a_v1_smoke_control_compares_nothing(monkeypatch, tmp_path, capsys):
+    h = smoke(monkeypatch, tmp_path)
+    assert h.v1("read", "--forms", "control", "--out-dir", str(h.forms_v1), "--smoke-train", "5") == 0
+    capsys.readouterr()
+    assert h.v1_control() == 0 and "nothing compared" in capsys.readouterr().out
+
+
+def to_v1_comp_check(h, k=1):
+    h.pin_composed((k,))
+    assert h.v1_anchors() == 0
+    h.plant_v1_stored()
+    assert h.v1_control() == 0
+
+
+def test_draw_ones_stored_composition_must_reproduce_before_a_draw_is_read(monkeypatch, tmp_path, capsys):
+    h = Controls(monkeypatch, tmp_path, compose_draws=(1,))
+    assert h.compose() == 0
+    to_v1_comp_check(h)
+    with pytest.raises(SystemExit, match="has not been reproduced"):
+        h.v1("read", "--draws", "1", "--composed", "pc/composed", "--out-dir", str(h.forms_v1))
+    h.plant_a5((1,))
+    assert h.v1_comp_check(1) == 0
+    assert json.loads((h.forms_v1 / "comp-check.json").read_text())["stored"]["identical"] == 1.
+    assert h.v1("read", "--draws", "1", "--composed", "pc/composed", "--out-dir", str(h.forms_v1)) == 0
+    assert "d1_comp_reread" in {c[0] for c in h.reader_v1.calls} and not {c[0] for c in h.reader_parent.calls}
+
+
+@pytest.mark.parametrize("change,word", [(dict(words=3), "hypotheses"), (dict(signs=[f"z{i}" for i in range(N)]), "other clips"), (dict(references=["other"] * N), "other clips")])
+def test_a_composition_not_reproduced_voids_v1s_read(monkeypatch, tmp_path, capsys, change, word):
+    h = Controls(monkeypatch, tmp_path, compose_draws=(1,))
+    assert h.compose() == 0
+    to_v1_comp_check(h)
+    h.plant_a5((1,), **change)
+    assert h.v1_comp_check(1) == 3
+    assert word in capsys.readouterr().out and h.store.exists("pc/void-v1/" + "c" * 64 + ".json")
+    with pytest.raises(SystemExit, match="has not been reproduced"):
+        h.v1("read", "--draws", "1", "--composed", "pc/composed", "--out-dir", str(h.forms_v1))
+
+
+def test_a_bleu_off_the_summary_voids_and_own_nll_only_stands_beside(monkeypatch, tmp_path):
+    read = dict(signs=["a", "b"], references=["w x y z a b", "c d e f g h"], hypotheses=["w x y z", "c d e f"], nll=[[2.], [2.]])
+    top10 = dict(signs=["a", "b"], references=read["references"], forms={C.PREDICTED: dict(hypotheses=read["hypotheses"])}, likelihood=dict(per_form={C.PREDICTED: [-9., -9.]}))
+    bleu = C.M.bleu_ci_fast(read["hypotheses"], read["references"])[0]
+    row, misses = PC.a5_row(read, top10, bleu)
+    assert misses == [] and row["own_nll_mean_absolute_difference"] == 7. and row["identical"] == 1.
+    assert PC.a5_row(read, top10, bleu + .051)[1] == ["BLEU"]
+
+
+def test_v1_reads_only_the_stored_composed_forms_by_their_full_hashes(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path, compose_draws=(1,))
+    assert h.compose() == 0
+    h.pin_composed((1,))
+    # new code reads the first read's index, where another instrument of this code would refuse it
+    monkeypatch.setattr(PC, "code_digest", lambda: "d" * 64)
+    assert PC.load_index(h.store, "pc/composed", 1, "v1")["draw"] == 1
+    with pytest.raises(SystemExit, match="written once"):
+        PC.load_index(h.store, "pc/composed", 1, "mirror")
+    monkeypatch.setattr(PC, "COMPOSED_DIGEST", "e" * 64)
+    with pytest.raises(SystemExit, match="not the stored composed forms"):
+        PC.load_index(h.store, "pc/composed", 1, "v1")
+    monkeypatch.setattr(PC, "COMPOSED_INDEX", {1: "0" * 64})
+    with pytest.raises(SystemExit, match="SHA-256"):
+        PC.load_index(h.store, "pc/composed", 1, "v1")
+
+
+def test_a_composed_state_off_its_hash_in_the_index_stops_a_v1_read(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path, compose_draws=(1,))
+    assert h.compose() == 0
+    to_v1_comp_check(h)
+    h.plant_a5((1,))
+    assert h.v1_comp_check(1) == 0
+    row = h.index()["rows"]["oracle"][0]
+    h.store.put(row["state_key"], b"other")
+    with pytest.raises(ValueError, match="hash mismatch"):
+        h.v1("read", "--draws", "1", "--composed", "pc/composed", "--out-dir", str(h.forms_v1))
+
+
+def test_v1_reads_the_very_input_the_parent_reads(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path, compose_draws=(1,))
+    h.to_read((1,))
+    h.v1_read((1,))
+    for kind in PC.KINDS:
+        for name in (f"d1_{kind}", f"d1_{kind}_still"):
+            assert h.reader_v1.inputs[name] == h.reader_parent.inputs[name], name
+    assert h.reader_v1.inputs["d1_comp"] == h.reader_parent.inputs["d1_comp_reread"] == h.reader_v1.inputs["d1_comp_reread"]
+
+
+def test_v1s_report_anchors_on_two_view_with_monocular_beside(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path)
+    report = h.v1_report()
+    assert report["kind"] == "parent-controls-report" and report["instrument_name"] == "v1" and report["instrument"]["sha256"] == L.TRANSLATOR_SHA and report["report_only"] is True and report["alerts"] == [] and report["draws"] == [1, 2] and report["reading"] == PC.READING_V1 and report["cost_estimate"] == PC.V1_COST_ESTIMATE
+    assert report["own_path_anchors"] == dict(real="real_two_view", nearest="nearest_two_view", still="still_two_view", blank="blank")
+    comp = (.6 + .0015 - STILL_MARGIN) * FILLED / N
+    block = report["composition"]
+    # real two-view over two-view's still, .4; real monocular's own .65 would be the wrong anchor
+    assert abs(block["margin"]["mean"] - comp) < 1e-4 and abs(block["share_of_real"]["mean"] - comp / .4) < 1e-3 and abs(block["share_of_nearest"]["mean"] - comp / .5) < 1e-3
+    anchors = report["anchors"]
+    assert abs(anchors["real_two_view"]["margin_over_still"]["point"] - .4) < 1e-6 and abs(anchors["nearest_two_view"]["margin_over_still"]["point"] - .5) < 1e-6 and abs(anchors["real_monocular"]["margin_over_still"]["point"] - .65) < 1e-6 and anchors["still_monocular"]["margin_over_still"]["point"] == 0.
+    oracle = (MARGIN["oracle"] - STILL_MARGIN) * ORACLE_FILLED / N
+    assert report["paired"]["form_minus_real"]["oracle"]["margin"]["mean"] == pytest.approx(oracle - .4, abs=1e-4) and report["paired"]["form_minus_nearest"]["oracle"]["margin"]["mean"] == pytest.approx(oracle - .5, abs=1e-4)
+    reading = report["reading_contrasts"]
+    assert reading["format_like"] == "real_two_view" and reading["format_beside"]["like"] == "nearest_two_view" and reading["gates_nothing"] is True and reading["format"] == "below" and reading["generated_against_real_clips"] == "below" and set(reading["shuffle_on_moved_clips"]) == set(report["paired"]["moved"])
+    assert report["stored"] is None and set(report["checks"]["controls"]) == {"anchors", "comp_check"} and report["disclosures"]["v1"] == PC.DISCLOSURES["v1"] and report["parent_on_mirror_draws"] is None
+    assert report["forms"]["oracle"]["by_clip_subset"]["outside_training_and_selection"]["clips"] == N - 6 and report["composition"]["by_clip_subset"]["in_v1_training"]["clips"] == 4
+    assert h.main("check", "--report", str(tmp_path / "report-v1.json")) == 0
+    assert (tmp_path / "report-v1.json").read_bytes() and h.v1("merge", "--draws", "1,2", "--composed", "pc/composed", "--prefix", "pc/forms-v1", "--output-file", str(tmp_path / "report-v1.json")) == 0
+
+
+def test_the_official_gap_row_holds_composition_and_its_shuffled_share(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path)
+    report = h.v1_report()
+    gap = report["official_gap"]
+    assert gap["composition"]["per_draw"] == pytest.approx(report["composition"]["bleu_gap_share"]["per_draw"], abs=1e-4) and gap["composition_shuffled"]["mean"] == pytest.approx(report["groups"]["shuffled"]["bleu_gap_share"]["mean"], abs=1e-4)
+    assert gap["shuffled_minus_composition"]["per_draw"][0] == pytest.approx(gap["composition_shuffled"]["per_draw"][0] - gap["composition"]["per_draw"][0], abs=1e-3)
+    comp, shuffled, blank = report["composition"]["bleu"]["per_draw"][0], report["groups"]["shuffled"]["bleu"]["per_draw"][0], report["composition"]["per_draw"]["1"]["bleu_gap_share"]["blank"]
+    assert gap["share_of_composition_gap_removed_by_shuffling"]["per_draw"][0] == pytest.approx((comp - shuffled) / (comp - blank), abs=1e-3) and gap["share_of_composition_gap_removed_by_shuffling"]["draws"] == 2
+    parent = h.report()
+    assert parent["official_gap"] is None and parent["stored_a5"] is None
+
+
+def test_every_draws_composition_is_set_beside_its_stored_a5_report(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path)
+    report = h.v1_report()
+    assert set(report["stored_a5"]) == {"1", "2"} and report["stored_a5"]["2"]["identical"] == 1. and report["stored_a5"]["2"]["misses"] == []
+    # a later draw off its stored report is an alert in the report, which the check stops on
+    h.plant_a5((2,), words=4)
+    out = tmp_path / "off.json"
+    assert h.v1("merge", "--draws", "1,2", "--composed", "pc/composed", "--prefix", "pc/forms-v1", "--output-file", str(out)) == 0
+    off = json.loads(out.read_text())
+    assert any("draw 2: composition does not reproduce its stored A5 report" in a for a in off["alerts"])
+    assert h.main("check", "--report", str(out)) == 3
+
+
+def test_v1_refuses_fewer_than_all_its_draws(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path)
+    h.v1_read()
+    with pytest.raises(SystemExit, match="v1 reads all eight draws"):
+        h.v1("merge", "--draws", "1", "--composed", "pc/composed", "--prefix", "pc/forms-v1", "--output-file", str(tmp_path / "x.json"))
+
+
+def test_forms_of_another_instrument_refuse_v1s_merge(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path)
+    h.report()
+    with pytest.raises(SystemExit, match="not read by the v1"):
+        h.v1("merge", "--draws", "1,2", "--composed", "pc/composed", "--prefix", "pc/forms", "--output-file", str(tmp_path / "x.json"))
+
+
+def test_v1s_inputs_hold_every_pin_before_any_spend(monkeypatch, tmp_path, capsys):
+    h = Controls(monkeypatch, tmp_path)
+    h.v1_read()
+    capsys.readouterr()
+    assert h.main("inputs", "--instrument", "v1") == 0
+    out = capsys.readouterr().out
+    assert "bleu" not in out and "hypotheses" not in out and "margin" not in out
+    monkeypatch.setattr(P, "environment", lambda: dict(gpu="NVIDIA RTX 6000 Ada Generation"))
+    with pytest.raises(SystemExit, match="not NVIDIA L40S"):
+        h.main("inputs", "--instrument", "v1", "--expect-gpu", "NVIDIA_L40S")
+
+
+@pytest.mark.parametrize("what,word", [("index", "SHA-256"), ("summary", "SHA-256"), ("bleu", "declared per-draw BLEU"), ("canary", "SHA-256"), ("parts", "SHA-256"), ("signs", "other clips than D20"), ("top10", "SHA-256")])
+def test_a_v1_input_off_its_pin_stops_at_inputs(monkeypatch, tmp_path, what, word):
+    h = Controls(monkeypatch, tmp_path)
+    h.v1_read()
+    if what == "index":
+        monkeypatch.setattr(PC, "COMPOSED_INDEX", {**PC.COMPOSED_INDEX, 1: "0" * 64})
+    elif what == "summary":
+        h.store.put(C.A5_SUMMARY, b"{}")
+    elif what == "bleu":
+        monkeypatch.setattr(PC, "V1_A5_BLEU", (0.,) * 8)
+    elif what == "canary":
+        h.store.put(P.CANARY_REPORT, b"{}")
+    elif what == "parts":
+        h.store.put(f"{Q.PARTS_FORMS}/s-blank.json", b"{}")
+    elif what == "top10":
+        h.store.put(C.top10_key(2), b"{}")
+    else:
+        h.plant_v1_stored(dict(blank=dict(signs=[f"z{i}" for i in range(N)])))
+    with pytest.raises(SystemExit, match=word):
+        h.main("inputs", "--instrument", "v1")
+
+
+def test_the_parent_and_mirrors_inputs_still_ask_for_their_model_file(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path, compose_draws=())
+    h.store.put(PC.STORED_REPORT, b"{}")
+    monkeypatch.setattr(PC, "STORED_REPORT_SHA", hashlib.sha256(b"{}").hexdigest())
+    with pytest.raises(SystemExit, match="--model-file"):
+        h.main("inputs")
+
+
+def test_a_v1_smoke_reads_the_stored_forms_against_train_references(monkeypatch, tmp_path):
+    h = smoke(monkeypatch, tmp_path)
+    assert h.compose(1) == 0
+    h.pin_composed((1,))
+    assert h.v1("read", "--forms", "control", "--out-dir", str(h.forms_v1), "--smoke-train", "5") == 0
+    assert h.v1("read", "--draws", "1", "--composed", "pc/composed", "--out-dir", str(h.forms_v1), "--smoke-train", "5") == 0
+    form = json.loads((h.forms_v1 / "form-d1_oracle.json").read_text())
+    assert form["declared_read"] is False and all(x.startswith("train-") for x in form["signs"]) and form["instrument"]["sha256"] == L.TRANSLATOR_SHA
+    assert h.main("upload", "--out-dir", str(h.forms_v1), "--prefix", "pc/forms-v1") == 0
+    out = tmp_path / "smoke-v1.json"
+    assert h.v1("merge", "--draws", "1", "--composed", "pc/composed", "--prefix", "pc/forms-v1", "--output-file", str(out)) == 0
+    report = json.loads(out.read_text())
+    assert report["declared_read"] is False and "SMOKE" in report["smoke"] and report["stored_a5"] is None and report["official_gap"]["composition"]["draws"] == 1
+
+
+# ---- v1's path through the job
+V1_SMOKE = ["read", "control", "read", "upload", "merge", "put-report", "check"]
+
+
+def test_the_v1_job_reads_all_eight_stored_draws_with_no_compose(tmp_path):
+    result, calls = run_job(tmp_path, INSTRUMENTS="v1")
+    assert result.returncode == 0 and done_line(result) == 0
+    got = commands(calls)
+    assert got[:2] == ["digest", "inputs"] and got[2:9] == V1_SMOKE and got[9:15] == ["stage-state", "preflight", "read", "control", "read", "comp-check"]
+    assert "compose" not in got and got[-5:] == ["upload", "merge", "put-report", "check", "upload-log"]
+    lines = calls.splitlines()
+    assert "--expect-gpu NVIDIA_L40S" in lines[1] and "--instrument v1" in lines[1] and "--model-file" not in lines[1]
+    assert draws_read(calls, "v1") == list(PC.DRAWS) and not draws_read(calls, "parent") and not draws_read(calls, "mirror")
+    base = "acquisition/2026-10-17-v1/youtube-asl-v1/round20/parent-controls"
+    assert all(f"--composed {base}/composed " in x for x in lines if x.split()[1] == "merge" or "--draws" in x and "--forms" not in x)
+    merge = [x for x in lines if x.split()[1] == "merge"][-1]
+    assert f"--prefix {base}/forms-v1 --output-file" in merge and "--stop-reason all_planned" in merge and "--parent-forms" not in merge
+    assert [x for x in lines if x.split()[1] == "put-report"][-1].endswith(f"--key {base}/report-v1.json")
+    assert [x for x in lines if x.split()[1] == "preflight"][0].split("--void-prefix ")[1].startswith(f"{base}/void-v1")
+    assert next(i for i, x in enumerate(lines) if x.split()[1] == "comp-check") < next(i for i, x in enumerate(lines) if "--resume" in x and "--draws" in x and "comp-check" not in x)
+    timeouts = (tmp_path / "timeouts.log").read_text()
+    assert timeouts.count("python scripts/parent_controls.py") == len(lines), "every python step of the job runs under a limit"
+
+
+def test_the_clock_rule_never_drops_a_v1_draw(tmp_path):
+    result, calls = run_job(tmp_path, INSTRUMENTS="v1", BUDGET_SECONDS="-1")
+    assert result.returncode == 0 and draws_read(calls, "v1") == list(PC.DRAWS) and "clock rule" not in result.stdout
+
+
+@pytest.mark.parametrize("env,word", [(dict(DRAWS="1 2 3"), "v1 reads all eight draws"), (dict(INSTRUMENTS="v2"), "INSTRUMENTS is parent,mirror or v1")])
+def test_fewer_v1_draws_or_another_instrument_stop_the_job_first(tmp_path, env, word):
+    result, calls = run_job(tmp_path, **dict(dict(INSTRUMENTS="v1"), **env))
+    assert result.returncode == 1 and word in result.stdout and "inputs" not in calls
+
+
+def test_the_v1_smoke_mode_stops_before_d20(tmp_path):
+    result, calls = run_job(tmp_path, INSTRUMENTS="v1", SMOKE="1")
+    assert result.returncode == 0 and "SMOKE done" in result.stdout and "preflight" not in calls and "--smoke-train 5" in calls and "smoke-v1/" in calls
+
+
+@pytest.mark.parametrize("fail,word", [("control --instrument v1 --out-dir*work/d20-v1/v1/forms", "v1's control failed"), ("comp-check --instrument v1 --draw 1*work/d20-v1/v1/forms", "v1 did not reproduce the stored composition")])
+def test_a_v1_void_stops_with_3_and_reads_no_draw(tmp_path, fail, word):
+    result, calls = run_job(tmp_path, INSTRUMENTS="v1", fail_when=fail, code=3)
+    assert result.returncode == 3 and done_line(result) == 3 and word in result.stdout and "do not retry this code" in result.stdout and "RERUN_CAUSE" in result.stdout and not draws_read(calls, "v1")
+
+
+@pytest.mark.parametrize("fail,word", [("control --instrument v1 --out-dir*work/d20-v1/v1/forms", "v1's control did not run"), ("comp-check --instrument v1 --draw 1*work/d20-v1/v1/forms", "v1's composition check did not run")])
+def test_a_v1_control_that_exits_1_does_not_fall_through(tmp_path, fail, word):
+    result, calls = run_job(tmp_path, INSTRUMENTS="v1", fail_when=fail, code=1)
+    assert result.returncode == 1 and word in result.stdout and not draws_read(calls, "v1")
+
+
+@pytest.mark.parametrize("procs", ["1", "2"])
+def test_the_last_v1_read_to_finish_failing_fails_the_job(tmp_path, procs):
+    result, calls = run_job(tmp_path, INSTRUMENTS="v1", fail_when="--draws 8 --instrument v1*--resume", READ_PROCS=procs)
+    assert result.returncode == 1 and "read of v1 draw 8" in result.stdout and not [x for x in calls.splitlines() if x.split()[1] == "merge" and "d20-v1/report-v1.json" in x]
+
+
+def test_a_failed_v1_put_report_resumes_with_the_same_merge(tmp_path):
+    result, first = run_job(tmp_path, INSTRUMENTS="v1", fail_when="put-report*d20-v1/report-v1.json")
+    assert result.returncode == 1
+    result, second = run_job(tmp_path, INSTRUMENTS="v1")
+    assert result.returncode == 0 and not draws_read(second, "v1") and "--smoke-train" not in second
+    merge = lambda calls: next(x for x in calls.splitlines() if x.split()[1] == "merge" and "d20-v1/report-v1.json" in x)      # noqa: E731
+    assert merge(first) == merge(second)
+
+
+def test_a_finished_v1_stage_runs_only_its_check_again(tmp_path):
+    (tmp_path / "work/d20-v1").mkdir(parents=True)
+    (tmp_path / "work/d20-v1/stage-v1.txt").write_text("1,2,3,4,5,6,7,8 all_planned 100 14400\n")
+    result, calls = run_job(tmp_path, INSTRUMENTS="v1", stage_zero="report-v1.json")
+    assert result.returncode == 0
+    got = commands(calls)
+    assert got[got.index("stage-state"):] == ["stage-state", "check", "upload-log"]
+
+
+def test_a_v1_rerun_keeps_the_stored_composed_forms_and_writes_under_its_digest(tmp_path):
+    result, calls = run_job(tmp_path, INSTRUMENTS="v1", RERUN_CAUSE="the-cause")
+    assert result.returncode == 0
+    base = "acquisition/2026-10-17-v1/youtube-asl-v1/round20/parent-controls"
+    lines = calls.splitlines()
+    merge = [x for x in lines if x.split()[1] == "merge"][-1]
+    assert f"--composed {base}/composed " in merge and f"--prefix {base}/runs/abc123def/forms-v1" in merge and "--rerun-cause the-cause" in merge and "work/runs/abc123def/d20-v1/report-v1.json" in merge
+    assert [x for x in lines if x.split()[1] == "preflight"][0].split("--void-prefix ")[1].startswith(f"{base}/void-v1 --rerun-cause the-cause")
