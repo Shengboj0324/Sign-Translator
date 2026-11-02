@@ -1,14 +1,36 @@
-"""Parent controls: why does composition read above real signing on v1's parent, and what does the mirror make of the same forms? Report only: nothing trains, and this code gates and selects nothing. Composition of generated word clips (A5's eight word draws, top10 added words) read BLEU 3.30 against real's 2.13, margin over still 0.452 against 0.237, on ``back-translator-kp2d-uwb-v2`` step 76,000, sha ``f1ff9446...`` (``scripts/parent_comp.py``, ``round20/parent-comp/report.json``, sha ``a41781a8...``). That is flagged as not credible until explained. These forms separate two causes: the generator, or the word-by-word format.
+"""Parent controls: why does composition read above real signing on v1's parent, and what does the mirror make of the same forms? Report only: nothing trains, and this code gates and selects nothing. Composition of generated word clips (A5's eight word draws, top10 added words) read BLEU 3.30 against real's 2.13, margin over still 0.452 against 0.237, on ``back-translator-kp2d-uwb-v2`` step 76,000, sha ``f1ff9446...`` (``scripts/parent_comp.py``, ``round20/parent-comp/report.json``, sha ``a41781a8...``). That is flagged as not credible until explained. These forms are controls on it: real clips in the same format, the same clips in another order. They narrow the explanations, and they do not by themselves tell generator, format and source apart, for the reasons stated below.
 
-**How this will be read (stated before any read; the commit holding this text precedes the job).** No label and no bar: this job sets none, no label gates anything and no target moves.
-- **Oracle at or above composition: the format reads high, not the generator's skill.**
-- **Oracle far below composition: generated clips suit this reader better than real ones, which supports the shared-source explanation.** Generated clips and the parent's training data share a landmark source (YouTube-ASL, MediaPipe).
-- **Shuffling that barely lowers BLEU or margin: the reader isn't using word order.**
-**None of this shows human comprehension,** and none of it is a claim about M1 or release. "Far below" is deliberately given no number here: the report gives the paired differences and their intervals, and whoever reads them says what they make of them.
-- **The mirror is report only and never moves M1. Generated motion reading high on it is flagged on the same terms as on the parent,** since it shares the parent's lineage (the parent's weights, trained on the MediaPipe source of word clips), **and How2Sign monocular trained it,** so it was fitted to the path word clips come through, and its training holds 234 of D20's clips. The same three readings apply on it, each on its own reading.
+**How this will be read (stated before any read; the commit holding this text precedes the job).** No label and no bar: this job sets none, no label gates anything and no target moves. Every comparison is paired, on the same draws and clips, on one instrument at a time (parent minus mirror alone crosses them, beside the reading and not part of it), and a comparison whose interval holds zero is called unresolved. No number is set for "above" or "large".
 
-**The second instrument (``--instrument``: ``parent``, ``mirror``).** ``mirror`` is ``back-translator-kp2d-uwb-ft-mono-v1`` step 9,000, sha ``1a996cfc...``, the parent fine-tuned on How2Sign monocular states (``scripts/symmetric_ft.py``, label ``unresolved``), loaded by ``parent_lib.load_mono`` from its trained record and held to that hash. Each instrument has its own forms, control, void and report. Through the mirror: the composition, its still and its blank on each draw it reads (it has no stored forms), real and nearest on both paths with their stills, blank at the reference's length, and every control form. **Its shares take its own path's anchors,** real and nearest monocular over the monocular still, since that is its peak; the two-view anchors stand beside them. By clips in and outside its training (v1's list less the refused clips, the same on D20), report only: the plan's table shows that split matters most on this instrument.
-**Its control:** real monocular 4.715, nearest monocular 4.783, nearest two-view 3.702, blank 1.159 (the mirror report, sha ``223dd372...``), each within 0.05, and the same forms' hypotheses and NLL against its stored forms (``parent_lib.same_read``). A miss voids the mirror's read, status 3, no retry; a stored object off its hash or digest stops with status 1, nothing voided.
+**Two questions, and the rows that answer them.**
+- **Generated against real clips is ``oracle`` minus ``covered``:** the same words under the same plan. It is never oracle against composition, which also differs in words.
+- **The format is ``oracle`` against real signing** (``paired.form_minus_real``: real two-view on the parent, real monocular on the mirror): real word clips, stitched word by word, against real sentences.
+
+**The four cells.**
+- **Oracle above real, and at or above covered:** the format reads high, and generated clips add nothing beyond what real clips get in it.
+- **Oracle above real, but below covered, the middle case:** the format reads high AND generated clips read higher still. Both hold, and neither explains the 3.30 alone.
+- **Oracle at or below real, and at or above covered:** real clips in this format do not pass real signing, and generated clips do not pass real clips. Covered is then at or below real too, so composition's lead would sit in its added words: read ``covered_minus_composition``.
+- **Oracle at or below real, and below covered:** the format alone does not lift real clips, and generated clips read higher than real ones in it.
+
+**What an oracle read cannot do.** Neither a low nor a high oracle separates format from source by itself, since **real word clips are MediaPipe monocular too:** the landmark source of the parent's training data and of the generator's. A high oracle may be the format or that shared source. **Every explanation for a low oracle stays live,** and these rows do not choose among them:
+- selection: each generated clip was a recogniser's best of 16, and each real clip is a chance pick;
+- d2 decoding: a generated clip is codes the prior learned to emit, and a real clip is encoded and decoded, which smooths it;
+- a different signer at every word, where the generator has no signer of its own;
+- the cut: the sign's position is fitted on ASLLVD's annotations and applied to WLASL and RIT clips, where it can miss the sign;
+- a shared source that favours generated clips over the real clips it came from.
+
+**What a shuffle drop means.** Each shuffle against its unshuffled partner, on clips whose word sequence actually moved (``paired.moved``): ``shuffled`` against composition, ``covered_shuffled`` against ``covered``, ``oracle_shuffled`` against ``oracle``.
+- **A large drop:** the reader uses word order, so English order is part of what it reads. That does not make the order signing, or something a person would follow.
+- **A small drop:** the reader is not using word order, and is reading which words are there. That says nothing about whether order matters to people.
+**Seeds are not independent replicates:** a draw's seeds share its clips, words and plan, so the draws carry the variance and seeds are averaged within a draw. **A two-word clip cannot vary:** it has one other order, the same under every seed. The order depends on draw, seed and clip, so it varies across draws (``word_order``). A shuffled still is another frame, so ``still_raw`` and the margin over the unshuffled form's still stand beside the margin (``paired.still_effect``).
+
+**None of this shows human comprehension,** and none of it is a claim about M1 or release.
+- **The mirror is report only and never moves M1. Generated motion reading high on it is flagged on the same terms as on the parent,** since it shares the parent's lineage (the parent's weights, trained on the MediaPipe source of word clips), **and How2Sign monocular trained it,** so it was fitted to the path word clips come through, and its training holds 234 of D20's clips. The same readings apply on it, each on its own anchors.
+- **A parent void or a parent check alert stops the job before the mirror reads:** its anchors would then have no parent to stand beside.
+
+**The second instrument (``--instrument``: ``parent``, ``mirror``).** ``mirror`` is ``back-translator-kp2d-uwb-ft-mono-v1`` step 9,000, sha ``1a996cfc...``, the parent fine-tuned on How2Sign monocular states (``scripts/symmetric_ft.py``, label ``unresolved``), loaded by ``parent_lib.load_mono`` from its trained record and held to that hash. Each instrument has its own forms, control, void and report. Through the mirror: the composition, its still and its blank on each draw it reads (it has no stored forms), real and nearest on both paths with their stills, blank at the reference's length, and every control form. **Its shares take its own path's anchors,** real and nearest monocular over the monocular still, since that is its peak; the two-view anchors stand beside them. A share of real two-view stands beside each share (``share_of_two_view_real``). Report only, for each form on either instrument: BLEU of the form, real, nearest and blank, and the BLEU gap share, on clips in v1's training list, outside it, and outside training and selection, the clean 178 (``symmetric_ft.clip_subsets``; the mirror's list is v1's less the refused clips, the same on D20): the plan's table shows that split matters most here. The mirror's report also holds the parent's rows on the mirror's own draws, and parent minus mirror draw by draw (``parent_on_mirror_draws``).
+**Its control:** all seven anchors against the stored report's values (real monocular 4.715, nearest monocular 4.783, nearest two-view 3.702, blank 1.159 among them, within 0.05), and their hypotheses and NLL against its stored forms (``parent_lib.same_read``), report and forms held to full hashes. A miss voids the mirror's read, status 3; a stored object off its hash stops with status 1, nothing voided.
+**The GPU.** The mirror's stored forms were read on an NVIDIA L40S, so a different type may void its read: **the job refuses any GPU but ``EXPECT_GPU``, the NVIDIA L40S, and the pod must be requested as that type.** The parent's stored composition was read on an RTX 6000 Ada, and whether an L40S reproduces it is what ``comp-check`` tests.
 **What the mirror reads of generated motion, and why: the composed state as it stands, the very bytes the parent read.** No conforming, no marks, no trim.
 - **Not conformed to the monocular layout.** The reader's input is ``from_state``, ``normalise`` and ``features``: forward kinematics of body and hand rotations and their validity. ``conform`` only renames a channel's frame and convention, so names cannot reach it (``path_read`` found it byte-identical on all 500 real clips; here ``tests/test_parent_controls.py`` holds it for a composed state). Word clips came through the monocular path already, and were conformed to two-view's names only.
 - **No monocular marks.** A composed state is valid on every read point, as d2's decode assembles it, so it is the marks-free kind: **its like on the mirror is ``nearest_monocular`` (4.783), with ``real_monocular`` (4.715) beside it.** Generated motion has no tracking gaps of its own. Copying a real clip's would hand the reader that clip's gap pattern, and the path read showed marks can carry a read by themselves, so the form would stop being generated motion alone.
@@ -17,9 +39,9 @@
 
 **Forms, all on D20: the same 500 clips, the same predicted lengths and timing as the composition's ``core_crossfade@predicted`` of the same draw, on each instrument.**
 - ``oracle``: the composition's word list, each word replaced by a REAL word clip from the train records of ``asllvd-text-v1``, ``rit-text-r6``, ``wlasl-text-r6`` in ``round10-mixed-v1/manifest.json``, through d2's round trip (``build_recon_states.decode_state``, step 5000, EMA, no gains: A5's recipe, codes decoded as a generation so every trained channel reads valid, as a generated clip does), then the same cut and stitching. **The real clip is a chance pick, not best of 16:** ``pick_index``, the hash of (draw, entry), one clip per entry in a draw, as a word cache holds one sign per entry. No instrument chooses it, while generated clips were each the recogniser's best of 16. That difference favours the generated clips and is part of what this reads. If a picked clip cannot be served, the next in the pool's fixed order, counted.
-- ``shuffled``: the composition's generated clips and planned frames, words in a seeded random order per clip, seeds 0, 1, 2 (``compositional_baseline.shuffle_order``: never the identity from two words up; seed 0 is the order of the repo's own ``/shuffled`` control).
-- ``oracle_shuffled``: ``oracle`` under the same permutation, restricted to the words the oracle holds.
-- ``covered``, **not in the brief's forms:** the generated clips of exactly the oracle's words, under the oracle's plan. **Why it is read:** the oracle always lacks the added words (below), so oracle against composition mixes "real clips" with "fewer words". Oracle against ``covered`` is the same words with the same frames planned, and ``covered`` against composition is the word-list effect alone. It sets nothing.
+- ``covered``: the generated clips of exactly the oracle's words, under the oracle's plan. The oracle always lacks the added words (below), so oracle against composition mixes "real clips" with "fewer words". Oracle against ``covered`` is the same words with the same frames planned, and ``covered`` against composition is the word-list effect alone.
+- ``shuffled``: the composition's generated clips and planned frames, words in a seeded random order per clip, seeds 0 and 1 (``compositional_baseline.shuffle_order`` keyed by draw and seed: never the identity from two words up).
+- ``oracle_shuffled`` and ``covered_shuffled``: ``oracle`` and ``covered`` under the same permutation, restricted to the words they hold.
 
 **What composition really does (read from the code: ``round15_compose_eval.run``, ``round20_lib.cached_material``, ``round15_stage2.render_form``, ``compositional.render``).** Each word's clip is cut to a core: for a generated clip the sign's median position in the entry's ASLLVD train clips (``sign_core``), else over all of them, margin 0. The sentence takes ``R = round(predicted seconds x 24)`` frames, predicted seconds from the token count (pin -0.083, 0.3691). ``fitted_plan`` shares R among the words by their isolated sign seconds and among the joins by the gap ratio, with no lead and no trail, so **R is the clip's length whatever the words are.** Each core is time-resampled to its planned frames, and each join is ``bridge``, a linear interpolation on each channel's manifold from one core's last frame to the next core's first, never observed.
 **An uncovered word is dropped:** a token with no vocabulary entry is simply absent, nothing stands in for it, and the words that remain share R. A sentence left with no word is its blank clip at R. **The oracle takes that same fallback:** a word with no real clip in the three corpora is dropped from its list, and the rest share R.
@@ -30,19 +52,24 @@
 **Fidelity, before any instrument.** Every draw's composition is rebuilt from its stored word clips and windows by this code's plan. Each non-empty clip must hash to the stored ``core_crossfade@predicted`` state of the pinned export, or, since another pod's CPU can round a float differently, hold the same clock and marks with every value within 1e-5 (both counted), or the draw stops with status 1. So the shuffles start from what was read. No read happens without that index.
 **Controls.** The four anchors against the parts job's stored forms, pinned by hash (``parent_comp.run_control``); and the first draw's composition read again against its pinned stored form (at least 0.98 of hypotheses identical, BLEU within 0.05, NLL within 0.001). A miss voids the read: status 3, no retry. On the parent, composition's comp, still and blank are then the pinned forms of ``round20/parent-comp`` (digest ``dc3d89b0``), not read again, which also pairs these forms with the very forms of the 3.30.
 
+**Resuming.** Rerunning the job on the same pod resumes it. A stage whose final key holds the bytes of its local report is skipped, and its check runs again, so a parent check alert stops the job again and reads nothing; forms that stand are not read again; ``merge`` and ``put-report`` accept identical bytes and refuse others; the smoke is not repeated for the same code; a stage's draws and stop reason stand from the first time its reads finished, while the clock restarts. **A rerun after a void** needs new code and ``RERUN_CAUSE``: its work and outputs then go under ``runs/<code digest>/``, which is what lets new code write at all, and the voids it must answer stay in the common prefix.
+
 **Margin** is ``parent_comp``'s: mean NLL of 4 mismatched references minus NLL of its own (``retrieval_candidates``, seed 0), over the form's own still (its nearest-filled middle frame held at its own length, on its own clock). Each form, each seed. **A clip with no word is its blank and counts, with margin exactly zero.** Blank for gap shares: the draw's blank at the composition's length; every form here is that long, which ``check_still_lengths`` and ``same_lengths`` enforce.
 
-**Reported per form, over the draws** (t interval on the draws alone, bootstrap over clips n 2,000 seed 0, draws fixed; seeds averaged within a draw for the shuffled groups, each seed also alone): BLEU; margin over its own still; share of real's margin and of nearest's; BLEU and likelihood gap shares; by word coverage bands (under .25, .25-.5, over .5) by its own coverage and by composition's; per signer, report only; loop share (``eval.loop_share``); content-word overlap with the reference (share of the reference's words outside ``compositional.STOP_WORDS`` found in the hypothesis, the clip's mean; a stated definition, **not the same as the plan's sampled 16.3% and 11.1%, whose definition was not recorded**, so read it only among this report's rows). **Paired differences** with the same draws and clips: every form against composition, oracle against covered, oracle_shuffled against oracle.
-**Oracle coverage:** words kept and dropped, by reason; clips fully covered, clips left empty; corpus of the picks; picks that could not be served.
+**Reported per form, over the draws** (t interval on the draws alone, bootstrap over clips n 2,000 seed 0, draws fixed; seeds averaged within a draw for the shuffle groups, each seed also alone; intervals on coverage and on bands, over the clips in them): BLEU; margin over its own still; share of real's margin and of nearest's; BLEU and likelihood gap shares; by word coverage bands (under .25, .25-.5, over .5) by its own coverage and by composition's; per signer, report only; loop share (``eval.loop_share``); content-word overlap with the reference (share of the reference's words outside ``compositional.STOP_WORDS`` found in the hypothesis, the clip's mean; a stated definition, **not the same as the plan's sampled 16.3% and 11.1%, whose definition was not recorded**, so read it only among this report's rows). **Paired differences** with the same draws and clips: every form against composition, each form against real, oracle against covered, and each shuffle against its partner, on all clips and on moved clips.
+**Oracle coverage:** words kept and dropped, by reason; clips fully covered, clips left empty; corpus of the picks, with the oracle's rows by each clip's main corpus; picks that could not be served. A pick not served is only a window holding no frames: anything else, an out-of-memory or a hash failure, stops the draw, and more than 2% of a draw's entries not served raises an ALERT and stops it.
 
-**Disclosures.** The generator trained on these real clips, so they are not independent of it. Real clips are MediaPipe monocular estimates of isolated signers, as generated clips' training data is, so an oracle reading high does not separate source from format as cleanly as a two-view clip would. A different signer at every word. d2's round trip smooths real motion (it keeps about 0.84 of finger speed: ``hand_motion_compare``). A real clip's untracked frames go in as the dataset serves them, with no fill, as the prior's training codes were made.
+**Disclosures.** The generator trained on these real clips, so they are not independent of it. Real clips are MediaPipe monocular estimates of isolated signers, as generated clips' training data is, so an oracle reading high does not separate source from format as cleanly as a two-view clip would. A different signer at every word. d2's round trip smooths real motion (it keeps about 0.84 of finger speed: ``hand_motion_compare``). A real clip's untracked frames go in as the dataset serves them, with no fill, as the prior's training codes were made. **Which d2:** ``inputs`` opens the cache's prior and holds its stored tokenizer to this d2's weights and key, so generated and real clips share one decoder. **What is parsed:** shared helpers (``load_manifest``, ``fit_model``, ``open_read_list``) parse the whole mix, and ``v1_training_signs`` holds some ids of the sentence set no job here names at merge, as earlier reads did: nothing of either reaches an output.
 
-**Cost, estimated, not measured.** A form costs about 60 s (read 34 s, build about 26 s: ``resources`` of the stored parent report, RTX 6000 Ada), and each read command about 1.5 min to start. Parent, 8 draws x 16 forms: 140 min. Mirror, 3 draws x 19 forms, 7 anchors, the monocular clips: 74 min. Reads run ``READ_PROCS`` at a time, 2 by default: the stored peak of 19.8 GB reserved allows two on 48 GB, and 1.7 times the speed is a guess, so 214 min becomes about 126. Compose about 21 min per draw, 4 at a time: about 50 min. Pins, model fit and both smokes 30 min; two anchor sets' checks 8 min; merges 15 min. **About 3.8 h and about $3.25** at the $0.85/h implied by parent-comp's $1.70 for about 2 h, range about $2.70 to $4.30: the compose time and the parallel speed are the guesses. Without parallel reads, about 5.3 h and $4.50.
-**So the mirror reads three draws (1, 2, 3), not eight.** Two draws would leave its t interval almost empty; each further draw costs about $0.20. The parent keeps all eight, which slightly passes the brief's "about $3". ``DRAWS="1 2 3 4 5 6"`` with the mirror's three is about $2.85. **The clock rule, fixed here and blind to every score:** before starting each draw past the minimum (parent four, mirror two), the job starts no more of that instrument's draws if elapsed time plus one more draw's measured wall time would pass its limit (parent ``PARENT_BUDGET_SECONDS`` 10,800 s; mirror ``BUDGET_SECONDS`` 14,400 s, 4 h, about $3.40), and merges what it holds. Each draw's forms are read whole, and a report's ``draws`` says which stand. The measured cost must be reported beside this.
+**Cost, estimated, not measured.** A form costs about 60 s (read 34 s, build about 26 s: ``resources`` of the stored parent report, on an RTX 6000 Ada; the L40S is assumed alike), and each read command about 1.5 min to start. Parent, 8 draws x 16 forms: 140 min. Mirror, 3 draws x 19 forms, 7 anchors, the monocular clips: 74 min. Reads run ``READ_PROCS`` at a time, 2 by default: the stored peak of 19.8 GB reserved allows two on 48 GB, and 1.7 times the speed is a guess, so 214 min becomes about 126. Compose about 21 min per draw, 4 at a time: about 50 min. Pins, the decoder check, model fit and both smokes 35 min; two anchor sets' checks 8 min; merges 20 min. **About 4 h and about $3.40** at the $0.85/h implied by parent-comp's $1.70 for about 2 h, range about $2.80 to $4.50: the compose time, the parallel speed and the L40S's rate are the guesses. Without parallel reads, about 5.5 h and $4.70.
+**So the mirror reads three draws (1, 2, 3), not eight.** Two draws would leave its t interval almost empty; each further draw costs about $0.20. The parent keeps all eight, which passes the brief's "about $3". ``DRAWS="1 2 3 4 5 6"`` with the mirror's three is about $3.
+**The clock rule, fixed here and blind to every score:** once an instrument has started its minimum of draws (parent four, mirror two), the job starts no further draw of it if the time since the job began, plus the wall time since its reads began divided by the draws finished, would pass its limit (parent ``PARENT_BUDGET_SECONDS`` 10,800 s; mirror ``BUDGET_SECONDS`` 14,400 s, 4 h, about $3.40). So the mirror's third draw can be left out. Each draw's forms are read whole. A report's ``stage`` gives its planned draws, the draws read, the stop reason and the elapsed seconds. The measured cost must be reported beside this.
 
 **Refused.** A record outside the three corpora or outside ``train``, and c00 in any case, stops before it is fetched (``check_word_record``). D20 only (``s2_lib``; C20 cannot be named). No v1 read, and no instrument but the two pinned: neither is ever used here for a loss, a rerank or a best-of-N, and no instrument sees a real clip before the pick. A stored form or export on other bytes stops. A smoke (``--smoke-train 5``): 5 D20 sentences composed, read against c02 train references, so the parent sees no D20 text or clip: numbers are plumbing.
 
-    python scripts/parent_controls.py inputs --model-file W/model.json
+    python scripts/parent_controls.py inputs --model-file W/model.json --expect-gpu NVIDIA_L40S
+    python scripts/parent_controls.py digest
+    python scripts/parent_controls.py stage-state --key K --file W/report.json
     python scripts/parent_controls.py compose --draw K --model-file W/model.json --prefix P --work W --device cuda
     python scripts/parent_controls.py preflight --out-dir W --final-key K --void-prefix V
     python scripts/parent_controls.py read --forms control --instrument I --out-dir W/forms --instrument-cache W/i
@@ -51,7 +78,7 @@
     python scripts/parent_controls.py comp-check --draw K --out-dir W/forms --void-prefix V
     python scripts/parent_controls.py read --draws 1,2 --instrument I --composed P --resume --out-dir W/forms --instrument-cache W/i
     python scripts/parent_controls.py upload --out-dir W/forms --prefix D/forms
-    python scripts/parent_controls.py merge --draws 1,2 --instrument I --composed P --prefix D/forms --output-file W/report.json
+    python scripts/parent_controls.py merge --draws 1,2 --instrument I --composed P --prefix D/forms --output-file W/report.json --parent-forms D/forms --planned-draws 1,2 --stop-reason all_planned --elapsed-seconds 100
     python scripts/parent_controls.py check --report W/report.json
 
 The job is ``runpod/fleet/parent_controls.sh``.
@@ -105,26 +132,32 @@ STORED = {
     7: dict(index="e38333fdb597f82515ccda5eb893b895eff5ededfcd3fd63abfacca7d81fc133", comp="e1ae0b1b5702b11eecf256f51c8b59f88e7688e0e81d365ebc1fe8323137868b", still="69b6d76b94f0c504034fe940de5c735f7889f3351679698e4ac9da327bc1d4c7", blank="b87422fd288395021e5329a4ecdb39d989b87d6b10430ec652af633cd53fab7b"),
     8: dict(index="caa96c174d953ce80983e197ba62845ebe14f549be63cd83ba56dde0499d9d01", comp="d37a5296e1863b396665c4da28979bbfbe81bfad77ab54e98f5f90e9b58d446f", still="a08205e60ba068f1c0ef25b83e661b5571cb98571a228d707e0cdb719ad7ea19", blank="6a16525eb0b71d614d12dde5d25216be1f9d9b7c0053eb5eda0abc7b917b0de1")}
 DRAWS = C.DRAWS
-SEEDS = (0, 1, 2)
+SEEDS = (0, 1)
 INSTRUMENTS = dict(parent=dict(run=PP.UNFITTED_RUN, checkpoint_key=PP.UNFITTED_KEY, sha256=PP.UNFITTED_SHA),
                    mirror=dict(run=Q.MONO_RUN, checkpoint_key=f"{Q.MONO_PREFIX}/checkpoints/step-00009000.pt", sha256="1a996cfc9c1917181fef849c6a9b8dde0406c34e42fd48a75f1df63fb189ca59"))
 MIRROR_ANCHORS = ("real_two_view", "real_monocular", "nearest_two_view", "nearest_monocular", "blank", "still_two_view", "still_monocular")
 MIRROR_VALUES = dict(real_monocular=4.715, nearest_monocular=4.783, nearest_two_view=3.702, blank=1.159)      # the mirror report, docs/NEXT_PHASE_PLAN.md: the anchors reproduce these or its read is void
 MIRROR_TOLERANCE = P.CANARY["bleu_tolerance"]
-MIRROR_REPORT, MIRROR_REPORT_SHA_PREFIX = f"{Q.MONO_PREFIX}/read/report.json", "223dd372"
+MIRROR_REPORT, MIRROR_REPORT_SHA = f"{Q.MONO_PREFIX}/read/report.json", "223dd372b5f1ba2a4f0980b67203bbbd0a8884bd03202970902d8ceaf26c11b2"
 MIRROR_FORMS = f"{Q.MONO_PREFIX}/read/forms"
-MIRROR_DIGEST_PREFIX = "de05576e"
+MIRROR_DIGEST = "de05576ec6b714f4e16095732a17e2576df0444cc0f3d9d8072f2ee82d4f268e"
+MIRROR_STORED = dict(real_two_view="cfeff3dae866fcffe8a5433549817b56c5c0963832d54571d372485501f822b9", real_monocular="f53a324c6a469c096f97db53951498dbe7ecbca518149d7e5db1d70d753537d4", nearest_two_view="2eaa1773278279349d36978a66b4840237f9fc54b256e41e4012692e38aea0b8", nearest_monocular="b78e470e2f277a2fb23875f3decfbf674e1296b036dd151617ff8ed0fa94df3b", blank="159163666dd144a5451d8153dedf0052b6ea43135144ea78ab68ca5b0e9b533d", still_two_view="f48b11703c4c0846448732f5d98f8f9b62ab0af32c0cd479f021b29376121063", still_monocular="9b567d5428ee5d9c7de3fdbc9ba44deccca99cef783911329accd282545e1a99")      # fetched and hashed 2026-11-02; those forms state NVIDIA L40S
+REQUIRED_GPU = "NVIDIA L40S"
+EMPTY_WINDOW = "contains no frames"      # corpus_manifest.window_state's refusal: the one failure a pick gives way on
+MAX_NOT_SERVED = .02
 PICK_SEED = "parent-controls|oracle"
 TIMING = "sign-fitted"
 CORE_MARGIN = 0.
 TOP = 10
 IDENTITY_TOLERANCE = 1e-5
-KINDS = ("oracle", "covered", *(f"shuffled_s{s}" for s in SEEDS), *(f"oracle_shuffled_s{s}" for s in SEEDS))
-GROUPS = dict(shuffled=tuple(f"shuffled_s{s}" for s in SEEDS), oracle_shuffled=tuple(f"oracle_shuffled_s{s}" for s in SEEDS))
-FORM = re.compile(r"d([1-8])_(oracle_shuffled_s[0-2]|shuffled_s[0-2]|oracle|covered)(_still)?")
+GROUPS = {name: tuple(f"{name}_s{s}" for s in SEEDS) for name in ("shuffled", "oracle_shuffled", "covered_shuffled")}
+KINDS = ("oracle", "covered", *(kind for kinds in GROUPS.values() for kind in kinds))
+PARTNERS = dict(shuffled="composition", oracle_shuffled="oracle", covered_shuffled="covered")
+FORM = re.compile(r"d([1-8])_(oracle_shuffled_s[01]|covered_shuffled_s[01]|shuffled_s[01]|oracle|covered)(_still)?")
 BASE_FORM = re.compile(r"d([1-8])_(comp_reread|comp|still|blank)")
 SMOKE_CLIPS = C.SMOKE_CLIPS
-COST_ESTIMATE = dict(measured=False, hours=3.8, dollars=3.25, range_dollars=[2.7, 4.3], dollars_per_hour=.85, forms_per_draw=dict(parent=16, mirror=19), draws=dict(parent=8, mirror=3), seconds_per_form=60, read_procs=2, parallel_speed_guess=1.7, compose_minutes=50, budget_seconds=dict(parent=10800, mirror=14400), basis="stored parent-comp report's resources (read 34 s, build 26 s per form, RTX 6000 Ada) and its about $1.70 for about 2 h; the compose time is the guess; the measured cost is to be reported beside this")
+RERUN_ROUTE = "A rerun needs new code and RERUN_CAUSE, which writes under runs/<code digest>/."
+COST_ESTIMATE = dict(measured=False, hours=4., dollars=3.4, range_dollars=[2.8, 4.5], dollars_per_hour=.85, forms_per_draw=dict(parent=16, mirror=19), draws=dict(parent=8, mirror=3), seconds_per_form=60, read_procs=2, parallel_speed_guess=1.7, compose_minutes=50, budget_seconds=dict(parent=10800, mirror=14400), basis="stored parent-comp report's resources (read 34 s, build 26 s per form, RTX 6000 Ada) and its about $1.70 for about 2 h; the compose time is the guess; the measured cost is to be reported beside this")
 DISCLOSURES = dict(
     pick="The real clip is a chance pick, one per entry in a draw, by a hash of draw and entry: no instrument chose it. Each generated clip was its recogniser's best of 16.",
     independence="The generator trained on these real clips, and they share a monocular MediaPipe path with its training data and with the parent's: an oracle reading high does not separate source from format as a two-view clip would.",
@@ -135,8 +168,13 @@ DISCLOSURES = dict(
     content_overlap="Content-word overlap here is the share of the reference's words outside the stop list found in the hypothesis, per clip. It is not the plan's sampled figures, whose definition was not recorded: read it only among this report's rows.",
     mirror="The mirror is report only and never moves M1. It shares the parent's lineage, and How2Sign monocular trained it, so generated motion reading high on it is flagged on the same terms as on the parent. Its training holds 234 of D20's clips, on signers c01 and c05, and c03 selected it.",
     mirror_form="The mirror reads the composed state as it stands, the bytes the parent read: not conformed, since names cannot reach its input; no marks, so its like is nearest_monocular; at the predicted length, shorter than the monocular clips it trained on.",
+    oracle_limits="Neither a low nor a high oracle separates format from source by itself: real word clips are MediaPipe monocular too. Live for a low oracle: selection by best of 16, d2 decoding, a different signer per word, a cut fitted on ASLLVD and applied to WLASL and RIT, a source favouring generated clips.",
+    seeds="Seeds are not independent replicates: a draw's seeds share its clips, words and plan. A two-word clip has one other order, the same under every seed. Moved rows take only clips whose word sequence changed.",
+    parsing="Shared helpers parse the whole mix, and v1_training_signs holds ids of the sentence set no job here names at merge, as earlier reads did. Nothing of either reaches an output.",
+    gpu="The mirror's stored forms state an NVIDIA L40S, and the job refuses another type. The parent's stored composition states an RTX 6000 Ada, and comp-check tests whether the L40S reproduces it.",
+    stops="A parent void or check alert stops the job before the mirror reads.",
     humans="None of this shows human comprehension, and none of it is a claim about M1 or release.")
-READING = ("Oracle at or above composition: the format reads high, not the generator's skill. Oracle far below composition: generated clips suit this reader better than real ones, which supports the shared-source explanation. Shuffling that barely lowers BLEU or margin: the reader isn't using word order. The mirror is report only and never moves M1; generated motion reading high on it is flagged on the same terms as on the parent, since it shares the parent's lineage and How2Sign monocular trained it. No label is computed and nothing is gated. None of it shows human comprehension.")
+READING = ("Generated against real clips is oracle minus covered, never oracle against composition. The format is oracle against real. Oracle above real and at or above covered: the format reads high, and generated clips add nothing. Oracle above real but below covered: the format reads high AND generated clips read higher. Oracle at or below real and at or above covered: composition's lead would sit in its added words. Oracle at or below real and below covered: the format alone does not lift real clips, and generated clips read higher. Neither a low nor a high oracle separates format from source by itself, since real word clips are MediaPipe monocular too. A large shuffle drop on moved clips: the reader uses word order. A small one: it is reading which words are there. The mirror is report only and never moves M1; generated motion reading high on it is flagged on the same terms as on the parent, since it shares the parent's lineage and How2Sign monocular trained it. No label is computed and nothing is gated. None of it shows human comprehension.")
 
 
 @functools.lru_cache(maxsize=1)
@@ -193,24 +231,31 @@ def monocular_clips(store, records, refs, declared: bool) -> list:
 
 
 def load_mirror_form(store, name: str) -> dict:
-    """A stored form of the mirror's own read, of its digest and checkpoint. The report's hash holds the values; the forms are checked by what they say they are."""
-    if name not in MIRROR_ANCHORS:
+    """A stored form of the mirror's own read, by its pinned hash, of its digest and checkpoint."""
+    if name not in MIRROR_STORED:
         raise SystemExit(f"{name}: no stored form of the mirror's read under this name")
     key = f"{MIRROR_FORMS}/form-mono__{name}.json"
-    read = json.loads(store.get(key))
-    if read.get("form") != f"mono__{name}" or read.get("instrument", {}).get("sha256") != INSTRUMENTS["mirror"]["sha256"] or read.get("declared_read") is not True or not str(read.get("code_digest")).startswith(MIRROR_DIGEST_PREFIX):
+    raw = store.get(key)
+    P.check_sha(raw, MIRROR_STORED[name], key)
+    read = json.loads(raw)
+    if read.get("form") != f"mono__{name}" or read.get("instrument", {}).get("sha256") != INSTRUMENTS["mirror"]["sha256"] or read.get("declared_read") is not True or read.get("code_digest") != MIRROR_DIGEST:
         raise SystemExit(f"{key}: not the stored mirror read's form")
     return read
 
 
-def check_mirror_report(store) -> None:
+def load_mirror_report(store) -> dict:
+    """The mirror's report by its hash, and its parsed values against the four this read declares."""
     raw = store.get(MIRROR_REPORT)
-    digest = hashlib.sha256(raw).hexdigest()
-    if not digest.startswith(MIRROR_REPORT_SHA_PREFIX):
-        raise SystemExit(f"{MIRROR_REPORT}: SHA-256 {digest}, expected {MIRROR_REPORT_SHA_PREFIX}...")
+    P.check_sha(raw, MIRROR_REPORT_SHA, MIRROR_REPORT)
+    report = json.loads(raw)
+    values = report["forms"]
+    differs = [name for name, value in MIRROR_VALUES.items() if values[name]["bleu"] != value]
+    if differs or any(name not in values for name in MIRROR_STORED) or report.get("code_digest") != MIRROR_DIGEST:
+        raise SystemExit(f"{MIRROR_REPORT}: it does not hold the declared values or all seven forms: {differs}")
+    return report
 
 
-def mirror_misses(read: dict, name: str, stored: dict) -> tuple[dict, list[str]]:
+def mirror_misses(read: dict, name: str, stored: dict, value: float) -> tuple[dict, list[str]]:
     """One anchor against the report's value and its stored form."""
     bleu = M.bleu_ci_fast(read["hypotheses"], read["references"])[0]
     try:
@@ -218,13 +263,13 @@ def mirror_misses(read: dict, name: str, stored: dict) -> tuple[dict, list[str]]
     except SystemExit as error:
         row = dict(misses=[str(error)])
     misses = [f"{name} {m}" for m in row["misses"]]
-    if abs(bleu - MIRROR_VALUES[name]) > MIRROR_TOLERANCE:
-        misses.append(f"{name} reads BLEU {bleu}, not the report's {MIRROR_VALUES[name]}")
-    return dict(row, read_bleu=bleu, report_bleu=MIRROR_VALUES[name]), misses
+    if abs(bleu - value) > MIRROR_TOLERANCE:
+        misses.append(f"{name} reads BLEU {bleu}, not the report's {value}")
+    return dict(row, read_bleu=bleu, report_bleu=value), misses
 
 
 def run_mirror_control(args) -> int:
-    """Exit 3, voiding the mirror's read, unless its anchors reproduce the report's values and stored forms. A smoke reads train clips, so it compares nothing and says so."""
+    """Exit 3, voiding the mirror's read, unless all seven anchors reproduce the report's values and stored forms. A smoke reads train clips, so it compares nothing and says so."""
     from train_text_to_motion import make_store
     P.check_pins()
     out = Path(args.out_dir)
@@ -234,13 +279,13 @@ def run_mirror_control(args) -> int:
         print(json.dumps(dict(control="not applicable: a smoke reads train clips; nothing compared")), flush=True)
         return 0
     digest, place = P.check_same_run(read, "the mirror's control forms")
-    check_mirror_report(store)      # a pin failure stops here with status 1: no control runs, nothing is voided
-    stored = {name: load_mirror_form(store, name) for name in MIRROR_VALUES}
+    report = load_mirror_report(store)      # a pin failure stops here with status 1: no control runs, nothing is voided
+    stored = {name: load_mirror_form(store, name) for name in MIRROR_ANCHORS}
     rows, misses = {}, []
-    for name in MIRROR_VALUES:
-        rows[name], missed = mirror_misses(read[name], name, stored[name])
+    for name in MIRROR_ANCHORS:
+        rows[name], missed = mirror_misses(read[name], name, stored[name], report["forms"][name]["bleu"])
         misses += missed
-    result = dict(stored=rows, misses=misses, reproduced=not misses, code_digest=digest, environment=place)
+    result = dict(stored=rows, misses=misses, reproduced=not misses, code_digest=digest, environment=place, stored_environment=stored["real_monocular"].get("environment"))
     path = out / "control.json"
     if not path.exists():
         P.write_report_once(path, result)
@@ -250,8 +295,30 @@ def run_mirror_control(args) -> int:
     key = f"{args.void_prefix.rstrip('/')}/{digest}.json"
     if not store.exists(key):
         store.put(key, json.dumps(dict(kind=f"{PROBE}-mirror-void", code_digest=digest, environment=place, control=result), indent=1, sort_keys=True).encode())
-    print(f"ALERT the mirror's anchors do not reproduce its report: {misses}. The mirror's read is void: no form follows, no retry; a rerun needs new code and a recorded cause", flush=True)
+    print(f"ALERT the mirror's anchors do not reproduce its report: {misses}. The mirror's read is void: no form follows, and this code never reads again. {RERUN_ROUTE}", flush=True)
     return 3
+
+
+def check_gpu(expected: str | None) -> None:
+    """The stored forms' GPU type, or the job stops before it spends anything. Underscores stand for spaces in the job's argument."""
+    found = P.environment().get("gpu")
+    if expected and found != expected.replace("_", " "):
+        raise SystemExit(f"this pod's GPU is {found}, not {expected.replace('_', ' ')}: a different type may void the read")
+
+
+def check_decoder(store, checkpoint_key: str) -> dict:
+    """The cache's prior stores the tokenizer it was trained on: it must name this d2 and hold its weights, so generated and real clips share one decoder."""
+    import io
+    import torch
+    raw = store.get(L.TOKENIZER)
+    P.check_sha(raw, L.TOKENIZER_SHA, L.TOKENIZER)
+    d2 = torch.load(io.BytesIO(raw), map_location="cpu", weights_only=False)
+    prior = torch.load(io.BytesIO(store.get(checkpoint_key)), map_location="cpu", weights_only=False)
+    want, have = d2.get("ema") or d2["model"], prior.get("tokenizer_state")
+    named = prior.get("tokenizer_key")
+    if have is None or set(want) != set(have) or any(not torch.equal(want[k], have[k]) for k in want) or named not in (None, L.TOKENIZER):
+        raise SystemExit(f"{checkpoint_key}: its stored tokenizer is not this d2's ({named}): word clips were decoded by another")
+    return dict(checkpoint_key=checkpoint_key, tokenizer_key=named, tensors=len(want), same_weights=True)
 
 
 def run_control(args) -> int:
@@ -291,7 +358,7 @@ def pick_index(draw: int, entry: str, size: int) -> int:
 
 
 class RealClips:
-    """One draw's real clip per entry, as a word cache holds one generated sign per entry. ``load(record, entry)`` serves and round-trips it; a clip that cannot be served gives way to the next in the pool's order, counted."""
+    """One draw's real clip per entry, as a word cache holds one generated sign per entry. ``load(record, entry)`` serves and round-trips it; a clip whose window holds no frames gives way to the next in the pool's order, counted. Anything else raises."""
 
     def __init__(self, pools: dict, draw: int, load) -> None:
         self.pools, self.draw, self.load, self.memo, self.failed = pools, draw, load, {}, 0
@@ -309,7 +376,9 @@ class RealClips:
             record = check_word_record(pool[(start + offset) % len(pool)])
             try:
                 return record, self.load(record, entry)
-            except (ValueError, RuntimeError):      # a state whose window holds nothing: counted, not hidden
+            except ValueError as error:      # only a window holding no frames gives way, and it is counted: an out-of-memory or a hash failure stops the draw
+                if EMPTY_WINDOW not in str(error):
+                    raise
                 self.failed += 1
         return None
 
@@ -370,12 +439,13 @@ def load_context(store, model_file) -> SimpleNamespace:
 
 # ---- orders and plans --------------------------------------------------------------------------------------------------------------------
 
-def word_order(n: int, clip: int, seed: int) -> list[int]:
-    """Seed ``seed``'s order of a clip's words: the repo's own, never the identity from two words up."""
+def word_order(n: int, clip: int, seed: int, draw: int) -> list[int]:
+    """Seed ``seed``'s order of a clip's words in draw ``draw``: never the identity from two words up, so a two-word clip has one order under every seed."""
     from compositional_baseline import shuffle_order
     if seed not in SEEDS:
         raise SystemExit(f"seed {seed}: the seeds are {SEEDS}")
-    return shuffle_order(n, clip, seed)
+    C.check_draw(draw)
+    return shuffle_order(n, clip, 100 * draw + seed)
 
 
 def restricted(order, kept) -> list[int]:
@@ -417,7 +487,7 @@ def compose_clip(row: dict, ctx, clip_states: dict, real: RealClips) -> dict:
     pieces = [dict(state=clip_states[w["clip_sha256"]], lo=w["lo"], hi=w["hi"]) for w in row["words"]]
     comp, plan = r2.render_form(dict(pieces=pieces, parts=parts_from_pieces(pieces)), job(entries), seconds, ctx.model, timing=TIMING, sample_id=f"round15-eval-{C.PREDICTED}:{i}")
     out = dict(comp=dict(state=comp, words=row["words"], order=list(range(len(entries))), dropped=[], plan=plan))
-    orders = {s: word_order(len(entries), i, s) for s in SEEDS}
+    orders = {s: word_order(len(entries), i, s, real.draw) for s in SEEDS}
     for s, order in orders.items():
         out[f"shuffled_s{s}"] = dict(state=render_order(pieces, plan, order, f"parent-controls-shuffled-s{s}:{i}"), words=[row["words"][k] for k in order], order=order, dropped=[], plan=moved_plan(plan, order))
     picked = [real.of(e) for e in entries]
@@ -433,9 +503,11 @@ def compose_clip(row: dict, ctx, clip_states: dict, real: RealClips) -> dict:
         out["oracle"] = dict(state=oracle, words=rows, order=list(range(len(kept))), dropped=dropped, plan=oracle_plan)
         kept_pieces = [pieces[p] for p in kept]
         covered, covered_plan = r2.render_form(dict(pieces=kept_pieces, parts=parts_from_pieces(kept_pieces)), oracle_job, seconds, ctx.model, timing=TIMING, sample_id=f"parent-controls-covered:{i}")
-        out["covered"] = dict(state=covered, words=[row["words"][p] for p in kept], order=list(range(len(kept))), dropped=dropped, plan=covered_plan)
+        covered_words = [row["words"][p] for p in kept]
+        out["covered"] = dict(state=covered, words=covered_words, order=list(range(len(kept))), dropped=dropped, plan=covered_plan)
         for s, order in orders.items():
             mine = restricted(order, kept)
+            out[f"covered_shuffled_s{s}"] = dict(state=render_order(kept_pieces, covered_plan, mine, f"parent-controls-covered-shuffled-s{s}:{i}"), words=[covered_words[k] for k in mine], order=mine, dropped=dropped, plan=moved_plan(covered_plan, mine))
             out[f"oracle_shuffled_s{s}"] = dict(state=render_order(material["pieces"], oracle_plan, mine, f"parent-controls-oracle-shuffled-s{s}:{i}"), words=[rows[k] for k in mine], order=mine, dropped=dropped, plan=moved_plan(oracle_plan, mine))
     for kind, made in out.items():
         if made["state"] is not None and len(made["state"].timestamps) != frames:
@@ -472,7 +544,12 @@ def coverage_of(rows: list[dict], failed: int) -> dict:
         for w in r["words"]:
             corpora[w["corpus"]] = corpora.get(w["corpus"], 0) + 1
     filled = [(a, b) for a, b in words if a]
-    return dict(words_selected=selected, words_kept=kept, share_kept=round(kept / selected, 4) if selected else None, dropped=dict(sorted(reasons.items())), corpora=dict(sorted(corpora.items())), clips=len(rows), clips_with_words=len(filled), clips_fully_covered=sum(a == b for a, b in filled), clips_left_empty=sum(b == 0 for _, b in filled), mean_clip_share=round(float(np.mean([b / a for a, b in filled])), 4) if filled else None, picks_not_served=failed)
+    interval = None
+    if filled:
+        pairs = np.asarray(filled, np.float64)
+        idx = np.random.default_rng(0).integers(0, len(pairs), (C.BOOT, len(pairs)))
+        interval = dict(share_kept=P._quantiles(pairs[idx, 1].sum(1) / pairs[idx, 0].sum(1)), mean_clip_share=P._quantiles((pairs[idx, 1] / pairs[idx, 0]).mean(1)))
+    return dict(ci95=interval, words_selected=selected, words_kept=kept, share_kept=round(kept / selected, 4) if selected else None, dropped=dict(sorted(reasons.items())), corpora=dict(sorted(corpora.items())), clips=len(rows), clips_with_words=len(filled), clips_fully_covered=sum(a == b for a, b in filled), clips_left_empty=sum(b == 0 for _, b in filled), mean_clip_share=round(float(np.mean([b / a for a, b in filled])), 4) if filled else None, picks_not_served=failed)
 
 
 def order_stats(rows: dict) -> dict:
@@ -584,6 +661,9 @@ def run_compose(args) -> int:
                 print(f"draw {args.draw}: {n + 1}/{len(rows)} clips, {time.time() - started:.0f} s", flush=True)
     for done in pending:
         done.result()
+    if real.failed > MAX_NOT_SERVED * max(len(real.memo), 1):
+        print(f"ALERT draw {args.draw}: {real.failed} picks not served over {len(real.memo)} entries, above {MAX_NOT_SERVED:.0%}: no index is written", flush=True)
+        raise SystemExit(f"draw {args.draw}: {real.failed} picks not served over {len(real.memo)} entries")
     index = dict(kind=f"{PROBE}-composed", report_only=True, draw=args.draw, clips=args.clips, seeds=list(SEEDS), code_digest=code_digest(), environment=P.environment(), pick=PICK_SEED, stored_export=dict(key=C.export_index_key(STORED_COMPOSED, args.draw), sha256=STORED[args.draw]["index"]), identity=dict(non_empty=close, byte_identical=identical, within_tolerance=close, clips=len(rows)), coverage=coverage_of(table["oracle"], real.failed), orders=order_stats(table), seconds=round(time.time() - started, 1), rows=table)
     store.put(key, json.dumps(index, indent=1, default=float).encode())
     print(json.dumps(dict(composed=key, stored=False, seconds=index["seconds"], identity=index["identity"])), flush=True)
@@ -761,7 +841,7 @@ def run_comp_check(args) -> int:
     key = f"{args.void_prefix.rstrip('/')}/{read['code_digest']}.json"
     if not store.exists(key):
         store.put(key, json.dumps(dict(kind=f"{PROBE}-void", code_digest=read["code_digest"], environment=read["environment"], comp_check=result), indent=1, sort_keys=True).encode())
-    print(f"ALERT the stored composition is not reproduced: {row['misses']}. The read is void: no form follows, no retry; a rerun needs new code and a recorded cause", flush=True)
+    print(f"ALERT the stored composition is not reproduced: {row['misses']}. The read is void: no form follows, and this code never reads again. {RERUN_ROUTE}", flush=True)
     return 3
 
 
@@ -781,6 +861,7 @@ def run_inputs(args) -> int:
     from train_text_to_motion import make_store
     import round15_stage2_fit as fit
     P.check_pins()
+    check_gpu(args.expect_gpu)
     store = make_store(args.store)
     P.check_sha(store.get(STORED_REPORT), STORED_REPORT_SHA, STORED_REPORT)
     for k in DRAWS:
@@ -789,15 +870,19 @@ def run_inputs(args) -> int:
             load_stored_form(store, k, kind)
     for name in C.ANCHORS:
         Q.stored_form(store, Q.STORED_PARENT, name)
-    check_mirror_report(store)
-    for name in MIRROR_VALUES:
+    load_mirror_report(store)
+    for name in MIRROR_ANCHORS:
         load_mirror_form(store, name)
+    keys = {(json.loads(store.get(C.export_index_key(STORED_COMPOSED, k))).get("word_cache") or {}).get("checkpoint_key") for k in DRAWS}
+    if len(keys) != 1 or None in keys:
+        raise SystemExit(f"the stored exports name priors {sorted(str(k) for k in keys)}, not one")
+    decoder = check_decoder(store, keys.pop())
     path = Path(args.model_file)
     if not path.exists():
         model, _ = fit.fit_model(fit.agc._store(args.store), L.EVAL_MIX, L.EVAL_MIX_SHA)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(model))
-    print(json.dumps(dict(inputs=dict(draws=list(DRAWS), report=STORED_REPORT_SHA[:8], model=load_model(path)["sha256"][:8]))), flush=True)
+    print(json.dumps(dict(inputs=dict(draws=list(DRAWS), report=STORED_REPORT_SHA[:8], mirror_report=MIRROR_REPORT_SHA[:8], model=load_model(path)["sha256"][:8], decoder=decoder))), flush=True)
     return 0
 
 
@@ -874,7 +959,8 @@ METRICS = dict(margin=(lambda x: float(x["margin"].mean()), lambda x, idx: x["ma
                share_of_real=(lambda x: float(x["margin"].mean() / x["real"].mean()) if x["real"].mean() else float("nan"), lambda x, idx: C.ratio_draws(x["margin"][idx].mean(1), x["real"][idx].mean(1))),
                bleu=(lambda x: float(_bleu(x["stats"].sum(0))), lambda x, idx: _bleu(x["stats"][idx].sum(1))),
                bleu_gap_share=(lambda x: _gap_point(x), lambda x, idx: C.ratio_draws(_bleu(x["stats"][idx].sum(1)) - _bleu(x["blank_stats"][idx].sum(1)), _bleu(x["real_stats"][idx].sum(1)) - _bleu(x["blank_stats"][idx].sum(1)))),
-               likelihood_gap_share=(lambda x: float(x["likelihood_top"].mean() / x["likelihood_bottom"].mean()) if x["likelihood_bottom"].mean() else float("nan"), lambda x, idx: C.ratio_draws(x["likelihood_top"][idx].mean(1), x["likelihood_bottom"][idx].mean(1))))
+               likelihood_gap_share=(lambda x: float(x["likelihood_top"].mean() / x["likelihood_bottom"].mean()) if x["likelihood_bottom"].mean() else float("nan"), lambda x, idx: C.ratio_draws(x["likelihood_top"][idx].mean(1), x["likelihood_bottom"][idx].mean(1))),
+               still_raw=(lambda x: float(x["still_raw"].mean()), lambda x, idx: x["still_raw"][idx].mean(1)))
 
 
 def _gap_point(x: dict) -> float:
@@ -891,11 +977,12 @@ def group_rows(members: list[dict], idx: np.ndarray) -> dict:
     return out
 
 
-def paired_rows(mine: list[dict], other: list[dict], idx: np.ndarray, bands: dict | None = None) -> dict:
-    """Mine minus other on the same draws and clips: every metric, over the draws, seeds averaged within a draw. ``bands``, the composition's arrays: margin and BLEU differences on the same clips, by composition's coverage."""
+def paired_rows(mine: list[dict], other: list[dict], idx: np.ndarray, bands: dict | None = None, metrics=tuple(METRICS)) -> dict:
+    """Mine minus other on the same draws and clips: each metric, over the draws, seeds averaged within a draw. ``bands``, the composition's arrays: margin and BLEU differences on the same clips, by composition's coverage."""
     draws = sorted(mine[0])
     out = {}
-    for name, (point, boot) in METRICS.items():
+    for name in metrics:
+        point, boot = METRICS[name]
         here = [float(np.mean([point(m[k]) for m in mine])) - float(np.mean([point(m[k]) for m in other])) for k in draws]
         out[name] = C.over_draws(here, np.stack([np.mean([boot(m[k], idx) for m in mine], 0) - np.mean([boot(m[k], idx) for m in other], 0) for k in draws]))
     if bands is not None:
@@ -903,39 +990,99 @@ def paired_rows(mine: list[dict], other: list[dict], idx: np.ndarray, bands: dic
     return out
 
 
+def as_real(arrays: dict) -> dict:
+    """The arrays of real signing on this instrument's own path, so a form minus real is the same arithmetic."""
+    return {k: dict(x, margin=x["real"], stats=x["real_stats"]) for k, x in arrays.items()}
+
+
+def moved_mask(rows: list[dict]) -> np.ndarray:
+    """Over the clips in list order: those whose word sequence this form's order changed."""
+    return np.array([len(r["words"]) >= 2 and [w["word"] for w in r["words"]] != sorted_words(r) for r in rows], bool)
+
+
+def moved_rows(mine: list[dict], masks: list[dict], other: list[dict], idx: np.ndarray) -> dict:
+    """Mine minus its unshuffled partner on moved clips alone, each seed's own, seeds averaged within a draw: margin and BLEU, with the bootstrap over clips counting a resample's moved clips only."""
+    draws = sorted(mine[0])
+    margin, bleu, margin_boot, bleu_boot, counts = [], [], [], [], []
+    for k in draws:
+        a, b, c, d = [], [], [], []
+        for m, mask, o in zip(mine, masks, other * len(mine)):
+            x, y, moved = m[k], o[k], mask[k]
+            counts.append(int(moved.sum()))
+            if not moved.any():
+                continue
+            a.append(float((x["margin"] - y["margin"])[moved].mean()))
+            b.append(float(_bleu(x["stats"][moved].sum(0)) - _bleu(y["stats"][moved].sum(0))))
+            picked = moved[idx]
+            c.append(np.divide(((x["margin"] - y["margin"])[idx] * picked).sum(1), picked.sum(1), out=np.full(len(idx), np.nan), where=picked.sum(1) > 0))
+            d.append(_bleu((x["stats"][idx] * picked[..., None]).sum(1)) - _bleu((y["stats"][idx] * picked[..., None]).sum(1)))
+        if a:
+            margin.append(float(np.mean(a)))
+            bleu.append(float(np.mean(b)))
+            margin_boot.append(np.mean(c, 0))
+            bleu_boot.append(np.mean(d, 0))
+    if not margin:
+        return dict(moved_clips_per_form=0.)
+    return dict(moved_clips_per_form=round(float(np.mean(counts)), 1), margin=C.over_draws(margin, np.stack(margin_boot)), bleu=C.over_draws(bleu, np.stack(bleu_boot)))
+
+
+def still_effect(mine: list[dict], other: list[dict], idx: np.ndarray) -> dict:
+    """A shuffled still is another frame: its raw margin minus the partner's, and the form's margin over the partner's still instead of its own."""
+    draws = sorted(mine[0])
+    over = lambda x, y: x["margin"] + x["still_raw"] - y["still_raw"]      # noqa: E731
+    per_draw = [float(np.mean([over(m[k], o[k]).mean() for m, o in zip(mine, other * len(mine))])) for k in draws]
+    boots = np.stack([np.mean([over(m[k], o[k])[idx].mean(1) for m, o in zip(mine, other * len(mine))], 0) for k in draws])
+    return dict(still_raw_difference=paired_rows(mine, other, idx, metrics=("still_raw",))["still_raw"], margin_over_partners_still=C.over_draws(per_draw, boots))
+
+
 def band_mask(x: dict, lo: float, hi: float) -> np.ndarray:
     return x["non_empty"] & (x["coverage"] > lo) & (x["coverage"] <= hi)
 
 
+def band_interval(values: list) -> list | None:
+    """The interval of the bootstrap means over a band's clips (draws x resamples), the draws averaged."""
+    return P._quantiles(np.mean(values, 0)) if values else None
+
+
+def _band_idx(n: int) -> np.ndarray:
+    return np.random.default_rng(0).integers(0, n, (C.BOOT, n))
+
+
 def band_difference(mine: list[dict], other: list[dict], draws, bands: dict, lo: float, hi: float) -> dict:
-    margin, bleu, clips = [], [], []
+    margin, bleu, clips, margin_boot, bleu_boot = [], [], [], [], []
     for k in draws:
         mask = band_mask(bands[k], lo, hi)
         clips.append(int(mask.sum()))
         if not mask.any():
             continue
+        idx = _band_idx(int(mask.sum()))
         margin.append(float(np.mean([m[k]["margin"][mask].mean() for m in mine]) - np.mean([m[k]["margin"][mask].mean() for m in other])))
         bleu.append(float(np.mean([_bleu(m[k]["stats"][mask].sum(0)) for m in mine]) - np.mean([_bleu(m[k]["stats"][mask].sum(0)) for m in other])))
-    return dict(clips_per_draw=round(float(np.mean(clips)), 1), margin=round(float(np.mean(margin)), 5) if margin else None, bleu=round(float(np.mean(bleu)), 4) if bleu else None)
+        margin_boot.append(np.mean([m[k]["margin"][mask][idx].mean(1) for m in mine], 0) - np.mean([m[k]["margin"][mask][idx].mean(1) for m in other], 0))
+        bleu_boot.append(np.mean([_bleu(m[k]["stats"][mask][idx].sum(1)) for m in mine], 0) - np.mean([_bleu(m[k]["stats"][mask][idx].sum(1)) for m in other], 0))
+    return dict(clips_per_draw=round(float(np.mean(clips)), 1), margin=round(float(np.mean(margin)), 5) if margin else None, margin_ci95=band_interval(margin_boot), bleu=round(float(np.mean(bleu)), 4) if bleu else None, bleu_ci95=band_interval(bleu_boot))
 
 
 def coverage_rows(members: list[dict], bands: dict | None = None) -> dict:
-    """Report only: margin, its share of real and BLEU, by coverage: each seed's own (``bands`` None) or a fixed set of arrays' (composition's), the draws' means. A band with no clip has none."""
+    """Report only: margin, its share of real and BLEU, by coverage: each seed's own (``bands`` None) or a fixed set of arrays' (composition's), the draws' means, with intervals over the band's clips. A band with no clip has none."""
     draws = sorted(members[0])
 
     def row(lo: float, hi: float) -> dict:
-        margin, real, bleu, clips = [], [], [], []
+        margin, real, bleu, clips, margin_boot, bleu_boot = [], [], [], [], [], []
         for k in draws:
             for m in members:
                 mask = band_mask((bands or m)[k], lo, hi)
                 clips.append(int(mask.sum()))
                 if mask.any():
+                    idx = _band_idx(int(mask.sum()))
                     margin.append(float(m[k]["margin"][mask].mean()))
                     real.append(float(m[k]["real"][mask].mean()))
                     bleu.append(float(_bleu(m[k]["stats"][mask].sum(0))))
+                    margin_boot.append(m[k]["margin"][mask][idx].mean(1))
+                    bleu_boot.append(_bleu(m[k]["stats"][mask][idx].sum(1)))
         if not margin:
             return dict(clips_per_draw=0.)
-        return dict(clips_per_draw=round(float(np.mean(clips)), 1), margin=round(float(np.mean(margin)), 5), real_margin=round(float(np.mean(real)), 5), share_of_real=round(float(np.mean(margin) / np.mean(real)), 4) if np.mean(real) else None, bleu=round(float(np.mean(bleu)), 4))
+        return dict(clips_per_draw=round(float(np.mean(clips)), 1), margin=round(float(np.mean(margin)), 5), margin_ci95=band_interval(margin_boot), real_margin=round(float(np.mean(real)), 5), share_of_real=round(float(np.mean(margin) / np.mean(real)), 4) if np.mean(real) else None, bleu=round(float(np.mean(bleu)), 4), bleu_ci95=band_interval(bleu_boot))
     return {f"{lo}-{hi}": row(lo, hi) for lo, hi in C.COVERAGE_BINS}
 
 
@@ -945,16 +1092,19 @@ def signer_bleu(arrays: dict, groups) -> dict:
     return {str(g): round(float(np.mean([_bleu(arrays[k]["stats"][labels == g].sum(0)) for k in sorted(arrays)])), 4) for g in sorted(set(groups))}
 
 
-def training_rows(arrays: dict, masks: dict) -> dict:
-    """Report only: margin, its share of real and BLEU, on clips in and outside v1's training list, which is the mirror's on D20: here training status and signer are confounded."""
+def subset_rows(arrays: dict, masks: dict, nearest) -> dict:
+    """Report only, on clips in and outside v1's training list and outside training and selection: margin, its share of real, and BLEU of the form, real, nearest and blank with the BLEU gap share, the draws' means. Here training status and signer are confounded."""
     out = C.subset_rows(arrays, masks)
+    draws = sorted(arrays)
     for name, mask in masks.items():
-        if out[name]:
-            out[name]["bleu"] = round(float(np.mean([_bleu(arrays[k]["stats"][mask].sum(0)) for k in sorted(arrays)])), 4)
+        if not out[name]:
+            continue
+        form, real, blank = (float(np.mean([_bleu(arrays[k][field][mask].sum(0)) for k in draws])) for field in ("stats", "real_stats", "blank_stats"))
+        out[name].update(bleu=round(form, 4), real_bleu=round(real, 4), nearest_bleu=round(float(_bleu(nearest[mask].sum(0))), 4), blank_bleu=round(blank, 4), bleu_gap_share=round((form - blank) / (real - blank), 4) if real != blank else None)
     return out
 
 
-def form_block(name: str, arrays: dict, rows: dict, views: dict, anchors: dict, first: dict, reads: dict, idx: np.ndarray, composition: dict, masks: dict) -> dict:
+def form_block(name: str, arrays: dict, rows: dict, views: dict, anchors: dict, first: dict, reads: dict, idx: np.ndarray, composition: dict, masks: dict, two_view_real: np.ndarray) -> dict:
     """One form's rows."""
     with warnings.catch_warnings():      # parent_comp's length block, which no row here reads, regresses on a ratio that may not vary
         warnings.simplefilter("ignore", np.exceptions.RankWarning)
@@ -963,7 +1113,89 @@ def form_block(name: str, arrays: dict, rows: dict, views: dict, anchors: dict, 
         signers = C.signer_rows(pod, {k: "view" for k in arrays}, first["signs"], first["groups"])
     for signer, bleu in signer_bleu(arrays, first["groups"]).items():
         signers[signer]["bleu"] = bleu
-    return dict(form=name, draws=sorted(arrays), per_draw={str(k): rows[k] for k in sorted(rows)}, **{k: block[k] for k in BLOCK_ROWS}, by_own_coverage=coverage_rows([arrays]), by_composition_coverage=coverage_rows([arrays], composition), by_v1_training=training_rows(arrays, masks), per_signer=signers, per_signer_note="report only: few clips make these rows noisy", hypotheses=hypothesis_row({k: [reads[k]] for k in reads}, idx), empty_clips={str(k): rows[k]["empty"] for k in sorted(rows)})
+    return dict(form=name, draws=sorted(arrays), per_draw={str(k): rows[k] for k in sorted(rows)}, **{k: block[k] for k in BLOCK_ROWS}, by_own_coverage=coverage_rows([arrays]), by_composition_coverage=coverage_rows([arrays], composition), by_clip_subset=subset_rows(arrays, masks, M.bleu_statistics(anchors["nearest_two_view"]["hypotheses"], anchors["nearest_two_view"]["references"])), still_raw=group_rows([arrays], idx)["still_raw"], share_of_two_view_real=two_view_share(arrays, two_view_real, idx), per_signer=signers, per_signer_note="report only: few clips make these rows noisy", hypotheses=hypothesis_row({k: [reads[k]] for k in reads}, idx), empty_clips={str(k): rows[k]["empty"] for k in sorted(rows)})
+
+
+def two_view_share(arrays: dict, two_view_real: np.ndarray, idx: np.ndarray) -> dict:
+    """The form's margin over real two-view's, over its own still: on the parent the same as ``share_of_real``, on the mirror the other path's."""
+    draws = sorted(arrays)
+    return C.over_draws([float(arrays[k]["margin"].mean() / two_view_real.mean()) if two_view_real.mean() else float("nan") for k in draws], np.stack([C.ratio_draws(arrays[k]["margin"][idx].mean(1), two_view_real[idx].mean(1)) for k in draws]))
+
+
+def corpus_rows(oracle: dict, covered: dict, composed: dict) -> dict:
+    """Report only: the oracle's rows by each clip's main pick corpus (most words; a tie, the first by name), with covered on the same clips."""
+    from collections import Counter
+    labels = {}
+    for k in sorted(oracle):
+        names = []
+        for row in sorted(composed[k]["rows"]["oracle"], key=lambda r: r["clip"]):
+            count = Counter(w["corpus"] for w in row["words"])
+            names.append(min(count, key=lambda c: (-count[c], c)) if count else None)
+        labels[k] = np.array(names, object)
+    out = {}
+    for corpus in sorted({x for v in labels.values() for x in v if x is not None}):
+        masks = {k: labels[k] == corpus for k in labels}
+        used = [k for k in masks if masks[k].any()]
+        mean = lambda arrays, field: float(np.mean([arrays[k][field][masks[k]].mean() for k in used]))      # noqa: E731
+        bleu = lambda arrays: float(np.mean([_bleu(arrays[k]["stats"][masks[k]].sum(0)) for k in used]))      # noqa: E731
+        out[corpus] = dict(clips_per_draw=round(float(np.mean([masks[k].sum() for k in labels])), 1), oracle_margin=round(mean(oracle, "margin"), 5), covered_margin=round(mean(covered, "margin"), 5), oracle_bleu=round(bleu(oracle), 4), covered_bleu=round(bleu(covered), 4))
+    return out
+
+
+def validity_alerts(name: str, reads: dict) -> list[str]:
+    """A composed clip with signing is valid on every point the reader reads. Under that, the header's reason for reading it as it stands fails."""
+    out = []
+    for k, read in reads.items():
+        low = [v for v, empty in zip(read["valid_frame_share"], read["empty"]) if not empty and v < 1 - 1e-6]
+        if low:
+            out.append(f"draw {k} {name}: {len(low)} clips with signing have a valid_frame_share under 1, the lowest {min(low)}")
+    return out
+
+
+def write_report(store, key: str | None, file: str | None, report: dict) -> bool:
+    """Write-once, and identical bytes stand: True when it wrote. A merge that runs again on the same forms changes nothing."""
+    if bool(key) == bool(file):
+        raise SystemExit("give exactly one of --output-key and --output-file")
+    payload = json.dumps(report, indent=1, sort_keys=True, default=float).encode()
+    existing = (store.get(key) if store.exists(key) else None) if key else (Path(file).read_bytes() if Path(file).exists() else None)
+    if existing == payload:
+        return False
+    if existing is not None:
+        raise SystemExit(f"{key or file} exists and holds other bytes (write-once)")
+    L.write_once(store, key, file, report)
+    return True
+
+
+def run_put_report(args) -> int:
+    """The merged report to its final key, write-once; identical bytes stand."""
+    from train_text_to_motion import make_store
+    store = make_store(args.store)
+    payload = Path(args.file).read_bytes()
+    if store.exists(args.key):
+        if store.get(args.key) != payload:
+            raise SystemExit(f"{args.key} exists and holds other bytes (write-once)")
+        print(json.dumps(dict(report=args.key, stored=True)), flush=True)
+        return 0
+    store.put(args.key, payload)
+    print(json.dumps(dict(report=args.key, stored=False)), flush=True)
+    return 0
+
+
+EXIT_NOT_THERE = 5
+
+
+def run_stage_state(args) -> int:
+    """Exit 0 when a stage's final key holds the bytes of its local report: the stage is done. 5 when the key is absent: run it. Anything else refuses: the key belongs to another run."""
+    from train_text_to_motion import make_store
+    store = make_store(args.store)
+    if not store.exists(args.key):
+        print(json.dumps(dict(stage=args.key, state="to run")), flush=True)
+        return EXIT_NOT_THERE
+    local = Path(args.file)
+    if not local.exists() or local.read_bytes() != store.get(args.key):
+        raise SystemExit(f"{args.key} exists and {args.file} does not hold its bytes: this read is finished elsewhere (write-once)")
+    print(json.dumps(dict(stage=args.key, state="done")), flush=True)
+    return 0
 
 
 def load_forms(store, prefix: str) -> tuple[dict, dict | None, dict | None]:
@@ -987,38 +1219,34 @@ def load_forms(store, prefix: str) -> tuple[dict, dict | None, dict | None]:
     return forms, control, comp_check
 
 
-def run_merge(args) -> int:
-    from train_text_to_motion import make_store
-    P.check_pins()
-    pin = check_instrument(args.instrument)
-    store = make_store(args.store)
-    L.refuse_existing(store, args.output_key, args.output_file)
-    forms, control, comp_check = load_forms(store, args.prefix)
+def open_read(store, prefix: str, instrument: str, draws: list[int], composed_prefix: str, *, want_declared=None) -> SimpleNamespace:
+    """One instrument's forms, checked as one run of this code, with each form's arrays on its own path's anchors."""
+    pin = check_instrument(instrument)
+    forms, control, comp_check = load_forms(store, prefix)
     if not forms:
-        raise SystemExit(f"{args.prefix}: no form")
+        raise SystemExit(f"{prefix}: no form")
     digests = {r.get("code_digest") for r in forms.values()}
     if digests != {code_digest()}:
         raise SystemExit(f"the forms are of code {sorted(str(d) for d in digests)}, not this code {code_digest()}: a stale read")
     if len({(r["declared_read"], r["list"]["list"], tuple(r["signs"]), tuple(r["references"])) for r in forms.values()}) != 1:
         raise SystemExit("the forms read other clips, another list, or a smoke mixed with a declared read")
     if {r["instrument"]["sha256"] for r in forms.values()} != {pin["sha256"]}:
-        raise SystemExit(f"a form was not read by the {args.instrument}")
-    if any(a not in forms for a in anchors_of(args.instrument)):
+        raise SystemExit(f"a form was not read by the {instrument}")
+    if any(a not in forms for a in anchors_of(instrument)):
         raise SystemExit("the anchors are missing")
     _, place = P.check_same_run(forms, "the forms")
     first = forms["real_two_view"]
     declared = first["declared_read"]
-    stored_composition = has_stored_composition(declared, args.instrument)
+    if want_declared is not None and declared != want_declared:
+        raise SystemExit(f"the {instrument} forms under {prefix} are of another kind of run")
+    stored_composition = has_stored_composition(declared, instrument)
     if declared and (not control or control.get("reproduced") is not True or control.get("code_digest") != code_digest() or control.get("environment") != place):
         raise SystemExit("no passed control of this code and environment; the read is void")
     if stored_composition and (not comp_check or comp_check.get("reproduced") is not True or comp_check.get("code_digest") != code_digest() or comp_check.get("environment") != place):
         raise SystemExit("no passed composition check of this code and environment; the read is void")
-    draws = [int(x) for x in args.draws.split(",") if x]
-    if not draws:
-        raise SystemExit("--draws names no draw")
     for k in draws:
         C.check_draw(k)
-        missing = [n for n in forms_of_draw(k, declared, args.instrument) if n not in forms]
+        missing = [n for n in forms_of_draw(k, declared, instrument) if n not in forms]
         if missing:
             raise SystemExit(f"draw {k}: {missing[0]} is missing, of {len(missing)} forms")
     base = {k: {kind: load_stored_form(store, k, kind) if stored_composition else forms[f"d{k}_{kind}"] for kind in ("comp", "still", "blank")} for k in draws}
@@ -1028,35 +1256,98 @@ def run_merge(args) -> int:
                 raise SystemExit(f"draw {k}: the stored {kind} holds other clips or another order")
     n = len(first["signs"])
     idx = np.random.default_rng(0).integers(0, n, (C.BOOT, n))
-    anchors = own_path(forms, args.instrument)
-    masks = Q.subset_masks(first["signs"], Q.v1_training_signs(store))
-    composed = {k: json.loads(store.get(index_key(args.composed, k))) for k in draws}
+    anchors = own_path(forms, instrument)
+    composed = {k: json.loads(store.get(index_key(composed_prefix, k))) for k in draws}
     for k, index in composed.items():
         check_index(index, k, L.D20_CLIPS if declared else n)
+    comp_arrays, comp_rows, comp_views = view_arrays({k: (base[k]["comp"], base[k]["still"]) for k in draws}, base, anchors, idx, "the composition")
+    built = {}
+    for kind in KINDS:
+        reads = {k: (forms[f"d{k}_{kind}"], forms[f"d{k}_{kind}_still"]) for k in draws}
+        here, rows, views = view_arrays(reads, base, anchors, idx, kind)
+        built[kind] = SimpleNamespace(arrays=here, rows=rows, views=views, reads={k: reads[k][0] for k in draws})
+    two_view_real = Q.margins(forms["real_two_view"]) - Q.margins(forms["still_two_view"])
+    return SimpleNamespace(forms=forms, control=control, comp_check=comp_check, place=place, first=first, declared=declared, stored_composition=stored_composition, base=base, idx=idx, anchors=anchors, composed=composed, comp_arrays=comp_arrays, comp_rows=comp_rows, comp_views=comp_views, built=built, two_view_real=two_view_real)
+
+
+def members_of(read: SimpleNamespace, name: str) -> list[dict]:
+    """A named form's arrays, or a group's, one per seed."""
+    if name == "composition":
+        return [read.comp_arrays]
+    return [read.built[kind].arrays for kind in GROUPS.get(name, (name,))]
+
+
+def paired_block(read: SimpleNamespace, composed_rows: dict) -> dict:
+    """Every paired row: on all clips, against real, and on moved clips with each shuffled still's effect."""
+    idx, comp = read.idx, read.comp_arrays
+    names = ("oracle", "covered", *GROUPS)
+    out = {f"{name}_minus_composition": paired_rows(members_of(read, name), [comp], idx, comp) for name in names}
+    out["oracle_minus_covered"] = paired_rows(members_of(read, "oracle"), members_of(read, "covered"), idx, comp)
+    for name, partner in PARTNERS.items():
+        if partner != "composition":
+            out[f"{name}_minus_{partner}"] = paired_rows(members_of(read, name), members_of(read, partner), idx, comp)
+    out["form_minus_real"] = {name: paired_rows(members_of(read, name), [as_real(comp)], idx, metrics=("margin", "bleu")) for name in ("composition", *names)}
+    out["moved"], out["still_effect"] = {}, {}
+    for name, partner in PARTNERS.items():
+        masks = [{k: composed_rows[k][kind] for k in composed_rows} for kind in GROUPS[name]]
+        out["moved"][f"{name}_minus_{partner}"] = moved_rows(members_of(read, name), masks, members_of(read, partner), idx)
+        out["still_effect"][f"{name}_against_{partner}"] = still_effect(members_of(read, name), members_of(read, partner), idx)
+    return out
+
+
+def parent_on_mirror_draws(store, args, read: SimpleNamespace, draws: list[int]) -> dict | None:
+    """The parent's rows on the mirror's own draws and clips, and parent minus mirror draw by draw. Each share is over its instrument's own path's real."""
+    if not args.parent_forms:
+        return None
+    parent = open_read(store, args.parent_forms, "parent", draws, args.composed, want_declared=read.declared)
+    if parent.first["signs"] != read.first["signs"]:
+        raise SystemExit("the parent's forms read other clips than the mirror's")
+    out = {}
+    for name in ("composition", "oracle", "covered", *GROUPS):
+        mine, theirs = members_of(parent, name), members_of(read, name)
+        out[name] = dict(parent=group_rows(mine, read.idx), parent_minus_mirror=paired_rows(mine, theirs, read.idx))
+    return out
+
+
+def run_merge(args) -> int:
+    from train_text_to_motion import make_store
+    P.check_pins()
+    check_instrument(args.instrument)
+    store = make_store(args.store)
+    draws = [int(x) for x in args.draws.split(",") if x]
+    if not draws:
+        raise SystemExit("--draws names no draw")
     with np.errstate(divide="ignore", invalid="ignore"):      # a resample's ratio can hold a zero denominator: ``_quantiles`` leaves what is not finite out
-        # composition first: its coverage is the bands' fixed set
-        comp_reads = {k: (base[k]["comp"], base[k]["still"]) for k in draws}
-        comp_arrays, comp_rows, comp_views = view_arrays(comp_reads, base, anchors, idx, "the composition")
-        arrays, blocks = {}, {}
-        for kind in KINDS:
-            reads = {k: (forms[f"d{k}_{kind}"], forms[f"d{k}_{kind}_still"]) for k in draws}
-            here, rows, views = view_arrays(reads, base, anchors, idx, kind)
-            arrays[kind] = here
-            blocks[kind] = form_block(kind, here, rows, views, anchors, first, {k: reads[k][0] for k in draws}, idx, comp_arrays, masks)
-        composition = form_block("composition", comp_arrays, comp_rows, comp_views, anchors, first, {k: base[k]["comp"] for k in draws}, idx, comp_arrays, masks)
-        groups = {name: dict(seeds=list(SEEDS), **group_rows([arrays[m] for m in members], idx), by_own_coverage=coverage_rows([arrays[m] for m in members]), by_composition_coverage=coverage_rows([arrays[m] for m in members], comp_arrays), hypotheses=hypothesis_row({k: [forms[f"d{k}_{m}"] for m in members] for k in draws}, idx)) for name, members in GROUPS.items()}
-        shuffled, oracle_shuffled = [arrays[m] for m in GROUPS["shuffled"]], [arrays[m] for m in GROUPS["oracle_shuffled"]]
-        paired = dict(oracle_minus_composition=paired_rows([arrays["oracle"]], [comp_arrays], idx, comp_arrays), covered_minus_composition=paired_rows([arrays["covered"]], [comp_arrays], idx, comp_arrays), oracle_minus_covered=paired_rows([arrays["oracle"]], [arrays["covered"]], idx, comp_arrays), shuffled_minus_composition=paired_rows(shuffled, [comp_arrays], idx, comp_arrays), oracle_shuffled_minus_composition=paired_rows(oracle_shuffled, [comp_arrays], idx, comp_arrays), oracle_shuffled_minus_oracle=paired_rows(oracle_shuffled, [arrays["oracle"]], idx, comp_arrays))
+        read = open_read(store, args.prefix, args.instrument, draws, args.composed)
+        forms, first, declared, idx, anchors, composed, comp_arrays = read.forms, read.first, read.declared, read.idx, read.anchors, read.composed, read.comp_arrays
+        masks = SYM.clip_subsets(store, first["signs"])
+        blocks = {kind: form_block(kind, read.built[kind].arrays, read.built[kind].rows, read.built[kind].views, anchors, first, read.built[kind].reads, idx, comp_arrays, masks, read.two_view_real) for kind in KINDS}
+        composition = form_block("composition", comp_arrays, read.comp_rows, read.comp_views, anchors, first, {k: read.base[k]["comp"] for k in draws}, idx, comp_arrays, masks, read.two_view_real)
+        blocks["oracle"]["by_pick_corpus"] = corpus_rows(read.built["oracle"].arrays, read.built["covered"].arrays, composed)
+        groups = {name: dict(seeds=list(SEEDS), **group_rows(members_of(read, name), idx), by_own_coverage=coverage_rows(members_of(read, name)), by_composition_coverage=coverage_rows(members_of(read, name), comp_arrays), hypotheses=hypothesis_row({k: [forms[f"d{k}_{m}"] for m in members] for k in draws}, idx)) for name, members in GROUPS.items()}
+        moved = {k: {kind: moved_mask(sorted(composed[k]["rows"][kind], key=lambda r: r["clip"])) for kind in KINDS if "shuffled" in kind} for k in draws}
+        paired = paired_block(read, moved)
+        beside = None if args.instrument == "parent" else parent_on_mirror_draws(store, args, read, draws)
     real_hypotheses = hypothesis_row({0: [anchors["real_two_view"]]}, idx)      # the instrument's own path
-    length_over_monocular = None if args.instrument == "parent" else round(float(np.mean([a / b for a, b in zip(base[draws[0]]["comp"]["frames"], forms["real_monocular"]["frames"])])), 4)
+    length_over_monocular = None if args.instrument == "parent" else round(float(np.mean([a / b for a, b in zip(read.base[draws[0]]["comp"]["frames"], forms["real_monocular"]["frames"])])), 4)
     coverage = {str(k): composed[k]["coverage"] for k in draws}
     alerts = [f"draw {k}: its oracle holds no word" for k in draws if not composed[k]["coverage"]["words_kept"]]
-    report = dict(kind=f"{PROBE}-report", report_only=True, note=C.NOT_DECIDED, reading=READING, declared_read=declared, smoke=None if declared else "SMOKE: composed D20 sentences against c02 train references; these numbers are plumbing, not a read", list=first["list"], code_digest=code_digest(), environment=place, instrument=first["instrument"], instrument_name=args.instrument, own_path_anchors=list(anchors), length_over_monocular=length_over_monocular, draws=draws, draws_note=None if tuple(draws) == DRAWS else f"fewer than eight: {draws}", seeds=list(SEEDS), disclosures=DISCLOSURES, cost_estimate=COST_ESTIMATE, alerts=alerts, stored=dict(report_sha256=STORED_REPORT_SHA, digest=STORED_DIGEST) if stored_composition else None,
-                  anchors=anchor_report(forms, args.instrument, idx), real_hypotheses=real_hypotheses, composition=composition, forms=blocks, groups=groups, paired=paired, oracle_coverage=coverage, orders={str(k): composed[k]["orders"] for k in draws}, identity={str(k): composed[k]["identity"] for k in draws},
-                  checks=dict(controls=dict(anchors=control, **(dict(comp_check=comp_check) if stored_composition else {})), blank_identical_to_real=round(float(np.mean([a == b for a, b in zip(anchors["blank"]["hypotheses"], anchors["real_two_view"]["hypotheses"])])), 4)),
+    alerts += validity_alerts("composition", {k: read.base[k]["comp"] for k in draws})
+    for kind in KINDS:
+        alerts += validity_alerts(kind, read.built[kind].reads)
+    path_names = dict(real="real_two_view", nearest="nearest_two_view", still="still_two_view", blank="blank") if args.instrument == "parent" else dict(real="real_monocular", nearest="nearest_monocular", still="still_monocular", blank="blank")
+    stage = dict(planned_draws=[int(x) for x in args.planned_draws.split(",") if x] if args.planned_draws else draws, draws=draws, stop_reason=args.stop_reason, elapsed_seconds=args.elapsed_seconds)
+    report = dict(kind=f"{PROBE}-report", report_only=True, note=C.NOT_DECIDED, reading=READING, declared_read=declared, smoke=None if declared else "SMOKE: composed D20 sentences against c02 train references; these numbers are plumbing, not a read", list=first["list"], code_digest=code_digest(), environment=read.place, instrument=first["instrument"], instrument_name=args.instrument, own_path_anchors=path_names, length_over_monocular=length_over_monocular, draws=draws, draws_note=None if tuple(draws) == DRAWS else f"fewer than eight: {draws}", stage=stage, seeds=list(SEEDS), disclosures=DISCLOSURES, cost_estimate=COST_ESTIMATE, alerts=alerts, stored=dict(report_sha256=STORED_REPORT_SHA, digest=STORED_DIGEST) if read.stored_composition else None,
+                  anchors=anchor_report(forms, args.instrument, idx), real_hypotheses=real_hypotheses, composition=composition, forms=blocks, groups=groups, paired=paired, parent_on_mirror_draws=beside, oracle_coverage=coverage, orders={str(k): composed[k]["orders"] for k in draws}, identity={str(k): composed[k]["identity"] for k in draws},
+                  checks=dict(controls=dict(anchors=read.control, **(dict(comp_check=read.comp_check) if read.stored_composition else {})), blank_identical_to_real=round(float(np.mean([a == b for a, b in zip(anchors["blank"]["hypotheses"], anchors["real_two_view"]["hypotheses"])])), 4)),
                   resources=dict(forms={k: {x: r[x] for x in ("peak_rss_bytes", "gpu_peak_reserved_bytes", "build_seconds", "read_seconds")} for k, r in forms.items()}, compose_seconds={str(k): composed[k]["seconds"] for k in draws}))
-    L.write_once(store, args.output_key, args.output_file, report)
-    print(json.dumps(dict(merged=args.output_key or args.output_file, report_only=True, declared_read=declared, instrument=args.instrument, draws=draws, anchors=report["anchors"], composition={k: composition[k] for k in BLOCK_ROWS}, forms={f: {k: blocks[f][k] for k in ("margin", "bleu")} for f in ("oracle", "covered")}, groups={f: {k: groups[f][k] for k in ("margin", "bleu")} for f in groups}, paired={f: {k: paired[f][k] for k in ("margin", "bleu")} for f in paired}, oracle_coverage=coverage, alerts=alerts)), flush=True)
+    wrote = write_report(store, args.output_key, args.output_file, report)
+    print(json.dumps(dict(merged=args.output_key or args.output_file, wrote=wrote, report_only=True, declared_read=declared, instrument=args.instrument, draws=draws, stage=stage, anchors=report["anchors"], composition={k: composition[k] for k in BLOCK_ROWS}, forms={f: {k: blocks[f][k] for k in ("margin", "bleu")} for f in ("oracle", "covered")}, groups={f: {k: groups[f][k] for k in ("margin", "bleu")} for f in groups}, paired={f: {k: paired[f][k] for k in ("margin", "bleu")} for f in ("oracle_minus_covered", "oracle_minus_composition", "covered_minus_composition")}, oracle_coverage=coverage, alerts=alerts)), flush=True)
+    return 0
+
+
+def run_digest(args) -> int:
+    print(code_digest(), flush=True)
     return 0
 
 
@@ -1066,6 +1357,12 @@ def build_parser() -> argparse.ArgumentParser:
     inputs = sub.add_parser("inputs", help="the job's first step: every pin, the model fitted once; prints no score")
     inputs.add_argument("--store", default="r2")
     inputs.add_argument("--model-file", required=True)
+    inputs.add_argument("--expect-gpu", help="the GPU type, underscores for spaces; another stops the job")
+    sub.add_parser("digest", help="this code's digest, for a rerun's prefix")
+    state = sub.add_parser("stage-state", help="exit 0 when a stage's final key holds its local report's bytes, 5 when the key is absent")
+    state.add_argument("--store", default="r2")
+    state.add_argument("--key", required=True)
+    state.add_argument("--file", required=True)
     compose = sub.add_parser("compose", help="one draw's forms; no instrument is loaded")
     compose.add_argument("--store", default="r2")
     compose.add_argument("--draw", type=int, required=True)
@@ -1111,6 +1408,10 @@ def build_parser() -> argparse.ArgumentParser:
     merge.add_argument("--prefix", required=True)
     merge.add_argument("--output-key")
     merge.add_argument("--output-file")
+    merge.add_argument("--parent-forms", help="the mirror's merge: the parent's forms, for its rows on the mirror's draws")
+    merge.add_argument("--planned-draws", help="what the job planned, comma list; default --draws")
+    merge.add_argument("--stop-reason", default="not_recorded")
+    merge.add_argument("--elapsed-seconds", type=int)
     check = sub.add_parser("check")
     check.add_argument("--report", required=True)
     upload = sub.add_parser("upload")
@@ -1131,7 +1432,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
-    return dict(inputs=run_inputs, compose=run_compose, preflight=run_preflight, read=run_read, control=run_control, merge=run_merge, check=C.run_check, upload=PP.run_upload, **{"comp-check": run_comp_check, "upload-log": R.run_upload_log, "put-report": C.run_put_report})[args.command](args)
+    return dict(inputs=run_inputs, compose=run_compose, preflight=run_preflight, read=run_read, control=run_control, merge=run_merge, check=C.run_check, upload=PP.run_upload, digest=run_digest, **{"comp-check": run_comp_check, "stage-state": run_stage_state, "upload-log": R.run_upload_log, "put-report": run_put_report})[args.command](args)
 
 
 if __name__ == "__main__":

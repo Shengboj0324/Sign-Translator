@@ -1,6 +1,7 @@
 """The parent controls on synthetic data: what a real word record must be, the seeded pick and its fallback, the permutations and what they keep, the composition rebuilt byte for byte, the controls, the arithmetic of the report, what is refused, and the job. Nothing here reads a real clip, a checkpoint or R2."""
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import stat
@@ -21,6 +22,7 @@ import path_read as R  # noqa: E402
 import round15_stage2 as r2  # noqa: E402
 import round15_stage2_fit as fit  # noqa: E402
 import s2_lib as L  # noqa: E402
+import tok_probes as P  # noqa: E402
 import tok_v1 as T  # noqa: E402
 from evaluate_text_to_motion import blanked, load_state  # noqa: E402
 from signtranslator.generation import compositional_grammar as cg  # noqa: E402
@@ -34,12 +36,12 @@ JOB = ROOT / "runpod/fleet/parent_controls.sh"
 SENTENCES = (("alpha", "beta", "gamma"), ("you",), (), ("alpha", "you", "beta"), ("sem", "alpha"), ("fails", "gamma"), ("delta", "delta", "beta"), ("gamma", "alpha", "delta", "beta"), ("beta", "alpha"))
 EMPTY, ONLY_ADDED = 2, 1
 FILLED, ORACLE_FILLED = N - 1, N - 2
-MARGIN = dict(oracle=.3, covered=.5, shuffled_s0=.55, shuffled_s1=.56, shuffled_s2=.57, oracle_shuffled_s0=.25, oracle_shuffled_s1=.26, oracle_shuffled_s2=.27)
+MARGIN = dict(oracle=.3, covered=.5, shuffled_s0=.55, shuffled_s1=.56, oracle_shuffled_s0=.25, oracle_shuffled_s1=.26, covered_shuffled_s0=.42, covered_shuffled_s1=.44)
 STILL_MARGIN = .1
 TIMING = dict(gap=.1668, default_seconds=.2336, floor=.2, ceiling=1.5, ratio=1., trimmed_over_annotated=2.9375, annotated=dict(alpha=.5), sentence_seconds={})
 FRACTIONS = dict(entries=dict(alpha=(.2, .8)), all=(.1, .9), min_seconds={})
 VOCAB = dict(alpha=.9, beta=1.1, gamma=.8, delta=1.3, you=.6, sem=1., fails=1.)
-MONO_LEVELS = dict(real_monocular=(13, 1.2, .8), nearest_monocular=(12, 1.3, .75), still_monocular=(1, 2.9, .1))
+MONO_LEVELS = dict(real_monocular=(13, 1.2, .8), nearest_monocular=(12, 1.3, .75), still_monocular=(1, 2.9, .15))      # not two-view's still: an anchor taken from the wrong path shows
 MIRROR_INFO = dict(PC.INSTRUMENTS["mirror"], kind="keypoints")
 
 
@@ -88,7 +90,7 @@ POOLS = dict(alpha=[real_record("alpha-a", "asllvd-text-v1"), real_record("alpha
 
 def real_state(record, entry):
     if record["sign"].startswith("fails"):
-        raise ValueError("a window holding nothing")
+        raise ValueError(f"{record['sign']}: window [0.5, 0.6] contains no frames")
     seed = int.from_bytes(hashlib.sha256(record["sign"].encode()).digest()[:2], "big")
     return laid_out(signer_state(seed, frames=40, amplitude=.5), TWO_VIEW)
 
@@ -121,13 +123,25 @@ class Controls(Comp):
         monkeypatch.setattr(PC, "STORED_DIGEST", "b" * 64)
         monkeypatch.setattr(PC, "STORED", {k: dict(index="0" * 64, comp="0" * 64, still="0" * 64, blank="0" * 64) for k in PC.DRAWS})
         self.ctx = context()
+        monkeypatch.setattr(PC, "MAX_NOT_SERVED", .5)      # the planted word "fails" is above the real limit, which its own test holds
         monkeypatch.setattr(PC, "load_context", lambda store, model_file: self.ctx)
         monkeypatch.setattr(PC, "round_tripper", lambda store, device, work: real_state)
         for k in compose_draws:
             self.plant_stored_export(k)
 
+    def plant_training(self, signs):
+        """v1's lists: the first clips in training, the next two in its selection sample."""
+        meta = {"train": json.dumps([dict(clip_id=s, partition="train") for s in signs]).encode(), "val": json.dumps([dict(clip_id=r["sign"], partition="val") for r in self.records[4:6]]).encode()}
+        parts = []
+        for partition, raw in meta.items():
+            self.store.put(f"fk/{partition}/shard-00000.json", raw)
+            parts.append(dict(partition=partition, shards=[dict(key=f"fk/{partition}/shard-00000.npz", meta_sha256=hashlib.sha256(raw).hexdigest())]))
+        index = json.dumps(dict(parts=parts)).encode()
+        self.store.put(Q.FK_INDEX, index)
+        self.monkeypatch.setattr(Q, "FK_INDEX_SHA", hashlib.sha256(index).hexdigest())
+
     def main(self, *argv):
-        return PC.main([argv[0], *(() if argv[0] == "check" else ("--store", f"dir:{self.tmp_path / 's'}")), *argv[1:]])
+        return PC.main([argv[0], *(() if argv[0] in ("check", "digest") else ("--store", f"dir:{self.tmp_path / 's'}")), *argv[1:]])
 
     def word_clip(self, k, word):
         seed = int.from_bytes(hashlib.sha256(f"{k}|{word}".encode()).digest()[:2], "big")
@@ -163,7 +177,7 @@ class Controls(Comp):
                 key = f"{PC.STORED_COMPOSED}/draw{k}/states/{i}-{form.replace('@', '-')}.npz"
                 self.store.put(key, path.read_bytes())
                 rows.append(dict(clip=i, sign=record["sign"], text=record["text"], form=form, empty=not words, state_key=key, state_sha256=sha, frames=frames, reference_frames=len(self.refs[i].timestamps), reference_sha256=record["continuous"]["state_sha256"], words=provenance))
-        raw = json.dumps(dict(kind="round15-composed-states", settings=settings_of(k, self.n), word_cache=dict(draw=k), states=rows)).encode()
+        raw = json.dumps(dict(kind="round15-composed-states", settings=settings_of(k, self.n), word_cache=dict(draw=k, checkpoint_key="prior/w14b.pt"), states=rows)).encode()
         self.store.put(C.export_index_key(PC.STORED_COMPOSED, k), raw)
         if pin:
             PC.STORED[k]["index"] = hashlib.sha256(raw).hexdigest()
@@ -217,16 +231,22 @@ class Controls(Comp):
     def mirror_control(self):
         return self.mirror("control", "--out-dir", str(self.forms_mirror), "--void-prefix", "pc/void-mirror")
 
-    def plant_mirror_stored(self, change=None, values=True):
-        """The mirror's stored forms and report, with this reader's values as the report's."""
-        for name in PC.MIRROR_VALUES:
+    def plant_mirror_stored(self, change=None, offsets=None):
+        """The mirror's stored forms and report by their pins, with this reader's values as the report's; ``offsets`` move a report value."""
+        digest = "a" * 64
+        self.monkeypatch.setattr(PC, "MIRROR_DIGEST", digest)
+        hashes, values = {}, {}
+        for name in PC.MIRROR_ANCHORS:
             read = json.loads((self.forms_mirror / f"form-{name}.json").read_text())
-            stored = dict(dict(read, form=f"mono__{name}", code_digest=PC.MIRROR_DIGEST_PREFIX + "0" * 56), **(change or {}).get(name, {}))
-            self.store.put(f"{PC.MIRROR_FORMS}/form-mono__{name}.json", json.dumps(stored).encode())
-        if values:
-            self.monkeypatch.setattr(PC, "MIRROR_VALUES", {name: C.M.bleu_ci_fast(*(lambda r: (r["hypotheses"], r["references"]))(json.loads((self.forms_mirror / f"form-{name}.json").read_text())))[0] for name in PC.MIRROR_VALUES})
-        self.store.put(PC.MIRROR_REPORT, b"{}")
-        self.monkeypatch.setattr(PC, "MIRROR_REPORT_SHA_PREFIX", hashlib.sha256(b"{}").hexdigest()[:8])
+            raw = json.dumps(dict(dict(read, form=f"mono__{name}", code_digest=digest), **(change or {}).get(name, {}))).encode()
+            self.store.put(f"{PC.MIRROR_FORMS}/form-mono__{name}.json", raw)
+            hashes[name] = hashlib.sha256(raw).hexdigest()
+            values[name] = C.M.bleu_ci_fast(read["hypotheses"], read["references"])[0] + (offsets or {}).get(name, 0.)
+        self.monkeypatch.setattr(PC, "MIRROR_STORED", hashes)
+        self.monkeypatch.setattr(PC, "MIRROR_VALUES", {name: values[name] for name in ("real_monocular", "nearest_monocular", "nearest_two_view", "blank")})
+        report = json.dumps(dict(code_digest=digest, forms={name: dict(bleu=value) for name, value in values.items()})).encode()
+        self.store.put(PC.MIRROR_REPORT, report)
+        self.monkeypatch.setattr(PC, "MIRROR_REPORT_SHA", hashlib.sha256(report).hexdigest())
 
     def to_mirror_control(self):
         assert self.mirror_anchors() == 0
@@ -236,7 +256,7 @@ class Controls(Comp):
     def read_mirror(self, draws="1,2", *extra):
         return self.mirror("read", "--draws", draws, "--composed", "pc/composed", "--out-dir", str(self.forms_mirror), *extra)
 
-    def mirror_report(self, draws=(1, 2), name="report-mirror.json"):
+    def mirror_report(self, draws=(1, 2), name="report-mirror.json", parent_forms=None):
         for k in draws:
             if not self.store.exists(PC.index_key("pc/composed", k)):
                 assert self.compose(k) == 0
@@ -244,7 +264,8 @@ class Controls(Comp):
         assert self.read_mirror(",".join(str(k) for k in draws)) == 0
         assert self.main("upload", "--out-dir", str(self.forms_mirror), "--prefix", "pc/forms-mirror") == 0
         out = self.tmp_path / name
-        assert self.mirror("merge", "--draws", ",".join(str(k) for k in draws), "--composed", "pc/composed", "--prefix", "pc/forms-mirror", "--output-file", str(out)) == 0
+        beside = ("--parent-forms", parent_forms) if parent_forms else ()
+        assert self.mirror("merge", "--draws", ",".join(str(k) for k in draws), "--composed", "pc/composed", "--prefix", "pc/forms-mirror", "--output-file", str(out), *beside) == 0
         return json.loads(out.read_text())
 
     def upload(self):
@@ -265,9 +286,10 @@ class Controls(Comp):
 
 def test_the_header_states_the_reading_before_any_read():
     head = PC.__doc__
-    for text in ("Oracle at or above composition: the format reads high, not the generator's skill.", "Oracle far below composition: generated clips suit this reader better than real ones, which supports the shared-source explanation.", "Shuffling that barely lowers BLEU or margin: the reader isn't using word order.", "None of this shows human comprehension", "No label and no bar", "no target moves", "a chance pick, not best of 16", "not in the brief's forms", "An uncovered word is dropped", "estimated, not measured", "14,400 s", "The mirror is report only and never moves M1. Generated motion reading high on it is flagged on the same terms as on the parent,", "How2Sign monocular trained it", "the composed state as it stands, the very bytes the parent read", "its like on the mirror is ``nearest_monocular``", "the mirror reads three draws (1, 2, 3), not eight"):
+    for text in ("Generated against real clips is ``oracle`` minus ``covered``", "It is never oracle against composition", "The format is ``oracle`` against real signing", "the middle case", "the format reads high AND generated clips read higher still", "real word clips are MediaPipe monocular too", "selection: each generated clip was a recogniser's best of 16", "d2 decoding", "a different signer at every word", "applied to WLASL and RIT", "A large drop", "A small drop", "Seeds are not independent replicates", "A two-word clip cannot vary", "None of this shows human comprehension", "No label and no bar", "no target moves", "a chance pick, not best of 16", "An uncovered word is dropped", "estimated, not measured", "14,400 s", "The mirror is report only and never moves M1. Generated motion reading high on it is flagged on the same terms as on the parent,", "How2Sign monocular trained it", "A parent void or a parent check alert stops the job before the mirror reads", "the composed state as it stands, the very bytes the parent read", "its like on the mirror is ``nearest_monocular``", "the mirror reads three draws (1, 2, 3), not eight", "**Resuming.**", "runs/<code digest>/", "the NVIDIA L40S", "So the mirror's third draw can be left out", "shared helpers"):
         assert text in head, text
-    assert PC.READING.startswith("Oracle at or above") and "None of it shows human comprehension" in PC.READING and "never moves M1" in PC.READING
+    assert "separate two causes" not in head and "These forms separate" not in head
+    assert PC.READING.startswith("Generated against real clips is oracle minus covered") and "None of it shows human comprehension" in PC.READING and "never moves M1" in PC.READING
 
 
 def test_c20_cannot_be_named_and_no_other_instrument_or_selection_is_here():
@@ -284,10 +306,11 @@ def test_the_pins_are_the_stored_reads():
     hashes = [h for k in PC.DRAWS for h in PC.STORED[k].values()]
     assert len(set(hashes)) == 32 and all(re.fullmatch(r"[0-9a-f]{64}", h) for h in hashes)
     assert PC.STORED[1]["index"].startswith("82ea1571") and PC.STORED[8]["blank"].startswith("6a16525e")
-    assert PP.UNFITTED_SHA.startswith("f1ff9446") and PC.SEEDS == (0, 1, 2)
+    assert PP.UNFITTED_SHA.startswith("f1ff9446") and PC.SEEDS == (0, 1) and PC.REQUIRED_GPU == "NVIDIA L40S"
+    assert len(set(PC.MIRROR_STORED.values())) == 7 and set(PC.MIRROR_STORED) == set(PC.MIRROR_ANCHORS) and PC.MIRROR_REPORT_SHA.startswith("223dd372") and PC.MIRROR_DIGEST.startswith("de05576e") and all(re.fullmatch(r"[0-9a-f]{64}", h) for h in PC.MIRROR_STORED.values())
     mirror = PC.INSTRUMENTS["mirror"]
     assert mirror["sha256"] == "1a996cfc9c1917181fef849c6a9b8dde0406c34e42fd48a75f1df63fb189ca59" and mirror["checkpoint_key"] == "training-runs/back-translator-kp2d-uwb-ft-mono-v1/checkpoints/step-00009000.pt"
-    assert PC.MIRROR_VALUES == dict(real_monocular=4.715, nearest_monocular=4.783, nearest_two_view=3.702, blank=1.159) and PC.MIRROR_REPORT_SHA_PREFIX == "223dd372" and PC.MIRROR_TOLERANCE == .05
+    assert PC.MIRROR_VALUES == dict(real_monocular=4.715, nearest_monocular=4.783, nearest_two_view=3.702, blank=1.159) and PC.MIRROR_TOLERANCE == .05
 
 
 # ---- what may be read ----------------------------------------------------------------------------------------------------------------------
@@ -404,6 +427,46 @@ def test_no_pool_is_the_fallback_and_a_clip_that_cannot_be_served_gives_way():
     assert record["sign"] == "good" and real.failed == (1 if start == 0 else 0)
 
 
+@pytest.mark.parametrize("error", [RuntimeError("CUDA out of memory"), ValueError("motion shard content hash mismatch"), ValueError("fetched bytes for k do not match the manifest hash"), ValueError("right_hand: layout has no declared equivalence"), ValueError("s: no usable continuous channels"), RuntimeError("collated frames differ from the state's")])
+def test_only_an_empty_window_gives_way_and_anything_else_stops_the_draw(error):
+    def load(record, entry):
+        raise error
+    real = PC.RealClips(dict(word=[real_record("a"), real_record("b")]), 1, load)
+    with pytest.raises(type(error), match=str(error)[:12]):
+        real.of("word")
+    assert real.failed == 0
+
+
+def test_a_torch_out_of_memory_stops_the_draw():
+    import torch
+
+    def load(record, entry):
+        raise torch.cuda.OutOfMemoryError("CUDA out of memory")
+    with pytest.raises(torch.cuda.OutOfMemoryError):
+        PC.RealClips(dict(word=[real_record("a")]), 1, load).of("word")
+
+
+def test_an_empty_window_is_counted_and_gives_way():
+    def load(record, entry):
+        if record["sign"] == "a":
+            raise ValueError("a: window [1.0, 2.0] contains no frames")
+        return real_state(real_record("gamma-a"), entry)
+    real = PC.RealClips(dict(word=[real_record("a"), real_record("b")]), 1, load)
+    record, _ = real.of("word")
+    assert record["sign"] == "b" and real.failed == (1 if PC.pick_index(1, "word", 2) == 0 else 0)
+
+
+def test_too_many_picks_not_served_alerts_and_stops_with_no_index(monkeypatch, tmp_path, capsys):
+    h = Controls(monkeypatch, tmp_path)
+    monkeypatch.setattr(PC, "MAX_NOT_SERVED", .02)
+    # the planted word "fails" is two failed picks over five entries
+    with pytest.raises(SystemExit, match="picks not served"):
+        h.compose()
+    assert "ALERT draw 1: 2 picks not served" in capsys.readouterr().out and not h.store.exists(PC.index_key("pc/composed", 1))
+    monkeypatch.setattr(PC, "MAX_NOT_SERVED", .5)
+    assert h.compose() == 0
+
+
 def test_a_poisoned_pool_is_refused_before_it_is_served():
     calls = []
     real = PC.RealClips(dict(word=[real_record("x", "semlex-text-v1")]), 1, lambda r, e: calls.append(r))
@@ -431,6 +494,12 @@ def test_the_round_trip_is_d2s_codes_decoded_as_a_generation_and_refuses_before_
     decoded = load(real_record("alpha-a", "asllvd-text-v1"), "alpha")
     assert served == ["alpha-a"] and len(decoded.timestamps) == 24 and decoded.channels["right_hand"].valid.all()
     assert not np.allclose(decoded.channels["right_hand"].values, state.channels["right_hand"].values)
+    # A5's post: no gains, the head smoothed
+    from exposure_diagnostic import make_post
+    loaded, _ = build_recon_states.load_tokenizer(path.read_bytes(), "cpu")
+    smoothed = build_recon_states.decode_state(state, loaded, loaded.config.motion, make_post(None), text="alpha")
+    bare = build_recon_states.decode_state(state, loaded, loaded.config.motion, lambda x: x, text="alpha")
+    assert np.array_equal(decoded.channels["head_rotation"].values, smoothed.channels["head_rotation"].values) and not np.array_equal(decoded.channels["head_rotation"].values, bare.channels["head_rotation"].values)
     with pytest.raises(SystemExit, match="outside"):
         load(real_record("b", "semlex-text-v1"), "b")
     assert served == ["alpha-a"]
@@ -448,22 +517,20 @@ def test_a_tokenizer_of_other_bytes_refuses(monkeypatch, tmp_path):
 
 @pytest.mark.parametrize("n", [2, 3, 5, 12])
 @pytest.mark.parametrize("seed", PC.SEEDS)
-def test_an_order_is_a_permutation_never_the_identity_and_fixed_by_its_seed(n, seed):
+def test_an_order_is_a_permutation_never_the_identity_and_fixed_by_its_key(n, seed):
     for clip in range(20):
-        order = PC.word_order(n, clip, seed)
-        assert sorted(order) == list(range(n)) and order != list(range(n)) and order == PC.word_order(n, clip, seed)
+        order = PC.word_order(n, clip, seed, 3)
+        assert sorted(order) == list(range(n)) and order != list(range(n)) and order == PC.word_order(n, clip, seed, 3)
 
 
-def test_seeds_and_clips_give_other_orders_and_a_single_word_has_one():
-    assert len({tuple(PC.word_order(8, 3, s)) for s in PC.SEEDS}) == 3 and len({tuple(PC.word_order(8, c, 0)) for c in range(5)}) == 5
-    assert PC.word_order(1, 0, 0) == [0] and PC.word_order(0, 0, 0) == []
+def test_an_order_varies_with_draw_seed_and_clip_and_a_short_clip_cannot():
+    assert len({tuple(PC.word_order(8, 3, s, 1)) for s in PC.SEEDS}) == 2 and len({tuple(PC.word_order(8, c, 0, 1)) for c in range(5)}) == 5 and len({tuple(PC.word_order(8, 3, 0, k)) for k in PC.DRAWS}) == 8
+    assert {tuple(PC.word_order(2, c, s, k)) for c in range(5) for s in PC.SEEDS for k in PC.DRAWS} == {(1, 0)}
+    assert PC.word_order(1, 0, 0, 1) == [0] and PC.word_order(0, 0, 0, 1) == []
     with pytest.raises(SystemExit, match="seeds"):
-        PC.word_order(3, 0, 3)
-
-
-def test_seed_0_is_the_repos_own_shuffled_control():
-    from compositional_baseline import shuffle_order
-    assert PC.word_order(6, 4, 0) == shuffle_order(6, 4, 0)
+        PC.word_order(3, 0, 2, 1)
+    with pytest.raises(SystemExit, match="pinned draws"):
+        PC.word_order(3, 0, 0, 9)
 
 
 @pytest.mark.parametrize("order,kept,want", [([2, 0, 1], [0, 1, 2], [2, 0, 1]), ([2, 0, 1], [0, 2], [1, 0]), ([3, 1, 0, 2], [1, 3], [1, 0]), ([1, 0], [1], [0]), ([1, 0], [], [])])
@@ -514,7 +581,7 @@ def core_frames(state, start, frames):
 def test_a_shuffle_keeps_every_words_rendered_frames_and_the_length_and_a_seed_is_reproducible(seed):
     pieces = rendered_pieces()
     plan = plan_of()
-    order = PC.word_order(4, 11, seed)
+    order = PC.word_order(4, 11, seed, 1)
     base = PC.render_order(pieces, plan, [0, 1, 2, 3], "x")
     shuffled = PC.render_order(pieces, plan, order, "x")
     assert len(shuffled.timestamps) == len(base.timestamps) == plan["frames"]
@@ -553,7 +620,7 @@ def test_a_draw_is_rebuilt_byte_for_byte_and_its_coverage_counted(monkeypatch, t
     h = Controls(monkeypatch, tmp_path)
     assert h.compose() == 0
     index = h.index()
-    assert index["kind"] == "parent-controls-composed" and index["identity"] == dict(non_empty=FILLED, byte_identical=FILLED, within_tolerance=FILLED, clips=N) and index["seeds"] == [0, 1, 2]
+    assert index["kind"] == "parent-controls-composed" and index["identity"] == dict(non_empty=FILLED, byte_identical=FILLED, within_tolerance=FILLED, clips=N) and index["seeds"] == [0, 1]
     cover = index["coverage"]
     assert cover["words_selected"] == 20 and cover["words_kept"] == 16 and cover["dropped"] == dict(added_entry=2, no_clip_in_the_three_corpora=1, not_served=1)
     assert cover["clips_with_words"] == 8 and cover["clips_fully_covered"] == 4 and cover["clips_left_empty"] == 1 and cover["picks_not_served"] == 2 and cover["share_kept"] == .8
@@ -599,6 +666,27 @@ def test_the_oracle_cuts_an_annotated_clip_at_its_own_sign_and_any_other_as_a_ge
     assert h.compose() == 0
     words = h.index()["rows"]["oracle"][0]["words"]
     assert words[0]["reason"] == "annotated" and words[1]["reason"] == "all" and words[0]["word"] == "alpha"
+    # the cut is margin zero, the composition's own, on both kinds of clip
+    from signtranslator.generation.compositional import fraction_window
+    alpha, beta = (real_state(record, None) for record in (annotated["alpha"][0], annotated["beta"][0]))
+    own = fraction_window(alpha, (.4, .6), 0., reason="annotated")
+    assert (words[0]["lo"], words[0]["hi"]) == (own["lo"], own["hi"]) and (own["lo"], own["hi"]) != (lambda w: (w["lo"], w["hi"]))(fraction_window(alpha, (.4, .6), .1))
+    core = r2.sign_core("beta", beta, fractions=FRACTIONS, margin=0.)
+    assert (words[1]["lo"], words[1]["hi"]) == (core["lo"], core["hi"]) and (core["lo"], core["hi"]) != (lambda w: (w["lo"], w["hi"]))(r2.sign_core("beta", beta, fractions=FRACTIONS, margin=.1))
+
+
+def test_covered_renders_the_kept_generated_pieces_and_not_the_composition(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path)
+    assert h.compose() == 0
+    rows = h.index()["rows"]
+    row, comp = rows["covered"][3], rows["comp"][3]
+    assert [w["word"] for w in row["words"]] == ["alpha", "beta"] and [w["word"] for w in comp["words"]] == ["alpha", "you", "beta"]
+    pieces = [dict(state=load_state(h.store, f"cache/draw1/{w}.npz", next(x["clip_sha256"] for x in comp["words"] if x["word"] == w)), lo=next(x["lo"] for x in comp["words"] if x["word"] == w), hi=next(x["hi"] for x in comp["words"] if x["word"] == w)) for w in ("alpha", "beta")]
+    job = dict(words=["alpha", "beta"], weights=r2.plan_words(["alpha", "beta"], h.ctx.plan_model, h.ctx.vocab)["weights"])
+    want, _ = r2.render_form(dict(pieces=pieces, parts=parts_from_pieces(pieces)), job, predicted_seconds(h.ctx.duration, row["text"]), h.ctx.model, timing="sign-fitted", sample_id="x")
+    covered = load_state(h.store, row["state_key"], row["state_sha256"])
+    composed = load_state(h.store, comp["state_key"], comp["state_sha256"])
+    assert np.array_equal(covered.channels["right_hand"].values, want.channels["right_hand"].values) and not np.array_equal(covered.channels["right_hand"].values, composed.channels["right_hand"].values)
 
 
 def test_the_picks_differ_between_draws_where_a_pool_allows(monkeypatch, tmp_path):
@@ -617,10 +705,11 @@ def test_shuffled_and_oracle_shuffled_use_the_same_permutation_on_the_same_seeds
     for s in PC.SEEDS:
         for i in (0, 3, 6, 7, 8):
             words = list(SENTENCES[i])
-            order = PC.word_order(len(words), i, s)
+            order = PC.word_order(len(words), i, s, 1)
             assert rows[f"shuffled_s{s}"][i]["order"] == order and [w["word"] for w in rows[f"shuffled_s{s}"][i]["words"]] == [words[k] for k in order]
             kept = [p for p, w in enumerate(words) if w not in ("you", "sem", "fails")]
-            assert rows[f"oracle_shuffled_s{s}"][i]["order"] == PC.restricted(order, kept)
+            assert rows[f"oracle_shuffled_s{s}"][i]["order"] == PC.restricted(order, kept) == rows[f"covered_shuffled_s{s}"][i]["order"]
+            assert [w["word"] for w in rows[f"covered_shuffled_s{s}"][i]["words"]] == [words[p] for p in order if p in kept]
             assert [w["word"] for w in rows[f"oracle_shuffled_s{s}"][i]["words"]] == [words[p] for p in order if p in kept]
 
 
@@ -648,7 +737,7 @@ def test_a_sentence_left_with_no_word_is_its_blank_as_compositions_fallback(monk
     h = Controls(monkeypatch, tmp_path)
     assert h.compose() == 0
     rows = h.index()["rows"]
-    for kind in ("oracle", "covered", "oracle_shuffled_s0"):
+    for kind in ("oracle", "covered", "oracle_shuffled_s0", "covered_shuffled_s1"):
         row = rows[kind][ONLY_ADDED]
         assert row["empty"] and row["state_key"] is None and row["words"] == [] and row["dropped"] == [dict(word="you", reason="added_entry")]
     assert not rows["shuffled_s0"][ONLY_ADDED]["empty"] and rows["comp"][EMPTY]["empty"] and rows["oracle"][EMPTY]["dropped"] == []
@@ -923,8 +1012,12 @@ def test_the_report_has_its_planted_values(monkeypatch, tmp_path):
     for s in PC.SEEDS:
         assert abs(report["forms"][f"shuffled_s{s}"]["margin"]["mean"] - (MARGIN[f"shuffled_s{s}"] - STILL_MARGIN) * FILLED / N) < 1e-4
     group = report["groups"]["shuffled"]
-    assert group["seeds"] == [0, 1, 2] and abs(group["margin"]["mean"] - (.56 - STILL_MARGIN) * FILLED / N) < 1e-4 and group["margin"]["draws"] == 2
-    assert abs(report["groups"]["oracle_shuffled"]["margin"]["mean"] - (.26 - STILL_MARGIN) * ORACLE_FILLED / N) < 1e-4
+    assert group["seeds"] == [0, 1] and abs(group["margin"]["mean"] - (.555 - STILL_MARGIN) * FILLED / N) < 1e-4 and group["margin"]["draws"] == 2
+    assert abs(report["groups"]["oracle_shuffled"]["margin"]["mean"] - (.255 - STILL_MARGIN) * ORACLE_FILLED / N) < 1e-4
+    assert abs(report["groups"]["covered_shuffled"]["margin"]["mean"] - (.43 - STILL_MARGIN) * ORACLE_FILLED / N) < 1e-4
+    assert report["stage"] == dict(planned_draws=[1, 2], draws=[1, 2], stop_reason="not_recorded", elapsed_seconds=None) and report["own_path_anchors"] == dict(real="real_two_view", nearest="nearest_two_view", still="still_two_view", blank="blank") and report["parent_on_mirror_draws"] is None
+    assert report["forms"]["oracle"]["share_of_two_view_real"]["mean"] == pytest.approx(report["forms"]["oracle"]["share_of_real"]["mean"], abs=1e-3)
+    assert report["forms"]["oracle"]["still_raw"]["mean"] > 0 and report["oracle_coverage"]["1"]["ci95"]["share_kept"][0] <= .8 <= report["oracle_coverage"]["1"]["ci95"]["share_kept"][1]
     assert report["oracle_coverage"]["1"]["words_kept"] == 16 and report["identity"]["1"]["byte_identical"] == FILLED and report["stored"]["digest"] == "b" * 64 and report["cost_estimate"]["measured"] is False
     assert report["disclosures"]["humans"].startswith("None of this shows human comprehension") and report["reading"] == PC.READING
 
@@ -939,9 +1032,9 @@ def test_the_paired_differences_are_on_the_same_draws_and_clips(monkeypatch, tmp
     row = paired["oracle_minus_composition"]["margin"]
     assert row["per_draw"] == pytest.approx(list(oracle - comp), abs=1e-4) and row["draws"] == 2 and row["clips_ci95"][0] <= row["mean"] <= row["clips_ci95"][1]
     assert paired["oracle_minus_covered"]["margin"]["mean"] == pytest.approx(oracle - covered, abs=1e-4)
-    shuffled = (.56 - STILL_MARGIN) * FILLED / N
+    shuffled = (.555 - STILL_MARGIN) * FILLED / N
     assert paired["shuffled_minus_composition"]["margin"]["mean"] == pytest.approx(shuffled - comp.mean(), abs=1e-4)
-    oracle_shuffled = (.26 - STILL_MARGIN) * ORACLE_FILLED / N
+    oracle_shuffled = (.255 - STILL_MARGIN) * ORACLE_FILLED / N
     assert paired["oracle_shuffled_minus_oracle"]["margin"]["mean"] == pytest.approx(oracle_shuffled - oracle, abs=1e-4)
     assert paired["covered_minus_composition"]["margin"]["mean"] == pytest.approx(covered - comp.mean(), abs=1e-4)
     bleu = paired["oracle_minus_composition"]["bleu"]
@@ -951,9 +1044,90 @@ def test_the_paired_differences_are_on_the_same_draws_and_clips(monkeypatch, tmp
     assert set(paired["oracle_minus_composition"]["by_composition_coverage"]) == {"0.0-0.25", "0.25-0.5", "0.5-inf"}
 
 
+def test_the_moved_rows_take_only_clips_whose_word_sequence_changed(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path)
+    report = h.report()
+    rows = h.index()["rows"]
+    moved = report["paired"]["moved"]
+    assert set(moved) == {"shuffled_minus_composition", "oracle_shuffled_minus_oracle", "covered_shuffled_minus_covered"}
+    # every moved clip has signing on both sides, so the planted differences come through whole, where the all-clips row is diluted by empty clips
+    assert moved["covered_shuffled_minus_covered"]["margin"]["mean"] == pytest.approx(.43 - .5, abs=1e-4) and moved["oracle_shuffled_minus_oracle"]["margin"]["mean"] == pytest.approx(.255 - .3, abs=1e-4)
+    assert report["paired"]["covered_shuffled_minus_covered"]["margin"]["mean"] == pytest.approx((.43 - .5) * ORACLE_FILLED / N, abs=1e-4)
+    # a clip of one word, or one whose order left its word sequence as it was, is not moved
+    mask = PC.moved_mask(rows["oracle_shuffled_s0"])
+    assert not mask[ONLY_ADDED] and not mask[EMPTY] and not mask[4] and not mask[5] and mask[0]
+    assert PC.moved_mask([dict(words=[dict(word="a"), dict(word="a")], order=[1, 0]), dict(words=[dict(word="b"), dict(word="a")], order=[1, 0]), dict(words=[dict(word="a")], order=[0])]).tolist() == [False, True, False]
+    assert moved["covered_shuffled_minus_covered"]["moved_clips_per_form"] == pytest.approx(np.mean([PC.moved_mask(h.index(k)["rows"][f"covered_shuffled_s{s}"]).sum() for k in (1, 2) for s in PC.SEEDS]), abs=.1)
+
+
+def test_each_form_against_real_is_on_the_instruments_own_path(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path)
+    report = h.report()
+    rows = report["paired"]["form_minus_real"]
+    assert set(rows) == {"composition", "oracle", "covered", "shuffled", "oracle_shuffled", "covered_shuffled"}
+    assert rows["oracle"]["margin"]["mean"] == pytest.approx((MARGIN["oracle"] - STILL_MARGIN) * ORACLE_FILLED / N - .4, abs=1e-4)
+    assert rows["oracle"]["bleu"]["per_draw"][0] == pytest.approx(report["forms"]["oracle"]["bleu"]["per_draw"][0] - report["anchors"]["real_two_view"]["bleu"], abs=1e-2) and set(rows["oracle"]) == {"margin", "bleu"}
+    mirror = h.mirror_report()["paired"]["form_minus_real"]["oracle"]["margin"]["mean"]
+    assert mirror == pytest.approx((MARGIN["oracle"] - STILL_MARGIN) * ORACLE_FILLED / N - (.8 - .15), abs=1e-4)
+
+
+def test_a_shuffled_stills_effect_is_reported(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path)
+    effect = h.report()["paired"]["still_effect"]
+    assert set(effect) == {"shuffled_against_composition", "oracle_shuffled_against_oracle", "covered_shuffled_against_covered"}
+    # planted: every still alike, so the raw difference is zero and the margin over the partner's still is the margin
+    row = effect["covered_shuffled_against_covered"]
+    assert row["still_raw_difference"]["mean"] == pytest.approx(0., abs=1e-6) and row["margin_over_partners_still"]["mean"] == pytest.approx((.43 - STILL_MARGIN) * ORACLE_FILLED / N, abs=1e-4)
+    one = dict(margin=np.array([.5, .5]), still_raw=np.array([.3, .1]), stats=np.stack([M_row(0)] * 2), real=np.ones(2), real_stats=np.stack([M_row(1)] * 2), blank_stats=np.stack([M_row(0)] * 2), likelihood_top=np.ones(2), likelihood_bottom=np.ones(2))
+    other = dict(one, still_raw=np.array([.1, .1]))
+    moved = PC.still_effect([{1: one}], [{1: other}], np.array([[0, 1]]))
+    assert moved["still_raw_difference"]["mean"] == pytest.approx(.1) and moved["margin_over_partners_still"]["mean"] == pytest.approx(.6)
+
+
+def test_the_clip_subsets_carry_real_nearest_blank_and_the_gap_share(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path)
+    block = h.report()["forms"]["oracle"]["by_clip_subset"]
+    assert block["in_v1_training"]["clips"] == 4 and block["outside_v1_training"]["clips"] == N - 4 and block["in_selection_sample"]["clips"] == 2 and block["outside_training_and_selection"]["clips"] == N - 6
+    row = block["outside_training_and_selection"]
+    assert {"margin", "share_of_real", "bleu", "real_bleu", "nearest_bleu", "blank_bleu", "bleu_gap_share"} <= set(row)
+    assert row["bleu_gap_share"] == pytest.approx((row["bleu"] - row["blank_bleu"]) / (row["real_bleu"] - row["blank_bleu"]), abs=1e-2)
+
+
+def test_oracle_rows_split_by_each_clips_main_pick_corpus(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path)
+    rows = h.report()["forms"]["oracle"]["by_pick_corpus"]
+    assert set(rows) <= set(PC.H.WORD_CORPORA) and sum(v["clips_per_draw"] for v in rows.values()) == ORACLE_FILLED
+    assert all(v["oracle_margin"] == pytest.approx(MARGIN["oracle"] - STILL_MARGIN, abs=1e-4) and v["covered_margin"] == pytest.approx(MARGIN["covered"] - STILL_MARGIN, abs=1e-4) for v in rows.values())
+
+
+def test_a_composed_clip_with_a_gap_raises_an_alert(monkeypatch, tmp_path):
+    assert PC.validity_alerts("x", {1: dict(valid_frame_share=[1., 0.], empty=[False, True])}) == []
+    alert = PC.validity_alerts("x", {1: dict(valid_frame_share=[.9, 0.], empty=[False, True])})
+    assert "draw 1 x: 1 clips" in alert[0] and "0.9" in alert[0]
+    h = Controls(monkeypatch, tmp_path, compose_draws=(1,))
+    h.to_read((1,))
+    path = h.forms / "form-d1_oracle.json"
+    read = json.loads(path.read_text())
+    read["valid_frame_share"][0] = .5
+    path.write_text(json.dumps(read))
+    assert h.upload() == 0
+    report = h.merge("1")
+    assert any("oracle" in a and "valid_frame_share" in a for a in report["alerts"])
+    assert h.main("check", "--report", str(tmp_path / "report.json")) == 3
+
+
+def test_the_stage_is_recorded_in_the_report(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path, compose_draws=(1,))
+    h.to_read((1,))
+    assert h.upload() == 0
+    out = tmp_path / "staged.json"
+    assert h.main("merge", "--draws", "1", "--composed", "pc/composed", "--prefix", "pc/forms", "--output-file", str(out), "--planned-draws", "1,2,3", "--stop-reason", "clock_rule", "--elapsed-seconds", "123") == 0
+    assert json.loads(out.read_text())["stage"] == dict(planned_draws=[1, 2, 3], draws=[1], stop_reason="clock_rule", elapsed_seconds=123)
+
+
 def test_a_paired_difference_of_a_form_with_itself_is_zero():
     idx = np.random.default_rng(0).integers(0, 4, (50, 4))
-    arrays = {1: dict(margin=np.array([.1, .2, .3, .4]), real=np.array([1., 1., 1., 1.]), stats=np.stack([M_row(i) for i in range(4)]), blank_stats=np.stack([M_row(0)] * 4), real_stats=np.stack([M_row(3)] * 4), likelihood_top=np.ones(4), likelihood_bottom=np.ones(4), coverage=np.array([.1, .3, .6, .7]), non_empty=np.ones(4, bool))}
+    arrays = {1: dict(margin=np.array([.1, .2, .3, .4]), still_raw=np.array([.1, .1, .2, .2]), real=np.array([1., 1., 1., 1.]), stats=np.stack([M_row(i) for i in range(4)]), blank_stats=np.stack([M_row(0)] * 4), real_stats=np.stack([M_row(3)] * 4), likelihood_top=np.ones(4), likelihood_bottom=np.ones(4), coverage=np.array([.1, .3, .6, .7]), non_empty=np.ones(4, bool))}
     row = PC.paired_rows([arrays], [arrays], idx, arrays)
     assert row["margin"]["per_draw"] == [0.] and row["bleu"]["per_draw"] == [0.] and row["margin"]["clips_ci95"] == [0., 0.]
     assert row["by_composition_coverage"]["0.5-inf"]["clips_per_draw"] == 2. and row["by_composition_coverage"]["0.5-inf"]["margin"] == 0.
@@ -1077,17 +1251,70 @@ def test_no_form_and_an_empty_draw_list_refuse_the_merge(monkeypatch, tmp_path):
         h.main("merge", "--draws", ",", "--composed", "pc/composed", "--prefix", "pc/forms", "--output-file", str(tmp_path / "x.json"))
 
 
-def test_a_report_is_write_once(monkeypatch, tmp_path):
+def test_a_merge_and_a_put_report_accept_identical_bytes_and_refuse_others(monkeypatch, tmp_path):
     h = Controls(monkeypatch, tmp_path)
     h.report()
-    with pytest.raises(SystemExit, match="write-once"):
-        h.merge()
     path = tmp_path / "report.json"
+    first = path.read_bytes()
+    h.merge()
+    assert path.read_bytes() == first
     assert h.main("put-report", "--file", str(path), "--key", "pc/report.json") == 0
-    with pytest.raises(SystemExit, match="write-once"):
-        h.main("put-report", "--file", str(path), "--key", "pc/report.json")
+    assert h.main("put-report", "--file", str(path), "--key", "pc/report.json") == 0 and h.store.get("pc/report.json") == first
     with pytest.raises(SystemExit, match="finished"):
         h.main("preflight", "--out-dir", str(tmp_path / "w3"), "--final-key", "pc/report.json", "--void-prefix", "pc/void")
+    other = tmp_path / "other.json"
+    other.write_bytes(first + b" ")
+    with pytest.raises(SystemExit, match="holds other bytes"):
+        h.main("put-report", "--file", str(other), "--key", "pc/report.json")
+    path.write_bytes(first + b" ")
+    with pytest.raises(SystemExit, match="holds other bytes"):
+        h.merge()
+    assert h.store.get("pc/report.json") == first
+
+
+def test_a_stage_is_done_only_when_its_key_holds_its_local_bytes(monkeypatch, tmp_path, capsys):
+    h = Controls(monkeypatch, tmp_path, compose_draws=())
+    path = tmp_path / "r.json"
+    state = lambda: h.main("stage-state", "--key", "pc/r.json", "--file", str(path))      # noqa: E731
+    assert state() == 5
+    path.write_bytes(b"{}")
+    assert state() == 5
+    h.store.put("pc/r.json", b"{}")
+    assert state() == 0 and '"state": "done"' in capsys.readouterr().out
+    path.write_bytes(b"[]")
+    with pytest.raises(SystemExit, match="finished elsewhere"):
+        state()
+    path.unlink()
+    with pytest.raises(SystemExit, match="finished elsewhere"):
+        state()
+
+
+def test_a_rerun_of_new_code_writes_under_its_digest_while_the_void_stands(monkeypatch, tmp_path, capsys):
+    h = Controls(monkeypatch, tmp_path, compose_draws=(1,))
+    assert h.compose() == 0
+    h.plant_stored_forms(1, dict(comp=dict(hypotheses=["other"] * N)))
+    h.to_control()
+    assert h.comp_check(1) == 3
+    out = capsys.readouterr().out
+    assert "this code never reads again" in out and "RERUN_CAUSE" in out and "runs/<code digest>/" in out
+    with pytest.raises(SystemExit, match="this code's read is void"):
+        h.main("preflight", "--out-dir", str(tmp_path / "r0"), "--final-key", "pc/report.json", "--void-prefix", "pc/void")
+    new = "d" * 64
+    monkeypatch.setattr(PC, "code_digest", lambda: new)
+    # the old prefix refuses new code, and that was the dead end
+    with pytest.raises(SystemExit, match="written once"):
+        h.compose(1)
+    with pytest.raises(SystemExit, match="give --rerun-cause"):
+        h.main("preflight", "--out-dir", str(tmp_path / "r1"), "--final-key", f"pc/runs/{new}/report.json", "--void-prefix", "pc/void")
+    assert h.main("preflight", "--out-dir", str(tmp_path / "r2"), "--final-key", f"pc/runs/{new}/report.json", "--void-prefix", "pc/void", "--rerun-cause", "the cause") == 0
+    assert json.loads((tmp_path / "r2" / "forms" / "rerun.json").read_text())["cause"] == "the cause"
+    assert h.main("compose", "--draw", "1", "--clips", str(N), "--work", str(tmp_path / "work"), "--prefix", f"pc/runs/{new}/composed", "--model-file", "unused") == 0
+
+
+def test_the_digest_command_prints_the_digest(monkeypatch, tmp_path, capsys):
+    h = Controls(monkeypatch, tmp_path, compose_draws=())
+    capsys.readouterr()
+    assert h.main("digest") == 0 and capsys.readouterr().out.strip() == "c" * 64
 
 
 def test_a_check_passes_a_clean_report_and_refuses_broken_plumbing(monkeypatch, tmp_path, capsys):
@@ -1118,12 +1345,19 @@ def test_the_inputs_step_checks_every_pin_and_prints_no_score(monkeypatch, tmp_p
     monkeypatch.setattr(C, "MODEL_SHA", model["sha256"])
     monkeypatch.setattr(fit, "fit_model", lambda *a, **k: (model, None))
     monkeypatch.setattr(fit.agc, "_store", lambda spec: None)
+    checked = []
+    monkeypatch.setattr(PC, "check_decoder", lambda store, key: checked.append(key) or dict(checkpoint_key=key))
     file = tmp_path / "w-m" / "model.json"
     capsys.readouterr()
     assert h.main("inputs", "--model-file", str(file)) == 0
     out = capsys.readouterr().out
     assert file.exists() and "bleu" not in out and "hypotheses" not in out and "margin" not in out
-    monkeypatch.setattr(PC, "MIRROR_REPORT_SHA_PREFIX", "00000000")
+    assert checked == ["prior/w14b.pt"]
+    with pytest.raises(SystemExit, match="not NVIDIA L40S"):
+        h.main("inputs", "--model-file", str(file), "--expect-gpu", "NVIDIA_L40S")
+    monkeypatch.setattr(P, "environment", lambda: dict(gpu="NVIDIA L40S"))
+    assert h.main("inputs", "--model-file", str(file), "--expect-gpu", "NVIDIA_L40S") == 0
+    monkeypatch.setattr(PC, "MIRROR_REPORT_SHA", "0" * 64)
     with pytest.raises(SystemExit, match="SHA-256"):
         h.main("inputs", "--model-file", str(file))
     h.plant_mirror_stored(dict(blank=dict(code_digest="9" * 64)))
@@ -1167,8 +1401,46 @@ def test_a_stored_form_of_other_clips_refuses_the_merge(monkeypatch, tmp_path):
         h.merge()
 
 
+def test_the_cache_priors_tokenizer_must_be_this_d2(monkeypatch, tmp_path):
+    import torch
+    from signtranslator.data.text_motion_dataset import DirectoryStore
+    store = DirectoryStore(tmp_path / "s")
+    tokenizer = tiny_tokenizer()
+    weights = {k: v.clone() for k, v in tokenizer.state_dict().items()}
+
+    def put(key, payload):
+        path = tmp_path / "x.pt"
+        torch.save(payload, path)
+        store.put(key, path.read_bytes())
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    monkeypatch.setattr(L, "TOKENIZER_SHA", put(L.TOKENIZER, dict(ema=weights, model={})))
+    put("p.pt", dict(tokenizer_key=L.TOKENIZER, tokenizer_state=weights))
+    assert PC.check_decoder(store, "p.pt")["same_weights"] is True
+    put("p.pt", dict(tokenizer_state=weights))
+    assert PC.check_decoder(store, "p.pt")["tokenizer_key"] is None
+    put("p.pt", dict(tokenizer_key="training-runs/other.pt", tokenizer_state=weights))
+    with pytest.raises(SystemExit, match="decoded by another"):
+        PC.check_decoder(store, "p.pt")
+    changed = dict(weights)
+    name = next(iter(changed))
+    changed[name] = changed[name] + 1
+    put("p.pt", dict(tokenizer_key=L.TOKENIZER, tokenizer_state=changed))
+    with pytest.raises(SystemExit, match="decoded by another"):
+        PC.check_decoder(store, "p.pt")
+    put("p.pt", dict(tokenizer_key=L.TOKENIZER))
+    with pytest.raises(SystemExit, match="decoded by another"):
+        PC.check_decoder(store, "p.pt")
+
+
+def test_the_gpu_check_takes_the_stored_forms_type(monkeypatch):
+    monkeypatch.setattr(P, "environment", lambda: dict(gpu="NVIDIA RTX 6000 Ada Generation"))
+    with pytest.raises(SystemExit, match="not NVIDIA L40S"):
+        PC.check_gpu("NVIDIA_L40S")
+    PC.check_gpu("NVIDIA_RTX_6000_Ada_Generation")
+    PC.check_gpu(None)
+
+
 def test_the_digest_names_this_job_and_composition_job():
-    PC.code_digest.cache_clear() if hasattr(PC.code_digest, "cache_clear") else None
     from signtranslator.eval import provenance
     assert PC.code_digest() == provenance.code_digest(extra_files=(PC.JOB_FILE, C.JOB_FILE)) and PC.PROBE == "parent-controls" and C.PROBE == "parent-comp"
 
@@ -1180,18 +1452,23 @@ def test_composition_forms_keep_their_own_kind():
 
 # ---- the job -------------------------------------------------------------------------------------------------------------------------------
 
-def run_job(tmp_path, fail_when=None, code=7, **env):
+def run_job(tmp_path, fail_when=None, code=7, stage_zero=None, slow=False, **env):
     bin_dir = tmp_path / "fake-bin"
-    bin_dir.mkdir()
+    bin_dir.mkdir(exist_ok=True)
     log = tmp_path / "calls.log"
+    log.unlink(missing_ok=True)
     pattern = "*" + "*".join(f'"{x}"' for x in fail_when.split("*")) + "*" if fail_when else ""
     match = f'case "$*" in {pattern}) echo "planted failure" >&2; exit {code};; esac' if fail_when else ""
-    (bin_dir / "python").write_text(f'#!/bin/bash\necho "$*" >> {log}\n{match}\necho "ran $1 $2"\nexit 0\n')
+    zero = f'case "$*" in *"{stage_zero}"*) exit 0;; esac' if stage_zero else ""
+    sleep = f'case "$*" in *"read --draws"*"--resume"*) echo $$ >> {tmp_path / "pids"}; exec sleep 60;; esac' if slow else ""
+    (bin_dir / "python").write_text(f'#!/bin/bash\necho "$*" >> {log}\n{match}\n{sleep}\ncase "$2" in digest) echo abc123def; exit 0;; stage-state) {zero}\n exit 5;; esac\necho "ran $1 $2"\nexit 0\n')
     (bin_dir / "uv").write_text("#!/bin/bash\nexit 0\n")
     (bin_dir / "timeout").write_text(f'#!/bin/bash\necho "timeout $*" >> {tmp_path / "timeouts.log"}\nshift 3\nexec "$@"\n')
     for name in ("python", "uv", "timeout"):
         (bin_dir / name).chmod((bin_dir / name).stat().st_mode | stat.S_IEXEC)
     environment = dict(PATH=f"{bin_dir}:/usr/bin:/bin", HOME=str(tmp_path), VENV_BIN=str(bin_dir), R2ENV=str(tmp_path / "none"), ST_REPO=str(tmp_path), WORK=str(tmp_path / "work"), **env)
+    if slow:
+        return subprocess.Popen(["bash", str(JOB)], env=environment, stdout=subprocess.PIPE, text=True), log
     done = subprocess.run(["bash", str(JOB)], env=environment, capture_output=True, text=True, timeout=60)
     return done, log.read_text() if log.exists() else ""
 
@@ -1217,20 +1494,22 @@ def test_the_job_smokes_composes_controls_then_reads_the_parent_then_the_mirror(
     result, calls = run_job(tmp_path)
     assert result.returncode == 0 and done_line(result) == 0
     got = commands(calls)
-    assert got[:18] == ["inputs", "compose", *SMOKE_STEPS, *SMOKE_STEPS, "preflight", "preflight"]
+    assert got[:21] == ["digest", "inputs", "compose", *SMOKE_STEPS, *SMOKE_STEPS, "stage-state", "stage-state", "preflight", "preflight"]
     assert got.count("compose") == 9 and got.count("comp-check") == 1 and got[-5:] == ["upload", "merge", "put-report", "check", "upload-log"]
     lines = calls.splitlines()
     assert all(line.startswith("scripts/parent_controls.py ") for line in lines)
-    assert "--clips 5" in lines[1] and "--smoke-train 5" in lines[2] and "smoke" in lines[1]
+    assert "--expect-gpu NVIDIA_L40S" in lines[1] and "--clips 5" in lines[2] and "--smoke-train 5" in lines[3] and "smoke" in lines[2]
     assert draws_read(calls, "parent") == list(PC.DRAWS) and draws_read(calls, "mirror") == [1, 2, 3]
     merges = [x for x in lines if x.split()[1] == "merge"]
-    assert "--draws 1,2,3,4,5,6,7,8 --instrument parent" in merges[-2] and "--draws 1,2,3 --instrument mirror" in merges[-1] and "--prefix acquisition/2026-10-17-v1/youtube-asl-v1/round20/parent-controls/forms-mirror" in merges[-1]
+    assert "--draws 1,2,3,4,5,6,7,8 --instrument parent --planned-draws 1,2,3,4,5,6,7,8 --stop-reason all_planned" in merges[-2] and "--draws 1,2,3 --instrument mirror --planned-draws 1,2,3 --stop-reason all_planned" in merges[-1] and "--prefix acquisition/2026-10-17-v1/youtube-asl-v1/round20/parent-controls/forms-mirror" in merges[-1] and "--parent-forms acquisition/2026-10-17-v1/youtube-asl-v1/round20/parent-controls/forms " in merges[-1]
+    assert "--parent-forms" not in merges[-2]
     puts = [x for x in lines if x.split()[1] == "put-report"]
     assert "round20/parent-controls/report.json" in puts[-2] and "round20/parent-controls/report-mirror.json" in puts[-1]
     first_mirror = next(i for i, x in enumerate(lines) if "--instrument mirror" in x and "work/d20" in x)
     last_parent = max(i for i, x in enumerate(lines) if "--instrument parent" in x and "work/d20" in x)
     assert last_parent < first_mirror and next(i for i, x in enumerate(lines) if x.split()[1] == "comp-check") < next(i for i, x in enumerate(lines) if "--instrument parent" in x and "--resume" in x and "--draws" in x)
-    assert (tmp_path / "timeouts.log").read_text().count("-k 60 5400 python scripts/parent_controls.py compose") == 9
+    timeouts = (tmp_path / "timeouts.log").read_text()
+    assert timeouts.count("-k 60 5400 python scripts/parent_controls.py compose") == 9 and timeouts.count("-k 60 3600 python scripts/parent_controls.py read --draws") == 11
 
 
 def test_the_smoke_only_mode_stops_before_d20(tmp_path):
@@ -1245,26 +1524,156 @@ def test_fewer_draws_named_are_merged_as_named(tmp_path):
     assert "--draws 2,4,6,8 " in merges[-2] and "--draws 2,4 " in merges[-1] and sum(x.split()[1] == "compose" for x in calls.splitlines()) == 5
 
 
-@pytest.mark.parametrize("procs,parent,mirror", [("1", [1, 2, 3, 4], [1, 2]), ("2", [1, 2, 3, 4, 5], [1, 2, 3])])
-def test_the_clock_rule_stops_past_each_minimum_and_merges_what_stands(tmp_path, procs, parent, mirror):
+def test_mirror_draws_outside_the_draws_stop_the_job_before_anything_runs(tmp_path):
+    result, calls = run_job(tmp_path, DRAWS="1 2 3 4", MIRROR_DRAWS="1 5")
+    assert result.returncode == 1 and "MIRROR_DRAWS holds draw 5" in result.stdout and [x.split()[1] for x in calls.splitlines()] == ["upload", "upload-log"] and "--partial" in calls
+
+
+@pytest.mark.parametrize("procs", ["1", "2"])
+def test_the_clock_rule_counts_draws_started_for_each_instrument_and_the_mirrors_can_act(tmp_path, procs):
     result, calls = run_job(tmp_path, PARENT_BUDGET_SECONDS="-1", BUDGET_SECONDS="-1", READ_PROCS=procs)
-    assert result.returncode == 0 and "the clock rule starts no more parent draws" in result.stdout
-    assert draws_read(calls, "parent") == parent and draws_read(calls, "mirror") == mirror
+    assert result.returncode == 0 and "the clock rule starts no more parent draws" in result.stdout and "the clock rule starts no more mirror draws" in result.stdout
+    assert draws_read(calls, "parent") == [1, 2, 3, 4] and draws_read(calls, "mirror") == [1, 2]
     merges = [x for x in calls.splitlines() if x.split()[1] == "merge"]
-    assert f"--draws {','.join(map(str, parent))} " in merges[-2] and f"--draws {','.join(map(str, mirror))} " in merges[-1]
+    assert "--draws 1,2,3,4 --instrument parent --planned-draws 1,2,3,4,5,6,7,8 --stop-reason clock_rule --elapsed-seconds" in merges[-2] and "--draws 1,2 --instrument mirror --planned-draws 1,2,3 --stop-reason clock_rule" in merges[-1]
 
 
-@pytest.mark.parametrize("fail,status,word", [("inputs", 1, "pins do not hold"), ("--clips 5", 2, "smoke compose failed"), ("preflight", 1, "preflight refused"), ("--draw 3 --work", 1, "a compose failed"), ("--forms control --instrument parent --resume", 1, "read of the anchors"), ("--forms comp-check*--resume", 1, "read of the stored composition"), ("--draws 5 --instrument parent*--resume", 1, "read of parent draw 5"), ("put-report*parent-controls/report.json", 1, "final report"), ("--forms control --instrument mirror --resume", 1, "mirror's anchors"), ("--draws 2 --instrument mirror*--resume", 1, "read of mirror draw 2"), ("put-report*d20/report-mirror.json", 1, "mirror's final report")])
+def test_the_mirror_reads_only_draws_the_parent_read(tmp_path):
+    result, calls = run_job(tmp_path, PARENT_BUDGET_SECONDS="-1", MIRROR_DRAWS="3 7 8")
+    assert result.returncode == 0 and draws_read(calls, "parent") == [1, 2, 3, 4] and draws_read(calls, "mirror") == [3]
+
+
+@pytest.mark.parametrize("fail,status,word", [("inputs", 1, "pins do not hold"), ("--clips 5", 2, "smoke compose failed"), ("preflight", 1, "preflight refused"), ("--draw 3 --work", 1, "a compose failed"), ("--forms control --instrument parent --resume", 1, "read of the anchors"), ("--forms comp-check*--resume", 1, "read of the stored composition"), ("--draws 5 --instrument parent*--resume", 1, "read of parent draw 5"), ("put-report*d20/report.json", 1, "final report"), ("--forms control --instrument mirror --resume", 1, "mirror's anchors"), ("--draws 2 --instrument mirror*--resume", 1, "read of mirror draw 2"), ("put-report*d20/report-mirror.json", 1, "mirror's final report")])
 def test_a_failing_step_stops_the_job_with_its_status(tmp_path, fail, status, word):
     result, calls = run_job(tmp_path, fail_when=fail)
     assert result.returncode == status and done_line(result) == status and word in result.stdout and "upload --partial" in calls
 
 
-@pytest.mark.parametrize("fail,word,mirror", [("control --instrument parent --out-dir*work/d20/forms", "the control failed", False), ("comp-check --draw 1 --out-dir*work/d20/forms", "not reproduced", False), ("control --instrument mirror --out-dir*work/d20/forms-mirror", "the mirror's control failed", True)])
+@pytest.mark.parametrize("procs", ["1", "2"])
+@pytest.mark.parametrize("fail,word", [("--draws 8 --instrument parent*--resume", "read of parent draw 8"), ("--draws 3 --instrument mirror*--resume", "read of mirror draw 3")])
+def test_the_last_read_to_finish_failing_fails_the_job(tmp_path, procs, fail, word):
+    result, calls = run_job(tmp_path, fail_when=fail, READ_PROCS=procs)
+    assert result.returncode == 1 and done_line(result) == 1 and word in result.stdout
+    instrument = "parent" if "parent" in fail else "mirror"
+    assert not [x for x in calls.splitlines() if x.split()[1] == "merge" and f"--instrument {instrument}" in x and "work/d20" in x]
+
+
+def test_no_new_draw_starts_after_a_read_fails(tmp_path):
+    result, calls = run_job(tmp_path, fail_when="--draws 2 --instrument parent*--resume", READ_PROCS="1")
+    assert result.returncode == 1 and draws_read(calls, "parent") == [1, 2] and not draws_read(calls, "mirror")
+    result, calls = run_job(tmp_path, fail_when="--draws 2 --instrument parent*--resume", READ_PROCS="2")
+    assert result.returncode == 1 and draws_read(calls, "parent")[-1] <= 4 and not draws_read(calls, "mirror")
+
+
+@pytest.mark.parametrize("fail,word,mirror", [("control --instrument parent --out-dir*work/d20/forms", "the control failed", False), ("comp-check --draw 1 --out-dir*work/d20/forms", "not reproduced", False), ("control --instrument mirror --out-dir*work/d20/mirror/forms", "the mirror's control failed", True)])
 def test_a_void_stops_with_3_and_reads_no_further_draw(tmp_path, fail, word, mirror):
     result, calls = run_job(tmp_path, fail_when=fail, code=3)
-    assert result.returncode == 3 and done_line(result) == 3 and "do not retry" in result.stdout and word in result.stdout
+    assert result.returncode == 3 and done_line(result) == 3 and "do not retry this code" in result.stdout and "RERUN_CAUSE" in result.stdout and word in result.stdout
     assert not draws_read(calls, "mirror") and bool(draws_read(calls, "parent")) is mirror
+
+
+def test_a_parent_check_alert_stops_the_mirror_and_a_rerun_stops_there_again_reading_nothing(tmp_path):
+    fail = "check --report*d20/report.json"
+    result, calls = run_job(tmp_path, fail_when=fail, code=3)
+    assert result.returncode == 1 and "the mirror does not read" in result.stdout and draws_read(calls, "parent") == list(PC.DRAWS) and not draws_read(calls, "mirror") and "--instrument mirror --resume" not in calls
+    result, calls = run_job(tmp_path, fail_when=fail, code=3, stage_zero="d20/report.json")
+    assert result.returncode == 1 and "the mirror does not read" in result.stdout
+    got = commands(calls)
+    assert "merge" not in got and "put-report" not in got and "read" not in got and "compose" in got and "--clips 5" not in calls and "--final-key" in calls and "report-mirror.json" in calls
+    assert not [x for x in calls.splitlines() if x.split()[1] == "preflight" and "--final-key acquisition/2026-10-17-v1/youtube-asl-v1/round20/parent-controls/report.json" in x]
+
+
+def test_a_mirror_out_of_memory_resumes_on_the_mirror_alone(tmp_path):
+    result, calls = run_job(tmp_path, fail_when="--draws 2 --instrument mirror*--resume")
+    assert result.returncode == 1 and draws_read(calls, "parent") == list(PC.DRAWS) and (tmp_path / "work/d20/stage-parent.txt").exists() and not (tmp_path / "work/d20/stage-mirror.txt").exists()
+    result, calls = run_job(tmp_path, stage_zero="d20/report.json")
+    assert result.returncode == 0 and done_line(result) == 0 and not draws_read(calls, "parent") and draws_read(calls, "mirror") == [1, 2, 3]
+    lines = calls.splitlines()
+    assert not [x for x in lines if "--instrument parent" in x] and "comp-check" not in commands(calls) and "--clips 5" not in calls
+    merges = [x for x in lines if x.split()[1] == "merge"]
+    assert len(merges) == 1 and "--instrument mirror" in merges[0] and "--parent-forms" in merges[0]
+    assert [x for x in lines if x.split()[1] == "check" and "d20/report.json" in x], "the parent's check runs again"
+
+
+def test_a_failed_put_report_resumes_with_the_same_merge(tmp_path):
+    result, first = run_job(tmp_path, fail_when="put-report*d20/report.json")
+    assert result.returncode == 1 and not draws_read(first, "mirror")
+    result, second = run_job(tmp_path)
+    assert result.returncode == 0 and not draws_read(second, "parent") and draws_read(second, "mirror") == [1, 2, 3]
+    merge = lambda calls: next(x for x in calls.splitlines() if x.split()[1] == "merge" and "--instrument parent" in x and "work/d20" in x)      # noqa: E731
+    assert merge(first) == merge(second), "the same draws, stop reason and seconds, so the merge writes the same bytes"
+    assert [x for x in second.splitlines() if x.split()[1] == "put-report" and "d20/report.json" in x]
+
+
+def test_every_stage_done_runs_only_their_checks(tmp_path):
+    (tmp_path / "work/d20").mkdir(parents=True)
+    (tmp_path / "work/d20/stage-parent.txt").write_text("1,2,3,4 all_planned 100\n")
+    (tmp_path / "work/d20/stage-mirror.txt").write_text("1,2 clock_rule 200\n")
+    result, calls = run_job(tmp_path, stage_zero="stage-state")
+    assert result.returncode == 0
+    got = commands(calls)
+    assert "merge" not in got[got.index("stage-state"):] and "compose" not in got[got.index("stage-state"):] and got[-3:] == ["check", "check", "upload-log"]
+
+
+def test_a_stage_key_of_another_run_stops_the_job(tmp_path):
+    result, calls = run_job(tmp_path, fail_when="stage-state*d20/report-mirror.json", code=1)
+    assert result.returncode == 1 and "the mirror's final report is not this run's" in result.stdout and "preflight" not in calls
+
+
+def test_a_rerun_cause_moves_its_work_and_outputs_under_the_digest_and_keeps_the_voids(tmp_path):
+    result, calls = run_job(tmp_path, RERUN_CAUSE="the-cause")
+    assert result.returncode == 0
+    base = "round20/parent-controls"
+    lines = calls.splitlines()
+    assert [x for x in lines if x.split()[1] == "preflight" and f"--final-key acquisition/2026-10-17-v1/youtube-asl-v1/{base}/runs/abc123def/report.json --void-prefix acquisition/2026-10-17-v1/youtube-asl-v1/{base}/void --rerun-cause the-cause" in x]
+    assert [x for x in lines if x.split()[1] == "preflight" and f"{base}/runs/abc123def/report-mirror.json --void-prefix acquisition/2026-10-17-v1/youtube-asl-v1/{base}/void-mirror --rerun-cause the-cause" in x]
+    assert all(f"{base}/runs/abc123def/" in x for x in lines if x.split()[1] in ("merge", "put-report", "compose")) and "work/runs/abc123def/d20/forms" in calls
+    assert (tmp_path / "work/runs/abc123def/d20/stage-parent.txt").exists()
+    assert f"--key acquisition/2026-10-17-v1/youtube-asl-v1/{base}/logs/" in lines[-1]
+    _, plain = run_job(tmp_path / "plain") if (tmp_path / "plain").mkdir() is None else (None, None)
+    assert "runs/" not in plain
+
+
+def test_the_mirrors_rerun_record_is_in_what_it_uploads(tmp_path):
+    _, calls = run_job(tmp_path, RERUN_CAUSE="x")
+    lines = calls.splitlines()
+    preflight = next(x for x in lines if x.split()[1] == "preflight" and "report-mirror.json" in x)
+    out = preflight.split("--out-dir ")[1].split()[0]
+    assert [x for x in lines if x.split()[1] == "upload" and f"--out-dir {out}/forms " in x and "forms-mirror" in x], "P.check_void writes <out-dir>/forms/rerun.json"
+
+
+def test_compose_and_read_logs_reach_the_jobs_log(tmp_path):
+    result, _ = run_job(tmp_path, fail_when="--draw 3 --work")
+    log = (tmp_path / "work/parent_controls.log").read_text()
+    assert result.returncode == 1 and "planted failure" in log and "ran scripts/parent_controls.py compose" in log
+    tmp = tmp_path / "b"
+    tmp.mkdir()
+    result, _ = run_job(tmp, fail_when="--draws 2 --instrument parent*--resume")
+    assert result.returncode == 1 and "planted failure" in (tmp / "work/parent_controls.log").read_text()
+
+
+def test_a_terminated_job_kills_its_reads_and_prints_its_done_line(tmp_path):
+    import time
+    job, log = run_job(tmp_path, slow=True, READ_PROCS="2")
+    pids = tmp_path / "pids"
+    try:
+        for _ in range(600):
+            if pids.exists() and len(pids.read_text().split()) >= 2:
+                break
+            time.sleep(.1)
+        started = [int(x) for x in pids.read_text().split()]
+        for pid in started:
+            os.kill(pid, 0)
+        job.terminate()
+        out, _ = job.communicate(timeout=30)
+    finally:
+        job.kill()
+        job.communicate()
+    assert job.returncode == 143 and out.strip().endswith("PARENT-CONTROLS-DONE 143")
+    for pid in started:
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+    assert "upload --partial" in log.read_text()
 
 
 def test_a_missing_repo_prints_its_done_line(tmp_path):
@@ -1279,7 +1688,7 @@ def test_the_job_passes_every_step_through_pipestatus_and_names_no_other_list():
     assert [line for line in code if re.search(r"(?<!\|)\|(?!\|)", line) and not line.startswith("case")] == ['  "$@" 2>&1 | tee -a "$LOG"'] and "${PIPESTATUS[@]}" in text and "set -uo pipefail" in text and "transformers==4.57.6" in text
     for word in ("c20", "C20", "create-pod", "runpodctl", "--likelihood", "r2env.sh)"):
         assert word not in "\n".join(code), word
-    assert "RTX 6000 Ada" in text and "BUDGET_SECONDS" in text and "PARENT_BUDGET_SECONDS" in text and "MIRROR_DRAWS" in text and "it never moves M1" in text
+    assert "NVIDIA L40S" in text and "BUDGET_SECONDS" in text and "PARENT_BUDGET_SECONDS" in text and "MIRROR_DRAWS" in text and "it never moves M1" in text
 
 
 # ---- the mirror ----------------------------------------------------------------------------------------------------------------------------
@@ -1379,13 +1788,12 @@ def test_a_mirror_read_needs_its_own_control_and_no_composition_check(monkeypatc
     assert h.read_mirror("1") == 0
 
 
-@pytest.mark.parametrize("name", list(PC.MIRROR_VALUES))
+@pytest.mark.parametrize("name", list(PC.MIRROR_ANCHORS))
 def test_an_anchor_off_the_mirror_reports_value_voids_its_read(monkeypatch, tmp_path, capsys, name):
     h = Controls(monkeypatch, tmp_path, compose_draws=(1,))
     assert h.compose() == 0
     assert h.mirror_anchors() == 0
-    h.plant_mirror_stored()
-    monkeypatch.setattr(PC, "MIRROR_VALUES", dict(PC.MIRROR_VALUES, **{name: PC.MIRROR_VALUES[name] + .051}))
+    h.plant_mirror_stored(offsets={name: .051})
     assert h.mirror_control() == 3
     out = capsys.readouterr().out
     assert f"{name} reads BLEU" in out and "no form follows" in out and h.store.exists("pc/void-mirror/" + "c" * 64 + ".json")
@@ -1398,16 +1806,16 @@ def test_an_anchor_off_the_mirror_reports_value_voids_its_read(monkeypatch, tmp_
 def test_an_anchor_inside_the_tolerance_passes(monkeypatch, tmp_path):
     h = Controls(monkeypatch, tmp_path, compose_draws=())
     assert h.mirror_anchors() == 0
-    h.plant_mirror_stored()
-    monkeypatch.setattr(PC, "MIRROR_VALUES", {k: v + .049 for k, v in PC.MIRROR_VALUES.items()})
+    h.plant_mirror_stored(offsets={name: .049 for name in PC.MIRROR_ANCHORS})
     assert h.mirror_control() == 0
 
 
 @pytest.mark.parametrize("change,word", [(dict(hypotheses=["other"] * N), "hypotheses"), (dict(nll=[[9.] * 5] * N), "NLL"), (dict(signs=[f"z{i}" for i in range(N)]), "other clips")])
-def test_a_mirror_anchor_off_its_stored_form_voids_its_read(monkeypatch, tmp_path, capsys, change, word):
+@pytest.mark.parametrize("name", list(PC.MIRROR_ANCHORS))
+def test_a_mirror_anchor_off_its_stored_form_voids_its_read(monkeypatch, tmp_path, capsys, change, word, name):
     h = Controls(monkeypatch, tmp_path, compose_draws=())
     assert h.mirror_anchors() == 0
-    h.plant_mirror_stored(dict(nearest_monocular=change))
+    h.plant_mirror_stored({name: change})
     assert h.mirror_control() == 3
     assert word in capsys.readouterr().out
 
@@ -1416,7 +1824,7 @@ def test_a_mirror_anchor_off_its_stored_form_voids_its_read(monkeypatch, tmp_pat
 def test_a_stored_mirror_form_of_another_read_exits_1_with_no_void(monkeypatch, tmp_path, change):
     h = Controls(monkeypatch, tmp_path, compose_draws=())
     assert h.mirror_anchors() == 0
-    h.plant_mirror_stored(dict(real_monocular=change))
+    h.plant_mirror_stored(dict(still_two_view=change))
     with pytest.raises(SystemExit, match="stored mirror read"):
         h.mirror_control()
     assert not h.store.exists("pc/void-mirror/" + "c" * 64 + ".json") and not (h.forms_mirror / "control.json").exists()
@@ -1430,6 +1838,16 @@ def test_a_mirror_report_on_other_bytes_exits_1_with_no_void(monkeypatch, tmp_pa
     with pytest.raises(SystemExit, match="SHA-256"):
         h.mirror_control()
     assert not h.store.exists("pc/void-mirror/" + "c" * 64 + ".json")
+    # a stored form that is another file's bytes is refused by its hash too
+    h.plant_mirror_stored()
+    h.store.put(f"{PC.MIRROR_FORMS}/form-mono__blank.json", b"{}")
+    with pytest.raises(SystemExit, match="SHA-256"):
+        h.mirror_control()
+    # the parsed report must hold the declared values and all seven forms
+    h.plant_mirror_stored()
+    monkeypatch.setattr(PC, "MIRROR_VALUES", dict(PC.MIRROR_VALUES, blank=PC.MIRROR_VALUES["blank"] + .001))
+    with pytest.raises(SystemExit, match="does not hold the declared values"):
+        PC.load_mirror_report(h.store)
     with pytest.raises(SystemExit, match="no stored form"):
         PC.load_mirror_form(h.store, "d1_comp")
 
@@ -1438,14 +1856,16 @@ def test_the_mirrors_shares_take_its_own_path_and_the_two_view_anchors_stand_bes
     h = Controls(monkeypatch, tmp_path)
     report = h.mirror_report()
     assert report["kind"] == "parent-controls-report" and report["instrument_name"] == "mirror" and report["instrument"]["sha256"] == PC.INSTRUMENTS["mirror"]["sha256"] and report["alerts"] == [] and report["draws"] == [1, 2] and report["report_only"] is True
-    real = .8 - .1
+    real = .8 - .15      # over the monocular still, not two-view's
     comp = (.6 + .0015 - STILL_MARGIN) * FILLED / N
     block = report["composition"]
-    assert abs(block["margin"]["mean"] - comp) < 1e-4 and abs(block["share_of_real"]["mean"] - comp / real) < 1e-3 and abs(block["share_of_nearest"]["mean"] - comp / (.75 - .1)) < 1e-3
+    assert abs(block["margin"]["mean"] - comp) < 1e-4 and abs(block["share_of_real"]["mean"] - comp / real) < 1e-3 and abs(block["share_of_nearest"]["mean"] - comp / (.75 - .15)) < 1e-3
+    assert abs(block["share_of_two_view_real"]["mean"] - comp / .4) < 1e-3
+    assert report["own_path_anchors"] == dict(real="real_monocular", nearest="nearest_monocular", still="still_monocular", blank="blank")
     oracle = (MARGIN["oracle"] - STILL_MARGIN) * ORACLE_FILLED / N
     assert abs(report["forms"]["oracle"]["share_of_real"]["mean"] - oracle / real) < 1e-3
     anchors = report["anchors"]
-    assert abs(anchors["real_monocular"]["margin_over_still"]["point"] - real) < 1e-6 and abs(anchors["nearest_monocular"]["margin_over_still"]["point"] - .65) < 1e-6 and abs(anchors["real_two_view"]["margin_over_still"]["point"] - .4) < 1e-6 and anchors["still_monocular"]["margin_over_still"]["point"] == 0.
+    assert abs(anchors["real_monocular"]["margin_over_still"]["point"] - real) < 1e-6 and abs(anchors["nearest_monocular"]["margin_over_still"]["point"] - .6) < 1e-6 and abs(anchors["real_two_view"]["margin_over_still"]["point"] - .4) < 1e-6 and anchors["still_monocular"]["margin_over_still"]["point"] == 0.
     assert report["stored"] is None and set(report["checks"]["controls"]) == {"anchors"} and report["checks"]["controls"]["anchors"]["reproduced"] is True
     assert report["disclosures"]["mirror"].startswith("The mirror is report only and never moves M1") and "never moves M1" in report["reading"]
     frames = json.loads((h.forms_mirror / "form-d1_comp.json").read_text())["frames"]
@@ -1457,9 +1877,38 @@ def test_the_mirrors_shares_take_its_own_path_and_the_two_view_anchors_stand_bes
 def test_training_status_is_a_report_row_on_either_instrument(monkeypatch, tmp_path):
     h = Controls(monkeypatch, tmp_path, compose_draws=(1,))
     report = h.mirror_report((1,))
-    row = report["forms"]["oracle"]["by_v1_training"]
+    row = report["forms"]["oracle"]["by_clip_subset"]
     assert row["in_v1_training"]["clips"] == 4 and row["outside_v1_training"]["clips"] == N - 4 and "bleu" in row["in_v1_training"]
-    assert report["composition"]["by_v1_training"]["in_v1_training"]["clips"] == 4
+    assert report["composition"]["by_clip_subset"]["in_v1_training"]["clips"] == 4
+    # the mirror's nearest is its own path's
+    forms = json.loads((h.forms_mirror / "form-nearest_monocular.json").read_text())
+    assert row["outside_training_and_selection"]["nearest_bleu"] == pytest.approx(C.M.bleu_from_statistics(C.M.bleu_statistics(forms["hypotheses"], forms["references"])[row_mask()].sum(0)), abs=1e-3)
+
+
+def row_mask():
+    return np.array([i >= 6 for i in range(N)])
+
+
+def test_the_mirrors_report_holds_the_parents_rows_on_its_own_draws(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path)
+    parent = h.report((1, 2))
+    mirror = h.mirror_report((1,), parent_forms="pc/forms")
+    beside = mirror["parent_on_mirror_draws"]
+    assert set(beside) == {"composition", "oracle", "covered", "shuffled", "oracle_shuffled", "covered_shuffled"}
+    row = beside["oracle"]
+    assert row["parent"]["margin"]["draws"] == 1 and row["parent"]["margin"]["per_draw"][0] == pytest.approx(parent["forms"]["oracle"]["margin"]["per_draw"][0], abs=1e-4)
+    # one draw of the parent's two, and the same reader on both, so the margin difference is exactly nothing
+    assert row["parent_minus_mirror"]["margin"]["per_draw"] == pytest.approx([0.], abs=1e-6)
+    # each share is over its own instrument's real: .4 on the parent, .65 on the mirror
+    want = (MARGIN["oracle"] - STILL_MARGIN) * ORACLE_FILLED / N * (1 / .4 - 1 / .65)
+    assert row["parent_minus_mirror"]["share_of_real"]["per_draw"][0] == pytest.approx(want, abs=1e-3)
+
+
+def test_the_parents_rows_need_its_forms_of_this_code_and_every_draw(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path, compose_draws=(1, 2))
+    h.report((1,))
+    with pytest.raises(SystemExit, match="draw 2: "):
+        h.mirror_report((1, 2), parent_forms="pc/forms")
 
 
 def test_a_form_of_the_other_instrument_refuses_the_merge(monkeypatch, tmp_path):
@@ -1496,6 +1945,10 @@ def test_a_wrong_still_or_clock_changes_or_refuses_the_mirrors_result_too(monkey
     two_view = {a: forms[a] for a in C.ANCHORS}
     other_share, _, _ = PC.view_arrays({1: (forms["d1_oracle"], forms["d1_oracle_still"])}, base, two_view, idx, "oracle")
     assert abs(other_share[1]["real"].mean() - right[1]["real"].mean()) > .1
+    # the still alone taken from the wrong path moves real's margin
+    wrong_still = PC.own_path(dict(forms, still_monocular=forms["still_two_view"]), "mirror")
+    moved_still, _, _ = PC.view_arrays({1: (forms["d1_oracle"], forms["d1_oracle_still"])}, base, wrong_still, idx, "oracle")
+    assert moved_still[1]["real"].mean() == pytest.approx(right[1]["real"].mean() + .05, abs=1e-4)
     off = dict(forms["d1_oracle"], frames=[x + 1 for x in forms["d1_oracle"]["frames"]])
     with pytest.raises(SystemExit, match="is not as long as the composition"):
         PC.view_arrays({1: (off, dict(forms["d1_oracle_still"], frames=off["frames"]))}, base, anchors, idx, "oracle")
