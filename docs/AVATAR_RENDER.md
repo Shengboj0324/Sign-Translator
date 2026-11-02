@@ -364,7 +364,7 @@ Measure: RMS distance from a trajectory's own 6 Hz low-pass, in millimetres and 
 | Share at 6 Hz and up: head | 0.68 → 0.12 | 0.23 → 0.02 |
 | Share at 6 Hz and up: right wrist | 0.49 → 0.08 | 0.16 → 0.03 |
 
-On the rendered pixels themselves (head and hair centroid, six clips at 768 px): real 2.8–4.5 px → 0.4–0.6 px, generated 0.6–2.3 px → 0.1–0.3 px.
+On the rendered pixels themselves (head and hair centroid, six clips at 768 px): real 2.8–4.5 px → 0.3–0.5 px, generated 0.6–2.3 px → 0.1–0.6 px.
 
 **The prior hypothesis, tested.** How2Sign's real states do carry estimator jitter: the torso and head's motion is two-thirds above 6 Hz. The model doesn't simply copy it. Generated torsos carry half of real's. Generated hands carry about twice real's: hand frame 5.1–5.5° against 1.5–2.9° (real, gaps filled), fingertips 12–13 mm against 5–7 mm. Real clips played at 2× read 2.9–5.3° and 8–12 mm, about the same as generated. So the excess in the hands is consistent with real-like jitter squeezed in time by composition's fitted timing, which the motion diagnosis measured at about 2×. This doesn't prove the cause. On torso and head the owner's complaint is mostly the estimator's and is now gone from both; on hands the generated clips still shake more than real, after the filter too.
 
@@ -415,7 +415,8 @@ What it costs: the wrist's depth changes by a median 9 cm per clip and side, 44 
 |---|---|---|
 | Frame | fitted to each clip: span 7.9 on real, 8.8–9.25 on generated (source units), so generated hands were drawn about 12% smaller | one frame for every clip, span 9.0, hair to hip |
 | Engine, 768 px | Workbench, no shadows | EEVEE, 32 samples; key, fill and rim lights; soft shadows |
-| Background | grey 0.18 | blue-grey, a mid tone against both skin and top |
+| Background | grey, skin against it at luminance contrast 1.14 | darker blue-grey, skin against it 2.6, the top against it 2.0 |
+| Skin against the top | 3.3 | 5.2 |
 | Determinism | re-render identical | two separate runs give a byte-identical video; a fresh process's first frame is identical |
 
 **Hands leaving the frame.** Real: partly out 0.0%. Generated: partly out 16.6%, fully out 0.2%, nearly all a hand hanging below the hip; 1.1% are above the hip. Span 8.4 would draw hands 7% larger but lose a generated hand entirely in 10% of frames; span 10.2 would keep it but draw every hand 12% smaller.
@@ -424,12 +425,12 @@ What it costs: the wrist's depth changes by a median 9 cm per clip and side, 44 
 
 | Resolution | Finger width | Video | Whole render |
 |---|---|---|---|
-| 384 | 6.8 px | 193 KB | 25 s |
-| 512 | 9.1 px | 297 KB | 25 s |
-| 768 | 13.7 px | 544 KB | 26 s |
-| 1024 | 18.2 px | 840 KB | 34 s |
+| 384 | 6.8 px | 168 KB | 25 s |
+| 512 | 9.1 px | 253 KB | 25 s |
+| 768 | 13.7 px | 460 KB | 26 s |
+| 1024 | 18.2 px | 710 KB | 34 s |
 
-768 stays. By eye, individual fingers blur together at 384 when a hand is seen edge-on, read cleanly at 768, and 1024 adds little. Render time is mostly not pixels. It was 7.9 s for the same clip before, so a pilot of 240 clips at a mean 170 frames takes about 3 hours on the Mac rather than about 1.
+768 stays. By eye, at 384 finger edges are blocks of a few pixels, at 768 they read cleanly, and 1024 adds little. Render time is mostly not pixels. It was 7.9 s for the same clip before, so a pilot of 240 clips at a mean 170 frames takes about 3 hours on the Mac rather than about 1.
 
 **Playback speed isn't changed.** The owner asked for slower motion. The release bar is read at predicted timing, and a slower video would change that condition, so this is reported, not done. Generated wrists move 1.45× real's on the right and 3.5× on the left at p95 in these clips, and that speed is still visible after the filter. A slow-motion control in the rater's player, used equally on every clip, is the place to ask about it; it isn't built.
 
@@ -439,7 +440,7 @@ All from MakeHuman's system asset pack, listed CC0 on the pack's page, each text
 
 ### Blinding
 
-The video has no sample id, clock id or system name in it (a test renders one motion under two names and two clock origins and gets byte-identical files). The packet copies only the video. Frame, lights, engine and encoder settings don't vary. File size does: generated clips run 5.2–6.0 KB per frame against 4.5–5.3 for real, because more moves. Deliver played videos, not a folder a rater can sort by size. Duration remains the cue the protocol already records.
+The video has no sample id, clock id or system name in it (a test renders one motion under two names and two clock origins and gets byte-identical files). The packet copies only the video. Frame, lights, engine and encoder settings don't vary. File size does: on these six clips, generated run 4.4–5.1 KB per frame against 3.7–4.4 for real, because more moves. Deliver played videos, not a folder a rater can sort by size. Duration remains the cue the protocol already records.
 
 
 ## Avatar v2 plan (pre-designed 2026-10-26 02:30 UTC; starts once a generator passes its exit gate)

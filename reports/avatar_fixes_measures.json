@@ -1489,82 +1489,82 @@
    "secs": 6.751949875033461
   },
   {
-   "setting": "v3-768",
+   "setting": "v4-768",
    "clip": "c01-dJkZC7IchGs_5-1-rgb_front-gen",
-   "jitter_px": 0.23954794304404842,
-   "second_diff": 4.589400291442871,
-   "flicker": 2.6438281536102295,
+   "jitter_px": 0.2375358754761523,
+   "second_diff": 4.284682273864746,
+   "flicker": 2.465601682662964,
    "span": 9.0,
    "hand_px_len": 162.13333333333333,
    "finger_px": 13.653333333333332,
-   "video": 593173,
+   "video": 528339,
    "frames": 104,
-   "secs": 26.379894500016235
+   "secs": 26.17712454102002
   },
   {
-   "setting": "v3-768",
+   "setting": "v4-768",
    "clip": "c01-dJkZC7IchGs_5-1-rgb_front-real",
-   "jitter_px": 0.3398170012517189,
-   "second_diff": 2.3061909675598145,
-   "flicker": 1.4362002611160278,
+   "jitter_px": 0.340585840957077,
+   "second_diff": 2.1301329135894775,
+   "flicker": 1.319807767868042,
    "span": 9.0,
    "hand_px_len": 162.13333333333333,
    "finger_px": 13.653333333333332,
-   "video": 343772,
+   "video": 301079,
    "frames": 68,
-   "secs": 19.726447041961364
+   "secs": 19.25571095792111
   },
   {
-   "setting": "v3-768",
+   "setting": "v4-768",
    "clip": "c03-1jzQa7PnItU_13-3-rgb_front-gen",
-   "jitter_px": 0.5792143084702742,
-   "second_diff": 3.3946375846862793,
-   "flicker": 2.0244462490081787,
+   "jitter_px": 0.5994615793247028,
+   "second_diff": 3.0143191814422607,
+   "flicker": 1.8073503971099854,
    "span": 9.0,
    "hand_px_len": 162.13333333333333,
    "finger_px": 13.653333333333332,
-   "video": 526217,
+   "video": 460347,
    "frames": 104,
-   "secs": 26.771966166910715
+   "secs": 26.04566108295694
   },
   {
-   "setting": "v3-768",
+   "setting": "v4-768",
    "clip": "c03-1jzQa7PnItU_13-3-rgb_front-real",
-   "jitter_px": 0.5329658844405485,
-   "second_diff": 1.8154621124267578,
-   "flicker": 1.1315358877182007,
+   "jitter_px": 0.533976567110696,
+   "second_diff": 1.6444518566131592,
+   "flicker": 1.0286515951156616,
    "span": 9.0,
    "hand_px_len": 162.13333333333333,
    "finger_px": 13.653333333333332,
-   "video": 441982,
+   "video": 389727,
    "frames": 104,
-   "secs": 26.336987083079293
+   "secs": 26.13327504193876
   },
   {
-   "setting": "v3-768",
+   "setting": "v4-768",
    "clip": "c05-0sat-Ibig34_13-11-rgb_front-gen",
-   "jitter_px": 0.11962170409348902,
-   "second_diff": 3.035003662109375,
-   "flicker": 1.8492428064346313,
+   "jitter_px": 0.12808689647306895,
+   "second_diff": 2.6543118953704834,
+   "flicker": 1.625515103340149,
    "span": 9.0,
    "hand_px_len": 162.13333333333333,
    "finger_px": 13.653333333333332,
-   "video": 365720,
+   "video": 314511,
    "frames": 69,
-   "secs": 19.721473708981648
+   "secs": 19.28005104197655
   },
   {
-   "setting": "v3-768",
+   "setting": "v4-768",
    "clip": "c05-0sat-Ibig34_13-11-rgb_front-real",
-   "jitter_px": 0.36227383804304636,
-   "second_diff": 2.3239290714263916,
-   "flicker": 1.4079902172088623,
+   "jitter_px": 0.3654869423709992,
+   "second_diff": 2.0335183143615723,
+   "flicker": 1.2337708473205566,
    "span": 9.0,
    "hand_px_len": 162.13333333333333,
    "finger_px": 13.653333333333332,
-   "video": 334326,
+   "video": 291973,
    "frames": 76,
-   "secs": 21.226427708985284
+   "secs": 20.772401583963074
   }
  ],
  "real_played_faster": {
@@ -1654,5 +1654,15 @@
   "max": 30.1,
   "frames": 90
  },
- "note": "medians; per-clip rows are in R2 under renders/avatar-fixes-2026-11-02/measures/"
+ "note": "medians; per-clip rows are in R2 under renders/avatar-fixes-2026-11-02/measures/",
+ "contrast_final": {
+  "skin_top": 5.2,
+  "skin_backdrop": 2.61,
+  "top_backdrop": 1.98,
+  "before": {
+   "skin_top": 3.3,
+   "skin_backdrop": 1.14,
+   "top_backdrop": 3.7
+  }
+ }
 }
