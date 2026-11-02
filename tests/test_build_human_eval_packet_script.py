@@ -160,22 +160,22 @@ def test_the_draw_refuses_any_set_but_d20(tmp_path, monkeypatch):
     store.put("sets/c20.json", payload)
     with pytest.raises(SystemExit, match="D20 only"):
         how2sign_draw(["--store", f"dir:{tmp_path / 'store'}", "--sentences-key", "sets/c20.json", "--sentences-sha256",
-                       hashlib.sha256(payload).hexdigest(), "--output-dir", str(tmp_path / "out")])
+                       hashlib.sha256(payload).hexdigest(), "--seed", "1", "--name", "t", "--output-dir", str(tmp_path / "out")])
     assert not (tmp_path / "out").exists()
     with pytest.raises(SystemExit, match="does not match"):
         how2sign_draw(["--store", f"dir:{tmp_path / 'store'}", "--sentences-key", "sets/c20.json", "--sentences-sha256",
-                       "0" * 64, "--output-dir", str(tmp_path / "out")])
+                       "0" * 64, "--seed", "1", "--name", "t", "--output-dir", str(tmp_path / "out")])
     # labelled D20 with another hash: refused by the pin; the right hash with a C20 label: refused by the label
     other = json.dumps(dict(kind="round20-sentence-set", set="D20", records=[])).encode()
     store.put("sets/other.json", other)
     with pytest.raises(SystemExit, match="is not D20's"):
         how2sign_draw(["--store", f"dir:{tmp_path / 'store'}", "--sentences-key", "sets/other.json", "--sentences-sha256",
-                       hashlib.sha256(other).hexdigest(), "--output-dir", str(tmp_path / "out")])
+                       hashlib.sha256(other).hexdigest(), "--seed", "1", "--name", "t", "--output-dir", str(tmp_path / "out")])
     assert bh.D20_SHA256 == "d311703b748821822f65f8e65c5e6bd81422d5e16231171f0ab1ea54e185dabe"
     monkeypatch.setattr(bh, "D20_SHA256", hashlib.sha256(payload).hexdigest())
     with pytest.raises(SystemExit, match="D20 only, not 'C20'"):
         how2sign_draw(["--store", f"dir:{tmp_path / 'store'}", "--sentences-key", "sets/c20.json", "--sentences-sha256",
-                       hashlib.sha256(payload).hexdigest(), "--output-dir", str(tmp_path / "out")])
+                       hashlib.sha256(payload).hexdigest(), "--seed", "1", "--name", "t", "--output-dir", str(tmp_path / "out")])
 
 
 def composition_index(store, key, *, list_sha="a" * 64, set_sha="d" * 64, rows=()):
@@ -308,7 +308,7 @@ def test_the_how2sign_packet_end_to_end_with_the_real_renderer(tmp_path, stage2_
     draw_dir = tmp_path / "draw"
     assert main(["how2sign-draw", "--store", root, "--mix-key", "mix.json", "--mix-sha256", sha, "--sentences-key",
                  "sets/d20.json", "--sentences-sha256", set_sha, "--main", "3", "--pilot", "1", "--min-seconds", ".5",
-                 "--seed", "11", "--output-dir", str(draw_dir)]) == 0
+                 "--seed", "11", "--name", "test-draw", "--output-dir", str(draw_dir)]) == 0
     draw_path = draw_dir / "draw.json"
     draw = json.loads(draw_path.read_text())
     draw_sha = hashlib.sha256(draw_path.read_bytes()).hexdigest()
@@ -318,14 +318,14 @@ def test_the_how2sign_packet_end_to_end_with_the_real_renderer(tmp_path, stage2_
     assert candidate in draw["main"]
     with pytest.raises(SystemExit, match="not empty"):
         main(["how2sign-draw", "--store", root, "--mix-key", "mix.json", "--mix-sha256", sha, "--sentences-key",
-              "sets/d20.json", "--sentences-sha256", set_sha, "--output-dir", str(draw_dir)])
+              "sets/d20.json", "--sentences-sha256", set_sha, "--seed", "11", "--name", "test-draw", "--output-dir", str(draw_dir)])
     # the checker confirms it
     rows = list(csv.DictReader(io.StringIO((draw_dir / "negation_check.csv").read_text())))
     assert [r["sign"] for r in rows] == [candidate] and rows[0]["confirmed"] == ""
     sheet_path = tmp_path / "checked.csv"
 
     def write_checked(confirmed):
-        r = dict(rows[0], no_generated_clip_seen="yes", confirmed=confirmed, checker_sha256="c" * 64)
+        r = dict(rows[0], only_real_recordings_seen="yes", watched_before_reading="yes", confirmed=confirmed, checker_sha256="c" * 64)
         out = io.StringIO()
         w = csv.DictWriter(out, fieldnames=list(r), lineterminator="\n")
         w.writeheader(); w.writerow(r)
@@ -343,7 +343,7 @@ def test_the_how2sign_packet_end_to_end_with_the_real_renderer(tmp_path, stage2_
         index_sha = hashlib.sha256(store.get(f"x/{arm}/index.json")).hexdigest()
         systems.append(f"{arm}=composition:x/{arm}/index.json@{index_sha}")
     packet = ["how2sign-packet", "--store", root, "--draw", str(draw_path), "--draw-sha256", draw_sha,
-              "--negation-sheet", str(sheet_path), "--set", "main", "--panel", "96", "--seed", "5"]
+              "--negation-sheet", str(sheet_path), "--set", "main", "--panel", "96", "--seed", "5", "--renderer", "skeleton"]
     no_reference = list(packet)
     for s in systems:
         packet += ["--system", s]
@@ -456,7 +456,10 @@ def test_the_how2sign_packet_end_to_end_with_the_real_renderer(tmp_path, stage2_
     with pytest.raises(SystemExit, match="stage1-receipts"):
         sh.main(["--key", str(key_path), *firsts, *seconds, "--reference", "real", "--output", str(tmp_path / "x.json")])
     common = ["--key", str(key_path), *firsts, "--reference", "real", "--stage1-receipts", str(receipts)]
-    assert sh.main(common + seconds + ["--output", str(tmp_path / "plain.json")]) == 0
+    with pytest.raises(SystemExit, match="roster"):                  # a two-stage key: every read, not only the bar's
+        sh.main(common + seconds + ["--output", str(tmp_path / "x.json")])
+    with_roster = [*common, "--roster", str(roster_path)]
+    assert sh.main(with_roster + seconds + ["--output", str(tmp_path / "plain.json")]) == 0
     assert "bar" not in json.loads((tmp_path / "plain.json").read_text())
     with pytest.raises(SystemExit, match="roster"):
         sh.main(common + seconds + ["--bar", "--output", str(tmp_path / "x.json")])

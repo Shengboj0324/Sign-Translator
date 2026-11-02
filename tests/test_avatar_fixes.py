@@ -387,14 +387,14 @@ def test_packet_builder_passes_one_argument_list_for_every_system(monkeypatch, t
         out = Path(argv[argv.index("--out-dir") + 1])
         out.mkdir()
         (out / "avatar.mp4").write_bytes(b"x")
-        (out / "verification.json").write_text(json.dumps(dict(render_settings_sha256=render_avatar.settings_sha256(768))))
+        (out / "verification.json").write_text(json.dumps(dict(render_settings_sha256=render_avatar.settings_sha256(768), acceptance=dict(mirror=True))))
         return 0
 
     monkeypatch.setattr(render_avatar, "main", fake_main)
     rig = load_makehuman_rig(INTAKE / "makehuman")
     for sample in ("reference-clip", "generated-clip"):
         state = state_from_points(np.arange(3) / FPS, *raised_arm_points(rig, "Left", frames=3), sample_id=sample)
-        assert packet.render_avatar_video(state, tmp_path / f"{sample}.mp4", resolution=768) == 3
+        assert packet.render_avatar_video(state, tmp_path / f"{sample}.mp4", resolution=768)["frames"] == 3
     stripped = [[a for a in call if a.startswith("--") or a.isdigit()] for call in seen]
     assert stripped[0] == stripped[1] == ["--state", "--out-dir", "--allow-inferred", "--resolution", "768"]
 
@@ -407,7 +407,7 @@ def test_packet_builder_refuses_a_render_with_other_settings(monkeypatch, tmp_pa
         out = Path(argv[argv.index("--out-dir") + 1])
         out.mkdir()
         (out / "avatar.mp4").write_bytes(b"x")
-        (out / "verification.json").write_text(json.dumps(dict(render_settings_sha256="0" * 64)))
+        (out / "verification.json").write_text(json.dumps(dict(render_settings_sha256="0" * 64, acceptance=dict(mirror=True))))
         return 0
 
     monkeypatch.setattr(render_avatar, "main", other_settings)
@@ -423,8 +423,8 @@ def test_packet_builder_calls_the_avatar_with_the_packets_one_resolution():
     assert len(calls) == 2
     for call in calls:
         assert all(isinstance(a, ast.Name) for a in call.args)      # state and path: no label, no system
-        for keyword in call.keywords:
-            assert keyword.arg == "resolution"
+        names = [keyword.arg for keyword in call.keywords]
+        assert set(names) <= {"resolution", "verification"} and "verification" in names       # the verification path holds the item id, private, under key/
 
 
 def test_avatar_fixes_refuses_clips_outside_d20():

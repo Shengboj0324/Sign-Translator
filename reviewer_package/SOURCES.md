@@ -8,7 +8,7 @@ guide. It does not replace the study protocol or its code, which stay where they
 | Path | What it is | How this package uses it |
 |---|---|---|
 | `docs/HUMAN_EVALUATION_PROTOCOL.md` | The team's protocol. Systems (reference, plan, translate, english, stitch), Latin square over reviewer groups, blinding, analysis table (Wilson CI, paired permutation, Fleiss' kappa), consent and payment rules | The study design and the analysis in `OPERATOR_GUIDE.md` follow it |
-| `docs/HUMAN_EVALUATION_REVIEWER_GUIDE.md` | The current reviewer guide, copied into every packet zip | Too technical for these reviewers: it asks them to compute a SHA-256 in a terminal and to edit a CSV. `FOR_REVIEWERS.md` and `RATING_SHEET.md` are the plain-language versions. |
+| `docs/HUMAN_EVALUATION_REVIEWER_GUIDE.md`, `docs/HUMAN_EVALUATION_REVIEWER_GUIDE_TWO_STAGE.md` | The reviewer guides, one copied into each packet zip | Plain language since 2026-11-02, by the owner's flow: raters answer on a form or in ASL, and the owner does every technical step. `FOR_REVIEWERS.md`, `RATING_SHEET.md` and `RATING_SHEET_TWO_STAGE.md` go with them. |
 | `signtranslator/eval_framework/human_study.py` | `design_study`, `write_sheet`, `parse_sheet`, `score_study`, `wilson`, `SHEET_COLUMNS` | Defines the `sheet.csv` columns that `score_human_eval.py` accepts. `rating_sheet.csv` maps onto them. |
 | `scripts/build_human_eval_packet.py` | Builds the blinded packets (`packet/group-<g>/`, private `key/key.json`). `--renderer avatar` renders on the MakeHuman avatar. `--final-study` is required for `test`. | Clip production, step 2 of `OPERATOR_GUIDE.md` |
 | `scripts/score_human_eval.py` | Scores returned `sheet.csv` files against the key | Scoring, step 7 |

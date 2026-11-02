@@ -6569,3 +6569,62 @@ Under 6 raters the rule reads nothing, as method D's false-pass rates were simul
 
 The first signer pilot is 60 sentences and 8 raters, 2 per group, across all four groups, with the arms `composition`, `composition_shuffled`, `oracle` and `reference`. Pilot raters don't join the main read. The arms are report only and never count toward the release bar, which is unchanged. Sentences with no selected word leave the draw. Composition is W14b, best of 16, at predicted timing. Power from the committed script (`reports/rater_pilot_power.json`): half-width about ±11 points; the declared rule detects a true 20-point drop 79% of the time and a 10-point drop 20%, or 55% and 12% if the drop is read on the logit scale. Assumed hours and cost at $40/h: pilot about 20 h, $800; main read about 75 h, $3,000. Merged code has had one independent review with its fixes applied; those fixes have not been re-reviewed, and an independent re-check comes before any real draw.
 
+### ASLLVD train clips cleared for raters by the owner (2026-11-02, 20:30 UTC)
+
+Owner, 2026-11-02 20:30 UTC, asked whether ASLLVD train clips may be shown to raters under the DAI terms, answered: Yes. This covers ASLLVD train clips only, shown to consenting reviewers, research use only and non-commercial, under the DAI terms. RIT and WLASL aren't covered. The export's `--word-format-licence-note` carries this sentence into each index.
+
+### Rater read 1: draw seed declared before the draw (2026-11-02, 20:55 UTC)
+
+Seed 2040058301, from a system random source, for `how2sign-draw --name rater-read-1-d20 --main 200 --pilot 60 --min-seconds 1.5 --min-hand-coverage 0.7`, on D20. The final tool check said go with fixes for the draw and no-go for packets until its findings are fixed. The checker's sheet isn't sent until its usability is fixed. `draw.json` stays in private storage, out of the repo and off iCloud.
+
+### Rater read 1: tool fixes and the official arm's export (2026-11-02, 21:17 UTC)
+
+From the final tool check's findings, before any packet exists. **The bar's terms, thresholds and text are unchanged.** Nothing was rendered, sent or launched, and no clip was read; stored reports and metadata were.
+
+**The owner's flow, decided for non-technical raters.** The owner generates every reviewer key and handles every technical step. Raters and the checker never use a terminal or compute a hash. They watch videos and answer on a form or printable sheet, or in ASL to the owner, who enters the answers. The guides, the protocol and the operator guide now say so.
+
+**The official arm's export, exact.** W14b, best of 16, gains on, predicted timing, `--core-margin 0.1`. The arm's own index covers the draw's whole list; the two word-format arms cover its pilot sentences alone. Run it from the repo with the R2 environment set, on the Mac under its limits (1 BLAS thread, `nice`, and watch the 4 GB line: six sentences peaked at 3.7 GB).
+
+```
+python scripts/round15_compose_eval.py run \
+  --mix-key acquisition/2026-10-17-v1/youtube-asl-v1/round10-mixed-v1/manifest.json \
+  --mix-sha256 ccfd10b8961e95523ac7938c84261c89f22c8ae786af961908fbeba21fa5647a \
+  --sentences-key acquisition/2026-10-17-v1/youtube-asl-v1/round20/d20.json \
+  --sentences-sha256 d311703b748821822f65f8e65c5e6bd81422d5e16231171f0ab1ea54e185dabe \
+  --clips 500 --block 32 --seed 0 --variants core_crossfade --selection stage1 --timing sign-fitted --core-margin 0.1 --total-fit pad --guidance 1.5 \
+  --part-temperature body=1.1,left_hand=1.1,right_hand=1.1,face=1.0 \
+  --expect-model-sha256 42389ca48d48ac9923843557d66cd3e98c0faf0d5df54a3d5752ddb41f4e6f21 \
+  --generator-mix-key acquisition/2026-10-17-v1/youtube-asl-v1/round14b-mixed-v1/manifest.json \
+  --generator-mix-sha256 710a3941dce4abf099a336705203a719f441c8cac5847b0e59ed7679d515eb7d \
+  --word-cache-key acquisition/2026-10-17-v1/youtube-asl-v1/round20/phase-a/cache-w14b-r10/index.json \
+  --word-cache-sha256 d316d544b3a76099e6b5960a8c521ec57aa232f583379b09043b8ec17fc9756a --word-cache-n 16 \
+  --predicted-duration --expect-duration-model=-0.083,0.3691,18289 \
+  --device cpu --cache-dir <private dir>/cache \
+  --export-prefix acquisition/2026-10-17-v1/youtube-asl-v1/round20/rater-read-1/w14b-n16-predicted --export-arm w14b-n16-predicted \
+  --export-sentences-file <private dir>/draw.json --export-sentences-sha256 <the hash of draw.json> \
+  --export-only --export-forms core_crossfade@predicted \
+  --export-word-format --word-format-seed 0 \
+  --word-format-licence-note "Owner, 2026-11-02 20:30 UTC, asked whether ASLLVD train clips may be shown to raters under the DAI terms, answered: Yes. This covers ASLLVD train clips only, shown to consenting reviewers, research use only and non-commercial, under the DAI terms. RIT and WLASL aren't covered." \
+  --output-file <private dir>/export-report.json
+```
+
+**`--core-margin 0.1`, verified from stored records, settings only.** The stored official read, `round20/phase-b/w14b-gains-n16-c20.json` (sha `34f85ecf…`), has `core_margin` 0.1. So do the same arm on D20, `round20/phase-a/a4-w14b-n16-r10.json` (sha `25bff851…`, this word cache, `word_cache_n` 16), and at predicted timing, `round20/phase-a/a10-predicted-gains-r10.json` (sha `85388696…`, this word cache, `core_crossfade@predicted`). The model hash `42389ca4…` is in all three. C20's own cache isn't used here: the read draws from D20, and C20 is read once. The margin 0 in `comp_a.sh` and `comp_a5.sh` belongs to A5, another arm. The cache's settings hold no `no_decoder_gains`, so gains are on.
+
+**The word-format arms now refuse any form but `core_crossfade@predicted`,** at the export and at the packet. `--renderer` is required on `how2sign-packet`.
+
+**The owner's note now has to name each corpus as covered.** A sentence that names a corpus and negates doesn't count, so the note above covers ASLLVD alone. RIT and WLASL stay uncovered, and the code still refuses every other corpus.
+
+**The pilot's options hold no negation word (changes the options, not the bar).** The pilot holds no negation candidate, so an option with one could be crossed out from its text: 29.9% rather than 25% by elimination alone, in the review's simulation at the plan's 16.5% of distractors. Filtering was chosen over disclosing. The main set keeps the whole D20 pool.
+
+**The draw.** `--seed` and `--name` are required, the code commit is recorded, the seed is printed, and draw files go to `human-eval/draws/<name>/` in the store, written once. The declared seed above is unchanged. A draw made with the earlier code keeps its result: `how2sign-checker-sheet` writes the new sheet and the owner's list of recordings from it without drawing again, and adds the store copy.
+
+**The checker.** The sheet's `no_generated_clip_seen` is now `only_real_recordings_seen` (`yes` is the only accepted value), and `watched_before_reading` is new: the checker watches first, then reads the English and the flagged word, and a row where that slipped is kept and disclosed (`negation_read_first`). The manifest holds no video or time range, so `checker_clips.csv` reads them from How2Sign's own CSVs. All 500 of D20's clips are in the train CSVs and train zip, by a count that read no clip. The clip's own CSV range differs from the state's length by 0.22 s at the median; the realigned range, by 0.89 s and up to 22 s, so the checker watches the cut clip, the one the states come from.
+
+**Scoring, every read of a two-stage key.** `--roster` is required, a pilot's too, and needs at least 2 raters per group; a key written twice is refused. Coverage is always reported. Every viewable row with no choice is listed as a problem, marked so that the bar read sets it aside, since its coverage already counts those rows: a test holds the bar read equal with and without the list. Under 95% the run writes its report and exits nonzero unless `--allow-low-coverage`, which doesn't touch `--bar`'s own gate. Naturalness and the translation are read on every stage 1 row, so a rater's missing stage 2 loses only their choices. A stage 1 with no receipt was never released: it is kept for stage 1 alone and can't be joined. **One data rule tightens:** a repeated `item_id` now drops every row carrying it, where the last used to win, and those rows count as lost by the existing rule.
+
+**How2Sign is attributed on a rater-visible page,** as `reports/rater_package_plan.md` §5 says, on `FOR_REVIEWERS.md`, with the changes stated. The old page is `FOR_REVIEWERS_ORIGINAL_SESSION.md`.
+
+**For the board, not decided here:** the questions in `reviewer_package/OPERATOR_GUIDE.md` §10.
+
+**Not done.** `avatar-fixes` isn't on origin, so the guides' face wording was checked against this branch's renderer and docs, not against that branch. Everything here ran on synthetic data, and no packet has run on real D20.
+

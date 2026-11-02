@@ -590,7 +590,7 @@ def test_keep_frames_off_changes_nothing_on_the_main_route():
 
 def test_only_permitted_corpora_reach_raters_and_every_one_needs_the_owners_note():
     wf.check_oracle_corpora(("asllvd-text-v1",), "owner confirmed ASLLVD train clips, 2026-11-05")
-    wf.check_oracle_corpora(("asllvd-text-v1", "rit-text-r6"), "owner confirmed both, 2026-11-05")
+    wf.check_oracle_corpora(("asllvd-text-v1", "rit-text-r6"), "owner confirmed ASLLVD and RIT, 2026-11-05")
     for corpus in ("asl-citizen-text-v1", "asl-citizen", "stem-wiki-text-v1", "asl-stem-wiki", "youtube-asl-v1", "semlex-text-v1", "how2sign-two-view-text-v1"):
         with pytest.raises(SystemExit, match="may not show"):
             wf.check_oracle_corpora(("asllvd-text-v1", corpus), "a note does not help")
@@ -644,21 +644,21 @@ def test_the_form_name_keeps_the_timing_mark_last():
 
 # ---- the packet refuses what does not fit -----------------------------------------------------------------------------------
 
-def built(frames=48, words=("cut", "onion"), shuffled_words=None, oracle_words=None, role_arm="arm", empty=False):
-    rows = {s: dict(sign=s, frames=frames, reference_frames=frames, empty=False, state_sha256=f"sha-{s}", form="core_crossfade",
+def built(frames=48, words=("cut", "onion"), shuffled_words=None, oracle_words=None, role_arm="arm", empty=False, form="core_crossfade@predicted"):
+    rows = {s: dict(sign=s, frames=frames, reference_frames=frames, empty=False, state_sha256=f"sha-{s}", form=form,
                     words=[dict(word=w) for w in words]) for s in ("p1", "p2", "p3", "p4")}
-    link = dict(arm=role_arm, form="core_crossfade")
-    shuffled = {s: dict(r, composition_state_sha256=r["state_sha256"], form="core_crossfade/composition_shuffled",
+    link = dict(arm=role_arm, form=form)
+    shuffled = {s: dict(r, composition_state_sha256=r["state_sha256"], form=wf.form_name(form, wf.SHUFFLED),
                         words=[dict(word=w) for w in (shuffled_words or tuple(reversed(words)))]) for s, r in rows.items()}
-    oracle = {s: dict(r, composition_state_sha256=r["state_sha256"], form="core_crossfade/oracle", same_words=False,
+    oracle = {s: dict(r, composition_state_sha256=r["state_sha256"], form=wf.form_name(form, wf.ORACLE), same_words=False,
                       words=[dict(word=w, corpus="asllvd-text-v1") for w in (oracle_words or words[:1])]) for s, r in rows.items()}
     if empty:
         oracle["p2"] = dict(oracle["p2"], empty=True, words=[])
-    return {"gen": dict(arm="arm", rows=rows, form="core_crossfade", word_format=None),
-            "mixed": dict(arm="arm/composition_shuffled", rows=shuffled, form="core_crossfade/composition_shuffled",
-                          word_format=dict(role=wf.SHUFFLED, composition=link, form="core_crossfade", seed=0)),
-            "real": dict(arm="arm/oracle", rows=oracle, form="core_crossfade/oracle",
-                         word_format=dict(role=wf.ORACLE, composition=link, form="core_crossfade", licence_note="owner's note"))}
+    return {"gen": dict(arm="arm", rows=rows, form=form, word_format=None),
+            "mixed": dict(arm="arm/composition_shuffled", rows=shuffled, form=wf.form_name(form, wf.SHUFFLED),
+                          word_format=dict(role=wf.SHUFFLED, composition=link, form=form, seed=0)),
+            "real": dict(arm="arm/oracle", rows=oracle, form=wf.form_name(form, wf.ORACLE),
+                         word_format=dict(role=wf.ORACLE, composition=link, form=form, licence_note="owner's note on ASLLVD train clips"))}
 
 
 PACKET = [dict(label="mixed", kind="composition"), dict(label="real", kind="composition"), dict(label="gen", kind="composition"),
@@ -716,10 +716,13 @@ NOTE = "owner recorded: ASLLVD train clips may be shown under the DAI terms (tes
 
 
 def pilot_setup(tmp_path, store, sha, monkeypatch, *, seed="0", extra=()):
-    """A D20-like set of five, a word cache, a draw of 1 + 4, and the arm's export command."""
+    """A D20-like set of five, a word cache, a draw of 1 + 4, and the arm's export command at predicted timing, the official arm's."""
     import torch
     import validate_sign_recognizer as vsr
     from scripts.round20_word_cache import main as cache_main
+    from signtranslator.generation import composition_v2 as cv2
+    from tests.test_round20_predicted import MODEL, PIN
+    monkeypatch.setattr(cv2, "fit_duration_model", lambda manifest: MODEL)   # the fixture's mix is too small to fit one
     set_sha, _ = put_set(store, sha, order=(0, 1, 2, 3, 4))
     monkeypatch.setattr(bh, "D20_SHA256", set_sha)
     labels = ["CUT", "ONION", "SALT", "HEAT", "KNIFE", "HALF", "NOW"]
@@ -742,14 +745,15 @@ def pilot_setup(tmp_path, store, sha, monkeypatch, *, seed="0", extra=()):
     monkeypatch.setattr(bh, "negation_words", lambda t: [])
     draw_dir = tmp_path / "draw"
     assert bh.main(["how2sign-draw", "--store", root, "--mix-key", "mix.json", "--mix-sha256", sha, "--sentences-key", "sets/d20.json",
-                    "--sentences-sha256", set_sha, "--main", "1", "--pilot", "4", "--min-seconds", ".5", "--seed", "11", "--output-dir", str(draw_dir)]) == 0
+                    "--sentences-sha256", set_sha, "--main", "1", "--pilot", "4", "--min-seconds", ".5", "--seed", "11", "--name", "test-draw", "--output-dir", str(draw_dir)]) == 0
     draw_path = draw_dir / "draw.json"
     draw_sha = hashlib.sha256(draw_path.read_bytes()).hexdigest()
     args = [a for a in run_args(tmp_path, sha) if a not in ("--checkpoint-key", "prior.pt")]
     args[args.index("core_crossfade,oracle_stage2")] = "core_crossfade"
     args += ["--clips", "5", "--selection", "stage1", "--timing", "sign-fitted", "--sentences-key", "sets/d20.json", "--sentences-sha256", set_sha, "--word-cache-key", "cache/w/index.json",
              "--word-cache-sha256", cache_sha, "--word-cache-n", "2", "--export-prefix", "x/arm", "--export-arm", "arm", "--export-sentences-file", str(draw_path),
-             "--export-sentences-sha256", draw_sha, "--export-only", "--export-word-format", "--word-format-seed", seed, "--word-format-licence-note", NOTE, "--output-file", str(tmp_path / "arm.json"), *extra]
+             "--export-sentences-sha256", draw_sha, "--export-only", "--export-word-format", "--word-format-seed", seed, "--word-format-licence-note", NOTE, "--output-file", str(tmp_path / "arm.json"),
+             "--predicted-duration", f"--expect-duration-model={PIN}", "--export-forms", "core_crossfade@predicted", *extra]
     return args, dict(set_sha=set_sha, draw_path=draw_path, draw_sha=draw_sha, draw=json.loads(draw_path.read_text()), root=root)
 
 
@@ -790,7 +794,7 @@ def test_the_export_writes_both_arms_for_the_pilot_at_the_composition_frames(tmp
     words_moved = 0
     for row in shuffled["states"]:
         base = comp[row["sign"]]
-        assert row["frames"] == base["frames"] == row["reference_frames"] and row["composition_state_sha256"] == base["state_sha256"]
+        assert row["frames"] == base["frames"] and row["composition_state_sha256"] == base["state_sha256"]
         state = load_state(store, row["state_key"], row["state_sha256"])
         assert len(state.timestamps) == base["frames"]                 # the shuffled form has the composition's frame count
         assert sorted(w["word"] for w in row["words"]) == sorted(w["word"] for w in base["words"])     # every word kept
@@ -832,12 +836,8 @@ def test_another_seed_gives_another_order_from_the_same_composition(tmp_path, st
 
 def test_the_predicted_form_keeps_its_mark_and_its_frames(tmp_path, stage2_store, monkeypatch):  # noqa: F811
     from evaluate_text_to_motion import load_state
-    from tests.test_round20_predicted import PIN
     store, sha, s1, oracle, argv = stage2_store
-    from signtranslator.generation import composition_v2 as cv2
-    from tests.test_round20_predicted import MODEL
-    monkeypatch.setattr(cv2, "fit_duration_model", lambda manifest: MODEL)   # the fixture's mix is too small to fit one
-    args, info = pilot_setup(tmp_path, store, sha, monkeypatch, extra=("--predicted-duration", f"--expect-duration-model={PIN}", "--export-forms", "core_crossfade@predicted"))
+    args, info = pilot_setup(tmp_path, store, sha, monkeypatch)
     assert ce.main(args) == 0
     comp = {r["sign"]: r for r in json.loads(store.get("x/arm/index.json"))["states"]}
     assert {r["form"] for r in comp.values()} == {"core_crossfade@predicted"}
@@ -1018,7 +1018,7 @@ def test_sentences_with_no_selected_word_leave_the_draw_and_are_disclosed(tmp_pa
         monkeypatch.setattr(module, "stage1_selection", selection)
     monkeypatch.setattr(sys.modules["round15_compose_eval"], "stage1_selection", selection)
     assert bh.main(["how2sign-draw", "--store", f"dir:{tmp_path / 'store'}", "--mix-key", "mix.json", "--mix-sha256", sha, "--sentences-key", "sets/d20.json",
-                    "--sentences-sha256", set_sha, "--main", "1", "--pilot", "3", "--min-seconds", ".5", "--seed", "1", "--output-dir", str(tmp_path / "draw")]) == 0
+                    "--sentences-sha256", set_sha, "--main", "1", "--pilot", "3", "--min-seconds", ".5", "--seed", "1", "--name", "test-draw", "--output-dir", str(tmp_path / "draw")]) == 0
     draw = json.loads((tmp_path / "draw" / "draw.json").read_text())
     left_out = stored["records"][2]["sign"]
     assert draw["excluded_no_selected_word"] == [left_out] and left_out not in draw["signs"] and draw["counts"]["no_selected_word"] == 1
@@ -1039,7 +1039,7 @@ def test_the_whole_pilot_through_the_packet_two_stages_and_the_scorer(tmp_path, 
     sheet_path = tmp_path / "checked.csv"
     sheet_path.write_text(",".join(NEGATION_COLUMNS) + "\n")
     packet = ["how2sign-packet", "--store", info["root"], "--draw", str(info["draw_path"]), "--draw-sha256", info["draw_sha"], "--negation-sheet", str(sheet_path),
-              "--negation-sheet-sha256", hashlib.sha256(sheet_path.read_bytes()).hexdigest(), "--panel", "96", "--seed", "5"]
+              "--negation-sheet-sha256", hashlib.sha256(sheet_path.read_bytes()).hexdigest(), "--panel", "96", "--seed", "5", "--renderer", "skeleton"]
     for s in systems:
         packet += ["--system", s]
     with pytest.raises(SystemExit, match="pilot only"):
@@ -1056,7 +1056,8 @@ def test_the_whole_pilot_through_the_packet_two_stages_and_the_scorer(tmp_path, 
     moved_frames = 0
     for i in key["items"]:
         assert i["frames"] == i["seconds"] * 24 or abs(i["frames"] - i["seconds"] * 24) < 1
-        assert i["frames"] == by_cell[(i["utterance"], "arm")]["frames"]    # every arm of a sentence has one length
+        if i["system"] != "truth":                                          # the reference plays at its recorded length, the others at the predicted one
+            assert i["frames"] == by_cell[(i["utterance"], "arm")]["frames"]
         if i["system"] == "mixed":
             moved_frames += i["state"]["moved"]
             assert "order" in i["state"]
@@ -1107,7 +1108,7 @@ def test_the_whole_pilot_through_the_packet_two_stages_and_the_scorer(tmp_path, 
         w.writeheader(); w.writerows(back)
         returned.write_text(buffer.getvalue())
         seconds += ["--stage2-sheet", str(returned)]
-    common = ["--key", str(key_path), *firsts, *seconds, "--reference", "truth", "--stage1-receipts", str(receipts)]
+    common = ["--key", str(key_path), *firsts, *seconds, "--reference", "truth", "--stage1-receipts", str(receipts), "--roster", str(roster_path)]
     assert sh.main(common + ["--output", str(tmp_path / "report.json")]) == 0
     report = json.loads((tmp_path / "report.json").read_text())
     assert report["report_only_systems"] == ["mixed", "real"] and report["word_format"]["counts_towards_release_bar"] is False
@@ -1118,7 +1119,7 @@ def test_the_whole_pilot_through_the_packet_two_stages_and_the_scorer(tmp_path, 
     assert report["paired_with_reference"]["real"]["utterances"] == 4 and report["paired_with_reference"]["mixed"]["utterances"] == 4
     assert report["agreement"]["choice"]["raters"] == 2             # raters of one group rate the same videos
     # the bar read refuses this key, says why, and exits nonzero
-    assert sh.main(common + ["--bar", "--roster", str(roster_path), "--bootstrap", "5", "--output", str(tmp_path / "bar.json")]) == 2
+    assert sh.main(common + ["--bar", "--bootstrap", "5", "--output", str(tmp_path / "bar.json")]) == 2
     assert "report-only pilot arms" in json.loads((tmp_path / "bar.json").read_text())["bar"]["refused"]
     # a pilot rater cannot take a main sheet: the key's excluded list, checked as the negation checker is
     guarded = json.loads(key_path.read_text())

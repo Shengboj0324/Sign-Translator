@@ -179,7 +179,7 @@ def checker_sheet(candidates, answers, **change):
     from signtranslator.eval_framework.human_study import NEGATION_COLUMNS, write_negation_sheet
     rows = list(csv.DictReader(io.StringIO(write_negation_sheet(candidates))))
     for r in rows:
-        r.update({**dict(no_generated_clip_seen="yes", confirmed=answers.get(r["sign"], ""), checker_sha256="c" * 64),
+        r.update({**dict(only_real_recordings_seen="yes", watched_before_reading="yes", confirmed=answers.get(r["sign"], ""), checker_sha256="c" * 64),
                   **change})
     out = io.StringIO()
     w = csv.DictWriter(out, fieldnames=NEGATION_COLUMNS, lineterminator="\n")
@@ -200,11 +200,18 @@ def test_only_sentences_the_checker_confirms_count_as_negated():
     assert parse_negation_sheet(checker_sheet(candidates, dict(a="yes", b="maybe")), candidates)[1]
     named = checker_sheet(candidates, dict(a="yes", b="no"), checker_sha256="Jane Doe")
     assert any("never a name" in p["issue"] for p in parse_negation_sheet(named, candidates)[1])
-    shown = checker_sheet(candidates, dict(a="yes", b="no"), no_generated_clip_seen="no")
-    assert any("generated clip" in p["issue"] for p in parse_negation_sheet(shown, candidates)[1])
+    shown = checker_sheet(candidates, dict(a="yes", b="no"), only_real_recordings_seen="no")
+    assert any("computer-made clip" in p["issue"] for p in parse_negation_sheet(shown, candidates)[1])
+    assert parse_negation_sheet(checker_sheet(candidates, dict(a="yes", b="no"), only_real_recordings_seen=""), candidates)[1]     # blank is not yes
+    from signtranslator.eval_framework.human_study import negation_read_first
+    read_first = checker_sheet(candidates, dict(a="yes", b="no"), watched_before_reading="no")     # kept, and disclosed
+    assert parse_negation_sheet(read_first, candidates) == (dict(a="yes", b="no"), []) and negation_read_first(read_first) == ["a", "b"]
+    assert negation_read_first(checker_sheet(candidates, dict(a="yes", b="no"))) == []
+    unanswered = checker_sheet(candidates, dict(a="yes", b="no"), watched_before_reading="")
+    assert any("before reading" in p["issue"] for p in parse_negation_sheet(unanswered, candidates)[1])
     edited = checker_sheet(candidates, dict(a="yes", b="no")).replace("I do not", "I do", 1)
     assert any(p["issue"] == "offered columns were changed" for p in parse_negation_sheet(edited, candidates)[1])
-    extra = checker_sheet(candidates, dict(a="yes", b="no")) + "z,cut it,,yes,yes," + "c" * 64 + ",\n"
+    extra = checker_sheet(candidates, dict(a="yes", b="no")) + "z,cut it,,yes,yes,yes," + "c" * 64 + ",\n"
     assert any("not a negation candidate" in p["issue"] for p in parse_negation_sheet(extra, candidates)[1])
     assert parse_negation_sheet("sign,confirmed\n", candidates)[0] == {}
 

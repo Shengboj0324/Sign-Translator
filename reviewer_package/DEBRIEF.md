@@ -4,15 +4,15 @@
 
 ---
 
-Thank you for reviewing. Now that everyone has finished, we can tell you something we could not say before.
+Thank you for reviewing. Now that everyone in your part of the study has finished, we can tell you something we could not say before.
 
 ## What we did not tell you
 
-Not every video was made the same way. For the first part of the study there were four kinds:
+Not every video was made the same way. In your part of the study there were four kinds:
 
-- **The program's signing.** The computer program chose a sign for each English word and joined the signs together, in English word order.
+- **The program's signing.** The computer program chose a sign for the main English words it knew and joined the signs together, in English word order. Small words such as "the" and "of", and words it had no sign for, were not signed.
 - **The same signs, out of order.** The same video, with the signs put in a random order on purpose.
-- **Real signs joined the same way.** Real signers' recordings of single signs, one sign for each English word, joined together by the same program. These were also shown on the figure.
+- **Real signs joined the same way.** Real signers' recordings of single signs, for the same words as the program's signing, joined together by the same program. When we had no real recording of a word, that word was left out, so these videos could have fewer signs. These were also shown on the figure.
 - **Real signing.** A recorded sentence by a real signer, shown on the figure.
 
 You did not see two kinds for the same sentence.
