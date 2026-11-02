@@ -35,7 +35,7 @@ Nine raters, about 60 hours of stage 1, about 75 with stage 2. Three raters cann
 - **Consent, payment** (`reviewer_package/`): drafts; pay blank. 0.5 day.
 
 ## 4. Render cost
-Measured: 26 s per 104-frame clip at 768 px after the avatar rework (was 7.9 s). 240 clips at a mean 170 frames: about 3 h, one Mac process; 600 clips: about 7 h. Pod untested. Use the Mac. R2, all files: about 65 GB, ~$1/month. The Mac has 39 GB free: upload and delete per clip.
+Measured: 26 s per 104-frame clip at 768 px after the avatar rework (was 7.9 s). 240 clips at a mean 170 frames: about 2.5 h, plus about 3 h to upload each render, one Mac process; 600 clips: about 15 h with upload. Pod untested. Use the Mac. R2, all files: about 65 GB, ~$1/month. The Mac has 39 GB free: upload and delete per clip.
 
 ## 5. Licensing (not legal advice)
 How2Sign: CC BY-NC 4.0, research consent; attribute and state changes (done on `reviewer_package/FOR_REVIEWERS.md`). English options derive from How2: contracted reviewers only. No ASL Citizen or STEM Wiki clip appears, and the generator mix excludes them. v3d, trained on ASL Citizen, chooses both arms' best-of-16 words. The owner deferred consent until after the model finishes (22:39 UTC); this read keeps best of 16.

@@ -460,7 +460,7 @@ Not handled: hand against hand, a hand against the other arm or its own upper ar
 | 768 | 13.7 px | 460 KB | 26 s |
 | 1024 | 18.2 px | 710 KB | 34 s |
 
-768 stays. By eye, at 384 finger edges are blocks of a few pixels, at 768 they read cleanly, and 1024 adds little. Render time is mostly not pixels. It was 7.9 s for the same clip before, so a pilot of 240 clips at a mean 170 frames takes about 3 hours on the Mac rather than about 1, plus uploading each render, about 1 MB per frame.
+768 stays. By eye, at 384 finger edges are blocks of a few pixels, at 768 they read cleanly, and 1024 adds little. Render time is mostly not pixels. It was 7.9 s for the same clip before. Uploading each render with its frames takes longer than rendering it: 65 s for a 236-frame clip, measured. So a pilot of 240 clips at a mean 170 frames takes about 2.5 hours of rendering and about 3 of upload on the Mac, about 6 hours in all, and about 40 GB in R2.
 
 **Playback speed isn't changed.** The owner asked for slower motion. The release bar is read at predicted timing, and a slower video would change that condition, so this is reported, not done. Generated wrists move 1.45× real's on the right and 3.5× on the left at p95 in these clips, and that speed is still visible after the filter. A slow-motion control in the rater's player, used equally on every clip, is the place to ask about it; it isn't built.
 
