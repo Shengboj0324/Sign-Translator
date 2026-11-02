@@ -1,5 +1,5 @@
 #!/bin/bash
-# parent_controls.sh — controls on composition reading above real signing on v1's parent, read through the parent and the mirror: real word clips stitched in the same format (oracle), the generated clips of the oracle's words (covered), and the same forms in shuffled order (2 seeds each), on D20 (scripts/parent_controls.py). Report only: nothing trains, the mirror never moves M1, the reports decide nothing, and none of it shows human comprehension.
+# parent_controls.sh — controls on composition reading above real signing on v1's parent, read through the parent and the mirror, or through v1 with INSTRUMENTS=v1: real word clips stitched in the same format (oracle), the generated clips of the oracle's words (covered), and the same forms in shuffled order (2 seeds each), on D20 (scripts/parent_controls.py). Report only: nothing trains, the mirror and these v1 reads of A5's top10 on D20 never move M1, the reports decide nothing, and none of it shows human comprehension.
 #
 #   bash runpod/fleet/parent_controls.sh                              pins, both smokes, the compose, the parent's eight draws, the mirror's three, each merged
 #   SMOKE=1 bash runpod/fleet/parent_controls.sh                      the smokes only

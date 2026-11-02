@@ -282,7 +282,7 @@ class Controls(Comp):
         self.monkeypatch.setattr(PC, "DRAWS", tuple(draws))
         self.monkeypatch.setattr(PC, "PREFIX", "pc")
 
-    def plant_a5(self, draws, words=None, **change):
+    def plant_a5(self, draws, words=None, gap_shares=None, blank_said=None, **change):
         """Each draw's stored A5 report and the summary, as the planted reader would read their compositions."""
         records = self.records
         bleus = list(PC.V1_A5_BLEU)
@@ -291,6 +291,7 @@ class Controls(Comp):
             said = [("z y x w" if i == EMPTY else " ".join(r["text"].split()[:(words or 9 + k)])) for i, r in enumerate(records)]
             report = dict(dict(top10_report(k, n=self.n), signs=[r["sign"] for r in records], references=[r["text"] for r in records]), **change)
             report["forms"][C.PREDICTED] = dict(hypotheses=said)
+            report["forms"]["blank@predicted"] = dict(hypotheses=blank_said or ["z y x w"] * self.n)
             report["likelihood"] = dict(per_form={C.PREDICTED: [-3. if i == EMPTY else -2. for i in range(self.n)]})
             raw = json.dumps(report).encode()
             self.store.put(C.top10_key(k), raw)
@@ -298,7 +299,13 @@ class Controls(Comp):
             bleus[k - 1] = C.M.bleu_ci_fast(said, report["references"])[0]
         self.monkeypatch.setattr(C, "DRAW_INPUTS", inputs)
         self.monkeypatch.setattr(PC, "V1_A5_BLEU", tuple(bleus))
-        summary = json.dumps(dict(forms=dict(predicted=dict(top10_bleu=bleus)))).encode()
+        shares = list(gap_shares or [0.] * 8)
+        for k in draws:
+            real_said, blank_said = [" ".join(r["text"].split()[:ANCHOR_LEVELS["real_two_view"][0]]) for r in records], ["z y x w"] * self.n
+            refs = [r["text"] for r in records]
+            real_bleu, blank_bleu = C.M.bleu_ci_fast(real_said, refs)[0], C.M.bleu_ci_fast(blank_said, refs)[0]
+            shares[k - 1] = (bleus[k - 1] - blank_bleu) / (real_bleu - blank_bleu)
+        summary = json.dumps(dict(forms=dict(predicted=dict(top10_bleu=bleus, gap_share=dict(top10=gap_shares or shares))))).encode()
         self.store.put(C.A5_SUMMARY, summary)
         self.monkeypatch.setattr(C, "A5_SUMMARY_SHA", hashlib.sha256(summary).hexdigest())
 
@@ -321,6 +328,14 @@ class Controls(Comp):
         raw = json.dumps(dict(signs=read["real_two_view"]["signs"], references=read["real_two_view"]["references"], forms=forms)).encode()
         self.store.put(P.CANARY_REPORT, raw)
         self.monkeypatch.setattr(P, "CANARY_REPORT_SHA", hashlib.sha256(raw).hexdigest())
+        more = {}
+        for name, (_, _sha) in PC.V1_STORED_MORE.items():
+            raw = json.dumps(dict(read[name], declared_read=True, **(change or {}).get(name, {}))).encode()
+            key = f"pc/v1-stored/{name}.json"
+            self.store.put(key, raw)
+            more[name] = (key, hashlib.sha256(raw).hexdigest())
+        self.monkeypatch.setattr(PC, "V1_STORED_MORE", more)
+        self.store.put(f"training-runs/{L.TRANSLATOR_RUN}/best.json", json.dumps(dict(checkpoint_key=PC.INSTRUMENTS["v1"]["checkpoint_key"])).encode())
         self.monkeypatch.setattr(P, "CANARY", dict(P.CANARY, real=C.M.bleu_ci_fast(read["real_two_view"]["hypotheses"], read["real_two_view"]["references"])[0], blank=C.M.bleu_ci_fast(read["blank"]["hypotheses"], read["blank"]["references"])[0]))
 
     def v1_comp_check(self, k=1):
@@ -2302,12 +2317,16 @@ def test_a_smoke_reads_through_the_mirror_and_compares_nothing(monkeypatch, tmp_
 
 def test_v1s_pins_and_declared_reading():
     head = PC.__doc__
-    for text in ("how much of the official 2.40 is word order", "**Reads only: it is never used here for a loss, a rerank or a best-of-N,**", "real two-view (4.493) and nearest two-view (4.621), with real monocular beside them", "near the parent's and the mirror's, about 1 BLEU,** means much of the official 2.40 is word order", "**A small drop** means it mostly is not", "Neither is the better outcome", "``official_gap``", "**v1 trained on 234 of D20's clips and selected on 265 more,** so ``by_clip_subset`` rows matter", "No target moves", "None of it shows human comprehension", "they are not this recipe's margin", "no new compose", "NVIDIA L40S", "About 2.6 h and about $2.90", "All eight draws"):
+    for text in ("how much of A5's top10 reading on D20, through v1, is word order", "**Reads only: it is never used here for a loss, a rerank or a best-of-N,**", "A5's top10 arm on D20, mean BLEU 2.402", "a different arm and different clips from C20's official 2.400 (arm W14b with gains, best of 16, real 4.033)", "**This does not decompose M1, and nothing here can be carried over to C20.**", "It does not say what share of the official score is word order", "no bar in BLEU", "``paired.moved.shuffled_minus_composition``, by that rule", "**Unresolved is not \"small\":**", "``v1_gap.share_of_composition_gap_removed_by_shuffling``", "**the parent's 50% and the mirror's 39% beside it and no cut.**", "**Every outcome.**", "**Neither a large nor a small share is the better outcome.**", "``paired.content_word_overlap``", "loses BLEU mechanically", "**Overlap falling too points to more than n-gram order;**", "``v1_gap.by_clip_subset``", "its memory of a sentence could drive a drop", "the rebuilt joins or the different still", "real two-view (4.493) and nearest two-view (4.621), with real monocular beside them", "**v1 trained" if False else "v1 trained on 234 of D20's clips and selected on 265 more", "No target moves", "None of it shows human comprehension", "they are not this recipe's margin", "**six of its seven anchors", "**``still_monocular`` has no stored v1 read and is not checked.**", "``void-v1``", "no new compose", "NVIDIA L40S", "About 2.6 h and about $2.90", "All eight draws"):
         assert text in head, text
+    assert "official 2.40 " not in head.replace("official 2.400", "") and "about 1 BLEU" not in head and "the official gap" not in head and "official_gap" not in head
+    for text in ("does not decompose M1", "nothing here can be carried over", "Unresolved is not small", "50%", "39%", "no cut", "Neither a large nor a small share is the better outcome", "paired.moved.shuffled_minus_composition", "paired.content_word_overlap", "the rebuilt joins or the different still", "the clean 178", "never for a loss, a rerank or a best-of-N", "None of it shows human comprehension"):
+        assert text in PC.READING_V1, text
+    assert "about 1 BLEU" not in PC.READING_V1 and "official 2.40 " not in PC.READING_V1.replace("official 2.400", "")
     pin = PC.INSTRUMENTS["v1"]
     assert pin["run"] == L.TRANSLATOR_RUN and pin["sha256"] == L.TRANSLATOR_SHA and pin["sha256"].startswith("2e3ded3f") and pin["checkpoint_key"].endswith("back-translator-kp2d-uwb-ft-v1/checkpoints/step-00009000.pt")
     assert PC.V1_A5_BLEU == (2.406, 2.469, 2.22, 2.449, 2.08, 2.35, 2.556, 2.687) and PC.COMPOSED_DIGEST.startswith("0936c98a") and set(PC.COMPOSED_INDEX) == set(PC.DRAWS) and len(set(PC.COMPOSED_INDEX.values())) == 8 and PC.COMPOSED_INDEX[1].startswith("02726a3d") and all(re.fullmatch(r"[0-9a-f]{64}", h) for h in PC.COMPOSED_INDEX.values())
-    assert "never for a loss, a rerank or a best-of-N" in PC.READING_V1 and "about 1 BLEU" in PC.READING_V1 and "never for a loss, a rerank or a best-of-N" in PC.DISCLOSURES["v1"] and PC.V1_COST_ESTIMATE["measured"] is False
+    assert "never for a loss, a rerank or a best-of-N" in PC.READING_V1 and "never for a loss, a rerank or a best-of-N" in PC.DISCLOSURES["v1"] and PC.V1_COST_ESTIMATE["measured"] is False
 
 
 @pytest.mark.parametrize("change", [dict(sha256="0" * 64), dict(checkpoint_key=f"training-runs/{L.TRANSLATOR_RUN}/checkpoints/step-00015000.pt")])
@@ -2326,7 +2345,7 @@ def test_v1s_anchors_pass_and_its_reads_are_v1s_alone(monkeypatch, tmp_path):
     h.plant_v1_stored()
     assert h.v1_control() == 0
     record = json.loads((h.forms_v1 / "control.json").read_text())
-    assert record["reproduced"] is True and set(record["stored"]) == set(PC.V1_STORED_ANCHORS) and record["canary"]["reproduced"] is True
+    assert record["reproduced"] is True and set(record["stored"]) == {"real_two_view", "blank", "nearest_two_view", "nearest_monocular", "real_monocular", "still_two_view"} and record["canary"]["reproduced"] is True and "still_monocular" not in record["stored"]
 
 
 @pytest.mark.parametrize("canary,word", [(dict(real=dict(hypotheses=["other"] * N)), "canary real hypotheses"), (dict(blank=dict(per_clip=dict(nll=[9.] * N))), "canary blank NLL")])
@@ -2345,7 +2364,7 @@ def test_a_canary_miss_voids_v1s_read(monkeypatch, tmp_path, capsys, canary, wor
         h.main("preflight", "--out-dir", str(tmp_path / "w2"), "--final-key", "pc/report-v1.json", "--void-prefix", "pc/void-v1")
 
 
-@pytest.mark.parametrize("name", ["real_two_view", "blank", "nearest_two_view", "nearest_monocular"])
+@pytest.mark.parametrize("name", ["real_two_view", "blank", "nearest_two_view", "nearest_monocular", "real_monocular", "still_two_view"])
 def test_an_anchor_off_the_parts_forms_voids_v1s_read(monkeypatch, tmp_path, capsys, name):
     h = Controls(monkeypatch, tmp_path, compose_draws=())
     assert h.v1_anchors() == 0
@@ -2402,7 +2421,9 @@ def test_a_composition_not_reproduced_voids_v1s_read(monkeypatch, tmp_path, caps
     to_v1_comp_check(h)
     h.plant_a5((1,), **change)
     assert h.v1_comp_check(1) == 3
-    assert word in capsys.readouterr().out and h.store.exists("pc/void-v1/" + "c" * 64 + ".json")
+    assert word in capsys.readouterr().out and h.store.exists("pc/void-v1/" + "c" * 64 + ".json") and not h.store.exists("pc/void/" + "c" * 64 + ".json")
+    with pytest.raises(SystemExit, match="this code's read is void"):
+        h.main("preflight", "--out-dir", str(tmp_path / "w2"), "--final-key", "pc/report-v1.json", "--void-prefix", "pc/void-v1")
     with pytest.raises(SystemExit, match="has not been reproduced"):
         h.v1("read", "--draws", "1", "--composed", "pc/composed", "--out-dir", str(h.forms_v1))
 
@@ -2476,28 +2497,174 @@ def test_v1s_report_anchors_on_two_view_with_monocular_beside(monkeypatch, tmp_p
     assert (tmp_path / "report-v1.json").read_bytes() and h.v1("merge", "--draws", "1,2", "--composed", "pc/composed", "--prefix", "pc/forms-v1", "--output-file", str(tmp_path / "report-v1.json")) == 0
 
 
-def test_the_official_gap_row_holds_composition_and_its_shuffled_share(monkeypatch, tmp_path):
+def test_the_gap_row_holds_composition_and_its_shuffled_share(monkeypatch, tmp_path):
     h = Controls(monkeypatch, tmp_path)
     report = h.v1_report()
-    gap = report["official_gap"]
-    assert gap["composition"]["per_draw"] == pytest.approx(report["composition"]["bleu_gap_share"]["per_draw"], abs=1e-4) and gap["composition_shuffled"]["mean"] == pytest.approx(report["groups"]["shuffled"]["bleu_gap_share"]["mean"], abs=1e-4)
+    gap = report["v1_gap"]
+    assert "official_gap" not in report and gap["composition"]["per_draw"] == pytest.approx(report["composition"]["bleu_gap_share"]["per_draw"], abs=1e-4) and gap["composition_shuffled"]["mean"] == pytest.approx(report["groups"]["shuffled"]["bleu_gap_share"]["mean"], abs=1e-4)
     assert gap["shuffled_minus_composition"]["per_draw"][0] == pytest.approx(gap["composition_shuffled"]["per_draw"][0] - gap["composition"]["per_draw"][0], abs=1e-3)
     comp, shuffled, blank = report["composition"]["bleu"]["per_draw"][0], report["groups"]["shuffled"]["bleu"]["per_draw"][0], report["composition"]["per_draw"]["1"]["bleu_gap_share"]["blank"]
+    assert shuffled != comp, "planted so that the share is not zero"
     assert gap["share_of_composition_gap_removed_by_shuffling"]["per_draw"][0] == pytest.approx((comp - shuffled) / (comp - blank), abs=1e-3) and gap["share_of_composition_gap_removed_by_shuffling"]["draws"] == 2
+    assert gap["share_of_composition_gap_removed_by_shuffling"]["per_draw"][0] != 0. and gap["beside"] == PC.V1_BESIDE and gap["removed_share_ratio_of_means"]["point"] is not None and len(gap["removed_share_denominators"]) == 2
     parent = h.report()
-    assert parent["official_gap"] is None and parent["stored_a5"] is None
+    assert parent["v1_gap"] is None and parent["stored_a5"] is None
+
+
+def sentence_stats(said, reference):
+    return C.M.bleu_statistics([said], [reference])[0]
+
+
+def removed_fixture():
+    """Eight clips; composition reads every word, each seed of its shuffle fewer, by a different amount, and blank fewer still."""
+    reference = " ".join(f"w{i}" for i in range(12))
+    said = lambda n: " ".join(f"w{i}" for i in range(n))      # noqa: E731
+    stack = lambda n: np.stack([sentence_stats(said(n), reference)] * 8)      # noqa: E731
+    return dict(stats=stack(10), blank_stats=stack(4)), dict(stats=stack(8)), dict(stats=stack(6)), stack
+
+
+def test_the_removed_share_is_its_value_over_its_own_denominator_and_counts_both_seeds():
+    comp, one, two, _ = removed_fixture()
+    bleu = lambda x: float(C.M.bleu_from_statistics(x["stats"].sum(0)))      # noqa: E731
+    blank = float(C.M.bleu_from_statistics(comp["blank_stats"].sum(0)))
+    assert bleu(comp) > bleu(one) > bleu(two) > blank
+    idx = np.random.default_rng(0).integers(0, 8, (50, 8))
+    row = PC.removed_share([{1: comp}], [{1: one}, {1: two}], idx)
+    want = (bleu(comp) - (bleu(one) + bleu(two)) / 2) / (bleu(comp) - blank)
+    assert row["mean_of_draw_ratios"]["per_draw"] == pytest.approx([want], abs=1e-4) and row["denominators"] == pytest.approx([bleu(comp) - blank], abs=1e-3) and row["ratio_of_means"]["point"] == pytest.approx(want, abs=1e-3)
+    # one seed alone gives another value: both seeds count
+    assert PC.removed_share([{1: comp}], [{1: one}], idx)["mean_of_draw_ratios"]["per_draw"][0] < want < PC.removed_share([{1: comp}], [{1: two}], idx)["mean_of_draw_ratios"]["per_draw"][0]
+
+
+def test_the_removed_shares_interval_is_its_own_ratio_on_its_own_index():
+    comp, one, two, stack = removed_fixture()
+    # clips differ, so that the resamples do
+    for x, base in ((comp, 10), (one, 8), (two, 6)):
+        x["stats"] = np.stack([stack(base + i % 2)[0] for i in range(8)])
+    idx = np.random.default_rng(3).integers(0, 8, (200, 8))
+    row = PC.removed_share([{1: comp}], [{1: one}, {1: two}], idx)
+    b = C.M.bleu_from_statistics
+    drop = b(comp["stats"][idx].sum(1)) - (b(one["stats"][idx].sum(1)) + b(two["stats"][idx].sum(1))) / 2
+    gap = b(comp["stats"][idx].sum(1)) - b(comp["blank_stats"][idx].sum(1))
+    assert row["mean_of_draw_ratios"]["clips_ci95"] == pytest.approx(P._quantiles(drop / gap), abs=1e-4)
+    # the denominator is composition minus blank, on this index: not composition minus shuffled, and not another index
+    assert row["mean_of_draw_ratios"]["clips_ci95"] != pytest.approx(P._quantiles(drop / (b(comp["stats"][idx].sum(1)) - b(one["stats"][idx].sum(1)))), abs=1e-4)
+    other = np.random.default_rng(4).integers(0, 8, (200, 8))
+    assert PC.removed_share([{1: comp}], [{1: one}, {1: two}], other)["mean_of_draw_ratios"]["clips_ci95"] != row["mean_of_draw_ratios"]["clips_ci95"]
+
+
+def test_the_ratio_of_means_stands_beside_the_mean_of_ratios_when_denominators_vary():
+    comp, one, _, stack = removed_fixture()
+    small = dict(stats=stack(6), blank_stats=stack(4))      # a small denominator, a large per-draw ratio
+    small_shuffled = dict(stats=stack(5))
+    idx = np.random.default_rng(0).integers(0, 8, (50, 8))
+    row = PC.removed_share([{1: comp, 2: small}], [{1: one, 2: small_shuffled}], idx)
+    b = lambda x: float(C.M.bleu_from_statistics(x.sum(0)))      # noqa: E731
+    tops = [b(comp["stats"]) - b(one["stats"]), b(small["stats"]) - b(small_shuffled["stats"])]
+    bottoms = [b(comp["stats"]) - b(comp["blank_stats"]), b(small["stats"]) - b(small["blank_stats"])]
+    assert row["mean_of_draw_ratios"]["mean"] == pytest.approx(np.mean([a / c for a, c in zip(tops, bottoms)]), abs=1e-4)
+    assert row["ratio_of_means"]["point"] == pytest.approx(np.mean(tops) / np.mean(bottoms), abs=1e-3)
+    assert abs(row["mean_of_draw_ratios"]["mean"] - row["ratio_of_means"]["point"]) > .005
+    assert row["mean_of_draw_ratios"]["t_ci95"] is not None
+
+
+def test_a_mask_takes_the_removed_share_on_those_clips_alone():
+    comp, one, _, stack = removed_fixture()
+    kept = np.array([True] * 4 + [False] * 4)
+    other = dict(stats=np.concatenate([stack(8)[:4], stack(1)[:4]]))      # the masked-out clips read nothing like the rest
+    idx = np.random.default_rng(0).integers(0, 8, (50, 8))
+    masked = PC.removed_share([{1: comp}], [{1: other}], idx, kept)
+    plain = PC.removed_share([{1: dict(comp, stats=comp["stats"][:4], blank_stats=comp["blank_stats"][:4])}], [{1: dict(stats=stack(8)[:4])}], np.random.default_rng(0).integers(0, 4, (50, 4)))
+    assert masked["mean_of_draw_ratios"]["per_draw"] == pytest.approx(plain["mean_of_draw_ratios"]["per_draw"], abs=1e-4)
+    assert masked["mean_of_draw_ratios"]["per_draw"] != pytest.approx(PC.removed_share([{1: comp}], [{1: other}], idx)["mean_of_draw_ratios"]["per_draw"], abs=1e-3)
+
+
+def test_the_shares_beside_it_are_the_stored_reports():
+    for name, instrument in (("parent_controls_report", "parent"), ("parent_controls_mirror_report", "mirror")):
+        report = json.loads((ROOT / "reports" / f"{name}.json").read_text())
+        comp, shuffled = report["composition"]["bleu"]["per_draw"], report["groups"]["shuffled"]["bleu"]["per_draw"]
+        blank = [report["composition"]["per_draw"][str(k)]["bleu_gap_share"]["blank"] for k in report["draws"]]
+        beside = PC.V1_BESIDE[instrument]
+        assert beside["draws"] == len(comp) and beside["mean_of_draw_ratios"] == pytest.approx(np.mean([(a - b) / (a - c) for a, b, c in zip(comp, shuffled, blank)]), abs=1e-3)
+        assert beside["ratio_of_means"] == pytest.approx((np.mean(comp) - np.mean(shuffled)) / (np.mean(comp) - np.mean(blank)), abs=1e-3)
+
+
+def test_the_clean_clip_rows_hold_the_moved_differences_and_the_share(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path)
+    gap = h.v1_report()["v1_gap"]
+    rows = gap["by_clip_subset"]
+    assert set(rows) == {"in_v1_training", "outside_v1_training", "outside_training_and_selection"} and rows["in_v1_training"]["clips"] == 4 and rows["outside_v1_training"]["clips"] == N - 4 and rows["outside_training_and_selection"]["clips"] == N - 6
+    for row in rows.values():
+        assert set(row["moved"]) == {"shuffled_minus_composition", "oracle_shuffled_minus_oracle", "covered_shuffled_minus_covered"} and row["removed_share"]["mean_of_draw_ratios"]["t_ci95"] is not None
+    moved = rows["outside_training_and_selection"]["moved"]["covered_shuffled_minus_covered"]
+    assert moved["margin"]["t_ci95"] is not None and moved["margin"]["mean"] == pytest.approx(.43 - .5, abs=1e-4)
+
+
+def overlap_read(said, references):
+    return dict(hypotheses=said, references=references)
+
+
+def test_the_overlap_row_is_paired_and_tells_words_from_order():
+    references = ["house river mountain sky rain snow", "tree stone cloud moon star sun", "bird fish wolf bear deer fox", "lake hill road town farm gate"]
+    base = overlap_read(list(references), references)
+    # the same words in another order lose no overlap, whatever BLEU does; other words do
+    reordered = overlap_read([" ".join(reversed(r.split())) for r in references], references)
+    fewer = overlap_read([r.split()[0] for r in references], references)
+    idx = np.random.default_rng(0).integers(0, 4, (100, 4))
+    same = PC.overlap_difference([{1: reordered}, {1: reordered}], {1: base}, idx)
+    assert same["per_draw"] == [0.] and same["clips_ci95"] == [0., 0.]
+    assert C.M.bleu_ci_fast(reordered["hypotheses"], references)[0] < C.M.bleu_ci_fast(base["hypotheses"], references)[0], "BLEU falls on order alone"
+    lost = PC.overlap_difference([{1: fewer}], {1: base}, idx)
+    assert lost["per_draw"] == pytest.approx([-5 / 6], abs=1e-4)
+    both = PC.overlap_difference([{1: fewer}, {1: reordered}], {1: base}, idx)
+    assert both["per_draw"] == pytest.approx([-5 / 12], abs=1e-4)
+    moved = {1: np.array([True, True, False, False])}
+    partly = overlap_read([references[0], references[1].split()[0], "x", "y"], references)
+    row = PC.overlap_difference([{1: partly}], {1: base}, idx, [moved])
+    assert row["per_draw"] == pytest.approx([-5 / 12], abs=1e-4), "only moved clips count: the two others lost every word"
+
+
+def test_the_report_carries_the_paired_overlap_row(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path)
+    report = h.v1_report()
+    rows = report["paired"]["content_word_overlap"]
+    assert set(rows) == {"shuffled_minus_composition", "oracle_shuffled_minus_oracle", "covered_shuffled_minus_covered", "oracle_minus_covered"}
+    assert set(rows["shuffled_minus_composition"]) == {"all_clips", "moved_clips"} and set(rows["oracle_minus_covered"]) == {"all_clips"} and rows["shuffled_minus_composition"]["moved_clips"]["draws"] == 2
+    mine, base = report["groups"]["shuffled"]["hypotheses"]["content_word_overlap"]["per_draw"], report["composition"]["hypotheses"]["content_word_overlap"]["per_draw"]
+    assert rows["shuffled_minus_composition"]["all_clips"]["per_draw"] == pytest.approx([a - b for a, b in zip(mine, base)], abs=1e-3) and rows["shuffled_minus_composition"]["all_clips"]["mean"] < 0
+
+
+def test_a_v1_report_says_nothing_of_the_others_gpu_or_stops(monkeypatch, tmp_path):
+    h = Controls(monkeypatch, tmp_path)
+    disclosures = h.v1_report()["disclosures"]
+    assert disclosures["gpu"] == PC.V1_GPU and "mirror's" not in disclosures["gpu"] and not {"mirror", "mirror_form", "stops"} & set(disclosures) and "v1" in disclosures
+    assert PC.disclosures_of("parent") is PC.DISCLOSURES
 
 
 def test_every_draws_composition_is_set_beside_its_stored_a5_report(monkeypatch, tmp_path):
     h = Controls(monkeypatch, tmp_path)
     report = h.v1_report()
     assert set(report["stored_a5"]) == {"1", "2"} and report["stored_a5"]["2"]["identical"] == 1. and report["stored_a5"]["2"]["misses"] == []
+    row = report["stored_a5"]["2"]
+    assert row["blank_identical"] == 1. and row["blank_bleu"] == row["stored_blank_bleu"] and row["gap_share"] == pytest.approx(row["stored_gap_share"], abs=1e-3)
     # a later draw off its stored report is an alert in the report, which the check stops on
     h.plant_a5((2,), words=4)
     out = tmp_path / "off.json"
     assert h.v1("merge", "--draws", "1,2", "--composed", "pc/composed", "--prefix", "pc/forms-v1", "--output-file", str(out)) == 0
     off = json.loads(out.read_text())
     assert any("draw 2: composition does not reproduce its stored A5 report" in a for a in off["alerts"])
+    assert h.main("check", "--report", str(out)) == 3
+
+
+@pytest.mark.parametrize("change,word", [(dict(blank_said=["other words here now"] * N), "blank"), (dict(gap_shares=[.9] * 8), "gap share")])
+def test_a_blank_or_gap_share_off_its_stored_report_raises_an_alert(monkeypatch, tmp_path, change, word):
+    h = Controls(monkeypatch, tmp_path)
+    h.v1_read()
+    h.plant_a5((1, 2), **change)
+    out = tmp_path / "off.json"
+    assert h.v1("merge", "--draws", "1,2", "--composed", "pc/composed", "--prefix", "pc/forms-v1", "--output-file", str(out)) == 0
+    report = json.loads(out.read_text())
+    assert any(word in a for a in report["alerts"]) and any(word in m for m in report["stored_a5"]["1"]["misses"])
     assert h.main("check", "--report", str(out)) == 3
 
 
@@ -2527,7 +2694,7 @@ def test_v1s_inputs_hold_every_pin_before_any_spend(monkeypatch, tmp_path, capsy
         h.main("inputs", "--instrument", "v1", "--expect-gpu", "NVIDIA_L40S")
 
 
-@pytest.mark.parametrize("what,word", [("index", "SHA-256"), ("summary", "SHA-256"), ("bleu", "declared per-draw BLEU"), ("canary", "SHA-256"), ("parts", "SHA-256"), ("signs", "other clips than D20"), ("top10", "SHA-256")])
+@pytest.mark.parametrize("what,word", [("index", "SHA-256"), ("summary", "SHA-256"), ("bleu", "declared per-draw BLEU"), ("canary", "SHA-256"), ("parts", "SHA-256"), ("signs", "other clips than D20"), ("top10", "SHA-256"), ("more", "SHA-256"), ("instrument", "another instrument"), ("best", "not the pinned")])
 def test_a_v1_input_off_its_pin_stops_at_inputs(monkeypatch, tmp_path, what, word):
     h = Controls(monkeypatch, tmp_path)
     h.v1_read()
@@ -2543,6 +2710,12 @@ def test_a_v1_input_off_its_pin_stops_at_inputs(monkeypatch, tmp_path, what, wor
         h.store.put(f"{Q.PARTS_FORMS}/s-blank.json", b"{}")
     elif what == "top10":
         h.store.put(C.top10_key(2), b"{}")
+    elif what == "more":
+        h.store.put(PC.V1_STORED_MORE["still_two_view"][0], b"{}")
+    elif what == "instrument":
+        h.plant_v1_stored(dict(real_monocular=dict(instrument=dict(sha256="0" * 64))))
+    elif what == "best":
+        h.store.put(f"training-runs/{L.TRANSLATOR_RUN}/best.json", json.dumps(dict(checkpoint_key=f"training-runs/{L.TRANSLATOR_RUN}/checkpoints/step-00015000.pt")).encode())
     else:
         h.plant_v1_stored(dict(blank=dict(signs=[f"z{i}" for i in range(N)])))
     with pytest.raises(SystemExit, match=word):
@@ -2569,7 +2742,7 @@ def test_a_v1_smoke_reads_the_stored_forms_against_train_references(monkeypatch,
     out = tmp_path / "smoke-v1.json"
     assert h.v1("merge", "--draws", "1", "--composed", "pc/composed", "--prefix", "pc/forms-v1", "--output-file", str(out)) == 0
     report = json.loads(out.read_text())
-    assert report["declared_read"] is False and "SMOKE" in report["smoke"] and report["stored_a5"] is None and report["official_gap"]["composition"]["draws"] == 1
+    assert report["declared_read"] is False and "SMOKE" in report["smoke"] and report["stored_a5"] is None and report["v1_gap"]["composition"]["draws"] == 1
 
 
 # ---- v1's path through the job
@@ -2616,6 +2789,8 @@ def test_the_v1_smoke_mode_stops_before_d20(tmp_path):
 def test_a_v1_void_stops_with_3_and_reads_no_draw(tmp_path, fail, word):
     result, calls = run_job(tmp_path, INSTRUMENTS="v1", fail_when=fail, code=3)
     assert result.returncode == 3 and done_line(result) == 3 and word in result.stdout and "do not retry this code" in result.stdout and "RERUN_CAUSE" in result.stdout and not draws_read(calls, "v1")
+    voids = [x for x in calls.splitlines() if x.split()[1] in ("control", "comp-check") and "work/d20-v1/v1/forms" in x]
+    assert voids and all("round20/parent-controls/void-v1" in x for x in voids), "a v1 miss voids into void-v1, in the job"
 
 
 @pytest.mark.parametrize("fail,word", [("control --instrument v1 --out-dir*work/d20-v1/v1/forms", "v1's control did not run"), ("comp-check --instrument v1 --draw 1*work/d20-v1/v1/forms", "v1's composition check did not run")])

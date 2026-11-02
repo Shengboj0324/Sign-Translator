@@ -33,7 +33,7 @@
 - **The mirror is report only and never moves M1. Generated motion reading high on it is flagged on the same terms as on the parent,** since it shares the parent's lineage (the parent's weights, trained on the MediaPipe source of word clips), **and How2Sign monocular trained it,** so it was fitted to the path word clips come through, and its training holds 234 of D20's clips. The same readings apply on it, each on its own anchors.
 - **A parent void or a parent check alert stops the job before the mirror reads:** its anchors would then have no parent to stand beside.
 
-**The second instrument (``--instrument``: ``parent``, ``mirror``).** ``mirror`` is ``back-translator-kp2d-uwb-ft-mono-v1`` step 9,000, sha ``1a996cfc...``, the parent fine-tuned on How2Sign monocular states (``scripts/symmetric_ft.py``, label ``unresolved``), loaded by ``parent_lib.load_mono`` from its trained record and held to that hash. Each instrument has its own forms, control, void and report. Through the mirror: the composition, its still and its blank on each draw it reads (it has no stored forms), real and nearest on both paths with their stills, blank at the reference's length, and every control form. **Its shares take its own path's anchors,** real and nearest monocular over the monocular still, since that is its peak; the two-view anchors stand beside them. A share of real two-view stands beside each share (``share_of_two_view_real``). Report only, for each form on either instrument: BLEU of the form, real, nearest and blank, and the BLEU gap share, on clips in v1's training list, outside it, and outside training and selection, the clean 178 (``symmetric_ft.clip_subsets``; the mirror's list is v1's less the refused clips, the same on D20): the plan's table shows that split matters most here. The mirror's report also holds the parent's rows on the mirror's own draws, and parent minus mirror draw by draw (``parent_on_mirror_draws``).
+**The second instrument (``--instrument``: ``parent``, ``mirror``, and ``v1`` below).** ``mirror`` is ``back-translator-kp2d-uwb-ft-mono-v1`` step 9,000, sha ``1a996cfc...``, the parent fine-tuned on How2Sign monocular states (``scripts/symmetric_ft.py``, label ``unresolved``), loaded by ``parent_lib.load_mono`` from its trained record and held to that hash. Each instrument has its own forms, control, void and report. Through the mirror: the composition, its still and its blank on each draw it reads (it has no stored forms), real and nearest on both paths with their stills, blank at the reference's length, and every control form. **Its shares take its own path's anchors,** real and nearest monocular over the monocular still, since that is its peak; the two-view anchors stand beside them. A share of real two-view stands beside each share (``share_of_two_view_real``). Report only, for each form on either instrument: BLEU of the form, real, nearest and blank, and the BLEU gap share, on clips in v1's training list, outside it, and outside training and selection, the clean 178 (``symmetric_ft.clip_subsets``; the mirror's list is v1's less the refused clips, the same on D20): the plan's table shows that split matters most here. The mirror's report also holds the parent's rows on the mirror's own draws, and parent minus mirror draw by draw (``parent_on_mirror_draws``).
 **Its control:** all seven anchors against the stored report's values (real monocular 4.715, nearest monocular 4.783, nearest two-view 3.702, blank 1.159 among them, within 0.05), and their hypotheses and NLL against its stored forms (``parent_lib.same_read``), report and forms held to full hashes. A miss voids the mirror's read, status 3; a stored object off its hash stops with status 1, nothing voided.
 **The GPU.** The mirror's stored forms were read on an NVIDIA L40S, so a different type may void its read: **the job refuses any GPU but ``EXPECT_GPU``, the NVIDIA L40S, and the pod must be requested as that type.** The parent's stored composition was read on an RTX 6000 Ada, and whether an L40S reproduces it is what ``comp-check`` tests.
 **What the mirror reads of generated motion, and why: the composed state as it stands, the very bytes the parent read.** No conforming, no marks, no trim.
@@ -42,13 +42,21 @@
 - **Not trimmed or stretched to a monocular clock.** The predicted length is the product being measured, and a clip's own length would leak its reference. Monocular clips run longer than their two-view slices, and the predicted seconds are fitted on two-view durations, so these forms are shorter than what the mirror trained on: the report gives the ratio (``length_over_monocular``), and a margin over the form's own still at its own length cancels flags and duration as on the parent.
 - **The same bytes on both instruments** make the two reads a comparison of readers rather than of forms.
 
-**The third instrument (``--instrument v1``, ``INSTRUMENTS=v1`` in the job): how much of the official 2.40 is word order?** ``v1`` is ``L.TRANSLATOR_RUN``, step 9,000, sha ``2e3ded3f...``, the official instrument. **Reads only: it is never used here for a loss, a rerank or a best-of-N,** and no choice in this job depends on it. **Declared before any read of it:**
-- **The same rule:** a contrast is above or below only if the t interval over draws excludes zero on both margin over still and BLEU in the same direction; otherwise unresolved; the clip interval decides nothing. All eight draws, with no clock rule on them: this is the ruler that matters.
+**The third instrument (``--instrument v1``, ``INSTRUMENTS=v1`` in the job): how much of A5's top10 reading on D20, through v1, is word order?** ``v1`` is ``L.TRANSLATOR_RUN``, step 9,000, sha ``2e3ded3f...``. **Reads only: it is never used here for a loss, a rerank or a best-of-N,** and no choice in this job depends on it.
+**What this reads, exactly.** A5's top10 arm on D20, mean BLEU 2.402 over eight draws. That is a different arm and different clips from C20's official 2.400 (arm W14b with gains, best of 16, real 4.033). **This does not decompose M1, and nothing here can be carried over to C20.** A D20 result suggests how much word order this arm's reading on these clips holds through this instrument, and so whether the question is worth asking of the official arm. It does not say what share of the official score is word order, or that shuffling would do the same on C20.
+
+**Declared before any read of it, with no bar in BLEU.**
+- **The same rule and the same draws:** a contrast is above or below only if the t interval over draws excludes zero on both margin over still and BLEU in the same direction; otherwise unresolved; the clip interval decides nothing. All eight draws, with no clock rule on them.
+- **Whether a drop exists is decided by one row, ``paired.moved.shuffled_minus_composition``, by that rule.** Below: a drop exists. Above: shuffling raises the reading. **Unresolved is not "small":** it means this read cannot say whether shuffling moves v1's reading of these clips, since an interval holds zero or the two metrics disagree.
+- **How large is read on ``v1_gap.share_of_composition_gap_removed_by_shuffling``,** (composition minus shuffled) over (composition minus blank), with **the parent's 50% and the mirror's 39% beside it and no cut.** The mean of per-draw ratios and the ratio of means stand together, since the denominators vary from draw to draw.
+- **Every outcome.** A drop, with the share's t interval around those two figures: word order holds about as much of this reading as of theirs. A drop, with the interval below them: it holds less here than there, and still some. A drop, with the interval above them: it holds more. Unresolved: as above, and no size is read. Shuffling raising the reading: this reader does better on these clips out of English order, which would need explaining before anything else. **Neither a large nor a small share is the better outcome.**
+- **Words against order: ``paired.content_word_overlap``.** BLEU is n-grams, so a reader that gets every word right, in the input's order, loses BLEU mechanically. **Overlap falling too points to more than n-gram order;** overlap holding is what n-gram order alone would give.
+- **Memory: ``v1_gap.by_clip_subset``.** v1 trained on 234 of D20's clips and selected on 265 more, so its memory of a sentence could drive a drop. The moved differences and the removed share are given in training, outside it and on the clean 178, each with its t interval. A drop that goes on the clean clips is not memory, and one that holds only in training may be.
+- **The limits stated above hold here:** a drop may come from the rebuilt joins or the different still, which these rows do not fully separate; a read of English order is no evidence that a person follows it, or that it is signing.
 - **Anchors:** real two-view (4.493) and nearest two-view (4.621), with real monocular beside them. Oracle minus covered, and oracle against real two-view, read as above.
-- **A shuffle drop on moved clips near the parent's and the mirror's, about 1 BLEU,** means much of the official 2.40 is word order. **A small drop** means it mostly is not. Neither is the better outcome, and the limits on what a drop means, stated above, hold here. ``official_gap`` gives composition's and its shuffled form's shares of the official gap, (form minus blank) over (real minus blank), and the share of composition's gap that shuffling removes.
-- **v1 trained on 234 of D20's clips and selected on 265 more,** so ``by_clip_subset`` rows matter. **No target moves: M1 stays read on the held-out set, and nothing here touches that set. None of it shows human comprehension.**
-**Why composition, its still and blank are read again.** The stored A5 reports hold v1's hypotheses and each clip's own log-probability, but no still and no NLL of mismatched references, so they are not this recipe's margin. They are the check: draw one's stored composition must reproduce before anything else is read through v1, every draw's hypotheses and BLEU are set beside its stored report and ``a5-summary.json``, and a miss raises an alert. Their own-reference log-probability is reported beside and is no miss, since those reports may have grouped their batches otherwise.
-**Its controls, before any spend on draws:** real and blank against the pinned canary (real 4.493, blank 1.680, ``s2/b0-w14b-d20-v1.json``), real, blank and nearest on both paths against the parts job's pinned forms, and draw one's stored composition (``comp-check``). A miss voids v1's read, status 3. **The forms read the stored composed states of this job's first read, no new compose:** each draw's index is held to its full hash and of digest ``0936c98a``, and each state to its hash in that index. **The GPU:** the parts job's v1 forms state an NVIDIA L40S, as the mirror's did, and the job refuses another type. The A5 reports state none, though their hypotheses reproduced on an RTX 6000 Ada (fidelity 32 of 32 per draw).
+- **No target moves, M1 stays read on C20 and nothing here touches C20. None of it shows human comprehension.**
+**Why composition, its still and blank are read again.** The stored A5 reports hold v1's hypotheses and each clip's own log-probability, but no still and no NLL of mismatched references, so they are not this recipe's margin. They are the check: draw one's stored composition must reproduce before anything else is read through v1, and every draw's composition and blank, and its BLEU gap share, are set beside its stored report and ``a5-summary.json``. A miss raises an alert. Their own-reference log-probability is reported beside and is no miss, since those reports may have grouped their batches otherwise.
+**Its controls, before any spend on draws:** real and blank against the pinned canary (real 4.493, blank 1.680, ``s2/b0-w14b-d20-v1.json``), and **six of its seven anchors against v1's stored forms, by full hashes:** real two-view, blank and nearest on both paths from the parts job, real monocular from the path read, still two-view from the sensitivity ladder, whose still is the parts job's recipe (the parent's two are identical). **``still_monocular`` has no stored v1 read and is not checked.** Draw one's stored composition too (``comp-check``). A miss voids v1's read into ``void-v1``, status 3. ``inputs`` also holds v1's checkpoint key to ``best.json``. **The forms read the stored composed states of this job's first read, no new compose:** each draw's index is held to its full hash and of digest ``0936c98a``, and each state to its hash in that index. **The GPU:** v1's stored forms state an NVIDIA L40S, as the mirror's did, and the job refuses another type. The A5 reports state none, though their hypotheses reproduced on an RTX 6000 Ada (fidelity 32 of 32 per draw).
 **Cost, estimated from the measured pace:** the parent's draws took about 12 min each with 2 reads running, for 16 forms, so about 14 min for v1's 19, 8 draws 115 min; pins, the checkpoint's first fetch, the smoke, anchors and checks about 30 min; merge 10 min. **About 2.6 h and about $2.90** at the $1.11/h of the last job's $3.40 for 3 h 4 min, range about $2.40 to $3.60. That v1 reads at the parent's pace is assumed.
 
 **Forms, all on D20: the same 500 clips, the same predicted lengths and timing as the composition's ``core_crossfade@predicted`` of the same draw, on each instrument.**
@@ -81,7 +89,7 @@
 **So the mirror reads three draws (1, 2, 3), not eight.** Two draws would leave its t interval almost empty; each further draw costs about $0.20. Those three draws are few for a t interval, as the reading says. The parent keeps all eight, which passes the brief's "about $3". ``DRAWS="1 2 3 4 5 6"`` with the mirror's three is about $3.
 **The clock rule, fixed here and blind to every score:** once an instrument has started its minimum of draws (parent four, mirror two), the job starts no further draw of it if the time since the job began, plus the wall time since its reads began divided by the draws finished, would pass its limit (parent ``PARENT_BUDGET_SECONDS`` 10,800 s; mirror ``BUDGET_SECONDS`` 14,400 s, 4 h, about $3.40). So the mirror's third draw can be left out. ``MIRROR_DRAWS`` must be a prefix of ``DRAWS``. Each draw's forms are read whole. A report's ``stage`` gives its planned draws, the draws read, the stop reason, the elapsed seconds and the budget. Every step runs under a stated limit: ``READ_TIMEOUT`` 3,600 s for an anchor set or a draw's forms, ``COMPOSE_TIMEOUT`` 5,400 s, ``MERGE_TIMEOUT`` 3,600 s for a merge or the pins, ``STEP_TIMEOUT`` 1,800 s for the rest. The measured cost must be reported beside this.
 
-**Refused.** A record outside the three corpora or outside ``train``, and c00 in any case, stops before it is fetched (``check_word_record``). D20 only (``s2_lib``; C20 cannot be named). No v1 read, and no instrument but the two pinned: neither is ever used here for a loss, a rerank or a best-of-N, and no instrument sees a real clip before the pick. A stored form or export on other bytes stops. A smoke (``--smoke-train 5``): 5 D20 sentences composed, read against c02 train references, so the parent sees no D20 text or clip: numbers are plumbing.
+**Refused.** A record outside the three corpora or outside ``train``, and c00 in any case, stops before it is fetched (``check_word_record``). D20 only (``s2_lib``; C20 cannot be named). No instrument but the three pinned: none is ever used here for a loss, a rerank or a best-of-N, and no instrument sees a real clip before the pick. A stored form or export on other bytes stops. A smoke (``--smoke-train 5``): 5 D20 sentences composed, read against c02 train references, so the parent sees no D20 text or clip: numbers are plumbing.
 
     python scripts/parent_controls.py inputs --model-file W/model.json --expect-gpu NVIDIA_L40S
     python scripts/parent_controls.py digest
@@ -165,6 +173,11 @@ COMPOSED_DIGEST = "0936c98aec02269bc8bca63c29d75b2628adff3fdd8ef7198644934103282
 COMPOSED_INDEX = {1: "02726a3d077b5e0e9c1ce239c33e12def2ff2c059daeffc5bf3e00db84b3ad82", 2: "8beadf2abf52313a6ec93c01a7a2f928bee0163c8abeb99524a2ecb39ba77a12", 3: "c38c28726cd0bf69a187948acc81e6c085b5d623933df0c33afd846fbe0fc918", 4: "c0f33728dff47eaeb82b3e73e902f2aed217562ba0582cd93162beea83d7a968", 5: "c1bc2e88e737983fdabd98f8cba1dc5dca36c4cb109ce3c5d70c616002a9163b", 6: "d3a045484ab022ee617e476b2dad0cd33d059fb80b5cfadacb7e5c0139dbc8c7", 7: "d034682ed66b49c3a6a62e03cc4e517206475a9028ec94da272f0433929d408e", 8: "49c43821b988c2f0179985fafd9a101ee0c35b0579e8eaf449b0fcfb4720e0fb"}
 V1_A5_BLEU = (2.406, 2.469, 2.22, 2.449, 2.08, 2.35, 2.556, 2.687)      # a5-summary.json, sha 4f3d1f38
 V1_STORED_ANCHORS = ("real_two_view", "blank", "nearest_two_view", "nearest_monocular")
+# fetched and hashed 2026-11-02, both on the L40S; the ladder's still is the parts job's recipe, identical on the parent. still_monocular has no stored v1 read
+V1_STORED_MORE = dict(real_monocular=(f"{L.O}/round20/path-read/forms/form-real_monocular.json", "c0af37f321cb5a7954eaf6b39548872466115964e87c3cccb41c35554e2e5cdb"), still_two_view=(f"{L.O}/round20/sensitivity-ladder/forms/form-v1__still_two_view.json", "a5ed31957789639276cdc27dcdcaca6ca958012d75ac88dde0e122ea3ff24500"))
+V1_GAP_TOLERANCE = .02
+# reports/parent_controls_report.json and its mirror's: (composition minus shuffled) over (composition minus blank), BLEU, set beside and no cut
+V1_BESIDE = dict(parent=dict(mean_of_draw_ratios=.5096, ratio_of_means=.5043, draws=8), mirror=dict(mean_of_draw_ratios=.3955, ratio_of_means=.3927, draws=3))
 V1_COST_ESTIMATE = dict(measured=False, hours=2.6, dollars=2.9, range_dollars=[2.4, 3.6], dollars_per_hour=1.11, forms_per_draw=19, draws=8, minutes_per_draw=14, basis="the measured pace of the parent's draws (about 12 min for 16 forms with 2 reads running) and the last job's $3.40 for 3 h 4 min; that v1 reads at that pace is assumed; the measured cost is to be reported beside this")
 EMPTY_WINDOW = "contains no frames"      # corpus_manifest.window_state's refusal: the one failure a pick gives way on
 MAX_NOT_SERVED = .02
@@ -198,10 +211,11 @@ DISCLOSURES = dict(
     parsing="Shared helpers parse the whole mix, and v1_training_signs holds ids of the sentence set no job here names at merge, as earlier reads did. Nothing of either reaches an output.",
     gpu="The mirror's stored forms state an NVIDIA L40S, and the job refuses another type. The parent's stored composition states an RTX 6000 Ada, and comp-check tests whether the L40S reproduces it.",
     stops="A parent void or check alert stops the job before the mirror reads.",
-    v1="v1 is the official instrument, read only here, never for a loss, a rerank or a best-of-N. It trained on 234 of D20's clips and selected on 265 more, so by_clip_subset rows matter. Its forms are the stored composed states of this job's first read, each held to its hash. Stored A5 reports hold no still and no mismatched NLL, so composition, still and blank are read again and checked against them.",
+    v1="v1 is read only here, never for a loss, a rerank or a best-of-N, on A5's top10 on D20: a different arm and different clips from the official score, which this does not decompose. It trained on 234 of D20's clips and selected on 265 more, so by_clip_subset rows matter. Its forms are the stored composed states of this job's first read, each held to its hash. Stored A5 reports hold no still and no mismatched NLL, so composition, still and blank are read again and checked against them. Six of its seven anchors and the canary are checked; still_monocular has no stored v1 read.",
     humans="None of this shows human comprehension, and none of it is a claim about M1 or release.")
 READING = ("A contrast is above or below only if its paired t interval over draws excludes zero on both margin over still and BLEU in the same direction; otherwise it is unresolved. Generated against real clips is oracle minus covered, never oracle against composition. The format is oracle against real, and on the mirror against nearest_monocular with real_monocular beside it. Oracle above the like and above covered: the format reads high, and real clips read higher than generated ones. Oracle above the like but below covered: the format reads high AND generated clips read higher. Oracle below the like and above covered: composition's lead would sit in the words the oracle lacks and the frames they free. Oracle below the like and below covered: the format alone does not lift real clips, and generated clips read higher. Either contrast unresolved: unresolved. Neither a low nor a high oracle separates format from source by itself, since real word clips are MediaPipe monocular too. The mirror is report only and never moves M1; generated motion reading high on it is flagged on the same terms as on the parent, since it shares the parent's lineage and How2Sign monocular trained it. No label gates anything. None of it shows human comprehension.")
-READING_V1 = ("The same rule: above or below only if the t interval over draws excludes zero on both margin over still and BLEU in the same direction; otherwise unresolved; the clip interval decides nothing. Anchors: real two-view and nearest two-view, with real monocular beside them. A shuffle drop on moved clips near the parent's and the mirror's, about 1 BLEU, means much of the official 2.40 is word order; a small drop means it mostly is not. v1 is read only, never for a loss, a rerank or a best-of-N. v1 trained on 234 of D20's clips and selected on 265 more, so by_clip_subset rows matter. No target moves, M1 stays read on the held-out set and nothing here touches that set. None of it shows human comprehension.")
+V1_GPU = "v1's stored forms state an NVIDIA L40S, and the job refuses another type. The stored A5 reports state none, though their hypotheses reproduced on an RTX 6000 Ada."
+READING_V1 = ("This reads A5's top10 on D20, mean 2.402, a different arm and different clips from the held-out set's official 2.400 (arm W14b with gains, best of 16, real 4.033). It does not decompose M1, and nothing here can be carried over to that set. A D20 result suggests how much word order this arm's reading on these clips holds through this instrument, and so whether the question is worth asking of the official arm; it does not say what share of the official score is word order. The same rule: above or below only if the t interval over draws excludes zero on both margin over still and BLEU in the same direction; otherwise unresolved; the clip interval decides nothing. Whether a drop exists is decided by paired.moved.shuffled_minus_composition by that rule. Below: a drop exists. Above: shuffling raises the reading. Unresolved is not small: this read cannot say whether shuffling moves the reading. How large is read on v1_gap.share_of_composition_gap_removed_by_shuffling, with the parent's 50% and the mirror's 39% beside it and no cut: a drop with the share's t interval around them holds about as much as theirs, below them less and still some, above them more. Neither a large nor a small share is the better outcome. BLEU is n-grams, so a reader that gets every word right, in the input's order, loses BLEU mechanically: paired.content_word_overlap falling too points to more than n-gram order. A drop may also come from the rebuilt joins or the different still, which these rows do not fully separate, and a read of English order is no evidence that a person follows it or that it is signing. v1 trained on 234 of D20's clips and selected on 265 more, so its memory could drive a drop: v1_gap.by_clip_subset gives the clean 178. v1 is read only, never for a loss, a rerank or a best-of-N. No target moves, M1 stays read on the held-out set and nothing here touches that set. None of it shows human comprehension.")
 CELLS = {("above", "above"): "format reads high, and real clips read higher than generated ones", ("above", "below"): "the middle case: format reads high AND generated clips read higher", ("below", "above"): "real clips do not reach real signing and generated clips fall below them: composition's lead would sit in the words the oracle lacks and the frames they free", ("below", "below"): "format alone does not lift real clips, and generated clips read higher"}
 
 
@@ -363,6 +377,19 @@ def void_read(store, void_prefix: str, digest: str, place: dict, result: dict, n
         store.put(key, json.dumps(dict(kind=f"{PROBE}-{name}-void", code_digest=digest, environment=place, control=result), indent=1, sort_keys=True).encode())
 
 
+def load_v1_stored(store) -> dict:
+    """v1's stored forms of six of its seven anchors, each by its full hash and of its instrument."""
+    out = {name: Q.stored_form(store, Q.STORED_V1, name) for name in V1_STORED_ANCHORS}
+    for name, (key, sha) in V1_STORED_MORE.items():
+        raw = store.get(key)
+        P.check_sha(raw, sha, key)
+        out[name] = json.loads(raw)
+    wrong = [name for name, read in out.items() if read["instrument"]["sha256"] != L.TRANSLATOR_SHA or read.get("declared_read") is not True]
+    if wrong:
+        raise SystemExit(f"v1's stored {wrong} are of another instrument or not a declared read")
+    return out
+
+
 def run_v1_control(args) -> int:
     """Exit 3, voiding v1's read, unless its real and blank reproduce the pinned canary and its anchors the parts job's pinned forms. A smoke reads train clips, so it compares nothing and says so."""
     from train_text_to_motion import make_store
@@ -376,13 +403,13 @@ def run_v1_control(args) -> int:
     digest, place = P.check_same_run(read, "v1's control forms")
     raw = store.get(P.CANARY_REPORT)
     P.check_sha(raw, P.CANARY_REPORT_SHA, P.CANARY_REPORT)      # a pin failure stops here or below with status 1: no control runs, nothing is voided
-    stored = {name: Q.stored_form(store, Q.STORED_V1, name) for name in V1_STORED_ANCHORS}
+    stored = load_v1_stored(store)
     try:
         canary = P.canary_read(dict(real=read["real_two_view"], blank=read["blank"]), json.loads(raw))
     except SystemExit as error:
         canary = dict(reads=None, misses=[str(error)], reproduced=False)
     rows, misses = {}, [f"canary {m}" for m in canary["misses"]]
-    for name in V1_STORED_ANCHORS:
+    for name in stored:
         try:
             rows[name] = Q.same_read(read[name], stored[name])
         except SystemExit as error:
@@ -1008,10 +1035,12 @@ def run_inputs_v1(store) -> int:
         if top10["signs"] != signs or top10["references"] != texts:
             raise SystemExit(f"draw {k}: its stored A5 report holds other clips than D20, or another order")
     P.check_sha(store.get(P.CANARY_REPORT), P.CANARY_REPORT_SHA, P.CANARY_REPORT)
-    for name in V1_STORED_ANCHORS:
-        stored = Q.stored_form(store, Q.STORED_V1, name)
-        if stored["signs"] != signs or stored["references"] != texts or stored["instrument"]["sha256"] != L.TRANSLATOR_SHA:
-            raise SystemExit(f"v1's stored {name} holds other clips than D20, another order or another instrument")
+    for name, stored in load_v1_stored(store).items():
+        if stored["signs"] != signs or stored["references"] != texts:
+            raise SystemExit(f"v1's stored {name} holds other clips than D20, or another order")
+    key = json.loads(store.get(f"training-runs/{L.TRANSLATOR_RUN}/best.json"))["checkpoint_key"]
+    if key != INSTRUMENTS["v1"]["checkpoint_key"]:
+        raise SystemExit(f"v1's best.json names {key}, not the pinned {INSTRUMENTS['v1']['checkpoint_key']}")
     print(json.dumps(dict(inputs=dict(instrument="v1", draws=list(DRAWS), summary=C.A5_SUMMARY_SHA[:8], canary=P.CANARY_REPORT_SHA[:8], indexes={k: COMPOSED_INDEX[k][:8] for k in DRAWS}))), flush=True)
     return 0
 
@@ -1487,6 +1516,41 @@ def members_of(read: SimpleNamespace, name: str) -> list[dict]:
     return [read.built[kind].arrays for kind in GROUPS.get(name, (name,))]
 
 
+def seed_means(values: np.ndarray) -> np.ndarray:
+    """Seeds x resamples: each resample's mean over the seeds that have a value. None has one: NaN, which ``_quantiles`` leaves out."""
+    kept = ~np.isnan(values)
+    counts = kept.sum(0)
+    return np.divide(np.where(kept, values, 0.).sum(0), counts, out=np.full(values.shape[1], np.nan), where=counts > 0)
+
+
+def overlap_difference(mine: list[dict], other: dict, idx: np.ndarray, masks: list[dict] | None = None) -> dict:
+    """Mine minus other in content-word overlap, clip by clip, seeds averaged within a draw, over the draws. ``masks``: each seed's moved clips alone. A clip with no content word in its reference has no value."""
+    draws = sorted(other)
+    every = np.arange(idx.shape[1])[None]
+    per_draw, boots = [], []
+    for k in draws:
+        base = hypothesis_values(other[k])["content_word_overlap"]
+        seeds = []
+        for n, reads in enumerate(mine):
+            values = hypothesis_values(reads[k])["content_word_overlap"] - base
+            seeds.append(np.where(masks[n][k], values, np.nan) if masks else values)
+        per_draw.append(float(seed_means(np.stack([nan_means(v, every) for v in seeds]))[0]))
+        boots.append(seed_means(np.stack([nan_means(v, idx) for v in seeds])))
+    return C.over_draws(per_draw, np.stack(boots))
+
+
+def overlap_rows(read: SimpleNamespace, composed_rows: dict, idx: np.ndarray) -> dict:
+    """Paired content-word overlap, the reading's check on BLEU: a reader that gets every word right, in the input's order, loses BLEU mechanically, and overlap falling too points to more than n-gram order."""
+    reads_of = lambda name: {k: read.base[k]["comp"] for k in read.base} if name == "composition" else read.built[name].reads      # noqa: E731
+    out = {}
+    for name, partner in PARTNERS.items():
+        mine = [read.built[kind].reads for kind in GROUPS[name]]
+        masks = [{k: composed_rows[k][kind] for k in composed_rows} for kind in GROUPS[name]]
+        out[f"{name}_minus_{partner}"] = dict(all_clips=overlap_difference(mine, reads_of(partner), idx), moved_clips=overlap_difference(mine, reads_of(partner), idx, masks))
+    out["oracle_minus_covered"] = dict(all_clips=overlap_difference([reads_of("oracle")], reads_of("covered"), idx))
+    return out
+
+
 def paired_block(read: SimpleNamespace, composed_rows: dict) -> dict:
     """Every paired row: on all clips, against real, and on moved clips with each shuffled still's effect."""
     idx, comp = read.idx, read.comp_arrays
@@ -1499,6 +1563,7 @@ def paired_block(read: SimpleNamespace, composed_rows: dict) -> dict:
     out["form_minus_real"] = {name: paired_rows(members_of(read, name), [as_real(comp)], idx, metrics=("margin", "bleu")) for name in ("composition", *names)}
     nearest = M.bleu_statistics(read.anchors["nearest_two_view"]["hypotheses"], read.anchors["nearest_two_view"]["references"])
     out["form_minus_nearest"] = {name: paired_rows(members_of(read, name), [as_nearest(comp, nearest)], idx, metrics=("margin", "bleu")) for name in ("composition", *names)}
+    out["content_word_overlap"] = overlap_rows(read, composed_rows, idx)
     out["moved"], out["still_effect"] = {}, {}
     for name, partner in PARTNERS.items():
         masks = [{k: composed_rows[k][kind] for k in composed_rows} for kind in GROUPS[name]]
@@ -1545,7 +1610,7 @@ def run_merge(args) -> int:
         moved = {k: {kind: moved_mask(sorted(composed[k]["rows"][kind], key=lambda r: r["clip"])[:len(first["signs"])]) for kind in KINDS if "shuffled" in kind} for k in draws}
         paired = paired_block(read, moved)
         beside = None if args.instrument == "parent" else parent_on_mirror_draws(store, args, read, draws)
-        gap = official_gap(read, idx) if args.instrument == "v1" else None
+        gap = v1_gap(read, idx, masks, moved) if args.instrument == "v1" else None
     real_hypotheses = hypothesis_row({0: [anchors["real_two_view"]]}, idx)      # the instrument's own path
     length_over_monocular = None if args.instrument == "parent" else round(float(np.mean([a / b for a, b in zip(read.base[draws[0]]["comp"]["frames"], forms["real_monocular"]["frames"])])), 4)
     coverage = {str(k): composed[k]["coverage"] for k in draws}
@@ -1559,7 +1624,7 @@ def run_merge(args) -> int:
         alerts += validity_alerts(kind, read.built[kind].reads)
     path_names = dict(real="real_two_view", nearest="nearest_two_view", still="still_two_view", blank="blank") if args.instrument != "mirror" else dict(real="real_monocular", nearest="nearest_monocular", still="still_monocular", blank="blank")
     stage = dict(planned_draws=[int(x) for x in args.planned_draws.split(",") if x] if args.planned_draws else draws, draws=draws, stop_reason=args.stop_reason, elapsed_seconds=args.elapsed_seconds, budget_seconds=args.budget_seconds)
-    report = dict(kind=f"{PROBE}-report", report_only=True, note=C.NOT_DECIDED, reading=READING_V1 if args.instrument == "v1" else READING, reading_contrasts=reading_contrasts(paired, args.instrument), official_gap=gap, stored_a5=a5, rerun_cause=args.rerun_cause, declared_read=declared, smoke=None if declared else "SMOKE: composed D20 sentences against c02 train references; these numbers are plumbing, not a read", list=first["list"], code_digest=code_digest(), environment=read.place, instrument=first["instrument"], instrument_name=args.instrument, own_path_anchors=path_names, length_over_monocular=length_over_monocular, draws=draws, draws_note=None if tuple(draws) == DRAWS else f"fewer than eight: {draws}", stage=stage, seeds=list(SEEDS), disclosures=DISCLOSURES, cost_estimate=V1_COST_ESTIMATE if args.instrument == "v1" else COST_ESTIMATE, alerts=alerts, stored=dict(report_sha256=STORED_REPORT_SHA, digest=STORED_DIGEST) if read.stored_composition else None,
+    report = dict(kind=f"{PROBE}-report", report_only=True, note=C.NOT_DECIDED, reading=READING_V1 if args.instrument == "v1" else READING, reading_contrasts=reading_contrasts(paired, args.instrument), v1_gap=gap, stored_a5=a5, rerun_cause=args.rerun_cause, declared_read=declared, smoke=None if declared else "SMOKE: composed D20 sentences against c02 train references; these numbers are plumbing, not a read", list=first["list"], code_digest=code_digest(), environment=read.place, instrument=first["instrument"], instrument_name=args.instrument, own_path_anchors=path_names, length_over_monocular=length_over_monocular, draws=draws, draws_note=None if tuple(draws) == DRAWS else f"fewer than eight: {draws}", stage=stage, seeds=list(SEEDS), disclosures=disclosures_of(args.instrument), cost_estimate=V1_COST_ESTIMATE if args.instrument == "v1" else COST_ESTIMATE, alerts=alerts, stored=dict(report_sha256=STORED_REPORT_SHA, digest=STORED_DIGEST) if read.stored_composition else None,
                   anchors=anchor_report(forms, args.instrument, idx), real_hypotheses=real_hypotheses, composition=composition, forms=blocks, groups=groups, paired=paired, parent_on_mirror_draws=beside, oracle_coverage=coverage, orders={str(k): composed[k]["orders"] for k in draws}, identity={str(k): composed[k]["identity"] for k in draws},
                   checks=dict(controls=dict(anchors=read.control, **(dict(comp_check=read.comp_check) if needs_comp_check(declared, args.instrument) else {})), blank_identical_to_real=round(float(np.mean([a == b for a, b in zip(anchors["blank"]["hypotheses"], anchors["real_two_view"]["hypotheses"])])), 4)),
                   resources=dict(forms={k: {x: r[x] for x in ("peak_rss_bytes", "gpu_peak_reserved_bytes", "build_seconds", "read_seconds")} for k, r in forms.items()}, compose_seconds={str(k): composed[k]["seconds"] for k in draws}))
@@ -1568,29 +1633,68 @@ def run_merge(args) -> int:
     return 0
 
 
-def official_gap(read: SimpleNamespace, idx: np.ndarray) -> dict:
-    """Composition's and its shuffled form's shares of the official gap, (form minus blank) over (real minus blank) in BLEU, and the share of composition's gap that shuffling removes, over the draws."""
-    composition, shuffled = members_of(read, "composition"), members_of(read, "shuffled")
+def removed_share(composition: list[dict], shuffled: list[dict], idx: np.ndarray, mask: np.ndarray | None = None) -> dict:
+    """(composition minus shuffled) over (composition minus blank), BLEU, seeds averaged within a draw: the mean of per-draw ratios over the draws, and the ratio of means beside it, since the denominators differ. ``mask``: those clips alone."""
     draws = sorted(composition[0])
-    bleu, bleu_boot = METRICS["bleu"]
-    lost, lost_boot = [], []
+    kept = np.ones(idx.shape[1], bool) if mask is None else mask
+    point = lambda stats: float(_bleu(stats[kept].sum(0)))      # noqa: E731
+    boot = lambda stats: _bleu((stats[idx] * kept[idx][..., None]).sum(1))      # noqa: E731
+    ratios, ratio_boots, tops, bottoms, top_boots, bottom_boots = [], [], [], [], [], []
     for k in draws:
         x = composition[0][k]
-        blank = float(_bleu(x["blank_stats"].sum(0)))
-        comp, drop = bleu(x), bleu(x) - float(np.mean([bleu(m[k]) for m in shuffled]))
-        lost.append(drop / (comp - blank) if comp != blank else float("nan"))
-        comps, blanks = bleu_boot(x, idx), _bleu(x["blank_stats"][idx].sum(1))
-        lost_boot.append(C.ratio_draws(comps - np.mean([bleu_boot(m[k], idx) for m in shuffled], 0), comps - blanks))
-    return dict(note="(form minus blank) over (real minus blank), BLEU, on the composition's blank; all clips, moved or not: paired.moved holds the drop on moved clips", composition=group_rows(composition, idx)["bleu_gap_share"], composition_shuffled=group_rows(shuffled, idx)["bleu_gap_share"], shuffled_minus_composition=paired_rows(shuffled, composition, idx, metrics=("bleu_gap_share",))["bleu_gap_share"], share_of_composition_gap_removed_by_shuffling=C.over_draws(lost, np.stack(lost_boot)))
+        comp, blank = point(x["stats"]), point(x["blank_stats"])
+        drop = comp - float(np.mean([point(m[k]["stats"]) for m in shuffled]))
+        comps = boot(x["stats"])
+        drops, gaps = comps - np.mean([boot(m[k]["stats"]) for m in shuffled], 0), comps - boot(x["blank_stats"])
+        ratios.append(drop / (comp - blank) if comp != blank else float("nan"))
+        ratio_boots.append(C.ratio_draws(drops, gaps))
+        tops.append(drop)
+        bottoms.append(comp - blank)
+        top_boots.append(drops)
+        bottom_boots.append(gaps)
+    return dict(mean_of_draw_ratios=C.over_draws(ratios, np.stack(ratio_boots)), ratio_of_means=dict(point=round(float(np.mean(tops) / np.mean(bottoms)), 4) if np.mean(bottoms) else None, clips_ci95=P._quantiles(C.ratio_draws(np.mean(top_boots, 0), np.mean(bottom_boots, 0)))), denominators=[round(x, 4) for x in bottoms])
+
+
+def v1_gap(read: SimpleNamespace, idx: np.ndarray, masks: dict, moved: dict) -> dict:
+    """v1's gap on A5's top10 on D20, not the official score's: composition's and its shuffled form's shares of (real minus blank) in BLEU, the share of composition's gap that shuffling removes, with the parent's and the mirror's beside it and no cut, and the moved differences and that share in and outside training and on the clean clips."""
+    composition, shuffled = members_of(read, "composition"), members_of(read, "shuffled")
+    subsets = {}
+    for name in ("in_v1_training", "outside_v1_training", "outside_training_and_selection"):
+        kept = masks[name]
+        pairs = {f"{form}_minus_{partner}": moved_rows(members_of(read, form), [{k: moved[k][kind] & kept for k in moved} for kind in GROUPS[form]], members_of(read, partner), idx) for form, partner in PARTNERS.items()}
+        subsets[name] = dict(clips=int(kept.sum()), moved=pairs, removed_share=removed_share(composition, shuffled, idx, kept))
+    share = removed_share(composition, shuffled, idx)
+    return dict(note="on A5's top10 on D20: (form minus blank) over (real minus blank), BLEU, on the composition's blank; all clips, moved or not. paired.moved.shuffled_minus_composition decides whether a drop exists", composition=group_rows(composition, idx)["bleu_gap_share"], composition_shuffled=group_rows(shuffled, idx)["bleu_gap_share"], shuffled_minus_composition=paired_rows(shuffled, composition, idx, metrics=("bleu_gap_share",))["bleu_gap_share"], share_of_composition_gap_removed_by_shuffling=share["mean_of_draw_ratios"], removed_share_ratio_of_means=share["ratio_of_means"], removed_share_denominators=share["denominators"], beside=V1_BESIDE, by_clip_subset=subsets)
 
 
 def a5_rows(store, forms: dict, draws: list[int]) -> tuple[dict, list[str]]:
-    """Each draw's composition through v1 against its stored A5 report. A miss is an alert."""
+    """Each draw's composition and blank through v1, and its BLEU gap share, against its stored A5 report and summary. A miss is an alert."""
+    raw = store.get(C.A5_SUMMARY)
+    P.check_sha(raw, C.A5_SUMMARY_SHA, C.A5_SUMMARY)
+    shares = json.loads(raw)["forms"]["predicted"]["gap_share"]["top10"]
+    real = M.bleu_ci_fast(forms["real_two_view"]["hypotheses"], forms["real_two_view"]["references"])[0]
     rows, alerts = {}, []
     for k in draws:
-        rows[str(k)], misses = a5_row(forms[f"d{k}_comp"], C.load_top10(store, k), V1_A5_BLEU[k - 1])
+        top10 = C.load_top10(store, k)
+        row, misses = a5_row(forms[f"d{k}_comp"], top10, V1_A5_BLEU[k - 1])
+        blank = forms[f"d{k}_blank"]
+        kept = top10["forms"]["blank@predicted"]["hypotheses"]
+        blank_bleu, kept_bleu = M.bleu_ci_fast(blank["hypotheses"], blank["references"])[0], M.bleu_ci_fast(kept, top10["references"])[0]
+        identical = float(np.mean([a == b for a, b in zip(blank["hypotheses"], kept)]))
+        share = (row["bleu"] - blank_bleu) / (real - blank_bleu) if "bleu" in row and real != blank_bleu else None
+        row.update(blank_bleu=blank_bleu, stored_blank_bleu=kept_bleu, blank_identical=round(identical, 4), gap_share=None if share is None else round(share, 4), stored_gap_share=shares[k - 1])
+        misses = misses + [why for why, bad in (("blank BLEU", abs(blank_bleu - kept_bleu) > P.CANARY["bleu_tolerance"]), ("blank hypotheses", identical < P.CANARY["identical"]), ("gap share", share is None or abs(share - shares[k - 1]) > V1_GAP_TOLERANCE)) if bad]
+        row["misses"] = misses
+        rows[str(k)] = row
         alerts += [f"draw {k}: composition does not reproduce its stored A5 report: {m}" for m in misses]
     return rows, alerts
+
+
+def disclosures_of(instrument: str) -> dict:
+    """What a report says of itself. v1's says nothing of the mirror's or the parent's stops, and states its own GPU."""
+    if instrument != "v1":
+        return DISCLOSURES
+    return dict({k: v for k, v in DISCLOSURES.items() if k not in ("mirror", "mirror_form", "stops")}, gpu=V1_GPU)
 
 
 def run_digest(args) -> int:
