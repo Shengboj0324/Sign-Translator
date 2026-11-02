@@ -469,6 +469,12 @@ def test_traversals_count_crossings_of_the_range():
     assert hm.traversals([dict(entry="a", dominant=None, hands=dict())], "dominant")["n"] == 0
 
 
+def test_extended_words_are_single_capture_matches_outside_the_caches_and_train_only():
+    records = [record(sign="a", text="alpha"), record(sign="b", text="beta"), record(sign="c", text="gamma"), record(sign="d", text="delta one"), record(sign="e", text="epsilon", partition="test")]
+    words = hm.extended_words(records, hm.WORD_CORPORA, {"alpha", "beta", "delta", "epsilon"}, {"beta"})
+    assert set(words) == {"alpha"} and words["alpha"] == 1.
+
+
 # ---- the whole read on synthetic rows --------------------------------------------------------------------------------
 
 def _row(entry, source, core, speed, **k):

@@ -1159,6 +1159,7 @@ def analyse(work: Path) -> dict:
     capture_all = {r["entry"] for r in capture_rows}
     return dict(kind="hand-motion-compare", report_only=True, decides_nothing=True, sources=dict(generated_rows=len(pooled), phase_a_rows=len(phase), capture_rows=len(capture_rows), real_word_rows=len(real), sentence_rows=len(sentences), fresh_rows=len(fresh), round_trip_rows=len(trip)),
                 observed_rule=check_observed(dict(capture=capture_rows, real_words=real, sentences_two_view=two, sentences_monocular=mono)), validity=validity_report(dict(generated=pooled, phase_a=phase, capture=capture_rows, real_words=real, sentences_two_view=two, sentences_monocular=mono, fresh=fresh)), generated_validity_note="generated output marks every frame and joint valid, none observed, confidence 0: it never says a hand is absent, and both hands always have a row, while real hands often have no detection",
+                extended_words=extended_report(work, capture_rows, pooled, real),
                 added_after_first_numbers=added_report(work, dict(generated_three_draws=pooled, capture=capture_rows, real_words=real, sentences_two_view=two, sentences_monocular=mono, fresh_unselected=fresh, decoded_clips=[])),
                 motion=motion, ratios=ratios, per_joint_dominant=joint_table(pooled, real, capture_rows), variety=variety, word_match_exclusions=exclusions(entries, capture_all, f_cap), word_match=wm, best_of_16=best_of_16(phase, fresh, pooled), round_trip=round_trip_report(trip, f_cap, pooled) if trip else dict(ran=False))
 
@@ -1322,6 +1323,104 @@ def collect_added(store, work: Path) -> None:
     print("added: cross path", flush=True)
 
 
+EXTENDED_SAMPLES, EXTENDED_LIMIT = 2, 1500.
+
+
+def extended_words(records, corpora, capture_names, cached) -> dict:
+    """{entry: typical seconds}: r10-vocabulary entries that match a capture entry with a dominant row and are in no stored cache. The caches hold D20's 705 entries only, so they reach fewer words than the vocabulary."""
+    from signtranslator.generation.compositional import training_vocabulary
+    vocabulary = training_vocabulary(dict(records=records), tuple(corpora))
+    return {w: s for w, s in sorted(vocabulary.items()) if capture_match(w) and w in capture_names and w not in cached}
+
+
+def _extended(store, work: Path) -> tuple[dict, dict]:
+    payload = json.loads(store.get(DRAW_INDEX.format(k=1)))
+    cached = {e["entry"] for e in payload["entries"]}
+    records = _manifest_records(store)
+    pools = word_records(records)
+    words = extended_words(records, payload["settings"]["corpora"], {r["entry"] for r in _load(work, "capture") if r.get("dominant")}, cached)
+    return words, {w: pools.get(w, []) for w in words}
+
+
+def collect_extended_real(store, work: Path) -> None:
+    from signtranslator.data_engineering.corpus_manifest import ContentCache, load_sample
+    words, pools = _extended(store, work)
+    out = work / "extended_real.jsonl"
+    seen = _seen(out)
+    cache = ContentCache(work / "cache-real", 1_500_000_000)
+    print(f"extended: {len(words)} words, {sum(1 for w in words if pools[w])} with a train word clip", flush=True)
+    for w in sorted(words):
+        for r in pick_clips(pools[w], w):
+            if f"real|{r['sign']}" in seen:
+                continue
+            refuse(r)
+            try:
+                row = clip_row(load_sample(r, "continuous", cache=cache, fetch=store.get), USE_OBSERVED_REAL)
+            except (ValueError, RuntimeError) as bad:
+                row = dict(hands=dict(Right=None, Left=None), dominant=None, failed=type(bad).__name__)
+            _append(out, dict(id=f"real|{r['sign']}", source="extended_real", entry=w, corpus=r["corpus"], performer=r.get("performer_sha256", "")[:8], **row))
+
+
+def collect_extended_fresh(store, work: Path, *, samples: int = EXTENDED_SAMPLES, seconds_limit: float = EXTENDED_LIMIT) -> dict:
+    """Unselected samples of those words on CPU, the composition's recipe without gains; in a fixed order, so a time limit leaves a fixed draw's prefix. Nothing is stored in R2."""
+    import torch
+    from signtranslator.generation.motion_rvq import generate_rvq_motion
+    from signtranslator.generation.rerank import rerank_seeds
+    from signtranslator.pose.resample import resample_motion
+    from evaluate_text_to_motion import load_generator
+    from exposure_diagnostic import make_post
+    from round20_lib import draw_seed
+    torch.set_num_threads(1)
+    words, pools = _extended(store, work)
+    order = sorted(w for w in words if pools[w])
+    random.Random(f"{SEED}|extended").shuffle(order)
+    start = time.time()
+    _, _, sample = load_generator(store, W14B, GENERATOR_MIX_SHA, "cpu", temperature=_temperature(), decoder_gains=False)
+    post = make_post(sample.decoder_gains)
+    out = work / "extended_fresh.jsonl"
+    seen = _seen(out)
+    done = 0
+    for w in order:
+        if time.time() - start > seconds_limit:
+            print(f"extended fresh: time limit after {done} samples", flush=True)
+            return dict(samples=done, stopped="time limit")
+        for k, seed in enumerate(rerank_seeds(draw_seed(w, 100), samples)):
+            sid = f"fresh|{w}|{k}"
+            if sid in seen:
+                continue
+            raw, _ = generate_rvq_motion(sample.prior, sample.tokenizer, [w], fps=FPS, durations=[float(words[w])], guidance=1.5, temperature=_temperature(), seed=seed, return_codes=True)
+            _append(out, dict(id=sid, source="extended_fresh", entry=w, index=k, **clip_row(post(resample_motion(raw[0], FPS)), False)))
+            done += 1
+            if done % 50 == 0:
+                print(f"extended fresh {done} {time.time() - start:.0f}s", flush=True)
+    return dict(samples=done)
+
+
+def extended_report(work: Path, capture_rows: list, pooled: list, real: list) -> dict | None:
+    """Added: unselected CPU samples of vocabulary words no cache holds, against real clips of the same words and the same capture entries; then every word together, whose generated half is selected and whose other half is not."""
+    fresh, more = _load(work, "extended_fresh"), _load(work, "extended_real")
+    if not fresh:
+        return None
+    capture = features_by_word(capture_rows)
+    f, r = features_by_word(fresh), features_by_word(more)
+    words = sorted(set(f) & set(r) & set(capture))
+    out = dict(note="added after the first numbers: the caches reach only 217 matched words because they hold D20's 705 entries", words=len(words), generated_samples=len(fresh), real_clips=len(more), motion_generated_over_real_dominant={k: v for k, v in ratio_table(fresh, more, "dominant").items() if k in ("speed_raw", "speed_6hz", "speed_3hz", "bend_6hz", "range_mean")})
+    if not words:
+        return out
+    wm = word_match_report(dict(generated=f, real_words=r), capture, centroid_form=False)
+    out["word_match"] = wm
+    out["uninformative_rule"] = informative(wm["real_words"]["common_words"]["z_scored"])
+    out["generated_share_of_real_lift"] = top5_share(f, r, capture, words)
+    all_g, all_r = {}, {}
+    for by, to in ((features_by_word(pooled), all_g), (f, all_g), (features_by_word(real), all_r), (r, all_r)):
+        for w, v in by.items():
+            to.setdefault(w, []).extend(v)
+    union = sorted(set(all_g) & set(all_r) & set(capture))
+    out["all_words"] = dict(words=len(union), word_match=word_match_report(dict(generated=all_g, real_words=all_r), capture, centroid_form=False), uninformative_rule=None, generated_share_of_real_lift=top5_share(all_g, all_r, capture, union))
+    out["all_words"]["uninformative_rule"] = informative(out["all_words"]["word_match"]["real_words"]["common_words"]["z_scored"])
+    return out
+
+
 def traversals(rows: list, which: str) -> dict:
     """Word mean of bend travel over range: how many times a clip's joints cross their own range. Rate times frames over 24, over range."""
     def get(r):
@@ -1359,7 +1458,7 @@ def added_report(work: Path, sources: dict) -> dict:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument("command", choices=("generated", "capture", "real_words", "sentences", "fresh", "round_trip", "added", "analyse"))
+    p.add_argument("command", choices=("generated", "capture", "real_words", "sentences", "fresh", "round_trip", "added", "extended_real", "extended_fresh", "analyse"))
     p.add_argument("--work", required=True, help="the local folder for row files and downloads")
     p.add_argument("--out", default=str(ROOT / "reports/hand_motion_compare.json"))
     args = p.parse_args(argv)
@@ -1375,7 +1474,7 @@ def main(argv=None) -> int:
     from signtranslator.data.text_motion_dataset import R2Store
     import os
     store = R2Store(os.environ)
-    fn = dict(generated=collect_generated, capture=collect_capture, real_words=collect_real_words, sentences=collect_sentences, fresh=collect_fresh, round_trip=collect_round_trip, added=collect_added)[args.command]
+    fn = dict(generated=collect_generated, capture=collect_capture, real_words=collect_real_words, sentences=collect_sentences, fresh=collect_fresh, round_trip=collect_round_trip, added=collect_added, extended_real=collect_extended_real, extended_fresh=collect_extended_fresh)[args.command]
     fn(store, work)
     return 0
 
