@@ -25,6 +25,7 @@ from signtranslator.data import layout_adapter  # noqa: E402
 from signtranslator.data.text_motion_dataset import DirectoryStore  # noqa: E402
 from signtranslator.eval import provenance, s0_metrics as M  # noqa: E402
 from tests.test_path_read import CUT, Harness, N, SHARD, built_pair, d20_records, monocular_state, plant_shard, template_state, tiny_tokenizer, train_records, two_view_state, with_empty_hand  # noqa: E402
+from tests.test_generation_signing_space import signer_state  # noqa: E402
 from tests.test_tok_probes import SpyStore, gappy  # noqa: E402
 
 JOB = ROOT / "runpod/fleet/path_parts.sh"
@@ -94,15 +95,17 @@ class UnfittedReader:
     """The unfitted instrument: words said, NLL of a clip's own reference, and its margin over the mismatched ones, by what a state holds. By default monocular keeps 0.5 of two-view's margin."""
     info = dict(run=PP.UNFITTED_RUN, checkpoint_key=PP.UNFITTED_KEY, sha256=PP.UNFITTED_SHA, kind="keypoints")
 
-    def __init__(self, two=(6, 2., 1.), mono=(5, 2.5, .5), real=(6, 2.1, .9), blank=(0, 3., 0.)) -> None:
-        self.two, self.mono, self.real, self.blank = two, mono, real, blank
+    def __init__(self, two=(6, 2., 1.), mono=(5, 2.5, .5), real=(6, 2.1, .9), blank=(0, 3., 0.), still=(3, 2.8, 0.)) -> None:
+        self.two, self.mono, self.real, self.blank, self.still = two, mono, real, blank, still
 
     def row(self, state):
-        valid = state.channels["left_hand"].valid
-        if not valid.any():
+        c = state.channels["left_hand"]
+        if not c.valid.any():
             return self.blank
-        if not valid.all():
+        if not c.valid.all():
             return self.real
+        if len(state.timestamps) == 20 and np.array_equal(c.values[0], c.values[-1]):
+            return self.still
         return self.two if len(state.timestamps) == 20 else self.mono
 
     def read(self, states, texts, candidates, group=2):
@@ -796,7 +799,7 @@ def test_the_fit_block_reads_the_margin_and_each_instruments_own_blank(monkeypat
     report = h.pipeline()
     block = report["fit_or_content"]["likelihood"]
     unfitted = block["unfitted"]
-    assert unfitted["margins"] == dict(uwb_blank=0., uwb_real_two_view=.9, uwb_nearest_two_view=1., uwb_nearest_monocular=.5) and unfitted["own_margin"]["point"] == 1. and unfitted["monocular_minus_two_view"]["point"] == -.5 and unfitted["monocular_share_of_own_margin"]["point"] == .5 and unfitted["real_two_view_margin"]["point"] == .9 and unfitted["blank_margin"]["point"] == 0.
+    assert unfitted["margins"] == dict(uwb_blank=0., uwb_real_two_view=.9, uwb_still_two_view=0., uwb_nearest_two_view=1., uwb_nearest_monocular=.5) and unfitted["own_margin"]["point"] == 1. and unfitted["monocular_minus_two_view"]["point"] == -.5 and unfitted["monocular_share_of_own_margin"]["point"] == .5 and unfitted["real_two_view_margin"]["point"] == .9 and unfitted["blank_margin"]["point"] == 0.
     assert unfitted["over_blank"]["cells"]["uwb_nearest_two_view"] == 1. and unfitted["over_blank"]["share"]["point"] == .5 and "offset" in unfitted["over_blank"]["note"]
     assert block["v1"]["own_gap"]["point"] == 1.5 and block["v1"]["monocular_minus_two_view"]["point"] == pytest.approx(-.7) and block["v1"]["monocular_share_of_own_gap"]["point"] == pytest.approx(.5333, abs=1e-3)
     assert block["share_difference"]["point"] == pytest.approx(.5 - .5333, abs=1e-3) and block["share_difference"]["one_sided_upper_95"] == pytest.approx(.5 - .5333, abs=1e-3)
@@ -852,7 +855,7 @@ def test_the_label_is_likelihoods_and_bleu_is_reported_beside_it(monkeypatch, tm
     h = Parts(monkeypatch, tmp_path)
     report = h.pipeline()
     block = report["fit_or_content"]
-    assert block["case"] == block["likelihood"]["case"] and "case" in block["bleu"] and block["bleu"]["unfitted"]["own_gap"]["point"] > 0 and block["bleu"]["unfitted"]["cells"]["uwb_real_two_view"] > 0 and block["bleu"]["share_difference"]["one_sided_upper_95"] is not None and block["bleu"]["unfitted"]["monocular_minus_two_view"]["point"] < 0
+    assert block["case"] == block["likelihood"]["case"] and block["bleu"]["unfitted"]["own_gap"]["point"] > 0 and block["bleu"]["unfitted"]["cells"]["uwb_real_two_view"] > 0 and block["bleu"]["unfitted"]["monocular_minus_two_view"]["point"] < 0
 
 
 def test_a_content_blind_instrument_with_an_offset_cannot_read_as_keeping_the_gap(monkeypatch, tmp_path):
@@ -874,7 +877,7 @@ def test_at_500_clips_an_offset_never_reads_as_kept(offset):
 
     def form(off):
         return dict(signs=refs, references=refs, hypotheses=["a b c d e f"] * 500, nll=np.array([[prior[c] - off for c in row] for row in candidates]).tolist())
-    reads = {n: form(offset) for n in ("uwb_real_two_view", "uwb_nearest_two_view", "uwb_nearest_monocular")}
+    reads = {n: form(offset) for n in ("uwb_real_two_view", "uwb_still_two_view", "uwb_nearest_two_view", "uwb_nearest_monocular")}
     reads["uwb_blank"] = form(0.)
     reads["blank"] = dict(signs=refs, references=refs, hypotheses=["z y x w"] * 500, nll=[[3.]] * 500)
     reads["nearest_two_view"], reads["nearest_monocular"] = dict(reads["blank"], hypotheses=["a b c d e f"] * 500, nll=[[2.]] * 500), dict(reads["blank"], hypotheses=["a b c d e f"] * 500, nll=[[2.8]] * 500)
@@ -1257,18 +1260,170 @@ def test_a_monitor_miss_voids_question_2_and_leaves_question_1_standing(monkeypa
     assert PP.main(["check", "--report", str(tmp_path / "report.json")]) == 3
 
 
-@pytest.mark.parametrize("name", ["monitor_control.json", "marginals.json"])
-def test_a_merge_needs_each_steps_record_of_this_code(monkeypatch, tmp_path, name):
+def test_a_merge_needs_the_monitor_record_of_this_code(monkeypatch, tmp_path):
     h = Parts(monkeypatch, tmp_path, n=3)
     h.pipeline()
-    path = h.forms / name
+    path = h.forms / "monitor_control.json"
     good = json.loads(path.read_text())
     path.write_text(json.dumps(dict(good, code_digest="other")))
     with pytest.raises(SystemExit, match="another run's record"):
         h.merge("again.json")
     path.unlink()
-    with pytest.raises(SystemExit, match=f"{name} is missing"):
+    with pytest.raises(SystemExit, match="monitor_control.json is missing"):
         h.merge("again.json")
+
+
+def test_a_merge_goes_on_without_marginals_and_refuses_another_runs(monkeypatch, tmp_path):
+    h = Parts(monkeypatch, tmp_path, n=3)
+    h.pipeline()
+    path = h.forms / "marginals.json"
+    good = json.loads(path.read_text())
+    path.write_text(json.dumps(dict(good, code_digest="other")))
+    with pytest.raises(SystemExit, match="another run's record"):
+        h.merge("again.json")
+    path.unlink()
+    report = h.merge("again.json")
+    assert report["marginals"] is None and report["fit_or_content"]["label"] == report["fit_or_content"]["case"]
+
+
+def test_marginals_skip_and_count_a_bad_clip_and_a_stored_form_of_all_bad_clips_still_writes(monkeypatch, tmp_path):
+    import signtranslator.data.keypoint_shards as shards
+    h = Parts(monkeypatch, tmp_path, declared=False, n=4)
+    raw = b"{}"
+    h.store.put(PP.UWB_INDEX, raw)
+    monkeypatch.setattr(PP, "UWB_INDEX_SHA", hashlib.sha256(raw).hexdigest())
+    monkeypatch.setattr(L, "load_manifest_at", lambda store, key, sha: dict(records=h.records))
+    monkeypatch.setattr(L, "train_records", lambda manifest, components, corpus=None: manifest["records"])
+    points = np.random.default_rng(0).normal(size=(30, 48, 2)).astype(np.float32)
+
+    class Dataset:
+        clips = [(points, np.ones((30, 48), bool), 30.)]
+
+        def __len__(self):
+            return 1
+    monkeypatch.setattr(shards, "KeypointShardDataset", lambda *a, **k: Dataset())
+    h.store.put(h.records[2]["continuous"]["state_key"], b"changed")
+    (h.store.root / R.state_key_of("s0")).unlink()
+    assert PP.main(["marginals", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(h.forms), "--clips", "4"]) == 0
+    result = json.loads((h.forms / "marginals.json").read_text())
+    assert result["clips"] == 2 and [x["sign"] for x in result["bad"]] == ["s2"] and "ValueError" in result["bad"][0]["detail"] and [x["reason"] for x in result["lost"]] == ["state_missing"]
+    assert result["two_view"]["left_wrist"] is not None
+    other = tmp_path / "other"
+    for r in h.records:
+        h.store.put(r["continuous"]["state_key"], b"changed")
+    assert PP.main(["marginals", "--store", f"dir:{tmp_path / 's'}", "--out-dir", str(other), "--clips", "4"]) == 0
+    result = json.loads((other / "marginals.json").read_text())
+    assert result["clips"] == 0 and len(result["bad"]) == 4 and result["two_view"]["left_wrist"] is None
+
+
+def test_the_stored_question_1_report_stands_when_a_uwb_step_dies(monkeypatch, tmp_path, capsys):
+    """Its label is in the store from v1's forms alone; no UWB form, monitor record or marginals exists."""
+    h = Parts(monkeypatch, tmp_path)
+    h.to_control()
+    assert h.read(*PP.PART_FORMS, *PP.NEAREST_FORMS, resume=True) == 0
+    h.plant_figures()
+    monkeypatch.setattr(PP, "load_unfitted", lambda *a: pytest.fail("the unfitted instrument"))
+    assert h.main("which-part", "--out-dir", str(h.forms), "--output-key", "pr/which_part.json") == 0
+    stored = json.loads(h.store.get("pr/which_part.json"))
+    assert stored["kind"] == "path-parts-which-part" and stored["report_only"] is True and stored["code_digest"] == PP.code_digest() and stored["which_part"]["label"] == stored["which_part"]["case"] and stored["which_part"]["label"] is not None and stored["which_part"]["likelihood"]["case"] == PP.LABEL_BODY and stored["which_part"]["view_beside_label"] == stored["which_part"]["view_case_report_only"] and stored["which_part"]["withheld"] == [] and stored["alerts"] == [] and stored["control"]["reproduced"] is True and stored["clips"]["shared"] == N and stored["pairing"]["clips"] == N and stored["forms"]["mono_arms_only"]["clips"] == N and set(stored["forms"]) == set(PP.V1_FORMS)
+    assert not list(h.forms.glob("form-uwb_*")) and not (h.forms / "monitor_control.json").exists()
+    printed = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert printed["label"] == stored["which_part"]["label"] and printed["view_beside_label"] == stored["which_part"]["view_beside_label"] and printed["shared"] == N
+    before = h.store.get("pr/which_part.json")
+    assert h.main("which-part", "--out-dir", str(h.forms), "--output-key", "pr/which_part.json") == 0 and h.store.get("pr/which_part.json") == before
+    h.store.put("pr/other.json", json.dumps(dict(code_digest="other")).encode())
+    with pytest.raises(SystemExit, match="not this code's report"):
+        h.main("which-part", "--out-dir", str(h.forms), "--output-key", "pr/other.json")
+
+
+def test_the_question_1_report_holds_its_own_alerts_and_refuses_what_a_merge_refuses(monkeypatch, tmp_path):
+    h = Parts(monkeypatch, tmp_path)
+    h.to_control()
+    assert h.read(*PP.PART_FORMS, *PP.NEAREST_FORMS, resume=True) == 0
+    h.plant_figures()
+    monkeypatch.setattr(PP, "FIGURES", dict(PP.FIGURES, monocular_values_two_view_marks=(0., 0.), nearest_monocular=(0., 0.)))
+    out = tmp_path / "a.json"
+    assert h.main("which-part", "--out-dir", str(h.forms), "--output-file", str(out)) == 0
+    stored = json.loads(out.read_text())
+    assert stored["which_part"]["label"] is None and any("monocular_values" in a for a in stored["alerts"]) and not any("nearest" in a for a in stored["alerts"])
+    path = h.forms / "control.json"
+    path.write_text(json.dumps(dict(json.loads(path.read_text()), reproduced=False)))
+    with pytest.raises(SystemExit, match="no passed control"):
+        h.main("which-part", "--out-dir", str(h.forms), "--output-file", str(tmp_path / "b.json"))
+
+
+def test_a_smoke_question_1_report_carries_no_label(monkeypatch, tmp_path):
+    h = Parts(monkeypatch, tmp_path, declared=False, n=4)
+    assert h.read(*PP.V1_FORMS, smoke=True) == 0
+    out = tmp_path / "a.json"
+    assert h.main("which-part", "--out-dir", str(h.forms), "--output-file", str(out)) == 0
+    stored = json.loads(out.read_text())
+    assert stored["which_part"]["label"] is None and stored["which_part"]["withheld"] == ["a smoke carries no reading"] and stored["control"] is None
+
+
+def test_the_still_form_holds_its_middle_frame_with_flags_on_at_the_same_length():
+    tok = tiny_tokenizer()
+    refs = [two_view_state(i, "a" * 64) for i in range(2)]
+    kept, states, masks, checks = PP.build_form("uwb_still_two_view", refs, [], tok)
+    near = T.cap_form("v0_nearest_fill", refs[1], tok)
+    state = states[1]
+    assert kept == [0, 1] and masks[1] is refs[1] and checks is None and len(state.timestamps) == 20
+    np.testing.assert_array_equal(state.timestamps, near.timestamps)
+    for name in ("body", "left_hand", "right_hand"):
+        c = state.channels[name]
+        assert c.valid.all() and (c.values == c.values[0]).all()
+        np.testing.assert_array_equal(c.values[0], near.channels[name].values[10])
+
+
+def test_a_held_clip_takes_its_middle_frames_marks_too():
+    state = gappy(signer_state(0, frames=20, amplitude=.4), 9, 12)
+    out = PP.held_still(state)
+    assert not out.channels["left_hand"].valid.any() and not out.channels["left_hand"].observed.any()
+    other = PP.held_still(gappy(signer_state(0, frames=20, amplitude=.4), 2, 5))
+    assert other.channels["left_hand"].valid.all() and (other.channels["left_hand"].confidence == other.channels["left_hand"].confidence[10]).all()
+
+
+def duration_only_reads(lam, n=500, k=5):
+    """The review's case: no pose content, NLL depending on the reference and on how far its length sits from what the clip's duration implies, the same for every form with that clip's length, apart from noise."""
+    rng = np.random.default_rng(1)
+    lengths = np.clip(rng.lognormal(2.9, .5, n), 4, 64)
+    implied = lengths * rng.lognormal(0, .25, n)
+    base = rng.normal(3., .4, n)
+    candidates = M.retrieval_candidates(n, k, seed=0)
+    refs = [f"s{i}" for i in range(n)]
+
+    def form(seed, offset=0.):
+        noise = np.random.default_rng(seed)
+        nll = base[candidates] + lam * np.abs(np.log(lengths[candidates]) - np.log(implied)[:, None]) - offset + noise.normal(0, .02, candidates.shape)
+        return dict(signs=refs, references=refs, hypotheses=["a b c d e f"] * n, nll=nll.tolist())
+    reads = dict(uwb_blank=form(2), uwb_real_two_view=form(3, .2), uwb_still_two_view=form(4, .2), uwb_nearest_two_view=form(5, .2), uwb_nearest_monocular=form(6, .2))
+    reads["blank"] = dict(signs=refs, references=refs, hypotheses=["z y x w"] * n, nll=[[3.]] * n)
+    reads["nearest_two_view"], reads["nearest_monocular"] = dict(reads["blank"], nll=[[2.]] * n), dict(reads["blank"], nll=[[2.8]] * n)
+    return reads
+
+
+@pytest.mark.parametrize("lam", [.1, .3])
+def test_a_duration_only_instrument_cannot_read_as_keeping_the_gap(lam):
+    """Over zero this instrument reads kept (s_u about 1, the review's simulation); over the still form it has nothing to read."""
+    reads = duration_only_reads(lam)
+    block = PP.fit_block(reads)["likelihood"]
+    raw = {f: PP.margins(reads[f]) for f in ("uwb_nearest_two_view", "uwb_nearest_monocular")}
+    assert raw["uwb_nearest_two_view"].mean() > .02 and raw["uwb_nearest_monocular"].mean() / raw["uwb_nearest_two_view"].mean() == pytest.approx(1., abs=.05)
+    assert block["case"] != PP.LABEL_GAP and block["case"] == "unresolved" and block["unfitted"]["still_margin"]["point"] > .02 and abs(block["unfitted"]["own_margin"]["point"]) < .01
+
+
+def test_margins_are_over_the_still_form_with_blank_beside_them(monkeypatch, tmp_path):
+    h = Parts(monkeypatch, tmp_path, unfitted=UnfittedReader(two=(6, 2., 1.2), mono=(5, 2.5, .7), real=(6, 2.1, 1.1), still=(3, 2.8, .2), blank=(0, 3., .05)))
+    report = h.pipeline()
+    unfitted = report["fit_or_content"]["likelihood"]["unfitted"]
+    assert unfitted["own_margin"]["point"] == pytest.approx(1.) and unfitted["monocular_share_of_own_margin"]["point"] == pytest.approx(.5) and unfitted["real_two_view_margin"]["point"] == pytest.approx(.9) and unfitted["still_margin"]["point"] == pytest.approx(.2) and unfitted["blank_margin"]["point"] == pytest.approx(.05) and unfitted["margins"]["uwb_still_two_view"] == pytest.approx(.2)
+    assert report["fit_or_content"]["likelihood"]["share_difference"]["one_sided_upper_95"] == pytest.approx(.5 - .5333, abs=1e-3)
+
+
+def test_bleu_has_no_case_over_its_blank(monkeypatch, tmp_path):
+    h = Parts(monkeypatch, tmp_path)
+    block = h.pipeline()["fit_or_content"]
+    assert "case" not in block["bleu"] and "share_difference" not in block["bleu"] and "no case" in block["bleu"]["note"]
 
 
 def test_a_declared_merge_refuses_a_smokes_monitor_record_and_a_smoke_a_declared_ones(monkeypatch, tmp_path):
@@ -1475,20 +1630,20 @@ def test_a_rerun_record_reaches_the_report(monkeypatch, tmp_path):
 def test_the_readings_are_stated_in_the_header_before_any_code():
     assert all(text in PP.__doc__ for text in PP.PRESTATED.values()) and set(PP.PRESTATED) == {"body", "both", "readable", "loss", "gap", "parent", "bias"}
     doc = PP.__doc__
-    assert "stronger" not in doc and "more likely content" not in doc.lower()
-    for text in ("report only", "no step branches on it", "no claim about composition", "v1's pre-fine-tune weights", "323,978 UWB YouTube-ASL clips", "the same 144 features", "wrist' = inv(forearm') @ forearm @ wrist", "at most 0.25", "wider than 0.5", "below 475 shared clips", "Can its input see the difference", "kp2d-h2s-v1", "mediapipe image xy", "world points, ik, nominal bones and orthographic fk", "sapiens triangulated in the frontal camera's frame", "may be two-view", "not an independent reader", "s = (m + o) / (t + o)", "one-sided 95% upper bound", "beam 1 on up to 512 clips truncated at 20 s", "6.09", "voids question 2 only", "pretrained t5 decoder", "a + b − 1"):
+    assert "stronger" not in doc and "more likely content" not in doc.lower() and "point check missing" not in doc and "control missing" not in doc and "Content-blind input gives a margin of zero" not in doc
+    for text in ("report only", "no step branches on it", "no claim about composition", "v1's pre-fine-tune weights", "323,978 UWB YouTube-ASL clips", "the same 144 features", "wrist' = inv(forearm') @ forearm @ wrist", "at most 0.25", "wider than 0.5", "below 475 shared clips", "Can its input see the difference", "kp2d-h2s-v1", "mediapipe image xy", "world points, ik, nominal bones and orthographic fk", "sapiens triangulated in the frontal camera's frame", "may be two-view", "not an independent reader", "s = (m + o) / (t + o)", "one-sided 95% upper bound", "beam 1 on up to 512 clips truncated at 20 s", "6.09", "voids question 2 only", "pretrained t5 decoder", "a + b − 1", "may still explain part of the loss", "binds near 0.43", "presence offset", "not which channel lost content", "over that form's margin", "keep a clip's length", "scores about zero on this measure"):
         assert text.lower() in doc.lower(), text
     assert PP.ARM_POINTS == (0, 1, 2, 3, 4, 5, 6, 27) and PP.HAND_LOCAL_POINTS == tuple(range(7, 27)) + tuple(range(28, 48))
     assert (PP.COMPARABLE, PP.KEPT, PP.READABLE_WIDTH, PP.MINORITY_UPPER) == (.25, .75, .5, .5) and (PP.MONITOR_BLEU_TOLERANCE, PP.MONITOR_LOSS_TOLERANCE) == (.05, .01) and PP.UWB_INDEX_SHA.startswith("c71421b9")
 
 
 def test_the_disclosures_name_the_blank_the_margin_and_the_parent():
-    assert "durations" in PP.DISCLOSURES["blank"] and "seconds_over_reference" in PP.DISCLOSURES["blank"] and "parent" in PP.DISCLOSURES["unfitted"] and "unknown" in PP.DISCLOSURES["unfitted"] and "zero within noise" in PP.DISCLOSURES["margin"] and "filled_under_two_view_marks" in PP.DISCLOSURES["never_tracked"]
+    assert "durations" in PP.DISCLOSURES["blank"] and "seconds_over_reference" in PP.DISCLOSURES["blank"] and "parent" in PP.DISCLOSURES["unfitted"] and "unknown" in PP.DISCLOSURES["unfitted"] and "keeps duration" in PP.DISCLOSURES["margin"] and "filled_under_two_view_marks" in PP.DISCLOSURES["never_tracked"]
 
 
 def test_the_constants_are_the_declared_ones():
     assert PP.PREFIX == "acquisition/2026-10-17-v1/youtube-asl-v1/round20/path-read-parts" and PP.BOOT == 2000 and PP.JOB_FILE == "runpod/fleet/path_parts.sh" and PP.ANCHORS == ("real_two_view", "blank")
-    assert PP.FORMS == ("real_two_view", "blank", "monocular_values_two_view_marks", "mono_body_two_view_hands", "two_view_body_mono_hands", "mono_arms_only", "mono_hand_pose_only", "mono_hand_orientation_only", "nearest_two_view", "nearest_monocular", "uwb_blank", "uwb_real_two_view", "uwb_nearest_two_view", "uwb_nearest_monocular")
+    assert PP.FORMS == ("real_two_view", "blank", "monocular_values_two_view_marks", "mono_body_two_view_hands", "two_view_body_mono_hands", "mono_arms_only", "mono_hand_pose_only", "mono_hand_orientation_only", "nearest_two_view", "nearest_monocular", "uwb_blank", "uwb_real_two_view", "uwb_still_two_view", "uwb_nearest_two_view", "uwb_nearest_monocular")
     assert set(PP.MONOCULAR_NEEDED) == set(PP.PART_FORMS) | {"nearest_monocular", "uwb_nearest_monocular"} and set(PP.TOKENIZER_NEEDED) == set(PP.FORMS) - {"real_two_view", "blank", "uwb_blank", "uwb_real_two_view"}
 
 
@@ -1514,7 +1669,8 @@ def run_job(tmp_path, fail_when=None, code=7, tee_fails=False, **env):
     match = f'case "$*" in {pattern}) echo "planted failure" >&2; exit {code};; esac' if fail_when else ""
     (bin_dir / "python").write_text(f'#!/bin/bash\necho "$*" >> {log}\n{match}\necho "ran $1 $2"\nexit 0\n')
     (bin_dir / "uv").write_text("#!/bin/bash\nexit 0\n")
-    names = ["python", "uv"]
+    (bin_dir / "timeout").write_text(f'#!/bin/bash\necho "timeout $1" >> {tmp_path / "timeouts.log"}\nshift\nexec "$@"\n')
+    names = ["python", "uv", "timeout"]
     if tee_fails:
         (bin_dir / "tee").write_text("#!/bin/bash\n/bin/cat > /dev/null\nexit 9\n")
         names.append("tee")
@@ -1541,7 +1697,10 @@ def test_the_job_checks_instruments_smokes_then_reads_the_control_first_and_the_
     own = calls.splitlines()
     parsed = [PP.build_parser().parse_args(x.split()[1:]) for x in own]
     assert all(x.startswith("scripts/path_parts.py ") for x in own)
-    assert [a.command for a in parsed] == ["instruments", "read", "control", "monitor-control", "marginals", "merge", "upload", "check", "preflight", "read", "control", "read", "monitor-control", "marginals", "read", "merge", "upload", "check", "upload-log"]
+    assert [a.command for a in parsed] == ["instruments", "read", "control", "which-part", "monitor-control", "marginals", "merge", "upload", "check", "preflight", "read", "control", "read", "which-part", "monitor-control", "marginals", "read", "merge", "upload", "check", "upload-log"]
+    parts = [a for a in parsed if a.command == "which-part"]
+    assert parts[0].output_key.startswith(f"{PP.PREFIX}/smoke/") and parts[0].output_key.endswith("/which_part.json") and parts[1].output_key == f"{PP.PREFIX}/which_part.json" and parts[1].out_dir.endswith("/d20/forms")
+    assert (tmp_path / "timeouts.log").read_text().splitlines() == ["timeout 2400", "timeout 2400"]
     monitors = [a for a in parsed if a.command == "monitor-control"]
     assert monitors[0].smoke_clips == 64 and monitors[1].smoke_clips == 0 and all(a.device == "cuda" and a.instrument_cache.endswith("/instrument") for a in monitors) and "smoke-" in monitors[0].out_dir and monitors[1].out_dir.endswith("/d20/forms")
     margins_ = [a for a in parsed if a.command == "marginals"]
@@ -1563,7 +1722,7 @@ def test_smoke_only_stops_before_any_declared_read(tmp_path):
 
 
 @pytest.mark.parametrize("fail_when,expected", [("path_parts.py instruments", 1), ("path_parts.py read*smoke-other", 2), ("path_parts.py control*smoke-", 2), ("path_parts.py merge*smoke-", 2), ("path_parts.py check --report*smoke-", 2), ("path_parts.py upload --out-dir*smoke-", 2),
-                                                ("path_parts.py preflight", 1), ("--forms real_two_view", 1), ("--forms monocular_values", 1), ("--forms uwb_blank", 1), ("path_parts.py monitor-control*smoke-", 2), ("path_parts.py marginals*smoke-", 2), ("path_parts.py monitor-control*/work/d20", 1), ("path_parts.py marginals*/work/d20", 1), ("path_parts.py merge*/work/d20", 1), ("path_parts.py upload --out-dir*/work/d20", 1), ("path_parts.py check --report*/work/d20", 1)])
+                                                ("path_parts.py preflight", 1), ("--forms real_two_view", 1), ("--forms monocular_values", 1), ("--forms uwb_blank", 1), ("path_parts.py monitor-control*smoke-", 2), ("path_parts.py which-part*smoke-", 2), ("path_parts.py which-part*/work/d20", 1), ("path_parts.py monitor-control*/work/d20", 1), ("path_parts.py merge*/work/d20", 1), ("path_parts.py upload --out-dir*/work/d20", 1), ("path_parts.py check --report*/work/d20", 1)])
 def test_any_failure_exits_nonzero_with_its_done_line_through_the_pipe_uploads_its_work_and_its_log(tmp_path, fail_when, expected):
     result, calls = run_job(tmp_path, fail_when=fail_when)
     assert result.returncode == expected and done_line(result) == expected, result.stdout + result.stderr
@@ -1614,6 +1773,35 @@ def test_a_monitor_miss_does_not_stop_the_job_before_the_unfitted_read(tmp_path)
     assert calls.index("path_parts.py monitor-control --out-dir " + str(tmp_path / "work/d20/forms")) < calls.index("--forms uwb_blank")
 
 
+@pytest.mark.parametrize("fail_when,expected", [("path_parts.py monitor-control*/work/d20", 1), ("--forms uwb_blank", 1)])
+def test_a_question_2_step_failing_comes_after_question_1_is_stored(tmp_path, fail_when, expected):
+    result, calls = run_job(tmp_path, fail_when=fail_when)
+    assert result.returncode == expected and done_line(result) == expected
+    declared = calls[calls.index("path_parts.py preflight"):]
+    assert declared.index("path_parts.py which-part") < min(declared.index(x) for x in ("path_parts.py monitor-control", "path_parts.py marginals") if x in declared) and f"--output-key {PP.PREFIX}/which_part.json" in declared and declared.index("--forms monocular_values") < declared.index("path_parts.py which-part")
+
+
+def test_a_marginals_failure_stops_nothing_in_either_phase(tmp_path):
+    result, calls = run_job(tmp_path, fail_when="path_parts.py marginals")
+    assert result.returncode == 0 and done_line(result) == 0 and "report only, the job goes on" in result.stdout and calls.count("path_parts.py marginals") == 2 and "--forms uwb_blank" in calls and calls.count("path_parts.py merge") == 2
+
+
+def test_a_monitor_control_that_hangs_is_cut_by_its_timeout_and_q1_is_already_stored(tmp_path):
+    result, calls = run_job(tmp_path, fail_when="path_parts.py monitor-control*/work/d20", code=124)
+    assert result.returncode == 1 and done_line(result) == 1 and "the monitor control did not run" in result.stdout and "which_part.json" in calls and "--forms uwb_blank" not in calls
+
+
+def test_the_check_line_says_question_1_stands(tmp_path):
+    result, _ = run_job(tmp_path, fail_when="path_parts.py check --report*/work/d20", code=3)
+    assert result.returncode == 1 and "Question 1 stands" in result.stdout and "which_part.json" in result.stdout and "read it as broken" not in JOB.read_text()
+
+
+def test_every_command_exits_past_interpreter_teardown():
+    source = (ROOT / "scripts/path_parts.py").read_text()
+    guard = source[source.index('if __name__ == "__main__":'):]
+    assert "code = main()" in guard and "os._exit(code)" in guard and guard.index("sys.stdout.flush()") < guard.index("os._exit(code)") and "os._exit" not in source[:source.index('if __name__ == "__main__":')]
+
+
 def test_a_log_upload_that_fails_keeps_the_jobs_status(tmp_path):
     result, _ = run_job(tmp_path, fail_when="path_parts.py upload-log", code=1)
     assert result.returncode == 0 and done_line(result) == 0 and "ALERT log upload failed" in result.stdout
@@ -1647,7 +1835,8 @@ def test_the_job_passes_every_step_and_alert_through_pipestatus_names_no_other_l
     code = [line.split(" #")[0] for line in text.splitlines() if not line.startswith("#")]
     assert [line for line in code if re.search(r"(?<!\|)\|(?!\|)", line)] == ['  "$@" 2>&1 | tee -a "$LOG"'] and "${PIPESTATUS[@]}" in text and "set -uo pipefail" in text and "PATH-PARTS-DONE" in text and "transformers==4.57.6" in text
     python_lines = [line.strip() for line in code if re.search(r"\bpython \$T\b", line)]
-    assert python_lines and all(re.match(r'(\[ -f "\$R/forms/\w+\.json" \] \|\| )?step python \$T', line) or "upload --partial" in line or "upload-log" in line for line in python_lines)
+    assert python_lines and all(re.match(r'(\[ -f "\$R/forms/\w+\.json" \] \|\| )?step (timeout \$MONITOR_TIMEOUT )?python \$T', line) or "upload --partial" in line or "upload-log" in line for line in python_lines)
+    assert "MONITOR_TIMEOUT=2400" in text and sum("timeout $MONITOR_TIMEOUT python $T monitor-control" in line for line in code) == 2
     for word in ("c20", "C20", "val1000", "eval1000", "round15_compose_eval", "composed", "--export", "create-pod", "runpodctl"):
         assert word not in "\n".join(code), word
     assert "D=$O/round20/path-read-parts" in text and "L40S" in text

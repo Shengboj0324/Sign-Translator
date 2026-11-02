@@ -10,7 +10,7 @@ Each metric is read alone (BLEU, and likelihood minus blank):
 - **both:** each share at least 1/3 with a lower bound above zero.
 - Otherwise **unresolved**, and unresolved when what both lose has a lower bound at or under zero, or when the metrics fall in different cases.
 
-The labels name what the channels hold: the body channel holds the wrist rotations, and the hands channels only the fingers, so hand orientation moves with the body. Hence a second split, reported beside the label by the same rule and setting no label: **``mono_arms_only``**, clean only because of what v1 reads. Rotations are parent-relative (hand = pelvis @ chest @ upper arm @ forearm @ wrist), so plainly swapping the arm rotations also turns the hand. But v1 reads a hand's points relative to its wrist, so holding each hand's world orientation (``wrist' = inv(forearm') @ forearm @ wrist``) leaves those points as they were: in v1's input, shoulders, elbows and wrist positions come from the monocular clip and every hand-local point from two-view. ``mono_hand_pose_only`` is the reverse. ``mono_hand_orientation_only`` holds two-view's arms and fingers and takes only each hand's world orientation from the monocular clip. These are forms v1 can read, not states either path produced. A read-time check compares each clip's arm and hand-local points with their sources in v1's view; a miss above 0.001 raises an ALERT.
+These labels name where v1's reading falls when a channel is swapped, not which channel lost content, and v1 was fine-tuned on two-view. They name what the channels hold: the body channel holds the wrist rotations, and the hands channels only the fingers, so hand orientation moves with the body. Hence a second split, reported beside the label by the same rule and setting no label: **``mono_arms_only``**, clean only because of what v1 reads. Rotations are parent-relative (hand = pelvis @ chest @ upper arm @ forearm @ wrist), so plainly swapping the arm rotations also turns the hand. But v1 reads a hand's points relative to its wrist, so holding each hand's world orientation (``wrist' = inv(forearm') @ forearm @ wrist``) leaves those points as they were: in v1's input, shoulders, elbows and wrist positions come from the monocular clip and every hand-local point from two-view. ``mono_hand_pose_only`` is the reverse. ``mono_hand_orientation_only`` holds two-view's arms and fingers and takes only each hand's world orientation from the monocular clip. These are forms v1 can read, not states either path produced. A read-time check compares each clip's arm and hand-local points with their sources in v1's view; a miss above 0.001 raises an ALERT.
 
 **Question 2, does an instrument not fine-tuned on two-view reproduce the loss?** Marks free on the full clips, both forms all-valid: ``nearest_two_view`` and ``nearest_monocular``, read through v1 and through ``back-translator-kp2d-uwb-v2`` at step 76,000, sha ``f1ff9446...``, the checkpoint its best.json names, with ``uwb_real_two_view`` and ``uwb_blank`` beside them. ``instruments`` checks the run records.
 
@@ -20,28 +20,29 @@ The labels name what the channels hold: the body channel holds the wrist rotatio
 - **Can its input see the difference?** Yes, as far as the input goes: it takes the same 144 features as v1, x, y and a mark per point, at 24 fps with the same normalisation, and ``pairing`` gives how far the paths sit apart there (first read: hands 0.587, wrists 0.231, elbows 0.128, shoulders 0.100). Whether it can read them is what the margin tests.
 - **Its low How2Sign BLEU is a different measure.** The 1.1 in best.json (``val/bleu``, reported beside its read here) is zero-shot How2Sign validation at beam 1 on up to 512 clips truncated at 20 s; its UWB monitor reads 6.09 the same way. This job's reads use beam 4 on D20.
 
-**Why a margin, not a gap over blank.** Every form here marks all its points; blank marks none, and UWB training filtered out all-zero input. So a form can read an offset O against blank from its flags alone, whatever it holds: s = (m + O) / (t + O) goes to 1 as O grows, and a content-blind instrument would read as keeping the gap. So ``uwb_*`` forms read each clip's reference and 4 others (``retrieval_candidates``, the same draw for every form), and the measure is each clip's **margin**: mean NLL of the mismatched references minus NLL of its own. Content-blind input gives a margin of zero, offset or not. v1 stays at one candidate for its control, so its share is taken over its blank.
+**Why a margin over a still clip, not a gap over blank.** Every form here marks all its points; blank marks none, and UWB training filtered out all-zero input. So a form can read an offset O against blank from its flags alone, whatever it holds: s = (m + O) / (t + O) goes to 1 as O grows. So ``uwb_*`` forms read each clip's reference and 4 others (``retrieval_candidates``, the same draw for every form), and a clip's raw margin is the mean NLL of the mismatched references minus NLL of its own. That removes an offset and not duration: encoder positions keep a clip's length under an all-valid mask, clip length predicts sentence length, and so an instrument that sees only duration has a raw margin above zero, the same for both paths. Hence ``uwb_still_two_view``: nearest-filled two-view with the middle frame held, flags on, the same length. **Every margin is taken over that form's margin**, clip by clip, and ``blank_margin`` is reported beside it. An instrument that reads duration or flags and no motion scores about zero on this measure; one form holding still cannot remove everything else a still clip keeps, such as a pose. v1 stays at one candidate for its control, so its share is taken over its blank.
 
 **The positive control** (``monitor-control``): the trainer's fixed UWB monitor sample (``random.Random(1234)``, 512 clips, batch 64, beam 1, 20 s, the hash-pinned UWB index and its shards) must reproduce best.json's 6.09 within 0.05 BLEU and its monitor loss within 0.01. A miss voids Question 2 only: its label is withheld and it reads void, and Question 1 stands.
 
-On likelihood, m_two and m_mono are the instrument's mean margins, s_u = m_mono / m_two, and s_v1 is v1's (monocular − blank) / (two-view − blank), each marks free, under one joint bootstrap:
+On likelihood, m_two and m_mono are the instrument's mean margins over ``uwb_still_two_view``, s_u = m_mono / m_two, and s_v1 is v1's (monocular − blank) / (two-view − blank), each marks free, under one joint bootstrap:
 - **Too small to read, unresolved:** m_two has a lower bound at or under zero, or s_u's interval is wider than 0.5, which could not tell a kept margin from a lost one.
 - **loss_not_explained_by_fine_tune:** m_mono − m_two has an upper bound under zero, the paired s_u − s_v1 has a one-sided 95% upper bound at most 0.25 (s_u may sit below s_v1 by any amount), and s_u's upper bound is at most 0.75.
 - **gap_not_reproduced:** s_u's lower bound is at least 0.75 and m_mono − m_two has an upper bound at or above zero, so a significant loss cannot read this way.
 - Otherwise **unresolved**.
-Neither label separates lost content from anything else: the parent shares v1's architecture, decoder and pretraining, and its own fit to UWB image landmarks is unmeasured. BLEU gets the same row over its blank and does not set the label. A label is a reading, not a rule: no step branches on it, it starts no training and no decision, and it makes no claim about composition.
+Neither label separates lost content from anything else: the parent shares v1's architecture, decoder and pretraining, and its own fit to UWB image landmarks is unmeasured. ``loss_not_explained_by_fine_tune`` allows v1's share to sit up to 0.25 under s_u, so fine-tuning may still explain part of the loss. s_v1 keeps v1's presence offset, which raises it and makes that clause easier to pass; at the first read's s_v1 of 0.175 the 0.25 clause binds near 0.43, tighter than the 0.75 bound. BLEU is reported over its blank with no case and does not set the label. A label is a reading, not a rule: no step branches on it, it starts no training and no decision, and it makes no claim about composition.
 
-**Labels are withheld** in a smoke and on an ALERT, and below 475 shared clips. On both questions: the path read's plumbing thresholds on validity, distance, the mirrored control, source hash and offset, and the floor. On Question 1 alone: ``monocular_values_two_view_marks`` off the first read (BLEU by over 0.05, likelihood by over 0.002; 2.546 and +0.097), or a read-time point check missing. On Question 2 alone: the nearest forms off the first read (4.621 and +0.234; 2.653 and +0.041), an unfitted form saying the same for every clip as its blank, or the positive control missing.
+**Labels are withheld** in a smoke and on an ALERT, and below 475 shared clips. On both questions: the path read's plumbing thresholds on validity, distance, the mirrored control, source hash and offset, and the floor. On Question 1 alone: ``monocular_values_two_view_marks`` off the first read (BLEU by over 0.05, likelihood by over 0.002; 2.546 and +0.097), or a miss in the read-time point check. On Question 2 alone: the nearest forms off the first read (4.621 and +0.234; 2.653 and +0.041), an unfitted form saying the same for every clip as its blank, or a miss in the positive control.
 
 **Control:** ``real_two_view`` and ``blank`` under v1 against the pinned stored report, ``tok_probes.canary_read``'s limits: a miss, or another list, voids the read and writes a void record, and ``read`` refuses every other form without a passed control of this code and environment.
 
-**Clips and rules:** as ``path_read``: exact D20 records, the 8 pinned train-split report shards, never C20, c00 or a test partition, and only a missing object loses a clip. ``--smoke-train 5 --smoke-longest 4 --smoke-never-tracked 2 --smoke-other-rate 1``: c02 train clips, among them one stored at a rate other than 24, the class the path read's first run met only on D20. ``merge`` accepts an existing report of this code, and ``upload`` skips a key holding the same bytes and refuses one holding others, so a retry on the same pod resumes.
+**Clips and rules:** as ``path_read``: exact D20 records, the 8 pinned train-split report shards, never C20, c00 or a test partition, and only a missing object loses a clip. ``--smoke-train 5 --smoke-longest 4 --smoke-never-tracked 2 --smoke-other-rate 1``: c02 train clips, among them one stored at a rate other than 24, the class the path read's first run met only on D20. ``merge`` accepts an existing report of this code, and ``upload`` skips a key holding the same bytes and refuses one holding others, so a retry on the same pod resumes. **Question 1 does not wait on Question 2:** once v1's forms are read, ``which-part`` stores ``which_part.json`` with Question 1's label before any UWB step, so a failure there loses nothing of it. ``marginals`` is report-only: it skips and counts a bad clip, its failure stops nothing, and ``merge`` goes on without its record. ``monitor-control`` runs under a 40-minute timeout, and every command exits as the trainer does, past interpreter teardown.
 
     python scripts/path_parts.py instruments
     python scripts/path_parts.py preflight --out-dir W --final-key K --void-prefix V
     python scripts/path_parts.py read --forms real_two_view,blank --out-dir W/forms --instrument-cache W/i
     python scripts/path_parts.py control --out-dir W/forms --void-prefix V
     python scripts/path_parts.py read --forms <v1's parts and nearest forms> --resume --out-dir W/forms --instrument-cache W/i
+    python scripts/path_parts.py which-part --out-dir W/forms --output-key K
     python scripts/path_parts.py monitor-control --out-dir W/forms --instrument-cache W/i
     python scripts/path_parts.py marginals --out-dir W/forms
     python scripts/path_parts.py read --forms <the uwb forms> --resume --out-dir W/forms --instrument-cache W/i
@@ -57,6 +58,7 @@ from collections import Counter
 from dataclasses import replace
 import functools
 import json
+import os
 from pathlib import Path
 import sys
 import time
@@ -82,10 +84,10 @@ ANCHORS = ("real_two_view", "blank")
 PART_FORMS = ("monocular_values_two_view_marks", "mono_body_two_view_hands", "two_view_body_mono_hands", "mono_arms_only", "mono_hand_pose_only", "mono_hand_orientation_only")
 NEAREST_FORMS = ("nearest_two_view", "nearest_monocular")
 V1_FORMS = ANCHORS + PART_FORMS + NEAREST_FORMS
-UNFITTED_FORMS = ("uwb_blank", "uwb_real_two_view", "uwb_nearest_two_view", "uwb_nearest_monocular")
+UNFITTED_FORMS = ("uwb_blank", "uwb_real_two_view", "uwb_still_two_view", "uwb_nearest_two_view", "uwb_nearest_monocular")
 FORMS = V1_FORMS + UNFITTED_FORMS
 MONOCULAR_NEEDED = PART_FORMS + ("nearest_monocular", "uwb_nearest_monocular")
-TOKENIZER_NEEDED = PART_FORMS + NEAREST_FORMS + ("uwb_nearest_two_view", "uwb_nearest_monocular")
+TOKENIZER_NEEDED = PART_FORMS + NEAREST_FORMS + ("uwb_still_two_view", "uwb_nearest_two_view", "uwb_nearest_monocular")
 UNFITTED_RUN = "back-translator-kp2d-uwb-v2"
 UNFITTED_KEY = f"training-runs/{UNFITTED_RUN}/checkpoints/step-00076000.pt"
 UNFITTED_SHA = "f1ff94466a9e12c4d281c2d3dbc281c1049bc081f9123957c5e2dacde9e1821b"
@@ -123,7 +125,7 @@ DISCLOSURES = dict(
     body="The body channel holds the wrist rotations and the hands channels only the fingers, so hand orientation moves with the body in mono_body_two_view_hands and two_view_body_mono_hands. mono_arms_only, mono_hand_pose_only and mono_hand_orientation_only split what v1 sees instead.",
     arms="mono_arms_only holds each hand's world orientation by recomputing the wrist rotation, so it is a form v1 can read, not a state either path produced. Depth (z) of the hand's frame is held with it, which v1 sees only through the projection.",
     unfitted="back-translator-kp2d-uwb-v2 trained on MediaPipe image xy and never saw FK projections, IK, nominal bones or How2Sign. It is v1's parent, not an independent reader, and the direction of any bias between the paths is unknown.",
-    margin="A margin needs the sentences to differ: a clip's mismatched references come from the same list, so a content-blind instrument's mean margin is zero within noise. It reads whether the clip tells its sentence from others, a narrower thing than reading it.",
+    margin="A raw margin keeps duration: clip length predicts sentence length, so an instrument seeing only duration has one above zero on either path. Taken over uwb_still_two_view it is near zero within noise. It reads whether the clip's motion tells its sentence from others, a narrower thing than reading it.",
     shares="s_u is a margin share and s_v1 a share over blank: v1 keeps one candidate for its control. They measure related things on different scales, so the comparison is one-sided and coarse.",
     fine_tune="v1 was fine-tuned from this same checkpoint on How2Sign FK keypoints built from the two-view manifest, selected on How2Sign val BLEU, the pool D20 comes from.",
     never_tracked="A joint its own path never tracked holds d2's neutral pose in a transplanted form, not zeros. Marks are two-view's in every part form, so a filled value can be read there: pairing.filled_under_two_view_marks counts them per part.",
@@ -198,6 +200,13 @@ def orientation_only(two, mono, marks):
     return V.with_marks(values, marks)
 
 
+def held_still(state):
+    """``state`` with every frame holding its middle frame, on its own clock: the same length, the same flags, no motion."""
+    middle = len(state.timestamps) // 2
+    channels = {n: replace(c, values=np.repeat(c.values[[middle]], len(state.timestamps), 0), valid=np.repeat(c.valid[[middle]], len(state.timestamps), 0), observed=np.repeat(c.observed[[middle]], len(state.timestamps), 0), confidence=np.repeat(c.confidence[[middle]], len(state.timestamps), 0)) for n, c in state.channels.items()}
+    return replace(state, channels=channels)
+
+
 def view_gap(state, source, marks, points) -> float:
     """The largest difference on ``points``, in v1's normalised view, between ``state`` and ``source`` under the same marks."""
     from signtranslator.data.keypoints2d import from_state, normalise
@@ -227,6 +236,8 @@ def build_form(name: str, refs, clips, tokenizer) -> tuple[list[int], list, list
         return every, blanked(refs), list(refs), None
     if name in ("nearest_two_view", "uwb_nearest_two_view"):
         return every, [T.cap_form("v0_nearest_fill", s, tokenizer) for s in refs], list(refs), None
+    if name == "uwb_still_two_view":
+        return every, [held_still(T.cap_form("v0_nearest_fill", s, tokenizer)) for s in refs], list(refs), None
     if name in ("nearest_monocular", "uwb_nearest_monocular"):
         return kept, [T.cap_form("v0_nearest_fill", c.conformed, tokenizer) for c in clips], [c.conformed for c in clips], None
     if name in PART_FORMS:
@@ -491,6 +502,7 @@ def run_marginals(args) -> int:
     """Report only, no reader: each path's per-part distance to UWB's feature marginals, on a fixed draw of c02 train clips, UWB's from its first train clips. How far each path sits from what the unfitted instrument trained on; it does not settle the direction of any bias."""
     import random
     from signtranslator.data.keypoint_shards import KeypointShardDataset
+    from evaluate_text_to_motion import at_rate, load_state
     from signtranslator.data.keypoints2d import from_state, normalise
     from train_text_to_motion import make_store
     P.check_pins()
@@ -499,19 +511,36 @@ def run_marginals(args) -> int:
     pool = L.train_records(L.load_manifest_at(store, L.EVAL_MIX, L.EVAL_MIX_SHA), ("c02",))
     records = random.Random(MARGINAL_SEED).sample(sorted(pool, key=lambda r: r["sign"]), min(args.clips, len(pool)))
     R.check_lookup_records(records, False)
-    refs = L.load_states(store, records)
-    clips, lost, _ = R.open_monocular(store, records, refs, False)
+    found, lost = R.match_monocular(records, R.monocular_rows(store, [r["sign"] for r in records]), False)
+    template = R.load_template(store)
+    twos, monos, bad = [], [], []
+    for item in found:                      # report only: one bad clip costs that clip
+        try:
+            record = records[item["index"]]["continuous"]
+            stored = load_state(store, record["state_key"], record["state_sha256"])
+            ref = at_rate(stored, FPS)
+            clip, why = R.load_clip(store, item, template, ref, stored.timestamps)
+        except (SystemExit, Exception) as error:
+            bad.append(dict(sign=item["sign"], detail=f"{type(error).__name__}: {error}"))
+            continue
+        if clip is None:
+            lost.append(why)
+            continue
+        twos.append(ref)
+        monos.append(clip.trimmed)
     dataset = KeypointShardDataset(store, [UWB_INDEX], partition="train", target_fps=FPS, max_seconds=MONITOR["seconds"], limit=args.uwb_clips)
     base_points = np.concatenate([c[0] for c in dataset.clips]).astype(np.float64)
     base_valid = np.concatenate([c[1] for c in dataset.clips])
     uwb = part_points(base_points, base_valid)
 
     def pooled(states):
+        if not states:
+            return {part: None for part in DISTANCE_POINTS}
         rows = [from_state(s) for s in states]
         return part_points(np.concatenate([normalise(p, v, y_down=False) for p, v in rows]).astype(np.float64), np.concatenate([v for _, v in rows]))
-    result = dict(kind=f"{PROBE}-marginals", report_only=True, code_digest=code_digest(), clips=len(clips), lost=lost, uwb_clips=len(dataset), note="distance to what the unfitted instrument trained on, not its bias", two_view=marginal_row(pooled([refs[c.index] for c in clips]), uwb), monocular=marginal_row(pooled([c.trimmed for c in clips]), uwb))
+    result = dict(kind=f"{PROBE}-marginals", report_only=True, code_digest=code_digest(), clips=len(monos), lost=lost, bad=bad, uwb_clips=len(dataset), note="distance to what the unfitted instrument trained on, not its bias", two_view=marginal_row(pooled(twos), uwb), monocular=marginal_row(pooled(monos), uwb))
     P.write_report_once(Path(args.out_dir) / "marginals.json", result)
-    print(json.dumps(dict(marginals=dict(clips=len(clips), uwb_clips=len(dataset), hands_two_view=result["two_view"]["left_hand"], hands_monocular=result["monocular"]["left_hand"]))), flush=True)
+    print(json.dumps(dict(marginals=dict(clips=len(monos), bad=len(bad), uwb_clips=len(dataset), hands_two_view=result["two_view"]["left_hand"], hands_monocular=result["monocular"]["left_hand"]))), flush=True)
     return 0
 
 
@@ -632,25 +661,24 @@ def fit_block(reads: dict) -> dict:
     margin = {f: margins(reads[f]) for f in UNFITTED_FORMS}
     point = {f: float(v.mean()) for f, v in margin.items()}
     draws = {f: v[idx].mean(1) for f, v in margin.items()}
-    point["zero"], draws["zero"] = 0., np.zeros(BOOT)
+    still = "uwb_still_two_view"
     two, mono = "uwb_nearest_two_view", "uwb_nearest_monocular"
     out = dict(bootstrap=dict(n=BOOT, seed=0), clips=len(idx[0]), candidates=CANDIDATES, thresholds=dict(comparable=COMPARABLE, kept=KEPT, readable_width=READABLE_WIDTH))
-    own, drop = difference(point, draws, two, "zero"), difference(point, draws, mono, two)
-    share_u = ratio(point, draws, (mono, "zero"), (two, "zero"))
+    own, drop = difference(point, draws, two, still), difference(point, draws, mono, two)
+    share_u = ratio(point, draws, (mono, still), (two, still))
     vp, vd = v_point["likelihood"], v_draws["likelihood"]
     share_v1 = ratio(vp, vd, ("nearest_monocular", "blank"), ("nearest_two_view", "blank"))
-    upper = paired_upper(draws[mono], draws[two], vd["nearest_monocular"] - vd["blank"], vd["nearest_two_view"] - vd["blank"])
+    upper = paired_upper(draws[mono] - draws[still], draws[two] - draws[still], vd["nearest_monocular"] - vd["blank"], vd["nearest_two_view"] - vd["blank"])
     up, ud = u_point["likelihood"], u_draws["likelihood"]
-    out["likelihood"] = dict(unfitted=dict(margins={f: round(point[f], 5) for f in UNFITTED_FORMS}, own_margin=own, monocular_minus_two_view=drop, monocular_share_of_own_margin=share_u, real_two_view_margin=difference(point, draws, "uwb_real_two_view", "zero"), blank_margin=difference(point, draws, "uwb_blank", "zero"),
+    out["likelihood"] = dict(unfitted=dict(margins={f: round(point[f], 5) for f in UNFITTED_FORMS}, own_margin=own, monocular_minus_two_view=drop, monocular_share_of_own_margin=share_u, real_two_view_margin=difference(point, draws, "uwb_real_two_view", still), blank_margin=dict(point=round(point["uwb_blank"], 5), ci95=P._quantiles(draws["uwb_blank"])), still_margin=dict(point=round(point[still], 5), ci95=P._quantiles(draws[still])),
                                            over_blank=dict(cells={f: round(up[f], 5) for f in UNFITTED_FORMS}, note="flags on against all-zero input: an offset here says nothing about content", share=ratio(up, ud, (mono, "uwb_blank"), (two, "uwb_blank")))),
                              v1=dict(cells={f: round(vp[f], 5) for f in ("blank",) + NEAREST_FORMS}, own_gap=difference(vp, vd, "nearest_two_view", "blank"), monocular_minus_two_view=difference(vp, vd, "nearest_monocular", "nearest_two_view"), monocular_share_of_own_gap=share_v1),
                              share_difference=dict(point=None if share_u is None or share_v1 is None else round(share_u["point"] - share_v1["point"], 4), one_sided_upper_95=upper), case=fit_case(own, share_u, drop, upper))
     up, ud, vp, vd = u_point["bleu"], u_draws["bleu"], v_point["bleu"], v_draws["bleu"]
     own, drop = difference(up, ud, two, "uwb_blank"), difference(up, ud, mono, two)
     share_u, share_v1 = ratio(up, ud, (mono, "uwb_blank"), (two, "uwb_blank")), ratio(vp, vd, ("nearest_monocular", "blank"), ("nearest_two_view", "blank"))
-    upper = paired_upper(ud[mono] - ud["uwb_blank"], ud[two] - ud["uwb_blank"], vd["nearest_monocular"] - vd["blank"], vd["nearest_two_view"] - vd["blank"])
     out["bleu"] = dict(unfitted=dict(cells={f: round(up[f], 5) for f in UNFITTED_FORMS}, own_gap=own, monocular_minus_two_view=drop, monocular_share_of_own_gap=share_u), v1=dict(cells={f: round(vp[f], 5) for f in ("blank",) + NEAREST_FORMS}, own_gap=difference(vp, vd, "nearest_two_view", "blank"), monocular_minus_two_view=difference(vp, vd, "nearest_monocular", "nearest_two_view"), monocular_share_of_own_gap=share_v1),
-                       share_difference=dict(point=None if share_u is None or share_v1 is None else round(share_u["point"] - share_v1["point"], 4), one_sided_upper_95=upper), case=fit_case(own, share_u, drop, upper))
+                       note="over its blank, so an offset moves it: no case is read here")
     out["case"] = out["likelihood"]["case"]
     return out
 
@@ -699,14 +727,14 @@ def filled_shares(rows: list[dict]) -> dict:
     return out
 
 
-def load_reads(out_dir: Path) -> tuple[dict, dict]:
-    """(every form, the monocular record): one list, kind of read, code and environment. Instruments differ by form name, and each must be that name's."""
+def load_reads(out_dir: Path, names=FORMS) -> tuple[dict, dict]:
+    """(the forms, the monocular record): one list, kind of read, code and environment. Instruments differ by form name, and each must be that name's."""
     path = out_dir / "monocular.json"
     if not path.exists():
         raise SystemExit(f"{path} is missing")
     plan = json.loads(path.read_bytes())
     reads, first = {}, None
-    for name in FORMS:
+    for name in names:
         form = out_dir / f"form-{name}.json"
         if not form.exists():
             raise SystemExit(f"{form} is missing")
@@ -719,13 +747,50 @@ def load_reads(out_dir: Path) -> tuple[dict, dict]:
         elif signature != first:
             raise SystemExit(f"{form}: another list, or a smoke mixed with a declared read")
         reads[name] = read
-    instruments = {n: reads[n]["instrument"]["sha256"] for n in FORMS}
-    if len({instruments[n] for n in V1_FORMS}) != 1 or len({instruments[n] for n in UNFITTED_FORMS}) != 1 or instruments["blank"] == instruments["uwb_blank"]:
+    instruments = {n: reads[n]["instrument"]["sha256"] for n in names}
+    groups = [{instruments[n] for n in group if n in instruments} for group in (V1_FORMS, UNFITTED_FORMS)]
+    if any(len(g) > 1 for g in groups) or groups[0] & groups[1]:
         raise SystemExit(f"each form must be read by its own instrument: {instruments}")
     digest, _ = P.check_same_run(reads, "the forms")
     if plan.get("code_digest") != digest or plan.get("declared_read") != reads["real_two_view"]["declared_read"]:
         raise SystemExit(f"{path}: another run's record")
     return reads, plan
+
+
+def pairing_summary(rows: list[dict], reads: dict, shared: int, declared: bool) -> tuple[dict, list[str]]:
+    """(the pairing block on the shared clips, the plumbing alerts both questions rest on)."""
+    block = dict(clips=len(rows), source_hash_matches=sum(r["source_hash_matches"] for r in rows), max_offset_seconds=max(r["max_offset_seconds"] for r in rows), offsets=R.offset_distribution(rows), filled_under_two_view_marks=filled_shares(rows),
+                 group_distance={g: R.mean_or_none([R.group_distance(r["distance"], g) for r in rows]) for g in R.GROUPS}, group_mirrored={g: R.mean_or_none([R.group_distance(r["mirrored"], g) for r in rows]) for g in R.GROUPS})
+    return block, R.plumbing_alerts(reads["real_two_view"]["part_validity"], {part: [r["validity"][part] for r in rows] for part in R.PARTS}, block, shared, declared)
+
+
+def run_which_part(args) -> int:
+    """Question 1 alone, from v1's forms, stored before any UWB step: a failure there loses none of it. Its own shared clips; ``merge`` reports it again on all forms' shared clips."""
+    from train_text_to_motion import make_store
+    P.check_pins()
+    store = make_store(args.store)
+    if already_merged(store, args):
+        return 0
+    out_dir = Path(args.out_dir)
+    all_reads, plan = load_reads(out_dir, V1_FORMS)
+    first = all_reads["real_two_view"]
+    declared = first["declared_read"]
+    digest, place = first["code_digest"], first["environment"]
+    control = R.passed_control(out_dir, digest, place) if declared else None
+    shared = R.shared_signs(all_reads)
+    if not shared:
+        raise SystemExit("the forms share no clip")
+    reads = {n: R.restrict(r, shared) for n, r in all_reads.items()}
+    keep = set(shared)
+    block, common = pairing_summary([r for r in plan["pairing"] if r["sign"] in keep], reads, len(shared), declared)
+    question = isolation_misses(all_reads) + (figure_misses(all_reads, FIGURES_OF_PARTS) if declared else [])
+    held = ([] if declared else ["a smoke carries no reading"]) + common + question
+    parts = parts_block(reads)
+    report = dict(kind=f"{PROBE}-which-part", report_only=True, note=NOT_DECIDED, declared_read=declared, list=first["list"], code_digest=digest, environment=place, disclosures={k: DISCLOSURES[k] for k in ("body", "arms", "never_tracked", "extraction")}, instrument=first["instrument"], alerts=common + question, control=control, clips=dict(list=len(first["signs"]), shared=len(shared), outside_shared=R.lost_rows(all_reads, shared)), pairing=block,
+                  which_part=dict(parts, label=None if held else parts["case"], view_beside_label=parts["view_case_report_only"], withheld=held), forms={n: form_row(reads[n], reads["blank"]) for n in reads})
+    L.write_once(store, args.output_key, args.output_file, report)
+    print(json.dumps(dict(which_part=args.output_key or args.output_file, report_only=True, shared=len(shared), share=dict(bleu=parts["bleu"]["share"], likelihood=parts["likelihood"]["share"]), case=parts["case"], view_beside_label=parts["view_case_report_only"], label=report["which_part"]["label"], withheld=held)), flush=True)
+    return 0
 
 
 def already_merged(store, args) -> bool:
@@ -760,13 +825,11 @@ def run_merge(args) -> int:
     shared = R.shared_signs(all_reads)
     if not shared:
         raise SystemExit("the forms share no clip")
-    monitor, marginals = record_of(out_dir / "monitor_control.json", digest, declared), record_of(out_dir / "marginals.json", digest, None)
+    monitor, marginals = record_of(out_dir / "monitor_control.json", digest, declared), record_of(out_dir / "marginals.json", digest, None) if (out_dir / "marginals.json").exists() else None
     reads = {n: R.restrict(r, shared) for n, r in all_reads.items()}
     keep = set(shared)
     rows = [r for r in plan["pairing"] if r["sign"] in keep]
-    block = dict(clips=len(rows), source_hash_matches=sum(r["source_hash_matches"] for r in rows), max_offset_seconds=max(r["max_offset_seconds"] for r in rows), offsets=R.offset_distribution(rows), filled_under_two_view_marks=filled_shares(rows),
-                 group_distance={g: R.mean_or_none([R.group_distance(r["distance"], g) for r in rows]) for g in R.GROUPS}, group_mirrored={g: R.mean_or_none([R.group_distance(r["mirrored"], g) for r in rows]) for g in R.GROUPS})
-    common = R.plumbing_alerts(reads["real_two_view"]["part_validity"], {part: [r["validity"][part] for r in rows] for part in R.PARTS}, block, len(shared), declared)
+    block, common = pairing_summary(rows, reads, len(shared), declared)
     first_question = isolation_misses(all_reads) + (figure_misses(all_reads, FIGURES_OF_PARTS) if declared else [])
     monitor_misses = [f"the unfitted instrument missed its monitor read: {m}" for m in monitor["misses"]]
     second_question = constant_reads(reads) + monitor_misses + (figure_misses(all_reads, NEAREST_FORMS) if declared else [])
@@ -783,7 +846,7 @@ def run_merge(args) -> int:
     L.write_once(store, args.output_key, args.output_file, report)
     print(json.dumps(dict(merged=args.output_key or args.output_file, report_only=True, declared_read=declared, shared=len(shared), of=len(first["signs"]), lost=report["clips"]["outside_shared"]["by_reason"], forms={n: {k: v for k, v in row.items() if k in ("bleu", "likelihood_minus_blank")} for n, row in report["forms"].items()},
                           which_part=dict(bleu=parts["bleu"]["share"], likelihood=parts["likelihood"]["share"], together=dict(bleu=parts["bleu"]["together"], likelihood=parts["likelihood"]["together"]), case=parts["case"], view_beside_label=parts["view_case_report_only"], label=report["which_part"]["label"], withheld=held_first),
-                          fit_or_content=dict(margin=fit["likelihood"]["unfitted"]["margins"], share=fit["likelihood"]["unfitted"]["monocular_share_of_own_margin"], share_difference=fit["likelihood"]["share_difference"], v1=fit["likelihood"]["v1"]["monocular_share_of_own_gap"], bleu=fit["bleu"]["unfitted"], val_bleu_beside=report["instruments"]["unfitted"]["validation"]["val/bleu"], case=fit["case"], label=report["fit_or_content"]["label"], void=report["fit_or_content"]["void"], withheld=held_second),
+                          fit_or_content=dict(margin=fit["likelihood"]["unfitted"]["margins"], own_margin=fit["likelihood"]["unfitted"]["own_margin"], share=fit["likelihood"]["unfitted"]["monocular_share_of_own_margin"], share_difference=fit["likelihood"]["share_difference"], v1=fit["likelihood"]["v1"]["monocular_share_of_own_gap"], bleu=fit["bleu"]["unfitted"], val_bleu_beside=report["instruments"]["unfitted"]["validation"]["val/bleu"], case=fit["case"], label=report["fit_or_content"]["label"], void=report["fit_or_content"]["void"], withheld=held_second),
                           monitor={k: monitor.get(k) for k in ("bleu", "stored", "reproduced")}, pairing={k: block[k] for k in ("clips", "source_hash_matches", "offsets", "filled_under_two_view_marks", "group_distance", "group_mirrored")}, alerts=alerts)), flush=True)
     return 0
 
@@ -892,6 +955,11 @@ def build_parser() -> argparse.ArgumentParser:
     merge.add_argument("--out-dir", required=True)
     merge.add_argument("--output-key")
     merge.add_argument("--output-file")
+    part = sub.add_parser("which-part", help="Question 1 alone, from v1's forms, stored before any UWB step")
+    part.add_argument("--store", default="r2")
+    part.add_argument("--out-dir", required=True)
+    part.add_argument("--output-key")
+    part.add_argument("--output-file")
     monitor = sub.add_parser("monitor-control", help="the unfitted instrument's fixed UWB monitor sample against best.json")
     monitor.add_argument("--store", default="r2")
     monitor.add_argument("--out-dir", required=True)
@@ -919,8 +987,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
-    return dict(instruments=run_instruments, preflight=run_preflight, read=run_read, control=run_control, merge=run_merge, check=run_check, upload=run_upload, marginals=run_marginals, **{"upload-log": R.run_upload_log, "monitor-control": run_monitor_control})[args.command](args)
+    return dict(instruments=run_instruments, preflight=run_preflight, read=run_read, control=run_control, merge=run_merge, check=run_check, upload=run_upload, marginals=run_marginals, **{"upload-log": R.run_upload_log, "monitor-control": run_monitor_control, "which-part": run_which_part})[args.command](args)
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    code = main()
+    # As train_keypoints_to_text_t5: interpreter teardown (data-loader workers, the in-memory shard cache) can hang long after the work is stored, holding the pod. Exit without it.
+    sys.stdout.flush(); sys.stderr.flush()
+    os._exit(code)
