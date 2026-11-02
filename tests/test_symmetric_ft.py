@@ -30,7 +30,7 @@ from tests.test_train_keypoints_to_text_t5_script import build_tiny  # noqa: E40
 JOB = ROOT / "runpod/fleet/symmetric_ft.sh"
 TINY = dict(d_model=32, heads=4, encoder_layers=1, feedforward=64, max_tokens=16, t5_name="tiny", workers=0, batch_size=2, steps=4, val_every=2, checkpoint_every=2, warmup=1, val_clips=512)
 V1_ARGS = dict(batch_size=64, checkpoint_every=2000, d_model=384, decoder_lr=3e-05, device="auto", downsample=2, dropout=.1, ema_decay=.999, encoder_layers=4, feedforward=1536, fps=24., heads=6, init_key=PP.UNFITTED_KEY, init_sha256=PP.UNFITTED_SHA, limit=0, lr=1e-4, max_seconds=20., max_tokens=64, monitor_index=None, no_augment=False, patience=6, run=L.TRANSLATOR_RUN, seed=0, select_on="val", steps=30000, store="r2", t5_name="google/flan-t5-base", train_index=[Q.FK_INDEX], val_clips=512, val_every=1000, val_index=Q.FK_INDEX, warmup=500, weight_decay=.05, workers=10)
-LEVELS = dict(real_two_view=(10, 1.5, .4), real_monocular=(12, 1.2, .5), nearest_two_view=(9, 1.6, .3), nearest_monocular=(13, 1., .6), blank=(0, 3., .02))
+LEVELS = dict(real_two_view=(10, 1.5, .4), real_monocular=(12, 1.2, .5), nearest_two_view=(9, 1.6, .3), nearest_monocular=(13, 1., .6), blank=(0, 3., .02), still_two_view=(1, 2.9, .1), still_monocular=(1, 2.9, .05))
 
 
 def v1_run(**args):
@@ -113,7 +113,8 @@ class Sym(Harness):
         texts = [r["text"] for r in records]
         table = {}
         for form, (k, nll) in dict(nearest_two_view=two, nearest_monocular=mono, real_two_view=(14, 1.1), blank=blank).items():
-            raw = json.dumps(dict(form=form, signs=[r["sign"] for r in records], references=texts, hypotheses=[" ".join(t.split()[:k]) if k else "z y x w" for t in texts], nll=[[nll + i * .001] for i in range(len(texts))])).encode()
+            zeros = [0.] * len(texts)
+            raw = json.dumps(dict(form=form, signs=[r["sign"] for r in records], groups=[r["signer_component"] for r in records], motion=dict(wrist_speed=zeros, wrist_spread=zeros), hands=dict(left_hand=dict(speed=zeros, variation=zeros)), tracked=dict(wrists=zeros), references=texts, hypotheses=[" ".join(t.split()[:k]) if k else "z y x w" for t in texts], nll=[[nll + i * .001] for i in range(len(texts))])).encode()
             self.store.put(f"{Q.PARTS_FORMS}/v-{form}.json", raw)
             table[form] = (f"v-{form}.json", hashlib.sha256(raw).hexdigest())
         self.monkeypatch.setattr(Q, "STORED_V1", table)
@@ -122,6 +123,7 @@ class Sym(Harness):
 
     def plant_val_control(self, misses=()):
         self.forms.mkdir(parents=True, exist_ok=True)
+        (self.forms.parent / "coverage.json").write_text(json.dumps(dict(code_digest="c" * 64, monocular_clips=dict(train=4, val=2))))
         (self.forms / "val_control.json").write_text(json.dumps(dict(code_digest="c" * 64, misses=list(misses), clips=2)))
 
     def read_forms(self, forms, *extra):
@@ -195,6 +197,16 @@ def test_the_recipes_pin_and_shape_are_v1s():
 def test_a_run_record_other_than_the_headers_recipe_refuses(change, word):
     with pytest.raises(SystemExit, match=word):
         F.check_recipe(v1_run(**change))
+
+
+def test_the_recipe_step_checks_v1s_stored_pins(monkeypatch, tmp_path):
+    h = Sym(monkeypatch, tmp_path)
+    h.plant_v1_run()
+    h.plant_v1_stored()
+    assert h.main("recipe") == 0
+    monkeypatch.setattr(Q, "STORED_V1", dict(Q.STORED_V1, blank=(Q.STORED_V1["blank"][0], "0" * 64)))
+    with pytest.raises(SystemExit, match="SHA-256"):
+        h.main("recipe")
 
 
 def test_v1s_run_record_on_other_bytes_refuses(monkeypatch, tmp_path):
@@ -390,13 +402,43 @@ def test_a_clips_points_are_what_the_fk_builder_gives_its_monocular_state(built)
     assert np.array_equal(got_valid, valid) and np.allclose(got_points, want, atol=2e-2)
 
 
-def test_a_state_on_other_bytes_stops_the_build_and_no_index_stands(built, monkeypatch):
-    rows = report_rows(["s0", "s1", "s2", "s3", "s4", "s5"], built, monkeypatch)
-    rows[0]["state_sha256"] = "0" * 64
+def bad_state_world(built, monkeypatch, bad):
+    signs = [f"t{i}" for i in range(20)] + ["s4", "s5"]
+    built.plant_v1_lists(signs[:20], ["s4", "s5"])
+    built.plant_manifest(signs=signs)
+    rows = report_rows(signs, built, monkeypatch)
+    for row in rows[:bad]:
+        row["state_sha256"] = "0" * 64
     plant_shard(monkeypatch, built.store, rows)
-    with pytest.raises(ValueError):
+
+
+def test_a_bad_state_is_skipped_and_counted_up_to_the_limit(built, monkeypatch):
+    monkeypatch.setattr(F, "BAD_STATE_LIMIT", 2)
+    bad_state_world(built, monkeypatch, 2)
+    assert built.main("build", "--workers", "1") == 0
+    index = json.loads(built.store.get(f"{F.INDEX_PREFIX}/index.json"))
+    assert index["counts"]["train"] == 18 and [x["reason"] for x in index["lost"]["train"]] == ["bad_state", "bad_state"] and "hash" in index["lost"]["train"][0]["detail"]
+
+
+def test_over_the_limit_of_bad_states_the_build_stops_and_no_index_stands(built, monkeypatch):
+    monkeypatch.setattr(F, "BAD_STATE_LIMIT", 2)
+    bad_state_world(built, monkeypatch, 3)
+    with pytest.raises(SystemExit, match="over 2 bad states"):
         built.main("build", "--workers", "1")
-    assert not built.store.exists(f"{F.INDEX_PREFIX}/index.json")
+    assert not built.store.exists(f"{F.INDEX_PREFIX}/index.json") and F.BAD_STATE_LIMIT == 2
+
+
+def test_the_bad_state_limit_is_small_and_stated():
+    assert 0 < F.BAD_STATE_LIMIT <= 20 and "BAD_STATE_LIMIT" in F.__doc__
+
+
+def test_the_cut_at_20_seconds_is_counted_on_both_paths(built, monkeypatch):
+    built.plant_v1_lists(["s0", "s1"], ["s4", "s5"])
+    monkeypatch.setattr(F, "MAX_FRAMES", 22)     # monocular clips hold 24 frames, two-view's list says 20
+    monkeypatch.setattr(F, "COVERAGE_FLOOR", 0.)
+    assert built.main("build", "--workers", "1") == 0
+    index = json.loads(built.store.get(f"{F.INDEX_PREFIX}/index.json"))
+    assert index["cut_at_20s"] == dict(train=dict(two_view=0, monocular=2), val=dict(two_view=0, monocular=2))
 
 
 def test_a_missing_object_is_listed_and_under_the_floor_no_index_is_stored(built, monkeypatch, capsys):
@@ -436,9 +478,25 @@ def test_a_finished_build_is_left(built, capsys):
     assert built.main("build", "--workers", "1") == 0 and '"stored": true' in capsys.readouterr().out and built.store.get(f"{F.INDEX_PREFIX}/index.json") == first
 
 
+def test_a_smokes_list_holds_the_longest_and_the_never_tracked_once_each(monkeypatch):
+    import tok_v0 as V
+    records = [dict(sign=f"s{i}", partition="train", signer_component="c02") for i in range(10)]
+    monkeypatch.setattr(L, "smoke_records", lambda manifest, n: records[:n])
+    monkeypatch.setattr(P, "longest_train_records", lambda store, k: [records[8], records[0]][:k])
+    monkeypatch.setattr(V, "never_tracked_records", lambda store, k: [records[9]][:k])
+    out = F.smoke_list(None, {})
+    assert [r["sign"] for r in out] == ["s8", "s9"] + [f"s{i}" for i in range(8)]
+    monkeypatch.setattr(V, "never_tracked_records", lambda store, k: [dict(records[9], signer_component="c00")])
+    with pytest.raises(SystemExit, match="not a train clip"):
+        F.smoke_list(None, {})
+
+
 def test_a_smoke_build_takes_c02_train_clips_only(built, monkeypatch):
+    import tok_v0 as V
     records = built.plant_manifest()
     monkeypatch.setattr(L, "smoke_records", lambda manifest, n: records[:n])
+    monkeypatch.setattr(P, "longest_train_records", lambda store, k: [])
+    monkeypatch.setattr(V, "never_tracked_records", lambda store, k: [])
     assert built.main("build", "--smoke", "--prefix", "smk/idx", "--workers", "1") == 0
     index = json.loads(built.store.get("smk/idx/index.json"))
     assert index["smoke"] is True and index["counts"] == dict(train=6, val=2)
@@ -485,6 +543,11 @@ def tiny_world(built, monkeypatch):
     return calls
 
 
+def S_form(h, form):
+    clips, lost, _ = R.open_monocular(h.store, h.records, h.refs, True)
+    return F.build_form.__wrapped__(form, h.refs, clips, h.tokenizer) if hasattr(F.build_form, "__wrapped__") else F.build_form(form, h.refs, clips, h.tokenizer)
+
+
 def test_the_tiny_recipe_builds_trains_from_the_parent_and_passes_its_record(built, monkeypatch):
     calls = tiny_world(built, monkeypatch)
     assert built.main("build", "--workers", "1") == 0
@@ -503,6 +566,48 @@ def test_a_wrong_parent_hash_stops_the_trainer(built, monkeypatch):
     built.store.put(PP.UNFITTED_KEY, b"other bytes")
     with pytest.raises(SystemExit, match="differs from --init-sha256"):
         built.main("train")
+
+
+def test_a_stale_index_does_not_train(built, monkeypatch):
+    built.plant_v1_run()
+    assert built.main("build", "--workers", "1") == 0
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("ran")))
+    # the plan moved: a clip of the index is now refused
+    built.plant_manifest(c20=("s2",))
+    with pytest.raises(SystemExit, match="not this plan's, exactly and in order"):
+        built.main("train")
+
+
+def test_an_index_in_another_order_or_with_another_text_does_not_train(built, monkeypatch):
+    built.plant_v1_run()
+    assert built.main("build", "--workers", "1") == 0
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("ran")))
+    built.plant_v1_lists(["s1", "s0", "s2", "s3"], ["s4", "s5"])
+    with pytest.raises(SystemExit, match="not this plan's"):
+        built.main("train")
+
+
+def test_a_clip_list_on_other_bytes_or_a_smokes_index_does_not_train(built, monkeypatch):
+    built.plant_v1_run()
+    assert built.main("build", "--workers", "1") == 0
+    index = json.loads(built.store.get(f"{F.INDEX_PREFIX}/index.json"))
+    with pytest.raises(SystemExit, match="smoke's index"):
+        F.check_lists(built.store, dict(index, smoke=True))
+    built.store.put(f"{F.INDEX_PREFIX}/train/shard-00000.json", b"[]")
+    with pytest.raises(SystemExit, match="SHA-256"):
+        F.check_lists(built.store, index)
+
+
+def test_a_clip_the_index_lists_as_lost_is_not_required(built, monkeypatch):
+    built.plant_v1_run()
+    signs = [f"t{i}" for i in range(20)] + ["s4", "s5"]
+    built.plant_v1_lists(signs[:20], ["s4", "s5"])
+    built.plant_manifest(signs=signs)
+    rows = report_rows(signs, built, monkeypatch)
+    rows[0]["state_sha256"] = "0" * 64
+    plant_shard(monkeypatch, built.store, rows)
+    assert built.main("build", "--workers", "1") == 0
+    F.check_lists(built.store, json.loads(built.store.get(f"{F.INDEX_PREFIX}/index.json")))
 
 
 def test_a_failing_trainer_leaves_no_done(built, monkeypatch):
@@ -719,6 +824,58 @@ def test_still_preferring_two_view_reads_content_and_a_low_peak_reads_below(monk
     assert report["preference"]["label"] == F.LABEL_CONTENT and report["own_path_peak"]["label"] == F.LABEL_BELOW
 
 
+def test_margins_over_their_own_stills_stand_beside_the_shares_and_set_no_case(monkeypatch, tmp_path):
+    h = Sym(monkeypatch, tmp_path)
+    report = h.pipeline()
+    row = report["margin"]["margin_over_still"]
+    assert report["margin"]["report_only"] is True and "presence" in report["margin"]["note"] and "case" not in row
+    assert row["two_view"]["point"] == pytest.approx(.3 - .1, abs=1e-5) and row["monocular"]["point"] == pytest.approx(.6 - .05, abs=1e-5) and row["monocular_minus_two_view"]["point"] == pytest.approx(.35, abs=1e-5) and row["two_view_share_of_monocular"]["point"] == pytest.approx(.2 / .55, abs=1e-3)
+    assert report["margin"]["raw"]["still_monocular"]["point"] == pytest.approx(.05, abs=1e-5)
+
+
+def test_each_still_holds_its_own_paths_middle_frame(monkeypatch, tmp_path):
+    h = Sym(monkeypatch, tmp_path)
+    kept, states, masks = S_form(h, "still_monocular")
+    assert kept == list(range(N)) and np.array_equal(states[0].channels["left_hand"].values[0], states[0].channels["left_hand"].values[-1]) and len(states[0].timestamps) == 24
+    kept, states, masks = S_form(h, "still_two_view")
+    assert len(states[0].timestamps) == len(h.refs[0].timestamps) and states[0].channels["body"].valid.all()
+
+
+def test_per_signer_rows_carry_no_label_and_groups_stay_aligned(monkeypatch, tmp_path):
+    h = Sym(monkeypatch, tmp_path)
+    report = h.pipeline(two=(15, 1.), mono=(7, 2.5))
+    rows = report["per_signer"]
+    assert set(rows) == {"c01", "c03", "c05"} and sum(r["clips"] for r in rows.values()) == N
+    assert "case" not in json.dumps(rows) and rows["c01"]["v1"]["likelihood"]["monocular_share_of_two_view_gap"]["point"] == pytest.approx(.25, abs=.02)
+    form = json.loads((h.forms / "form-mono__blank.json").read_text())
+    picked = R.restrict(form, [form["signs"][7], form["signs"][2]])
+    assert picked["groups"] == [form["groups"][7], form["groups"][2]] and picked["nll"][0] == form["nll"][7]
+
+
+def test_a_signer_with_one_clip_has_a_count_alone(monkeypatch, tmp_path):
+    h = Sym(monkeypatch, tmp_path)
+    h.to_control()
+    assert h.read_forms("rest", "--resume") == 0
+    reads = F.load_reads(h.forms)
+    assert F.signer_rows(reads, None, [reads["blank"]["signs"][0]]) == {reads["blank"]["groups"][0]: dict(clips=1)}
+
+
+def test_the_selection_sample_is_split_out(monkeypatch, tmp_path):
+    h = Sym(monkeypatch, tmp_path)
+    report = h.pipeline()
+    assert report["by_training"]["in_selection_sample"]["clips"] == 2 and report["by_training"]["in_v1_training"]["clips"] == 4 and report["by_training"]["outside_training_and_selection"]["clips"] == N - 6
+
+
+def test_the_coverage_record_is_embedded_and_its_absence_raises_an_alert(monkeypatch, tmp_path):
+    h = Sym(monkeypatch, tmp_path)
+    report = h.pipeline()
+    assert report["coverage"]["monocular_clips"] == dict(train=4, val=2) and report["alerts"] == []
+    (h.forms.parent / "coverage.json").unlink()
+    assert any("no coverage record" in a for a in h.merge("again.json")["alerts"])
+    (h.forms.parent / "coverage.json").write_text(json.dumps(dict(code_digest="e" * 64)))
+    assert any("no coverage record" in a for a in h.merge("third.json")["alerts"])
+
+
 def test_metrics_that_disagree_read_unresolved(monkeypatch, tmp_path):
     h = Sym(monkeypatch, tmp_path, levels=dict(nearest_two_view=(9, 1., .3), nearest_monocular=(13, 2.5, .6)))
     report = h.pipeline(two=(13, 1.), mono=(7, 2.5))
@@ -832,8 +989,10 @@ def test_the_header_states_the_reading_the_thresholds_and_what_changes_before_an
     head = F.__doc__
     for text in F.PRESTATED.values():
         assert text in head
-    for text in ("0.5 BLEU and 0.052 nats", "19,182", "345", "strict subset", "exact record", "c20.json", "234 of D20", "unseeded", "What none of these can show", "--allow-resume"):
+    for text in ("Not independent", "may favour (a) and ``peak_near``", "signer split", "presence offset", "20 s cut", "0.5 BLEU and 0.052 nats", "19,182", "345", "strict subset", "exact record", "c20.json", "234 of D20", "unseeded", "What none of these can show", "--allow-resume"):
         assert text in head, text
+    for text in ("Not independent", "signer split", "presence offset", "20 s cut"):
+        assert any(text in v for v in F.DISCLOSURES.values()), text
     assert F.THRESHOLD == dict(bleu=.5, likelihood=.052) and F.SHARE_MIRROR == .5 and F.COVERAGE_FLOOR == .9 and F.EXIT_COVERAGE == 4
 
 
@@ -847,7 +1006,8 @@ def run_job(tmp_path, fail_when=None, code=7, **env):
     match = f'case "$*" in {pattern}) echo "planted failure" >&2; exit {code};; esac' if fail_when else ""
     (bin_dir / "python").write_text(f'#!/bin/bash\necho "$*" >> {log}\n{match}\necho "ran $1 $2"\nexit 0\n')
     (bin_dir / "uv").write_text("#!/bin/bash\nexit 0\n")
-    for name in ("python", "uv"):
+    (bin_dir / "timeout").write_text(f'#!/bin/bash\necho "timeout $*" >> {tmp_path / "timeouts.log"}\nshift 3\nexec "$@"\n')
+    for name in ("python", "uv", "timeout"):
         (bin_dir / name).chmod((bin_dir / name).stat().st_mode | stat.S_IEXEC)
     environment = dict(PATH=f"{bin_dir}:/usr/bin:/bin", HOME=str(tmp_path), VENV_BIN=str(bin_dir), R2ENV=str(tmp_path / "none"), ST_REPO=str(tmp_path), WORK=str(tmp_path / "work"), **env)
     done = subprocess.run(["bash", str(JOB)], env=environment, capture_output=True, text=True, timeout=60)
@@ -875,6 +1035,14 @@ def test_the_job_checks_coverage_smokes_trains_then_controls_before_reading(tmp_
     lines = calls.splitlines()
     assert "--smoke" in lines[2] and "--smoke" in lines[3] and "--smoke" not in lines[12] and "--smoke" not in lines[13] and "--smoke-train 5" in lines[6] and "--smoke-train" not in lines[17]
     assert "training-runs/back-translator-kp2d-uwb-ft-mono-v1/read/report.json" in lines[15] and "--forms control" in lines[17] and "--forms rest" in lines[19]
+
+
+def test_the_trainer_runs_under_a_timeout_and_the_full_build_on_one_blas_thread(tmp_path):
+    _, _ = run_job(tmp_path)
+    log = (tmp_path / "timeouts.log").read_text()
+    assert "-k 60 3600 python scripts/symmetric_ft.py train --smoke" in log and "-k 60 28800 python scripts/symmetric_ft.py train" in log
+    text = JOB.read_text()
+    assert 'OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 step python $T build --workers' in text and 'coverage --out-dir "$R"' in text
 
 
 def test_the_smoke_only_mode_stops_before_the_shards(tmp_path):
@@ -927,3 +1095,47 @@ def test_the_job_passes_every_step_through_pipestatus_and_names_no_other_list():
     for word in ("c20", "C20", "round15_compose_eval", "composed", "create-pod", "runpodctl"):
         assert word not in "\n".join(code), word
     assert "L40S" in text and "D=training-runs/back-translator-kp2d-uwb-ft-mono-v1" in text
+
+
+def test_the_cut_counts_each_path_at_its_boundary(built, monkeypatch):
+    built.plant_v1_lists(["s0", "s1"], ["s4", "s5"])
+    monkeypatch.setattr(F, "MAX_FRAMES", 24)     # 24 frames sits exactly on the cut: not over it
+    monkeypatch.setattr(F, "COVERAGE_FLOOR", 0.)
+    assert built.main("build", "--workers", "1") == 0
+    assert json.loads(built.store.get(f"{F.INDEX_PREFIX}/index.json"))["cut_at_20s"]["train"]["monocular"] == 0
+
+
+def test_the_cut_counts_two_views_own_frames_from_its_list(built, monkeypatch):
+    built.plant_v1_lists(["s0", "s1"], ["s4", "s5"])
+    monkeypatch.setattr(F, "MAX_FRAMES", 19)     # v1's list says 20 frames each
+    monkeypatch.setattr(F, "COVERAGE_FLOOR", 0.)
+    assert built.main("build", "--workers", "1") == 0
+    assert json.loads(built.store.get(f"{F.INDEX_PREFIX}/index.json"))["cut_at_20s"] == dict(train=dict(two_view=2, monocular=2), val=dict(two_view=2, monocular=2))
+
+
+def test_a_resumed_run_says_so_in_its_record(monkeypatch, tmp_path):
+    h = Sym(monkeypatch, tmp_path)
+    trained_world(h)
+    assert h.main("trained") == 0
+    assert json.loads(h.store.get(Q.TRAINED_RECORD))["resumed"] == []
+    trained_world(h)
+    h.store.put(f"{Q.MONO_PREFIX}/resumed-20261102T000000.json", b"{}")
+    assert h.main("trained") == 0
+    assert json.loads(h.store.get(Q.TRAINED_RECORD))["resumed"] == [f"{Q.MONO_PREFIX}/resumed-20261102T000000.json"]
+
+
+def test_a_signer_with_two_clips_has_its_rows(monkeypatch, tmp_path):
+    h = Sym(monkeypatch, tmp_path)
+    h.to_control()
+    assert h.read_forms("rest", "--resume") == 0
+    reads = F.load_reads(h.forms)
+    groups = reads["blank"]["groups"]
+    pair = [s for s, g in zip(reads["blank"]["signs"], groups) if g == groups[0]][:2]
+    row = F.signer_rows(reads, None, pair)[groups[0]]
+    assert row["clips"] == 2 and "new_instrument" in row
+
+
+def test_the_margin_shares_interval_holds_its_point(monkeypatch, tmp_path):
+    h = Sym(monkeypatch, tmp_path)
+    share = h.pipeline()["margin"]["margin_over_still"]["two_view_share_of_monocular"]
+    assert share["ci95"][0] <= share["point"] <= share["ci95"][1]

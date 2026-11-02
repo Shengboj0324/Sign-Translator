@@ -10,6 +10,8 @@
 - Otherwise **unresolved**, and when the metrics disagree. A mirrored preference with ``peak_near`` shows fit; a mirrored preference with ``peak_below`` shows fit and still suggests the path carries less.
 **What none of these can show.** Whether lost content is lost to people; (b) and ``peak_below`` are also what a harder fit would give, since monocular values are noisier and the recipe's budget and patience are v1's. (a) says an instrument can be tuned to this path, not that the path keeps its signing. Neither says anything about composition, whose word clips come from other corpora through the path. The case is a reading, not a rule: no step branches on it, and it starts no training and no decision.
 
+**Not independent.** Both instruments share v1's parent, and the parent trained on MediaPipe image landmarks, the source of the monocular path's hands, which may favour (a) and ``peak_near``. **The training split is a signer split:** c01 and c05 clips sit in training and c03 alone in selection, as in v1's, so selection is on a signer training never saw, and D20 draws on all three. **Margins:** the shares above are over blank and inherit a presence offset, which pulls s_two toward 1. ``mono__still_two_view`` and ``mono__still_monocular`` are read so each form's margin over its own still stands beside them, report only; they set no case.
+
 **The recipe.** v1's, read from its pinned ``run.json``: the parent's step 76,000 EMA weights (sha ``f1ff9446...``), AdamW, learning rates 1e-4 and 3e-5, warmup 500, 30,000 steps at most, validation every 1,000, patience 6, selection by best validation BLEU over its fixed sample, batch 64, seed 0, augmentation on. ``trained`` refuses a run record that differs from v1's anywhere but ``run``, the two indexes and what they determine.
 
 **What changes, exactly.**
@@ -20,9 +22,9 @@ Nothing else: no c00 (none in v1's lists; refused if any appears), no test or he
 
 **Coverage, counted 2026-11-02 from index objects:** every kept clip has a monocular state: 19,182 of 19,182 train, 345 of 345 validation, no row lost. Under 90% of v1's 19,637 training clips, ``coverage`` and ``build`` say so and the job stops with status 4, before any training. Clips per path and per signer are in ``coverage.json`` and the report.
 
-**Disclosed.** v1's list is ``full-v1``'s, so training holds 234 of D20's clips and the selection sample 88; every row is also split by whether a clip is in training. Augmentation is unseeded in the trainer, as it was for v1, so no run reproduces another exactly. ``transformers`` 4.57.6, the stored reads' version, not v1's own install. A resumed run resets patience, so a checkpoint without ``DONE`` refuses unless ``--allow-resume``, and the report says so.
+**Disclosed.** v1's list is ``full-v1``'s, so training holds 234 of D20's clips and the selection sample 88; every row is also split by whether a clip is in training or in that sample, and per signer, no label. Monocular clips run longer, so the trainer's 20 s cut bites more on them: ``cut_at_20s`` counts both paths. Augmentation is unseeded in the trainer, as it was for v1, so no run reproduces another exactly. ``transformers`` 4.57.6, the stored reads' version, not v1's own install. A resumed run resets patience, so a checkpoint without ``DONE`` refuses unless ``--allow-resume``, and the report says so.
 
-**Forms** (D20; one process): ``mono__real_two_view``, ``mono__real_monocular``, ``mono__nearest_two_view``, ``mono__nearest_monocular``, ``mono__blank``, the path read's builders, reading a clip's reference and 4 others (the first column is the one-candidate read, the rest give a raw margin, report only). v1's are its stored forms by hash, not read again. **Controls:** v1's real and blank against the pinned report (``control``): a miss voids the read and stops it. The new instrument's selection sample must reproduce its ``best.json`` (``val-control``: BLEU within 0.05, loss within 0.01): a miss withholds the label. **Label withheld** in a smoke, on any alert, under 475 shared clips, or off the plan's v1 figures. The smoke: 8 c02 train clips through build, a 10-step train and every form, with no D20 state.
+**Forms** (D20; one process): ``mono__real_two_view``, ``mono__real_monocular``, ``mono__nearest_two_view``, ``mono__nearest_monocular``, ``mono__blank``, the path read's builders, reading a clip's reference and 4 others (the first column is the one-candidate read, the rest give a margin, report only), and the two stills. v1's are its stored forms by hash, not read again. **Controls:** v1's real and blank against the pinned report (``control``): a miss voids the read and stops it. The new instrument's selection sample must reproduce its ``best.json`` (``val-control``: BLEU within 0.05, loss within 0.01): a miss withholds the label. **Label withheld** in a smoke, on any alert, under 475 shared clips, or off the plan's v1 figures. The smoke: c02 train clips, with the longest and one with a hand never tracked, through build, a 10-step train and every form, with no D20 state. **A bad state** (a hash mismatch or an unreadable file) is skipped and counted, as v1's builder did, up to ``BAD_STATE_LIMIT``: over it the build stops. ``train`` reads the index's clip lists back and requires them, exactly and in order, against this plan, so a stale index cannot train.
 
     python scripts/symmetric_ft.py recipe
     python scripts/symmetric_ft.py coverage --out-dir W
@@ -74,6 +76,9 @@ RUN = Q.MONO_RUN
 PREFIX = Q.MONO_PREFIX
 INDEX_PREFIX = f"{PREFIX}/keypoints-mono"
 C20_COUNT = 1000
+BAD_STATE_LIMIT = 20
+MAX_FRAMES = 480                                          # the trainer's 20 s at 24 fps
+SMOKE_LONGEST, SMOKE_NEVER_TRACKED = 2, 1
 C20_FINGERPRINT = "4b10200714f124c374398f2582587a79fe60137108f55616d8762694b134f894"
 V1_TRAIN_CLIPS, V1_VAL_SAMPLE = 19637, 512
 COVERAGE_FLOOR = .9
@@ -85,10 +90,10 @@ MAY_DIFFER_ARGS = ("run", "train_index", "val_index")
 MAY_DIFFER_TOP = ("train_index", "val_index", "data_sha256", "train_clips", "val_clips", "args", "config")
 SMOKE_OVERRIDES = dict(steps=10, val_every=10, checkpoint_every=10, val_clips=2, batch_size=2, warmup=2, workers=0)
 SMOKE_TRAIN_CLIPS, SMOKE_VAL_CLIPS = 6, 2
-BASE_FORMS = ("real_two_view", "real_monocular", "nearest_two_view", "nearest_monocular", "blank")
+BASE_FORMS = ("real_two_view", "real_monocular", "nearest_two_view", "nearest_monocular", "blank", "still_two_view", "still_monocular")
 TWO, MONO = "nearest_two_view", "nearest_monocular"
-MONOCULAR_NEEDED = ("real_monocular", "nearest_monocular")
-TOKENIZER_NEEDED = ("nearest_two_view", "nearest_monocular")
+MONOCULAR_NEEDED = ("real_monocular", "nearest_monocular", "still_monocular")
+TOKENIZER_NEEDED = ("nearest_two_view", "nearest_monocular", "still_two_view", "still_monocular")
 CONTROL = ("v1__real_two_view", "v1__blank")
 CANDIDATES = Q.CANDIDATES
 BOOT = Q.BOOT
@@ -111,6 +116,10 @@ DISCLOSURES = dict(
     training="v1's lists are full-v1's: training holds 234 of D20's clips, the selection sample 88. Both instruments read those 234 on their own paths having trained on them; by_training splits every row.",
     budget="The recipe's budget and patience are v1's. Monocular values may be harder to fit, so a low reading is also what underfitting would give.",
     augmentation="The trainer's augmentation is unseeded, as for v1: no run reproduces another exactly.",
+    lineage="Not independent: both instruments share v1's parent, which trained on MediaPipe image landmarks, the source of the monocular path's hands. That may favour fit_shown and peak_near.",
+    signer_split="The training split is a signer split: c01 and c05 clips in training, c03 alone in selection. Per-signer rows set no label.",
+    presence="Shares over blank inherit a presence offset, which pulls s_two toward 1. margin_over_still stands beside them, report only.",
+    cut="Monocular clips run longer, so the trainer's 20 s cut bites more on them: cut_at_20s counts both paths. D20's 88 clips in the selection sample are split out.",
     transformers="transformers 4.57.6, the stored reads' version, not v1's own install.",
     conform="Monocular states are not conformed for training, as v1's two-view weren't; the D20 reads conform them as the path read did, and it found v1's input byte-identical either way.")
 
@@ -177,8 +186,11 @@ def recipe_differences(new: dict, v1: dict) -> dict:
 
 def run_recipe(args) -> int:
     from train_text_to_motion import make_store
-    run = load_v1_run(make_store(args.store))
+    store = make_store(args.store)
+    run = load_v1_run(store)
     check_recipe(run)
+    for name in Q.STORED_V1:
+        Q.stored_form(store, Q.STORED_V1, name)
     print(json.dumps(dict(recipe=run["args"], config_sha256=run["config_sha256"], v1_train_clips=run["train_clips"], v1_val_clips=run["val_clips"])), flush=True)
     return 0
 
@@ -242,7 +254,7 @@ def match_rows(rows: list[dict], reports: dict) -> tuple[list[dict], list[dict]]
         elif row["state_key"] != R.state_key_of(sign):
             raise SystemExit(f"{sign}: its row names {row['state_key']}, not this clip's monocular state: refused unread")
         else:
-            found.append(dict(clip_id=sign, text=r["text"], partition=r["partition"], state_key=row["state_key"], state_sha256=row["state_sha256"]))
+            found.append(dict(clip_id=sign, text=r["text"], partition=r["partition"], state_key=row["state_key"], state_sha256=row["state_sha256"], two_view_frames=r.get("frames")))
     return found, lost
 
 
@@ -292,7 +304,7 @@ def _init(store_spec: str) -> None:
 
 
 def convert(item: dict) -> dict:
-    """One clip as ``build_fk_keypoint_shards.convert``: its state at 24 fps, projected and normalised. A missing object is reported; anything else stops the job, there as a raised error here."""
+    """One clip as ``build_fk_keypoint_shards.convert``: its state at 24 fps, projected and normalised. A missing object or a bad state is reported, as v1's builder did; another clip's state refuses."""
     from evaluate_text_to_motion import at_rate, load_state
     from signtranslator.data.keypoints2d import from_state, normalise
     store = _WORKER["store"]
@@ -300,39 +312,64 @@ def convert(item: dict) -> dict:
         raise ValueError(f"{item['clip_id']}: refused {item['state_key']}")
     if not store.exists(item["state_key"]):
         return dict(sign=item["clip_id"], lost="state_missing")
-    state = at_rate(load_state(store, item["state_key"], item["state_sha256"]), L.FPS)
-    points, valid = from_state(state)
+    try:
+        state = at_rate(load_state(store, item["state_key"], item["state_sha256"]), L.FPS)
+        points, valid = from_state(state)
+    except (KeyError, ValueError) as error:
+        return dict(sign=item["clip_id"], lost="bad_state", detail=str(error)[:200])
     if not (valid[:, 0] & valid[:, 1]).any():
         return dict(sign=item["clip_id"], lost="no_shoulders")
     return dict(sign=item["clip_id"], points=normalise(points, valid, y_down=False), valid=valid)
 
 
-def write_series(store, pool, items: list[dict], series: str, prefix: str, shard_size: int = SHARD_SIZE) -> tuple[list, list]:
+def write_series(store, pool, items: list[dict], series: str, prefix: str, shard_size: int = SHARD_SIZE) -> tuple[list, list, int]:
     from build_uwb_keypoint_shards import _write_shard
     shards, pending, lost = [], [], []
+    over = 0
+    bad = 0
     for item, result in zip(items, pool.imap(convert, items, chunksize=16)):
         if "lost" in result:
-            lost.append(R.lost_clip(result["sign"], result["lost"]))
+            lost.append(R.lost_clip(result["sign"], result["lost"], result.get("detail")))
+            bad += result["lost"] == "bad_state"
+            if bad > BAD_STATE_LIMIT:
+                raise SystemExit(f"{series}: over {BAD_STATE_LIMIT} bad states, the last {result['sign']}: {result.get('detail')}")
             continue
         sign = item["clip_id"]
+        over += len(result["points"]) > MAX_FRAMES
         pending.append(dict(clip_id=sign, video_id=sign.split("_")[0], text=item["text"], partition=series, frames=len(result["points"]), points=result["points"], valid=result["valid"]))
         if len(pending) == shard_size:
             shards.append(_write_shard(store, f"{prefix}/{series}/shard-{len(shards):05d}.npz", pending))
             pending = []
     if pending:
         shards.append(_write_shard(store, f"{prefix}/{series}/shard-{len(shards):05d}.npz", pending))
-    return shards, lost
+    return shards, lost, over
 
 
 def build_index(store, spec: str, found: dict, prefix: str, workers: int, extra: dict) -> dict:
     with Pool(workers, initializer=_init, initargs=(spec,)) as pool:
-        parts, lost = [], {}
+        parts, lost, frames_over = [], {}, {}
         for series in ("train", "val"):
-            shards, lost[series] = write_series(store, pool, found[series], series, prefix)
+            shards, lost[series], frames_over[series] = write_series(store, pool, found[series], series, prefix)
             parts.append(dict(partition=series, shards=shards))
     kept = {p["partition"]: sum(s["clips"] for s in p["shards"]) for p in parts}
-    index = dict(corpus_id="how2sign-fk-keypoints-mono-v1", source_fps=L.FPS, layout="signtranslator.data.keypoints2d (48 points, hands local)", projection="canonical_skeleton FK, orthographic front; monocular states, derived/how2sign-video-estimate-v1", counts=kept, lost=lost, parts=parts, **extra)
+    cut = {series: dict(two_view=sum(1 for x in found[series] if (x.get("two_view_frames") or 0) > MAX_FRAMES), monocular=frames_over[series]) for series in found}
+    index = dict(cut_at_20s=cut, corpus_id="how2sign-fk-keypoints-mono-v1", source_fps=L.FPS, layout="signtranslator.data.keypoints2d (48 points, hands local)", projection="canonical_skeleton FK, orthographic front; monocular states, derived/how2sign-video-estimate-v1", counts=kept, lost=lost, parts=parts, **extra)
     return index
+
+
+def smoke_list(store, manifest) -> list[dict]:
+    """A smoke's c02 train clips, with the longest and one with a hand never tracked, each once: the build must meet them. The validation series is the last ``SMOKE_VAL_CLIPS`` drawn."""
+    import tok_v0 as V
+    drawn = L.smoke_records(manifest, SMOKE_TRAIN_CLIPS + SMOKE_VAL_CLIPS)
+    seen = {r["sign"] for r in drawn}
+    extra = []
+    for r in P.longest_train_records(store, SMOKE_LONGEST) + V.never_tracked_records(store, SMOKE_NEVER_TRACKED):
+        if r["sign"] not in seen:
+            seen.add(r["sign"])
+            extra.append(r)
+    records = extra + drawn
+    L.check_train_records(records, ("c02",))
+    return records
 
 
 def run_build(args) -> int:
@@ -346,13 +383,12 @@ def run_build(args) -> int:
         return 0
     if args.smoke:
         manifest = L.load_manifest_at(store, L.EVAL_MIX, L.EVAL_MIX_SHA)
-        records = L.smoke_records(manifest, SMOKE_TRAIN_CLIPS + SMOKE_VAL_CLIPS)
-        L.check_train_records(records, ("c02",))
+        records = smoke_list(store, manifest)
         rows = [dict(clip_id=r["sign"], text=r["text"], partition="train") for r in records]
         found, lost = match_rows(rows, R.monocular_rows(store, [r["clip_id"] for r in rows]))
         for r in found:
             check_training_record(r["clip_id"], next(x for x in records if x["sign"] == r["clip_id"]))
-        series = dict(train=found[:SMOKE_TRAIN_CLIPS], val=found[SMOKE_TRAIN_CLIPS:])
+        series = dict(train=found[:-SMOKE_VAL_CLIPS], val=found[-SMOKE_VAL_CLIPS:])
         extra = dict(smoke=True, list="smoke:c02-train", lost_at_match=lost)
         needed = None
     else:
@@ -376,6 +412,32 @@ def check_index(index: dict) -> None:
         raise SystemExit(f"the index holds {names}, not train and val")
 
 
+def index_lists(store, index: dict) -> dict:
+    """{series: its (clip, text) in shard order}, from the index's own clip lists, each by its hash."""
+    out = {}
+    for part in index["parts"]:
+        rows = []
+        for shard in part["shards"]:
+            meta = store.get(shard["key"][:-4] + ".json")
+            P.check_sha(meta, shard["meta_sha256"], shard["key"])
+            rows += [(m["clip_id"], m["text"]) for m in json.loads(meta)]
+        out[part["partition"]] = rows
+    return out
+
+
+def check_lists(store, index: dict) -> None:
+    """An index trains only if its clips are the plan's, exactly and in order, less those it lists as lost at build. A stale index, or one holding a clip this plan refuses, stops here."""
+    if index.get("smoke"):
+        raise SystemExit("a smoke's index cannot train the instrument")
+    _, found, _ = plan_and_match(store)
+    have = index_lists(store, index)
+    for series in ("train", "val"):
+        gone = {x["sign"] for x in index["lost"][series]}
+        want = [(f["clip_id"], f["text"]) for f in found[series] if f["clip_id"] not in gone]
+        if have[series] != want:
+            raise SystemExit(f"the index's {series} clips are not this plan's, exactly and in order: {len(have[series])} against {len(want)}; a stale index does not train")
+
+
 def run_train(args) -> int:
     """The trainer, with v1's arguments and only the header's changes. A finished run (DONE) is not re-entered; checkpoints without it refuse unless ``--allow-resume``, since a resumed trainer resets its patience."""
     from train_text_to_motion import make_store
@@ -392,7 +454,10 @@ def run_train(args) -> int:
     index_key = f"{args.index_prefix.rstrip('/')}/index.json"
     if not store.exists(index_key):
         raise SystemExit(f"{index_key}: no index; build first")
-    check_index(json.loads(store.get(index_key)))
+    index = json.loads(store.get(index_key))
+    check_index(index)
+    if not args.smoke:
+        check_lists(store, index)
     v1 = load_v1_run(store)
     check_recipe(v1)
     overrides = dict(SMOKE_OVERRIDES) if args.smoke else {}
@@ -428,7 +493,7 @@ def run_trained(args) -> int:
     best = json.loads(store.get(f"{prefix}/best.json"))
     if not str(best.get("checkpoint_key", "")).startswith(f"{prefix}/checkpoints/"):
         raise SystemExit(f"{prefix}/best.json names {best.get('checkpoint_key')}")
-    record = dict(kind=f"{PROBE}-trained", report_only=True, checkpoint_key=best["checkpoint_key"], sha256=hashlib.sha256(store.get(best["checkpoint_key"])).hexdigest(), step=best["step"], selected_on=best["selected_on"], run_sha256=hashlib.sha256(store.get(f"{prefix}/run.json")).hexdigest(), index_sha256=hashlib.sha256(store.get(expected_index)).hexdigest(), train_clips=new["train_clips"], val_clips=new["val_clips"], recipe_differences=differs, resumed=sorted(k for k in store.list(f"{prefix}/") if "/resumed-" in k), smoke=bool(args.smoke), code_digest=code_digest())
+    record = dict(kind=f"{PROBE}-trained", report_only=True, checkpoint_key=best["checkpoint_key"], sha256=hashlib.sha256(store.get(best["checkpoint_key"])).hexdigest(), step=best["step"], selected_on=best["selected_on"], run_sha256=hashlib.sha256(store.get(f"{prefix}/run.json")).hexdigest(), index_sha256=hashlib.sha256(store.get(expected_index)).hexdigest(), cut_at_20s=json.loads(store.get(expected_index)).get("cut_at_20s"), train_clips=new["train_clips"], val_clips=new["val_clips"], recipe_differences=differs, resumed=sorted(k for k in store.list(f"{prefix}/") if "/resumed-" in k), smoke=bool(args.smoke), code_digest=code_digest())
     store.put(record_key, json.dumps(record, indent=1, sort_keys=True).encode())
     print(json.dumps(dict(trained={k: record[k] for k in ("checkpoint_key", "sha256", "step", "train_clips", "val_clips")})), flush=True)
     return 0
@@ -495,6 +560,10 @@ def build_form(form: str, refs, clips, tokenizer) -> tuple[list[int], list, list
         return kept, [T.cap_form("v0_nearest_fill", c.conformed, tokenizer) for c in clips], [c.conformed for c in clips]
     if form == "real_monocular":
         return kept, [c.conformed for c in clips], [c.conformed for c in clips]
+    if form == "still_two_view":
+        return every, [PP.held_still(T.cap_form("v0_nearest_fill", s, tokenizer)) for s in refs], list(refs)
+    if form == "still_monocular":
+        return kept, [PP.held_still(T.cap_form("v0_nearest_fill", c.conformed, tokenizer)) for c in clips], [c.conformed for c in clips]
     raise SystemExit(f"unknown form {form}")
 
 
@@ -541,7 +610,7 @@ def run_read(args) -> int:
         raw = reader.read(states, texts, candidates[kept], group=args.nll_group)
         validity = [R.part_validity(s) for s in states]
         report = dict(kind=f"{PROBE}-form", report_only=True, form=name, declared_read=declared, list=described, code_digest=digest, environment=place, instrument=reader.info, signs=[signs[i] for i in kept], groups=[groups[i] for i in kept], references=[texts[i] for i in kept], lost=lost if form in MONOCULAR_NEEDED else [], hypotheses=raw["hypotheses"], nll=np.round(raw["nll"], 5).tolist(),
-                      valid_frame_share=[R.valid_frame_share(s) for s in states], part_validity={part: [v[part] for v in validity] for part in R.PARTS}, motion=L.motion_statistics(states, masks), build_seconds=round(built - started, 2), read_seconds=round(time.time() - built, 2), peak_rss_bytes=P.peak_rss_bytes(), gpu_peak_reserved_bytes=P.gpu_peak_reserved_bytes())
+                      valid_frame_share=[R.valid_frame_share(s) for s in states], part_validity={part: [v[part] for v in validity] for part in R.PARTS}, motion=L.motion_statistics(states, masks), hands=P.hand_statistics(states, masks), tracked=P.tracked_statistics(states), build_seconds=round(built - started, 2), read_seconds=round(time.time() - built, 2), peak_rss_bytes=P.peak_rss_bytes(), gpu_peak_reserved_bytes=P.gpu_peak_reserved_bytes())
         P.write_report_once(out_dir / f"form-{name}.json", report)
         print(json.dumps({name: dict(clips=len(kept), read_seconds=report["read_seconds"], peak_rss_gb=round(report["peak_rss_bytes"] / 2 ** 30, 2))}), flush=True)
         del states, raw
@@ -638,12 +707,6 @@ def peak_block(mono: dict, mono_blank: dict, v1: dict, v1_blank: dict, idx) -> d
     return out
 
 
-def restricted(read: dict, signs) -> dict:
-    where = {s: i for i, s in enumerate(read["signs"])}
-    pick = [where[s] for s in signs]
-    return dict(read, signs=list(signs), references=[read["references"][i] for i in pick], hypotheses=[read["hypotheses"][i] for i in pick], nll=[read["nll"][i] for i in pick])
-
-
 def plan_misses(v1: dict) -> list[str]:
     """v1's stored forms against the plan's figures, on all their clips."""
     out = []
@@ -659,9 +722,45 @@ def plan_misses(v1: dict) -> list[str]:
 
 
 def margin_row(reads: dict, idx) -> dict:
-    """Report only, the new instrument: raw margins, mismatched minus own, on both pairs; no still is read here, so duration stays in them."""
-    margin = {f: Q.margins(r) for f, r in reads.items()}
-    return {f: dict(point=round(float(v.mean()), 5), ci95=P._quantiles(v[idx].mean(1))) for f, v in margin.items()} | dict(monocular_minus_two_view=dict(point=round(float((margin[MONO] - margin[TWO]).mean()), 5), ci95=P._quantiles((margin[MONO] - margin[TWO])[idx].mean(1))))
+    """Report only, the new instrument: each nearest form's margin over its own still, the share and the difference; raw margins beside. No case rests here."""
+    raw = {f: Q.margins(reads[f]) for f in BASE_FORMS}
+    two, mono = raw[TWO] - raw["still_two_view"], raw[MONO] - raw["still_monocular"]
+    row = lambda v: dict(point=round(float(v.mean()), 5), ci95=P._quantiles(v[idx].mean(1)))      # noqa: E731
+    with np.errstate(divide="ignore", invalid="ignore"):
+        share = dict(point=round(float(two.mean() / mono.mean()), 4) if mono.mean() else None, ci95=P._quantiles(two[idx].mean(1) / mono[idx].mean(1)))
+    return dict(report_only=True, note="over its own still, the presence offset cancels; shares over blank keep it", margin_over_still=dict(two_view=row(two), monocular=row(mono), monocular_minus_two_view=row(mono - two), two_view_share_of_monocular=share), raw={f: row(v) for f, v in raw.items()})
+
+
+def preference_row(reads: dict, blank: str, idx) -> dict:
+    """A preference block's figures with no case: per-signer rows carry no label."""
+    block = preference_block(reads, blank, idx)
+    return {m: {k: v for k, v in block[m].items() if k != "case"} for m in ("bleu", "likelihood")}
+
+
+def signer_rows(all_reads: dict, v1: dict | None, shared) -> dict:
+    """Per signer, no label: each form restricted to that signer's clips by ``path_read.restrict``, and their groups with them."""
+    groups = dict(zip(all_reads["blank"]["signs"], all_reads["blank"]["groups"]))
+    out = {}
+    for signer in sorted({groups[s] for s in shared}):
+        signs = [s for s in shared if groups[s] == signer]
+        if len(signs) < 2:
+            out[signer] = dict(clips=len(signs))
+            continue
+        idx = np.random.default_rng(0).integers(0, len(signs), (BOOT, len(signs)))
+        here = {f: R.restrict(all_reads[f], signs) for f in (TWO, MONO, "blank")}
+        row = dict(clips=len(signs), new_instrument=preference_row(here, "blank", idx))
+        if v1 is not None:
+            row["v1"] = preference_row({f: R.restrict(v1[f], signs) for f in (TWO, MONO, "blank")}, "blank", idx)
+        out[signer] = row
+    return out
+
+
+def clip_subsets(store, shared) -> dict:
+    """{name: mask over ``shared``}: in and outside v1's training list, in its selection sample, and in neither; report only."""
+    masks = Q.subset_masks(shared, Q.v1_training_signs(store))
+    sample = {r["clip_id"] for r in fixed_sample(Q.v1_series(store, "val"))}
+    selection = np.array([s in sample for s in shared])
+    return dict(masks, in_selection_sample=selection, outside_training_and_selection=masks["outside_v1_training"] & ~selection)
 
 
 def load_reads(out_dir: Path) -> dict:
@@ -703,7 +802,7 @@ def run_merge(args) -> int:
         alerts.append(f"the run differs from v1's recipe: {sorted(trained['recipe_differences'])}")
     control = R.passed_control(out_dir, digest, place) if declared else None
     shared = R.shared_signs(dict(all_reads, real_two_view=all_reads["real_two_view"]))
-    reads = {f: restricted(r, shared) for f, r in all_reads.items()}
+    reads = {f: R.restrict(r, shared) for f, r in all_reads.items()}
     n = len(shared)
     if declared and n < R.SHARED_FLOOR:
         alerts.append(f"{n} shared clips, under {R.SHARED_FLOOR}")
@@ -717,15 +816,20 @@ def run_merge(args) -> int:
     marks_free = preference_block(reads, "blank", idx)
     marked = preference_block(reads, "blank", idx, "real_two_view", "real_monocular")
     v1 = peak = v1_block = None
-    training = Q.v1_training_signs(store)
-    masks = Q.subset_masks(shared, training)
+    masks = clip_subsets(store, shared)
     by_training = {}
+    stored_for_signers = None
+    coverage_path = out_dir.parent / "coverage.json"
+    coverage = json.loads(coverage_path.read_bytes()) if coverage_path.exists() else None
+    if declared and (coverage is None or coverage.get("code_digest") != digest):
+        alerts.append("no coverage record of this code")
     if declared:
         stored = {f: Q.stored_form(store, Q.STORED_V1, f) for f in (TWO, MONO, "real_two_view", "blank")}
         alerts += plan_misses(stored)
         if any(s not in set(stored[TWO]["signs"]) for s in shared):
             raise SystemExit("a shared clip is not in v1's stored forms")
-        v1 = {f: restricted(r, shared) for f, r in stored.items()}
+        v1 = {f: R.restrict(r, shared) for f, r in stored.items()}
+        stored_for_signers = stored
         v1_block = preference_block({f: v1[f] for f in (TWO, MONO, "blank")}, "blank", idx)
         peak = peak_block(reads[MONO], reads["blank"], v1[TWO], v1["blank"], idx)
     for name, mask in masks.items():
@@ -733,18 +837,18 @@ def run_merge(args) -> int:
             by_training[name] = None
             continue
         signs = [s for s, m in zip(shared, mask) if m]
-        here = {f: restricted(r, signs) for f, r in all_reads.items() if f in (TWO, MONO, "blank")}
+        here = {f: R.restrict(r, signs) for f, r in all_reads.items() if f in (TWO, MONO, "blank")}
         sub = np.random.default_rng(0).integers(0, len(signs), (BOOT, len(signs)))
         row = dict(clips=len(signs), new_instrument=preference_block(here, "blank", sub))
         if v1 is not None:
-            there = {f: restricted(v1[f], signs) for f in (TWO, MONO, "blank")}
+            there = {f: R.restrict(v1[f], signs) for f in (TWO, MONO, "blank")}
             row["v1"] = preference_block(there, "blank", sub)
             row["own_path_peak"] = peak_block(here[MONO], here["blank"], there[TWO], there["blank"], sub)
         by_training[name] = row
     held = ([] if declared else ["a smoke carries no reading"]) + alerts
     report = dict(kind=f"{PROBE}-report", report_only=True, note=NOT_DECIDED, declared_read=declared, smoke=None if declared else "SMOKE on c02 train clips and a 10-step instrument: these numbers are plumbing, not a read", list=first["list"], code_digest=digest, environment=place, prestated=PRESTATED, disclosures=DISCLOSURES, alerts=alerts, withheld=held, instrument=first["instrument"], trained=trained,
                   clips=dict(list=len(all_reads["real_two_view"]["signs"]), shared=n, floor=R.SHARED_FLOOR, outside_shared=R.lost_rows(all_reads, shared), in_v1_training=int(masks["in_v1_training"].sum()), outside_v1_training=int(masks["outside_v1_training"].sum())),
-                  preference=dict(marks_free=marks_free, marked_secondary=marked, label=None if held else marks_free["case"]), own_path_peak=None if peak is None else dict(peak, label=None if held else peak["case"]), v1=v1_block, by_training=by_training, raw_margin=margin_row({f: reads[f] for f in (TWO, MONO, "real_two_view", "real_monocular", "blank")}, idx),
+                  preference=dict(marks_free=marks_free, marked_secondary=marked, label=None if held else marks_free["case"]), own_path_peak=None if peak is None else dict(peak, label=None if held else peak["case"]), v1=v1_block, by_training=by_training, margin=margin_row(reads, idx), per_signer=signer_rows(all_reads, stored_for_signers, shared), coverage=coverage, cut_at_20s=trained.get("cut_at_20s"),
                   forms={f: dict(bleu=M.bleu_ci_fast(r["hypotheses"], r["references"])[0], likelihood_minus_blank=round(float(M.delta_nll(np.asarray(reads["blank"]["nll"])[:, 0], np.asarray(r["nll"])[:, 0]).mean()), 5), valid_frame_share=round(float(np.mean(r["valid_frame_share"])), 4)) for f, r in reads.items()},
                   checks=dict(control=control, val_control=val, blank_identical_to_real=round(float(np.mean([a == b for a, b in zip(reads["blank"]["hypotheses"], reads["real_two_view"]["hypotheses"])])), 4)), rerun=json.loads((out_dir / "rerun.json").read_bytes()) if (out_dir / "rerun.json").exists() else None, resources={f: {k: r[k] for k in ("peak_rss_bytes", "gpu_peak_reserved_bytes", "build_seconds", "read_seconds")} for f, r in all_reads.items()})
     L.write_once(store, args.output_key, args.output_file, report)

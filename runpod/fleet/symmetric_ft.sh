@@ -1,11 +1,12 @@
 #!/bin/bash
 # symmetric_ft.sh — one GPU pod: v1's parent fine-tuned on How2Sign's monocular states with v1's recipe, then read on D20 through both paths (scripts/symmetric_ft.py). Report only: the instrument gates nothing, and the report decides nothing.
 #
-#   bash runpod/fleet/symmetric_ft.sh            coverage, the smoke (8 c02 train clips, 10 steps), the shards, training, the read
+#   bash runpod/fleet/symmetric_ft.sh            coverage, the smoke (c02 train clips, 10 steps), the shards, training, the read
 #   SMOKE=1 bash runpod/fleet/symmetric_ft.sh    coverage and the smoke only
 #
 # C20's clips, which v1's lists hold, are refused by exact record: see the header. Under 90% of v1's training clips with monocular states the job says so and stops with 4, before any training. Shards are built once; a finished run (DONE) is not re-entered; checkpoints without DONE refuse unless ALLOW_RESUME=1, since a resumed trainer resets its patience, and the report says so.
 # On D20, v1's real and blank are read first and must reproduce the pinned report (`control`). A miss stops the job and voids the read. No automatic retry: this code never reads again, and a rerun needs new code and RERUN_CAUSE.
+# The trainer runs under TRAIN_TIMEOUT seconds (default 8 h; v1 took 1.2 h to its early stop). A timeout fails the job, and a rerun then needs ALLOW_RESUME=1.
 # Outputs under $D (write-once): keypoints-mono/, checkpoints/, trained.json, read/, read/report.json, logs/. A failure uploads the work so far to $D/partial/<UTC>/. Use the L40S: the control compares hypotheses.
 # Ends with SYM-FT-DONE <status> (0 done, 1 failed, 2 the smoke stopped the job, 3 the read is void: do not retry, 4 too few monocular clips). The exit status is the same.
 # Every step's output and every ALERT passes through tee to $LOG, and `step` returns the failing side's status from PIPESTATUS, so no pipe hides a failure.
@@ -25,6 +26,7 @@ R=$W/d20
 LOG=$W/symmetric_ft.log
 SMOKE_RUN=back-translator-kp2d-uwb-ft-mono-v1/smoke/$TS/run
 SMOKE_INDEX=$D/smoke/$TS/keypoints-mono
+TRAIN_TIMEOUT=${TRAIN_TIMEOUT:-28800}
 COMMON="--device $DEV --threads $THREADS --instrument-cache $W/instrument --nll-group 4"
 
 # a command's output to the log and the console; its status, or the log's failure, comes back
@@ -55,14 +57,14 @@ mkdir -p "$S/forms" "$R/forms" || done_ 1
 uv pip install -q 'transformers==4.57.6' sentencepiece || { alert "transformers install failed"; done_ 1; }   # the version of the stored D20 reads
 
 step python $T recipe || { alert "v1's run record is not the header's recipe"; done_ 1; }
-step python $T coverage --out-dir "$W"
+step python $T coverage --out-dir "$R"
 covered=$?
 [ "$covered" != 4 ] || { alert "too few of v1's training clips have monocular states: this part stops"; done_ 4; }
 [ "$covered" = 0 ] || { alert "coverage did not run"; done_ 1; }
 
-# ---- smoke: 8 c02 train clips through the shards, 10 steps of the trainer from the parent, and every form; no D20 state --------------------
+# ---- smoke: c02 train clips, longest and never tracked among them, through the shards, 10 steps of the trainer from the parent, and every form; no D20 state --------------------
 step python $T build --smoke --prefix "$SMOKE_INDEX" --workers 4 || { alert "smoke build failed"; done_ 2; }
-step python $T train --smoke --run "$SMOKE_RUN" --index-prefix "$SMOKE_INDEX" || { alert "smoke train failed"; done_ 2; }
+step timeout -k 60 3600 python $T train --smoke --run "$SMOKE_RUN" --index-prefix "$SMOKE_INDEX" || { alert "smoke train failed"; done_ 2; }
 step python $T trained --smoke --run "$SMOKE_RUN" --index-prefix "$SMOKE_INDEX" || { alert "smoke trained record failed"; done_ 2; }
 step python $T val-control --run "$SMOKE_RUN" --index-prefix "$SMOKE_INDEX" --out-dir "$S/forms" --val-clips 2 --batch-size 2 --device "$DEV" --instrument-cache "$W/smoke-instrument" || { alert "smoke selection control failed"; done_ 2; }
 step python $T read --forms control --out-dir "$S/forms" --run "$SMOKE_RUN" --smoke-train 5 --smoke-longest 2 --smoke-never-tracked 1 $COMMON || { alert "smoke read of the control failed"; done_ 2; }
@@ -77,11 +79,11 @@ if [ "${SMOKE:-0}" = 1 ]; then
 fi
 
 # ---- the instrument -------------------------------------------------------------------------------------------------------------------
-step python $T build --workers "${BUILD_WORKERS:-12}"
+OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 step python $T build --workers "${BUILD_WORKERS:-12}"
 built=$?
 [ "$built" != 4 ] || { alert "too few of v1's training clips were built: this part stops"; done_ 4; }
 [ "$built" = 0 ] || { alert "build failed"; done_ 1; }
-step python $T train ${ALLOW_RESUME:+--allow-resume} || { alert "training failed"; done_ 1; }
+step timeout -k 60 "$TRAIN_TIMEOUT" python $T train ${ALLOW_RESUME:+--allow-resume} || { alert "training failed"; done_ 1; }
 step python $T trained || { alert "the run is not v1's recipe"; done_ 1; }
 
 # ---- the read: D20 ------------------------------------------------------------------------------------------------------------------
