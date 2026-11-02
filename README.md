@@ -47,7 +47,7 @@ Each read uses the blank at its own length. True-length forms need the answer's 
 | Long-term instrument target | 3.8 | Not reached by any form |
 | Release bar with Deaf raters | Comprehension lower bound at least 70%, within 10 points of real | Not started |
 
-**The newest result, which may change the plan.** Most of our word clips were learned from single-camera data, while the real signing we compare against was recovered from two cameras. Read through the single-camera path, that same real signing scores **2.85, not 4.49**. Composition's 2.40, the mean of eight draws of a form chosen on D20, is already close to that (the declared comparison without tracking marks is 2.65 against 4.62). Either single-camera recovery loses real detail, or our instrument underrates it; we have not yet separated the two ([section 7.3](#73-the-single-camera-result)).
+**The newest result, which may change the plan.** Most of our word clips were learned from single-camera data, while the real signing we compare against was recovered from two cameras. Read through the single-camera path, that same real signing scores **2.85, not 4.49**. Composition's 2.40, the mean of eight draws of a form chosen on D20, is already close to that (the declared comparison without tracking marks is 2.65 against 4.62). But the instrument our main one was built from, before its tuning on two-camera motion, reads the two paths about equally (99.8%, against 18% for the main instrument). So the drop may come largely from that tuning rather than lost detail, though this isn't proven ([section 7.3](#73-the-single-camera-result)).
 
 ---
 
@@ -287,7 +287,9 @@ Same 500 clips, instrument v1, all safety checks clean, control exact:
 
 - **The drop is in the motion values:** swapping tracking marks barely moves either path, and trimming clips to the same frames changes nothing.
 - **Hands differ most:** distance between paths is 0.587 for hands (a deliberately mirrored control reads 1.286), 0.231 for wrists, 0.128 for elbows and 0.100 for shoulders.
-- **What it can't tell us:** whether detail is really lost, or whether v1 underrates this path because it was fine-tuned on two-camera motion. We wrote that limit down before the read.
+- **Which part:** swapping one part at a time into real two-camera motion shows both body and fingers lose v1's reading, with heavy overlap. Share of the likelihood loss: hand pose 80%, body with wrist orientation 77%, hand orientation 55%, arms 34%. This names where v1's reading falls, not which part lost content.
+- **The instrument:** v1's parent, before fine-tuning on two-camera motion, reads the paths equally on how much the motion favours its own sentence over others, measured above a still pose: 99.8% [92.6, 107.6] of the two-camera margin, against v1's 17.6% [5.2, 28.2] over blank. Its own training score reproduced exactly (6.0888). This points at v1's fine-tune.
+- **What it can't tell us:** the parent learned from MediaPipe image landmarks, the source of the single-camera hands, so it could be generous to that path, and its BLEU leaves part of a gap unresolved (1.95 against 2.21). We haven't shown it can see fingers at all, which is the next test.
 - **Why it matters:** if it's real, composition may have little room left on this instrument. By arithmetic on the eight-draw mean, its 32.5% share is about 100% (roughly 70-165%) of the single-camera gap. That is an inference, not a measurement. Composition's clips aren't simply single-camera, since d2's decoder and How2Sign's weighting differ, and its likelihood +0.089 sits above real single-camera's +0.056.
 
 ### 7.4 Motion quality
@@ -328,6 +330,7 @@ Dates are 2026, UTC. Numbers are BLEU unless stated. "Lexicon" is the share of g
 | Nov 1 | Masked decoding, the last end-to-end route | Gauge read 8.25 on truth 4.13 | Closed untrained, "not shown"; reopens only on a declared direct read |
 | Nov 1 | Back-translator v2 | Real 1.871, gap +0.019 | **Not accepted** |
 | Nov 1 | **Single-camera read** | **2.849 vs 4.493** | Possible root cause, unresolved |
+| Nov 2 | Parts and parent read | Both body and fingers on v1; parent reads the paths equally, 99.8% | Points at v1's tuning, not proven |
 | Nov 1 | **A5, added words over eight draws** | **+0.095 [−0.078, +0.269]; likelihood −0.0022** | **Not confirmed**, not adopted; follow-up A6 not run |
 
 ---
@@ -389,7 +392,7 @@ Some changes loosened a rule after we saw numbers. Each is disclosed in the plan
 
 **Open questions:**
 
-1. Does single-camera recovery lose real detail, or is the instrument biased? And is it hands or body? (The next read is built and under review. Neither instrument is independent, so a clear answer may need human readers.)
+1. Does single-camera recovery lose real detail, or is the instrument biased? (Next: a finger-sensitivity test, composition read through the parent, and an instrument tuned on single-camera motion instead. These instruments share a lineage, so a clear answer may need human readers.)
 3. Do arm-less YouTube clips hurt the generator? (Unmeasured. The one direct test showed no gain, but it was short.)
 4. Would Deaf readers understand any of this? (Unknown, and the most important question.)
 5. Which wrist range is right, given that real signers fail the current one?
@@ -398,8 +401,8 @@ Some changes loosened a rule after we saw numbers. Each is disclosed in the plan
 
 | If | Then |
 |---|---|
-| Single-camera detail is really lost | Better hand and arm data, or better recovery, comes before more composition tuning |
-| The instrument is biased | Build a fairer instrument. Scores so far may understate composition |
+| Single-camera detail is really lost, and instruments prove sensitive to fingers | Better hand recovery on word clips comes before more composition tuning. Source videos are still held for the main word corpora |
+| The instrument is biased | Build a fairer instrument. Scores so far may understate composition, and the 3.8 target needs rethinking, since it was set on v1 |
 | Any of these reaches a credible level | First Deaf rater read, at least nine raters. That read is diagnostic: it fails the wrist and timing conditions by construction |
 
 **Our own odds, as judgement rather than measurement, all before the single-camera read:** on Oct 31, under 5% each for deployable or 3.8 by Nov 15; on Nov 1, a later estimate of 5-10% for 3.8 within three months and under 5% for the release bar.
