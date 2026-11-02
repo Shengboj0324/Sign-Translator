@@ -36,7 +36,7 @@ This README is a procedural account of the project: what was built, how it was t
 |---|---|---|---|---|---|
 | **Fresh sentences, one read, C20** | Gains, best of 16, true length | **2.400** [2.06, 2.737] | 4.033 | 2.053 | 17.5% |
 | Pilot sentences, the 1,000 | Gains, best of 16, true length | 2.570 [2.236, 2.892] | 4.136 | 1.859 | 31.2% |
-| Development set, D20, mean of eight word draws | No gains, added words, predicted length | 2.402 (draws 2.08 to 2.687) | 4.493 | 1.559 at predicted length (1.68 at true length) | 32.5% |
+| Development set, D20, mean of eight word draws | No gains, added words, predicted length | 2.402 (draws 2.08 to 2.687) | 4.493 | 1.559 at predicted length (1.68 at true length) | 28.7% |
 | Best end-to-end generator, the 1,000 | W14b, no gains | 2.000 [1.66, 2.319] | 4.136 | 1.859 | 6.2%, not resolved above blank |
 
 Each read uses the blank at its own length. True-length forms need the answer's length, so they can't be deployed. C20's form at predicted length read 1.985 [1.615, 2.359] on D20. "Gains" are fixed decoder multipliers (body 1.17, hands 1.28, 1.27).
@@ -291,8 +291,9 @@ Same 500 clips, instrument v1, all safety checks clean, control exact:
 - **Hands differ most:** distance between paths is 0.587 for hands (a deliberately mirrored control reads 1.286), 0.231 for wrists, 0.128 for elbows and 0.100 for shoulders.
 - **Which part:** swapping one part at a time into real two-camera motion shows both body and fingers lose v1's reading, with heavy overlap. Share of the likelihood loss: hand pose 80%, body with wrist orientation 77%, hand orientation 55%, arms 34%. This names where v1's reading falls, not which part lost content.
 - **The instrument:** v1's parent, before fine-tuning on two-camera motion, reads the paths equally on how much the motion favours its own sentence over others, measured above a still pose: 99.8% [92.6, 107.6] of the two-camera margin, against v1's 17.6% [5.2, 28.2] over blank. Its own training score reproduced exactly (6.0888). This points at v1's fine-tune.
+- **Generated motion on the parent:** over A5's eight draws it reads above real signing there: BLEU 3.30 [3.14, 3.47] against real's 2.13, margin 0.452 against 0.237. **We don't read that as a breakthrough.** A generator beating real signing needs independent replication; generated motion comes from the same kind of data the parent trained on; output still back-translates to mostly invented English. It does suggest the parent is no fair ruler either.
 - **What it can't tell us:** the parent learned from MediaPipe image landmarks, the source of the single-camera hands, so it could be generous to that path, and its BLEU leaves part of a gap unresolved (1.95 against 2.21). We haven't shown it can see fingers at all, which is the next test.
-- **Why it matters:** if it's real, composition may have little room left on this instrument. By arithmetic on the eight-draw mean, its 32.5% share is about 100% (roughly 70-165%) of the single-camera gap. That is an inference, not a measurement. Composition's clips aren't simply single-camera, since d2's decoder and How2Sign's weighting differ, and its likelihood +0.089 sits above real single-camera's +0.056.
+- **Why it matters:** if it's real, composition may have little room left on this instrument. By arithmetic on the eight-draw mean, its 28.7% share is about 87% (roughly 61-144%) of the single-camera gap. That is an inference, not a measurement. Composition's clips aren't simply single-camera, since d2's decoder and How2Sign's weighting differ, and its likelihood +0.089 sits above real single-camera's +0.056.
 
 ### 7.4 Motion quality
 
@@ -333,6 +334,8 @@ Dates are 2026, UTC. Numbers are BLEU unless stated. "Lexicon" is the share of g
 | Nov 1 | Back-translator v2 | Real 1.871, gap +0.019 | **Not accepted** |
 | Nov 1 | **Single-camera read** | **2.849 vs 4.493** | Possible root cause, unresolved |
 | Nov 2 | Parts and parent read | Both body and fingers on v1; parent reads the paths equally, 99.8% | Points at v1's tuning, not proven |
+| Nov 2 | Finger sensitivity | Freezing fingers keeps 19-21% of the signal | Instruments do read finger motion |
+| Nov 2 | Composition through the parent | 3.30 against real 2.13 | Above real: flagged, not a claim |
 | Nov 1 | **A5, added words over eight draws** | **+0.095 [−0.078, +0.269]; likelihood −0.0022** | **Not confirmed**, not adopted; follow-up A6 not run |
 
 ---
