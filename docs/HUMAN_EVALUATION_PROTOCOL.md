@@ -41,9 +41,9 @@ In the ASLLRP study all systems sign on the recorded utterance's clock, so durat
   reveal the recording.
 
 `--renderer avatar` draws every system on the MakeHuman avatar instead (`scripts/render_avatar.py`; Blender EEVEE, one fixed
-front camera, one filter and collision correction for every system, about 26 s for a 104-frame clip at 768 px on the Mac, measured;
+front camera, one filter and collision correction for every system, about 26 s for a 104-frame clip at 768 px on the Mac before its upload, measured;
 `docs/AVATAR_RENDER.md` section 13), the preferred renderer for the study. There, tracking gaps are interpolated rather than held,
-so a recording shows no frozen arm followed by a step. A long gap still shows less motion than the signer made.
+so a recording shows no frozen arm followed by a step. A long gap still shows less motion than the signer made. The delivered video is padded to a multiple of 8 MiB, so its size doesn't mark the system.
 
 **Known limit:** the skeleton and the schematic face show the grammar channels, but not appearance. Results describe
 these renders. They do not describe an avatar (item 5), and the study is re-run when the avatar exists.
@@ -72,10 +72,10 @@ these renders. They do not describe an avatar (item 5), and the study is re-run 
   options would give negation away.
   - Stage 1: watch, then give the free translation (English or gloss), negation, sentence type, topic and naturalness, with no
     options shown, on a form or in ASL. The owner enters it into the sheet and hashes it, and records the hash when releasing stage 2
-    (`how2sign-stage2`). Stage 1 is then final. A sheet with rows unanswered needs `--partial`, so a rater who stopped is released on purpose.
+    (`how2sign-stage2`). Stage 1 is then final. A sheet with rows unanswered needs `--partial`, so a rater who stopped is released on purpose. `how2sign-stage2` keeps a copy of what it released in `released-stage1/` beside the receipts. A sheet re-saved later with the same answers still counts, and is listed; one with other answers is refused, and the copy is what to score.
   - Stage 2: the forced choice. The sheet the owner enters it into carries the rater's key and the stage 1 hash. The scorer refuses a
     stage 2 answer without a matching stage 1 hash.
-  - A repeated `item_id` is a problem on every row that carries it, in both stages, and `how2sign-stage2` then refuses the sheet.
+  - A repeated `item_id` is a problem on every row that carries it, in both stages, and `how2sign-stage2` then refuses the sheet. An item answered again on a second stage 2 sheet counts from neither sheet, and the row is listed as having no choice.
   - The sentence type and topic have no truth on How2Sign (no ASLLRP markers): asked, reported, not scored. Negation
     truth is the Deaf checker's (section 6).
 - **Word-format arms (first How2Sign read's pilot only; report only; declared 2026-11-02, 18:22 UTC, amended 2026-11-02, 19:45 UTC, in `docs/NEXT_PHASE_PLAN.md`):**
@@ -175,6 +175,7 @@ example NIC/RID certification or ASL teaching credentials).
 | Agreement | Fleiss' kappa (choice, sentence type, naturalness) | Below 0.4 the question or the guide is unclear; fix it before the full study |
 | Free translation | Indicative BLEU vs the English | The team scores propositions by hand (EVALUATION_FRAMEWORK §6) |
 | Word-format contrasts (pilot, report only) | Per sentence paired difference, sign-flip permutation p, bootstrap interval over sentences alone (`ci95_sentences_only`, which ignores raters and decides nothing): shuffled minus composition, also on the sentences whose word sequence moved; oracle minus composition, also where the oracle kept every word; reference minus oracle; reference minus composition. On choice, naturalness, the translation's content words (order-free; a blank translation is 0) and sentence BLEU. On choice also method D with t(R−1) (no interval on zero variance) and rater balance. A pair with no shared sentence gets a within-rater row, which decides nothing | Above or below only with at least 6 raters, if method D's two-sided interval excludes zero and p is under .05 in the same direction, with a rater seeing both arms; otherwise unresolved, never "small". (composition − shuffled) / (composition − chance) on moved sentences stands beside the instruments' 39–51%, and is printed only with a defined interval; it reads against them only by method D's interval, with at least 8 raters and composition under 95%. Neither a large nor a small share is the better outcome. Never a bar condition |
+| Reference by arm validity (report only; declared 2026-11-02, 22:55 UTC, before any sheet returns) | Forced-choice accuracy per system, and reference minus system paired by sentence: all sentences, then without sentences whose recording has any arm joint invalid on over 50% and over 20% of frames (`reference_arm_invalid_share`, on every item in the key; `report["reference_by_arm_validity"]`). On D20, c01's arm chain is invalid on a median 37% of frames, and those arms are interpolated on the avatar | Shows how far the weak reference on c01 moves the gap. Decides nothing, changes neither eligibility nor the draw, and the bar read doesn't read it |
 
 - Every endpoint is reported per system.
 - Rows a reviewer marks `viewable = no` are counted and excluded.

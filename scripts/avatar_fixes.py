@@ -4,8 +4,9 @@ Run with the project Python from the worktree, one BLAS thread, under nice::
 
     avatar_fixes.py pick --work W                 # D20 clips by a fixed draw, real and draw 1's composition; states cached by hash
     avatar_fixes.py sweep --work W --group arm    # one filter group's candidates, report only (--output-json)
-    avatar_fixes.py measure --work W --output-json reports/avatar_fixes_measures.json
+    avatar_fixes.py measure --work W --output-json OUT     # summary in reports/avatar_render_fixes.json
     avatar_fixes.py speedup --work W --output-json OUT
+    avatar_fixes.py compare-correction --work W --part 0 --parts 5   # then --merge --output-json OUT
     avatar_fixes.py render --work W --setting v1-768 --clip 14 --arm real [--baseline-repo ~/src/Sign-Translator]
     avatar_fixes.py sheet --work W --out sheet.png DIR1 DIR2 ...
 
@@ -176,12 +177,13 @@ def _face_jitter(state) -> dict:
 
 
 def cmd_measure(args) -> int:
-    from signtranslator.avatar_render.collision import apply_correction, build_field, penetration
+    from signtranslator.avatar_render.collision import apply_correction, arm_image_changes, penetration
     from signtranslator.avatar_render.motion_filter import FILTER_V1, fill_gaps, filter_state
-    from signtranslator.avatar_render.motion_quality import articulation, preservation, shake
-    from signtranslator.avatar_render.retarget import retarget_state
+    from signtranslator.avatar_render.motion_quality import articulation, forward_kinematics, preservation, shake
+    from signtranslator.avatar_render.retarget import canonical_motion, retarget_state
+    from signtranslator.avatar_render.retarget_check import direction_errors
     rig, binding, _ = _rig()
-    field = build_field(rig)
+    field = _drawn_field(rig)
     pixels_per_unit = 768. / 9.
     rows = []
     started = time.time()
@@ -196,6 +198,10 @@ def cmd_measure(args) -> int:
             r_filled = retarget_state(rig, binding, filled, allow_inferred=True)
             r_filtered = retarget_state(rig, binding, filtered, allow_inferred=True)
             r_final, collision = apply_correction(rig, field, r_filtered)
+            before_globals, after_globals = forward_kinematics(rig, r_filtered.local_rotations), forward_kinematics(rig, r_final.local_rotations)
+            stored = canonical_motion(raw, allow_inferred=True, rest_locals=binding.rest_locals())
+            checked = replace(r_filtered, canonical=replace(r_filtered.canonical, raw_valid=stored.raw_valid, chain_valid=stored.chain_valid))
+            drawn_errors = direction_errors(rig, filtered, checked, after_globals)["groups"]
             low = _lowpassed(filled)
             r_low = retarget_state(rig, binding, low, allow_inferred=True)
             r_low_filtered = retarget_state(rig, binding, filter_state(low, FILTER_V1), allow_inferred=True)
@@ -214,6 +220,9 @@ def cmd_measure(args) -> int:
                        kept_on_lowpassed=preservation(art["low"], art["low_filtered"], FPS),
                        penetration_before=penetration(rig, field, r_held.local_rotations),
                        penetration_filtered=collision["before"], penetration_after=collision["after"], moved=collision["moved"],
+                       hidden_before=collision["hidden_before"], hidden_after=collision["hidden_after"],
+                       arm_image=arm_image_changes(rig, before_globals, after_globals, pixels_per_unit),
+                       direction_errors_drawn={g: drawn_errors[g] for g in ("upper_arm", "forearm", "finger", "thumb")},
                        face_before=_face_jitter(filled), face_after=_face_jitter(filtered),
                        head_speed_6hz_kept=_head_kept(filled, filtered), gaps_filled=len(gaps))
             rows.append(row)
@@ -236,6 +245,76 @@ def _head_kept(before, after) -> float | None:
     x, y = speed(a), speed(b)
     mask = x >= np.percentile(x, 70)
     return float(y[mask].mean() / x[mask].mean()) if x[mask].mean() > 1e-9 else None
+
+
+def _image_summary(images) -> dict:
+    """Per side and clip: what the correction did to the arm as drawn."""
+    weights = [w for _, w in images]
+    share = lambda key: float(np.average([i[key] for i, _ in images], weights=weights))                               # noqa: E731
+    p95 = lambda name: [i[name]["all_p95"] for i, _ in images]                                                        # noqa: E731
+    return dict(frames_elbow_over_10px=share("frames_elbow_over_10px"), frames_elbow_over_30px=share("frames_elbow_over_30px"),
+                elbow_px_clip_p95_median=_median(p95("elbow_image_shift_px")), elbow_px_clip_p95_p90=_quantile(p95("elbow_image_shift_px"), 90),
+                elbow_px_max=max(i["elbow_image_shift_px"]["max"] for i, _ in images),
+                forearm_image_direction_clip_p95_median_deg=_median(p95("forearm_image_direction_deg")),
+                forearm_image_direction_clip_p95_p90_deg=_quantile(p95("forearm_image_direction_deg"), 90),
+                forearm_3d_clip_p95_median_deg=_median(p95("forearm_3d_direction_deg")), forearm_3d_max_deg=max(i["forearm_3d_direction_deg"]["max"] for i, _ in images),
+                upper_arm_3d_clip_p95_median_deg=_median(p95("upper_arm_3d_direction_deg")),
+                forearm_image_length_clip_p05_median=_median(i["forearm_image_length_ratio"]["p05"] for i, _ in images),
+                forearm_image_length_clip_p05_p10=_quantile([i["forearm_image_length_ratio"]["p05"] for i, _ in images], 10))
+
+
+COMPARED = {"now_forearm_drives_swivel_70": (True, 70., False), "cap_20": (True, 20., False), "off_forearm_drives_no_swivel": (True, 0., False),
+            "hand_only_elbow_in_plane": (False, 0., False), "hand_only_elbow_nearest_shipped": (False, 0., True)}
+
+
+def _drawn_field(rig):
+    from signtranslator.avatar_render.collision import build_field
+    from signtranslator.avatar_render.makehuman_wardrobe import load_wardrobe
+    intake = ROOT / "Sign Translator Stage Documentation" / "evidence" / "w1-w2-2026-09-26" / "source-intake"
+    return build_field(rig, drawn=load_wardrobe(intake / "makehuman-system-assets", rig).attachments)
+
+
+def cmd_compare(args) -> int:
+    """The correction's settings on the same clips, report only: the record behind the one shipped. ``--part`` of ``--parts`` splits the work; ``--merge`` reads the parts."""
+    from signtranslator.avatar_render.collision import CorrectionSettings, arm_image_changes, correct, penetration
+    from signtranslator.avatar_render.motion_filter import FILTER_V1, fill_gaps, filter_state
+    from signtranslator.avatar_render.motion_quality import forward_kinematics
+    from signtranslator.avatar_render.retarget import retarget_state
+    if args.merge:
+        rows = [row for part in sorted(args.work.glob("compare-*.json")) for row in json.loads(part.read_text())]
+        table = {}
+        for arm in ARMS:
+            table[arm] = {}
+            for name in COMPARED:
+                here = [r for r in rows if r["arm"] == arm and r["setting"] == name]
+                frames = sum(r["frames"] for r in here)
+                mean = lambda f: sum(f(r) * r["frames"] for r in here) / frames                                       # noqa: E731
+                moved = [r["moved"][s] for r in here for s in ("L", "R")]
+                table[arm][name] = dict(_image_summary([(r["image"][s], r["frames"]) for r in here for s in ("L", "R")]),
+                                        hand_hidden_frames=mean(lambda r: r["hidden"]["frames_any_vertex"]), hand_in_body_frames=mean(lambda r: r["pen"]["hand.torso"]["frames_over_0mm"]),
+                                        forearm_in_body_frames=mean(lambda r: r["pen"]["forearm.torso"]["frames_over_0mm"]), forearm_in_body_over_10mm=mean(lambda r: r["pen"]["forearm.torso"]["frames_over_10mm"]),
+                                        wrist_depth_clip_max_median_cm=_median(m["wrist_depth_move_cm_max"] for m in moved), wrist_depth_max_cm=max(m["wrist_depth_move_cm_max"] for m in moved),
+                                        swivel_clip_max_median_deg=_median(m["swivel_deg_max"] for m in moved), swivel_clip_max_p95_deg=_quantile((m["swivel_deg_max"] for m in moved), 95),
+                                        wrist_image_shift_max_cm=max(m["wrist_image_shift_cm_max"] for m in moved))
+        Path(args.output_json).write_text(json.dumps(table, indent=1) + "\n")
+        return 0
+    rig, binding, _ = _rig()
+    field = _drawn_field(rig)
+    rows = []
+    for k, clip in enumerate(load_clips(args.work)):
+        if k % args.parts != args.part:
+            continue
+        for arm in ARMS:
+            state = filter_state(fill_gaps(packet_state(load_state(args.work, clip[f"{arm}_sha"]), held=False))[0], FILTER_V1)
+            motion = retarget_state(rig, binding, state, allow_inferred=True)
+            before = forward_kinematics(rig, motion.local_rotations)
+            for name, values in COMPARED.items():
+                from signtranslator.avatar_render.collision import hidden_from_front
+                local, _, moved = correct(rig, field, motion.local_rotations, motion.target_globals, CorrectionSettings(*values))
+                rows.append(dict(arm=arm, setting=name, frames=len(state.timestamps), moved=moved, hidden=hidden_from_front(rig, field, local),
+                                 pen=penetration(rig, field, local), image=arm_image_changes(rig, before, forward_kinematics(rig, local), 768. / 9.)))
+    (args.work / f"compare-{args.part}.json").write_text(json.dumps(rows))
+    return 0
 
 
 def summarise(rows: list[dict]) -> dict:
@@ -273,6 +352,16 @@ def summarise(rows: list[dict]) -> dict:
             lowpassed = [r["kept_on_lowpassed"][r["dominant"]][key] for r in here]
             table[arm]["kept_filter_dominant_arm"][key] = dict(median=_median(values), p10=_quantile(values, 10), on_lowpassed_median=_median(lowpassed),
                                                               on_lowpassed_p10=_quantile(lowpassed, 10))
+        frames_total = sum(r["frames"] for r in here)
+        table[arm]["hidden_from_front"] = {when: {key: sum(r[f"hidden_{when}"][key] * r["frames"] for r in here) / frames_total
+                                                  for key in ("frames_any_vertex", "frames_half_of_a_hand", "frames_whole_hand", "vertex_share")} for when in ("before", "after")}
+        for when in ("before", "after"):
+            table[arm]["hidden_from_front"][when]["deepest_mm"] = max(r[f"hidden_{when}"]["deepest_mm"] for r in here)
+        images = [(r["arm_image"][s], r["frames"]) for r in here for s in ("L", "R")]
+        table[arm]["arm_in_image_after_correction"] = _image_summary(images)
+        table[arm]["direction_error_as_drawn_deg"] = {g: dict(median_of_clip_medians=_median(r["direction_errors_drawn"][g]["median_deg"] for r in here),
+                                                              median_of_clip_p95=_median(r["direction_errors_drawn"][g]["p95_deg"] for r in here),
+                                                              worst=max((r["direction_errors_drawn"][g]["max_deg"] or 0.) for r in here)) for g in ("upper_arm", "forearm")}
         moved = [r["moved"][s] for r in here for s in ("L", "R")]
         table[arm]["moved"] = {key: dict(median=_median(m[key] for m in moved), p95=_quantile((m[key] for m in moved), 95), max=max(m[key] for m in moved))
                                for key in ("wrist_depth_move_cm_max", "wrist_image_shift_cm_max", "swivel_deg_max")}
@@ -359,22 +448,8 @@ def cmd_speedup(args) -> int:
 
 
 def _upload(directory: Path, setting: str, clip_name: str, source: dict, extra: dict) -> dict:
-    objects = store()
-    prefix = f"{R2_PREFIX}/{setting}/{clip_name}"
-    index = dict(setting=setting, clip=clip_name, source=source, **extra, files={})
-    paths = sorted(p for p in directory.rglob("*") if p.is_file())
-
-    def put(path):
-        payload = path.read_bytes()
-        key = f"{prefix}/{path.relative_to(directory)}"
-        digest = objects.put(key, payload)              # re-reads and checks
-        return str(path.relative_to(directory)), dict(bytes=len(payload), sha256=digest)
-
-    with ThreadPoolExecutor(8) as pool:
-        index["files"] = dict(pool.map(put, paths))
-    payload = json.dumps(index, indent=1, sort_keys=True).encode()
-    objects.put(f"{prefix}/INDEX.json", payload)
-    return dict(prefix=prefix, files=len(paths), bytes=sum(f["bytes"] for f in index["files"].values()))
+    import render_avatar
+    return render_avatar.archive_render(store(), f"{R2_PREFIX}/{setting}/{clip_name}", directory, dict(setting=setting, clip=clip_name, source=source, **extra))
 
 
 def cmd_render(args) -> int:
@@ -446,6 +521,13 @@ def main(argv=None) -> int:
     p.add_argument("--group", choices=sorted(SWEEP_GRID), required=True)
     p.add_argument("--output-json", required=True)
     p.set_defaults(run=cmd_sweep)
+    p = sub.add_parser("compare-correction")
+    p.add_argument("--work", type=Path, required=True)
+    p.add_argument("--part", type=int, default=0)
+    p.add_argument("--parts", type=int, default=1)
+    p.add_argument("--merge", action="store_true")
+    p.add_argument("--output-json")
+    p.set_defaults(run=cmd_compare)
     p = sub.add_parser("speedup")
     p.add_argument("--work", type=Path, required=True)
     p.add_argument("--output-json", required=True)

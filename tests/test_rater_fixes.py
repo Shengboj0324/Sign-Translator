@@ -354,6 +354,79 @@ def test_a_stage_1_with_no_receipt_is_kept_for_stage_1_and_cannot_join_or_reach_
     assert edited["stage1"] == [] and edited["answers"] == [] and any("receipt" in p["issue"] for p in edited["problems"])
 
 
+def test_a_stage_2_answer_repeated_across_sheets_counts_from_neither(tmp_path):
+    key = bar_key(12, 3)
+    r0 = rater_of(0, 0)
+    one = stage1_text(key, 0, r0)
+    receipts = {r0: hashlib.sha256(one).hexdigest()}
+    first = stage2_text(key, one, choice="a")
+    items = [i["item_id"] for i in key["items"] if i["group"] == 0]
+    repeated = stage2_text(key, one, choice="b", edit=lambda r: r.update(choice="b" if r["item_id"] == items[0] else ""))
+    third = stage2_text(key, one, choice="c", edit=lambda r: r.update(choice="c" if r["item_id"] == items[0] else ""))
+    for sheets in ([first, repeated], [first, repeated, third]):
+        out = read_stages([one], sheets, key, receipts)
+        counted = {a["item_id"]: a["choice"] for a in out["answers"]}
+        assert items[0] not in counted and all(counted[i] == "a" for i in items[1:])
+        assert any("neither answer counts" in p["issue"] for p in out["problems"])
+        assert any(p.get("no_stage2_choice") and p["item_id"] == items[0] for p in out["problems"])
+
+
+def test_a_stage_1_re_saved_with_the_same_answers_keeps_its_rows_and_an_edited_one_does_not():
+    key = bar_key(12, 3)
+    r0 = rater_of(0, 0)
+    one = stage1_text(key, 0, r0)
+    answers = parse_stage1(one.decode(), key)[0]
+    receipts = {r0: hashlib.sha256(one).hexdigest(), "answers_sha256": {r0: hs.stage1_answers_sha256(answers)}}
+    resaved = b"\xef\xbb\xbf" + one.replace(b"\n", b"\r\n")                # what Excel does to a sheet opened and saved
+    assert hashlib.sha256(resaved).digest() != hashlib.sha256(one).digest()
+    stage2 = stage2_text(key, one)
+    out = read_stages([resaved], [stage2], key, receipts)
+    assert out["resaved_stage1"] == [r0] and len(out["answers"]) == len(answers) and not [p for p in out["problems"] if not p.get("no_stage2_choice")]
+    edited = read_stages([resaved.replace(b",no,no,3,", b",yes,no,3,", 1)], [stage2], key, receipts)
+    assert edited["answers"] == [] and any("released-stage1" in p["issue"] for p in edited["problems"])
+    assert read_stages([resaved], [stage2], key, {r0: receipts[r0]})["answers"] == []             # an old receipt has no answers to compare
+
+
+@pytest.mark.parametrize("written", ["Statement", "STATEMENT", "statement "])
+def test_sentence_type_in_any_case(written):
+    assert hs.sentence_type_of(written) == "statement"
+
+
+@pytest.mark.parametrize("written, meant", [("Yes/no question", "yes_no_question"), ("yes-no question", "yes_no_question"), ("YES_NO_QUESTION", "yes_no_question"),
+                                            ("Wh-question", "wh_question"), ("wh question", "wh_question"), ("Rhetorical question", "rhetorical_question")])
+def test_sentence_type_as_printed(written, meant):
+    key = bar_key(12, 3)
+    r0 = rater_of(0, 0)
+    one = stage1_text(key, 0, r0).decode().replace(",statement,", f",{written},")
+    answers, problems = parse_stage1(one, key)
+    assert not problems and {a["sentence_type"] for a in answers} == {meant}
+    bad, problems = parse_stage1(stage1_text(key, 0, r0).decode().replace(",statement,", ",banana,"), key)
+    assert not bad and problems
+
+
+def test_the_reference_is_reported_with_and_without_clips_of_invalid_arms():
+    key = bar_key(12, 3)
+    shares = {u: (.9 if u < 4 else .3 if u < 8 else 0.) for u in range(12)}
+    for i in key["items"]:
+        i["reference_arm_invalid_share"] = shares[i["utterance"]]
+    answers = []
+    for i in key["items"]:
+        right = i["system"] != "reference" or i["utterance"] >= 4         # the reference is wrong only where its arms were interpolated
+        answers.append(dict(item_id=i["item_id"], viewable="yes", reviewer_sha256=rater_of(i["group"], 0), choice=i["correct"] if right else ("a" if i["correct"] != "a" else "b")))
+    out = hs.reference_by_arm_validity(answers, key, reference="reference")
+    assert out["report_only"] is True
+    cuts = out["cuts"]
+    assert cuts["all"]["sentences"] == 12 and cuts["at_most_50pct_invalid"]["sentences"] == 8 and cuts["at_most_20pct_invalid"]["sentences"] == 4
+    assert cuts["all"]["systems"]["reference"]["accuracy"] < 1. == cuts["at_most_50pct_invalid"]["systems"]["reference"]["accuracy"]
+    assert hs.reference_by_arm_validity(answers, bar_key(12, 3), reference="reference") is None
+
+
+def test_the_bar_does_not_read_the_arm_validity_report():
+    source = read("signtranslator/eval_framework/human_study.py")
+    bar = source[source.index("def bar_read("):source.index("def word_format_pairing(")]
+    assert "arm_invalid" not in bar and "arm_validity" not in bar
+
+
 def test_a_stranger_or_a_checker_is_not_counted_and_the_plain_read_exits_nonzero(tmp_path):
     key = bar_key(12, 3)
     args, roster = written_study(tmp_path, key)
@@ -440,7 +513,7 @@ def test_a_partial_stage_1_needs_the_flag_and_loses_nothing(tmp_path, capsys):
     assert bh.main(release + ["--partial"]) == 0
     assert json.loads(capsys.readouterr().out.strip().splitlines()[-1])["unanswered"] == 3
     assert json.loads((tmp_path / "new-receipts.json").read_text())[r0] == hashlib.sha256(sheet).hexdigest()
-    sent = list(csv.DictReader(io.StringIO((tmp_path / "out" / f"stage2-{r0[:12]}.csv").read_text())))
+    sent = list(csv.DictReader(io.StringIO((tmp_path / "out" / f"stage2-{r0[:12]}.csv").read_text(encoding="utf-8-sig"))))
     assert {r["item_id"] for r in sent} == {i["item_id"] for i in mine[:9]}
     # a complete sheet needs no flag; a row marked unviewable is an answer, not a gap
     full = tmp_path / "full.csv"
@@ -502,7 +575,7 @@ def fake_renderer(monkeypatch, *, mirror=True, passed=None):
         calls.append(argv)
         ok = len(calls) % 2 == 0 if passed is None else passed
         record = dict(frames=3, acceptance=dict(groups=dict(body=dict(threshold_median_deg=5., median_deg=1.5 + len(calls), n=9, passed=ok)), mirror=mirror, passed=ok and mirror))
-        record["render_settings_sha256"] = render_avatar.settings_sha256(768)
+        record.update(render_settings_sha256=render_avatar.settings_sha256(768), code=dict(commit="c" * 40, dirty=False))
         (out / "verification.json").write_text(json.dumps(record))
         return 0
     monkeypatch.setattr(render_avatar, "main", main)

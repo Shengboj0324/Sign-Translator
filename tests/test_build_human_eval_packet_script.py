@@ -423,7 +423,8 @@ def test_the_how2sign_packet_end_to_end_with_the_real_renderer(tmp_path, stage2_
         assert main(release) == 0
         firsts += ["--sheet", str(path)]
         sent = tmp_path / "stage2" / f"stage2-{reviewer[:12]}.csv"
-        back = list(csv.DictReader(io.StringIO(sent.read_text())))
+        assert sent.read_bytes().startswith(b"\xef\xbb\xbf")                       # Excel reads an offered sentence's letters as UTF-8
+        back = list(csv.DictReader(io.StringIO(sent.read_text(encoding="utf-8-sig"))))
         assert back[0]["stage1_sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
         assert back[0]["reviewer_sha256"] == reviewer and set(items[back[0]["item_id"]]["options"]) <= set(back[0].values())
         for r in back:

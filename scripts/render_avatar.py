@@ -23,9 +23,9 @@ fitted to the clip: a frame fitted to each clip would draw hands at a size that 
 frames only), the head error against ``head_rotation``, three left/right checks
 (structural, per-frame lateral agreement, and a rendered raised-left-arm probe),
 which face coefficients were rendered, every filled frame, shake and articulation before and after the filter, hand and forearm
-penetration before and after the correction, a re-render determinism check and the timestamp verification. The direction
-errors and left/right checks read the retarget before the collision correction, whose moves are recorded on their own. Nothing is
-uploaded anywhere.
+penetration and covered hands before and after the correction, a re-render determinism check and the timestamp verification. The
+direction errors, acceptance and left/right checks read the pose as drawn, after the correction; the errors before it, and what the correction did to the arm in
+the image, are kept beside them. Nothing is uploaded from here; ``archive_render`` is for callers.
 """
 from __future__ import annotations
 
@@ -399,12 +399,86 @@ def mirror_probe(rig, binding, out_dir: Path, blender: Path, top) -> dict:
     return check
 
 
-def settings_sha256(resolution: int, *, options: dict | None = None) -> str:
-    """The hash of everything that shapes a video apart from its state. Two videos with one hash had one render."""
+#: Every file that shapes a video, by path from the repo root; the assets are hashed by folder.
+RENDER_SOURCES = ("scripts/render_avatar.py", "signtranslator/avatar_render/collision.py", "signtranslator/avatar_render/motion_filter.py",
+                  "signtranslator/avatar_render/motion_quality.py", "signtranslator/avatar_render/retarget.py", "signtranslator/avatar_render/retarget_check.py",
+                  "signtranslator/avatar_render/makehuman.py", "signtranslator/avatar_render/makehuman_attachment.py", "signtranslator/avatar_render/makehuman_eyes.py",
+                  "signtranslator/avatar_render/makehuman_face.py", "signtranslator/avatar_render/makehuman_mouth.py", "signtranslator/avatar_render/makehuman_wardrobe.py",
+                  "signtranslator/avatar_render/rigged.py", "signtranslator/generation/stream_render.py", "signtranslator/generation/canonical_skeleton.py",
+                  "signtranslator/data_engineering/video_landmarks.py", "signtranslator/pose/multichannel.py")
+RENDER_ASSETS = ("makehuman", "makehuman-eyes", "makehuman-face", "makehuman-mouth", "makehuman-system-assets")
+ENCODER = dict(codec="libx264", pixel_format="yuv420p", crf=16, preset="slow")          # stream_render's "review" quality, stated here for the hash
+_file_hashes: dict = {}
+
+
+def _hash_of_file(path: Path) -> str:
+    key = str(path)
+    if key not in _file_hashes:
+        _file_hashes[key] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return _file_hashes[key]
+
+
+def source_hashes() -> dict:
+    """The hash of every source file and asset behind a render."""
+    out = {name: _hash_of_file(ROOT / name) for name in RENDER_SOURCES}
+    for folder in RENDER_ASSETS:
+        for path in sorted(p for p in (INTAKE / folder).rglob("*") if p.is_file()):
+            out[str(path.relative_to(INTAKE))] = _hash_of_file(path)
+    return out
+
+
+def blender_version(blender: Path = DEFAULT_BLENDER) -> str:
+    """The first line ``blender --version`` prints; ``absent`` if it isn't installed."""
+    key = f"version:{blender}"
+    if key not in _file_hashes:
+        try:
+            _file_hashes[key] = subprocess.run([str(blender), "--version"], capture_output=True, text=True, timeout=60).stdout.splitlines()[0].strip()
+        except (OSError, IndexError, subprocess.TimeoutExpired):
+            _file_hashes[key] = "absent"
+    return _file_hashes[key]
+
+
+def settings_payload(resolution: int, *, options: dict | None = None, blender: Path = DEFAULT_BLENDER) -> dict:
+    """Everything that shapes a video apart from its state."""
+    import av
+    from signtranslator.avatar_render import collision
     from signtranslator.avatar_render.motion_filter import FILTER_V1
-    payload = dict(render=RENDER_SETTINGS, filter=FILTER_V1.describe(), resolution=resolution, options=options or DEFAULT_OPTIONS,
-                   top=TOP, collision="depth-only-v1")
-    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+    return dict(render=RENDER_SETTINGS, filter=FILTER_V1.describe(), resolution=resolution, options=options or DEFAULT_OPTIONS, top=TOP,
+                collision=dict(settings=collision.CORRECTION_V2.__dict__, clearance=collision.CLEARANCE, rounds=collision.ROUNDS, dilate_frames=collision.DILATE_FRAMES,
+                               smooth_sigma_frames=collision.SMOOTH_SIGMA_FRAMES, reach_margin=collision.REACH_MARGIN, front_cell=collision.FRONT_CELL,
+                               front_samples=collision.FRONT_SAMPLES, swivel_step_deg=collision.SWIVEL_STEP_DEG),
+                encoder=dict(ENCODER, pyav=av.__version__, libraries={k: list(v) for k, v in av.library_versions.items()}),
+                blender=blender_version(blender), sources=source_hashes())
+
+
+def settings_sha256(resolution: int, *, options: dict | None = None, blender: Path = DEFAULT_BLENDER) -> str:
+    """The hash of everything that shapes a video apart from its state. Two videos with one hash had one render."""
+    payload = settings_payload(resolution, options=options, blender=blender)
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def code_commit() -> dict:
+    """The commit this renderer runs from, and whether any file that shapes a video differs from it."""
+    git = lambda *a: subprocess.run(["git", *a], cwd=ROOT, capture_output=True, text=True).stdout.strip()     # noqa: E731
+    return dict(commit=git("rev-parse", "HEAD") or "unknown", dirty=bool(git("status", "--porcelain", "--", *RENDER_SOURCES)))
+
+
+def archive_render(store, prefix: str, directory: Path, fields: dict | None = None) -> dict:
+    """Every file of a render under ``prefix`` with ``INDEX.json`` (bytes, SHA-256), as the owner's rule asks. The store re-reads what it writes."""
+    from concurrent.futures import ThreadPoolExecutor
+    prefix = prefix.rstrip("/")
+    paths = sorted(p for p in directory.rglob("*") if p.is_file())
+
+    def put(path):
+        payload = path.read_bytes()
+        digest = store.put(f"{prefix}/{path.relative_to(directory).as_posix()}", payload)
+        return path.relative_to(directory).as_posix(), dict(bytes=len(payload), sha256=digest)
+
+    with ThreadPoolExecutor(8) as pool:
+        files = dict(pool.map(put, paths))
+    index = dict(fields or {}, files=files)
+    store.put(f"{prefix}/INDEX.json", json.dumps(index, indent=1, sort_keys=True).encode())
+    return dict(prefix=prefix, files=len(files), bytes=sum(f["bytes"] for f in files.values()))
 
 
 def motion_quality_record(rig, before, after, fps, settings, gaps_filled, source_units_per_pixel, shake, articulation, preservation, strip) -> dict:
@@ -450,7 +524,7 @@ def main(argv=None) -> int:
     from signtranslator.avatar_render.makehuman_face import load_makehuman_face_units
     from signtranslator.avatar_render.makehuman_mouth import load_makehuman_mouth
     from signtranslator.avatar_render.makehuman_wardrobe import body_corner_uvs, load_wardrobe
-    from signtranslator.avatar_render.collision import apply_correction, build_field
+    from signtranslator.avatar_render.collision import apply_correction, arm_image_changes, build_field
     from signtranslator.avatar_render.motion_filter import FILTER_V1, fill_gaps, filter_state
     from signtranslator.avatar_render.motion_quality import articulation, forward_kinematics, preservation, shake, strip_arrays
     from signtranslator.avatar_render.retarget import (
@@ -482,7 +556,7 @@ def main(argv=None) -> int:
     fps = 1. / float(np.median(np.diff(state.timestamps))) if len(state.timestamps) > 1 else 24.
     before_filter = retarget_state(rig, binding, filled, **retarget_options)
     uncorrected = retarget_state(rig, binding, filtered, **retarget_options)
-    retargeted, collision = apply_correction(rig, build_field(rig), uncorrected)
+    retargeted, collision = apply_correction(rig, build_field(rig, drawn=wardrobe.attachments), uncorrected)
     # Checks read the retarget of the filtered state on the frames valid as stored; fills are never scored.
     checked = replace(uncorrected, canonical=replace(uncorrected.canonical, raw_valid=stored.raw_valid, chain_valid=stored.chain_valid))
     motion_record = None if len(state.timestamps) < 12 else motion_quality_record(rig, before_filter, uncorrected, fps, FILTER_V1, gaps_filled, frame()[1] / args.resolution,
@@ -492,9 +566,13 @@ def main(argv=None) -> int:
         rig, retargeted, attachments, bundle_path, deleted_vertices=wardrobe.body_deleted_vertices,
         skin_uvs=lambda keep: body_corner_uvs(INTAKE / "makehuman", rig, keep), skin_texture=wardrobe.skin_texture,
         extra=dict(source=source_record))
-    bone_globals = forward_kinematics(rig, uncorrected.local_rotations)
-    errors = direction_errors(rig, filtered, checked, bone_globals)
-    lateral = lateral_agreement(rig, filtered, checked, bone_globals)
+    # Acceptance reads the pose raters see, after the correction; the retarget before it is kept beside.
+    before_correction = forward_kinematics(rig, uncorrected.local_rotations)
+    drawn = forward_kinematics(rig, retargeted.local_rotations)
+    errors = direction_errors(rig, filtered, checked, drawn)
+    errors_before_correction = direction_errors(rig, filtered, checked, before_correction)
+    lateral = lateral_agreement(rig, filtered, checked, drawn)
+    arm_in_image = arm_image_changes(rig, before_correction, drawn, args.resolution / frame()[1])
     probe = mirror_probe(rig, binding, args.out_dir, args.blender, wardrobe.attachments["top"])
 
     frames_dir = args.out_dir / "frames"
@@ -528,11 +606,13 @@ def main(argv=None) -> int:
         bundle_sha256=bundle_sha, video=video.name, video_sha256=hashlib.sha256(video.read_bytes()).hexdigest(),
         resolution=args.resolution, camera=dict(kind="orthographic front, one frame for every clip", centre_source=centre.tolist(),
                                                 span_source_units=span),
-        render_settings=RENDER_SETTINGS, render_settings_sha256=settings_sha256(args.resolution, options=dict(
+        render_settings=RENDER_SETTINGS, render_settings_sha256=settings_sha256(args.resolution, blender=args.blender, options=dict(
             face_baseline=args.face_baseline, hinge_twist=not args.no_hinge_twist, drive_legs=args.drive_legs, lossless=args.lossless)),
+        code=code_commit(),
         motion=motion_record, collision=collision,
         assets=dict(wardrobe_licence=wardrobe.licence, wardrobe_source=wardrobe.source),
-        direction_errors=errors, head_error_reference="stored head_rotation (the canonical skeleton has no head "
+        direction_errors=errors, direction_errors_before_correction=errors_before_correction, arm_in_image_after_correction=arm_in_image,
+        head_error_reference="stored head_rotation (the canonical skeleton has no head "
                                                      "orientation)",
         acceptance=dict(groups=acceptance, mirror=mirror_ok,
                         passed=bool(all(a["passed"] for a in acceptance.values()) and mirror_ok)),
@@ -547,8 +627,8 @@ def main(argv=None) -> int:
         blender=str(args.blender), blender_seconds=blender_seconds,
         limitations=[
             "Bone directions are copied; lengths are the MakeHuman default body's, so contacts "
-            "(hand-to-face, hand-to-hand) are not preserved. Hands and forearms are moved out of the torso and head along the "
-            "camera axis, and the elbow may swivel outward; hand against hand or against the other arm is not handled.",
+            "(hand-to-face, hand-to-hand) are not preserved. A hand covered by the drawn body is moved in front of it along the camera axis, "
+            "with the elbow kept near where it was drawn; a forearm may stay inside the torso; hand against hand or against the other arm is not handled.",
             "Twist about each limb axis is not observed by the swing-IK state; it is chosen "
             "(elbow hinge alignment, half the forearm-to-hand twist on lowerarm02).",
             "No lip geometry: mouth motion is visible only as skin deformation. Hair does not move on its own.",

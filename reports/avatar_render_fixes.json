@@ -1,5 +1,5 @@
 {
- "kind": "avatar-fixes-measures",
+ "kind": "avatar-render-fixes",
  "clips": 72,
  "seed": 20261102,
  "draw": "composed draw1 comp form, D20 real two-view",
@@ -22,37 +22,37 @@
      "before": 4.733597700952762,
      "filled": 4.337259887092889,
      "after_filter": 0.8596425310861266,
-     "after": 0.8722914031239024
+     "after": 0.8595615878942313
     },
     "elbow.R.jitter_mm": {
      "before": 6.58811921343855,
      "filled": 6.275617727925868,
      "after_filter": 1.7029171288899185,
-     "after": 1.720107199105497
+     "after": 1.664832469078185
     },
     "wrist.L.jitter_mm": {
      "before": 5.188323233157717,
      "filled": 4.64869026594236,
      "after_filter": 1.0861811555600147,
-     "after": 1.0888615245864697
+     "after": 1.0868639743821191
     },
     "wrist.R.jitter_mm": {
      "before": 7.227794833203956,
      "filled": 6.634952640024098,
      "after_filter": 1.8965751324915285,
-     "after": 1.9115965072597543
+     "after": 1.907240453354111
     },
     "tips.L.jitter_mm": {
      "before": 5.717413417960083,
      "filled": 5.0097678424892,
      "after_filter": 1.3855544704011509,
-     "after": 1.3882512389195982
+     "after": 1.3880497961827971
     },
     "tips.R.jitter_mm": {
      "before": 7.899333478280372,
      "filled": 7.429018780920914,
      "after_filter": 2.600354697929384,
-     "after": 2.6078042390559184
+     "after": 2.600392640622683
     },
     "head.jitter_deg": {
      "before": 0.1842280213706071,
@@ -70,13 +70,13 @@
      "before": 1.8944704611814212,
      "filled": 1.4545909747962598,
      "after_filter": 0.635772522943971,
-     "after": 0.6357725229436999
+     "after": 0.6357725229436109
     },
     "hand.R.jitter_deg": {
      "before": 3.169004367815891,
      "filled": 2.8839257125491464,
      "after_filter": 1.2660141202101167,
-     "after": 1.2660141202101118
+     "after": 1.266014120209993
     },
     "head.hf_share": {
      "before": 0.6783337860424424,
@@ -94,25 +94,25 @@
      "before": 0.47653624684238727,
      "filled": 0.4167472072762773,
      "after_filter": 0.042087149796055455,
-     "after": 0.039799536341374175
+     "after": 0.04306754943034803
     },
     "wrist.R.hf_share": {
      "before": 0.4850356340727907,
      "filled": 0.4395125384048316,
      "after_filter": 0.08120176016055845,
-     "after": 0.07484408200963247
+     "after": 0.07972496055616145
     },
     "tips.L.hf_share": {
      "before": 0.2844591600639364,
      "filled": 0.2239107006388177,
      "after_filter": 0.028720322963997805,
-     "after": 0.029161345202085475
+     "after": 0.0295023581675739
     },
     "tips.R.hf_share": {
      "before": 0.3258644979273493,
      "filled": 0.26468148135612046,
      "after_filter": 0.054880119238105554,
-     "after": 0.052250620113501955
+     "after": 0.05516280394243915
     },
     "head.jitter_px": {
      "before": 2.9485610830252886,
@@ -124,13 +124,13 @@
      "before": 3.176538594275442,
      "filled": 2.9821699217581012,
      "after_filter": 0.6836521895954734,
-     "after": 0.6836521895954695
+     "after": 0.6836521895954755
     },
     "wrist.R.jitter_px": {
      "before": 4.586929227775501,
      "filled": 4.104235444595201,
      "after_filter": 1.1089100806595482,
-     "after": 1.10891008065955
+     "after": 1.1089100804708123
     },
     "kept_filter": {
      "finger_speed_raw": {
@@ -306,51 +306,51 @@
     },
     "kept_correction": {
      "finger_speed_raw": {
-      "median": 1.0000000000000027,
-      "p10": 0.9999999999999968
+      "median": 1.0,
+      "p10": 0.9999999999999896
      },
      "finger_speed_6hz": {
-      "median": 1.0000000000000009,
-      "p10": 0.999999999999997
+      "median": 1.0000000000000002,
+      "p10": 0.999999999999995
      },
      "finger_speed_3hz": {
-      "median": 1.0000000000000009,
-      "p10": 0.9999999999999987
+      "median": 1.0,
+      "p10": 0.9999999999999963
      },
      "finger_active_6hz": {
-      "median": 1.0000000000000004,
-      "p10": 0.9999999999999984
-     },
-     "finger_peak_6hz": {
-      "median": 1.0,
-      "p10": 0.9999999999999947
-     },
-     "finger_range": {
       "median": 1.0,
       "p10": 0.9999999999999961
      },
-     "wrist_active_6hz": {
+     "finger_peak_6hz": {
       "median": 1.0,
-      "p10": 0.9532205382165054
+      "p10": 0.9999999999999833
+     },
+     "finger_range": {
+      "median": 1.0,
+      "p10": 0.9999999999999967
+     },
+     "wrist_active_6hz": {
+      "median": 0.9902480463674834,
+      "p10": 0.9213789224727708
      },
      "wrist_p95_6hz": {
-      "median": 1.0,
-      "p10": 0.9541823231596429
+      "median": 0.9991637284003154,
+      "p10": 0.9380191220363407
      },
      "wrist_max_6hz": {
-      "median": 1.0,
-      "p10": 0.9673122621056038
+      "median": 0.9999999998682902,
+      "p10": 0.9189003777490061
      },
      "wrist_max_raw": {
       "median": 1.0,
-      "p10": 0.97778759732582
+      "p10": 0.9114374668687549
      },
      "hold_iou": {
-      "median": 0.9318181818181818,
-      "p10": 0.5881118881118881
+      "median": 0.9752066115702479,
+      "p10": 0.7989041095890411
      },
      "hold_position_shift_p95_mm": {
-      "median": 44.163856688963385,
+      "median": 14.598895711618514,
       "p10": 0.0
      },
      "hold_jitter_before_mm": {
@@ -358,16 +358,16 @@
       "p10": 0.44578340543690526
      },
      "hold_jitter_after_mm": {
-      "median": 0.87876813421307,
-      "p10": 0.4320384220256233
+      "median": 0.8799988944075565,
+      "p10": 0.4471873170274065
      },
      "hold_share_before": {
       "median": 0.3515957446808511,
       "p10": 0.09009090909090908
      },
      "hold_share_after": {
-      "median": 0.35,
-      "p10": 0.0765
+      "median": 0.36944444444444446,
+      "p10": 0.08559574468085106
      },
      "hold_count_before": {
       "median": 3.0,
@@ -382,8 +382,8 @@
       "p10": 0.4806491324143628
      },
      "finger_quiet_raw_after": {
-      "median": 0.7517950039437339,
-      "p10": 0.4806491324143656
+      "median": 0.7517950039437318,
+      "p10": 0.48064913241436036
      },
      "finger_bend_lag_frames": {
       "median": 0.0,
@@ -554,13 +554,13 @@
       "clip_max_depth_max_mm": 62.70388364791871
      },
      "penetration_after": {
-      "frames_any": 0.004595185995623632,
-      "frames_over_5mm": 0.003938730853391685,
-      "frames_over_10mm": 0.003063457330415755,
-      "frames_over_20mm": 0.00087527352297593,
-      "clips_with_any": 0.1111111111111111,
-      "clip_max_depth_median_mm": 13.651635125279427,
-      "clip_max_depth_max_mm": 40.55681824684143
+      "frames_any": 0.4288840262582057,
+      "frames_over_5mm": 0.37789934354485777,
+      "frames_over_10mm": 0.29168490153172866,
+      "frames_over_20mm": 0.1601750547045952,
+      "clips_with_any": 0.9166666666666666,
+      "clip_max_depth_median_mm": 25.415340065956116,
+      "clip_max_depth_max_mm": 57.11563229560852
      }
     },
     "forearm.head": {
@@ -636,21 +636,63 @@
       "on_lowpassed_p10": 0.37428571428571433
      }
     },
+    "hidden_from_front": {
+     "before": {
+      "frames_any_vertex": 0.41859956236323853,
+      "frames_half_of_a_hand": 0.03304157549234136,
+      "frames_whole_hand": 0.010284463894967177,
+      "vertex_share": 0.038380088346896796,
+      "deepest_mm": 176.88263934170908
+     },
+     "after": {
+      "frames_any_vertex": 0.0,
+      "frames_half_of_a_hand": 0.0,
+      "frames_whole_hand": 0.0,
+      "vertex_share": 0.0,
+      "deepest_mm": 0.0
+     }
+    },
+    "arm_in_image_after_correction": {
+     "frames_elbow_over_10px": 0.06334792122538294,
+     "frames_elbow_over_30px": 0.0009846827133479213,
+     "elbow_px_clip_p95_median": 6.699483820841237,
+     "elbow_px_clip_p95_p90": 13.669671502206498,
+     "elbow_px_max": 54.02194539945112,
+     "forearm_image_direction_clip_p95_median_deg": 0.8388087535377997,
+     "forearm_image_direction_clip_p95_p90_deg": 3.480539023866629,
+     "forearm_3d_clip_p95_median_deg": 3.359792846632171,
+     "forearm_3d_max_deg": 26.66662332612604,
+     "upper_arm_3d_clip_p95_median_deg": 6.318868737040102,
+     "forearm_image_length_clip_p05_median": 0.9689789726993288,
+     "forearm_image_length_clip_p05_p10": 0.9288643775294056
+    },
+    "direction_error_as_drawn_deg": {
+     "upper_arm": {
+      "median_of_clip_medians": 0.019575786996867843,
+      "median_of_clip_p95": 7.598773589731498,
+      "worst": 38.06609305209466
+     },
+     "forearm": {
+      "median_of_clip_medians": 0.010571415254350403,
+      "median_of_clip_p95": 4.678681083974594,
+      "worst": 26.666623326126068
+     }
+    },
     "moved": {
      "wrist_depth_move_cm_max": {
-      "median": 9.165036640822887,
-      "p95": 17.657635336801548,
-      "max": 25.200794226199797
+      "median": 5.06242844453646,
+      "p95": 10.323882004388848,
+      "max": 18.333617143455825
      },
      "wrist_image_shift_cm_max": {
-      "median": 3.981979862019863e-14,
-      "p95": 9.085056057286949e-14,
-      "max": 1.547686959240399e-13
+      "median": 4.268946764661985e-14,
+      "p95": 1.5531396961382235e-08,
+      "max": 1.7818814468478123e-08
      },
      "swivel_deg_max": {
-      "median": 5.0,
-      "p95": 24.827241748029696,
-      "max": 69.55255047075327
+      "median": 0.0,
+      "p95": 0.0,
+      "max": 0.0
      }
     },
     "face": {
@@ -677,37 +719,37 @@
      "before": 3.6580903822106707,
      "filled": 3.6580903822106707,
      "after_filter": 1.0515063809389844,
-     "after": 1.609547899572482
+     "after": 1.505449149282263
     },
     "elbow.R.jitter_mm": {
      "before": 3.4363223298381054,
      "filled": 3.4363223298381054,
      "after_filter": 1.0347659373228573,
-     "after": 1.1730119639070145
+     "after": 1.0347659373228573
     },
     "wrist.L.jitter_mm": {
      "before": 7.5962820571110505,
      "filled": 7.5962820571110505,
      "after_filter": 3.3649770820542586,
-     "after": 3.3635948166400103
+     "after": 3.377801962680997
     },
     "wrist.R.jitter_mm": {
      "before": 5.714816967368922,
      "filled": 5.714816967368922,
      "after_filter": 2.2175373749880674,
-     "after": 2.2591980037997024
+     "after": 2.223452343429992
     },
     "tips.L.jitter_mm": {
      "before": 13.334816690755826,
      "filled": 13.334816690755826,
      "after_filter": 7.130369690872399,
-     "after": 7.23304437237976
+     "after": 7.224865705064243
     },
     "tips.R.jitter_mm": {
      "before": 11.560119722187189,
      "filled": 11.560119722187189,
      "after_filter": 6.460628069822181,
-     "after": 6.4634840747427695
+     "after": 6.46102217967535
     },
     "head.jitter_deg": {
      "before": 0.21405319203919898,
@@ -725,13 +767,13 @@
      "before": 5.115853781950054,
      "filled": 5.115853781950054,
      "after_filter": 2.725541687174064,
-     "after": 2.725541687174071
+     "after": 2.725541687174072
     },
     "hand.R.jitter_deg": {
      "before": 5.525337404714462,
      "filled": 5.525337404714462,
      "after_filter": 3.0849025868439304,
-     "after": 3.0849025868439273
+     "after": 3.0849025868439224
     },
     "head.hf_share": {
      "before": 0.225645869195378,
@@ -749,25 +791,25 @@
      "before": 0.13466498120641235,
      "filled": 0.13466498120641235,
      "after_filter": 0.02844747293357427,
-     "after": 0.030309932886013434
+     "after": 0.0306569997778421
     },
     "wrist.R.hf_share": {
      "before": 0.15684790116211308,
      "filled": 0.15684790116211308,
      "after_filter": 0.026784011612794555,
-     "after": 0.027916476707166585
+     "after": 0.026784011612794555
     },
     "tips.L.hf_share": {
      "before": 0.1846771590225808,
      "filled": 0.1846771590225808,
      "after_filter": 0.06658486763561428,
-     "after": 0.07080678242043711
+     "after": 0.07102727532658179
     },
     "tips.R.hf_share": {
      "before": 0.24444061474280054,
      "filled": 0.24444061474280054,
      "after_filter": 0.09253854590041641,
-     "after": 0.09582473915300577
+     "after": 0.09388820639140286
     },
     "head.jitter_px": {
      "before": 1.0638184111402,
@@ -779,7 +821,7 @@
      "before": 3.622372187046052,
      "filled": 3.622372187046052,
      "after_filter": 1.9168578017474531,
-     "after": 1.9168578017473954
+     "after": 1.916857801657832
     },
     "wrist.R.jitter_px": {
      "before": 3.457747400261936,
@@ -961,51 +1003,51 @@
     },
     "kept_correction": {
      "finger_speed_raw": {
-      "median": 0.9999999999999997,
-      "p10": 0.9999999999999928
+      "median": 1.0000000000000002,
+      "p10": 0.9999999999999977
      },
      "finger_speed_6hz": {
-      "median": 0.9999999999999997,
-      "p10": 0.9999999999999952
+      "median": 1.0,
+      "p10": 0.9999999999999981
      },
      "finger_speed_3hz": {
-      "median": 0.9999999999999996,
-      "p10": 0.9999999999999961
+      "median": 1.0,
+      "p10": 0.9999999999999991
      },
      "finger_active_6hz": {
       "median": 1.0,
-      "p10": 0.9999999999999946
+      "p10": 0.9999999999999976
      },
      "finger_peak_6hz": {
-      "median": 0.9999999999999997,
-      "p10": 0.9999999999999903
+      "median": 1.0,
+      "p10": 0.9999999999999902
      },
      "finger_range": {
-      "median": 0.9999999999999993,
-      "p10": 0.9999999999999963
+      "median": 1.0,
+      "p10": 0.9999999999999976
      },
      "wrist_active_6hz": {
-      "median": 0.9755463581104364,
-      "p10": 0.8825227642878385
+      "median": 0.9831759815637138,
+      "p10": 0.8812472461309299
      },
      "wrist_p95_6hz": {
-      "median": 0.9881364717971404,
-      "p10": 0.8685166959091007
+      "median": 0.9999999999999489,
+      "p10": 0.8802864824111647
      },
      "wrist_max_6hz": {
-      "median": 0.9999839851029164,
-      "p10": 0.8486468094943246
+      "median": 1.0,
+      "p10": 0.8917363065527957
      },
      "wrist_max_raw": {
-      "median": 0.9999999999999992,
-      "p10": 0.8567700808631445
+      "median": 1.0,
+      "p10": 0.8882925482122528
      },
      "hold_iou": {
       "median": 1.0,
-      "p10": 0.5642292490118578
+      "p10": 0.4992555831265509
      },
      "hold_position_shift_p95_mm": {
-      "median": 2.62726004849152e-13,
+      "median": 0.0,
       "p10": 0.0
      },
      "hold_jitter_before_mm": {
@@ -1013,8 +1055,8 @@
       "p10": 0.39653160528858494
      },
      "hold_jitter_after_mm": {
-      "median": 0.744327544858923,
-      "p10": 0.4014235067121085
+      "median": 0.7619331588423509,
+      "p10": 0.43112912924640684
      },
      "hold_share_before": {
       "median": 0.0,
@@ -1037,8 +1079,8 @@
       "p10": 0.5140110468134095
      },
      "finger_quiet_raw_after": {
-      "median": 0.6519900623577779,
-      "p10": 0.5140110468133714
+      "median": 0.651990062357827,
+      "p10": 0.5140110468134291
      },
      "finger_bend_lag_frames": {
       "median": 0.0,
@@ -1209,13 +1251,13 @@
       "clip_max_depth_max_mm": 86.94297075271606
      },
      "penetration_after": {
-      "frames_any": 0.008759124087591242,
-      "frames_over_5mm": 0.006569343065693431,
-      "frames_over_10mm": 0.005291970802919708,
-      "frames_over_20mm": 0.002737226277372263,
-      "clips_with_any": 0.3055555555555556,
-      "clip_max_depth_median_mm": 17.95750856399536,
-      "clip_max_depth_max_mm": 43.388426303863525
+      "frames_any": 0.7751824817518248,
+      "frames_over_5mm": 0.75,
+      "frames_over_10mm": 0.6928832116788322,
+      "frames_over_20mm": 0.5417883211678832,
+      "clips_with_any": 1.0,
+      "clip_max_depth_median_mm": 52.20513045787811,
+      "clip_max_depth_max_mm": 69.37203407287598
      }
     },
     "forearm.head": {
@@ -1291,21 +1333,63 @@
       "on_lowpassed_p10": 0.0
      }
     },
+    "hidden_from_front": {
+     "before": {
+      "frames_any_vertex": 0.2208029197080292,
+      "frames_half_of_a_hand": 0.0666058394160584,
+      "frames_whole_hand": 0.027737226277372264,
+      "vertex_share": 0.03787635437455006,
+      "deepest_mm": 299.06153732914225
+     },
+     "after": {
+      "frames_any_vertex": 0.0,
+      "frames_half_of_a_hand": 0.0,
+      "frames_whole_hand": 0.0,
+      "vertex_share": 0.0,
+      "deepest_mm": 0.0
+     }
+    },
+    "arm_in_image_after_correction": {
+     "frames_elbow_over_10px": 0.09160583941605839,
+     "frames_elbow_over_30px": 0.008485401459854014,
+     "elbow_px_clip_p95_median": 5.019779153687786,
+     "elbow_px_clip_p95_p90": 23.33418828467154,
+     "elbow_px_max": 95.94349740531972,
+     "forearm_image_direction_clip_p95_median_deg": 1.449046331195333,
+     "forearm_image_direction_clip_p95_p90_deg": 7.067048580502151,
+     "forearm_3d_clip_p95_median_deg": 2.2139862457557706,
+     "forearm_3d_max_deg": 77.84868995930397,
+     "upper_arm_3d_clip_p95_median_deg": 4.673051116265933,
+     "forearm_image_length_clip_p05_median": 0.9800340103295594,
+     "forearm_image_length_clip_p05_p10": 0.9242446842170536
+    },
+    "direction_error_as_drawn_deg": {
+     "upper_arm": {
+      "median_of_clip_medians": 8.537736462515939e-07,
+      "median_of_clip_p95": 13.387264916643542,
+      "worst": 36.921255623889365
+     },
+     "forearm": {
+      "median_of_clip_medians": 0.0,
+      "median_of_clip_p95": 11.38135009677174,
+      "worst": 77.84868995930387
+     }
+    },
     "moved": {
      "wrist_depth_move_cm_max": {
-      "median": 8.74920756981836,
-      "p95": 26.85909196607127,
-      "max": 44.63558700135552
+      "median": 6.855737063878884,
+      "p95": 22.063635508343967,
+      "max": 30.93682422473415
      },
      "wrist_image_shift_cm_max": {
-      "median": 5.6371629044038527e-14,
-      "p95": 1.1550078548081702e-13,
-      "max": 2.528116927607153e-10
+      "median": 6.247970143172047e-14,
+      "p95": 6.067272519695454e-09,
+      "max": 2.255287600264717e-08
      },
      "swivel_deg_max": {
-      "median": 22.365324767240928,
-      "p95": 69.07476870023173,
-      "max": 70.0
+      "median": 0.0,
+      "p95": 0.0,
+      "max": 0.0
      }
     },
     "face": {
@@ -1325,11 +1409,11 @@
     },
     "wrist.R.jitter_mm": {
      "before": 8.398814896669563,
-     "after": 1.5476541146472895
+     "after": 1.5057519779105855
     },
     "tips.R.jitter_mm": {
      "before": 11.54436062337631,
-     "after": 2.2744058811909835
+     "after": 2.26987195449247
     }
    },
    "c01.gen": {
@@ -1340,11 +1424,11 @@
     },
     "wrist.R.jitter_mm": {
      "before": 6.172944328152672,
-     "after": 2.380280222222239
+     "after": 2.3480685911415433
     },
     "tips.R.jitter_mm": {
      "before": 13.217923795977644,
-     "after": 7.828126742686651
+     "after": 7.8175374608772525
     }
    },
    "c03.real": {
@@ -1355,11 +1439,11 @@
     },
     "wrist.R.jitter_mm": {
      "before": 7.580772477934023,
-     "after": 2.415443643926414
+     "after": 2.4002889991570733
     },
     "tips.R.jitter_mm": {
      "before": 8.611075132667454,
-     "after": 3.561898481194856
+     "after": 3.55349028669808
     }
    },
    "c03.gen": {
@@ -1370,11 +1454,11 @@
     },
     "wrist.R.jitter_mm": {
      "before": 5.05626870785091,
-     "after": 2.01756920472258
+     "after": 1.9934384729437706
     },
     "tips.R.jitter_mm": {
      "before": 11.03835322215092,
-     "after": 6.254083979877631
+     "after": 6.25314824364091
     }
    },
    "c05.real": {
@@ -1385,11 +1469,11 @@
     },
     "wrist.R.jitter_mm": {
      "before": 6.413924382821392,
-     "after": 1.9115965072597543
+     "after": 1.907240453354111
     },
     "tips.R.jitter_mm": {
      "before": 7.02994618912554,
-     "after": 2.408013592042363
+     "after": 2.401576448978469
     }
    },
    "c05.gen": {
@@ -1400,14 +1484,271 @@
     },
     "wrist.R.jitter_mm": {
      "before": 5.862617974310162,
-     "after": 2.301547832532794
+     "after": 2.2947441954322563
     },
     "tips.R.jitter_mm": {
      "before": 11.297217323274559,
-     "after": 5.772430419233596
+     "after": 5.767992461853568
     }
    }
   }
+ },
+ "correction_comparison": {
+  "real": {
+   "now_forearm_drives_swivel_70": {
+    "frames_elbow_over_10px": 0.6161925601750547,
+    "frames_elbow_over_30px": 0.33282275711159737,
+    "elbow_px_clip_p95_median": 39.14950950522455,
+    "elbow_px_clip_p95_p90": 105.08163494161688,
+    "elbow_px_max": 145.49449948412177,
+    "forearm_image_direction_clip_p95_median_deg": 5.324580991163161,
+    "forearm_image_direction_clip_p95_p90_deg": 49.2026333116968,
+    "forearm_3d_clip_p95_median_deg": 17.996236400321074,
+    "forearm_3d_max_deg": 47.550924376499935,
+    "upper_arm_3d_clip_p95_median_deg": 25.707700788651348,
+    "forearm_image_length_clip_p05_median": 0.7329662536043942,
+    "forearm_image_length_clip_p05_p10": 0.4624631474824308,
+    "hand_hidden_frames": 0.0,
+    "hand_in_body_frames": 0.0,
+    "forearm_in_body_frames": 0.01400437636761488,
+    "forearm_in_body_over_10mm": 0.003063457330415755,
+    "wrist_depth_clip_max_median_cm": 13.924868803265232,
+    "wrist_depth_max_cm": 29.8979296477058,
+    "swivel_clip_max_median_deg": 0.0,
+    "swivel_clip_max_p95_deg": 31.89653773940375,
+    "wrist_image_shift_max_cm": 5.2451741559371675e-09
+   },
+   "cap_20": {
+    "frames_elbow_over_10px": 0.6161925601750547,
+    "frames_elbow_over_30px": 0.33282275711159737,
+    "elbow_px_clip_p95_median": 39.14950950522455,
+    "elbow_px_clip_p95_p90": 105.08163494161688,
+    "elbow_px_max": 143.47132938263945,
+    "forearm_image_direction_clip_p95_median_deg": 5.324580991163161,
+    "forearm_image_direction_clip_p95_p90_deg": 49.0235677454998,
+    "forearm_3d_clip_p95_median_deg": 17.996236400321074,
+    "forearm_3d_max_deg": 47.676847596320755,
+    "upper_arm_3d_clip_p95_median_deg": 25.707700788651348,
+    "forearm_image_length_clip_p05_median": 0.7329662536043942,
+    "forearm_image_length_clip_p05_p10": 0.4624631474824308,
+    "hand_hidden_frames": 0.0,
+    "hand_in_body_frames": 0.0,
+    "forearm_in_body_frames": 0.03282275711159737,
+    "forearm_in_body_over_10mm": 0.012035010940919038,
+    "wrist_depth_clip_max_median_cm": 13.924868803265232,
+    "wrist_depth_max_cm": 29.8979296477058,
+    "swivel_clip_max_median_deg": 0.0,
+    "swivel_clip_max_p95_deg": 19.99975464206125,
+    "wrist_image_shift_max_cm": 5.2451741559371675e-09
+   },
+   "off_forearm_drives_no_swivel": {
+    "frames_elbow_over_10px": 0.5978118161925602,
+    "frames_elbow_over_30px": 0.3283369803063457,
+    "elbow_px_clip_p95_median": 40.4635721949467,
+    "elbow_px_clip_p95_p90": 105.08163494161688,
+    "elbow_px_max": 143.49592757478106,
+    "forearm_image_direction_clip_p95_median_deg": 3.950781340571268,
+    "forearm_image_direction_clip_p95_p90_deg": 49.231346630963294,
+    "forearm_3d_clip_p95_median_deg": 19.081278053609147,
+    "forearm_3d_max_deg": 48.48804064864882,
+    "upper_arm_3d_clip_p95_median_deg": 25.427764079847066,
+    "forearm_image_length_clip_p05_median": 0.7234671996093623,
+    "forearm_image_length_clip_p05_p10": 0.4624631474824308,
+    "hand_hidden_frames": 0.0,
+    "hand_in_body_frames": 0.0,
+    "forearm_in_body_frames": 0.22210065645514224,
+    "forearm_in_body_over_10mm": 0.11531728665207877,
+    "wrist_depth_clip_max_median_cm": 13.924868803265234,
+    "wrist_depth_max_cm": 29.897929647705794,
+    "swivel_clip_max_median_deg": 0.0,
+    "swivel_clip_max_p95_deg": 0.0,
+    "wrist_image_shift_max_cm": 5.2451741559371675e-09
+   },
+   "hand_only_elbow_in_plane": {
+    "frames_elbow_over_10px": 0.18107221006564553,
+    "frames_elbow_over_30px": 0.01652078774617068,
+    "elbow_px_clip_p95_median": 11.75961675975695,
+    "elbow_px_clip_p95_p90": 23.523984537767404,
+    "elbow_px_max": 68.1771779845217,
+    "forearm_image_direction_clip_p95_median_deg": 1.7674805677470002,
+    "forearm_image_direction_clip_p95_p90_deg": 4.697468049221736,
+    "forearm_3d_clip_p95_median_deg": 5.711929407319471,
+    "forearm_3d_max_deg": 28.24834293314776,
+    "upper_arm_3d_clip_p95_median_deg": 5.503798368218547,
+    "forearm_image_length_clip_p05_median": 0.9356506601335128,
+    "forearm_image_length_clip_p05_p10": 0.8308142288140352,
+    "hand_hidden_frames": 0.0,
+    "hand_in_body_frames": 0.0,
+    "forearm_in_body_frames": 0.48708971553610503,
+    "forearm_in_body_over_10mm": 0.34332603938730855,
+    "wrist_depth_clip_max_median_cm": 5.0437677279461095,
+    "wrist_depth_max_cm": 18.29995720700732,
+    "swivel_clip_max_median_deg": 0.0,
+    "swivel_clip_max_p95_deg": 0.0,
+    "wrist_image_shift_max_cm": 1.6355004054664986e-08
+   },
+   "hand_only_elbow_nearest_shipped": {
+    "frames_elbow_over_10px": 0.06334792122538294,
+    "frames_elbow_over_30px": 0.0009846827133479213,
+    "elbow_px_clip_p95_median": 6.699483820841237,
+    "elbow_px_clip_p95_p90": 13.669671502206498,
+    "elbow_px_max": 54.02194539945112,
+    "forearm_image_direction_clip_p95_median_deg": 0.8388087535377997,
+    "forearm_image_direction_clip_p95_p90_deg": 3.480539023866629,
+    "forearm_3d_clip_p95_median_deg": 3.359792846632171,
+    "forearm_3d_max_deg": 26.66662332612604,
+    "upper_arm_3d_clip_p95_median_deg": 6.318868737040102,
+    "forearm_image_length_clip_p05_median": 0.9689789726993288,
+    "forearm_image_length_clip_p05_p10": 0.9288643775294056,
+    "hand_hidden_frames": 0.0,
+    "hand_in_body_frames": 0.0,
+    "forearm_in_body_frames": 0.4288840262582057,
+    "forearm_in_body_over_10mm": 0.29168490153172866,
+    "wrist_depth_clip_max_median_cm": 5.06242844453646,
+    "wrist_depth_max_cm": 18.333617143455825,
+    "swivel_clip_max_median_deg": 0.0,
+    "swivel_clip_max_p95_deg": 0.0,
+    "wrist_image_shift_max_cm": 1.7818814468478123e-08
+   }
+  },
+  "gen": {
+   "now_forearm_drives_swivel_70": {
+    "frames_elbow_over_10px": 0.6026459854014599,
+    "frames_elbow_over_30px": 0.3956204379562044,
+    "elbow_px_clip_p95_median": 57.75596416117108,
+    "elbow_px_clip_p95_p90": 75.47824345694815,
+    "elbow_px_max": 164.96598142184934,
+    "forearm_image_direction_clip_p95_median_deg": 21.69255078752752,
+    "forearm_image_direction_clip_p95_p90_deg": 34.94952858449867,
+    "forearm_3d_clip_p95_median_deg": 21.93776082218236,
+    "forearm_3d_max_deg": 93.26520057054198,
+    "upper_arm_3d_clip_p95_median_deg": 24.15663404210388,
+    "forearm_image_length_clip_p05_median": 0.8628552521750998,
+    "forearm_image_length_clip_p05_p10": 0.7401264334640456,
+    "hand_hidden_frames": 0.0,
+    "hand_in_body_frames": 0.0,
+    "forearm_in_body_frames": 0.008941605839416058,
+    "forearm_in_body_over_10mm": 0.005474452554744526,
+    "wrist_depth_clip_max_median_cm": 13.199920858331815,
+    "wrist_depth_max_cm": 46.55132111062682,
+    "swivel_clip_max_median_deg": 19.50631762482382,
+    "swivel_clip_max_p95_deg": 69.927003586057,
+    "wrist_image_shift_max_cm": 1.7612866989096285e-08
+   },
+   "cap_20": {
+    "frames_elbow_over_10px": 0.6024635036496351,
+    "frames_elbow_over_30px": 0.38047445255474455,
+    "elbow_px_clip_p95_median": 49.027509756415654,
+    "elbow_px_clip_p95_p90": 69.1080773836093,
+    "elbow_px_max": 138.27372285379016,
+    "forearm_image_direction_clip_p95_median_deg": 18.944141946513408,
+    "forearm_image_direction_clip_p95_p90_deg": 33.33762932473785,
+    "forearm_3d_clip_p95_median_deg": 18.965395394442737,
+    "forearm_3d_max_deg": 93.26520057054198,
+    "upper_arm_3d_clip_p95_median_deg": 20.550869374321806,
+    "forearm_image_length_clip_p05_median": 0.8555822902636145,
+    "forearm_image_length_clip_p05_p10": 0.7401264334640456,
+    "hand_hidden_frames": 0.0,
+    "hand_in_body_frames": 0.0,
+    "forearm_in_body_frames": 0.15565693430656935,
+    "forearm_in_body_over_10mm": 0.07153284671532846,
+    "wrist_depth_clip_max_median_cm": 13.199920858331815,
+    "wrist_depth_max_cm": 46.55132111062682,
+    "swivel_clip_max_median_deg": 17.232657008526154,
+    "swivel_clip_max_p95_deg": 20.0,
+    "wrist_image_shift_max_cm": 1.7612866989096285e-08
+   },
+   "off_forearm_drives_no_swivel": {
+    "frames_elbow_over_10px": 0.31304744525547445,
+    "frames_elbow_over_30px": 0.125,
+    "elbow_px_clip_p95_median": 39.323626245269125,
+    "elbow_px_clip_p95_p90": 69.91726986962479,
+    "elbow_px_max": 138.5162081608445,
+    "forearm_image_direction_clip_p95_median_deg": 8.00309791620825,
+    "forearm_image_direction_clip_p95_p90_deg": 23.00688429493031,
+    "forearm_3d_clip_p95_median_deg": 18.814953214311956,
+    "forearm_3d_max_deg": 100.80087976269154,
+    "upper_arm_3d_clip_p95_median_deg": 18.30450518750379,
+    "forearm_image_length_clip_p05_median": 0.82127228233612,
+    "forearm_image_length_clip_p05_p10": 0.6901995568725434,
+    "hand_hidden_frames": 0.0,
+    "hand_in_body_frames": 0.0,
+    "forearm_in_body_frames": 0.7671532846715329,
+    "forearm_in_body_over_10mm": 0.6711678832116789,
+    "wrist_depth_clip_max_median_cm": 13.199920858331815,
+    "wrist_depth_max_cm": 46.55132111062682,
+    "swivel_clip_max_median_deg": 0.0,
+    "swivel_clip_max_p95_deg": 0.0,
+    "wrist_image_shift_max_cm": 1.7612866989096285e-08
+   },
+   "hand_only_elbow_in_plane": {
+    "frames_elbow_over_10px": 0.1375912408759124,
+    "frames_elbow_over_30px": 0.025182481751824817,
+    "elbow_px_clip_p95_median": 8.92459476105313,
+    "elbow_px_clip_p95_p90": 33.45528342286302,
+    "elbow_px_max": 98.31277312475301,
+    "forearm_image_direction_clip_p95_median_deg": 1.0076576372420043,
+    "forearm_image_direction_clip_p95_p90_deg": 8.271470873938977,
+    "forearm_3d_clip_p95_median_deg": 5.053977027569249,
+    "forearm_3d_max_deg": 83.50054249488754,
+    "upper_arm_3d_clip_p95_median_deg": 3.6351652569894504,
+    "forearm_image_length_clip_p05_median": 0.9521287508152347,
+    "forearm_image_length_clip_p05_p10": 0.854026718745604,
+    "hand_hidden_frames": 0.0,
+    "hand_in_body_frames": 0.0,
+    "forearm_in_body_frames": 0.7766423357664234,
+    "forearm_in_body_over_10mm": 0.6936131386861314,
+    "wrist_depth_clip_max_median_cm": 6.807608067204624,
+    "wrist_depth_max_cm": 30.93682422473415,
+    "swivel_clip_max_median_deg": 0.0,
+    "swivel_clip_max_p95_deg": 0.0,
+    "wrist_image_shift_max_cm": 2.0407608818639136e-08
+   },
+   "hand_only_elbow_nearest_shipped": {
+    "frames_elbow_over_10px": 0.09160583941605839,
+    "frames_elbow_over_30px": 0.008485401459854014,
+    "elbow_px_clip_p95_median": 5.019779153687786,
+    "elbow_px_clip_p95_p90": 23.33418828467154,
+    "elbow_px_max": 95.94349740531972,
+    "forearm_image_direction_clip_p95_median_deg": 1.449046331195333,
+    "forearm_image_direction_clip_p95_p90_deg": 7.067048580502151,
+    "forearm_3d_clip_p95_median_deg": 2.2139862457557706,
+    "forearm_3d_max_deg": 77.84868995930397,
+    "upper_arm_3d_clip_p95_median_deg": 4.673051116265933,
+    "forearm_image_length_clip_p05_median": 0.9800340103295594,
+    "forearm_image_length_clip_p05_p10": 0.9242446842170536,
+    "hand_hidden_frames": 0.0,
+    "hand_in_body_frames": 0.0,
+    "forearm_in_body_frames": 0.7751824817518248,
+    "forearm_in_body_over_10mm": 0.6928832116788322,
+    "wrist_depth_clip_max_median_cm": 6.855737063878884,
+    "wrist_depth_max_cm": 30.93682422473415,
+    "swivel_clip_max_median_deg": 0.0,
+    "swivel_clip_max_p95_deg": 0.0,
+    "wrist_image_shift_max_cm": 2.255287600264717e-08
+   }
+  }
+ },
+ "merged_version_before_this_work": {
+  "real": {
+   "frames_any_vertex": 0.061925601750547045,
+   "frames_half_of_a_hand": 0.0,
+   "frames_whole_hand": 0.0,
+   "deepest_mm": 32.27511603138753,
+   "elbow_px_clip_p95_median": 23.453904883071132
+  },
+  "gen": {
+   "frames_any_vertex": 0.040145985401459854,
+   "frames_half_of_a_hand": 0.0,
+   "frames_whole_hand": 0.0,
+   "deepest_mm": 67.69401961905729,
+   "elbow_px_clip_p95_median": 52.34397283456559
+  }
+ },
+ "exact_ray_check_after_correction": {
+  "hand_vertices_sampled": 102528,
+  "behind_drawn_surface": 0,
+  "clearance_mm": 3
  },
  "rendered_pixels": [
   {
@@ -1654,7 +1995,6 @@
   "max": 30.1,
   "frames": 90
  },
- "note": "medians; per-clip rows are in R2 under renders/avatar-fixes-2026-11-02/measures/",
  "contrast_final": {
   "skin_top": 5.2,
   "skin_backdrop": 2.61,
@@ -1664,5 +2004,6 @@
    "skin_backdrop": 1.14,
    "top_backdrop": 3.7
   }
- }
+ },
+ "note": "medians; per-clip rows are in R2 under renders/avatar-fixes-2026-11-02/measures/"
 }
