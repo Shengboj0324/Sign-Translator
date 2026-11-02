@@ -8,7 +8,7 @@ You do not need a computer for this, and you never have to do anything technical
 
 Your videos use one of two kinds of picture (the study team will tell you which).
 
-**A 3D avatar:** a plain human figure in a dark top, seen from the front, signing. The figure is not a real person and it has no hair. Its face is simple: the eyebrows are painted on and move with the skin above the eyes, the eyelids and eyes move, and the mouth moves but has no separate lips. Some face signals may be weak or missing, so please tell us when the face looks wrong.
+**A 3D avatar:** a plain human figure in a dark top, seen from the front, signing. The figure is not a real person. It has short dark hair. Its face is simple: the eyebrows, eyelids and eyes move, and the mouth moves but has no separate lips. Some face signals may be weak or missing, so please tell us when the face looks wrong.
 
 **A simple stick figure** (older studies):
 - Top two panels: the upper body from the front and from the side. The signer's left arm is blue and the right arm

@@ -30,12 +30,12 @@ Nine raters, about 60 hours of stage 1, about 75 with stage 2. Three raters cann
 - **Negation truth:** English rule and checker's sheet built; the Deaf checker is needed. 26 of 80 negated sentences have no negation word cached.
 - **Bar scorer** (`score_human_eval.py --bar`): built, on synthetic sheets.
 - **Design, sheets** (`human_study.py`): passed, synthetic IDs.
-- **Avatar** (`render_avatar.py`): works. Bald, flat, hands through body, shake unfixed; v2 unstarted. Pilot decides.
+- **Avatar** (`render_avatar.py`): reworked, `docs/AVATAR_RENDER.md` section 13: filter, hands kept out of the body, one frame for every clip, hair and a plain top. Not yet seen by a Deaf signer. Pilot decides.
 - **Hosting, blinding:** no hosting: the owner plays the videos or delivers them, and enters the answers (owner's flow, 2026-11-02); MP4 tags clean; speed may reveal the reference.
 - **Consent, payment** (`reviewer_package/`): drafts; pay blank. 0.5 day.
 
 ## 4. Render cost
-Measured: 13 s per 147-frame clip at 768 px (docs' 45 s is stale). 600 clips: about 2.2 h, one Mac process. Pod untested. Use the Mac. R2, all files: about 65 GB, ~$1/month. The Mac has 39 GB free: upload and delete per clip.
+Measured: 26 s per 104-frame clip at 768 px after the avatar rework (was 7.9 s). 240 clips at a mean 170 frames: about 3 h, one Mac process; 600 clips: about 7 h. Pod untested. Use the Mac. R2, all files: about 65 GB, ~$1/month. The Mac has 39 GB free: upload and delete per clip.
 
 ## 5. Licensing (not legal advice)
 How2Sign: CC BY-NC 4.0, research consent; attribute and state changes (done on `reviewer_package/FOR_REVIEWERS.md`). English options derive from How2: contracted reviewers only. No ASL Citizen or STEM Wiki clip appears, and the generator mix excludes them. v3d, trained on ASL Citizen, chooses both arms' best-of-16 words. The owner deferred consent until after the model finishes (22:39 UTC); this read keeps best of 16.

@@ -19,7 +19,7 @@ guide. It does not replace the study protocol or its code, which stay where they
 
 | Path | What it is |
 |---|---|
-| `scripts/render_avatar.py` | Renders one canonical state (`.npz` or R2 key with SHA) on the MakeHuman rig. Blender Workbench, fixed front camera, `avatar.mp4` plus `verification.json` |
+| `scripts/render_avatar.py` | Renders one canonical state (`.npz` or R2 key with SHA) on the MakeHuman rig. Blender EEVEE, fixed front camera, `avatar.mp4` plus `verification.json` |
 | `docs/AVATAR_RENDER.md` §12 | Retarget, face mapping, render CLI and measurements |
 | `Sign Translator Stage Documentation/evidence/avatar-retarget-2026-10-22/` | Verification records of the first avatar renders |
 | `scripts/render_text_to_motion_samples.py` | Side-by-side skeleton previews of real and generated motion. An inspection aid, not for reviewers |

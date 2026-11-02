@@ -8,7 +8,7 @@
 
 We are building a computer program that turns English sentences into ASL.
 Every video in this study shows the signing on a **computer-made figure**, not a person on camera.
-The figure has a plain face and a dark top, and it has no hair.
+The figure has a plain face, short dark hair and a dark top.
 We need Deaf signers to tell us honestly whether the signing is clear and correct.
 This is a research project. It is not for sale and makes no money.
 

@@ -14,9 +14,9 @@ You get a break about every 15 minutes, and you can ask for one at any time.
 
 ## What you will see
 
-A plain human figure in a dark top, seen from the front, signing. The figure is not a real person and it has no hair.
+A plain human figure in a dark top, seen from the front, signing. The figure is not a real person. It has short dark hair.
 
-Its face is simple. The eyebrows are painted on and move with the skin above the eyes. The eyelids and eyes move. The mouth moves, but it has no separate lips. Some face signals may be weak or missing, so please tell us when the face looks wrong.
+Its face is simple. The eyebrows, eyelids and eyes move. The mouth moves, but it has no separate lips. Some face signals may be weak or missing, so please tell us when the face looks wrong.
 
 Some videos may be hard to follow or poor. Please judge each one on its own. You will not see the same sentence twice.
 

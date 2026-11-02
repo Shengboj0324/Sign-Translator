@@ -1,0 +1,1668 @@
+{
+ "kind": "avatar-fixes-measures",
+ "clips": 72,
+ "seed": 20261102,
+ "draw": "composed draw1 comp form, D20 real two-view",
+ "summary": {
+  "table": {
+   "real": {
+    "head.jitter_mm": {
+     "before": 5.293492846241282,
+     "filled": 5.26417854296058,
+     "after_filter": 0.7232619169865314,
+     "after": 0.7232619169865314
+    },
+    "chest.jitter_mm": {
+     "before": 2.919545003097997,
+     "filled": 2.7427864916851856,
+     "after_filter": 0.3924930733246428,
+     "after": 0.3924930733246428
+    },
+    "elbow.L.jitter_mm": {
+     "before": 4.733597700952762,
+     "filled": 4.337259887092889,
+     "after_filter": 0.8596425310861266,
+     "after": 0.8722914031239024
+    },
+    "elbow.R.jitter_mm": {
+     "before": 6.58811921343855,
+     "filled": 6.275617727925868,
+     "after_filter": 1.7029171288899185,
+     "after": 1.720107199105497
+    },
+    "wrist.L.jitter_mm": {
+     "before": 5.188323233157717,
+     "filled": 4.64869026594236,
+     "after_filter": 1.0861811555600147,
+     "after": 1.0888615245864697
+    },
+    "wrist.R.jitter_mm": {
+     "before": 7.227794833203956,
+     "filled": 6.634952640024098,
+     "after_filter": 1.8965751324915285,
+     "after": 1.9115965072597543
+    },
+    "tips.L.jitter_mm": {
+     "before": 5.717413417960083,
+     "filled": 5.0097678424892,
+     "after_filter": 1.3855544704011509,
+     "after": 1.3882512389195982
+    },
+    "tips.R.jitter_mm": {
+     "before": 7.899333478280372,
+     "filled": 7.429018780920914,
+     "after_filter": 2.600354697929384,
+     "after": 2.6078042390559184
+    },
+    "head.jitter_deg": {
+     "before": 0.1842280213706071,
+     "filled": 0.1842280213685527,
+     "after_filter": 0.07010172654262067,
+     "after": 0.07010172654262067
+    },
+    "chest.jitter_deg": {
+     "before": 0.746019402713952,
+     "filled": 0.6679347456195746,
+     "after_filter": 0.10199617366291958,
+     "after": 0.10199617366291958
+    },
+    "hand.L.jitter_deg": {
+     "before": 1.8944704611814212,
+     "filled": 1.4545909747962598,
+     "after_filter": 0.635772522943971,
+     "after": 0.6357725229436999
+    },
+    "hand.R.jitter_deg": {
+     "before": 3.169004367815891,
+     "filled": 2.8839257125491464,
+     "after_filter": 1.2660141202101167,
+     "after": 1.2660141202101118
+    },
+    "head.hf_share": {
+     "before": 0.6783337860424424,
+     "filled": 0.6825017200186334,
+     "after_filter": 0.11915602538174525,
+     "after": 0.11915602538174525
+    },
+    "chest.hf_share": {
+     "before": 0.6847541987835377,
+     "filled": 0.6744242294538858,
+     "after_filter": 0.12584125534089755,
+     "after": 0.12584125534089755
+    },
+    "wrist.L.hf_share": {
+     "before": 0.47653624684238727,
+     "filled": 0.4167472072762773,
+     "after_filter": 0.042087149796055455,
+     "after": 0.039799536341374175
+    },
+    "wrist.R.hf_share": {
+     "before": 0.4850356340727907,
+     "filled": 0.4395125384048316,
+     "after_filter": 0.08120176016055845,
+     "after": 0.07484408200963247
+    },
+    "tips.L.hf_share": {
+     "before": 0.2844591600639364,
+     "filled": 0.2239107006388177,
+     "after_filter": 0.028720322963997805,
+     "after": 0.029161345202085475
+    },
+    "tips.R.hf_share": {
+     "before": 0.3258644979273493,
+     "filled": 0.26468148135612046,
+     "after_filter": 0.054880119238105554,
+     "after": 0.052250620113501955
+    },
+    "head.jitter_px": {
+     "before": 2.9485610830252886,
+     "filled": 2.6442106498662348,
+     "after_filter": 0.38406420531034025,
+     "after": 0.38406420531034025
+    },
+    "wrist.L.jitter_px": {
+     "before": 3.176538594275442,
+     "filled": 2.9821699217581012,
+     "after_filter": 0.6836521895954734,
+     "after": 0.6836521895954695
+    },
+    "wrist.R.jitter_px": {
+     "before": 4.586929227775501,
+     "filled": 4.104235444595201,
+     "after_filter": 1.1089100806595482,
+     "after": 1.10891008065955
+    },
+    "kept_filter": {
+     "finger_speed_raw": {
+      "median": 0.9537449615838995,
+      "p10": 0.9367218674900677
+     },
+     "finger_speed_6hz": {
+      "median": 0.9813724640625794,
+      "p10": 0.9724043007867829
+     },
+     "finger_speed_3hz": {
+      "median": 0.9961482591739321,
+      "p10": 0.9911957223800923
+     },
+     "finger_active_6hz": {
+      "median": 0.9781605219266671,
+      "p10": 0.9662118581915425
+     },
+     "finger_peak_6hz": {
+      "median": 0.9765426577345804,
+      "p10": 0.9506347957866893
+     },
+     "finger_range": {
+      "median": 0.9977245105120671,
+      "p10": 0.9915441713301589
+     },
+     "wrist_active_6hz": {
+      "median": 0.9068933298846653,
+      "p10": 0.7603752700543052
+     },
+     "wrist_p95_6hz": {
+      "median": 0.9432066704782835,
+      "p10": 0.8213995737856293
+     },
+     "wrist_max_6hz": {
+      "median": 0.9219545457078568,
+      "p10": 0.7577115396607678
+     },
+     "wrist_max_raw": {
+      "median": 0.6371145351380434,
+      "p10": 0.4119443409195003
+     },
+     "hold_iou": {
+      "median": 0.6428571428571429,
+      "p10": 0.3927125506072875
+     },
+     "hold_position_shift_p95_mm": {
+      "median": 7.456014373112806,
+      "p10": 3.219410138016894
+     },
+     "hold_jitter_before_mm": {
+      "median": 3.048508776632965,
+      "p10": 0.730137080498475
+     },
+     "hold_jitter_after_mm": {
+      "median": 0.8787657348001341,
+      "p10": 0.44578340543690526
+     },
+     "hold_share_before": {
+      "median": 0.22421849822752177,
+      "p10": 0.0627016129032258
+     },
+     "hold_share_after": {
+      "median": 0.3515957446808511,
+      "p10": 0.09009090909090908
+     },
+     "hold_count_before": {
+      "median": 3.0,
+      "p10": 1.0
+     },
+     "hold_count_after": {
+      "median": 3.0,
+      "p10": 1.0
+     },
+     "finger_quiet_raw_before": {
+      "median": 0.7740309763316741,
+      "p10": 0.5047291925184363
+     },
+     "finger_quiet_raw_after": {
+      "median": 0.7517950039437318,
+      "p10": 0.4806491324143628
+     },
+     "finger_bend_lag_frames": {
+      "median": 0.0,
+      "p10": 0.0
+     }
+    },
+    "kept_vs_held": {
+     "finger_speed_raw": {
+      "median": 0.9553176170272378,
+      "p10": 0.9367788790135572
+     },
+     "finger_speed_6hz": {
+      "median": 0.9813886300404766,
+      "p10": 0.9711122644621604
+     },
+     "finger_speed_3hz": {
+      "median": 0.9963281975626839,
+      "p10": 0.9911957223800923
+     },
+     "finger_active_6hz": {
+      "median": 0.9769094153667996,
+      "p10": 0.9452356665122896
+     },
+     "finger_peak_6hz": {
+      "median": 0.9745813832005081,
+      "p10": 0.932000449920619
+     },
+     "finger_range": {
+      "median": 0.9977111852332803,
+      "p10": 0.9882876503819669
+     },
+     "wrist_active_6hz": {
+      "median": 0.848343538552778,
+      "p10": 0.5449942447726774
+     },
+     "wrist_p95_6hz": {
+      "median": 0.8901811034356278,
+      "p10": 0.64264415853142
+     },
+     "wrist_max_6hz": {
+      "median": 0.8795576043657334,
+      "p10": 0.5480030627630514
+     },
+     "wrist_max_raw": {
+      "median": 0.5713034677835359,
+      "p10": 0.304632023396081
+     },
+     "hold_iou": {
+      "median": 0.5789473684210527,
+      "p10": 0.34091266719118807
+     },
+     "hold_position_shift_p95_mm": {
+      "median": 9.714145937076896,
+      "p10": 4.947707524923248
+     },
+     "hold_jitter_before_mm": {
+      "median": 3.048508776632965,
+      "p10": 1.5119561488291118
+     },
+     "hold_jitter_after_mm": {
+      "median": 0.8787657348001341,
+      "p10": 0.44578340543690526
+     },
+     "hold_share_before": {
+      "median": 0.25340425531914895,
+      "p10": 0.06473118279569892
+     },
+     "hold_share_after": {
+      "median": 0.3515957446808511,
+      "p10": 0.09009090909090908
+     },
+     "hold_count_before": {
+      "median": 3.0,
+      "p10": 1.0
+     },
+     "hold_count_after": {
+      "median": 3.0,
+      "p10": 1.0
+     },
+     "finger_quiet_raw_before": {
+      "median": 0.7266284674349968,
+      "p10": 0.3569929260089812
+     },
+     "finger_quiet_raw_after": {
+      "median": 0.7517950039437318,
+      "p10": 0.4806491324143628
+     },
+     "finger_bend_lag_frames": {
+      "median": 0.0,
+      "p10": 0.0
+     }
+    },
+    "kept_correction": {
+     "finger_speed_raw": {
+      "median": 1.0000000000000027,
+      "p10": 0.9999999999999968
+     },
+     "finger_speed_6hz": {
+      "median": 1.0000000000000009,
+      "p10": 0.999999999999997
+     },
+     "finger_speed_3hz": {
+      "median": 1.0000000000000009,
+      "p10": 0.9999999999999987
+     },
+     "finger_active_6hz": {
+      "median": 1.0000000000000004,
+      "p10": 0.9999999999999984
+     },
+     "finger_peak_6hz": {
+      "median": 1.0,
+      "p10": 0.9999999999999947
+     },
+     "finger_range": {
+      "median": 1.0,
+      "p10": 0.9999999999999961
+     },
+     "wrist_active_6hz": {
+      "median": 1.0,
+      "p10": 0.9532205382165054
+     },
+     "wrist_p95_6hz": {
+      "median": 1.0,
+      "p10": 0.9541823231596429
+     },
+     "wrist_max_6hz": {
+      "median": 1.0,
+      "p10": 0.9673122621056038
+     },
+     "wrist_max_raw": {
+      "median": 1.0,
+      "p10": 0.97778759732582
+     },
+     "hold_iou": {
+      "median": 0.9318181818181818,
+      "p10": 0.5881118881118881
+     },
+     "hold_position_shift_p95_mm": {
+      "median": 44.163856688963385,
+      "p10": 0.0
+     },
+     "hold_jitter_before_mm": {
+      "median": 0.8787657348001341,
+      "p10": 0.44578340543690526
+     },
+     "hold_jitter_after_mm": {
+      "median": 0.87876813421307,
+      "p10": 0.4320384220256233
+     },
+     "hold_share_before": {
+      "median": 0.3515957446808511,
+      "p10": 0.09009090909090908
+     },
+     "hold_share_after": {
+      "median": 0.35,
+      "p10": 0.0765
+     },
+     "hold_count_before": {
+      "median": 3.0,
+      "p10": 1.0
+     },
+     "hold_count_after": {
+      "median": 3.0,
+      "p10": 1.0
+     },
+     "finger_quiet_raw_before": {
+      "median": 0.7517950039437318,
+      "p10": 0.4806491324143628
+     },
+     "finger_quiet_raw_after": {
+      "median": 0.7517950039437339,
+      "p10": 0.4806491324143656
+     },
+     "finger_bend_lag_frames": {
+      "median": 0.0,
+      "p10": 0.0
+     }
+    },
+    "kept_on_lowpassed": {
+     "finger_speed_raw": {
+      "median": 0.9816571256356053,
+      "p10": 0.9776071127922893
+     },
+     "finger_speed_6hz": {
+      "median": 0.9867956693584679,
+      "p10": 0.9832213460509088
+     },
+     "finger_speed_3hz": {
+      "median": 0.996684627427812,
+      "p10": 0.9946079508823134
+     },
+     "finger_active_6hz": {
+      "median": 0.9864278718419197,
+      "p10": 0.9800376796646031
+     },
+     "finger_peak_6hz": {
+      "median": 0.9855339084876749,
+      "p10": 0.9650310589275247
+     },
+     "finger_range": {
+      "median": 0.9981170078664044,
+      "p10": 0.995125103195487
+     },
+     "wrist_active_6hz": {
+      "median": 0.9364661284122748,
+      "p10": 0.8463206533412739
+     },
+     "wrist_p95_6hz": {
+      "median": 0.9576909911348568,
+      "p10": 0.85179735529922
+     },
+     "wrist_max_6hz": {
+      "median": 0.9522839022920524,
+      "p10": 0.8349350503717463
+     },
+     "wrist_max_raw": {
+      "median": 0.9236763433583692,
+      "p10": 0.7650585585823411
+     },
+     "hold_iou": {
+      "median": 0.7777777777777778,
+      "p10": 0.4
+     },
+     "hold_position_shift_p95_mm": {
+      "median": 4.0349704316916135,
+      "p10": 1.620492597387057
+     },
+     "hold_jitter_before_mm": {
+      "median": 0.7058777232315628,
+      "p10": 0.36679177795571694
+     },
+     "hold_jitter_after_mm": {
+      "median": 0.36849139053145963,
+      "p10": 0.22258538186788737
+     },
+     "hold_share_before": {
+      "median": 0.31014668514668514,
+      "p10": 0.06291666666666666
+     },
+     "hold_share_after": {
+      "median": 0.3833333333333333,
+      "p10": 0.0810909090909091
+     },
+     "hold_count_before": {
+      "median": 3.0,
+      "p10": 1.0
+     },
+     "hold_count_after": {
+      "median": 3.0,
+      "p10": 1.0
+     },
+     "finger_quiet_raw_before": {
+      "median": 0.7523383575562226,
+      "p10": 0.47662968318295035
+     },
+     "finger_quiet_raw_after": {
+      "median": 0.7412601571692792,
+      "p10": 0.4686497834423167
+     },
+     "finger_bend_lag_frames": {
+      "median": 0.0,
+      "p10": 0.0
+     }
+    },
+    "hand.torso": {
+     "penetration_before": {
+      "frames_any": 0.30897155361050327,
+      "frames_over_5mm": 0.28533916849015317,
+      "frames_over_10mm": 0.22560175054704595,
+      "frames_over_20mm": 0.1437636761487965,
+      "clips_with_any": 0.9444444444444444,
+      "clip_max_depth_median_mm": 37.80502527952194,
+      "clip_max_depth_max_mm": 66.1871612071991
+     },
+     "penetration_filtered": {
+      "frames_any": 0.31312910284463896,
+      "frames_over_5mm": 0.2842450765864333,
+      "frames_over_10mm": 0.2301969365426696,
+      "frames_over_20mm": 0.1448577680525164,
+      "clips_with_any": 0.9166666666666666,
+      "clip_max_depth_median_mm": 31.418919563293457,
+      "clip_max_depth_max_mm": 64.95236158370972
+     },
+     "penetration_after": {
+      "frames_any": 0.0,
+      "frames_over_5mm": 0.0,
+      "frames_over_10mm": 0.0,
+      "frames_over_20mm": 0.0,
+      "clips_with_any": 0.0,
+      "clip_max_depth_median_mm": 0.0,
+      "clip_max_depth_max_mm": 0.0
+     }
+    },
+    "hand.head": {
+     "penetration_before": {
+      "frames_any": 0.022319474835886213,
+      "frames_over_5mm": 0.018818380743982493,
+      "frames_over_10mm": 0.013785557986870898,
+      "frames_over_20mm": 0.001312910284463895,
+      "clips_with_any": 0.2777777777777778,
+      "clip_max_depth_median_mm": 13.168232887983322,
+      "clip_max_depth_max_mm": 25.60095191001892
+     },
+     "penetration_filtered": {
+      "frames_any": 0.022100656455142233,
+      "frames_over_5mm": 0.018818380743982493,
+      "frames_over_10mm": 0.013785557986870898,
+      "frames_over_20mm": 0.0010940919037199124,
+      "clips_with_any": 0.2777777777777778,
+      "clip_max_depth_median_mm": 13.209515437483788,
+      "clip_max_depth_max_mm": 27.900007367134094
+     },
+     "penetration_after": {
+      "frames_any": 0.0,
+      "frames_over_5mm": 0.0,
+      "frames_over_10mm": 0.0,
+      "frames_over_20mm": 0.0,
+      "clips_with_any": 0.0,
+      "clip_max_depth_median_mm": 0.0,
+      "clip_max_depth_max_mm": 0.0
+     }
+    },
+    "forearm.torso": {
+     "penetration_before": {
+      "frames_any": 0.5881838074398249,
+      "frames_over_5mm": 0.5586433260393873,
+      "frames_over_10mm": 0.4842450765864333,
+      "frames_over_20mm": 0.34463894967177244,
+      "clips_with_any": 0.9444444444444444,
+      "clip_max_depth_median_mm": 42.34742820262909,
+      "clip_max_depth_max_mm": 63.01567554473878
+     },
+     "penetration_filtered": {
+      "frames_any": 0.5938730853391685,
+      "frames_over_5mm": 0.563238512035011,
+      "frames_over_10mm": 0.4849015317286652,
+      "frames_over_20mm": 0.3461706783369803,
+      "clips_with_any": 0.9444444444444444,
+      "clip_max_depth_median_mm": 40.91952294111252,
+      "clip_max_depth_max_mm": 62.70388364791871
+     },
+     "penetration_after": {
+      "frames_any": 0.004595185995623632,
+      "frames_over_5mm": 0.003938730853391685,
+      "frames_over_10mm": 0.003063457330415755,
+      "frames_over_20mm": 0.00087527352297593,
+      "clips_with_any": 0.1111111111111111,
+      "clip_max_depth_median_mm": 13.651635125279427,
+      "clip_max_depth_max_mm": 40.55681824684143
+     }
+    },
+    "forearm.head": {
+     "penetration_before": {
+      "frames_any": 0.0,
+      "frames_over_5mm": 0.0,
+      "frames_over_10mm": 0.0,
+      "frames_over_20mm": 0.0,
+      "clips_with_any": 0.0,
+      "clip_max_depth_median_mm": 0.0,
+      "clip_max_depth_max_mm": 0.0
+     },
+     "penetration_filtered": {
+      "frames_any": 0.0,
+      "frames_over_5mm": 0.0,
+      "frames_over_10mm": 0.0,
+      "frames_over_20mm": 0.0,
+      "clips_with_any": 0.0,
+      "clip_max_depth_median_mm": 0.0,
+      "clip_max_depth_max_mm": 0.0
+     },
+     "penetration_after": {
+      "frames_any": 0.0,
+      "frames_over_5mm": 0.0,
+      "frames_over_10mm": 0.0,
+      "frames_over_20mm": 0.0,
+      "clips_with_any": 0.0,
+      "clip_max_depth_median_mm": 0.0,
+      "clip_max_depth_max_mm": 0.0
+     }
+    },
+    "kept_filter_dominant_arm": {
+     "wrist_active_6hz": {
+      "median": 0.9258056043552358,
+      "p10": 0.8336736760286076,
+      "on_lowpassed_median": 0.9540516508839179,
+      "on_lowpassed_p10": 0.8777684460064542
+     },
+     "wrist_p95_6hz": {
+      "median": 0.9534171335791184,
+      "p10": 0.8659053305072169,
+      "on_lowpassed_median": 0.9618831182897917,
+      "on_lowpassed_p10": 0.8979880680085182
+     },
+     "wrist_max_6hz": {
+      "median": 0.926615191809021,
+      "p10": 0.8063464800449394,
+      "on_lowpassed_median": 0.9549947973690045,
+      "on_lowpassed_p10": 0.8576056622480245
+     },
+     "finger_speed_6hz": {
+      "median": 0.9798421591235305,
+      "p10": 0.9718271328026358,
+      "on_lowpassed_median": 0.9859692410254773,
+      "on_lowpassed_p10": 0.9831621314430812
+     },
+     "finger_peak_6hz": {
+      "median": 0.976378282706692,
+      "p10": 0.9409400605936638,
+      "on_lowpassed_median": 0.9868912491442423,
+      "on_lowpassed_p10": 0.9688291374967758
+     },
+     "finger_range": {
+      "median": 0.9973442092567856,
+      "p10": 0.9884122198045595,
+      "on_lowpassed_median": 0.9977958828951636,
+      "on_lowpassed_p10": 0.9930677022257073
+     },
+     "hold_iou": {
+      "median": 0.6129032258064516,
+      "p10": 0.3957894736842105,
+      "on_lowpassed_median": 0.7222222222222222,
+      "on_lowpassed_p10": 0.37428571428571433
+     }
+    },
+    "moved": {
+     "wrist_depth_move_cm_max": {
+      "median": 9.165036640822887,
+      "p95": 17.657635336801548,
+      "max": 25.200794226199797
+     },
+     "wrist_image_shift_cm_max": {
+      "median": 3.981979862019863e-14,
+      "p95": 9.085056057286949e-14,
+      "max": 1.547686959240399e-13
+     },
+     "swivel_deg_max": {
+      "median": 5.0,
+      "p95": 24.827241748029696,
+      "max": 69.55255047075327
+     }
+    },
+    "face": {
+     "jitter_before": 0.007411274719279241,
+     "jitter_after": 0.00279800296195859,
+     "blink_peak_kept": 0.9898474295753867,
+     "head_speed_active_kept": 0.9786278801645945
+    }
+   },
+   "gen": {
+    "head.jitter_mm": {
+     "before": 3.0796302495619137,
+     "filled": 3.0796302495619137,
+     "after_filter": 0.525653837703985,
+     "after": 0.525653837703985
+    },
+    "chest.jitter_mm": {
+     "before": 1.230426477688423,
+     "filled": 1.230426477688423,
+     "after_filter": 0.21272969762474864,
+     "after": 0.21272969762474864
+    },
+    "elbow.L.jitter_mm": {
+     "before": 3.6580903822106707,
+     "filled": 3.6580903822106707,
+     "after_filter": 1.0515063809389844,
+     "after": 1.609547899572482
+    },
+    "elbow.R.jitter_mm": {
+     "before": 3.4363223298381054,
+     "filled": 3.4363223298381054,
+     "after_filter": 1.0347659373228573,
+     "after": 1.1730119639070145
+    },
+    "wrist.L.jitter_mm": {
+     "before": 7.5962820571110505,
+     "filled": 7.5962820571110505,
+     "after_filter": 3.3649770820542586,
+     "after": 3.3635948166400103
+    },
+    "wrist.R.jitter_mm": {
+     "before": 5.714816967368922,
+     "filled": 5.714816967368922,
+     "after_filter": 2.2175373749880674,
+     "after": 2.2591980037997024
+    },
+    "tips.L.jitter_mm": {
+     "before": 13.334816690755826,
+     "filled": 13.334816690755826,
+     "after_filter": 7.130369690872399,
+     "after": 7.23304437237976
+    },
+    "tips.R.jitter_mm": {
+     "before": 11.560119722187189,
+     "filled": 11.560119722187189,
+     "after_filter": 6.460628069822181,
+     "after": 6.4634840747427695
+    },
+    "head.jitter_deg": {
+     "before": 0.21405319203919898,
+     "filled": 0.21405319203919898,
+     "after_filter": 0.10421888651889938,
+     "after": 0.10421888651889938
+    },
+    "chest.jitter_deg": {
+     "before": 0.3633103769006043,
+     "filled": 0.3633103769006043,
+     "after_filter": 0.0626287269154759,
+     "after": 0.0626287269154759
+    },
+    "hand.L.jitter_deg": {
+     "before": 5.115853781950054,
+     "filled": 5.115853781950054,
+     "after_filter": 2.725541687174064,
+     "after": 2.725541687174071
+    },
+    "hand.R.jitter_deg": {
+     "before": 5.525337404714462,
+     "filled": 5.525337404714462,
+     "after_filter": 3.0849025868439304,
+     "after": 3.0849025868439273
+    },
+    "head.hf_share": {
+     "before": 0.225645869195378,
+     "filled": 0.225645869195378,
+     "after_filter": 0.016884581044731412,
+     "after": 0.016884581044731412
+    },
+    "chest.hf_share": {
+     "before": 0.2372326669801259,
+     "filled": 0.2372326669801259,
+     "after_filter": 0.01861842026764264,
+     "after": 0.01861842026764264
+    },
+    "wrist.L.hf_share": {
+     "before": 0.13466498120641235,
+     "filled": 0.13466498120641235,
+     "after_filter": 0.02844747293357427,
+     "after": 0.030309932886013434
+    },
+    "wrist.R.hf_share": {
+     "before": 0.15684790116211308,
+     "filled": 0.15684790116211308,
+     "after_filter": 0.026784011612794555,
+     "after": 0.027916476707166585
+    },
+    "tips.L.hf_share": {
+     "before": 0.1846771590225808,
+     "filled": 0.1846771590225808,
+     "after_filter": 0.06658486763561428,
+     "after": 0.07080678242043711
+    },
+    "tips.R.hf_share": {
+     "before": 0.24444061474280054,
+     "filled": 0.24444061474280054,
+     "after_filter": 0.09253854590041641,
+     "after": 0.09582473915300577
+    },
+    "head.jitter_px": {
+     "before": 1.0638184111402,
+     "filled": 1.0638184111402,
+     "after_filter": 0.17545754627743682,
+     "after": 0.17545754627743682
+    },
+    "wrist.L.jitter_px": {
+     "before": 3.622372187046052,
+     "filled": 3.622372187046052,
+     "after_filter": 1.9168578017474531,
+     "after": 1.9168578017473954
+    },
+    "wrist.R.jitter_px": {
+     "before": 3.457747400261936,
+     "filled": 3.457747400261936,
+     "after_filter": 1.529000013235428,
+     "after": 1.5290000132354264
+    },
+    "kept_filter": {
+     "finger_speed_raw": {
+      "median": 0.8336338304002804,
+      "p10": 0.7914961779366105
+     },
+     "finger_speed_6hz": {
+      "median": 0.9653155736219254,
+      "p10": 0.9543731970950665
+     },
+     "finger_speed_3hz": {
+      "median": 1.0017261702868847,
+      "p10": 0.9936388404346831
+     },
+     "finger_active_6hz": {
+      "median": 0.967193508580271,
+      "p10": 0.9407293270189555
+     },
+     "finger_peak_6hz": {
+      "median": 0.9872293135583157,
+      "p10": 0.9060060649268917
+     },
+     "finger_range": {
+      "median": 0.9954106505503215,
+      "p10": 0.9801449901039717
+     },
+     "wrist_active_6hz": {
+      "median": 0.9520696593834546,
+      "p10": 0.9210809002973916
+     },
+     "wrist_p95_6hz": {
+      "median": 0.9719664337325442,
+      "p10": 0.9210811547011598
+     },
+     "wrist_max_6hz": {
+      "median": 0.9466073719847079,
+      "p10": 0.8560178771825951
+     },
+     "wrist_max_raw": {
+      "median": 0.8387266814385015,
+      "p10": 0.6606728915427532
+     },
+     "hold_iou": {
+      "median": 0.6842105263157895,
+      "p10": 0.0
+     },
+     "hold_position_shift_p95_mm": {
+      "median": 2.7908048730822985,
+      "p10": 1.024570425901103
+     },
+     "hold_jitter_before_mm": {
+      "median": 1.0532880314650843,
+      "p10": 0.48393359776293154
+     },
+     "hold_jitter_after_mm": {
+      "median": 0.7683048792272675,
+      "p10": 0.39653160528858494
+     },
+     "hold_share_before": {
+      "median": 0.0,
+      "p10": 0.0
+     },
+     "hold_share_after": {
+      "median": 0.0,
+      "p10": 0.0
+     },
+     "hold_count_before": {
+      "median": 0.0,
+      "p10": 0.0
+     },
+     "hold_count_after": {
+      "median": 0.0,
+      "p10": 0.0
+     },
+     "finger_quiet_raw_before": {
+      "median": 0.748077173951952,
+      "p10": 0.5396380562856673
+     },
+     "finger_quiet_raw_after": {
+      "median": 0.651990062357827,
+      "p10": 0.5140110468134095
+     },
+     "finger_bend_lag_frames": {
+      "median": 0.0,
+      "p10": 0.0
+     }
+    },
+    "kept_vs_held": {
+     "finger_speed_raw": {
+      "median": 0.8336338304002804,
+      "p10": 0.7914961779366105
+     },
+     "finger_speed_6hz": {
+      "median": 0.9653155736219254,
+      "p10": 0.9543731970950665
+     },
+     "finger_speed_3hz": {
+      "median": 1.0017261702868847,
+      "p10": 0.9936388404346831
+     },
+     "finger_active_6hz": {
+      "median": 0.967193508580271,
+      "p10": 0.9407293270189555
+     },
+     "finger_peak_6hz": {
+      "median": 0.9872293135583157,
+      "p10": 0.9060060649268917
+     },
+     "finger_range": {
+      "median": 0.9954106505503215,
+      "p10": 0.9801449901039717
+     },
+     "wrist_active_6hz": {
+      "median": 0.9520696593834546,
+      "p10": 0.9210809002973916
+     },
+     "wrist_p95_6hz": {
+      "median": 0.9719664337325442,
+      "p10": 0.9210811547011598
+     },
+     "wrist_max_6hz": {
+      "median": 0.9466073719847079,
+      "p10": 0.8560178771825951
+     },
+     "wrist_max_raw": {
+      "median": 0.8387266814385015,
+      "p10": 0.6606728915427532
+     },
+     "hold_iou": {
+      "median": 0.6842105263157895,
+      "p10": 0.0
+     },
+     "hold_position_shift_p95_mm": {
+      "median": 2.7908048730822985,
+      "p10": 1.024570425901103
+     },
+     "hold_jitter_before_mm": {
+      "median": 1.0532880314650843,
+      "p10": 0.48393359776293154
+     },
+     "hold_jitter_after_mm": {
+      "median": 0.7683048792272675,
+      "p10": 0.39653160528858494
+     },
+     "hold_share_before": {
+      "median": 0.0,
+      "p10": 0.0
+     },
+     "hold_share_after": {
+      "median": 0.0,
+      "p10": 0.0
+     },
+     "hold_count_before": {
+      "median": 0.0,
+      "p10": 0.0
+     },
+     "hold_count_after": {
+      "median": 0.0,
+      "p10": 0.0
+     },
+     "finger_quiet_raw_before": {
+      "median": 0.748077173951952,
+      "p10": 0.5396380562856673
+     },
+     "finger_quiet_raw_after": {
+      "median": 0.651990062357827,
+      "p10": 0.5140110468134095
+     },
+     "finger_bend_lag_frames": {
+      "median": 0.0,
+      "p10": 0.0
+     }
+    },
+    "kept_correction": {
+     "finger_speed_raw": {
+      "median": 0.9999999999999997,
+      "p10": 0.9999999999999928
+     },
+     "finger_speed_6hz": {
+      "median": 0.9999999999999997,
+      "p10": 0.9999999999999952
+     },
+     "finger_speed_3hz": {
+      "median": 0.9999999999999996,
+      "p10": 0.9999999999999961
+     },
+     "finger_active_6hz": {
+      "median": 1.0,
+      "p10": 0.9999999999999946
+     },
+     "finger_peak_6hz": {
+      "median": 0.9999999999999997,
+      "p10": 0.9999999999999903
+     },
+     "finger_range": {
+      "median": 0.9999999999999993,
+      "p10": 0.9999999999999963
+     },
+     "wrist_active_6hz": {
+      "median": 0.9755463581104364,
+      "p10": 0.8825227642878385
+     },
+     "wrist_p95_6hz": {
+      "median": 0.9881364717971404,
+      "p10": 0.8685166959091007
+     },
+     "wrist_max_6hz": {
+      "median": 0.9999839851029164,
+      "p10": 0.8486468094943246
+     },
+     "wrist_max_raw": {
+      "median": 0.9999999999999992,
+      "p10": 0.8567700808631445
+     },
+     "hold_iou": {
+      "median": 1.0,
+      "p10": 0.5642292490118578
+     },
+     "hold_position_shift_p95_mm": {
+      "median": 2.62726004849152e-13,
+      "p10": 0.0
+     },
+     "hold_jitter_before_mm": {
+      "median": 0.7683048792272675,
+      "p10": 0.39653160528858494
+     },
+     "hold_jitter_after_mm": {
+      "median": 0.744327544858923,
+      "p10": 0.4014235067121085
+     },
+     "hold_share_before": {
+      "median": 0.0,
+      "p10": 0.0
+     },
+     "hold_share_after": {
+      "median": 0.0,
+      "p10": 0.0
+     },
+     "hold_count_before": {
+      "median": 0.0,
+      "p10": 0.0
+     },
+     "hold_count_after": {
+      "median": 0.0,
+      "p10": 0.0
+     },
+     "finger_quiet_raw_before": {
+      "median": 0.651990062357827,
+      "p10": 0.5140110468134095
+     },
+     "finger_quiet_raw_after": {
+      "median": 0.6519900623577779,
+      "p10": 0.5140110468133714
+     },
+     "finger_bend_lag_frames": {
+      "median": 0.0,
+      "p10": 0.0
+     }
+    },
+    "kept_on_lowpassed": {
+     "finger_speed_raw": {
+      "median": 0.9579988016201135,
+      "p10": 0.9434433362178367
+     },
+     "finger_speed_6hz": {
+      "median": 0.9746882818868583,
+      "p10": 0.9663353611525781
+     },
+     "finger_speed_3hz": {
+      "median": 0.9982235278858621,
+      "p10": 0.9943580287104243
+     },
+     "finger_active_6hz": {
+      "median": 0.9777326272273282,
+      "p10": 0.9619213523235506
+     },
+     "finger_peak_6hz": {
+      "median": 0.9816955323714629,
+      "p10": 0.928689185067874
+     },
+     "finger_range": {
+      "median": 0.9981435973744939,
+      "p10": 0.9925628173246626
+     },
+     "wrist_active_6hz": {
+      "median": 0.9672048348896591,
+      "p10": 0.9411955213348308
+     },
+     "wrist_p95_6hz": {
+      "median": 0.9781673482622864,
+      "p10": 0.9293538167509818
+     },
+     "wrist_max_6hz": {
+      "median": 0.9655809132931488,
+      "p10": 0.900148551305128
+     },
+     "wrist_max_raw": {
+      "median": 0.9482992365765648,
+      "p10": 0.8616812936427127
+     },
+     "hold_iou": {
+      "median": 0.8452380952380952,
+      "p10": 0.0
+     },
+     "hold_position_shift_p95_mm": {
+      "median": 1.7867820432881008,
+      "p10": 0.9567311358564703
+     },
+     "hold_jitter_before_mm": {
+      "median": 0.5066349674727324,
+      "p10": 0.27326069697244665
+     },
+     "hold_jitter_after_mm": {
+      "median": 0.38134499977217307,
+      "p10": 0.22301235677157097
+     },
+     "hold_share_before": {
+      "median": 0.0,
+      "p10": 0.0
+     },
+     "hold_share_after": {
+      "median": 0.0,
+      "p10": 0.0
+     },
+     "hold_count_before": {
+      "median": 0.0,
+      "p10": 0.0
+     },
+     "hold_count_after": {
+      "median": 0.0,
+      "p10": 0.0
+     },
+     "finger_quiet_raw_before": {
+      "median": 0.6303198362596324,
+      "p10": 0.5016080673015513
+     },
+     "finger_quiet_raw_after": {
+      "median": 0.5968976899944818,
+      "p10": 0.4746259820631182
+     },
+     "finger_bend_lag_frames": {
+      "median": 0.0,
+      "p10": 0.0
+     }
+    },
+    "hand.torso": {
+     "penetration_before": {
+      "frames_any": 0.17664233576642335,
+      "frames_over_5mm": 0.16624087591240877,
+      "frames_over_10mm": 0.14817518248175182,
+      "frames_over_20mm": 0.11642335766423358,
+      "clips_with_any": 1.0,
+      "clip_max_depth_median_mm": 62.45363354682923,
+      "clip_max_depth_max_mm": 88.22686672210695
+     },
+     "penetration_filtered": {
+      "frames_any": 0.17627737226277373,
+      "frames_over_5mm": 0.1644160583941606,
+      "frames_over_10mm": 0.14452554744525548,
+      "frames_over_20mm": 0.11423357664233577,
+      "clips_with_any": 1.0,
+      "clip_max_depth_median_mm": 62.79270350933076,
+      "clip_max_depth_max_mm": 86.95499300956727
+     },
+     "penetration_after": {
+      "frames_any": 0.0,
+      "frames_over_5mm": 0.0,
+      "frames_over_10mm": 0.0,
+      "frames_over_20mm": 0.0,
+      "clips_with_any": 0.0,
+      "clip_max_depth_median_mm": 0.0,
+      "clip_max_depth_max_mm": 0.0
+     }
+    },
+    "hand.head": {
+     "penetration_before": {
+      "frames_any": 0.00145985401459854,
+      "frames_over_5mm": 0.00145985401459854,
+      "frames_over_10mm": 0.0005474452554744526,
+      "frames_over_20mm": 0.0,
+      "clips_with_any": 0.05555555555555555,
+      "clip_max_depth_median_mm": 9.612185508012772,
+      "clip_max_depth_max_mm": 11.469952017068865
+     },
+     "penetration_filtered": {
+      "frames_any": 0.00145985401459854,
+      "frames_over_5mm": 0.0010948905109489052,
+      "frames_over_10mm": 0.000364963503649635,
+      "frames_over_20mm": 0.0,
+      "clips_with_any": 0.05555555555555555,
+      "clip_max_depth_median_mm": 10.101992264389992,
+      "clip_max_depth_max_mm": 11.004381626844406
+     },
+     "penetration_after": {
+      "frames_any": 0.0,
+      "frames_over_5mm": 0.0,
+      "frames_over_10mm": 0.0,
+      "frames_over_20mm": 0.0,
+      "clips_with_any": 0.0,
+      "clip_max_depth_median_mm": 0.0,
+      "clip_max_depth_max_mm": 0.0
+     }
+    },
+    "forearm.torso": {
+     "penetration_before": {
+      "frames_any": 0.7864963503649635,
+      "frames_over_5mm": 0.7655109489051095,
+      "frames_over_10mm": 0.7036496350364964,
+      "frames_over_20mm": 0.5604014598540146,
+      "clips_with_any": 1.0,
+      "clip_max_depth_median_mm": 57.59994089603424,
+      "clip_max_depth_max_mm": 87.18596100807191
+     },
+     "penetration_filtered": {
+      "frames_any": 0.7875912408759124,
+      "frames_over_5mm": 0.7627737226277372,
+      "frames_over_10mm": 0.7051094890510949,
+      "frames_over_20mm": 0.5635036496350365,
+      "clips_with_any": 1.0,
+      "clip_max_depth_median_mm": 58.703261613845825,
+      "clip_max_depth_max_mm": 86.94297075271606
+     },
+     "penetration_after": {
+      "frames_any": 0.008759124087591242,
+      "frames_over_5mm": 0.006569343065693431,
+      "frames_over_10mm": 0.005291970802919708,
+      "frames_over_20mm": 0.002737226277372263,
+      "clips_with_any": 0.3055555555555556,
+      "clip_max_depth_median_mm": 17.95750856399536,
+      "clip_max_depth_max_mm": 43.388426303863525
+     }
+    },
+    "forearm.head": {
+     "penetration_before": {
+      "frames_any": 0.0,
+      "frames_over_5mm": 0.0,
+      "frames_over_10mm": 0.0,
+      "frames_over_20mm": 0.0,
+      "clips_with_any": 0.0,
+      "clip_max_depth_median_mm": 0.0,
+      "clip_max_depth_max_mm": 0.0
+     },
+     "penetration_filtered": {
+      "frames_any": 0.0,
+      "frames_over_5mm": 0.0,
+      "frames_over_10mm": 0.0,
+      "frames_over_20mm": 0.0,
+      "clips_with_any": 0.0,
+      "clip_max_depth_median_mm": 0.0,
+      "clip_max_depth_max_mm": 0.0
+     },
+     "penetration_after": {
+      "frames_any": 0.0,
+      "frames_over_5mm": 0.0,
+      "frames_over_10mm": 0.0,
+      "frames_over_20mm": 0.0,
+      "clips_with_any": 0.0,
+      "clip_max_depth_median_mm": 0.0,
+      "clip_max_depth_max_mm": 0.0
+     }
+    },
+    "kept_filter_dominant_arm": {
+     "wrist_active_6hz": {
+      "median": 0.9669149301123707,
+      "p10": 0.9494685882134821,
+      "on_lowpassed_median": 0.9784053058030275,
+      "on_lowpassed_p10": 0.9628158104842893
+     },
+     "wrist_p95_6hz": {
+      "median": 0.9885031289002937,
+      "p10": 0.9460849290249405,
+      "on_lowpassed_median": 0.9870434483751828,
+      "on_lowpassed_p10": 0.9415035560131237
+     },
+     "wrist_max_6hz": {
+      "median": 0.972883065778326,
+      "p10": 0.8687368709617441,
+      "on_lowpassed_median": 0.9803626033728217,
+      "on_lowpassed_p10": 0.9041992514813537
+     },
+     "finger_speed_6hz": {
+      "median": 0.9680642329013449,
+      "p10": 0.9545809632727009,
+      "on_lowpassed_median": 0.9732173134965718,
+      "on_lowpassed_p10": 0.9660794890610374
+     },
+     "finger_peak_6hz": {
+      "median": 0.9947687440301018,
+      "p10": 0.9091534137561177,
+      "on_lowpassed_median": 0.9730276652825738,
+      "on_lowpassed_p10": 0.9292493896996032
+     },
+     "finger_range": {
+      "median": 0.9948462143689059,
+      "p10": 0.9780400123582662,
+      "on_lowpassed_median": 0.9969206955653713,
+      "on_lowpassed_p10": 0.992402334735128
+     },
+     "hold_iou": {
+      "median": 0.625,
+      "p10": 0.0,
+      "on_lowpassed_median": 0.6225961538461539,
+      "on_lowpassed_p10": 0.0
+     }
+    },
+    "moved": {
+     "wrist_depth_move_cm_max": {
+      "median": 8.74920756981836,
+      "p95": 26.85909196607127,
+      "max": 44.63558700135552
+     },
+     "wrist_image_shift_cm_max": {
+      "median": 5.6371629044038527e-14,
+      "p95": 1.1550078548081702e-13,
+      "max": 2.528116927607153e-10
+     },
+     "swivel_deg_max": {
+      "median": 22.365324767240928,
+      "p95": 69.07476870023173,
+      "max": 70.0
+     }
+    },
+    "face": {
+     "jitter_before": 0.00629963072056305,
+     "jitter_after": 0.002450874727982195,
+     "blink_peak_kept": 0.983432502245092,
+     "head_speed_active_kept": 0.9864257873192033
+    }
+   }
+  },
+  "signers": {
+   "c01.real": {
+    "arm_invalid": 0.5578808446455505,
+    "head.jitter_mm": {
+     "before": 3.9881154052768997,
+     "after": 0.46676514184649304
+    },
+    "wrist.R.jitter_mm": {
+     "before": 8.398814896669563,
+     "after": 1.5476541146472895
+    },
+    "tips.R.jitter_mm": {
+     "before": 11.54436062337631,
+     "after": 2.2744058811909835
+    }
+   },
+   "c01.gen": {
+    "arm_invalid": 0.0,
+    "head.jitter_mm": {
+     "before": 3.515226399237893,
+     "after": 0.5912554917738844
+    },
+    "wrist.R.jitter_mm": {
+     "before": 6.172944328152672,
+     "after": 2.380280222222239
+    },
+    "tips.R.jitter_mm": {
+     "before": 13.217923795977644,
+     "after": 7.828126742686651
+    }
+   },
+   "c03.real": {
+    "arm_invalid": 0.0,
+    "head.jitter_mm": {
+     "before": 5.938217561885056,
+     "after": 0.8904911311567772
+    },
+    "wrist.R.jitter_mm": {
+     "before": 7.580772477934023,
+     "after": 2.415443643926414
+    },
+    "tips.R.jitter_mm": {
+     "before": 8.611075132667454,
+     "after": 3.561898481194856
+    }
+   },
+   "c03.gen": {
+    "arm_invalid": 0.0,
+    "head.jitter_mm": {
+     "before": 2.6673472378366716,
+     "after": 0.42235130172621305
+    },
+    "wrist.R.jitter_mm": {
+     "before": 5.05626870785091,
+     "after": 2.01756920472258
+    },
+    "tips.R.jitter_mm": {
+     "before": 11.03835322215092,
+     "after": 6.254083979877631
+    }
+   },
+   "c05.real": {
+    "arm_invalid": 0.0,
+    "head.jitter_mm": {
+     "before": 5.037788153774827,
+     "after": 0.755079407945643
+    },
+    "wrist.R.jitter_mm": {
+     "before": 6.413924382821392,
+     "after": 1.9115965072597543
+    },
+    "tips.R.jitter_mm": {
+     "before": 7.02994618912554,
+     "after": 2.408013592042363
+    }
+   },
+   "c05.gen": {
+    "arm_invalid": 0.0,
+    "head.jitter_mm": {
+     "before": 3.395828994120489,
+     "after": 0.6048128976301264
+    },
+    "wrist.R.jitter_mm": {
+     "before": 5.862617974310162,
+     "after": 2.301547832532794
+    },
+    "tips.R.jitter_mm": {
+     "before": 11.297217323274559,
+     "after": 5.772430419233596
+    }
+   }
+  }
+ },
+ "rendered_pixels": [
+  {
+   "setting": "baseline-main-4cc0db6-768",
+   "clip": "c01-dJkZC7IchGs_5-1-rgb_front-gen",
+   "jitter_px": 1.2898527546329426,
+   "second_diff": 4.124808311462402,
+   "flicker": 2.359307289123535,
+   "span": 9.250485801696778,
+   "hand_px_len": 157.74306682707896,
+   "finger_px": 13.283626680175072,
+   "video": 553743,
+   "frames": 104,
+   "secs": 7.876137541956268
+  },
+  {
+   "setting": "baseline-main-4cc0db6-768",
+   "clip": "c01-dJkZC7IchGs_5-1-rgb_front-real",
+   "jitter_px": 3.3404154760127325,
+   "second_diff": 3.131770133972168,
+   "flicker": 1.7034181356430054,
+   "span": 7.857505655288697,
+   "hand_px_len": 185.70778870745676,
+   "finger_px": 15.638550627996361,
+   "video": 317274,
+   "frames": 68,
+   "secs": 6.267616290948354
+  },
+  {
+   "setting": "baseline-main-4cc0db6-768",
+   "clip": "c03-1jzQa7PnItU_13-3-rgb_front-gen",
+   "jitter_px": 2.307173777925373,
+   "second_diff": 3.2703421115875244,
+   "flicker": 1.9380848407745361,
+   "span": 8.764537563323975,
+   "hand_px_len": 166.48910332772815,
+   "finger_px": 14.020135017071846,
+   "video": 516948,
+   "frames": 104,
+   "secs": 7.907153291045688
+  },
+  {
+   "setting": "baseline-main-4cc0db6-768",
+   "clip": "c03-1jzQa7PnItU_13-3-rgb_front-real",
+   "jitter_px": 4.4832226017381185,
+   "second_diff": 5.209770679473877,
+   "flicker": 2.8075122833251953,
+   "span": 7.883096961975098,
+   "hand_px_len": 185.1049158774269,
+   "finger_px": 15.587782389678056,
+   "video": 478140,
+   "frames": 104,
+   "secs": 7.872873291024007
+  },
+  {
+   "setting": "baseline-main-4cc0db6-768",
+   "clip": "c05-0sat-Ibig34_13-11-rgb_front-gen",
+   "jitter_px": 0.620306109393414,
+   "second_diff": 2.9625799655914307,
+   "flicker": 1.7760891914367676,
+   "span": 8.809959087371826,
+   "hand_px_len": 165.63073511789784,
+   "finger_px": 13.947851378349291,
+   "video": 351099,
+   "frames": 69,
+   "secs": 6.311635624966584
+  },
+  {
+   "setting": "baseline-main-4cc0db6-768",
+   "clip": "c05-0sat-Ibig34_13-11-rgb_front-real",
+   "jitter_px": 2.764385808560672,
+   "second_diff": 4.3450164794921875,
+   "flicker": 2.3573832511901855,
+   "span": 7.9222711563110355,
+   "hand_px_len": 184.18960563317412,
+   "finger_px": 15.510703632267296,
+   "video": 362603,
+   "frames": 76,
+   "secs": 6.751949875033461
+  },
+  {
+   "setting": "v4-768",
+   "clip": "c01-dJkZC7IchGs_5-1-rgb_front-gen",
+   "jitter_px": 0.2375358754761523,
+   "second_diff": 4.284682273864746,
+   "flicker": 2.465601682662964,
+   "span": 9.0,
+   "hand_px_len": 162.13333333333333,
+   "finger_px": 13.653333333333332,
+   "video": 528339,
+   "frames": 104,
+   "secs": 26.17712454102002
+  },
+  {
+   "setting": "v4-768",
+   "clip": "c01-dJkZC7IchGs_5-1-rgb_front-real",
+   "jitter_px": 0.340585840957077,
+   "second_diff": 2.1301329135894775,
+   "flicker": 1.319807767868042,
+   "span": 9.0,
+   "hand_px_len": 162.13333333333333,
+   "finger_px": 13.653333333333332,
+   "video": 301079,
+   "frames": 68,
+   "secs": 19.25571095792111
+  },
+  {
+   "setting": "v4-768",
+   "clip": "c03-1jzQa7PnItU_13-3-rgb_front-gen",
+   "jitter_px": 0.5994615793247028,
+   "second_diff": 3.0143191814422607,
+   "flicker": 1.8073503971099854,
+   "span": 9.0,
+   "hand_px_len": 162.13333333333333,
+   "finger_px": 13.653333333333332,
+   "video": 460347,
+   "frames": 104,
+   "secs": 26.04566108295694
+  },
+  {
+   "setting": "v4-768",
+   "clip": "c03-1jzQa7PnItU_13-3-rgb_front-real",
+   "jitter_px": 0.533976567110696,
+   "second_diff": 1.6444518566131592,
+   "flicker": 1.0286515951156616,
+   "span": 9.0,
+   "hand_px_len": 162.13333333333333,
+   "finger_px": 13.653333333333332,
+   "video": 389727,
+   "frames": 104,
+   "secs": 26.13327504193876
+  },
+  {
+   "setting": "v4-768",
+   "clip": "c05-0sat-Ibig34_13-11-rgb_front-gen",
+   "jitter_px": 0.12808689647306895,
+   "second_diff": 2.6543118953704834,
+   "flicker": 1.625515103340149,
+   "span": 9.0,
+   "hand_px_len": 162.13333333333333,
+   "finger_px": 13.653333333333332,
+   "video": 314511,
+   "frames": 69,
+   "secs": 19.28005104197655
+  },
+  {
+   "setting": "v4-768",
+   "clip": "c05-0sat-Ibig34_13-11-rgb_front-real",
+   "jitter_px": 0.3654869423709992,
+   "second_diff": 2.0335183143615723,
+   "flicker": 1.2337708473205566,
+   "span": 9.0,
+   "hand_px_len": 162.13333333333333,
+   "finger_px": 13.653333333333332,
+   "video": 291973,
+   "frames": 76,
+   "secs": 20.772401583963074
+  }
+ ],
+ "real_played_faster": {
+  "real": {
+   "wrist.L.jitter_mm": 4.64869026594236,
+   "wrist.R.jitter_mm": 6.634952640024098,
+   "tips.L.jitter_mm": 5.0097678424892,
+   "tips.R.jitter_mm": 7.429018780920914,
+   "hand.L.jitter_deg": 1.4545909747962598,
+   "hand.R.jitter_deg": 2.8839257125491464,
+   "head.jitter_mm": 5.26417854296058,
+   "chest.jitter_mm": 2.7427864916851856
+  },
+  "real played 1.5x": {
+   "wrist.L.jitter_mm": 4.311744875782042,
+   "wrist.R.jitter_mm": 6.19357881626337,
+   "tips.L.jitter_mm": 5.186008068115703,
+   "tips.R.jitter_mm": 8.290539377637785,
+   "hand.L.jitter_deg": 1.9253345339422503,
+   "hand.R.jitter_deg": 3.510769164220957,
+   "head.jitter_mm": 4.665225875813801,
+   "chest.jitter_mm": 2.4582465268497113
+  },
+  "real played 2x": {
+   "wrist.L.jitter_mm": 6.144830604427753,
+   "wrist.R.jitter_mm": 8.659907340814648,
+   "tips.L.jitter_mm": 7.807490128088562,
+   "tips.R.jitter_mm": 12.126497120088978,
+   "hand.L.jitter_deg": 2.8547900311244754,
+   "hand.R.jitter_deg": 5.299687784343284,
+   "head.jitter_mm": 5.976419606212029,
+   "chest.jitter_mm": 3.0944405778991637
+  },
+  "generated": {
+   "wrist.L.jitter_mm": 7.5962820571110505,
+   "wrist.R.jitter_mm": 5.714816967368922,
+   "tips.L.jitter_mm": 13.334816690755826,
+   "tips.R.jitter_mm": 11.560119722187189,
+   "hand.L.jitter_deg": 5.115853781950054,
+   "hand.R.jitter_deg": 5.525337404714462,
+   "head.jitter_mm": 3.0796302495619137,
+   "chest.jitter_mm": 1.230426477688423
+  }
+ },
+ "d20_arm_validity": {
+  "c01": {
+   "clips": 177,
+   "median_invalid": 0.3707865168539326,
+   "over_20pct": 123,
+   "over_50pct": 60,
+   "over_80pct": 12,
+   "gap_over_1s": 35,
+   "gap_over_2s": 12
+  },
+  "c03": {
+   "clips": 265,
+   "median_invalid": 0.0,
+   "over_20pct": 5,
+   "over_50pct": 0,
+   "over_80pct": 0,
+   "gap_over_1s": 0,
+   "gap_over_2s": 0
+  },
+  "c05": {
+   "clips": 58,
+   "median_invalid": 0.0,
+   "over_20pct": 1,
+   "over_50pct": 0,
+   "over_80pct": 0,
+   "gap_over_1s": 0,
+   "gap_over_2s": 0
+  },
+  "all": {
+   "clips": 500,
+   "median_invalid": 0.014327706253284288,
+   "over_20pct": 129,
+   "over_50pct": 60,
+   "over_80pct": 12,
+   "gap_over_1s": 35,
+   "gap_over_2s": 12
+  }
+ },
+ "field_error_posed_surface_mm": {
+  "p50": 1.9,
+  "p95": 6.2,
+  "p99": 10.0,
+  "max": 30.1,
+  "frames": 90
+ },
+ "note": "medians; per-clip rows are in R2 under renders/avatar-fixes-2026-11-02/measures/",
+ "contrast_final": {
+  "skin_top": 5.2,
+  "skin_backdrop": 2.61,
+  "top_backdrop": 1.98,
+  "before": {
+   "skin_top": 3.3,
+   "skin_backdrop": 1.14,
+   "top_backdrop": 3.7
+  }
+ }
+}

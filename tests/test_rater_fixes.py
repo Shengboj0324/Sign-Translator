@@ -502,6 +502,7 @@ def fake_renderer(monkeypatch, *, mirror=True, passed=None):
         calls.append(argv)
         ok = len(calls) % 2 == 0 if passed is None else passed
         record = dict(frames=3, acceptance=dict(groups=dict(body=dict(threshold_median_deg=5., median_deg=1.5 + len(calls), n=9, passed=ok)), mirror=mirror, passed=ok and mirror))
+        record["render_settings_sha256"] = render_avatar.settings_sha256(768)
         (out / "verification.json").write_text(json.dumps(record))
         return 0
     monkeypatch.setattr(render_avatar, "main", main)
@@ -582,10 +583,10 @@ def test_a_packet_keeps_acceptance_on_every_item_by_arm_and_out_of_the_zips(tmp_
 
 def test_the_pages_claim_only_what_the_renderer_shows():
     source = read("scripts/render_avatar.py")
-    assert "No eyebrow, hair or lip geometry" in source and "Painted eyebrows" in source      # if this changes, the pages change with it
+    assert "No lip geometry" in source and '"hair", "brows", "lashes"' in source              # if this changes, the pages change with it
     for name in ("docs/HUMAN_EVALUATION_REVIEWER_GUIDE_TWO_STAGE.md", "docs/HUMAN_EVALUATION_REVIEWER_GUIDE.md"):
         guide = read(name)
-        assert "painted on" in guide and "no separate lips" in guide and "shows eyebrow movements" not in guide and "on purpose" not in guide.split("## What you will see")[1].split("##")[0]
+        assert "short dark hair" in guide and "no separate lips" in guide and "painted on" not in guide and "no hair" not in guide and "shows eyebrow movements" not in guide and "on purpose" not in guide.split("## What you will see")[1].split("##")[0]
 
 
 # ---- P6 and P7: the pages, the debrief and the board --------------------------------------------------------------------------------

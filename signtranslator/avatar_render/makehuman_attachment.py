@@ -80,7 +80,9 @@ def _fit_attachment(proxy_bytes: bytes, mesh_bytes: bytes, texture_path: Path, r
         elif fields[0] == "verts":
             reading = True
         elif reading:
-            if len(fields) == 1:
+            if fields[0].isalpha() or "_" in fields[0]:         # a later section (clothes' delete_verts) ends the table
+                reading = False
+            elif len(fields) == 1:
                 vertex = int(fields[0])
                 refs.append([vertex, vertex, vertex])
                 coefficients.append([1.0, 0.0, 0.0])

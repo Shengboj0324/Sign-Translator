@@ -135,20 +135,27 @@ def held_for_display(state):
     return replace(state, channels=channels)
 
 
-def render_avatar_video(state, path: Path, *, resolution: int = 384, verification: Path | None = None) -> dict:
-    """The MakeHuman avatar render (``render_avatar.py``: Blender Workbench, front camera) of ``state`` to ``path``: ``dict(frames,
+def render_avatar_video(state, path: Path, *, resolution: int = 768, verification: Path | None = None) -> dict:
+    """The MakeHuman avatar render (``render_avatar.py``) of ``state`` to ``path``, one argument list for every system: ``dict(frames,
     acceptance)``, the render's own record kept at ``verification`` if named. A render that fails its mirror check would show a mirrored
-    signer, so it stops here; a direction error is kept and summarised (``avatar_acceptance``), not refused."""
+    signer, so it stops here; a direction error is kept and summarised (``avatar_acceptance``), not refused.
+
+    The renderer fills gaps and filters by itself, so nothing is held first: a held value and then a step would mark the recording. Only
+    the video and, under the private key, its record leave the temporary directory. A render whose settings hash is not the one for this
+    resolution is refused.
+    """
     import render_avatar
     with tempfile.TemporaryDirectory() as tmp:
         npz = Path(tmp) / "state.npz"
-        held_for_display(state).save(npz)
+        state.save(npz)
         out = Path(tmp) / "render"
         code = render_avatar.main(["--state", str(npz), "--out-dir", str(out), "--allow-inferred",
                                    "--resolution", str(resolution)])
         if code != 0 or not (out / "avatar.mp4").exists():
             raise RuntimeError(f"avatar render failed ({code}); see {out}")
         record = json.loads((out / "verification.json").read_text())
+        if record["render_settings_sha256"] != render_avatar.settings_sha256(resolution):
+            raise RuntimeError("the avatar render used other settings")
         if not record["acceptance"]["mirror"]:
             raise SystemExit(f"{path.name}: the render failed its mirror check, so the signer would be shown mirrored: nothing is built on it")
         shutil.copy(out / "avatar.mp4", path)
@@ -646,7 +653,7 @@ def how2sign_packet(argv) -> int:
     parser.add_argument("--fps", type=float, default=24.)
     parser.add_argument("--panel", type=int, default=240)
     parser.add_argument("--renderer", choices=("skeleton", "avatar"), required=True, help="the study's is avatar; skeleton is for smoke runs")
-    parser.add_argument("--avatar-resolution", type=int, default=768)
+    parser.add_argument("--avatar-resolution", type=int, default=768, help="one value for the whole packet, every system")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--output-prefix", help="store prefix (private) to copy the packet and key to")
     parser.add_argument("--excluded-raters-roster", type=Path, help="private JSON {reviewer key: group}: raters who cannot rate this "

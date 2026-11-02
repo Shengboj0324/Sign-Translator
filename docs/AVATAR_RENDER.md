@@ -173,6 +173,7 @@ enforced appearance/signing separation.
 | 8g | linguistically-aware LOD + consent | done (5 tests) |
 | 8h | evaluation + separation + integration + regression | done (8 tests) |
 | 8i | real-state retarget onto the MakeHuman rig + Blender render (§12) | done (25 tests) |
+| 8j | render fixes before raters: filter, collision correction, frame, lights, CC0 appearance (§13) | done |
 
 Rendering layer: 69 tests, green on two consecutive runs at that stage; the
 whole-project total recorded then was 1,176 tests. These are stage snapshots, not the current verdict; rerun the suite (see RESEARCH_CONTRACTS.md's reproducibility section).
@@ -274,16 +275,14 @@ side; checked on the mesh).
 | lips | `mouthSmile*` → `Mouth*PullUp`; `mouthFrown*` → `Mouth*PullDown`; `mouthStretch*` → `Mouth*PullSide`; `mouthLeft/Right` → `MouthMoveLeft/Right`; `mouthPucker` → `LipsKiss`; `mouthFunnel` → ½ `UpperLipForward` + ½ `lowerLipForward`; `mouthRollLower/Upper` → `lower/UpperLipBackward`; `mouthLowerDown*` → `lowerLipDown`; `mouthUpperUp*` → `UpperLipUp`; `mouthShrugLower` → `lowerLipUp` |
 | **not represented** | `_neutral` (not an expression), `mouthClose` (no unit separates lips from jaw), `mouthPressLeft/Right`, `mouthDimpleLeft/Right`, `mouthShrugUpper`; no tongue coefficient exists in the state, so the tongue units are unused |
 
-The body has no eyebrow, hair or lip geometry; brows are painted on the skin carried
-by the brow bones (so raise/furrow read at review resolution), eyes, teeth and tongue
-are the audited attachments coloured from their pinned textures (the transparent
-cornea shell is dropped), and the body wears a plain dark top so the hands contrast.
+Eyes, teeth and tongue are the audited attachments coloured from their pinned textures (the
+transparent cornea shell is dropped). Brows, lashes, hair, the top and the skin texture are in §13.
 
 **CLI.** `render_avatar.py --state S.npz [--sha256 H] | --key K --sha256 H [--store r2|dir:…]
 --out-dir NEW --allow-inferred [--resolution 384] [--start-seconds/--max-seconds]` writes
 `bundle.npz` (posed meshes, provenance), `frames/`, `avatar.mp4` (H.264 4:2:0, PTS from the
-state's clock; `--lossless` for 4:4:4 CRF 0) and `verification.json`. Rendering is Blender
-Workbench in `--background --factory-startup` with a fixed orthographic front camera.
+state's clock; `--lossless` for 4:4:4 CRF 0) and `verification.json`. Rendering is Blender in
+`--background --factory-startup` with a fixed orthographic front camera (§13 for the current engine, frame and filter).
 
 **Measurements** (`verification.json`; reference = `canonical_skeleton.skeleton_positions`
 on the stored state, rig side = bone frames returned by `MakeHumanRig.pose`; only frames
@@ -342,8 +341,106 @@ closes the eye on the viewer's right.
   right index base on −x in 100% of frames. Bone directions were never affected; knuckle
   bases and therefore fingertip positions of the right hand were (used by
   `grammar_motion/frames.py`, `render_text_to_motion_samples.py`, `build_human_eval_packet.py`).
-* Workbench inspection render; not a qualified avatar appearance, and no claim of
-  signing fidelity. `accepted_provenance` stays false.
+* No qualified avatar appearance, and no claim of signing fidelity. `accepted_provenance` stays false.
+
+
+## 13. Render fixes before Deaf raters (2026-11-02)
+
+Raters judge signing only through this avatar. Every number below is from `scripts/avatar_fixes.py` on 36 D20 sentences (12 each from c01, c03, c05, a fixed draw), the real two-view state and draw 1's composition; `reports/avatar_fixes_measures.json` holds them. Medians over clips. None of this says whether anything is correct signing: only a Deaf signer can.
+
+**The order of operations.** State → fill gaps → filter → retarget → move hands out of the body → skin → render. The packet builder gives the renderer the state as it is, so nothing is held first. No step reads a clip's name, clock or system, and `render_settings_sha256` in `verification.json` states what was used. `build_human_eval_packet.py` refuses a render with any other hash.
+
+### Shake
+
+Measure: RMS distance from a trajectory's own 6 Hz low-pass, in millimetres and degrees, and the share of velocity power at 6 Hz and up. `motion_quality.py`.
+
+| Before → after, median | real | generated |
+|---|---|---|
+| Head position, mm | 5.29 → 0.72 | 3.08 → 0.53 |
+| Chest rotation, degrees | 0.75 → 0.10 | 0.36 → 0.06 |
+| Wrist position, mm, left / right | 5.19 / 7.23 → 1.09 / 1.91 | 7.60 / 5.72 → 3.36 / 2.26 |
+| Fingertips, mm, left / right | 5.72 / 7.90 → 1.39 / 2.61 | 13.3 / 11.6 → 7.23 / 6.46 |
+| Hand rotation, degrees, left / right | 1.89 / 3.17 → 0.64 / 1.27 | 5.12 / 5.53 → 2.73 / 3.09 |
+| Share at 6 Hz and up: head | 0.68 → 0.12 | 0.23 → 0.02 |
+| Share at 6 Hz and up: right wrist | 0.49 → 0.08 | 0.16 → 0.03 |
+
+On the rendered pixels themselves (head and hair centroid, six clips at 768 px): real 2.8–4.5 px → 0.3–0.5 px, generated 0.6–2.3 px → 0.1–0.6 px.
+
+**The prior hypothesis, tested.** How2Sign's real states do carry estimator jitter: the torso and head's motion is two-thirds above 6 Hz. The model doesn't simply copy it. Generated torsos carry half of real's. Generated hands carry about twice real's: hand frame 5.1–5.5° against 1.5–2.9° (real, gaps filled), fingertips 12–13 mm against 5–7 mm. Real clips played at 2× read 2.9–5.3° and 8–12 mm, about the same as generated. So the excess in the hands is consistent with real-like jitter squeezed in time by composition's fitted timing, which the motion diagnosis measured at about 2×. This doesn't prove the cause. On torso and head the owner's complaint is mostly the estimator's and is now gone from both; on hands the generated clips still shake more than real, after the filter too.
+
+**The filter** (`motion_filter.FILTER_V1`, one table, no argument changes it). Savitzky-Golay, zero-phase. Torso (pelvis, chest): window 9, order 2 (-3 dB at 2.9 Hz). Everything else, including fingers, face, blink and gaze: window 5, order 2 (-3 dB at 5.7 Hz, gain 0.97 at 3 Hz, 0.91 at 4 Hz, about 0.2 at 8 Hz and up). Arms and hand frames are filtered as world rotations, because a local arm rotation holds the chest's noise inverted, and filtering chest and arm differently in local frames would push that noise into the wrist.
+
+**Why these.** `reports/avatar_fixes_sweep.json` holds the candidates. One-Euro both ways lost more articulation for less shake on arms: at min cutoff 3 Hz, beta 3, the right wrist stayed at 5.8 mm with its p95 speed at 0.95, where Savitzky-Golay window 5 reached 5.4 mm at 0.99. On fingers, the same One-Euro took the 3 Hz band to 0.96 and the 6 Hz band to 0.93; window 5 kept 1.00 and 0.98. On a synthetic handshape change at 7 changes a second, window 5 keeps 0.94 of the plateau distance and window 9 order 3 keeps 0.51, which is what "a filter at the wrong frequency changes the sign" looks like (a test holds this). Fingers therefore get the lightest filter, and much of the finger wobble between handshapes stays: the quietest tenth of frames only goes from 0.77 to 0.75 rad/s on real. Video-path hands don't rest, and this filter does not make them.
+
+**Articulation kept** (after / before, same clip, gaps filled on both sides; median, with the 10th percentile in brackets).
+
+| | real | generated |
+|---|---|---|
+| Finger speed, 6 Hz band | 0.98 (0.97) | 0.97 (0.95) |
+| Finger speed, 3 Hz band | 1.00 | 1.00 |
+| Finger peak speed (p95), 6 Hz band | 0.98 (0.95) | 0.99 (0.91) |
+| Finger bend range | 1.00 (0.99) | 1.00 (0.98) |
+| Dominant wrist peak (p95), 6 Hz band | 0.95 (0.87) | 0.99 (0.95) |
+| Dominant wrist maximum, 6 Hz band | 0.93 (0.81) | 0.97 (0.87) |
+| Hold count | 3 → 3 | no hold detected at 0.15 m/s |
+| Hold share of frames | 0.22 → 0.35 | 0.00 → 0.00 |
+| Wrist jitter inside holds, mm | 3.05 → 0.88 | 1.05 → 0.77 |
+| Blink peak; head speed in movements | 0.99; 0.98 | 0.98; 0.99 |
+
+Holds lengthen because jitter was breaking them, not because motion was removed. Real's dominant wrist loses 5 to 7%; on a state already low-passed at 6 Hz it loses 4 to 5%, which is the filter's own bite on motion below 6 Hz, and the rest was noise. Some clips lose more (10th percentile 0.81 to 0.87). Frames filtered have no lag (best lag 0 on every clip).
+
+**Gaps.** Real arms fail more than expected: over all 500 D20 clips, c01's arm chain is invalid on a median 37% of frames; 60 of its 177 clips are over half invalid and 12 over 80%, with 12 gaps longer than 2 s. c03 and c05 are near 0. The hip-based chest frame drops, so arms, chest and pelvis all go invalid while the fingers stay valid. The packet used to hold the last value and then step, which a rater would see as a frozen arm and a jump, only on real clips. Gaps are now interpolated geodesically, whatever their length. That removes the step. It can't restore the arm: a clip with 98% of frames invalid shows almost no arm motion, and interpolation reads as slow drift. **The reference is a weaker upper bound on c01 than the eligibility rule suggests,** since that rule reads hand coverage only.
+
+### Hands through the body
+
+Signed distance grids of the rest body (5 mm voxels, split by dominant bone into head, neck, chest and belly), read in each part's bone frame. Posed torso and head surface vertices read 1.9 mm median, 6.2 mm p95, 30 mm at worst, so that's the measure's own error. Hand and forearm vertices of the `body` surface are tested.
+
+| Before → after | real | generated |
+|---|---|---|
+| Hand in torso: frames, any depth | 30.9% → 0% | 17.7% → 0% |
+| Hand in torso: frames over 10 mm | 22.6% → 0% | 14.8% → 0% |
+| Hand in torso: clips with any | 94% → 0% | 100% → 0% |
+| Hand in torso: deepest per clip, median | 38 mm → 0 | 62 mm → 0 |
+| Hand in head: frames, any depth | 2.2% → 0% | 0.1% → 0% |
+| Forearm in torso: frames, any depth | 58.8% → 0.5% | 78.6% → 0.9% |
+| Forearm in torso: frames over 10 mm | 48.4% → 0.3% | 70.4% → 0.5% |
+
+**Correction** (`collision.py`). Location is linguistic, so the hand moves only along the camera axis: the front view draws the wrist in exactly the same place (largest shift over all clips and sides: 2.5e-10 cm), the hand ends at the body's surface rather than inside it, and the hand's world rotation and finger locals are unchanged, so handshape and palm orientation don't move. A forearm still inside is cleared by swivelling the elbow outward about the shoulder-wrist axis, which leaves the wrist alone. Moves ease in and out over a few frames. An arm too straight to reach keeps the hand's image place and stays partly inside.
+
+What it costs: the wrist's depth changes by a median 9 cm per clip and side, 44 cm at the most, when the estimate had the hand behind the body. The elbow swivels a median 5° on real and 22° on generated, 70° at the most (the cap). On generated clips that shows as elbows held out at times. The orthographic front view doesn't show the depth move, and doesn't show depth at all. Direction errors in `verification.json` read the retarget before this correction, and each clip's moves are recorded beside them. Hand against hand, and hand against the other arm or its own upper arm, are not handled.
+
+### Readability
+
+| | before | after |
+|---|---|---|
+| Frame | fitted to each clip: span 7.9 on real, 8.8–9.25 on generated (source units), so generated hands were drawn about 12% smaller | one frame for every clip, span 9.0, hair to hip |
+| Engine, 768 px | Workbench, no shadows | EEVEE, 32 samples; key, fill and rim lights; soft shadows |
+| Background | grey, skin against it at luminance contrast 1.14 | darker blue-grey, skin against it 2.6, the top against it 2.0 |
+| Skin against the top | 3.3 | 5.2 |
+| Determinism | re-render identical | two separate runs give a byte-identical video; a fresh process's first frame is identical |
+
+**Hands leaving the frame.** Real: partly out 0.0%. Generated: partly out 16.6%, fully out 0.2%, nearly all a hand hanging below the hip; 1.1% are above the hip. Span 8.4 would draw hands 7% larger but lose a generated hand entirely in 10% of frames; span 10.2 would keep it but draw every hand 12% smaller.
+
+**Resolution**, one 104-frame generated clip:
+
+| Resolution | Finger width | Video | Whole render |
+|---|---|---|---|
+| 384 | 6.8 px | 168 KB | 25 s |
+| 512 | 9.1 px | 253 KB | 25 s |
+| 768 | 13.7 px | 460 KB | 26 s |
+| 1024 | 18.2 px | 710 KB | 34 s |
+
+768 stays. By eye, at 384 finger edges are blocks of a few pixels, at 768 they read cleanly, and 1024 adds little. Render time is mostly not pixels. It was 7.9 s for the same clip before, so a pilot of 240 clips at a mean 170 frames takes about 3 hours on the Mac rather than about 1.
+
+**Playback speed isn't changed.** The owner asked for slower motion. The release bar is read at predicted timing, and a slower video would change that condition, so this is reported, not done. Generated wrists move 1.45× real's on the right and 3.5× on the left at p95 in these clips, and that speed is still visible after the filter. A slow-motion control in the rater's player, used equally on every clip, is the place to ask about it; it isn't built.
+
+### Appearance
+
+All from MakeHuman's system asset pack, listed CC0 on the pack's page, each text asset stating its CC0 release in its own header; `source-intake/makehuman-system-assets/intake.json` holds the pack's URL and hash and each file's hash, and `load_wardrobe` checks them. Hair `short01` (leaves the forehead and brows clear; `short03` covers an eye, refused), brows `eyebrow002` in one mid-brown colour (a bolder pair, so raise and furrow read at 768), lashes `eyelashes01`, top `male_casualsuit02` in one plain dark colour with its printed texture unused, skin `young_lightskinned_male_diffuse`. No SMPL-X, no MANO. The eyes, teeth and tongue stay the audited ones. It is a plain figure; whether it reads as a person a signer is comfortable watching is for raters to say. The texture's near-black brows read as a stern line, so the shape stays and the colour became a mid brown: on six expressive frames, a lowered brow still shows plainly and the face looks less severe, though a state's real lowering still looks like lowering. A thinner cut (alpha threshold 0.5) lost the brows' ends and was refused.
+
+### Blinding
+
+The video has no sample id, clock id or system name in it (a test renders one motion under two names and two clock origins and gets byte-identical files). The packet copies only the video. Frame, lights, engine and encoder settings don't vary. File size does: on these six clips, generated run about 4.4–5.1 KB per frame against 3.7–4.4 for real, because more moves. Deliver played videos, not a folder a rater can sort by size. Duration remains the cue the protocol already records.
 
 
 ## Avatar v2 plan (pre-designed 2026-10-26 02:30 UTC; starts once a generator passes its exit gate)
