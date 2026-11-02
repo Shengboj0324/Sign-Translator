@@ -6327,3 +6327,33 @@ Added after seeing the numbers, by word coverage of the sentence: under 25%, mar
 **Reading, as declared:** well above v1's share, so v1's fit to two-view may be costing composition part of its reading, **but that doesn't mean the motion carries that content for anyone.** **Beyond the declared reading: a generator reading above real signing is flagged, and section 2 of the human protocol requires independent replication; we make no claim from it.** Untested candidates: generated clips and the parent's training data share a landmark source (YouTube-ASL, MediaPipe); a word-by-word sequence in English order may suit a caption-trained reader better than real ASL; How2Sign's real signing is hard for this instrument, and much harder for some signers. Because of them **the parent isn't a fair ruler for generated motion**, and its 99.8% on the monocular path, which measures real signing only, is unaffected but stays one instrument's view. No target moves: M1 remains not met on v1, 3.8 is unchanged, nothing here shows anyone would understand it. The next cheap check is reads, not training: real word clips stitched in the same format, and the same generated words shuffled, through the parent. Those separate the generator from the format.
 
 **Kept on purpose (owner, 2026-11-02):** the read is archived as future material despite the flag. `reports/parent_comp_report.json` holds the report, `reports/parent_comp_inventory.json` lists all 8,168 objects under `round20/parent-comp/` in R2 (3.05 GB) with hashes. Those objects stay out of any cleanup. It never counts as the official score, which stays 2.40 on v1.
+
+### Mirror test: trained on single-camera data, the same recipe prefers single-camera (read 2026-11-02, recorded 05:56 UTC)
+
+`training-runs/back-translator-kp2d-uwb-ft-mono-v1/read/report.json` sha 223dd372, digest de05576e, no alert, v1's controls reproduced exactly (real 4.493, blank 1.680), selection control reproduced (5.0561). Early stop at step 15,000, best at 9,000 (sha 1a996cfc). **Declared label: `unresolved`, on both the preference and the own-path peak.** The rule needed s_two under 0.5; BLEU's is 0.70 [0.54, 0.90] and likelihood's 0.54 [0.50, 0.58]. The difference between the paths does have a lower bound above zero on both metrics.
+
+| Marks-free, D20, 500 clips | Two-view | Monocular | Monocular minus two-view | Blank |
+|---|---|---|---|---|
+| v1, BLEU | 4.621 | 2.653 | -1.968 [-2.619, -1.317] | 1.680 |
+| **Mirror, BLEU** | 3.702 | **4.783** | **+1.080 [0.323, 1.886]** | 1.159 |
+| v1, likelihood minus blank | 0.234 | 0.041 | -0.193 [-0.220, -0.167] | |
+| **Mirror, likelihood minus blank** | 0.312 | **0.574** | **+0.262 [0.232, 0.292]** | |
+| Mirror, margin over still (real forms) | 0.377 | 0.648 | +0.271 [0.232, 0.310] | |
+
+Own-path peak, mirror on monocular against v1 on two-view: BLEU +0.162 [-0.524, 0.847], unresolved by 0.024 at its lower bound; likelihood +0.340 [0.301, 0.381], peak_near.
+
+By training status and signer (report only; here training status and signer are confounded):
+
+| Clips | v1 two-view | v1 mono | Mirror two-view | Mirror mono | Mirror difference |
+|---|---|---|---|---|---|
+| In v1's training lists, 234 | 3.777 | 2.259 | 3.206 | 5.263 | +2.057 [0.943, 3.230] |
+| Outside them, 266 | 5.435 | 3.015 | 4.172 | 4.250 | +0.077 [-0.835, 0.960] |
+| Outside training and selection, 178 | 5.892 | 3.282 | 4.296 | 4.778 | +0.481 [-0.599, 1.529] |
+| c01, 177, in the mirror's training | 4.417 | 2.611 | 3.681 | 6.289 | +2.609 [1.140, 4.117] |
+| c03, 265, selection for both | | 3.025 | 4.173 | 4.255 | +0.082 [-0.823, 0.993] |
+| c05, 58, in the mirror's training | | | 1.837 | 2.219 | +0.383 [-1.391, 2.321] |
+
+**Reading.** v1's strong preference for two-view isn't a neutral measure of what single-camera recovery loses: the same recipe on monocular values reverses the direction. That weakens "single-camera signing has lost the content" considerably, and with the parent's 99.8% it makes v1's fit the larger part of the 4.49 against 2.85 gap. **It doesn't remove all of it.** The two aren't mirror images: v1 loses 1.97 on the other path, the mirror 1.08. On clips outside training, the mirror's BLEU preference vanishes (+0.48, c03 +0.08) while v1's stays large (-2.61); and on those 178 clips v1's own-path 5.89 beats the mirror's 4.78. So part of the gap may be real, or the mirror may simply be weaker: selection had 345 of v1's 512 clips, budget and patience are v1's, and monocular may underfit. The high overall reading comes largely from c01, where the mirror trained on those signers' clips. Both instruments share a parent trained on the source of monocular hands, which may favour this outcome, as declared. Nothing here shows what people could understand.
+
+**Consequences.** M1 stays not met on v1, and neither bar moves. Re-extracting real hands for v1's sake has less support than before. Not yet known: what generated composition reads on this instrument, and whether it reads fingers. Both are report-only next reads: the ladder (`SET=mono`) and composition with the word-format controls.
+
