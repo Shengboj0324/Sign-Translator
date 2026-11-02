@@ -6465,9 +6465,11 @@ Here composition doesn't beat real signing, unlike on the parent: below on margi
 
 | | Composition | Real word clips | Real signing, each one's own path |
 |---|---|---|---|
-| v1, official | 2.40 | 2.22 (older form) | 4.49 |
+| v1 | 2.40 (A5's top10, mean of 8) | 2.22 (older form) | 4.49 |
 | Parent | 3.30 | 3.32 | 2.13 |
 | Mirror | 3.98 | 3.60 | 4.78 |
 
-Composition's standing depends heavily on the reader, from about half of real signing to above it. **No instrument here measures comprehension, and none of this moves M1 or 3.8.** The next report-only read: the same oracle, covered and shuffled forms through v1, to learn how much of the official 2.40 is word order, which is the number that matters most for reading M1.
+Composition's standing depends heavily on the reader, from about half of real signing to above it. **No instrument here measures comprehension, and none of this moves M1 or 3.8.** The next report-only read: the same oracle, covered and shuffled forms through v1, to learn how much of v1's reading of this form on D20 is word order.
+
+**Correction (14:09 UTC, from the review of that read):** the v1 row is A5's top10 on D20, mean 2.402. It only looks like the official C20 2.400, which is arm W14b with gains, best of 16, against real 4.033, on other clips. I wrote "official" for both. So that read won't decompose M1, and nothing from D20 carries over to C20. M1 stands as declared.
 
