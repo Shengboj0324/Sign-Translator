@@ -6573,3 +6573,7 @@ The first signer pilot is 60 sentences and 8 raters, 2 per group, across all fou
 
 Owner, 2026-11-02 20:30 UTC, asked whether ASLLVD train clips may be shown to raters under the DAI terms, answered: Yes. This covers ASLLVD train clips only, shown to consenting reviewers, research use only and non-commercial, under the DAI terms. RIT and WLASL aren't covered. The export's `--word-format-licence-note` carries this sentence into each index.
 
+### Rater read 1: draw seed declared before the draw (2026-11-02, 20:55 UTC)
+
+Seed 2040058301, from a system random source, for `how2sign-draw --name rater-read-1-d20 --main 200 --pilot 60 --min-seconds 1.5 --min-hand-coverage 0.7`, on D20. The final tool check said go with fixes for the draw and no-go for packets until its findings are fixed. The checker's sheet isn't sent until its usability is fixed. `draw.json` stays in private storage, out of the repo and off iCloud.
+
