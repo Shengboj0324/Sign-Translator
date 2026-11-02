@@ -47,7 +47,8 @@ TOP = (0.13, 0.16, 0.23)        # one plain dark colour, as interpreters dress: 
 #: Everything Blender is told. One table for every clip; its hash goes in verification.json and in a packet's key.
 RENDER_SETTINGS = dict(
     engine="BLENDER_EEVEE", samples=32, shadow_rays=3, shadow_steps=6, view_transform="Standard",
-    background=(0.20, 0.22, 0.26),       # linear; a mid tone against which the skin and the dark top both stand out
+    backdrop=(0.07, 0.08, 0.10),         # linear, what the camera sees: darker than the skin and lighter than the top by about the same ratio
+    ambient=(0.20, 0.22, 0.26),          # linear, what lights the figure
     frame_centre=(0., 4.7), frame_span=9.,   # source units: hair to hip, hands out to 45 cm either side of the midline
     key=dict(energy=2200., location=(-6., -18., 14.), size=10., colour=(1., .97, .92)),
     fill=dict(energy=1000., location=(9., -16., 6.), size=12., colour=(.92, .96, 1.)),
@@ -85,7 +86,15 @@ def render_inside_blender(bundle: Path, out_dir: Path, resolution: int, first_on
     scene.render.film_transparent = False
     scene.world = bpy.data.worlds.new("plain")
     scene.world.use_nodes = True
-    scene.world.node_tree.nodes["Background"].inputs[0].default_value = (*settings["background"], 1.)
+    nodes, links = scene.world.node_tree.nodes, scene.world.node_tree.links
+    ambient, backdrop = nodes["Background"], nodes.new("ShaderNodeBackground")
+    ambient.inputs[0].default_value = (*settings["ambient"], 1.)
+    backdrop.inputs[0].default_value = (*settings["backdrop"], 1.)
+    camera_ray, mix = nodes.new("ShaderNodeLightPath"), nodes.new("ShaderNodeMixShader")
+    links.new(camera_ray.outputs["Is Camera Ray"], mix.inputs[0])
+    links.new(ambient.outputs[0], mix.inputs[1])
+    links.new(backdrop.outputs[0], mix.inputs[2])
+    links.new(mix.outputs[0], nodes["World Output"].inputs[0])
 
     def converted(vertices):            # declared proper rotation (x, y, z) -> (x, -z, y)
         return np.stack((vertices[..., 0], -vertices[..., 2], vertices[..., 1]), axis=-1)
