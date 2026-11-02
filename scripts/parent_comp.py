@@ -1,21 +1,21 @@
 """Parent composition read: how much of real signing's clip-specific margin does composed motion carry, on the instrument not fine-tuned on How2Sign? Report only: nothing trains, and this code gates and selects nothing. It reads the eight A5 word draws' added-words composition (top10) on D20, through ``back-translator-kp2d-uwb-v2`` step 76,000, sha ``f1ff9446...``, v1's parent.
 
-**How this will be read (stated before any read; the commit holding this text precedes the job).** No label and no bar: this job sets none. The figures are composition's margin, its share of real two-view's margin, BLEU, per draw and over the eight, and beside them v1's stored top10 share (32.5% on BLEU), which v1's fit to two-view may understate.
-- A share near what v1 stores says the parent reads composition about as v1 does.
-- A share well above it says v1's fit to two-view may be costing composition part of its reading. It does not say the motion carries that content for anyone: the parent is v1's starting weights, trained on MediaPipe image landmarks, the source of the monocular path's hands and so of word clips, and it may read that path generously. Whether its margin moves with hands at all is ``sensitivity_ladder``'s question: read this beside that.
-- A share well below it says composition's reading on v1 did not come from what the parent reads.
+**How this will be read (stated before any read; the commit holding this text precedes the job).** No label and no bar: this job sets none. The figures are composition's margin and its share of real two-view's margin, per draw and over the eight, and, beside v1's stored top10 on the same measures, the parent's BLEU gap share (``comp_a_read.form_read``'s formula: v1's stored mean is 32.5%) and likelihood gap share, each with a paired per-draw difference and a t interval. **Like is compared with like:** a margin share and a BLEU gap share measure different things and can differ about twofold, so a margin share is never read against v1's BLEU share. v1's fit to two-view may understate its shares.
+- A gap share near v1's on its own metric says the parent reads composition about as v1 does.
+- A gap share well above it says v1's fit to two-view may be costing composition part of its reading. It does not say the motion carries that content for anyone: the parent is v1's starting weights, trained on MediaPipe image landmarks, the source of the monocular path's hands and so of word clips, and it may read that path generously. Whether its margin moves with hands at all is ``sensitivity_ladder``'s question: read this beside that.
+- A gap share well below it says composition's reading on v1 did not come from what the parent reads.
 None of these says people understand the motion, and none is a claim about M1 or release.
 
 **Margin**, the parts job's: a clip's mean NLL of 4 mismatched references minus NLL of its own (``retrieval_candidates``, seed 0, the same draw for every form), which is the mismatched-sentence control. **Each form's margin is over its own still pose at its own length,** clip by clip, so a form's duration and flags cancel: ``still_two_view`` for real and nearest, and for each composition its nearest-filled middle frame held on its own clock. **A clip with no selected word is counted,** as composition's reads count it: its state is its blank clip, its still is that same blank, so its margin is exactly zero and the count is reported per draw.
 
-**Forms.** ``real_two_view``, ``blank``, ``nearest_two_view``, ``still_two_view``: the parts job's. ``d<K>_comp``, ``d<K>_still``: draw K's ``core_crossfade@predicted``, composed again by ``round15_compose_eval --export-only`` from that draw's two caches (composed states were never stored). ``d<K>_comp_true``, ``d<K>_still_true``: the same words at the reference's length, ``core_crossfade``: not in the brief's forms, read because they are the direct test of the length question, and they set nothing.
+**Forms.** ``real_two_view``, ``blank``, ``nearest_two_view``, ``still_two_view``: the parts job's. ``d<K>_comp``, ``d<K>_still``: draw K's ``core_crossfade@predicted``, composed again by ``round15_compose_eval --export-only`` from that draw's two caches (composed states were never stored). ``d<K>_comp_true``, ``d<K>_still_true``: the same words at the reference's length, ``core_crossfade``: not in the brief's forms, read because they are the direct test of the length question, and they set nothing. ``d<K>_blank``: the blank clip at that draw's composition lengths, the denominator of its gap shares.
 
-**Per draw and over the eight** (``merge``): margin, share of real's and of nearest's, BLEU, each with a bootstrap over clips (n 2,000, seed 0); over the eight a t interval on the draw values alone (``comp_a5_read.t_interval``) and that bootstrap with the draws fixed: the sentences are fixed, the draws are what vary. **Length:** true length minus predicted, per draw and over the eight, each over its own still; the margin over the composition's own still against over ``still_two_view``, the difference being what a still reads at the composition's length; and, report only, per-clip margin on log length ratio.
+**Per draw and over the eight** (``merge``): margin, share of real's and of nearest's, BLEU, each with a bootstrap over clips (n 2,000, seed 0); over the eight a t interval on the draw values alone (``comp_a5_read.t_interval``) and that bootstrap with the draws fixed: the sentences are fixed, the draws are what vary. **Gap shares:** BLEU, (form minus blank) over (real minus blank), and likelihood by the same formula on own NLL, both against this draw's blank at its composition's lengths. **Length:** true length minus predicted, per draw and over the eight, each over its own still; the margin over the composition's own still against over ``still_two_view``, a difference that also holds pose, since the two stills are different frames of different motion, so it does not isolate length; and, report only, per-clip margin on log length ratio. **Per signer, and by how much of a sentence has words,** report only: ``word_counts`` per clip, rows on non-empty clips and by coverage. Few clips make a signer's share noisy, and c01 and c05 are in v1's training list while c03 is its selection pool, which matters for v1's stored shares and not the parent's.
 **Beside it:** v1's stored top10 gap share and BLEU per draw (``a5-summary.json``), and that share on clips outside v1's training set, since v1 trained on 234 of D20 (``parent_lib``). Those numbers are read here by the job, not before it.
 
-**Controls.** The four anchors against the parts job's stored forms, pinned by hash (at least 0.98 of hypotheses identical, BLEU within 0.05, mean NLL within 0.001, all five columns). A miss voids the read and writes a void record; ``read`` refuses a composition without a passed control of this code and environment. The parent's monitor control is not repeated: reproducing those forms carries it. **Fidelity:** v1 re-reads the first ``FIDELITY_CLIPS`` non-empty clips of each exported predicted form, and only the count of hypotheses identical to that draw's stored top10 report is kept: no BLEU, NLL or text. Below ``FIDELITY_FLOOR`` raises an ALERT.
+**Controls.** The four anchors against the parts job's stored forms, pinned by hash (at least 0.98 of hypotheses identical, BLEU within 0.05, mean NLL within 0.001, all five columns). A miss voids the read and writes a void record; ``read`` refuses a composition without a passed control of this code and environment. The parent's monitor control is not repeated: reproducing those forms carries it. **Fidelity, before each draw's read:** every exported clip's frames against the plan in that draw's stored report (``per_clip``, predicted and true length), and v1 re-reads the first ``FIDELITY_CLIPS`` non-empty clips of the predicted form, keeping only the count of hypotheses identical to the stored report: no BLEU, NLL or text. On D20, under ``FIDELITY_SHARE`` of those clips, or any frame count off, stops that draw and the job with status 1, before its read.
 
-**Refused.** Only the pinned draws, each by its top10 report's hash; a report or export whose caches are not that draw's; a sentence list that is not D20 (``s2_lib``; C20 cannot be named, and the export code refuses it too); c00 and any other partition; an export missing a clip; forms of other code. A smoke (``--smoke-train 5``): 5 D20 sentences composed for one draw, read against c02 train references, so the parent sees no D20 text or real clip: numbers are plumbing.
+**Refused.** A stored anchor on other bytes stops with status 1, no control run and nothing voided. Only the pinned draws, each by its top10 report's hash; a report or export whose caches are not that draw's; a sentence list that is not D20 (``s2_lib``; C20 cannot be named, and the export code refuses it too); c00 and any other partition; an export missing a clip; forms of other code. A smoke (``--smoke-train 5``): 5 D20 sentences composed for one draw, read against c02 train references, so the parent sees no D20 text or real clip: numbers are plumbing.
 
 **Across pods.** Each pod reads its draws and its own anchors under ``pods/<POD>/``; a draw's shares use its own pod's anchors. ``ready`` says when all eight stand, and ``merge`` joins them.
 
@@ -53,6 +53,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 
 import comp_a5_read as A5  # noqa: E402
+import comp_a_read as A  # noqa: E402
 import parent_lib as Q  # noqa: E402
 import path_parts as PP  # noqa: E402
 import path_read as R  # noqa: E402
@@ -81,12 +82,14 @@ DURATION = "-0.083,0.3691,18289"
 PREDICTED, TRUE_LENGTH = "core_crossfade@predicted", "core_crossfade"
 EXPORT_FORMS = (PREDICTED, TRUE_LENGTH)
 ANCHORS = ("real_two_view", "blank", "nearest_two_view", "still_two_view")
-KINDS = dict(comp=(PREDICTED, False), still=(PREDICTED, True), comp_true=(TRUE_LENGTH, False), still_true=(TRUE_LENGTH, True))
-FORM = re.compile(r"d([1-8])_(comp|still|comp_true|still_true)")
+KINDS = dict(comp=(PREDICTED, "as_composed"), still=(PREDICTED, "still"), comp_true=(TRUE_LENGTH, "as_composed"), still_true=(TRUE_LENGTH, "still"), blank=(PREDICTED, "blank"))
+FORM = re.compile(r"d([1-8])_(comp_true|still_true|comp|still|blank)")
+SAME_LENGTH = (("comp", "still"), ("comp_true", "still_true"), ("comp", "blank"))
+COVERAGE_BINS = ((0., .25), (.25, .5), (.5, float("inf")))
 CANDIDATES = Q.CANDIDATES
 BOOT = Q.BOOT
 SMOKE_CLIPS = 5
-FIDELITY_CLIPS, FIDELITY_FLOOR = 8, 6
+FIDELITY_CLIPS, FIDELITY_SHARE = 32, .75
 PLAN = dict(nearest_margin=.2372, nearest_bleu=2.207, real_bleu=2.130, blank_bleu=1.058, still_bleu=.895, v1_share=.325, v1_bleu=2.402)      # docs/NEXT_PHASE_PLAN.md: Parts read, Question 2; A5 result
 PLAN_TOLERANCE = dict(margin=.002, bleu=.05, share=.005, v1_bleu=.001)
 NOT_DECIDED = "report only: no rule, bar or verdict here gates anything"
@@ -96,7 +99,9 @@ DISCLOSURES = dict(
     still="A composition's still holds its nearest-filled middle frame on its own clock: one pose, which can carry more than flags and length. A content-blind instrument reads about zero on this measure.",
     empty="A clip with no selected word is its blank clip in every read, with a margin of exactly zero, and it stays in every mean: coverage counts.",
     true_length="d<K>_comp_true and d<K>_still_true are the same words at the reference's length: beyond the brief's forms, the direct test of the length question.",
-    blank="BLEU over blank is reported unlabelled: blank is V1's, at the reference's length, and flags alone can read an offset against it. The margin is the measure.")
+    blank="Gap shares take d<K>_blank, at the composition's lengths, and real against it, as v1's stored shares do. Flags alone can read an offset against a blank: the margin does not carry it, and the two scales differ, about twofold, so like is compared with like.",
+    per_signer="Per-signer rows are report only: few clips make them noisy. c01 and c05 are in v1's training list and c03 is its selection pool, which bears on v1's stored shares; the parent trained on neither.",
+    length="Own still minus reference still also differs in pose, since the two stills are different frames of different motion: it does not isolate length. True length minus predicted is the direct test.")
 
 
 @functools.lru_cache(maxsize=1)
@@ -155,6 +160,8 @@ def run_inputs(args) -> int:
     for k in DRAWS:
         load_top10(store, k)
     P.check_sha(store.get(A5_SUMMARY), A5_SUMMARY_SHA, A5_SUMMARY)
+    for name in ANCHORS:
+        Q.stored_form(store, Q.STORED_PARENT, name)
     print(json.dumps(dict(inputs=dict(draws=list(DRAWS), summary=A5_SUMMARY_SHA, caches={k: DRAW_INPUTS[k]["cache"][:8] for k in DRAWS}))), flush=True)
     return 0
 
@@ -263,6 +270,21 @@ def still_of(state, row: dict, tokenizer):
     return PP.held_still(T.cap_form("v0_nearest_fill", state, tokenizer))
 
 
+def blank_at_length(ref, frames: int):
+    """The reference's blank clip held for ``frames`` frames: ``round15_compose_eval``'s blank@predicted, at the composition's own length."""
+    from evaluate_text_to_motion import blanked
+    from round15_compose_eval import held
+    return held(blanked([ref])[0], frames)
+
+
+def kind_states(how: str, states, rows, refs, tokenizer) -> list:
+    if how == "as_composed":
+        return states
+    if how == "still":
+        return [still_of(s, r, tokenizer) for s, r in zip(states, rows)]
+    return [blank_at_length(ref, len(s.timestamps)) for s, ref in zip(states, refs)]
+
+
 def build_anchor(form: str, refs, tokenizer) -> list:
     from evaluate_text_to_motion import blanked
     if form == "real_two_view":
@@ -306,12 +328,17 @@ def open_list(store, args) -> tuple[list[dict], bool, dict]:
     return records, declared, described
 
 
+def tokens_of(text: str) -> int:
+    from signtranslator.generation.compositional import normalise
+    return len(normalise(text))
+
+
 def read_one(name: str, states, masks, rows, *, reader, texts, signs, groups, candidates, refs, args, declared, described, digest, place, out_dir, started) -> None:
     built = time.time()
     raw = reader.read(states, texts, candidates, group=args.nll_group)
     validity = [R.part_validity(s) for s in states]
     report = dict(kind=f"{PROBE}-form", report_only=True, form=name, declared_read=declared, list=described, code_digest=digest, environment=place, instrument=reader.info, signs=signs, groups=groups, references=texts, hypotheses=raw["hypotheses"], nll=np.round(raw["nll"], 5).tolist(),
-                  empty=[bool(r["empty"]) for r in rows] if rows else None, frames=[len(s.timestamps) for s in states], reference_frames=[len(r.timestamps) for r in refs], motion=L.motion_statistics(states, masks), valid_frame_share=[R.valid_frame_share(s) for s in states], part_validity={part: [v[part] for v in validity] for part in R.PARTS},
+                  empty=[bool(r["empty"]) for r in rows] if rows else None, word_counts=[len(r["words"]) for r in rows] if rows else None, sentence_tokens=[tokens_of(x) for x in texts], frames=[len(s.timestamps) for s in states], reference_frames=[len(r.timestamps) for r in refs], motion=L.motion_statistics(states, masks), hands=P.hand_statistics(states, masks), tracked=P.tracked_statistics(states), seconds_over_reference=[round(len(s.timestamps) / max(len(r.timestamps), 1), 5) for s, r in zip(states, refs)], valid_frame_share=[R.valid_frame_share(s) for s in states], part_validity={part: [v[part] for v in validity] for part in R.PARTS},
                   build_seconds=round(built - started, 2), read_seconds=round(time.time() - built, 2), peak_rss_bytes=P.peak_rss_bytes(), gpu_peak_reserved_bytes=P.gpu_peak_reserved_bytes())
     P.write_report_once(out_dir / f"form-{name}.json", report)
     print(json.dumps({name: dict(clips=len(signs), build_seconds=report["build_seconds"], read_seconds=report["read_seconds"], peak_rss_gb=round(report["peak_rss_bytes"] / 2 ** 30, 2))}), flush=True)
@@ -365,7 +392,7 @@ def run_read(args) -> int:
                 kind = draw_form(name)[1]
                 if KINDS[kind][0] != form:
                     continue
-                built = states if not KINDS[kind][1] else [still_of(s, r, tokenizer) for s, r in zip(states, rows)]
+                built = kind_states(KINDS[kind][1], states, rows, refs, tokenizer)
                 read_one(name, built, list(refs), rows, started=started, **shared)
                 started = time.time()
             del states
@@ -383,10 +410,11 @@ def run_control(args) -> int:
         print(json.dumps(dict(control="not applicable: a smoke reads train clips; nothing compared")), flush=True)
         return 0
     digest, place = P.check_same_run(read, "the control's forms")
+    stored = {name: Q.stored_form(store, Q.STORED_PARENT, name) for name in ANCHORS}      # a pin failure stops here with status 1: no control runs, nothing is voided
     rows, misses = {}, []
     for name in ANCHORS:
         try:
-            rows[name] = Q.same_read(read[name], Q.stored_form(store, Q.STORED_PARENT, name))
+            rows[name] = Q.same_read(read[name], stored[name])
         except SystemExit as error:
             rows[name] = dict(misses=[str(error)])
         misses += [f"{name} {m}" for m in rows[name]["misses"]]
@@ -404,27 +432,63 @@ def run_control(args) -> int:
     return 3
 
 
+def fidelity_floor(clips: int) -> int:
+    return int(np.ceil(FIDELITY_SHARE * clips))
+
+
+def frames_off(index: dict, stored: dict) -> dict:
+    """Every exported clip's frames against the stored report's plan, both forms. A clip with no signing has no plan, and its row must say empty. {compared, off}."""
+    plans = {row["sign"]: (row.get("plans") or {}).get("core_crossfade") for row in stored["per_clip"]}
+    compared, off = 0, []
+    for row in index["states"]:
+        plan = plans.get(row["sign"], "absent")
+        if plan == "absent":
+            off.append(row["sign"])
+            continue
+        if row["empty"] or plan is None:
+            if not (row["empty"] and plan is None):
+                off.append(row["sign"])
+            continue
+        want = plan["predicted"]["frames"] if row["form"] == PREDICTED else plan["frames"]
+        compared += 1
+        if row["frames"] != want:
+            off.append(row["sign"])
+    return dict(compared=compared, off=len(off), first_off=off[0] if off else None)
+
+
+def fidelity_passed(record: dict, declared: bool) -> bool:
+    return not declared or (record["frames"]["off"] == 0 and record["identical"] >= fidelity_floor(record["clips"]))
+
+
 def run_fidelity(args) -> int:
-    """v1 re-reads a few of this draw's exported predicted clips: hypotheses only, against the stored report's, and only the count is kept. No score is computed."""
+    """Before a draw's read: its exported frames against the stored plan, and v1 on a few exported clips, hypotheses only, against the stored report's, of which only the count is kept. No score is computed. On D20 a miss exits 1 and that draw is not read. A record that stands is checked again, not redone."""
     from score_back_translation import translate
     from train_text_to_motion import make_store
     P.check_pins()
     check_draw(args.draw)
-    store = make_store(args.store)
-    stored = load_top10(store, args.draw)
-    index = json.loads(store.get(export_index_key(args.composed, args.draw)))
-    check_export(index, args.draw, args.clips)
-    rows = sorted((r for r in index["states"] if r["form"] == PREDICTED and not r["empty"]), key=lambda r: r["clip"])[:FIDELITY_CLIPS]
-    where = {s: i for i, s in enumerate(stored["signs"])}
-    if any(r["sign"] not in where for r in rows):
-        raise SystemExit(f"draw {args.draw}: an exported clip is not in its stored report")
-    reader = P.load_reader(store, args)
-    said = translate(reader.model, reader.kind, composed_states(store, rows))
-    kept = stored["forms"][PREDICTED]["hypotheses"]
-    identical = sum(a == kept[where[r["sign"]]] for a, r in zip(said, rows))
-    result = dict(kind=f"{PROBE}-fidelity", report_only=True, draw=args.draw, clips=len(rows), identical=identical, code_digest=code_digest(), environment=P.environment(), instrument=reader.info["sha256"], note="hypotheses compared and dropped: no BLEU, NLL or text kept")
-    P.write_report_once(Path(args.out_dir) / f"fidelity-d{args.draw}.json", result)
-    print(json.dumps({k: result[k] for k in ("draw", "clips", "identical")}), flush=True)
+    path = Path(args.out_dir) / f"fidelity-d{args.draw}.json"
+    declared = args.clips == L.D20_CLIPS
+    if path.exists():
+        result = json.loads(path.read_bytes())
+    else:
+        store = make_store(args.store)
+        stored = load_top10(store, args.draw)
+        index = json.loads(store.get(export_index_key(args.composed, args.draw)))
+        check_export(index, args.draw, args.clips)
+        rows = sorted((r for r in index["states"] if r["form"] == PREDICTED and not r["empty"]), key=lambda r: r["clip"])[:FIDELITY_CLIPS]
+        where = {s: i for i, s in enumerate(stored["signs"])}
+        if any(r["sign"] not in where for r in rows):
+            raise SystemExit(f"draw {args.draw}: an exported clip is not in its stored report")
+        frames = frames_off(index, stored)
+        reader = P.load_reader(store, args)
+        said = translate(reader.model, reader.kind, composed_states(store, rows))
+        kept = stored["forms"][PREDICTED]["hypotheses"]
+        identical = sum(a == kept[where[r["sign"]]] for a, r in zip(said, rows))
+        result = dict(kind=f"{PROBE}-fidelity", report_only=True, draw=args.draw, clips=len(rows), identical=identical, frames=frames, code_digest=code_digest(), environment=P.environment(), instrument=reader.info["sha256"], note="hypotheses compared and dropped: no BLEU, NLL or text kept")
+        P.write_report_once(path, result)
+    print(json.dumps({k: result[k] for k in ("draw", "clips", "identical", "frames")}), flush=True)
+    if not fidelity_passed(result, declared):
+        raise SystemExit(f"draw {args.draw}: {result['identical']} of {result['clips']} exported clips reproduce their stored hypotheses (floor {fidelity_floor(result['clips'])}), {result['frames']['off']} frame counts off: this draw is not read")
     return 0
 
 
@@ -447,7 +511,7 @@ def bleu_of(read: dict) -> np.ndarray:
 
 def draw_rows(k: int, reads: dict, anchors: dict, idx: np.ndarray) -> dict:
     """One draw's arrays and row, against its own pod's anchors."""
-    comp, still, true, still_true = (reads[f"d{k}_{kind}"] for kind in KINDS)
+    comp, still, true, still_true, blank = (reads[f"d{k}_{kind}"] for kind in ("comp", "still", "comp_true", "still_true", "blank"))
     two_still = Q.margins(anchors["still_two_view"])
     real = Q.margins(anchors["real_two_view"]) - two_still
     nearest = Q.margins(anchors["nearest_two_view"]) - two_still
@@ -457,8 +521,13 @@ def draw_rows(k: int, reads: dict, anchors: dict, idx: np.ndarray) -> dict:
     stats = bleu_of(comp)
     true_stats = bleu_of(true)
     frames, reference = np.asarray(comp["frames"], np.float64), np.asarray(comp["reference_frames"], np.float64)
-    return dict(margin=margin, margin_true=margin_true, real=real, nearest=nearest, over_reference_still=over_reference_still, stats=stats, true_stats=true_stats, log_ratio=np.log(frames / reference), still_raw=Q.margins(still),
-                row=dict(margin=dict(point=round(float(margin.mean()), 5), ci95=P._quantiles(margin[idx].mean(1))), share_of_real=dict(point=round(float(margin.mean() / real.mean()), 4) if real.mean() else None, ci95=P._quantiles(ratio_draws(margin[idx].mean(1), real[idx].mean(1)))), share_of_nearest=dict(point=round(float(margin.mean() / nearest.mean()), 4) if nearest.mean() else None, ci95=P._quantiles(ratio_draws(margin[idx].mean(1), nearest[idx].mean(1)))),
+    real_stats, blank_stats = bleu_of(anchors["real_two_view"]), bleu_of(blank)
+    own, real_own, blank_own = (-np.asarray(r["nll"])[:, 0] for r in (comp, anchors["real_two_view"], blank))
+    likelihood_top, likelihood_bottom = own - blank_own, real_own - blank_own
+    words = np.asarray(comp["word_counts"], np.float64)
+    tokens = np.asarray(comp["sentence_tokens"], np.float64)
+    return dict(margin=margin, real_stats=real_stats, blank_stats=blank_stats, likelihood_top=likelihood_top, likelihood_bottom=likelihood_bottom, coverage=np.divide(words, tokens, out=np.zeros_like(words), where=tokens > 0), non_empty=~np.asarray(comp["empty"], bool), margin_true=margin_true, real=real, nearest=nearest, over_reference_still=over_reference_still, stats=stats, true_stats=true_stats, log_ratio=np.log(frames / reference), still_raw=Q.margins(still),
+                row=dict(bleu_gap_share=A.share_row(stats, real_stats, blank_stats, boot=BOOT), likelihood_gap_share=dict(point=round(float(likelihood_top.mean() / likelihood_bottom.mean()), 4) if likelihood_bottom.mean() else None, ci95=P._quantiles(ratio_draws(likelihood_top[idx].mean(1), likelihood_bottom[idx].mean(1)))), margin=dict(point=round(float(margin.mean()), 5), ci95=P._quantiles(margin[idx].mean(1))), share_of_real=dict(point=round(float(margin.mean() / real.mean()), 4) if real.mean() else None, ci95=P._quantiles(ratio_draws(margin[idx].mean(1), real[idx].mean(1)))), share_of_nearest=dict(point=round(float(margin.mean() / nearest.mean()), 4) if nearest.mean() else None, ci95=P._quantiles(ratio_draws(margin[idx].mean(1), nearest[idx].mean(1)))),
                          bleu=dict(point=round(float(M.bleu_from_statistics(stats.sum(0))), 4), ci95=P._quantiles(M.bleu_from_statistics(stats[idx].sum(1)))), true_length=dict(margin=round(float(margin_true.mean()), 5), share_of_real=round(float(margin_true.mean() / real.mean()), 4) if real.mean() else None, bleu=round(float(M.bleu_from_statistics(true_stats.sum(0))), 4)),
                          empty=int(sum(comp["empty"])), empty_true_length=int(sum(true["empty"])), seconds_over_reference=round(float(np.mean(frames / reference)), 4), still_bleu=round(float(M.bleu_from_statistics(bleu_of(still).sum(0))), 4), wrist_speed_over_real=round(float(np.mean([x for x in comp["motion"]["wrist_speed"] if x is not None]) / np.mean([x for x in anchors["real_two_view"]["motion"]["wrist_speed"] if x is not None])), 4)))
 
@@ -478,12 +547,64 @@ def composition_block(arrays: dict, idx: np.ndarray) -> dict:
     share = [m / r if r else float("nan") for m, r in zip(means["margin"], means["real"])]
     share_nearest = [m / r if r else float("nan") for m, r in zip(means["margin"], means["nearest"])]
     share_true = [m / r if r else float("nan") for m, r in zip(means["true"], means["real"])]
+    bleu_of_stats = lambda s: float(M.bleu_from_statistics(s.sum(0)))      # noqa: E731
+    gap = [(bleu_of_stats(x["stats"]) - bleu_of_stats(x["blank_stats"])) / (bleu_of_stats(x["real_stats"]) - bleu_of_stats(x["blank_stats"])) if bleu_of_stats(x["real_stats"]) != bleu_of_stats(x["blank_stats"]) else float("nan") for x in a]
+    gap_boot = np.stack([ratio_draws(M.bleu_from_statistics(x["stats"][idx].sum(1)) - M.bleu_from_statistics(x["blank_stats"][idx].sum(1)), M.bleu_from_statistics(x["real_stats"][idx].sum(1)) - M.bleu_from_statistics(x["blank_stats"][idx].sum(1))) for x in a])
+    likelihood_gap = [float(x["likelihood_top"].mean() / x["likelihood_bottom"].mean()) if x["likelihood_bottom"].mean() else float("nan") for x in a]
+    likelihood_boot = np.stack([ratio_draws(x["likelihood_top"][idx].mean(1), x["likelihood_bottom"][idx].mean(1)) for x in a])
     mean_x = np.mean([x["log_ratio"] for x in a], 0)
     mean_y = np.mean([x["margin"] for x in a], 0)
-    return dict(draws=order, margin=over_draws(means["margin"], margin_boot), share_of_real=over_draws(share, ratio_draws(margin_boot, real_boot)), share_of_nearest=over_draws(share_nearest, ratio_draws(margin_boot, nearest_boot)), bleu=over_draws(means["bleu"], bleu_boot),
+    return dict(draws=order, margin=over_draws(means["margin"], margin_boot), share_of_real=over_draws(share, ratio_draws(margin_boot, real_boot)), share_of_nearest=over_draws(share_nearest, ratio_draws(margin_boot, nearest_boot)), bleu=over_draws(means["bleu"], bleu_boot), bleu_gap_share=over_draws(gap, gap_boot), likelihood_gap_share=over_draws(likelihood_gap, likelihood_boot),
                 length=dict(true_length_margin=over_draws(means["true"], true_boot), true_length_share_of_real=over_draws(share_true, ratio_draws(true_boot, real_boot)), true_length_bleu=over_draws(means["true_bleu"], true_bleu_boot), true_minus_predicted=over_draws([t - m for t, m in zip(means["true"], means["margin"])], true_boot - margin_boot), bleu_true_minus_predicted=over_draws([t - m for t, m in zip(means["true_bleu"], means["bleu"])], true_bleu_boot - bleu_boot),
                             over_reference_still=over_draws(means["reference"], reference_boot), own_still_minus_reference_still=over_draws([m - r for m, r in zip(means["margin"], means["reference"])], margin_boot - reference_boot), per_clip_margin_on_log_length_ratio=R.regression(mean_x.tolist(), mean_y.tolist()),
-                            note="each form over its own still: the difference between the two lengths is the same words' margin at another length; the regression is across sentences, whose content differs with length, and sets nothing"))
+                            note="each form over its own still: true minus predicted is the same words' margin at another length; own still minus reference still also differs in pose, so it does not isolate length; the regression is across sentences, whose content differs with length, and sets nothing"))
+
+
+def word_rows(arrays: dict) -> dict:
+    """Report only: margin and share of real on non-empty clips, and by the share of a sentence's tokens with a word, pooled over the draws."""
+    def row(pick) -> dict:
+        kept = [(a["margin"][pick(a)], a["real"][pick(a)]) for a in arrays.values()]
+        counts = [len(m) for m, _ in kept]
+        if not sum(counts):
+            return dict(clips_per_draw=0.)
+        margin, real = np.concatenate([m for m, _ in kept]), np.concatenate([r for _, r in kept])
+        return dict(clips_per_draw=round(float(np.mean(counts)), 1), margin=round(float(margin.mean()), 5), real_margin=round(float(real.mean()), 5), share_of_real=round(float(margin.mean() / real.mean()), 4) if real.mean() else None)
+    return dict(report_only=True, non_empty=row(lambda a: a["non_empty"]), by_coverage={f"{lo}-{hi}": row(lambda a, lo=lo, hi=hi: a["non_empty"] & (a["coverage"] > lo) & (a["coverage"] <= hi)) for lo, hi in COVERAGE_BINS})
+
+
+def restrict_form(read: dict, signs) -> dict:
+    """``read`` on ``signs``: ``path_read.restrict``, with this job's per-clip fields kept in step."""
+    where = {s: i for i, s in enumerate(read["signs"])}
+    pick = [where[s] for s in signs]
+    out = R.restrict(read, signs)
+    for key in ("frames", "reference_frames", "empty", "word_counts", "sentence_tokens"):
+        if read.get(key) is not None:
+            out[key] = [read[key][i] for i in pick]
+    return out
+
+
+def signer_rows(pods: dict, draw_pods: dict, signs, groups, idx_seed: int = 0) -> dict:
+    """Report only, no label: each signer's margin and shares over the draws, every form restricted to that signer's clips."""
+    out = {}
+    for signer in sorted(set(groups)):
+        kept = [s for s, g in zip(signs, groups) if g == signer]
+        idx = np.random.default_rng(idx_seed).integers(0, len(kept), (BOOT, len(kept)))
+        arrays = {}
+        for k, pod in sorted(draw_pods.items()):
+            here = {n: restrict_form(r, kept) for n, r in pods[pod]["forms"].items() if n in ANCHORS or draw_form(n)[0] == k}
+            built = draw_rows(k, here, {a: here[a] for a in ANCHORS}, idx)
+            built.pop("row")
+            arrays[k] = built
+        block = composition_block(arrays, idx) if len(kept) >= 3 else None
+        out[signer] = dict(clips=len(kept), **({k: block[k] for k in ("margin", "share_of_real", "share_of_nearest", "bleu_gap_share", "likelihood_gap_share")} if block else {}))
+    return out
+
+
+def check_still_lengths(k: int, reads: dict) -> None:
+    """Each form's baseline holds its frames, clip by clip: otherwise duration has not cancelled."""
+    for form, base in SAME_LENGTH:
+        if reads[f"d{k}_{form}"]["frames"] != reads[f"d{k}_{base}"]["frames"]:
+            raise SystemExit(f"draw {k}: d{k}_{base} is not as long as d{k}_{form} on every clip")
 
 
 def anchor_rows(anchors: dict, idx: np.ndarray) -> dict:
@@ -508,10 +629,22 @@ def subset_rows(arrays: dict, masks: dict) -> dict:
     return out
 
 
-def v1_beside(summary: dict, top10: dict, masks: dict) -> dict:
-    """v1's stored top10, per draw: the summary's gap share and BLEU, and that share on clips outside v1's training list. The stored reads are not read again."""
+def stored_likelihood_share(report: dict) -> float | None:
+    """v1's likelihood gap share of a stored top10, ``comp_a_read.form_read``'s formula on ``likelihood.per_form``: (form − blank) / (real − blank), None values left out."""
+    per_form = report["likelihood"]["per_form"]
+    mean_of = lambda x: float(np.mean([v for v in x if v is not None]))      # noqa: E731
+    a, b, r = mean_of(per_form[PREDICTED]), mean_of(per_form["blank@predicted"]), mean_of(per_form["real"])
+    return round((a - b) / (r - b), 4) if r != b else None
+
+
+def v1_beside(summary: dict, top10: dict, masks: dict, signs) -> dict:
+    """v1's stored top10, per draw: the summary's gap share and BLEU, its likelihood gap share from each report, and the BLEU share on clips outside v1's training list. A report of other clips or another order refuses."""
+    for k, report in top10.items():
+        if report["signs"] != list(signs):
+            raise SystemExit(f"draw {k}: its stored report holds other clips or another order")
     predicted = summary["forms"]["predicted"]
-    out = dict(gap_share=predicted["gap_share"]["top10"], bleu=predicted["top10_bleu"], mean_gap_share=round(float(np.mean(predicted["gap_share"]["top10"])), 4), mean_bleu=round(float(np.mean(predicted["top10_bleu"])), 4), t_ci95_gap_share=A5.t_interval(predicted["gap_share"]["top10"]))
+    likelihood = [stored_likelihood_share(top10[k]) for k in sorted(top10)]
+    out = dict(likelihood_gap_share=likelihood, gap_share=predicted["gap_share"]["top10"], bleu=predicted["top10_bleu"], mean_gap_share=round(float(np.mean(predicted["gap_share"]["top10"])), 4), mean_bleu=round(float(np.mean(predicted["top10_bleu"])), 4), t_ci95_gap_share=A5.t_interval(predicted["gap_share"]["top10"]))
     outside = []
     mask = masks["outside_v1_training"]
     for k in sorted(top10):
@@ -524,6 +657,14 @@ def v1_beside(summary: dict, top10: dict, masks: dict) -> dict:
     out["gap_share_outside_v1_training"] = outside
     out["mean_gap_share_outside_v1_training"] = round(float(np.mean(kept)), 4) if kept else None
     return out
+
+
+def paired_with_v1(block: dict, beside: dict) -> dict:
+    """Parent minus v1, draw by draw, like with like, with a t interval over the draws."""
+    def row(mine: list, theirs: list) -> dict:
+        d = [a - b for a, b in zip(mine, theirs) if a is not None and b is not None]
+        return dict(per_draw=[round(float(x), 4) for x in d], mean=round(float(np.mean(d)), 4), t_ci95=A5.t_interval(d) if len(d) > 1 else None)
+    return dict(bleu_gap_share=row(block["bleu_gap_share"]["per_draw"], beside["gap_share"]), likelihood_gap_share=row(block["likelihood_gap_share"]["per_draw"], beside["likelihood_gap_share"]), note="parent minus v1 on the same metric. A margin share is not compared with v1's BLEU share: the scales differ about twofold.")
 
 
 def plan_misses(anchors: dict, beside: dict) -> list[str]:
@@ -636,6 +777,7 @@ def run_merge(args) -> int:
     arrays, rows = {}, {}
     for k, pod in sorted(draw_pods.items()):
         here = pods[pod]["forms"]
+        check_still_lengths(k, here)
         built = draw_rows(k, here, {a: here[a] for a in ANCHORS}, idx)
         rows[k] = dict(built.pop("row"), pod=pod)
         arrays[k] = built
@@ -644,8 +786,8 @@ def run_merge(args) -> int:
         record = fidelity.get(k)
         if record is None or record.get("code_digest") != code_digest():
             alerts.append(f"draw {k}: no fidelity record of this code")
-        elif declared and record["identical"] < FIDELITY_FLOOR:
-            alerts.append(f"draw {k}: {record['identical']} of {record['clips']} exported clips reproduce their stored hypotheses, under {FIDELITY_FLOOR}")
+        elif not fidelity_passed(record, declared):
+            alerts.append(f"draw {k}: its fidelity record is under its floor: {record['identical']} of {record['clips']}, {record['frames']['off']} frame counts off")
     first_pod = pods[draw_pods[min(draw_pods)]]["forms"]
     anchors = {a: first_pod[a] for a in ANCHORS}
     block = composition_block(arrays, idx)
@@ -654,13 +796,14 @@ def run_merge(args) -> int:
     if declared:
         raw = store.get(A5_SUMMARY)
         P.check_sha(raw, A5_SUMMARY_SHA, A5_SUMMARY)
-        beside = v1_beside(json.loads(raw), {k: load_top10(store, k) for k in DRAWS}, masks)
+        beside = v1_beside(json.loads(raw), {k: load_top10(store, k) for k in DRAWS}, masks, first["signs"])
+        beside["parent_minus_v1"] = paired_with_v1(block, beside)
         alerts += plan_misses(anchors, beside)
     report = dict(kind=f"{PROBE}-report", report_only=True, note=NOT_DECIDED, declared_read=declared, smoke=None if declared else "SMOKE: composed D20 sentences against c02 train references; these numbers are plumbing, not a read", list=first["list"], code_digest=code_digest(), environments=environments, disclosures=DISCLOSURES, alerts=alerts, instrument=first["instrument"], clips=dict(list=n, in_v1_training=int(masks["in_v1_training"].sum()), outside_v1_training=int(masks["outside_v1_training"].sum())),
-                  anchors=anchor_rows(anchors, idx), per_draw={str(k): rows[k] for k in sorted(rows)}, composition=block, by_v1_training=subset_rows(arrays, masks), v1_stored=beside, fidelity={str(k): {x: fidelity[k][x] for x in ("clips", "identical")} for k in sorted(fidelity)}, checks=dict(controls={pod: here["control"] for pod, here in pods.items()}, blank_identical_to_real=round(float(np.mean([a == b for a, b in zip(anchors["blank"]["hypotheses"], anchors["real_two_view"]["hypotheses"])])), 4)),
+                  anchors=anchor_rows(anchors, idx), per_draw={str(k): rows[k] for k in sorted(rows)}, composition=block, by_v1_training=subset_rows(arrays, masks), per_signer=signer_rows(pods, draw_pods, first["signs"], first["groups"]), words=word_rows(arrays), v1_stored=beside, fidelity={str(k): {x: fidelity[k][x] for x in ("clips", "identical", "frames")} for k in sorted(fidelity)}, checks=dict(controls={pod: here["control"] for pod, here in pods.items()}, blank_identical_to_real=round(float(np.mean([a == b for a, b in zip(anchors["blank"]["hypotheses"], anchors["real_two_view"]["hypotheses"])])), 4)),
                   resources={k: {x: r[x] for x in ("peak_rss_bytes", "gpu_peak_reserved_bytes", "build_seconds", "read_seconds")} for k, r in everything.items()})
     L.write_once(store, args.output_key, args.output_file, report)
-    print(json.dumps(dict(merged=args.output_key or args.output_file, report_only=True, declared_read=declared, anchors=report["anchors"], composition={k: block[k] for k in ("margin", "share_of_real", "share_of_nearest", "bleu")}, length={k: block["length"][k] for k in ("true_minus_predicted", "own_still_minus_reference_still")}, v1_stored=None if beside is None else {k: beside[k] for k in ("mean_gap_share", "mean_gap_share_outside_v1_training", "mean_bleu")}, empty={k: rows[k]["empty"] for k in rows}, alerts=alerts)), flush=True)
+    print(json.dumps(dict(merged=args.output_key or args.output_file, report_only=True, declared_read=declared, anchors=report["anchors"], composition={k: block[k] for k in ("margin", "share_of_real", "share_of_nearest", "bleu", "bleu_gap_share", "likelihood_gap_share")}, length={k: block["length"][k] for k in ("true_minus_predicted", "own_still_minus_reference_still")}, v1_stored=None if beside is None else {k: beside[k] for k in ("mean_gap_share", "likelihood_gap_share", "mean_gap_share_outside_v1_training", "mean_bleu", "parent_minus_v1")}, empty={k: rows[k]["empty"] for k in rows}, alerts=alerts)), flush=True)
     return 0
 
 

@@ -5,7 +5,7 @@
 #   SMOKE=1 bash runpod/fleet/parent_comp.sh                          the smoke only
 #   POD=a PODS=a,b DRAWS="1 2 3 4" bash runpod/fleet/parent_comp.sh   two pods (the other POD=b DRAWS="5 6 7 8"); whichever ends last merges
 #
-# Exports are CPU only, EXPORT_PROCS at a time (default 4), and reused when stored. No instrument sees them until the anchors have reproduced the parts job's stored forms (`control`): a miss stops the job, voids the read and `read` refuses a composition without a passed control. No automatic retry: this code never reads again, and a rerun needs new code and RERUN_CAUSE.
+# Exports are CPU only, EXPORT_PROCS at a time (default 4), each under EXPORT_TIMEOUT seconds (default 3600), and reused when stored. No instrument sees them until the anchors have reproduced the parts job's stored forms (`control`): a miss stops the job, voids the read and `read` refuses a composition without a passed control. No automatic retry: this code never reads again, and a rerun needs new code and RERUN_CAUSE.
 # Outputs (write-once) under $D: composed/draw<K>/, pods/<POD>/forms/, report.json, logs/. A failure uploads the work so far to $D/partial/<UTC>/; rerunning on the same pod resumes what stands in $WORK. Use the L40S: the control compares hypotheses, and a miss voids the read.
 # Ends with PARENT-COMP-DONE <status> (0 this pod's work done, 1 failed, 2 the smoke stopped the job, 3 the read is void: do not retry). The exit status is the same.
 # Every step's output and every ALERT passes through tee to $LOG, and `step` returns the failing side's status from PIPESTATUS, so no pipe hides a failure.
@@ -25,6 +25,7 @@ POD=${POD:-a}
 PODS=${PODS:-$POD}
 DRAWS=${DRAWS:-1 2 3 4 5 6 7 8}
 EXPORT_PROCS=${EXPORT_PROCS:-4}
+EXPORT_TIMEOUT=${EXPORT_TIMEOUT:-3600}
 S=$W/smoke-$TS
 R=$W/d20
 LOG=$W/parent_comp.log
@@ -59,7 +60,7 @@ done_() { exit "$1"; }
 export_all() {
   local pids=() k running=0 failed=0
   for k in $DRAWS; do
-    OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python $T export --draw "$k" --work "$W/export" --prefix "$D/composed" > "$W/export-$k-$TS.log" 2>&1 &
+    OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 timeout -k 60 "$EXPORT_TIMEOUT" python $T export --draw "$k" --work "$W/export" --prefix "$D/composed" > "$W/export-$k-$TS.log" 2>&1 &
     pids+=($!); running=$(( running + 1 ))
     if [ "$running" -ge "$EXPORT_PROCS" ]; then wait "${pids[0]}" || failed=1; pids=("${pids[@]:1}"); running=$(( running - 1 )); fi
   done
@@ -74,7 +75,7 @@ step python $T inputs || { alert "the draws' pins do not hold"; done_ 1; }
 
 # ---- smoke: one draw's 5 D20 sentences composed, read against c02 train references; the parent sees no D20 text or real clip -------------
 SMOKE_DRAW=${DRAWS%% *}
-step python $T export --draw "$SMOKE_DRAW" --clips 5 --work "$S/export" --prefix "$D/smoke/$TS/composed" || { alert "smoke export failed"; done_ 2; }
+step timeout -k 60 "$EXPORT_TIMEOUT" python $T export --draw "$SMOKE_DRAW" --clips 5 --work "$S/export" --prefix "$D/smoke/$TS/composed" || { alert "smoke export failed"; done_ 2; }
 step python $T read --forms control --out-dir "$S/forms" --smoke-train 5 $COMMON || { alert "smoke read of the anchors failed"; done_ 2; }
 step python $T control --out-dir "$S/forms" --void-prefix "$D/void" || { alert "smoke control failed"; done_ 2; }
 step python $T fidelity --draw "$SMOKE_DRAW" --clips 5 --composed "$D/smoke/$TS/composed" --out-dir "$S/forms" --device "$DEV" --instrument-cache "$W/instrument" || { alert "smoke fidelity failed"; done_ 2; }
@@ -97,7 +98,7 @@ control=$?
 [ "$control" != 3 ] || { alert "the control failed: the read is void, do not retry"; done_ 3; }
 [ "$control" = 0 ] || { alert "the control did not run"; done_ 1; }
 for k in $DRAWS; do
-  [ -f "$R/forms/fidelity-d$k.json" ] || step python $T fidelity --draw "$k" --composed "$D/composed" --out-dir "$R/forms" --device "$DEV" --instrument-cache "$W/instrument" || { alert "fidelity of draw $k failed"; done_ 1; }
+  step python $T fidelity --draw "$k" --composed "$D/composed" --out-dir "$R/forms" --device "$DEV" --instrument-cache "$W/instrument" || { alert "draw $k did not pass fidelity: it is not read"; done_ 1; }
   step python $T read --draws "$k" --composed "$D/composed" --resume --out-dir "$R/forms" $COMMON || { alert "read of draw $k failed"; done_ 1; }
 done
 step python $T upload --out-dir "$R/forms" --prefix "$D/pods/$POD/forms" || { alert "upload of this pod's forms failed"; done_ 1; }

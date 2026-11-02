@@ -38,6 +38,8 @@ def level_of(name):
     if name in ANCHOR_LEVELS:
         return ANCHOR_LEVELS[name]
     k, kind = C.draw_form(name)
+    if kind == "blank":
+        return (0, 3., .02)
     margin = dict(comp=.1 + .03 * k, still=.05, comp_true=.2 + .03 * k, still_true=.1)[kind]
     return (6 + k, 2., margin)
 
@@ -118,7 +120,7 @@ class Comp(Harness):
                 sha = state.save(path)
                 key = f"{prefix}/draw{k}/states/{i}-{form.replace('@', '-')}.npz"
                 self.store.put(key, path.read_bytes())
-                rows.append(dict(clip=i, sign=record["sign"], text=record["text"], form=form, empty=empty, state_key=key, state_sha256=sha, frames=frames, reference_sha256=record["continuous"]["state_sha256"]))
+                rows.append(dict(clip=i, sign=record["sign"], text=record["text"], form=form, empty=empty, state_key=key, state_sha256=sha, frames=frames, reference_sha256=record["continuous"]["state_sha256"], words=[] if empty else [dict(word="w")] * (1 + i % 3)))
         index = dict(kind="round15-composed-states", settings=settings or settings_of(k, self.n), word_cache=dict(draw=k if draw is None else draw), states=rows)
         self.store.put(C.export_index_key(prefix, k), json.dumps(index).encode())
 
@@ -130,6 +132,8 @@ class Comp(Harness):
             report["forms"]["real"]["hypotheses"] = [r["text"] for r in self.records]
             report["forms"][C.PREDICTED]["hypotheses"] = [" ".join(r["text"].split()[:7]) for r in self.records]
             report["forms"]["blank@predicted"]["hypotheses"] = ["z y x w"] * self.n
+            report["likelihood"] = dict(per_form={C.PREDICTED: [-2.] * self.n, "blank@predicted": [-3.] * (self.n - 1) + [None], "real": [-1.] * self.n})
+            report["per_clip"] = [dict(sign=r["sign"], plans={} if i == EMPTY else dict(core_crossfade=dict(frames=len(self.refs[i].timestamps), predicted=dict(frames=24 + i)))) for i, r in enumerate(self.records)]
             raw = json.dumps(report).encode()
             self.store.put(C.top10_key(k), raw)
             inputs[k] = dict(C.DRAW_INPUTS[k], top10=hashlib.sha256(raw).hexdigest())
@@ -171,8 +175,8 @@ class Comp(Harness):
         monkey.setattr(P, "load_reader", lambda store, args: type("V", (), dict(model=None, kind="keypoints", info=dict(sha256=L.TRANSLATOR_SHA)))())
         return self.main("fidelity", "--draw", str(k), "--clips", str(self.n), "--composed", "comp", "--out-dir", str(self.forms))
 
-    def plant_fidelity(self, k, identical=8):
-        (self.forms / f"fidelity-d{k}.json").write_text(json.dumps(dict(draw=k, clips=8, identical=identical, code_digest="c" * 64)))
+    def plant_fidelity(self, k, identical=32, frames_off=0):
+        (self.forms / f"fidelity-d{k}.json").write_text(json.dumps(dict(draw=k, clips=32, identical=identical, frames=dict(compared=8, off=frames_off, first_off=None), code_digest="c" * 64)))
 
     def upload_pod(self, pod="a", forms=None):
         return self.main("upload", "--out-dir", str(forms or self.forms), "--prefix", f"pods/{pod}/forms")
@@ -251,6 +255,9 @@ def test_a_stale_stored_report_on_other_bytes_refuses(monkeypatch, tmp_path):
 
 def test_the_inputs_step_prints_hashes_and_no_score(monkeypatch, tmp_path, capsys):
     h = Comp(monkeypatch, tmp_path, draws=())
+    assert h.anchors() == 0
+    h.plant_stored_anchors()
+    capsys.readouterr()
     assert h.main("inputs") == 0
     out = capsys.readouterr().out
     assert "summary" in out and "bleu" not in out and "hypotheses" not in out and "gap_share" not in out
@@ -379,8 +386,8 @@ def test_an_unknown_form_refuses(name):
 
 
 def test_a_draws_forms_are_its_four():
-    assert C.forms_of_draw(3) == ["d3_comp", "d3_still", "d3_comp_true", "d3_still_true"] and C.draw_form("d3_comp_true") == (3, "comp_true")
-    assert C.KINDS == dict(comp=(C.PREDICTED, False), still=(C.PREDICTED, True), comp_true=(C.TRUE_LENGTH, False), still_true=(C.TRUE_LENGTH, True))
+    assert C.forms_of_draw(3) == ["d3_comp", "d3_still", "d3_comp_true", "d3_still_true", "d3_blank"] and C.draw_form("d3_comp_true") == (3, "comp_true") and C.draw_form("d3_blank") == (3, "blank")
+    assert C.KINDS == dict(comp=(C.PREDICTED, "as_composed"), still=(C.PREDICTED, "still"), comp_true=(C.TRUE_LENGTH, "as_composed"), still_true=(C.TRUE_LENGTH, "still"), blank=(C.PREDICTED, "blank"))
 
 
 # ---- reads and controls ----------------------------------------------------------------------------------------------------------------
@@ -451,13 +458,25 @@ def test_an_anchor_missed_voids_the_read(monkeypatch, tmp_path, capsys, name, fi
         h.main("preflight", "--out-dir", str(tmp_path / "w2"), "--final-key", "pc/report.json", "--void-prefix", "pc/void")
 
 
-def test_a_stored_anchor_on_other_bytes_voids_the_read(monkeypatch, tmp_path):
+def test_a_stored_anchor_on_other_bytes_exits_1_with_no_control_and_no_void(monkeypatch, tmp_path):
     h = Comp(monkeypatch, tmp_path, draws=(1,))
     assert h.anchors() == 0
     h.plant_stored_anchors()
-    table = dict(Q.STORED_PARENT, blank=(Q.STORED_PARENT["blank"][0], "0" * 64))
+    table = dict(Q.STORED_PARENT, still_two_view=(Q.STORED_PARENT["still_two_view"][0], "0" * 64))
     monkeypatch.setattr(Q, "STORED_PARENT", table)
-    assert h.control() == 3
+    with pytest.raises(SystemExit, match="SHA-256"):
+        h.control()
+    assert not h.store.exists("pc/void/" + "c" * 64 + ".json") and not (h.forms / "control.json").exists()
+
+
+def test_the_inputs_step_checks_the_stored_anchors_too(monkeypatch, tmp_path):
+    h = Comp(monkeypatch, tmp_path, draws=())
+    assert h.anchors() == 0
+    h.plant_stored_anchors()
+    assert h.main("inputs") == 0
+    monkeypatch.setattr(Q, "STORED_PARENT", dict(Q.STORED_PARENT, blank=(Q.STORED_PARENT["blank"][0], "0" * 64)))
+    with pytest.raises(SystemExit, match="SHA-256"):
+        h.main("inputs")
 
 
 def test_a_smoke_control_compares_nothing_and_says_so(monkeypatch, tmp_path, capsys):
@@ -471,10 +490,15 @@ def test_every_form_reads_the_parts_jobs_candidates_and_each_draw_its_four_forms
     h.to_control()
     assert h.read_draws("1,2") == 0
     calls = h.reader_parent.calls
-    assert [c[0] for c in calls] == list(C.ANCHORS) + C.forms_of_draw(1) + C.forms_of_draw(2)
+    order = lambda k: [f"d{k}_comp", f"d{k}_still", f"d{k}_blank", f"d{k}_comp_true", f"d{k}_still_true"]      # noqa: E731
+    assert [c[0] for c in calls] == list(C.ANCHORS) + order(1) + order(2)
     want = M.retrieval_candidates(N, 5, seed=0)
     assert all(np.array_equal(c[2], want) and c[1] == 4 for c in calls)
     form = json.loads((h.forms / "form-d1_still.json").read_text())
+    assert form["word_counts"] == [0 if i == EMPTY else 1 + i % 3 for i in range(N)] and len(form["sentence_tokens"]) == N and "hands" in form and "tracked" in form
+    assert form["seconds_over_reference"][1] == pytest.approx(form["frames"][1] / form["reference_frames"][1], abs=1e-4)
+    blank = json.loads((h.forms / "form-d1_blank.json").read_text())
+    assert blank["frames"] == form["frames"] and not any(blank["valid_frame_share"])
     assert form["kind"] == "parent-comp-form" and form["report_only"] is True and form["declared_read"] is True and form["instrument"]["sha256"] == PP.UNFITTED_SHA and form["empty"][EMPTY] is True and sum(form["empty"]) == 1 and form["frames"][0] == 24 and form["reference_frames"][0] == len(h.refs[0].timestamps)
     true = json.loads((h.forms / "form-d1_comp_true.json").read_text())
     assert true["frames"] == true["reference_frames"]
@@ -491,10 +515,11 @@ def test_a_read_is_write_once_and_a_resume_leaves_what_stands(monkeypatch, tmp_p
 
 def test_fidelity_keeps_a_count_and_no_text_or_score(monkeypatch, tmp_path, capsys):
     h = Comp(monkeypatch, tmp_path, draws=(1,))
-    assert h.fidelity(1) == 0
+    with pytest.raises(SystemExit, match="this draw is not read"):
+        h.fidelity(1)
     record = json.loads((h.forms / "fidelity-d1.json").read_text())
-    assert record["clips"] == C.FIDELITY_CLIPS and record["identical"] == 0 and record["draw"] == 1 and record["kind"] == "parent-comp-fidelity"
-    assert set(record) == {"kind", "report_only", "draw", "clips", "identical", "code_digest", "environment", "instrument", "note"}
+    assert record["clips"] == min(C.FIDELITY_CLIPS, N - 1) and record["identical"] == 0 and record["draw"] == 1 and record["kind"] == "parent-comp-fidelity"
+    assert set(record) == {"kind", "report_only", "draw", "clips", "identical", "frames", "code_digest", "environment", "instrument", "note"}
     out = capsys.readouterr().out
     assert "bleu" not in out and "w x y" not in out
 
@@ -507,7 +532,55 @@ def test_fidelity_counts_what_matches_on_non_empty_clips(monkeypatch, tmp_path):
     monkeypatch.setattr(score_back_translation, "translate", lambda model, kind, states: seen.append(len(states)) or [kept[i] for i in range(N) if i != EMPTY][:len(states)])
     monkeypatch.setattr(P, "load_reader", lambda store, args: type("V", (), dict(model=None, kind="keypoints", info=dict(sha256=L.TRANSLATOR_SHA)))())
     assert h.main("fidelity", "--draw", "1", "--clips", str(N), "--composed", "comp", "--out-dir", str(h.forms)) == 0
-    assert json.loads((h.forms / "fidelity-d1.json").read_text())["identical"] == min(8, N - 1) == seen[0]
+    assert json.loads((h.forms / "fidelity-d1.json").read_text())["identical"] == min(C.FIDELITY_CLIPS, N - 1) == seen[0]
+
+
+def test_fidelity_on_d20_exits_1_under_its_floor_and_a_rerun_checks_the_record_again(monkeypatch, tmp_path):
+    h = Comp(monkeypatch, tmp_path, draws=(1,))
+    (h.forms).mkdir(parents=True, exist_ok=True)
+    h.plant_fidelity(1, identical=23)
+    with pytest.raises(SystemExit, match="23 of 32.*floor 24"):
+        h.main("fidelity", "--draw", "1", "--clips", str(N), "--composed", "comp", "--out-dir", str(h.forms))
+    h.plant_fidelity(1, identical=24)
+    assert h.main("fidelity", "--draw", "1", "--clips", str(N), "--composed", "comp", "--out-dir", str(h.forms)) == 0
+    h.plant_fidelity(1, identical=32, frames_off=1)
+    with pytest.raises(SystemExit, match="1 frame counts off"):
+        h.main("fidelity", "--draw", "1", "--clips", str(N), "--composed", "comp", "--out-dir", str(h.forms))
+
+
+def test_a_smokes_fidelity_stops_nothing(monkeypatch, tmp_path):
+    assert C.fidelity_passed(dict(identical=0, clips=5, frames=dict(off=3)), False) is True
+    assert C.fidelity_floor(32) == 24 and C.fidelity_floor(8) == 6 and C.FIDELITY_CLIPS == 32
+
+
+def index_for_frames(rows):
+    return dict(states=rows)
+
+
+def stored_for_frames(plan):
+    return dict(per_clip=[dict(sign="a", plans=dict(core_crossfade=plan))])
+
+
+def test_exported_frames_are_compared_on_both_forms_with_the_stored_plan():
+    plan = dict(frames=30, predicted=dict(frames=24))
+    good = [dict(sign="a", form=C.PREDICTED, frames=24, empty=False), dict(sign="a", form=C.TRUE_LENGTH, frames=30, empty=False)]
+    assert C.frames_off(index_for_frames(good), stored_for_frames(plan)) == dict(compared=2, off=0, first_off=None)
+    assert C.frames_off(index_for_frames([dict(good[0], frames=25)]), stored_for_frames(plan))["off"] == 1
+    assert C.frames_off(index_for_frames([dict(good[1], frames=24)]), stored_for_frames(plan))["first_off"] == "a"
+    assert C.frames_off(index_for_frames([dict(good[0], sign="z")]), stored_for_frames(plan))["off"] == 1
+    assert C.frames_off(index_for_frames([dict(good[0], empty=True)]), stored_for_frames(plan))["off"] == 1
+    assert C.frames_off(index_for_frames([dict(good[0])]), dict(per_clip=[dict(sign="a", plans={})]))["off"] == 1
+    assert C.frames_off(index_for_frames([dict(good[0], empty=True)]), dict(per_clip=[dict(sign="a", plans={})])) == dict(compared=0, off=0, first_off=None)
+
+
+def test_fidelity_compares_every_exported_clips_frames(monkeypatch, tmp_path):
+    h = Comp(monkeypatch, tmp_path, draws=(1,))
+    import score_back_translation
+    monkeypatch.setattr(score_back_translation, "translate", lambda model, kind, states: [json.loads(h.store.get(C.top10_key(1)))["forms"][C.PREDICTED]["hypotheses"][i] for i in range(N) if i != EMPTY][:len(states)])
+    monkeypatch.setattr(P, "load_reader", lambda store, args: type("V", (), dict(model=None, kind="keypoints", info=dict(sha256=L.TRANSLATOR_SHA)))())
+    assert h.main("fidelity", "--draw", "1", "--clips", str(N), "--composed", "comp", "--out-dir", str(h.forms)) == 0
+    record = json.loads((h.forms / "fidelity-d1.json").read_text())
+    assert record["frames"] == dict(compared=2 * (N - 1), off=0, first_off=None)
 
 
 def test_fidelity_refuses_a_clip_outside_its_stored_report_and_mismatched_export(monkeypatch, tmp_path):
@@ -553,6 +626,11 @@ def test_the_pipeline_has_its_planted_values(monkeypatch, tmp_path):
     assert abs(block["margin"]["mean"] - np.mean(means)) < 1e-4 and block["margin"]["draws"] == 8 and block["margin"]["between_draw_sd"] > 0 and block["margin"]["t_ci95"][0] < block["margin"]["mean"] < block["margin"]["t_ci95"][1]
     assert abs(block["share_of_real"]["mean"] - np.mean(means) / .4) < 1e-3 and abs(block["share_of_nearest"]["mean"] - np.mean(means) / .5) < 1e-3
     assert block["bleu"]["per_draw"][0] < block["bleu"]["per_draw"][-1]
+    # gap shares against this draw's blank: likelihood (2.97 + ... ) by the formula, BLEU by comp_a_read's
+    a, r, b = -2., -1.1, -3.
+    want_share = ((N - 1) * (a - b) + 0.) / N / (r - b)
+    assert abs(draw3["likelihood_gap_share"]["point"] - want_share) < 1e-3 and draw3["bleu_gap_share"]["blank"] < draw3["bleu_gap_share"]["bleu"] < draw3["bleu_gap_share"]["real"]
+    assert abs(block["likelihood_gap_share"]["mean"] - want_share) < 1e-3 and block["bleu_gap_share"]["draws"] == 8 and block["bleu_gap_share"]["per_draw"][2] == pytest.approx(draw3["bleu_gap_share"]["share"], abs=1e-3)
     assert report["clips"] == dict(list=N, in_v1_training=4, outside_v1_training=N - 4) and report["by_v1_training"]["in_v1_training"]["clips"] == 4
     assert set(report["fidelity"]) == {str(k) for k in C.DRAWS}
 
@@ -589,14 +667,83 @@ def test_v1s_stored_share_stands_beside_it_and_on_clips_outside_its_training(mon
     assert len(beside["gap_share_outside_v1_training"]) == 8 and all(0 < x < 1 for x in beside["gap_share_outside_v1_training"]) and beside["mean_gap_share_outside_v1_training"] > 0
 
 
+def test_v1s_likelihood_share_is_the_formula_and_the_pairs_are_like_with_like(monkeypatch, tmp_path):
+    h = Comp(monkeypatch, tmp_path)
+    report = h.pipeline()
+    beside = report["v1_stored"]
+    assert beside["likelihood_gap_share"] == [.5] * 8           # (-2 - -3) / (-1 - -3), the None left out
+    pair = beside["parent_minus_v1"]
+    block = report["composition"]
+    assert pair["likelihood_gap_share"]["per_draw"][0] == pytest.approx(block["likelihood_gap_share"]["per_draw"][0] - .5, abs=1e-3)
+    assert pair["bleu_gap_share"]["per_draw"][2] == pytest.approx(block["bleu_gap_share"]["per_draw"][2] - beside["gap_share"][2], abs=1e-3) and pair["bleu_gap_share"]["t_ci95"][0] <= pair["bleu_gap_share"]["mean"] <= pair["bleu_gap_share"]["t_ci95"][1]
+    assert "not compared with v1's BLEU share" in pair["note"]
+
+
+def test_v1_stored_of_other_clips_refuses():
+    report = dict(signs=["b", "a"], references=[], forms={}, likelihood=dict(per_form={}))
+    with pytest.raises(SystemExit, match="other clips or another order"):
+        C.v1_beside(dict(forms=dict(predicted=dict(gap_share=dict(top10=[]), top10_bleu=[]))), {1: report}, dict(outside_v1_training=np.array([True, True])), ["a", "b"])
+
+
+def test_per_signer_and_word_rows_are_report_only_and_add_up(monkeypatch, tmp_path):
+    h = Comp(monkeypatch, tmp_path)
+    report = h.pipeline()
+    signers = report["per_signer"]
+    assert set(signers) == {"c01", "c03", "c05"} and sum(v["clips"] for v in signers.values()) == N and set(signers["c01"]) >= {"margin", "share_of_real", "bleu_gap_share", "likelihood_gap_share"}
+    assert "c03" in C.DISCLOSURES["per_signer"] and report["disclosures"]["per_signer"] == C.DISCLOSURES["per_signer"]
+    words = report["words"]
+    assert words["report_only"] is True and words["non_empty"]["clips_per_draw"] == N - 1
+    per_draw = sum(k["clips_per_draw"] for k in words["by_coverage"].values())
+    assert per_draw == N - 1 and words["non_empty"]["margin"] == pytest.approx(np.mean([.1 + .03 * k - .05 for k in C.DRAWS]), abs=1e-4)
+
+
+def test_coverage_bins_read_words_over_tokens():
+    a = dict(margin=np.array([1., 2., 3., 0.]), real=np.ones(4), non_empty=np.array([True, True, True, False]), coverage=np.array([.2, .4, .9, 0.]))
+    out = C.word_rows({1: a})
+    assert out["by_coverage"]["0.0-0.25"]["margin"] == 1. and out["by_coverage"]["0.25-0.5"]["margin"] == 2. and out["by_coverage"]["0.5-inf"]["margin"] == 3. and out["non_empty"]["clips_per_draw"] == 3.
+    assert C.word_rows({1: dict(a, non_empty=np.zeros(4, bool))})["non_empty"] == dict(clips_per_draw=0.)
+
+
+def test_a_restricted_form_keeps_this_jobs_per_clip_fields_in_step(monkeypatch, tmp_path):
+    h = Comp(monkeypatch, tmp_path, draws=(1,))
+    h.to_control()
+    assert h.read_draws("1") == 0
+    form = json.loads((h.forms / "form-d1_comp.json").read_text())
+    out = C.restrict_form(form, ["s5", "s1"])
+    assert out["signs"] == ["s5", "s1"] and out["frames"] == [form["frames"][5], form["frames"][1]] and out["word_counts"] == [form["word_counts"][5], form["word_counts"][1]] and out["groups"] == [form["groups"][5], form["groups"][1]] and out["empty"] == [False, False]
+
+
+def test_a_still_or_blank_of_another_length_refuses_the_merge(monkeypatch, tmp_path):
+    h = base_for_merge(monkeypatch, tmp_path)
+    for name in ("d3_still", "d4_still_true", "d5_blank"):
+        path = h.forms / f"form-{name}.json"
+        raw = path.read_text()
+        form = json.loads(raw)
+        form["frames"] = [x + 1 for x in form["frames"]]
+        path.write_text(json.dumps(form))
+        pod = tmp_path / "s" / "pods"
+        import shutil
+        shutil.rmtree(pod, ignore_errors=True)
+        assert h.upload_pod() == 0
+        with pytest.raises(SystemExit, match="is not as long as"):
+            h.merge()
+        path.write_text(raw)
+
+
+def test_a_blank_at_length_is_blank_and_as_long():
+    state = laid_out(signer_state(5, frames=12, amplitude=.4), TWO_VIEW)
+    out = C.blank_at_length(state, 30)
+    assert len(out.timestamps) == 30 and not out.channels["body"].valid.any()
+
+
 def test_v1s_outside_share_takes_only_clips_outside_its_training():
     refs = ["a b c d e f", "g h i j k l", "m n o p q r"]
-    report = dict(references=refs, forms={C.PREDICTED: dict(hypotheses=[refs[0], "z", "z"]), "real": dict(hypotheses=refs), "blank@predicted": dict(hypotheses=["y"] * 3)})
+    report = dict(signs=["a", "b", "c"], likelihood=dict(per_form={C.PREDICTED: [1., 1., 1.], "blank@predicted": [0., 0., 0.], "real": [2., 2., 2.]}), references=refs, forms={C.PREDICTED: dict(hypotheses=[refs[0], "z", "z"]), "real": dict(hypotheses=refs), "blank@predicted": dict(hypotheses=["y"] * 3)})
     summary = dict(forms=dict(predicted=dict(gap_share=dict(top10=[.1, .2]), top10_bleu=[1., 2.])))
     masks = dict(outside_v1_training=np.array([True, False, False]))
-    assert C.v1_beside(summary, {1: report}, masks)["gap_share_outside_v1_training"] == [1.]
+    assert C.v1_beside(summary, {1: report}, masks, ["a", "b", "c"])["gap_share_outside_v1_training"] == [1.]
     masks = dict(outside_v1_training=np.array([False, True, True]))
-    assert C.v1_beside(summary, {1: report}, masks)["gap_share_outside_v1_training"] == [0.]
+    assert C.v1_beside(summary, {1: report}, masks, ["a", "b", "c"])["gap_share_outside_v1_training"] == [0.]
 
 
 def test_a_read_off_the_plan_raises_an_alert_and_check_exits_3(monkeypatch, tmp_path, capsys):
@@ -613,7 +760,7 @@ def test_a_read_off_the_plan_raises_an_alert_and_check_exits_3(monkeypatch, tmp_
     assert h.main("check", "--report", str(tmp_path / "report.json")) == 3 and "ALERT" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("identical,alerted", [(C.FIDELITY_FLOOR - 1, True), (C.FIDELITY_FLOOR, False)])
+@pytest.mark.parametrize("identical,alerted", [(23, True), (24, False)])
 def test_fidelity_under_its_floor_raises_an_alert(monkeypatch, tmp_path, identical, alerted):
     h = Comp(monkeypatch, tmp_path)
     h.to_control()
@@ -631,7 +778,7 @@ def test_no_fidelity_record_or_one_of_other_code_raises_an_alert(monkeypatch, tm
     assert h.read_draws() == 0
     for k in C.DRAWS[:-1]:
         h.plant_fidelity(k)
-    (h.forms / "fidelity-d8.json").write_text(json.dumps(dict(draw=8, clips=8, identical=8, code_digest="d" * 64)))
+    (h.forms / "fidelity-d8.json").write_text(json.dumps(dict(draw=8, clips=32, identical=32, frames=dict(compared=1, off=0, first_off=None), code_digest="d" * 64)))
     assert h.upload_pod() == 0
     h.plant_plan()
     assert any("draw 8: no fidelity" in a for a in h.merge()["alerts"])
@@ -796,9 +943,9 @@ def test_a_smoke_reads_composition_against_train_references_and_carries_no_store
 
 def test_the_header_states_the_reading_before_any_read():
     head = C.__doc__
-    for text in ("No label and no bar", "32.5%", "its own still pose at its own length", "A clip with no selected word is counted", "None of these says people understand", "not in the brief's forms", "234 of D20"):
+    for text in ("Like is compared with like", "about twofold", "also holds pose", "No label and no bar", "32.5%", "its own still pose at its own length", "A clip with no selected word is counted", "None of these says people understand", "not in the brief's forms", "234 of D20"):
         assert text in head, text
-    assert C.FIDELITY_CLIPS == 8 and C.FIDELITY_FLOOR == 6 and C.PLAN["nearest_margin"] == .2372 and C.PLAN["v1_share"] == .325 and C.PLAN["v1_bleu"] == 2.402 and C.PLAN["real_bleu"] == 2.130 and C.PLAN["blank_bleu"] == 1.058 and C.PLAN["still_bleu"] == .895 and C.PLAN["nearest_bleu"] == 2.207
+    assert C.FIDELITY_SHARE == .75 and C.PLAN["nearest_margin"] == .2372 and C.PLAN["v1_share"] == .325 and C.PLAN["v1_bleu"] == 2.402 and C.PLAN["real_bleu"] == 2.130 and C.PLAN["blank_bleu"] == 1.058 and C.PLAN["still_bleu"] == .895 and C.PLAN["nearest_bleu"] == 2.207
 
 
 # ---- the job ---------------------------------------------------------------------------------------------------------------------------
@@ -811,7 +958,8 @@ def run_job(tmp_path, fail_when=None, code=7, ready=0, **env):
     match = f'case "$*" in {pattern}) echo "planted failure" >&2; exit {code};; esac' if fail_when else ""
     (bin_dir / "python").write_text(f'#!/bin/bash\necho "$*" >> {log}\n{match}\ncase "$2" in ready) exit {ready};; esac\necho "ran $1 $2"\nexit 0\n')
     (bin_dir / "uv").write_text("#!/bin/bash\nexit 0\n")
-    for name in ("python", "uv"):
+    (bin_dir / "timeout").write_text(f'#!/bin/bash\necho "timeout $*" >> {tmp_path / "timeouts.log"}\nshift 3\nexec "$@"\n')
+    for name in ("python", "uv", "timeout"):
         (bin_dir / name).chmod((bin_dir / name).stat().st_mode | stat.S_IEXEC)
     environment = dict(PATH=f"{bin_dir}:/usr/bin:/bin", HOME=str(tmp_path), VENV_BIN=str(bin_dir), R2ENV=str(tmp_path / "none"), ST_REPO=str(tmp_path), WORK=str(tmp_path / "work"), **env)
     done = subprocess.run(["bash", str(JOB)], env=environment, capture_output=True, text=True, timeout=60)
@@ -843,6 +991,13 @@ def test_the_job_smokes_exports_controls_then_reads_every_draw(tmp_path):
     assert "--clips 5" in lines[1] and "--smoke-train 5" in lines[2] and "smoke" in lines[1] and "round20/parent-comp/report.json" in lines[-3]
     assert all(line.startswith("scripts/parent_comp.py ") for line in lines)
     assert sum("--draws" in line and "--resume" in line for line in lines) == 8
+    assert (tmp_path / "timeouts.log").read_text().count("-k 60 3600 python scripts/parent_comp.py export") == 9
+    assert got.index("fidelity", 11) < next(i for i, x in enumerate(lines) if "--draws" in x and "--resume" in x)
+
+
+def test_a_draw_under_its_fidelity_floor_is_not_read(tmp_path):
+    result, calls = run_job(tmp_path, fail_when="fidelity --draw 4*work/d20/forms", code=1)
+    assert result.returncode == 1 and done_line(result) == 1 and "draw 4 did not pass fidelity" in result.stdout and not [x for x in calls.splitlines() if "--draws 4" in x and "--resume" in x]
 
 
 def test_two_pods_read_their_own_draws_and_wait(tmp_path):
