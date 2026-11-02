@@ -335,7 +335,7 @@ Dates are 2026, UTC. Numbers are BLEU unless stated. "Lexicon" is the share of g
 | Nov 1 | Back-translator v2 | Real 1.871, gap +0.019 | **Not accepted** |
 | Nov 1 | **Single-camera read** | **2.849 vs 4.493** | Possible root cause, unresolved |
 | Nov 2 | Parts and parent read | Both body and fingers on v1; parent reads the paths equally, 99.8% | Points at v1's tuning, not proven |
-| Nov 2 | Finger sensitivity | Freezing fingers keeps 19-21% of the signal | Instruments do read finger motion |
+| Nov 2 | Finger sensitivity, three instruments | Freezing fingers keeps 19-23% of the signal, freezing arms 58-61% | All three read finger motion |
 | Nov 2 | Composition through the parent | 3.30 against real 2.13 | Above real: flagged, not a claim |
 | Nov 2 | Mirror test | Trained on single-camera, reads it 4.78 against two-camera 3.70 | v1's preference follows training, in large part |
 | Nov 1 | **A5, added words over eight draws** | **+0.095 [−0.078, +0.269]; likelihood −0.0022** | **Not confirmed**, not adopted; follow-up A6 not run |
