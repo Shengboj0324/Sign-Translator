@@ -6222,3 +6222,17 @@ Branch `path-read` deb48920 (digest e47cb971), two review rounds applied, not me
 - **Question 1, on v1, with two-view's frames and marks.** A factorial swapping the body channel (which holds wrist orientation) and the fingers between paths. Each metric reads alone: `body_channel_with_wrist` or `fingers` needs that part's share at least 2/3 with lower bound at least 1/3, the other under 1/3 with upper bound under 1/2; `both` needs each at least 1/3 with lower bound above 0; anything else, or disagreement, is unresolved. The label names where v1's reading falls, not which channel lost content. Stored in `which_part.json` before any later step.
 - **Question 2, on `kp2d-uwb-v2` step 76,000 (sha f1ff9446), v1's parent, trained on MediaPipe image landmarks.** Margin: mismatched minus own NLL, over a still-pose baseline that cancels presence and duration. s_u = monocular margin / two-view margin. Likelihood sets the label: `loss_not_explained_by_fine_tune` (drop's upper bound under 0, s_u − s_v1 one-sided upper bound at most 0.25, s_u upper bound at most 0.75), `gap_not_reproduced` (s_u lower bound at least 0.75 and drop's upper bound at or above 0), otherwise unresolved, including too small to read. **Neither label separates lost content from anything else.** The instrument is v1's parent, neither path is its training input, and any bias may favour either.
 - **Controls:** v1 reproduces 4.493 and 1.68 or the read is void; the trainer's monitor sample reproduces 6.09 or Question 2 alone is void.
+
+**Parts read, Question 1 (read 2026-11-02, recorded 00:52 UTC).** `round20/path-read-parts/which_part.json` sha 9b8b268b, 500 of 500, no alert, control exact. **Label: both**, on BLEU and likelihood. Swapping one part into real two-view motion, with two-view's frames and marks:
+
+| Swapped to monocular | BLEU | Lost, share of what swapping everything loses, BLEU | Likelihood above blank | Share, likelihood |
+|---|---|---|---|---|
+| Nothing | 4.493 | | +0.292 | |
+| Everything | 2.546 | 100% | +0.097 | 100% |
+| Body channel, with wrist orientation | 2.998 | 77% [54, 103] | +0.142 | 77% [70, 84] |
+| Fingers | 3.128 | 70% [49, 95] | +0.171 | 62% [55, 70] |
+| Hand pose, hand-local | 3.126 | 70% [49, 95] | +0.137 | 80% [74, 85] |
+| Hand orientation only | 3.230 | 65% [40, 89] | +0.186 | 55% [48, 61] |
+| Arms only, hands held | 3.504 | 51% [32, 71] | +0.225 | 34% [29, 40] |
+
+Shares sum well above 100%: losses overlap, since either part alone costs most of the total (channels overlap +0.389 [+0.291, +0.494] on likelihood). So no single part restores the reading, and on likelihood arms cost least. The label names where v1's reading falls, not which channel lost content, and v1 was fine-tuned on two-view. Question 2 is still running.
