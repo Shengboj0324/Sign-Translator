@@ -1,8 +1,9 @@
 #!/bin/bash
-# parent_controls.sh — controls on composition reading above real signing on v1's parent, read through the parent and the mirror: real word clips stitched in the same format (oracle), the generated clips of the oracle's words (covered), and the same forms in shuffled order (2 seeds each), on D20 (scripts/parent_controls.py). Report only: nothing trains, the mirror never moves M1, the reports decide nothing, and none of it shows human comprehension.
+# parent_controls.sh — controls on composition reading above real signing on v1's parent, read through the parent and the mirror, or through v1 with INSTRUMENTS=v1: real word clips stitched in the same format (oracle), the generated clips of the oracle's words (covered), and the same forms in shuffled order (2 seeds each), on D20 (scripts/parent_controls.py). Report only: nothing trains, the mirror and these v1 reads of A5's top10 on D20 never move M1, the reports decide nothing, and none of it shows human comprehension.
 #
 #   bash runpod/fleet/parent_controls.sh                              pins, both smokes, the compose, the parent's eight draws, the mirror's three, each merged
 #   SMOKE=1 bash runpod/fleet/parent_controls.sh                      the smokes only
+#   INSTRUMENTS=v1 bash runpod/fleet/parent_controls.sh               the same forms through v1, read only: the stored composed forms, no compose, all eight draws, under forms-v1/ and report-v1.json. Estimated from the measured pace, not measured: about 2.6 h and about $2.90 (range about $2.40 to $3.60). The same limits, resume and failure handling
 #   DRAWS="1 2 3 4 5 6" bash runpod/fleet/parent_controls.sh          fewer draws named; each report's stage says so. MIRROR_DRAWS (default "1 2 3") must be a prefix of DRAWS
 #
 # Request an NVIDIA L40S: the mirror's stored forms were read on one, a different type may void its read, and `inputs` refuses any GPU but EXPECT_GPU.
@@ -26,6 +27,7 @@ TS=$(date -u +%Y%m%dT%H%M%SZ)
 W=${WORK:-/root/parent-controls}
 DEV=${DEVICE:-cuda}
 T=scripts/parent_controls.py
+INSTRUMENTS=${INSTRUMENTS:-parent,mirror}
 DRAWS=${DRAWS:-1 2 3 4 5 6 7 8}
 MIRROR_DRAWS=${MIRROR_DRAWS:-1 2 3}
 EXPECT_GPU=${EXPECT_GPU:-NVIDIA L40S}
@@ -133,7 +135,7 @@ read_draws() {
       step echo "the clock rule starts no more $INSTRUMENT draws after${READ//,/ }" || FAILED=1
       break
     fi
-    timeout -k 60 "$READ_TIMEOUT" python $T read --draws "$k" --instrument "$INSTRUMENT" --composed "$D/composed" --resume --out-dir "$out" $COMMON > "$W/read-$INSTRUMENT-$k-$TS.log" 2>&1 &
+    timeout -k 60 "$READ_TIMEOUT" python $T read --draws "$k" --instrument "$INSTRUMENT" --composed "$COMPOSED" --resume --out-dir "$out" $COMMON > "$W/read-$INSTRUMENT-$k-$TS.log" 2>&1 &
     RUNNING="$RUNNING $!:$k"
     READ="$READ,$k"
     started=$(( started + 1 ))
@@ -163,9 +165,14 @@ reads_of() {
   echo "$READ $STOP $ELAPSED $LIMIT" > "$record" || return 1
 }
 
+case $INSTRUMENTS in
+  parent,mirror) ;;
+  v1) [ "$DRAWS" = "1 2 3 4 5 6 7 8" ] || { echo "ALERT v1 reads all eight draws, not $DRAWS"; done_ 1; }; MIRROR_DRAWS=none; R=$W/d20-v1 ;;
+  *) echo "ALERT INSTRUMENTS is parent,mirror or v1, not $INSTRUMENTS"; done_ 1 ;;
+esac
 case "$DRAWS " in
   "$MIRROR_DRAWS "*) ;;
-  *) echo "ALERT MIRROR_DRAWS ($MIRROR_DRAWS) is not a prefix of DRAWS ($DRAWS)"; done_ 1 ;;
+  *) [ "$INSTRUMENTS" = v1 ] || { echo "ALERT MIRROR_DRAWS ($MIRROR_DRAWS) is not a prefix of DRAWS ($DRAWS)"; done_ 1; } ;;
 esac
 mkdir -p "$W/compose" || done_ 1
 timeout -k 60 "$STEP_TIMEOUT" uv pip install -q 'transformers==4.57.6' sentencepiece || { alert "transformers install failed"; done_ 1; }   # the version of the stored D20 reads
@@ -176,9 +183,10 @@ CAUSE=()
 if [ "${RERUN_CAUSE+set}" = set ]; then      # new code writes beside what the voided code left; the voids it answers stay in the common prefix
   case $RERUN_CAUSE in *[![:space:]]*) ;; *) alert "RERUN_CAUSE is blank: say what was wrong and what the new code changes"; done_ 1 ;; esac
   D=$BASE/runs/$DIGEST
-  R=$W/runs/$DIGEST/d20
+  R=$W/runs/$DIGEST/${R##*/}
   CAUSE=(--rerun-cause "$RERUN_CAUSE")
 fi
+COMPOSED=$D/composed
 RM=$R/mirror/forms
 mkdir -p "$S/forms" "$S/mirror/forms" "$R/forms" "$RM" || done_ 1
 if [ -f "$R/elapsed.txt" ]; then read -r PRIOR < "$R/elapsed.txt"; fi
@@ -188,6 +196,54 @@ if [ -f "$R/plan.txt" ]; then
 else
   echo "$DRAWS/$MIRROR_DRAWS" > "$R/plan.txt" || done_ 1
 fi
+
+# v1: read only, never for a loss, a rerank or a best-of-N. Its controls come before any draw; the forms are the stored composed ones; no clock rule, since all eight draws are the read
+v1_job() {
+  local RV=$R/v1/forms state control check
+  COMPOSED=$BASE/composed
+  mkdir -p "$RV" "$S/v1/forms" || done_ 1
+  step timeout -k 60 "$MERGE_TIMEOUT" python $T inputs --instrument v1 --expect-gpu "${EXPECT_GPU// /_}" || { alert "the pins do not hold"; done_ 1; }
+  SMOKED=$W/smoke-v1-$DIGEST.done
+  if [ ! -f "$SMOKED" ]; then
+    run_read --forms control --instrument v1 --out-dir "$S/v1/forms" --smoke-train 5 $COMMON || { alert "smoke read of v1's anchors failed"; done_ 2; }
+    run control --instrument v1 --out-dir "$S/v1/forms" --void-prefix "$BASE/void-v1" || { alert "smoke control failed"; done_ 2; }
+    run_read --draws "$FIRST" --instrument v1 --composed "$COMPOSED" --out-dir "$S/v1/forms" --smoke-train 5 $COMMON || { alert "smoke read failed"; done_ 2; }
+    run upload --out-dir "$S/v1/forms" --prefix "$D/smoke-v1/$TS/forms" || { alert "smoke upload failed"; done_ 2; }
+    run_merge --draws "$FIRST" --instrument v1 --composed "$COMPOSED" --prefix "$D/smoke-v1/$TS/forms" --output-file "$S/report-v1.json" || { alert "smoke merge failed"; done_ 2; }
+    run put-report --file "$S/report-v1.json" --key "$D/smoke-v1/$TS/report-v1.json" || { alert "smoke report upload failed"; done_ 2; }
+    run check --report "$S/report-v1.json" || { alert "smoke check failed: its report is stored"; done_ 2; }
+    touch "$SMOKED" || done_ 1
+  fi
+  if [ "${SMOKE:-0}" = 1 ]; then
+    step echo "SMOKE done"
+    done_ 0
+  fi
+  run stage-state --key "$D/report-v1.json" --file "$R/report-v1.json" --record "$R/stage-v1.txt" --planned-draws "${DRAWS// /,}"
+  state=$?
+  [ "$state" = 0 ] || [ "$state" = 5 ] || { alert "v1's final report is not this run's"; done_ 1; }
+  if [ "$state" = 5 ]; then
+    run preflight --out-dir "$R/v1" --final-key "$D/report-v1.json" --void-prefix "$BASE/void-v1" "${CAUSE[@]+"${CAUSE[@]}"}" || { alert "preflight refused v1"; done_ 1; }
+    run_read --forms control --instrument v1 --resume --out-dir "$RV" $COMMON || { alert "read of v1's anchors failed"; done_ 1; }
+    run control --instrument v1 --out-dir "$RV" --void-prefix "$BASE/void-v1"
+    control=$?
+    [ "$control" != 3 ] || { alert "v1's control failed: its read is void, do not retry this code; a rerun needs new code and RERUN_CAUSE"; done_ 3; }
+    [ "$control" = 0 ] || { alert "v1's control did not run"; done_ 1; }
+    run_read --forms comp-check --instrument v1 --draws "$FIRST" --resume --out-dir "$RV" $COMMON || { alert "read of v1's stored composition failed"; done_ 1; }
+    run comp-check --instrument v1 --draw "$FIRST" --out-dir "$RV" --void-prefix "$BASE/void-v1"
+    check=$?
+    [ "$check" != 3 ] || { alert "v1 did not reproduce the stored composition: its read is void, do not retry this code; a rerun needs new code and RERUN_CAUSE"; done_ 3; }
+    [ "$check" = 0 ] || { alert "v1's composition check did not run"; done_ 1; }
+  fi
+  reads_of v1 "$RV" "$DRAWS" 8 "$BUDGET_SECONDS" || { alert "a read of v1 failed"; done_ 1; }
+  if [ "$state" = 5 ]; then
+    run upload --out-dir "$RV" --prefix "$D/forms-v1" || { alert "upload of v1's forms failed"; done_ 1; }
+    run_merge --draws "$READ" --instrument v1 --planned-draws "${DRAWS// /,}" --stop-reason "$STOP" --elapsed-seconds "$ELAPSED" --budget-seconds "$LIMIT" --composed "$COMPOSED" --prefix "$D/forms-v1" --output-file "$R/report-v1.json" "${CAUSE[@]+"${CAUSE[@]}"}" || { alert "v1's merge failed"; done_ 1; }
+    run put-report --file "$R/report-v1.json" --key "$D/report-v1.json" || { alert "v1's final report was not stored"; done_ 1; }
+  fi
+  run check --report "$R/report-v1.json" || { alert "check raised an alert on v1: its report is stored"; done_ 1; }
+  done_ 0
+}
+[ "$INSTRUMENTS" != v1 ] || v1_job
 
 step timeout -k 60 "$MERGE_TIMEOUT" python $T inputs --model-file "$MODEL" --expect-gpu "${EXPECT_GPU// /_}" || { alert "the pins do not hold"; done_ 1; }
 
