@@ -6628,3 +6628,17 @@ python scripts/round15_compose_eval.py run \
 
 **Not done.** `avatar-fixes` isn't on origin, so the guides' face wording was checked against this branch's renderer and docs, not against that branch. Everything here ran on synthetic data, and no packet has run on real D20.
 
+### Before rendering rater videos: blocking fixes from the last check (2026-11-03, 05:11 UTC)
+
+The last independent check, on main 6867519 with CI green (7,212 passed), says **go with fixes**: the hand correction holds up, and the gaps are around it. Rater videos aren't rendered until all of these are fixed, tested and checked again. Decided now, before any render, since several change pixels:
+
+1. **Padding:** pad with bytes that don't compress (a seeded hash stream) instead of zeros, since re-zipping strips zeros (62 KB against 3.44 MB). The stream bit rate in `moov` still differs by arm (about 113 kb/s against 6.9 Mb/s), so the owner plays clips to raters, or delivers them only inside the packet's stored zip. Constant-bit-rate encoding is the alternative, if it doesn't harm the picture.
+2. **Disk:** delete loose copies once each zip is written, and refuse to start without enough free space for the pilot (about 4 GiB, plus margin).
+3. **Settings hash:** hash every loaded repository module (or the content digest) plus library versions, once at start and again at the end; record the digest on each render; refuse a change mid-run, item by item, not after six hours.
+4. **R2 uploads:** write once, resume by skipping items whose `INDEX.json` matches, and test that keys hold only the item id.
+5. **Depth move:** cap the hand's depth move at 15 cm and flag clips over it. A hand behind the head now moves 47-61 cm forward. Count cover by the other arm and hand in the record.
+6. **Reference fairness, declared now as report only:** reference minus each system, with and without sentences whose reference fails acceptance or whose arm moved past the cap. Real clips fail acceptance more often (4 of 36 against 0), which would make "within 10 points of real" easier.
+7. **Tests:** replace the circular correction tests with an exact ray check against the drawn triangles, and add tests for the 10 surviving mutations (box size, top in the front map, edge margin, clearance, elbow circle, `refuse_mixed_renders` call, upload names, third-sheet repeat, cut boundary, `dirty`).
+
+The signer study waits for people anyway: the board, recruiting and the checker's session come first. These fixes take about half a day of work, then one more check, before the about 6-hour render.
+
