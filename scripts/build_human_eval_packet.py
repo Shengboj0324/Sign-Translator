@@ -523,14 +523,20 @@ def negation_checkers(text: str) -> list[str]:
 
 
 def code_commit() -> dict:
-    """The commit this code ran from and whether the tree held other changes: what a stored draw needs to be read later."""
+    """The code a stored draw needs to be read later: its content digest always, as every read names its code, and the
+    commit with whether the tree held other changes where it runs from a git checkout. A source archive, as on a pod, has
+    no commit (``None``), and the digest still names its code."""
     import subprocess
+
+    from signtranslator.eval import provenance
+
     def git(*args):
         return subprocess.run(["git", "-C", str(ROOT), *args], check=True, capture_output=True, text=True).stdout.strip()
     try:
-        return dict(commit=git("rev-parse", "HEAD"), dirty=bool(git("status", "--porcelain")))
+        commit, dirty = git("rev-parse", "HEAD"), bool(git("status", "--porcelain"))
     except (OSError, subprocess.CalledProcessError):
-        raise SystemExit("the draw records its code commit, and this is not a git checkout: run it from one")
+        commit = dirty = None
+    return dict(commit=commit, dirty=dirty, digest=provenance.code_digest())
 
 
 def draw_prefix(name: str) -> str:

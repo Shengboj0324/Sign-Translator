@@ -175,10 +175,13 @@ def test_the_draw_prints_its_seed_records_its_commit_and_is_stored_once(tmp_path
     assert bh.main(draw_args(root, sha, set_sha, tmp_path / "a", "--seed", "7", "--name", "read-1")) == 0
     printed = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert printed["seed"] == 7 and printed["name"] == "read-1" and printed["store_prefix"] == "human-eval/draws/read-1"
-    head = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    git = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True, text=True)
+    head = git.stdout.strip() if git.returncode == 0 else None          # a source archive has no commit
     local = (tmp_path / "a" / "draw.json").read_bytes()
     draw = json.loads(local)
-    assert draw["seed"] == 7 and draw["code"]["commit"] == head and isinstance(draw["code"]["dirty"], bool) and printed["code"] == draw["code"]
+    assert draw["seed"] == 7 and draw["code"]["commit"] == head and printed["code"] == draw["code"]
+    assert isinstance(draw["code"]["dirty"], bool) if head else draw["code"]["dirty"] is None
+    assert draw["code"]["digest"] == bh_provenance_digest()
     for file in ("draw.json", "negation_check.csv", "checker_clips.csv"):
         assert store.get(f"human-eval/draws/read-1/{file}") == (tmp_path / "a" / file).read_bytes()
     assert printed["recordings_not_found"] == printed["candidates"]    # the fixture's store holds no How2Sign CSV: each row says so
@@ -1127,3 +1130,15 @@ def test_the_bar_is_untouched():
     with pytest.raises(BarRefused, match="report-only"):
         key = study(20)
         bar_read(eight(key), key, reference="reference", roster={}, boot=0)
+
+
+def bh_provenance_digest():
+    from signtranslator.eval import provenance
+    return provenance.code_digest()
+
+
+def test_a_draw_outside_a_git_checkout_names_its_code_by_digest(monkeypatch, tmp_path):
+    monkeypatch.setattr(bh, "ROOT", tmp_path)                  # no repository here, as in a source archive on a pod
+    code = bh.code_commit()
+    assert code["commit"] is None and code["dirty"] is None and code["digest"] == bh_provenance_digest()
+
