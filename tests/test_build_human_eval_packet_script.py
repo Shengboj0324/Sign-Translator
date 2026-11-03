@@ -376,7 +376,9 @@ def test_the_how2sign_packet_end_to_end_with_the_real_renderer(tmp_path, stage2_
     for i in key["items"]:
         assert i["truth"]["negated"] == ("yes" if i["sign"] == candidate else "no")
         assert i["truth"]["stratum"] == ("confirmed" if i["sign"] == candidate else "non_candidate")
-        assert (out / "packet" / f"group-{i['group']}" / f"{i['item_id']}.mp4").stat().st_size > 0 and i["frames"] > 0
+        with zipfile.ZipFile(out / "packet" / f"group-{i['group']}.zip") as z:
+            assert z.getinfo(f"group-{i['group']}/{i['item_id']}.mp4").file_size > 0 and i["frames"] > 0
+        assert not (out / "packet" / f"group-{i['group']}" / f"{i['item_id']}.mp4").exists()            # deleted once its zip read back
         assert i["renderer"] == "skeleton" and i["seconds"] == i["reference_seconds"] and len(i["item_id"]) == 32
         if i["system"] == "real":
             assert i["state"]["sha256"] in {r["state_sha256"] for r in stored["records"]}

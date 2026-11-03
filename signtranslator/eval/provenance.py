@@ -11,13 +11,15 @@ import platform
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def code_digest(extra_files=()) -> str:
-    """SHA-256 over the code (module docstring). ``extra_files``: paths, relative to the repository or absolute. A missing file raises."""
-    files = {p.resolve() for p in (ROOT / "scripts").glob("*.py")} | {p.resolve() for p in (ROOT / "signtranslator").rglob("*.py")}
-    files |= {(Path(f) if Path(f).is_absolute() else ROOT / f).resolve() for f in extra_files}
+def code_digest(extra_files=(), *, root: Path = ROOT) -> str:
+    """SHA-256 over the code (module docstring). ``extra_files``: paths, relative to the repository or absolute. A missing file raises.
+    ``root``: another checkout's code."""
+    root = Path(root).resolve()
+    files = {p.resolve() for p in (root / "scripts").glob("*.py")} | {p.resolve() for p in (root / "signtranslator").rglob("*.py")}
+    files |= {(Path(f) if Path(f).is_absolute() else root / f).resolve() for f in extra_files}
     digest = hashlib.sha256()
-    for path in sorted(files, key=lambda p: str(p.relative_to(ROOT))):
-        digest.update(str(path.relative_to(ROOT)).encode() + b"\0" + hashlib.sha256(path.read_bytes()).digest())
+    for path in sorted(files, key=lambda p: str(p.relative_to(root))):
+        digest.update(str(path.relative_to(root)).encode() + b"\0" + hashlib.sha256(path.read_bytes()).digest())
     return digest.hexdigest()
 
 

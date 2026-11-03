@@ -1607,6 +1607,42 @@ def reference_by_arm_validity(answers: Sequence[Mapping], key: Mapping, *, refer
     return out
 
 
+def reference_fairness(answers: Sequence[Mapping], key: Mapping, *, reference: str) -> dict | None:
+    """Report only, declared before any sheet returned (protocol section 6): the reference's forced-choice accuracy minus each system's,
+    paired by sentence, with all sentences and without those where the comparison is unfair to one side: the reference's render fails its
+    acceptance (real clips fail it more often), or the reference's or the system's hand correction reached its depth cap (a hand left
+    partly covered). Beside :func:`reference_by_arm_validity`; decides nothing, and the bar read doesn't read it. ``None`` for a key
+    whose items don't hold the avatar's ``acceptance`` and ``depth_capped``."""
+    items = {i["item_id"]: i for i in key["items"]}
+    if not items or any("acceptance" not in i or "depth_capped" not in i for i in items.values()):
+        return None
+    by = collections.defaultdict(lambda: collections.defaultdict(list))
+    for a in answers:
+        item = items[a["item_id"]]
+        if a["viewable"] == "yes":
+            by[item["system"]][item["utterance"]].append(float(a["choice"] == item["correct"]))
+    of = {(i["system"], i["utterance"]): i for i in items.values()}
+    failed = {u for (s, u), i in of.items() if s == reference and not i["acceptance"]["passed"]}
+    capped = collections.defaultdict(set)
+    for (s, u), i in of.items():
+        if i["depth_capped"]:
+            capped[s].add(u)
+    accuracy = {s: {u: sum(v) / len(v) for u, v in rows.items()} for s, rows in by.items()}
+    out = dict(report_only=True, reference=reference, reference_failing_acceptance=len(failed),
+               depth_capped={s: len(capped[s]) for s in key["systems"]}, systems={})
+    for system in key["systems"]:
+        if system == reference:
+            continue
+        mine, theirs = accuracy.get(system, {}), accuracy.get(reference, {})
+        shared = set(mine) & set(theirs)
+        cuts = dict(all=shared, without_reference_failing_acceptance=shared - failed,
+                    without_depth_capped=shared - capped[reference] - capped[system],
+                    without_either=shared - failed - capped[reference] - capped[system])
+        out["systems"][system] = {label: dict(sentences=len(kept), reference_minus_system=(sum(theirs[u] - mine[u] for u in kept) / len(kept)) if kept else None)
+                                  for label, kept in cuts.items()}
+    return out
+
+
 def key_sha256(key: Mapping) -> str:
     import json
     return hashlib.sha256(json.dumps(key, sort_keys=True).encode()).hexdigest()
@@ -1619,4 +1655,4 @@ __all__ = ["OPTIONS", "SENTENCE_TYPES", "SHEET_COLUMNS", "grammatical_truth", "l
            "STAGE2_COLUMNS", "write_stage1_sheet", "parse_stage1", "write_stage2_sheet", "parse_stage2",
            "read_two_stage", "read_stages", "stage1_summary", "check_roster", "study_coverage", "people_problems", "parse_roster",
            "load_roster", "SheetError", "decode_sheet", "BAR", "STRATA", "BarRefused", "twoway_variance", "lower_bound", "upper_bound", "bar_read",
-           "WORD_FORMAT_ROLES", "INSTRUMENT_SHUFFLE_SHARES", "word_format_pairing", "word_format_read"]
+           "WORD_FORMAT_ROLES", "INSTRUMENT_SHUFFLE_SHARES", "word_format_pairing", "word_format_read", "reference_by_arm_validity", "reference_fairness"]

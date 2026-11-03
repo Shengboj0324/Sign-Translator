@@ -35,6 +35,12 @@ from ..pose.multichannel import MultichannelMotion
 from .state_rig import StateRigBinding, pose_state_sequence
 
 DEFAULT_TIME_BASE = Fraction(1, 90000)
+#: ``quality='constant'``: H.264 4:2:0 held to 2 Mb/s (x264's VBV: average and maximum 2 Mb/s, a 1 s buffer) with a fixed frame-type pattern,
+#: then SEI units of incompressible user data, spread over the samples, top the stream up to ``rate * frames / fps + buffer`` bits. Stream
+#: size, stream and file bit rate, frame types and every MP4 box but the sample sizes are then a function of the frame count alone, and a
+#: zip can't shrink the top-up back to the content's size, as it would x264's own CBR filler (0xFF bytes). On a busy synthetic 768 px
+#: avatar clip it scored above CRF 16 on PSNR, hands included (docs/AVATAR_RENDER.md section 13).
+CONSTANT_RATE = dict(bits_per_second=2_000_000, buffer_bits=2_000_000, keyint=48, preset="slow")
 
 
 def presentation_timestamps(clock: Sequence[float], *,
@@ -113,13 +119,15 @@ def encode_timestamped_video(frames: Iterable[np.ndarray], clock: Sequence[float
     """Encode RGB frames with PTS taken from the clock; refuse any reordering.
 
     ``quality='lossless'`` (default) is H.264 4:4:4 at CRF 0. ``'review'`` is H.264
-    4:2:0 at CRF 16, which common players (QuickTime, browsers) decode; timestamps
-    are identical either way. Returns the ticks, time base, absolute clock origin
-    and exact error bound.
+    4:2:0 at CRF 16, which common players (QuickTime, browsers) decode. ``'constant'``
+    is :data:`CONSTANT_RATE`. Timestamps are identical either way. Returns the ticks,
+    time base, absolute clock origin and exact error bound.
     """
-    if quality not in ("lossless", "review"):
-        raise ValueError("quality must be 'lossless' or 'review'")
+    if quality not in ("lossless", "review", "constant"):
+        raise ValueError("quality must be 'lossless', 'review' or 'constant'")
     import av
+    if quality == "constant":
+        return _encode_constant_rate(frames, clock, Path(path), time_base=time_base, codec=codec)
 
     ticks = presentation_timestamps(clock, time_base=time_base)
     frames = list(frames)
@@ -154,6 +162,120 @@ def encode_timestamped_video(frames: Iterable[np.ndarray], clock: Sequence[float
                 codec=codec, pixel_format="yuv444p" if (codec == "libx264" and quality == "lossless") else "yuv420p",
                 max_timestamp_error_seconds=float(bound),
                 max_timestamp_error_exact=str(bound), frames=len(ticks))
+
+
+def constant_rate_budget(frames: int, fps: float) -> int:
+    """The stream bytes of a ``quality='constant'`` encode of ``frames`` frames at ``fps``: what the rate sends over the clip plus one buffer."""
+    import math
+    return math.ceil((CONSTANT_RATE["bits_per_second"] * frames / fps + CONSTANT_RATE["buffer_bits"]) / 8)
+
+
+def _nominal_rate(clock: Sequence[float]) -> Fraction:
+    steps = np.diff(np.asarray(clock, dtype=np.float64))
+    return Fraction(1. / float(np.median(steps))).limit_denominator(1001) if len(steps) else Fraction(24)
+
+
+def _encode_constant_rate(frames, clock, path: Path, *, time_base: Fraction, codec: str) -> dict:
+    """``quality='constant'``: encode under :data:`CONSTANT_RATE` to a sibling file, then copy every packet to ``path`` with SEI units of
+    unregistered user data, spread over the samples, that bring the stream to :func:`constant_rate_budget`. Packets, timestamps and pictures
+    are unchanged; decoders skip the SEI units."""
+    import av
+    if codec != "libx264":
+        raise ValueError("quality='constant' is libx264's")
+    rate = CONSTANT_RATE
+    ticks = presentation_timestamps(clock, time_base=time_base)
+    frames = list(frames)
+    if len(frames) != len(ticks):
+        raise ValueError("frame count must equal clock length")
+    height, width = frames[0].shape[:2]
+    if any(frame.shape != (height, width, 3) or frame.dtype != np.uint8 for frame in frames):
+        raise ValueError("frames must share one uint8 HxWx3 shape")
+    if height % 2 or width % 2:
+        raise ValueError("encoder requires even frame dimensions")
+    fps = _nominal_rate(clock)
+    bits = str(rate["bits_per_second"])
+    raw = path.with_name(path.name + ".rate")
+    try:
+        with av.open(str(raw), mode="w", format="mp4") as container:
+            stream = container.add_stream(codec, rate=None)
+            stream.width, stream.height = width, height
+            stream.pix_fmt = "yuv420p"
+            stream.time_base = time_base
+            stream.codec_context.time_base = time_base
+            stream.codec_context.framerate = fps
+            stream.options = {"preset": rate["preset"], "b": bits, "maxrate": bits, "bufsize": str(rate["buffer_bits"]),
+                              "x264-params": f"force-cfr=1:b-adapt=0:scenecut=0:keyint={rate['keyint']}:min-keyint={rate['keyint']}"}
+            for tick, image in zip(ticks, frames):
+                frame = av.VideoFrame.from_ndarray(image, format="rgb24")
+                frame.pts = tick
+                frame.time_base = time_base
+                for packet in stream.encode(frame):
+                    container.mux(packet)
+            for packet in stream.encode():
+                container.mux(packet)
+        with av.open(str(raw)) as source:
+            template = source.streams.video[0]
+            packets = [(p.pts, p.dts, p.duration, p.is_keyframe, bytes(p)) for p in source.demux(template) if p.size]
+            stream_bytes = sum(len(p[4]) for p in packets)
+            budget = constant_rate_budget(len(frames), float(fps))
+            seed = hashlib.sha256(b"".join(p[4] for p in packets)).digest()       # unique to the clip: no archiver can share it between files
+            shares = _sei_shares(budget - stream_bytes, len(packets))
+            with av.open(str(path), mode="w", format="mp4") as target:
+                out = target.add_stream_from_template(template)
+                for n, (pts, dts, duration, key, data) in enumerate(packets):
+                    packet = av.Packet(_with_sei(data, shares[n], seed, n))
+                    packet.pts, packet.dts, packet.duration, packet.time_base = pts, dts, duration, template.time_base
+                    packet.is_keyframe = key
+                    packet.stream = out
+                    target.mux(packet)
+    finally:
+        raw.unlink(missing_ok=True)
+    bound = timestamp_error_bound(clock, ticks, time_base)
+    return dict(ticks=ticks, time_base=str(time_base), clock_origin_seconds=float(clock[0]), codec=codec, pixel_format="yuv420p",
+                max_timestamp_error_seconds=float(bound), max_timestamp_error_exact=str(bound), frames=len(ticks),
+                constant_rate=dict(rate, fps=str(fps), stream_bytes_before_filler=stream_bytes, stream_bytes=budget, filler_bytes=budget - stream_bytes))
+
+
+_SEI_SMALLEST = 4 + 1 + 2 + 16 + 1               # length prefix, NAL header, one message's type and size, its UUID, trailing bits
+
+
+def _sei_unit(total: int, seed: bytes, counter: int) -> bytes:
+    """One length-prefixed SEI NAL unit (type 6), exactly ``total`` bytes, of unregistered user-data messages (payload type 5) of at most
+    254 bytes each, every UUID and data byte SHA-256 output with no zero byte. So no start code can appear, no size field runs to 0xFF, and
+    nothing in it repeats: it doesn't compress, and decoders skip it."""
+    body = total - 4 - 1 - 1                                  # the messages
+    if body < 18:
+        raise ValueError(f"an SEI unit of {total} bytes is too small")
+    count = -(-body // 256)
+    sizes = [body // count + (k < body % count) - 2 for k in range(count)]
+    random = b"".join(hashlib.sha256(seed + counter.to_bytes(8, "big") + i.to_bytes(8, "big")).digest() for i in range((sum(sizes) + 31) // 32))
+    random = (np.frombuffer(random[:sum(sizes)], np.uint8) % 255 + 1).astype(np.uint8).tobytes()
+    parts, at = [b"\x06"], 0
+    for size in sizes:
+        parts.append(b"\x05" + bytes([size]) + random[at:at + size])
+        at += size
+    unit = b"".join(parts) + b"\x80"
+    return len(unit).to_bytes(4, "big") + unit
+
+
+def _sei_shares(need: int, samples: int) -> list[int]:
+    """``need`` bytes as one SEI unit's size per sample, as even as they go over as many samples as can hold one (0: none)."""
+    if need < 0:
+        raise ValueError(f"the stream is {-need} bytes over its budget: constant-rate encoding failed")
+    used = min(samples, need // _SEI_SMALLEST)
+    if need and not used:
+        raise ValueError(f"the stream is {need} bytes under its budget, too few for one filler unit: constant-rate encoding failed")
+    return [need // used + (n < need % used) if n < used else 0 for n in range(samples)]
+
+
+def _with_sei(sample: bytes, size: int, seed: bytes, counter: int) -> bytes:
+    """``sample`` (length-prefixed NAL units) with an SEI unit of ``size`` bytes put before its first slice, where an SEI unit belongs."""
+    if not size:
+        return sample
+    i = 0
+    while i < len(sample) and (sample[i + 4] & 31) not in (1, 5):          # past the access unit delimiter, parameter sets and SEI
+        i += 4 + int.from_bytes(sample[i:i + 4], "big")
+    return sample[:i] + _sei_unit(size, seed, counter) + sample[i:]
 
 
 def verify_timestamped_video(path: Path, clock: Sequence[float], *,

@@ -1070,9 +1070,9 @@ def test_the_whole_pilot_through_the_packet_two_stages_and_the_scorer(tmp_path, 
         text = (folder / "sheet.csv").read_text()
         for word in ("mixed", "real", "composition", "shuffled", "oracle", "moved", "order", "truth"):
             assert word not in text
-        names = [p.name for p in folder.iterdir()]
-        assert sorted(n for n in names if n.endswith(".mp4")) == sorted(f"{i['item_id']}.mp4" for i in key["items"] if i["group"] == g)
+        assert not any(p.suffix == ".mp4" for p in folder.iterdir())                 # the videos sit in the zip alone once it is read back
         with zipfile.ZipFile(out / "packet" / f"group-{g}.zip") as z:
+            assert sorted(n.split("/")[1] for n in z.namelist() if n.endswith(".mp4")) == sorted(f"{i['item_id']}.mp4" for i in key["items"] if i["group"] == g)
             assert {i.date_time for i in z.infolist()} == {(1980, 1, 1, 0, 0, 0)} and not any("key" in n for n in z.namelist())
             for name in z.namelist():
                 if name.endswith((".csv", ".md")):

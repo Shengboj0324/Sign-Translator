@@ -16,8 +16,12 @@ exactly, so handshape and palm orientation do not change. **A forearm doesn't dr
 dark sleeve from a dark top cost far more of the arm raters see than it saved (docs/AVATAR_RENDER.md section 13), so a forearm may stay inside the
 torso, and :func:`penetration` still counts that against the rest body's signed distance grids.
 
-It uses no arm label, text or source, so it treats real and generated clips alike. Not handled: hand against hand, hand
-against the other arm or its own upper arm, and a hand behind its own sleeve.
+**A hand moves at most** :data:`DEPTH_CAP` (15 cm) towards the camera. A hand behind the head or deep in the back would otherwise travel
+half a metre through the body; past the cap it stays partly covered, and the record flags the clip (``depth_capped``, ``frames_at_depth_cap``).
+
+It uses no arm label, text or source, so it treats real and generated clips alike. Not corrected: hand against hand, hand
+against the other arm or its own upper arm, and a hand behind its own sleeve. Cover by the other arm (sleeve included) and by the other
+hand is counted in the record (:func:`covered_by_other_limb`), not corrected.
 """
 from __future__ import annotations
 
@@ -45,6 +49,8 @@ SMOOTH_SIGMA_FRAMES = 1.5
 WRIST_HALF = .5                             # forearm vertices past this fraction count towards the wrist's move
 SWIVEL_STEP_DEG = 5.
 REACH_MARGIN = .02                          # source units: a straight arm's hinge is undefined, so the arm stays short of it
+DEPTH_CAP = 1.5                             # source units (15 cm): the most a wrist moves towards the camera
+LIMB_PREFIXES = {"arm": ("upperarm", "lowerarm"), "hand": ("wrist", "metacarpal", "finger")}
 SHALLOW_MM = (0., 5., 10., 20.)
 PART_BONES = {"head": "head", "neck": "neck02", "chest": "spine01", "belly": "spine04"}
 SPINE_CHEST = ("spine01", "spine02", "breast", "clavicle", "shoulder01")
@@ -68,6 +74,7 @@ class BodyField:
     front_rest: np.ndarray | None = None    # (V, 4) rest vertices of what is drawn in front of the camera's +z ray: torso, head, top, hair
     front_weights: object = None            # (V, B) sparse skin weights of those vertices
     front_samples: object = None            # (S, V) sparse: points on their faces
+    limbs: dict | None = None               # "arm.L", "hand.R", ...: (rest, weights, samples) as above, of one arm (sleeve included) or one hand
 
 
 def _body_triangles(rig) -> tuple[np.ndarray, np.ndarray]:
@@ -167,6 +174,26 @@ def _front_surface(rig, drawn: dict | None):
         weights = attachment.weights.detach().cpu().numpy()
         keep = parts_of_bones[weights.argmax(1)] != ""
         sources.append((vertices, weights, [f for f in attachment.faces if all(keep[v] for v in f)]))
+    return _sampled(sources)
+
+
+def _limb_surface(rig, drawn: dict | None, side: str, kind: str):
+    """As :func:`_front_surface`, for one limb: ``arm`` (upper arm and forearm, and the top's sleeve if given) or ``hand``."""
+    bones = np.array([n.endswith(f".{side}") and n.startswith(LIMB_PREFIXES[kind]) for n in rig.bone_names])
+    weights_all = rig.weights.detach().cpu().numpy()
+    dominant = weights_all.argmax(1)
+    faces = [f for i, f in enumerate(rig.faces) if "body" in rig.face_groups[i] and all(bones[dominant[v]] for v in f)]
+    sources = [(rig.rest_vertices.detach().cpu().numpy(), weights_all, faces)]
+    if kind == "arm" and drawn and "top" in drawn:
+        top = drawn["top"]
+        weights = top.weights.detach().cpu().numpy()
+        keep = bones[weights.argmax(1)]
+        sources.append((top.rest_vertices.detach().cpu().numpy(), weights, [f for f in top.faces if all(keep[v] for v in f)]))
+    return _sampled(sources)
+
+
+def _sampled(sources):
+    """(rest vertices with a 1 appended, sparse skin weights, sparse face sample matrix) of (vertices, weights, faces) sources."""
     grid = (np.arange(FRONT_SAMPLES) + .5) / FRONT_SAMPLES
     rows, cols, values = [], [], []
     offset, row = 0, 0
@@ -224,7 +251,8 @@ def build_field(rig, *, voxel: float = VOXEL, drawn: dict | None = None) -> Body
             used = np.flatnonzero(weights_all[indices].sum(0) > 0)
             weights[f"{kind}.{side}"] = (weights_all[indices][:, used], used)
     front_rest, front_weights, front_samples = _front_surface(rig, drawn)
-    return BodyField(origin, voxel, sdf, part_bone, inverse, hand, forearm, weights, vertices, front_rest, front_weights, front_samples)
+    limbs = {f"{kind}.{side}": _limb_surface(rig, drawn, side, kind) for kind in LIMB_PREFIXES for side in SIDES}
+    return BodyField(origin, voxel, sdf, part_bone, inverse, hand, forearm, weights, vertices, front_rest, front_weights, front_samples, limbs)
 
 
 def _signed_distance(field: BodyField, bone_globals: np.ndarray, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -287,17 +315,23 @@ def _penetration_from_globals(rig, field: BodyField, bone_globals: np.ndarray) -
 
 def front_maps(rig, field: BodyField, bone_globals: np.ndarray) -> np.ndarray:
     """(T, X, Y) float32: the z of the drawn body's frontmost surface in each 1 cm cell of the front view, -inf where none is drawn."""
+    return _surface_maps(rig, (field.front_rest, field.front_weights, field.front_samples), bone_globals)
+
+
+def _surface_maps(rig, surface, bone_globals: np.ndarray) -> np.ndarray:
+    """:func:`front_maps` of any sampled surface (rest, weights, samples)."""
+    front_rest, front_weights, front_samples = surface
     inverse_rest = np.linalg.inv(rig.rest_globals.detach().cpu().numpy())
     x0, y0 = FRONT_BOUNDS[0][0], FRONT_BOUNDS[1][0]
     shape = tuple(int(round((hi - lo) / FRONT_CELL)) for lo, hi in FRONT_BOUNDS)
     out = np.full((len(bone_globals), *shape), -np.inf, dtype=np.float32)
-    weights = field.front_weights.tocoo()
+    weights = front_weights.tocoo()
     for t, globals_ in enumerate(bone_globals):
         skin = (globals_ @ inverse_rest)[:, :3, :]                                            # (B, 3, 4)
-        contribution = np.einsum("nab,nb->na", skin[weights.col], field.front_rest[weights.row]) * weights.data[:, None]
-        posed = np.zeros((len(field.front_rest), 3))
+        contribution = np.einsum("nab,nb->na", skin[weights.col], front_rest[weights.row]) * weights.data[:, None]
+        posed = np.zeros((len(front_rest), 3))
         np.add.at(posed, weights.row, contribution)
-        points = field.front_samples @ posed
+        points = front_samples @ posed
         i = np.floor((points[:, 0] - x0) / FRONT_CELL).astype(np.int64)
         j = np.floor((points[:, 1] - y0) / FRONT_CELL).astype(np.int64)
         keep = (i >= 0) & (i < shape[0]) & (j >= 0) & (j < shape[1])
@@ -340,6 +374,24 @@ def hidden_from_front(rig, field: BodyField, local_rotations: np.ndarray, maps: 
     return dict(frames_any_vertex=float(any_vertex.mean()), frames_half_of_a_hand=float(half.mean()), frames_whole_hand=float(whole.mean()),
                 vertex_share=float(share.mean()), deepest_mm=float(behind.max() * SOURCE_METERS_PER_UNIT * 1000.),
                 frames_any_by_side={side: float((share[:, s] > 0.).mean()) for s, side in enumerate(SIDES)})
+
+
+def covered_by_other_limb(rig, field: BodyField, local_rotations: np.ndarray) -> dict:
+    """How much of each hand the other arm (its sleeve included) and the other hand cover in the front view. Counted, not corrected."""
+    globals_ = forward_kinematics(rig, local_rotations)
+    inverse_rest = np.linalg.inv(rig.rest_globals.detach().cpu().numpy())
+    frames = len(globals_)
+    out = {}
+    for kind in LIMB_PREFIXES:
+        share = np.zeros((frames, 2))
+        for s, side in enumerate(SIDES):
+            maps = _surface_maps(rig, field.limbs[f"{kind}.{SIDES[1 - s]}"], globals_)
+            hand = _skin(field, "hand", side, globals_, inverse_rest)
+            for t in range(frames):
+                share[t, s] = (_read_front(maps, t, hand[t]) > hand[t][:, 2]).mean()
+        out[f"other_{kind}"] = dict(frames_any_vertex=float((share.max(1) > 0.).mean()), frames_half_of_a_hand=float((share.max(1) >= .5).mean()),
+                                    frames_any_by_side={side: float((share[:, s] > 0.).mean()) for s, side in enumerate(SIDES)})
+    return out
 
 
 def _wrist_need(field: BodyField, maps_clear: np.ndarray, bone_globals: np.ndarray, inverse_rest: np.ndarray, side: str, forearm_along: np.ndarray,
@@ -494,12 +546,19 @@ def correct(rig, field: BodyField, local_rotations: np.ndarray, target_globals: 
         points = field.rest_vertices[field.forearm_vertices[side]]
         along = np.clip((points - heads[fore[0]]) @ direction / (direction @ direction), 0., 1.)
         moved_frames = np.zeros(frames, dtype=bool)
+        at_cap = np.zeros(frames, dtype=bool)
+        start_z = original[:, wrist_bone, 2, 3]
         for _ in range(ROUNDS):
             globals_ = forward_kinematics(rig, local)
             need = _wrist_need(field, maps_clear, globals_, inverse_rest, side, along, settings.forearm_drives_wrist)
             if need.max(initial=0.) <= 0.:
                 break
             depth = _smoothed(need)
+            room = np.clip(DEPTH_CAP - (globals_[:, wrist_bone, 2, 3] - start_z), 0., None)
+            at_cap |= (need > 0.) & (depth > room + 1e-9)
+            depth = np.minimum(depth, room)
+            if depth.max(initial=0.) <= 1e-9:
+                break
             moved_frames |= depth > 1e-6
             swing_upper, swing_fore = _solve_arm(globals_[:, upper[0], :3, 3], globals_[:, fore[0], :3, 3], globals_[:, wrist_bone, :3, 3], depth,
                                                  elbow_nearest_in_image=settings.elbow_nearest_in_image)
@@ -524,7 +583,8 @@ def correct(rig, field: BodyField, local_rotations: np.ndarray, target_globals: 
         moved = forward_kinematics(rig, local)
         before, after = original[:, wrist_bone, :3, 3], moved[:, wrist_bone, :3, 3]
         shift = (after - before) * SOURCE_METERS_PER_UNIT * 100.
-        record[side] = dict(frames_depth_moved=int(moved_frames.sum()), frames_swivelled=int((smooth > 1e-4).sum()),
+        record[side] = dict(frames_depth_moved=int(moved_frames.sum()), frames_at_depth_cap=int(at_cap.sum()), depth_capped=bool(at_cap.any()),
+                            depth_cap_cm=float(DEPTH_CAP * SOURCE_METERS_PER_UNIT * 100.), frames_swivelled=int((smooth > 1e-4).sum()),
                             swivel_deg_max=float(np.degrees(smooth).max()), swivel_deg_p95=float(np.percentile(np.degrees(smooth), 95)),
                             wrist_depth_move_cm_max=float(np.abs(shift[:, 2]).max()),
                             wrist_depth_move_cm_p95=float(np.percentile(np.abs(shift[:, 2]), 95)),
@@ -568,9 +628,11 @@ def apply_correction(rig, field: BodyField, retargeted, settings: CorrectionSett
     local, worlds, moved = correct(rig, field, retargeted.local_rotations, retargeted.target_globals, settings)
     after = penetration(rig, field, local)
     hidden_after = hidden_from_front(rig, field, local)
-    return replace(retargeted, local_rotations=local, target_globals=worlds), dict(before=before, after=after, hidden_before=hidden_before,
-                                                                                    hidden_after=hidden_after, moved=moved)
+    capped = {side: moved[side]["depth_capped"] for side in SIDES}
+    return replace(retargeted, local_rotations=local, target_globals=worlds), dict(
+        before=before, after=after, hidden_before=hidden_before, hidden_after=hidden_after, moved=moved,
+        depth_capped=any(capped.values()), depth_capped_by_side=capped, cover_by_other_limb_after=covered_by_other_limb(rig, field, local))
 
 
-__all__ = ["BodyField", "CorrectionSettings", "CORRECTION_V2", "build_field", "penetration", "hidden_from_front", "front_maps", "correct",
-           "apply_correction", "arm_image_changes"]
+__all__ = ["BodyField", "CorrectionSettings", "CORRECTION_V2", "DEPTH_CAP", "build_field", "penetration", "hidden_from_front", "front_maps",
+           "covered_by_other_limb", "correct", "apply_correction", "arm_image_changes"]

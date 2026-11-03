@@ -6642,3 +6642,13 @@ The last independent check, on main 6867519 with CI green (7,212 passed), says *
 
 The signer study waits for people anyway: the board, recruiting and the checker's session come first. These fixes take about half a day of work, then one more check, before the about 6-hour render.
 
+**Done on branch `render-fixes-2`, not merged; still to be checked again** (`docs/AVATAR_RENDER.md` section 13 has the numbers):
+
+1. Padding is SHA-256 output keyed by the item id, and a test reads the box chain and the size field. Constant-rate x264 with filler was tried: its picture beat CRF 16 (47.15 against 45.95 dB on a busy synthetic clip at 768 px), but its buffer left the stream 2.5% over and 3% under the rate on busy and still clips, and its 0xFF filler zips back to the content's size. So the encoder holds x264 to 2 Mb/s and tops each stream up exactly with incompressible SEI units: file size, stream and file bit rate, frame types and every box but the sample sizes follow length alone (46.97 against 45.96 dB). Per-frame sizes still follow content, so playing or the stored zip stays the delivery rule, in the operator guide and the key.
+2. Loose videos go once each group's zip is read back; the build refuses to start below its peak (about 3.6 GiB for the pilot).
+3. The hash covers every repository module's content digest, the assets and the library versions, read at a render's start and end and at the packet's; each render is refused as it renders if it differs. The record's code falls back to the digest without git.
+4. R2 renders are written once and skip a stored index that matches; keys hold the item id alone. A stopped packet run can't be resumed, since item ids are drawn fresh.
+5. The hand moves at most 15 cm, flagged per clip and per arm; cover by the other arm and hand is counted. Not re-measured on real clips.
+6. `report["reference_fairness"]`, report only, declared in protocol section 6; the bar is unchanged.
+7. The correction tests use an exact ray against the drawn triangles; the review's ten survivors and fifteen more mutants of this branch are caught.
+

@@ -26,6 +26,11 @@ which face coefficients were rendered, every filled frame, shake and articulatio
 penetration and covered hands before and after the correction, a re-render determinism check and the timestamp verification. The
 direction errors, acceptance and left/right checks read the pose as drawn, after the correction; the errors before it, and what the correction did to the arm in
 the image, are kept beside them. Nothing is uploaded from here; ``archive_render`` is for callers.
+
+**The settings hash** (:func:`settings_sha256`) covers the render, filter, correction and encoder settings, the content digest of every
+repository module (``provenance.code_digest``: every ``.py`` file in ``scripts/`` and ``signtranslator/``, so every module a render can
+load), every asset, and the library versions (Python, NumPy, SciPy, PyTorch, Pillow, PyAV and its FFmpeg libraries, x264's build, Blender).
+It is read from disk each time, computed when a render starts and again when it ends, and a render whose two differ is refused.
 """
 from __future__ import annotations
 
@@ -399,56 +404,81 @@ def mirror_probe(rig, binding, out_dir: Path, blender: Path, top) -> dict:
     return check
 
 
-#: Every file that shapes a video, by path from the repo root; the assets are hashed by folder.
-RENDER_SOURCES = ("scripts/render_avatar.py", "signtranslator/avatar_render/collision.py", "signtranslator/avatar_render/motion_filter.py",
-                  "signtranslator/avatar_render/motion_quality.py", "signtranslator/avatar_render/retarget.py", "signtranslator/avatar_render/retarget_check.py",
-                  "signtranslator/avatar_render/makehuman.py", "signtranslator/avatar_render/makehuman_attachment.py", "signtranslator/avatar_render/makehuman_eyes.py",
-                  "signtranslator/avatar_render/makehuman_face.py", "signtranslator/avatar_render/makehuman_mouth.py", "signtranslator/avatar_render/makehuman_wardrobe.py",
-                  "signtranslator/avatar_render/rigged.py", "signtranslator/generation/stream_render.py", "signtranslator/generation/canonical_skeleton.py",
-                  "signtranslator/data_engineering/video_landmarks.py", "signtranslator/pose/multichannel.py")
 RENDER_ASSETS = ("makehuman", "makehuman-eyes", "makehuman-face", "makehuman-mouth", "makehuman-system-assets")
-ENCODER = dict(codec="libx264", pixel_format="yuv420p", crf=16, preset="slow")          # stream_render's "review" quality, stated here for the hash
-_file_hashes: dict = {}
+#: What the video encoder is told: stream_render's "constant" quality (its CONSTANT_RATE joins the hash).
+ENCODER = dict(codec="libx264", pixel_format="yuv420p", quality="constant")
+#: What ``dirty`` reads, with the assets: the folders the content digest covers.
+CODE_PATHS = ("scripts", "signtranslator")
+_blender_versions: dict = {}
 
 
-def _hash_of_file(path: Path) -> str:
-    key = str(path)
-    if key not in _file_hashes:
-        _file_hashes[key] = hashlib.sha256(path.read_bytes()).hexdigest()
-    return _file_hashes[key]
-
-
-def source_hashes() -> dict:
-    """The hash of every source file and asset behind a render."""
-    out = {name: _hash_of_file(ROOT / name) for name in RENDER_SOURCES}
-    for folder in RENDER_ASSETS:
-        for path in sorted(p for p in (INTAKE / folder).rglob("*") if p.is_file()):
-            out[str(path.relative_to(INTAKE))] = _hash_of_file(path)
-    return out
+def asset_hashes() -> dict:
+    """The hash of every asset file behind a render, read from disk."""
+    return {str(path.relative_to(INTAKE)): hashlib.sha256(path.read_bytes()).hexdigest()
+            for folder in RENDER_ASSETS for path in sorted(p for p in (INTAKE / folder).rglob("*") if p.is_file())}
 
 
 def blender_version(blender: Path = DEFAULT_BLENDER) -> str:
-    """The first line ``blender --version`` prints; ``absent`` if it isn't installed."""
-    key = f"version:{blender}"
-    if key not in _file_hashes:
+    """The version line and build hash ``blender --version`` prints; ``absent`` if it isn't installed. Read again whenever the binary's
+    size or modification time changes, so a reinstall mid-run is seen."""
+    try:
+        stat = Path(blender).stat()
+    except OSError:
+        return "absent"
+    key = (str(blender), stat.st_size, stat.st_mtime_ns)
+    if key not in _blender_versions:
         try:
-            _file_hashes[key] = subprocess.run([str(blender), "--version"], capture_output=True, text=True, timeout=60).stdout.splitlines()[0].strip()
-        except (OSError, IndexError, subprocess.TimeoutExpired):
-            _file_hashes[key] = "absent"
-    return _file_hashes[key]
+            lines = subprocess.run([str(blender), "--version"], capture_output=True, text=True, timeout=60).stdout.splitlines()
+            _blender_versions[key] = " | ".join(line.strip() for line in lines if line.strip().startswith(("Blender", "build hash"))) or "absent"
+        except (OSError, subprocess.TimeoutExpired):
+            _blender_versions[key] = "absent"
+    return _blender_versions[key]
+
+
+def x264_build() -> str:
+    """x264's version line, which it writes into every stream it encodes: two tiny frames encoded in memory."""
+    import io
+    import av
+    import numpy as np
+    buffer = io.BytesIO()
+    with av.open(buffer, mode="w", format="h264") as container:
+        stream = container.add_stream("libx264", rate=24)
+        stream.width = stream.height = 16
+        stream.pix_fmt = "yuv420p"
+        for _ in range(2):
+            for packet in stream.encode(av.VideoFrame.from_ndarray(np.zeros((16, 16, 3), np.uint8), format="rgb24")):
+                container.mux(packet)
+        for packet in stream.encode():
+            container.mux(packet)
+    data = buffer.getvalue()
+    start = data.find(b"x264 - core")
+    return data[start:data.find(b" - options:", start)].decode(errors="replace") if start >= 0 else "unknown"
+
+
+def library_versions(blender: Path = DEFAULT_BLENDER) -> dict:
+    """The versions of every library that shapes a video."""
+    import platform
+    import av
+    import numpy
+    import PIL
+    import scipy
+    import torch
+    return dict(python=platform.python_version(), numpy=numpy.__version__, scipy=scipy.__version__, torch=torch.__version__, pillow=PIL.__version__,
+                pyav=av.__version__, ffmpeg={k: list(v) for k, v in av.library_versions.items()}, x264=x264_build(), blender=blender_version(blender))
 
 
 def settings_payload(resolution: int, *, options: dict | None = None, blender: Path = DEFAULT_BLENDER) -> dict:
-    """Everything that shapes a video apart from its state."""
-    import av
+    """Everything that shapes a video apart from its state, read now."""
     from signtranslator.avatar_render import collision
     from signtranslator.avatar_render.motion_filter import FILTER_V1
+    from signtranslator.eval import provenance
+    from signtranslator.generation.stream_render import CONSTANT_RATE
     return dict(render=RENDER_SETTINGS, filter=FILTER_V1.describe(), resolution=resolution, options=options or DEFAULT_OPTIONS, top=TOP,
                 collision=dict(settings=collision.CORRECTION_V2.__dict__, clearance=collision.CLEARANCE, rounds=collision.ROUNDS, dilate_frames=collision.DILATE_FRAMES,
                                smooth_sigma_frames=collision.SMOOTH_SIGMA_FRAMES, reach_margin=collision.REACH_MARGIN, front_cell=collision.FRONT_CELL,
-                               front_samples=collision.FRONT_SAMPLES, swivel_step_deg=collision.SWIVEL_STEP_DEG),
-                encoder=dict(ENCODER, pyav=av.__version__, libraries={k: list(v) for k, v in av.library_versions.items()}),
-                blender=blender_version(blender), sources=source_hashes())
+                               front_samples=collision.FRONT_SAMPLES, swivel_step_deg=collision.SWIVEL_STEP_DEG, depth_cap=collision.DEPTH_CAP),
+                encoder=dict(ENCODER, constant_rate=CONSTANT_RATE), libraries=library_versions(blender),
+                code_digest=provenance.code_digest(), assets=asset_hashes())
 
 
 def settings_sha256(resolution: int, *, options: dict | None = None, blender: Path = DEFAULT_BLENDER) -> str:
@@ -457,28 +487,53 @@ def settings_sha256(resolution: int, *, options: dict | None = None, blender: Pa
     return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
 
 
-def code_commit() -> dict:
-    """The commit this renderer runs from, and whether any file that shapes a video differs from it."""
-    git = lambda *a: subprocess.run(["git", *a], cwd=ROOT, capture_output=True, text=True).stdout.strip()     # noqa: E731
-    return dict(commit=git("rev-parse", "HEAD") or "unknown", dirty=bool(git("status", "--porcelain", "--", *RENDER_SOURCES)))
+def code_commit(root: Path = ROOT) -> dict:
+    """The code a render ran: its content digest always (``provenance.code_digest``), and the commit, with whether the code or the assets
+    differ from it, where it runs from a git checkout. A source archive, as on a pod, has no commit or ``dirty`` (``None``); the digest
+    still names its code, as the draw's does."""
+    from signtranslator.eval import provenance
+
+    def git(*args):
+        return subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True, text=True).stdout.strip()
+    assets = [str((INTAKE / folder).relative_to(ROOT)) for folder in RENDER_ASSETS] if root == ROOT else []
+    try:
+        commit = git("rev-parse", "HEAD")
+        dirty = bool(git("status", "--porcelain", "--", *CODE_PATHS, *assets))
+    except (OSError, subprocess.CalledProcessError):
+        commit = dirty = None
+    return dict(commit=commit, dirty=dirty, digest=provenance.code_digest(root=root))
 
 
 def archive_render(store, prefix: str, directory: Path, fields: dict | None = None) -> dict:
-    """Every file of a render under ``prefix`` with ``INDEX.json`` (bytes, SHA-256), as the owner's rule asks. The store re-reads what it writes."""
+    """Every file of a render under ``prefix`` with ``INDEX.json`` (bytes, SHA-256), as the owner's rule asks, written once. An ``INDEX.json``
+    already there with exactly this content is this render already stored, so nothing is written (``resumed``); one with other content is
+    refused. A file there with no index (an upload cut off) is kept if its bytes match and refused if not. The store re-reads what it writes."""
     from concurrent.futures import ThreadPoolExecutor
     prefix = prefix.rstrip("/")
-    paths = sorted(p for p in directory.rglob("*") if p.is_file())
+    local = {p.relative_to(directory).as_posix(): p for p in sorted(p for p in directory.rglob("*") if p.is_file())}
+    files = {name: dict(bytes=p.stat().st_size, sha256=hashlib.sha256(p.read_bytes()).hexdigest()) for name, p in local.items()}
+    index = json.dumps(dict(fields or {}, files=files), indent=1, sort_keys=True).encode()
+    summary = dict(prefix=prefix, files=len(files), bytes=sum(f["bytes"] for f in files.values()))
+    index_key = f"{prefix}/INDEX.json"
+    if store.exists(index_key):
+        if store.get(index_key) != index:
+            raise SystemExit(f"{index_key} exists with other content: a render is written once")
+        return dict(summary, resumed=True, files_already_stored=len(files))
 
-    def put(path):
-        payload = path.read_bytes()
-        digest = store.put(f"{prefix}/{path.relative_to(directory).as_posix()}", payload)
-        return path.relative_to(directory).as_posix(), dict(bytes=len(payload), sha256=digest)
+    def put(name):
+        key = f"{prefix}/{name}"
+        if store.exists(key):
+            if hashlib.sha256(store.get(key)).hexdigest() != files[name]["sha256"]:
+                raise SystemExit(f"{key} exists with other content: a render is written once")
+            return 0
+        if store.put(key, local[name].read_bytes()) != files[name]["sha256"]:
+            raise SystemExit(f"{key}: the store holds other bytes than were sent")
+        return 1
 
     with ThreadPoolExecutor(8) as pool:
-        files = dict(pool.map(put, paths))
-    index = dict(fields or {}, files=files)
-    store.put(f"{prefix}/INDEX.json", json.dumps(index, indent=1, sort_keys=True).encode())
-    return dict(prefix=prefix, files=len(files), bytes=sum(f["bytes"] for f in files.values()))
+        written = sum(pool.map(put, sorted(local)))
+    store.put(index_key, index)
+    return dict(summary, resumed=False, files_already_stored=len(files) - written)
 
 
 def motion_quality_record(rig, before, after, fps, settings, gaps_filled, source_units_per_pixel, shake, articulation, preservation, strip) -> dict:
@@ -535,6 +590,9 @@ def main(argv=None) -> int:
     )
     from signtranslator.generation.stream_render import encode_timestamped_video, verify_timestamped_video
 
+    render_options = dict(face_baseline=args.face_baseline, hinge_twist=not args.no_hinge_twist, drive_legs=args.drive_legs, lossless=args.lossless)
+    settings_at_start = settings_sha256(args.resolution, blender=args.blender, options=render_options)
+    code_at_start = code_commit()
     state, source_record = load_input_state(args)
     full_frames = len(state.timestamps)
     state = slice_state(state, args.start_seconds, args.max_seconds)
@@ -585,8 +643,12 @@ def main(argv=None) -> int:
     rerender = read_png(args.out_dir / "rerender" / "frame-000000.png")
     video = args.out_dir / "avatar.mp4"
     encoded = encode_timestamped_video(images, state.timestamps, video,
-                                       quality="lossless" if args.lossless else "review")
+                                       quality="lossless" if args.lossless else ENCODER["quality"])
     verified = verify_timestamped_video(video, state.timestamps)
+    settings_at_end, code_at_end = settings_sha256(args.resolution, blender=args.blender, options=render_options), code_commit()
+    if settings_at_end != settings_at_start or code_at_end != code_at_start:
+        raise SystemExit(f"the code, assets, libraries or settings changed while this render ran (settings {settings_at_start[:12]} -> "
+                         f"{settings_at_end[:12]}, code digest {code_at_start['digest'][:12]} -> {code_at_end['digest'][:12]}): it is refused")
 
     groups = errors["groups"]
     acceptance = {group: dict(threshold_median_deg=limit, median_deg=groups[group]["median_deg"],
@@ -606,9 +668,8 @@ def main(argv=None) -> int:
         bundle_sha256=bundle_sha, video=video.name, video_sha256=hashlib.sha256(video.read_bytes()).hexdigest(),
         resolution=args.resolution, camera=dict(kind="orthographic front, one frame for every clip", centre_source=centre.tolist(),
                                                 span_source_units=span),
-        render_settings=RENDER_SETTINGS, render_settings_sha256=settings_sha256(args.resolution, blender=args.blender, options=dict(
-            face_baseline=args.face_baseline, hinge_twist=not args.no_hinge_twist, drive_legs=args.drive_legs, lossless=args.lossless)),
-        code=code_commit(),
+        render_settings=RENDER_SETTINGS, render_settings_sha256=settings_at_end, render_settings_checked="read at the render's start and end, equal",
+        code=code_at_end, libraries=library_versions(args.blender),
         motion=motion_record, collision=collision,
         assets=dict(wardrobe_licence=wardrobe.licence, wardrobe_source=wardrobe.source),
         direction_errors=errors, direction_errors_before_correction=errors_before_correction, arm_in_image_after_correction=arm_in_image,
@@ -628,7 +689,8 @@ def main(argv=None) -> int:
         limitations=[
             "Bone directions are copied; lengths are the MakeHuman default body's, so contacts "
             "(hand-to-face, hand-to-hand) are not preserved. A hand covered by the drawn body is moved in front of it along the camera axis, "
-            "with the elbow kept near where it was drawn; a forearm may stay inside the torso; hand against hand or against the other arm is not handled.",
+            "with the elbow kept near where it was drawn, by at most 15 cm (past that it stays partly covered and the record flags the clip); a forearm "
+            "may stay inside the torso; hand against hand or against the other arm is counted, not corrected.",
             "Twist about each limb axis is not observed by the swing-IK state; it is chosen "
             "(elbow hinge alignment, half the forearm-to-hand twist on lowerarm02).",
             "No lip geometry: mouth motion is visible only as skin deformation. Hair does not move on its own.",

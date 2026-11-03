@@ -15,7 +15,8 @@ under 95% the run writes its report and exits 2, unless ``--allow-low-coverage``
 selected word are in ``report["excluded_no_selected_word"]``.
 
 ``report["reference_by_arm_validity"]`` is report only: accuracy with all sentences and without those whose recording has its arms invalid on over 50% and
-over 20% of frames (protocol section 6). A stage 1 re-saved with the same answers still counts, and is listed.
+over 20% of frames (protocol section 6). ``report["reference_fairness"]``, beside it and report only too: the reference minus each system, with all
+sentences and without those whose reference render fails acceptance or whose hand correction reached its depth cap. A stage 1 re-saved with the same answers still counts, and is listed.
 
 A key holding the rater pilot's word-format arms adds ``report["word_format"]`` (``human_study.word_format_read``): paired
 contrasts of composition, composition_shuffled, oracle and the reference, report only. ``--bar`` refuses such a key.
@@ -37,7 +38,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from signtranslator.eval_framework.human_study import (BarRefused, SheetError, bar_read, check_roster, decode_sheet,  # noqa: E402
                                                        key_sha256, load_roster, merge_answers, parse_sheet, people_problems,
-                                                       read_stages, reference_by_arm_validity, score_study, stage1_summary, study_coverage, word_format_read)
+                                                       read_stages, reference_by_arm_validity, reference_fairness, score_study, stage1_summary, study_coverage, word_format_read)
 
 
 def main(argv=None) -> int:
@@ -110,6 +111,7 @@ def run(argv=None) -> int:
         report["stage1"] = stage1_summary(stage1, key)
         report["stage1_resaved_with_the_same_answers"] = resaved
         report["reference_by_arm_validity"] = reference_by_arm_validity(counted, key, reference=args.reference) if args.reference in key["systems"] else None
+        report["reference_fairness"] = reference_fairness(counted, key, reference=args.reference) if args.reference in key["systems"] else None
         short = report["coverage"]["short"]
         report["coverage"]["allowed_below_threshold"] = bool(short and args.allow_low_coverage)
     if key.get("word_format"):

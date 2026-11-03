@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import sys
+import zipfile
 
 import numpy as np
 import pytest
@@ -11,8 +12,8 @@ import torch
 from scipy.spatial.transform import Rotation
 
 from signtranslator.avatar_render import collision
-from signtranslator.avatar_render.collision import (CORRECTION_V2, CorrectionSettings, _body_triangles, _part_of_bones, _read_front, _signed_distance, _skin,
-                                                    apply_correction, arm_image_changes, build_field, correct, front_maps, hidden_from_front, penetration)
+from signtranslator.avatar_render.collision import (CORRECTION_V2, CorrectionSettings, _body_triangles, _part_of_bones, _signed_distance,
+                                                    apply_correction, arm_image_changes, build_field, correct, hidden_from_front, penetration)
 from signtranslator.avatar_render.makehuman import load_makehuman_rig
 from signtranslator.avatar_render.makehuman_wardrobe import load_wardrobe
 from signtranslator.avatar_render.motion_filter import (FILTER_V1, FilterSettings, OneEuro, SavitzkyGolay, _from_6d, _to_6d, fill_gaps,
@@ -42,6 +43,100 @@ def binding(rig):
 @pytest.fixture(scope="module")
 def field(rig):
     return build_field(rig)
+
+
+@pytest.fixture(scope="module")
+def wardrobe(rig):
+    return load_wardrobe(INTAKE / "makehuman-system-assets", rig)
+
+
+@pytest.fixture(scope="module")
+def drawn_field(rig, wardrobe):
+    """The field the renderer builds: the top and the hair are part of what covers a hand."""
+    return build_field(rig, drawn=wardrobe.attachments)
+
+
+def _triangles(faces):
+    return np.array([(f[0], f[k], f[k + 1]) for f in faces for k in range(1, len(f) - 1)], dtype=np.int64)
+
+
+def drawn_triangles(rig, wardrobe, *, limbs=None):
+    """{object: (F, 3) vertex indices} of what is drawn in front of the camera's ray: the body's torso and head where the bundle keeps them,
+    the top without its sleeves, the hair. ``limbs`` ("arm.L", "hand.R"): one limb instead, sleeve included, for cover by the other arm."""
+    parts = _part_of_bones(rig)
+    dominant = rig.weights.numpy().argmax(1)
+    deleted = set(int(v) for v in wardrobe.body_deleted_vertices)
+    if limbs is None:
+        keep_bone = parts != ""
+    else:
+        kind, side = limbs.split(".")
+        keep_bone = np.array([n.endswith(f".{side}") and n.startswith(collision.LIMB_PREFIXES[kind]) for n in rig.bone_names])
+    body = [f for i, f in enumerate(rig.faces) if "body" in rig.face_groups[i] and all(keep_bone[dominant[v]] for v in f)
+            and (limbs is not None or not all(v in deleted for v in f))]
+    out = {"body": _triangles(body)}
+    for name in (("top", "hair") if limbs is None else ("top",) if limbs.startswith("arm") else ()):
+        attachment = wardrobe.attachments[name]
+        keep = keep_bone[attachment.weights.numpy().argmax(1)]
+        faces = [f for f in attachment.faces if all(keep[v] for v in f)]
+        if faces:
+            out[name] = _triangles(faces)
+    return out
+
+
+def exact_gaps(rig, wardrobe, local, hand, triangles=None):
+    """(T, V): how far each hand vertex sits in front of the frontmost drawn triangle on its ray to the camera (+z), in source units;
+    negative where drawn body is in front of it, +inf where no triangle is on the ray. Exact: the rig and the attachments posed by their own
+    skinning, every triangle tested, no cells and no samples. Independent of ``collision.front_maps``."""
+    from signtranslator.avatar_render.rigged import apply_lbs
+    triangles = drawn_triangles(rig, wardrobe) if triangles is None else triangles
+    out = np.full((len(local), len(hand)), np.inf)
+    for t in range(len(local)):
+        posed = rig.pose(torch.from_numpy(np.ascontiguousarray(local[t])))
+        vertices = {"body": posed.vertices.numpy().astype(np.float64)}
+        for name in triangles:
+            if name != "body":
+                attachment = wardrobe.attachments[name]
+                vertices[name] = apply_lbs(attachment.rest_vertices, attachment.weights, posed.skin_transforms).numpy().astype(np.float64)
+        p = vertices["body"][hand]
+        low, high = p[:, :2].min(0) - .01, p[:, :2].max(0) + .01
+        for name, tri in triangles.items():
+            c = vertices[name][tri]
+            c = c[(c[..., :2].max(1) >= low).all(1) & (c[..., :2].min(1) <= high).all(1)]
+            if not len(c):
+                continue
+            a, b, d = c[:, 0], c[:, 1], c[:, 2]
+            det = (b[:, 1] - d[:, 1]) * (a[:, 0] - d[:, 0]) + (d[:, 0] - b[:, 0]) * (a[:, 1] - d[:, 1])
+            ok = np.abs(det) > 1e-14
+            a, b, d, det = a[ok], b[ok], d[ok], det[ok]
+            x, y = p[:, None, 0], p[:, None, 1]
+            u = ((b[:, 1] - d[:, 1]) * (x - d[:, 0]) + (d[:, 0] - b[:, 0]) * (y - d[:, 1])) / det
+            w = ((d[:, 1] - a[:, 1]) * (x - d[:, 0]) + (a[:, 0] - d[:, 0]) * (y - d[:, 1])) / det
+            z = u * a[:, 2] + w * b[:, 2] + (1. - u - w) * d[:, 2]
+            front = np.where((u >= 0) & (w >= 0) & (1. - u - w >= 0), z, -np.inf).max(1)
+            out[t] = np.minimum(out[t], np.where(np.isfinite(front), p[:, 2] - front, np.inf))
+    return out
+
+
+def arm_pose(rig, frames, side, upper, fore, base=None):
+    """Locals with one arm swung by ``upper`` (z, x degrees) and bent by ``fore`` (y degrees) from rest."""
+    rest = rig.rest_globals.numpy()[:, :3, :3]
+    local = np.tile(np.eye(3), (frames, len(rig.bone_names), 1, 1)).copy() if base is None else base.copy()
+    u, f = rig.bone_names.index(f"upperarm01.{side}"), rig.bone_names.index(f"lowerarm01.{side}")
+    local[:, u] = rest[u].T @ Rotation.from_euler("zx", upper, degrees=True).as_matrix() @ rest[u]
+    local[:, f] = rest[f].T @ Rotation.from_euler("y", fore, degrees=True).as_matrix() @ rest[f]
+    return local
+
+
+def two_arm_poses(rig, count, seed=3, frames=3):
+    """Fixed random poses, both arms down to forward and bent into signing space: hands across, on and behind the body."""
+    rng = np.random.default_rng(seed)
+    out = []
+    for _ in range(count):
+        local = None
+        for side, sign in (("L", 1), ("R", -1)):
+            local = arm_pose(rig, frames, side, [rng.uniform(-75, 20) * sign, rng.uniform(-10, 90)], [rng.uniform(-150, -40) * sign], base=local)
+        out.append(local)
+    return out
 
 
 def about_x(angles):
@@ -247,28 +342,26 @@ def test_posed_torso_surface_reads_near_zero_in_the_field(rig, binding, field):
         assert np.percentile(np.abs(distance), 95) < .12            # 12 mm
 
 
-def chest_pose(rig):
-    """(T, B, 3, 3) locals with the left arm folded across the body, which puts the hand inside the torso on this rig."""
-    rest = rig.rest_globals.numpy()[:, :3, :3]
-    local = np.tile(np.eye(3), (48, len(rig.bone_names), 1, 1)).copy()
-    upper, fore = rig.bone_names.index("upperarm01.L"), rig.bone_names.index("lowerarm01.L")
-    local[:, upper] = rest[upper].T @ Rotation.from_euler("z", -35, degrees=True).as_matrix() @ rest[upper]
-    local[:, fore] = rest[fore].T @ Rotation.from_euler("y", -115, degrees=True).as_matrix() @ rest[fore]
-    return local, rig.bone_names.index("wrist.L")
+def chest_pose(rig, frames=48):
+    """(T, B, 3, 3) locals with the left arm folded across the body, which puts the hand 4 cm inside the torso on this rig, within the cap."""
+    return arm_pose(rig, frames, "L", [-35., 0.], [-95.]), rig.bone_names.index("wrist.L")
 
 
-def test_correction_takes_the_hand_out_along_depth_and_keeps_image_place_and_hand_rotation(rig, binding, field):
+def test_correction_takes_the_hand_out_along_depth_and_keeps_image_place_and_hand_rotation(rig, binding, field, wardrobe, drawn_field):
     local, wrist = chest_pose(rig)
     globals_ = forward_kinematics(rig, local)
     before = penetration(rig, field, local)
     assert before["hand.torso"]["frames_over_10mm"] > .5                 # the test pose does put the hand inside
-    assert hidden_from_front(rig, field, local)["frames_any_vertex"] > .5
+    hand = drawn_field.hand_vertices["L"]
+    assert (exact_gaps(rig, wardrobe, local[:2], hand) < 0.).any(1).all()     # and an exact ray finds it behind the drawn body
     motion = retarget_state(rig, binding, noisy_state(rig, frames=48), allow_inferred=True)
     from dataclasses import replace
     pose = replace(motion, local_rotations=local, target_globals=globals_[:, :, :3, :3])
-    fixed, record = apply_correction(rig, field, pose)
+    fixed, record = apply_correction(rig, drawn_field, pose)
     after = forward_kinematics(rig, fixed.local_rotations)
-    assert record["after"]["hand.torso"]["frames_over_0mm"] == 0. and record["hidden_after"]["frames_any_vertex"] == 0.
+    assert penetration(rig, field, fixed.local_rotations)["hand.torso"]["frames_over_0mm"] == 0.
+    assert exact_gaps(rig, wardrobe, fixed.local_rotations[::12], hand).min() >= collision.CLEARANCE      # in front of every drawn triangle
+    assert not record["depth_capped"] and record["moved"]["L"]["frames_at_depth_cap"] == 0
     assert np.abs(after[:, wrist, :2, 3] - globals_[:, wrist, :2, 3]).max() < 1e-6      # same place in the front view
     assert after[:, wrist, 2, 3].min() > globals_[:, wrist, 2, 3].min()                 # moved toward the camera
     assert geodesic_degrees(after[:, wrist, :3, :3], globals_[:, wrist, :3, :3]).max() < 1e-5
@@ -301,28 +394,36 @@ def retarget_shell(rig, binding, local):
     return replace(motion, local_rotations=local, target_globals=forward_kinematics(rig, local)[:, :, :3, :3])
 
 
-def test_a_hand_behind_the_body_is_brought_out_and_counted(rig, binding, field):
+def test_a_hand_behind_the_body_moves_at_most_the_cap_stays_covered_and_is_flagged(rig, binding, field, wardrobe, drawn_field):
+    """A hand behind the back would travel through the torso; the cap stops it at 15 cm, and the record says so."""
     local = behind_the_back_pose(rig, field)
-    fixed, record = apply_correction(rig, field, retarget_shell(rig, binding, local))
-    assert record["hidden_before"]["frames_half_of_a_hand"] == 1. and record["hidden_after"]["frames_any_vertex"] == 0.
+    fixed, record = apply_correction(rig, drawn_field, retarget_shell(rig, binding, local))
     wrist = rig.bone_names.index("wrist.L")
     before, after = forward_kinematics(rig, local), forward_kinematics(rig, fixed.local_rotations)
-    assert np.abs(before[:, wrist, :2, 3] - after[:, wrist, :2, 3]).max() < 1e-6 and after[0, wrist, 2, 3] > before[0, wrist, 2, 3] + .5
+    assert np.abs(before[:, wrist, :2, 3] - after[:, wrist, :2, 3]).max() < 1e-6                         # still only along depth
+    move = after[:, wrist, 2, 3] - before[:, wrist, 2, 3]
+    assert collision.DEPTH_CAP == 1.5 and np.abs(move - collision.DEPTH_CAP).max() < 1e-6                 # exactly the cap, every frame
+    assert record["depth_capped"] and record["depth_capped_by_side"] == dict(L=True, R=False)
+    moved = record["moved"]["L"]
+    assert moved["depth_capped"] and moved["frames_at_depth_cap"] == len(local) and moved["wrist_depth_move_cm_max"] <= 15. + 1e-6
+    assert record["hidden_after"]["frames_any_vertex"] == 1.                                              # left covered, and counted
+    assert (exact_gaps(rig, wardrobe, fixed.local_rotations[:1], drawn_field.hand_vertices["L"]) < 0.).any()
 
 
-def test_a_hand_just_inside_the_back_and_one_just_behind_it_end_together(rig, binding, field):
-    """Before, one point past the back's surface jumped through the torso and the next stayed hidden, so a hand could vanish between frames."""
+def test_a_hand_just_inside_the_back_and_one_just_behind_it_end_together(rig, binding, field, drawn_field):
+    """Before, one point past the back's surface jumped through the torso and the next stayed hidden, so a hand could vanish between frames.
+    Both now stop at the cap, together."""
     wrist = rig.bone_names.index("wrist.L")
     local = behind_the_back_pose(rig, field)
-    fixed, _ = apply_correction(rig, field, retarget_shell(rig, binding, local))
+    fixed, first = apply_correction(rig, drawn_field, retarget_shell(rig, binding, local))
     shallow = local.copy()
     upper = rig.bone_names.index("upperarm01.L")
     shallow[:, upper] = shallow[:, upper] @ Rotation.from_euler("x", -6, degrees=True).as_matrix()      # the same hand a little deeper, into the back
-    fixed_shallow, _ = apply_correction(rig, field, retarget_shell(rig, binding, shallow))
+    fixed_shallow, second = apply_correction(rig, drawn_field, retarget_shell(rig, binding, shallow))
     a = forward_kinematics(rig, fixed.local_rotations)[0, wrist, :3, 3]
     b = forward_kinematics(rig, fixed_shallow.local_rotations)[0, wrist, :3, 3]
-    assert hidden_from_front(rig, field, fixed_shallow.local_rotations)["frames_any_vertex"] == 0.
-    assert abs(a[2] - b[2]) < 1.5                                                                         # within 15 cm in depth: both just in front of the chest
+    assert first["depth_capped"] and second["depth_capped"]
+    assert abs(a[2] - b[2]) < 1.5
 
 
 def test_correction_does_not_move_an_arm_for_a_forearm_inside_while_the_hand_is_clear(rig, binding, field):
@@ -343,7 +444,7 @@ def test_correction_does_not_move_an_arm_for_a_forearm_inside_while_the_hand_is_
 
 def test_shipped_correction_is_pinned_and_keeps_the_arm_in_the_image(rig, binding, field):
     assert CORRECTION_V2 == CorrectionSettings(forearm_drives_wrist=False, swivel_cap_deg=0., elbow_nearest_in_image=True)
-    assert collision.CLEARANCE == .03                                     # 3 mm past the drawn surface
+    assert collision.CLEARANCE == .03 and collision.DEPTH_CAP == 1.5      # 3 mm past the drawn surface, at most 15 cm forward
     local, wrist = chest_pose(rig)
     fixed, record = apply_correction(rig, field, retarget_shell(rig, binding, local))
     assert record["moved"]["L"]["swivel_deg_max"] == 0.
@@ -354,15 +455,73 @@ def test_shipped_correction_is_pinned_and_keeps_the_arm_in_the_image(rig, bindin
     assert changes["forearm_image_length_ratio"]["minimum"] > worse["forearm_image_length_ratio"]["minimum"]
 
 
-def test_the_hand_ends_just_in_front_of_the_body_not_far_from_it(rig, binding, field):
-    """A clearance of 5 cm would float a contact sign in front of the chest."""
-    local, _ = chest_pose(rig)
-    fixed, _ = apply_correction(rig, field, retarget_shell(rig, binding, local))
-    globals_ = forward_kinematics(rig, fixed.local_rotations)
-    maps = front_maps(rig, field, forward_kinematics(rig, local))
-    hand = _skin(field, "hand", "L", globals_, np.linalg.inv(rig.rest_globals.numpy()))
-    gap = np.array([(hand[t][:, 2] - _read_front(maps, t, hand[t]))[np.isfinite(_read_front(maps, t, hand[t]))].min() for t in range(len(hand))])
-    assert (gap > 0.).all() and np.median(gap) < .2                      # under 2 cm of map cell and smoothing
+def test_the_hand_ends_just_in_front_of_the_body_not_far_from_it(rig, binding, wardrobe, drawn_field):
+    """A clearance of 5 cm would float a contact sign in front of the chest. Read by an exact ray, not by the correction's own maps."""
+    local, _ = chest_pose(rig, frames=8)
+    fixed, _ = apply_correction(rig, drawn_field, retarget_shell(rig, binding, local))
+    gaps = exact_gaps(rig, wardrobe, fixed.local_rotations, drawn_field.hand_vertices["L"])
+    nearest = np.where(np.isfinite(gaps), gaps, np.inf).min(1)                 # each frame's closest hand vertex to the surface over it
+    assert (nearest >= collision.CLEARANCE).all() and np.median(nearest) < .2   # at least the clearance, under 2 cm of map cell and smoothing
+
+
+def test_an_exact_ray_finds_every_corrected_hand_in_front_of_the_drawn_body_by_the_clearance(rig, wardrobe, drawn_field):
+    """Fixed random poses, both arms: wherever a hand was covered and the cap wasn't reached, every hand vertex ends at least the clearance
+    in front of every drawn triangle, the top and hair included. Catches a front map without the top, a map read without its edge margin,
+    and a correction without its clearance."""
+    checked = 0
+    for local in two_arm_poses(rig, 6):
+        fixed, _, record = correct(rig, drawn_field, local, forward_kinematics(rig, local)[:, :, :3, :3], CORRECTION_V2)
+        for side in ("L", "R"):
+            hand = drawn_field.hand_vertices[side]
+            if record[side]["depth_capped"] or not (exact_gaps(rig, wardrobe, local[:1], hand) < 0.).any():
+                continue
+            assert exact_gaps(rig, wardrobe, fixed, hand).min() >= collision.CLEARANCE, side
+            checked += 1
+    assert checked >= 6
+
+
+def test_the_elbow_goes_to_the_nearest_point_of_its_whole_circle(rig, drawn_field):
+    """Against an independent search over the full circle of elbows the fixed bone lengths allow, at 0.1 degree: the shipped elbow is the
+    nearest, in the image, to where it was drawn. Right arms here have their nearest point on the circle's other half."""
+    index = {n: i for i, n in enumerate(rig.bone_names)}
+    checked = 0
+    for local in two_arm_poses(rig, 6):
+        before = forward_kinematics(rig, local)
+        fixed, _, record = correct(rig, drawn_field, local, before[:, :, :3, :3], CORRECTION_V2)
+        after = forward_kinematics(rig, fixed)
+        for side in ("L", "R"):
+            if record[side]["depth_capped"] or record[side]["frames_depth_moved"] == 0:
+                continue
+            s, e, w = (index[f"upperarm01.{side}"], index[f"lowerarm01.{side}"], index[f"wrist.{side}"])
+            shoulder, elbow, wrist = before[:, s, :3, 3], before[:, e, :3, 3], after[:, w, :3, 3]
+            a, b = np.linalg.norm(elbow - shoulder, axis=-1), np.linalg.norm(before[:, w, :3, 3] - elbow, axis=-1)
+            d = np.linalg.norm(wrist - shoulder, axis=-1)
+            axis = (wrist - shoulder) / d[:, None]
+            along = (a ** 2 - b ** 2 + d ** 2) / (2 * d)
+            radius = np.sqrt(np.clip(a ** 2 - along ** 2, 0., None))
+            first = np.cross(axis, [0., 0., 1.])
+            first /= np.linalg.norm(first, axis=-1, keepdims=True)
+            second = np.cross(axis, first)
+            angles = np.radians(np.arange(0., 360., .1))
+            circle = (shoulder + axis * along[:, None])[:, None] + radius[:, None, None] * (first[:, None] * np.cos(angles)[None, :, None] + second[:, None] * np.sin(angles)[None, :, None])
+            best = np.linalg.norm((circle - elbow[:, None])[..., :2], axis=-1).min(1)
+            got = np.linalg.norm((after[:, e, :3, 3] - elbow)[:, :2], axis=-1)
+            assert (got <= best + .01).all(), side                                       # within 1 mm of the nearest
+            checked += 1
+    assert checked >= 6
+
+
+def test_cover_by_the_other_arm_and_hand_is_counted_and_agrees_with_an_exact_ray(rig, wardrobe, drawn_field):
+    from signtranslator.avatar_render.collision import covered_by_other_limb
+    for local in two_arm_poses(rig, 3)[:3:2]:                                    # the right hand behind the left arm, then hands apart
+        counted = covered_by_other_limb(rig, drawn_field, local)["other_arm"]["frames_any_by_side"]
+        exact = {side: float((exact_gaps(rig, wardrobe, local[:1], drawn_field.hand_vertices[side], drawn_triangles(rig, wardrobe, limbs=f"arm.{other}")) < 0.).any())
+                 for side, other in (("L", "R"), ("R", "L"))}
+        assert counted == exact
+    assert counted == dict(L=0., R=0.) and covered_by_other_limb(rig, drawn_field, two_arm_poses(rig, 1)[0])["other_arm"]["frames_any_by_side"]["R"] == 1.
+    clear = arm_pose(rig, 2, "L", [-75., 10.], [-20.], base=arm_pose(rig, 2, "R", [75., 10.], [20.]))
+    nothing = covered_by_other_limb(rig, drawn_field, clear)
+    assert nothing["other_arm"]["frames_any_vertex"] == 0. and nothing["other_hand"]["frames_any_vertex"] == 0.
 
 
 def test_correction_leaves_a_clear_pose_exactly_alone(rig, binding, field):
@@ -449,6 +608,13 @@ def test_renderer_never_decides_on_a_clip_name_or_clock():
         assert "sample_id" not in source and "clock_id" not in source
 
 
+def fake_record(**extra):
+    """What a real render's verification.json carries for the packet: the settings hash and code read now, acceptance and the correction's flags."""
+    import render_avatar
+    return dict(dict(render_settings_sha256=render_avatar.settings_sha256(768), code=render_avatar.code_commit(), acceptance=dict(mirror=True),
+                     collision=dict(depth_capped=False, cover_by_other_limb_after=dict(other_arm=dict(frames_any_vertex=0.), other_hand=dict(frames_any_vertex=0.)))), **extra)
+
+
 def test_settings_hash_depends_on_settings_only():
     import render_avatar
     assert render_avatar.settings_sha256(768) == render_avatar.settings_sha256(768)
@@ -474,7 +640,7 @@ def test_packet_builder_passes_one_argument_list_for_every_system(monkeypatch, t
         out = Path(argv[argv.index("--out-dir") + 1])
         out.mkdir()
         (out / "avatar.mp4").write_bytes(b"x")
-        (out / "verification.json").write_text(json.dumps(dict(render_settings_sha256=render_avatar.settings_sha256(768), acceptance=dict(mirror=True), code=dict(commit="c", dirty=False))))
+        (out / "verification.json").write_text(json.dumps(fake_record()))
         return 0
 
     monkeypatch.setattr(render_avatar, "main", fake_main)
@@ -494,14 +660,16 @@ def test_packet_builder_refuses_a_render_with_other_settings(monkeypatch, tmp_pa
         out = Path(argv[argv.index("--out-dir") + 1])
         out.mkdir()
         (out / "avatar.mp4").write_bytes(b"x")
-        (out / "verification.json").write_text(json.dumps(dict(render_settings_sha256="0" * 64, acceptance=dict(mirror=True), code=dict(commit="c", dirty=False))))
+        (out / "verification.json").write_text(json.dumps(fake_record(**changed)))
         return 0
 
     monkeypatch.setattr(render_avatar, "main", other_settings)
     rig = load_makehuman_rig(INTAKE / "makehuman")
     state = state_from_points(np.arange(3) / FPS, *raised_arm_points(rig, "Left", frames=3), sample_id="x")
-    with pytest.raises(RuntimeError, match="other settings"):
-        packet.render_avatar_video(state, tmp_path / "x.mp4")
+    for changed, match in ((dict(render_settings_sha256="0" * 64), "other settings"), (dict(code=dict(render_avatar.code_commit(), digest="0" * 64)), "other code")):
+        with pytest.raises(SystemExit, match=match):
+            packet.render_avatar_video(state, tmp_path / "x.mp4")
+        assert not (tmp_path / "x.mp4").exists()
 
 
 def test_packet_builder_calls_the_avatar_with_the_packets_one_resolution():
@@ -511,13 +679,22 @@ def test_packet_builder_calls_the_avatar_with_the_packets_one_resolution():
     for call in calls:
         assert all(isinstance(a, ast.Name) for a in call.args)      # state and path: no label, no system
         names = [keyword.arg for keyword in call.keywords]
-        assert set(names) <= {"resolution", "verification", "archive"} and "verification" in names and "archive" in names     # both keyed by the item id, private
+        assert set(names) <= {"resolution", "verification", "archive", "expected"} and {"verification", "archive", "expected"} <= set(names)     # keyed by the item id, private
+
+
+def edited_on_disk(monkeypatch, path: Path):
+    """Every read of ``path`` from now on returns other bytes, as an edit to the file would."""
+    original = Path.read_bytes
+    monkeypatch.setattr(Path, "read_bytes", lambda self: original(self) + b"\n# edited" if self.resolve() == path.resolve() else original(self))
 
 
 def test_the_hash_moves_with_everything_that_shapes_a_video(monkeypatch):
+    import numpy
     import render_avatar
     from signtranslator.avatar_render import motion_filter
+    from signtranslator.generation import stream_render
     base = render_avatar.settings_sha256(768)
+    assert render_avatar.settings_sha256(768) == base                         # nothing is cached that could hide a change: read again, equal
 
     def moved(target, name, value):
         with monkeypatch.context() as patch:
@@ -527,21 +704,74 @@ def test_the_hash_moves_with_everything_that_shapes_a_video(monkeypatch):
     assert moved(render_avatar, "RENDER_SETTINGS", dict(render_avatar.RENDER_SETTINGS, samples=8))
     assert moved(motion_filter, "FILTER_V1", FilterSettings())
     assert moved(collision, "CLEARANCE", .5)
+    assert moved(collision, "DEPTH_CAP", 2.)
     assert moved(collision, "CORRECTION_V2", CorrectionSettings(True, 70., False))
-    assert moved(render_avatar, "ENCODER", dict(render_avatar.ENCODER, crf=30))
+    assert moved(render_avatar, "ENCODER", dict(render_avatar.ENCODER, quality="review"))
+    assert moved(stream_render, "CONSTANT_RATE", dict(stream_render.CONSTANT_RATE, bits_per_second=1))
     assert moved(render_avatar, "blender_version", lambda blender=None: "Blender 9")
-    for name in ("signtranslator/avatar_render/motion_filter.py", "signtranslator/avatar_render/collision.py", "scripts/render_avatar.py", "signtranslator/generation/stream_render.py"):
-        assert name in render_avatar.RENDER_SOURCES
-    assert moved(render_avatar, "_file_hashes", dict(render_avatar._file_hashes, **{str(ROOT / "signtranslator/avatar_render/collision.py"): "other"}))
-    assert any(k.startswith("makehuman-system-assets/") and k.endswith("intake.json") for k in render_avatar.source_hashes())
+    assert moved(render_avatar, "x264_build", lambda: "x264 - core 1")
+    assert moved(numpy, "__version__", "0.0")
+    payload = render_avatar.settings_payload(768)
+    assert set(payload["libraries"]) == {"python", "numpy", "scipy", "torch", "pillow", "pyav", "ffmpeg", "x264", "blender"}
+    assert payload["libraries"]["x264"].startswith("x264 - core") and any(k.startswith("makehuman-system-assets/") and k.endswith("intake.json") for k in payload["assets"])
+    # an edit on disk moves it at once, to a render module, to any other repository module, and to an asset
+    for name in ("signtranslator/avatar_render/collision.py", "scripts/render_avatar.py", "signtranslator/eval_framework/human_study.py",
+                 "Sign Translator Stage Documentation/evidence/w1-w2-2026-09-26/source-intake/makehuman-system-assets/intake.json"):
+        with monkeypatch.context() as patch:
+            edited_on_disk(patch, ROOT / name)
+            assert render_avatar.settings_sha256(768) != base, name
+
+
+def test_a_render_refuses_code_that_changed_while_it_ran(tmp_path, monkeypatch, rig):
+    import render_avatar
+    from PIL import Image
+
+    def blender_while_someone_edits(blender, bundle, frames_dir, resolution, log, *, first_only=False):
+        Path(frames_dir).mkdir()
+        for i in range(1 if first_only else np.load(bundle)["body.vertices"].shape[0]):
+            Image.new("RGB", (resolution, resolution)).save(Path(frames_dir) / f"frame-{i:06d}.png")
+        if not first_only:
+            edited_on_disk(monkeypatch, ROOT / "signtranslator/avatar_render/collision.py")
+    monkeypatch.setattr(render_avatar, "run_blender", blender_while_someone_edits)
+    state = state_from_points(np.arange(4) / FPS, *raised_arm_points(rig, "Left", frames=4), sample_id="x")
+    state.save(tmp_path / "s.npz")
+    with pytest.raises(SystemExit, match="changed while this render ran"):
+        render_avatar.main(["--state", str(tmp_path / "s.npz"), "--out-dir", str(tmp_path / "out"), "--allow-inferred", "--resolution", "32"])
+    assert not (tmp_path / "out" / "verification.json").exists()
+
+
+def test_the_code_is_named_by_commit_dirty_and_digest_and_by_the_digest_alone_without_git(tmp_path):
+    import subprocess
+    import render_avatar
+    from signtranslator.eval import provenance
+    repo = tmp_path / "repo"
+    (repo / "scripts").mkdir(parents=True)
+    (repo / "signtranslator").mkdir()
+    (repo / "scripts" / "x.py").write_text("a = 1\n")
+    (repo / "signtranslator" / "y.py").write_text("b = 1\n")
+    (repo / "notes.txt").write_text("not code\n")
+    no_git = render_avatar.code_commit(repo)
+    assert no_git == dict(commit=None, dirty=None, digest=provenance.code_digest(root=repo))       # a source archive, as on a pod
+    git = lambda *a: subprocess.run(["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t", *a], check=True, capture_output=True)  # noqa: E731
+    git("init", "-q")
+    git("add", "-A")
+    git("commit", "-q", "-m", "x")
+    clean = render_avatar.code_commit(repo)
+    assert len(clean["commit"]) == 40 and clean["dirty"] is False and clean["digest"] == no_git["digest"]
+    (repo / "notes.txt").write_text("changed, not code\n")
+    assert render_avatar.code_commit(repo)["dirty"] is False
+    (repo / "signtranslator" / "y.py").write_text("b = 2\n")
+    edited = render_avatar.code_commit(repo)
+    assert edited["dirty"] is True and edited["commit"] == clean["commit"] and edited["digest"] != clean["digest"]
 
 
 def test_a_packet_of_mixed_renders_is_refused():
     import build_human_eval_packet as packet
-    one = dict(render_settings_sha256="a", code_commit="c", code_dirty=False)
-    assert packet.refuse_mixed_renders([one, dict(one)]) == dict(settings_sha256="a", code_commit="c", code_dirty=False)
+    one = dict(render_settings_sha256="a", code_commit="c", code_dirty=False, code_digest="d")
+    assert packet.refuse_mixed_renders([one, dict(one)]) == dict(settings_sha256="a", code_commit="c", code_dirty=False, code_digest="d")
     assert packet.refuse_mixed_renders([dict(system="x")]) == {}
-    for other in (dict(one, render_settings_sha256="b"), dict(one, code_commit="d"), dict(one, code_dirty=True)):
+    for other in (dict(one, render_settings_sha256="b"), dict(one, code_commit="d"), dict(one, code_dirty=True), dict(one, code_digest="e"),
+                  dict(one, code_commit=None, code_dirty=None)):
         with pytest.raises(SystemExit, match="mixes renders"):
             packet.refuse_mixed_renders([one, other])
 
@@ -627,7 +857,7 @@ def test_acceptance_reads_the_pose_as_drawn(tmp_path, monkeypatch, rig):
     _, record = bundle_of(tmp_path, monkeypatch, noisy_hand_on_chest(rig), "accept")
     assert record["direction_errors"]["groups"]["forearm"]["max_deg"] > record["direction_errors_before_correction"]["groups"]["forearm"]["max_deg"] + 1.
     assert record["acceptance"]["groups"]["forearm"]["median_deg"] == record["direction_errors"]["groups"]["forearm"]["median_deg"]
-    assert "L" in record["arm_in_image_after_correction"] and record["code"]["commit"]
+    assert "L" in record["arm_in_image_after_correction"] and len(record["code"]["digest"]) == 64
 
 
 def test_the_observed_flag_changes_nothing_that_is_drawn(tmp_path, monkeypatch, rig):
@@ -674,34 +904,126 @@ def test_the_packet_hands_the_renderer_its_gaps(tmp_path, monkeypatch, rig):
         out = Path(argv[argv.index("--out-dir") + 1])
         out.mkdir()
         (out / "avatar.mp4").write_bytes(b"x")
-        (out / "verification.json").write_text(json.dumps(dict(render_settings_sha256=render_avatar.settings_sha256(768), acceptance=dict(mirror=True), code=dict(commit="c", dirty=False))))
+        (out / "verification.json").write_text(json.dumps(fake_record()))
         return 0
     monkeypatch.setattr(render_avatar, "main", capture)
     packet.render_avatar_video(state, tmp_path / "v.mp4")
     assert seen["gaps"] == 6
 
 
-def test_a_padded_video_decodes_to_the_same_frames_and_every_file_has_one_size(tmp_path):
+def mp4_boxes(payload: bytes, start: int = 0, end: int | None = None) -> list[tuple[str, int, int]]:
+    """(kind, offset, size) of each box from ``start`` to ``end``, read by their size fields; the chain must end exactly at ``end``."""
+    import struct
+    end = len(payload) if end is None else end
+    out, i = [], start
+    while i < end:
+        size, kind = struct.unpack(">I4s", payload[i:i + 8])
+        if size == 1:
+            size = struct.unpack(">Q", payload[i + 8:i + 16])[0]
+        assert size >= 8, (kind, size)
+        out.append((kind.decode(), i, size))
+        i += size
+    assert i == end, (i, end)
+    return out
+
+
+def boxes_except_samples(payload: bytes) -> list:
+    """Every box but mdat and free, with its bytes, recursing into the containers, leaving out the sample-size table (stsz)."""
+    out = []
+
+    def walk(start, end, depth):
+        for kind, offset, size in mp4_boxes(payload, start, end):
+            if kind in ("moov", "trak", "mdia", "minf", "stbl"):
+                out.append((depth, kind, size))
+                walk(offset + 8, offset + size, depth + 1)
+            elif kind not in ("mdat", "free", "stsz"):
+                out.append((depth, kind, payload[offset:offset + size]))
+            else:
+                out.append((depth, kind, size if kind == "stsz" else None))
+    walk(0, len(payload), 0)
+    return out
+
+
+def nal_offsets(sample: bytes) -> list[int]:
+    out, i = [], 0
+    while i < len(sample):
+        out.append(i)
+        i += 4 + int.from_bytes(sample[i:i + 4], "big")
+    assert i == len(sample)
+    return out
+
+
+def synthetic_clips(frames=30, size=64):
+    rng = np.random.default_rng(0)
+    return {name: [np.clip(np.full((size, size, 3), 100, np.int16) + rng.integers(0, amount, (size, size, 3)), 0, 255).astype(np.uint8) for _ in range(frames)]
+            for name, amount in (("still", 2), ("busy", 200))}
+
+
+def test_a_padded_video_decodes_to_the_same_frames_and_every_file_has_one_size_that_a_zip_cannot_shrink(tmp_path):
     import av
+    import zlib
     import build_human_eval_packet as packet
     from signtranslator.generation.stream_render import encode_timestamped_video, verify_timestamped_video
-    rng = np.random.default_rng(0)
     clock = np.arange(12) / FPS
     decoded = {}
-    for name, amount in (("still", 2), ("busy", 200)):
-        frames = [np.full((32, 32, 3), 100, np.uint8) + rng.integers(0, amount, (32, 32, 3), dtype=np.uint8) for _ in clock]
+    for name, frames in synthetic_clips(12, 32).items():
         path = tmp_path / f"{name}.mp4"
-        encode_timestamped_video(frames, clock, path, quality="review")
+        encode_timestamped_video(frames, clock, path, quality="constant")
         before = path.read_bytes()
         with av.open(str(path)) as container:
             decoded[name] = [f.to_ndarray(format="rgb24") for f in container.decode(video=0)]
-        assert packet.pad_video(path) == packet.UNIFORM_VIDEO_BYTES == path.stat().st_size
-        assert path.read_bytes().startswith(before)
+        assert packet.pad_video(path, f"item-{name}") == packet.UNIFORM_VIDEO_BYTES == path.stat().st_size
+        payload = path.read_bytes()
+        assert payload.startswith(before)
+        boxes = mp4_boxes(payload)                                                   # the chain is whole, to the last byte
+        kind, offset, size = boxes[-1]
+        assert kind == "free" and offset == len(before) and size == len(payload) - len(before)      # its size field says exactly what it holds
+        assert [b[0] for b in boxes[:-1]] == [b[0] for b in mp4_boxes(before)]
+        pad = payload[offset + 8:]
+        assert pad == packet.pad_bytes(f"item-{name}", len(pad)) and len(zlib.compress(pad, 9)) > .999 * len(pad)      # nothing for a zip to squeeze
         verify_timestamped_video(path, clock)
         with av.open(str(path)) as container:
             again = [f.to_ndarray(format="rgb24") for f in container.decode(video=0)]
         assert all(np.array_equal(a, b) for a, b in zip(decoded[name], again)) and len(again) == 12
     assert (tmp_path / "still.mp4").stat().st_size == (tmp_path / "busy.mp4").stat().st_size
+    assert packet.pad_bytes("a", 64) != packet.pad_bytes("b", 64)
+    zipped = tmp_path / "re.zip"
+    with zipfile.ZipFile(zipped, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:      # what anyone forwarding the files might do
+        z.write(tmp_path / "still.mp4", "still.mp4")
+    assert zipped.stat().st_size > .99 * packet.UNIFORM_VIDEO_BYTES
+
+
+def test_constant_rate_videos_of_one_length_match_in_every_box_but_their_sample_sizes(tmp_path):
+    """A still clip and a busy one of the same frame count: equal stream bytes, equal bit rates, equal frame types and timing tables, so only
+    the per-frame size table differs. The filler changes no picture."""
+    import av
+    from signtranslator.generation.stream_render import CONSTANT_RATE, constant_rate_budget, encode_timestamped_video, verify_timestamped_video
+    assert CONSTANT_RATE == dict(bits_per_second=2_000_000, buffer_bits=2_000_000, keyint=48, preset="slow")
+    clock = 5. + np.arange(30) / FPS
+    out = {}
+    for name, frames in synthetic_clips(30).items():
+        path = tmp_path / f"{name}.mp4"
+        record = encode_timestamped_video(frames, clock, path, quality="constant")["constant_rate"]
+        verify_timestamped_video(path, clock)
+        assert record["stream_bytes"] == constant_rate_budget(30, 24.) and record["filler_bytes"] > 0
+        assert not (tmp_path / f"{name}.mp4.cbr").exists()
+        with av.open(str(path)) as container:
+            stream = container.streams.video[0]
+            samples = [bytes(p) for p in container.demux(stream) if p.size]
+        with av.open(str(path)) as container:
+            pictures = [f.to_ndarray(format="rgb24") for f in container.decode(video=0)]
+        assert sum(map(len, samples)) == record["stream_bytes"]
+        kinds = [sample[i + 4] & 31 for sample in samples for i in nal_offsets(sample)]
+        assert 12 not in kinds and kinds.count(6) >= len(samples)                     # no 0xFF filler units, SEI units in every sample
+        error = np.mean([(a.astype(float) - b.astype(float)) ** 2 for a, b in zip(frames, pictures)], axis=(1, 2, 3))
+        out[name] = dict(size=path.stat().st_size, boxes=boxes_except_samples(path.read_bytes()), record=record, error=error)
+    assert out["still"]["size"] == out["busy"]["size"]
+    assert out["still"]["boxes"] == out["busy"]["boxes"]
+    assert out["still"]["record"]["stream_bytes_before_filler"] != out["busy"]["record"]["stream_bytes_before_filler"]    # the content still differs
+    assert out["still"]["error"].max() < 2.                                                                            # and the picture is kept
+    import zlib
+    squeezed = {name: len(zlib.compress((tmp_path / f"{name}.mp4").read_bytes(), 9)) for name in out}
+    assert abs(squeezed["still"] - squeezed["busy"]) < .001 * out["still"]["size"] and min(squeezed.values()) > .995 * out["still"]["size"]
 
 
 def test_every_render_goes_to_the_store_with_its_index(tmp_path):
@@ -715,7 +1037,50 @@ def test_every_render_goes_to_the_store_with_its_index(tmp_path):
     made = render_avatar.archive_render(store, "renders/x/item", folder, dict(item_id="item"))
     index = json.loads(store.get("renders/x/item/INDEX.json"))
     assert made["files"] == 2 and index["item_id"] == "item" and index["files"]["avatar.mp4"]["sha256"] == hashlib.sha256(b"video").hexdigest()
-    assert store.get("renders/x/item/frames/frame-000000.png") == b"png"
+    assert store.get("renders/x/item/frames/frame-000000.png") == b"png" and made["resumed"] is False
+
+
+class CountingStore:
+    """A directory store that counts its writes."""
+
+    def __init__(self, root):
+        from signtranslator.data.text_motion_dataset import DirectoryStore
+        self.inner, self.puts = DirectoryStore(root), []
+
+    def put(self, key, payload):
+        self.puts.append(key)
+        return self.inner.put(key, payload)
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+
+def test_a_render_is_written_to_the_store_once_and_a_resumed_upload_skips_what_matches(tmp_path):
+    import render_avatar
+    folder = tmp_path / "render"
+    (folder / "frames").mkdir(parents=True)
+    (folder / "avatar.mp4").write_bytes(b"video")
+    (folder / "frames" / "frame-000000.png").write_bytes(b"png")
+    store = CountingStore(tmp_path / "store")
+    render_avatar.archive_render(store, "renders/x/item", folder, dict(item_id="item"))
+    assert len(store.puts) == 3
+    again = render_avatar.archive_render(store, "renders/x/item", folder, dict(item_id="item"))        # the same render, stored: nothing written
+    assert again["resumed"] is True and len(store.puts) == 3
+    with pytest.raises(SystemExit, match="written once"):                                                 # another render under the same item
+        render_avatar.archive_render(store, "renders/x/item", folder, dict(item_id="other"))
+    (folder / "avatar.mp4").write_bytes(b"other video")
+    with pytest.raises(SystemExit, match="written once"):
+        render_avatar.archive_render(store, "renders/x/item", folder, dict(item_id="item"))
+    assert store.get("renders/x/item/avatar.mp4") == b"video" and len(store.puts) == 3
+    # an upload cut off before its index: what matches is kept, the rest written, then the index
+    (folder / "avatar.mp4").write_bytes(b"video")
+    store.put("renders/x/cut/avatar.mp4", b"video")
+    done = render_avatar.archive_render(store, "renders/x/cut", folder, dict(item_id="cut"))
+    assert done["files_already_stored"] == 1 and store.puts[-2:] == ["renders/x/cut/frames/frame-000000.png", "renders/x/cut/INDEX.json"]
+    store.put("renders/x/bad/avatar.mp4", b"not this render")
+    with pytest.raises(SystemExit, match="written once"):
+        render_avatar.archive_render(store, "renders/x/bad", folder, dict(item_id="bad"))
+    assert not store.exists("renders/x/bad/INDEX.json")
 
 
 def test_arm_invalid_share_reads_any_arm_joint(rig):
