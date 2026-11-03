@@ -475,12 +475,17 @@ class Watchdog:
     def __init__(self, limit: float, fire, clock=time.monotonic):
         self.limit, self.fire, self.clock = limit, fire, clock
         self.last = clock()
+        self.stopped = False
 
     def beat(self) -> None:
         self.last = self.clock()
 
     def expired(self) -> bool:
         return self.clock() - self.last > self.limit
+
+    def stop(self) -> None:
+        """The pass is over. A dog left running exits a long-lived process, as it did to the test suite."""
+        self.stopped = True
 
     def start(self, every: float = 30., sleep=time.sleep) -> None:   # sleep bound at import: tests patch time.sleep
         import threading
@@ -489,6 +494,8 @@ class Watchdog:
             while True:
                 try:
                     sleep(every)
+                    if self.stopped:
+                        return
                     if self.expired():
                         self.fire()
                         return
@@ -614,6 +621,7 @@ def run(args, *, models=None) -> dict:
             watchdog.limit = float("inf")          # finish() bounds each quarantined clip by the pool's own stall time
             results += pool.finish()
     finally:
+        watchdog.stop()
         if pool is not None:
             pool._stop(pool.executor)
     wall = time.monotonic() - clock

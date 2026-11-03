@@ -224,6 +224,7 @@ def run(args) -> dict:
             watchdog.limit = float("inf")          # finish() bounds each quarantined clip by the pool's stall time
             results += pool.finish()
         finally:
+            watchdog.stop()
             pool._stop(pool.executor)
     wall = time.monotonic() - clock
     results.sort(key=lambda r: r["index"])

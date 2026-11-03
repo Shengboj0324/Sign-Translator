@@ -539,6 +539,73 @@ def test_a_real_pool_run_end_to_end(tmp_path, monkeypatch):
     assert "no person" in by[GOOD[0]]["reason"] and "video" in by["vidCORRUPTxxxxxxxxxx"]["reason"]
 
 
+def _watchdog_thread(dog, sleep):
+    """Start the dog and return its thread, by what start() adds."""
+    import threading
+    before = set(threading.enumerate())
+    dog.start(sleep=sleep)
+    return (set(threading.enumerate()) - before).pop()
+
+
+def test_a_stopped_watchdog_never_fires_though_its_limit_has_passed():
+    import threading
+    now, fired, sleeping, wake = [0.], [], threading.Event(), threading.Event()
+
+    def sleep(_):
+        sleeping.set()
+        wake.wait(5)
+    dog = job.Watchdog(100., lambda: fired.append(1), clock=lambda: now[0])
+    thread = _watchdog_thread(dog, sleep)
+    assert sleeping.wait(5)
+    now[0] = 500.
+    assert dog.expired()
+    dog.stop()
+    wake.set()
+    thread.join(5)
+    assert not thread.is_alive() and not fired
+
+
+def test_an_unstopped_watchdog_still_fires_past_its_limit():
+    import threading
+    fired = threading.Event()
+    dog = job.Watchdog(100., fired.set, clock=lambda: 500.)
+    dog.last = 0.
+    dog.start(sleep=lambda _: None)
+    assert fired.wait(5)
+
+
+class _SpyDog(job.Watchdog):
+    made = []
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        _SpyDog.made.append(self)
+
+    def start(self, *a, **k):
+        pass
+
+
+def test_a_finished_pass_stops_its_watchdog(env, monkeypatch):
+    root, digest, meta_sha = env
+    _SpyDog.made.clear()
+    monkeypatch.setattr(job, "Watchdog", _SpyDog)
+    run(root, digest, meta_sha)
+    assert len(_SpyDog.made) == 1 and _SpyDog.made[0].stopped
+
+
+def test_a_pass_that_raises_stops_its_watchdog(env, monkeypatch):
+    root, digest, meta_sha = env
+    _SpyDog.made.clear()
+    monkeypatch.setattr(job, "Watchdog", _SpyDog)
+
+    def boom(*a, **k):
+        raise RuntimeError("the archive read failed")
+    monkeypatch.setattr(job, "open_archive", boom)
+    with pytest.raises(RuntimeError, match="the archive read failed"):
+        run(root, digest, meta_sha)
+    assert len(_SpyDog.made) == 1 and _SpyDog.made[0].stopped
+
+
 def test_watchdog_fires_only_after_its_limit_without_a_beat():
     import extract_semlex_videos as ex
     now = [0.]
