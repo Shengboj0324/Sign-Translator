@@ -28,9 +28,11 @@ direction errors, acceptance and left/right checks read the pose as drawn, after
 the image, are kept beside them. Nothing is uploaded from here; ``archive_render`` is for callers.
 
 **The settings hash** (:func:`settings_sha256`) covers the render, filter, correction and encoder settings, the content digest of every
-repository module (``provenance.code_digest``: every ``.py`` file in ``scripts/`` and ``signtranslator/``, so every module a render can
-load), every asset, and the library versions (Python, NumPy, SciPy, PyTorch, Pillow, PyAV and its FFmpeg libraries, x264's build, Blender).
-It is read from disk each time, computed when a render starts and again when it ends, and a render whose two differ is refused.
+repository module (:func:`render_code_digest`: every ``.py`` file in ``scripts/`` and ``signtranslator/``, subfolders included, so every
+module a render can load), every asset, and the library versions (Python, NumPy, SciPy, PyTorch, Pillow, PyAV and its FFmpeg libraries,
+x264's build, Blender). It is read from disk each time, computed when a render starts and again when it ends, and a render whose two differ
+is refused. Between the two, the render runs from a frozen copy of that code and those assets in a temporary folder, checked against the
+start's digest: Blender runs the copied ``render_avatar.py`` and every asset, textures included, is read from the copy.
 """
 from __future__ import annotations
 
@@ -260,7 +262,7 @@ def project(points, centre, span, resolution):
 
 
 def pose_and_bundle(rig, retargeted, attachments, path: Path, *, deleted_vertices=None, skin_uvs=None, skin_texture=None,
-                    extra: dict | None = None):
+                    extra: dict | None = None, root: Path = ROOT):
     """Skin every frame; write the bundle; return bone globals, body vertices and the frame."""
     import numpy as np
     import torch
@@ -287,7 +289,7 @@ def pose_and_bundle(rig, retargeted, attachments, path: Path, *, deleted_vertice
         arrays["body.corner_colours"] = np.full((len(keep), 4, 3), _srgb_to_linear(np.array((.8, .64, .54))))
     else:
         arrays["body.corner_uvs"] = skin_uvs(keep)
-        arrays["body.texture"] = np.array(str(Path(skin_texture).resolve().relative_to(ROOT)))
+        arrays["body.texture"] = np.array(str(Path(skin_texture).resolve().relative_to(Path(root).resolve())))
     dropped = {}
     for name, attachment in attachments.items():
         arrays[f"{name}.vertices"] = vertices[name]
@@ -302,7 +304,7 @@ def pose_and_bundle(rig, retargeted, attachments, path: Path, *, deleted_vertice
             for i, face_uv in enumerate(attachment.face_uvs):
                 corners[i, :len(face_uv)] = uv[list(face_uv)]
             arrays[f"{name}.corner_uvs"] = corners
-            arrays[f"{name}.texture"] = np.array(str(Path(attachment.texture_path).resolve().relative_to(ROOT)))
+            arrays[f"{name}.texture"] = np.array(str(Path(attachment.texture_path).resolve().relative_to(Path(root).resolve())))
         else:
             kept, colours = _texture_corner_colours(attachment)
             arrays[f"{name}.faces"] = _padded([attachment.faces[i] for i in kept])
@@ -320,11 +322,12 @@ def pose_and_bundle(rig, retargeted, attachments, path: Path, *, deleted_vertice
 
 
 def run_blender(blender: Path, bundle: Path, frames_dir: Path, resolution: int, log: Path, *,
-                first_only: bool = False) -> None:
+                first_only: bool = False, script: Path | None = None) -> None:
+    """Blender on the bundle, running ``script`` (this file's frozen copy, whose folder is also where its textures are read)."""
     frames_dir.mkdir()
     completed = subprocess.run(
         [str(blender), "--background", "--factory-startup", "--python-exit-code", "1",
-         "--python", str(Path(__file__).resolve()), "--", "--inside-blender",
+         "--python", str(Path(script or __file__).resolve()), "--", "--inside-blender",
          str(bundle), str(frames_dir), str(resolution), "1" if first_only else "0"],
         capture_output=True, text=True)
     log.write_text(completed.stdout + completed.stderr)
@@ -375,7 +378,7 @@ def load_input_state(args):
     return state, dict(key=args.key, sha256=args.sha256, store=args.store.split(":")[0])
 
 
-def mirror_probe(rig, binding, out_dir: Path, blender: Path, top) -> dict:
+def mirror_probe(rig, binding, out_dir: Path, blender: Path, top, *, script: Path | None = None, root: Path = ROOT) -> dict:
     """Render a synthetic raised-left-arm state and check where the arm lands in the image (top on, no hair: hair stands above the head)."""
     import numpy as np
     from signtranslator.avatar_render.retarget import retarget_state
@@ -385,9 +388,9 @@ def mirror_probe(rig, binding, out_dir: Path, blender: Path, top) -> dict:
     retargeted = retarget_state(rig, binding, state, allow_inferred=True)
     probe = out_dir / "mirror-probe"
     probe.mkdir()
-    bone_globals, body, (centre, span), _ = pose_and_bundle(rig, retargeted, {"top": top}, probe / "bundle.npz")
+    bone_globals, body, (centre, span), _ = pose_and_bundle(rig, retargeted, {"top": top}, probe / "bundle.npz", root=root)
     resolution = 128
-    run_blender(blender, probe / "bundle.npz", probe / "frames", resolution, probe / "blender.log")
+    run_blender(blender, probe / "bundle.npz", probe / "frames", resolution, probe / "blender.log", script=script)
     image = read_png(probe / "frames" / "frame-000000.png")
     index = {name: i for i, name in enumerate(rig.bone_names)}
     head_bones = [i for i, n in enumerate(rig.bone_names) if n == "head"]
@@ -412,10 +415,35 @@ CODE_PATHS = ("scripts", "signtranslator")
 _blender_versions: dict = {}
 
 
-def asset_hashes() -> dict:
-    """The hash of every asset file behind a render, read from disk."""
-    return {str(path.relative_to(INTAKE)): hashlib.sha256(path.read_bytes()).hexdigest()
-            for folder in RENDER_ASSETS for path in sorted(p for p in (INTAKE / folder).rglob("*") if p.is_file())}
+def asset_hashes(root: Path = ROOT) -> dict:
+    """The hash of every asset file behind a render, read from disk under ``root`` (a checkout, or a render's frozen copy)."""
+    intake = Path(root) / INTAKE.relative_to(ROOT)
+    return {str(path.relative_to(intake)): hashlib.sha256(path.read_bytes()).hexdigest()
+            for folder in RENDER_ASSETS for path in sorted(p for p in (intake / folder).rglob("*") if p.is_file())}
+
+
+def code_files(root: Path = ROOT) -> list[Path]:
+    """Every repository module a render can load or run: each ``.py`` in ``scripts/`` and ``signtranslator/``, subfolders included."""
+    return sorted(p for folder in CODE_PATHS for p in (Path(root) / folder).rglob("*.py") if "__pycache__" not in p.parts)
+
+
+def render_code_digest(root: Path = ROOT) -> str:
+    """``provenance.code_digest`` widened to ``scripts/``'s subfolders, which its own glob leaves out."""
+    from signtranslator.eval import provenance
+    return provenance.code_digest(extra_files=tuple(code_files(root)), root=root)
+
+
+def freeze_sources(target: Path, root: Path = ROOT) -> Path:
+    """Copy every file the settings hash names, code (:func:`code_files`) and assets, into ``target`` at the same relative paths, so
+    Blender and the asset loaders read this copy while the checkout may change; returns the frozen ``render_avatar.py``."""
+    import shutil
+    intake = Path(root) / INTAKE.relative_to(ROOT)
+    files = code_files(root) + [p for folder in RENDER_ASSETS for p in (intake / folder).rglob("*") if p.is_file()]
+    for path in files:
+        copy = Path(target) / path.relative_to(root)
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, copy)
+    return Path(target) / "scripts" / "render_avatar.py"
 
 
 def blender_version(blender: Path = DEFAULT_BLENDER) -> str:
@@ -478,12 +506,15 @@ def settings_payload(resolution: int, *, options: dict | None = None, blender: P
                                smooth_sigma_frames=collision.SMOOTH_SIGMA_FRAMES, reach_margin=collision.REACH_MARGIN, front_cell=collision.FRONT_CELL,
                                front_samples=collision.FRONT_SAMPLES, swivel_step_deg=collision.SWIVEL_STEP_DEG, depth_cap=collision.DEPTH_CAP),
                 encoder=dict(ENCODER, constant_rate=CONSTANT_RATE), libraries=library_versions(blender),
-                code_digest=provenance.code_digest(), assets=asset_hashes())
+                code_digest=render_code_digest(), assets=asset_hashes())
 
 
 def settings_sha256(resolution: int, *, options: dict | None = None, blender: Path = DEFAULT_BLENDER) -> str:
     """The hash of everything that shapes a video apart from its state. Two videos with one hash had one render."""
-    payload = settings_payload(resolution, options=options, blender=blender)
+    return payload_sha256(settings_payload(resolution, options=options, blender=blender))
+
+
+def payload_sha256(payload: dict) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
 
 
@@ -491,8 +522,6 @@ def code_commit(root: Path = ROOT) -> dict:
     """The code a render ran: its content digest always (``provenance.code_digest``), and the commit, with whether the code or the assets
     differ from it, where it runs from a git checkout. A source archive, as on a pod, has no commit or ``dirty`` (``None``); the digest
     still names its code, as the draw's does."""
-    from signtranslator.eval import provenance
-
     def git(*args):
         return subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True, text=True).stdout.strip()
     assets = [str((INTAKE / folder).relative_to(ROOT)) for folder in RENDER_ASSETS] if root == ROOT else []
@@ -501,7 +530,7 @@ def code_commit(root: Path = ROOT) -> dict:
         dirty = bool(git("status", "--porcelain", "--", *CODE_PATHS, *assets))
     except (OSError, subprocess.CalledProcessError):
         commit = dirty = None
-    return dict(commit=commit, dirty=dirty, digest=provenance.code_digest(root=root))
+    return dict(commit=commit, dirty=dirty, digest=render_code_digest(root))
 
 
 def archive_render(store, prefix: str, directory: Path, fields: dict | None = None) -> dict:
@@ -573,7 +602,26 @@ def main(argv=None) -> int:
     if args.resolution % 2:
         parser.error("--resolution must be even")
     sys.path.insert(0, str(ROOT))
+    import shutil
+    import tempfile
+    render_options = dict(face_baseline=args.face_baseline, hinge_twist=not args.no_hinge_twist, drive_legs=args.drive_legs, lossless=args.lossless)
+    start = settings_payload(args.resolution, blender=args.blender, options=render_options)
+    code_at_start = code_commit()
+    frozen = Path(tempfile.mkdtemp(prefix="render-frozen-"))
+    try:
+        script = freeze_sources(frozen)
+        if render_code_digest(frozen) != start["code_digest"] or asset_hashes(frozen) != start["assets"]:
+            raise SystemExit("the code or assets changed while they were being copied for this render: it is refused")
+        return _render(args, render_options, payload_sha256(start), code_at_start, frozen, script)
+    finally:
+        shutil.rmtree(frozen, ignore_errors=True)
+
+
+def _render(args, render_options: dict, settings_at_start: str, code_at_start: dict, frozen: Path, script: Path) -> int:
+    """:func:`main`'s render, every asset read and every Blender run from the frozen copy ``frozen``. The Python modules are the ones this
+    process has loaded; an edit to them on disk while this runs is refused by the hash read at the end."""
     import numpy as np
+    intake = frozen / INTAKE.relative_to(ROOT)
     from signtranslator.avatar_render.makehuman import load_makehuman_rig
     from signtranslator.avatar_render.makehuman_eyes import load_makehuman_eyes
     from signtranslator.avatar_render.makehuman_face import load_makehuman_face_units
@@ -590,18 +638,15 @@ def main(argv=None) -> int:
     )
     from signtranslator.generation.stream_render import encode_timestamped_video, verify_timestamped_video
 
-    render_options = dict(face_baseline=args.face_baseline, hinge_twist=not args.no_hinge_twist, drive_legs=args.drive_legs, lossless=args.lossless)
-    settings_at_start = settings_sha256(args.resolution, blender=args.blender, options=render_options)
-    code_at_start = code_commit()
     state, source_record = load_input_state(args)
     full_frames = len(state.timestamps)
     state = slice_state(state, args.start_seconds, args.max_seconds)
     args.out_dir.mkdir(parents=False, exist_ok=False)
-    rig = load_makehuman_rig(INTAKE / "makehuman")
-    face_units = load_makehuman_face_units(INTAKE / "makehuman-face", rig)
-    wardrobe = load_wardrobe(INTAKE / "makehuman-system-assets", rig)
-    attachments = {"eyes": load_makehuman_eyes(INTAKE / "makehuman-eyes", rig),
-                   **load_makehuman_mouth(INTAKE / "makehuman-mouth", rig), **wardrobe.attachments}
+    rig = load_makehuman_rig(intake / "makehuman")
+    face_units = load_makehuman_face_units(intake / "makehuman-face", rig)
+    wardrobe = load_wardrobe(intake / "makehuman-system-assets", rig)
+    attachments = {"eyes": load_makehuman_eyes(intake / "makehuman-eyes", rig),
+                   **load_makehuman_mouth(intake / "makehuman-mouth", rig), **wardrobe.attachments}
     binding = build_retarget_binding(rig)
     for attachment in attachments.values():
         if attachment.rig_identity != binding.rig_identity:
@@ -622,8 +667,8 @@ def main(argv=None) -> int:
     bundle_path = args.out_dir / "bundle.npz"
     _, _, (centre, span), bundle_sha = pose_and_bundle(
         rig, retargeted, attachments, bundle_path, deleted_vertices=wardrobe.body_deleted_vertices,
-        skin_uvs=lambda keep: body_corner_uvs(INTAKE / "makehuman", rig, keep), skin_texture=wardrobe.skin_texture,
-        extra=dict(source=source_record))
+        skin_uvs=lambda keep: body_corner_uvs(intake / "makehuman", rig, keep), skin_texture=wardrobe.skin_texture,
+        extra=dict(source=source_record), root=frozen)
     # Acceptance reads the pose raters see, after the correction; the retarget before it is kept beside.
     before_correction = forward_kinematics(rig, uncorrected.local_rotations)
     drawn = forward_kinematics(rig, retargeted.local_rotations)
@@ -631,15 +676,15 @@ def main(argv=None) -> int:
     errors_before_correction = direction_errors(rig, filtered, checked, before_correction)
     lateral = lateral_agreement(rig, filtered, checked, drawn)
     arm_in_image = arm_image_changes(rig, before_correction, drawn, args.resolution / frame()[1])
-    probe = mirror_probe(rig, binding, args.out_dir, args.blender, wardrobe.attachments["top"])
+    probe = mirror_probe(rig, binding, args.out_dir, args.blender, wardrobe.attachments["top"], script=script, root=frozen)
 
     frames_dir = args.out_dir / "frames"
     render_started = time.perf_counter()
-    run_blender(args.blender, bundle_path, frames_dir, args.resolution, args.out_dir / "blender.log")
+    run_blender(args.blender, bundle_path, frames_dir, args.resolution, args.out_dir / "blender.log", script=script)
     blender_seconds = time.perf_counter() - render_started
     images = [read_png(frames_dir / f"frame-{i:06d}.png") for i in range(len(state.timestamps))]
     # A second process renders the first frame: EEVEE's shadow cache makes a re-render inside one session differ by a few levels.
-    run_blender(args.blender, bundle_path, args.out_dir / "rerender", args.resolution, args.out_dir / "rerender.log", first_only=True)
+    run_blender(args.blender, bundle_path, args.out_dir / "rerender", args.resolution, args.out_dir / "rerender.log", first_only=True, script=script)
     rerender = read_png(args.out_dir / "rerender" / "frame-000000.png")
     video = args.out_dir / "avatar.mp4"
     encoded = encode_timestamped_video(images, state.timestamps, video,

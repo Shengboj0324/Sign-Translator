@@ -18,6 +18,8 @@ torso, and :func:`penetration` still counts that against the rest body's signed 
 
 **A hand moves at most** :data:`DEPTH_CAP` (15 cm) towards the camera. A hand behind the head or deep in the back would otherwise travel
 half a metre through the body; past the cap it stays partly covered, and the record flags the clip (``depth_capped``, ``frames_at_depth_cap``).
+A hand left covered for another reason, an arm that can't reach the depth or rounds that ran out, is flagged apart (``left_covered``,
+with the frames of each reason).
 
 It uses no arm label, text or source, so it treats real and generated clips alike. Not corrected: hand against hand, hand
 against the other arm or its own upper arm, and a hand behind its own sleeve. Cover by the other arm (sleeve included) and by the other
@@ -583,8 +585,18 @@ def correct(rig, field: BodyField, local_rotations: np.ndarray, target_globals: 
         moved = forward_kinematics(rig, local)
         before, after = original[:, wrist_bone, :3, 3], moved[:, wrist_bone, :3, 3]
         shift = (after - before) * SOURCE_METERS_PER_UNIT * 100.
+        # A hand still behind the drawn surface (its need past the clearance) where the cap didn't stop it: the arm can't reach that depth,
+        # or the rounds ran out. Flagged apart from the cap.
+        covered = _wrist_need(field, maps_clear, moved, inverse_rest, side, along, False) > CLEARANCE
+        shoulder, elbow = moved[:, upper[0], :3, 3], moved[:, fore[0], :3, 3]
+        span = np.linalg.norm(elbow - shoulder, axis=-1) + np.linalg.norm(after - elbow, axis=-1)
+        at_reach = np.linalg.norm(after - shoulder, axis=-1) >= span - REACH_MARGIN - 1e-6
+        left = covered & ~at_cap
         record[side] = dict(frames_depth_moved=int(moved_frames.sum()), frames_at_depth_cap=int(at_cap.sum()), depth_capped=bool(at_cap.any()),
-                            depth_cap_cm=float(DEPTH_CAP * SOURCE_METERS_PER_UNIT * 100.), frames_swivelled=int((smooth > 1e-4).sum()),
+                            capped_frames=np.flatnonzero(at_cap).tolist(), depth_cap_cm=float(DEPTH_CAP * SOURCE_METERS_PER_UNIT * 100.),
+                            left_covered=bool(left.any()), left_covered_frames=np.flatnonzero(left).tolist(),
+                            frames_left_covered_out_of_reach=int((left & at_reach).sum()), frames_left_covered_out_of_rounds=int((left & ~at_reach).sum()),
+                            frames_swivelled=int((smooth > 1e-4).sum()),
                             swivel_deg_max=float(np.degrees(smooth).max()), swivel_deg_p95=float(np.percentile(np.degrees(smooth), 95)),
                             wrist_depth_move_cm_max=float(np.abs(shift[:, 2]).max()),
                             wrist_depth_move_cm_p95=float(np.percentile(np.abs(shift[:, 2]), 95)),
@@ -629,9 +641,11 @@ def apply_correction(rig, field: BodyField, retargeted, settings: CorrectionSett
     after = penetration(rig, field, local)
     hidden_after = hidden_from_front(rig, field, local)
     capped = {side: moved[side]["depth_capped"] for side in SIDES}
+    left = {side: moved[side]["left_covered"] for side in SIDES}
     return replace(retargeted, local_rotations=local, target_globals=worlds), dict(
         before=before, after=after, hidden_before=hidden_before, hidden_after=hidden_after, moved=moved,
-        depth_capped=any(capped.values()), depth_capped_by_side=capped, cover_by_other_limb_after=covered_by_other_limb(rig, field, local))
+        depth_capped=any(capped.values()), depth_capped_by_side=capped, left_covered=any(left.values()), left_covered_by_side=left,
+        cover_by_other_limb_after=covered_by_other_limb(rig, field, local))
 
 
 __all__ = ["BodyField", "CorrectionSettings", "CORRECTION_V2", "DEPTH_CAP", "build_field", "penetration", "hidden_from_front", "front_maps",

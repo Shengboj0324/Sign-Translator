@@ -6650,5 +6650,7 @@ The signer study waits for people anyway: the board, recruiting and the checker'
 4. R2 renders are written once and skip a stored index that matches; keys hold the item id alone. A stopped packet run can't be resumed, since item ids are drawn fresh.
 5. The hand moves at most 15 cm, flagged per clip and per arm; cover by the other arm and hand is counted. Not re-measured on real clips.
 6. `report["reference_fairness"]`, report only, declared in protocol section 6; the bar is unchanged.
-7. The correction tests use an exact ray against the drawn triangles; the review's ten survivors and fifteen more mutants of this branch are caught.
+7. The correction tests use an exact ray against the drawn triangles; the review's ten survivors and fifteen more mutants of this branch are caught (forty with the second review's fixes).
+
+**Second review's fixes, same branch:** the encoder runs at 0.9 of the budget's rate and re-encodes lower before refusing, so a long busy clip can't overshoot; a draft key is written before the first render and after each item, refused and failed renders are archived under their item id, the key is written before any loose video is deleted, and `--resume` finishes a stopped run. The file is rewritten one sample to a chunk, so every box has the same size and only the per-frame size and offset tables differ (the earlier "every box but the sample sizes" was false past 1 MiB). Renders run from a frozen copy of the code and assets; the render digest reads `scripts/`'s subfolders; a hand left covered by reach or rounds is flagged apart from the cap and joins the fairness cut; the exact-ray test checks every unflagged frame of drifting poses.
 

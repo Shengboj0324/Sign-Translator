@@ -35,12 +35,13 @@ from ..pose.multichannel import MultichannelMotion
 from .state_rig import StateRigBinding, pose_state_sequence
 
 DEFAULT_TIME_BASE = Fraction(1, 90000)
-#: ``quality='constant'``: H.264 4:2:0 held to 2 Mb/s (x264's VBV: average and maximum 2 Mb/s, a 1 s buffer) with a fixed frame-type pattern,
-#: then SEI units of incompressible user data, spread over the samples, top the stream up to ``rate * frames / fps + buffer`` bits. Stream
-#: size, stream and file bit rate, frame types and every MP4 box but the sample sizes are then a function of the frame count alone, and a
-#: zip can't shrink the top-up back to the content's size, as it would x264's own CBR filler (0xFF bytes). On a busy synthetic 768 px
-#: avatar clip it scored above CRF 16 on PSNR, hands included (docs/AVATAR_RENDER.md section 13).
-CONSTANT_RATE = dict(bits_per_second=2_000_000, buffer_bits=2_000_000, keyint=48, preset="slow")
+#: ``quality='constant'``: H.264 4:2:0 held below 2 Mb/s by x264's VBV (``encoder_fractions[0]`` of the rate and the 1 s buffer, a lower
+#: fraction if a stream still runs over), with a fixed frame-type pattern; then SEI units of incompressible user data, spread over the
+#: samples, top the stream up to exactly ``rate * frames / fps + buffer`` bits, and the file is laid out one sample to a chunk. Stream size,
+#: stream and file bit rate, frame types, and every MP4 box's size, and its bytes but for the sample sizes and sample offsets, are then a
+#: function of the frame count alone, and a zip can't shrink the top-up back to the content's size, as it would x264's own CBR filler (0xFF
+#: bytes). On a busy synthetic 768 px avatar clip it scored above CRF 16 on PSNR, hands included (docs/AVATAR_RENDER.md section 13).
+CONSTANT_RATE = dict(bits_per_second=2_000_000, buffer_bits=2_000_000, keyint=48, preset="slow", encoder_fractions=(.9, .75, .6))
 
 
 def presentation_timestamps(clock: Sequence[float], *,
@@ -177,8 +178,13 @@ def _nominal_rate(clock: Sequence[float]) -> Fraction:
 
 def _encode_constant_rate(frames, clock, path: Path, *, time_base: Fraction, codec: str) -> dict:
     """``quality='constant'``: encode under :data:`CONSTANT_RATE` to a sibling file, then copy every packet to ``path`` with SEI units of
-    unregistered user data, spread over the samples, that bring the stream to :func:`constant_rate_budget`. Packets, timestamps and pictures
-    are unchanged; decoders skip the SEI units."""
+    unregistered user data, spread over the samples, that bring the stream to :func:`constant_rate_budget`, and lay the file out one sample
+    to a chunk. Packets, timestamps and pictures are unchanged; decoders skip the SEI units.
+
+    x264 is held to ``encoder_fractions[0]`` of the budget's rate and buffer, and its buffer starts 90% full, so a stream can run past the
+    rate by up to that buffer; the budget's own rate and buffer above it leave 0.2 Mb/s of the clip's length plus 0.38 Mb of room. A
+    stream still over its budget, or too close to it to hold one filler unit, is encoded again at the next fraction; only one that fails
+    every fraction is refused. Each attempt is recorded. Nothing is left at ``path`` or beside it after a failure."""
     import av
     if codec != "libx264":
         raise ValueError("quality='constant' is libx264's")
@@ -193,33 +199,44 @@ def _encode_constant_rate(frames, clock, path: Path, *, time_base: Fraction, cod
     if height % 2 or width % 2:
         raise ValueError("encoder requires even frame dimensions")
     fps = _nominal_rate(clock)
-    bits = str(rate["bits_per_second"])
+    budget = constant_rate_budget(len(frames), float(fps))
     raw = path.with_name(path.name + ".rate")
+    attempts = []
     try:
-        with av.open(str(raw), mode="w", format="mp4") as container:
-            stream = container.add_stream(codec, rate=None)
-            stream.width, stream.height = width, height
-            stream.pix_fmt = "yuv420p"
-            stream.time_base = time_base
-            stream.codec_context.time_base = time_base
-            stream.codec_context.framerate = fps
-            stream.options = {"preset": rate["preset"], "b": bits, "maxrate": bits, "bufsize": str(rate["buffer_bits"]),
-                              "x264-params": f"force-cfr=1:b-adapt=0:scenecut=0:keyint={rate['keyint']}:min-keyint={rate['keyint']}"}
-            for tick, image in zip(ticks, frames):
-                frame = av.VideoFrame.from_ndarray(image, format="rgb24")
-                frame.pts = tick
-                frame.time_base = time_base
-                for packet in stream.encode(frame):
+        for fraction in rate["encoder_fractions"]:
+            bits, buffer = round(rate["bits_per_second"] * fraction), round(rate["buffer_bits"] * fraction)
+            raw.unlink(missing_ok=True)
+            with av.open(str(raw), mode="w", format="mp4") as container:
+                stream = container.add_stream(codec, rate=None)
+                stream.width, stream.height = width, height
+                stream.pix_fmt = "yuv420p"
+                stream.time_base = time_base
+                stream.codec_context.time_base = time_base
+                stream.codec_context.framerate = fps
+                stream.options = {"preset": rate["preset"], "b": str(bits), "maxrate": str(bits), "bufsize": str(buffer),
+                                  "x264-params": f"force-cfr=1:b-adapt=0:scenecut=0:keyint={rate['keyint']}:min-keyint={rate['keyint']}"}
+                for tick, image in zip(ticks, frames):
+                    frame = av.VideoFrame.from_ndarray(image, format="rgb24")
+                    frame.pts = tick
+                    frame.time_base = time_base
+                    for packet in stream.encode(frame):
+                        container.mux(packet)
+                for packet in stream.encode():
                     container.mux(packet)
-            for packet in stream.encode():
-                container.mux(packet)
+            with av.open(str(raw)) as source:
+                template = source.streams.video[0]
+                packets = [(p.pts, p.dts, p.duration, p.is_keyframe, bytes(p)) for p in source.demux(template) if p.size]
+            stream_bytes = sum(len(p[4]) for p in packets)
+            attempts.append(dict(encoder_bits_per_second=bits, encoder_buffer_bits=buffer, stream_bytes_before_filler=stream_bytes,
+                                 room=budget - stream_bytes))
+            if budget - stream_bytes >= 0 and (budget == stream_bytes or budget - stream_bytes >= _SEI_SMALLEST):
+                break
+        else:
+            raise ValueError(f"constant-rate encoding failed at every encoder rate: {attempts}")
+        seed = hashlib.sha256(b"".join(p[4] for p in packets)).digest()       # unique to the clip: no archiver can share it between files
+        shares = _sei_shares(budget - stream_bytes, len(packets))
         with av.open(str(raw)) as source:
             template = source.streams.video[0]
-            packets = [(p.pts, p.dts, p.duration, p.is_keyframe, bytes(p)) for p in source.demux(template) if p.size]
-            stream_bytes = sum(len(p[4]) for p in packets)
-            budget = constant_rate_budget(len(frames), float(fps))
-            seed = hashlib.sha256(b"".join(p[4] for p in packets)).digest()       # unique to the clip: no archiver can share it between files
-            shares = _sei_shares(budget - stream_bytes, len(packets))
             with av.open(str(path), mode="w", format="mp4") as target:
                 out = target.add_stream_from_template(template)
                 for n, (pts, dts, duration, key, data) in enumerate(packets):
@@ -228,12 +245,87 @@ def _encode_constant_rate(frames, clock, path: Path, *, time_base: Fraction, cod
                     packet.is_keyframe = key
                     packet.stream = out
                     target.mux(packet)
+        one_sample_per_chunk(path)
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
     finally:
         raw.unlink(missing_ok=True)
     bound = timestamp_error_bound(clock, ticks, time_base)
+    used = attempts[-1]
     return dict(ticks=ticks, time_base=str(time_base), clock_origin_seconds=float(clock[0]), codec=codec, pixel_format="yuv420p",
                 max_timestamp_error_seconds=float(bound), max_timestamp_error_exact=str(bound), frames=len(ticks),
-                constant_rate=dict(rate, fps=str(fps), stream_bytes_before_filler=stream_bytes, stream_bytes=budget, filler_bytes=budget - stream_bytes))
+                constant_rate=dict(rate, fps=str(fps), encoder_bits_per_second=used["encoder_bits_per_second"], attempts=attempts,
+                                   stream_bytes_before_filler=used["stream_bytes_before_filler"], stream_bytes=budget, filler_bytes=used["room"]))
+
+
+def _mp4_boxes(data: bytes, start: int, end: int) -> list[tuple[str, int, int, int]]:
+    """(kind, offset, size, header length) of every box from ``start`` to ``end``, which must end exactly there."""
+    import struct
+    out, i = [], start
+    while i < end:
+        size, kind = struct.unpack(">I4s", data[i:i + 8])
+        header = 8
+        if size == 1:
+            size, header = struct.unpack(">Q", data[i + 8:i + 16])[0], 16
+        elif size == 0:
+            size = end - i
+        if size < header or i + size > end:
+            raise ValueError(f"a broken MP4 box chain at {i}")
+        out.append((kind.decode("latin-1"), i, size, header))
+        i += size
+    return out
+
+
+def one_sample_per_chunk(path: Path) -> None:
+    """Rewrite an MP4's one video track to one sample per chunk (``stsc`` one entry, ``stco`` one offset a sample). FFmpeg starts a new
+    chunk wherever a chunk would pass 1 MiB, so its layout follows the content; this one follows the frame count. ``moov`` must come after
+    ``mdat``, so no sample moves; only ``moov`` is rewritten."""
+    import struct
+    data = Path(path).read_bytes()
+    top = _mp4_boxes(data, 0, len(data))
+    kinds = [b[0] for b in top]
+    if kinds.count("moov") != 1 or kinds.count("mdat") != 1 or kinds.index("moov") < kinds.index("mdat"):
+        raise ValueError(f"{path}: expected one mdat, then one moov")
+
+    def rebuild(offset, size, header, trail):
+        """The box at ``offset`` rebuilt, descending along ``trail`` (kinds) to stbl, where stsc and stco are replaced."""
+        kind = data[offset + header - 4:offset + header].decode("latin-1")
+        children = _mp4_boxes(data, offset + header, offset + size)
+        if not trail:
+            boxes = {k: (o, s, h) for k, o, s, h in children}
+            o, s, h = boxes["stsz"]
+            uniform, count = struct.unpack(">II", data[o + h + 4:o + h + 12])
+            sizes = [uniform] * count if uniform else list(struct.unpack(f">{count}I", data[o + h + 12:o + h + 12 + 4 * count]))
+            o, s, h = boxes["stsc"]
+            entries = struct.unpack(">I", data[o + h + 4:o + h + 8])[0]
+            runs = [struct.unpack(">III", data[o + h + 8 + 12 * k:o + h + 20 + 12 * k]) for k in range(entries)]
+            if "co64" in boxes or {r[2] for r in runs} != {1}:
+                raise ValueError(f"{path}: 64-bit offsets or several sample descriptions")
+            o, s, h = boxes["stco"]
+            chunks = struct.unpack(">I", data[o + h + 4:o + h + 8])[0]
+            starts = struct.unpack(f">{chunks}I", data[o + h + 8:o + h + 8 + 4 * chunks])
+            offsets, sample = [], 0
+            for c, start in enumerate(starts, start=1):
+                per = next(r[1] for r in reversed(runs) if r[0] <= c)
+                for _ in range(per):
+                    offsets.append(start)
+                    start += sizes[sample]
+                    sample += 1
+            if sample != count:
+                raise ValueError(f"{path}: the chunk table holds {sample} samples, the size table {count}")
+            replaced = {"stsc": b"stsc" + bytes(4) + struct.pack(">IIII", 1, 1, 1, 1),
+                        "stco": b"stco" + bytes(4) + struct.pack(f">I{count}I", count, *offsets)}
+            body = b"".join(struct.pack(">I", len(replaced[k]) + 4) + replaced[k] if k in replaced else data[o:o + s] for k, o, s, _ in children)
+        else:
+            body = b"".join(rebuild(o, s, h, trail[1:]) if k == trail[0] else data[o:o + s] for k, o, s, h in children)
+            if sum(k == trail[0] for k, _, _, _ in children) != 1:
+                raise ValueError(f"{path}: expected one {trail[0]} in {kind}")
+        return struct.pack(">I", len(body) + 8) + kind.encode("latin-1") + body
+
+    _, offset, size, header = top[kinds.index("moov")]
+    moov = rebuild(offset, size, header, ("trak", "mdia", "minf", "stbl"))
+    Path(path).write_bytes(data[:offset] + moov + data[offset + size:])
 
 
 _SEI_SMALLEST = 4 + 1 + 2 + 16 + 1               # length prefix, NAL header, one message's type and size, its UUID, trailing bits

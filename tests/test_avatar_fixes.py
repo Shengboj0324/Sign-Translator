@@ -403,11 +403,31 @@ def test_a_hand_behind_the_body_moves_at_most_the_cap_stays_covered_and_is_flagg
     assert np.abs(before[:, wrist, :2, 3] - after[:, wrist, :2, 3]).max() < 1e-6                         # still only along depth
     move = after[:, wrist, 2, 3] - before[:, wrist, 2, 3]
     assert collision.DEPTH_CAP == 1.5 and np.abs(move - collision.DEPTH_CAP).max() < 1e-6                 # exactly the cap, every frame
-    assert record["depth_capped"] and record["depth_capped_by_side"] == dict(L=True, R=False)
+    assert record["depth_capped"] and record["depth_capped_by_side"] == dict(L=True, R=False) and not record["left_covered"]
     moved = record["moved"]["L"]
+    assert moved["capped_frames"] == list(range(len(local))) and moved["left_covered_frames"] == []
     assert moved["depth_capped"] and moved["frames_at_depth_cap"] == len(local) and moved["wrist_depth_move_cm_max"] <= 15. + 1e-6
     assert record["hidden_after"]["frames_any_vertex"] == 1.                                              # left covered, and counted
     assert (exact_gaps(rig, wardrobe, fixed.local_rotations[:1], drawn_field.hand_vertices["L"]) < 0.).any()
+
+
+def test_a_hand_the_arm_cannot_reach_out_and_one_the_rounds_ran_out_on_are_flagged_apart_from_the_cap(rig, binding, wardrobe, drawn_field, monkeypatch):
+    local, _ = chest_pose(rig, frames=6)
+    g = forward_kinematics(rig, local)[0]
+    shoulder, elbow, wrist = (g[rig.bone_names.index(f"{b}.L"), :3, 3] for b in ("upperarm01", "lowerarm01", "wrist"))
+    assert wrist[2] > shoulder[2]                                                     # in front of the shoulder: a shorter reach can't bring it forward
+    short = np.linalg.norm(elbow - shoulder) + np.linalg.norm(wrist - elbow) - np.linalg.norm(wrist - shoulder) + 1e-3
+    for patch, reason in (({"REACH_MARGIN": short}, "frames_left_covered_out_of_reach"), ({"ROUNDS": 0}, "frames_left_covered_out_of_rounds")):
+        with monkeypatch.context() as m:
+            for name, value in patch.items():
+                m.setattr(collision, name, value)
+            fixed, record = apply_correction(rig, drawn_field, retarget_shell(rig, binding, local))
+        moved = record["moved"]["L"]
+        assert record["left_covered"] and record["left_covered_by_side"] == dict(L=True, R=False) and not record["depth_capped"], patch
+        assert moved["left_covered_frames"] == list(range(6)) and moved[reason] == 6 and moved["capped_frames"] == []
+        assert (exact_gaps(rig, wardrobe, fixed.local_rotations[:1], drawn_field.hand_vertices["L"]) < 0.).any()       # truly still covered
+    fixed, record = apply_correction(rig, drawn_field, retarget_shell(rig, binding, local))
+    assert not record["left_covered"] and record["moved"]["L"]["left_covered_frames"] == []
 
 
 def test_a_hand_just_inside_the_back_and_one_just_behind_it_end_together(rig, binding, field, drawn_field):
@@ -464,20 +484,43 @@ def test_the_hand_ends_just_in_front_of_the_body_not_far_from_it(rig, binding, w
     assert (nearest >= collision.CLEARANCE).all() and np.median(nearest) < .2   # at least the clearance, under 2 cm of map cell and smoothing
 
 
-def test_an_exact_ray_finds_every_corrected_hand_in_front_of_the_drawn_body_by_the_clearance(rig, wardrobe, drawn_field):
-    """Fixed random poses, both arms: wherever a hand was covered and the cap wasn't reached, every hand vertex ends at least the clearance
-    in front of every drawn triangle, the top and hair included. Catches a front map without the top, a map read without its edge margin,
-    and a correction without its clearance."""
-    checked = 0
-    for local in two_arm_poses(rig, 6):
+def drifting_two_arm_poses(rig, count, seed=3, frames=6):
+    """Fixed random two-arm poses, hands forward and across, that drift over their frames, so a hand can pass behind the body, or deep
+    enough to reach the cap, on some frames and not others."""
+    rng = np.random.default_rng(seed)
+    out = []
+    ramp = np.linspace(0., 1., frames)[:, None]
+    for _ in range(count):
+        local = None
+        for side, sign in (("L", 1), ("R", -1)):
+            upper = np.array([rng.uniform(-60, 0) * sign, rng.uniform(-50, 10)]) + ramp * rng.normal(0., 30., 2)
+            fore = np.array([rng.uniform(-130, -60) * sign]) + ramp * rng.normal(0., 30., 1)
+            local = arm_pose(rig, frames, side, upper, fore, base=local)
+        out.append(local)
+    return out
+
+
+def test_an_exact_ray_finds_every_unflagged_corrected_hand_in_front_of_the_drawn_body_by_the_clearance(rig, wardrobe, drawn_field):
+    """Fixed random poses, both arms, drifting over their frames: on every frame the record doesn't flag (the cap, or a hand left covered),
+    every hand vertex ends at least the clearance in front of every drawn triangle, the top and hair included; a hand an exact ray finds
+    covered is always on a flagged frame. Only flagged frames are skipped, not their side or their pose. Catches a front map without the
+    top, a map read without its edge margin, and a correction without its clearance."""
+    checked = flagged = partial = 0
+    for local in [*two_arm_poses(rig, 4), *drifting_two_arm_poses(rig, 4)]:
         fixed, _, record = correct(rig, drawn_field, local, forward_kinematics(rig, local)[:, :, :3, :3], CORRECTION_V2)
         for side in ("L", "R"):
             hand = drawn_field.hand_vertices[side]
-            if record[side]["depth_capped"] or not (exact_gaps(rig, wardrobe, local[:1], hand) < 0.).any():
-                continue
-            assert exact_gaps(rig, wardrobe, fixed, hand).min() >= collision.CLEARANCE, side
-            checked += 1
-    assert checked >= 6
+            before = exact_gaps(rig, wardrobe, local, hand).min(1)
+            after = exact_gaps(rig, wardrobe, fixed, hand).min(1)
+            skip = set(record[side]["capped_frames"]) | set(record[side]["left_covered_frames"])
+            partial += 0 < len(record[side]["capped_frames"]) < len(local)                    # capped on some frames: only those are skipped
+            for t in range(len(local)):
+                if t in skip:
+                    flagged += 1
+                    continue
+                assert after[t] >= collision.CLEARANCE, (side, t, after[t])
+                checked += before[t] < 0.                                                 # a frame that was covered and is now clear
+    assert checked >= 15 and flagged > 0 and partial >= 2
 
 
 def test_the_elbow_goes_to_the_nearest_point_of_its_whole_circle(rig, drawn_field):
@@ -612,7 +655,7 @@ def fake_record(**extra):
     """What a real render's verification.json carries for the packet: the settings hash and code read now, acceptance and the correction's flags."""
     import render_avatar
     return dict(dict(render_settings_sha256=render_avatar.settings_sha256(768), code=render_avatar.code_commit(), acceptance=dict(mirror=True),
-                     collision=dict(depth_capped=False, cover_by_other_limb_after=dict(other_arm=dict(frames_any_vertex=0.), other_hand=dict(frames_any_vertex=0.)))), **extra)
+                     collision=dict(depth_capped=False, left_covered=False, cover_by_other_limb_after=dict(other_arm=dict(frames_any_vertex=0.), other_hand=dict(frames_any_vertex=0.)))), **extra)
 
 
 def test_settings_hash_depends_on_settings_only():
@@ -726,7 +769,7 @@ def test_a_render_refuses_code_that_changed_while_it_ran(tmp_path, monkeypatch, 
     import render_avatar
     from PIL import Image
 
-    def blender_while_someone_edits(blender, bundle, frames_dir, resolution, log, *, first_only=False):
+    def blender_while_someone_edits(blender, bundle, frames_dir, resolution, log, *, first_only=False, script=None):
         Path(frames_dir).mkdir()
         for i in range(1 if first_only else np.load(bundle)["body.vertices"].shape[0]):
             Image.new("RGB", (resolution, resolution)).save(Path(frames_dir) / f"frame-{i:06d}.png")
@@ -740,10 +783,61 @@ def test_a_render_refuses_code_that_changed_while_it_ran(tmp_path, monkeypatch, 
     assert not (tmp_path / "out" / "verification.json").exists()
 
 
+def test_blender_runs_a_frozen_copy_of_the_code_and_assets_the_start_hash_names(tmp_path, monkeypatch, rig):
+    import render_avatar
+    from PIL import Image
+    seen = []
+
+    def blender(blender, bundle, frames_dir, resolution, log, *, first_only=False, script=None):
+        frozen = Path(script).parents[1]
+        seen.append(dict(script=Path(script), outside=ROOT.resolve() not in Path(script).resolve().parents,
+                         same=Path(script).read_bytes() == (ROOT / "scripts/render_avatar.py").read_bytes(),
+                         digest=render_avatar.render_code_digest(frozen) == render_avatar.render_code_digest(),
+                         assets=render_avatar.asset_hashes(frozen) == render_avatar.asset_hashes(),
+                         textures=all((frozen / str(np.load(bundle)[k])).is_file() for k in np.load(bundle).files if k.endswith(".texture"))))
+        Path(frames_dir).mkdir()
+        for i in range(1 if first_only else np.load(bundle)["body.vertices"].shape[0]):
+            Image.new("RGB", (resolution, resolution)).save(Path(frames_dir) / f"frame-{i:06d}.png")
+    monkeypatch.setattr(render_avatar, "run_blender", blender)
+    state = state_from_points(np.arange(3) / FPS, *raised_arm_points(rig, "Left", frames=3), sample_id="x")
+    state.save(tmp_path / "s.npz")
+    assert render_avatar.main(["--state", str(tmp_path / "s.npz"), "--out-dir", str(tmp_path / "out"), "--allow-inferred", "--resolution", "32"]) == 0
+    assert len(seen) == 3 and len({s["script"] for s in seen}) == 1                                   # the probe, the render and the re-render
+    assert all(s["outside"] and s["same"] and s["digest"] and s["assets"] and s["textures"] for s in seen)
+    assert not seen[0]["script"].exists()                                                               # the copy goes with the render
+    # the copy is checked against the start's digest: an edit between the two is refused
+    monkeypatch.setattr(render_avatar, "freeze_sources", lambda target, root=ROOT: (Path(target) / "scripts").mkdir(parents=True) or Path(target) / "scripts" / "render_avatar.py")
+    with pytest.raises(SystemExit, match="changed while they were being copied"):
+        render_avatar.main(["--state", str(tmp_path / "s.npz"), "--out-dir", str(tmp_path / "out2"), "--allow-inferred", "--resolution", "32"])
+
+
+def test_blender_is_told_to_run_the_script_it_is_given(tmp_path):
+    import render_avatar
+    import stat
+    blender = tmp_path / "blender"
+    blender.write_text(f"#!/bin/sh\necho \"$@\" > {tmp_path / 'args.txt'}\n")
+    blender.chmod(blender.stat().st_mode | stat.S_IEXEC)
+    frozen = tmp_path / "frozen" / "scripts" / "render_avatar.py"
+    render_avatar.run_blender(blender, tmp_path / "bundle.npz", tmp_path / "frames", 32, tmp_path / "log.txt", script=frozen)
+    told = (tmp_path / "args.txt").read_text().split()
+    assert told[told.index("--python") + 1] == str(frozen.resolve()) and str(ROOT / "scripts") not in " ".join(told)
+
+
+def test_the_render_digest_reads_the_subfolders_of_scripts(tmp_path):
+    import render_avatar
+    from signtranslator.eval import provenance
+    (tmp_path / "scripts" / "acquisition").mkdir(parents=True)
+    (tmp_path / "signtranslator").mkdir()
+    (tmp_path / "scripts" / "a.py").write_text("a = 1\n")
+    (tmp_path / "scripts" / "acquisition" / "b.py").write_text("b = 1\n")
+    base, top = render_avatar.render_code_digest(tmp_path), provenance.code_digest(root=tmp_path)
+    (tmp_path / "scripts" / "acquisition" / "b.py").write_text("b = 2\n")
+    assert render_avatar.render_code_digest(tmp_path) != base and provenance.code_digest(root=tmp_path) == top      # the docstring says why
+
+
 def test_the_code_is_named_by_commit_dirty_and_digest_and_by_the_digest_alone_without_git(tmp_path):
     import subprocess
     import render_avatar
-    from signtranslator.eval import provenance
     repo = tmp_path / "repo"
     (repo / "scripts").mkdir(parents=True)
     (repo / "signtranslator").mkdir()
@@ -751,7 +845,7 @@ def test_the_code_is_named_by_commit_dirty_and_digest_and_by_the_digest_alone_wi
     (repo / "signtranslator" / "y.py").write_text("b = 1\n")
     (repo / "notes.txt").write_text("not code\n")
     no_git = render_avatar.code_commit(repo)
-    assert no_git == dict(commit=None, dirty=None, digest=provenance.code_digest(root=repo))       # a source archive, as on a pod
+    assert no_git == dict(commit=None, dirty=None, digest=render_avatar.render_code_digest(repo))       # a source archive, as on a pod
     git = lambda *a: subprocess.run(["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t", *a], check=True, capture_output=True)  # noqa: E731
     git("init", "-q")
     git("add", "-A")
@@ -781,7 +875,7 @@ def bundle_of(tmp_path, monkeypatch, state, name):
     import render_avatar
     from PIL import Image
 
-    def fake_blender(blender, bundle, frames_dir, resolution, log, *, first_only=False):
+    def fake_blender(blender, bundle, frames_dir, resolution, log, *, first_only=False, script=None):
         Path(frames_dir).mkdir()
         count = 1 if first_only else np.load(bundle)["body.vertices"].shape[0]
         for i in range(count):
@@ -928,7 +1022,8 @@ def mp4_boxes(payload: bytes, start: int = 0, end: int | None = None) -> list[tu
 
 
 def boxes_except_samples(payload: bytes) -> list:
-    """Every box but mdat and free, with its bytes, recursing into the containers, leaving out the sample-size table (stsz)."""
+    """Every box, recursing into the containers, with its size, and its bytes but for mdat, free, and the two tables that list each sample
+    (stsz its size, stco its offset)."""
     out = []
 
     def walk(start, end, depth):
@@ -936,10 +1031,10 @@ def boxes_except_samples(payload: bytes) -> list:
             if kind in ("moov", "trak", "mdia", "minf", "stbl"):
                 out.append((depth, kind, size))
                 walk(offset + 8, offset + size, depth + 1)
-            elif kind not in ("mdat", "free", "stsz"):
+            elif kind not in ("mdat", "free", "stsz", "stco"):
                 out.append((depth, kind, payload[offset:offset + size]))
             else:
-                out.append((depth, kind, size if kind == "stsz" else None))
+                out.append((depth, kind, size))
     walk(0, len(payload), 0)
     return out
 
@@ -953,10 +1048,10 @@ def nal_offsets(sample: bytes) -> list[int]:
     return out
 
 
-def synthetic_clips(frames=30, size=64):
+def synthetic_clips(frames=30, size=64, busy=200):
     rng = np.random.default_rng(0)
     return {name: [np.clip(np.full((size, size, 3), 100, np.int16) + rng.integers(0, amount, (size, size, 3)), 0, 255).astype(np.uint8) for _ in range(frames)]
-            for name, amount in (("still", 2), ("busy", 200))}
+            for name, amount in (("still", 2), ("busy", busy))}
 
 
 def test_a_padded_video_decodes_to_the_same_frames_and_every_file_has_one_size_that_a_zip_cannot_shrink(tmp_path):
@@ -993,37 +1088,91 @@ def test_a_padded_video_decodes_to_the_same_frames_and_every_file_has_one_size_t
     assert zipped.stat().st_size > .99 * packet.UNIFORM_VIDEO_BYTES
 
 
-def test_constant_rate_videos_of_one_length_match_in_every_box_but_their_sample_sizes(tmp_path):
-    """A still clip and a busy one of the same frame count: equal stream bytes, equal bit rates, equal frame types and timing tables, so only
-    the per-frame size table differs. The filler changes no picture."""
+def test_constant_rate_videos_of_one_length_match_in_every_box_size_and_in_every_box_but_the_per_sample_tables(tmp_path):
+    """A still clip and a busy one (pure noise, the worst case for the rate) of 240 frames, each stream over 1 MiB, so FFmpeg's own layout
+    would have cut them into chunks by content: equal stream bytes, equal bit rates, equal frame types, timing tables and chunk layout; every
+    box the same size, and the same bytes but for the sample sizes and offsets. The filler changes no picture, and leaves no file behind."""
     import av
+    import zlib
     from signtranslator.generation.stream_render import CONSTANT_RATE, constant_rate_budget, encode_timestamped_video, verify_timestamped_video
-    assert CONSTANT_RATE == dict(bits_per_second=2_000_000, buffer_bits=2_000_000, keyint=48, preset="slow")
-    clock = 5. + np.arange(30) / FPS
+    assert CONSTANT_RATE == dict(bits_per_second=2_000_000, buffer_bits=2_000_000, keyint=48, preset="slow", encoder_fractions=(.9, .75, .6))
+    clock = 5. + np.arange(240) / FPS
     out = {}
-    for name, frames in synthetic_clips(30).items():
+    for name, frames in synthetic_clips(240, 256, busy=255).items():
         path = tmp_path / f"{name}.mp4"
         record = encode_timestamped_video(frames, clock, path, quality="constant")["constant_rate"]
         verify_timestamped_video(path, clock)
-        assert record["stream_bytes"] == constant_rate_budget(30, 24.) and record["filler_bytes"] > 0
-        assert not (tmp_path / f"{name}.mp4.cbr").exists()
+        assert record["stream_bytes"] == constant_rate_budget(240, 24.) > 2 << 20 and record["filler_bytes"] > 0
+        assert record["attempts"][0]["encoder_bits_per_second"] == 1_800_000 and len(record["attempts"]) == 1
+        assert [p.name for p in tmp_path.iterdir() if p.name.startswith(name)] == [f"{name}.mp4"]             # no .rate file left
         with av.open(str(path)) as container:
-            stream = container.streams.video[0]
-            samples = [bytes(p) for p in container.demux(stream) if p.size]
+            samples = [bytes(p) for p in container.demux(container.streams.video[0]) if p.size]
         with av.open(str(path)) as container:
             pictures = [f.to_ndarray(format="rgb24") for f in container.decode(video=0)]
         assert sum(map(len, samples)) == record["stream_bytes"]
         kinds = [sample[i + 4] & 31 for sample in samples for i in nal_offsets(sample)]
         assert 12 not in kinds and kinds.count(6) >= len(samples)                     # no 0xFF filler units, SEI units in every sample
+        payload = path.read_bytes()
+        stsc = next(payload[o:o + n] for k, o, n in mp4_boxes_deep(payload) if k == "stsc")
+        assert stsc[8:] == bytes(4) + (1).to_bytes(4, "big") + b"\0\0\0\1\0\0\0\1\0\0\0\1"            # one sample to a chunk
         error = np.mean([(a.astype(float) - b.astype(float)) ** 2 for a, b in zip(frames, pictures)], axis=(1, 2, 3))
-        out[name] = dict(size=path.stat().st_size, boxes=boxes_except_samples(path.read_bytes()), record=record, error=error)
+        out[name] = dict(size=len(payload), boxes=boxes_except_samples(payload), record=record, error=error, squeezed=len(zlib.compress(payload, 9)))
     assert out["still"]["size"] == out["busy"]["size"]
     assert out["still"]["boxes"] == out["busy"]["boxes"]
     assert out["still"]["record"]["stream_bytes_before_filler"] != out["busy"]["record"]["stream_bytes_before_filler"]    # the content still differs
     assert out["still"]["error"].max() < 2.                                                                            # and the picture is kept
-    import zlib
-    squeezed = {name: len(zlib.compress((tmp_path / f"{name}.mp4").read_bytes(), 9)) for name in out}
-    assert abs(squeezed["still"] - squeezed["busy"]) < .001 * out["still"]["size"] and min(squeezed.values()) > .995 * out["still"]["size"]
+    assert abs(out["still"]["squeezed"] - out["busy"]["squeezed"]) < .001 * out["still"]["size"] and min(o["squeezed"] for o in out.values()) > .995 * out["still"]["size"]
+
+
+def mp4_boxes_deep(payload: bytes) -> list[tuple[str, int, int]]:
+    out = []
+
+    def walk(start, end):
+        for kind, offset, size in mp4_boxes(payload, start, end):
+            out.append((kind, offset, size))
+            if kind in ("moov", "trak", "mdia", "minf", "stbl"):
+                walk(offset + 8, offset + size)
+    walk(0, len(payload))
+    return out
+
+
+def test_a_stream_over_its_budget_is_encoded_again_lower_and_a_refused_one_leaves_nothing(tmp_path, monkeypatch):
+    from signtranslator.generation import stream_render
+    frames = synthetic_clips(48, 128, busy=255)["busy"]
+    clock = np.arange(48) / FPS
+    monkeypatch.setattr(stream_render, "CONSTANT_RATE", dict(stream_render.CONSTANT_RATE, encoder_fractions=(1.6, .9)))
+    record = stream_render.encode_timestamped_video(frames, clock, tmp_path / "a.mp4", quality="constant")["constant_rate"]
+    assert [a["encoder_bits_per_second"] for a in record["attempts"]] == [3_200_000, 1_800_000] and record["attempts"][0]["room"] < 0
+    assert record["encoder_bits_per_second"] == 1_800_000 and record["filler_bytes"] == record["attempts"][1]["room"] > 0
+    stream_render.verify_timestamped_video(tmp_path / "a.mp4", clock)
+    monkeypatch.setattr(stream_render, "CONSTANT_RATE", dict(stream_render.CONSTANT_RATE, encoder_fractions=(1.6,)))
+    with pytest.raises(ValueError, match="failed at every encoder rate"):
+        stream_render.encode_timestamped_video(frames, clock, tmp_path / "b.mp4", quality="constant")
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["a.mp4"]                         # neither b.mp4 nor b.mp4.rate
+    monkeypatch.setattr(stream_render, "CONSTANT_RATE", dict(stream_render.CONSTANT_RATE, encoder_fractions=(.9,)))
+
+    def broken(path):
+        raise ValueError("rewrite failed")
+    monkeypatch.setattr(stream_render, "one_sample_per_chunk", broken)                     # a failure after the file was written
+    with pytest.raises(ValueError, match="rewrite failed"):
+        stream_render.encode_timestamped_video(frames, clock, tmp_path / "c.mp4", quality="constant")
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["a.mp4"]
+
+
+def test_one_sample_per_chunk_keeps_every_sample_and_frame(tmp_path):
+    import av
+    from signtranslator.generation.stream_render import encode_timestamped_video, one_sample_per_chunk
+    frames = synthetic_clips(60, 128, busy=255)["busy"]
+    path = tmp_path / "v.mp4"
+    encode_timestamped_video(frames, np.arange(60) / FPS, path, quality="review")
+    with av.open(str(path)) as c:
+        before = [(p.pts, bytes(p)) for p in c.demux(c.streams.video[0]) if p.size]
+    one_sample_per_chunk(path)
+    with av.open(str(path)) as c:
+        after = [(p.pts, bytes(p)) for p in c.demux(c.streams.video[0]) if p.size]
+    assert before == after
+    chunks = next(n for k, o, n in mp4_boxes_deep(path.read_bytes()) if k == "stco")
+    assert chunks == 16 + 4 * 60
 
 
 def test_every_render_goes_to_the_store_with_its_index(tmp_path):

@@ -438,17 +438,18 @@ def test_the_reference_minus_each_system_is_reported_with_and_without_unfair_sen
     for i in key["items"]:
         failing = i["system"] == reference and i["utterance"] < 3                 # the reference's render fails acceptance on 0-2
         i["acceptance"] = dict(passed=not failing)
-        i["depth_capped"] = i["system"] == other and i["utterance"] in (3, 4)    # the other arm's hand hit the cap on 3-4
+        i["depth_capped"] = i["system"] == other and i["utterance"] == 3          # the other arm's hand hit the cap on 3
+        i["left_covered"] = i["system"] == other and i["utterance"] == 4          # and couldn't be reached out on 4
     answers = []
     for i in key["items"]:
         right = not (i["system"] == reference and i["utterance"] < 3) and not (i["system"] == other and i["utterance"] in (3, 4))
         answers.append(dict(item_id=i["item_id"], viewable="yes", reviewer_sha256=rater_of(i["group"], 0), choice=i["correct"] if right else ("a" if i["correct"] != "a" else "b")))
     out = hs.reference_fairness(answers, key, reference=reference)
-    assert out["report_only"] is True and out["reference_failing_acceptance"] == 3 and out["depth_capped"][other] == 2
+    assert out["report_only"] is True and out["reference_failing_acceptance"] == 3 and out["hand_left_covered"][other] == 2
     row = out["systems"][other]
     assert row["all"] == dict(sentences=12, reference_minus_system=(-3 + 2) / 12)
     assert row["without_reference_failing_acceptance"] == dict(sentences=9, reference_minus_system=2 / 9)
-    assert row["without_depth_capped"] == dict(sentences=10, reference_minus_system=-3 / 10)
+    assert row["without_hand_left_covered"] == dict(sentences=10, reference_minus_system=-3 / 10)
     assert row["without_either"] == dict(sentences=7, reference_minus_system=0.)
     assert reference not in out["systems"]
     assert hs.reference_fairness(answers, bar_key(12, 3), reference=reference) is None
@@ -600,24 +601,29 @@ def test_every_doc_agrees_on_the_owners_flow():
 
 # ---- P5: the avatar's acceptance --------------------------------------------------------------------------------------------------
 
-def fake_renderer(monkeypatch, *, mirror=True, passed=None, change_at=None):
+def fake_renderer(monkeypatch, *, mirror=True, passed=None, change_at=None, fail_at=None):
     """render_avatar.main as a stub: a tiny file and a record with the settings and code read now. ``change_at``: from that call on, the
-    record names another code digest, as a render would after an edit mid-run."""
+    record names another code digest, as a render would after an edit mid-run. ``fail_at``: that call fails after writing its frames, as an
+    encode that can't be held to its rate would."""
     import render_avatar
     calls = []
 
     def main(argv):
         out = Path(argv[argv.index("--out-dir") + 1])
         out.mkdir()
-        (out / "avatar.mp4").write_bytes(b"\0\0\0\x18ftypmp42")
         calls.append(argv)
+        if fail_at is not None and len(calls) == fail_at:
+            (out / "frames").mkdir()
+            (out / "frames" / "frame-000000.png").write_bytes(b"png")
+            raise ValueError("constant-rate encoding failed at every encoder rate")
+        (out / "avatar.mp4").write_bytes(b"\0\0\0\x18ftypmp42")
         ok = len(calls) % 2 == 0 if passed is None else passed
         record = dict(frames=3, acceptance=dict(groups=dict(body=dict(threshold_median_deg=5., median_deg=1.5 + len(calls), n=9, passed=ok)), mirror=mirror, passed=ok and mirror))
         code = render_avatar.code_commit()
         if change_at is not None and len(calls) >= change_at:
             code = dict(code, digest="e" * 64)
         record.update(render_settings_sha256=render_avatar.settings_sha256(768), code=code,
-                      collision=dict(depth_capped=len(calls) % 4 == 1, cover_by_other_limb_after=dict(other_arm=dict(frames_any_vertex=float(len(calls) % 3 == 0)),
+                      collision=dict(depth_capped=len(calls) % 4 == 1, left_covered=len(calls) % 8 == 2, cover_by_other_limb_after=dict(other_arm=dict(frames_any_vertex=float(len(calls) % 3 == 0)),
                                                                                                    other_hand=dict(frames_any_vertex=0.))))
         (out / "verification.json").write_text(json.dumps(record))
         return 0
@@ -654,8 +660,8 @@ def test_acceptance_is_summarised_by_arm():
         return dict(system=system, acceptance=dict(passed=passed, mirror=mirror, groups=dict(body=dict(passed=passed, median_deg=angle))))
     capped = dict(item("a", False, angle=9.), depth_capped=True, cover_by_other_limb=dict(other_arm=dict(frames_any_vertex=.2), other_hand=dict(frames_any_vertex=0.)))
     got = bh.avatar_acceptance([item("a", True), capped, item("b", True), dict(system="c")])
-    assert got == dict(a=dict(clips=2, passed=1, mirror_passed=2, depth_capped=1, hand_covered_by_other_limb=1, groups=dict(body=dict(passed=1, worst_median_deg=9.))),
-                       b=dict(clips=1, passed=1, mirror_passed=1, depth_capped=0, hand_covered_by_other_limb=0, groups=dict(body=dict(passed=1, worst_median_deg=2.))))
+    assert got == dict(a=dict(clips=2, passed=1, mirror_passed=2, depth_capped=1, left_covered=0, hand_covered_by_other_limb=1, groups=dict(body=dict(passed=1, worst_median_deg=9.))),
+                       b=dict(clips=1, passed=1, mirror_passed=1, depth_capped=0, left_covered=0, hand_covered_by_other_limb=0, groups=dict(body=dict(passed=1, worst_median_deg=2.))))
     assert bh.avatar_acceptance([dict(system="c")]) == {}
 
 
@@ -689,6 +695,7 @@ def test_a_packet_keeps_acceptance_on_every_item_by_arm_and_out_of_the_zips(tmp_
     assert all(v["mirror_passed"] == v["clips"] for v in summary.values())
     assert sum(v["depth_capped"] for v in summary.values()) == 4 == sum(i["depth_capped"] for i in key["items"])           # flagged in the summary
     assert sum(v["hand_covered_by_other_limb"] for v in summary.values()) == 5
+    assert sum(v["left_covered"] for v in summary.values()) == 2 == sum(i["left_covered"] for i in key["items"])
     # one render for the whole packet, held by the refusal of mixed renders, and the code named by its digest
     import render_avatar
     code = render_avatar.code_commit()
@@ -715,11 +722,80 @@ def test_a_packet_keeps_acceptance_on_every_item_by_arm_and_out_of_the_zips(tmp_
         with zipfile.ZipFile(out / "packet" / f"group-{g}.zip") as z:
             assert not any("verification" in n or "acceptance" in z.read(n).decode(errors="ignore") for n in z.namelist())
     assert not (out / "packet" / "group-0" / "verification.json").exists()
-    # a mirror failure stops the build before any key exists
+    assert not (out / "key" / bh.DRAFT).exists()                                                        # the finished key replaces the draft
+    # a mirror failure stops the build before any key exists, and the refused render is kept in the store too, under its item id
     fake_renderer(monkeypatch, mirror=False)
     with pytest.raises(SystemExit, match="mirror"):
         bh.main(packet + ["--renderer", "avatar", "--output-dir", str(tmp_path / "packet2")])
     assert not (tmp_path / "packet2" / "key" / "key.json").exists()
+    draft = json.loads((tmp_path / "packet2" / "key" / bh.DRAFT).read_text())
+    first = draft["key"]["items"][0]
+    assert "mirror" in first["render_failed"] and not first.get("rendered")
+    refused = [k for k in keys_now(store, prefix) if f"/{first['item_id']}/refused/" in k]
+    assert any(k.endswith("/INDEX.json") for k in refused)
+    index = json.loads(store.get(next(k for k in refused if k.endswith("/INDEX.json"))))
+    assert index["refused"] is True and "mirror" in index["reason"] and index["item_id"] == first["item_id"]
+
+
+def keys_now(store, prefix):
+    return store.list(prefix)
+
+
+def test_a_run_that_stops_keeps_its_draft_key_and_resumes_where_it_stopped(tmp_path, stage2_store, monkeypatch):  # noqa: F811
+    store, sha, s1, oracle, argv = stage2_store
+    packet, info = avatar_packet(tmp_path, store, sha, monkeypatch)
+    out = tmp_path / "packet"
+    calls = fake_renderer(monkeypatch, fail_at=4)
+    import render_avatar
+    stub, drafts = render_avatar.main, []
+
+    def watched(argv):                                                       # is the key on disk before the first render starts?
+        drafts.append((out / "key" / bh.DRAFT).exists())
+        return stub(argv)
+    monkeypatch.setattr(render_avatar, "main", watched)
+    with pytest.raises(ValueError, match="every encoder rate"):
+        bh.main(packet + ["--renderer", "avatar", "--output-dir", str(out)])
+    assert drafts == [True] * 4
+    draft = json.loads((out / "key" / bh.DRAFT).read_text())
+    items = draft["key"]["items"]
+    assert [bool(i.get("rendered")) for i in items[:4]] == [True, True, True, False] and "every encoder rate" in items[3]["render_failed"]
+    assert not (out / "key" / "key.json").exists() and len(list((out / "packet").rglob("*.mp4"))) == 3
+    store_ = DirectoryStore(Path(info["root"][4:]))
+    prefix = f"renders/rater-packets/{info['draw']['name']}-pilot/"
+    assert any(f"{items[3]['item_id']}/refused/" in k and k.endswith("frame-000000.png") for k in store_.list(prefix))      # its frames, archived
+    with pytest.raises(SystemExit, match="not empty"):
+        bh.main(packet + ["--renderer", "avatar", "--output-dir", str(out)])
+    with pytest.raises(SystemExit, match="other arguments"):
+        bh.main(packet + ["--renderer", "avatar", "--avatar-resolution", "384", "--output-dir", str(out), "--resume"])
+    calls = fake_renderer(monkeypatch)
+    assert bh.main(packet + ["--renderer", "avatar", "--output-dir", str(out), "--resume"]) == 0
+    assert len(calls) == 13                                                                            # 16 items, 3 kept from the stopped run
+    key = json.loads((out / "key" / "key.json").read_text())
+    assert [i["item_id"] for i in key["items"]] == [i["item_id"] for i in items] and all(i["rendered"] and "render_failed" not in i for i in key["items"])
+    assert not (out / "key" / bh.DRAFT).exists() and not list((out / "packet").rglob("*.mp4"))
+    with pytest.raises(SystemExit, match="finished key"):
+        bh.main(packet + ["--renderer", "avatar", "--output-dir", str(out), "--resume"])
+
+
+def test_a_zip_that_fails_after_others_were_written_loses_no_video_and_the_run_can_be_finished(tmp_path, stage2_store, monkeypatch):  # noqa: F811
+    store, sha, s1, oracle, argv = stage2_store
+    packet, info = avatar_packet(tmp_path, store, sha, monkeypatch)
+    out = tmp_path / "packet"
+    fake_renderer(monkeypatch)
+    real = bh.verify_zip
+
+    def third_fails(path, folder, files):
+        if folder == "group-2":
+            raise SystemExit(f"{path.name} does not read back whole: the loose files are kept")
+        real(path, folder, files)
+    monkeypatch.setattr(bh, "verify_zip", third_fails)
+    with pytest.raises(SystemExit, match="loose files are kept"):
+        bh.main(packet + ["--renderer", "avatar", "--output-dir", str(out)])
+    assert len(list((out / "packet").rglob("*.mp4"))) == 16 and (out / "key" / bh.DRAFT).exists() and not (out / "key" / "key.json").exists()
+    monkeypatch.setattr(bh, "verify_zip", real)
+    calls = fake_renderer(monkeypatch)
+    assert bh.main(packet + ["--renderer", "avatar", "--output-dir", str(out), "--resume"]) == 0
+    assert not calls and (out / "key" / "key.json").exists() and not list((out / "packet").rglob("*.mp4"))
 
 
 def test_a_render_by_other_code_is_refused_as_it_renders_not_after_the_run(tmp_path, stage2_store, monkeypatch):  # noqa: F811
