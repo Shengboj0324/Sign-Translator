@@ -1095,7 +1095,7 @@ def test_constant_rate_videos_of_one_length_match_in_every_box_size_and_in_every
     import av
     import zlib
     from signtranslator.generation.stream_render import CONSTANT_RATE, constant_rate_budget, encode_timestamped_video, verify_timestamped_video
-    assert CONSTANT_RATE == dict(bits_per_second=2_000_000, buffer_bits=2_000_000, keyint=48, preset="slow", encoder_fractions=(.9, .75, .6))
+    assert CONSTANT_RATE == dict(bits_per_second=2_000_000, buffer_bits=2_000_000, keyint=48, preset="slow", encoder_fraction=.9)
     clock = 5. + np.arange(240) / FPS
     out = {}
     for name, frames in synthetic_clips(240, 256, busy=255).items():
@@ -1113,6 +1113,8 @@ def test_constant_rate_videos_of_one_length_match_in_every_box_size_and_in_every
         kinds = [sample[i + 4] & 31 for sample in samples for i in nal_offsets(sample)]
         assert 12 not in kinds and kinds.count(6) >= len(samples)                     # no 0xFF filler units, SEI units in every sample
         payload = path.read_bytes()
+        for word in (b"x264", b"core 1", b"options:", b"bitrate=", b"vbv_maxrate", b"Lavf", b"Lavc", b"libx264"):
+            assert word not in payload, word                                            # no encoder version or setting in the file
         stsc = next(payload[o:o + n] for k, o, n in mp4_boxes_deep(payload) if k == "stsc")
         assert stsc[8:] == bytes(4) + (1).to_bytes(4, "big") + b"\0\0\0\1\0\0\0\1\0\0\0\1"            # one sample to a chunk
         error = np.mean([(a.astype(float) - b.astype(float)) ** 2 for a, b in zip(frames, pictures)], axis=(1, 2, 3))
@@ -1136,20 +1138,18 @@ def mp4_boxes_deep(payload: bytes) -> list[tuple[str, int, int]]:
     return out
 
 
-def test_a_stream_over_its_budget_is_encoded_again_lower_and_a_refused_one_leaves_nothing(tmp_path, monkeypatch):
+def test_a_stream_over_its_budget_is_refused_not_encoded_again_lower_and_leaves_nothing(tmp_path, monkeypatch):
+    """One rate for every clip: a clip over its budget is refused, never stepped down to a rate (and a quality) of its own."""
     from signtranslator.generation import stream_render
     frames = synthetic_clips(48, 128, busy=255)["busy"]
     clock = np.arange(48) / FPS
-    monkeypatch.setattr(stream_render, "CONSTANT_RATE", dict(stream_render.CONSTANT_RATE, encoder_fractions=(1.6, .9)))
     record = stream_render.encode_timestamped_video(frames, clock, tmp_path / "a.mp4", quality="constant")["constant_rate"]
-    assert [a["encoder_bits_per_second"] for a in record["attempts"]] == [3_200_000, 1_800_000] and record["attempts"][0]["room"] < 0
-    assert record["encoder_bits_per_second"] == 1_800_000 and record["filler_bytes"] == record["attempts"][1]["room"] > 0
-    stream_render.verify_timestamped_video(tmp_path / "a.mp4", clock)
-    monkeypatch.setattr(stream_render, "CONSTANT_RATE", dict(stream_render.CONSTANT_RATE, encoder_fractions=(1.6,)))
-    with pytest.raises(ValueError, match="failed at every encoder rate"):
+    assert [a["encoder_bits_per_second"] for a in record["attempts"]] == [1_800_000] and 0. < record["room_share"] < 1.
+    monkeypatch.setattr(stream_render, "CONSTANT_RATE", dict(stream_render.CONSTANT_RATE, encoder_fraction=1.6))
+    with pytest.raises(ValueError, match="one rate isn't lowered"):
         stream_render.encode_timestamped_video(frames, clock, tmp_path / "b.mp4", quality="constant")
     assert sorted(p.name for p in tmp_path.iterdir()) == ["a.mp4"]                         # neither b.mp4 nor b.mp4.rate
-    monkeypatch.setattr(stream_render, "CONSTANT_RATE", dict(stream_render.CONSTANT_RATE, encoder_fractions=(.9,)))
+    monkeypatch.setattr(stream_render, "CONSTANT_RATE", dict(stream_render.CONSTANT_RATE, encoder_fraction=.9))
 
     def broken(path):
         raise ValueError("rewrite failed")

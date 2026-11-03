@@ -549,18 +549,18 @@ def archive_render(store, prefix: str, directory: Path, fields: dict | None = No
             raise SystemExit(f"{index_key} exists with other content: a render is written once")
         return dict(summary, resumed=True, files_already_stored=len(files))
 
+    stored = {name for name in local if store.exists(f"{prefix}/{name}")}
+    for name in sorted(stored):                                              # every check before any write: a refusal writes nothing
+        if hashlib.sha256(store.get(f"{prefix}/{name}")).hexdigest() != files[name]["sha256"]:
+            raise SystemExit(f"{prefix}/{name} exists with other content: a render is written once")
+
     def put(name):
-        key = f"{prefix}/{name}"
-        if store.exists(key):
-            if hashlib.sha256(store.get(key)).hexdigest() != files[name]["sha256"]:
-                raise SystemExit(f"{key} exists with other content: a render is written once")
-            return 0
-        if store.put(key, local[name].read_bytes()) != files[name]["sha256"]:
-            raise SystemExit(f"{key}: the store holds other bytes than were sent")
-        return 1
+        if store.put(f"{prefix}/{name}", local[name].read_bytes()) != files[name]["sha256"]:
+            raise SystemExit(f"{prefix}/{name}: the store holds other bytes than were sent")
 
     with ThreadPoolExecutor(8) as pool:
-        written = sum(pool.map(put, sorted(local)))
+        list(pool.map(put, sorted(set(local) - stored)))
+    written = len(local) - len(stored)
     store.put(index_key, index)
     return dict(summary, resumed=False, files_already_stored=len(files) - written)
 

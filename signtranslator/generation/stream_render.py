@@ -35,13 +35,14 @@ from ..pose.multichannel import MultichannelMotion
 from .state_rig import StateRigBinding, pose_state_sequence
 
 DEFAULT_TIME_BASE = Fraction(1, 90000)
-#: ``quality='constant'``: H.264 4:2:0 held below 2 Mb/s by x264's VBV (``encoder_fractions[0]`` of the rate and the 1 s buffer, a lower
-#: fraction if a stream still runs over), with a fixed frame-type pattern; then SEI units of incompressible user data, spread over the
-#: samples, top the stream up to exactly ``rate * frames / fps + buffer`` bits, and the file is laid out one sample to a chunk. Stream size,
-#: stream and file bit rate, frame types, and every MP4 box's size, and its bytes but for the sample sizes and sample offsets, are then a
-#: function of the frame count alone, and a zip can't shrink the top-up back to the content's size, as it would x264's own CBR filler (0xFF
-#: bytes). On a busy synthetic 768 px avatar clip it scored above CRF 16 on PSNR, hands included (docs/AVATAR_RENDER.md section 13).
-CONSTANT_RATE = dict(bits_per_second=2_000_000, buffer_bits=2_000_000, keyint=48, preset="slow", encoder_fractions=(.9, .75, .6))
+#: ``quality='constant'``: H.264 4:2:0 held below 2 Mb/s by x264's VBV (``encoder_fraction`` of the rate and the 1 s buffer, one value for
+#: every clip, so no clip's rate or quality follows its content), with a fixed frame-type pattern; x264's own settings and version SEI is
+#: dropped and the muxer writes no version; then SEI units of incompressible user data, spread over the samples, top the stream up to
+#: exactly ``rate * frames / fps + buffer`` bits, and the file is laid out one sample to a chunk. Stream size, stream and file bit rate,
+#: frame types, and every MP4 box's size, and its bytes but for the sample sizes and sample offsets, are then a function of the frame count
+#: alone, and a zip can't shrink the top-up back to the content's size, as it would x264's own CBR filler (0xFF bytes). On a busy synthetic
+#: 768 px avatar clip it scored above CRF 16 on PSNR, hands included (docs/AVATAR_RENDER.md section 13).
+CONSTANT_RATE = dict(bits_per_second=2_000_000, buffer_bits=2_000_000, keyint=48, preset="slow", encoder_fraction=.9)
 
 
 def presentation_timestamps(clock: Sequence[float], *,
@@ -181,10 +182,12 @@ def _encode_constant_rate(frames, clock, path: Path, *, time_base: Fraction, cod
     unregistered user data, spread over the samples, that bring the stream to :func:`constant_rate_budget`, and lay the file out one sample
     to a chunk. Packets, timestamps and pictures are unchanged; decoders skip the SEI units.
 
-    x264 is held to ``encoder_fractions[0]`` of the budget's rate and buffer, and its buffer starts 90% full, so a stream can run past the
-    rate by up to that buffer; the budget's own rate and buffer above it leave 0.2 Mb/s of the clip's length plus 0.38 Mb of room. A
-    stream still over its budget, or too close to it to hold one filler unit, is encoded again at the next fraction; only one that fails
-    every fraction is refused. Each attempt is recorded. Nothing is left at ``path`` or beside it after a failure."""
+    x264 is held to ``encoder_fraction`` of the budget's rate and buffer, and its buffer starts 90% full, so a stream can run past the rate
+    by up to that buffer; the budget's own rate and buffer above it leave 0.2 Mb/s of the clip's length plus 0.38 Mb of room. A stream
+    still over its budget, or too close to it to hold one filler unit, is refused, never encoded again at a lower rate: a clip at another
+    rate would carry another quality, and an arm whose clips run over more often would be marked by it. One rate holds for every clip
+    because it is in the settings hash, which a packet holds every render to. The room left is recorded. Nothing is left at ``path`` or
+    beside it after a failure."""
     import av
     if codec != "libx264":
         raise ValueError("quality='constant' is libx264's")
@@ -203,41 +206,38 @@ def _encode_constant_rate(frames, clock, path: Path, *, time_base: Fraction, cod
     raw = path.with_name(path.name + ".rate")
     attempts = []
     try:
-        for fraction in rate["encoder_fractions"]:
-            bits, buffer = round(rate["bits_per_second"] * fraction), round(rate["buffer_bits"] * fraction)
-            raw.unlink(missing_ok=True)
-            with av.open(str(raw), mode="w", format="mp4") as container:
-                stream = container.add_stream(codec, rate=None)
-                stream.width, stream.height = width, height
-                stream.pix_fmt = "yuv420p"
-                stream.time_base = time_base
-                stream.codec_context.time_base = time_base
-                stream.codec_context.framerate = fps
-                stream.options = {"preset": rate["preset"], "b": str(bits), "maxrate": str(bits), "bufsize": str(buffer),
-                                  "x264-params": f"force-cfr=1:b-adapt=0:scenecut=0:keyint={rate['keyint']}:min-keyint={rate['keyint']}"}
-                for tick, image in zip(ticks, frames):
-                    frame = av.VideoFrame.from_ndarray(image, format="rgb24")
-                    frame.pts = tick
-                    frame.time_base = time_base
-                    for packet in stream.encode(frame):
-                        container.mux(packet)
-                for packet in stream.encode():
+        bits, buffer = round(rate["bits_per_second"] * rate["encoder_fraction"]), round(rate["buffer_bits"] * rate["encoder_fraction"])
+        with av.open(str(raw), mode="w", format="mp4") as container:
+            stream = container.add_stream(codec, rate=None)
+            stream.width, stream.height = width, height
+            stream.pix_fmt = "yuv420p"
+            stream.time_base = time_base
+            stream.codec_context.time_base = time_base
+            stream.codec_context.framerate = fps
+            stream.options = {"preset": rate["preset"], "b": str(bits), "maxrate": str(bits), "bufsize": str(buffer),
+                              "x264-params": f"force-cfr=1:b-adapt=0:scenecut=0:keyint={rate['keyint']}:min-keyint={rate['keyint']}"}
+            for tick, image in zip(ticks, frames):
+                frame = av.VideoFrame.from_ndarray(image, format="rgb24")
+                frame.pts = tick
+                frame.time_base = time_base
+                for packet in stream.encode(frame):
                     container.mux(packet)
-            with av.open(str(raw)) as source:
-                template = source.streams.video[0]
-                packets = [(p.pts, p.dts, p.duration, p.is_keyframe, bytes(p)) for p in source.demux(template) if p.size]
-            stream_bytes = sum(len(p[4]) for p in packets)
-            attempts.append(dict(encoder_bits_per_second=bits, encoder_buffer_bits=buffer, stream_bytes_before_filler=stream_bytes,
-                                 room=budget - stream_bytes))
-            if budget - stream_bytes >= 0 and (budget == stream_bytes or budget - stream_bytes >= _SEI_SMALLEST):
-                break
-        else:
-            raise ValueError(f"constant-rate encoding failed at every encoder rate: {attempts}")
+            for packet in stream.encode():
+                container.mux(packet)
+        with av.open(str(raw)) as source:
+            template = source.streams.video[0]
+            packets = [(p.pts, p.dts, p.duration, p.is_keyframe, _without_sei(bytes(p))) for p in source.demux(template) if p.size]
+        stream_bytes = sum(len(p[4]) for p in packets)
+        room = budget - stream_bytes
+        attempts.append(dict(encoder_bits_per_second=bits, encoder_buffer_bits=buffer, stream_bytes_before_filler=stream_bytes, room=room))
+        if room < 0 or 0 < room < _SEI_SMALLEST:
+            raise ValueError(f"constant-rate encoding failed: the stream is {stream_bytes} bytes against a budget of {budget}; the packet's one "
+                             "rate isn't lowered for one clip")
         seed = hashlib.sha256(b"".join(p[4] for p in packets)).digest()       # unique to the clip: no archiver can share it between files
         shares = _sei_shares(budget - stream_bytes, len(packets))
         with av.open(str(raw)) as source:
             template = source.streams.video[0]
-            with av.open(str(path), mode="w", format="mp4") as target:
+            with av.open(str(path), mode="w", format="mp4", container_options={"fflags": "+bitexact"}) as target:
                 out = target.add_stream_from_template(template)
                 for n, (pts, dts, duration, key, data) in enumerate(packets):
                     packet = av.Packet(_with_sei(data, shares[n], seed, n))
@@ -256,6 +256,7 @@ def _encode_constant_rate(frames, clock, path: Path, *, time_base: Fraction, cod
     return dict(ticks=ticks, time_base=str(time_base), clock_origin_seconds=float(clock[0]), codec=codec, pixel_format="yuv420p",
                 max_timestamp_error_seconds=float(bound), max_timestamp_error_exact=str(bound), frames=len(ticks),
                 constant_rate=dict(rate, fps=str(fps), encoder_bits_per_second=used["encoder_bits_per_second"], attempts=attempts,
+                                   room_share=used["room"] / budget,
                                    stream_bytes_before_filler=used["stream_bytes_before_filler"], stream_bytes=budget, filler_bytes=used["room"]))
 
 
@@ -358,6 +359,17 @@ def _sei_shares(need: int, samples: int) -> list[int]:
     if need and not used:
         raise ValueError(f"the stream is {need} bytes under its budget, too few for one filler unit: constant-rate encoding failed")
     return [need // used + (n < need % used) if n < used else 0 for n in range(samples)]
+
+
+def _without_sei(sample: bytes) -> bytes:
+    """``sample`` (length-prefixed NAL units) without its SEI units: x264 writes its version and every setting, the rate included, into one."""
+    out, i = [], 0
+    while i < len(sample):
+        end = i + 4 + int.from_bytes(sample[i:i + 4], "big")
+        if sample[i + 4] & 31 != 6:
+            out.append(sample[i:end])
+        i = end
+    return b"".join(out)
 
 
 def _with_sei(sample: bytes, size: int, seed: bytes, counter: int) -> bytes:

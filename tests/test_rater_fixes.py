@@ -623,6 +623,7 @@ def fake_renderer(monkeypatch, *, mirror=True, passed=None, change_at=None, fail
         if change_at is not None and len(calls) >= change_at:
             code = dict(code, digest="e" * 64)
         record.update(render_settings_sha256=render_avatar.settings_sha256(768), code=code,
+                      encoding=dict(constant_rate=dict(attempts=[dict(room=1)], room_share=.5 - .01 * len(calls))),
                       collision=dict(depth_capped=len(calls) % 4 == 1, left_covered=len(calls) % 8 == 2, cover_by_other_limb_after=dict(other_arm=dict(frames_any_vertex=float(len(calls) % 3 == 0)),
                                                                                                    other_hand=dict(frames_any_vertex=0.))))
         (out / "verification.json").write_text(json.dumps(record))
@@ -696,6 +697,9 @@ def test_a_packet_keeps_acceptance_on_every_item_by_arm_and_out_of_the_zips(tmp_
     assert sum(v["depth_capped"] for v in summary.values()) == 4 == sum(i["depth_capped"] for i in key["items"])           # flagged in the summary
     assert sum(v["hand_covered_by_other_limb"] for v in summary.values()) == 5
     assert sum(v["left_covered"] for v in summary.values()) == 2 == sum(i["left_covered"] for i in key["items"])
+    rates = key["encoder_rate_by_arm"]                                                                  # one rate, so no clip was retried
+    assert set(rates) == set(key["systems"]) and all(r["clips"] == 4 and r["retried"] == 0 for r in rates.values())
+    assert min(r["least_room_share"] for r in rates.values()) == .34
     # one render for the whole packet, held by the refusal of mixed renders, and the code named by its digest
     import render_avatar
     code = render_avatar.code_commit()
@@ -767,14 +771,49 @@ def test_a_run_that_stops_keeps_its_draft_key_and_resumes_where_it_stopped(tmp_p
         bh.main(packet + ["--renderer", "avatar", "--output-dir", str(out)])
     with pytest.raises(SystemExit, match="other arguments"):
         bh.main(packet + ["--renderer", "avatar", "--avatar-resolution", "384", "--output-dir", str(out), "--resume"])
+    tampered = out / "packet" / f"group-{items[0]['group']}" / f"{items[0]['item_id']}.mp4"
+    payload = bytearray(tampered.read_bytes())
+    payload[-1] ^= 1
+    tampered.write_bytes(bytes(payload))                                                               # same size, other bytes: not finished
     calls = fake_renderer(monkeypatch)
     assert bh.main(packet + ["--renderer", "avatar", "--output-dir", str(out), "--resume"]) == 0
-    assert len(calls) == 13                                                                            # 16 items, 3 kept from the stopped run
+    assert len(calls) == 14                                                                            # 16 items, 2 kept from the stopped run
     key = json.loads((out / "key" / "key.json").read_text())
+    assert key["disk"]["already_on_disk"] == 2 * bh.UNIFORM_VIDEO_BYTES                                # what is on disk isn't asked for again
     assert [i["item_id"] for i in key["items"]] == [i["item_id"] for i in items] and all(i["rendered"] and "render_failed" not in i for i in key["items"])
     assert not (out / "key" / bh.DRAFT).exists() and not list((out / "packet").rglob("*.mp4"))
     with pytest.raises(SystemExit, match="finished key"):
         bh.main(packet + ["--renderer", "avatar", "--output-dir", str(out), "--resume"])
+
+
+def test_a_run_cut_off_mid_upload_resumes_and_stores_the_new_render_beside_the_partial_one(tmp_path, stage2_store, monkeypatch):  # noqa: F811
+    import render_avatar
+    store, sha, s1, oracle, argv = stage2_store
+    packet, info = avatar_packet(tmp_path, store, sha, monkeypatch)
+    out = tmp_path / "packet"
+    fake_renderer(monkeypatch)
+    real, kept = render_avatar.archive_render, []
+
+    def cut_off(store_, prefix, directory, fields=None):
+        if "/refused/" not in prefix and "/again/" not in prefix:
+            kept.append(prefix)
+            if len(kept) == 3:                                                                         # the third render's upload stops half way
+                store_.put(f"{prefix}/avatar.mp4", (directory / "avatar.mp4").read_bytes())
+                raise ConnectionError("upload cut off")
+        return real(store_, prefix, directory, fields)
+    monkeypatch.setattr(render_avatar, "archive_render", cut_off)
+    with pytest.raises(ConnectionError, match="cut off"):
+        bh.main(packet + ["--renderer", "avatar", "--output-dir", str(out)])
+    item = json.loads((out / "key" / bh.DRAFT).read_text())["key"]["items"][2]
+    stored = DirectoryStore(Path(info["root"][4:]))
+    prefix = f"renders/rater-packets/{info['draw']['name']}-pilot/{item['item_id']}"
+    assert "upload cut off" in item["render_failed"] and not stored.exists(f"{prefix}/INDEX.json")
+    assert any(k.startswith(f"{prefix}/refused/") and k.endswith("INDEX.json") for k in stored.list(prefix))      # archived as refused
+    monkeypatch.setattr(render_avatar, "archive_render", real)
+    fake_renderer(monkeypatch)                                                                         # the re-render differs from the cut-off one
+    assert bh.main(packet + ["--renderer", "avatar", "--output-dir", str(out), "--resume"]) == 0
+    again = [k for k in stored.list(prefix) if k.startswith(f"{prefix}/again/") and k.endswith("INDEX.json")]
+    assert len(again) == 1 and json.loads(stored.get(again[0]))["again"] is True and (out / "key" / "key.json").exists()
 
 
 def test_a_zip_that_fails_after_others_were_written_loses_no_video_and_the_run_can_be_finished(tmp_path, stage2_store, monkeypatch):  # noqa: F811

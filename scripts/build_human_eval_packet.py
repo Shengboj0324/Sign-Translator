@@ -264,19 +264,21 @@ def render_avatar_video(state, path: Path, *, resolution: int = 768, verificatio
                                  "refused as it renders, nothing is built on it")
             if not record["acceptance"]["mirror"]:
                 raise SystemExit(f"{path.name}: the render failed its mirror check, so the signer would be shown mirrored: nothing is built on it")
+            stored = archive_kept(archive, out) if archive else None
         except (Exception, SystemExit) as error:
             if archive and out.exists():
                 archive_refused(archive, out, f"{type(error).__name__}: {error}")
             raise
         encoded_bytes = (out / "avatar.mp4").stat().st_size
-        stored = archive_kept(archive, out) if archive else None
         shutil.copy(out / "avatar.mp4", path)
         pad_video(path, path.stem)
         if verification is not None:
             verification.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(out / "verification.json", verification)
     collision = record["collision"]
+    rate = (record.get("encoding") or {}).get("constant_rate") or {}
     return dict(frames=len(state.timestamps), acceptance=record["acceptance"], settings=record["render_settings_sha256"], code=record["code"],
+                encoder_attempts=len(rate.get("attempts") or ()), encoder_room_share=rate.get("room_share"),
                 encoded_bytes=encoded_bytes, archive=stored, depth_capped=bool(collision["depth_capped"]), left_covered=bool(collision["left_covered"]),
                 cover_by_other_limb=collision["cover_by_other_limb_after"],
                 stream_bytes_before_filler=(record.get("encoding") or {}).get("constant_rate", {}).get("stream_bytes_before_filler"))
@@ -289,16 +291,20 @@ def _render_tag(directory: Path) -> str:
 
 
 def archive_kept(archive, directory: Path) -> dict:
-    """The render under the item's prefix, written once. If a run that stopped already stored another render of this item there, this one
-    goes beside it under ``again/<digest>/`` rather than over it."""
+    """The render under the item's prefix, written once. If a run that stopped already stored anything else of this item there, a whole
+    render or an upload cut off before its ``INDEX.json``, this one goes beside it under ``again/<digest>/`` rather than over it. An
+    ``INDEX.json`` with exactly this content is this render, already stored."""
     import render_avatar
     store, prefix, fields = archive
-    try:
-        return render_avatar.archive_render(store, prefix, directory, fields)
-    except SystemExit:
-        if not store.exists(f"{prefix}/INDEX.json"):
-            raise
+    earlier = [k for k in store.list(f"{prefix}/") if not k[len(prefix) + 1:].startswith(("refused/", "again/"))]
+    if earlier:
+        if store.exists(f"{prefix}/INDEX.json"):
+            try:
+                return render_avatar.archive_render(store, prefix, directory, fields)
+            except SystemExit:
+                pass
         return render_avatar.archive_render(store, f"{prefix}/again/{_render_tag(directory)}", directory, dict(fields, again=True))
+    return render_avatar.archive_render(store, prefix, directory, fields)
 
 
 def archive_refused(archive, directory: Path, reason: str) -> None:
@@ -318,7 +324,8 @@ def keep_render_identity(item: dict, rendered: dict) -> None:
                 code_dirty=rendered["code"]["dirty"], code_digest=rendered["code"]["digest"], encoded_bytes=rendered["encoded_bytes"],
                 render_archive=rendered["archive"], depth_capped=rendered["depth_capped"], left_covered=rendered["left_covered"],
                 cover_by_other_limb=rendered["cover_by_other_limb"],
-                stream_bytes_before_filler=rendered["stream_bytes_before_filler"])
+                stream_bytes_before_filler=rendered["stream_bytes_before_filler"], encoder_attempts=rendered["encoder_attempts"],
+                encoder_room_share=rendered["encoder_room_share"])
 
 
 def refuse_mixed_renders(items) -> dict:
@@ -333,6 +340,21 @@ def refuse_mixed_renders(items) -> dict:
         return {}
     commit, dirty, digest = next(iter(codes))
     return dict(settings_sha256=next(iter(settings)), code_commit=commit, code_dirty=dirty, code_digest=digest)
+
+
+def encoder_rate_by_arm(items) -> dict:
+    """Per arm: clips, how many needed more than one encode (none can: one rate holds for the packet, and a clip over its budget is
+    refused), and the least room any clip left under its byte budget, as a share of it."""
+    out = {}
+    for item in items:
+        if "encoder_attempts" not in item:
+            continue
+        row = out.setdefault(item["system"], dict(clips=0, retried=0, least_room_share=None))
+        row["clips"] += 1
+        row["retried"] += (item["encoder_attempts"] or 1) > 1
+        if item["encoder_room_share"] is not None:
+            row["least_room_share"] = round(min(row["least_room_share"] if row["least_room_share"] is not None else 1., item["encoder_room_share"]), 4)
+    return dict(sorted(out.items()))
 
 
 def avatar_acceptance(items) -> dict:
@@ -900,7 +922,23 @@ def how2sign_item(item: dict, n: int, key: dict, out: Path, args, store, d20: di
     item["reference_seconds"] = round(len(reference.timestamps) / args.fps, 3)
     item["video_bytes"] = item.get("encoded_bytes", video.stat().st_size)     # before padding: what the encoder made of the motion
     item["delivered_bytes"] = video.stat().st_size
+    item["delivered_sha256"] = file_sha256(video)
     print(json.dumps(dict(n=n + 1, of=len(key["items"]), group=item["group"])), flush=True)
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for block in iter(lambda: source.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def finished(item: dict, out: Path) -> bool:
+    """An item a stopped run finished: marked so in its draft, with its delivered video on disk, byte for byte (padding makes every size a
+    multiple of 8 MiB, so a size says little)."""
+    video = out / "packet" / f"group-{item['group']}" / f"{item['item_id']}.mp4"
+    return bool(item.get("rendered")) and video.exists() and video.stat().st_size == item["delivered_bytes"] and file_sha256(video) == item.get("delivered_sha256")
 
 
 def how2sign_packet(argv) -> int:
@@ -1013,7 +1051,9 @@ def how2sign_packet(argv) -> int:
                 return int(compositions[item["system"]]["rows"][item["sign"]]["frames"])
             rows = [c["rows"][item["sign"]]["reference_frames"] for c in compositions.values()]
             return int(rows[0]) if rows else int(np.ceil(draw["rows"][item["sign"]]["seconds"] * args.fps)) + 1
-        key["disk"] = check_free_space(out, space_needed([(i["group"], frames_of(i)) for i in key["items"]], args.fps))
+        need = space_needed([(i["group"], frames_of(i)) for i in key["items"]], args.fps)
+        done = sum(i["delivered_bytes"] for i in key["items"] if finished(i, out)) if draft is not None else 0
+        key["disk"] = check_free_space(out, dict(need, packet=need["packet"] - done)) | dict(already_on_disk=done)        # a resumed run's finished videos are there
         identity = render_identity(args.avatar_resolution)                 # read once now; each render and the end are held to it
         key["delivery"] = DELIVERY
     if draft is not None and draft["identity"] != identity:
@@ -1022,8 +1062,7 @@ def how2sign_packet(argv) -> int:
     write_draft(out, key, run, identity)
     archive_prefix = f"renders/rater-packets/{draw['name']}-{args.which}"
     for n, item in enumerate(key["items"]):
-        video = out / "packet" / f"group-{item['group']}" / f"{item['item_id']}.mp4"
-        if item.get("rendered") and video.exists() and video.stat().st_size == item["delivered_bytes"]:
+        if finished(item, out):
             continue                                                # finished by the run that stopped
         try:
             how2sign_item(item, n, key, out, args, store, d20, spec, compositions, identity, archive_prefix)
@@ -1037,6 +1076,7 @@ def how2sign_packet(argv) -> int:
     key["video_bytes_per_frame"] = bytes_per_frame(key["items"])
     key["stream_bytes_before_filler_per_frame"] = bytes_per_frame(key["items"], "stream_bytes_before_filler")
     key["avatar_acceptance"] = avatar_acceptance(key["items"])
+    key["encoder_rate_by_arm"] = encoder_rate_by_arm(key["items"])
     key["render"] = refuse_mixed_renders(key["items"])
     if identity is not None:
         check_render_identity(identity, args.avatar_resolution, "at the packet's end")
