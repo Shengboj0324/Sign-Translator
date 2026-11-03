@@ -11,11 +11,11 @@ import platform
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def code_digest(extra_files=(), *, root: Path = ROOT) -> str:
+def code_digest(extra_files=(), *, root: Path | None = None) -> str:
     """SHA-256 over the code (module docstring): the top level of ``scripts/`` only, so its subfolders (``scripts/acquisition/``) are not
     in it unless named, and all of ``signtranslator/``. ``extra_files``: paths, relative to the repository or absolute. A missing file
-    raises. ``root``: another checkout's code."""
-    root = Path(root).resolve()
+    raises. ``root``: another checkout's code; by default ``ROOT``, read when called."""
+    root = Path(ROOT if root is None else root).resolve()
     files = {p.resolve() for p in (root / "scripts").glob("*.py")} | {p.resolve() for p in (root / "signtranslator").rglob("*.py")}
     files |= {(Path(f) if Path(f).is_absolute() else root / f).resolve() for f in extra_files}
     digest = hashlib.sha256()
